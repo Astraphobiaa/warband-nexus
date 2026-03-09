@@ -421,8 +421,7 @@ function WarbandNexus:DrawStatistics(parent)
     local MP_TOGGLE_HEIGHT = 28      -- Height for expand/collapse button
     local MP_BOTTOM_PAD = 8
     
-    -- Compact time format for rows (e.g., "363d 16h" instead of "363 Days 16 Hours 55 Minutes")
-    -- Row format: keep full words but only show top 2 units
+    -- Compact time format for rows (e.g., "2 Days 16 Hours")
     local function FormatPlayedCompact(seconds)
         local L = ns.L
         local dayS   = (L and L["PLAYED_DAYS"])    or "Days"
@@ -442,6 +441,31 @@ function WarbandNexus:DrawStatistics(parent)
         else
             return math.max(minutes, 1) .. " " .. (minutes == 1 and minL or minS)
         end
+    end
+
+    -- Steam-style format (e.g., "1,234.5 Hours")
+    local function FormatPlayedSteam(seconds)
+        if not seconds or seconds <= 0 then return "0 Hours" end
+        local hours = seconds / 3600
+        if hours < 100 then
+            return string.format("%.1f Hours", hours)
+        else
+            local h = math.floor(hours + 0.5)
+            if h >= 1000 then
+                return string.format("%d,%03d Hours", math.floor(h / 1000), h % 1000)
+            else
+                return h .. " Hours"
+            end
+        end
+    end
+
+    if not ns._statisticsExpandedStates then
+        ns._statisticsExpandedStates = {}
+    end
+    local steamMode = ns._statisticsExpandedStates["mostPlayedSteamMode"] or false
+
+    local function FormatPlayed(seconds)
+        return steamMode and FormatPlayedSteam(seconds) or FormatPlayedCompact(seconds)
     end
     
     -- Collect ALL tracked characters, include those with 0 played time
@@ -467,9 +491,6 @@ function WarbandNexus:DrawStatistics(parent)
     -- Only render card if there is data
     if #playedChars > 0 then
         -- Determine expand state
-        if not ns._statisticsExpandedStates then
-            ns._statisticsExpandedStates = {}
-        end
         local isExpanded = ns._statisticsExpandedStates["mostPlayed"] or false
         local visibleCount = isExpanded and #playedChars or math.min(#playedChars, MP_VISIBLE_ROWS)
         local hasOverflow = #playedChars > MP_VISIBLE_ROWS
@@ -494,11 +515,33 @@ function WarbandNexus:DrawStatistics(parent)
         mpTitle:SetText((ns.L and ns.L["MOST_PLAYED"]) or "MOST PLAYED")
         mpTitle:SetTextColor(1, 1, 1)
         mpTitle:SetJustifyH("LEFT")
-        
+
+        -- ── Format toggle button (WoW ↔ Steam) ──
+        local fmtBtn = ns.UI.Factory:CreateButton(mpCard, 60, 20)
+        fmtBtn:SetPoint("LEFT", mpTitle, "RIGHT", 10, 0)
+        ns.UI.Factory:ApplyHighlight(fmtBtn)
+
+        local fmtBtnLabel = FontManager:CreateFontString(fmtBtn, "body", "OVERLAY")
+        fmtBtnLabel:SetPoint("CENTER")
+        fmtBtnLabel:SetText("Format")
+        fmtBtnLabel:SetTextColor(0.85, 0.85, 0.85)
+
+        fmtBtn:SetScript("OnEnter", function()
+            fmtBtnLabel:SetTextColor(0.6, 0.9, 1)
+        end)
+        fmtBtn:SetScript("OnLeave", function()
+            fmtBtnLabel:SetTextColor(0.85, 0.85, 0.85)
+        end)
+        fmtBtn:SetScript("OnClick", function()
+            ns._statisticsExpandedStates["mostPlayedSteamMode"] = not steamMode
+            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+        end)
+
         -- ── Total played time at top-right (full format for header) ──
         local mpTotal = FontManager:CreateFontString(mpCard, "header", "OVERLAY")
         mpTotal:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, -24)
-        mpTotal:SetText("|cff00ccff" .. ns.Utilities:FormatPlayedTime(totalPlayedSeconds) .. "|r")
+        local totalFormatted = steamMode and FormatPlayedSteam(totalPlayedSeconds) or ns.Utilities:FormatPlayedTime(totalPlayedSeconds)
+        mpTotal:SetText("|cff00ccff" .. totalFormatted .. "|r")
         mpTotal:SetJustifyH("RIGHT")
         
         -- ── Character rows ──
@@ -542,7 +585,7 @@ function WarbandNexus:DrawStatistics(parent)
             local timeText = FontManager:CreateFontString(mpCard, "body", "OVERLAY")
             timeText:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, rowCenterY)
             if charInfo.timePlayed > 0 then
-                timeText:SetText(FormatPlayedCompact(charInfo.timePlayed))
+                timeText:SetText(FormatPlayed(charInfo.timePlayed))
                 timeText:SetTextColor(0.85, 0.85, 0.85)
             else
                 timeText:SetText("|cff555555—|r")

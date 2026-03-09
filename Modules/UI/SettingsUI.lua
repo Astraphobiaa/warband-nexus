@@ -341,8 +341,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
         ApplyVisuals(dropdown, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     
-    -- Current value text (use GameFontNormal so font name doesn't disappear when addon font changes)
-    local valueText = dropdown:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local valueText = FontManager:CreateFontString(dropdown, "body", "OVERLAY")
     valueText:SetPoint("LEFT", 12, 0)
     valueText:SetPoint("RIGHT", -32, 0)
     valueText:SetJustifyH("LEFT")
@@ -425,15 +424,17 @@ local function CreateDropdownWidget(parent, option, yOffset)
         local needsScroll = (#sortedOptions * itemHeight) > 300
         local menuWidth = dropdown:GetWidth()
         
-        -- Reuse existing menu if available
+        -- Reuse existing menu if available (Factory container for standard compliance)
         local menu = dropdown._dropdownMenu
         if not menu then
-            menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-            menu:SetFrameStrata("FULLSCREEN_DIALOG")
-            menu:SetFrameLevel(300)
-            menu:SetClampedToScreen(true)
-            if ApplyVisuals then
-                ApplyVisuals(menu, {0.06, 0.06, 0.08, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+            menu = ns.UI.Factory:CreateContainer(UIParent, 200, 300, true)
+            if menu then
+                menu:SetFrameStrata("FULLSCREEN_DIALOG")
+                menu:SetFrameLevel(300)
+                menu:SetClampedToScreen(true)
+                if ApplyVisuals then
+                    ApplyVisuals(menu, {0.06, 0.06, 0.08, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+                end
             end
             dropdown._dropdownMenu = menu
         end
@@ -474,8 +475,8 @@ local function CreateDropdownWidget(parent, option, yOffset)
         local currentValue = option.get and option.get()
         local yPos = 0
         for _, data in ipairs(sortedOptions) do
-            local btn = CreateFrame("Button", nil, scrollChild, "BackdropTemplate")
-            btn:SetSize(btnWidth, itemHeight)
+            local btn = ns.UI.Factory:CreateButton(scrollChild, btnWidth, itemHeight, true)
+            if not btn then break end
             btn:SetPoint("TOPLEFT", 0, -yPos)
             
             local isCurrent = (currentValue == data.value)
@@ -486,8 +487,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
                 ApplyVisuals(btn, bgColor, borderColor)
             end
             
-            -- Use GameFontNormal so font preview doesn't break when addon font changes
-            local btnText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
             btnText:SetPoint("LEFT", 10, 0)
             btnText:SetPoint("RIGHT", -10, 0)
             btnText:SetJustifyH("LEFT")
@@ -540,16 +540,18 @@ local function CreateDropdownWidget(parent, option, yOffset)
         -- Create click-catcher (full-screen invisible frame)
         local clickCatcher = dropdown._clickCatcher
         if not clickCatcher then
-            clickCatcher = CreateFrame("Frame", nil, UIParent)
-            clickCatcher:SetAllPoints()
-            clickCatcher:SetFrameStrata("FULLSCREEN_DIALOG")
-            clickCatcher:SetFrameLevel(menu:GetFrameLevel() - 1)
-            clickCatcher:EnableMouse(true)
-            clickCatcher:SetScript("OnMouseDown", function()
-                menu:Hide()
-                activeMenu = nil
-                clickCatcher:Hide()
-            end)
+            clickCatcher = ns.UI.Factory:CreateContainer(UIParent, 1, 1, false)
+            if clickCatcher then
+                clickCatcher:SetAllPoints()
+                clickCatcher:SetFrameStrata("FULLSCREEN_DIALOG")
+                clickCatcher:SetFrameLevel(menu:GetFrameLevel() - 1)
+                clickCatcher:EnableMouse(true)
+                clickCatcher:SetScript("OnMouseDown", function()
+                    menu:Hide()
+                    activeMenu = nil
+                    clickCatcher:Hide()
+                end)
+            end
             dropdown._clickCatcher = clickCatcher
         end
         
@@ -596,13 +598,13 @@ local function CreateInputWidget(parent, option, yOffset)
         label:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
 
-    -- EditBox
-    local editBox = CreateFrame("EditBox", nil, parent, "BackdropTemplate")
+    -- EditBox (Factory for standard compliance)
+    local editBox = ns.UI.Factory:CreateEditBox(parent)
+    if not editBox then return yOffset - 68, nil end
     editBox:SetHeight(30)
     local boxWidth = option.width or 200
     editBox:SetWidth(boxWidth)
     editBox:SetPoint("TOPLEFT", 0, yOffset - 22)
-    editBox:SetAutoFocus(false)
     editBox:SetFontObject(GameFontHighlight)
     editBox:SetTextInsets(10, 10, 0, 0)
     editBox:SetMaxLetters(option.maxLetters or 128)
@@ -1467,45 +1469,42 @@ local function BuildSettings(parent, containerWidth)
         local ptC = db.popupPointCompact or pt
         local pxC, pyC = db.popupXCompact or px, db.popupYCompact or py
 
-        local ghost = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        ghost:SetSize(400, 88)
-        ghost:SetFrameStrata("DIALOG")
-        ghost:SetFrameLevel(2000)
-        ghost:SetMovable(true)
-        ghost:EnableMouse(true)
-        ghost:RegisterForDrag("LeftButton")
-        ghost:SetClampedToScreen(true)
-        ghost:SetBackdrop({ bgFile = "Interface\\BUTTONS\\WHITE8X8", edgeFile = "Interface\\BUTTONS\\WHITE8X8", edgeSize = 2, insets = { left = 1, right = 1, top = 1, bottom = 1 } })
-        ghost:SetBackdropColor(0.1, 0.6, 0.1, 0.7)
-        ghost:SetBackdropBorderColor(0, 1, 0, 1)
-        local ghostText = FontManager:CreateFontString(ghost, "body", "OVERLAY")
-        ghostText:SetPoint("CENTER")
-        ghostText:SetText((ns.L and ns.L["NOTIFICATION_GHOST_MAIN"]) or "Achievement / notification")
-        ghostText:SetTextColor(1, 1, 1, 1)
-        ghost:SetPoint(pt, UIParent, pt, px, py)
-        ghost:SetScript("OnDragStart", function(self) self:StartMoving() end)
-        ghost:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
-        ghost:SetScript("OnMouseDown", function(self, button)
-            if button == "RightButton" then
-                saveGhostPosition(self, false)
-                closePositionGhosts()
-                WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
-            end
-        end)
-        ghost:Show()
+        local ghost = ns.UI.Factory:CreateContainer(UIParent, 400, 88, true)
+        if ghost then
+            ghost:SetFrameStrata("DIALOG")
+            ghost:SetFrameLevel(2000)
+            ghost:SetMovable(true)
+            ghost:EnableMouse(true)
+            ghost:RegisterForDrag("LeftButton")
+            ghost:SetClampedToScreen(true)
+            if ApplyVisuals then ApplyVisuals(ghost, {0.1, 0.6, 0.1, 0.7}, {0, 1, 0, 1}) end
+            local ghostText = FontManager:CreateFontString(ghost, "body", "OVERLAY")
+            ghostText:SetPoint("CENTER")
+            ghostText:SetText((ns.L and ns.L["NOTIFICATION_GHOST_MAIN"]) or "Achievement / notification")
+            ghostText:SetTextColor(1, 1, 1, 1)
+            ghost:SetPoint(pt, UIParent, pt, px, py)
+            ghost:SetScript("OnDragStart", function(self) self:StartMoving() end)
+            ghost:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+            ghost:SetScript("OnMouseDown", function(self, button)
+                if button == "RightButton" then
+                    saveGhostPosition(self, false)
+                    closePositionGhosts()
+                    WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
+                end
+            end)
+            ghost:Show()
+        end
         WarbandNexus._positionGhost = ghost
 
-        local ghostCriteria = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        ghostCriteria:SetSize(260, 64)
+        local ghostCriteria = ns.UI.Factory:CreateContainer(UIParent, 260, 64, true)
+        if ghostCriteria then
         ghostCriteria:SetFrameStrata("DIALOG")
         ghostCriteria:SetFrameLevel(1999)
         ghostCriteria:SetMovable(true)
         ghostCriteria:EnableMouse(true)
         ghostCriteria:RegisterForDrag("LeftButton")
         ghostCriteria:SetClampedToScreen(true)
-        ghostCriteria:SetBackdrop({ bgFile = "Interface\\BUTTONS\\WHITE8X8", edgeFile = "Interface\\BUTTONS\\WHITE8X8", edgeSize = 2, insets = { left = 1, right = 1, top = 1, bottom = 1 } })
-        ghostCriteria:SetBackdropColor(0.1, 0.35, 0.55, 0.75)
-        ghostCriteria:SetBackdropBorderColor(0.2, 0.6, 1, 1)
+        if ApplyVisuals then ApplyVisuals(ghostCriteria, {0.1, 0.35, 0.55, 0.75}, {0.2, 0.6, 1, 1}) end
         local ghostCriteriaText = FontManager:CreateFontString(ghostCriteria, "body", "OVERLAY")
         ghostCriteriaText:SetPoint("CENTER")
         ghostCriteriaText:SetText((ns.L and ns.L["NOTIFICATION_GHOST_CRITERIA"]) or "Criteria progress")
@@ -1521,6 +1520,7 @@ local function BuildSettings(parent, containerWidth)
             end
         end)
         ghostCriteria:Show()
+        end
         WarbandNexus._positionGhostCriteria = ghostCriteria
 
         WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["DRAG_POSITION_MSG"]) or "Drag green = notification, blue = criteria. Right-click on one to save and close.") .. "|r")
@@ -1539,32 +1539,31 @@ local function BuildSettings(parent, containerWidth)
         local db = WarbandNexus.db.profile.notifications
         local pt = db.popupPoint or "TOP"
         local px, py = db.popupX or 0, db.popupY or -100
-        local ghost = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        ghost:SetSize(400, 88)
-        ghost:SetFrameStrata("DIALOG")
-        ghost:SetFrameLevel(2000)
-        ghost:SetMovable(true)
-        ghost:EnableMouse(true)
-        ghost:RegisterForDrag("LeftButton")
-        ghost:SetClampedToScreen(true)
-        ghost:SetBackdrop({ bgFile = "Interface\\BUTTONS\\WHITE8X8", edgeFile = "Interface\\BUTTONS\\WHITE8X8", edgeSize = 2, insets = { left = 1, right = 1, top = 1, bottom = 1 } })
-        ghost:SetBackdropColor(0.1, 0.6, 0.1, 0.7)
-        ghost:SetBackdropBorderColor(0, 1, 0, 1)
-        local ghostText = FontManager:CreateFontString(ghost, "body", "OVERLAY")
-        ghostText:SetPoint("CENTER")
-        ghostText:SetText((ns.L and ns.L["DRAG_TO_POSITION"]) or "Drag to position\nRight-click to confirm")
-        ghostText:SetTextColor(1, 1, 1, 1)
-        ghost:SetPoint(pt, UIParent, pt, px, py)
-        ghost:SetScript("OnDragStart", function(self) self:StartMoving() end)
-        ghost:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
-        ghost:SetScript("OnMouseDown", function(self, button)
-            if button == "RightButton" then
-                saveGhostPositionBoth(self)
-                closePositionGhosts()
-                WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
-            end
-        end)
-        ghost:Show()
+        local ghost = ns.UI.Factory:CreateContainer(UIParent, 400, 88, true)
+        if ghost then
+            ghost:SetFrameStrata("DIALOG")
+            ghost:SetFrameLevel(2000)
+            ghost:SetMovable(true)
+            ghost:EnableMouse(true)
+            ghost:RegisterForDrag("LeftButton")
+            ghost:SetClampedToScreen(true)
+            if ApplyVisuals then ApplyVisuals(ghost, {0.1, 0.6, 0.1, 0.7}, {0, 1, 0, 1}) end
+            local ghostText = FontManager:CreateFontString(ghost, "body", "OVERLAY")
+            ghostText:SetPoint("CENTER")
+            ghostText:SetText((ns.L and ns.L["DRAG_TO_POSITION"]) or "Drag to position\nRight-click to confirm")
+            ghostText:SetTextColor(1, 1, 1, 1)
+            ghost:SetPoint(pt, UIParent, pt, px, py)
+            ghost:SetScript("OnDragStart", function(self) self:StartMoving() end)
+            ghost:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+            ghost:SetScript("OnMouseDown", function(self, button)
+                if button == "RightButton" then
+                    saveGhostPositionBoth(self)
+                    closePositionGhosts()
+                    WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
+                end
+            end)
+            ghost:Show()
+        end
         WarbandNexus._positionGhost = ghost
         WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["DRAG_BOTH_POSITION_MSG"]) or "Drag to position. Right-click to save same position for notification and criteria.") .. "|r")
     end)
@@ -2033,10 +2032,11 @@ local function BuildSettings(parent, containerWidth)
     collapseArrow:SetPoint("RIGHT", trackSection.titleText, "LEFT", -4, 0)
     collapseArrow:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
     
-    local collapseBtn = CreateFrame("Button", nil, trackSection)
-    collapseBtn:SetAllPoints(trackSection.titleText)
-    collapseBtn:SetPoint("LEFT", collapseArrow, "LEFT", -4, 0)
-    collapseBtn:SetHeight(24)
+    local collapseBtn = ns.UI.Factory:CreateButton(trackSection, 1, 24, true)
+    if collapseBtn then
+        collapseBtn:SetAllPoints(trackSection.titleText)
+        collapseBtn:SetPoint("LEFT", collapseArrow, "LEFT", -4, 0)
+    end
     
     local trackYOffset = 0
     local trackContentWidth = effectiveWidth - 30
@@ -2112,15 +2112,10 @@ local function BuildSettings(parent, containerWidth)
     if not ns._trackDBSelected then ns._trackDBSelected = {} end
     
     -- Detail card (subtle background panel for selected item info)
-    local detailCard = CreateFrame("Frame", nil, trackSection.content, "BackdropTemplate")
-    detailCard:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    detailCard:SetBackdropColor(0.10, 0.10, 0.13, 0.7)
-    detailCard:SetBackdropBorderColor(0.25, 0.25, 0.30, 0.5)
+    local detailCard = ns.UI.Factory:CreateContainer(trackSection.content, trackContentWidth, 80, true)
+    if detailCard and ApplyVisuals then
+        ApplyVisuals(detailCard, {0.10, 0.10, 0.13, 0.7}, {0.25, 0.25, 0.30, 0.5})
+    end
     
     -- Detail card children (created once, updated on selection)
     local detailNameText = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
@@ -2380,20 +2375,21 @@ local function BuildSettings(parent, containerWidth)
     local lookupBtnWidth = 100
     local inlineGap = 8
     
-    local itemIDBox = CreateFrame("EditBox", nil, trackSection.content, "BackdropTemplate")
-    itemIDBox:SetHeight(30)
-    itemIDBox:SetWidth(editBoxWidth)
-    itemIDBox:SetPoint("TOPLEFT", 0, trackYOffset)
-    itemIDBox:SetAutoFocus(false)
-    itemIDBox:SetFontObject(GameFontHighlight)
-    itemIDBox:SetTextInsets(10, 10, 0, 0)
-    itemIDBox:SetMaxLetters(20)
-    itemIDBox:SetNumeric(false)
-    if ApplyVisuals then
-        ApplyVisuals(itemIDBox, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    local itemIDBox = ns.UI.Factory:CreateEditBox(trackSection.content)
+    if itemIDBox then
+        itemIDBox:SetHeight(30)
+        itemIDBox:SetWidth(editBoxWidth)
+        itemIDBox:SetPoint("TOPLEFT", 0, trackYOffset)
+        itemIDBox:SetFontObject(GameFontHighlight)
+        itemIDBox:SetTextInsets(10, 10, 0, 0)
+        itemIDBox:SetMaxLetters(20)
+        itemIDBox:SetNumeric(false)
+        if ApplyVisuals then
+            ApplyVisuals(itemIDBox, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+        end
+        itemIDBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        itemIDBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     end
-    itemIDBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-    itemIDBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     
     -- Lookup result text (positioned below the input row)
     local lookupResultText = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
@@ -2651,8 +2647,9 @@ function WarbandNexus:ShowSettings()
         return
     end
     
-    -- Main frame (created once, reused across open/close cycles)
-    local f = CreateFrame("Frame", "WarbandNexusSettingsFrame", UIParent)
+    -- Main frame (created once, reused across open/close cycles; Factory for standard compliance)
+    local f = ns.UI.Factory:CreateContainer(UIParent, 700, 650, false)
+    if not f then return end
     f:SetSize(700, 650)
     f:SetPoint("CENTER")
     f:SetMovable(true)
@@ -2698,8 +2695,9 @@ function WarbandNexus:ShowSettings()
         end
     end)
     
-    -- Header
-    local header = CreateFrame("Frame", nil, f)
+    -- Header (Factory container)
+    local header = ns.UI.Factory:CreateContainer(f, 1, 40, false)
+    if not header then return end
     header:SetHeight(40)
     header:ClearAllPoints()
     header:SetPoint("TOPLEFT", 2, -2)
@@ -2733,8 +2731,9 @@ function WarbandNexus:ShowSettings()
     title:SetText((ns.L and ns.L["WARBAND_NEXUS_SETTINGS"]) or "Warband Nexus Settings")
     title:SetTextColor(1, 1, 1)
     
-    -- Close button
-    local closeBtn = CreateFrame("Button", nil, header)
+    -- Close button (Factory)
+    local closeBtn = ns.UI.Factory:CreateButton(header, 28, 28, true)
+    if not closeBtn then return end
     closeBtn:SetSize(28, 28)
     closeBtn:SetPoint("RIGHT", -UI_SPACING.SIDE_MARGIN, 0)
     
@@ -2769,8 +2768,9 @@ function WarbandNexus:ShowSettings()
         end
     end)
     
-    -- Resize grip
-    local resizer = CreateFrame("Button", nil, f)
+    -- Resize grip (Factory button)
+    local resizer = ns.UI.Factory:CreateButton(f, 16, 16, true)
+    if not resizer then return end
     resizer:SetSize(16, 16)
     resizer:SetPoint("BOTTOMRIGHT", -2, 2)
     resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
@@ -2789,8 +2789,9 @@ function WarbandNexus:ShowSettings()
         end
     end)
     
-    -- Content area
-    local contentArea = CreateFrame("Frame", nil, f)
+    -- Content area (Factory container)
+    local contentArea = ns.UI.Factory:CreateContainer(f, 1, 1, false)
+    if not contentArea then return end
     contentArea:ClearAllPoints()
     contentArea:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -UI_SPACING.TOP_MARGIN)
     contentArea:SetPoint("BOTTOMRIGHT", -UI_SPACING.SIDE_MARGIN, UI_SPACING.TOP_MARGIN)

@@ -1,15 +1,22 @@
 --[[
     Warband Nexus - Profession Service
     Lightweight service for profession-related data collection and persistence.
-    
+
+    WoW RETAIL API LIMITATION (no way around it):
+    - Concentration, knowledge are ONLY available while the profession window is open (C_TradeSkillUI context).
+    - GetProfessionInfoBySkillLineID(skillLineID) can return skill level without the window
+      ONLY after the user has opened that profession at least once per session (data "validation").
+    - There is no API to fetch full profession data in the background; OpenTradeSkill() requires
+      a hardware event and opens the UI. So we MUST collect on TRADE_SKILL_SHOW and persist.
+
     Responsibilities:
-    - Collect concentration data when profession window opens (TRADE_SKILL_SHOW)
-    - Persist concentration per character in db.global.characters[charKey].concentration
-    - Provide GetAllConcentrationData() API for tooltip/UI consumers
-    - Install recipe selection hook (deferred until ProfessionsFrame exists)
-    
+    - On TRADE_SKILL_SHOW: collect concentration, knowledge, expansion skill levels; persist to db.global.characters[charKey].
+    - Provide APIs for UI/tooltip (GetAllConcentrationData, GetKnowledgeData, etc.).
+    - Install recipe selection hook for companion window (deferred until ProfessionsFrame exists).
+
     Data flow:
-    TRADE_SKILL_SHOW → CollectConcentrationData() → db.global → SendMessage(WN_CONCENTRATION_UPDATED)
+    TRADE_SKILL_SHOW → RunAllCollectors (0.6s + 1.2s retry) → db.global → SendMessage(WN_*_UPDATED)
+    UI reads from same db.global.characters; expansion filter in UI filters skill/concentration/knowledge display.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -126,30 +133,32 @@ local function CollectConcentrationData()
         if concOk and currencyID and currencyID > 0 then
             local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
             if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
-                local profKey = entry.profName
-                if not profKey then
-                    local piOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, slID)
-                    if piOk and profInfo then
-                        profKey = profInfo.professionName or profInfo.parentProfessionName
-                    end
+                local professionName = entry.profName
+                local expansionName = nil
+                local piOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, slID)
+                if piOk and profInfo then
+                    professionName = professionName or profInfo.professionName or profInfo.parentProfessionName
+                    expansionName = profInfo.professionName or profInfo.parentProfessionName
                 end
-                profKey = profKey or ("Profession_" .. slID)
+                professionName = professionName or ("Profession_" .. slID)
 
+                -- Store by skillLineID so content (expansion) is kept separate
                 local isCurrentWindow = (idx == 1)
-                local alreadyHave = charData.concentration[profKey] and charData.concentration[profKey].currencyID
+                local alreadyHave = charData.concentration[slID] and charData.concentration[slID].currencyID
                 if isCurrentWindow or not alreadyHave then
-                    charData.concentration[profKey] = {
-                        current      = currInfo.quantity or 0,
-                        max          = currInfo.maxQuantity or 0,
-                        currencyID   = currencyID,
-                        skillLineID  = slID,
-                        lastUpdate   = time(),
+                    charData.concentration[slID] = {
+                        current        = currInfo.quantity or 0,
+                        max            = currInfo.maxQuantity or 0,
+                        currencyID     = currencyID,
+                        skillLineID    = slID,
+                        professionName = professionName,
+                        expansionName  = expansionName,
+                        lastUpdate     = time(),
                     }
                     found = found + 1
                     if WarbandNexus.Debug then
-                        WarbandNexus:Debug("[Concentration] Stored: " .. profKey .. " = "
-                            .. tostring(currInfo.quantity) .. "/" .. tostring(currInfo.maxQuantity)
-                            .. " (currencyID=" .. currencyID .. ", skillLine=" .. slID .. ")")
+                        WarbandNexus:Debug("[Concentration] Stored: skillLineID=" .. tostring(slID) .. " " .. tostring(professionName) .. " = "
+                            .. tostring(currInfo.quantity) .. "/" .. tostring(currInfo.maxQuantity))
                     end
                 end
             end
@@ -345,331 +354,31 @@ local function CollectKnowledgeData()
     end
     if not skillLineID then return end
 
-    -- Get base profession name for storage key
     local profName = nil
-    if C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo then
-        local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
-        if ok and baseInfo then
-            profName = baseInfo.professionName
+    local expansionName = nil
+    if C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
+        local ok, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, skillLineID)
+        if ok and profInfo then
+            profName = profInfo.professionName or profInfo.parentProfessionName
+            expansionName = profInfo.professionName or profInfo.parentProfessionName
         end
+    end
+    if not profName and C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo then
+        local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
+        if ok and baseInfo then profName = baseInfo.professionName end
     end
     profName = profName or ("Profession_" .. skillLineID)
 
     local result = CollectKnowledgeForSkillLine(skillLineID, profName)
     if result then
-        charData.knowledgeData[profName] = result
+        result.professionName = profName
+        result.expansionName = expansionName
+        charData.knowledgeData[skillLineID] = result
     end
 
     -- Fire event for consumers
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_KNOWLEDGE_UPDATED", charKey)
-    end
-end
-
--- ============================================================================
--- RECIPE KNOWLEDGE COLLECTION
--- ============================================================================
-
---[[
-    Collect known recipes for the current character's open profession.
-    Called on TRADE_SKILL_SHOW after a delay to ensure API readiness.
-    
-    Stores per profession (keyed by skillLineID):
-    {
-        professionName  = string,
-        skillLevel      = number,
-        maxSkillLevel   = number,
-        knownRecipes    = { [recipeID] = true, ... },
-        lastScan        = number (timestamp),
-    }
-]]
-local function CollectRecipeData()
-    if not WarbandNexus or not WarbandNexus.db then return end
-    if not C_TradeSkillUI then return end
-
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not charKey then return end
-
-    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-    if not charData then return end
-
-    if not charData.recipes then
-        charData.recipes = {}
-    end
-
-    -- Determine the profession identity for the currently open trade skill
-    local professionName = nil
-    local skillLineID = nil
-    local skillLevel, maxSkillLevel = 0, 0
-
-    -- Try GetChildProfessionInfos (expansion-specific sub-professions)
-    if C_TradeSkillUI.GetChildProfessionInfos then
-        local ok, childInfos = pcall(C_TradeSkillUI.GetChildProfessionInfos)
-        if ok and childInfos and #childInfos > 0 then
-            for i = 1, #childInfos do
-                local info = childInfos[i]
-                if info and info.skillLineID and not skillLineID then
-                    skillLineID = info.skillLineID
-                    professionName = info.parentProfessionName or info.professionName
-                end
-            end
-        end
-    end
-
-    -- Fallback: GetBaseProfessionInfo
-    if not skillLineID and C_TradeSkillUI.GetBaseProfessionInfo then
-        local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
-        if ok and baseInfo then
-            skillLineID = baseInfo.professionID or baseInfo.skillLineID
-            professionName = professionName or baseInfo.professionName
-        end
-    end
-
-    -- Get skill level
-    if skillLineID and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
-        local profOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, skillLineID)
-        if profOk and profInfo then
-            skillLevel = profInfo.skillLevel or 0
-            maxSkillLevel = profInfo.maxSkillLevel or 0
-            if not professionName or professionName == "" then
-                professionName = profInfo.professionName or profInfo.parentProfessionName
-            end
-        end
-    end
-
-    -- Get all recipe IDs
-    if not C_TradeSkillUI.GetAllRecipeIDs then return end
-
-    local recipeOk, allRecipeIDs = pcall(C_TradeSkillUI.GetAllRecipeIDs)
-    if not recipeOk or not allRecipeIDs or #allRecipeIDs == 0 then return end
-
-    local knownRecipes = {}
-    local firstCraftCount = 0
-    local skillUpCount = 0
-
-    for ri = 1, #allRecipeIDs do
-        local recipeID = allRecipeIDs[ri]
-        local isKnown = true
-
-        if C_TradeSkillUI.GetRecipeInfo then
-            local riOk, recipeInfo = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
-            if riOk and recipeInfo then
-                if recipeInfo.learned == false then
-                    isKnown = false
-                else
-                    -- Track first craft bonus and skill-up availability for learned recipes
-                    if recipeInfo.firstCraft then
-                        firstCraftCount = firstCraftCount + 1
-                    end
-                    if recipeInfo.canSkillUp then
-                        skillUpCount = skillUpCount + 1
-                    end
-                end
-            end
-        end
-
-        if isKnown then
-            knownRecipes[recipeID] = true
-        end
-    end
-
-    local storeKey = skillLineID or professionName or "unknown"
-    professionName = professionName or "Unknown Profession"
-
-    charData.recipes[storeKey] = {
-        professionName  = professionName,
-        skillLevel      = skillLevel,
-        maxSkillLevel   = maxSkillLevel,
-        knownRecipes    = knownRecipes,
-        totalRecipes    = #allRecipeIDs,
-        firstCraftCount = firstCraftCount,
-        skillUpCount    = skillUpCount,
-        lastScan        = time(),
-    }
-
-    -- Fire event for consumers
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_RECIPE_DATA_UPDATED", charKey)
-    end
-end
-
--- ============================================================================
--- RECIPE COOLDOWN DATA COLLECTION
--- ============================================================================
-
---[[
-    Collect recipe cooldown data for the currently open profession.
-    Iterates known recipes and checks for active cooldowns (daily transmutes, etc.).
-    Called on TRADE_SKILL_SHOW alongside other collectors.
-    
-    Stores per profession:
-    {
-        [recipeID] = {
-            remaining    = number,    -- seconds remaining at scan time
-            isDayCooldown = boolean,  -- true if daily cooldown
-            charges      = number,    -- current charges (if applicable)
-            maxCharges   = number,    -- max charges
-            scannedAt    = number,    -- time() when scanned
-            name         = string,    -- recipe name for display
-        },
-    }
-]]
-local function CollectCooldownData()
-    if not WarbandNexus or not WarbandNexus.db then return end
-    if not C_TradeSkillUI then return end
-    if not C_TradeSkillUI.GetRecipeCooldown then return end
-
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not charKey then return end
-
-    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-    if not charData then return end
-
-    if not charData.recipeCooldowns then
-        charData.recipeCooldowns = {}
-    end
-
-    -- Get base profession name for storage key
-    local profName = nil
-    if C_TradeSkillUI.GetBaseProfessionInfo then
-        local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
-        if ok and baseInfo and baseInfo.professionName and baseInfo.professionName ~= "" then
-            profName = baseInfo.professionName
-        end
-    end
-    if not profName then return end
-
-    -- Get all recipe IDs for the current profession view
-    if not C_TradeSkillUI.GetAllRecipeIDs then return end
-    local recipeOk, allRecipeIDs = pcall(C_TradeSkillUI.GetAllRecipeIDs)
-    if not recipeOk or not allRecipeIDs then return end
-
-    local cooldowns = {}
-    local now = time()
-
-    for ri = 1, #allRecipeIDs do
-        local recipeID = allRecipeIDs[ri]
-        local cdOk, cooldown, isDayCooldown, charges, maxCharges = pcall(C_TradeSkillUI.GetRecipeCooldown, recipeID)
-        if cdOk and cooldown and cooldown > 0 then
-            -- Get recipe name for display
-            local recipeName = nil
-            if C_TradeSkillUI.GetRecipeInfo then
-                local riOk, recipeInfo = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
-                if riOk and recipeInfo then
-                    recipeName = recipeInfo.name
-                end
-            end
-
-            cooldowns[recipeID] = {
-                remaining    = cooldown,
-                isDayCooldown = isDayCooldown or false,
-                charges      = charges or 0,
-                maxCharges   = maxCharges or 0,
-                scannedAt    = now,
-                name         = recipeName or ("Recipe " .. recipeID),
-            }
-        end
-    end
-
-    charData.recipeCooldowns[profName] = cooldowns
-
-    if WarbandNexus.Debug then
-        local count = 0
-        for _ in pairs(cooldowns) do count = count + 1 end
-        WarbandNexus:Debug("[Cooldowns] " .. profName .. ": " .. count .. " active cooldowns")
-    end
-end
-
--- ============================================================================
--- CRAFTING ORDERS DATA COLLECTION
--- ============================================================================
-
---[[
-    Collect crafting order data for the currently open profession.
-    Requires profession window open AND proximity to a crafting table.
-    
-    Stores per profession:
-    {
-        claimsRemaining = number,  -- how many more orders player can claim
-        publicAvailable = number,  -- available public orders
-        personalPending = number,  -- pending personal orders
-        lastUpdate      = number,  -- time() for stale-aware display
-    }
-    
-    Data is persisted (stale-aware cached). Old data is better than no data —
-    "3 personal orders pending" is valuable even if stale. Tooltip shows freshness.
-]]
-local function CollectOrderData()
-    if not WarbandNexus or not WarbandNexus.db then return end
-    if not C_CraftingOrders then return end
-
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not charKey then return end
-
-    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-    if not charData then return end
-
-    if not charData.craftingOrders then
-        charData.craftingOrders = {}
-    end
-
-    -- Get base profession name
-    local profName = nil
-    if C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo then
-        local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
-        if ok and baseInfo and baseInfo.professionName and baseInfo.professionName ~= "" then
-            profName = baseInfo.professionName
-        end
-    end
-    if not profName then return end
-
-    local orders = {
-        claimsRemaining = 0,
-        publicAvailable = 0,
-        personalPending = 0,
-        lastUpdate      = time(),
-    }
-
-    -- Claim info (how many orders the player can still claim today)
-    if C_CraftingOrders.GetOrderClaimInfo then
-        local skillLineID = nil
-        if C_TradeSkillUI.GetChildProfessionInfos then
-            local ok, childInfos = pcall(C_TradeSkillUI.GetChildProfessionInfos)
-            if ok and childInfos then
-                for i = 1, #childInfos do
-                    if childInfos[i] and childInfos[i].skillLineID then
-                        skillLineID = childInfos[i].skillLineID
-                        break
-                    end
-                end
-            end
-        end
-        if skillLineID then
-            local claimOk, claimInfo = pcall(C_CraftingOrders.GetOrderClaimInfo, skillLineID)
-            if claimOk and claimInfo then
-                orders.claimsRemaining = claimInfo.claimsRemaining or 0
-            end
-        end
-    end
-
-    -- Personal orders (pending ones awaiting the crafter)
-    if C_CraftingOrders.GetPersonalOrdersInfo then
-        local ok, personalInfo = pcall(C_CraftingOrders.GetPersonalOrdersInfo)
-        if ok and personalInfo then
-            orders.personalPending = personalInfo.numPersonalOrders or 0
-        end
-    end
-
-    -- Public orders (try to count available via crafter buckets)
-    if C_CraftingOrders.GetCrafterBucketByID then
-        -- GetCrafterBuckets is async; for now, store what we can via events
-        -- The count will be populated when CRAFTINGORDERS_FULFILLED_ORDERS_UPDATED fires
-    end
-
-    charData.craftingOrders[profName] = orders
-
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_CRAFTING_ORDERS_UPDATED", charKey)
     end
 end
 
@@ -830,9 +539,9 @@ local function CollectEquipmentByDetection()
         charData.professionEquipment = { _legacy = charData.professionEquipment }
     end
 
-    -- Get player's professions
-    local prof1, prof2, _arch, fish, cook = GetProfessions()
-    local profIndices = { prof1, prof2, fish, cook }
+    -- Get player's professions (prof1, prof2, archaeology, fishing, cooking)
+    local prof1, prof2, arch, fish, cook = GetProfessions()
+    local profIndices = { prof1, prof2, arch, fish, cook }
     local collectedAny = false
 
     for _, profIndex in ipairs(profIndices) do
@@ -1102,42 +811,6 @@ local function GetCurrentProfessionName()
     return nil
 end
 
---[[
-    Check if the current character already has data for a given profession.
-    @param dataKey string - "recipes", "professionExpansions", or "concentration"
-    @param profName string|nil - Profession name to check (nil = check table exists at all)
-    @return boolean
-]]
-local function HasDataForProfession(dataKey, profName)
-    if not WarbandNexus or not WarbandNexus.db then return false end
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not charKey then return false end
-    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-    if not charData then return false end
-
-    local tbl = charData[dataKey]
-    if not tbl then return false end
-
-    -- If no specific profession, just check table is non-empty
-    if not profName then
-        return next(tbl) ~= nil
-    end
-
-    -- Check if profName key exists in table
-    if tbl[profName] then return true end
-
-    -- For recipes: keys may be skillLineIDs, check professionName field inside
-    if dataKey == "recipes" then
-        for _, profData in pairs(tbl) do
-            if profData.professionName == profName then
-                return true
-            end
-        end
-    end
-
-    return false
-end
-
 -- ============================================================================
 -- EVENT HANDLERS
 -- ============================================================================
@@ -1156,30 +829,36 @@ function WarbandNexus:OnTradeSkillShow()
     -- Install hooks (once, deferred until frame exists)
     InstallRecipeHook()
 
-    -- Short delay for API readiness, then check what data we need
-    C_Timer.After(0.3, function()
+    -- Run all collectors; C_TradeSkillUI can be not ready immediately after TRADE_SKILL_SHOW
+    local function RunAllCollectors()
         if not WarbandNexus then return end
-
-        -- Concentration: always refresh (values change over time)
         pcall(CollectConcentrationData)
-
-        -- Knowledge data: always refresh (points can be spent/earned)
         pcall(CollectKnowledgeData)
-
-        -- Expansion data: always refresh from open window (authoritative source for new expansion skill lines)
         pcall(CollectAllExpansionProfessions, true)
-
-        -- Recipe data: always refresh (firstCraft/canSkillUp change every session)
-        pcall(CollectRecipeData)
-
-        -- Cooldown data: always refresh (time-based, changes between sessions)
-        pcall(CollectCooldownData)
-
-        -- Crafting orders: refresh when profession window opens (may require crafting table)
-        pcall(CollectOrderData)
-
-        -- Profession equipment: slots 20/21/22 reflect the open profession — store per profession
         pcall(CollectEquipmentDataForCurrentProfession)
+    end
+
+    -- First pass: 0.6s delay so IsTradeSkillReady / GetProfessionChildSkillLineID are ready
+    C_Timer.After(0.6, function()
+        RunAllCollectors()
+        if WarbandNexus and WarbandNexus.SendMessage then
+            local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+            if charKey then
+                WarbandNexus:SendMessage("WN_PROFESSION_DATA_UPDATED", charKey)
+            end
+        end
+    end)
+
+    -- Retry pass: 1.2s so UI/list is fully populated (Concentration, Knowledge, etc. then refresh)
+    C_Timer.After(1.2, function()
+        if not WarbandNexus then return end
+        RunAllCollectors()
+        if WarbandNexus.SendMessage then
+            local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+            if charKey then
+                WarbandNexus:SendMessage("WN_PROFESSION_DATA_UPDATED", charKey)
+            end
+        end
     end)
 
     -- Notify companion window
@@ -1203,7 +882,7 @@ end
 
 --[[
     Called on TRADE_SKILL_LIST_UPDATE (recipe list changed, expansion tab switched, or after crafting).
-    Refreshes recipe data and concentration so the current expansion's concentration is stored.
+    Refreshes concentration so the current expansion's concentration is stored.
     Without this, switching e.g. Dragon Isles → Khaz Algar keeps showing the previous expansion's
     value (e.g. 1000/1000) while the game shows the current one (e.g. 479/1000).
 ]]
@@ -1224,27 +903,11 @@ function WarbandNexus:OnTradeSkillListUpdate()
     C_Timer.After(0.5, function()
         tradeSkillListUpdatePending = false
         if not WarbandNexus then return end
-        -- Concentration: refresh so current expansion tab's currency is stored (fixes wrong value after tab switch)
+        -- Re-collect all tab-specific data when the expansion tab changes.
+        -- Each data type is keyed by skillLineID so switching tabs writes to the correct bucket.
         pcall(CollectConcentrationData)
-        pcall(CollectRecipeData)
-    end)
-end
-
---[[
-    Called on NEW_RECIPE_LEARNED.
-    Re-collects recipe data for the current profession (incremental update).
-]]
-function WarbandNexus:OnNewRecipeLearned()
-    -- Guard: skip when professions module is disabled
-    if not ns.Utilities:IsModuleEnabled("professions") then return end
-    
-    -- Only collect if profession frame is open (API requires it)
-    if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady or not C_TradeSkillUI.IsTradeSkillReady() then
-        return
-    end
-    C_Timer.After(0.3, function()
-        if not WarbandNexus then return end
-        pcall(CollectRecipeData)
+        pcall(CollectKnowledgeData)
+        pcall(CollectAllExpansionProfessions, true)
     end)
 end
 
@@ -1266,7 +929,7 @@ function WarbandNexus:OnProfessionChanged()
         self:UpdateProfessionData()
     end
 
-    -- Compare current professions with stored recipes to detect profession changes
+    -- Compare current professions to detect profession changes
     local currentProfs = {}
     if charData.professions then
         for k, prof in pairs(charData.professions) do
@@ -1279,21 +942,8 @@ function WarbandNexus:OnProfessionChanged()
     -- Guard: Only clear stale data if we have valid current professions to compare against.
     -- SKILL_LINES_CHANGED fires on login before GetProfessions() is ready, so currentProfs
     -- can be empty even though the character has professions. Clearing stale data against an
-    -- empty list would destroy ALL saved expansion, recipe, and knowledge data.
+    -- empty list would destroy ALL saved expansion and knowledge data.
     if next(currentProfs) then
-        -- Clear stale recipe data for professions the character no longer has
-        if charData.recipes then
-            local staleKeys = {}
-            for storeKey, profData in pairs(charData.recipes) do
-                if profData.professionName and not currentProfs[profData.professionName] then
-                    staleKeys[#staleKeys + 1] = storeKey
-                end
-            end
-            for _, key in ipairs(staleKeys) do
-                charData.recipes[key] = nil
-            end
-        end
-
         -- Clear stale expansion data
         if charData.professionExpansions then
             for profName in pairs(charData.professionExpansions) do
@@ -1338,11 +988,11 @@ function WarbandNexus:GetAllConcentrationData()
             local charName = charData.name or charKey
             local classFile = charData.classFile or "PRIEST"
 
-            for profName, concData in pairs(charData.concentration) do
+            for key, concData in pairs(charData.concentration) do
+                local profName = (type(key) == "number" and concData.professionName) or (type(key) == "string" and key) or "Profession"
                 if not result[profName] then
                     result[profName] = {}
                 end
-
                 local entry = {
                     charKey    = charKey,
                     charName   = charName,
@@ -1396,10 +1046,10 @@ function WarbandNexus:GetCraftersForRecipe(recipeID)
         if charData.recipes then
             for skillLineID, profData in pairs(charData.recipes) do
                 if profData.knownRecipes and profData.knownRecipes[recipeID] then
-                    -- Found a crafter — gather concentration data
+                    -- Concentration keyed by skillLineID (same as recipes); fallback legacy by professionName
                     local concEntry = nil
-                    if charData.concentration and profData.professionName then
-                        concEntry = charData.concentration[profData.professionName]
+                    if charData.concentration then
+                        concEntry = charData.concentration[skillLineID] or (profData.professionName and charData.concentration[profData.professionName])
                     end
 
                     -- Look up overall profession skill from charData.professions
@@ -1531,7 +1181,17 @@ function WarbandNexus:GetKnowledgeData(charKey, profName)
     local charData = self.db.global.characters[charKey]
     if not charData or not charData.knowledgeData then return nil end
 
-    return charData.knowledgeData[profName]
+    -- Direct profName lookup (legacy data)
+    if charData.knowledgeData[profName] then
+        return charData.knowledgeData[profName]
+    end
+    -- Search skillLineID-keyed entries that match professionName
+    for key, kd in pairs(charData.knowledgeData) do
+        if type(key) == "number" and type(kd) == "table" and kd.professionName == profName then
+            return kd
+        end
+    end
+    return nil
 end
 
 --[[
@@ -1549,20 +1209,31 @@ function WarbandNexus:GetAllKnowledgeDataForProfession(profName)
     if not profName then return result end
 
     for charKey, charData in pairs(self.db.global.characters) do
-        if charData.knowledgeData and charData.knowledgeData[profName] then
+        if charData.knowledgeData then
+            -- Find knowledge entry matching professionName (entries may be keyed by skillLineID or profName)
             local kd = charData.knowledgeData[profName]
-            result[#result + 1] = {
-                charKey          = charKey,
-                charName         = charData.name or charKey,
-                classFile        = charData.classFile or "PRIEST",
-                hasUnspentPoints = kd.hasUnspentPoints or false,
-                unspentPoints    = kd.unspentPoints or 0,
-                spentPoints      = kd.spentPoints or 0,
-                maxPoints        = kd.maxPoints or 0,
-                currencyName     = kd.currencyName or "",
-                specTabs         = kd.specTabs or {},
-                lastUpdate       = kd.lastUpdate or 0,
-            }
+            if not kd then
+                for key, entry in pairs(charData.knowledgeData) do
+                    if type(key) == "number" and type(entry) == "table" and entry.professionName == profName then
+                        kd = entry
+                        break
+                    end
+                end
+            end
+            if kd then
+                result[#result + 1] = {
+                    charKey          = charKey,
+                    charName         = charData.name or charKey,
+                    classFile        = charData.classFile or "PRIEST",
+                    hasUnspentPoints = kd.hasUnspentPoints or false,
+                    unspentPoints    = kd.unspentPoints or 0,
+                    spentPoints      = kd.spentPoints or 0,
+                    maxPoints        = kd.maxPoints or 0,
+                    currencyName     = kd.currencyName or "",
+                    specTabs         = kd.specTabs or {},
+                    lastUpdate       = kd.lastUpdate or 0,
+                }
+            end
         end
     end
 
@@ -1595,7 +1266,7 @@ function WarbandNexus:CollectConcentrationOnLogin()
 
     -- Phase 1: Refresh existing stored data from known currency IDs
     if charData.concentration then
-        for profName, concData in pairs(charData.concentration) do
+        for slKey, concData in pairs(charData.concentration) do
             if concData.currencyID and concData.currencyID > 0 then
                 local ok, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, concData.currencyID)
                 if ok and currInfo then
@@ -1616,23 +1287,30 @@ function WarbandNexus:CollectConcentrationOnLogin()
 
         if charData.discoveredSkillLines then
             for profName, skillLines in pairs(charData.discoveredSkillLines) do
-                if not charData.concentration[profName] then
-                    for _, sl in ipairs(skillLines) do
-                        local slID = (type(sl) == "table" and sl.id) or sl
-                        if slID then
-                            local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
-                            if concOk and currencyID and currencyID > 0 then
-                                local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
-                                if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
-                                    charData.concentration[profName] = {
-                                        current      = currInfo.quantity or 0,
-                                        max          = currInfo.maxQuantity or 0,
-                                        currencyID   = currencyID,
-                                        skillLineID  = slID,
-                                        lastUpdate   = time(),
-                                    }
-                                    break
+                for _, sl in ipairs(skillLines) do
+                    local slID = (type(sl) == "table" and sl.id) or sl
+                    if slID and not charData.concentration[slID] then
+                        local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
+                        if concOk and currencyID and currencyID > 0 then
+                            local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+                            if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
+                                local expansionName = nil
+                                if C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
+                                    local piOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, slID)
+                                    if piOk and profInfo then
+                                        expansionName = profInfo.professionName or profInfo.parentProfessionName
+                                    end
                                 end
+                                charData.concentration[slID] = {
+                                    current        = currInfo.quantity or 0,
+                                    max            = currInfo.maxQuantity or 0,
+                                    currencyID     = currencyID,
+                                    skillLineID    = slID,
+                                    professionName = profName,
+                                    expansionName  = expansionName,
+                                    lastUpdate     = time(),
+                                }
+                                break
                             end
                         end
                     end
@@ -1640,24 +1318,24 @@ function WarbandNexus:CollectConcentrationOnLogin()
             end
         end
 
-        -- Phase 2b: Fallback when discoveredSkillLines is empty (user never opened profession window).
-        -- Use GetProfessions() + GetProfessionInfo() to get base profession skill lines so concentration
-        -- can still be discovered on login without requiring the UI to have been opened.
+        -- Phase 2b: Fallback via GetProfessions + GetProfessionInfo (base profession skill line)
         local prof1, prof2 = GetProfessions and GetProfessions()
         for _, index in ipairs({ prof1, prof2 }) do
             if index then
                 local ok, name, _, _, _, _, skillLine = pcall(GetProfessionInfo, index)
-                if ok and name and name ~= "" and skillLine and skillLine > 0 and not charData.concentration[name] then
+                if ok and name and name ~= "" and skillLine and skillLine > 0 and not charData.concentration[skillLine] then
                     local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, skillLine)
                     if concOk and currencyID and currencyID > 0 then
                         local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
                         if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
-                            charData.concentration[name] = {
-                                current      = currInfo.quantity or 0,
-                                max          = currInfo.maxQuantity or 0,
-                                currencyID   = currencyID,
-                                skillLineID  = skillLine,
-                                lastUpdate   = time(),
+                            charData.concentration[skillLine] = {
+                                current        = currInfo.quantity or 0,
+                                max            = currInfo.maxQuantity or 0,
+                                currencyID     = currencyID,
+                                skillLineID    = skillLine,
+                                professionName = name,
+                                expansionName  = nil,
+                                lastUpdate     = time(),
                             }
                         end
                     end
@@ -1715,11 +1393,14 @@ function WarbandNexus:CollectKnowledgeOnLogin()
         if skillLines and #skillLines > 0 then
             for _, sl in ipairs(skillLines) do
                 local slID = sl.id or sl
+                local expansionName = (type(sl) == "table" and sl.name) or nil
 
                 local result = CollectKnowledgeForSkillLine(slID, profName)
                 if result then
-                    charData.knowledgeData[profName] = result
-                    break -- Found valid data for this profession
+                    result.professionName = profName
+                    result.expansionName = expansionName
+                    charData.knowledgeData[slID] = result
+                    -- Continue: collect ALL expansion skill lines, not just the first
                 end
             end
         end
@@ -1744,16 +1425,16 @@ end
 local function BuildConcentrationCurrencyMap()
     local map = {}
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return map end
-    
+
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not charKey then return map end
-    
+
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
     if not charData or not charData.concentration then return map end
-    
-    for profName, concData in pairs(charData.concentration) do
+
+    for key, concData in pairs(charData.concentration) do
         if concData.currencyID and concData.currencyID > 0 then
-            map[concData.currencyID] = profName
+            map[concData.currencyID] = key
         end
     end
     
@@ -1780,25 +1461,23 @@ function WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
         concentrationCurrencyMap = BuildConcentrationCurrencyMap()
     end
     
-    local profName = concentrationCurrencyMap[currencyID]
-    if not profName then return end  -- Not a concentration currency
-    
+    local key = concentrationCurrencyMap[currencyID]
+    if not key then return end
+
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not charKey then return end
-    
+
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
-    if not charData or not charData.concentration or not charData.concentration[profName] then return end
-    
-    -- Refresh from API
+    if not charData or not charData.concentration or not charData.concentration[key] then return end
+
     local ok, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
     if ok and currInfo then
-        local entry = charData.concentration[profName]
+        local entry = charData.concentration[key]
         entry.current    = currInfo.quantity or entry.current
         entry.max        = currInfo.maxQuantity or entry.max
         entry.lastUpdate = time()
-        
         if self.Debug then
-            self:Debug("[Concentration] Real-time update: " .. profName .. " = " .. tostring(entry.current) .. "/" .. tostring(entry.max))
+            self:Debug("[Concentration] Real-time update: key=" .. tostring(key) .. " = " .. tostring(entry.current) .. "/" .. tostring(entry.max))
         end
         
         -- Notify consumers (tooltip, UI)

@@ -1776,14 +1776,21 @@ function TooltipService:InitializeGameTooltipHook()
         -- This is the CRITICAL fallback for Midnight instances where:
         --   1. UnitGUID is secret (can't do GUID-based NPC lookup)
         --   2. EJ API might be restricted (can't build localizedNpcNameIndex)
-        -- After the first kill, the localized boss name is cached → subsequent tooltip hovers work.
-        self._feedEncounterKill = function(encounterName, encounterID)
+        -- When encounterID is secret (Midnight), caller may pass npcIDsOverride (array of npcIDs)
+        -- so tooltip cache is still populated by name. After the first kill, the localized
+        -- boss name is cached → subsequent tooltip hovers work.
+        self._feedEncounterKill = function(encounterName, encounterID, npcIDsOverride)
             if not encounterName or encounterName == "" then return end
             local sourceDB = ns.CollectibleSourceDB
             if not sourceDB then return end
 
-            local encNpcIDs = sourceDB.encounters and sourceDB.encounters[encounterID]
-            if not encNpcIDs then return end
+            local encNpcIDs = npcIDsOverride
+            if not encNpcIDs or type(encNpcIDs) ~= "table" or #encNpcIDs == 0 then
+                if encounterID ~= nil then
+                    encNpcIDs = sourceDB.encounters and sourceDB.encounters[encounterID]
+                end
+            end
+            if not encNpcIDs or #encNpcIDs == 0 then return end
 
             -- 1. Populate nameDropCache/nameNpcIDCache (used by METHOD 2 name lookup)
             local merged = {}

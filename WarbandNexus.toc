@@ -78,6 +78,7 @@ Modules\CollectibleSourceDB.lua
 Modules\TryCounterService.lua
 Modules\TransmogManager.lua
 Modules\DailyQuestManager.lua
+Modules\GearService.lua
 
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua
@@ -106,6 +107,7 @@ Modules\UI\PlansUI.lua
 Modules\UI\PlansTrackerWindow.lua
 Modules\UI\RecipeCompanionWindow.lua
 Modules\UI\ProfessionsUI.lua
+Modules\UI\GearUI.lua
 Modules\UI\InformationDialog.lua
 Modules\UI\GoldManagementPopup.lua
 Modules\UI.lua

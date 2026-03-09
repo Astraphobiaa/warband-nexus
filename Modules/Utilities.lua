@@ -105,6 +105,72 @@ function Utilities:IsEmptyString(str)
 end
 
 --============================================================================
+-- MIDNIGHT 12.0 SECRET-VALUE GUARDS
+--============================================================================
+-- WoW 12.0 (Midnight) can return "secret" values from secure APIs; using them
+-- in string ops, comparisons, or as table keys causes ADDON_ACTION_FORBIDDEN.
+-- Use these helpers before any such use. issecretvalue is nil pre-12.0.
+--============================================================================
+
+local issecretvalue = issecretvalue
+
+--- Safe string for display/indexing. Returns fallback if value is nil or secret.
+---@param val any Value that might be a string or secret
+---@param fallback string|nil Fallback when secret/nil (default "")
+---@return string Safe string to use
+function Utilities:SafeString(val, fallback)
+    if val == nil then return fallback or "" end
+    if issecretvalue and issecretvalue(val) then return fallback or "" end
+    return tostring(val)
+end
+
+--- Safe number for comparisons/math. Returns fallback if value is secret or not a number.
+---@param val any Value that might be a number or secret
+---@param fallback number|nil Fallback when secret/invalid (default nil)
+---@return number|nil Safe number or fallback
+function Utilities:SafeNumber(val, fallback)
+    if val == nil then return fallback end
+    if issecretvalue and issecretvalue(val) then return fallback end
+    local n = tonumber(val)
+    return (n ~= nil) and n or fallback
+end
+
+--- Safe boolean. Returns fallback if value is secret.
+---@param val any Value that might be boolean or secret
+---@param fallback boolean|nil Fallback when secret (default false)
+---@return boolean
+function Utilities:SafeBool(val, fallback)
+    if val == nil then return fallback ~= nil and fallback or false end
+    if issecretvalue and issecretvalue(val) then return fallback ~= nil and fallback or false end
+    return not not val
+end
+
+--- Safe UnitGUID. Returns nil if GUID is secret (Midnight instanced content).
+---@param unit string Unit token (e.g. "player", "target")
+---@return string|nil GUID or nil if secret/unavailable
+function Utilities:SafeGuid(unit)
+    if not unit then return nil end
+    local guid = UnitGUID(unit)
+    if not guid then return nil end
+    if issecretvalue and issecretvalue(guid) then return nil end
+    return guid
+end
+
+--- Whether the current runtime has secret-value API (Midnight 12.0+).
+---@return boolean
+function Utilities:HasSecretValueAPI()
+    return issecretvalue ~= nil
+end
+
+--- Check if a value is secret; safe to call (no string/table ops on val).
+---@param val any
+---@return boolean True if val is a secret value
+function Utilities:IsSecretValue(val)
+    if val == nil then return false end
+    return issecretvalue and issecretvalue(val) or false
+end
+
+--============================================================================
 -- GOLD/CURRENCY HELPERS
 --============================================================================
 

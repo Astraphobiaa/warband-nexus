@@ -519,12 +519,14 @@ end
 local BORDER_INSET = 1
 local function CreateDetailEmptyOverlay(parent, typeKey)
     if not parent then return nil end
-    local overlay = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    local w = parent:GetWidth() or 200
+    local h = parent:GetHeight() or 200
+    local overlay = Factory:CreateContainer(parent, w, h, false)
+    if not overlay then return nil end
     overlay:SetPoint("TOPLEFT", parent, "TOPLEFT", BORDER_INSET, -BORDER_INSET)
     overlay:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -BORDER_INSET, BORDER_INSET)
     overlay:EnableMouse(false)
-    overlay:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-    overlay:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
+    if ApplyVisuals then ApplyVisuals(overlay, {0.08, 0.08, 0.10, 0.98}, {0, 0, 0, 0}) end
     local fmt = (ns.L and ns.L["SELECT_TO_SEE_DETAILS"]) or "Select a %s to see details."
     if fmt == "SELECT_TO_SEE_DETAILS" then fmt = "Select a %s to see details." end
     local typeName = (typeKey == "mount" and ((ns.L and ns.L["TYPE_MOUNT"]) or "mount"))
@@ -1656,7 +1658,8 @@ local function SafeGetPetInfoExtra(speciesID)
 end
 
 local function CreateModelViewer(parent, width, height)
-    local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    local panel = Factory:CreateContainer(parent, width, height, false)
+    if not panel then return nil end
     panel:SetSize(width, height)
     ApplyDetailAccentVisuals(panel)
 

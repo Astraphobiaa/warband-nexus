@@ -1425,10 +1425,12 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     -- Feed localized encounter name to TooltipService for name-based tooltip lookup.
     -- ENCOUNTER_END args are NOT secret values — encounterName is always the correct
     -- localized string. This is the critical fallback for Midnight instances where
-    -- UnitGUID is secret AND EJ API may be restricted.
+    -- UnitGUID is secret AND EJ API may be restricted. When encounterID is secret we pass
+    -- npcIDs so TooltipService can still populate nameDropCache/nameNpcIDCache by name.
     if self.Tooltip and self.Tooltip._feedEncounterKill then
         local safeEncID = (not useNameFallback and encounterID and (not issecretvalue or not issecretvalue(encounterID))) and encounterID or nil
-        self.Tooltip._feedEncounterKill(encounterName, safeEncID)
+        local npcIDsForFeed = (safeEncID == nil and useNameFallback and npcIDs and #npcIDs > 0) and npcIDs or nil
+        self.Tooltip._feedEncounterKill(encounterName, safeEncID, npcIDsForFeed)
     end
 
     -- Create synthetic kill entries for all NPCs in this encounter.

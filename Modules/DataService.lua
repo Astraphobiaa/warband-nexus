@@ -58,27 +58,23 @@ end
     - Uses counter to handle BOTH messages (total time + level time)
 ]]
 
--- Counter to track how many played time messages to suppress (0, 1, or 2)
-local suppressPlayedMessageCount = 0
+-- Timestamp until which played time messages should be suppressed
+local suppressPlayedUntilTime = 0
 
 --- Request played time from server (suppresses chat output for internal tracking)
 function WarbandNexus:RequestPlayedTime()
-    -- Set counter: next 2 messages from addon internal call, suppress them
-    -- /played returns two messages: "Total time played" and "Time played this level"
-    suppressPlayedMessageCount = 2
+    -- Suppress any played time messages for the next 5 seconds
+    suppressPlayedUntilTime = GetTime() + 5
     RequestTimePlayed()
 end
 
---- Get the suppress counter (called from hook)
+--- Check if played time messages should currently be suppressed (called from hook)
 function WarbandNexus:ShouldSuppressPlayedMessage()
-    return suppressPlayedMessageCount > 0
+    return GetTime() < suppressPlayedUntilTime
 end
 
---- Decrement the suppress counter (called from hook after processing)
+--- No-op kept for API compatibility
 function WarbandNexus:DecrementSuppressPlayedCounter()
-    if suppressPlayedMessageCount > 0 then
-        suppressPlayedMessageCount = suppressPlayedMessageCount - 1
-    end
 end
 
 --- Handle TIME_PLAYED_MSG event
@@ -1003,6 +999,11 @@ function WarbandNexus:SaveCurrentCharacterData()
     
     -- Update currencies to global storage (v2)
     self:UpdateCurrencyData()
+
+    -- Keep equipped-gear cache fresh for Gear tab.
+    if self.ScanEquippedGear then
+        self:ScanEquippedGear()
+    end
     
     -- Fire event for UI refresh (DB-First pattern)
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
@@ -2281,11 +2282,15 @@ function WarbandNexus:CollectCurrencyData()
                             local name = currencyData.name:lower()
                             local headerName = currencyData.headerName:lower()
                             
-                            -- Expansion detection
-                            if name:find("ethereal") or name:find("carved ethereal") or name:find("runed ethereal") or name:find("weathered ethereal") then
+                            -- Expansion detection (Midnight 12.0.1 first — current; TWW/DF legacy)
+                            if name:find("dawncrest") or name:find("adventurer dawncrest") or name:find("veteran dawncrest") or name:find("champion dawncrest") or name:find("hero dawncrest") or name:find("myth dawncrest") then
+                                currencyData.expansion = "Midnight"
+                                currencyData.category = "Crest"
+                                currencyData.season = "Season 1"
+                            elseif name:find("ethereal") or name:find("carved ethereal") or name:find("runed ethereal") or name:find("weathered ethereal") then
                                 currencyData.expansion = "The War Within"
                                 currencyData.category = "Crest"
-                                currencyData.season = "Season 3"  -- Mark as Season 3
+                                currencyData.season = "Season 3"
                             elseif name:find("undercoin") or name:find("restored coffer") or name:find("coffer key") or name:find("voidsplinter") then
                                 currencyData.expansion = "The War Within"
                                 currencyData.category = "Currency"
@@ -2325,7 +2330,9 @@ function WarbandNexus:CollectCurrencyData()
                                 currencyData.category = "Currency"
                             else
                                 -- Use header name to determine expansion if still unknown
-                                if headerName:find("war within") or headerName:find("tww") then
+                                if headerName:find("midnight") then
+                                    currencyData.expansion = "Midnight"
+                                elseif headerName:find("war within") or headerName:find("tww") then
                                     currencyData.expansion = "The War Within"
                                 elseif headerName:find("dragonflight") or headerName:find("df") then
                                     currencyData.expansion = "Dragonflight"

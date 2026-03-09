@@ -205,13 +205,14 @@ local function ClearAllSearchBoxes()
     local SSM = ns.SearchStateManager
     if SSM and SSM.ClearSearch then
         -- Clear all known search IDs
-        local tabIds = { "items", "currency", "storage", "reputation", "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement" }
+        local tabIds = { "items", "gear", "currency", "storage", "reputation", "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement" }
         for _, id in ipairs(tabIds) do
             SSM:ClearSearch(id)
         end
     end
     -- Clear My Plans active search
     ns._plansActiveSearch = nil
+    ns._gearSearchText = nil
 end
 
 function WarbandNexus:ToggleMainWindow()
@@ -814,6 +815,7 @@ function WarbandNexus:CreateMainWindow()
         { key = "reputations", text = (ns.L and ns.L["TAB_REPUTATIONS"]) or "Reputations" },
         { key = "currency",    text = (ns.L and ns.L["TAB_CURRENCIES"]) or "Currencies" },
         { key = "professions", text = (ns.L and ns.L["TAB_PROFESSIONS"]) or "Professions" },
+        { key = "gear", text = (ns.L and ns.L["TAB_GEAR"]) or "Gear" },
         { key = "collections", text = (ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections" },
         { key = "plans",       text = (ns.L and ns.L["TAB_PLANS"]) or "Plans" },
         { key = "stats",       text = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics" },
@@ -943,13 +945,19 @@ function WarbandNexus:CreateMainWindow()
     -- overwriting other modules' handlers for the same AceEvent message.
     -- AceEvent allows only ONE handler per (event, self) pair.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function()
-        if f and f:IsShown() and f.currentTab == "chars" then
+        if f and f:IsShown() and (f.currentTab == "chars" or f.currentTab == "gear") then
             SchedulePopulateContent()
         end
     end)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEMS_UPDATED, function()
-        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage") then
+        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage" or f.currentTab == "gear") then
+            SchedulePopulateContent()
+        end
+    end)
+
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.GEAR_UPDATED, function()
+        if f and f:IsShown() and f.currentTab == "gear" then
             SchedulePopulateContent()
         end
     end)
@@ -964,7 +972,13 @@ function WarbandNexus:CreateMainWindow()
     end)
     
     WarbandNexus.RegisterMessage(UIEvents, "WARBAND_CURRENCIES_UPDATED", function()
-        if f and f:IsShown() and f.currentTab == "currency" then
+        if f and f:IsShown() and (f.currentTab == "currency" or f.currentTab == "gear") then
+            SchedulePopulateContent()
+        end
+    end)
+
+    WarbandNexus.RegisterMessage(UIEvents, "WN_CURRENCY_UPDATED", function()
+        if f and f:IsShown() and (f.currentTab == "currency" or f.currentTab == "gear") then
             SchedulePopulateContent()
         end
     end)
@@ -996,6 +1010,25 @@ function WarbandNexus:CreateMainWindow()
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.RECIPE_DATA_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "professions" then
+            SchedulePopulateContent(true)
+        end
+    end)
+
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CRAFTING_ORDERS_UPDATED, function()
+        if f and f:IsShown() and f.currentTab == "professions" then
+            SchedulePopulateContent(true)
+        end
+    end)
+
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_DATA_UPDATED, function()
+        if f and f:IsShown() and f.currentTab == "professions" then
+            SchedulePopulateContent(true)
+        end
+    end)
+
+    -- Profession equipment (slots 20/21/22): refresh when chars or professions tab visible so equipped gear updates in real time
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_EQUIPMENT_UPDATED, function()
+        if f and f:IsShown() and (f.currentTab == "professions" or f.currentTab == "chars") then
             SchedulePopulateContent(true)
         end
     end)
@@ -1101,6 +1134,9 @@ function WarbandNexus:PopulateContent()
     elseif mainFrame.currentTab == "professions" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawProfessionsTab(scrollChild)
+    elseif mainFrame.currentTab == "gear" then
+        scrollChild:SetWidth(scrollWidth)
+        height = self:DrawGearTab(scrollChild)
     elseif mainFrame.currentTab == "collections" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawCollectionsTab(scrollChild)

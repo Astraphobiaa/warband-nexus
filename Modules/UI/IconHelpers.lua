@@ -58,6 +58,7 @@ local function GetRaceGenderAtlas(raceFile, gender)
         ["Draenei"] = "draenei",
         ["Dwarf"] = "dwarf",
         ["Earthen"] = "earthen",
+        ["Haranir"] = "haranir",
         ["Gnome"] = "gnome",
         ["Goblin"] = "goblin",
         ["HighmountainTauren"] = "highmountain",
@@ -157,6 +158,7 @@ local TAB_HEADER_ICONS = {
     pve = "Tormentors-Boss",
     statistics = "racing",
     professions = "Vehicle-HammerGold",
+    gear = "QuestLegendary",
 }
 
 -- Centralized size configuration

@@ -2061,6 +2061,7 @@ local function GetRaceGenderAtlas(raceFile, gender)
         ["Draenei"] = "draenei",
         ["Dwarf"] = "dwarf",
         ["Earthen"] = "earthen",
+        ["Haranir"] = "haranir",
         ["Gnome"] = "gnome",
         ["Goblin"] = "goblin",
         ["HighmountainTauren"] = "highmountain",

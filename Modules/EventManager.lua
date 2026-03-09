@@ -192,8 +192,6 @@ end
     Waits for rapid collection changes to settle
 ]]
 function WarbandNexus:OnCollectionChangedDebounced(event, ...)
-    DebugPrint("|cff9370DB[WN EventManager]|r [Collection Event] " .. event .. " triggered")
-    
     -- TRANSMOG_COLLECTION_UPDATED: Debounced transmog + illusion handling
     -- (Only event still routed through EventManager — mount/pet/toy owned by CollectionService)
     if event == "TRANSMOG_COLLECTION_UPDATED" then
@@ -255,7 +253,6 @@ end
     Updates basic profession data, expansion data, and detects profession changes.
 ]]
 function WarbandNexus:OnSkillLinesChanged()
-    DebugPrint("|cff9370DB[WN EventManager]|r SKILL_LINES_CHANGED triggered")
     Throttle("SKILL_UPDATE", 2.0, function()
         -- Delegate to ProfessionService ONLY if module is enabled
         -- (data collection, stale data cleanup, expansion refresh)
@@ -280,7 +277,6 @@ end
     Updates character's average item level when equipment changes
 ]]
 function WarbandNexus:OnItemLevelChanged()
-    DebugPrint("|cff9370DB[WN EventManager]|r [ItemLevel Event] PLAYER_EQUIPMENT_CHANGED triggered")
     Throttle("ITEM_LEVEL_UPDATE", 0.3, function()
         local name = UnitName("player")
         local realm = GetRealmName()
@@ -329,8 +325,6 @@ end
     Delegates to DataService and fires event for UI updates
 ]]
 function WarbandNexus:OnMoneyChanged()
-    DebugPrint("|cff9370DB[WN EventManager]|r [Money Event] PLAYER_MONEY/ACCOUNT_MONEY triggered")
-    
     -- GUARD: Only process if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -575,14 +569,12 @@ function WarbandNexus:InitializeEventManager()
     
     self:RegisterEvent("TRADE_SKILL_SHOW", function()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
-        DebugPrint("|cff9370DB[WN EventManager]|r TRADE_SKILL_SHOW triggered")
         if WarbandNexus.OnTradeSkillShow then
             WarbandNexus:OnTradeSkillShow()
         end
     end)
     self:RegisterEvent("TRADE_SKILL_CLOSE", function()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
-        DebugPrint("|cff9370DB[WN EventManager]|r TRADE_SKILL_CLOSE triggered")
         if WarbandNexus.OnTradeSkillClose then
             WarbandNexus:OnTradeSkillClose()
         end
@@ -591,7 +583,6 @@ function WarbandNexus:InitializeEventManager()
     -- Recipe learned event (update recipe knowledge incrementally)
     self:RegisterEvent("NEW_RECIPE_LEARNED", function()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
-        DebugPrint("|cff9370DB[WN EventManager]|r NEW_RECIPE_LEARNED triggered")
         if WarbandNexus.OnNewRecipeLearned then
             WarbandNexus:OnNewRecipeLearned()
         end
@@ -600,7 +591,6 @@ function WarbandNexus:InitializeEventManager()
     -- Recipe list updated (fires after crafting, skill changes — refreshes firstCraft/canSkillUp)
     self:RegisterEvent("TRADE_SKILL_LIST_UPDATE", function()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
-        DebugPrint("|cff9370DB[WN EventManager]|r TRADE_SKILL_LIST_UPDATE triggered")
         if WarbandNexus.OnTradeSkillListUpdate then
             WarbandNexus:OnTradeSkillListUpdate()
         end
@@ -623,7 +613,6 @@ function WarbandNexus:InitializeEventManager()
     -- TRAIT_CONFIG_UPDATED fires when spec tree is modified
     self:RegisterEvent("TRAIT_NODE_CHANGED", function()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
-        DebugPrint("|cff9370DB[WN EventManager]|r TRAIT_NODE_CHANGED triggered (knowledge refresh)")
         if WarbandNexus.OnKnowledgeChanged then
             WarbandNexus:OnKnowledgeChanged()
         end
@@ -631,7 +620,6 @@ function WarbandNexus:InitializeEventManager()
     
     self:RegisterEvent("TRAIT_CONFIG_UPDATED", function()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
-        DebugPrint("|cff9370DB[WN EventManager]|r TRAIT_CONFIG_UPDATED triggered (knowledge refresh)")
         if WarbandNexus.OnKnowledgeChanged then
             WarbandNexus:OnKnowledgeChanged()
         end
@@ -661,6 +649,10 @@ function WarbandNexus:InitializeEventManager()
         if WarbandNexus.OnItemLevelChanged then
             WarbandNexus:OnItemLevelChanged()
         end
+        -- Gear cache update (equipped slots 1-17)
+        if WarbandNexus.OnGearEquipmentChanged then
+            WarbandNexus:OnGearEquipmentChanged(slot)
+        end
         -- Profession equipment update (slot-filtered in handler)
         if IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions") then
             if WarbandNexus.OnEquipmentChanged then
@@ -673,7 +665,6 @@ function WarbandNexus:InitializeEventManager()
     -- Keystone tracking (optimized - check only keystone-related events)
     -- CHALLENGE_MODE_KEYSTONE_SLOTTED: Fired when a keystone is inserted into the pedestal
     self:RegisterEvent("CHALLENGE_MODE_KEYSTONE_SLOTTED", function()
-    DebugPrint("|cff9370DB[WN EventManager]|r [Keystone Event] CHALLENGE_MODE_KEYSTONE_SLOTTED triggered")
         if WarbandNexus.OnKeystoneChanged then
             WarbandNexus:OnKeystoneChanged()
         end

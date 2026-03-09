@@ -1600,17 +1600,17 @@ function WarbandNexus:DrawPvEProgress(parent)
                 noAffixesText:SetJustifyH("CENTER")
             end  -- if currentAffixes
             
-            -- === BOTTOM SECTION: TWW SEASON 3 CURRENCIES (Single Row) ===
-            -- TWW Season 3 currencies: Valorstone and all Ethereal Crests
-            local twwCurrencies = {
-                {id = 3008, name = "Valorstone", fallbackIcon = 5868902},
-                {id = 3284, name = "Weathered Ethereal Crest", fallbackIcon = 5872061},
-                {id = 3286, name = "Carved Ethereal Crest", fallbackIcon = 5872055},
-                {id = 3288, name = "Runed Ethereal Crest", fallbackIcon = 5872059},
-                {id = 3290, name = "Gilded Ethereal Crest", fallbackIcon = 5872057},
+            -- === BOTTOM SECTION: MIDNIGHT 12.0.1 UPGRADE CURRENCIES (Dawncrests) ===
+            -- Midnight: five Dawncrests (Valorstone removed). Icons from C_CurrencyInfo when available.
+            local midnightCurrencies = {
+                {id = 3391, name = "Adventurer Dawncrest", fallbackIcon = 134400},
+                {id = 3342, name = "Veteran Dawncrest", fallbackIcon = 134400},
+                {id = 3343, name = "Champion Dawncrest", fallbackIcon = 134400},
+                {id = 3345, name = "Hero Dawncrest", fallbackIcon = 134400},
+                {id = 3347, name = "Myth Dawncrest", fallbackIcon = 134400},
             }
             
-            local numCurrencies = #twwCurrencies
+            local numCurrencies = #midnightCurrencies
             local availableWidth = card3Width - (cardPadding * 2)
             local iconSize = 30  -- Slightly smaller for better spacing
             local currencySpacing = 10  -- More breathing room
@@ -1620,7 +1620,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             local totalCurrencyWidth = (numCurrencies * currencyItemWidth) + ((numCurrencies - 1) * currencySpacing)
             local currencyStartX = cardPadding + (availableWidth - totalCurrencyWidth) / 2
             
-            for i, curr in ipairs(twwCurrencies) do
+            for i, curr in ipairs(midnightCurrencies) do
                 -- Get currency data from CurrencyCacheService (per-character API)
                 local currencyEntry = WarbandNexus:GetCurrencyData(curr.id, charKey)
                     

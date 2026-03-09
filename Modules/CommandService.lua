@@ -51,6 +51,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn stonevaultdebug|r — Stonevault Mechsuit try count diagnostic")
         addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
         addon:Print("  |cff00ccff/wn toydebug <itemID>|r — Toy tooltip/source debug (prints to chat)")
+        addon:Print("  |cff00ccff/wn firstcraft|r — " .. ((ns.L and ns.L["CMD_FIRSTCRAFT"]) or "List first-craft bonus recipes per expansion (open profession first)"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
             addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
@@ -130,6 +131,15 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "toydebug" or cmd == "toyinfo" then
         -- Always available: dump toy tooltip lines to chat (no debug mode required)
         CommandService:ToyDebugReport(addon, input)
+        return
+
+    elseif cmd == "firstcraft" or cmd == "fc" then
+        -- Profession: list first-craft bonus recipes per content (expansion). Requires profession window open.
+        if ns.ProfessionService and addon.PrintFirstCraftRecipesByContent then
+            addon:PrintFirstCraftRecipesByContent()
+        else
+            addon:Print("|cffff6600[WN]|r " .. (ns.L and ns.L["PROF_FIRSTCRAFT_NO_DATA"] or "Professions module not available."))
+        end
         return
     end
 

@@ -7,12 +7,11 @@
 
     Column header bar sits above all sections with alignment matching data:
         LEFT-aligned:  CHARACTER, PROFESSION
-        CENTER-aligned: SKILL, CONCENTRATION, KNOWLEDGE, RECIPES
+        CENTER-aligned: SKILL, CONCENTRATION, KNOWLEDGE
 
     Column grid (per profession line):
-        [FavIcon] [ClassIcon] [Name/Realm]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] [Recipes] [Open]
+        [FavIcon] [ClassIcon] [Name/Realm]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] [Open]
 
-    Recipes column shows "known / total" format (e.g. "80 / 103").
     Skill column has a hover tooltip showing all expansion skill breakdowns.
     Icon sizes (favIcon, classIcon) match CharactersUI (33px column, visual 65%).
     All data uses "body" font (12px), headers use "small" font (10px).
@@ -57,6 +56,66 @@ local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 -- LAYOUT CONSTANTS
 --============================================================================
 
+-- Canonical expansion ordering, newest-first, for sorting the filter dropdown
+local EXPANSION_ORDER = {
+    "Midnight", "Khaz Algar", "Dragon Isles", "Shadowlands",
+    "Battle for Azeroth", "Legion", "Warlords of Draenor",
+    "Mists of Pandaria", "Cataclysm", "Wrath of the Lich King",
+    "The Burning Crusade", "Classic",
+}
+
+-- Extracts the base expansion key from an expansion-qualified name.
+-- e.g. "Midnight Tailoring" → "Midnight", "Khaz Algar Alchemy" → "Khaz Algar"
+local function ExtractExpansionKey(expName)
+    if not expName or expName == "" then return nil end
+    for _, known in ipairs(EXPANSION_ORDER) do
+        if expName:find(known, 1, true) == 1 then return known end
+    end
+    return expName:match("^(.+)%s+%u%a+$") or expName
+end
+
+-- Builds expansion filter options dynamically from all characters' discovered expansion data.
+-- Always "All" first, then discovered expansions sorted newest→oldest.
+-- Falls back to "Midnight" when no expansion data has been collected yet.
+local function BuildDynamicExpansionOptions()
+    local seen = {}
+    local keys = {}
+    local db = WarbandNexus and WarbandNexus.db
+    if db and db.global and db.global.characters then
+        for _, charData in pairs(db.global.characters) do
+            if charData.professionExpansions then
+                for _, expList in pairs(charData.professionExpansions) do
+                    if type(expList) == "table" then
+                        for _, exp in ipairs(expList) do
+                            local key = exp.name and ExtractExpansionKey(exp.name)
+                            if key and not seen[key] then
+                                seen[key] = true
+                                keys[#keys + 1] = key
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(keys, function(a, b)
+        local pa, pb = 99, 99
+        for i, name in ipairs(EXPANSION_ORDER) do
+            if a == name then pa = i end
+            if b == name then pb = i end
+        end
+        return pa < pb
+    end)
+    if not seen["Midnight"] then
+        keys[#keys + 1] = "Midnight"
+    end
+    local options = {{key = "All", label = (ns.L and ns.L["PROF_FILTER_ALL"]) or "All"}}
+    for _, key in ipairs(keys) do
+        options[#options + 1] = {key = key, label = key}
+    end
+    return options
+end
+
 local ROW_HEIGHT = 52
 local COL_SPACING = 8                -- Standard spacing between all columns
 local ICON_COL_SPACING = 4           -- Tighter spacing after icon columns
@@ -82,27 +141,38 @@ local COLUMNS = {
     conc        = { width = 120, spacing = ICON_COL_SPACING },    -- bar (wider to match rep bar proportions)
     recharge    = { width = 65,  spacing = COL_SPACING },         -- timer text
     knowledge   = { width = 70,  spacing = COL_SPACING },
-    recipes     = { width = 85,  spacing = COL_SPACING },         -- known / total recipe count
-    firstCraft  = { width = 55,  spacing = COL_SPACING },         -- first craft bonus count
-    skillUps    = { width = 55,  spacing = COL_SPACING },         -- skill-up recipe count
-    cooldowns   = { width = 70,  spacing = COL_SPACING },         -- active recipe cooldowns
-    orders      = { width = 55,  spacing = COL_SPACING },         -- crafting orders
     open        = { width = 36,  spacing = 0 },
 }
 
 local COLUMN_ORDER = {
     "favIcon", "classIcon", "name",
     "profIcon", "profName", "skill", "conc", "recharge", "knowledge",
-    "recipes", "firstCraft", "skillUps", "cooldowns", "orders", "open",
+    "open",
 }
 
 local LEFT_PAD = 10
 
+-- Expansion filter: dynamically built from discovered expansion data across all characters.
+-- Falls back to a static list if no character data is available yet.
+local EXPANSION_FILTER_STATIC_FALLBACK = {
+    { key = "All",          label = (ns.L and ns.L["PROF_FILTER_ALL"]) and ns.L["PROF_FILTER_ALL"] or "All" },
+    { key = "Midnight",     label = "Midnight" },
+    { key = "Khaz Algar",   label = "Khaz Algar" },
+    { key = "Dragon Isles", label = "Dragon Isles" },
+}
+
+-- Known expansion ordering: newest first. Expansions not in this list go after these.
+local EXPANSION_SORT_ORDER = {
+    ["Midnight"]     = 1,
+    ["Khaz Algar"]   = 2,
+    ["Dragon Isles"] = 3,
+}
+
+
 -- Text columns scale with effective font size; icon/bar/button columns stay fixed
 local SCALABLE_COLUMNS = {
     name = true, profName = true, skill = true, recharge = true,
-    knowledge = true, recipes = true, firstCraft = true,
-    skillUps = true, cooldowns = true, orders = true,
+    knowledge = true,
 }
 
 -- Cached row width — set once per DrawProfessionsTab call so columns fill available space.
@@ -174,11 +244,6 @@ local HEADER_DEFS = {
     { col = "conc",      label = "CONCENTRATION",          text = "Concentration", align = "CENTER",
       getWidth = function() return ColWidth("conc") + COLUMNS.conc.spacing + ColWidth("recharge") end },
     { col = "knowledge", label = "KNOWLEDGE",              text = "Knowledge",     align = "CENTER" },
-    { col = "recipes",   label = "RECIPES",                text = "Recipes",       align = "CENTER" },
-    { col = "firstCraft",label = "FIRST_CRAFT",            text = "1st Craft",    align = "CENTER" },
-    { col = "skillUps",  label = "SKILL_UPS",              text = "Skill Ups",    align = "CENTER" },
-    { col = "cooldowns", label = "COOLDOWNS",                text = "Cooldowns",    align = "CENTER" },
-    { col = "orders",   label = "ORDERS",                 text = "Orders",       align = "CENTER" },
 }
 
 --============================================================================
@@ -192,9 +257,8 @@ local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth
     local bar = parent[barKey]
 
     if not bar then
-        bar = CreateFrame("Frame", nil, parent)
-        bar:SetSize(barWidth, BAR_HEIGHT)
-        bar:SetFrameLevel(parent:GetFrameLevel() + 2)
+        bar = ns.UI.Factory:CreateContainer(parent, barWidth, BAR_HEIGHT, false)
+        if bar then bar:SetFrameLevel(parent:GetFrameLevel() + 2) end
 
         -- Background
         bar.bg = bar:CreateTexture(nil, "BACKGROUND")
@@ -239,6 +303,7 @@ local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth
 
         parent[barKey] = bar
     end
+    if not bar then return nil end
 
     bar:ClearAllPoints()
     bar:SetPoint("TOPLEFT", parent, "TOPLEFT", xOffset, yOffset)
@@ -384,12 +449,72 @@ local function FormatRealmName(realm)
 end
 
 --============================================================================
+-- EXPANSION FILTER HELPERS (strict: only selected expansion's data)
+--============================================================================
+
+local function GetExpansionFilter()
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    return (db and db.professionExpansionFilter) or "Midnight"
+end
+
+local function ExpansionNameMatchesFilter(expansionName, filterKey)
+    if not expansionName or expansionName == "" then return false end
+    if filterKey == "All" then return true end
+    -- Match by prefix (e.g. "Midnight Tailoring" vs "Midnight") or by extracted key
+    if expansionName == filterKey or expansionName:sub(1, #filterKey) == filterKey then return true end
+    local key = ExtractExpansionKey(expansionName)
+    return key and key == filterKey
+end
+
+---Returns the skillLineID for char+profName that matches the current expansion filter.
+---Used to look up concentration and knowledge (all stored by skillLineID).
+---
+---Uses professionExpansions as the PRIMARY source because its names are always
+---expansion-qualified (from GetChildProfessionInfos / GetProfessionInfoBySkillLineID),
+---ensuring correct expansion matching.
+---@param char table
+---@param profName string
+---@return number|nil skillLineID or nil
+local function GetSkillLineIDForFilter(char, profName)
+    local filter = GetExpansionFilter()
+    local expansions = char.professionExpansions and char.professionExpansions[profName]
+
+    -- Primary: professionExpansions has guaranteed expansion-qualified names
+    if expansions and #expansions > 0 then
+        if filter == "All" then
+            return expansions[1].skillLineID
+        else
+            for _, exp in ipairs(expansions) do
+                if exp.name and exp.skillLineID and ExpansionNameMatchesFilter(exp.name, filter) then
+                    return exp.skillLineID
+                end
+            end
+            return nil
+        end
+    end
+
+    return nil
+end
+
+--============================================================================
 -- FORMAT HELPERS (all return white text, colored where meaningful)
 --============================================================================
 
+---Returns skill level for the expansion that matches the current expansion filter.
+---When filter is "All", returns first expansion with skill; otherwise the matching expansion.
 local function GetCurrentExpansionSkill(char, profName)
     local expansions = char.professionExpansions and char.professionExpansions[profName]
     if not expansions or #expansions == 0 then return nil, nil, nil end
+    local filter = GetExpansionFilter()
+    if filter ~= "All" then
+        for i = 1, #expansions do
+            local exp = expansions[i]
+            if exp and exp.name and ExpansionNameMatchesFilter(exp.name, filter) then
+                return exp.skillLevel or 0, exp.maxSkillLevel or 0, exp.name
+            end
+        end
+        return nil, nil, nil
+    end
     for _, exp in ipairs(expansions) do
         if exp.skillLevel and exp.skillLevel > 0 then
             return exp.skillLevel, exp.maxSkillLevel or 0, exp.name
@@ -440,25 +565,6 @@ local function FormatKnowledge(kd)
     return text
 end
 
-local function GetRecipeCount(char, profName)
-    if not char.recipes then return 0, 0 end
-    local data = char.recipes[profName]
-    if not data then
-        -- Fallback: keys may be skillLineIDs, check professionName field
-        for _, profData in pairs(char.recipes) do
-            if type(profData) == "table" and profData.professionName == profName then
-                data = profData
-                break
-            end
-        end
-    end
-    if not data or not data.knownRecipes then return 0, 0 end
-    local known = 0
-    for _ in pairs(data.knownRecipes) do known = known + 1 end
-    local total = data.totalRecipes or 0
-    return known, total
-end
-
 ---Format elapsed time since a timestamp into a human-readable string.
 ---Reusable across all column tooltips for "Last Scanned" display.
 ---@param timestamp number Unix timestamp
@@ -470,123 +576,6 @@ local function FormatElapsedTime(timestamp)
     elseif elapsed < 3600 then return format("%dm ago", math.floor(elapsed / 60))
     elseif elapsed < 86400 then return format("%dh ago", math.floor(elapsed / 3600))
     else return format("%dd ago", math.floor(elapsed / 86400)) end
-end
-
----Get first craft bonus and skill-up counts for a profession.
----Aggregates across all scanned expansions.
----@param char table Character data
----@param profName string Profession name
----@return number firstCraftCount, number skillUpCount, number latestScan
-local function GetCraftStats(char, profName)
-    local firstCraft, skillUp, latestScan = 0, 0, 0
-    if not char.recipes then return firstCraft, skillUp, latestScan end
-
-    for _, profData in pairs(char.recipes) do
-        if type(profData) == "table" and profData.professionName == profName then
-            firstCraft = firstCraft + (profData.firstCraftCount or 0)
-            skillUp = skillUp + (profData.skillUpCount or 0)
-            if (profData.lastScan or 0) > latestScan then
-                latestScan = profData.lastScan
-            end
-        end
-    end
-    return firstCraft, skillUp, latestScan
-end
-
----Get active cooldown count and details for a profession.
----@param char table Character data
----@param profName string Profession name
----@return number activeCDs, table cdList sorted by remaining time
-local function GetCooldownInfo(char, profName)
-    local cdList = {}
-    local now = time()
-    if not char.recipeCooldowns or not char.recipeCooldowns[profName] then
-        return 0, cdList
-    end
-
-    for recipeID, cdData in pairs(char.recipeCooldowns[profName]) do
-        if type(cdData) == "table" and cdData.remaining and cdData.scannedAt then
-            local elapsed = now - cdData.scannedAt
-            local remaining = cdData.remaining - elapsed
-            if remaining > 0 then
-                cdList[#cdList + 1] = {
-                    recipeID     = recipeID,
-                    name         = cdData.name or ("Recipe " .. recipeID),
-                    remaining    = remaining,
-                    isDayCooldown = cdData.isDayCooldown,
-                    charges      = cdData.charges or 0,
-                    maxCharges   = cdData.maxCharges or 0,
-                }
-            end
-        end
-    end
-
-    -- Sort by remaining time ascending (soonest first)
-    table.sort(cdList, function(a, b) return a.remaining < b.remaining end)
-    return #cdList, cdList
-end
-
----Format remaining seconds into a short human-readable duration.
----@param seconds number
----@return string
-local function FormatDuration(seconds)
-    if seconds <= 0 then return "Ready" end
-    if seconds < 60 then return format("%ds", seconds) end
-    if seconds < 3600 then return format("%dm", math.floor(seconds / 60)) end
-    if seconds < 86400 then return format("%dh %dm", math.floor(seconds / 3600), math.floor((seconds % 3600) / 60)) end
-    local days = math.floor(seconds / 86400)
-    local hours = math.floor((seconds % 86400) / 3600)
-    return format("%dd %dh", days, hours)
-end
-
----Get all recipe entries for a profession (may span multiple expansions).
----Returns an array of { storeKey, professionName, known, total, lastScan, expansionName }
----sorted by lastScan descending (most recent first).
----@param char table Character data
----@param profName string Profession name
----@return table entries Array of recipe data entries
-local function GetRecipeBreakdown(char, profName)
-    local entries = {}
-    if not char.recipes then return entries end
-
-    -- Build a skillLineID → expansion name lookup from professionExpansions
-    local expNameBySkillLine = {}
-    if char.professionExpansions and char.professionExpansions[profName] then
-        for _, exp in ipairs(char.professionExpansions[profName]) do
-            if exp.skillLineID then
-                expNameBySkillLine[exp.skillLineID] = exp.name
-            end
-        end
-    end
-
-    for storeKey, profData in pairs(char.recipes) do
-        if type(profData) == "table" and profData.professionName == profName then
-            local known = 0
-            if profData.knownRecipes then
-                for _ in pairs(profData.knownRecipes) do known = known + 1 end
-            end
-            local total = profData.totalRecipes or 0
-            -- Resolve expansion name: try skillLineID lookup, then storeKey itself
-            local expName = nil
-            if type(storeKey) == "number" then
-                expName = expNameBySkillLine[storeKey]
-            end
-            expName = expName or profData.expansionName or profName
-
-            entries[#entries + 1] = {
-                storeKey      = storeKey,
-                professionName = profData.professionName,
-                known         = known,
-                total         = total,
-                lastScan      = profData.lastScan or 0,
-                expansionName = expName,
-            }
-        end
-    end
-
-    -- Sort by lastScan descending (most recent first)
-    table.sort(entries, function(a, b) return a.lastScan > b.lastScan end)
-    return entries
 end
 
 --============================================================================
@@ -642,6 +631,76 @@ function WarbandNexus:DrawProfessionsTab(parent)
     subtitleText:SetPoint("LEFT", titleTextContainer, "LEFT", 0, 0)
     titleTextContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     titleTextContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+
+    -- Profession expansion filter (strict: show only selected expansion's data)
+    if not self.db.profile.professionExpansionFilter then
+        self.db.profile.professionExpansionFilter = "Midnight"
+    end
+    local expansionFilterKey = self.db.profile.professionExpansionFilter
+    local expansionOptions = BuildDynamicExpansionOptions()
+    local expansionFilterLabel = expansionFilterKey
+    for _, opt in ipairs(expansionOptions) do
+        if opt.key == expansionFilterKey then expansionFilterLabel = opt.label break end
+    end
+    local expBtnWidth = 100
+    local expBtnHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
+    local expFilterBtn = ns.UI.Factory:CreateButton(titleCard, expBtnWidth, expBtnHeight, false)
+    if ApplyVisuals then
+        ApplyVisuals(expFilterBtn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    end
+    local expBtnText = FontManager:CreateFontString(expFilterBtn, "body", "OVERLAY")
+    expBtnText:SetPoint("CENTER", 0, 0)
+    expBtnText:SetJustifyH("CENTER")
+    expBtnText:SetText(expansionFilterLabel)
+    expBtnText:SetTextColor(0.9, 0.9, 0.9)
+    expFilterBtn:SetScript("OnEnter", function(self)
+        if ApplyVisuals then ApplyVisuals(self, {0.15, 0.15, 0.15, 0.8}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}) end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText((ns.L and ns.L["PROF_FILTER_EXPANSION"]) or "Expansion filter")
+        GameTooltip:AddLine((ns.L and ns.L["PROF_FILTER_STRICT_NOTE"]) or "Show only this expansion's profession data for all characters.", 0.6, 0.6, 0.6, true)
+        GameTooltip:AddLine((ns.L and ns.L["PROF_DATA_SOURCE_NOTE"]) or "Concentration, knowledge, recipes update when you open the profession window (K) on each character.", 0.5, 0.5, 0.5, true)
+        GameTooltip:Show()
+    end)
+    expFilterBtn:SetScript("OnLeave", function(self)
+        if ApplyVisuals then ApplyVisuals(self, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}) end
+        GameTooltip:Hide()
+    end)
+    local tabRef = self
+    expFilterBtn._menu = nil
+    expFilterBtn:SetScript("OnClick", function(btn)
+        if btn._menu and btn._menu:IsShown() then
+            btn._menu:Hide()
+            btn._menu = nil
+            return
+        end
+        if btn._menu then btn._menu:Hide() btn._menu = nil end
+        local itemHeight = 26
+        local menuWidth = math.max(expBtnWidth, 120)
+        local menuHeight = #expansionOptions * itemHeight + 8
+        local menu = ns.UI.Factory:CreateContainer(UIParent, menuWidth, menuHeight, true)
+        menu:SetFrameStrata("FULLSCREEN_DIALOG")
+        menu:SetFrameLevel(300)
+        menu:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
+        menu:SetClampedToScreen(true)
+        if ApplyVisuals then ApplyVisuals(menu, {0.08, 0.08, 0.10, 0.98}, {COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 0.8}) end
+        btn._menu = menu
+        for i = 1, #expansionOptions do
+            local opt = expansionOptions[i]
+            local rowBtn = ns.UI.Factory:CreateButton(menu, menuWidth - 16, itemHeight, true)
+            rowBtn:SetPoint("TOPLEFT", 8, -(i - 1) * itemHeight - 4)
+            local rowLabel = FontManager:CreateFontString(rowBtn, "body", "OVERLAY")
+            rowLabel:SetPoint("LEFT", 8, 0)
+            rowLabel:SetText(opt.label)
+            rowLabel:SetTextColor(0.9, 0.9, 0.9)
+            rowBtn:SetScript("OnClick", function()
+                tabRef.db.profile.professionExpansionFilter = opt.key
+                if expFilterBtn._menu then expFilterBtn._menu:Hide() expFilterBtn._menu = nil end
+                tabRef:RefreshUI()
+            end)
+        end
+        menu:Show()
+    end)
+    expFilterBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
     
     if ns.UI_CreateCharacterSortDropdown then
         local sortOptions = {
@@ -653,7 +712,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         }
         if not self.db.profile.professionSort then self.db.profile.professionSort = {} end
         local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function() self:RefreshUI() end)
-        sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
+        sortBtn:SetPoint("RIGHT", expFilterBtn, "LEFT", -8, 0)
     end
     
     titleCard:Show()
@@ -962,68 +1021,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     row[p.."Know"]:ClearAllPoints()
     row[p.."Know"]:SetPoint("LEFT", knowX, centerY)
 
-    -- RECIPES
-    local recipesX = ColOffset("recipes")
-    if not row[p.."Recipes"] then
-        row[p.."Recipes"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."Recipes"]:SetJustifyH("CENTER")
-        row[p.."Recipes"]:SetMaxLines(1)
-    end
-    row[p.."Recipes"]:SetWidth(ColWidth("recipes"))
-    row[p.."Recipes"]:ClearAllPoints()
-    row[p.."Recipes"]:SetPoint("LEFT", recipesX, centerY)
-
-    -- FIRST CRAFT
-    local firstCraftX = ColOffset("firstCraft")
-    if not row[p.."FirstCraft"] then
-        row[p.."FirstCraft"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."FirstCraft"]:SetJustifyH("CENTER")
-        row[p.."FirstCraft"]:SetMaxLines(1)
-    end
-    row[p.."FirstCraft"]:SetWidth(ColWidth("firstCraft"))
-    row[p.."FirstCraft"]:ClearAllPoints()
-    row[p.."FirstCraft"]:SetPoint("LEFT", firstCraftX, centerY)
-
-    -- SKILL UPS
-    local skillUpsX = ColOffset("skillUps")
-    if not row[p.."SkillUps"] then
-        row[p.."SkillUps"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."SkillUps"]:SetJustifyH("CENTER")
-        row[p.."SkillUps"]:SetMaxLines(1)
-    end
-    row[p.."SkillUps"]:SetWidth(ColWidth("skillUps"))
-    row[p.."SkillUps"]:ClearAllPoints()
-    row[p.."SkillUps"]:SetPoint("LEFT", skillUpsX, centerY)
-
-    -- COOLDOWNS
-    local cooldownsX = ColOffset("cooldowns")
-    if not row[p.."Cooldowns"] then
-        row[p.."Cooldowns"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."Cooldowns"]:SetJustifyH("CENTER")
-        row[p.."Cooldowns"]:SetMaxLines(1)
-    end
-    row[p.."Cooldowns"]:SetWidth(ColWidth("cooldowns"))
-    row[p.."Cooldowns"]:ClearAllPoints()
-    row[p.."Cooldowns"]:SetPoint("LEFT", cooldownsX, centerY)
-
-    -- ORDERS
-    local ordersX = ColOffset("orders")
-    if not row[p.."Orders"] then
-        row[p.."Orders"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."Orders"]:SetJustifyH("CENTER")
-        row[p.."Orders"]:SetMaxLines(1)
-    end
-    row[p.."Orders"]:SetWidth(ColWidth("orders"))
-    row[p.."Orders"]:ClearAllPoints()
-    row[p.."Orders"]:SetPoint("LEFT", ordersX, centerY)
-
-    -- COLUMN HIT-FRAMES (interactive tooltips for skill, recipes, firstCraft, skillUps, cooldowns, orders)
+    -- COLUMN HIT-FRAMES (interactive tooltips for skill)
     local skillHit = AcquireColumnHitFrame(row, p.."SkillHit", "skill", centerY)
-    local recipesHit = AcquireColumnHitFrame(row, p.."RecipesHit", "recipes", centerY)
-    local firstCraftHit = AcquireColumnHitFrame(row, p.."FirstCraftHit", "firstCraft", centerY)
-    local skillUpsHit = AcquireColumnHitFrame(row, p.."SkillUpsHit", "skillUps", centerY)
-    local cooldownsHit = AcquireColumnHitFrame(row, p.."CooldownsHit", "cooldowns", centerY)
-    local ordersHit = AcquireColumnHitFrame(row, p.."OrdersHit", "orders", centerY)
 
     -- OPEN BUTTON
     local openX = ColOffset("open")
@@ -1056,18 +1055,25 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         -- Name
         row[p.."Name"]:SetText("|cffffffff" .. profName .. "|r")
 
-        -- Skill
+        -- Skill: use expansion-specific data from professionExpansions.
+        -- Only fall back to the base prof.skill in "All" mode (it reflects the latest expansion
+        -- and is acceptable as a last-resort when no per-expansion data has been collected yet).
         local curSkill, maxSkill = GetCurrentExpansionSkill(char, profName)
         if curSkill and maxSkill then
             row[p.."Skill"]:SetText(FormatSkill(curSkill, maxSkill))
-        elseif prof.skill and prof.maxSkill then
+        elseif GetExpansionFilter() == "All" and prof.skill and prof.maxSkill then
             row[p.."Skill"]:SetText(FormatSkill(prof.skill, prof.maxSkill))
         else
             row[p.."Skill"]:SetText("|cffffffff--|r")
         end
 
-        -- Concentration bar
-        local concData = char.concentration and char.concentration[profName]
+        -- Concentration: keyed by skillLineID (expansion-specific).
+        -- String-key legacy fallback only in "All" mode to prevent cross-expansion data bleed.
+        local slID = GetSkillLineIDForFilter(char, profName)
+        local concData = slID and char.concentration and char.concentration[slID]
+        if not concData and GetExpansionFilter() == "All" then
+            concData = char.concentration and char.concentration[profName]
+        end
         local concCurrent, concMax = 0, 0
         local rechargeStr = ""
         if concData and concData.max and concData.max > 0 then
@@ -1090,57 +1096,13 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         UpdateConcentrationBar(row, p.."ConcBar", concX, barTopY, ColWidth("conc"), concCurrent, concMax)
         row[p.."Recharge"]:SetText(rechargeStr)
 
-        -- Knowledge
-        local kd = char.knowledgeData and char.knowledgeData[profName]
+        -- Knowledge: keyed by skillLineID (expansion-specific).
+        -- String-key legacy fallback only in "All" mode to prevent cross-expansion data bleed.
+        local kd = slID and char.knowledgeData and char.knowledgeData[slID]
+        if not kd and GetExpansionFilter() == "All" then
+            kd = char.knowledgeData and char.knowledgeData[profName]
+        end
         row[p.."Know"]:SetText(FormatKnowledge(kd))
-
-        -- Recipes (known / total)
-        local knownRecipes, totalRecipes = GetRecipeCount(char, profName)
-        if knownRecipes > 0 and totalRecipes > 0 then
-            local color = (knownRecipes >= totalRecipes) and {0.3, 0.9, 0.3} or {1, 0.82, 0}
-            row[p.."Recipes"]:SetText(FormatValueMax(knownRecipes, totalRecipes, color))
-        elseif knownRecipes > 0 then
-            row[p.."Recipes"]:SetText(format("|cff4de64d%d|r", knownRecipes))
-        else
-            row[p.."Recipes"]:SetText("|cffffffff--|r")
-        end
-
-        -- First Craft + Skill Ups
-        local fcCount, suCount, craftStatsScan = GetCraftStats(char, profName)
-        if craftStatsScan > 0 then
-            row[p.."FirstCraft"]:SetText(fcCount > 0
-                and format("|cff4de64d%d|r", fcCount)
-                or "|cff888888-|r")
-            row[p.."SkillUps"]:SetText(suCount > 0
-                and format("|cffffff00%d|r", suCount)
-                or "|cff888888-|r")
-        else
-            row[p.."FirstCraft"]:SetText("|cffffffff--|r")
-            row[p.."SkillUps"]:SetText("|cffffffff--|r")
-        end
-
-        -- Cooldowns
-        local activeCDs, cdList = GetCooldownInfo(char, profName)
-        if activeCDs > 0 then
-            row[p.."Cooldowns"]:SetText(format("|cffff6666%d|r", activeCDs))
-        else
-            -- Check if we have ANY cooldown data scanned
-            local hasCDData = char.recipeCooldowns and char.recipeCooldowns[profName]
-            row[p.."Cooldowns"]:SetText(hasCDData and "|cff4de64d0|r" or "|cffffffff--|r")
-        end
-
-        -- Orders
-        local orderData = char.craftingOrders and char.craftingOrders[profName]
-        if orderData and orderData.lastUpdate then
-            local totalOrders = (orderData.personalPending or 0) + (orderData.publicAvailable or 0)
-            if totalOrders > 0 then
-                row[p.."Orders"]:SetText(format("|cffffff00%d|r", totalOrders))
-            else
-                row[p.."Orders"]:SetText("|cff4de64d0|r")
-            end
-        else
-            row[p.."Orders"]:SetText("|cffffffff--|r")
-        end
 
         -- ===== SKILL COLUMN TOOLTIP (expansion breakdown — unique data) =====
         skillHit:SetScript("OnEnter", function(self)
@@ -1157,228 +1119,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["SKILL"]) or "Skill", lines = lines, anchor = "ANCHOR_TOP" }) end
         end)
         skillHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
-
-        -- ===== RECIPES COLUMN TOOLTIP (learned / unlearned breakdown) =====
-        recipesHit:SetScript("OnEnter", function(self)
-            local lines = {}
-            local breakdown = GetRecipeBreakdown(char, profName)
-            if #breakdown > 0 then
-                -- Aggregate totals across all scanned expansions
-                local totalKnown, totalAll, latestScan = 0, 0, 0
-                for _, entry in ipairs(breakdown) do
-                    totalKnown = totalKnown + entry.known
-                    totalAll = totalAll + entry.total
-                    if entry.lastScan > latestScan then latestScan = entry.lastScan end
-                end
-                local totalUnlearned = totalAll - totalKnown
-
-                -- Learned Recipes
-                local learnedColor = (totalAll > 0 and totalKnown >= totalAll) and {0.3, 0.9, 0.3} or {1, 0.82, 0}
-                lines[#lines + 1] = {
-                    left = (ns.L and ns.L["LEARNED_RECIPES"]) or "Learned Recipes",
-                    right = tostring(totalKnown),
-                    leftColor = {1, 1, 1},
-                    rightColor = learnedColor,
-                }
-
-                -- Unlearned Recipes
-                if totalUnlearned > 0 then
-                    lines[#lines + 1] = {
-                        left = (ns.L and ns.L["UNLEARNED_RECIPES"]) or "Unlearned Recipes",
-                        right = tostring(totalUnlearned),
-                        leftColor = {1, 1, 1},
-                        rightColor = {0.6, 0.6, 0.6},
-                    }
-                end
-
-                -- Per-expansion breakdown (if multiple expansions scanned)
-                if #breakdown > 1 then
-                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-                    for _, entry in ipairs(breakdown) do
-                        local k, t = entry.known, entry.total
-                        local rc = (t > 0 and k >= t) and {0.3, 0.9, 0.3} or (k > 0 and {1, 0.82, 0} or {1, 1, 1})
-                        lines[#lines + 1] = {
-                            left = "  " .. (entry.expansionName or "?"),
-                            right = t > 0 and format("%d / %d", k, t) or tostring(k),
-                            leftColor = {0.8, 0.8, 0.8},
-                            rightColor = rc,
-                        }
-                    end
-                end
-
-                -- Last scan timestamp (using shared helper)
-                local scanText = FormatElapsedTime(latestScan)
-                if scanText then
-                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-                    lines[#lines + 1] = { left = (ns.L and ns.L["LAST_SCANNED"]) or "Last Scanned", right = scanText, leftColor = {0.5, 0.5, 0.5}, rightColor = {0.5, 0.5, 0.5} }
-                end
-            else
-                lines[#lines + 1] = {
-                    text = (ns.L and ns.L["RECIPE_NO_DATA"]) or "Open profession window to collect recipe data",
-                    color = {0.5, 0.5, 0.5},
-                }
-            end
-            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["RECIPES"]) or "Recipes", lines = lines, anchor = "ANCHOR_TOP" }) end
-        end)
-        recipesHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
-
-        -- ===== FIRST CRAFT COLUMN TOOLTIP =====
-        firstCraftHit:SetScript("OnEnter", function(self)
-            local lines = {}
-            local fc, _, scanTS = GetCraftStats(char, profName)
-            if scanTS > 0 then
-                lines[#lines + 1] = {
-                    left = (ns.L and ns.L["FIRST_CRAFT_AVAILABLE"]) or "Available First Crafts",
-                    right = tostring(fc),
-                    leftColor = {1, 1, 1},
-                    rightColor = fc > 0 and {0.3, 0.9, 0.3} or {0.5, 0.5, 0.5},
-                }
-                if fc > 0 then
-                    lines[#lines + 1] = {
-                        text = (ns.L and ns.L["FIRST_CRAFT_DESC"]) or "Recipes that grant bonus XP on first craft",
-                        color = {0.7, 0.7, 0.7},
-                    }
-                end
-                local scanText = FormatElapsedTime(scanTS)
-                if scanText then
-                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-                    lines[#lines + 1] = { left = (ns.L and ns.L["LAST_SCANNED"]) or "Last Scanned", right = scanText, leftColor = {0.5, 0.5, 0.5}, rightColor = {0.5, 0.5, 0.5} }
-                end
-            else
-                lines[#lines + 1] = { text = (ns.L and ns.L["RECIPE_NO_DATA"]) or "Open profession window to collect data", color = {0.5, 0.5, 0.5} }
-            end
-            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["FIRST_CRAFT"]) or "First Craft", lines = lines, anchor = "ANCHOR_TOP" }) end
-        end)
-        firstCraftHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
-
-        -- ===== SKILL UPS COLUMN TOOLTIP =====
-        skillUpsHit:SetScript("OnEnter", function(self)
-            local lines = {}
-            local _, su, scanTS = GetCraftStats(char, profName)
-            if scanTS > 0 then
-                lines[#lines + 1] = {
-                    left = (ns.L and ns.L["SKILLUP_RECIPES"]) or "Skill-up Recipes",
-                    right = tostring(su),
-                    leftColor = {1, 1, 1},
-                    rightColor = su > 0 and {1, 0.82, 0} or {0.5, 0.5, 0.5},
-                }
-                if su > 0 then
-                    lines[#lines + 1] = {
-                        text = (ns.L and ns.L["SKILLUP_DESC"]) or "Recipes that can still increase your skill level",
-                        color = {0.7, 0.7, 0.7},
-                    }
-                end
-                local scanText = FormatElapsedTime(scanTS)
-                if scanText then
-                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-                    lines[#lines + 1] = { left = (ns.L and ns.L["LAST_SCANNED"]) or "Last Scanned", right = scanText, leftColor = {0.5, 0.5, 0.5}, rightColor = {0.5, 0.5, 0.5} }
-                end
-            else
-                lines[#lines + 1] = { text = (ns.L and ns.L["RECIPE_NO_DATA"]) or "Open profession window to collect data", color = {0.5, 0.5, 0.5} }
-            end
-            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["SKILL_UPS"]) or "Skill Ups", lines = lines, anchor = "ANCHOR_TOP" }) end
-        end)
-        skillUpsHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
-
-        -- ===== COOLDOWNS COLUMN TOOLTIP =====
-        cooldownsHit:SetScript("OnEnter", function(self)
-            local lines = {}
-            local numCDs, cdDetails = GetCooldownInfo(char, profName)
-            if numCDs > 0 then
-                for _, cd in ipairs(cdDetails) do
-                    local remStr = FormatDuration(cd.remaining)
-                    lines[#lines + 1] = {
-                        left = cd.name,
-                        right = remStr,
-                        leftColor = {1, 1, 1},
-                        rightColor = cd.remaining < 3600 and {0.3, 0.9, 0.3} or cd.remaining < 86400 and {1, 0.82, 0} or {1, 0.4, 0.4},
-                    }
-                end
-            elseif char.recipeCooldowns and char.recipeCooldowns[profName] then
-                lines[#lines + 1] = {
-                    text = (ns.L and ns.L["NO_ACTIVE_COOLDOWNS"]) or "No active cooldowns",
-                    color = {0.3, 0.9, 0.3},
-                }
-            else
-                lines[#lines + 1] = {
-                    text = (ns.L and ns.L["RECIPE_NO_DATA"]) or "Open profession window to collect data",
-                    color = {0.5, 0.5, 0.5},
-                }
-            end
-            -- Last Scanned footer for cooldowns
-            if char.recipeCooldowns and char.recipeCooldowns[profName] then
-                -- Use the scan timestamp from any cooldown entry, or fallback to recipe scan
-                local cdScanTime = 0
-                for _, cdData in pairs(char.recipeCooldowns[profName]) do
-                    if type(cdData) == "table" and (cdData.scannedAt or 0) > cdScanTime then
-                        cdScanTime = cdData.scannedAt
-                    end
-                end
-                -- Fallback: use recipe lastScan if no cooldowns with timestamps
-                if cdScanTime == 0 then
-                    local _, _, rScan = GetCraftStats(char, profName)
-                    cdScanTime = rScan
-                end
-                local scanText = FormatElapsedTime(cdScanTime)
-                if scanText then
-                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-                    lines[#lines + 1] = { left = (ns.L and ns.L["LAST_SCANNED"]) or "Last Scanned", right = scanText, leftColor = {0.5, 0.5, 0.5}, rightColor = {0.5, 0.5, 0.5} }
-                end
-            end
-            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["COOLDOWNS"]) or "Cooldowns", lines = lines, anchor = "ANCHOR_TOP" }) end
-        end)
-        cooldownsHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
-
-        -- ===== ORDERS COLUMN TOOLTIP =====
-        ordersHit:SetScript("OnEnter", function(self)
-            local lines = {}
-            local oData = char.craftingOrders and char.craftingOrders[profName]
-            if oData and oData.lastUpdate then
-                if (oData.personalPending or 0) > 0 then
-                    lines[#lines + 1] = {
-                        left = (ns.L and ns.L["PERSONAL_ORDERS"]) or "Personal Orders",
-                        right = tostring(oData.personalPending),
-                        leftColor = {1, 1, 1},
-                        rightColor = {1, 0.82, 0},
-                    }
-                end
-                if (oData.publicAvailable or 0) > 0 then
-                    lines[#lines + 1] = {
-                        left = (ns.L and ns.L["PUBLIC_ORDERS"]) or "Public Orders",
-                        right = tostring(oData.publicAvailable),
-                        leftColor = {1, 1, 1},
-                        rightColor = {1, 0.82, 0},
-                    }
-                end
-                if (oData.claimsRemaining or 0) > 0 then
-                    lines[#lines + 1] = {
-                        left = (ns.L and ns.L["CLAIMS_REMAINING"]) or "Claims Remaining",
-                        right = tostring(oData.claimsRemaining),
-                        leftColor = {1, 1, 1},
-                        rightColor = {0.3, 0.9, 0.3},
-                    }
-                end
-                if #lines == 0 then
-                    lines[#lines + 1] = {
-                        text = (ns.L and ns.L["NO_ACTIVE_ORDERS"]) or "No active orders",
-                        color = {0.3, 0.9, 0.3},
-                    }
-                end
-                -- Last Scanned footer
-                local scanText = FormatElapsedTime(oData.lastUpdate)
-                if scanText then
-                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-                    lines[#lines + 1] = { left = (ns.L and ns.L["LAST_SCANNED"]) or "Last Scanned", right = scanText, leftColor = {0.5, 0.5, 0.5}, rightColor = {0.5, 0.5, 0.5} }
-                end
-            else
-                lines[#lines + 1] = {
-                    text = (ns.L and ns.L["ORDER_NO_DATA"]) or "Open profession at crafting table to scan",
-                    color = {0.5, 0.5, 0.5},
-                }
-            end
-            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["CRAFTING_ORDERS"]) or "Crafting Orders", lines = lines, anchor = "ANCHOR_TOP" }) end
-        end)
-        ordersHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
 
         -- Unspent knowledge badge
         if kd and kd.unspentPoints and kd.unspentPoints > 0 then
@@ -1439,7 +1179,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                     lines[#lines+1] = { left = exp.name or "?", right = maxS > 0 and format("%d / %d", curS, maxS) or "--", leftColor = {1,1,1}, rightColor = sc }
                 end
             end
-            local kdT = char.knowledgeData and char.knowledgeData[profName]
+            local kdT = (slID and char.knowledgeData and char.knowledgeData[slID]) or (char.knowledgeData and char.knowledgeData[profName])
             if kdT then
                 local unspent, spent, maxPts = kdT.unspentPoints or 0, kdT.spentPoints or 0, kdT.maxPoints or 0
                 local collectible = (maxPts > 0) and (maxPts - unspent - spent) or 0
@@ -1450,7 +1190,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                     if unspent > 0 then lines[#lines+1] = { left = "|TInterface\\GossipFrame\\AvailableQuestIcon:0|t " .. unspent .. " " .. ((ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent Points"), leftColor = {1, 0.82, 0} } end
                 end
             end
-            local concT = char.concentration and char.concentration[profName]
+            local concT = (slID and char.concentration and char.concentration[slID]) or (char.concentration and char.concentration[profName])
             if concT and concT.max and concT.max > 0 then
                 lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
                 local est = concT.current or 0
@@ -1461,13 +1201,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                     local ts = WarbandNexus:GetConcentrationTimeToFull(concT)
                     if ts and ts ~= "" and ts ~= "Full" then lines[#lines+1] = { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = ts, leftColor = {1,1,1}, rightColor = {1,0.82,0} } end
                 end
-            end
-            local recKnown, recTotal = GetRecipeCount(char, profName)
-            if recKnown > 0 then
-                lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
-                local recStr = recTotal > 0 and format("%d / %d", recKnown, recTotal) or tostring(recKnown)
-                local recColor = (recTotal > 0 and recKnown >= recTotal) and {0.3,0.9,0.3} or {1,0.82,0}
-                lines[#lines+1] = { left = (ns.L and ns.L["RECIPES"]) or "Recipes", right = recStr, leftColor = {1,1,1}, rightColor = recColor }
             end
             -- Profession Equipment section (per-profession only; no fallback to avoid showing wrong profession's equipment)
             local eqByProf = char.professionEquipment
@@ -1514,25 +1247,15 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Skill"]:SetText("")
         row[p.."Recharge"]:SetText("")
         row[p.."Know"]:SetText("")
-        row[p.."Recipes"]:SetText("")
         row[p.."Btn"]:Hide()
         local concX = ColOffset("conc")
         local barTopY = centerY + BAR_HEIGHT / 2 - ROW_HEIGHT / 2
         UpdateConcentrationBar(row, p.."ConcBar", concX, barTopY, ColWidth("conc"), 0, 0)
         if row[p.."ConcBar"] then row[p.."ConcBar"]:Hide() end
-        row[p.."FirstCraft"]:SetText("")
-        row[p.."SkillUps"]:SetText("")
-        row[p.."Cooldowns"]:SetText("")
-        row[p.."Orders"]:SetText("")
         if row[p.."Icon"].knowledgeBadge then row[p.."Icon"].knowledgeBadge:Hide() end
         row[p.."Icon"]:SetScript("OnEnter", nil)
         row[p.."Icon"]:SetScript("OnLeave", nil)
         -- Hide hit-frames for empty slots
         skillHit:Hide()
-        recipesHit:Hide()
-        firstCraftHit:Hide()
-        skillUpsHit:Hide()
-        cooldownsHit:Hide()
-        ordersHit:Hide()
     end
 end
