@@ -2,11 +2,9 @@
     Warband Nexus - Currency Tab
     Display all currencies across characters with Blizzard API headers
     
-    Hierarchy (matches ReputationUI):
-    - Character Header (0px) → HEADER_SPACING (40px)
-      - Blizzard Headers (BASE_INDENT = 15px) → HEADER_HEIGHT (32px)
-        - Currency Rows (BASE_INDENT = 15px, same as header)
-        - Season 3 Sub-Rows (BASE_INDENT + BASE_INDENT + SUBROW_EXTRA_INDENT = 40px)
+    Hierarchy is built by CurrencyCacheService v2.0 via collapse/expand detection.
+    DB stores a tree: root headers → sub-headers → currencies.
+    UI renders the tree directly — no hardcoded expansion/season name patterns.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -29,79 +27,10 @@ local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
 
 -- ============================================================================
--- HEADER HIERARCHY BUILDER
--- Transforms flat header list from CurrencyCacheService into a tree.
--- WoW API returns headers flat; depth is inferred from known header names.
--- Matches Blizzard's own Currency panel: Legacy > War Within > Season N.
--- Applied at READ time so the DB stays flat (merge-safe).
+-- HEADER HIERARCHY
+-- CurrencyCacheService v2.0 stores a proper tree in db.headers using the
+-- Blizzard API collapse/expand technique.  No client-side inference needed.
 -- ============================================================================
-
--- Root-level headers (depth 0) — appear before or outside "Legacy"
-local ROOT_HEADERS = {
-    ["Dungeon and Raid"] = true,
-    ["Miscellaneous"] = true,
-    ["Player vs. Player"] = true,
-    ["Legacy"] = true,
-    ["Midnight"] = true,  -- upcoming expansion, appears at root until moved under Legacy
-}
-
--- Expansion headers that belong under "Legacy" (depth 1)
-local EXPANSION_PATTERNS = {
-    "War Within", "Dragonflight", "Shadowlands", "Battle for Azeroth",
-    "Legion", "Warlords of Draenor", "Mists of Pandaria", "Cataclysm",
-    "Wrath of the Lich King", "Burning Crusade", "Outland",
-}
-
--- Season headers that belong under their expansion (depth 2)
-local SEASON_PATTERN = "Season"
-
-local function InferHeaderDepth(name)
-    if not name then return 0 end
-    if ROOT_HEADERS[name] then return 0 end
-    for _, pattern in ipairs(EXPANSION_PATTERNS) do
-        if name:find(pattern) then return 1 end
-    end
-    if name:find(SEASON_PATTERN) then return 2 end
-    return 0  -- unknown headers default to root
-end
-
-local function BuildCurrencyHierarchy(flatHeaders)
-    if not flatHeaders or #flatHeaders == 0 then return flatHeaders end
-
-    -- Deep-copy and assign depth (avoid mutating DB data)
-    local headers = {}
-    for _, h in ipairs(flatHeaders) do
-        table.insert(headers, {
-            name = h.name,
-            depth = InferHeaderDepth(h.name),
-            currencies = h.currencies or {},
-            children = {},
-            isExpanded = h.isExpanded,
-        })
-    end
-
-    -- Build parent-child relationships (reverse scan to find nearest parent)
-    for i = #headers, 1, -1 do
-        local header = headers[i]
-        if header.depth > 0 then
-            for j = i - 1, 1, -1 do
-                if headers[j].depth < header.depth then
-                    table.insert(headers[j].children, 1, header)
-                    break
-                end
-            end
-        end
-    end
-
-    -- Return only root-level headers (children are nested inside)
-    local roots = {}
-    for _, h in ipairs(headers) do
-        if h.depth == 0 then
-            table.insert(roots, h)
-        end
-    end
-    return roots
-end
 
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
@@ -327,13 +256,13 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     
     -- Get currency data from new Direct DB architecture
     local globalCurrencies = {}
-    if self.GetCurrenciesLegacyFormat then
-        globalCurrencies = self:GetCurrenciesLegacyFormat()
+    if self.GetCurrenciesForUI then
+        globalCurrencies = self:GetCurrenciesForUI()
         
         DebugPrint(string.format("[AggregateCurrencies] Processing %d currencies with headers", 
             (function() local c = 0 for _ in pairs(globalCurrencies) do c = c + 1 end return c end)()))
     else
-        DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: GetCurrenciesLegacyFormat not found")
+        DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: GetCurrenciesForUI not found")
         return result
     end
     
@@ -392,8 +321,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                     if currData.isAccountWide or currData.isAccountTransferable then
                         -- Warband Transferable section — row shows CURRENT character's amount
                         -- Hide Empty (showZero=false): only show if current char has > 0
-                        -- Show Empty (showZero=true): show if current char has > 0 OR any char has it
-                        if currentCharAmount > 0 or (showZero and anyCharHasIt) then
+                        -- Show Empty (showZero=true): always show (currency exists in header structure)
+                        if showZero or currentCharAmount > 0 then
                             table.insert(warbandHeaderCurrencies, {
                                 id = currencyID,
                                 data = currData,
@@ -418,8 +347,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                             end
                         end
                         
-                        -- Show if: current char has > 0, OR showZero is true AND at least one char has it
-                        if (currentCharAmount > 0 or (showZero and anyCharHasIt)) and charLookup[displayChar] then
+                        -- Show if: showZero is true (show all), or current char has > 0
+                        if (showZero or currentCharAmount > 0) and charLookup[displayChar] then
                             table.insert(charHeaderCurrencies, {
                                 id = currencyID,
                                 data = currData,
@@ -598,20 +527,18 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     -- Build currency data from global storage (Direct DB architecture)
     local globalCurrencies = {}
-    if self.GetCurrenciesLegacyFormat then
-        globalCurrencies = self:GetCurrenciesLegacyFormat()
+    if self.GetCurrenciesForUI then
+        globalCurrencies = self:GetCurrenciesForUI()
         DebugPrint("[CurrencyUI] Loaded currency data from CurrencyCacheService")
     else
-        DebugPrint("|cffff0000[CurrencyUI]|r ERROR: GetCurrenciesLegacyFormat not found")
+        DebugPrint("|cffff0000[CurrencyUI]|r ERROR: GetCurrenciesForUI not found")
     end
     
-    -- Get headers from Direct DB and apply hierarchy
+    -- Get headers from Direct DB (tree built by CurrencyCacheService v2.0)
     local globalHeaders = {}
     if self.db.global.currencyData and self.db.global.currencyData.headers then
-        globalHeaders = BuildCurrencyHierarchy(self.db.global.currencyData.headers)
-        local headerCount = 0
-        for _ in pairs(globalHeaders) do headerCount = headerCount + 1 end
-        DebugPrint(string.format("[CurrencyUI] Loaded %d root headers (with hierarchy) from DB", headerCount))
+        globalHeaders = self.db.global.currencyData.headers
+        DebugPrint(string.format("[CurrencyUI] Loaded %d root headers from DB", #globalHeaders))
     else
         DebugPrint("[CurrencyUI] WARNING: No headers in DB")
     end

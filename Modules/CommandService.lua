@@ -52,6 +52,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
         addon:Print("  |cff00ccff/wn toydebug <itemID>|r — Toy tooltip/source debug (prints to chat)")
         addon:Print("  |cff00ccff/wn firstcraft|r — " .. ((ns.L and ns.L["CMD_FIRSTCRAFT"]) or "List first-craft bonus recipes per expansion (open profession first)"))
+        addon:Print("  |cff00ccff/wn chartest|r — Print current character's race/class API data (for icon debugging)")
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
             addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
@@ -140,6 +141,11 @@ function CommandService:HandleSlashCommand(addon, input)
         else
             addon:Print("|cffff6600[WN]|r " .. (ns.L and ns.L["PROF_FIRSTCRAFT_NO_DATA"] or "Professions module not available."))
         end
+        return
+
+    elseif cmd == "chartest" or cmd == "charapi" then
+        -- Character API test: print current character's race/class data as returned by the game API
+        CommandService:CharacterAPITest(addon)
         return
     end
 
@@ -440,6 +446,39 @@ function CommandService:ToyDebugReport(addon, input, skipRetry)
     if ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetSourceStringForToy then
         local dbSrc = ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
         addon:Print("|cff9370DB[GetSourceStringForToy]|r " .. (dbSrc and ("|cffffffff" .. safeStr(dbSrc) .. "|r") or "|cff888888nil (not in DB)|r"))
+    end
+end
+
+--============================================================================
+-- CHARACTER API TEST
+--============================================================================
+
+--- Print current character's race/class data as returned by the game API (for debugging race icon etc.)
+---@param addon table WarbandNexus addon instance
+function CommandService:CharacterAPITest(addon)
+    local issecretvalue = _G.issecretvalue
+    local function safeStr(val)
+        if val == nil then return "nil" end
+        if issecretvalue and issecretvalue(val) then return "(secret)" end
+        return tostring(val)
+    end
+
+    addon:Print("|cff00ccff[WN] Character API (player)|r")
+    addon:Print("  |cffaaaaaaUnitRace|r:")
+    local raceLoc, raceFile = UnitRace("player")
+    addon:Print("    localized = " .. safeStr(raceLoc) .. "  |  raceFile (English) = " .. safeStr(raceFile))
+    addon:Print("  |cffaaaaaaUnitSex|r: " .. tostring(UnitSex("player")) .. " (1=unknown, 2=male, 3=female)")
+    addon:Print("  |cffaaaaaaUnitClass|r:")
+    local classLoc, classFile, classID = UnitClass("player")
+    addon:Print("    className = " .. safeStr(classLoc) .. "  |  classFile = " .. safeStr(classFile) .. "  |  classID = " .. tostring(classID))
+    if C_PlayerInfo and C_PlayerInfo.GetRaceInfo then
+        addon:Print("  |cffaaaaaaC_PlayerInfo.GetRaceInfo()|r:")
+        local raceInfo = C_PlayerInfo.GetRaceInfo()
+        if raceInfo then
+            addon:Print("    raceName = " .. safeStr(raceInfo.raceName) .. "  |  clientFileString = " .. safeStr(raceInfo.clientFileString) .. "  |  raceID = " .. safeStr(raceInfo.raceID))
+        else
+            addon:Print("    (nil)")
+        end
     end
 end
 

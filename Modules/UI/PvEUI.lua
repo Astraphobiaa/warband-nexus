@@ -300,7 +300,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
-        local dataSource = "db.global.pveProgress [LEGACY]"
+        local dataSource = "db.global.pveProgress"
         if self.db.global.pveCache and self.db.global.pveCache.version then
             local cacheVersion = self.db.global.pveCache.version or "unknown"
             dataSource = "PvECache v" .. cacheVersion

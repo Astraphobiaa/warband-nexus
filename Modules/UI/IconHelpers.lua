@@ -59,6 +59,7 @@ local function GetRaceGenderAtlas(raceFile, gender)
         ["Dwarf"] = "dwarf",
         ["Earthen"] = "earthen",
         ["Haranir"] = "haranir",
+        ["Harronir"] = "haranir",  -- API returns raceFile "Harronir" (clientFileString)
         ["Gnome"] = "gnome",
         ["Goblin"] = "goblin",
         ["HighmountainTauren"] = "highmountain",
@@ -268,17 +269,28 @@ local function GetCharacterSpecificIcon()
     return "honorsystem-icon-prestige-9"
 end
 
----Get currency header icon texture path
----Returns appropriate icon for currency category headers (Legacy, expansions, etc.)
----Note: Blizzard API does not provide icons for headers, so we use manual mapping
----@param headerName string Header name (e.g., "Legacy", "War Within", "Season 3")
----@return string|nil Texture path or nil if no icon
+---Get currency header icon texture path.
+---Always returns a valid texture path; never nil, so the UI never shows a question mark.
+---@param headerName string Header name (e.g., "Legacy", "Midnight", "Season 1")
+---@return string Texture path (always non-nil)
 local function GetCurrencyHeaderIcon(headerName)
+    if not headerName or headerName == "" then
+        return "Interface\\Icons\\INV_Misc_Coin_01"
+    end
     -- Legacy (all old expansions)
     if headerName:find("Legacy") then
         return "Interface\\Icons\\INV_Misc_Coin_01"
-    -- Current content
+    -- Midnight (12.0) — gece/shadow teması (client'ta var olan path)
+    elseif headerName:find("Midnight") then
+        return "Interface\\Icons\\Spell_Shadow_Teleport"
+    -- Season headers (hepsi oyunda var olan path)
+    elseif headerName:find("Season 1") or headerName:find("Season1") then
+        return "Interface\\Icons\\Achievement_BG_winAB_underXminutes"
+    elseif headerName:find("Season 2") or headerName:find("Season2") then
+        return "Interface\\Icons\\Achievement_BG_winAB_underXminutes"
     elseif headerName:find("Season 3") or headerName:find("Season3") then
+        return "Interface\\Icons\\Achievement_BG_winAB_underXminutes"
+    elseif headerName:find("Season") then
         return "Interface\\Icons\\Achievement_BG_winAB_underXminutes"
     -- Expansions
     elseif headerName:find("War Within") then
@@ -308,7 +320,8 @@ local function GetCurrencyHeaderIcon(headerName)
     elseif headerName:find("Miscellaneous") then
         return "Interface\\Icons\\INV_Misc_Gear_01"
     end
-    return nil
+    -- Bilinmeyen header: para birimi ile alakalı genel ikon (soru işareti asla kullanılmaz)
+    return "Interface\\Icons\\INV_Misc_Coin_01"
 end
 
 ---Get class icon texture path (clean, frameless icons)

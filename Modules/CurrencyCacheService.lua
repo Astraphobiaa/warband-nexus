@@ -23,7 +23,7 @@
     1) CURRENCY_DISPLAY_UPDATE fires → enqueue(currencyID)
     2) DrainCurrencyQueue() processes FIFO (synchronous, immediate)
     3) UpdateSingleCurrency: API → store quantity in DB → gain detection → fire lean event
-    4) UI calls GetCurrencyData/GetCurrenciesLegacyFormat → combines SV quantity + RAM metadata
+    4) UI calls GetCurrencyData/GetCurrenciesForUI → combines SV quantity + RAM metadata
 ]]
 
 local ADDON_NAME, ns = ...
@@ -46,7 +46,7 @@ end
 
 local CurrencyCache = {
     -- Metadata only (no data storage)
-    version = "1.0.0",
+    version = "2.0.0",
     lastFullScan = 0,
     lastUpdate = 0,
     
@@ -82,6 +82,25 @@ local CURRENCY_METADATA_CACHE_MAX = 256
 -- Whitelist: currency IDs visible in the Currency tab (populated during FullScan)
 -- Used to filter out hidden/system currencies from chat notifications.
 local visibleCurrencyIDs = {}             -- [currencyID] = true
+
+---Normalize API quantity for currencies that expose "total earned" style values.
+---Some capped currencies report (max + current); we want display = current on hand.
+---When quantity > maxQuantity we treat as (cap + current) and use quantity - cap.
+---@param rawQuantity number|nil
+---@param maxQuantity number|nil
+---@param useTotalEarnedForMaxQty boolean|nil (unused; kept for API compatibility)
+---@return number
+local function NormalizeQuantity(rawQuantity, maxQuantity, useTotalEarnedForMaxQty)
+    local quantity = tonumber(rawQuantity) or 0
+    local cap = tonumber(maxQuantity) or 0
+    if cap > 0 and quantity > cap then
+        quantity = quantity - cap
+    end
+    if quantity < 0 then
+        quantity = 0
+    end
+    return quantity
+end
 
 -- ============================================================================
 -- DB ACCESS (Direct - No RAM cache)
@@ -126,12 +145,18 @@ local function ResolveCurrencyMetadata(currencyID)
     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
     if not info or not info.name then return nil end
     
+    local maxQ = info.maxQuantity or 0
+    local maxWeekly = info.maxWeeklyQuantity or 0
+    -- Use weekly cap for display when maxQuantity is 0 (e.g. Dawncrests) so UI can show "10 / 200"
+    local effectiveMax = (maxQ > 0) and maxQ or maxWeekly
     local metadata = {
         currencyID = currencyID,
         name = info.name,
         icon = info.iconFileID,
         iconFileID = info.iconFileID,
-        maxQuantity = info.maxQuantity or 0,
+        maxQuantity = effectiveMax,
+        maxWeeklyQuantity = maxWeekly,
+        useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty or false,
         isAccountWide = info.isAccountWide or false,
         isAccountTransferable = info.isAccountTransferable or false,
         description = info.description or "",
@@ -303,14 +328,25 @@ local function FetchCurrencyFromAPI(currencyID)
     
     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
     if not info or not info.name then return nil end
+    local maxQ = info.maxQuantity or 0
+    local maxWeekly = info.maxWeeklyQuantity or 0
+    -- Weekly-capped currencies (e.g. Dawncrests) may have maxQuantity=0 and maxWeeklyQuantity=200; use either for normalization
+    local cap = (maxQ > 0) and maxQ or maxWeekly
+    -- Fallback: Dawncrests are 200/week; if API returns 0, normalize using 200 so we don't store 210
+    if cap == 0 and (currencyID == 3391 or currencyID == 3342 or currencyID == 3343 or currencyID == 3345 or currencyID == 3347) then
+        cap = 200
+    end
+    local normalizedQuantity = NormalizeQuantity(info.quantity, cap, info.useTotalEarnedForMaxQty)
     
     return {
         currencyID = currencyID,
-        quantity = info.quantity or 0,
-        name = info.name,                                    -- used for gain detection log / notifications
-        isDiscovered = info.isDiscovered or false,            -- used for scan filter
-        isAccountWide = info.isAccountWide or false,          -- used for notification filter
+        quantity = normalizedQuantity,
+        name = info.name,
+        isDiscovered = info.isDiscovered or false,
+        isAccountWide = info.isAccountWide or false,
         isAccountTransferable = info.isAccountTransferable or false,
+        maxQuantity = cap,  -- effective cap for display (e.g. 10/200)
+        useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty or false,
     }
 end
 
@@ -338,7 +374,7 @@ local function UpdateSingleCurrency(currencyID)
     
     -- Snapshot old value for gain detection (SV stores plain number)
     local oldQuantity = db.currencies[charKey][currencyID] or 0
-    -- Handle legacy format: if old value is a table, extract quantity
+    -- Stored value may be number or table; extract quantity either way
     if type(oldQuantity) == "table" then oldQuantity = oldQuantity.quantity or 0 end
     
     -- Fetch new data from API
@@ -391,37 +427,262 @@ local function UpdateSingleCurrency(currencyID)
     return true
 end
 
----Perform full scan of all currencies (Direct DB architecture)
+-- ============================================================================
+-- HIERARCHY DETECTION (Collapse/Expand technique)
+-- Blizzard's C_CurrencyInfo API returns a flat list with no depth field.
+-- We collapse all headers first, then expand one-at-a-time to discover the
+-- parent→child relationships. This produces the REAL hierarchy that matches
+-- the Blizzard Currency panel (e.g. Midnight → Season 1 → Crests).
+-- ============================================================================
+
+---Recursively scan a header's direct children.
+---PRE: header at `headerIndex` is visible and collapsed. All sub-headers
+---     within it are collapsed too (from the initial CollapseAll pass).
+---POST: header at `headerIndex` is collapsed again.
+---@param headerIndex number List index of the header to scan
+---@param depth number Current depth (0 = root)
+---@param currencyDataCollector table Array that receives FetchCurrencyFromAPI results
+---@return table|nil headerNode { name, depth, currencies = {id,...}, children = {node,...} }
+local function ScanHeaderNode(headerIndex, depth, currencyDataCollector)
+    local hInfo = C_CurrencyInfo.GetCurrencyListInfo(headerIndex)
+    if not hInfo or not hInfo.isHeader then return nil end
+
+    local node = {
+        name = hInfo.name,
+        depth = depth,
+        currencies = {},
+        children = {},
+    }
+
+    -- Ensure collapsed, then expand to count DIRECT children
+    if hInfo.isHeaderExpanded then
+        C_CurrencyInfo.ExpandCurrencyList(headerIndex, false)
+    end
+    local sizeBefore = C_CurrencyInfo.GetCurrencyListSize()
+    C_CurrencyInfo.ExpandCurrencyList(headerIndex, true)
+
+    -- Some sub-headers may have retained an internal "expanded" state.
+    -- Collapse them so only DIRECT children are visible.
+    local subChanged = true
+    local subSafety = 0
+    while subChanged and subSafety < 100 do
+        subChanged = false
+        subSafety = subSafety + 1
+        local curSize = C_CurrencyInfo.GetCurrencyListSize()
+        for j = headerIndex + 1, curSize do
+            local jInfo = C_CurrencyInfo.GetCurrencyListInfo(j)
+            if not jInfo then break end
+            if jInfo.isHeader and jInfo.isHeaderExpanded then
+                C_CurrencyInfo.ExpandCurrencyList(j, false)
+                subChanged = true
+                break
+            end
+        end
+    end
+
+    local sizeAfter = C_CurrencyInfo.GetCurrencyListSize()
+    local childCount = sizeAfter - sizeBefore
+
+    if childCount > 0 then
+        local processed = 0
+        local j = headerIndex + 1
+        while processed < childCount do
+            local cInfo = C_CurrencyInfo.GetCurrencyListInfo(j)
+            if not cInfo then break end
+
+            if cInfo.isHeader then
+                local childNode = ScanHeaderNode(j, depth + 1, currencyDataCollector)
+                if childNode then
+                    table.insert(node.children, childNode)
+                end
+            else
+                local currencyID = nil
+                local link = C_CurrencyInfo.GetCurrencyListLink(j)
+                if link then
+                    currencyID = tonumber(link:match("currency:(%d+)"))
+                end
+                if not currencyID and cInfo.currencyID then
+                    currencyID = cInfo.currencyID
+                end
+                if currencyID and currencyID > 0 then
+                    table.insert(node.currencies, currencyID)
+                    visibleCurrencyIDs[currencyID] = true
+                    local data = FetchCurrencyFromAPI(currencyID)
+                    if data then
+                        table.insert(currencyDataCollector, data)
+                    end
+                end
+            end
+
+            j = j + 1
+            processed = processed + 1
+        end
+    end
+
+    -- Collapse this header (restores list to pre-expand state)
+    C_CurrencyInfo.ExpandCurrencyList(headerIndex, false)
+
+    return node
+end
+
+---Build the full currency hierarchy from the Blizzard API.
+---Uses collapse-all / expand-one-at-a-time to discover parent→child links.
+---@return table roots Array of root header nodes (tree)
+---@return table currencyDataArray Array of { currencyID, quantity, ... }
+local function BuildHierarchyFromAPI()
+    if not C_CurrencyInfo then return {}, {} end
+
+    local currencyDataCollector = {}
+
+    -- Phase 1: Collapse ALL visible headers for a clean slate
+    local collapseChanged = true
+    local collapseSafety = 0
+    while collapseChanged and collapseSafety < 300 do
+        collapseChanged = false
+        collapseSafety = collapseSafety + 1
+        local size = C_CurrencyInfo.GetCurrencyListSize()
+        for i = 1, size do
+            local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+            if info and info.isHeader and info.isHeaderExpanded then
+                C_CurrencyInfo.ExpandCurrencyList(i, false)
+                collapseChanged = true
+                break
+            end
+        end
+    end
+
+    -- Phase 2: Only root-level items are visible now. Scan them.
+    local roots = {}
+    local rootSize = C_CurrencyInfo.GetCurrencyListSize()
+    if rootSize == 0 then return {}, {} end
+
+    local i = 1
+    while i <= rootSize do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if info then
+            if info.isHeader then
+                local rootNode = ScanHeaderNode(i, 0, currencyDataCollector)
+                if rootNode then
+                    table.insert(roots, rootNode)
+                end
+            else
+                local currencyID = nil
+                local link = C_CurrencyInfo.GetCurrencyListLink(i)
+                if link then
+                    currencyID = tonumber(link:match("currency:(%d+)"))
+                end
+                if currencyID and currencyID > 0 then
+                    visibleCurrencyIDs[currencyID] = true
+                    local data = FetchCurrencyFromAPI(currencyID)
+                    if data then
+                        table.insert(currencyDataCollector, data)
+                    end
+                end
+            end
+        end
+        i = i + 1
+    end
+
+    -- Phase 3: Expand all headers back (restore normal WoW UI state)
+    local expandChanged = true
+    local expandSafety = 0
+    while expandChanged and expandSafety < 300 do
+        expandChanged = false
+        expandSafety = expandSafety + 1
+        local size = C_CurrencyInfo.GetCurrencyListSize()
+        for k = 1, size do
+            local info = C_CurrencyInfo.GetCurrencyListInfo(k)
+            if info and info.isHeader and not info.isHeaderExpanded then
+                C_CurrencyInfo.ExpandCurrencyList(k, true)
+                expandChanged = true
+                break
+            end
+        end
+    end
+
+    return roots, currencyDataCollector
+end
+
+-- ============================================================================
+-- HEADER MERGE (accumulate currency IDs across character scans)
+-- ============================================================================
+
+---Build a flat lookup: headerName → set of currency IDs from a header tree
+---@param headers table Array of header nodes (tree or flat)
+---@return table { [headerName] = { [currencyID] = true } }
+local function BuildOldCurrencyLookup(headers)
+    local lookup = {}
+    for _, h in ipairs(headers or {}) do
+        lookup[h.name] = lookup[h.name] or {}
+        for _, cid in ipairs(h.currencies or {}) do
+            lookup[h.name][cid] = true
+        end
+        if h.children then
+            local childLookup = BuildOldCurrencyLookup(h.children)
+            for name, ids in pairs(childLookup) do
+                lookup[name] = lookup[name] or {}
+                for cid in pairs(ids) do
+                    lookup[name][cid] = true
+                end
+            end
+        end
+    end
+    return lookup
+end
+
+---Merge old currency IDs into a new header tree (preserves IDs from prior scans)
+---@param newHeaders table New header tree (roots)
+---@param oldLookup table From BuildOldCurrencyLookup
+local function MergeOldCurrencyIDs(newHeaders, oldLookup)
+    for _, h in ipairs(newHeaders) do
+        local old = oldLookup[h.name]
+        if old then
+            local newSet = {}
+            for _, cid in ipairs(h.currencies) do
+                newSet[cid] = true
+            end
+            for cid in pairs(old) do
+                if not newSet[cid] then
+                    table.insert(h.currencies, cid)
+                end
+            end
+        end
+        if h.children and #h.children > 0 then
+            MergeOldCurrencyIDs(h.children, oldLookup)
+        end
+    end
+end
+
+-- ============================================================================
+-- FULL SCAN
+-- ============================================================================
+
+---Perform full scan of all currencies (Direct DB architecture).
+---Builds a proper header tree from Blizzard's API hierarchy (supports Midnight+).
 function CurrencyCache:PerformFullScan(bypassThrottle)
     DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] FullScan triggered (bypass=" .. tostring(bypassThrottle) .. ")")
     if not C_CurrencyInfo then
         return
     end
-    
-    -- Suppress event-driven scans while the initial delayed scan is pending
-    -- (the init scan at 5s will cover everything; event-driven scans before that are redundant)
+
     if not bypassThrottle and self.initScanPending then
         DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] FullScan SKIPPED (init scan pending)")
         return
     end
-    
-    -- Throttle check
+
     if not bypassThrottle then
         local now = time()
         local timeSinceLastScan = now - self.lastFullScan
-        local MIN_SCAN_INTERVAL = 5  -- 5 seconds
-        
+        local MIN_SCAN_INTERVAL = 5
         if timeSinceLastScan < MIN_SCAN_INTERVAL then
             return
         end
     end
-    
+
     if self.isScanning then
         return
     end
-    
-    -- PERF: Global coordination — if reputation scan is running, defer to avoid
-    -- two heavy scans in the same frame causing FPS drops
+
     if ns._fullScanInProgress then
         DebugPrint("|cff9370DB[CurrencyCache]|r [PERF] Deferring FullScan — another scan in progress")
         C_Timer.After(1.0, function()
@@ -431,48 +692,29 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
         end)
         return
     end
-    
+
     self.isScanning = true
     ns._fullScanInProgress = true
-    
-    -- Reset visible currency whitelist (will be rebuilt from the Currency tab list)
+
     wipe(visibleCurrencyIDs)
-    
-    -- Set loading state for UI
+
     ns.CurrencyLoadingState.isLoading = true
     ns.CurrencyLoadingState.loadingProgress = 0
     ns.CurrencyLoadingState.currentStage = "Fetching currency data..."
-    
-    -- Trigger UI refresh to show loading state
+
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
     end
-    
-    -- Expand all currency categories first
+
+    -- Quick check: is the API ready?
     local listSize = C_CurrencyInfo.GetCurrencyListSize()
-    for i = 1, listSize do
-        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-        if info and info.isHeader and not info.isHeaderExpanded then
-            C_CurrencyInfo.ExpandCurrencyList(i, true)
-        end
-    end
-    
-    -- Get currency list size AFTER expansion
-    listSize = C_CurrencyInfo.GetCurrencyListSize()
-    
     if listSize == 0 then
         self.isScanning = false
-        ns._fullScanInProgress = false  -- PERF: Release global scan lock
-        
-        -- Keep loading state active (don't clear it)
+        ns._fullScanInProgress = false
         ns.CurrencyLoadingState.currentStage = "Waiting for API... (retrying)"
-        
-        -- Trigger UI refresh to show retry message
         if WarbandNexus.SendMessage then
             WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
         end
-        
-        -- Retry after delay
         C_Timer.After(5, function()
             if CurrencyCache then
                 CurrencyCache:PerformFullScan(true)
@@ -480,152 +722,39 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
         end)
         return
     end
-    
-    -- Update progress
+
     ns.CurrencyLoadingState.loadingProgress = 20
-    ns.CurrencyLoadingState.currentStage = string.format("Processing %d currencies...", listSize)
-    
-    -- Build header structure and collect currencies
-    local currencyDataArray = {}
-    local headerStructure = {}
-    local currentHeader = nil
-    local lastDepth = -1
-    
-    local maxIterations = 5000  -- Safety limit
-    local actualListSize = math.min(listSize, maxIterations)
-    
-    -- First pass: Scan and detect depth by indentation/hierarchy
-    local listItems = {}
-    for i = 1, actualListSize do
-        local listInfo = C_CurrencyInfo.GetCurrencyListInfo(i)
-        if listInfo then
-            table.insert(listItems, {
-                index = i,
-                info = listInfo,
-                isHeader = listInfo.isHeader or false
-            })
-        end
-    end
-    
-    -- Second pass: Build structure and collect currencies
-    for idx, item in ipairs(listItems) do
-        local i = item.index
-        local listInfo = item.info
-        
-        if listInfo.isHeader then
-            -- Simple depth detection: assume all headers are root level (depth 0)
-            -- We'll build hierarchy later based on spacing/indentation in game
-            local depth = 0
-            
-            -- Create header
-            local headerData = {
-                name = listInfo.name,
-                isExpanded = listInfo.isHeaderExpanded,
-                depth = depth,
-                currencies = {},
-                children = {}
-            }
-            
-            listItems[idx].depth = depth
-            listItems[idx].headerData = headerData
-            
-            -- Add as root header
-            table.insert(headerStructure, headerData)
-            currentHeader = headerData
-            
-        else
-            -- This is a currency
-            local currencyID = nil
-            
-            -- Method 1: From link (most reliable)
-            local currencyLink = C_CurrencyInfo.GetCurrencyListLink(i)
-            if currencyLink then
-                currencyID = tonumber(currencyLink:match("currency:(%d+)"))
-            end
-            
-            -- Method 2: Fallback to currencyID field
-            if not currencyID and listInfo.currencyID then
-                currencyID = listInfo.currencyID
-            end
-            
-            if currencyID and currencyID > 0 then
-                -- Mark as visible (appears in Currency tab → eligible for notifications)
-                visibleCurrencyIDs[currencyID] = true
-                
-                local currencyData = FetchCurrencyFromAPI(currencyID)
-                if currencyData then
-                    table.insert(currencyDataArray, currencyData)
-                    
-                    -- Find parent header (last header before this currency)
-                    for j = idx - 1, 1, -1 do
-                        if listItems[j].isHeader and listItems[j].headerData then
-                            table.insert(listItems[j].headerData.currencies, currencyID)
-                            break
-                        end
-                    end
-                end
-            end
-        end
-        
-    end
-    -- PERF: Progress state updated once (not per-currency) — screen can't redraw mid-loop anyway
+    ns.CurrencyLoadingState.currentStage = string.format("Scanning %d list entries...", listSize)
+
+    -- Build hierarchy from Blizzard API (collapse/expand technique)
+    local headerTree, currencyDataArray = BuildHierarchyFromAPI()
+
     ns.CurrencyLoadingState.loadingProgress = 70
     ns.CurrencyLoadingState.currentStage = string.format("Processed %d currencies", #currencyDataArray)
-    
-    -- Note: We're treating all headers as root-level for simplicity
-    -- Blizzard's API doesn't provide explicit depth information
-    -- The UI will render them sequentially as they appear in the list
-    
-    -- MERGE header structure into DB (accumulate currency IDs across characters)
-    -- Different characters may scan at different times; we want the UNION of all currency IDs
+
+    -- Merge old currency IDs from prior character scans
     local db = GetDB()
     if db then
-        if not db.headers or #db.headers == 0 then
-            -- First scan ever: just store
-            db.headers = headerStructure
-        else
-            -- Merge: for each new header, find matching existing header by name
-            -- and add any new currency IDs
-            local existingByName = {}
-            for _, existingHeader in ipairs(db.headers) do
-                existingByName[existingHeader.name] = existingHeader
-            end
-            
-            for _, newHeader in ipairs(headerStructure) do
-                local existing = existingByName[newHeader.name]
-                if existing then
-                    -- Merge currency IDs: add any new ones from this scan
-                    local existingSet = {}
-                    for _, cid in ipairs(existing.currencies or {}) do
-                        existingSet[cid] = true
-                    end
-                    for _, cid in ipairs(newHeader.currencies or {}) do
-                        if not existingSet[cid] then
-                            table.insert(existing.currencies, cid)
-                        end
-                    end
-                else
-                    -- New header not seen before: add it
-                    table.insert(db.headers, newHeader)
-                end
-            end
+        if db.headers and #db.headers > 0 then
+            local oldLookup = BuildOldCurrencyLookup(db.headers)
+            MergeOldCurrencyIDs(headerTree, oldLookup)
         end
+        db.headers = headerTree
     end
-    
-    -- Update DB
-    ns.CurrencyLoadingState.loadingProgress = 70
+
+    -- Update DB (quantities per character)
+    ns.CurrencyLoadingState.loadingProgress = 85
     ns.CurrencyLoadingState.currentStage = "Saving to database..."
     self:UpdateAll(currencyDataArray)
-    
-    -- Complete - clear loading state immediately
+
+    -- Complete
     ns.CurrencyLoadingState.isLoading = false
     ns.CurrencyLoadingState.loadingProgress = 100
     ns.CurrencyLoadingState.currentStage = "Complete!"
-    
+
     self.isScanning = false
-    ns._fullScanInProgress = false  -- PERF: Release global scan lock
-    
-    -- Fire cache ready event (will trigger UI refresh)
+    ns._fullScanInProgress = false
+
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_CURRENCY_CACHE_READY")
         WarbandNexus:SendMessage("WN_CURRENCY_UPDATED")
@@ -758,6 +887,7 @@ end
 
 ---Get currency data for a specific currency.
 ---Combines SV quantity (per-char) + on-demand metadata from API.
+---Current character: always prefers live API quantity so UI never shows stale/dummy SV.
 ---@param currencyID number Currency ID
 ---@param charKey string|nil Character key (defaults to current character)
 ---@return table|nil { currencyID, quantity, name, icon, iconFileID, maxQuantity, isAccountWide, ... }
@@ -774,12 +904,25 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     
     if not charKey then return nil end
     
-    -- Get quantity from SV
     local quantity = nil
-    if db.currencies[charKey] then
+    local isCurrentChar = (ns.Utilities and ns.Utilities.GetCharacterKey and charKey == ns.Utilities:GetCharacterKey())
+
+    -- Current character: always fetch live from API so we never show stale DB/dummy data
+    if isCurrentChar then
+        local liveData = FetchCurrencyFromAPI(currencyID)
+        if liveData and liveData.quantity ~= nil then
+            quantity = liveData.quantity
+            if not db.currencies[charKey] then
+                db.currencies[charKey] = {}
+            end
+            db.currencies[charKey][currencyID] = quantity
+        end
+    end
+
+    -- Non-current char or API failed: use SV
+    if quantity == nil and db.currencies[charKey] then
         local stored = db.currencies[charKey][currencyID]
         if stored ~= nil then
-            -- Handle both lean (number) and legacy (table) format
             if type(stored) == "number" then
                 quantity = stored
             elseif type(stored) == "table" then
@@ -787,17 +930,15 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
             end
         end
     end
-    
-    -- If no data and this is the current character, try to fetch live
-    if quantity == nil and charKey == ns.Utilities:GetCharacterKey() then
-        local liveData = FetchCurrencyFromAPI(currencyID)
-        if liveData then
-            quantity = liveData.quantity or 0
-            -- Persist quantity to SV
-            if not db.currencies[charKey] then
-                db.currencies[charKey] = {}
+
+    -- Last resort for current char: SV (e.g. API not ready yet)
+    if quantity == nil and isCurrentChar then
+        if db.currencies[charKey] then
+            local stored = db.currencies[charKey][currencyID]
+            if stored ~= nil then
+                if type(stored) == "number" then quantity = stored
+                elseif type(stored) == "table" then quantity = stored.quantity or 0 end
             end
-            db.currencies[charKey][currencyID] = quantity
         end
     end
     
@@ -853,13 +994,13 @@ function WarbandNexus:GetAllCurrencyData(charKey)
     return db.currencies[charKey] or {}
 end
 
----Get all currencies in LEGACY format (for backward compatibility with UI).
----Union of all currency IDs across characters; every tracked char has an entry per currency (0 if missing).
----Combines lean SV quantities + on-demand metadata from API.
----@return table Currency data in legacy format { [currencyID] = { name, icon, value, chars = {...} } }
-function WarbandNexus:GetCurrenciesLegacyFormat()
+---Get all currencies in UI format: [currencyID] = { name, icon, maxQuantity, chars = { [canonicalKey] = qty } }.
+---Single source for Currency tab and Gear tab; uses canonical character key everywhere.
+---@return table { [currencyID] = { name, icon, value, chars = { [canonicalKey] = quantity } } }
+function WarbandNexus:GetCurrenciesForUI()
     local db = GetDB()
     if not db then return {} end
+    local currentCharKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
     
     -- 1) Collect all tracked character keys (same list as UI/tooltip)
     local trackedCharKeys = {}
@@ -888,41 +1029,52 @@ function WarbandNexus:GetCurrenciesLegacyFormat()
             end
         end
     end
-    
+    -- Gear tab uses same data; ensure upgrade crests are always in the union.
+    for _, id in ipairs({ 3391, 3342, 3343, 3345, 3347 }) do
+        currencyIDSet[id] = true
+    end
+
     local result = {}
     for currencyID in pairs(currencyIDSet) do
         local metadata = ResolveCurrencyMetadata(currencyID)
-        local legacy = {
+        local entry = {
             name = metadata and metadata.name or ("Currency #" .. currencyID),
             icon = metadata and metadata.icon or nil,
             maxQuantity = metadata and metadata.maxQuantity or 0,
             isAccountWide = metadata and metadata.isAccountWide or false,
             isAccountTransferable = metadata and metadata.isAccountTransferable or false,
         }
-        
-        -- ALWAYS populate per-character amounts (UI needs this to show current character's value)
-        legacy.chars = {}
-        local total = 0
-        local maxQty = 0
+        entry.chars = {}
+        local total, maxQty = 0, 0
+        local dawncrestCap = (currencyID == 3391 or currencyID == 3342 or currencyID == 3343 or currencyID == 3345 or currencyID == 3347) and 200 or nil
         for charKey in pairs(trackedCharKeys) do
-            local currencies = db.currencies and db.currencies[charKey]
+            local charData = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+            local canonicalKey = (ns.Utilities and type(charData) == "table" and charData.name and charData.realm) and ns.Utilities:GetCharacterKey(charData.name, charData.realm) or charKey
+            local currencies = db.currencies and db.currencies[canonicalKey]
             local stored = currencies and currencies[currencyID]
             local qty = 0
             if type(stored) == "number" then qty = stored
             elseif type(stored) == "table" then qty = stored.quantity or 0 end
-            legacy.chars[charKey] = qty
+
+            if currentCharKey and canonicalKey == currentCharKey then
+                local liveData = FetchCurrencyFromAPI(currencyID)
+                if liveData and liveData.quantity ~= nil then
+                    qty = liveData.quantity
+                    if not db.currencies[canonicalKey] then db.currencies[canonicalKey] = {} end
+                    db.currencies[canonicalKey][currencyID] = qty
+                end
+            end
+
+            if dawncrestCap and qty > dawncrestCap then
+                qty = qty - dawncrestCap
+                if qty < 0 then qty = 0 end
+            end
+            entry.chars[canonicalKey] = qty
             total = total + qty
             if qty > maxQty then maxQty = qty end
         end
-        
-        -- Warband (account-wide) currencies: one shared pool — same value on all chars. Use max (not sum).
-        if legacy.isAccountWide then
-            legacy.value = maxQty
-        else
-            legacy.value = nil
-        end
-        
-        result[currencyID] = legacy
+        if entry.isAccountWide then entry.value = maxQty else entry.value = nil end
+        result[currencyID] = entry
     end
     
     return result
@@ -1258,6 +1410,10 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
                             break
                         end
                     end
+                    local metadata = ResolveCurrencyMetadata(currencyID)
+                    local maxQuantity = metadata and metadata.maxQuantity or 0
+                    local useTotal = metadata and metadata.useTotalEarnedForMaxQty or false
+                    newQuantity = NormalizeQuantity(newQuantity, maxQuantity, useTotal)
                     
                     -- ONLY update if the quantity differs from what we have
                     local oldQuantity = db.currencies[charKey] and db.currencies[charKey][currencyID] or 0

@@ -52,6 +52,12 @@ local max = math.max
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 
+-- Canonical character key (same as Utilities:GetCharacterKey / DB).
+local function GetCharKey(char)
+    if char and char._key then return char._key end
+    return (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")) or ((char and char.name or "Unknown") .. "-" .. (char and char.realm or "Unknown"))
+end
+
 --============================================================================
 -- LAYOUT CONSTANTS
 --============================================================================
@@ -404,7 +410,7 @@ local function SortCharacters(list, orderKey)
     local customOrder = WarbandNexus.db.profile.characterOrder[orderKey] or {}
     if #customOrder > 0 then
         local ordered, charMap = {}, {}
-        for _, c in ipairs(list) do charMap[(c.name or "Unknown") .. "-" .. (c.realm or "Unknown")] = c end
+        for _, c in ipairs(list) do charMap[GetCharKey(c)] = c end
         for _, ck in ipairs(customOrder) do
             if charMap[ck] then table.insert(ordered, charMap[ck]); charMap[ck] = nil end
         end
@@ -431,7 +437,7 @@ local function CategorizeCharacters(characters)
         -- Include ALL tracked characters, even those with no professions.
         -- DrawProfessionLine already handles empty slots with "No Profession" text.
         local isTracked = char.isTracked ~= false
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local charKey = GetCharKey(char)
         if not isTracked then table.insert(untracked, char)
         elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey) then table.insert(favorites, char)
         else table.insert(regular, char) end
@@ -856,7 +862,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
 
     ns.UI.Factory:ApplyRowBackground(row, index)
 
-    local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+    local charKey = GetCharKey(char)
     local isCurrent = (charKey == currentPlayerKey)
     local isFavorite = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey)
     local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}

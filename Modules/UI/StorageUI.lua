@@ -122,7 +122,7 @@ function WarbandNexus:DrawStorageTab(parent)
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
-        local dataSource = "db.global.personalBanks [LEGACY]"
+        local dataSource = "db.global.personalBanks"
         if self.db.global.storageCache and next(self.db.global.storageCache.characters or {}) then
             local cacheVersion = self.db.global.storageCache.version or "unknown"
             dataSource = "StorageCache v" .. cacheVersion

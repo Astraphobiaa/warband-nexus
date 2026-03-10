@@ -13,11 +13,11 @@ ns.Utilities = Utilities
 -- CHARACTER IDENTIFICATION
 --============================================================================
 
---- Get character key (Name-Realm format)
---- Eliminates 70+ duplicate instances across codebase
+--- Get character key (Name-Realm format, normalized: no spaces).
+--- Single source of truth for character identification in DB and services.
 ---@param name string|nil Player name (defaults to current player)
 ---@param realm string|nil Realm name (defaults to current realm)
----@return string Character key in "Name-Realm" format
+---@return string Character key in "Name-Realm" format (e.g. "Superluminal-TwistingNether")
 function Utilities:GetCharacterKey(name, realm)
     name = name or UnitName("player")
     realm = realm or GetRealmName()
@@ -31,10 +31,23 @@ function Utilities:GetCharacterKey(name, realm)
     
     -- Debug log (only on first call per session)
     if not self._keyLogged then
-        -- GetCharacterKey() first call (verbose logging removed)
         self._keyLogged = true
     end
     return key
+end
+
+--- Resolve any character key to the canonical (normalized) form used everywhere in DB and services.
+--- Use this when passing a key from UI or stored data into services (currency, gear, etc.).
+---@param charKey string Key from db.characters or UI (may have spaces or old format)
+---@return string Canonical key (GetCharacterKey(name, realm))
+function Utilities:GetCanonicalCharacterKey(charKey)
+    if not charKey or charKey == "" then return charKey end
+    local db = ns.WarbandNexus and ns.WarbandNexus.db and ns.WarbandNexus.db.global
+    local charData = db and db.characters and db.characters[charKey]
+    if type(charData) == "table" and charData.name and charData.realm then
+        return self:GetCharacterKey(charData.name, charData.realm)
+    end
+    return charKey
 end
 
 --- Format normalized realm name for display (e.g. "TwistingNether" -> "Twisting Nether")

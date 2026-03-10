@@ -48,6 +48,12 @@ local AcquireCharacterRow = ns.UI_AcquireCharacterRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
+
+-- Canonical character key (same as Utilities:GetCharacterKey / DB); use everywhere for service calls and comparisons.
+local function GetCharKey(char)
+    if char and char._key then return char._key end
+    return (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")) or ((char and char.name or "Unknown") .. "-" .. (char and char.realm or "Unknown"))
+end
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local ROW_HEIGHT = GetLayout().rowHeight or 26
 local ROW_SPACING = GetLayout().rowSpacing or 28
@@ -98,7 +104,7 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
-        local dataSource = "db.global.characters [LEGACY]"
+        local dataSource = "db.global.characters"
         if self.db.global.characterCache and next(self.db.global.characterCache.characters or {}) then
             local cacheVersion = self.db.global.characterCache.version or "unknown"
             dataSource = "CharacterCache v" .. cacheVersion
@@ -217,7 +223,7 @@ function WarbandNexus:DrawCharacterList(parent)
     for _, char in ipairs(characters) do
         local charGold = ns.Utilities:GetCharTotalCopper(char)
         
-        local charKey = (char.name or "") .. "-" .. (char.realm or "")
+        local charKey = GetCharKey(char)
         if charKey == currentPlayerKey then
             -- Use real-time gold for current character (if tracked)
             totalCharGold = totalCharGold + currentCharGold
@@ -352,6 +358,7 @@ function WarbandNexus:DrawCharacterList(parent)
     }
     
     if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
+    local currentSortKey = self.db.profile.characterSort.key or "manual"
     
     -- ===== SORT CHARACTERS: FAVORITES -> REGULAR =====
     local trackedFavorites = {}
@@ -359,8 +366,8 @@ function WarbandNexus:DrawCharacterList(parent)
     local untracked = {}
     
     for _, char in ipairs(characters) do
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-        local isTracked = char.isTracked ~= false  -- Default to true if not set (legacy compatibility)
+        local charKey = GetCharKey(char)
+        local isTracked = char.isTracked ~= false  -- Default to true if not set
         
         -- Separate by tracking status first, then favorites
         if not isTracked then
@@ -429,7 +436,7 @@ function WarbandNexus:DrawCharacterList(parent)
             
             -- Create a map for quick lookup
             for _, char in ipairs(list) do
-                local key = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+                local key = GetCharKey(char)
                 charMap[key] = char
             end
             
@@ -690,8 +697,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.anim:Play()
     end
 
-    -- Define charKey for use in buttons
-    local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+    -- Define charKey for use in buttons (canonical key for DB/service consistency)
+    local charKey = GetCharKey(char)
     local isCurrent = (charKey == currentPlayerKey)
     
     -- Set alternating background colors (Factory pattern)
@@ -900,7 +907,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         local leftPadding = (profColumnWidth - totalIconWidth) / 2
         local currentProfX = profOffset + leftPadding
         
-        local charKey = char._key or ((char.name or "") .. "-" .. (char.realm or ""))
+        local charKey = GetCharKey(char)
         local function SetupProfIcon(prof, idx, profSlotKey)
             if not prof or not prof.icon then return end
             
@@ -1223,7 +1230,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Tracking Status Icon (left of Reorder column)
     local isTracked = char.isTracked ~= false  -- Default to true if not set
     local currentCharKey = ns.Utilities:GetCharacterKey()
-    local rowCharKey = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
+    local rowCharKey = GetCharKey(char)
     local isCurrentCharacter = (currentCharKey == rowCharKey)
     
     -- RIGHT-ANCHORED COLUMNS: compact, icon-sized, flush right
@@ -1282,7 +1289,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if isCurrentCharacter then
             row.trackingIcon:Enable()
             row.trackingIcon:SetScript("OnClick", function(self)
-                local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+                local charKey = GetCharKey(char)
                 local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
                 if ns.CharacterService then
                     ns.CharacterService:ShowTrackingChangeConfirmation(WarbandNexus, charKey, charName, false)
@@ -1329,7 +1336,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if isCurrentCharacter then
             row.trackingIcon:Enable()
             row.trackingIcon:SetScript("OnClick", function(self)
-                local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+                local charKey = GetCharKey(char)
                 local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
                 if ns.CharacterService then
                     ns.CharacterService:ShowTrackingChangeConfirmation(WarbandNexus, charKey, charName, true)
@@ -1352,38 +1359,31 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         rb.up = ns.UI.Factory:CreateButton(rb, 18, 18, true)
         rb.up:SetPoint("CENTER", -11, 0)
         rb.up:SetNormalAtlas("housing-floor-arrow-up-default")
-        
+        rb.up:EnableMouse(true)
         rb.down = ns.UI.Factory:CreateButton(rb, 18, 18, true)
         rb.down:SetPoint("CENTER", 11, 0)
         rb.down:SetNormalAtlas("housing-floor-arrow-down-default")
-        
+        rb.down:EnableMouse(true)
         row.reorderButtons = rb
     end
     row.reorderButtons:ClearAllPoints()
-    row.reorderButtons:SetPoint("RIGHT", -reorderRight, 0)
+    row.reorderButtons:SetPoint("RIGHT", row, "RIGHT", -reorderRight, 0)
     
     if showReorder and charList then
         row.reorderButtons:Show()
-        
-        -- Check if buttons support OnClick
-        
-        -- Safely set OnClick handlers
-        if row.reorderButtons.up and row.reorderButtons.up.HasScript and row.reorderButtons.up:HasScript("OnClick") then
+        -- Always set OnClick (WoW Button supports SetScript even without prior script; HasScript can be false before first set)
+        if row.reorderButtons.up then
+            row.reorderButtons.up:EnableMouse(true)
             row.reorderButtons.up:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, -1) end)
         end
-        
-        if row.reorderButtons.down and row.reorderButtons.down.HasScript and row.reorderButtons.down:HasScript("OnClick") then
+        if row.reorderButtons.down then
+            row.reorderButtons.down:EnableMouse(true)
             row.reorderButtons.down:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, 1) end)
         end
     else
         row.reorderButtons:Hide()
-        -- Clear scripts when hiding to prevent stale handlers
-        if row.reorderButtons.up and row.reorderButtons.up.HasScript and row.reorderButtons.up:HasScript("OnClick") then
-            row.reorderButtons.up:SetScript("OnClick", nil)
-        end
-        if row.reorderButtons.down and row.reorderButtons.down.HasScript and row.reorderButtons.down:HasScript("OnClick") then
-            row.reorderButtons.down:SetScript("OnClick", nil)
-        end
+        if row.reorderButtons.up then row.reorderButtons.up:SetScript("OnClick", nil) end
+        if row.reorderButtons.down then row.reorderButtons.down:SetScript("OnClick", nil) end
     end
     
     
@@ -1620,7 +1620,7 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
         return
     end
     
-    local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+    local charKey = GetCharKey(char)
     
     -- Don't update lastSeen when reordering (keep current timestamps)
     local currentPlayerKey = ns.Utilities:GetCharacterKey()
@@ -1646,7 +1646,7 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
         local currentPlayerKey = ns.Utilities:GetCharacterKey()
         
         for _, c in ipairs(allChars) do
-            local key = (c.name or "Unknown") .. "-" .. (c.realm or "Unknown")
+            local key = GetCharKey(c)
             -- Skip current player
             if key ~= currentPlayerKey then
                 local isFav = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, key)

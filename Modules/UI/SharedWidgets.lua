@@ -1930,14 +1930,14 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local textAnchor = expandIcon
     local textOffset = 12  -- Increased spacing between icon and text
     
-    -- Category icon: always show one (use default if nil/empty so e.g. "World Event" has an icon)
+    -- Category icon: always show one (use default if nil/empty — never question mark for currency/headers)
     if not iconTexture or iconTexture == "" then
-        iconTexture = isAtlas and "icons_64x64_important" or "Interface\\Icons\\INV_Misc_QuestionMark"
+        iconTexture = isAtlas and "icons_64x64_important" or "Interface\\Icons\\INV_Misc_Coin_01"
     end
     local categoryIcon = nil
     if iconTexture then
         categoryIcon = header:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.HEADER_ICON_SIZE
+        local iconSize = (UI_LAYOUT and UI_LAYOUT.HEADER_ICON_SIZE) or 24
         categoryIcon:SetSize(iconSize, iconSize)
         categoryIcon:SetPoint("LEFT", expandIcon, "RIGHT", 8, 0)
         
@@ -1949,9 +1949,12 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
             end
             categoryIcon:Show()
         else
+            -- iconTexture: string path veya number (fileID); WoW ikisini de kabul eder
             categoryIcon:SetTexture(iconTexture)
-            -- Add texture coordinate padding for cleaner edges (only for textures, not atlas)
-            categoryIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            if type(iconTexture) == "string" then
+                categoryIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+            categoryIcon:Show()
         end
         -- Anti-flicker optimization
         categoryIcon:SetSnapToPixelGrid(false)
@@ -2062,6 +2065,7 @@ local function GetRaceGenderAtlas(raceFile, gender)
         ["Dwarf"] = "dwarf",
         ["Earthen"] = "earthen",
         ["Haranir"] = "haranir",
+        ["Harronir"] = "haranir",  -- API returns raceFile "Harronir" (clientFileString)
         ["Gnome"] = "gnome",
         ["Goblin"] = "goblin",
         ["HighmountainTauren"] = "highmountain",
@@ -2299,18 +2303,31 @@ ns.UI_GetCharacterSpecificIcon = GetCharacterSpecificIcon
 --[[
     Get currency header icon texture path
     
-    Returns appropriate icon for currency category headers (Legacy, expansions, etc.)
-    Note: Blizzard API does not provide icons for headers, so we use manual mapping
+    Returns appropriate icon for currency category headers. Never returns nil so that
+    the UI never shows a question mark — unknown headers get a generic currency icon.
+    Blizzard API does not provide icons for headers, so we use manual mapping.
     
-    @param headerName string - Header name (e.g., "Legacy", "War Within", "Season 3")
-    @return string|nil - Texture path or nil if no icon
+    @param headerName string - Header name (e.g., "Legacy", "Midnight", "Season 1")
+    @return string - Texture path (always non-nil)
 ]]
 local function GetCurrencyHeaderIcon(headerName)
+    if not headerName or headerName == "" then
+        return "Interface\\Icons\\INV_Misc_Coin_01"
+    end
     -- Legacy (all old expansions)
     if headerName:find("Legacy") then
         return "Interface\\Icons\\INV_Misc_Coin_01"
-    -- Current content
+    -- Midnight (12.0) — gece/shadow teması (client'ta var olan path)
+    elseif headerName:find("Midnight") then
+        return "Interface\\Icons\\Spell_Shadow_Teleport"
+    -- Season headers (order matters: Season 1 before generic "Season"); hepsi oyunda var olan path
+    elseif headerName:find("Season 1") or headerName:find("Season1") then
+        return "Interface\\Icons\\Achievement_BG_winAB_underXminutes"
+    elseif headerName:find("Season 2") or headerName:find("Season2") then
+        return "Interface\\Icons\\Achievement_BG_winAB_underXminutes"
     elseif headerName:find("Season 3") or headerName:find("Season3") then
+        return "Interface\\Icons\\Achievement_BG_winAB_underXminutes"
+    elseif headerName:find("Season") then
         return "Interface\\Icons\\Achievement_BG_winAB_underXminutes"
     -- Expansions
     elseif headerName:find("War Within") then
@@ -2340,7 +2357,8 @@ local function GetCurrencyHeaderIcon(headerName)
     elseif headerName:find("Miscellaneous") then
         return "Interface\\Icons\\INV_Misc_Gear_01"
     end
-    return nil
+    -- Bilinmeyen header: para birimi ile alakalı genel ikon (soru işareti asla kullanılmaz)
+    return "Interface\\Icons\\INV_Misc_Coin_01"
 end
 
 -- Export

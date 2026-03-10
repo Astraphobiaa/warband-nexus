@@ -693,7 +693,8 @@ function WarbandNexus:SaveMinimalCharacterData()
         return false
     end
     
-    local key = name .. "-" .. realm
+    -- CRITICAL: Use same key format as Utilities:GetCharacterKey (strip spaces) so Gear/Currency lookups match.
+    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm) or (name .. "-" .. realm:gsub("%s+", ""))
     local Constants = ns.Constants
     
     -- Get basic character info
@@ -817,8 +818,9 @@ function WarbandNexus:SaveCurrentCharacterData()
         return false
     end
     
-    local key = name .. "-" .. realm
-    
+    -- CRITICAL: Use same key format as Utilities:GetCharacterKey (strip spaces) so Gear/Currency lookups match.
+    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm) or (name .. "-" .. realm:gsub("%s+", ""))
+
     -- Get character info
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")

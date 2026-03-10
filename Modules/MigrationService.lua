@@ -74,6 +74,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateTrackingField(db)
     self:MigrateTrackingConfirmed(db)
     self:MigrateGoldFormat(db)
+    self:MigrateCharacterKeyNormalize(db)
     return false
 end
 
@@ -361,6 +362,59 @@ function MigrationService:MigrateGoldFormat(db)
     end
     
     -- Gold format migration applied silently
+end
+
+---Normalize character keys so db.characters and db.currencyData.currencies use
+---Utilities:GetCharacterKey(name, realm) format (spaces stripped). Fixes Gear/Currency
+---tab showing wrong or zero data when keys were saved as "Name-Realm " (e.g. GetNormalizedRealmName with space).
+function MigrationService:MigrateCharacterKeyNormalize(db)
+    if not db.global then return end
+    if db.global.charactersKeyNormalized then return end
+    local Utilities = ns.Utilities
+    if not Utilities or not Utilities.GetCharacterKey then return end
+
+    local renames = {} -- [oldKey] = newKey (only when newKey ~= oldKey)
+    if db.global.characters then
+        for charKey, charData in pairs(db.global.characters) do
+            if type(charData) == "table" and charData.name and charData.realm then
+                local newKey = Utilities:GetCharacterKey(charData.name, charData.realm)
+                if newKey and newKey ~= charKey then
+                    renames[charKey] = newKey
+                end
+            end
+        end
+    end
+
+    if not next(renames) then
+        db.global.charactersKeyNormalized = true
+        return
+    end
+
+    -- Apply to characters: move data from oldKey to newKey (only if newKey slot is free)
+    for oldKey, newKey in pairs(renames) do
+        local chars = db.global.characters
+        if chars[oldKey] and not chars[newKey] then
+            chars[newKey] = chars[oldKey]
+            chars[oldKey] = nil
+        elseif chars[oldKey] and chars[newKey] then
+            chars[oldKey] = nil
+        end
+    end
+
+    -- Apply to currencyData.currencies so Gear/Currency lookups match
+    local cd = db.global.currencyData
+    if cd and cd.currencies then
+        for oldKey, newKey in pairs(renames) do
+            if cd.currencies[oldKey] and not cd.currencies[newKey] then
+                cd.currencies[newKey] = cd.currencies[oldKey]
+                cd.currencies[oldKey] = nil
+            elseif cd.currencies[oldKey] then
+                cd.currencies[oldKey] = nil
+            end
+        end
+    end
+
+    db.global.charactersKeyNormalized = true
 end
 
 return MigrationService

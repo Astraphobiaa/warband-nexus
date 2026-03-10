@@ -385,8 +385,9 @@ function WarbandNexus:OnGearEquipmentChanged(slotID)
     end)
 end
 
---- Get stored equipped gear for any tracked character.
----@param charKey string Character key ("Name-Realm")
+--- Get stored equipped gear for a tracked character.
+--- Caller must pass canonical key (Utilities:GetCanonicalCharacterKey / GetCharacterKey).
+---@param charKey string Canonical character key ("Name-Realm", normalized)
 ---@return table|nil { version, lastScan, slots = { [slotID] = { itemID, itemLink, itemLevel, quality, equipLoc, name } } }
 function WarbandNexus:GetEquippedGear(charKey)
     local db = GetDB()
@@ -766,8 +767,90 @@ local UPGRADE_CURRENCY_NAMES = {
     [3347] = "Myth Dawncrest",
 }
 
+-- Weekly cap for Dawncrests when API returns 0 (display = current on hand, not total earned).
+local DAWNCREST_WEEKLY_CAP = 200
+
+--- Crest + gold for Gear tab from GetCurrenciesForUI (same source as Currency tab). No extra API.
+---@param charKey string Character key from UI (dropdown); canonical key used for currency, both keys tried for gold.
+---@return table list { { currencyID, amount, name, icon }, ... }, gold last
+function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
+    local result = {}
+    if not charKey then return result end
+
+    local canonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(charKey)) or charKey
+    local currencyData = self.GetCurrenciesForUI and self:GetCurrenciesForUI() or {}
+    -- #region agent log
+    local L3391 = currencyData[3391]
+    local sampleCharKey = nil
+    if L3391 and L3391.chars then for k in pairs(L3391.chars) do sampleCharKey = k break end end
+    if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+        local q = (L3391 and L3391.chars and (L3391.chars[canonicalKey] ~= nil or L3391.chars[charKey] ~= nil)) and (L3391.chars[canonicalKey] or L3391.chars[charKey]) or "nil"
+        print("|cff00ff00[WN Gear]|r GetGearFromDB charKey=[" .. tostring(charKey) .. "] canonicalKey=[" .. tostring(canonicalKey) .. "] 3391qty=" .. tostring(q))
+    end
+    -- #endregion
+    for _, currencyID in ipairs(UPGRADE_CURRENCY_IDS) do
+        local L = currencyData[currencyID]
+        local qty = (L and L.chars and (L.chars[canonicalKey] ~= nil or L.chars[charKey] ~= nil)) and (L.chars[canonicalKey] or L.chars[charKey]) or 0
+        if type(qty) == "table" then qty = qty.quantity or 0 end
+        qty = tonumber(qty) or 0
+        -- Normalize on read: DB may hold raw total (e.g. 210); display current on hand (e.g. 10) for weekly-cap crests.
+        if qty > DAWNCREST_WEEKLY_CAP then
+            qty = qty - DAWNCREST_WEEKLY_CAP
+            if qty < 0 then qty = 0 end
+        end
+        result[#result + 1] = {
+            currencyID = currencyID,
+            amount     = qty,
+            name       = (L and L.name and L.name ~= "") and L.name or (UPGRADE_CURRENCY_NAMES[currencyID]),
+            icon       = L and (L.icon or L.iconFileID) or nil,
+        }
+    end
+
+    local db = WarbandNexus.db and WarbandNexus.db.global
+    local gold = 0
+    if db and db.characters then
+        local charEntry = db.characters[canonicalKey] or db.characters[charKey]
+        if charEntry and (charEntry.gold or charEntry.silver or charEntry.copper) then
+            gold = (charEntry.gold or 0) * 10000 + (charEntry.silver or 0) * 100 + (charEntry.copper or 0)
+        end
+    end
+    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+    local function norm(k) return (k and k:gsub("%s+", "")) or "" end
+    if norm(canonicalKey) == norm(currentKey) or norm(charKey) == norm(currentKey) then
+        if GetMoney then gold = GetMoney() or 0 end
+    end
+    result[#result + 1] = {
+        currencyID = 0,
+        amount     = math.floor(gold / 10000),
+        name       = "Gold",
+        icon       = 133784,
+        isGold     = true,
+        silver     = math.floor((gold % 10000) / 100),
+        copper     = gold % 100,
+    }
+    return result
+end
+
+---Normalize quantity for capped currencies that may report as (max + current).
+---When value > cap we treat as (cap + current) and use value - cap.
+---@param quantity number|nil
+---@param maxQuantity number|nil
+---@param useTotalEarnedForMaxQty boolean|nil (unused; kept for API compatibility)
+---@return number
+local function NormalizeUpgradeCurrencyQuantity(quantity, maxQuantity, useTotalEarnedForMaxQty)
+    local value = tonumber(quantity) or 0
+    local cap = tonumber(maxQuantity) or 0
+    if cap > 0 and value > cap then
+        value = value - cap
+    end
+    if value < 0 then
+        value = 0
+    end
+    return value
+end
+
 --- Get the player's current quantities of upgrade-relevant currencies.
---- For current character uses C_CurrencyInfo live API so amounts are always real.
+--- Always API-driven: current char = C_CurrencyInfo.GetCurrencyInfo (live); others = GetCurrencyData (CurrencyCacheService DB, updated by API scan and WN_CURRENCY_UPDATED).
 ---@param charKey string
 ---@return table currencies Array of { currencyID, amount, name, icon, isGold? }
 function WarbandNexus:GetGearUpgradeCurrencies(charKey)
@@ -775,7 +858,9 @@ function WarbandNexus:GetGearUpgradeCurrencies(charKey)
     if not charKey then return result end
 
     local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
-    local isCurrentChar = (charKey == currentKey)
+    -- Normalize both keys (strip spaces) so "Name-Realm" and "Name- Realm" match
+    local function norm(k) return (k and k:gsub("%s+", "")) or "" end
+    local isCurrentChar = (norm(charKey) == norm(currentKey))
 
     for _, currencyID in ipairs(UPGRADE_CURRENCY_IDS) do
         local amount, name, icon = 0, UPGRADE_CURRENCY_NAMES[currencyID] or ("Currency " .. currencyID), nil
@@ -783,16 +868,21 @@ function WarbandNexus:GetGearUpgradeCurrencies(charKey)
         if isCurrentChar and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
             local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
             if ok and info then
-                amount = (info.quantity ~= nil) and info.quantity or 0
+                -- Weekly-capped Dawncrests may have maxQuantity=0 and maxWeeklyQuantity=200; use either as cap for normalization
+                local cap = (info.maxQuantity and info.maxQuantity > 0) and info.maxQuantity or (info.maxWeeklyQuantity or 0)
+                amount = NormalizeUpgradeCurrencyQuantity(info.quantity, cap, info.useTotalEarnedForMaxQty)
                 if info.name and info.name ~= "" then name = info.name end
                 icon = info.iconFileID or info.icon
             end
         end
 
-        if not isCurrentChar or not icon then
+        -- For non-current char: use DB. For current char: use DB only for name/icon fallback, never overwrite amount.
+        if not isCurrentChar or not icon or (not name or name == "") then
             local entry = self.GetCurrencyData and self:GetCurrencyData(currencyID, charKey) or nil
             if entry then
-                if amount == 0 and entry.quantity ~= nil then amount = entry.quantity end
+                if not isCurrentChar and entry.quantity ~= nil then
+                    amount = entry.quantity
+                end
                 if (not name or name == "") and entry.name and entry.name ~= "" then name = entry.name end
                 if not icon then icon = entry.iconFileID or entry.icon end
             end

@@ -67,9 +67,10 @@ local SLOT_SIZE      = P(38)
 local SLOT_GAP       = P(5)
 local DOLL_PAD       = P(12)
 local SLOT_TO_TEXT_GAP = P(4)  -- yazı ile ok/slot arası daha sıkı
-local TRACK_TEXT_W   = P(118)  -- "Adventurer 1/6" / "Champion 1/6" tam görünsün diye geniş
+local TRACK_TEXT_W   = P(136)  -- Track metin taşmasını engellemek için genişletildi
 local UPGRADE_ARROW_W = P(16)
-local CURRENCY_RESERVE = P(220)
+local CURRENCY_RESERVE = P(312)
+local CURRENCY_PANEL_W = 280
 local CENTER_GAP     = P(10)
 
 -- Fixed panel widths: sol = yazı + ikon + slot, sağ = slot + ikon + yazı
@@ -204,7 +205,7 @@ end
 
 local function BuildCurrencyAmountMap(charKey)
     local map = {}
-    local currencies = (WarbandNexus.GetGearUpgradeCurrencies and WarbandNexus:GetGearUpgradeCurrencies(charKey)) or {}
+    local currencies = (WarbandNexus.GetGearUpgradeCurrenciesFromDB and WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)) or {}
     for i = 1, #currencies do
         local cur = currencies[i]
         if cur and cur.currencyID ~= nil then
@@ -520,7 +521,7 @@ end
 --- Draw paperdoll: sol panel (yazı-ikon-slot) | orta (model) | sağ panel (slot-ikon-yazı) | alt panel.
 local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar)
     local cardW = card:GetWidth()
-    local contentRight = cardW - CURRENCY_RESERVE
+    local contentRight = cardW - math.max(CURRENCY_RESERVE, CURRENCY_PANEL_W + (CARD_PAD * 2))
 
     -- Sol panel: fixed width; slot sağda (yazı - ikon - slot)
     local leftX = CARD_PAD + LEFT_PANEL_W - SLOT_SIZE
@@ -584,7 +585,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local modelTopY = startY
 
     local centerRef = nil
-    if isCurrentChar then
+    if isCurrentChar == true then
         local ok, m = pcall(function()
             local f = CreateFrame("PlayerModel", nil, card)
             f:SetSize(MODEL_W, MODEL_H)
@@ -663,20 +664,22 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     end
 end
 
-local CURRENCY_PANEL_W = 200
-
 -- Shared icon paths (used by equipment card)
 local UPGRADE_ICON = "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up"
 local LOCK_ICON    = "Interface\\Common\\LockIcon"
 
 --- Full-width Equipped gear card: paperdoll left/center, crests on the right. Returns new yOffset.
-local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts)
+--- charKey: key from dropdown (used for currency/gold lookup; GetGearUpgradeCurrenciesFromDB tries canonical + this).
+--- isCurrentChar: true if selected character is the logged-in one (model vs class portrait).
+local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar)
     local rowStep = SLOT_SIZE + SLOT_GAP
     local numRightRows = 8
     local MODEL_H_DEFAULT = (numRightRows - 1) * rowStep + SLOT_SIZE
     local leftH = DOLL_PAD + 8 * rowStep + SLOT_SIZE + 8 + MODEL_H_DEFAULT + 40
-    local currencies = (WarbandNexus.GetGearUpgradeCurrencies and WarbandNexus:GetGearUpgradeCurrencies(charKey)) or {}
-    local currenciesH = 20 + #currencies * CURRENCY_ROW_H
+    local currencies = (WarbandNexus.GetGearUpgradeCurrenciesFromDB and WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)) or {}
+    local currencyIconSize = 22
+    local rowH = 26
+    local currenciesH = 16 + #currencies * rowH
     local cardH = CARD_PAD + math.max(leftH, currenciesH) + CARD_PAD
 
     local card = CreateCard(parent, cardH)
@@ -687,61 +690,45 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     sectionLabel:SetPoint("TOPLEFT", CARD_PAD, -CARD_PAD)
     sectionLabel:SetText("|cffcccccc" .. "Equipped Gear" .. "|r")
 
-    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
-    DrawPaperDollInCard(card, charData or {}, gearData, upgradeInfo, currencyAmounts, charKey == currentKey)
+    DrawPaperDollInCard(card, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true)
 
-    -- Sağ üst: Seçili karaktere ait crest + gold (currencyAmounts ile upgrade mantığıyla aynı kaynak)
+    -- Sağ: crest/gold ikon + isim + miktar (DB'den, API yok)
+    local currencyPanelW = 240
     local rightPanel = CreateFrame("Frame", nil, card)
-    rightPanel:SetWidth(CURRENCY_PANEL_W)
+    rightPanel:SetWidth(currencyPanelW)
     rightPanel:SetHeight(currenciesH)
     rightPanel:SetPoint("TOPRIGHT", -CARD_PAD, -CARD_PAD - 2)
 
-    local charName = (charData and charData.name and charData.name ~= "") and charData.name or charKey or ""
-    local curTitleStr = (ns.L and ns.L["GEAR_UPGRADE_CURRENCIES"]) or "Upgrade currencies"
-    if charName ~= "" then
-        curTitleStr = charName .. " — " .. curTitleStr
-    end
-    local curTitle = FontManager:CreateFontString(rightPanel, "small", "OVERLAY")
-    curTitle:SetPoint("TOPLEFT", 0, 0)
-    curTitle:SetPoint("RIGHT", 0, 0)
-    curTitle:SetNonSpaceWrap(false)
-    curTitle:SetText("|cffaaaaaa" .. curTitleStr .. "|r")
-
-    local curY = -20
+    local curY = -2
     for _, cur in ipairs(currencies) do
-        local row = CreateFrame("Frame", nil, rightPanel)
-        row:SetHeight(CURRENCY_ROW_H)
-        row:SetPoint("TOPLEFT", 0, curY)
-        row:SetPoint("TOPRIGHT", 0, curY)
-
-        local ico = row:CreateTexture(nil, "ARTWORK")
-        ico:SetSize(20, 20)
-        ico:SetPoint("LEFT", 0, 0)
+        local ico = rightPanel:CreateTexture(nil, "ARTWORK")
+        ico:SetSize(currencyIconSize, currencyIconSize)
+        ico:SetPoint("TOPLEFT", 0, curY)
         ico:SetTexture(cur.icon or "Interface\\Icons\\INV_Misc_Coin_01")
         ico:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-        local nameText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        nameText:SetPoint("LEFT", 26, 0)
-        nameText:SetPoint("RIGHT", -50, 0)
+        local nameStr = (cur.name and cur.name ~= "") and cur.name or (cur.isGold and "Gold" or "")
+        local textW = currencyPanelW - currencyIconSize - 14
+        local nameText = FontManager:CreateFontString(rightPanel, "small", "OVERLAY")
+        nameText:SetPoint("LEFT", ico, "RIGHT", 6, 0)
+        nameText:SetWidth(textW)
         nameText:SetJustifyH("LEFT")
         nameText:SetNonSpaceWrap(false)
-        nameText:SetText(cur.name or ("Currency " .. tostring(cur.currencyID or "?")))
-        nameText:SetTextColor(0.9, 0.9, 0.9)
+        nameText:SetText("|cffb0b0b0" .. (nameStr or "") .. "|r")
 
-        -- Miktar: upgrade mantığıyla aynı kaynak (currencyAmounts); gold için cur listesi (FormatGold için bakır)
-        local amountText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        amountText:SetPoint("RIGHT", 0, 0)
-        amountText:SetJustifyH("RIGHT")
+        local amountText = FontManager:CreateFontString(rightPanel, "small", "OVERLAY")
+        amountText:SetPoint("LEFT", ico, "RIGHT", 6, -12)
+        amountText:SetWidth(textW)
+        amountText:SetJustifyH("LEFT")
         if cur.isGold then
             local copper = (cur.amount or 0) * 10000 + (cur.silver or 0) * 100 + (cur.copper or 0)
             amountText:SetText(FormatGold and FormatGold(copper) or (tostring(cur.amount or 0) .. "g"))
             amountText:SetTextColor(1, 0.85, 0.4)
         else
-            local amt = (currencyAmounts and cur.currencyID ~= nil and currencyAmounts[cur.currencyID] ~= nil) and currencyAmounts[cur.currencyID] or (cur.amount or 0)
+            local amt = cur.amount or 0
             amountText:SetText("|cffffd700" .. (FormatNumber and FormatNumber(amt) or tostring(amt)) .. "|r")
         end
-
-        curY = curY - CURRENCY_ROW_H
+        curY = curY - rowH
     end
 
     card:Show()
@@ -1263,6 +1250,11 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             entryHi:SetColorTexture(1, 1, 1, 0.1)
 
             entryBtn:SetScript("OnClick", function()
+                -- #region agent log
+                if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+                    print("|cff00ff00[WN Gear]|r selector click cKey=" .. tostring(cKey) .. " len=" .. tostring(cKey and #cKey or 0))
+                end
+                -- #endregion
                 selectedCharKey = cKey
                 SetLabelToChar(cKey)
                 menu:Hide()
@@ -1333,6 +1325,9 @@ function WarbandNexus:DrawGearTab(parent)
         end
     end
 
+    -- Standard: use canonical key (normalized) for all DB/service calls so currency, gear, gold match.
+    local canonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+
     local allChars = GetTrackedCharacters()
     if #allChars == 0 then
         local height = DrawEmptyState and DrawEmptyState(parent,
@@ -1372,30 +1367,34 @@ function WarbandNexus:DrawGearTab(parent)
 
     yOffset = yOffset - 88 - 12  -- card height + gap
 
-    -- ── Data retrieval ────────────────────────────────────────────────────────
+    -- ── Data retrieval (all by canonical key) ──────────────────────────────────
     local db        = self.db and self.db.global
-    local charData  = db and db.characters and db.characters[charKey]
-    local gearData  = (self.GetEquippedGear and self:GetEquippedGear(charKey)) or nil
+    local charData  = db and (db.characters[canonicalKey] or db.characters[charKey])
+    local gearData  = (self.GetEquippedGear and self:GetEquippedGear(canonicalKey)) or nil
+    -- #region agent log
+    do
+        local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or ""
+        if self.db and self.db.profile and self.db.profile.debugMode then
+            local hasChar = (charData ~= nil) and "yes" or "no"
+            local keysMatch = (canonicalKey == currentKey) and "yes" or "no"
+            print("|cff00ff00[WN Gear]|r charKey=[" .. tostring(charKey) .. "] canonicalKey=[" .. tostring(canonicalKey) .. "] hasCharData=" .. hasChar .. " exactMatch=" .. keysMatch)
+        end
+    end
+    -- #endregion
 
-    -- Upgrade info: live API for current char, persisted data for alts
-    local upgradeInfo = {}
     local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
-    if charKey == currentKey then
+    local upgradeInfo = {}
+    if canonicalKey == currentKey then
         upgradeInfo = (self.GetGearUpgradeInfo and self:GetGearUpgradeInfo()) or {}
     else
-        upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(charKey)) or {}
+        upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(canonicalKey)) or {}
     end
 
     local currencyAmounts = BuildCurrencyAmountMap(charKey)
 
-    -- 1) Equipped gear card: paperdoll + crests inside same card
-    yOffset = DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts)
-
-    -- 2) Equipment list: "Head - Veteran 6/6" with upgrade icon if upgradable
-    yOffset = DrawEquipmentCard(parent, yOffset, gearData, charKey, upgradeInfo, currencyAmounts)
-
-    -- 3) Storage upgrades (collapsible)
-    local storageFinds = (self.FindGearStorageUpgrades and self:FindGearStorageUpgrades(charKey)) or {}
+    yOffset = DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, canonicalKey == currentKey)
+    yOffset = DrawEquipmentCard(parent, yOffset, gearData, canonicalKey, upgradeInfo, currencyAmounts)
+    local storageFinds = (self.FindGearStorageUpgrades and self:FindGearStorageUpgrades(canonicalKey)) or {}
     yOffset = DrawStorageSection(parent, yOffset, storageFinds, gearData)
 
     yOffset = yOffset - 12
