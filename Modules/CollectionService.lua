@@ -3238,19 +3238,8 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             })
         end
         
-        -- Auto-refresh UI after scan complete
-        C_Timer.After(0.5, function()
-            if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
-                local mainFrame = WarbandNexus.UI.mainFrame
-                if mainFrame:IsShown() then
-                    local tab = mainFrame.currentTab
-                    if (tab == "plans" and WarbandNexus:IsStillOnTab("plans")) or tab == "collections" then
-    DebugPrint("|cff00ccff[WN CollectionService]|r Auto-refreshing UI after " .. collectionType .. " scan complete...")
-                        WarbandNexus:RefreshUI()
-                    end
-                end
-            end
-        end)
+        -- UI refreshes via WN_COLLECTION_SCAN_COMPLETE listener in UI.lua (event-driven).
+        
     end)
     
     -- Store coroutine
@@ -4017,20 +4006,7 @@ function WarbandNexus:ScanAchievementsAsync()
             elapsed = elapsed,
         })
         
-        -- Force UI refresh after short delay (Plans + Collections achievements tab)
-        C_Timer.After(0.5, function()
-            if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
-                local mainFrame = WarbandNexus.UI.mainFrame
-                if mainFrame:IsShown() then
-                    if mainFrame.currentTab == "plans" and WarbandNexus:IsStillOnTab("plans") then
-    DebugPrint("|cff00ccff[WN CollectionService]|r Auto-refreshing UI after scan complete...")
-                        WarbandNexus:RefreshUI()
-                    elseif mainFrame.currentTab == "collections" then
-                        WarbandNexus:RefreshUI()
-                    end
-                end
-            end
-        end)
+        -- UI refreshes via WN_COLLECTION_SCAN_COMPLETE listener in UI.lua (event-driven).
         
         -- Cleanup
         activeCoroutines["achievements"] = nil

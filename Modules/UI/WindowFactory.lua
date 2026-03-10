@@ -178,8 +178,15 @@ local function CreateExternalWindow(config)
         end
     end)
     
-    -- Close function
+    -- Close function (onClose called once here only; OnHide must not call it again)
     local function CloseDialog()
+        local overlay = dialog._clickOutsideFrame
+        if overlay then
+            overlay:Hide()
+            overlay:SetParent(nil)
+            overlay:SetScript("OnMouseDown", nil)
+            dialog._clickOutsideFrame = nil
+        end
         if config.onClose then
             config.onClose()
         end
@@ -195,8 +202,9 @@ local function CreateExternalWindow(config)
     contentFrame:SetPoint("TOPLEFT", 8, -53) -- Below header
     contentFrame:SetPoint("BOTTOMRIGHT", -8, 8)
     
-    -- Click outside to close (using OnUpdate to detect clicks)
+    -- Click-outside overlay (released in CloseDialog to avoid frame buildup)
     local clickOutsideFrame = CreateFrame("Frame", nil, UIParent)
+    dialog._clickOutsideFrame = clickOutsideFrame
     clickOutsideFrame:SetAllPoints()
     clickOutsideFrame:SetFrameStrata("FULLSCREEN_DIALOG")
     clickOutsideFrame:SetFrameLevel(99) -- Just below dialog
@@ -205,11 +213,10 @@ local function CreateExternalWindow(config)
         CloseDialog()
     end)
     
-    -- Hide click outside frame when dialog is hidden
+    -- OnHide: only hide overlay (do NOT call onClose — CloseDialog already did)
     dialog:SetScript("OnHide", function()
-        clickOutsideFrame:Hide()
-        if config.onClose then
-            config.onClose()
+        if dialog._clickOutsideFrame then
+            dialog._clickOutsideFrame:Hide()
         end
     end)
     

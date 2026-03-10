@@ -1068,6 +1068,13 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
+    -- Collection scan complete (plans/collections tab): skip cooldown so scan results show immediately
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
+        if f and f:IsShown() and (f.currentTab == "plans" or f.currentTab == "collections") then
+            SchedulePopulateContent(true)
+        end
+    end)
+    
     -- Profession tab: skip cooldown so concentration/knowledge/recipe updates always refresh (no stale data)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "professions" then

@@ -158,13 +158,8 @@ function WarbandNexus:ScanGuildBank()
     
     LogOperation("Guild Bank Scan", "Finished", self.currentTrigger or "Manual")
     
-    -- CRITICAL: Send message to update UI (same as personal bank)
+    -- Event-driven UI update (UI listens to WN_ITEMS_UPDATED)
     self:SendMessage("WN_ITEMS_UPDATED")
-    
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
     
     return true
 end

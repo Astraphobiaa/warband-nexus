@@ -168,12 +168,13 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if LT then LT:Complete("character") end
         end)
         
-        -- STEP 8: Trigger UI refresh (show collected data)
+        -- STEP 8: Notify UI to refresh (event-driven; UI listens for WN_CHARACTER_UPDATED)
         C_Timer.After(2.2, function()
             local function doStep8()
                 local addonInstance = _G.WarbandNexus or addon
-                if addonInstance and addonInstance.RefreshUI then
-                    addonInstance:RefreshUI()
+                if addonInstance and addonInstance.SendMessage then
+                    local ev = (ns.Constants and ns.Constants.EVENTS and ns.Constants.EVENTS.CHARACTER_UPDATED) or "WN_CHARACTER_UPDATED"
+                    addonInstance:SendMessage(ev, { charKey = charKey })
                 end
             end
             if SafeInit then SafeInit(doStep8, "PostConfirm:UIRefresh") else doStep8() end
@@ -251,10 +252,11 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                 addonInstance:SaveCharacter()  -- Will call SaveMinimalCharacterData
             end
             
-            -- Refresh UI to show minimal data
+            -- Notify UI to refresh (event-driven; UI listens for WN_CHARACTER_UPDATED)
             C_Timer.After(0.5, function()
-                if addonInstance and addonInstance.RefreshUI then
-                    addonInstance:RefreshUI()
+                if addonInstance and addonInstance.SendMessage then
+                    local ev = (ns.Constants and ns.Constants.EVENTS and ns.Constants.EVENTS.CHARACTER_UPDATED) or "WN_CHARACTER_UPDATED"
+                    addonInstance:SendMessage(ev, { charKey = ns.Utilities and ns.Utilities:GetCharacterKey() })
                 end
             end)
         end)

@@ -1020,6 +1020,10 @@ end
 -- CHARACTER SELECTOR  (dropdown button)
 -- ============================================================================
 
+-- Singleton dropdown frames (reused to avoid frame buildup)
+local gearCharDropdownMenu = nil
+local gearCharDropdownBg   = nil
+
 local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     local chars  = GetTrackedCharacters()
     if #chars == 0 then return nil, yOffset end
@@ -1070,41 +1074,54 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
 
     SetLabelToChar(currentCharKey)
 
-    -- Dropdown menu (parent UIParent so not clipped by scroll; position from button)
+    -- Dropdown: reuse singleton menu and bg to avoid frame buildup
     btn:SetScript("OnClick", function(self)
-        local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        menu:SetFrameStrata("FULLSCREEN_DIALOG")
-        menu:SetFrameLevel(500)
-        menu:SetWidth(220)
-        menu:SetBackdrop({
-            bgFile   = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            edgeSize = 1,
-            insets   = { left = 0, right = 0, top = 0, bottom = 0 },
-        })
-        menu:SetBackdropColor(0.06, 0.06, 0.10, 0.98)
-        menu:SetBackdropBorderColor(accent[1]*0.5, accent[2]*0.5, accent[3]*0.5, 0.9)
+        local menu = gearCharDropdownMenu
+        local bg   = gearCharDropdownBg
 
-        -- Close on outside click
-        local bg = CreateFrame("Button", nil, UIParent)
-        bg:SetAllPoints()
-        bg:SetFrameStrata("FULLSCREEN_DIALOG")
-        bg:SetFrameLevel(499)
-        bg:SetScript("OnClick", function()
-            menu:Hide()
-            bg:Hide()
-            if WarbandNexus and WarbandNexus.PopulateContent then
-                WarbandNexus:PopulateContent()
-            end
-        end)
-        bg:Show()
+        if not menu then
+            menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+            menu:SetFrameStrata("FULLSCREEN_DIALOG")
+            menu:SetFrameLevel(500)
+            menu:SetWidth(220)
+            menu:SetBackdrop({
+                bgFile   = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+                insets   = { left = 0, right = 0, top = 0, bottom = 0 },
+            })
+            menu:SetBackdropColor(0.06, 0.06, 0.10, 0.98)
+            menu:SetBackdropBorderColor(accent[1]*0.5, accent[2]*0.5, accent[3]*0.5, 0.9)
+            gearCharDropdownMenu = menu
+        end
+        if not bg then
+            bg = CreateFrame("Button", nil, UIParent)
+            bg:SetAllPoints()
+            bg:SetFrameStrata("FULLSCREEN_DIALOG")
+            bg:SetFrameLevel(499)
+            bg:SetScript("OnClick", function()
+                menu:Hide()
+                bg:Hide()
+                if WarbandNexus and WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end)
+            gearCharDropdownBg = bg
+        end
 
-        local menuH = #chars * 26 + 8
-        menu:SetHeight(menuH)
+        -- Clear previous entries
+        local children = { menu:GetChildren() }
+        for i = 1, #children do
+            children[i]:Hide()
+            children[i]:SetParent(nil)
+        end
+
+        menu:SetHeight(#chars * 26 + 8)
         menu:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
 
         local entryY = -4
-        for _, charEntry in ipairs(chars) do
+        for i = 1, #chars do
+            local charEntry = chars[i]
             local entryBtn = CreateFrame("Button", nil, menu)
             entryBtn:SetHeight(24)
             entryBtn:SetPoint("TOPLEFT",  4, entryY)
@@ -1121,7 +1138,6 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             entryLabel:SetText("|cff" .. hex .. (cData.name or cKey) .. "|r"
                 .. " |cff444444" .. (cData.realm or "") .. "|r")
 
-            -- Highlight current selection
             if cKey == currentCharKey then
                 entryLabel:SetTextColor(accent[1] + 0.2, accent[2] + 0.2, accent[3] + 0.2)
             end
@@ -1135,17 +1151,15 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
                 SetLabelToChar(cKey)
                 menu:Hide()
                 bg:Hide()
-                if WarbandNexus then
+                if WarbandNexus and WarbandNexus.RefreshUI then
                     WarbandNexus:RefreshUI()
-                    if WarbandNexus.PopulateContent then
-                        WarbandNexus:PopulateContent()
-                    end
                 end
             end)
 
             entryY = entryY - 26
         end
 
+        bg:Show()
         menu:Show()
     end)
 
