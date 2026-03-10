@@ -1667,9 +1667,15 @@ function WarbandNexus:CollectPvEData()
     end
     
     -- ===== CHECK FOR UNCLAIMED VAULT REWARDS =====
-    -- Only true when API reports rewards AND current-week activities exist (avoids post-season stale true).
+    -- Use AreRewardsForCurrentRewardPeriod/CanClaimRewards when available (Midnight+); avoids post-season stale.
     if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
         local has = C_WeeklyRewards.HasAvailableRewards()
+        if has and C_WeeklyRewards.AreRewardsForCurrentRewardPeriod and not C_WeeklyRewards.AreRewardsForCurrentRewardPeriod() then
+            has = false
+        end
+        if has and C_WeeklyRewards.CanClaimRewards and not C_WeeklyRewards.CanClaimRewards() then
+            has = false
+        end
         if has and C_WeeklyRewards.GetActivities then
             local activities = C_WeeklyRewards.GetActivities()
             if not activities or #activities == 0 then
@@ -1974,9 +1980,15 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
             end
         end
         
-        -- Check for unclaimed rewards (only when current-week activities exist; avoids post-season stale)
+        -- Check for unclaimed rewards (current period + claimable when APIs available; avoids post-season stale)
         if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
             local has = C_WeeklyRewards.HasAvailableRewards()
+            if has and C_WeeklyRewards.AreRewardsForCurrentRewardPeriod and not C_WeeklyRewards.AreRewardsForCurrentRewardPeriod() then
+                has = false
+            end
+            if has and C_WeeklyRewards.CanClaimRewards and not C_WeeklyRewards.CanClaimRewards() then
+                has = false
+            end
             if has and C_WeeklyRewards.GetActivities then
                 local activities = C_WeeklyRewards.GetActivities()
                 if not activities or #activities == 0 then

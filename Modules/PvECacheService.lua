@@ -377,8 +377,8 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
 end
 
 ---Update Great Vault reward availability
----Only sets hasAvailableRewards when both HasAvailableRewards() and current-week
----activities are present; avoids stale true after season end (expired rewards).
+---Only sets hasAvailableRewards when rewards are for current period and claimable
+---(uses AreRewardsForCurrentRewardPeriod/CanClaimRewards when available; avoids post-season stale true).
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateGreatVaultRewards(charKey)
     -- GUARD: Only update if character is tracked
@@ -389,10 +389,16 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey)
     if not C_WeeklyRewards or not charKey or not self.db.global.pveCache then return end
     
     local hasAvailable = false
-    if C_WeeklyRewards.GetActivities then
-        local activities = C_WeeklyRewards.GetActivities()
-        if activities and #activities > 0 and C_WeeklyRewards.HasAvailableRewards() then
-            hasAvailable = true
+    if C_WeeklyRewards.HasAvailableRewards and C_WeeklyRewards.HasAvailableRewards() then
+        if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod and not C_WeeklyRewards.AreRewardsForCurrentRewardPeriod() then
+            hasAvailable = false
+        elseif C_WeeklyRewards.CanClaimRewards and not C_WeeklyRewards.CanClaimRewards() then
+            hasAvailable = false
+        elseif C_WeeklyRewards.GetActivities then
+            local activities = C_WeeklyRewards.GetActivities()
+            if activities and #activities > 0 then
+                hasAvailable = true
+            end
         end
     end
     
@@ -401,7 +407,7 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey)
     end
     
     self.db.global.pveCache.greatVault.rewards[charKey] = {
-        hasAvailableRewards = hasAvailable or false,
+        hasAvailableRewards = hasAvailable,
         lastUpdate = time(),
     }
 end

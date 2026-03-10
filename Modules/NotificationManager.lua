@@ -1605,10 +1605,9 @@ end
     VAULT REMINDER
 ============================================================================]]
 
----Check if player has unclaimed vault rewards
----Only returns true when the API reports rewards AND current-week activities exist.
----After season end, HasAvailableRewards() can stay true for expired rewards while
----GetActivities() returns empty; we avoid false "vault full" reminders in that case.
+---Check if player has unclaimed vault rewards for the *current* reward period.
+---Uses AreRewardsForCurrentRewardPeriod() and CanClaimRewards() when available (Midnight+)
+---so expired/previous-period rewards do not trigger the reminder.
 ---@return boolean hasRewards
 function WarbandNexus:HasUnclaimedVaultRewards()
     if not C_WeeklyRewards or not C_WeeklyRewards.HasAvailableRewards then
@@ -1617,7 +1616,20 @@ function WarbandNexus:HasUnclaimedVaultRewards()
     if not C_WeeklyRewards.HasAvailableRewards() then
         return false
     end
-    -- Require current-week activity data; empty activities often mean post-season stale state
+    -- Midnight+: only current period and actually claimable
+    if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod then
+        local isCurrent = C_WeeklyRewards.AreRewardsForCurrentRewardPeriod()
+        if not isCurrent then
+            return false
+        end
+    end
+    if C_WeeklyRewards.CanClaimRewards then
+        local canClaim = C_WeeklyRewards.CanClaimRewards()
+        if not canClaim then
+            return false
+        end
+    end
+    -- Fallback: require activity data when new APIs not present
     local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
     if not activities or #activities == 0 then
         return false
@@ -1667,20 +1679,50 @@ function WarbandNexus:CheckNotificationsOnLogin()
         })
     end
     
-    -- 2. Check for vault rewards (only when current-week activities exist; avoids post-season false positive)
+    -- 2. Check for vault rewards (only current reward period + claimable; uses AreRewardsForCurrentRewardPeriod/CanClaimRewards when available)
     if notifs.showVaultReminder then
-        -- Small delay to ensure C_WeeklyRewards API is stable
         C_Timer.After(0.5, function()
-            if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
-                local hasRewards = C_WeeklyRewards.HasAvailableRewards()
-                if hasRewards then
-                    local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
-                    if activities and #activities > 0 then
-                        QueueNotification({
-                            type = "vault",
-                            data = {}
-                        })
-                    end
+            if not C_WeeklyRewards then
+                self:Print("|cff888888[Vault]|r C_WeeklyRewards = nil")
+                return
+            end
+            local hasRewards = C_WeeklyRewards.HasAvailableRewards and C_WeeklyRewards.HasAvailableRewards()
+            local isCurrentPeriod = true
+            if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod then
+                isCurrentPeriod = C_WeeklyRewards.AreRewardsForCurrentRewardPeriod()
+            end
+            local canClaim = true
+            if C_WeeklyRewards.CanClaimRewards then
+                canClaim = C_WeeklyRewards.CanClaimRewards()
+            end
+            local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
+            local activityCount = activities and #activities or 0
+            local secsUntilReset = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and C_DateAndTime.GetSecondsUntilWeeklyReset()) or nil
+            self:Print(string.format("|cff00ccff[Vault]|r HasAvailableRewards=%s | isCurrentPeriod=%s | canClaim=%s | activities=%s | secsUntilReset=%s",
+                tostring(hasRewards), tostring(isCurrentPeriod), tostring(canClaim), tostring(activityCount), secsUntilReset and tostring(secsUntilReset) or "n/a"))
+            if activities and activityCount > 0 then
+                local a1 = activities[1]
+                if a1 then
+                    self:Print(string.format("|cff00ccff[Vault]|r First activity: type=%s progress=%s threshold=%s",
+                        tostring(a1.type), tostring(a1.progress), tostring(a1.threshold)))
+                end
+            end
+            local shouldShow = hasRewards and isCurrentPeriod and canClaim and activities and activityCount > 0
+            if shouldShow then
+                self:Print("|cff00ccff[Vault]|r Showing reminder (current period, claimable).")
+                QueueNotification({
+                    type = "vault",
+                    data = {}
+                })
+            else
+                if not hasRewards then
+                    self:Print("|cff888888[Vault]|r NOT showing: HasAvailableRewards=false.")
+                elseif not isCurrentPeriod then
+                    self:Print("|cff888888[Vault]|r NOT showing: rewards not for current period (e.g. expired/old season).")
+                elseif not canClaim then
+                    self:Print("|cff888888[Vault]|r NOT showing: CanClaimRewards=false.")
+                else
+                    self:Print("|cff888888[Vault]|r NOT showing: no activities.")
                 end
             end
         end)
@@ -1961,12 +2003,21 @@ function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
         if shouldHide then
             AchievementAlertSystem.AddAlert = function(sys, a1, a2, ...)
                 local hasExtra = (a2 ~= nil) or (select("#", ...) > 0)
-                -- Full achievement earned: suppress Blizzard, we show ours via ACHIEVEMENT_EARNED/OnCollectibleObtained
+                -- Full achievement: show ours when "Replace" is on; if we don't show (e.g. notifications off), fallback to Blizzard next frame
                 if not hasExtra and type(a1) == "number" then
+                    local arg1, arg2 = a1, a2
+                    if WarbandNexus.ShowAchievementNotification then
+                        WarbandNexus:ShowAchievementNotification(a1)
+                    end
+                    C_Timer.After(0, function()
+                        if not ns.achievementNotificationShown then
+                            pcall(orig, sys, arg1, arg2)
+                        end
+                        ns.achievementNotificationShown = nil
+                    end)
                     return
                 end
                 -- Progressive achievement (e.g. Treasures of X): one step done → "Achievement Progress" toast.
-                -- Suppress Blizzard's, show only our criteria progress toast.
                 if hasExtra and type(a1) == "number" then
                     WarbandNexus:ShowCriteriaProgressNotification(a1, a2)
                     C_Timer.After(0, HideVisibleBlizzardCriteriaFramesOnly)
@@ -2200,6 +2251,10 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     -- Attach achievement ID so click handler can open the achievement UI
     if data.type == "achievement" and data.id then
         overrides.achievementID = data.id
+    end
+    -- So AddAlert hook fallback knows we showed ours (don't show Blizzard)
+    if data.type == "achievement" then
+        ns.achievementNotificationShown = true
     end
     self:Notify(data.type, displayName, data.icon, overrides)
     
@@ -2927,16 +2982,21 @@ function WarbandNexus:TestVaultCheck()
         self:Print("|cff00ff00âœ“ HasAvailableRewards function available|r")
     end
     
-    -- Check rewards
+    -- Check rewards and current-period/claimable APIs
     local hasRewards = C_WeeklyRewards.HasAvailableRewards()
-    self:Print("Result: " .. tostring(hasRewards))
-    
-    if hasRewards then
+    local isCurrent = (C_WeeklyRewards.AreRewardsForCurrentRewardPeriod and C_WeeklyRewards.AreRewardsForCurrentRewardPeriod()) or nil
+    local canClaim = (C_WeeklyRewards.CanClaimRewards and C_WeeklyRewards.CanClaimRewards()) or nil
+    local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
+    local count = activities and #activities or 0
+    self:Print(string.format("HasAvailableRewards=%s | AreRewardsForCurrentRewardPeriod=%s | CanClaimRewards=%s | GetActivities count=%s",
+        tostring(hasRewards), tostring(isCurrent), tostring(canClaim), tostring(count)))
+    local wouldShow = self:HasUnclaimedVaultRewards()
+    self:Print("HasUnclaimedVaultRewards() (would show reminder): " .. tostring(wouldShow))
+    if wouldShow then
         self:Print("|cff00ff00âœ“ YOU HAVE UNCLAIMED REWARDS!|r")
-        self:Print("Showing vault notification...")
         self:ShowVaultReminder({})
     else
-        self:Print("|cff888888âœ— No unclaimed rewards|r")
+        self:Print("|cff888888âœ— No unclaimed (or not current period / not claimable)|r")
     end
     
     self:Print("|cff00ccff======================|r")

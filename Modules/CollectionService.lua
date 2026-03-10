@@ -2048,18 +2048,37 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     end
     
     -- Notify UI so Collections tab updates immediately (achievement earned).
-    -- No full cache invalidation needed: the earned achievement was already removed from
-    -- uncollected and marked collected above; chained achievement was inserted directly.
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "achievement")
     end
+    -- When "Replace Achievement Popup" is OFF: we don't hook AddAlert, so send WN_COLLECTIBLE_OBTAINED here so Plans/TryCounter/cache get the event. When ON: hook sends it via ShowAchievementNotification.
+    local hideBlizzard = self.db and self.db.profile and self.db.profile.notifications and self.db.profile.notifications.hideBlizzardAchievementAlert
+    if not hideBlizzard then
+        local ok, _, achName, _, _, _, _, _, _, _, achIcon = pcall(GetAchievementInfo, achievementID)
+        if not ok then achName = nil; achIcon = nil end
+        if issecretvalue then
+            if achName and issecretvalue(achName) then achName = nil end
+            if achIcon and issecretvalue(achIcon) then achIcon = nil end
+        end
+        local displayName = achName or ((ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement")
+        local displayIcon = achIcon
+        MarkAsPermanentlyNotified("achievement", achievementID)
+        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+            type = "achievement",
+            id = achievementID,
+            name = displayName,
+            icon = displayIcon
+        })
+    end
+end
 
-    -- Fire collectible obtained notification for the completed achievement
-    -- This shows a toast notification (gated by showLootNotifications in NotificationManager)
-    -- Hidden achievements: WoW may return nil or secret value from GetAchievementInfo; still show a notification with fallback text.
+---Called from AddAlert hook when "Replace Achievement Popup" is on. Builds payload, marks notified, sends WN_COLLECTIBLE_OBTAINED. If we don't show (e.g. notifications off), Blizzard popup is shown as fallback by the hook.
+---@param achievementID number
+function WarbandNexus:ShowAchievementNotification(achievementID)
+    if not achievementID or type(achievementID) ~= "number" then return end
+    if issecretvalue and issecretvalue(achievementID) then return end
     local ok, _, achName, _, _, _, _, _, _, _, achIcon = pcall(GetAchievementInfo, achievementID)
     if not ok then achName = nil; achIcon = nil end
-    -- Midnight 12.0: return values may be secret during instanced combat
     if issecretvalue then
         if achName and issecretvalue(achName) then achName = nil end
         if achIcon and issecretvalue(achIcon) then achIcon = nil end
@@ -2068,7 +2087,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     local displayIcon = achIcon
     if not displayName or displayName == "" then
         displayName = (ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement"
-        displayIcon = nil  -- NotificationManager will use CATEGORY_ICONS.achievement
+        displayIcon = nil
     end
     MarkAsPermanentlyNotified("achievement", achievementID)
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
