@@ -85,6 +85,9 @@ local visibleCurrencyIDs = {}             -- [currencyID] = true
 
 ---Normalize API quantity for currencies that expose "total earned" style values.
 ---Some capped currencies report (max + current); we want display = current on hand.
+-- Dawncrest currency IDs (both old 3391/3342 and current 3383/3341) for cap/normalization checks.
+local DAWNCREST_IDS = { [3383]=true, [3341]=true, [3343]=true, [3345]=true, [3347]=true, [3391]=true, [3342]=true }
+
 ---When quantity > maxQuantity we treat as (cap + current) and use quantity - cap.
 ---@param rawQuantity number|nil
 ---@param maxQuantity number|nil
@@ -330,14 +333,16 @@ local function FetchCurrencyFromAPI(currencyID)
     if not info or not info.name then return nil end
     local maxQ = info.maxQuantity or 0
     local maxWeekly = info.maxWeeklyQuantity or 0
-    -- Weekly-capped currencies (e.g. Dawncrests) may have maxQuantity=0 and maxWeeklyQuantity=200; use either for normalization
+    -- Weekly-capped currencies (e.g. Dawncrests): game UI shows e.g. 30/200; use API cap or 200 fallback.
     local cap = (maxQ > 0) and maxQ or maxWeekly
-    -- Fallback: Dawncrests are 200/week; if API returns 0, normalize using 200 so we don't store 210
-    if cap == 0 and (currencyID == 3391 or currencyID == 3342 or currencyID == 3343 or currencyID == 3345 or currencyID == 3347) then
+    if cap == 0 and DAWNCREST_IDS[currencyID] then
         cap = 200
     end
     local normalizedQuantity = NormalizeQuantity(info.quantity, cap, info.useTotalEarnedForMaxQty)
-    
+    -- Dawncrests: game often shows quantityEarnedThisWeek as "current"; prefer it when set so Gear matches Currency tab (30 vs 70).
+    if DAWNCREST_IDS[currencyID] and info.quantityEarnedThisWeek ~= nil and type(info.quantityEarnedThisWeek) == "number" then
+        normalizedQuantity = info.quantityEarnedThisWeek
+    end
     return {
         currencyID = currencyID,
         quantity = normalizedQuantity,
@@ -345,7 +350,7 @@ local function FetchCurrencyFromAPI(currencyID)
         isDiscovered = info.isDiscovered or false,
         isAccountWide = info.isAccountWide or false,
         isAccountTransferable = info.isAccountTransferable or false,
-        maxQuantity = cap,  -- effective cap for display (e.g. 10/200)
+        maxQuantity = cap,  -- effective cap for display (e.g. 30/100)
         useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty or false,
     }
 end
@@ -905,7 +910,9 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     if not charKey then return nil end
     
     local quantity = nil
-    local isCurrentChar = (ns.Utilities and ns.Utilities.GetCharacterKey and charKey == ns.Utilities:GetCharacterKey())
+    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+    local function norm(k) return (k and k:gsub("%s+", "")) or "" end
+    local isCurrentChar = (currentKey and norm(charKey) == norm(currentKey))
 
     -- Current character: always fetch live from API so we never show stale DB/dummy data
     if isCurrentChar then
@@ -1030,7 +1037,7 @@ function WarbandNexus:GetCurrenciesForUI()
         end
     end
     -- Gear tab uses same data; ensure upgrade crests are always in the union.
-    for _, id in ipairs({ 3391, 3342, 3343, 3345, 3347 }) do
+    for id in pairs(DAWNCREST_IDS) do
         currencyIDSet[id] = true
     end
 
@@ -1046,7 +1053,7 @@ function WarbandNexus:GetCurrenciesForUI()
         }
         entry.chars = {}
         local total, maxQty = 0, 0
-        local dawncrestCap = (currencyID == 3391 or currencyID == 3342 or currencyID == 3343 or currencyID == 3345 or currencyID == 3347) and 200 or nil
+        local dawncrestCap = DAWNCREST_IDS[currencyID] and 200 or nil
         for charKey in pairs(trackedCharKeys) do
             local charData = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
             local canonicalKey = (ns.Utilities and type(charData) == "table" and charData.name and charData.realm) and ns.Utilities:GetCharacterKey(charData.name, charData.realm) or charKey
@@ -1056,14 +1063,8 @@ function WarbandNexus:GetCurrenciesForUI()
             if type(stored) == "number" then qty = stored
             elseif type(stored) == "table" then qty = stored.quantity or 0 end
 
-            if currentCharKey and canonicalKey == currentCharKey then
-                local liveData = FetchCurrencyFromAPI(currencyID)
-                if liveData and liveData.quantity ~= nil then
-                    qty = liveData.quantity
-                    if not db.currencies[canonicalKey] then db.currencies[canonicalKey] = {} end
-                    db.currencies[canonicalKey][currencyID] = qty
-                end
-            end
+            -- No API here: use only stored DB (same source for Currency tab and Gear tab).
+            -- DB is updated by scans and CURRENCY_DISPLAY_UPDATE in this service.
 
             if dawncrestCap and qty > dawncrestCap then
                 qty = qty - dawncrestCap

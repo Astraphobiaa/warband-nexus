@@ -143,9 +143,6 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     row:SetSize(rowWidth, ROW_HEIGHT)  -- Set exact row width
     row:SetPoint("TOPLEFT", indent, -yOffset)  -- Position at indent
     
-    -- Ensure alpha is reset (pooling safety)
-    row:SetAlpha(1)
-    
     -- Set alternating background colors
     local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
     local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
@@ -170,16 +167,23 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     
     if not hasQuantity then
         row.icon:SetAlpha(0.4)
+        row:SetAlpha(0.65)
     else
         row.icon:SetAlpha(1)
+        row:SetAlpha(1)
     end
     
+    local zeroAlpha = 0.5  -- Title and value alpha when quantity is 0
+    
     -- Name only (no character suffix)
-    row.nameText:SetWidth(rowWidth - 200)
+    row.nameText:SetWidth(rowWidth - 280)
     local displayName = currency.name or ((ns.L and ns.L["CURRENCY_UNKNOWN"]) or "Unknown Currency")
     row.nameText:SetText(displayName)
-    -- Color set by pooling reset (white), but confirm:
-    row.nameText:SetTextColor(1, 1, 1) -- Always white per StorageUI style
+    if hasQuantity then
+        row.nameText:SetTextColor(1, 1, 1, 1)
+    else
+        row.nameText:SetTextColor(1, 1, 1, zeroAlpha)
+    end
     
     -- Character Badge (separate column, like ReputationUI)
     if currency.characterName then
@@ -187,9 +191,14 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
             row.badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
             row.badgeText:SetPoint("LEFT", 302, 0)  -- Same position as ReputationUI
             row.badgeText:SetJustifyH("LEFT")
-            row.badgeText:SetWidth(200)
+            row.badgeText:SetWidth(280)
         end
         row.badgeText:SetText(currency.characterName)
+        if hasQuantity then
+            row.badgeText:SetTextColor(1, 1, 1, 1)
+        else
+            row.badgeText:SetTextColor(1, 1, 1, zeroAlpha)
+        end
         row.badgeText:Show()
     else
         if row.badgeText then
@@ -200,7 +209,11 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     -- Amount (always show max if available - NO hideMax)
     local maxQuantity = currency.maxQuantity or 0
     row.amountText:SetText(FormatCurrencyAmount(currency.quantity or 0, maxQuantity))
-    row.amountText:SetTextColor(1, 1, 1) -- Always white
+    if hasQuantity then
+        row.amountText:SetTextColor(1, 1, 1, 1)
+    else
+        row.amountText:SetTextColor(1, 1, 1, zeroAlpha)
+    end
     
     -- Hover effect (use new tooltip system)
     row:SetScript("OnEnter", function(self)
@@ -641,19 +654,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 warbandIcon:SetSize(27, 36)  -- Native atlas proportions
             end
             
-            -- Manual Sync Transfer Button for testing
-            local syncBtn = CreateFrame("Button", nil, sectionHeader, "UIPanelButtonTemplate")
-            syncBtn:SetSize(110, 22)
-            syncBtn:SetPoint("RIGHT", sectionHeader, "RIGHT", -10, 0)
-            syncBtn:SetText("Sync Transfer")
-            syncBtn:SetScript("OnClick", function()
-                if ns.CurrencyCache and ns.CurrencyCache.SyncAccountCurrencies then
-                    ns.CurrencyCache:SyncAccountCurrencies()
-                    WarbandNexus:Print("|cff9370DB[WN]|r Manual Sync Transfer Completed.")
-                else
-                    WarbandNexus:Print("|cffff0000[WN Debug]|r ns.CurrencyCache or SyncAccountCurrencies not found.")
-                end
-            end)
+            -- Sync Transfer button hidden (manual transfer via in-game currency frame)
+            -- local syncBtn = CreateFrame("Button", ...) syncBtn:Hide()
             
             sectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
             sectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)

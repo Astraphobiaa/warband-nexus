@@ -2,6 +2,31 @@
 
 Referans: [warcraft.wiki.gg – C_ItemUpgrade.GetItemUpgradeItemInfo](https://warcraft.wiki.gg/wiki/API_C_ItemUpgrade.GetItemUpgradeItemInfo), [Item upgrading](https://warcraft.wiki.gg/wiki/Item_upgrading).
 
+## C_ItemUpgrade yüzeyi (Midnight 12.0)
+
+Addon sadece aşağıdaki API’leri kullanmalı; listede olmayanlar (örn. `GetItemUpgradeCost`) opsiyonel/legacy fallback’tir.
+
+| API | Dönüş / Not |
+|-----|-------------|
+| `C_ItemUpgrade.CanUpgradeItem(baseItem)` | isValid |
+| `C_ItemUpgrade.ClearItemUpgrade()` | — |
+| `C_ItemUpgrade.CloseItemUpgrade()` | — |
+| `C_ItemUpgrade.GetHighWatermarkForItem(itemInfo)` | characterHighWatermark, accountHighWatermark |
+| `C_ItemUpgrade.GetHighWatermarkForSlot(itemRedundancySlot)` | characterHighWatermark, accountHighWatermark |
+| `C_ItemUpgrade.GetHighWatermarkSlotForItem(itemInfo)` | itemRedundancySlot |
+| `C_ItemUpgrade.GetItemHyperlink()` | link |
+| `C_ItemUpgrade.GetItemUpgradeCurrentLevel()` | itemLevel, isPvpItemLevel |
+| `C_ItemUpgrade.GetItemUpgradeEffect(effectIndex [, numUpgradeLevels])` | outBaseEffect, outUpgradedEffect |
+| **`C_ItemUpgrade.GetItemUpgradeItemInfo()`** | **itemInfo** — addon maliyet/seviye için bunu kullanır |
+| `C_ItemUpgrade.GetItemUpgradePvpItemLevelDeltaValues(numUpgradeLevels)` | currentPvPItemLevel, upgradedPvPItemLevel |
+| `C_ItemUpgrade.GetNumItemUpgradeEffects()` | numItemUpgradeEffects |
+| `C_ItemUpgrade.IsItemBound()` | isBound |
+| `C_ItemUpgrade.SetItemUpgradeFromCursorItem()` | — |
+| `C_ItemUpgrade.SetItemUpgradeFromLocation(itemToSet)` | — |
+| `C_ItemUpgrade.UpgradeItem([numUpgrades])` | #protected |
+
+**Not:** `GetItemUpgradeCost(location, level)` bu listede yok; bazı eski build’lerde olabilir. GearService yalnızca `if C_ItemUpgrade.GetItemUpgradeCost then` ile varken fallback kullanır; yoksa maliyet sadece `GetItemUpgradeItemInfo()` → `upgradeLevelInfos[].currencyCostsToUpgrade` / `moneyCost` üzerinden okunur.
+
 ## Kullanım
 
 - **Equipped item:** `ItemLocation:CreateFromEquipmentSlot(slotID)` (slotID 1–17).

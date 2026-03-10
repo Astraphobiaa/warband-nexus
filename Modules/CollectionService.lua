@@ -1592,23 +1592,13 @@ end
 function WarbandNexus:OnNewMount(event, mountID, retryCount)
     if not mountID then return end
     retryCount = retryCount or 0
-    
-    -- LAYER 0: Persistent dedup — already notified in a previous session?
-    -- Bypass for repeatable collectibles (can be obtained multiple times)
-    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("mount", mountID)
-    if not isRepeatable and WasAlreadyNotified("mount", mountID) then
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: mount " .. mountID .. " (already notified)")
-        return
-    end
-    
+
     local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
-    -- Midnight 12.0: return values may be secret during instanced combat
     if issecretvalue then
         if name and issecretvalue(name) then name = nil end
         if icon and issecretvalue(icon) then icon = nil end
     end
     if not name then
-        -- Mount data may not be loaded yet (or secret in Midnight) — retry (max 3 attempts)
         if retryCount < 3 then
             DebugPrint("|cffffcc00[WN CollectionService]|r OnNewMount: Data not ready for mountID=" .. mountID .. ", retry " .. (retryCount + 1) .. "/3")
             C_Timer.After(0.5, function()
@@ -1619,34 +1609,14 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
         end
         return
     end
-    
-    -- LAYER 1: Quick name-based debounce (1-2s)
-    if WasRecentlyShownByName(name) then
-    DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
-        return
-    end
-    
-    -- LAYER 2: Check if this mount was detected in bag scan (permanent block)
-    if WasDetectedInBag("mount", mountID) then
-    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (detected in bag before, permanent block)")
-        return
-    end
-    
-    -- LAYER 3: Check short-term cooldown by ID (5s)
-    if WasRecentlyNotified("mount", mountID) then
-    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (notified within 5s)")
-        return
-    end
-    
-    -- Update owned cache
-    collectionCache.owned.mounts[mountID] = true
 
-    -- Remove from uncollected cache if present
+    -- ALWAYS update collected status in store (data correctness must not depend on notification dedup)
+    collectionCache.owned.mounts[mountID] = true
     self:RemoveFromUncollected("mount", mountID)
 
-    -- Ensure collectionStore has this mount with collected=true so Collections tab refreshes correctly
     if not collectionStore.mount then collectionStore.mount = {} end
     local m = collectionStore.mount[mountID]
+    local storeChanged = false
     if not m then
         local sourceText = ""
         if C_MountJournal.GetMountInfoExtraByID then
@@ -1657,32 +1627,52 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
             id = mountID, name = name, icon = icon, source = sourceText, description = "",
             creatureDisplayID = nil, collected = true,
         }
-        self:SaveCollectionStore()
+        storeChanged = true
     elseif m.collected ~= true then
         m.collected = true
+        storeChanged = true
+    end
+    if storeChanged then
         self:SaveCollectionStore()
     end
 
-    -- Mark as notified (multi-layer)
-    MarkAsNotified("mount", mountID)     -- By ID (5s)
-    MarkAsShownByName(name)              -- By name (2s)
-    MarkAsPermanentlyNotified("mount", mountID)  -- Persistent (survives logout)
-    
-    -- Fire notification event
-    self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
-        type = "mount",
-        id = mountID,
-        name = name,
-        icon = icon
-    })
-    
-    -- Invalidate mount cache so next UI open refreshes (owned list changed)
+    -- Dedup layers only gate NOTIFICATIONS — data update above always runs
+    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("mount", mountID)
+    local skipNotification = false
+    if not isRepeatable and WasAlreadyNotified("mount", mountID) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: mount " .. mountID .. " (already notified)")
+    elseif WasRecentlyShownByName(name) then
+        skipNotification = true
+        DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
+    elseif WasDetectedInBag("mount", mountID) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (detected in bag before, permanent block)")
+    elseif WasRecentlyNotified("mount", mountID) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (notified within 5s)")
+    end
+
+    if not skipNotification then
+        MarkAsNotified("mount", mountID)
+        MarkAsShownByName(name)
+        MarkAsPermanentlyNotified("mount", mountID)
+
+        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+            type = "mount",
+            id = mountID,
+            name = name,
+            icon = icon
+        })
+    end
+
+    -- Always fire data-update event so UI refreshes (even when notification is deduped)
     self:InvalidateCollectionCache("mount")
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "mount")
     end
-    
-    DebugPrint("|cff00ff00[WN CollectionService]|r NEW MOUNT: " .. name)
+
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW MOUNT: " .. name .. (skipNotification and " (notification deduped)" or ""))
 end
 
 ---Handle NEW_PET_ADDED event
@@ -1692,83 +1682,34 @@ end
 function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     if not petGUID then return end
     retryCount = retryCount or 0
-    
-    -- NEW_PET_ADDED returns petGUID (string), not speciesID!
-    -- Use C_PetJournal.GetPetInfoByPetID to convert petGUID -> speciesID
+
     local speciesID, customName, level, xp, maxXp, displayID, isFavorite, name, icon = C_PetJournal.GetPetInfoByPetID(petGUID)
-    -- Midnight 12.0: return values may be secret during instanced combat
     if issecretvalue then
         if speciesID and issecretvalue(speciesID) then speciesID = nil end
         if name and issecretvalue(name) then name = nil end
         if icon and issecretvalue(icon) then icon = nil end
     end
-    
+
     if not speciesID or not name then
-        -- Pet data may not be loaded yet (or secret in Midnight) — retry (max 3 attempts)
-        if retryCount < 3 then
-            DebugPrint("|cffffcc00[WN CollectionService]|r OnNewPet: Data not ready for petGUID=" .. tostring(petGUID) .. ", retry " .. (retryCount + 1) .. "/3")
-            C_Timer.After(0.5, function()
+        -- Pet journal may not be ready immediately when NEW_PET_ADDED fires; retry with backoff (up to 5 tries, 0.8s apart)
+        if retryCount < 5 then
+            DebugPrint("|cffffcc00[WN CollectionService]|r OnNewPet: Data not ready for petGUID=" .. tostring(petGUID) .. ", retry " .. (retryCount + 1) .. "/5")
+            C_Timer.After(0.8, function()
                 self:OnNewPet(event, petGUID, retryCount + 1)
             end)
         else
-            DebugPrint("|cffff0000[WN CollectionService]|r OnNewPet: Data unavailable after 3 retries for petGUID=" .. tostring(petGUID))
+            DebugPrint("|cffff0000[WN CollectionService]|r OnNewPet: Data unavailable after 5 retries for petGUID=" .. tostring(petGUID))
         end
         return
     end
-    
-    -- LAYER 0: Persistent dedup — already notified in a previous session?
-    -- Bypass for repeatable collectibles (can be obtained multiple times)
-    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("pet", speciesID)
-    if not isRepeatable and WasAlreadyNotified("pet", speciesID) then
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: pet " .. name .. " (already notified)")
-        return
-    end
-    
-    -- LAYER 1: Quick name-based debounce (1-2s) - Prevents rapid-fire duplicates from multiple events
-    if WasRecentlyShownByName(name) then
-    DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
-        return
-    end
-    
-    -- LAYER 2: Only notify if this is the FIRST pet of this species (0 → 1)
-    -- Do NOT notify for 1/3 → 2/3 or any other duplicates
-    local numOwned, limit = C_PetJournal.GetNumCollectedInfo(speciesID)
-    -- Midnight 12.0: numOwned may be secret during instanced combat
-    if issecretvalue and numOwned and issecretvalue(numOwned) then numOwned = nil end
-    if numOwned and numOwned > 1 then
-    DebugPrint("|cff888888[WN CollectionService]|r SKIP: " .. name .. " (" .. numOwned .. "/" .. (limit or 3) .. " owned) - not first acquisition")
-        return
-    end
-    
-    -- LAYER 3: Check if this pet was detected in bag scan (permanent block)
-    if WasDetectedInBag("pet", speciesID) then
-    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (detected in bag before, permanent block)")
-        return
-    end
-    
-    -- LAYER 3b: Check item-based bag detection (60s window)
-    -- When GetPetInfoByItemID fails, bag scan uses item info and stores pet name here
-    -- This prevents double notification when the pet is learned via right-click
-    if RingBufferCheck(recentNotifications, "petname:" .. name) then
-    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (item-based bag detection)")
-        return
-    end
-    
-    -- LAYER 4: Check short-term cooldown by ID (5s)
-    if WasRecentlyNotified("pet", speciesID) then
-    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (notified within 5s)")
-        return
-    end
-    
-    -- Update owned cache
-    collectionCache.owned.pets[speciesID] = true
 
-    -- Remove from uncollected cache if present
+    -- ALWAYS update collected status in store (data correctness must not depend on notification dedup)
+    collectionCache.owned.pets[speciesID] = true
     self:RemoveFromUncollected("pet", speciesID)
 
-    -- Ensure collectionStore has this pet with collected=true so Collections tab refreshes correctly
     if not collectionStore.pet then collectionStore.pet = {} end
     local p = collectionStore.pet[speciesID]
+    local storeChanged = false
     if not p then
         local sourceText = ""
         if C_PetJournal.GetPetInfoBySpeciesID then
@@ -1779,32 +1720,62 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
             id = speciesID, name = name, icon = icon, source = sourceText, description = "",
             creatureDisplayID = displayID, collected = true,
         }
-        self:SaveCollectionStore()
+        storeChanged = true
     elseif p.collected ~= true then
         p.collected = true
+        storeChanged = true
+    end
+    if storeChanged then
         self:SaveCollectionStore()
     end
 
-    -- Mark as notified (multi-layer)
-    MarkAsNotified("pet", speciesID)        -- By ID (5s)
-    MarkAsShownByName(name)                  -- By name (2s)
-    MarkAsPermanentlyNotified("pet", speciesID)  -- Persistent (survives logout)
+    -- Dedup layers only gate NOTIFICATIONS — data update above always runs
+    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("pet", speciesID)
+    local skipNotification = false
 
-    -- Fire notification event
-    self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
-        type = "pet",
-        id = speciesID,
-        name = name,
-        icon = icon
-    })
+    -- Duplicate pet species (2/3, 3/3 etc.) — skip notification but data is already updated
+    local numOwned, limit = C_PetJournal.GetNumCollectedInfo(speciesID)
+    if issecretvalue and numOwned and issecretvalue(numOwned) then numOwned = nil end
+    if numOwned and numOwned > 1 then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r SKIP: " .. name .. " (" .. numOwned .. "/" .. (limit or 3) .. " owned) - not first acquisition")
+    elseif not isRepeatable and WasAlreadyNotified("pet", speciesID) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: pet " .. name .. " (already notified)")
+    elseif WasRecentlyShownByName(name) then
+        skipNotification = true
+        DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
+    elseif WasDetectedInBag("pet", speciesID) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (detected in bag before, permanent block)")
+    elseif RingBufferCheck(recentNotifications, "petname:" .. name) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (item-based bag detection)")
+    elseif WasRecentlyNotified("pet", speciesID) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (notified within 5s)")
+    end
 
-    -- Invalidate pet cache so next UI open refreshes (owned list changed)
+    if not skipNotification then
+        MarkAsNotified("pet", speciesID)
+        MarkAsShownByName(name)
+        MarkAsPermanentlyNotified("pet", speciesID)
+
+        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+            type = "pet",
+            id = speciesID,
+            name = name,
+            icon = icon
+        })
+    end
+
+    -- Always fire data-update event so UI refreshes (even when notification is deduped)
     self:InvalidateCollectionCache("pet")
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "pet")
     end
 
-    DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET: " .. name .. " (speciesID: " .. speciesID .. ")")
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET: " .. name .. " (speciesID: " .. speciesID .. ")" .. (skipNotification and " (notification deduped)" or ""))
 end
 
 ---Handle NEW_TOY_ADDED event
@@ -1814,33 +1785,10 @@ end
 ---@param _retryCount number|nil Internal retry counter (only set by self-retry)
 function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
     if not itemID then return end
-    -- _isFavorite comes from WoW's NEW_TOY_ADDED payload; _retryCount is only set by self-retry
     local retryCount = (type(_retryCount) == "number") and _retryCount or 0
-    
-    -- LAYER 0: Persistent dedup — already notified in a previous session?
-    -- Bypass for repeatable collectibles (can be obtained multiple times)
-    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("toy", itemID)
-    if not isRepeatable and WasAlreadyNotified("toy", itemID) then
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: toy " .. itemID .. " (already notified)")
-        return
-    end
-    
-    -- LAYER 1: Check if this toy was detected in bag scan (permanent block)
-    if WasDetectedInBag("toy", itemID) then
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (detected in bag before, permanent block)")
-        return
-    end
-    
-    -- LAYER 2: Check short-term cooldown by ID (5s)
-    if WasRecentlyNotified("toy", itemID) then
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (notified within 5s)")
-        return
-    end
-    
-    -- Toy APIs are sometimes delayed, use pcall for safety
+
     local success, name = pcall(GetItemInfo, itemID)
     if not success or not name then
-        -- Retry after a short delay if item data not loaded yet (max 3 attempts)
         if retryCount < 3 then
             DebugPrint("|cffffcc00[WN CollectionService]|r OnNewToy: Data not ready for itemID=" .. itemID .. ", retry " .. (retryCount + 1) .. "/3")
             C_Timer.After(0.5, function()
@@ -1851,19 +1799,11 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
         end
         return
     end
-    
-    -- LAYER 3: Quick name-based debounce (1-2s) - Check AFTER getting name
-    if WasRecentlyShownByName(name) then
-        DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
-        return
-    end
-    
+
     local icon = GetItemIcon(itemID)
 
-    -- Update owned cache
+    -- ALWAYS update collected status in store (data correctness must not depend on notification dedup)
     collectionCache.owned.toys[itemID] = true
-
-    -- Remove from uncollected cache if present
     self:RemoveFromUncollected("toy", itemID)
 
     if not collectionStore.toy then collectionStore.toy = {} end
@@ -1873,27 +1813,44 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
         self:SaveCollectionStore()
     end
 
-    -- Mark as notified (multi-layer)
-    MarkAsNotified("toy", itemID)        -- By ID (5s)
-    MarkAsShownByName(name)              -- By name (2s)
-    MarkAsPermanentlyNotified("toy", itemID)  -- Persistent (survives logout)
+    -- Dedup layers only gate NOTIFICATIONS — data update above always runs
+    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("toy", itemID)
+    local skipNotification = false
+    if not isRepeatable and WasAlreadyNotified("toy", itemID) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: toy " .. itemID .. " (already notified)")
+    elseif WasDetectedInBag("toy", itemID) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. name .. " (detected in bag before, permanent block)")
+    elseif WasRecentlyNotified("toy", itemID) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. name .. " (notified within 5s)")
+    elseif WasRecentlyShownByName(name) then
+        skipNotification = true
+        DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
+    end
 
-    -- Fire notification event
-    self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
-        type = "toy",
-        id = itemID,
-        name = name,
-        icon = icon
-    })
+    if not skipNotification then
+        MarkAsNotified("toy", itemID)
+        MarkAsShownByName(name)
+        MarkAsPermanentlyNotified("toy", itemID)
 
-    -- Invalidate toy cache so next UI open refreshes (owned list changed)
+        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+            type = "toy",
+            id = itemID,
+            name = name,
+            icon = icon
+        })
+    end
+
+    -- Always fire data-update event so UI refreshes (even when notification is deduped)
     self:InvalidateCollectionCache("toy")
     if ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache.map = nil end
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "toy")
     end
 
-    DebugPrint("|cff00ff00[WN CollectionService]|r NEW TOY: " .. name)
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW TOY: " .. name .. (skipNotification and " (notification deduped)" or ""))
 end
 
 ---Handle TRANSMOG_COLLECTION_UPDATED event
@@ -1969,11 +1926,16 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     self._previousIllusionState = currentCollected
 end
 
+-- Dedicated listener key for CollectionService message handlers.
+-- AceEvent allows only ONE handler per (event, self) pair; using WarbandNexus as self
+-- would be overwritten by CollectionsUI handlers (or vice versa).
+local CSListeners = {}
+
 -- When any module fires WN_COLLECTIBLE_OBTAINED (e.g. TryCounterService, bag scan), keep uncollected cache in sync
 -- so completed/obtained items disappear from Browse (Mounts/Pets/Toys) and Plans lists.
 local Constants_CS = ns.Constants
 if Constants_CS and Constants_CS.EVENTS and Constants_CS.EVENTS.COLLECTIBLE_OBTAINED then
-    WarbandNexus:RegisterMessage(Constants_CS.EVENTS.COLLECTIBLE_OBTAINED, function(_, data)
+    WarbandNexus.RegisterMessage(CSListeners, Constants_CS.EVENTS.COLLECTIBLE_OBTAINED, function(_, data)
         if not data or not data.type or not data.id then return end
         local t = data.type
         if (t == "mount" or t == "pet" or t == "toy") and data.id then
@@ -1999,8 +1961,8 @@ local function InvalidateCollectionCountsCache()
         WarbandNexus:InvalidateCollectionCountsAPICache()
     end
 end
-WarbandNexus:RegisterMessage(Constants.EVENTS.COLLECTION_UPDATED, InvalidateCollectionCountsCache)
-WarbandNexus:RegisterMessage(Constants.EVENTS.COLLECTIBLE_OBTAINED, InvalidateCollectionCountsCache)
+WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTION_UPDATED, InvalidateCollectionCountsCache)
+WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTIBLE_OBTAINED, InvalidateCollectionCountsCache)
 
 ---Handle ACHIEVEMENT_EARNED event
 ---Removes completed achievement from cache and handles chained achievements
@@ -2094,6 +2056,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
 
     -- Fire collectible obtained notification for the completed achievement
     -- This shows a toast notification (gated by showLootNotifications in NotificationManager)
+    -- Hidden achievements: WoW may return nil or secret value from GetAchievementInfo; still show a notification with fallback text.
     local ok, _, achName, _, _, _, _, _, _, _, achIcon = pcall(GetAchievementInfo, achievementID)
     if not ok then achName = nil; achIcon = nil end
     -- Midnight 12.0: return values may be secret during instanced combat
@@ -2101,15 +2064,19 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         if achName and issecretvalue(achName) then achName = nil end
         if achIcon and issecretvalue(achIcon) then achIcon = nil end
     end
-    if achName then
-        MarkAsPermanentlyNotified("achievement", achievementID)
-        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
-            type = "achievement",
-            id = achievementID,
-            name = achName,
-            icon = achIcon
-        })
+    local displayName = achName
+    local displayIcon = achIcon
+    if not displayName or displayName == "" then
+        displayName = (ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement"
+        displayIcon = nil  -- NotificationManager will use CATEGORY_ICONS.achievement
     end
+    MarkAsPermanentlyNotified("achievement", achievementID)
+    self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+        type = "achievement",
+        id = achievementID,
+        name = displayName,
+        icon = displayIcon
+    })
 end
 
 -- Register achievement earned event for cache invalidation

@@ -53,6 +53,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn toydebug <itemID>|r — Toy tooltip/source debug (prints to chat)")
         addon:Print("  |cff00ccff/wn firstcraft|r — " .. ((ns.L and ns.L["CMD_FIRSTCRAFT"]) or "List first-craft bonus recipes per expansion (open profession first)"))
         addon:Print("  |cff00ccff/wn chartest|r — Print current character's race/class API data (for icon debugging)")
+        addon:Print("  |cff00ccff/wn gearupgradedebug|r — Print upgrade costs (API) and affordability per slot (current char)")
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
             addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
@@ -146,6 +147,14 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "chartest" or cmd == "charapi" then
         -- Character API test: print current character's race/class data as returned by the game API
         CommandService:CharacterAPITest(addon)
+        return
+
+    elseif cmd == "gearupgradedebug" or cmd == "geardebug" then
+        if addon.GearUpgradeDebugReport then
+            addon:GearUpgradeDebugReport()
+        else
+            addon:Print("|cffff6600[WN]|r Gear module not loaded.")
+        end
         return
     end
 

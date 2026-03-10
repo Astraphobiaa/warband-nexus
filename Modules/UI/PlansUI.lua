@@ -842,6 +842,7 @@ function WarbandNexus:DrawPlansTab(parent)
         end
 
         btn:SetScript("OnClick", function()
+            if currentCategory == cat.key then return end
             currentCategory = cat.key
             searchText = ""
             

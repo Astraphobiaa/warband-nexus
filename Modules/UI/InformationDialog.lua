@@ -119,8 +119,8 @@ function WarbandNexus:ShowInfoDialog()
         end
     end)
     
-    -- Scroll Frame (using Factory pattern with modern scroll bar)
-    -- Standard padding: 8px from dialog edges
+    -- Scroll Frame (Collections pattern: bar column + PositionScrollBarInContainer)
+    -- 8px from dialog edges; 64px top = header + borders + gap; 30px right = 22px bar + 8px margin
     local scrollFrame
     if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollFrame then
         scrollFrame = ns.UI.Factory:CreateScrollFrame(dialog, "UIPanelScrollFrameTemplate", true)
@@ -128,31 +128,18 @@ function WarbandNexus:ShowInfoDialog()
         scrollFrame = CreateFrame("ScrollFrame", nil, dialog, "UIPanelScrollFrameTemplate")
     end
     scrollFrame:SetParent(dialog)
-    scrollFrame:SetFrameLevel(dialog:GetFrameLevel() + 1)  -- Below header (header is +10)
-    scrollFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 8, -64)  -- 8px left, -64px top (50px header + 2px borders + 12px gap)
-    scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -30, 8)  -- Leave 30px for scroll bar (22px bar + 8px margin)
-    
-    -- Manually position scroll bar to align with header bottom
-    if scrollFrame.ScrollBar then
-        local scrollBar = scrollFrame.ScrollBar
-        scrollBar:ClearAllPoints()
-        scrollBar:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -8, -28)  -- Below scroll up button (16px button + 12px gap)
-        scrollBar:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", -8, 16)  -- 16px above scroll frame bottom (for 16px button below)
-        
-        -- Position custom scroll buttons to align with header
-        if scrollBar.ScrollUpBtn then
-            scrollBar.ScrollUpBtn:ClearAllPoints()
-            scrollBar.ScrollUpBtn:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -8, -12)  -- 12px gap below header
-            scrollBar.ScrollUpBtn:SetFrameLevel(scrollBar:GetFrameLevel() + 5)  -- Above scroll bar
-        end
-        
-        if scrollBar.ScrollDownBtn then
-            scrollBar.ScrollDownBtn:ClearAllPoints()
-            scrollBar.ScrollDownBtn:SetPoint("TOP", scrollBar, "BOTTOM", 0, 0)  -- NO GAP - directly attached
-            scrollBar.ScrollDownBtn:SetFrameLevel(scrollBar:GetFrameLevel() + 5)  -- Above scroll bar
+    scrollFrame:SetFrameLevel(dialog:GetFrameLevel() + 1)
+    scrollFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 8, -64)
+    scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -30, 8)
+
+    -- Bar column: 12px below header (62 from top), 24px from bottom (for down button)
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer then
+        local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(dialog, 22, 62, 24)
+        if scrollFrame.ScrollBar then
+            ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
         end
     end
-    
+
     local scrollChild
     if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
         scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)

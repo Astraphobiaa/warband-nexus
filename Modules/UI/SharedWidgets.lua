@@ -1893,7 +1893,8 @@ local function FormatMoneyCompact(copper, iconSize)
 end
 
 -- Create collapsible header with expand/collapse button (NO pooling - headers are few)
-local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas, indentLevel)
+-- noCategoryIcon: when true, skip category icon (e.g. PvE character headers use favorite star only)
+local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas, indentLevel, noCategoryIcon)
     -- Support for nested headers (indentLevel: 0 = root, 1 = child, etc.)
     indentLevel = indentLevel or 0
     local indent = indentLevel * UI_LAYOUT.BASE_INDENT
@@ -1930,8 +1931,10 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local textAnchor = expandIcon
     local textOffset = 12  -- Increased spacing between icon and text
     
-    -- Category icon: always show one (use default if nil/empty — never question mark for currency/headers)
-    if not iconTexture or iconTexture == "" then
+    -- Category icon: skip when noCategoryIcon (e.g. PvE uses favorite star in that slot)
+    if noCategoryIcon then
+        iconTexture = nil
+    elseif not iconTexture or iconTexture == "" then
         iconTexture = isAtlas and "icons_64x64_important" or "Interface\\Icons\\INV_Misc_Coin_01"
     end
     local categoryIcon = nil
@@ -5250,8 +5253,9 @@ ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
 -- NOTE: CreateButton implementation moved to line 4809 (Factory pattern wrapper)
 -- These duplicate implementations were removed to avoid confusion
 
---- Create a scroll frame
---- Replaces manual CreateFrame("ScrollFrame", ...) calls with custom modern scroll bar
+--- Create a scroll frame with styled vertical scroll bar (Button | Bar | Button).
+--- Bar and buttons are created but not positioned; caller must call PositionScrollBarInContainer(scrollFrame.ScrollBar, container, inset).
+--- Use CreateScrollBarColumn(parent, width, topInset, bottomInset) to get a container, or your own frame (e.g. Collections list/detail columns).
 ---@param parent Frame Parent frame
 ---@param template string|nil Optional template (default: "UIPanelScrollFrameTemplate")
 ---@param customStyle boolean|nil If true, applies custom scroll bar styling (default: true)
@@ -5376,8 +5380,8 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         if not scrollBar.ScrollUpBtn then
             scrollBar.ScrollUpBtn = CreateFrame("Button", nil, scrollFrame:GetParent())
             scrollBar.ScrollUpBtn:SetSize(btnSize, btnSize)
-            scrollBar.ScrollUpBtn:SetPoint("TOPRIGHT", scrollFrame:GetParent(), "TOPRIGHT", -8, -8)
-            
+            -- Position via PositionScrollBarInContainer(scrollBar, container, inset) only
+
             -- Background
             local upBg = scrollBar.ScrollUpBtn:CreateTexture(nil, "BACKGROUND")
             upBg:SetAllPoints()
@@ -5430,7 +5434,8 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             local upIcon = scrollBar.ScrollUpBtn:CreateTexture(nil, "ARTWORK")
             upIcon:SetSize(12, 12)
             upIcon:SetPoint("CENTER")
-            upIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)
+            upIcon:SetAtlas("common-icon-offscreen", false)
+            upIcon:SetRotation(-math.pi / 2)
             upIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
             scrollBar.ScrollUpBtn.icon = upIcon
             scrollBar.ScrollUpBtn._iconTexture = upIcon  -- Store for theme refresh
@@ -5460,8 +5465,8 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         if not scrollBar.ScrollDownBtn then
             scrollBar.ScrollDownBtn = CreateFrame("Button", nil, scrollFrame:GetParent())
             scrollBar.ScrollDownBtn:SetSize(btnSize, btnSize)
-            scrollBar.ScrollDownBtn:SetPoint("BOTTOMRIGHT", scrollFrame:GetParent(), "BOTTOMRIGHT", -8, 8)
-            
+            -- Position via PositionScrollBarInContainer(scrollBar, container, inset) only
+
             -- Background
             local downBg = scrollBar.ScrollDownBtn:CreateTexture(nil, "BACKGROUND")
             downBg:SetAllPoints()
@@ -5514,7 +5519,8 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             local downIcon = scrollBar.ScrollDownBtn:CreateTexture(nil, "ARTWORK")
             downIcon:SetSize(12, 12)
             downIcon:SetPoint("CENTER")
-            downIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
+            downIcon:SetAtlas("common-icon-offscreen", false)
+            downIcon:SetRotation(math.pi / 2)
             downIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
             scrollBar.ScrollDownBtn.icon = downIcon
             scrollBar.ScrollDownBtn._iconTexture = downIcon  -- Store for theme refresh
@@ -5540,12 +5546,12 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
                 self.icon:SetVertexColor(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 1)
             end)
         end
-        
-        -- Position scroll bar between the two buttons (standard: Button | Bar | Button)
-        scrollBar:ClearAllPoints()
-        scrollBar:SetPoint("TOP", scrollBar.ScrollUpBtn, "BOTTOM", 0, 0)
-        scrollBar:SetPoint("BOTTOM", scrollBar.ScrollDownBtn, "TOP", 0, 0)
-        scrollBar:SetWidth(barWidth)
+
+        -- Bar/buttons are positioned only via PositionScrollBarInContainer(scrollFrame.ScrollBar, container, inset).
+        -- Hide until positioned so they do not appear at (0,0).
+        scrollBar:Hide()
+        if scrollBar.ScrollUpBtn then scrollBar.ScrollUpBtn:Hide() end
+        if scrollBar.ScrollDownBtn then scrollBar.ScrollDownBtn:Hide() end
 
         -- When scroll bar is reparented (e.g. into scrollBarContainer), Blizzard's OnValueChanged
         -- calls GetParent():SetVerticalScroll() which fails. Keep explicit reference and override.
@@ -5600,6 +5606,20 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         local base = (ns.UI_LAYOUT or {}).SCROLL_BASE_STEP or 28
         local speed = (addon and addon.db and addon.db.profile and addon.db.profile.scrollSpeed) or (ns.UI_LAYOUT or {}).SCROLL_SPEED_DEFAULT or 1.0
         local step = math.floor(base * speed + 0.5)
+        -- Shift+Wheel routes to horizontal when available; default wheel keeps vertical behavior.
+        if IsShiftKeyDown and IsShiftKeyDown() and self.GetHorizontalScrollRange and self.SetHorizontalScroll then
+            local maxH = self:GetHorizontalScrollRange() or 0
+            if maxH > 0 then
+                local currentH = self:GetHorizontalScroll() or 0
+                local newH = math.max(0, math.min(maxH, currentH - (delta * step)))
+                self:SetHorizontalScroll(newH)
+                if self.HorizontalScrollBar then
+                    self.HorizontalScrollBar:SetValue(newH)
+                end
+                return
+            end
+        end
+
         local current = self:GetVerticalScroll()
         local maxScroll = self:GetVerticalScrollRange()
         local newScroll = math.max(0, math.min(maxScroll, current - (delta * step)))
@@ -5607,6 +5627,29 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     end)
     
     return scrollFrame
+end
+
+--- Create a frame for the vertical scroll bar column (same pattern as Collections: list | bar column | details).
+--- Caller anchors this to the right of the scroll content, then calls PositionScrollBarInContainer(scrollFrame.ScrollBar, container, inset).
+---@param parent Frame Parent (e.g. content area)
+---@param width number Width of the column (e.g. SCROLLBAR_COLUMN_WIDTH or 22)
+---@param topInset number|nil Inset from parent top (default 0)
+---@param bottomInset number|nil Inset from parent bottom (default 0)
+---@return Frame container The frame to pass to PositionScrollBarInContainer
+function ns.UI.Factory:CreateScrollBarColumn(parent, width, topInset, bottomInset)
+    if not parent then return nil end
+    local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
+    local w = width or layout.SCROLLBAR_COLUMN_WIDTH or 22
+    local top = (topInset == nil) and 0 or topInset
+    local bottom = (bottomInset == nil) and 0 or bottomInset
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -top)
+    container:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, bottom)
+    container:SetWidth(w)
+    container:SetFrameLevel((parent:GetFrameLevel() or 0) + 2)
+    container:SetClipsChildren(false)
+    container:Show()
+    return container
 end
 
 --- Standard layout when scroll bar is placed in an external container (e.g. list | gap | scrollbar | gap | details).
@@ -5661,6 +5704,301 @@ end
 function ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
     if scrollFrame and scrollFrame.UpdateScrollBarVisibility then
         scrollFrame:UpdateScrollBarVisibility()
+    end
+end
+
+---Create a horizontal scrollbar matching the vertical scrollbar style.
+---Usage: attach to an existing ScrollFrame and call UpdateHorizontalScrollBarVisibility after content width changes.
+---@param scrollFrame ScrollFrame Target scroll frame (SetHorizontalScroll target)
+---@param parent Frame Parent frame for the horizontal bar and buttons
+---@param customStyle boolean|nil If true, applies custom modern styling (default: true)
+---@return Slider|nil hBar The created horizontal slider
+function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyle)
+    if not scrollFrame or not parent then return nil end
+    if customStyle == false then return nil end
+
+    local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
+    local btnSize = layout.SCROLL_BAR_BUTTON_SIZE or 16
+    local barHeight = layout.SCROLL_BAR_WIDTH or 16
+
+    local function GetScrollStep()
+        local addon = _G.WarbandNexus or ns.WarbandNexus
+        local base = (ns.UI_LAYOUT or {}).SCROLL_BASE_STEP or 28
+        local speed = (addon and addon.db and addon.db.profile and addon.db.profile.scrollSpeed) or (ns.UI_LAYOUT or {}).SCROLL_SPEED_DEFAULT or 1.0
+        return math.floor(base * speed + 0.5)
+    end
+
+    local hBar = CreateFrame("Slider", nil, parent)
+    hBar:SetOrientation("HORIZONTAL")
+    hBar:SetMinMaxValues(0, 0)
+    hBar:SetValueStep(1)
+    hBar:SetObeyStepOnDrag(true)
+    hBar:SetHeight(barHeight)
+    hBar:Hide()
+
+    -- Track background
+    hBar.CustomTrack = hBar:CreateTexture(nil, "BACKGROUND")
+    hBar.CustomTrack:SetAllPoints(hBar)
+    hBar.CustomTrack:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+
+    -- Pixel borders
+    local pixelScale = GetPixelScale()
+    hBar.BorderLeft = hBar:CreateTexture(nil, "BORDER")
+    hBar.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
+    hBar.BorderLeft:SetPoint("TOPLEFT", hBar, "TOPLEFT", 0, 0)
+    hBar.BorderLeft:SetPoint("BOTTOMLEFT", hBar, "BOTTOMLEFT", 0, 0)
+    hBar.BorderLeft:SetWidth(pixelScale)
+    hBar.BorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+
+    hBar.BorderRight = hBar:CreateTexture(nil, "BORDER")
+    hBar.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+    hBar.BorderRight:SetPoint("TOPRIGHT", hBar, "TOPRIGHT", 0, 0)
+    hBar.BorderRight:SetPoint("BOTTOMRIGHT", hBar, "BOTTOMRIGHT", 0, 0)
+    hBar.BorderRight:SetWidth(pixelScale)
+    hBar.BorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+
+    hBar.BorderTop = hBar:CreateTexture(nil, "BORDER")
+    hBar.BorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
+    hBar.BorderTop:SetPoint("TOPLEFT", hBar, "TOPLEFT", 0, 0)
+    hBar.BorderTop:SetPoint("TOPRIGHT", hBar, "TOPRIGHT", 0, 0)
+    hBar.BorderTop:SetHeight(pixelScale)
+    hBar.BorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+
+    hBar.BorderBottom = hBar:CreateTexture(nil, "BORDER")
+    hBar.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+    hBar.BorderBottom:SetPoint("BOTTOMLEFT", hBar, "BOTTOMLEFT", 0, 0)
+    hBar.BorderBottom:SetPoint("BOTTOMRIGHT", hBar, "BOTTOMRIGHT", 0, 0)
+    hBar.BorderBottom:SetHeight(pixelScale)
+    hBar.BorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+
+    hBar._borderType = "accent"
+    hBar._borderAlpha = 0.6
+    table.insert(ns.BORDER_REGISTRY, hBar)
+
+    -- Thumb: same thickness as vertical (14px); width 60
+    hBar.ThumbTexture = hBar:CreateTexture(nil, "ARTWORK")
+    hBar.ThumbTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
+    hBar.ThumbTexture:SetSize(60, 14)
+    hBar:SetThumbTexture(hBar.ThumbTexture)
+    hBar._thumbTexture = hBar.ThumbTexture
+
+    -- Left button
+    hBar.ScrollLeftBtn = CreateFrame("Button", nil, parent)
+    hBar.ScrollLeftBtn:SetSize(btnSize, btnSize)
+    hBar.ScrollLeftBtn:Hide()
+    local leftBg = hBar.ScrollLeftBtn:CreateTexture(nil, "BACKGROUND")
+    leftBg:SetAllPoints()
+    leftBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+    hBar.ScrollLeftBtn.bg = leftBg
+    local leftBorderTop = hBar.ScrollLeftBtn:CreateTexture(nil, "BORDER")
+    leftBorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
+    leftBorderTop:SetPoint("TOPLEFT", 0, 0)
+    leftBorderTop:SetPoint("TOPRIGHT", 0, 0)
+    leftBorderTop:SetHeight(pixelScale)
+    leftBorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+    local leftBorderBottom = hBar.ScrollLeftBtn:CreateTexture(nil, "BORDER")
+    leftBorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+    leftBorderBottom:SetPoint("BOTTOMLEFT", 0, 0)
+    leftBorderBottom:SetPoint("BOTTOMRIGHT", 0, 0)
+    leftBorderBottom:SetHeight(pixelScale)
+    leftBorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+    local leftBorderLeft = hBar.ScrollLeftBtn:CreateTexture(nil, "BORDER")
+    leftBorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
+    leftBorderLeft:SetPoint("TOPLEFT", 0, 0)
+    leftBorderLeft:SetPoint("BOTTOMLEFT", 0, 0)
+    leftBorderLeft:SetWidth(pixelScale)
+    leftBorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+    local leftBorderRight = hBar.ScrollLeftBtn:CreateTexture(nil, "BORDER")
+    leftBorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+    leftBorderRight:SetPoint("TOPRIGHT", 0, 0)
+    leftBorderRight:SetPoint("BOTTOMRIGHT", 0, 0)
+    leftBorderRight:SetWidth(pixelScale)
+    leftBorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+    hBar.ScrollLeftBtn.BorderTop = leftBorderTop
+    hBar.ScrollLeftBtn.BorderBottom = leftBorderBottom
+    hBar.ScrollLeftBtn.BorderLeft = leftBorderLeft
+    hBar.ScrollLeftBtn.BorderRight = leftBorderRight
+    hBar.ScrollLeftBtn._borderType = "accent"
+    hBar.ScrollLeftBtn._borderAlpha = 0.6
+    table.insert(ns.BORDER_REGISTRY, hBar.ScrollLeftBtn)
+    -- Icon: common-icon-offscreen (default left); accent color
+    local leftIcon = hBar.ScrollLeftBtn:CreateTexture(nil, "ARTWORK")
+    leftIcon:SetSize(12, 12)
+    leftIcon:SetPoint("CENTER")
+    leftIcon:SetAtlas("common-icon-offscreen", false)
+    leftIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+    hBar.ScrollLeftBtn.icon = leftIcon
+    hBar.ScrollLeftBtn._iconTexture = leftIcon
+
+    -- Right button
+    hBar.ScrollRightBtn = CreateFrame("Button", nil, parent)
+    hBar.ScrollRightBtn:SetSize(btnSize, btnSize)
+    hBar.ScrollRightBtn:Hide()
+    local rightBg = hBar.ScrollRightBtn:CreateTexture(nil, "BACKGROUND")
+    rightBg:SetAllPoints()
+    rightBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+    hBar.ScrollRightBtn.bg = rightBg
+    local rightBorderTop = hBar.ScrollRightBtn:CreateTexture(nil, "BORDER")
+    rightBorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
+    rightBorderTop:SetPoint("TOPLEFT", 0, 0)
+    rightBorderTop:SetPoint("TOPRIGHT", 0, 0)
+    rightBorderTop:SetHeight(pixelScale)
+    rightBorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+    local rightBorderBottom = hBar.ScrollRightBtn:CreateTexture(nil, "BORDER")
+    rightBorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+    rightBorderBottom:SetPoint("BOTTOMLEFT", 0, 0)
+    rightBorderBottom:SetPoint("BOTTOMRIGHT", 0, 0)
+    rightBorderBottom:SetHeight(pixelScale)
+    rightBorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+    local rightBorderLeft = hBar.ScrollRightBtn:CreateTexture(nil, "BORDER")
+    rightBorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
+    rightBorderLeft:SetPoint("TOPLEFT", 0, 0)
+    rightBorderLeft:SetPoint("BOTTOMLEFT", 0, 0)
+    rightBorderLeft:SetWidth(pixelScale)
+    rightBorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+    local rightBorderRight = hBar.ScrollRightBtn:CreateTexture(nil, "BORDER")
+    rightBorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+    rightBorderRight:SetPoint("TOPRIGHT", 0, 0)
+    rightBorderRight:SetPoint("BOTTOMRIGHT", 0, 0)
+    rightBorderRight:SetWidth(pixelScale)
+    rightBorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+    hBar.ScrollRightBtn.BorderTop = rightBorderTop
+    hBar.ScrollRightBtn.BorderBottom = rightBorderBottom
+    hBar.ScrollRightBtn.BorderLeft = rightBorderLeft
+    hBar.ScrollRightBtn.BorderRight = rightBorderRight
+    hBar.ScrollRightBtn._borderType = "accent"
+    hBar.ScrollRightBtn._borderAlpha = 0.6
+    table.insert(ns.BORDER_REGISTRY, hBar.ScrollRightBtn)
+    -- Icon: common-icon-offscreen rotated 180° (right)
+    local rightIcon = hBar.ScrollRightBtn:CreateTexture(nil, "ARTWORK")
+    rightIcon:SetSize(12, 12)
+    rightIcon:SetPoint("CENTER")
+    rightIcon:SetAtlas("common-icon-offscreen", false)
+    rightIcon:SetRotation(math.pi)
+    rightIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+    hBar.ScrollRightBtn.icon = rightIcon
+    hBar.ScrollRightBtn._iconTexture = rightIcon
+
+    local function ButtonHoverOn(self)
+        local currentColors = GetColors()
+        self.bg:SetColorTexture(currentColors.accent[1] * 0.3, currentColors.accent[2] * 0.3, currentColors.accent[3] * 0.3, 1)
+        self.icon:SetVertexColor(currentColors.accent[1] * 1.3, currentColors.accent[2] * 1.3, currentColors.accent[3] * 1.3, 1)
+    end
+    local function ButtonHoverOff(self)
+        local currentColors = GetColors()
+        self.bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+        self.icon:SetVertexColor(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 1)
+    end
+    hBar.ScrollLeftBtn:SetScript("OnEnter", ButtonHoverOn)
+    hBar.ScrollLeftBtn:SetScript("OnLeave", ButtonHoverOff)
+    hBar.ScrollRightBtn:SetScript("OnEnter", ButtonHoverOn)
+    hBar.ScrollRightBtn:SetScript("OnLeave", ButtonHoverOff)
+
+    hBar:SetScript("OnEnter", function(self)
+        if self.ThumbTexture then
+            local currentColors = GetColors()
+            self.ThumbTexture:SetColorTexture(currentColors.accent[1] * 1.2, currentColors.accent[2] * 1.2, currentColors.accent[3] * 1.2, 1)
+        end
+    end)
+    hBar:SetScript("OnLeave", function(self)
+        if self.ThumbTexture then
+            local currentColors = GetColors()
+            self.ThumbTexture:SetColorTexture(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 0.9)
+        end
+    end)
+
+    hBar._scrollFrame = scrollFrame
+    hBar:SetScript("OnValueChanged", function(self, value)
+        if self._scrollFrame and self._scrollFrame.SetHorizontalScroll then
+            self._scrollFrame:SetHorizontalScroll(value)
+        end
+    end)
+
+    hBar.ScrollLeftBtn:SetScript("OnClick", function()
+        local current = scrollFrame:GetHorizontalScroll() or 0
+        scrollFrame:SetHorizontalScroll(math.max(0, current - GetScrollStep()))
+        hBar:SetValue(scrollFrame:GetHorizontalScroll() or 0)
+    end)
+    hBar.ScrollRightBtn:SetScript("OnClick", function()
+        local current = scrollFrame:GetHorizontalScroll() or 0
+        local getRange = scrollFrame.GetHorizontalScrollRange
+        local maxScroll = 0
+        if getRange then
+            maxScroll = math.max(0, getRange(scrollFrame) or 0)
+        end
+        scrollFrame:SetHorizontalScroll(math.min(maxScroll, current + GetScrollStep()))
+        hBar:SetValue(scrollFrame:GetHorizontalScroll() or 0)
+    end)
+
+    -- Position helpers
+    hBar.PositionInContainer = function(self, container, inset)
+        if not container then return end
+        local gap = (inset == nil) and 0 or inset
+        local level = container:GetFrameLevel()
+
+        self:SetParent(container)
+        self:SetFrameLevel(level + 1)
+        self:ClearAllPoints()
+        self:SetPoint("LEFT", container, "LEFT", btnSize + gap, 0)
+        self:SetPoint("RIGHT", container, "RIGHT", -(btnSize + gap), 0)
+        self:SetPoint("CENTER", container, "CENTER", 0, 0)
+
+        if self.ScrollLeftBtn then
+            self.ScrollLeftBtn:SetParent(container)
+            self.ScrollLeftBtn:SetFrameLevel(level + 3)
+            self.ScrollLeftBtn:ClearAllPoints()
+            self.ScrollLeftBtn:SetPoint("LEFT", container, "LEFT", 0, 0)
+            self.ScrollLeftBtn:SetPoint("CENTER", container, "CENTER", 0, 0)
+        end
+        if self.ScrollRightBtn then
+            self.ScrollRightBtn:SetParent(container)
+            self.ScrollRightBtn:SetFrameLevel(level + 3)
+            self.ScrollRightBtn:ClearAllPoints()
+            self.ScrollRightBtn:SetPoint("RIGHT", container, "RIGHT", 0, 0)
+            self.ScrollRightBtn:SetPoint("CENTER", container, "CENTER", 0, 0)
+        end
+    end
+
+    scrollFrame.HorizontalScrollBar = hBar
+
+    scrollFrame.UpdateHorizontalScrollBarVisibility = function(self)
+        local bar = self.HorizontalScrollBar
+        if not bar then return end
+        local child = self:GetScrollChild()
+        if not child then return end
+
+        local contentWidth = child:GetWidth() or 0
+        local frameWidth = self:GetWidth() or 0
+        local maxScroll = math.max(0, contentWidth - frameWidth)
+        bar:SetMinMaxValues(0, maxScroll)
+
+        if maxScroll > 1 then
+            bar:Show()
+            if bar.ScrollLeftBtn then bar.ScrollLeftBtn:Show() end
+            if bar.ScrollRightBtn then bar.ScrollRightBtn:Show() end
+            local current = self:GetHorizontalScroll() or 0
+            if current > maxScroll then
+                current = maxScroll
+                self:SetHorizontalScroll(current)
+            end
+            bar:SetValue(current)
+        else
+            self:SetHorizontalScroll(0)
+            bar:SetValue(0)
+            bar:Hide()
+            if bar.ScrollLeftBtn then bar.ScrollLeftBtn:Hide() end
+            if bar.ScrollRightBtn then bar.ScrollRightBtn:Hide() end
+        end
+    end
+
+    return hBar
+end
+
+---Update horizontal scrollbar visibility based on content width (call after content changes)
+---@param scrollFrame ScrollFrame The scroll frame to update
+function ns.UI.Factory:UpdateHorizontalScrollBarVisibility(scrollFrame)
+    if scrollFrame and scrollFrame.UpdateHorizontalScrollBarVisibility then
+        scrollFrame:UpdateHorizontalScrollBarVisibility()
     end
 end
 

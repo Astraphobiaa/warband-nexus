@@ -266,6 +266,10 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         scrollFrame = ns.UI.Factory:CreateScrollFrame(popup, "UIPanelScrollFrameTemplate", true)
         scrollFrame:SetPoint("TOPLEFT", 30, -185)
         scrollFrame:SetPoint("BOTTOMRIGHT", -52, 60)
+        if ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer and scrollFrame.ScrollBar then
+            local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(popup, 22, 185, 60)
+            ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
+        end
         scrollChild = CreateFrame("Frame", nil, scrollFrame)
         scrollChild:SetWidth(CONTENT_WIDTH)
         scrollFrame:SetScrollChild(scrollChild)
@@ -1602,16 +1606,23 @@ end
 ============================================================================]]
 
 ---Check if player has unclaimed vault rewards
+---Only returns true when the API reports rewards AND current-week activities exist.
+---After season end, HasAvailableRewards() can stay true for expired rewards while
+---GetActivities() returns empty; we avoid false "vault full" reminders in that case.
 ---@return boolean hasRewards
 function WarbandNexus:HasUnclaimedVaultRewards()
-    -- Check if API is available
     if not C_WeeklyRewards or not C_WeeklyRewards.HasAvailableRewards then
         return false
     end
-    
-    -- Check for rewards
-    local hasRewards = C_WeeklyRewards.HasAvailableRewards()
-    return hasRewards
+    if not C_WeeklyRewards.HasAvailableRewards() then
+        return false
+    end
+    -- Require current-week activity data; empty activities often mean post-season stale state
+    local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
+    if not activities or #activities == 0 then
+        return false
+    end
+    return true
 end
 
 ---Show vault reminder popup (simplified wrapper)
@@ -1656,17 +1667,20 @@ function WarbandNexus:CheckNotificationsOnLogin()
         })
     end
     
-    -- 2. Check for vault rewards
+    -- 2. Check for vault rewards (only when current-week activities exist; avoids post-season false positive)
     if notifs.showVaultReminder then
         -- Small delay to ensure C_WeeklyRewards API is stable
         C_Timer.After(0.5, function()
             if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
                 local hasRewards = C_WeeklyRewards.HasAvailableRewards()
                 if hasRewards then
-                    QueueNotification({
-                        type = "vault",
-                        data = {}
-                    })
+                    local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
+                    if activities and #activities > 0 then
+                        QueueNotification({
+                            type = "vault",
+                            data = {}
+                        })
+                    end
                 end
             end
         end)
@@ -2078,13 +2092,19 @@ end
 ---@param event string Event name
 ---@param data table {type, id, name, icon}
 function WarbandNexus:OnCollectibleObtained(event, data)
-    if not data or not data.type or not data.name then return end
+    if not data or not data.type then return end
+    -- Achievement can have nil/empty name (hidden achievements); use fallback for display
+    local displayName = data.name
+    if (not displayName or displayName == "") and data.type == "achievement" then
+        displayName = (ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement"
+    end
+    if not displayName or displayName == "" then return end
     
     -- DEBUG: Log notification attempt
     if self.db and self.db.profile and self.db.profile.debugMode then
         self:Print(string.format("|cff00ccff[Notification Debug]|r Collectible obtained: %s - %s (ID: %s)", 
             data.type or "nil", 
-            data.name or "nil",
+            displayName or "nil",
             tostring(data.id or "nil")))
     end
     
@@ -2181,7 +2201,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     if data.type == "achievement" and data.id then
         overrides.achievementID = data.id
     end
-    self:Notify(data.type, data.name, data.icon, overrides)
+    self:Notify(data.type, displayName, data.icon, overrides)
     
     -- Screen flash effect — ONLY for items obtained through farming (try count > 0)
     -- No flash for: vendor purchases, quest rewards, achievement rewards, 100% drops

@@ -214,13 +214,24 @@ function WarbandNexus:DrawStatistics(parent)
     local numCollectedToys = collectionStats.toys.collected
     local numTotalToys = collectionStats.toys.total
     
-    -- Calculate card width for 3 cards in a row
-    -- Formula: (Total width - left margin - right margin - total spacing) / 3
+    -- Collection row: 3 cards (Mount, Pet, Toy). Dar pencerede taşmayı önlemek için 2 satıra geçer.
     local leftMargin = 10
     local rightMargin = 10
     local cardSpacing = 10
-    local totalSpacing = cardSpacing * 2  -- 2 gaps between 3 cards
-    local threeCardWidth = (width - leftMargin - rightMargin - totalSpacing) / 3
+    local MIN_STAT_CARD_W = 220  -- Kartın kesilmeden görünmesi için minimum genişlik
+    local availableW = width - leftMargin - rightMargin
+    local totalSpacing = cardSpacing * 2
+    local threeCardWidth = (availableW - totalSpacing) / 3
+    local useTwoRows = (threeCardWidth < MIN_STAT_CARD_W)
+    local cardW, secondRowY
+    if useTwoRows then
+        -- İlk satır: Mount + Pet yan yana; ikinci satır: Toy tam genişlik (taşma yok)
+        cardW = (availableW - cardSpacing) / 2
+        secondRowY = 100  -- ilk satır yüksekliği
+    else
+        cardW = threeCardWidth
+        secondRowY = nil
+    end
     
     -- Achievement Card (Account-wide since TWW) - Full width
     local achCard = CreateCard(parent, 90)
@@ -255,9 +266,9 @@ function WarbandNexus:DrawStatistics(parent)
     
     yOffset = yOffset + 100
     
-    -- Mount Card (3-column layout)
+    -- Mount Card (collection row)
     local mountCard = CreateCard(parent, 90)
-    mountCard:SetWidth(threeCardWidth)
+    mountCard:SetWidth(cardW)
     mountCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
     
     -- Use factory pattern for standardized card header layout
@@ -283,9 +294,9 @@ function WarbandNexus:DrawStatistics(parent)
     
     mountCard:Show()
     
-    -- Pet Card (Center) - single icon, two stacked sections
+    -- Pet Card (collection row)
     local petCard = CreateCard(parent, 90)
-    petCard:SetWidth(threeCardWidth)
+    petCard:SetWidth(cardW)
     petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
     
     -- Single icon (left, vertically centered)
@@ -328,12 +339,16 @@ function WarbandNexus:DrawStatistics(parent)
     
     petCard:Show()
     
-    -- Toys Card (Right)
+    -- Toys Card: dar alanda ikinci satırda, geniş alanda aynı satırda
     local toyCard = CreateCard(parent, 90)
-    toyCard:SetWidth(threeCardWidth)
-    toyCard:SetPoint("LEFT", petCard, "RIGHT", cardSpacing, 0)
-    -- Also anchor to right to ensure it fills the space
-    toyCard:SetPoint("RIGHT", -rightMargin, 0)
+    if useTwoRows then
+        toyCard:SetPoint("TOPLEFT", leftMargin, -(yOffset + secondRowY))
+        toyCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightMargin, -(yOffset + secondRowY))
+    else
+        toyCard:SetWidth(cardW)
+        toyCard:SetPoint("LEFT", petCard, "RIGHT", cardSpacing, 0)
+        toyCard:SetPoint("RIGHT", parent, "RIGHT", -rightMargin, 0)
+    end
     
     -- Use factory pattern for standardized card header layout
     local toyLayout = CreateCardHeaderLayout(
@@ -358,7 +373,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     toyCard:Show()
     
-    yOffset = yOffset + 100
+    yOffset = yOffset + (useTwoRows and 200 or 100)  -- 2 satırda 200, tek satırda 100
     
     -- ===== STORAGE STATS =====
     local storageCard = CreateCard(parent, 100)  -- Reduced height from 120 to 100

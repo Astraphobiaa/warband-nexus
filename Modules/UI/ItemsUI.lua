@@ -278,6 +278,7 @@ function WarbandNexus:DrawItemList(parent)
     end
     
     inventoryBtn:SetScript("OnClick", function()
+        if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "inventory" then return end
         ns.UI_SetItemsSubTab("inventory")
         WarbandNexus:RefreshUI()
     end)
@@ -314,6 +315,7 @@ function WarbandNexus:DrawItemList(parent)
     end
     
     personalBtn:SetScript("OnClick", function()
+        if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "personal" then return end
         ns.UI_SetItemsSubTab("personal")
         WarbandNexus:RefreshUI()
     end)
@@ -350,6 +352,7 @@ function WarbandNexus:DrawItemList(parent)
     end
     
     warbandBtn:SetScript("OnClick", function()
+        if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "warband" then return end
         ns.UI_SetItemsSubTab("warband")
         WarbandNexus:RefreshUI()
     end)
@@ -397,6 +400,7 @@ function WarbandNexus:DrawItemList(parent)
             WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["GUILD_BANK_REQUIRED"]) or "You must be in a guild to access Guild Bank.") .. "|r")
             return
         end
+        if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "guild" then return end
         ns.UI_SetItemsSubTab("guild")
         WarbandNexus:RefreshUI()
     end)

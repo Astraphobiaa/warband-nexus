@@ -58,7 +58,7 @@ local floor = math.floor
 local date = date
 
 -- Layout Constants (computed dynamically)
-local CONTENT_MIN_WIDTH = 1200   -- Minimum to fit character row columns + right-anchored actions
+local CONTENT_MIN_WIDTH = 1280   -- Minimum to fit Statistics 3-card row + character/gear layouts without overflow
 local CONTENT_MIN_HEIGHT = 650   -- Multi-level structures minimum
 local ROW_HEIGHT = 26
 
@@ -170,9 +170,13 @@ local function ResetWindowGeometry(frame)
         profile.windowPosition = nil
     end
     
-    -- Refresh content at new size
+    -- Refresh content at new size (gear tab: keep minimum width so content does not squeeze)
     if frame.scrollChild and frame.scroll then
-        frame.scrollChild:SetWidth(frame.scroll:GetWidth())
+        local w = frame.scroll:GetWidth()
+        if frame.currentTab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
+            w = math.max(w, ns.MIN_GEAR_CARD_W)
+        end
+        frame.scrollChild:SetWidth(w)
     end
     WarbandNexus:PopulateContent()
 end
@@ -475,9 +479,16 @@ function WarbandNexus:CreateMainWindow()
             end
         end
         
-        -- Update scrollChild width to match new scroll width
+        -- Update scrollChild width; gear tab keeps minimum so content does not squeeze (horizontal scroll instead)
         if self.scrollChild and self.scroll then
-            self.scrollChild:SetWidth(self.scroll:GetWidth())
+            local w = self.scroll:GetWidth()
+            if self.currentTab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
+                w = math.max(w, ns.MIN_GEAR_CARD_W)
+            end
+            self.scrollChild:SetWidth(w)
+        end
+        if self.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
+            ns.UI.Factory:UpdateHorizontalScrollBarVisibility(self.scroll)
         end
         -- DO NOT refresh content here (causes severe lag during resize)
         -- Content is refreshed in OnMouseUp when resize is complete
@@ -511,9 +522,16 @@ function WarbandNexus:CreateMainWindow()
             resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
             f:StopMovingOrSizing()
             SaveWindowGeometry(f)
-            -- Ensure scrollChild width is updated BEFORE PopulateContent
+            -- Ensure scrollChild width is updated BEFORE PopulateContent (gear tab: keep minimum to avoid squeeze)
             if f.scrollChild and f.scroll then
-                f.scrollChild:SetWidth(f.scroll:GetWidth())
+                local w = f.scroll:GetWidth()
+                if f.currentTab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
+                    w = math.max(w, ns.MIN_GEAR_CARD_W)
+                end
+                f.scrollChild:SetWidth(w)
+            end
+            if f.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
+                ns.UI.Factory:UpdateHorizontalScrollBarVisibility(f.scroll)
             end
             WarbandNexus:PopulateContent()
         end
@@ -753,6 +771,9 @@ function WarbandNexus:CreateMainWindow()
         end
 
         btn:SetScript("OnClick", function(self)
+            -- Skip if this tab is already selected (avoid redundant refresh)
+            if f.currentTab == self.key then return end
+
             local previousTab = f.currentTab
             f.currentTab = self.key
 
@@ -859,28 +880,80 @@ function WarbandNexus:CreateMainWindow()
     content:SetPoint("TOPLEFT", nav, "BOTTOMLEFT", 8, -8)
     content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 45)
     f.content = content
-    
-    -- Apply content area visuals (slightly lighter background, subtle border)
-    if ApplyVisuals then
-        local COLORS = ns.UI_COLORS
-        ApplyVisuals(content, {0.04, 0.04, 0.05, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+
+    -- Background only on content (no border); border will be on viewport frame so scrollbars sit outside it
+    if not content.SetBackdrop then
+        Mixin(content, BackdropTemplateMixin)
     end
-    
-    -- Scroll frame (using Factory pattern with modern custom scroll bar)
-    -- IMPORTANT: Leave space on the right for scroll bar system (22px)
-    -- Scroll bar is at -4px from content edge, 16px wide, plus 2px gap = 22px total
+    content:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+    if ns.UI_COLORS then
+        local c = ns.UI_COLORS.border
+        content:SetBackdropColor(0.04, 0.04, 0.05, 0.95)
+    end
+
+    -- Scroll layout: UI_LAYOUT; 2–3px gap between viewport and scrollbars so they don’t sit too close
+    local LAYOUT = ns.UI_LAYOUT or ns.UI_SPACING or {}
+    local SCROLL_COLUMN_W = LAYOUT.SCROLLBAR_COLUMN_WIDTH or 22
+    local SCROLL_GAP = 3
+    local SCROLL_INSET_TOP = LAYOUT.SCROLL_CONTENT_TOP_PADDING or 12
+    local H_BAR_H = LAYOUT.SCROLL_BAR_WIDTH or 16
+    local H_BAR_BOTTOM = LAYOUT.SIDE_MARGIN or 10
+    local H_ROW_H = SCROLL_COLUMN_W
+    local SCROLL_INSET_BOTTOM = H_BAR_BOTTOM + H_ROW_H + SCROLL_GAP
+    local SCROLL_INSET_LEFT = 0
+    local SCROLL_INSET_RIGHT = SCROLL_COLUMN_W + SCROLL_GAP
+
+    -- Viewport border frame: only the scroll area gets the border; scrollbars sit outside with SCROLL_GAP
+    local viewportBorder = CreateFrame("Frame", nil, content)
+    viewportBorder:SetPoint("TOPLEFT", content, "TOPLEFT", SCROLL_INSET_LEFT, -SCROLL_INSET_TOP)
+    viewportBorder:SetPoint("TOPRIGHT", content, "TOPRIGHT", -SCROLL_INSET_RIGHT, -SCROLL_INSET_TOP)
+    viewportBorder:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", SCROLL_INSET_LEFT, SCROLL_INSET_BOTTOM)
+    viewportBorder:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -SCROLL_INSET_RIGHT, SCROLL_INSET_BOTTOM)
+    viewportBorder:SetFrameLevel(content:GetFrameLevel() + 1)
+    if ApplyVisuals and ns.UI_COLORS then
+        local COLORS = ns.UI_COLORS
+        ApplyVisuals(viewportBorder, {0.04, 0.04, 0.05, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    end
+    f.viewportBorder = viewportBorder
+
     local scroll = ns.UI.Factory:CreateScrollFrame(content, "UIPanelScrollFrameTemplate", true)
-    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", 2, -6)    -- 2px left, 6px top inset
-    scroll:SetPoint("TOPRIGHT", content, "TOPRIGHT", -22, -6) -- 22px scroll bar + gap, 6px top inset
-    scroll:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", 2, 6) -- 2px left, 6px bottom inset
-    scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -22, 6) -- 22px scroll bar, 6px bottom inset
+    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", SCROLL_INSET_LEFT, -SCROLL_INSET_TOP)
+    scroll:SetPoint("TOPRIGHT", content, "TOPRIGHT", -SCROLL_INSET_RIGHT, -SCROLL_INSET_TOP)
+    scroll:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", SCROLL_INSET_LEFT, SCROLL_INSET_BOTTOM)
+    scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -SCROLL_INSET_RIGHT, SCROLL_INSET_BOTTOM)
+    scroll:SetFrameLevel(viewportBorder:GetFrameLevel() + 1)
     f.scroll = scroll
-    
+
+    -- Vertical bar column: outside viewport border, same vertical range as scroll; button-to-button alignment
+    local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(content, SCROLL_COLUMN_W, SCROLL_INSET_TOP, SCROLL_INSET_BOTTOM)
+    scrollBarColumn:SetFrameLevel(viewportBorder:GetFrameLevel() + 2)
+    f.scrollBarColumn = scrollBarColumn
+    if scroll.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
+        ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
+    end
+
     local scrollChild = CreateFrame("Frame", nil, scroll)
-    scrollChild:SetWidth(1) -- Temporary, will be updated dynamically
+    scrollChild:SetWidth(1)
     scrollChild:SetHeight(1)
     scroll:SetScrollChild(scrollChild)
     f.scrollChild = scrollChild
+
+    -- Horizontal bar: same strip size as vertical column (H_ROW_H = 22px); same viewport gap (SCROLL_GAP)
+    local hScrollContainer = CreateFrame("Frame", nil, content)
+    hScrollContainer:SetPoint("LEFT", content, "LEFT", SCROLL_INSET_LEFT, 0)
+    hScrollContainer:SetPoint("RIGHT", content, "RIGHT", -SCROLL_INSET_RIGHT, 0)
+    hScrollContainer:SetPoint("BOTTOM", content, "BOTTOM", 0, H_BAR_BOTTOM)
+    hScrollContainer:SetHeight(H_ROW_H)
+    hScrollContainer:SetFrameLevel(viewportBorder:GetFrameLevel() + 2)
+    f.hScrollContainer = hScrollContainer
+
+    if ns.UI.Factory and ns.UI.Factory.CreateHorizontalScrollBar then
+        local hScroll = ns.UI.Factory:CreateHorizontalScrollBar(scroll, hScrollContainer, true)
+        if hScroll and hScroll.PositionInContainer then
+            hScroll:PositionInContainer(hScrollContainer, 0)
+            f.hScroll = hScroll
+        end
+    end
 
     -- Virtual scroll: dispatch OnVerticalScroll to active tab's virtual list updater
     -- Must pass (self, offset) to origOnScroll so Blizzard SecureScrollTemplates receives valid self
@@ -1135,7 +1208,8 @@ function WarbandNexus:PopulateContent()
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawProfessionsTab(scrollChild)
     elseif mainFrame.currentTab == "gear" then
-        scrollChild:SetWidth(scrollWidth)
+        local gearMinW = (ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0) and ns.MIN_GEAR_CARD_W or 0
+        scrollChild:SetWidth(gearMinW > 0 and math.max(scrollWidth, gearMinW) or scrollWidth)
         height = self:DrawGearTab(scrollChild)
     elseif mainFrame.currentTab == "collections" then
         scrollChild:SetWidth(scrollWidth)
@@ -1160,10 +1234,17 @@ function WarbandNexus:PopulateContent()
     if ns.UI.Factory.UpdateScrollBarVisibility then
         ns.UI.Factory:UpdateScrollBarVisibility(mainFrame.scroll)
     end
+    if ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
+        ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
+    end
     
     -- CRITICAL: Reset scroll position ONLY on MAIN tab switches (not sub-tab or header expand)
     if mainFrame.isMainTabSwitch then
         mainFrame.scroll:SetVerticalScroll(0)
+        mainFrame.scroll:SetHorizontalScroll(0)
+        if mainFrame.hScroll then
+            mainFrame.hScroll:SetValue(0)
+        end
     end
     
     self:UpdateFooter()

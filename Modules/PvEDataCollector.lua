@@ -52,12 +52,15 @@ function WarbandNexus:CreatePvEFrame(parent)
     title:SetText("|cff00ff00PvE Progression|r")
     frame.title = title
     
-    -- Scroll frame for character list (using Factory pattern with modern scroll bar)
-    -- Leave space on the right for scroll bar system (22px for bar + gap)
+    -- Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer)
+    local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(frame, 22, 50, 20)
     local scrollFrame = ns.UI.Factory:CreateScrollFrame(frame, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", 20, -50)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -42, 20)  -- Leave 22px for scroll bar + 20px original right margin = 42px
+    scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", -20, 0)
     frame.scrollFrame = scrollFrame
+    if scrollFrame.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
+        ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
+    end
     
     -- Content frame
     local content = CreateFrame("Frame", nil, scrollFrame)

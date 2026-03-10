@@ -452,14 +452,18 @@ local function CreateDropdownWidget(parent, option, yOffset)
         
         activeMenu = menu
         
-        -- ScrollFrame (leave space for scroll bar only if content overflows)
-        local rightInset = needsScroll and scrollBarW or menuPad
+        -- ScrollFrame (Collections pattern: bar column + PositionScrollBarInContainer)
         local scrollFrame = ns.UI.Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
         scrollFrame:SetPoint("TOPLEFT", menuPad, -menuPad)
-        scrollFrame:SetPoint("BOTTOMRIGHT", -rightInset, menuPad)
+        scrollFrame:SetPoint("BOTTOMRIGHT", -scrollBarW, menuPad)
         scrollFrame:EnableMouseWheel(true)
-        
-        local btnWidth = menuWidth - menuPad - rightInset
+
+        local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(menu, scrollBarW, menuPad, menuPad)
+        if scrollFrame.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
+            ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
+        end
+
+        local btnWidth = menuWidth - menuPad - scrollBarW
         
         local scrollChild = CreateFrame("Frame", nil, scrollFrame)
         scrollChild:SetWidth(btnWidth)
@@ -2796,13 +2800,17 @@ function WarbandNexus:ShowSettings()
     contentArea:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -UI_SPACING.TOP_MARGIN)
     contentArea:SetPoint("BOTTOMRIGHT", -UI_SPACING.SIDE_MARGIN, UI_SPACING.TOP_MARGIN)
     
-    -- ScrollFrame
+    -- ScrollFrame (Collections pattern: bar column + PositionScrollBarInContainer)
+    local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(contentArea, 22, UI_SPACING.TOP_MARGIN, UI_SPACING.TOP_MARGIN)
     local scrollFrame = ns.UI.Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
     scrollFrame:ClearAllPoints()
     scrollFrame:SetPoint("TOPLEFT", UI_SPACING.SIDE_MARGIN, -UI_SPACING.TOP_MARGIN)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -30, UI_SPACING.TOP_MARGIN)
+    scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", 0, UI_SPACING.TOP_MARGIN)
     scrollFrame:EnableMouseWheel(true)
-    
+    if scrollFrame.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
+        ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
+    end
+
     -- Scroll child
     local scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
     local scrollWidth = scrollFrame:GetWidth() or 660

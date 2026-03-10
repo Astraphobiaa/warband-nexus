@@ -705,7 +705,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             "", -- Empty text, we'll add it manually
             charExpandKey,
             charExpanded,
-            function(isExpanded) ToggleExpand(charExpandKey, isExpanded) end
+            function(isExpanded) ToggleExpand(charExpandKey, isExpanded) end,
+            nil, nil, nil, true  -- noCategoryIcon: use favorite star only, no default gold icon
         )
         charHeader:SetPoint("TOPLEFT", 10, -yOffset)
         charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
@@ -1603,8 +1604,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             -- === BOTTOM SECTION: MIDNIGHT 12.0.1 UPGRADE CURRENCIES (Dawncrests) ===
             -- Midnight: five Dawncrests (Valorstone removed). Icons from C_CurrencyInfo when available.
             local midnightCurrencies = {
-                {id = 3391, name = "Adventurer Dawncrest", fallbackIcon = 134400},
-                {id = 3342, name = "Veteran Dawncrest", fallbackIcon = 134400},
+                {id = 3383, name = "Adventurer Dawncrest", fallbackIcon = 134400},
+                {id = 3341, name = "Veteran Dawncrest", fallbackIcon = 134400},
                 {id = 3343, name = "Champion Dawncrest", fallbackIcon = 134400},
                 {id = 3345, name = "Hero Dawncrest", fallbackIcon = 134400},
                 {id = 3347, name = "Myth Dawncrest", fallbackIcon = 134400},
@@ -1612,7 +1613,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             local numCurrencies = #midnightCurrencies
             local availableWidth = card3Width - (cardPadding * 2)
-            local iconSize = 30  -- Slightly smaller for better spacing
+            local iconSize = 36  -- Crest icons (was 30)
             local currencySpacing = 10  -- More breathing room
             local currencyItemWidth = (availableWidth - (currencySpacing * (numCurrencies - 1))) / numCurrencies
             
@@ -1653,7 +1654,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         end
                         
                         -- Currency amount (below icon, centered)
-                        local currText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
+                        local currText = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
                         currText:SetPoint("TOP", currIcon, "BOTTOM", 0, -4)
                         currText:SetJustifyH("CENTER")
                         currText:SetWordWrap(false)

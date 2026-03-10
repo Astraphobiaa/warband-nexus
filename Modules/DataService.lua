@@ -1667,11 +1667,18 @@ function WarbandNexus:CollectPvEData()
     end
     
     -- ===== CHECK FOR UNCLAIMED VAULT REWARDS =====
-    -- This checks if the player has rewards waiting from LAST week (not current progress)
-    -- NOTE: This data is only accurate when you're logged in as that character
-    -- The indicator will update automatically when you claim vault rewards (via WEEKLY_REWARDS_UPDATE event)
+    -- Only true when API reports rewards AND current-week activities exist (avoids post-season stale true).
     if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
-        pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards()
+        local has = C_WeeklyRewards.HasAvailableRewards()
+        if has and C_WeeklyRewards.GetActivities then
+            local activities = C_WeeklyRewards.GetActivities()
+            if not activities or #activities == 0 then
+                has = false
+            end
+        else
+            has = false
+        end
+        pve.hasUnclaimedRewards = has
     else
         pve.hasUnclaimedRewards = false
     end
@@ -1967,9 +1974,18 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
             end
         end
         
-        -- Check for unclaimed rewards
+        -- Check for unclaimed rewards (only when current-week activities exist; avoids post-season stale)
         if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
-            pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards()
+            local has = C_WeeklyRewards.HasAvailableRewards()
+            if has and C_WeeklyRewards.GetActivities then
+                local activities = C_WeeklyRewards.GetActivities()
+                if not activities or #activities == 0 then
+                    has = false
+                end
+            else
+                has = false
+            end
+            pve.hasUnclaimedRewards = has
         end
         
         -- Update progress

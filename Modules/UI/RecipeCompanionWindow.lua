@@ -22,10 +22,12 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
-local COLORS = ns.UI_COLORS
+local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateIcon = ns.UI_CreateIcon
-local Factory = ns.UI.Factory
+local function GetFactory()
+    return ns.UI and ns.UI.Factory
+end
 
 -- Unique AceEvent handler identity for RecipeCompanionWindow
 local RecipeCompanionEvents = {}
@@ -368,6 +370,9 @@ end
 local function RenderContent(scrollChild)
     if not scrollChild then return end
 
+    local Factory = GetFactory()
+    if not Factory then return end
+
     -- Clear existing children (hide, don't destroy for reuse)
     local children = { scrollChild:GetChildren() }
     for i = 1, #children do
@@ -707,6 +712,9 @@ local function EnsureToggleTrackerButton()
     if toggleTrackerBtn then return end
     if not ProfessionsFrame then return end
 
+    local Factory = GetFactory()
+    if not Factory then return end
+
     local btn = Factory:CreateButton(ProfessionsFrame, 130, 24, false)
     btn:SetPoint("BOTTOMLEFT", ProfessionsFrame, "BOTTOMLEFT", 285, 5)
     if ApplyVisuals then
@@ -766,6 +774,9 @@ end
 ]]
 local function CreateCompanionWindow()
     if companionFrame then return companionFrame end
+
+    local Factory = GetFactory()
+    if not Factory then return nil end
 
     -- ── Main frame ──
     local frame = CreateFrame("Frame", "WarbandNexus_RecipeCompanion", UIParent)
@@ -828,7 +839,7 @@ local function CreateCompanionWindow()
     contentArea:SetPoint("BOTTOMRIGHT", 0, 0)
     frame.contentArea = contentArea
 
-    -- ── Scroll frame ──
+    -- ── Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer) ──
     local scrollFrame = Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", contentArea, "TOPLEFT", PADDING, -PADDING)
     scrollFrame:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -SCROLLBAR_GAP, -PADDING)
@@ -836,10 +847,17 @@ local function CreateCompanionWindow()
     scrollFrame:EnableMouseWheel(true)
     frame.contentScrollFrame = scrollFrame
 
+    local scrollBarColumn = Factory:CreateScrollBarColumn(contentArea, SCROLLBAR_GAP, PADDING, PADDING)
+    if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
+        Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
+    end
+    if Factory.UpdateScrollBarVisibility then
+        Factory:UpdateScrollBarVisibility(scrollFrame)
+    end
+
     -- Override Blizzard's OnScrollRangeChanged to prevent automatic scrollbar show.
     -- We control scrollbar visibility ourselves in RenderContent().
     scrollFrame:SetScript("OnScrollRangeChanged", function(self, xRange, yRange)
-        -- Only update scroll position to keep it in valid range
         if yRange and yRange > 0 then
             local currentScroll = self:GetVerticalScroll()
             if currentScroll > yRange then
@@ -848,15 +866,7 @@ local function CreateCompanionWindow()
         else
             self:SetVerticalScroll(0)
         end
-        -- Do NOT show/hide scrollbar here — RenderContent handles it
     end)
-
-    -- Initially hide scrollbar components until RenderContent decides
-    if scrollFrame.ScrollBar then
-        scrollFrame.ScrollBar:Hide()
-        if scrollFrame.ScrollBar.ScrollUpBtn then scrollFrame.ScrollBar.ScrollUpBtn:Hide() end
-        if scrollFrame.ScrollBar.ScrollDownBtn then scrollFrame.ScrollBar.ScrollDownBtn:Hide() end
-    end
 
     -- Scroll child
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)

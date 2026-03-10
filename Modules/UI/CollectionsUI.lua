@@ -5237,11 +5237,28 @@ function WarbandNexus:DrawCollectionsTab(parent)
     yOffset = yOffset + contentHeight + bottomPad
 
     -- Event-driven updates (same events as Plans): all sub-tabs (Mounts, Pets, Achievements) refresh when these fire.
+    -- CRITICAL: Use a dedicated listener key (CUIListeners) instead of WarbandNexus as self.
+    -- AceEvent allows only ONE handler per (event, self) pair — using WarbandNexus would
+    -- overwrite CollectionService's handlers for the same events (e.g. RemoveFromUncollected).
     if not collectionsState._messageRegistered then
         collectionsState._messageRegistered = true
+        local CUIListeners = {}
+        collectionsState._listeners = CUIListeners
+
+        local function InvalidateAllCollectionCaches()
+            collectionsState._cachedMountsData = nil
+            collectionsState._cachedPetsData = nil
+            collectionsState._cachedToysData = nil
+            collectionsState._lastGroupedMountData = nil
+            collectionsState._mountFlatList = nil
+            collectionsState._lastGroupedPetData = nil
+            collectionsState._petFlatList = nil
+            collectionsState._lastGroupedToyData = nil
+            collectionsState._toyFlatList = nil
+        end
 
         local eventName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_PROGRESS) or "WN_COLLECTION_SCAN_PROGRESS"
-        WarbandNexus:RegisterMessage(eventName, function()
+        WarbandNexus.RegisterMessage(CUIListeners, eventName, function()
             local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
             if mf and mf:IsShown() and mf.currentTab == "collections" and collectionsState.contentFrame then
                 if collectionsState.currentSubTab == "mounts" then
@@ -5257,27 +5274,18 @@ function WarbandNexus:DrawCollectionsTab(parent)
         end)
 
         local completeName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_COMPLETE) or "WN_COLLECTION_SCAN_COMPLETE"
-        WarbandNexus:RegisterMessage(completeName, function()
-            collectionsState._cachedMountsData = nil
-            collectionsState._cachedPetsData = nil
-            collectionsState._cachedToysData = nil
-            collectionsState._lastGroupedToyData = nil
-            collectionsState._toyFlatList = nil
+        WarbandNexus.RegisterMessage(CUIListeners, completeName, function()
+            InvalidateAllCollectionCaches()
             local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
             if mf and mf:IsShown() and mf.currentTab == "collections" then
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end
         end)
 
-        -- Real-time collection update (mount/pet/toy/achievement obtained) — defer refresh like Plans
         local updatedName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED) or "WN_COLLECTION_UPDATED"
-        WarbandNexus:RegisterMessage(updatedName, function(_, updatedType)
+        WarbandNexus.RegisterMessage(CUIListeners, updatedName, function(_, updatedType)
             if updatedType ~= "mount" and updatedType ~= "pet" and updatedType ~= "toy" and updatedType ~= "achievement" then return end
-            collectionsState._cachedMountsData = nil
-            collectionsState._cachedPetsData = nil
-            collectionsState._cachedToysData = nil
-            collectionsState._lastGroupedToyData = nil
-            collectionsState._toyFlatList = nil
+            InvalidateAllCollectionCaches()
             C_Timer.After(0.05, function()
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
@@ -5286,7 +5294,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         end)
 
         local plansUpdatedName = (Constants and Constants.EVENTS and Constants.EVENTS.PLANS_UPDATED) or "WN_PLANS_UPDATED"
-        WarbandNexus:RegisterMessage(plansUpdatedName, function()
+        WarbandNexus.RegisterMessage(CUIListeners, plansUpdatedName, function()
             C_Timer.After(0.05, function()
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
@@ -5304,7 +5312,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         end)
 
         local trackingUpdatedName = (Constants and Constants.EVENTS and Constants.EVENTS.ACHIEVEMENT_TRACKING_UPDATED) or "WN_ACHIEVEMENT_TRACKING_UPDATED"
-        WarbandNexus:RegisterMessage(trackingUpdatedName, function(_, payload)
+        WarbandNexus.RegisterMessage(CUIListeners, trackingUpdatedName, function(_, payload)
             if not payload or not payload.achievementID then return end
             C_Timer.After(0.05, function()
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
@@ -5315,16 +5323,11 @@ function WarbandNexus:DrawCollectionsTab(parent)
             end)
         end)
 
-        -- Also refresh on WN_COLLECTIBLE_OBTAINED so Collections updates when any module fires it (mount/pet/toy/achievement)
         local obtainedName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTIBLE_OBTAINED) or "WN_COLLECTIBLE_OBTAINED"
-        WarbandNexus:RegisterMessage(obtainedName, function(_, data)
+        WarbandNexus.RegisterMessage(CUIListeners, obtainedName, function(_, data)
             if not data or not data.type then return end
             if data.type ~= "mount" and data.type ~= "pet" and data.type ~= "toy" and data.type ~= "achievement" then return end
-            if data.type == "mount" then collectionsState._cachedMountsData = nil
-            elseif data.type == "pet" then collectionsState._cachedPetsData = nil
-            elseif data.type == "toy" then collectionsState._cachedToysData = nil; collectionsState._lastGroupedToyData = nil; collectionsState._toyFlatList = nil
-            end
-            -- achievement has no separate cache; RefreshUI will redraw achievements list
+            InvalidateAllCollectionCaches()
             C_Timer.After(0.05, function()
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end

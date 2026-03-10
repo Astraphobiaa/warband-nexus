@@ -12,7 +12,7 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
-local COLORS = ns.UI_COLORS
+local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local PLAN_COLORS = ns.PLAN_UI_COLORS or {}
 
 -- Unique AceEvent handler identity for PlansTrackerWindow
@@ -81,11 +81,19 @@ local currentCategoryKey = nil -- nil = All
 local expandedAchievements = {} -- [achievementID] = true
 local expandedVaults = {} -- [planID] = true
 
--- Card colors (consistent border theme)
-local CARD_BORDER = { COLORS.accent[1] * 0.7, COLORS.accent[2] * 0.7, COLORS.accent[3] * 0.7, 0.6 }
-local CARD_BG = { 0.06, 0.06, 0.08, 1 }
-local CARD_HOVER_BORDER = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.85 }
-local CARD_HOVER_BG = { 0.09, 0.09, 0.12, 1 }
+-- Card colors (consistent border theme; use COLORS at runtime in case ns.UI_COLORS was nil at load)
+local function GetCardColors()
+    local c = ns.UI_COLORS or COLORS
+    if not c or not c.accent then
+        c = { accent = { 0.5, 0.4, 0.7 } }
+    end
+    return {
+        border = { c.accent[1] * 0.7, c.accent[2] * 0.7, c.accent[3] * 0.7, 0.6 },
+        bg = { 0.06, 0.06, 0.08, 1 },
+        hoverBorder = { c.accent[1], c.accent[2], c.accent[3], 0.85 },
+        hoverBg = { 0.09, 0.09, 0.12, 1 },
+    }
+end
 
 -- ── Refresh debounce ──
 local pendingRefresh = false
@@ -487,7 +495,7 @@ local function RefreshTrackerContentImmediate()
                 end)
                 row:SetPoint("TOPLEFT", 0, -yOffset)
                 if ApplyVisuals then
-                    ApplyVisuals(row.headerFrame, CARD_BG, CARD_BORDER)
+                    ApplyVisuals(row.headerFrame, GetCardColors().bg, GetCardColors().border)
                 end
                 -- Add accent border to achievement icon (Factory creates it noBorder)
                 if row.iconFrame and ApplyVisuals then
@@ -571,7 +579,7 @@ local function RefreshTrackerContentImmediate()
                 local vaultCard = Factory:CreateContainer(scrollChild, width, cardHeight)
                 vaultCard:SetPoint("TOPLEFT", 0, -yOffset)
                 if ApplyVisuals then
-                    ApplyVisuals(vaultCard, CARD_BG, CARD_BORDER)
+                    ApplyVisuals(vaultCard, GetCardColors().bg, GetCardColors().border)
                 end
                 
                 -- Header area (clickable to expand/collapse)
@@ -636,12 +644,12 @@ local function RefreshTrackerContentImmediate()
                 -- Hover effect
                 headerFrame:SetScript("OnEnter", function()
                     if ApplyVisuals then
-                        ApplyVisuals(vaultCard, CARD_HOVER_BG, CARD_HOVER_BORDER)
+                        ApplyVisuals(vaultCard, GetCardColors().hoverBg, GetCardColors().hoverBorder)
                     end
                 end)
                 headerFrame:SetScript("OnLeave", function()
                     if ApplyVisuals then
-                        ApplyVisuals(vaultCard, CARD_BG, CARD_BORDER)
+                        ApplyVisuals(vaultCard, GetCardColors().bg, GetCardColors().border)
                     end
                 end)
                 
@@ -721,7 +729,7 @@ local function RefreshTrackerContentImmediate()
                 local card = Factory:CreateContainer(scrollChild, colWidth, CARD_HEIGHT)
                 card:SetPoint("TOPLEFT", xPos, -yOffset)
                 if ApplyVisuals then
-                    ApplyVisuals(card, CARD_BG, CARD_BORDER)
+                    ApplyVisuals(card, GetCardColors().bg, GetCardColors().border)
                 end
 
                 -- Icon: resolve from WoW API first, then fallback chain
@@ -863,13 +871,13 @@ local function RefreshTrackerContentImmediate()
                 card:EnableMouse(true)
                 card:SetScript("OnEnter", function()
                     if ApplyVisuals then
-                        ApplyVisuals(card, CARD_HOVER_BG, CARD_HOVER_BORDER)
+                        ApplyVisuals(card, GetCardColors().hoverBg, GetCardColors().hoverBorder)
                     end
                     ShowPlanTooltip(card, plan, false)
                 end)
                 card:SetScript("OnLeave", function()
                     if ApplyVisuals then
-                        ApplyVisuals(card, CARD_BG, CARD_BORDER)
+                        ApplyVisuals(card, GetCardColors().bg, GetCardColors().border)
                     end
                     HidePlanTooltip()
                 end)
@@ -1056,6 +1064,11 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
             end
 
             btn:SetScript("OnClick", function()
+                if currentCategoryKey == cat.key then
+                    menu:Hide()
+                    activeDropdownMenu = nil
+                    return
+                end
                 currentCategoryKey = cat.key
                 UpdateLabel(cat.key)
                 menu:Hide()
@@ -1281,7 +1294,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     contentArea:SetPoint("BOTTOMRIGHT", 0, 0)
     frame.contentArea = contentArea
 
-    -- ── Scroll frame inside content area ──
+    -- ── Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer) ──
     local scrollFrame = Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", contentArea, "TOPLEFT", PADDING, 0)
     scrollFrame:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -SCROLLBAR_GAP, 0)
@@ -1289,22 +1302,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
     scrollFrame:EnableMouseWheel(true)
     frame.contentScrollFrame = scrollFrame
 
-    -- ── Fix scroll button positions for clean Button-Bar-Button vertical layout ──
-    -- Factory hardcodes buttons to parent TOPRIGHT(-8,-8) / BOTTOMRIGHT(-8,8),
-    -- which doesn't match our layout. Reposition after creation.
-    if scrollFrame.ScrollBar then
-        local sb = scrollFrame.ScrollBar
-        -- ScrollUpBtn: flush with top of contentArea, aligned with scrollbar
-        if sb.ScrollUpBtn then
-            sb.ScrollUpBtn:ClearAllPoints()
-            sb.ScrollUpBtn:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -3, 0)
-        end
-        -- ScrollDownBtn: flush with bottom of contentArea (with padding)
-        if sb.ScrollDownBtn then
-            sb.ScrollDownBtn:ClearAllPoints()
-            sb.ScrollDownBtn:SetPoint("BOTTOMRIGHT", contentArea, "BOTTOMRIGHT", -3, PADDING + 12)
-        end
-        -- ScrollBar already anchored between buttons by Factory (TOP→UpBtn.BOTTOM, BOTTOM→DownBtn.TOP)
+    local scrollBarColumn = Factory:CreateScrollBarColumn(contentArea, SCROLLBAR_GAP, 0, PADDING)
+    if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
+        Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
     end
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)

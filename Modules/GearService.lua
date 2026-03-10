@@ -19,8 +19,13 @@
         }
     }
 
-    Upgrade data is session-only (requires C_ItemUpgrade API, current char only).
+    Upgrade data is ilvl-based from persisted gear (no C_ItemUpgrade API); works offline.
     Storage upgrade findings are recomputed on each tab open.
+
+    0-crest (gold-only) detection: C_ItemUpgrade cost APIs only return real costs when the
+    Item Upgrade NPC window is open. We detect gold-only upgrades offline via persisted
+    watermarks (per-slot max ilvl this character has ever had). Upgrades to ilvl <= watermark
+    are treated as gold-only; no API cost query needed.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -34,6 +39,7 @@ local function DebugPrint(...)
 end
 
 local gearScanTimer = nil
+local currencyGearScanTimer = nil
 
 -- ============================================================================
 -- SLOT DEFINITIONS
@@ -65,6 +71,24 @@ for _, s in ipairs(GEAR_SLOTS) do
     SLOT_BY_ID[s.id] = s
 end
 
+-- WoW uses shared "item redundancy" for rings and trinkets: one watermark per pair.
+-- So Ring 1 and Ring 2 share the same high watermark; Trinket 1 and Trinket 2 share the same.
+local SLOT_PAIRS = { [11] = 12, [12] = 11, [13] = 14, [14] = 13 }
+
+--- Effective watermark for a slot: max of this slot and its pair (for rings/trinkets).
+--- Used only for display/consistency; gold-only affordability uses per-slot watermark (this slot's max only).
+---@param watermarks table [slotID] = ilvl
+---@param slotID number
+---@return number
+local function GetEffectiveWatermark(watermarks, slotID)
+    if not watermarks then return 0 end
+    local a = watermarks[slotID] or 0
+    local pair = SLOT_PAIRS[slotID]
+    if not pair then return a end
+    local b = watermarks[pair] or 0
+    return (a > b) and a or b
+end
+
 -- Maps INVTYPE_ equip location -> which slot IDs that item can fill
 local EQUIP_LOC_TO_SLOTS = {
     INVTYPE_HEAD           = { 1  },
@@ -92,10 +116,81 @@ local EQUIP_LOC_TO_SLOTS = {
 
 local GEAR_DATA_VERSION = "1.0.0"
 
--- Export slot definitions for use by GearUI
-ns.GEAR_SLOTS        = GEAR_SLOTS
-ns.SLOT_BY_ID        = SLOT_BY_ID
-ns.EQUIP_LOC_TO_SLOTS = EQUIP_LOC_TO_SLOTS
+-- ============================================================================
+-- UPGRADE ANALYSIS  (No API — ilvl-based inference from DB only, works offline)
+-- ============================================================================
+
+-- Midnight Season 1: complete ilvl progression per upgrade track (tier 1-6).
+-- Each track has 6 tiers. Adjacent tracks overlap by 2 tiers.
+-- Increment pattern per track: +4, +3, +3, +3, +4
+local TRACK_ILVLS = {
+    Adventurer = { 220, 224, 227, 230, 233, 237 },
+    Veteran    = { 233, 237, 240, 243, 246, 250 },
+    Champion   = { 246, 250, 253, 256, 259, 263 },
+    Hero       = { 259, 263, 266, 269, 272, 276 },
+    Myth       = { 272, 276, 279, 282, 285, 289 },
+}
+local TRACK_ORDER = { "Adventurer", "Veteran", "Champion", "Hero", "Myth" }
+
+-- Reverse map: ilvl → { trackName, tier, maxTier }.
+-- Overlapping ilvls: higher tracks overwrite lower, so 233 → Veteran 1/6 (not Adventurer 5/6).
+local ILVL_TO_UPGRADE = {}
+for _, trackName in ipairs(TRACK_ORDER) do
+    local tiers = TRACK_ILVLS[trackName]
+    for tier = 1, #tiers do
+        ILVL_TO_UPGRADE[tiers[tier]] = { trackName, tier, #tiers }
+    end
+end
+
+--- Infer upgrade track and level from item level only (no API). Returns nil if not in Midnight upgrade range.
+--- NOTE: unreliable for overlapping ilvls (233, 237, 246, 250, 259, 263, 272, 276).
+---@param itemLevel number
+---@return string|nil trackName
+---@return number|nil currUpgrade 1-6
+---@return number|nil maxUpgrade 6
+local function InferUpgradeFromIlvl(itemLevel)
+    local ilvl = tonumber(itemLevel)
+    if not ilvl or ilvl < 220 or ilvl > 289 then return nil, nil, nil end
+    local entry = ILVL_TO_UPGRADE[ilvl]
+    if entry then return entry[1], entry[2], entry[3] end
+    local best, bestDiff = nil, 999
+    for k, v in pairs(ILVL_TO_UPGRADE) do
+        local d = math.abs(k - ilvl)
+        if d < bestDiff then bestDiff = d; best = v end
+    end
+    if best then return best[1], best[2], best[3] end
+    return nil, nil, nil
+end
+
+--- Get the ilvl for a given track and tier.
+---@param trackName string
+---@param tier number 1-6
+---@return number|nil ilvl
+local function GetIlvlForTier(trackName, tier)
+    local tiers = TRACK_ILVLS[trackName]
+    if not tiers or tier < 1 or tier > #tiers then return nil end
+    return tiers[tier]
+end
+
+-- Flat cost per upgrade level: 20 Dawncrests + gold (Midnight Season 1)
+ns.UPGRADE_CREST_PER_LEVEL = 20
+ns.UPGRADE_GOLD_PER_LEVEL_COPPER = 10 * 10000
+
+local TRACK_NAME_TO_CURRENCY_ID = {
+    Adventurer = 3383,
+    Veteran    = 3341,
+    Champion   = 3343,
+    Hero       = 3345,
+    Myth       = 3347,
+}
+
+-- Export slot definitions and upgrade tables for use by GearUI
+ns.GEAR_SLOTS              = GEAR_SLOTS
+ns.SLOT_BY_ID              = SLOT_BY_ID
+ns.EQUIP_LOC_TO_SLOTS      = EQUIP_LOC_TO_SLOTS
+ns.TRACK_ILVLS             = TRACK_ILVLS
+ns.TRACK_ORDER             = TRACK_ORDER
+ns.TRACK_NAME_TO_CURRENCY_ID = TRACK_NAME_TO_CURRENCY_ID
 
 -- ============================================================================
 -- DB HELPERS
@@ -262,15 +357,15 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
             if nextInfo and nextInfo.currencyCostsToUpgrade then
                 local costs = {}
                 for _, entry in ipairs(nextInfo.currencyCostsToUpgrade) do
-                    if entry.currencyID and entry.cost then
-                        costs[#costs + 1] = { currencyID = entry.currencyID, amount = entry.cost }
+                    if entry.currencyID and (entry.cost or entry.amount) then
+                        costs[#costs + 1] = { currencyID = entry.currencyID, amount = entry.cost or entry.amount }
                     end
                 end
                 if #costs > 0 then
                     slotEntry.nextUpgradeCosts = costs
                 end
             end
-            if not slotEntry.nextUpgradeCosts and C_ItemUpgrade.GetItemUpgradeCost then
+            if not slotEntry.nextUpgradeCosts and C_ItemUpgrade.GetItemUpgradeCost then -- legacy; not in current API list
                 local rawCosts = C_ItemUpgrade.GetItemUpgradeCost(location, currUpgrade + 1) or {}
                 local costs = {}
                 for _, entry in ipairs(rawCosts) do
@@ -302,10 +397,11 @@ function WarbandNexus:ScanEquippedGear()
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
     if not charKey then return end
 
-    -- Only scan for tracked characters
     if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(self) then return end
 
     local slots = {}
+    local existingData = db[charKey]
+    local watermarks = (existingData and existingData.watermarks) or {}
 
     for _, slotDef in ipairs(GEAR_SLOTS) do
         local slotID = slotDef.id
@@ -338,8 +434,52 @@ function WarbandNexus:ScanEquippedGear()
                     name      = name,
                 }
 
-                -- Persist upgrade track data (C_ItemUpgrade, current char only)
-                ScanSlotUpgradeData(slotEntry, slotID)
+                -- Priority 1: Tooltip scan for exact track/tier (always available for equipped items)
+                local tooltipInfo = ScanUpgradeFromTooltip(slotID)
+                if tooltipInfo then
+                    slotEntry.upgradeTrack = tooltipInfo.trackName
+                    slotEntry.currUpgrade  = tooltipInfo.currUpgrade
+                    slotEntry.maxUpgrade   = tooltipInfo.maxUpgrade
+                end
+
+                -- Priority 2: ilvl inference fallback
+                if not slotEntry.upgradeTrack then
+                    local trackName, curUp, maxUp = InferUpgradeFromIlvl(ilvl)
+                    if trackName and curUp and maxUp then
+                        slotEntry.upgradeTrack = trackName
+                        slotEntry.currUpgrade  = curUp
+                        slotEntry.maxUpgrade   = maxUp
+                    elseif ilvl > 0 and (ilvl < 220 or ilvl > 289) then
+                        slotEntry.notUpgradeable = true
+                    end
+                end
+
+                -- Update watermark: highest ilvl ever seen in this slot for this character
+                local prevWM = watermarks[slotID] or 0
+                if ilvl > prevWM then
+                    watermarks[slotID] = ilvl
+                end
+
+                -- Try to read API high watermark (character-only; account watermark would make
+                -- other chars' progress count as "gold only" on this char, but crests are per-char)
+                pcall(function()
+                    if C_ItemUpgrade and C_ItemUpgrade.GetHighWatermarkSlotForItem then
+                        local location = ItemLocation:CreateFromEquipmentSlot(slotID)
+                        if location and location:IsValid() then
+                            local hwSlot = C_ItemUpgrade.GetHighWatermarkSlotForItem(location)
+                            if hwSlot and C_ItemUpgrade.GetHighWatermarkForSlot then
+                                local charHW = C_ItemUpgrade.GetHighWatermarkForSlot(hwSlot)
+                                -- Use character watermark only (not account); affordability uses this char's crests
+                                local apiWM = (type(charHW) == "number") and charHW or 0
+                                -- Paired slots (rings/trinkets): API returns group max; do NOT write to this slot
+                                -- or we'd mark Ring 1 as 237 from Ring 2 — gold-only must be per-slot (this item's max).
+                                if not SLOT_PAIRS[slotID] and apiWM > (watermarks[slotID] or 0) then
+                                    watermarks[slotID] = apiWM
+                                end
+                            end
+                        end
+                    end
+                end)
 
                 slots[slotID] = slotEntry
             end
@@ -347,9 +487,10 @@ function WarbandNexus:ScanEquippedGear()
     end
 
     db[charKey] = {
-        version  = GEAR_DATA_VERSION,
-        lastScan = time(),
-        slots    = slots,
+        version    = GEAR_DATA_VERSION,
+        lastScan   = time(),
+        slots      = slots,
+        watermarks = watermarks,
     }
 
     DebugPrint("Gear scan complete for", charKey, "—", (function()
@@ -358,7 +499,6 @@ function WarbandNexus:ScanEquippedGear()
         return n
     end)(), "slots equipped")
 
-    -- Notify UI modules
     if Constants and Constants.EVENTS and Constants.EVENTS.GEAR_UPDATED then
         WarbandNexus:SendMessage(Constants.EVENTS.GEAR_UPDATED, { charKey = charKey })
     end
@@ -367,7 +507,6 @@ end
 --- Register event listener for PLAYER_EQUIPMENT_CHANGED to keep gear data fresh.
 function WarbandNexus:RegisterGearCacheEvents()
     -- PLAYER_EQUIPMENT_CHANGED is owned by EventManager.
-    -- This method is kept for backward compatibility.
     self._gearEventsRegistered = true
 end
 
@@ -396,194 +535,172 @@ function WarbandNexus:GetEquippedGear(charKey)
 end
 
 -- ============================================================================
--- UPGRADE ANALYSIS  (Session-only — requires C_ItemUpgrade API, current char)
+-- UPGRADE ANALYSIS  (No API — ilvl-based inference from DB only, works offline)
 -- ============================================================================
 
---- Scan upgrade opportunities for every equipped slot using C_ItemUpgrade.
---- Returns session-only data (not persisted; only valid while character is online).
----@return table upgrades { [slotID] = { canUpgrade, currentIlvl, nextIlvl, maxIlvl, trackName, costs } }
-function WarbandNexus:GetGearUpgradeInfo()
+--- Reconstruct upgrade info from persisted gear only. No API; works offline.
+--- Uses slot.upgradeTrack/currUpgrade when present; else infers from slot.itemLevel.
+--- Returns per-slot info with ilvl progression, currency IDs, costs, and watermark data.
+---@param charKey string
+---@return table upgrades { [slotID] = upgradeSlotInfo }
+function WarbandNexus:GetPersistedUpgradeInfo(charKey)
     local upgrades = {}
+    local gearData = self:GetEquippedGear(charKey)
+    if not gearData or not gearData.slots then return upgrades end
 
-    -- C_ItemUpgrade may not be available in all expansion builds
-    if not C_ItemUpgrade then return upgrades end
-    if not ItemLocation then return upgrades end
+    local watermarks = gearData.watermarks or {}
 
-    for _, slotDef in ipairs(GEAR_SLOTS) do
-        local slotID = slotDef.id
-        local ok, result = pcall(function()
-            local location = ItemLocation:CreateFromEquipmentSlot(slotID)
-            if not location or not location:IsValid() then return nil end
+    for slotID, slot in pairs(gearData.slots) do
+        local itemLevel = tonumber(slot.itemLevel) or 0
+        local trackName = slot.upgradeTrack
+        local currUpgrade = slot.currUpgrade
+        local maxUpgrade = slot.maxUpgrade
 
-            -- API returns: currUpgrade, maxUpgrade, minItemLevel, maxItemLevel, upgradeLevelInfos[], itemUpgradeable
-            local info = (C_ItemUpgrade.GetItemUpgradeItemInfo and C_ItemUpgrade.GetItemUpgradeItemInfo(location)) or {}
-            if not info or (info.itemUpgradeable == false and info.currUpgrade == nil and info.maxUpgrade == nil) then return nil end
+        if not trackName or not currUpgrade or not maxUpgrade or maxUpgrade == 0 then
+            trackName, currUpgrade, maxUpgrade = InferUpgradeFromIlvl(itemLevel)
+        end
 
-            local currUpgrade = info.currUpgrade or 0
-            local maxUpgrade  = info.maxUpgrade or 0
-
-            -- If the API returned 0/0 with no useful data, check for not-upgradeable or
-            -- fall back to tooltip parsing.
-            if currUpgrade == 0 and maxUpgrade == 0 then
-                if info.itemUpgradeable == false then
-                    -- API explicitly says not upgradeable
-                    local hasItem = false
-                    pcall(function()
-                        if C_Item and C_Item.DoesItemExist then
-                            hasItem = C_Item.DoesItemExist(location)
-                        end
-                    end)
-                    if hasItem then
-                        return { canUpgrade = false, notUpgradeable = true, currentIlvl = 0, nextIlvl = 0, maxIlvl = 0, currUpgrade = 0, maxUpgrade = 0, trackName = "", costs = {} }
-                    end
-                    return nil
-                end
-                -- API returned nothing useful — try tooltip fallback for track info
-                local tipInfo = ScanUpgradeFromTooltip(slotDef.id)
-                if tipInfo then
-                    local cur = tipInfo.currUpgrade or 0
-                    local max = tipInfo.maxUpgrade  or 0
-                    if max > 0 then
-                        local currentIlvl = 0
-                        pcall(function()
-                            if C_Item and C_Item.GetCurrentItemLevel then
-                                local v = C_Item.GetCurrentItemLevel(location)
-                                if v and type(v) == "number" and v > 0 then currentIlvl = v end
-                            end
-                        end)
-                        return {
-                            canUpgrade  = (cur < max),
-                            currentIlvl = currentIlvl,
-                            nextIlvl    = currentIlvl,
-                            maxIlvl     = 0,
-                            currUpgrade = cur,
-                            maxUpgrade  = max,
-                            trackName   = tipInfo.trackName,
-                            costs       = {},
-                        }
-                    end
-                end
-                return nil
-            end
-
-            local hasNextStep = (currUpgrade < maxUpgrade)
-            -- Include slot even when at max, so UI can show "X iLvl (Max)" from API; canUpgrade = has next tier
-
-            local minIlvl     = info.minItemLevel or 0
-            local maxIlvl     = info.maxItemLevel or 0
-            local levelInfos  = info.upgradeLevelInfos or {}
-
-            -- Current ilvl: prefer C_Item.GetCurrentItemLevel (accurate); fallback to min + increments
-            local currentIlvl = minIlvl
-            for i = 1, currUpgrade do
-                local linfo = levelInfos[i]
-                if linfo and linfo.itemLevelIncrement then
-                    currentIlvl = currentIlvl + linfo.itemLevelIncrement
-                end
-            end
-            if C_Item and C_Item.GetCurrentItemLevel then
-                local okGet, apiIlvl = pcall(function() return C_Item.GetCurrentItemLevel(location) end)
-                if okGet and apiIlvl and type(apiIlvl) == "number" and apiIlvl > 0 then
-                    currentIlvl = apiIlvl
-                end
-            end
-
-            local nextLevelInfo = hasNextStep and levelInfos[currUpgrade + 1] or nil
-            local nextIlvl = currentIlvl
-            if nextLevelInfo and nextLevelInfo.itemLevelIncrement then
-                nextIlvl = currentIlvl + nextLevelInfo.itemLevelIncrement
-            elseif maxIlvl and maxIlvl > currentIlvl then
-                nextIlvl = maxIlvl
-            end
-
-            -- Costs only when there is a next upgrade step
-            local costs = {}
-            if nextLevelInfo and nextLevelInfo.currencyCostsToUpgrade then
-                for _, entry in ipairs(nextLevelInfo.currencyCostsToUpgrade) do
-                    if entry.currencyID and entry.cost then
-                        costs[#costs + 1] = { currencyID = entry.currencyID, amount = entry.cost }
-                    end
-                end
-            end
-            -- Fallback: legacy GetItemUpgradeCost(location, level)
-            if #costs == 0 and C_ItemUpgrade.GetItemUpgradeCost then
-                local rawCosts = C_ItemUpgrade.GetItemUpgradeCost(location, currUpgrade + 1) or {}
-                for _, entry in ipairs(rawCosts) do
-                    if entry.currencyID and (entry.amount or entry.cost) then
-                        costs[#costs + 1] = {
-                            currencyID = entry.currencyID,
-                            amount     = entry.amount or entry.cost,
-                        }
-                    end
-                end
-            end
-
-            -- Only include slots that have real item data (avoid empty-slot noise)
-            if currentIlvl == 0 and maxIlvl == 0 then return nil end
-
-            local trackName = (info.name and info.name ~= "") and info.name or ""
-            if trackName == "" and info.customUpgradeString and info.customUpgradeString ~= "" then
-                trackName = info.customUpgradeString
-            end
-            return {
-                canUpgrade  = hasNextStep,
-                currentIlvl = currentIlvl,
-                nextIlvl    = nextIlvl,
-                maxIlvl     = maxIlvl,
-                currUpgrade = currUpgrade,
-                maxUpgrade  = maxUpgrade,
-                trackName   = trackName,
-                costs       = costs,
+        if slot.notUpgradeable then
+            upgrades[slotID] = {
+                canUpgrade = false, notUpgradeable = true,
+                currentIlvl = itemLevel, nextIlvl = itemLevel, maxIlvl = 0,
+                currUpgrade = 0, maxUpgrade = 0, trackName = "",
+                currencyID = 0, crestCost = 0, moneyCost = 0,
+                watermarkIlvl = watermarks[slotID] or 0,
             }
-        end)
+        elseif trackName and currUpgrade and maxUpgrade and maxUpgrade > 0 then
+            local hasNext = (currUpgrade < maxUpgrade)
+            local tiers = TRACK_ILVLS[trackName]
 
-        if ok and result then
-            upgrades[slotID] = result
+            local nextIlvl = itemLevel
+            if hasNext and tiers and tiers[currUpgrade + 1] then
+                nextIlvl = tiers[currUpgrade + 1]
+            end
+
+            local maxIlvl = itemLevel
+            if tiers and tiers[maxUpgrade] then
+                maxIlvl = tiers[maxUpgrade]
+            end
+
+            local currencyID = TRACK_NAME_TO_CURRENCY_ID[trackName] or 0
+            local crestCost = hasNext and (ns.UPGRADE_CREST_PER_LEVEL or 20) or 0
+            local moneyCost = hasNext and (ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000) or 0
+
+            -- Gold-only = upgrades to ilvl this slot has already reached. Use per-slot watermark only;
+            -- for paired slots (rings/trinkets), cap by this item's current ilvl so we don't use the pair's max
+            -- (e.g. Ring 1 at 3/6 only gets gold-only up to 227, not Ring 2's 237).
+            local rawWm = watermarks[slotID] or 0
+            local perSlotWm = SLOT_PAIRS[slotID] and (itemLevel < rawWm and itemLevel or rawWm) or rawWm
+            upgrades[slotID] = {
+                canUpgrade    = hasNext,
+                currentIlvl   = itemLevel,
+                nextIlvl      = nextIlvl,
+                maxIlvl       = maxIlvl,
+                currUpgrade   = currUpgrade,
+                maxUpgrade    = maxUpgrade,
+                trackName     = trackName,
+                currencyID    = currencyID,
+                crestCost     = crestCost,
+                moneyCost     = moneyCost,
+                watermarkIlvl = perSlotWm,
+            }
         end
     end
 
     return upgrades
 end
 
---- Reconstruct upgradeInfo table from persisted slot data.
---- Returns the same shape as GetGearUpgradeInfo() so GearUI needs no branching.
----@param charKey string
----@return table upgrades { [slotID] = { canUpgrade, currentIlvl, nextIlvl, maxIlvl, trackName, currUpgrade, maxUpgrade, costs } }
-function WarbandNexus:GetPersistedUpgradeInfo(charKey)
-    local upgrades = {}
-    local gearData = self:GetEquippedGear(charKey)
-    if not gearData or not gearData.slots then return upgrades end
+--- Same logic as GearUI: tier-by-tier affordable count and whether next step needs crests (20) or gold-only (0).
+---@param upInfo table from GetPersistedUpgradeInfo
+---@param currencyAmounts table map currencyID -> amount (0 = gold in gold units)
+---@return number totalAffordable
+---@return number effectiveCrestNeedForNextStep 0 if next step is gold-only or maxed, else 20
+local function GetAffordableCountAndNextCrestNeed(upInfo, currencyAmounts)
+    if not upInfo then return 0, 0 end
+    if not upInfo.canUpgrade then
+        return 0, 0  -- maxed or not upgradeable -> show crest need 0
+    end
+    local currTier = upInfo.currUpgrade or 0
+    local maxTier = upInfo.maxUpgrade or 0
+    if currTier >= maxTier then return 0, 0 end
 
-    for slotID, slot in pairs(gearData.slots) do
-        if slot.currUpgrade and slot.maxUpgrade and slot.maxUpgrade > 0 then
-            local hasNext = (slot.currUpgrade < slot.maxUpgrade)
-            upgrades[slotID] = {
-                canUpgrade  = hasNext,
-                currentIlvl = slot.itemLevel or 0,
-                nextIlvl    = slot.itemLevel or 0,
-                maxIlvl     = slot.maxIlvl or 0,
-                currUpgrade = slot.currUpgrade,
-                maxUpgrade  = slot.maxUpgrade,
-                trackName   = slot.upgradeTrack or "",
-                costs       = hasNext and slot.nextUpgradeCosts or {},
-            }
-        elseif slot.notUpgradeable and slot.itemLink then
-            -- Item is equipped but confirmed not part of any upgrade track
-            upgrades[slotID] = {
-                canUpgrade     = false,
-                notUpgradeable = true,
-                currentIlvl    = slot.itemLevel or 0,
-                nextIlvl       = slot.itemLevel or 0,
-                maxIlvl        = 0,
-                currUpgrade    = 0,
-                maxUpgrade     = 0,
-                trackName      = "",
-                costs          = {},
-            }
+    local tiers = TRACK_ILVLS and TRACK_ILVLS[upInfo.trackName]
+    if not tiers or not tiers[currTier + 1] then return 0, (upInfo.crestCost or 20) end
+
+    local wmIlvl = upInfo.watermarkIlvl or 0
+    local nextIlvl = tiers[currTier + 1]
+    local effectiveCrestNeed = (nextIlvl <= wmIlvl) and 0 or (upInfo.crestCost or 20)
+
+    local goldPerUpgrade = upInfo.moneyCost or 100000
+    local crestPerUpgrade = upInfo.crestCost or 20
+    local cid = upInfo.currencyID or 0
+    local haveGoldCopper = ((currencyAmounts and currencyAmounts[0]) or 0) * 10000
+    local haveCrests = (currencyAmounts and currencyAmounts[cid]) or 0
+
+    local totalAffordable = 0
+    for nextTier = currTier + 1, maxTier do
+        local nIlvl = tiers[nextTier]
+        if not nIlvl then break end
+        local isGoldOnly = (nIlvl <= wmIlvl)
+        if haveGoldCopper < goldPerUpgrade then break end
+        if not isGoldOnly then
+            if haveCrests < crestPerUpgrade then break end
+            haveCrests = haveCrests - crestPerUpgrade
+        end
+        haveGoldCopper = haveGoldCopper - goldPerUpgrade
+        totalAffordable = totalAffordable + 1
+    end
+    return totalAffordable, effectiveCrestNeed
+end
+
+--- Debug: print upgrade info and affordability per slot (current character only). Use /wn gearupgradedebug
+--- Uses same currency source as Gear tab (FromDB, normalized). Crest need = 20 or 0 (gold-only/maxed).
+function WarbandNexus:GearUpgradeDebugReport()
+    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+    if not currentKey then
+        self:Print("|cffff6600[WN GearUpgradeDebug]|r No current character.")
+        return
+    end
+    local upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(currentKey)) or {}
+    local currencies = (self.GetGearUpgradeCurrenciesFromDB and self:GetGearUpgradeCurrenciesFromDB(currentKey)) or {}
+    local currencyAmounts = {}
+    for _, c in ipairs(currencies) do
+        if c and c.currencyID ~= nil then
+            currencyAmounts[c.currencyID] = (c.amount ~= nil) and c.amount or 0
         end
     end
-
-    return upgrades
+    local function currencyName(cid)
+        if cid == 0 then return "Gold" end
+        return UPGRADE_CURRENCY_NAMES[cid] or ("Currency " .. tostring(cid))
+    end
+    self:Print("|cff00ccff[WN GearUpgradeDebug]|r Current char: " .. tostring(currentKey))
+    self:Print("|cff888888Your currency:|r")
+    for id, amt in pairs(currencyAmounts) do
+        local nameStr = currencyName(id)
+        if type(nameStr) == "table" then nameStr = (nameStr.name or tostring(id)) end
+        self:Print("  " .. tostring(id) .. " " .. tostring(nameStr) .. " = " .. tostring(amt))
+    end
+    self:Print("|cff888888Slots: crest=have/need (need 20 or 0=gold-only/max), afford:|r")
+    for _, slotDef in ipairs(GEAR_SLOTS) do
+        local slotID = slotDef.id
+        local up = upgradeInfo[slotID]
+        if up then
+            local label = slotDef.label or ("Slot " .. tostring(slotID))
+            local tier = string.format("%d/%d", up.currUpgrade or 0, up.maxUpgrade or 0)
+            local cid = up.currencyID or 0
+            local crestHave = currencyAmounts[cid] or 0
+            local totalAffordable, effectiveCrestNeed = GetAffordableCountAndNextCrestNeed(up, currencyAmounts)
+            local goldHave = (currencyAmounts[0] or 0) * 10000
+            local goldNeed = up.moneyCost or 0
+            local wmIlvl = up.watermarkIlvl or 0
+            local canAfford = (totalAffordable > 0)
+            self:Print(string.format("  |cff%s%s|r %s %s ilvl=%d wm=%d | crest=%d/%d gold=%d/%d | afford=%s",
+                (canAfford and "00ff00") or (up.canUpgrade and "ffaa00") or "888888",
+                label, tier, up.trackName or "", up.currentIlvl or 0, wmIlvl,
+                crestHave, effectiveCrestNeed, math.floor(goldHave/10000), math.floor(goldNeed/10000),
+                tostring(canAfford)))
+        end
+    end
 end
 
 -- ============================================================================
@@ -751,62 +868,72 @@ end
 -- Currency IDs for item upgrades (Midnight 12.0.1 — Dawncrests only; Valorstone removed)
 -- Must match IDs used in PvEUI / CurrencyCacheService. Order: Adventurer → Myth.
 local UPGRADE_CURRENCY_IDS = {
-    3391,  -- Adventurer Dawncrest (ilvl 224–237)
-    3342,  -- Veteran Dawncrest (ilvl 237–250)
-    3343,  -- Champion Dawncrest (ilvl 250–263)
-    3345,  -- Hero Dawncrest (ilvl 263–276)
-    3347,  -- Myth Dawncrest (ilvl 276–289)
+    3383,  -- Adventurer Dawncrest (Wowhead: currency=3383)
+    3341,  -- Veteran Dawncrest    (Wowhead: currency=3341)
+    3343,  -- Champion Dawncrest
+    3345,  -- Hero Dawncrest
+    3347,  -- Myth Dawncrest
 }
 
 -- Fallback names for Dawncrests (when API not ready)
 local UPGRADE_CURRENCY_NAMES = {
-    [3391] = "Adventurer Dawncrest",
-    [3342] = "Veteran Dawncrest",
+    [3383] = "Adventurer Dawncrest",
+    [3341] = "Veteran Dawncrest",
     [3343] = "Champion Dawncrest",
     [3345] = "Hero Dawncrest",
     [3347] = "Myth Dawncrest",
 }
 
--- Weekly cap for Dawncrests when API returns 0 (display = current on hand, not total earned).
-local DAWNCREST_WEEKLY_CAP = 200
-
---- Crest + gold for Gear tab from GetCurrenciesForUI (same source as Currency tab). No extra API.
----@param charKey string Character key from UI (dropdown); canonical key used for currency, both keys tried for gold.
+--- Crest + gold for Gear tab.
+--- Current char: live C_CurrencyInfo API (same source as Currency tab scan).
+--- Offline char: DB fallback via GetCurrenciesForUI.
+---@param charKey string Character key from UI (dropdown).
 ---@return table list { { currencyID, amount, name, icon }, ... }, gold last
 function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
     local result = {}
     if not charKey then return result end
 
     local canonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(charKey)) or charKey
-    local currencyData = self.GetCurrenciesForUI and self:GetCurrenciesForUI() or {}
-    -- #region agent log
-    local L3391 = currencyData[3391]
-    local sampleCharKey = nil
-    if L3391 and L3391.chars then for k in pairs(L3391.chars) do sampleCharKey = k break end end
-    if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-        local q = (L3391 and L3391.chars and (L3391.chars[canonicalKey] ~= nil or L3391.chars[charKey] ~= nil)) and (L3391.chars[canonicalKey] or L3391.chars[charKey]) or "nil"
-        print("|cff00ff00[WN Gear]|r GetGearFromDB charKey=[" .. tostring(charKey) .. "] canonicalKey=[" .. tostring(canonicalKey) .. "] 3391qty=" .. tostring(q))
-    end
-    -- #endregion
+    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+    local function norm(k) return (k and k:gsub("%s+", "")) or "" end
+    local isCurrentChar = (norm(canonicalKey) == norm(currentKey) or norm(charKey) == norm(currentKey))
+
     for _, currencyID in ipairs(UPGRADE_CURRENCY_IDS) do
-        local L = currencyData[currencyID]
-        local qty = (L and L.chars and (L.chars[canonicalKey] ~= nil or L.chars[charKey] ~= nil)) and (L.chars[canonicalKey] or L.chars[charKey]) or 0
-        if type(qty) == "table" then qty = qty.quantity or 0 end
-        qty = tonumber(qty) or 0
-        -- Normalize on read: DB may hold raw total (e.g. 210); display current on hand (e.g. 10) for weekly-cap crests.
-        if qty > DAWNCREST_WEEKLY_CAP then
-            qty = qty - DAWNCREST_WEEKLY_CAP
-            if qty < 0 then qty = 0 end
+        local amount = 0
+        local cName = UPGRADE_CURRENCY_NAMES[currencyID]
+        local cIcon = nil
+
+        if isCurrentChar and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+            -- LIVE API: exact same normalization as FetchCurrencyFromAPI in CurrencyCacheService
+            local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+            if ok and info then
+                if info.name and info.name ~= "" then cName = info.name end
+                if info.iconFileID then cIcon = info.iconFileID end
+                amount = info.quantity or 0
+            end
+        else
+            -- OFFLINE: read from DB via GetCurrenciesForUI (aggregated per-char data)
+            local currencyData = self.GetCurrenciesForUI and self:GetCurrenciesForUI() or {}
+            local L = currencyData[currencyID]
+            if L then
+                if L.name and L.name ~= "" then cName = L.name end
+                if L.icon or L.iconFileID then cIcon = L.icon or L.iconFileID end
+                if L.chars then
+                    amount = L.chars[canonicalKey] or L.chars[charKey] or 0
+                    if type(amount) == "table" then amount = amount.quantity or 0 end
+                end
+            end
         end
+
         result[#result + 1] = {
             currencyID = currencyID,
-            amount     = qty,
-            name       = (L and L.name and L.name ~= "") and L.name or (UPGRADE_CURRENCY_NAMES[currencyID]),
-            icon       = L and (L.icon or L.iconFileID) or nil,
+            amount     = tonumber(amount) or 0,
+            name       = cName,
+            icon       = cIcon,
         }
     end
 
-    local db = WarbandNexus.db and WarbandNexus.db.global
+    local db = self.db and self.db.global
     local gold = 0
     if db and db.characters then
         local charEntry = db.characters[canonicalKey] or db.characters[charKey]
@@ -814,11 +941,7 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
             gold = (charEntry.gold or 0) * 10000 + (charEntry.silver or 0) * 100 + (charEntry.copper or 0)
         end
     end
-    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
-    local function norm(k) return (k and k:gsub("%s+", "")) or "" end
-    if norm(canonicalKey) == norm(currentKey) or norm(charKey) == norm(currentKey) then
-        if GetMoney then gold = GetMoney() or 0 end
-    end
+    if isCurrentChar and GetMoney then gold = GetMoney() or 0 end
     result[#result + 1] = {
         currencyID = 0,
         amount     = math.floor(gold / 10000),
@@ -831,89 +954,20 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
     return result
 end
 
----Normalize quantity for capped currencies that may report as (max + current).
----When value > cap we treat as (cap + current) and use value - cap.
----@param quantity number|nil
----@param maxQuantity number|nil
----@param useTotalEarnedForMaxQty boolean|nil (unused; kept for API compatibility)
----@return number
-local function NormalizeUpgradeCurrencyQuantity(quantity, maxQuantity, useTotalEarnedForMaxQty)
-    local value = tonumber(quantity) or 0
-    local cap = tonumber(maxQuantity) or 0
-    if cap > 0 and value > cap then
-        value = value - cap
-    end
-    if value < 0 then
-        value = 0
-    end
-    return value
-end
-
 --- Get the player's current quantities of upgrade-relevant currencies.
---- Always API-driven: current char = C_CurrencyInfo.GetCurrencyInfo (live); others = GetCurrencyData (CurrencyCacheService DB, updated by API scan and WN_CURRENCY_UPDATED).
+--- DB only: same as GetGearUpgradeCurrenciesFromDB (CurrencyCacheService + characters gold). No API calls.
 ---@param charKey string
 ---@return table currencies Array of { currencyID, amount, name, icon, isGold? }
 function WarbandNexus:GetGearUpgradeCurrencies(charKey)
-    local result = {}
-    if not charKey then return result end
-
-    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
-    -- Normalize both keys (strip spaces) so "Name-Realm" and "Name- Realm" match
-    local function norm(k) return (k and k:gsub("%s+", "")) or "" end
-    local isCurrentChar = (norm(charKey) == norm(currentKey))
-
-    for _, currencyID in ipairs(UPGRADE_CURRENCY_IDS) do
-        local amount, name, icon = 0, UPGRADE_CURRENCY_NAMES[currencyID] or ("Currency " .. currencyID), nil
-
-        if isCurrentChar and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-            local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
-            if ok and info then
-                -- Weekly-capped Dawncrests may have maxQuantity=0 and maxWeeklyQuantity=200; use either as cap for normalization
-                local cap = (info.maxQuantity and info.maxQuantity > 0) and info.maxQuantity or (info.maxWeeklyQuantity or 0)
-                amount = NormalizeUpgradeCurrencyQuantity(info.quantity, cap, info.useTotalEarnedForMaxQty)
-                if info.name and info.name ~= "" then name = info.name end
-                icon = info.iconFileID or info.icon
-            end
-        end
-
-        -- For non-current char: use DB. For current char: use DB only for name/icon fallback, never overwrite amount.
-        if not isCurrentChar or not icon or (not name or name == "") then
-            local entry = self.GetCurrencyData and self:GetCurrencyData(currencyID, charKey) or nil
-            if entry then
-                if not isCurrentChar and entry.quantity ~= nil then
-                    amount = entry.quantity
-                end
-                if (not name or name == "") and entry.name and entry.name ~= "" then name = entry.name end
-                if not icon then icon = entry.iconFileID or entry.icon end
-            end
-        end
-
-        result[#result + 1] = {
-            currencyID = currencyID,
-            amount     = amount,
-            name       = name,
-            icon       = icon,
-        }
-    end
-
-    -- Gold: live for current char, else from DB
-    local db = WarbandNexus.db and WarbandNexus.db.global
-    if db and db.characters and db.characters[charKey] then
-        local charData = db.characters[charKey]
-        local gold = charData.gold or 0
-        if isCurrentChar and GetMoney then
-            gold = GetMoney() or 0
-        end
-        result[#result + 1] = {
-            currencyID = 0,
-            amount     = math.floor(gold / 10000),
-            name       = "Gold",
-            icon       = 133784,
-            isGold     = true,
-            silver     = math.floor((gold % 10000) / 100),
-            copper     = gold % 100,
-        }
-    end
-
-    return result
+    return self:GetGearUpgradeCurrenciesFromDB(charKey)
 end
+
+-- After currency changes (e.g. crests spent on upgrade), re-scan gear so item ilvl/tier and watermarks stay in sync.
+WarbandNexus:RegisterMessage("WN_CURRENCY_UPDATED", function()
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
+    if currencyGearScanTimer then currencyGearScanTimer:Cancel() end
+    currencyGearScanTimer = C_Timer.NewTimer(0.4, function()
+        currencyGearScanTimer = nil
+        WarbandNexus:ScanEquippedGear()
+    end)
+end)

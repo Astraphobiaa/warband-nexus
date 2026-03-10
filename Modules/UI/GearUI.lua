@@ -1,18 +1,12 @@
 --[[
     Warband Nexus - Gear Management Tab
-    Professional WoW-style layout: paperdoll, Midnight crests, equipped items + upgrade status.
+    Paperdoll with Midnight Dawncrests and upgrade analysis.
 
-    Layout (full-width cards, like Characters tab):
+    Layout:
     ┌────────────────────────────────────────────────────────────────────────────┐
     │ [Header: Title + Character Selector ▼]                                      │
     ├────────────────────────────────────────────────────────────────────────────┤
-    │ Paperdoll — Full width; portrait + slots centered (Characters-style)       │
-    ├────────────────────────────────────────────────────────────────────────────┤
-    │ Upgrade currencies — Gold + Midnight Dawncrests (Adventurer → Myth)         │
-    ├────────────────────────────────────────────────────────────────────────────┤
-    │ Equipment — Slot | Item (icon, name, ilvl) | Status (track X/Y, upgradable)│
-    ├────────────────────────────────────────────────────────────────────────────┤
-    │ ▼ Storage upgrades (collapsible)                                            │
+    │ Paperdoll — Slot icons (left/right/bottom) + portrait (center) + crests    │
     └────────────────────────────────────────────────────────────────────────────┘
 ]]
 
@@ -30,12 +24,8 @@ local CreateThemedButton  = ns.UI_CreateThemedButton
 local FormatGold          = ns.UI_FormatGold
 local FormatNumber        = ns.UI_FormatNumber
 local DrawEmptyState      = ns.UI_DrawEmptyState
-local ShowTooltip         = ns.UI_ShowTooltip
-local HideTooltip         = ns.UI_HideTooltip
 local CreateHeaderIcon    = ns.UI_CreateHeaderIcon
 local GetTabIcon          = ns.UI_GetTabIcon
-local CreateEmptyStateCard  = ns.UI_CreateEmptyStateCard
-local HideEmptyStateCard    = ns.UI_HideEmptyStateCard
 
 -- Slot definitions from GearService
 local GEAR_SLOTS         = ns.GEAR_SLOTS
@@ -69,14 +59,22 @@ local DOLL_PAD       = P(12)
 local SLOT_TO_TEXT_GAP = P(4)  -- yazı ile ok/slot arası daha sıkı
 local TRACK_TEXT_W   = P(136)  -- Track metin taşmasını engellemek için genişletildi
 local UPGRADE_ARROW_W = P(16)
-local CURRENCY_RESERVE = P(312)
-local CURRENCY_PANEL_W = 280
+local CURRENCY_PANEL_W = 240
 local CENTER_GAP     = P(10)
+local CURRENCY_PAPERDOLL_GAP = 14  -- boşluk crest paneli ile paperdoll arası
 
 -- Fixed panel widths: sol = yazı + ikon + slot, sağ = slot + ikon + yazı
 local LEFT_PANEL_W   = TRACK_TEXT_W + SLOT_TO_TEXT_GAP + UPGRADE_ARROW_W + SLOT_TO_TEXT_GAP + SLOT_SIZE
 local RIGHT_PANEL_W  = SLOT_SIZE + SLOT_TO_TEXT_GAP + UPGRADE_ARROW_W + 2 + TRACK_TEXT_W
 local MODEL_W       = P(228)
+-- Paperdoll blok genişliği (sol kolon + model + sağ kolon) — kart içinde ortalanır
+local PAPERDOLL_BLOCK_W = LEFT_PANEL_W + CENTER_GAP + MODEL_W + CENTER_GAP + RIGHT_PANEL_W
+
+-- Minimum card inner width (currency + gaps + paperdoll block + stats) — layout bu genişliğin altına inmez
+local MIN_CARD_INNER_W = CURRENCY_PANEL_W + CURRENCY_PAPERDOLL_GAP * 2 + PAPERDOLL_BLOCK_W + 260
+-- Minimum scrollChild width: daraldığında yatay scroll, elementler üst üste binmesin
+local MIN_GEAR_CARD_W = 2 * (SIDE_MARGIN or 16) + 2 * 12 + MIN_CARD_INNER_W  -- 12 = CARD_PAD
+ns.MIN_GEAR_CARD_W = MIN_GEAR_CARD_W  -- used by UI.lua for scrollChild width on gear tab
 
 -- Ortadan çizgi hizalama: yazı merkezi, ikon merkezi, slot merkezi aynı yatay çizgide (sol/sağ)
 local SLOT_HALF      = SLOT_SIZE / 2
@@ -109,16 +107,6 @@ local EMPTY_SLOT_TEXTURE = {
 
 local SLOT_FALLBACK_TEXTURE = "Interface\\PaperDollInfoFrame\\UI-PaperDoll-Slot-Bag"
 
--- Source type labels + colors
-local SOURCE_TYPE_COLOR = {
-    warband   = { 0.4, 0.8, 1.0 },   -- cyan-blue
-    char_bag  = { 0.6, 1.0, 0.6 },   -- green
-    char_bank = { 0.9, 0.8, 0.5 },   -- gold-ish
-    self_bag  = { 0.7, 0.7, 0.7 },   -- grey
-    self_bank = { 0.7, 0.7, 0.7 },   -- grey
-    boe       = { 1.0, 0.5, 0.1 },   -- orange
-}
-
 -- ============================================================================
 -- SESSION STATE  (selected character; persists within session)
 -- ============================================================================
@@ -127,15 +115,8 @@ local selectedCharKey = nil  -- nil = auto-select current player
 
 local function GetSelectedCharKey()
     if selectedCharKey then return selectedCharKey end
-    -- Default: current player
     return ns.Utilities and ns.Utilities:GetCharacterKey()
 end
-
--- Expand/collapse state per section
-local sectionExpanded = {
-    upgrades = true,
-    storage  = true,
-}
 
 -- ============================================================================
 -- EVENT REFRESH REGISTRATION
@@ -203,29 +184,71 @@ local function GetItemIconSafe(linkOrId)
     return (ok and result) or nil
 end
 
-local function BuildCurrencyAmountMap(charKey)
-    local map = {}
-    local currencies = (WarbandNexus.GetGearUpgradeCurrenciesFromDB and WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)) or {}
-    for i = 1, #currencies do
-        local cur = currencies[i]
-        if cur and cur.currencyID ~= nil then
-            map[cur.currencyID] = (cur.amount ~= nil) and cur.amount or 0
+--- Hesaplama matematiği (upgrade affordability):
+--- - Her tier 20 crest + gold. Watermark: o slotta daha önce ulaşılan max ilvl; o ilvl'e kadar tier'lar "gold only".
+--- - Döngü: currTier+1 .. maxTier. Her adımda: ilvl <= watermark ise sadece gold düş; değilse 20 crest + gold düş.
+--- - haveCrests / 20 = en fazla crest'li upgrade sayısı değil; tier-by-tier düşüyoruz (3/6→4/6 bir crest, 4/6→5/6 bir crest).
+--- - Sonuç: totalAffordable = kaç tier atlanabiliyor, goldOnlyCount = bunlardan kaçı crest gerektirmiyor.
+---
+--- Calculate affordable upgrades tier-by-tier, accounting for watermark (gold-only) levels.
+---@param upInfo table slot upgrade info from GetPersistedUpgradeInfo
+---@param currencyAmounts table map currencyID → amount (0 = gold in gold units)
+---@return number totalAffordable how many upgrades the player can afford
+---@return number goldOnlyCount how many of those are gold-only (below watermark)
+local function CalculateAffordableUpgrades(upInfo, currencyAmounts)
+    if not upInfo or not upInfo.canUpgrade then return 0, 0 end
+
+    local currTier = upInfo.currUpgrade or 0
+    local maxTier = upInfo.maxUpgrade or 0
+    if currTier >= maxTier then return 0, 0 end
+
+    local trackName = upInfo.trackName
+    local TRACK_ILVLS = ns.TRACK_ILVLS
+    local tiers = TRACK_ILVLS and TRACK_ILVLS[trackName]
+    if not tiers then return 0, 0 end
+
+    local wmIlvl = upInfo.watermarkIlvl or 0
+    local goldPerUpgrade = upInfo.moneyCost or (ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000)
+    local crestPerUpgrade = upInfo.crestCost or (ns.UPGRADE_CREST_PER_LEVEL or 20)
+    local currencyID = upInfo.currencyID or 0
+
+    local haveGoldCopper = ((currencyAmounts and currencyAmounts[0]) or 0) * 10000
+    local haveCrests = (currencyAmounts and currencyAmounts[currencyID]) or 0
+
+    local totalAffordable = 0
+    local goldOnlyCount = 0
+
+    for nextTier = currTier + 1, maxTier do
+        local nextIlvl = tiers[nextTier]
+        if not nextIlvl then break end
+
+        local isGoldOnly = (nextIlvl <= wmIlvl)
+
+        if haveGoldCopper < goldPerUpgrade then break end
+
+        if not isGoldOnly then
+            if haveCrests < crestPerUpgrade then break end
+            haveCrests = haveCrests - crestPerUpgrade
+        end
+
+        haveGoldCopper = haveGoldCopper - goldPerUpgrade
+        totalAffordable = totalAffordable + 1
+        if isGoldOnly then
+            goldOnlyCount = goldOnlyCount + 1
         end
     end
-    return map
+
+    return totalAffordable, goldOnlyCount
 end
 
-local function CanAffordUpgrade(costs, currencyAmounts)
-    if not costs or #costs == 0 then return true end
-    if not currencyAmounts then return false end
-    for i = 1, #costs do
-        local cost = costs[i]
-        local have = currencyAmounts[cost.currencyID] or 0
-        if have < (cost.amount or 0) then
-            return false
-        end
-    end
-    return true
+--- Check if the player can afford at least one upgrade for this slot.
+---@param upInfo table slot upgrade info from GetPersistedUpgradeInfo
+---@param currencyAmounts table map currencyID → amount
+---@return boolean
+local function CanAffordNextUpgrade(upInfo, currencyAmounts)
+    if not upInfo or not upInfo.canUpgrade then return false end
+    local count = CalculateAffordableUpgrades(upInfo, currencyAmounts)
+    return count > 0
 end
 
 --- Get the class color hex for a classFile string (e.g. "SHAMAN").
@@ -262,8 +285,10 @@ end
 ---@param textSide string|nil "right" | "left" | "top" — where to place status text relative to icon
 ---@param isNotUpgradeable boolean|nil if true, show a lock icon overlay (item confirmed not upgradeable)
 ---@param centerTextOnIcon boolean|nil if true, center slot name + track text relative to slot icon (weapon row)
+---@param upgradeInfo table|nil optional; when set, tooltip shows next upgrade tier and cost for this slot
+---@param currencyAmounts table|nil optional; map currencyID -> amount (for "you have X" in tooltip if needed)
 ---@return Frame btn
-local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon)
+local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts)
     -- Slot her zaman aynı boyutta; ikon görünmese bile boşluk rezerve (empty texture)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(SLOT_SIZE, SLOT_SIZE)
@@ -397,12 +422,35 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
         lockIcon:SetVertexColor(0.45, 0.45, 0.45, 0.9)
     end
 
-    -- Tooltip
+    -- Tooltip: item link + simplified upgrade info
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
     btn:SetScript("OnEnter", function(self)
         if slotData and slotData.itemLink then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetHyperlink(slotData.itemLink)
+            local up = upgradeInfo and upgradeInfo[slotID]
+            if up and up.canUpgrade then
+                local affordable, goldOnly = CalculateAffordableUpgrades(up, currencyAmounts)
+                GameTooltip:AddLine(" ")
+                if affordable > 0 then
+                    -- Show achievable target only (e.g. 2/6 when 20 crests and 1/6 — not 6/6).
+                    local targetTier = (up.currUpgrade or 0) + affordable
+                    local TRACK_ILVLS = ns.TRACK_ILVLS
+                    local targetIlvl = TRACK_ILVLS and TRACK_ILVLS[up.trackName] and TRACK_ILVLS[up.trackName][targetTier]
+                    local ilvlStr = targetIlvl and format(" (%d)", targetIlvl) or ""
+                    GameTooltip:AddLine(format("Available upgrade to %s %d/%d%s", up.trackName or "", targetTier, up.maxUpgrade or 0, ilvlStr), 0.4, 1, 0.4)
+                    GameTooltip:AddLine(format("%d upgrade(s) with current currency", affordable), 0.6, 0.9, 0.6)
+                    if goldOnly > 0 then
+                        if goldOnly >= affordable then
+                            GameTooltip:AddLine("Crests needed: 0 (gold only — previously reached)", 1, 0.85, 0.4)
+                        else
+                            GameTooltip:AddLine(format("%d upgrade(s) gold only (previously reached)", goldOnly), 1, 0.85, 0.4)
+                        end
+                    end
+                else
+                    GameTooltip:AddLine(format("%s %d/%d — need more crests", up.trackName or "", up.currUpgrade or 0, up.maxUpgrade or 0), 0.8, 0.5, 0.2)
+                end
+            end
             GameTooltip:Show()
         else
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -503,8 +551,7 @@ local CURRENCY_ROW_H = 26
 local ROW_H = 34
 local CARD_PAD = 12
 
---- Build track/tier string from upgradeInfo[slotID], e.g. "Veteran 6/6", "Champion 4/8".
---- Rarity rengi kullanır (Champion/Adventurer/Veteran); slot adları ayrıca beyaz tutulur.
+--- Build track/tier string from upgradeInfo[slotID], e.g. "Veteran 2/6".
 local function GetSlotTrackText(upgradeInfo, slotID, quality)
     local up = upgradeInfo and upgradeInfo[slotID]
     if not up then return nil end
@@ -519,22 +566,19 @@ local function GetSlotTrackText(upgradeInfo, slotID, quality)
 end
 
 --- Draw paperdoll: sol panel (yazı-ikon-slot) | orta (model) | sağ panel (slot-ikon-yazı) | alt panel.
-local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar)
-    local cardW = card:GetWidth()
-    local contentRight = cardW - math.max(CURRENCY_RESERVE, CURRENCY_PANEL_W + (CARD_PAD * 2))
-
+--- baseX: paperdoll bloğunun sol kenarı (kart içinde crest panelinden sonra ortalanmış alan).
+local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar, baseX)
+    baseX = baseX or CARD_PAD
     -- Sol panel: fixed width; slot sağda (yazı - ikon - slot)
-    local leftX = CARD_PAD + LEFT_PANEL_W - SLOT_SIZE
-    local leftColRight = leftX + SLOT_SIZE
-    -- Yan yana hizalı: sol | gap | orta | gap | sağ; sağ panel taşmasın diye clamp
-    local rightXPreferred = leftColRight + CENTER_GAP + MODEL_W + CENTER_GAP
-    local rightX = math.min(rightXPreferred, contentRight - CARD_PAD - RIGHT_PANEL_W)
+    local leftX = baseX + LEFT_PANEL_W - SLOT_SIZE
+    local leftColRight = baseX + LEFT_PANEL_W
+    local rightX = baseX + LEFT_PANEL_W + CENTER_GAP + MODEL_W + CENTER_GAP
 
     local slots = gearData and gearData.slots or {}
     local function GetSlotData(slotID) return slots[slotID] end
     local function IsUpgradable(slotID)
         local up = upgradeInfo and upgradeInfo[slotID]
-        return up and up.canUpgrade and CanAffordUpgrade(up.costs, currencyAmounts)
+        return up and up.canUpgrade and CanAffordNextUpgrade(up, currencyAmounts)
     end
     local function IsNotUpgradeable(slotID)
         local slot = slots[slotID]
@@ -551,14 +595,14 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local leftSlots = { 1, 2, 3, 15, 5, 9 }
     for i, slotID in ipairs(leftSlots) do
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        CreateSlotButton(card, slotID, GetSlotData(slotID), leftX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), leftX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts)
     end
 
     -- Right column: 6 armor + 2 trinkets — slot | ikon | yazı
     local rightSlots = { 10, 6, 7, 8, 11, 12, 13, 14 }
     for i, slotID in ipairs(rightSlots) do
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        CreateSlotButton(card, slotID, GetSlotData(slotID), rightX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), rightX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts)
     end
 
     -- Alt panel: slot üstte, altında ikon + yazı (yazılar aşağı); silahlar birbirine yakın
@@ -566,14 +610,14 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local WEAPON_GAP = P(36)
     local WEAPON_TEXT_W = TRACK_TEXT_W
     local weaponRowW = SLOT_SIZE + WEAPON_GAP + SLOT_SIZE
-    local weaponStartX = leftColRight + (rightX - leftColRight - weaponRowW) / 2
+    local weaponStartX = baseX + LEFT_PANEL_W + (MODEL_W + CENTER_GAP - weaponRowW) / 2
     local maxRows = math.max(#leftSlots, #rightSlots)
     local bottomY = startY - maxRows * rowStep - 8
     for i, slotID in ipairs(weaponSlots) do
         local quality = (slots[slotID] and slots[slotID].quality) or 0
         local wx = (i == 1) and weaponStartX or (weaponStartX + SLOT_SIZE + WEAPON_GAP)
         local weaponSide = (i == 1) and "bottom_left" or "bottom_right"  -- Main Hand solunda, Off Hand sağında
-        CreateSlotButton(card, slotID, GetSlotData(slotID), wx, bottomY, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), wx, bottomY, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts)
     end
 
     -- Orta panel: model frame alt ucu trinket satırının altına denk gelecek şekilde uzatıldı
@@ -581,7 +625,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local MODEL_H = (numRightRows - 1) * rowStep + SLOT_SIZE  -- trinket altına kadar
     local classFile = charData and charData.classFile
     local accent    = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.6, 0.6, 1.0 }
-    local modelX    = leftColRight + CENTER_GAP
+    local modelX    = baseX + LEFT_PANEL_W + CENTER_GAP
     local modelTopY = startY
 
     local centerRef = nil
@@ -645,17 +689,19 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         ilvlOverlay:SetShadowColor(0, 0, 0, 1)
     end
 
-    -- Karakter adı model alanının içinde, altta modelin üzerinde
+    -- Karakter adı 3D model penceresinin üstünde; "90 Haranir" satırı kaldırıldı, isim hafif aşağı
     local displayName = (charData and charData.name) or ""
     if displayName ~= "" then
         local nameFrame = CreateFrame("Frame", nil, card)
-        nameFrame:SetPoint("BOTTOM", centerRef, "BOTTOM", 0, 8)
+        nameFrame:SetPoint("BOTTOM", centerRef, "TOP", 0, 4)
         nameFrame:SetSize(MODEL_W, P(28))
         if nameFrame.SetFrameLevel and centerRef.GetFrameLevel then
             nameFrame:SetFrameLevel(centerRef:GetFrameLevel() + 10)
         end
         local nameLabel = FontManager:CreateFontString(nameFrame, "header", "OVERLAY")
-        nameLabel:SetPoint("CENTER", 0, 0)
+        nameLabel:SetPoint("TOP", nameFrame, "TOP", 0, 0)
+        nameLabel:SetPoint("LEFT", nameFrame, "LEFT", 0, 0)
+        nameLabel:SetPoint("RIGHT", nameFrame, "RIGHT", 0, 0)
         nameLabel:SetJustifyH("CENTER")
         local classHex = GetClassHex(classFile)
         nameLabel:SetText("|cff" .. classHex .. displayName .. "|r")
@@ -664,476 +710,311 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     end
 end
 
--- Shared icon paths (used by equipment card)
-local UPGRADE_ICON = "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up"
-local LOCK_ICON    = "Interface\\Common\\LockIcon"
+-- ── Stat helpers (live API for current char) ────────────────────────────────
+local STAT_IDS = {
+    { id = 1, label = "Strength",    icon = "Interface\\Icons\\spell_nature_strength" },
+    { id = 2, label = "Agility",     icon = "Interface\\Icons\\ability_backstab" },
+    { id = 3, label = "Stamina",     icon = "Interface\\Icons\\spell_holy_wordfortitude" },
+    { id = 4, label = "Intellect",   icon = "Interface\\Icons\\spell_holy_magicalsentry" },
+}
+local SECONDARY_STATS = {
+    { label = "Critical Strike", fn = function() return GetCombatRating and GetCombatRating(9) or 0 end,  pctFn = function() return GetCritChance and GetCritChance() or 0 end },
+    { label = "Haste",           fn = function() return GetCombatRating and GetCombatRating(18) or 0 end, pctFn = function() return GetHaste and GetHaste() or 0 end },
+    { label = "Mastery",         fn = function() return GetCombatRating and GetCombatRating(26) or 0 end, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
+    { label = "Versatility",     fn = function() return GetCombatRating and GetCombatRating(29) or 0 end, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
+}
 
---- Full-width Equipped gear card: paperdoll left/center, crests on the right. Returns new yOffset.
---- charKey: key from dropdown (used for currency/gold lookup; GetGearUpgradeCurrenciesFromDB tries canonical + this).
+--- Equipped gear card: 3-panel layout — Currency (left) | Paperdoll (center) | Stats (right).
+--- charKey: key from dropdown (used for currency/gold lookup).
 --- isCurrentChar: true if selected character is the logged-in one (model vs class portrait).
-local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar)
+--- currencies: array from GetGearUpgradeCurrenciesFromDB (passed to avoid duplicate API calls).
+local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar, currencies)
     local rowStep = SLOT_SIZE + SLOT_GAP
     local numRightRows = 8
     local MODEL_H_DEFAULT = (numRightRows - 1) * rowStep + SLOT_SIZE
-    local leftH = DOLL_PAD + 8 * rowStep + SLOT_SIZE + 8 + MODEL_H_DEFAULT + 40
-    local currencies = (WarbandNexus.GetGearUpgradeCurrenciesFromDB and WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)) or {}
-    local currencyIconSize = 22
-    local rowH = 26
-    local currenciesH = 16 + #currencies * rowH
-    local cardH = CARD_PAD + math.max(leftH, currenciesH) + CARD_PAD
+    -- Content height: section + slot columns + gap + weapon row (Main/Off Hand) + bottom pad so card border is below weapons
+    local contentTop = CARD_PAD + 24
+    local weaponBottom = 8 * rowStep + 8 + SLOT_SIZE
+    local paperdollH = contentTop + weaponBottom + CARD_PAD
+    currencies = currencies or {}
+    local STAT_PANEL_W = 260
+    local contentH = paperdollH
+    local cardH = CARD_PAD + 24 + contentH + CARD_PAD
 
     local card = CreateCard(parent, cardH)
     card:SetPoint("TOPLEFT", SIDE_MARGIN, yOffset)
-    card:SetPoint("TOPRIGHT", -SIDE_MARGIN, yOffset)
+    card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SIDE_MARGIN, yOffset)
 
-    local sectionLabel = FontManager:CreateFontString(card, "small", "OVERLAY")
-    sectionLabel:SetPoint("TOPLEFT", CARD_PAD, -CARD_PAD)
-    sectionLabel:SetText("|cffcccccc" .. "Equipped Gear" .. "|r")
+    local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
 
-    DrawPaperDollInCard(card, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true)
-
-    -- Sağ: crest/gold ikon + isim + miktar (DB'den, API yok)
-    local currencyPanelW = 240
-    local rightPanel = CreateFrame("Frame", nil, card)
-    rightPanel:SetWidth(currencyPanelW)
-    rightPanel:SetHeight(currenciesH)
-    rightPanel:SetPoint("TOPRIGHT", -CARD_PAD, -CARD_PAD - 2)
-
-    local curY = -2
+    -- ── LEFT PANEL: Upgrade Currencies ──────────────────────────────────────
+    local currencyPanelW = CURRENCY_PANEL_W
+    local crestCurrencies = {}
+    local goldCurrency = nil
     for _, cur in ipairs(currencies) do
-        local ico = rightPanel:CreateTexture(nil, "ARTWORK")
-        ico:SetSize(currencyIconSize, currencyIconSize)
-        ico:SetPoint("TOPLEFT", 0, curY)
+        if cur.isGold then goldCurrency = cur else crestCurrencies[#crestCurrencies + 1] = cur end
+    end
+
+    -- Currency panel height: header(20) + crests(rows) + divider(12) + gold(24) + pad(8)
+    local CREST_ROW_H = 28
+    local currenciesH = 24 + #crestCurrencies * CREST_ROW_H + 12 + 28 + 8
+
+    local parentW = (parent and parent.GetWidth) and parent:GetWidth() or 0
+    local CARD_PAD_X = 12
+    local cardInnerW = 0
+    if parentW and parentW > (SIDE_MARGIN * 2) then
+        cardInnerW = parentW - (SIDE_MARGIN * 2) - (CARD_PAD_X * 2)
+    end
+    if cardInnerW <= 0 and card and card.GetWidth then
+        cardInnerW = card:GetWidth() - CARD_PAD_X * 2
+    end
+    -- Layout hiç bu minimumun altına inmesin; dar pencerede içerik taşar, yatay scroll ile görünür
+    cardInnerW = math.max(cardInnerW or 0, MIN_CARD_INNER_W)
+
+    local leftPanel = CreateFrame("Frame", nil, card, "BackdropTemplate")
+    leftPanel:SetWidth(currencyPanelW)
+    leftPanel:SetHeight(currenciesH)
+    leftPanel:SetPoint("TOPLEFT", CARD_PAD, -CARD_PAD - 22)
+    leftPanel:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 },
+    })
+    leftPanel:SetBackdropColor(0.06, 0.06, 0.08, 0.90)
+    leftPanel:SetBackdropBorderColor(accent[1] * 0.5, accent[2] * 0.5, accent[3] * 0.5, 0.6)
+
+    -- Panel header (ortalanmış)
+    local panelTitle = FontManager:CreateFontString(leftPanel, "header", "OVERLAY")
+    panelTitle:SetPoint("TOPLEFT", leftPanel, "TOPLEFT", 10, -8)
+    panelTitle:SetPoint("TOPRIGHT", leftPanel, "TOPRIGHT", -10, -8)
+    panelTitle:SetJustifyH("CENTER")
+    panelTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1]*255), math.floor(accent[2]*255), math.floor(accent[3]*255)) .. "Upgrade Currencies|r")
+    panelTitle:SetShadowOffset(1, -1)
+    panelTitle:SetShadowColor(0, 0, 0, 1)
+
+    -- Crest rows: icon | name ............ amount / cap
+    local curY = -28
+    local curPad = 10
+    local iconSize = 22
+    for _, cur in ipairs(crestCurrencies) do
+        -- Alternating row bg
+        local rowBg = leftPanel:CreateTexture(nil, "BACKGROUND")
+        rowBg:SetPoint("TOPLEFT", 2, curY + 1)
+        rowBg:SetPoint("TOPRIGHT", -2, curY + 1)
+        rowBg:SetHeight(CREST_ROW_H)
+        rowBg:SetColorTexture(1, 1, 1, (_ % 2 == 0) and 0.03 or 0)
+
+        local ico = leftPanel:CreateTexture(nil, "ARTWORK")
+        ico:SetSize(iconSize, iconSize)
+        ico:SetPoint("TOPLEFT", curPad, curY - (CREST_ROW_H - iconSize) / 2)
         ico:SetTexture(cur.icon or "Interface\\Icons\\INV_Misc_Coin_01")
         ico:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-        local nameStr = (cur.name and cur.name ~= "") and cur.name or (cur.isGold and "Gold" or "")
-        local textW = currencyPanelW - currencyIconSize - 14
-        local nameText = FontManager:CreateFontString(rightPanel, "small", "OVERLAY")
+        -- Name (left aligned)
+        local nameText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
         nameText:SetPoint("LEFT", ico, "RIGHT", 6, 0)
-        nameText:SetWidth(textW)
-        nameText:SetJustifyH("LEFT")
-        nameText:SetNonSpaceWrap(false)
-        nameText:SetText("|cffb0b0b0" .. (nameStr or "") .. "|r")
+        nameText:SetTextColor(0.85, 0.85, 0.85)
+        -- Shorten name: "Adventurer Dawncrest" → "Adventurer"
+        local shortName = (cur.name or ""):match("^(%S+)") or cur.name or ""
+        nameText:SetText(shortName)
+        nameText:SetShadowOffset(1, -1)
+        nameText:SetShadowColor(0, 0, 0, 0.8)
 
-        local amountText = FontManager:CreateFontString(rightPanel, "small", "OVERLAY")
-        amountText:SetPoint("LEFT", ico, "RIGHT", 6, -12)
-        amountText:SetWidth(textW)
-        amountText:SetJustifyH("LEFT")
-        if cur.isGold then
-            local copper = (cur.amount or 0) * 10000 + (cur.silver or 0) * 100 + (cur.copper or 0)
-            amountText:SetText(FormatGold and FormatGold(copper) or (tostring(cur.amount or 0) .. "g"))
-            amountText:SetTextColor(1, 0.85, 0.4)
+        -- Amount / 200 (right aligned)
+        local amt = cur.amount or 0
+        local amountText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
+        amountText:SetPoint("RIGHT", leftPanel, "RIGHT", -curPad, 0)
+        amountText:SetPoint("TOP", ico, "TOP", 0, 0)
+        amountText:SetPoint("BOTTOM", ico, "BOTTOM", 0, 0)
+        amountText:SetJustifyH("RIGHT")
+        amountText:SetShadowOffset(1, -1)
+        amountText:SetShadowColor(0, 0, 0, 0.8)
+        -- Color: green if > 0, dim if 0
+        if amt > 0 then
+            amountText:SetText("|cffffffff" .. (FormatNumber and FormatNumber(amt) or tostring(amt)) .. "|r |cff666666/ 200|r")
         else
-            local amt = cur.amount or 0
-            amountText:SetText("|cffffd700" .. (FormatNumber and FormatNumber(amt) or tostring(amt)) .. "|r")
+            amountText:SetText("|cff555555" .. "0" .. "|r |cff444444/ 200|r")
         end
-        curY = curY - rowH
+
+        curY = curY - CREST_ROW_H
+    end
+
+    -- Divider line
+    local divider = leftPanel:CreateTexture(nil, "ARTWORK")
+    divider:SetPoint("TOPLEFT", curPad, curY - 4)
+    divider:SetPoint("RIGHT", leftPanel, "RIGHT", -curPad, 0)
+    divider:SetHeight(1)
+    divider:SetColorTexture(accent[1] * 0.3, accent[2] * 0.3, accent[3] * 0.3, 0.6)
+
+    -- Gold row
+    if goldCurrency then
+        curY = curY - 14
+        local goldIco = leftPanel:CreateTexture(nil, "ARTWORK")
+        goldIco:SetSize(iconSize, iconSize)
+        goldIco:SetPoint("TOPLEFT", curPad, curY)
+        goldIco:SetTexture(goldCurrency.icon or 133784)
+        goldIco:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        local goldText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
+        goldText:SetPoint("LEFT", goldIco, "RIGHT", 6, 0)
+        goldText:SetTextColor(1, 0.82, 0)
+        goldText:SetText("Gold")
+        goldText:SetShadowOffset(1, -1)
+        goldText:SetShadowColor(0, 0, 0, 0.8)
+
+        local goldAmt = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
+        goldAmt:SetPoint("RIGHT", leftPanel, "RIGHT", -curPad, 0)
+        goldAmt:SetPoint("TOP", goldIco, "TOP", 0, 0)
+        goldAmt:SetPoint("BOTTOM", goldIco, "BOTTOM", 0, 0)
+        goldAmt:SetJustifyH("RIGHT")
+        goldAmt:SetShadowOffset(1, -1)
+        goldAmt:SetShadowColor(0, 0, 0, 0.8)
+        local copper = (goldCurrency.amount or 0) * 10000 + (goldCurrency.silver or 0) * 100 + (goldCurrency.copper or 0)
+        goldAmt:SetText("|cffffff00" .. (FormatGold and FormatGold(copper) or (tostring(goldCurrency.amount or 0) .. "g")) .. "|r")
+    end
+
+    -- ── CENTER: Paperdoll ───────────────────────────────────────────────────
+    local middleW = cardInnerW - CURRENCY_PANEL_W - STAT_PANEL_W - (CURRENCY_PAPERDOLL_GAP * 2)
+    local middlePad = math.max(0, (middleW - PAPERDOLL_BLOCK_W) / 2)
+    local paperdollBaseX = CARD_PAD + CURRENCY_PANEL_W + CURRENCY_PAPERDOLL_GAP + middlePad
+    DrawPaperDollInCard(card, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true, paperdollBaseX)
+
+    -- ── RIGHT PANEL: Character Stats ────────────────────────────────────────
+    local STAT_ROW_H = 24
+    local primaryRows = {}
+    local secondaryRows = {}
+    if isCurrentChar and UnitStat then
+        for i = 1, #STAT_IDS do
+            local stat = STAT_IDS[i]
+            local ok, _, total = pcall(UnitStat, "player", stat.id)
+            if ok and total and total > 0 then
+                primaryRows[#primaryRows + 1] = {
+                    label = stat.label,
+                    value = FormatNumber and FormatNumber(math.floor(total)) or tostring(math.floor(total)),
+                }
+            end
+        end
+        for i = 1, #SECONDARY_STATS do
+            local stat = SECONDARY_STATS[i]
+            local ok, rating = pcall(stat.fn)
+            local ok2, pct = pcall(stat.pctFn)
+            if ok and rating and rating > 0 then
+                local pctStr = (ok2 and pct) and format("%.1f%%", pct) or ""
+                secondaryRows[#secondaryRows + 1] = {
+                    label = stat.label,
+                    value = pctStr .. "  |cffffffff" .. (FormatNumber and FormatNumber(math.floor(rating)) or tostring(math.floor(rating))) .. "|r",
+                }
+            end
+        end
+    end
+    local hasDivider = (#primaryRows > 0 and #secondaryRows > 0)
+    local statContentRows = #primaryRows + #secondaryRows
+    local statContentH = 32 + (statContentRows * STAT_ROW_H) + (hasDivider and 10 or 0) + 14
+    if statContentRows == 0 then
+        statContentH = 96
+    end
+    local statPanelH = math.max(currenciesH, statContentH)
+
+    local statPanel = CreateFrame("Frame", nil, card, "BackdropTemplate")
+    statPanel:SetWidth(STAT_PANEL_W)
+    statPanel:SetHeight(statPanelH)
+    statPanel:SetPoint("TOPRIGHT", card, "TOPRIGHT", -CARD_PAD, -CARD_PAD - 22)
+    statPanel:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 },
+    })
+    statPanel:SetBackdropColor(0.06, 0.06, 0.08, 0.90)
+    statPanel:SetBackdropBorderColor(accent[1] * 0.5, accent[2] * 0.5, accent[3] * 0.5, 0.6)
+
+    -- Panel header (ortalanmış)
+    local statTitle = FontManager:CreateFontString(statPanel, "header", "OVERLAY")
+    statTitle:SetPoint("TOPLEFT", statPanel, "TOPLEFT", 10, -8)
+    statTitle:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -10, -8)
+    statTitle:SetJustifyH("CENTER")
+    statTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1]*255), math.floor(accent[2]*255), math.floor(accent[3]*255)) .. "Character Stats|r")
+    statTitle:SetShadowOffset(1, -1)
+    statTitle:SetShadowColor(0, 0, 0, 1)
+
+    local statY = -32
+    local statPad = 12
+
+    if #primaryRows > 0 or #secondaryRows > 0 then
+        for i = 1, #primaryRows do
+            local stat = primaryRows[i]
+            local row = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
+            row:SetPoint("TOPLEFT", statPad, statY)
+            row:SetWidth(118)
+            row:SetWordWrap(false)
+            row:SetJustifyH("LEFT")
+            row:SetTextColor(0.75, 0.8, 0.9)
+            row:SetText(stat.label)
+            row:SetShadowOffset(1, -1)
+            row:SetShadowColor(0, 0, 0, 0.8)
+
+            local val = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
+            val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY)
+            val:SetPoint("LEFT", row, "RIGHT", 6, 0)
+            val:SetJustifyH("RIGHT")
+            val:SetTextColor(0.4, 0.9, 0.5)
+            val:SetText(stat.value)
+            val:SetShadowOffset(1, -1)
+            val:SetShadowColor(0, 0, 0, 0.8)
+
+            statY = statY - STAT_ROW_H
+        end
+
+        if hasDivider then
+            local statDiv = statPanel:CreateTexture(nil, "ARTWORK")
+            statDiv:SetPoint("TOPLEFT", statPad, statY - 2)
+            statDiv:SetPoint("RIGHT", statPanel, "RIGHT", -statPad, 0)
+            statDiv:SetHeight(1)
+            statDiv:SetColorTexture(accent[1] * 0.3, accent[2] * 0.3, accent[3] * 0.3, 0.6)
+            statY = statY - 10
+        end
+
+        for i = 1, #secondaryRows do
+            local stat = secondaryRows[i]
+            local row = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
+            row:SetPoint("TOPLEFT", statPad, statY)
+            row:SetWidth(118)
+            row:SetWordWrap(false)
+            row:SetJustifyH("LEFT")
+            row:SetTextColor(0.75, 0.8, 0.9)
+            row:SetText(stat.label)
+            row:SetShadowOffset(1, -1)
+            row:SetShadowColor(0, 0, 0, 0.8)
+
+            local val = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
+            val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY)
+            val:SetPoint("LEFT", row, "RIGHT", 6, 0)
+            val:SetJustifyH("RIGHT")
+            val:SetTextColor(0.55, 0.85, 0.95)
+            val:SetText(stat.value)
+            val:SetShadowOffset(1, -1)
+            val:SetShadowColor(0, 0, 0, 0.8)
+
+            statY = statY - STAT_ROW_H
+        end
+    else
+        -- Offline character: no stats available
+        local noStats = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
+        noStats:SetPoint("TOPLEFT", statPad, statY)
+        noStats:SetTextColor(0.45, 0.45, 0.45)
+        noStats:SetText("Stats available for\ncurrent character only")
+        noStats:SetShadowOffset(1, -1)
+        noStats:SetShadowColor(0, 0, 0, 0.8)
     end
 
     card:Show()
     return yOffset - cardH - 12
 end
 
--- ============================================================================
--- EQUIPMENT CARD  (item icon | slot name | item name | ilvl | upgrade status)
--- ============================================================================
+-- (Equipment Status card removed per user request)
 
-local SLOT_ROW_H = 28
-local ICON_SIZE  = 20   -- item icon in each row
-
--- Column right-edge offsets (from card TOPRIGHT, negative = inward)
-local COL_STATUS_RIGHT = -8    -- status text right edge
-local COL_ILVL_RIGHT   = -208  -- ilvl label right edge
-local COL_NAME_RIGHT   = -265  -- item name right edge (leaves room for ilvl+status)
-
-local function DrawEquipmentCard(parent, yOffset, gearData, charKey, upgradeInfo, currencyAmounts)
-    local slotCount  = GEAR_SLOTS and #GEAR_SLOTS or 16
-    -- column header row (20px) + separator (1px) + slot rows
-    local contentH   = 20 + 4 + slotCount * (SLOT_ROW_H + 2) + 8
-    local cardH      = CARD_PAD + 22 + contentH + CARD_PAD
-
-    local card = CreateCard(parent, cardH)
-    card:SetPoint("TOPLEFT",  SIDE_MARGIN, yOffset)
-    card:SetPoint("TOPRIGHT", -SIDE_MARGIN, yOffset)
-
-    -- Section header
-    local sectionLabel = FontManager:CreateFontString(card, "small", "OVERLAY")
-    sectionLabel:SetPoint("TOPLEFT", CARD_PAD, -CARD_PAD)
-    sectionLabel:SetText("|cffcccccc" .. "Equipment Status" .. "|r")
-
-    -- Column headers
-    local colY = -CARD_PAD - 18
-    local colHdr = CreateFrame("Frame", nil, card)
-    colHdr:SetHeight(16)
-    colHdr:SetPoint("TOPLEFT",  CARD_PAD, colY)
-    colHdr:SetPoint("TOPRIGHT", -CARD_PAD, colY)
-
-    local hdrSlot = FontManager:CreateFontString(colHdr, "tiny", "OVERLAY")
-    hdrSlot:SetPoint("LEFT", ICON_SIZE + 4, 0)
-    hdrSlot:SetText("|cff999999SLOT|r")
-
-    local hdrItem = FontManager:CreateFontString(colHdr, "tiny", "OVERLAY")
-    hdrItem:SetPoint("LEFT", ICON_SIZE + 68, 0)
-    hdrItem:SetText("|cff999999ITEM|r")
-
-    local hdrIlvl = FontManager:CreateFontString(colHdr, "tiny", "OVERLAY")
-    hdrIlvl:SetPoint("RIGHT", COL_ILVL_RIGHT + 10, 0)
-    hdrIlvl:SetJustifyH("RIGHT")
-    hdrIlvl:SetText("|cff999999iLVL|r")
-
-    local hdrStatus = FontManager:CreateFontString(colHdr, "tiny", "OVERLAY")
-    hdrStatus:SetPoint("RIGHT", COL_STATUS_RIGHT, 0)
-    hdrStatus:SetJustifyH("RIGHT")
-    hdrStatus:SetText("|cff999999STATUS|r")
-
-    -- Separator line
-    local sep = card:CreateTexture(nil, "ARTWORK")
-    sep:SetHeight(1)
-    sep:SetPoint("TOPLEFT",  CARD_PAD, colY - 18)
-    sep:SetPoint("TOPRIGHT", -CARD_PAD, colY - 18)
-    sep:SetColorTexture(0.25, 0.25, 0.30, 0.6)
-
-    local slots  = gearData and gearData.slots or {}
-    local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.6, 0.6, 1.0 }
-
-    local y = colY - 22   -- below column headers + separator
-    for _, slotDef in ipairs(GEAR_SLOTS or {}) do
-        local slotID   = slotDef.id
-        local slotData = slots[slotID]
-        local upInfo   = upgradeInfo and upgradeInfo[slotID]
-
-        local canUpgradeThis  = upInfo and upInfo.canUpgrade
-        local notUpgradeable  = (slotData and slotData.notUpgradeable) or (upInfo and upInfo.notUpgradeable)
-        local isAtMax         = upInfo and not upInfo.canUpgrade and (upInfo.maxUpgrade or 0) > 0
-        local canAfford       = canUpgradeThis and CanAffordUpgrade(upInfo.costs, currencyAmounts) or false
-
-        local row = CreateFrame("Button", nil, card, "BackdropTemplate")
-        row:SetHeight(SLOT_ROW_H)
-        row:SetPoint("TOPLEFT",  CARD_PAD, y)
-        row:SetPoint("TOPRIGHT", -CARD_PAD, y)
-        row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-
-        if canUpgradeThis then
-            -- Upgradable: green tint when affordable, orange when can't afford
-            if canAfford then
-                row:SetBackdropColor(0.04, 0.09, 0.05, 0.6)
-                row:SetBackdropBorderColor(0.15, 0.45, 0.18, 0.7)
-            else
-                row:SetBackdropColor(0.09, 0.07, 0.03, 0.6)
-                row:SetBackdropBorderColor(0.45, 0.32, 0.10, 0.7)
-            end
-        elseif isAtMax then
-            -- At max upgrade: subtle blue-green
-            row:SetBackdropColor(0.03, 0.07, 0.09, 0.6)
-            row:SetBackdropBorderColor(0.10, 0.35, 0.45, 0.7)
-        else
-            row:SetBackdropColor(0.04, 0.04, 0.06, 0.5)
-            row:SetBackdropBorderColor(accent[1]*0.15, accent[2]*0.15, accent[3]*0.15, 0.45)
-        end
-
-        -- ── Item icon ──────────────────────────────────────────────────────
-        local iconTex = row:CreateTexture(nil, "ARTWORK")
-        iconTex:SetSize(ICON_SIZE, ICON_SIZE)
-        iconTex:SetPoint("LEFT", 2, 0)
-        if slotData and slotData.itemLink then
-            local icon = GetItemIconSafe(slotData.itemLink)
-            if icon then
-                iconTex:SetTexture(icon)
-                iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            else
-                iconTex:SetTexture(EMPTY_SLOT_TEXTURE[slotID] or SLOT_FALLBACK_TEXTURE)
-                iconTex:SetTexCoord(0, 1, 0, 1)
-            end
-        else
-            iconTex:SetTexture(EMPTY_SLOT_TEXTURE[slotID] or SLOT_FALLBACK_TEXTURE)
-            iconTex:SetTexCoord(0, 1, 0, 1)
-            iconTex:SetVertexColor(0.4, 0.4, 0.4)
-        end
-
-        -- ── Slot label (e.g. "Head", "Main Hand") ──────────────────────────
-        local slotLabel = FontManager:CreateFontString(row, "small", "OVERLAY")
-        slotLabel:SetPoint("LEFT", ICON_SIZE + 4, 0)
-        slotLabel:SetWidth(60)
-        slotLabel:SetJustifyH("LEFT")
-        slotLabel:SetText("|cffffffff" .. (slotDef.label or "") .. "|r")
-
-        -- ── Item name (quality colored) ────────────────────────────────────
-        local nameLabel = FontManager:CreateFontString(row, "small", "OVERLAY")
-        nameLabel:SetPoint("LEFT",  ICON_SIZE + 68, 0)
-        nameLabel:SetPoint("RIGHT", COL_NAME_RIGHT,  0)
-        nameLabel:SetJustifyH("LEFT")
-        nameLabel:SetNonSpaceWrap(false)
-        if slotData and slotData.itemLink then
-            local itemName = (slotData.name and slotData.name ~= "") and slotData.name or "Unknown"
-            local hex = GetQualityHex and GetQualityHex(slotData.quality or 0) or "ffffff"
-            nameLabel:SetText("|cff" .. hex .. itemName .. "|r")
-        else
-            nameLabel:SetText("|cff555555— empty —|r")
-        end
-
-        -- ── iLvl ──────────────────────────────────────────────────────────
-        local ilvlLabel = FontManager:CreateFontString(row, "small", "OVERLAY")
-        ilvlLabel:SetPoint("RIGHT", COL_ILVL_RIGHT, 0)
-        ilvlLabel:SetJustifyH("RIGHT")
-        ilvlLabel:SetWidth(40)
-        local ilvl = slotData and slotData.itemLevel or 0
-        if ilvl > 0 then
-            ilvlLabel:SetText(ColoredIlvl(ilvl, slotData and slotData.quality or 0))
-        else
-            ilvlLabel:SetText("")
-        end
-
-        -- ── Status (right-aligned): track X/Y | MAX | lock | — ────────────
-        local statusText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        statusText:SetJustifyH("RIGHT")
-        statusText:SetWidth(150)
-        statusText:SetNonSpaceWrap(false)
-
-        if canUpgradeThis then
-            local track  = (upInfo.trackName and upInfo.trackName ~= "") and upInfo.trackName or ""
-            local curT   = upInfo.currUpgrade or 0
-            local maxT   = upInfo.maxUpgrade  or 0
-            if canAfford then
-                -- Affordable: bright green + vault upgrade icon
-                statusText:SetPoint("RIGHT", COL_STATUS_RIGHT - 18, 0)
-                statusText:SetText(format("|cff33dd55%s %d/%d|r", track, curT, maxT))
-                local arrow = row:CreateTexture(nil, "OVERLAY")
-                arrow:SetSize(14, 14)
-                arrow:SetPoint("RIGHT", COL_STATUS_RIGHT, 0)
-                if arrow.SetAtlas then
-                    arrow:SetAtlas("loottoast-arrow-green", false)
-                else
-                    arrow:SetTexture(UPGRADE_ICON)
-                    arrow:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                    arrow:SetVertexColor(0.2, 1, 0.25)
-                end
-            else
-                -- Can upgrade but can't afford: yellow
-                statusText:SetPoint("RIGHT", COL_STATUS_RIGHT, 0)
-                statusText:SetText(format("|cffddaa33%s %d/%d|r", track, curT, maxT))
-            end
-        elseif isAtMax then
-            -- Fully upgraded: green "MAX" badge
-            local track = (upInfo.trackName and upInfo.trackName ~= "") and upInfo.trackName or ""
-            local maxT  = upInfo.maxUpgrade or 0
-            statusText:SetPoint("RIGHT", COL_STATUS_RIGHT, 0)
-            statusText:SetText(format("|cff00ff88%s %d/%d|r", track, maxT, maxT))
-        elseif notUpgradeable and slotData and slotData.itemLink then
-            -- Confirmed not part of upgrade system: lock icon + label
-            statusText:SetPoint("RIGHT", COL_STATUS_RIGHT - 16, 0)
-            statusText:SetText("|cff888888Not upgradeable|r")
-            local lockTex = row:CreateTexture(nil, "OVERLAY")
-            lockTex:SetSize(12, 12)
-            lockTex:SetPoint("RIGHT", COL_STATUS_RIGHT, 0)
-            lockTex:SetTexture(LOCK_ICON)
-            lockTex:SetVertexColor(0.5, 0.5, 0.5, 0.9)
-        else
-            -- No data (alt char not yet scanned, or empty slot)
-            statusText:SetPoint("RIGHT", COL_STATUS_RIGHT, 0)
-            statusText:SetText(slotData and slotData.itemLink and "|cff777777—|r" or "")
-        end
-
-        -- Tooltip
-        local itemLink = slotData and slotData.itemLink
-        row:SetScript("OnEnter", function(self)
-            if itemLink then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetHyperlink(itemLink)
-                GameTooltip:Show()
-            end
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-        -- Hover
-        local hi = row:CreateTexture(nil, "HIGHLIGHT")
-        hi:SetAllPoints()
-        hi:SetColorTexture(1, 1, 1, 0.06)
-
-        y = y - (SLOT_ROW_H + 2)
-    end
-
-    card:Show()
-    return yOffset - cardH - 12
-end
-
--- ============================================================================
--- STORAGE UPGRADES SECTION
--- ============================================================================
-
-local function DrawStorageSection(parent, yOffset, storageFinds, gearData)
-    local COLORS = ns.UI_COLORS
-    local accent = COLORS.accent
-
-    -- Collapsible header
-    local headerHeight = HEADER_H
-    local header = CreateCollapsibleHeader(
-        parent,
-        (ns.L and ns.L["GEAR_SECTION_STORAGE"]) or "Storage Upgrades",
-        "gear_storage",
-        sectionExpanded.storage,
-        function(expanded)
-            sectionExpanded.storage = expanded
-            if WarbandNexus and WarbandNexus.PopulateContent then
-                WarbandNexus:PopulateContent()
-            end
-        end
-    )
-    header:SetPoint("TOPLEFT",  SIDE_MARGIN, yOffset)
-    header:SetPoint("TOPRIGHT", -SIDE_MARGIN, yOffset)
-    yOffset = yOffset - headerHeight - 6
-
-    if not sectionExpanded.storage then return yOffset end
-
-    local slots = gearData and gearData.slots or {}
-    local hasAny = false
-
-    -- Iterate slots in display order
-    for _, slotDef in ipairs(GEAR_SLOTS) do
-        local slotID      = slotDef.id
-        local candidates  = storageFinds[slotID]
-        if candidates and #candidates > 0 then
-            hasAny = true
-
-            -- Slot header row
-            local slotHeaderRow = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-            slotHeaderRow:SetHeight(32)
-            slotHeaderRow:SetPoint("TOPLEFT",  SIDE_MARGIN + 12, yOffset)
-            slotHeaderRow:SetPoint("TOPRIGHT", -SIDE_MARGIN - 12, yOffset)
-            slotHeaderRow:SetBackdrop({
-                bgFile   = "Interface\\Buttons\\WHITE8X8",
-                edgeFile = "Interface\\Buttons\\WHITE8X8",
-                edgeSize = 1,
-            })
-            slotHeaderRow:SetBackdropColor(accent[1]*0.12, accent[2]*0.12, accent[3]*0.12, 0.8)
-            slotHeaderRow:SetBackdropBorderColor(accent[1]*0.5, accent[2]*0.5, accent[3]*0.5, 0.6)
-
-            -- Slot name + currently equipped ilvl (clear "Change gear" context)
-            local equippedData = slots[slotID]
-            local currentIlvl  = equippedData and equippedData.itemLevel or 0
-
-            local slotTitle = FontManager:CreateFontString(slotHeaderRow, "body", "OVERLAY")
-            slotTitle:SetPoint("LEFT", 8, 0)
-            local equippedStr = currentIlvl > 0
-                and ("|cffaaaaaa" .. currentIlvl .. " equipped|r")
-                or  "|cff666666empty|r"
-            slotTitle:SetText(
-                "|cff" .. ((COLORS.accent and format("%02x%02x%02x",
-                    math.floor(accent[1]*255), math.floor(accent[2]*255), math.floor(accent[3]*255))) or "aaaaff")
-                .. slotDef.label .. "|r  " .. equippedStr
-            )
-
-            yOffset = yOffset - 34 - 4
-
-            -- Candidate rows (first = best by ilvl; show Warbound/BoE badges)
-            for candidateIdx, candidate in ipairs(candidates) do
-                local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
-                row:SetHeight(32)
-                row:SetPoint("TOPLEFT",  SIDE_MARGIN + 16, yOffset)
-                row:SetPoint("TOPRIGHT", -SIDE_MARGIN - 12, yOffset)
-                row:SetBackdrop({
-                    bgFile   = "Interface\\Buttons\\WHITE8X8",
-                    edgeFile = "Interface\\Buttons\\WHITE8X8",
-                    edgeSize = 1,
-                    insets   = { left = 0, right = 0, top = 0, bottom = 0 },
-                })
-                local isBest = (candidateIdx == 1)
-                if isBest then
-                    row:SetBackdropColor(accent[1]*0.08, accent[2]*0.08, accent[3]*0.08, 0.75)
-                    row:SetBackdropBorderColor(accent[1]*0.5, accent[2]*0.5, accent[3]*0.5, 0.6)
-                else
-                    row:SetBackdropColor(0.04, 0.04, 0.06, 0.6)
-                    row:SetBackdropBorderColor(0.2, 0.2, 0.2, 0.4)
-                end
-
-                local icon = GetItemIconSafe(candidate.itemID or candidate.itemLink)
-                local iconTex = row:CreateTexture(nil, "ARTWORK")
-                iconTex:SetSize(22, 22)
-                iconTex:SetPoint("LEFT", 4, 0)
-                if icon then
-                    iconTex:SetTexture(icon)
-                    iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                end
-
-                -- Equipped → candidate ilvl in one clear line (e.g. "230 → 240")
-                local upgradeLineStr
-                if currentIlvl > 0 then
-                    upgradeLineStr = format("|cff888888%d|r → %s", currentIlvl, ColoredIlvl(candidate.itemLevel, candidate.quality))
-                else
-                    upgradeLineStr = ColoredIlvl(candidate.itemLevel, candidate.quality)
-                end
-                local ilvlLabel = FontManager:CreateFontString(row, "body", "OVERLAY")
-                ilvlLabel:SetPoint("LEFT", iconTex, "RIGHT", 6, 0)
-                ilvlLabel:SetText(upgradeLineStr)
-
-                -- Delta (e.g. "+10") next to the arrow
-                local delta = candidate.itemLevel - currentIlvl
-                if delta > 0 and currentIlvl > 0 then
-                    local deltaLabel = FontManager:CreateFontString(row, "small", "OVERLAY")
-                    deltaLabel:SetPoint("LEFT", ilvlLabel, "RIGHT", 4, 0)
-                    deltaLabel:SetText("|cff00ff00(+" .. delta .. ")|r")
-                end
-
-                -- Right side: Best badge (slot best), Warbound/BoE badge, then source
-                local sourceColor = SOURCE_TYPE_COLOR[candidate.sourceType] or { 0.7, 0.7, 0.7 }
-                local sourceLabel = FontManager:CreateFontString(row, "small", "OVERLAY")
-                sourceLabel:SetPoint("RIGHT", -6, 0)
-                sourceLabel:SetText(format("|cff%s%s|r",
-                    format("%02x%02x%02x", math.floor(sourceColor[1]*255), math.floor(sourceColor[2]*255), math.floor(sourceColor[3]*255)),
-                    candidate.source or ""))
-                local sourceW = sourceLabel:GetStringWidth() or 60
-                local rightX = -6 - sourceW - 6
-
-                -- Warbound / BoE badge (small pill)
-                local badgeText = nil
-                local badgeR, badgeG, badgeB = 0.7, 0.7, 0.7
-                if candidate.sourceType == "warband" then
-                    badgeText = (ns.L and ns.L["GEAR_STORAGE_WARBOUND"]) or "Warbound"
-                    badgeR, badgeG, badgeB = 0.35, 0.75, 1.0
-                elseif candidate.sourceType == "char_bag" or candidate.sourceType == "char_bank" then
-                    badgeText = (ns.L and ns.L["GEAR_STORAGE_BOE"]) or "BoE"
-                    badgeR, badgeG, badgeB = 1.0, 0.55, 0.2
-                end
-                if badgeText then
-                    local badge = FontManager:CreateFontString(row, "tiny", "OVERLAY")
-                    badge:SetPoint("RIGHT", rightX, 0)
-                    badge:SetText(format("|cff%02x%02x%02x[%s]|r", math.floor(badgeR*255), math.floor(badgeG*255), math.floor(badgeB*255), badgeText))
-                    rightX = rightX - (badge:GetStringWidth() or 40) - 4
-                end
-
-                -- Best candidate badge (first in slot)
-                if isBest then
-                    local bestLabel = FontManager:CreateFontString(row, "tiny", "OVERLAY")
-                    bestLabel:SetPoint("RIGHT", rightX, 0)
-                    bestLabel:SetText(format("|cff%02x%02x%02x%s|r", math.floor(accent[1]*255), math.floor(accent[2]*255), math.floor(accent[3]*255), (ns.L and ns.L["GEAR_STORAGE_BEST"]) or "Best"))
-                end
-
-                -- Tooltip
-                local itemLink = candidate.itemLink
-                row:SetScript("OnEnter", function(self)
-                    if itemLink then
-                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                        GameTooltip:SetHyperlink(itemLink)
-                        GameTooltip:Show()
-                    end
-                end)
-                row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-                -- Hover highlight
-                local hi = row:CreateTexture(nil, "HIGHLIGHT")
-                hi:SetAllPoints()
-                hi:SetColorTexture(1, 1, 1, 0.07)
-
-                yOffset = yOffset - 34 - 4
-            end
-
-            yOffset = yOffset - 8
-        end
-    end
-
-    yOffset = yOffset - 8
-    return yOffset
-end
+-- (Storage Upgrades section removed per user request)
 
 -- ============================================================================
 -- CHARACTER SELECTOR  (dropdown button)
@@ -1250,11 +1131,6 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             entryHi:SetColorTexture(1, 1, 1, 0.1)
 
             entryBtn:SetScript("OnClick", function()
-                -- #region agent log
-                if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-                    print("|cff00ff00[WN Gear]|r selector click cKey=" .. tostring(cKey) .. " len=" .. tostring(cKey and #cKey or 0))
-                end
-                -- #endregion
                 selectedCharKey = cKey
                 SetLabelToChar(cKey)
                 menu:Hide()
@@ -1355,7 +1231,7 @@ function WarbandNexus:DrawGearTab(parent)
     end
 
     local subText = FontManager:CreateFontString(headerCard, "subtitle", "OVERLAY")
-    subText:SetText((ns.L and ns.L["GEAR_TAB_DESC"]) or "Equipment viewer, upgrade analysis, and cross-character storage finder")
+    subText:SetText((ns.L and ns.L["GEAR_TAB_DESC"]) or "Equipped gear, upgrade analysis, and crest tracking")
     subText:SetTextColor(0.6, 0.6, 0.6)
     subText:SetJustifyH("LEFT")
     subText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -3)
@@ -1371,31 +1247,23 @@ function WarbandNexus:DrawGearTab(parent)
     local db        = self.db and self.db.global
     local charData  = db and (db.characters[canonicalKey] or db.characters[charKey])
     local gearData  = (self.GetEquippedGear and self:GetEquippedGear(canonicalKey)) or nil
-    -- #region agent log
-    do
-        local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or ""
-        if self.db and self.db.profile and self.db.profile.debugMode then
-            local hasChar = (charData ~= nil) and "yes" or "no"
-            local keysMatch = (canonicalKey == currentKey) and "yes" or "no"
-            print("|cff00ff00[WN Gear]|r charKey=[" .. tostring(charKey) .. "] canonicalKey=[" .. tostring(canonicalKey) .. "] hasCharData=" .. hasChar .. " exactMatch=" .. keysMatch)
-        end
-    end
-    -- #endregion
 
     local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
-    local upgradeInfo = {}
-    if canonicalKey == currentKey then
-        upgradeInfo = (self.GetGearUpgradeInfo and self:GetGearUpgradeInfo()) or {}
-    else
-        upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(canonicalKey)) or {}
+    local upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(canonicalKey)) or {}
+
+    -- Fetch currencies once; reuse for both affordability map and display panel
+    local currencies = (self.GetGearUpgradeCurrenciesFromDB and self:GetGearUpgradeCurrenciesFromDB(canonicalKey)) or {}
+    local currencyAmounts = {}
+    for i = 1, #currencies do
+        local cur = currencies[i]
+        if cur and cur.currencyID ~= nil then
+            local id = (type(cur.currencyID) == "number") and cur.currencyID or tonumber(cur.currencyID)
+            local amt = (type(cur.amount) == "number") and cur.amount or tonumber(cur.amount)
+            if id then currencyAmounts[id] = (amt and amt >= 0) and amt or 0 end
+        end
     end
 
-    local currencyAmounts = BuildCurrencyAmountMap(charKey)
-
-    yOffset = DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, canonicalKey == currentKey)
-    yOffset = DrawEquipmentCard(parent, yOffset, gearData, canonicalKey, upgradeInfo, currencyAmounts)
-    local storageFinds = (self.FindGearStorageUpgrades and self:FindGearStorageUpgrades(canonicalKey)) or {}
-    yOffset = DrawStorageSection(parent, yOffset, storageFinds, gearData)
+    yOffset = DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, canonicalKey, currencyAmounts, canonicalKey == currentKey, currencies)
 
     yOffset = yOffset - 12
     return math.abs(yOffset) + TOP_MARGIN
