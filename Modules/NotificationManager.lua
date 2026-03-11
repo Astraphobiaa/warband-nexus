@@ -1872,6 +1872,9 @@ function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIn
     if not achievementID or type(achievementID) ~= "number" then return end
     local db = self.db and self.db.profile and self.db.profile.notifications
     if not db or not db.showCriteriaProgressNotifications then return end
+    -- Dependency rule: criteria progress is an achievement sub-notification.
+    -- If achievement or collectible popups are disabled, skip progress toasts too.
+    if not db.showAchievementNotifications or not db.showLootNotifications then return end
     if issecretvalue and issecretvalue(achievementID) then return end
 
     -- Do not show progress toast when achievement is already completed (avoids overlap with "Achievement Earned" / collectible toast)
