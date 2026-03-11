@@ -339,10 +339,8 @@ local function FetchCurrencyFromAPI(currencyID)
         cap = 200
     end
     local normalizedQuantity = NormalizeQuantity(info.quantity, cap, info.useTotalEarnedForMaxQty)
-    -- Dawncrests: game often shows quantityEarnedThisWeek as "current"; prefer it when set so Gear matches Currency tab (30 vs 70).
-    if DAWNCREST_IDS[currencyID] and info.quantityEarnedThisWeek ~= nil and type(info.quantityEarnedThisWeek) == "number" then
-        normalizedQuantity = info.quantityEarnedThisWeek
-    end
+    -- Dawncrests: use quantity (total on hand) so Currency tab matches Gear tab and Blizzard frame.
+    -- Do not override with quantityEarnedThisWeek so we never show 0 when player has crests.
     return {
         currencyID = currencyID,
         quantity = normalizedQuantity,
@@ -1001,27 +999,65 @@ function WarbandNexus:GetAllCurrencyData(charKey)
     return db.currencies[charKey] or {}
 end
 
+---Normalize any character key representation to a comparable form.
+---@param key string|nil
+---@return string
+local function NormalizeCharKey(key)
+    return (key and tostring(key):gsub("%s+", "")) or ""
+end
+
+---Resolve the best matching currency bucket for a character from DB, handling legacy key formats.
+---@param allCurrencies table|nil
+---@param rawCharKey string|nil
+---@param canonicalKey string|nil
+---@return table|nil
+local function ResolveCharCurrencyBucket(allCurrencies, rawCharKey, canonicalKey)
+    if type(allCurrencies) ~= "table" then return nil end
+    if canonicalKey and allCurrencies[canonicalKey] then
+        return allCurrencies[canonicalKey]
+    end
+    if rawCharKey and allCurrencies[rawCharKey] then
+        return allCurrencies[rawCharKey]
+    end
+
+    local targetCanon = NormalizeCharKey(canonicalKey)
+    local targetRaw = NormalizeCharKey(rawCharKey)
+    for existingKey, bucket in pairs(allCurrencies) do
+        if NormalizeCharKey(existingKey) == targetCanon or NormalizeCharKey(existingKey) == targetRaw then
+            return bucket
+        end
+    end
+    return nil
+end
+
 ---Get all currencies in UI format: [currencyID] = { name, icon, maxQuantity, chars = { [canonicalKey] = qty } }.
 ---Single source for Currency tab and Gear tab; uses canonical character key everywhere.
 ---@return table { [currencyID] = { name, icon, value, chars = { [canonicalKey] = quantity } } }
 function WarbandNexus:GetCurrenciesForUI()
     local db = GetDB()
     if not db then return {} end
-    local currentCharKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
     
     -- 1) Collect all tracked character keys (same list as UI/tooltip)
-    local trackedCharKeys = {}
+    local trackedCharacters = {}
     if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters then
         for charKey, charData in pairs(WarbandNexus.db.global.characters) do
             if type(charData) == "table" and charData.isTracked == true then
-                trackedCharKeys[charKey] = true
+                local canonicalKey = (ns.Utilities and ns.Utilities.GetCharacterKey and charData.name and charData.realm)
+                    and ns.Utilities:GetCharacterKey(charData.name, charData.realm) or charKey
+                trackedCharacters[#trackedCharacters + 1] = {
+                    rawKey = charKey,
+                    canonicalKey = canonicalKey,
+                }
             end
         end
     end
     -- Fallback: if no tracked list, use all charKeys that have currency data
-    if not next(trackedCharKeys) and db.currencies then
+    if #trackedCharacters == 0 and db.currencies then
         for charKey in pairs(db.currencies) do
-            trackedCharKeys[charKey] = true
+            trackedCharacters[#trackedCharacters + 1] = {
+                rawKey = charKey,
+                canonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(charKey)) or charKey,
+            }
         end
     end
     
@@ -1041,6 +1077,9 @@ function WarbandNexus:GetCurrenciesForUI()
         currencyIDSet[id] = true
     end
 
+    local currentCharKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+    local function normKey(k) return (k and tostring(k):gsub("%s+", "")) or "" end
+
     local result = {}
     for currencyID in pairs(currencyIDSet) do
         local metadata = ResolveCurrencyMetadata(currencyID)
@@ -1054,23 +1093,33 @@ function WarbandNexus:GetCurrenciesForUI()
         entry.chars = {}
         local total, maxQty = 0, 0
         local dawncrestCap = DAWNCREST_IDS[currencyID] and 200 or nil
-        for charKey in pairs(trackedCharKeys) do
-            local charData = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-            local canonicalKey = (ns.Utilities and type(charData) == "table" and charData.name and charData.realm) and ns.Utilities:GetCharacterKey(charData.name, charData.realm) or charKey
-            local currencies = db.currencies and db.currencies[canonicalKey]
-            local stored = currencies and currencies[currencyID]
+        for i = 1, #trackedCharacters do
+            local tracked = trackedCharacters[i]
+            local rawKey = tracked.rawKey
+            local canonicalKey = tracked.canonicalKey
             local qty = 0
-            if type(stored) == "number" then qty = stored
-            elseif type(stored) == "table" then qty = stored.quantity or 0 end
 
-            -- No API here: use only stored DB (same source for Currency tab and Gear tab).
-            -- DB is updated by scans and CURRENCY_DISPLAY_UPDATE in this service.
+            -- Current character: always use live API so crests and other currencies show real amount.
+            -- DB may be stale or crests may not have been in the last scan hierarchy.
+            if currentCharKey and normKey(canonicalKey) == normKey(currentCharKey) then
+                local live = self.GetCurrencyData and self:GetCurrencyData(currencyID, canonicalKey)
+                if live and live.quantity ~= nil then
+                    qty = live.quantity
+                end
+            end
+
+            if qty == 0 then
+                local currencies = ResolveCharCurrencyBucket(db.currencies, rawKey, canonicalKey)
+                local stored = currencies and currencies[currencyID]
+                if type(stored) == "number" then qty = stored
+                elseif type(stored) == "table" then qty = stored.quantity or 0 end
+            end
 
             if dawncrestCap and qty > dawncrestCap then
                 qty = qty - dawncrestCap
                 if qty < 0 then qty = 0 end
             end
-            entry.chars[canonicalKey] = qty
+            entry.chars[canonicalKey or rawKey] = qty
             total = total + qty
             if qty > maxQty then maxQty = qty end
         end

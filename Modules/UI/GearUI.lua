@@ -26,6 +26,8 @@ local FormatNumber        = ns.UI_FormatNumber
 local DrawEmptyState      = ns.UI_DrawEmptyState
 local CreateHeaderIcon    = ns.UI_CreateHeaderIcon
 local GetTabIcon          = ns.UI_GetTabIcon
+local ShowTooltip         = ns.UI_ShowTooltip
+local HideTooltip         = ns.UI_HideTooltip
 
 -- Slot definitions from GearService
 local GEAR_SLOTS         = ns.GEAR_SLOTS
@@ -422,44 +424,95 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
         lockIcon:SetVertexColor(0.45, 0.45, 0.45, 0.9)
     end
 
-    -- Tooltip: item link + simplified upgrade info
+    -- Tooltip: item link + simplified upgrade info (custom tooltip service)
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
     btn:SetScript("OnEnter", function(self)
         if slotData and slotData.itemLink then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetHyperlink(slotData.itemLink)
             local up = upgradeInfo and upgradeInfo[slotID]
+            local additionalLines = {}
             if up and up.canUpgrade then
                 local affordable, goldOnly = CalculateAffordableUpgrades(up, currencyAmounts)
-                GameTooltip:AddLine(" ")
+                additionalLines[#additionalLines + 1] = { type = "spacer", height = 6 }
                 if affordable > 0 then
                     -- Show achievable target only (e.g. 2/6 when 20 crests and 1/6 — not 6/6).
                     local targetTier = (up.currUpgrade or 0) + affordable
                     local TRACK_ILVLS = ns.TRACK_ILVLS
                     local targetIlvl = TRACK_ILVLS and TRACK_ILVLS[up.trackName] and TRACK_ILVLS[up.trackName][targetTier]
                     local ilvlStr = targetIlvl and format(" (%d)", targetIlvl) or ""
-                    GameTooltip:AddLine(format("Available upgrade to %s %d/%d%s", up.trackName or "", targetTier, up.maxUpgrade or 0, ilvlStr), 0.4, 1, 0.4)
-                    GameTooltip:AddLine(format("%d upgrade(s) with current currency", affordable), 0.6, 0.9, 0.6)
+                    additionalLines[#additionalLines + 1] = {
+                        text = format("Available upgrade to %s %d/%d%s", up.trackName or "", targetTier, up.maxUpgrade or 0, ilvlStr),
+                        color = { 0.4, 1, 0.4 }
+                    }
+                    additionalLines[#additionalLines + 1] = {
+                        text = format("%d upgrade(s) with current currency", affordable),
+                        color = { 0.6, 0.9, 0.6 }
+                    }
                     if goldOnly > 0 then
                         if goldOnly >= affordable then
-                            GameTooltip:AddLine("Crests needed: 0 (gold only — previously reached)", 1, 0.85, 0.4)
+                            additionalLines[#additionalLines + 1] = {
+                                text = "Crests needed: 0 (gold only — previously reached)",
+                                color = { 1, 0.85, 0.4 }
+                            }
                         else
-                            GameTooltip:AddLine(format("%d upgrade(s) gold only (previously reached)", goldOnly), 1, 0.85, 0.4)
+                            additionalLines[#additionalLines + 1] = {
+                                text = format("%d upgrade(s) gold only (previously reached)", goldOnly),
+                                color = { 1, 0.85, 0.4 }
+                            }
                         end
                     end
                 else
-                    GameTooltip:AddLine(format("%s %d/%d — need more crests", up.trackName or "", up.currUpgrade or 0, up.maxUpgrade or 0), 0.8, 0.5, 0.2)
+                    additionalLines[#additionalLines + 1] = {
+                        text = format("%s %d/%d — need more crests", up.trackName or "", up.currUpgrade or 0, up.maxUpgrade or 0),
+                        color = { 0.8, 0.5, 0.2 }
+                    }
                 end
             end
-            GameTooltip:Show()
+            if ShowTooltip then
+                ShowTooltip(self, {
+                    type = "item",
+                    itemID = slotData.itemID,
+                    itemLink = slotData.itemLink,
+                    additionalLines = additionalLines,
+                    anchor = "ANCHOR_RIGHT",
+                })
+            elseif ns.TooltipService then
+                ns.TooltipService:Show(self, {
+                    type = "item",
+                    itemID = slotData.itemID,
+                    itemLink = slotData.itemLink,
+                    additionalLines = additionalLines,
+                    anchor = "ANCHOR_RIGHT",
+                })
+            end
         else
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText((slotDef and slotDef.label) or "Empty", 0.7, 0.7, 0.7)
-            GameTooltip:Show()
+            local title = (slotDef and slotDef.label) or "Empty"
+            if ShowTooltip then
+                ShowTooltip(self, {
+                    type = "custom",
+                    title = title,
+                    lines = {
+                        { text = "No item equipped in this slot.", color = { 0.65, 0.65, 0.7 } },
+                    },
+                    anchor = "ANCHOR_RIGHT",
+                })
+            elseif ns.TooltipService then
+                ns.TooltipService:Show(self, {
+                    type = "custom",
+                    title = title,
+                    lines = {
+                        { text = "No item equipped in this slot.", color = { 0.65, 0.65, 0.7 } },
+                    },
+                    anchor = "ANCHOR_RIGHT",
+                })
+            end
         end
     end)
     btn:SetScript("OnLeave", function()
-        GameTooltip:Hide()
+        if HideTooltip then
+            HideTooltip()
+        elseif ns.TooltipService then
+            ns.TooltipService:Hide()
+        end
     end)
 
     -- Highlight
@@ -642,7 +695,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         if ok and m then centerRef = m end
     end
 
-    -- Fallback: large class icon
+    -- Fallback: No Preview (models are not stored for offline characters)
     if not centerRef then
         local portrait = CreateFrame("Frame", nil, card, "BackdropTemplate")
         portrait:SetSize(MODEL_W, MODEL_H)
@@ -650,17 +703,13 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         portrait:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
         portrait:SetBackdropColor(0.05, 0.05, 0.07, 0.95)
         portrait:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.65)
-        local portraitTex = portrait:CreateTexture(nil, "ARTWORK")
-        portraitTex:SetPoint("TOPLEFT", 4, -4)
-        portraitTex:SetPoint("BOTTOMRIGHT", -4, 4)
-        local classCoords = classFile and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classFile]
-        if classCoords then
-            portraitTex:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
-            portraitTex:SetTexCoord(unpack(classCoords))
-        else
-            portraitTex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-            portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        end
+        local noPreview = FontManager:CreateFontString(portrait, "header", "OVERLAY")
+        noPreview:SetPoint("CENTER", portrait, "CENTER", 0, 0)
+        noPreview:SetJustifyH("CENTER")
+        noPreview:SetTextColor(0.5, 0.5, 0.55, 1)
+        noPreview:SetText("No Preview")
+        noPreview:SetShadowOffset(1, -1)
+        noPreview:SetShadowColor(0, 0, 0, 0.8)
         centerRef = portrait
     end
 
@@ -689,19 +738,19 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         ilvlOverlay:SetShadowColor(0, 0, 0, 1)
     end
 
-    -- Karakter adı 3D model penceresinin üstünde; "90 Haranir" satırı kaldırıldı, isim hafif aşağı
+    -- Karakter adı: kart üst border ile model üst border arasında ortalanmış
     local displayName = (charData and charData.name) or ""
     if displayName ~= "" then
         local nameFrame = CreateFrame("Frame", nil, card)
-        nameFrame:SetPoint("BOTTOM", centerRef, "TOP", 0, 4)
-        nameFrame:SetSize(MODEL_W, P(28))
+        nameFrame:SetPoint("TOP", card, "TOP", 0, -CARD_PAD)
+        nameFrame:SetPoint("BOTTOM", centerRef, "TOP", 0, 0)
+        nameFrame:SetPoint("LEFT", centerRef, "LEFT", 0, 0)
+        nameFrame:SetPoint("RIGHT", centerRef, "RIGHT", 0, 0)
         if nameFrame.SetFrameLevel and centerRef.GetFrameLevel then
             nameFrame:SetFrameLevel(centerRef:GetFrameLevel() + 10)
         end
         local nameLabel = FontManager:CreateFontString(nameFrame, "header", "OVERLAY")
-        nameLabel:SetPoint("TOP", nameFrame, "TOP", 0, 0)
-        nameLabel:SetPoint("LEFT", nameFrame, "LEFT", 0, 0)
-        nameLabel:SetPoint("RIGHT", nameFrame, "RIGHT", 0, 0)
+        nameLabel:SetPoint("CENTER", nameFrame, "CENTER", 0, -4)
         nameLabel:SetJustifyH("CENTER")
         local classHex = GetClassHex(classFile)
         nameLabel:SetText("|cff" .. classHex .. displayName .. "|r")
@@ -885,14 +934,25 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     local primaryRows = {}
     local secondaryRows = {}
     if isCurrentChar and UnitStat then
+        local mainStat = (WarbandNexus.GetCurrentCharacterMainStat and WarbandNexus:GetCurrentCharacterMainStat()) or nil
+        -- Show only main stat (STR/AGI/INT per spec) + Stamina; hide other primary stats
+        local mainStatId = (mainStat == "STR" and 1) or (mainStat == "AGI" and 2) or (mainStat == "INT" and 4) or nil
         for i = 1, #STAT_IDS do
             local stat = STAT_IDS[i]
-            local ok, _, total = pcall(UnitStat, "player", stat.id)
-            if ok and total and total > 0 then
-                primaryRows[#primaryRows + 1] = {
-                    label = stat.label,
-                    value = FormatNumber and FormatNumber(math.floor(total)) or tostring(math.floor(total)),
-                }
+            if stat.id == 3 then
+                -- Always show Stamina
+            elseif mainStatId and stat.id ~= mainStatId then
+                -- Skip non-main primary (e.g. STR/AGI for Intellect spec)
+                stat = nil
+            end
+            if stat then
+                local ok, _, total = pcall(UnitStat, "player", stat.id)
+                if ok and total and total > 0 then
+                    primaryRows[#primaryRows + 1] = {
+                        label = stat.label,
+                        value = FormatNumber and FormatNumber(math.floor(total)) or tostring(math.floor(total)),
+                    }
+                end
             end
         end
         for i = 1, #SECONDARY_STATS do
@@ -905,6 +965,40 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                     label = stat.label,
                     value = pctStr .. "  |cffffffff" .. (FormatNumber and FormatNumber(math.floor(rating)) or tostring(math.floor(rating))) .. "|r",
                 }
+            end
+        end
+    elseif not isCurrentChar and charData and charData.stats then
+        -- Offline: show persisted stats (saved when character was last online)
+        local mainStat = (WarbandNexus.GetCharacterMainStat and WarbandNexus:GetCharacterMainStat(charData)) or nil
+        local mainStatId = (mainStat == "STR" and 1) or (mainStat == "AGI" and 2) or (mainStat == "INT" and 4) or nil
+        local prim = charData.stats.primary
+        if prim and next(prim) then
+            for i = 1, #STAT_IDS do
+                local stat = STAT_IDS[i]
+                if stat.id == 3 then
+                    -- Stamina always
+                elseif mainStatId and stat.id ~= mainStatId then
+                    stat = nil
+                end
+                if stat and prim[stat.id] and prim[stat.id] > 0 then
+                    primaryRows[#primaryRows + 1] = {
+                        label = stat.label,
+                        value = FormatNumber and FormatNumber(prim[stat.id]) or tostring(prim[stat.id]),
+                    }
+                end
+            end
+        end
+        local sec = charData.stats.secondary
+        if sec and #sec > 0 then
+            for j = 1, #sec do
+                local s = sec[j]
+                if s and s.label and s.rating and s.rating > 0 then
+                    local pctStr = (s.pct and type(s.pct) == "number") and format("%.1f%%", s.pct) or ""
+                    secondaryRows[#secondaryRows + 1] = {
+                        label = s.label,
+                        value = pctStr .. "  |cffffffff" .. (FormatNumber and FormatNumber(s.rating) or tostring(s.rating)) .. "|r",
+                    }
+                end
             end
         end
     end
@@ -1014,7 +1108,215 @@ end
 
 -- (Equipment Status card removed per user request)
 
--- (Storage Upgrades section removed per user request)
+local function BuildStorageRecommendationRows(findings, gearData)
+    local rows = {}
+    if not findings then return rows end
+    local equippedSlots = gearData and gearData.slots or {}
+    local seenItemLink = {}
+
+    for slotID, candidates in pairs(findings) do
+        local best = candidates and candidates[1]
+        if best then
+            local current = (equippedSlots[slotID] and equippedSlots[slotID].itemLevel) or 0
+            local target = best.itemLevel or 0
+            if target > current then
+                local linkKey = best.itemLink or ("id:" .. tostring(best.itemID or 0))
+                if seenItemLink[linkKey] then
+                    -- Same item already shown (e.g. trinket for slot 13 and 14) — show once
+                else
+                    seenItemLink[linkKey] = true
+                    local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
+                    rows[#rows + 1] = {
+                        slotID = slotID,
+                        slotName = (slotDef and slotDef.label) or ("Slot " .. tostring(slotID)),
+                        currentIlvl = current,
+                        targetIlvl = target,
+                        itemLink = best.itemLink,
+                        itemID = best.itemID,
+                        source = best.source or "",
+                        sourceType = best.sourceType or "",
+                        delta = target - current,
+                        requiredLevel = best.requiredLevel,
+                    }
+                end
+            end
+        end
+    end
+
+    table.sort(rows, function(a, b)
+        if a.delta ~= b.delta then
+            return a.delta > b.delta
+        end
+        return a.slotID < b.slotID
+    end)
+    return rows
+end
+
+local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storageFindings)
+    local rows = BuildStorageRecommendationRows(storageFindings, gearData)
+    local title = (ns.L and ns.L["GEAR_STORAGE_TITLE"]) or "Storage Upgrade Recommendations"
+    local rowH = 26
+    local cardH = 52 + (math.max(#rows, 1) * rowH)
+
+    local card = CreateCard(parent, cardH)
+    card:SetPoint("TOPLEFT", SIDE_MARGIN, yOffset)
+    card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SIDE_MARGIN, yOffset)
+
+    local accent = (COLORS and COLORS.accent) or { 0.6, 0.6, 1.0 }
+    local hexAcc = format("%02x%02x%02x", math.floor(accent[1] * 255), math.floor(accent[2] * 255), math.floor(accent[3] * 255))
+
+    local titleText = FontManager:CreateFontString(card, "header", "OVERLAY")
+    titleText:SetPoint("TOPLEFT", 12, -10)
+    titleText:SetText("|cff" .. hexAcc .. title .. "|r")
+
+    local startY = -38
+    if #rows == 0 then
+        local empty = FontManager:CreateFontString(card, "small", "OVERLAY")
+        empty:SetPoint("TOPLEFT", 14, startY)
+        empty:SetPoint("TOPRIGHT", -14, startY)
+        empty:SetJustifyH("LEFT")
+        empty:SetText((ns.L and ns.L["GEAR_STORAGE_EMPTY"]) or "No better BoE / Warbound upgrades found for this character.")
+        empty:SetTextColor(0.55, 0.55, 0.6)
+        card:Show()
+        return yOffset - cardH - 12
+    end
+
+    for i = 1, #rows do
+        local row = rows[i]
+        local container = ns.UI.Factory:CreateContainer(card, 10, rowH - 2)
+        container:SetPoint("TOPLEFT", 10, startY - (i - 1) * rowH)
+        container:SetPoint("TOPRIGHT", -10, startY - (i - 1) * rowH)
+        container:EnableMouse(true)
+        if ns.UI.Factory and ns.UI.Factory.ApplyRowBackground then
+            ns.UI.Factory:ApplyRowBackground(container, i)
+        end
+
+        -- Column 1: Gear slot (fixed width, with spacing)
+        local slotText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
+        slotText:SetPoint("LEFT", 12, 0)
+        slotText:SetWidth(88)
+        slotText:SetJustifyH("LEFT")
+        slotText:SetText(row.slotName)
+        slotText:SetTextColor(0.95, 0.95, 1.0)
+        slotText:SetWordWrap(false)
+        slotText:SetNonSpaceWrap(false)
+
+        -- Column 2: current ilvl [atlas] target ilvl + increase (wider so 3-digit ilvls don't truncate)
+        local currIlvlText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
+        currIlvlText:SetPoint("LEFT", slotText, "RIGHT", 14, 0)
+        currIlvlText:SetWidth(40)
+        currIlvlText:SetJustifyH("RIGHT")
+        currIlvlText:SetText(tostring(row.currentIlvl or 0))
+        currIlvlText:SetTextColor(0.75, 0.75, 0.8)
+        currIlvlText:SetWordWrap(false)
+
+        local arrowTex = container:CreateTexture(nil, "ARTWORK")
+        arrowTex:SetSize(12, 12)
+        arrowTex:SetPoint("LEFT", currIlvlText, "RIGHT", 8, 0)
+        if arrowTex.SetAtlas then
+            arrowTex:SetAtlas("common-dropdown-icon-play", true)
+        else
+            arrowTex:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
+            arrowTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            arrowTex:SetVertexColor(0.3, 1, 0.4)
+        end
+
+        local targetIlvlText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
+        targetIlvlText:SetPoint("LEFT", arrowTex, "RIGHT", 8, 0)
+        targetIlvlText:SetWidth(40)
+        targetIlvlText:SetJustifyH("LEFT")
+        targetIlvlText:SetText(tostring(row.targetIlvl or 0))
+        targetIlvlText:SetTextColor(0.4, 1, 0.5)
+        targetIlvlText:SetWordWrap(false)
+
+        local delta = (row.targetIlvl and row.currentIlvl) and (row.targetIlvl - row.currentIlvl) or 0
+        local increaseText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
+        increaseText:SetPoint("LEFT", targetIlvlText, "RIGHT", 10, 0)
+        increaseText:SetWidth(44)
+        increaseText:SetJustifyH("LEFT")
+        increaseText:SetText(delta > 0 and ("+" .. tostring(delta)) or "")
+        increaseText:SetTextColor(0.35, 0.9, 0.45)
+        increaseText:SetWordWrap(false)
+
+        -- Column 3: Level (optional, white) then item icon
+        local levelPrefix = ""
+        if row.requiredLevel and row.requiredLevel > 0 then
+            levelPrefix = "Lv" .. tostring(row.requiredLevel) .. " "
+        end
+        local levelText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
+        levelText:SetPoint("LEFT", increaseText, "RIGHT", 16, 0)
+        levelText:SetText(levelPrefix)
+        levelText:SetTextColor(1, 1, 1)
+        levelText:SetWordWrap(false)
+
+        local itemIcon = container:CreateTexture(nil, "ARTWORK")
+        itemIcon:SetSize(18, 18)
+        itemIcon:SetPoint("LEFT", levelText, "RIGHT", 4, 0)
+        local icon = row.itemLink and GetItemIconSafe(row.itemLink) or GetItemIconSafe(row.itemID)
+        itemIcon:SetTexture(icon or 134400)
+        itemIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        -- Column 4: Item name (flex, between icon and source)
+        local itemText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
+        itemText:SetPoint("LEFT", itemIcon, "RIGHT", 10, 0)
+        itemText:SetPoint("RIGHT", container, "RIGHT", -168, 0)
+        itemText:SetJustifyH("LEFT")
+        local displayItem = row.itemLink or ("item:" .. tostring(row.itemID or 0))
+        itemText:SetText(displayItem)
+        itemText:SetTextColor(0.75, 0.85, 1.0)
+        itemText:SetWordWrap(false)
+        itemText:SetNonSpaceWrap(false)
+
+        -- Column 5: Source (fixed width, right-aligned, with margin)
+        local sourceText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
+        sourceText:SetPoint("RIGHT", -12, 0)
+        sourceText:SetWidth(156)
+        sourceText:SetJustifyH("RIGHT")
+        local bindLabel = ""
+        if row.sourceType == "warbound" then
+            bindLabel = (ns.L and ns.L["GEAR_STORAGE_WARBOUND"]) or "Warbound"
+        elseif row.sourceType == "boe" then
+            bindLabel = (ns.L and ns.L["GEAR_STORAGE_BOE"]) or "BoE"
+        end
+        if bindLabel ~= "" then
+            sourceText:SetText((row.source or "") .. "  |cff888888(" .. bindLabel .. ")|r")
+        else
+            sourceText:SetText(row.source or "")
+        end
+        sourceText:SetTextColor(0.8, 0.8, 0.85)
+        sourceText:SetWordWrap(false)
+        sourceText:SetNonSpaceWrap(false)
+
+        -- Tooltip: item only (no extra Slot/iLvl/From lines)
+        container:SetScript("OnEnter", function(self)
+            if ShowTooltip then
+                ShowTooltip(self, {
+                    type = "item",
+                    itemID = row.itemID,
+                    itemLink = row.itemLink,
+                    anchor = "ANCHOR_LEFT",
+                })
+            elseif ns.TooltipService then
+                ns.TooltipService:Show(self, {
+                    type = "item",
+                    itemID = row.itemID,
+                    itemLink = row.itemLink,
+                    anchor = "ANCHOR_LEFT",
+                })
+            end
+        end)
+        container:SetScript("OnLeave", function()
+            if HideTooltip then
+                HideTooltip()
+            elseif ns.TooltipService then
+                ns.TooltipService:Hide()
+            end
+        end)
+    end
+
+    card:Show()
+    return yOffset - cardH - 12
+end
 
 -- ============================================================================
 -- CHARACTER SELECTOR  (dropdown button)
@@ -1278,6 +1580,9 @@ function WarbandNexus:DrawGearTab(parent)
     end
 
     yOffset = DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, canonicalKey, currencyAmounts, canonicalKey == currentKey, currencies)
+
+    local storageFindings = (self.FindGearStorageUpgrades and self:FindGearStorageUpgrades(canonicalKey)) or {}
+    yOffset = DrawStorageRecommendationsCard(parent, yOffset, gearData, storageFindings)
 
     yOffset = yOffset - 12
     return math.abs(yOffset) + TOP_MARGIN

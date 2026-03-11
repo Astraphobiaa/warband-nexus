@@ -47,7 +47,15 @@ function Utilities:GetCanonicalCharacterKey(charKey)
     if type(charData) == "table" and charData.name and charData.realm then
         return self:GetCharacterKey(charData.name, charData.realm)
     end
-    return charKey
+
+    -- Legacy fallback: normalize any incoming "Name - Realm" / spaced variants.
+    -- Keeps services consistent even if db.characters key is old-format.
+    local name, realm = tostring(charKey):match("^(.+)%-(.+)$")
+    if name and realm then
+        return self:GetCharacterKey(name, realm)
+    end
+
+    return tostring(charKey):gsub("%s+", "")
 end
 
 --- Format normalized realm name for display (e.g. "TwistingNether" -> "Twisting Nether")

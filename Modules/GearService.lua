@@ -65,6 +65,9 @@ local GEAR_SLOTS = {
     { id = 17, key = "offhand",   label = "Off Hand",  col = "bottom" },
 }
 
+local ITEM_CLASS_WEAPON = LE_ITEM_CLASS_WEAPON or 2
+local ITEM_CLASS_ARMOR = LE_ITEM_CLASS_ARMOR or 4
+
 -- Reverse map: slotID -> slot def (O(1) lookup)
 local SLOT_BY_ID = {}
 for _, s in ipairs(GEAR_SLOTS) do
@@ -90,11 +93,13 @@ local function GetEffectiveWatermark(watermarks, slotID)
 end
 
 -- Maps INVTYPE_ equip location -> which slot IDs that item can fill
+-- C_Item.GetItemInfoInstant returns 4th value = itemEquipLoc (string, e.g. "INVTYPE_SHOULDER")
 local EQUIP_LOC_TO_SLOTS = {
     INVTYPE_HEAD           = { 1  },
     INVTYPE_NECK           = { 2  },
     INVTYPE_SHOULDER       = { 3  },
     INVTYPE_BACK           = { 15 },
+    INVTYPE_CLOAK          = { 15 },
     INVTYPE_CHEST          = { 5  },
     INVTYPE_ROBE           = { 5  },
     INVTYPE_WRIST          = { 9  },
@@ -113,6 +118,215 @@ local EQUIP_LOC_TO_SLOTS = {
     INVTYPE_RANGED         = { 16 },
     INVTYPE_RANGEDRIGHT    = { 16 },
 }
+
+local ARMOR_SLOT_IDS = {
+    [1] = true, [3] = true, [5] = true, [6] = true, [7] = true, [8] = true, [9] = true, [10] = true, [15] = true,
+}
+
+local SPEC_MAIN_STAT = {
+    [62] = "INT", [63] = "INT", [64] = "INT",
+    [65] = "INT", [66] = "STR", [70] = "STR",
+    [71] = "STR", [72] = "STR", [73] = "STR",
+    [102] = "INT", [103] = "AGI", [104] = "AGI", [105] = "INT",
+    [1467] = "INT", [1468] = "INT", [1473] = "INT",
+    [250] = "STR", [251] = "STR", [252] = "STR",
+    [253] = "AGI", [254] = "AGI", [255] = "AGI",
+    [256] = "INT", [257] = "INT", [258] = "INT",
+    [259] = "AGI", [260] = "AGI", [261] = "AGI",
+    [262] = "INT", [263] = "AGI", [264] = "INT",
+    [265] = "INT", [266] = "INT", [267] = "INT",
+    [268] = "AGI", [269] = "AGI", [270] = "INT",
+    [577] = "AGI", [581] = "AGI",
+}
+
+local CLASS_FILE_TO_ID = {
+    WARRIOR = 1, PALADIN = 2, HUNTER = 3, ROGUE = 4, PRIEST = 5,
+    DEATHKNIGHT = 6, SHAMAN = 7, MAGE = 8, WARLOCK = 9, MONK = 10,
+    DRUID = 11, DEMONHUNTER = 12, EVOKER = 13,
+}
+
+local CLASS_ARMOR_SUBCLASS = {
+    WARRIOR = 4, PALADIN = 4, DEATHKNIGHT = 4,
+    HUNTER = 3, SHAMAN = 3, EVOKER = 3,
+    ROGUE = 2, DRUID = 2, MONK = 2, DEMONHUNTER = 2,
+    MAGE = 1, PRIEST = 1, WARLOCK = 1,
+}
+
+local function SetFromList(list)
+    local out = {}
+    for i = 1, #list do
+        out[list[i]] = true
+    end
+    return out
+end
+
+local CLASS_WEAPON_SUBCLASS = {
+    WARRIOR = SetFromList({ 0, 1, 4, 5, 6, 7, 8, 10, 13, 15 }),
+    PALADIN = SetFromList({ 0, 1, 4, 5, 6, 7, 8 }),
+    DEATHKNIGHT = SetFromList({ 0, 1, 4, 5, 6, 7, 8 }),
+    HUNTER = SetFromList({ 0, 1, 2, 3, 6, 7, 8, 10, 18 }),
+    SHAMAN = SetFromList({ 0, 1, 4, 5, 10, 13, 15 }),
+    EVOKER = SetFromList({ 0, 4, 7, 10, 13, 15 }),
+    ROGUE = SetFromList({ 0, 4, 7, 13, 15 }),
+    DRUID = SetFromList({ 4, 5, 6, 10, 13, 15 }),
+    MONK = SetFromList({ 0, 4, 6, 7, 10, 13 }),
+    DEMONHUNTER = SetFromList({ 0, 7, 9, 13 }),
+    MAGE = SetFromList({ 7, 10, 15, 19 }),
+    PRIEST = SetFromList({ 4, 10, 15, 19 }),
+    WARLOCK = SetFromList({ 7, 10, 15, 19 }),
+}
+
+local function GetCharacterMainStat(charData)
+    if not charData then return nil end
+    local specID = tonumber(charData.specID)
+    if specID then
+        -- Legacy DB could contain spec index (1-4) instead of global specID.
+        if specID > 0 and specID <= 4 and GetSpecializationInfoForClassID then
+            local classFile = charData.classFile
+            local classID = classFile and CLASS_FILE_TO_ID[classFile] or nil
+            if classID then
+                local resolvedSpecID = GetSpecializationInfoForClassID(classID, specID)
+                if resolvedSpecID and SPEC_MAIN_STAT[resolvedSpecID] then
+                    return SPEC_MAIN_STAT[resolvedSpecID]
+                end
+            end
+        end
+        if SPEC_MAIN_STAT[specID] then
+            return SPEC_MAIN_STAT[specID]
+        end
+    end
+    return nil
+end
+
+--- Returns the main stat for a character from DB (for offline Character Stats panel).
+---@param charData table Character entry from db.global.characters
+---@return string|nil "STR" | "AGI" | "INT" or nil
+function WarbandNexus:GetCharacterMainStat(charData)
+    return GetCharacterMainStat(charData)
+end
+
+--- Returns the main stat for the current player from live spec (for UI: Character Stats panel, etc.).
+---@return string|nil "STR" | "AGI" | "INT" or nil
+function WarbandNexus:GetCurrentCharacterMainStat()
+    local specIndex = GetSpecialization and GetSpecialization()
+    if not specIndex or not GetSpecializationInfo then return nil end
+    local specID = GetSpecializationInfo(specIndex)
+    return (specID and SPEC_MAIN_STAT[specID]) or nil
+end
+
+local function IsMainStatCompatible(itemLink, mainStat, slotID)
+    if not itemLink then return true end
+    local isTrinket = (slotID == 13 or slotID == 14)
+
+    if not GetItemStats then
+        return not isTrinket or not mainStat
+    end
+
+    local statTable = {}
+    local ok = pcall(GetItemStats, itemLink, statTable)
+    if not ok or not statTable then
+        return not isTrinket or not mainStat
+    end
+
+    local hasStr = (statTable.ITEM_MOD_STRENGTH_SHORT or 0) > 0
+    local hasAgi = (statTable.ITEM_MOD_AGILITY_SHORT or 0) > 0
+    local hasInt = (statTable.ITEM_MOD_INTELLECT_SHORT or 0) > 0
+
+    if not hasStr and not hasAgi and not hasInt then
+        return true
+    end
+
+    if mainStat then
+        if mainStat == "STR" then return hasStr end
+        if mainStat == "AGI" then return hasAgi end
+        if mainStat == "INT" then return hasInt end
+    end
+
+    if isTrinket then
+        return false
+    end
+
+    return true
+end
+
+local function IsArmorCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc)
+    if not ARMOR_SLOT_IDS[slotID] then
+        return true
+    end
+    if equipLoc == "INVTYPE_CLOAK" or equipLoc == "INVTYPE_BACK" then
+        return true
+    end
+    if itemClassID and itemClassID ~= ITEM_CLASS_ARMOR then
+        return false
+    end
+    local classFile = charData and charData.classFile
+    local requiredSubclass = classFile and CLASS_ARMOR_SUBCLASS[classFile]
+    if not requiredSubclass then
+        return true
+    end
+    if not itemSubclassID then
+        return true
+    end
+    return itemSubclassID == requiredSubclass
+end
+
+local function IsWeaponCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc, mainStat)
+    if slotID ~= 16 and slotID ~= 17 then
+        return true
+    end
+    if equipLoc == "INVTYPE_SHIELD" then
+        local classFile = charData and charData.classFile
+        return classFile == "WARRIOR" or classFile == "PALADIN" or classFile == "SHAMAN"
+    end
+    if equipLoc == "INVTYPE_HOLDABLE" then
+        return mainStat == "INT"
+    end
+    if equipLoc == "INVTYPE_RANGED" or equipLoc == "INVTYPE_RANGEDRIGHT" then
+        local classFile = charData and charData.classFile
+        return classFile == "HUNTER"
+    end
+    if itemClassID and itemClassID ~= ITEM_CLASS_WEAPON then
+        return false
+    end
+    local classFile = charData and charData.classFile
+    local allowedByClass = classFile and CLASS_WEAPON_SUBCLASS[classFile]
+    if not allowedByClass then
+        return true
+    end
+    if not itemSubclassID then
+        return true
+    end
+    return allowedByClass[itemSubclassID] == true
+end
+
+--- Returns the TEMPLATE bind type of an item (what the item *is*), not whether it's currently bound.
+--- BoE items show "boe" even if isBound=true in a character's bag (they were bound on pickup/equip).
+--- Uses itemID for lookup since link-based GetItemInfo may not be cached for other characters.
+local function GetBindingType(item)
+    if not item then return nil end
+    if not C_Item or not C_Item.GetItemInfo then return nil end
+
+    -- Try link first (most accurate), then itemID
+    local linkOrID = item.itemLink or item.link or item.itemID
+    if not linkOrID then return nil end
+
+    local ok, _, _, _, _, _, _, _, _, _, _, _, _, bindType = pcall(C_Item.GetItemInfo, linkOrID)
+
+    -- If link failed, retry with itemID (template data is always available by ID)
+    if (not ok or not bindType) and item.itemID and item.itemID ~= linkOrID then
+        ok, _, _, _, _, _, _, _, _, _, _, _, _, bindType = pcall(C_Item.GetItemInfo, item.itemID)
+    end
+
+    if not ok or not bindType then return nil end
+
+    if bindType == LE_ITEM_BIND_ON_EQUIP or bindType == LE_ITEM_BIND_ON_USE then
+        return "boe"
+    end
+    if bindType == LE_ITEM_BIND_TO_BNETACCOUNT or bindType == LE_ITEM_BIND_TO_ACCOUNT then
+        return "warbound"
+    end
+    return nil
+end
 
 local GEAR_DATA_VERSION = "1.0.0"
 
@@ -209,32 +423,39 @@ end
 -- ============================================================================
 
 --- Get the effective (bonus-ID-aware) item level from an item link.
---- Falls back through C_Item.GetDetailedItemLevelInfo → GetItemInfo.
+--- Uses dual-API approach: compares GetDetailedItemLevelInfo (bonus-ID inflated)
+--- vs GetItemInfo (may be base). Takes the lower when they disagree significantly
+--- (e.g. Heart of Azeroth link returning 371 vs real ilvl 74).
 ---@param itemLink string Item hyperlink
 ---@return number ilvl (0 if unknown)
 local function GetEffectiveIlvl(itemLink)
     if not itemLink then return 0 end
-    local ilvl = 0
+    local detailedIlvl = 0
+    local infoIlvl = 0
 
-    -- Primary: C_Item.GetDetailedItemLevelInfo (uses bonus IDs from link)
-    local ok = pcall(function()
+    pcall(function()
         if C_Item and C_Item.GetDetailedItemLevelInfo then
             local val = C_Item.GetDetailedItemLevelInfo(itemLink)
-            if val and val > 0 then ilvl = val end
+            if val and val > 0 then detailedIlvl = val end
         end
     end)
 
-    -- Fallback: C_Item.GetItemInfo (returns base ilvl; may be nil if not cached)
-    if ilvl == 0 then
-        pcall(function()
-            if C_Item and C_Item.GetItemInfo then
-                local _, _, _, level = C_Item.GetItemInfo(itemLink)
-                if level and level > 0 then ilvl = level end
-            end
-        end)
+    pcall(function()
+        if C_Item and C_Item.GetItemInfo then
+            local _, _, _, level = C_Item.GetItemInfo(itemLink)
+            if level and level > 0 then infoIlvl = level end
+        end
+    end)
+
+    if detailedIlvl > 0 and infoIlvl > 0 then
+        if detailedIlvl > infoIlvl * 2 then
+            return infoIlvl
+        end
+        return detailedIlvl
     end
 
-    return ilvl
+    if detailedIlvl > 0 then return detailedIlvl end
+    return infoIlvl
 end
 
 --- Get the equip location string for an item link ("INVTYPE_HEAD" etc.)
@@ -245,8 +466,8 @@ local function GetEquipLoc(itemLink)
     local loc = ""
     pcall(function()
         if C_Item and C_Item.GetItemInfoInstant then
-            -- GetItemInfoInstant: itemID, itemType, itemSubType, stackCount, itemEquipLoc, icon, classID, subclassID
-            local _, _, _, _, itemEquipLoc = C_Item.GetItemInfoInstant(itemLink)
+            -- GetItemInfoInstant: itemID, itemType, itemSubType, itemEquipLoc, icon, classID, subClassID (4th = equipLoc)
+            local _, _, _, itemEquipLoc = C_Item.GetItemInfoInstant(itemLink)
             loc = itemEquipLoc or ""
         end
     end)
@@ -493,11 +714,11 @@ function WarbandNexus:ScanEquippedGear()
         watermarks = watermarks,
     }
 
-    DebugPrint("Gear scan complete for", charKey, "—", (function()
+    do
         local n = 0
         for _ in pairs(slots) do n = n + 1 end
-        return n
-    end)(), "slots equipped")
+        DebugPrint("Gear scan: " .. tostring(charKey) .. " — " .. tostring(n) .. " slots")
+    end
 
     if Constants and Constants.EVENTS and Constants.EVENTS.GEAR_UPDATED then
         WarbandNexus:SendMessage(Constants.EVENTS.GEAR_UPDATED, { charKey = charKey })
@@ -703,6 +924,59 @@ function WarbandNexus:GearUpgradeDebugReport()
     end
 end
 
+--- Debug: print storage-upgrade summary for all tracked characters.
+--- Usage: /wn gearstoragedebug
+function WarbandNexus:GearStorageUpgradeDebugReportAll()
+    local chars = self.db and self.db.global and self.db.global.characters
+    if not chars then
+        self:Print("|cffff6600[WN GearStorageDebug]|r No character database.")
+        return
+    end
+
+    local tracked = {}
+    local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey)
+        and function(k) return ns.Utilities:GetCanonicalCharacterKey(k) end
+        or function(k) return k end
+    for key, data in pairs(chars) do
+        if data and data.isTracked then
+            tracked[#tracked + 1] = { key = key, data = data, canonical = getCanonicalKey(key) or key }
+        end
+    end
+    if #tracked == 0 then
+        self:Print("|cffff6600[WN GearStorageDebug]|r No tracked characters.")
+        return
+    end
+
+    table.sort(tracked, function(a, b)
+        return (a.data.lastSeen or 0) > (b.data.lastSeen or 0)
+    end)
+
+    self:Print("|cff00ccff[WN GearStorageDebug]|r Scanning storage upgrades for |cffffff00" .. tostring(#tracked) .. "|r tracked character(s)")
+    for i = 1, #tracked do
+        local entry = tracked[i]
+        local charName = (entry.data and entry.data.name) or entry.key
+        local findings = (self.FindGearStorageUpgrades and self:FindGearStorageUpgrades(entry.canonical)) or {}
+        local equippedMap = BuildEquippedIlvlMap(entry.canonical)
+
+        local totalSlotsWithUpgrade = 0
+        for _ in pairs(findings) do totalSlotsWithUpgrade = totalSlotsWithUpgrade + 1 end
+        self:Print(string.format("|cff88ccff- %s|r (%s): |cff00ff00%d slot(s)|r with upgrade candidates",
+            tostring(charName), tostring(entry.canonical), totalSlotsWithUpgrade))
+
+        if totalSlotsWithUpgrade > 0 then
+            for _, slotDef in ipairs(GEAR_SLOTS) do
+                local slotID = slotDef.id
+                local cands = findings[slotID]
+                local best = cands and cands[1]
+                if best then
+                    local current = equippedMap[slotID] or 0
+                    self:Print(string.format("   %s: %d -> %d (%s)", tostring(slotDef.label), current, best.itemLevel or 0, tostring(best.source or "?")))
+                end
+            end
+        end
+    end
+end
+
 -- ============================================================================
 -- STORAGE UPGRADE FINDER  (Cross-character — reads persisted item data)
 -- ============================================================================
@@ -721,22 +995,26 @@ local function BuildEquippedIlvlMap(charKey)
 end
 
 --- Try to resolve the effective ilvl of an item from bag storage.
---- Uses the stored itemLink (contains bonus IDs), with itemID fallback.
+--- Prefers link-based ilvl so the UI row matches the tooltip (same item link).
 ---@param item table Hydrated item from ItemsCacheService
 ---@return number ilvl (0 if unknown)
 local function ResolveStorageItemIlvl(item)
-    if not item then return 0 end
+    if not item or not item.itemID then return 0 end
 
-    -- Prefer stored itemLevel if already non-zero
-    if item.itemLevel and item.itemLevel > 0 then return item.itemLevel end
-
-    -- Try via itemLink (bonus IDs give accurate ilvl)
     local link = item.itemLink or item.link
-    if link then
-        local ilvl = GetEffectiveIlvl(link)
-        if ilvl > 0 then return ilvl end
+    if not link then
+        -- Strict mode for recommendation accuracy: if no link, we cannot guarantee tooltip-matching ilvl.
+        return 0
+    end
+    -- Prefer link-based ilvl first so storage row matches tooltip (avoids cache vs link mismatch)
+    local ilvl = GetEffectiveIlvl(link)
+    if ilvl > 0 then return ilvl end
+    local ok, _, _, level = pcall(C_Item.GetItemInfo, link)
+    if ok and level and type(level) == "number" and level > 0 then
+        return level
     end
 
+    -- Link present but ilvl unknown (cache miss). Skip instead of using stale/cache-only numbers.
     return 0
 end
 
@@ -747,23 +1025,45 @@ end
 ---@return string label  e.g. "Warband Bank", "Shaman Foo (Bag)", "Your Bag"
 ---@return string type   "warband" | "self_bag" | "self_bank" | "char_bag" | "char_bank" | "boe"
 local function ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageType)
-    local charData = WarbandNexus.db and WarbandNexus.db.global
-                     and WarbandNexus.db.global.characters
-                     and WarbandNexus.db.global.characters[sourceCharKey]
+    local allCharsDB = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+    local charData = allCharsDB and allCharsDB[sourceCharKey]
     local charName = (charData and charData.name) or sourceCharKey
 
     if storageType == "warband" then
-        return "Warband Bank", "warband"
-    elseif sourceCharKey == selectedCharKey then
+        return "Warband Bank", "warbound"
+    end
+
+    local function canonical(k)
+        if not k or k == "" then return "" end
+        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            return ns.Utilities:GetCanonicalCharacterKey(k) or k
+        end
+        return (k:gsub("%s+", ""))
+    end
+    local sourceNorm = canonical(sourceCharKey)
+    local selectedNorm = canonical(selectedCharKey)
+    local isSameChar = (sourceNorm ~= "" and selectedNorm ~= "" and sourceNorm == selectedNorm)
+
+    local bindType = GetBindingType(item)
+    -- bindType: "boe" (BoE/BoU), "warbound" (Warbound/Account), nil (soulbound or API not cached)
+    -- Rule: only show BoE and Warbound items. Reject confirmed soulbound.
+    -- If bindType is nil (API cache miss), check isBound field:
+    --   isBound=false → item isn't bound yet, likely BoE/Warbound → show it
+    --   isBound=true + bindType=nil → likely soulbound (BoP) → reject
+    local isSoulbound = (bindType == nil and item.isBound == true)
+    if isSoulbound then
+        return nil, nil
+    end
+
+    local effectiveType = bindType or "boe"
+
+    if isSameChar then
         if storageType == "bank" then return "Your Bank", "self_bank" end
         return "Your Bag", "self_bag"
-    else
-        -- Another character's item: only show BoE (unbound) items
-        if item.isBound then return nil, nil end  -- Bound to other char; skip
-        local suffix = (storageType == "bank") and " (Bank)" or " (Bag)"
-        local sourceType = (storageType == "bank") and "char_bank" or "char_bag"
-        return charName .. suffix, sourceType
     end
+
+    local suffix = (storageType == "bank") and " (Bank)" or " (Bag)"
+    return charName .. suffix, effectiveType
 end
 
 --- Find items in storage (all chars' bags/bank + warband bank) that would
@@ -774,51 +1074,144 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     local findings = {}
     if not selectedCharKey then return findings end
 
-    local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
+    local isDebug = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode
+    local function dbg(msg)
+        if isDebug then _G.print("|cff00BFFF[StorageUpgrade]|r " .. msg) end
+    end
 
-    -- Helper: record a potential upgrade candidate for a given slot
+    local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
+    local allChars = self.db and self.db.global and self.db.global.characters
+    local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k) return ns.Utilities:GetCanonicalCharacterKey(k) end or function(k) return k end
+    local charData = allChars and allChars[selectedCharKey]
+    if not charData and allChars then
+        for k, data in pairs(allChars) do
+            if (getCanonicalKey(k) or k) == selectedCharKey then
+                charData = data
+                break
+            end
+        end
+    end
+
+    -- Main stat: always prefer live spec for current player
+    local mainStat = nil
+    local mainStatSource = "none"
+    do
+        local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey) and ns.Utilities:GetCharacterKey() or nil
+        local selCanon = getCanonicalKey(selectedCharKey) or selectedCharKey
+        local curCanon = (currentKey and getCanonicalKey(currentKey)) or currentKey
+        local isCurrentPlayer = (selCanon and curCanon and selCanon == curCanon)
+
+        if isCurrentPlayer and GetSpecialization and GetSpecializationInfo then
+            local specIndex = GetSpecialization()
+            if specIndex then
+                local specID = GetSpecializationInfo(specIndex)
+                if specID and SPEC_MAIN_STAT[specID] then
+                    mainStat = SPEC_MAIN_STAT[specID]
+                    mainStatSource = "live(specID=" .. tostring(specID) .. ")"
+                end
+            end
+        end
+
+        if not mainStat then
+            mainStat = GetCharacterMainStat(charData)
+            if mainStat then
+                mainStatSource = "db(specID=" .. tostring(charData and charData.specID) .. ")"
+            end
+        end
+    end
+
+    dbg("=== Scan for: " .. tostring(selectedCharKey) .. " ===")
+    dbg("  classFile=" .. tostring(charData and charData.classFile) .. " specID(db)=" .. tostring(charData and charData.specID) .. " mainStat=" .. tostring(mainStat) .. " (" .. mainStatSource .. ")")
+
+    local addedCount = 0
+
     local function AddCandidate(slotID, candidate)
         if not findings[slotID] then findings[slotID] = {} end
-        -- Deduplicate by itemLink + source
+        local link = candidate.itemLink or candidate.link
+        if link then
+            candidate.itemLevel = ResolveStorageItemIlvl({ itemID = candidate.itemID, itemLink = link, link = link })
+            -- C_Item.GetItemInfo returns: name, link, quality, itemLevel, reqLevel, ...
+            -- With pcall: ok, name, link, quality, itemLevel, reqLevel
+            local rok, _, _, _, _, reqLevel = pcall(C_Item.GetItemInfo, link)
+            if rok and reqLevel and type(reqLevel) == "number" and reqLevel > 0 then
+                candidate.requiredLevel = reqLevel
+            end
+        end
+        if (candidate.itemLevel or 0) == 0 then return end
         for _, ex in ipairs(findings[slotID]) do
             if ex.itemLink == candidate.itemLink and ex.source == candidate.source then return end
         end
         findings[slotID][#findings[slotID] + 1] = candidate
+        addedCount = addedCount + 1
+
+        local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
+        local slotLabel = (slotDef and slotDef.label) or tostring(slotID)
+        local itemName = link and link:match("%[(.-)%]") or tostring(candidate.itemID)
+        dbg("  +++ " .. slotLabel .. ": " .. itemName .. " ilvl=" .. tostring(candidate.itemLevel) .. " from=" .. tostring(candidate.source))
     end
 
-    -- Helper: evaluate a single storage item against all equipment slots
     local function EvaluateItem(item, sourceCharKey, storageType)
         if not item or not item.itemID then return end
 
         local equipLoc = ""
+        local itemClassID = item.classID
+        local itemSubclassID = item.subclassID
         pcall(function()
-            -- GetItemInfoInstant: id, type, subtype, stackCount, equipLoc, icon, classID, subclassID
-            local _, _, _, _, loc = C_Item.GetItemInfoInstant(item.itemID)
+            local _, _, _, loc, _, classID, subclassID = C_Item.GetItemInfoInstant(item.itemID)
             equipLoc = loc or ""
+            if not itemClassID then itemClassID = classID end
+            if not itemSubclassID then itemSubclassID = subclassID end
         end)
-
+        if (equipLoc == "" or equipLoc == "INVTYPE_NON_EQUIP") and (item.itemLink or item.link) then
+            equipLoc = GetEquipLoc(item.itemLink or item.link)
+        end
         if equipLoc == "" or equipLoc == "INVTYPE_NON_EQUIP" then return end
 
         local targetSlots = EQUIP_LOC_TO_SLOTS[equipLoc]
         if not targetSlots then return end
 
         local ilvl = ResolveStorageItemIlvl(item)
-        if ilvl == 0 then return end  -- Can't determine ilvl; skip
+        if ilvl == 0 then return end
+
+        -- Only Uncommon (2) and above; hide Poor (0) and Common (1)
+        local quality = item.quality
+        if quality == nil or quality == 0 then
+            local q = (item.itemLink or item.link) and GetItemQuality(item.itemLink or item.link) or nil
+            quality = (q ~= nil) and q or 0
+        end
+        if (quality or 0) < 2 then return end
+
+        local link = item.itemLink or item.link
+        local itemName = link and link:match("%[(.-)%]") or tostring(item.itemID)
 
         for _, slotID in ipairs(targetSlots) do
-            local currentIlvl = equippedMap[slotID] or 0
-            if ilvl > currentIlvl then
-                local source, sourceType = ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageType)
-                if source then  -- nil means item is bound to another char; skip
-                    AddCandidate(slotID, {
-                        itemID     = item.itemID,
-                        itemLink   = item.itemLink or item.link,
-                        itemLevel  = ilvl,
-                        quality    = item.quality or 0,
-                        source     = source,
-                        sourceType = sourceType,
-                        isBound    = item.isBound,
-                    })
+            local isArmorOK = IsArmorCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc)
+            local isWeaponOK = IsWeaponCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc, mainStat)
+            local isStatOK = IsMainStatCompatible(link, mainStat, slotID)
+
+            if not isArmorOK or not isWeaponOK then
+                -- skip silently
+            elseif not isStatOK then
+                dbg("  --- REJECTED(stat): " .. itemName .. " slot=" .. tostring(slotID) .. " mainStat=" .. tostring(mainStat))
+            else
+                local currentIlvl = equippedMap[slotID] or 0
+                if ilvl > currentIlvl then
+                    local source, sourceType = ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageType)
+                    if source then
+                        AddCandidate(slotID, {
+                            itemID     = item.itemID,
+                            itemLink   = link,
+                            itemLevel  = ilvl,
+                            quality    = item.quality or 0,
+                            source     = source,
+                            sourceType = sourceType,
+                            isBound    = item.isBound,
+                            equipLoc   = equipLoc,
+                        })
+                    else
+                        local bt = GetBindingType(item)
+                        dbg("  --- REJECTED(bind): " .. itemName .. " ilvl=" .. tostring(ilvl) .. " bindType=" .. tostring(bt) .. " isBound=" .. tostring(item.isBound) .. " src=" .. tostring(sourceCharKey) .. "/" .. tostring(storageType))
+                    end
                 end
             end
         end
@@ -832,27 +1225,138 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         end
     end
 
-    -- ── All Tracked Characters ────────────────────────────────────────────────
-    local allChars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+    -- ── All Characters (bags + bank) ─────────────────────────────────────────
+    -- Resolve items using every key variant so we don't miss (itemStorage may be keyed differently than allChars).
     if allChars then
-        for charKey, charData in pairs(allChars) do
-            if charData.isTracked then
-                local itemsData = (WarbandNexus.GetItemsData and WarbandNexus:GetItemsData(charKey)) or nil
-                if itemsData then
-                    -- Bags
-                    for _, item in ipairs(itemsData.bags or {}) do
-                        EvaluateItem(item, charKey, "bag")
+        local itemStorage = self.db and self.db.global and self.db.global.itemStorage or nil
+        for charKey, _ in pairs(allChars) do
+            local canonicalChar = getCanonicalKey(charKey) or charKey
+            local function getItemsForChar()
+                local data = (WarbandNexus.GetItemsData and WarbandNexus:GetItemsData(canonicalChar)) or nil
+                if data and ((data.bags and #data.bags > 0) or (data.bank and #data.bank > 0)) then
+                    return data
+                end
+                if charKey ~= canonicalChar then
+                    data = (WarbandNexus.GetItemsData and WarbandNexus:GetItemsData(charKey)) or nil
+                    if data and ((data.bags and #data.bags > 0) or (data.bank and #data.bank > 0)) then
+                        return data
                     end
-                    -- Personal Bank
-                    for _, item in ipairs(itemsData.bank or {}) do
-                        EvaluateItem(item, charKey, "bank")
+                end
+                if itemStorage then
+                    for storageKey, _ in pairs(itemStorage) do
+                        if storageKey ~= "warbandBank" and (getCanonicalKey(storageKey) or storageKey) == canonicalChar then
+                            data = (WarbandNexus.GetItemsData and WarbandNexus:GetItemsData(storageKey)) or nil
+                            if data and ((data.bags and #data.bags > 0) or (data.bank and #data.bank > 0)) then
+                                return data
+                            end
+                        end
                     end
+                end
+                return nil
+            end
+            local itemsData = getItemsForChar()
+            if itemsData then
+                for _, item in ipairs(itemsData.bags or {}) do
+                    EvaluateItem(item, charKey, "bag")
+                end
+                for _, item in ipairs(itemsData.bank or {}) do
+                    EvaluateItem(item, charKey, "bank")
                 end
             end
         end
     end
 
-    -- Sort each slot's candidates by ilvl descending; keep top 5
+    -- ── Other characters' EQUIPPED gear (BoE/Warbound only — transferable) ─────
+    -- So we show e.g. "Superluminal (equipped): 220 head" when viewing Astralumina.
+    local selectedNorm = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and ns.Utilities:GetCanonicalCharacterKey(selectedCharKey) or selectedCharKey
+    if allChars and selectedNorm and (WarbandNexus.GetEquippedGear) then
+        for otherCharKey, otherCharData in pairs(allChars) do
+            if not otherCharData.isTracked then
+                -- skip
+            elseif (getCanonicalKey(otherCharKey) or otherCharKey) == selectedNorm then
+                -- skip selected character
+            else
+            local otherNorm = getCanonicalKey(otherCharKey) or otherCharKey
+            local otherGear = WarbandNexus:GetEquippedGear(otherNorm) or WarbandNexus:GetEquippedGear(otherCharKey)
+            if otherGear and otherGear.slots then
+            local otherName = (otherCharData and otherCharData.name) or otherCharKey
+            for slotID, slotData in pairs(otherGear.slots) do
+                if slotData and slotData.itemID and (slotData.itemLink or slotData.itemLevel) then
+                    local currentIlvl = equippedMap[slotID] or 0
+                    local itemLevel = ResolveStorageItemIlvl(slotData)
+                    if itemLevel > currentIlvl then
+                        local slotQuality = slotData.quality
+                        if slotQuality == nil and slotData.itemLink then
+                            slotQuality = GetItemQuality(slotData.itemLink)
+                        end
+                        if (slotQuality or 0) < 2 then
+                            -- skip Poor/Common
+                        else
+                        local fakeItem = {
+                            itemID = slotData.itemID,
+                            itemLink = slotData.itemLink,
+                            link = slotData.itemLink,
+                            quality = slotData.quality or 0,
+                            equipLoc = slotData.equipLoc or "",
+                            classID = slotData.classID,
+                            subclassID = slotData.subclassID,
+                            isBound = true,
+                        }
+                        local equipLoc = slotData.equipLoc or ""
+                        if equipLoc == "" and slotData.itemLink then
+                            equipLoc = GetEquipLoc(slotData.itemLink)
+                        end
+                        if equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP" then
+                            local targetSlots = EQUIP_LOC_TO_SLOTS[equipLoc]
+                            if targetSlots then
+                                local bindType = GetBindingType(fakeItem)
+                                if bindType == "boe" or bindType == "warbound" then
+                                    local itemClassID = slotData.classID
+                                    local itemSubclassID = slotData.subclassID
+                                    if not itemClassID or not itemSubclassID then
+                                        pcall(function()
+                                            local _, _, _, _, _, cid, sid = C_Item.GetItemInfoInstant(slotData.itemID)
+                                            if not itemClassID then itemClassID = cid end
+                                            if not itemSubclassID then itemSubclassID = sid end
+                                        end)
+                                    end
+                                    local ok = true
+                                    for _, sid in ipairs(targetSlots) do
+                                        if not IsArmorCompatible(charData, sid, itemClassID, itemSubclassID, equipLoc) then ok = false break end
+                                        if not IsWeaponCompatible(charData, sid, itemClassID, itemSubclassID, equipLoc, mainStat) then ok = false break end
+                                        if not IsMainStatCompatible(slotData.itemLink, mainStat, sid) then ok = false break end
+                                    end
+                                    if ok then
+                                        AddCandidate(slotID, {
+                                            itemID     = slotData.itemID,
+                                            itemLink   = slotData.itemLink,
+                                            itemLevel  = itemLevel,
+                                            quality    = slotData.quality or 0,
+                                            source     = otherName .. " (equipped)",
+                                            sourceType = bindType,
+                                            isBound    = true,
+                                            equipLoc   = equipLoc,
+                                            requiredLevel = (function()
+                                                if not slotData.itemLink then return nil end
+                                                local ok2, _, _, _, _, reqLvl = pcall(C_Item.GetItemInfo, slotData.itemLink)
+                                                return (ok2 and reqLvl and type(reqLvl) == "number" and reqLvl > 0) and reqLvl or nil
+                                            end)(),
+                                        })
+                                    end
+                                end
+                            end
+                        end
+                        end
+                    end
+                end
+            end
+            end
+            end
+        end
+    end
+
+    dbg("  Total candidates added: " .. tostring(addedCount))
+
     for slotID, candidates in pairs(findings) do
         table.sort(candidates, function(a, b) return (a.itemLevel or 0) > (b.itemLevel or 0) end)
         while #candidates > 5 do table.remove(candidates) end
@@ -921,6 +1425,18 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
                 if L.chars then
                     amount = L.chars[canonicalKey] or L.chars[charKey] or 0
                     if type(amount) == "table" then amount = amount.quantity or 0 end
+                    -- Fallback: key format may differ (e.g. "Name - Realm" vs "Name-Realm"); match by normalized key
+                    if (amount == nil or amount == 0) and next(L.chars) then
+                        local nCanon = norm(canonicalKey)
+                        local nChar = norm(charKey)
+                        for k, v in pairs(L.chars) do
+                            if k and (norm(k) == nCanon or norm(k) == nChar) then
+                                local q = type(v) == "table" and (v.quantity or v.amount) or v
+                                if type(q) == "number" and q > 0 then amount = q break end
+                            end
+                        end
+                    end
+                    amount = tonumber(amount) or 0
                 end
             end
         end

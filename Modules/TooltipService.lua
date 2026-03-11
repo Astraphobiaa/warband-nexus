@@ -998,14 +998,15 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         elseif drop.type == "mount" then
             if C_MountJournal and C_MountJournal.GetMountFromItem then
                 collectibleID = C_MountJournal.GetMountFromItem(drop.itemID)
-                if issecretvalue and collectibleID and issecretvalue(collectibleID) then
-                    collectibleID = nil
-                end
-            end
-            if collectibleID then
-                local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(collectibleID)
-                if not (issecretvalue and isCollected and issecretvalue(isCollected)) then
-                    collected = isCollected == true
+                -- Midnight 12.0: GetMountFromItem can return secret value; still check collected via pcall
+                if collectibleID then
+                    local ok, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, collectibleID)
+                    if ok and isCollected and not (issecretvalue and issecretvalue(isCollected)) then
+                        collected = isCollected == true
+                    end
+                    if issecretvalue and issecretvalue(collectibleID) then
+                        collectibleID = nil  -- do not use secret as key for try count / display
+                    end
                 end
             end
         elseif drop.type == "pet" then
@@ -1013,14 +1014,14 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 -- speciesID is the 13th return value, NOT the 1st (which is pet name)
                 local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
                 collectibleID = specID
-                if issecretvalue and collectibleID and issecretvalue(collectibleID) then
-                    collectibleID = nil
-                end
-            end
-            if collectibleID then
-                local numCollected = C_PetJournal.GetNumCollectedInfo(collectibleID)
-                if not (issecretvalue and numCollected and issecretvalue(numCollected)) then
-                    collected = numCollected and numCollected > 0
+                if collectibleID then
+                    local ok, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, collectibleID)
+                    if ok and numCollected and not (issecretvalue and issecretvalue(numCollected)) then
+                        collected = numCollected > 0
+                    end
+                    if issecretvalue and issecretvalue(specID) then
+                        collectibleID = nil
+                    end
                 end
             end
         elseif drop.type == "toy" then

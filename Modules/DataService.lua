@@ -278,10 +278,10 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         charData.level = UnitLevel("player")
         
     elseif dataType == "spec" then
-        local specID = GetSpecialization()
-        if specID then
-            local _, specName, _, specIcon = GetSpecializationInfo(specID)
-            charData.specID = specID
+        local specIndex = GetSpecialization()
+        if specIndex and GetSpecializationInfo then
+            local specID, specName, _, specIcon = GetSpecializationInfo(specIndex)
+            charData.specID = specID  -- store global spec ID (e.g. 262 for Elemental), not index
             charData.specName = specName
             charData.specIcon = specIcon
         end
@@ -678,6 +678,36 @@ function WarbandNexus:CollectProfessionData()
     return result
 end
 
+--- Collect current player stats for persistence (Gear tab offline display).
+--- @return table|nil { primary = { [statId] = value }, secondary = { { label, rating, pct }, ... } } or nil
+local function CollectPlayerStats()
+    local primary = {}
+    for id = 1, 4 do
+        local ok, _, total = pcall(UnitStat, "player", id)
+        if ok and total and type(total) == "number" then primary[id] = math.floor(total) end
+    end
+    if not next(primary) then primary = nil end
+    local secondary = {}
+    local secondFns = {
+        { label = "Critical Strike", rating = 9,  pctFn = function() return GetCritChance and GetCritChance() or 0 end },
+        { label = "Haste",           rating = 18, pctFn = function() return GetHaste and GetHaste() or 0 end },
+        { label = "Mastery",         rating = 26, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
+        { label = "Versatility",     rating = 29, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
+    }
+    for _, s in ipairs(secondFns) do
+        local okR, rating = pcall(GetCombatRating, s.rating)
+        local okP, pct = pcall(s.pctFn)
+        if okR and type(rating) == "number" and rating > 0 then
+            secondary[#secondary + 1] = {
+                label = s.label,
+                rating = math.floor(rating),
+                pct = (okP and pct and type(pct) == "number") and pct or nil,
+            }
+        end
+    end
+    if not next(primary) and not next(secondary) then return nil end
+    return { primary = primary, secondary = secondary }
+end
 
 --[[
     Save minimal character data for UNTRACKED characters
@@ -718,6 +748,13 @@ function WarbandNexus:SaveMinimalCharacterData()
     local _, avgItemLevelEquipped = GetAverageItemLevel()
     local itemLevel = avgItemLevelEquipped or 0
     
+    -- Spec (for offline main stat in Gear tab)
+    local specID, specName, specIcon = nil, nil, nil
+    if GetSpecialization and GetSpecializationInfo then
+        local idx = GetSpecialization()
+        if idx then specID, specName, _, specIcon = GetSpecializationInfo(idx) end
+    end
+    
     -- Validate critical data
     if not classFile or not level or level == 0 then
         return false
@@ -749,7 +786,7 @@ function WarbandNexus:SaveMinimalCharacterData()
     local preserveConcentration       = existingEntry and existingEntry.concentration
     local preserveRecipes             = existingEntry and existingEntry.recipes
     local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
-    local preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
+    local         preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
     local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
     
     -- Store MINIMAL data only
@@ -781,6 +818,10 @@ function WarbandNexus:SaveMinimalCharacterData()
         discoveredSkillLines = preserveDiscoveredSkillLines,
         knowledgeData        = preserveKnowledgeData,
         guid                 = UnitGUID("player"),
+        stats                = CollectPlayerStats(),  -- For Gear tab offline Character Stats
+        specID               = specID,
+        specName             = specName,
+        specIcon             = specIcon,
     }
     
     -- Fire event for UI refresh
@@ -881,6 +922,13 @@ function WarbandNexus:SaveCurrentCharacterData()
     -- Get character's average item level (ALWAYS fresh from API)
     local _, avgItemLevelEquipped = GetAverageItemLevel()
     local itemLevel = avgItemLevelEquipped or 0
+    
+    -- Spec (for offline main stat in Gear tab)
+    local specID, specName, specIcon = nil, nil, nil
+    if GetSpecialization and GetSpecializationInfo then
+        local idx = GetSpecialization()
+        if idx then specID, specName, _, specIcon = GetSpecializationInfo(idx) end
+    end
     
     -- Scan for Mythic Keystone (always scan on login to check if key exists)
     local keystoneData = nil
@@ -990,6 +1038,10 @@ function WarbandNexus:SaveCurrentCharacterData()
         discoveredSkillLines = preserveDiscoveredSkillLines,
         knowledgeData        = preserveKnowledgeData,
         guid                 = UnitGUID("player"),
+        stats                = CollectPlayerStats(),  -- For Gear tab offline Character Stats
+        specID               = specID,
+        specName             = specName,
+        specIcon             = specIcon,
     }
     
     

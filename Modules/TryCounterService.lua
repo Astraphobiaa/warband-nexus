@@ -3734,6 +3734,24 @@ function WarbandNexus:InitializeTryCounter()
     -- BEFORE building reverse indices so custom items are queryable.
     MergeTrackDB()
 
+    -- Set lastContainerItemID before LOOT_OPENED: hook UseContainerItem so we know which
+    -- container was opened even when LOOT_OPENED fires before ITEM_LOCK_CHANGED (e.g. Pinnacle Cache).
+    if not self.useContainerItemHooked and _G.UseContainerItem and C_Container and C_Container.GetContainerItemID then
+        local ok = pcall(function()
+            self:RawHook("UseContainerItem", function(addon, bagID, slotIndex)
+                if bagID and slotIndex and bagID >= 0 and bagID <= 4 then
+                    local itemID = C_Container.GetContainerItemID(bagID, slotIndex)
+                    if itemID and containerDropDB[itemID] then
+                        lastContainerItemID = itemID
+                    end
+                end
+                local orig = addon.hooks["UseContainerItem"]
+                if orig then return orig(bagID, slotIndex) end
+            end)
+        end)
+        if ok then self.useContainerItemHooked = true end
+    end
+
     -- Build reverse lookup indices for O(1) Is*Collectible() queries.
     -- Must run AFTER DB references are loaded and trackDB is merged.
     BuildReverseIndices()
