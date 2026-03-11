@@ -36,6 +36,9 @@ local SECTION_SPACING = UI_SPACING.SECTION_SPACING  -- Spacing between sections
 local CONTENT_PADDING_TOP = 40  -- Title height (from CreateSection standard, settings-specific)
 local CONTENT_PADDING_BOTTOM = UI_SPACING.MIN_BOTTOM_SPACING  -- Bottom padding within section
 
+-- Forward declaration: BuildSettings and ShowSettings share this reference.
+local settingsFrame = nil
+
 --============================================================================
 -- GRID LAYOUT SYSTEM
 --============================================================================
@@ -70,13 +73,16 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     -- All items in a given column share the same X anchor → perfect alignment.
     local containerWidth = explicitWidth or parent:GetWidth() or 620
 
-    -- Determine column count based on width (min 2, steps of ~160px)
-    local MIN_COL_WIDTH = 160
+    -- Determine column count based on width (prefer readability over density).
+    -- 1-2 columns keeps long labels from looking cramped in Settings.
+    local MIN_COL_WIDTH = 260
     local COL_SPACING = 12
-    local numCols = math.max(2, math.floor((containerWidth + COL_SPACING) / (MIN_COL_WIDTH + COL_SPACING)))
+    local maxCols = 2
+    local numCols = math.floor((containerWidth + COL_SPACING) / (MIN_COL_WIDTH + COL_SPACING))
+    numCols = math.max(1, math.min(maxCols, numCols))
     local colWidth = (containerWidth - (COL_SPACING * (numCols - 1))) / numCols
 
-    local ROW_HEIGHT = 32
+    local ROW_HEIGHT = 36
     local CHECKBOX_SIZE = 24
 
     local widgets = {}       -- key → {checkbox, label}
@@ -806,6 +812,13 @@ local function BuildSettings(parent, containerWidth)
             set = function(value) WarbandNexus.db.profile.showItemCount = value end,
         },
         {
+            key = "showTooltipItemCount",
+            label = (ns.L and ns.L["CONFIG_SHOW_ITEMS_TOOLTIP"]) or "Show Items in Tooltips",
+            tooltip = (ns.L and ns.L["CONFIG_SHOW_ITEMS_TOOLTIP_DESC"]) or "Display Warband and Character item counts in item tooltips.",
+            get = function() return WarbandNexus.db.profile.showTooltipItemCount ~= false end,
+            set = function(value) WarbandNexus.db.profile.showTooltipItemCount = value end,
+        },
+        {
             key = "showWeeklyPlanner",
             label = (ns.L and ns.L["SHOW_WEEKLY_PLANNER"]) or "Weekly Planner (Characters)",
             tooltip = (ns.L and ns.L["SHOW_WEEKLY_PLANNER_TOOLTIP"]) or "Show or hide the Weekly Planner section inside the Characters tab",
@@ -814,6 +827,19 @@ local function BuildSettings(parent, containerWidth)
                 WarbandNexus.db.profile.showWeeklyPlanner = value
                 if WarbandNexus.RefreshUI then
                     WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        {
+            key = "minimapVisible",
+            label = (ns.L and ns.L["CONFIG_MINIMAP"]) or "Minimap Button",
+            tooltip = (ns.L and ns.L["CONFIG_MINIMAP_DESC"]) or "Show a button on the minimap for quick access.",
+            get = function() return not WarbandNexus.db.profile.minimap.hide end,
+            set = function(value)
+                if WarbandNexus.SetMinimapButtonVisible then
+                    WarbandNexus:SetMinimapButtonVisible(value)
+                else
+                    WarbandNexus.db.profile.minimap.hide = not value
                 end
             end,
         },
@@ -838,6 +864,18 @@ local function BuildSettings(parent, containerWidth)
                             button:RegisterForDrag("LeftButton")
                         end
                     end
+                end
+            end,
+        },
+        {
+            key = "recipeCompanionEnabled",
+            label = (ns.L and ns.L["CONFIG_RECIPE_COMPANION"]) or "Recipe Companion",
+            tooltip = (ns.L and ns.L["CONFIG_RECIPE_COMPANION_DESC"]) or "Show the Recipe Companion window alongside the Professions UI, displaying reagent availability per character.",
+            get = function() return WarbandNexus.db.profile.recipeCompanionEnabled ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.recipeCompanionEnabled = value
+                if not value and ns.RecipeCompanionWindow then
+                    ns.RecipeCompanionWindow.Hide()
                 end
             end,
         },
@@ -989,6 +1027,28 @@ local function BuildSettings(parent, containerWidth)
                     WarbandNexus.db.profile.modulesEnabled.professions = value
                     WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "professions", value)
                 end
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end,
+        },
+        {
+            key = "gear",
+            label = (ns.L and ns.L["MODULE_GEAR"]) or "Gear",
+            tooltip = (ns.L and ns.L["MODULE_GEAR_DESC"]) or "Gear management and item level tracking across characters",
+            get = function() return WarbandNexus.db.profile.modulesEnabled.gear ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.modulesEnabled.gear = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "gear", value)
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end,
+        },
+        {
+            key = "collections",
+            label = (ns.L and ns.L["MODULE_COLLECTIONS"]) or "Collections",
+            tooltip = (ns.L and ns.L["MODULE_COLLECTIONS_DESC"]) or "Mounts, pets, toys, transmog, and collection overview",
+            get = function() return WarbandNexus.db.profile.modulesEnabled.collections ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.modulesEnabled.collections = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "collections", value)
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
@@ -1149,6 +1209,14 @@ local function BuildSettings(parent, containerWidth)
             tooltip = (ns.L and ns.L["VAULT_REMINDER_TOOLTIP"]) or "Show a reminder popup on login when you have unclaimed Great Vault rewards",
             get = function() return WarbandNexus.db.profile.notifications.showVaultReminder end,
             set = function(value) WarbandNexus.db.profile.notifications.showVaultReminder = value end,
+        },
+        {
+            key = "updateNotes",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["CONFIG_SHOW_UPDATE_NOTES"]) or "Show Update Notes",
+            tooltip = (ns.L and ns.L["CONFIG_SHOW_UPDATE_NOTES_DESC"]) or "Display the What's New window on next login.",
+            get = function() return WarbandNexus.db.profile.notifications.showUpdateNotes end,
+            set = function(value) WarbandNexus.db.profile.notifications.showUpdateNotes = value end,
         },
         {
             key = "loot",
@@ -1382,6 +1450,9 @@ local function BuildSettings(parent, containerWidth)
     -- Reserve space for two lines (main + criteria) so buttons never overlap the anchor text
     notifGridYOffset = notifGridYOffset - 44
 
+    -- Forward declaration for shared handlers below.
+    local useAlertFrameCheck
+
     local btnWidth = math.floor((effectiveWidth - 45) / 4)
     local setPosBtn = ns.UI.Factory:CreateButton(notifSection.content)
     setPosBtn:SetSize(btnWidth, 30)
@@ -1609,7 +1680,7 @@ local function BuildSettings(parent, containerWidth)
     end)
     notifGridYOffset = notifGridYOffset - 40
 
-    local useAlertFrameCheck = CreateThemedCheckbox(notifSection.content)
+    useAlertFrameCheck = CreateThemedCheckbox(notifSection.content)
     useAlertFrameCheck:SetSize(24, 24)
     useAlertFrameCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
     local useAlertFrameLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
@@ -1943,6 +2014,24 @@ local function BuildSettings(parent, containerWidth)
             end)
         end,
     }, themeYOffset)
+
+    -- Font anti-aliasing mode
+    themeYOffset = CreateDropdownWidget(themeSection.content, {
+        name = (ns.L and ns.L["ANTI_ALIASING"]) or "Anti-Aliasing",
+        desc = (ns.L and ns.L["ANTI_ALIASING_DESC"]) or "Font edge rendering style (affects readability)",
+        values = {
+            none = "None (Smooth)",
+            OUTLINE = "Outline (Default)",
+            THICKOUTLINE = "Thick Outline (Bold)",
+        },
+        get = function() return WarbandNexus.db.profile.fonts.antiAliasing end,
+        set = function(_, value)
+            WarbandNexus.db.profile.fonts.antiAliasing = value
+            if ns.FontManager and ns.FontManager.RefreshAllFonts then
+                ns.FontManager:RefreshAllFonts()
+            end
+        end,
+    }, themeYOffset)
     
     -- Font scale warning text (created first so slider callback can reference it)
     -- Positioned below where the slider will be (slider takes ~65px height)
@@ -2027,19 +2116,28 @@ local function BuildSettings(parent, containerWidth)
     trackSection:SetPoint("TOPLEFT", 0, yOffset)
     trackSection:SetPoint("TOPRIGHT", 0, yOffset)
     
-    -- Collapsible: add arrow toggle to title
+    -- Collapsible: arrow + title aligned with other sections (15px left padding, same as CreateSection)
     local COLLAPSED_HEIGHT = CONTENT_PADDING_TOP  -- title bar only
     local trackIsCollapsed = true  -- default collapsed
+    local HEADER_LEFT_INDENT = 15
+    local ARROW_TITLE_GAP = 6
     
     local collapseArrow = trackSection:CreateTexture(nil, "OVERLAY")
     collapseArrow:SetSize(14, 14)
-    collapseArrow:SetPoint("RIGHT", trackSection.titleText, "LEFT", -4, 0)
+    collapseArrow:SetPoint("TOPLEFT", trackSection, "TOPLEFT", HEADER_LEFT_INDENT, -12)
     collapseArrow:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
+    
+    local titleText = trackSection.titleText
+    titleText:ClearAllPoints()
+    titleText:SetPoint("LEFT", collapseArrow, "RIGHT", ARROW_TITLE_GAP, 0)
+    titleText:SetPoint("RIGHT", trackSection, "RIGHT", -HEADER_LEFT_INDENT, 0)
+    titleText:SetPoint("TOP", collapseArrow, "TOP")
+    titleText:SetPoint("BOTTOM", collapseArrow, "BOTTOM")
     
     local collapseBtn = ns.UI.Factory:CreateButton(trackSection, 1, 24, true)
     if collapseBtn then
-        collapseBtn:SetAllPoints(trackSection.titleText)
-        collapseBtn:SetPoint("LEFT", collapseArrow, "LEFT", -4, 0)
+        collapseBtn:SetPoint("TOPLEFT", collapseArrow, "TOPLEFT")
+        collapseBtn:SetPoint("BOTTOMRIGHT", titleText, "BOTTOMRIGHT")
     end
     
     local trackYOffset = 0
@@ -2572,11 +2670,26 @@ local function BuildSettings(parent, containerWidth)
     -- Debug Mode checkboxes
     local debugOptions = {
         {
+            key = "autoOptimize",
+            label = (ns.L and ns.L["CONFIG_AUTO_OPTIMIZE"]) or "Auto-Optimize Database",
+            tooltip = (ns.L and ns.L["CONFIG_AUTO_OPTIMIZE_DESC"]) or "Automatically optimize the database on login to keep storage efficient.",
+            get = function() return WarbandNexus.db.profile.autoOptimize ~= false end,
+            set = function(value) WarbandNexus.db.profile.autoOptimize = value end,
+        },
+        {
             key = "debug",
             label = (ns.L and ns.L["DEBUG_MODE"]) or "Debug Logging",
             tooltip = (ns.L and ns.L["DEBUG_MODE_DESC"]) or "Output verbose debug messages to chat for troubleshooting",
             get = function() return WarbandNexus.db.profile.debugMode end,
             set = function(value) WarbandNexus.db.profile.debugMode = value end,
+        },
+        {
+            key = "debugVerbose",
+            parentKey = "debug",
+            label = (ns.L and ns.L["CONFIG_DEBUG_VERBOSE"]) or "Debug Verbose (cache/scan/tooltip logs)",
+            tooltip = (ns.L and ns.L["CONFIG_DEBUG_VERBOSE_DESC"]) or "When Debug Mode is on, also show currency/reputation cache, bag scan, tooltip and profession logs. Leave off to reduce chat spam.",
+            get = function() return WarbandNexus.db.profile.debugVerbose end,
+            set = function(value) WarbandNexus.db.profile.debugVerbose = value end,
         },
         {
             key = "debugTryCounterLoot",
@@ -2628,8 +2741,6 @@ end
 -- MAIN WINDOW
 --============================================================================
 
-local settingsFrame = nil
-
 function WarbandNexus:ShowSettings()
     -- Combat safety: prevent taint from frame operations during combat
     if InCombatLockdown() then
@@ -2650,6 +2761,9 @@ function WarbandNexus:ShowSettings()
         settingsFrame:Raise()
         return
     end
+
+    -- Forward declarations for resize callbacks.
+    local scrollFrame, scrollChild, lastWidth
     
     -- Main frame (created once, reused across open/close cycles; Factory for standard compliance)
     local f = ns.UI.Factory:CreateContainer(UIParent, 700, 650, false)
@@ -2802,7 +2916,7 @@ function WarbandNexus:ShowSettings()
     
     -- ScrollFrame (Collections pattern: bar column + PositionScrollBarInContainer)
     local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(contentArea, 22, UI_SPACING.TOP_MARGIN, UI_SPACING.TOP_MARGIN)
-    local scrollFrame = ns.UI.Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
+    scrollFrame = ns.UI.Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
     scrollFrame:ClearAllPoints()
     scrollFrame:SetPoint("TOPLEFT", UI_SPACING.SIDE_MARGIN, -UI_SPACING.TOP_MARGIN)
     scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", 0, UI_SPACING.TOP_MARGIN)
@@ -2812,7 +2926,7 @@ function WarbandNexus:ShowSettings()
     end
 
     -- Scroll child
-    local scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
+    scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
     local scrollWidth = scrollFrame:GetWidth() or 660
     scrollChild:SetWidth(scrollWidth)
     scrollFrame:SetScrollChild(scrollChild)

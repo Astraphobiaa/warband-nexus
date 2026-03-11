@@ -316,6 +316,54 @@ end
 --============================================================================
 -- TAB BUTTON STATE (must be defined before CreateMainWindow so tab OnClick closure can see it)
 --============================================================================
+-- Tab key -> profile modulesEnabled key (tabs without entry are always shown: chars, stats)
+local TAB_TO_MODULE = {
+    items = "items",
+    storage = "storage",
+    pve = "pve",
+    reputations = "reputations",
+    currency = "currencies",
+    professions = "professions",
+    gear = "gear",
+    collections = "collections",
+    plans = "plans",
+}
+
+local function IsTabModuleEnabled(key)
+    local moduleKey = TAB_TO_MODULE[key]
+    if not moduleKey then return true end
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    if not db or not db.modulesEnabled then return true end
+    return db.modulesEnabled[moduleKey] ~= false
+end
+
+local function UpdateTabVisibility(f)
+    if not f or not f.tabButtons or not f.tabButtons.chars then return end
+    local tabDefs = {
+        { key = "chars" }, { key = "items" }, { key = "storage" }, { key = "pve" },
+        { key = "reputations" }, { key = "currency" }, { key = "professions" },
+        { key = "gear" }, { key = "collections" }, { key = "plans" }, { key = "stats" },
+    }
+    local TAB_GAP = 5
+    local prevBtn = nil
+    for i = 1, #tabDefs do
+        local key = tabDefs[i].key
+        local btn = f.tabButtons[key]
+        if btn then
+            local show = IsTabModuleEnabled(key)
+            btn:SetShown(show)
+            if show then
+                if prevBtn then
+                    btn:SetPoint("LEFT", prevBtn, "RIGHT", TAB_GAP, 0)
+                else
+                    btn:SetPoint("LEFT", f.nav or btn:GetParent(), "LEFT", 10, 0)
+                end
+                prevBtn = btn
+            end
+        end
+    end
+end
+
 local function UpdateTabButtonStates(f)
     if not f or not f.tabButtons or not f.currentTab then return end
     local freshColors = ns.UI_COLORS
@@ -323,6 +371,9 @@ local function UpdateTabButtonStates(f)
     if not accentColor then return end
     local fm = GetFontManager()
     for key, btn in pairs(f.tabButtons) do
+        if not btn:IsShown() then
+            -- Skip hidden (module-disabled) tabs
+        else
         if key == f.currentTab then
             btn.active = true
             if btn.label then
@@ -353,6 +404,7 @@ local function UpdateTabButtonStates(f)
             if btn.activeBar then btn.activeBar:SetAlpha(0) end
             if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1}) end
             if btn.SetBackdropColor then btn:SetBackdropColor(0.12, 0.12, 0.15, 1) end
+        end
         end
     end
 end
@@ -855,6 +907,8 @@ function WarbandNexus:CreateMainWindow()
         prevBtn = btn
     end
     
+    UpdateTabVisibility(f)
+    
     -- Function to update tab colors dynamically
     f.UpdateTabColors = function()
         local freshColors = ns.UI_COLORS
@@ -1119,6 +1173,21 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
+    WarbandNexus.RegisterMessage(UIEvents, "WN_MODULE_TOGGLED", function(_, moduleName)
+        if not f or not f.tabButtons then return end
+        -- Map module name to tab key (currencies -> currency; others same)
+        local tabKey = (moduleName == "currencies") and "currency" or moduleName
+        UpdateTabVisibility(f)
+        if f.currentTab == tabKey then
+            f.currentTab = "chars"
+            if WarbandNexus.db and WarbandNexus.db.profile then
+                WarbandNexus.db.profile.lastTab = "chars"
+            end
+            UpdateTabButtonStates(f)
+            SchedulePopulateContent()
+        end
+    end)
+    
     -- Loading bar is now a standalone floating frame (see CreateLoadingOverlay below)
     
     -- Master OnHide: cleanup when addon window closes
@@ -1347,6 +1416,10 @@ function WarbandNexus:RefreshUI()
     -- Dismiss any open achievement popup before UI rebuild
     if ns.UI_HideAchievementPopup then
         ns.UI_HideAchievementPopup()
+    end
+    
+    if mainFrame and mainFrame.tabButtons then
+        UpdateTabVisibility(mainFrame)
     end
     
     -- Combat safety: defer frame operations to avoid taint

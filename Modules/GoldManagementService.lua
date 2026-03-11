@@ -35,6 +35,9 @@ local function PerformGoldManagement()
             local ok, err = pcall(C_Bank.DepositMoney, Enum.BankType.Account, excess)
             if ok then
                 lastActionTime = now
+                if WarbandNexus.LogMoneyTransactionImmediate then
+                    WarbandNexus:LogMoneyTransactionImmediate("deposit", excess, charGold - excess, warbandGold + excess)
+                end
             end
         end
         return
@@ -53,6 +56,9 @@ local function PerformGoldManagement()
             local ok, err = pcall(C_Bank.WithdrawMoney, Enum.BankType.Account, needed)
             if ok then
                 lastActionTime = now
+                if WarbandNexus.LogMoneyTransactionImmediate then
+                    WarbandNexus:LogMoneyTransactionImmediate("withdraw", needed, charGold + needed, warbandGold - needed)
+                end
             end
         end
     end

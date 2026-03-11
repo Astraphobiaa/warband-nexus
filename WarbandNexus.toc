@@ -110,8 +110,10 @@ Modules\UI\ProfessionsUI.lua
 Modules\UI\GearUI.lua
 Modules\UI\InformationDialog.lua
 Modules\UI\GoldManagementPopup.lua
+Modules\UI\CharacterBankMoneyLogPopup.lua
 Modules\UI.lua
 
 # Gold Management (MUST load after UI modules)
 Modules\GoldManagementService.lua
+Modules\CharacterBankMoneyLogService.lua
 

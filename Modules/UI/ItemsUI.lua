@@ -210,6 +210,38 @@ function WarbandNexus:DrawItemList(parent)
             self:ShowGoldManagementPopup()
         end
     end)
+
+    -- ===== MONEY LOGS BUTTON (Left of Gold Target) =====
+    local moneyLogsBtn = ns.UI.Factory:CreateButton(titleCard, 100, 32)
+    moneyLogsBtn:SetPoint("RIGHT", goldMgrBtn, "LEFT", -8, 0)
+
+    if ApplyVisuals then
+        ApplyVisuals(moneyLogsBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    end
+
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(moneyLogsBtn)
+    end
+
+    local moneyLogsText = FontManager:CreateFontString(moneyLogsBtn, "body", "OVERLAY")
+    moneyLogsText:SetPoint("CENTER")
+    moneyLogsText:SetText((ns.L and ns.L["MONEY_LOGS_BTN"]) or "Money Logs")
+    moneyLogsText:SetTextColor(1, 1, 1)
+    moneyLogsText:SetJustifyH("CENTER")
+    moneyLogsText:SetWordWrap(false)
+
+    C_Timer.After(0, function()
+        if moneyLogsText and moneyLogsText:GetStringWidth() > 0 then
+            local textWidth = moneyLogsText:GetStringWidth()
+            moneyLogsBtn:SetWidth(textWidth + 24)
+        end
+    end)
+
+    moneyLogsBtn:SetScript("OnClick", function()
+        if self.ShowCharacterBankMoneyLogPopup then
+            self:ShowCharacterBankMoneyLogPopup()
+        end
+    end)
     
     titleCard:Show()
     

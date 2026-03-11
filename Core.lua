@@ -132,6 +132,8 @@ local defaults = {
             reputations = true,  -- Reputation tracking
             plans = true,        -- Collection plans and goals
             professions = true,  -- Profession tracking and companion window
+            gear = true,         -- Gear management tab
+            collections = true,  -- Collections (mounts, pets, toys, transmog) tab
         },
         
         -- Weekly Planner settings
@@ -348,6 +350,7 @@ local defaults = {
         -- Each character stores their own statistics on login, then we SUM across all.
         -- Key: charKey (e.g. "Charname-Realm"), Value: { [tryKey] = statTotal }
         statisticSnapshots = {},
+        characterBankMoneyLogs = {}, -- account-wide: { { timestamp, type, amount, character, classFile }, ... }
     },
     char = {
         -- Personal bank cache (per-character)
@@ -641,6 +644,11 @@ function WarbandNexus:OnInitialize()
         print("|cffff00ff[CORE] InitializeGoldManagementService DONE")
     else
         print("|cffff0000[CORE] ERROR: InitializeGoldManagementService NOT FOUND!")
+    end
+
+    -- Initialize Character Bank Money Log Service
+    if self.InitializeCharacterBankMoneyLogService then
+        self:InitializeCharacterBankMoneyLogService()
     end
     
 end
