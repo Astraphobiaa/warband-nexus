@@ -1104,17 +1104,7 @@ local function ReseedStatisticsForDrops(drops, statIds)
     local GetStat = GetStatistic
     if not GetStat then return end
 
-    -- Get character key
-    local charKey
-    if ns.Utilities and ns.Utilities.GetCharacterKey then
-        charKey = ns.Utilities:GetCharacterKey()
-    else
-        local name = UnitName("player")
-        local realm = GetRealmName()
-        if name and realm then
-            charKey = name:gsub("%s+", "") .. "-" .. realm:gsub("%s+", "")
-        end
-    end
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not charKey then return end
 
     -- Ensure snapshot storage
@@ -3226,18 +3216,8 @@ local function SeedFromStatistics()
     local LT = ns.LoadingTracker
     if LT then LT:Register("trycounts", (ns.L and ns.L["TRYCOUNTER_TRY_COUNTS"]) or "Try Counts") end
 
-    local charKey
-    if ns.Utilities and ns.Utilities.GetCharacterKey then
-        charKey = ns.Utilities:GetCharacterKey()
-    else
-        local name = UnitName("player")
-        local realm = GetRealmName()
-        if name and realm then
-            charKey = name:gsub("%s+", "") .. "-" .. realm:gsub("%s+", "")
-        end
-    end
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not charKey then return end
-
     local snapshots = WarbandNexus.db.global.statisticSnapshots
     if not snapshots then
         WarbandNexus.db.global.statisticSnapshots = {}

@@ -565,7 +565,10 @@ if personalExpanded then
             local customOrder = self.db.profile.characterOrder and self.db.profile.characterOrder.regular or {}
             if #customOrder > 0 then
                 local ordered, charMap = {}, {}
-                for _, c in ipairs(characters) do charMap[(c.name or "Unknown") .. "-" .. (c.realm or "Unknown")] = c end
+                for _, c in ipairs(characters) do
+                    local ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(c.name, c.realm)
+                    if ck then charMap[ck] = c end
+                end
                 for _, ck in ipairs(customOrder) do
                     if charMap[ck] then table.insert(ordered, charMap[ck]); charMap[ck] = nil end
                 end

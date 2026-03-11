@@ -213,12 +213,15 @@ function InitializationService:InitializeCoreInfrastructure(addon)
             if not addon.db.global.characters[charKey] then
                 addon.db.global.characters[charKey] = {}
             end
-            
-            -- Only set isTracked if not already set (preserve existing choice)
-            if addon.db.global.characters[charKey].isTracked == nil then
-                addon.db.global.characters[charKey].isTracked = false
+            local stub = addon.db.global.characters[charKey]
+            if not stub.name or not stub.realm then
+                stub.name = UnitName("player")
+                stub.realm = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName()
             end
-            addon.db.global.characters[charKey].lastSeen = time()
+            if stub.isTracked == nil then
+                stub.isTracked = false
+            end
+            stub.lastSeen = time()
             
             C_Timer.After(2, function()
                 SafeInit(function()

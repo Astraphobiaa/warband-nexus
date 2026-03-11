@@ -49,10 +49,11 @@ local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
 
--- Canonical character key (same as Utilities:GetCharacterKey / DB); use everywhere for service calls and comparisons.
+-- Canonical character key (Utilities only; no manual key construction).
 local function GetCharKey(char)
     if char and char._key then return char._key end
-    return (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")) or ((char and char.name or "Unknown") .. "-" .. (char and char.realm or "Unknown"))
+    if not ns.Utilities or not ns.Utilities.GetCharacterKey then return nil end
+    return ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")
 end
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local ROW_HEIGHT = GetLayout().rowHeight or 26
@@ -64,6 +65,102 @@ local BASE_INDENT = GetLayout().BASE_INDENT or 15
 local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
+
+local RESTED_GAIN_PER_SEC = 0.05 / (8 * 3600) -- 5% of level XP per 8h in rested area
+-- Fallback xpMax for display when DB has none (so we can show "0%" and column is visible)
+local function GetFallbackXPMaxForLevel(level)
+    if not level or level < 1 then return 100000 end
+    return 100000 * math.min(level, 80)
+end
+
+local function GetMaxLevelSafe()
+    if type(GetMaxLevelForLatestExpansion) == "function" then
+        local lvl = GetMaxLevelForLatestExpansion()
+        if type(lvl) == "number" and lvl > 0 then
+            return lvl
+        end
+    end
+    return MAX_PLAYER_LEVEL or 80
+end
+
+local function GetEstimatedRestedXP(char, isCurrentCharacter)
+    local xpMax = 0
+    local restedXP = 0
+    local isResting = false
+
+    if isCurrentCharacter then
+        xpMax = UnitXPMax("player") or (char and (tonumber(char.xpMax) or char.xpMax)) or 0
+        restedXP = GetXPExhaustion() or (char and (tonumber(char.restedXP) or char.restedXP)) or 0
+        isResting = IsResting() or false
+    else
+        xpMax = (char and (tonumber(char.xpMax) or char.xpMax)) or 0
+        restedXP = (char and (tonumber(char.restedXP) or char.restedXP)) or 0
+        isResting = (char and char.isResting) == true
+    end
+    xpMax = tonumber(xpMax) or 0
+    restedXP = tonumber(restedXP) or 0
+
+    -- For non-current chars with level but no xpMax in DB, use fallback so we can show "0%" and column is visible
+    if not isCurrentCharacter and char and xpMax <= 0 then
+        local lvl = tonumber(char.level) or 0
+        local maxLvl = GetMaxLevelSafe()
+        if lvl > 0 and lvl < maxLvl then
+            xpMax = GetFallbackXPMaxForLevel(lvl)
+        end
+    end
+    if xpMax <= 0 then
+        return 0, 0, false
+    end
+
+    local restedCap = math.floor((xpMax * 1.5) + 0.5)
+    local totalRested = restedXP
+
+    -- Offline growth (concentration-style): while character is not logged in, rested continues to accumulate.
+    if not isCurrentCharacter and char and char.lastSeen and xpMax > 0 then
+        local elapsed = time() - (char.lastSeen or 0)
+        if elapsed > 0 then
+            totalRested = totalRested + (elapsed * xpMax * RESTED_GAIN_PER_SEC)
+        end
+    end
+
+    if totalRested < 0 then totalRested = 0 end
+    if totalRested > restedCap then totalRested = restedCap end
+
+    return totalRested, xpMax, true
+end
+
+local function BuildRestedXPText(char, isCurrentCharacter)
+    local level = (char and char.level) or 0
+    local maxLvl = GetMaxLevelSafe()
+    if level >= maxLvl then
+        return ""  -- Max level: show nothing
+    end
+
+    local restedXP, xpMax, isValid = GetEstimatedRestedXP(char, isCurrentCharacter)
+    if not isValid or xpMax <= 0 then
+        return ""
+    end
+
+    -- Show percentage even when 0% so the column is visible for non-max-level chars
+    local pct = (restedXP / xpMax) * 100
+    local pctStr = string.format("%.2f", pct)
+    return string.format("|cff6eb5e7%%%s|r", pctStr)
+end
+
+
+local function BuildGuildText(char, isCurrentCharacter)
+    local guildName = (char and char.guildName) or nil
+    if isCurrentCharacter then
+        guildName = IsInGuild() and GetGuildInfo("player") or guildName
+    end
+
+    if guildName and guildName ~= "" then
+        -- Guild name: soft lavender so it’s visible but not louder than name
+        return string.format("|cffffffff%s|r", guildName)
+    end
+
+    return "|cff5c5c5c—|r"
+end
 
 --============================================================================
 -- EVENT-DRIVEN UI REFRESH
@@ -121,17 +218,17 @@ function WarbandNexus:DrawCharacterList(parent)
     -- PERFORMANCE: Release pooled frames
     if ReleaseAllPooledChildren then ReleaseAllPooledChildren(parent) end
     
-    -- Get current player key
-    local currentPlayerKey = ns.Utilities:GetCharacterKey()
-    
-    -- CRITICAL: Update current character's lastSeen BEFORE fetching characters
-    -- (so it shows as "Online" instead of "< 1m ago")
-    if self.db.global.characters and self.db.global.characters[currentPlayerKey] then
+    local currentPlayerKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if self.db.global.characters and currentPlayerKey and self.db.global.characters[currentPlayerKey] then
         self.db.global.characters[currentPlayerKey].lastSeen = time()
     end
     
-    -- DIRECT DB ACCESS - No RAM cache (API > DB > UI pattern like Reputation/Currency)
     local characters = self:GetAllCharacters()
+    if self.db.profile.debugMode and self.db.global.characters then
+        local nDb = 0
+        for _ in pairs(self.db.global.characters) do nDb = nDb + 1 end
+        DebugPrint(string.format("[CharactersUI] db.global.characters count=%d GetAllCharacters count=%d", nDb, #characters))
+    end
     
     -- ===== TITLE CARD =====
     local titleCard = CreateCard(parent, 70)
@@ -483,6 +580,50 @@ function WarbandNexus:DrawCharacterList(parent)
     trackedRegular = sortCharacters(trackedRegular, "regular")
     untracked = sortCharacters(untracked, "untracked")
     
+    -- Guild column width: max guild name width across all visible characters (centered text)
+    do
+        if not parent.guildMeasureFs then
+            parent.guildMeasureFs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+            parent.guildMeasureFs:Hide()
+        end
+        local fs = parent.guildMeasureFs
+        local maxW = 0
+        for _, list in ipairs({trackedFavorites, trackedRegular, untracked}) do
+            for i = 1, #list do
+                local char = list[i]
+                local isCurrent = (GetCharKey(char) == currentPlayerKey)
+                fs:SetText(BuildGuildText(char, isCurrent))
+                local w = fs:GetStringWidth()
+                if w > maxW then maxW = w end
+            end
+        end
+        local GUILD_PADDING = 20
+        local GUILD_MIN = 60
+        local GUILD_MAX = 280
+        self._charListMaxGuildWidth = math.min(math.max(maxW + GUILD_PADDING, GUILD_MIN), GUILD_MAX)
+    end
+    
+    -- Debug: Rested column summary (when debugMode enabled)
+    if self.db.profile.debugMode then
+        local maxLvl = GetMaxLevelSafe()
+        local belowMax, withXpMax, showingRested = 0, 0, 0
+        for _, list in ipairs({trackedFavorites, trackedRegular, untracked}) do
+            for i = 1, #list do
+                local c = list[i]
+                local lvl = tonumber(c.level) or 0
+                if lvl > 0 and lvl < maxLvl then
+                    belowMax = belowMax + 1
+                    local xm = tonumber(c.xpMax) or 0
+                    if xm > 0 then withXpMax = withXpMax + 1 end
+                    local isCur = (GetCharKey(c) == currentPlayerKey)
+                    local rst = BuildRestedXPText(c, isCur)
+                    if rst and rst ~= "" then showingRested = showingRested + 1 end
+                end
+            end
+        end
+        DebugPrint(string.format("[CharactersUI] Rested: maxLevel=%s, level<max=%d, with xpMax in DB=%d, showing %%=%d", tostring(maxLvl), belowMax, withXpMax, showingRested))
+    end
+    
     -- ===== EMPTY STATE =====
     if #characters == 0 then
         local _, height = CreateEmptyStateCard(parent, "characters", yOffset)
@@ -532,18 +673,10 @@ function WarbandNexus:DrawCharacterList(parent)
     
     if self.db.profile.ui.favoritesExpanded then
         if #trackedFavorites > 0 then
-            for i, char in ipairs(trackedFavorites) do
-                -- Calculate actual position in list (not loop index)
-                local actualPosition = nil
-                for pos, c in ipairs(trackedFavorites) do
-                    if c == char then
-                        actualPosition = pos
-                        break
-                    end
-                end
+            for i = 1, #trackedFavorites do
+                local char = trackedFavorites[i]
                 local shouldAnimate = self.recentlyExpanded["favorites"] and (GetTime() - self.recentlyExpanded["favorites"] < 0.5)
-
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, currentSortKey == "manual", trackedFavorites, "favorites", actualPosition, #trackedFavorites, currentPlayerKey, shouldAnimate)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, currentSortKey == "manual", trackedFavorites, "favorites", i, #trackedFavorites, currentPlayerKey, shouldAnimate)
             end
         else
             -- Empty state - anchor to favorites header
@@ -584,17 +717,10 @@ function WarbandNexus:DrawCharacterList(parent)
     
     if self.db.profile.ui.charactersExpanded then
         if #trackedRegular > 0 then
-            for i, char in ipairs(trackedRegular) do
-                -- Calculate actual position in list (not loop index)
-                local actualPosition = nil
-                for pos, c in ipairs(trackedRegular) do
-                    if c == char then
-                        actualPosition = pos
-                        break
-                    end
-                end
+            for i = 1, #trackedRegular do
+                local char = trackedRegular[i]
                 local shouldAnimate = self.recentlyExpanded["characters"] and (GetTime() - self.recentlyExpanded["characters"] < 0.5)
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, currentSortKey == "manual", trackedRegular, "regular", actualPosition, #trackedRegular, currentPlayerKey, shouldAnimate)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, currentSortKey == "manual", trackedRegular, "regular", i, #trackedRegular, currentPlayerKey, shouldAnimate)
             end
         else
             -- Empty state - anchor to characters header
@@ -639,16 +765,10 @@ function WarbandNexus:DrawCharacterList(parent)
         yOffset = yOffset + HEADER_HEIGHT
         
         if self.db.profile.ui.untrackedExpanded then
-            for i, char in ipairs(untracked) do
-                local actualPosition = nil
-                for pos, c in ipairs(untracked) do
-                    if c == char then
-                        actualPosition = pos
-                        break
-                    end
-                end
+            for i = 1, #untracked do
+                local char = untracked[i]
                 local shouldAnimate = self.recentlyExpanded["untracked"] and (GetTime() - self.recentlyExpanded["untracked"] < 0.5)
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, currentSortKey == "manual", untracked, "untracked", actualPosition, #untracked, currentPlayerKey, shouldAnimate)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, currentSortKey == "manual", untracked, "untracked", i, #untracked, currentPlayerKey, shouldAnimate)
             end
         end
     end
@@ -833,24 +953,100 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.realmText:SetTextColor(1, 1, 1)
     end
     local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-    row.realmText:SetText("|cffffffff" .. displayRealm .. "|r")
+    row.realmText:SetText("|cffb0b0b8" .. displayRealm .. "|r")
     
+    -- COLUMN: Guild — width from max guild name; text centered; strictly between Name and Level
+    local guildOffset = nameOffset + (CHAR_ROW_COLUMNS.name.total or 115)
+    local guildColW = self._charListMaxGuildWidth or (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.width) or 130
+    local guildSpacing = (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.spacing) or 15
+    if not row.guildText then
+        row.guildText = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.guildText:SetJustifyH("CENTER")
+        if row.guildText.SetJustifyV then row.guildText:SetJustifyV("MIDDLE") end
+        row.guildText:SetWordWrap(false)
+        row.guildText:SetNonSpaceWrap(false)
+        row.guildText:SetMaxLines(1)
+    end
+    row.guildText:ClearAllPoints()
+    local rowH = row:GetHeight() or 46
+    local centerY = -rowH / 2
+    row.guildText:SetPoint("CENTER", row, "TOPLEFT", guildOffset + (guildColW - 4) / 2, centerY)
+    row.guildText:SetWidth(guildColW - 4)
+    row.guildText:SetText(BuildGuildText(char, isCurrent))
+    row.guildText:Show()
     
-    -- COLUMN 6: Level
-    local levelOffset = GetColumnOffset("level")
+    -- Level column: level centered; rested % on second line below when present (no truncation)
+    local guildTotal = guildColW + guildSpacing
+    local levelOffset = guildOffset + guildTotal
+    local levelColW = CHAR_ROW_COLUMNS.level.width
     if not row.levelText then
         row.levelText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.levelText:SetPoint("LEFT", levelOffset, 0)
-        row.levelText:SetWidth(CHAR_ROW_COLUMNS.level.width)
+        row.levelText:SetPoint("TOPLEFT", levelOffset, -8)
+        row.levelText:SetWidth(levelColW)
         row.levelText:SetJustifyH("CENTER")
-        row.levelText:SetMaxLines(1)  -- Single line only
+        row.levelText:SetWordWrap(false)
+        row.levelText:SetMaxLines(1)
     end
-    row.levelText:SetText(string.format("|cff%02x%02x%02x%d|r", 
-        classColor.r * 255, classColor.g * 255, classColor.b * 255, 
+    row.levelText:SetText(string.format("|cff%02x%02x%02x%d|r",
+        classColor.r * 255, classColor.g * 255, classColor.b * 255,
         char.level or 1))
-    
-    
-    -- COLUMN 7: Item Level
+    row.levelText:Show()
+    if not row.levelRestedText then
+        row.levelRestedText = FontManager:CreateFontString(row, "small", "OVERLAY")
+        row.levelRestedText:SetPoint("TOP", row.levelText, "BOTTOM", 0, -2)
+        row.levelRestedText:SetWidth(levelColW)
+        row.levelRestedText:SetJustifyH("CENTER")
+        row.levelRestedText:SetWordWrap(false)
+        row.levelRestedText:SetMaxLines(1)
+    end
+    local restedStr = BuildRestedXPText(char, isCurrent)
+    row.levelRestedText:SetText(restedStr)
+    if restedStr and restedStr ~= "" then
+        row.levelRestedText:Show()
+    else
+        row.levelRestedText:Hide()
+    end
+    if row.restedXPText then row.restedXPText:Hide() end
+
+    -- Hit frame for level column: tooltip with Remaining Rested XP and Rested Area
+    if not row.levelRestedHitFrame then
+        row.levelRestedHitFrame = CreateFrame("Frame", nil, row)
+        row.levelRestedHitFrame:EnableMouse(true)
+        row.levelRestedHitFrame:SetScript("OnEnter", function(self)
+            local c = self._char
+            local cur = self._current
+            if not c then return end
+            local level = (c.level or 0)
+            local maxLvl = GetMaxLevelSafe()
+            local restedXP, xpMax, valid = GetEstimatedRestedXP(c, cur)
+            local isResting = cur and IsResting() or (c.isResting == true)
+            local restLabel = isResting and ((ns.L and ns.L["YES"]) or "Yes") or ((ns.L and ns.L["NO"]) or "No")
+            local lines = {}
+            if level >= maxLvl then
+                lines[#lines + 1] = { text = (ns.L and ns.L["MAX_LEVEL"]) or "Max level", color = {0.6, 0.6, 0.6} }
+            elseif valid and xpMax and xpMax > 0 then
+                local pct = (restedXP / xpMax) * 100
+                local line1 = string.format("%s : %s (%.2f%%)", (ns.L and ns.L["REMAINING_RESTED_XP"]) or "Remaining Rested XP", FormatNumber(math.floor(restedXP)), pct)
+                lines[#lines + 1] = { text = line1, color = {1, 1, 1} }
+            end
+            local line2 = string.format("%s : %s", (ns.L and ns.L["RESTED_AREA"]) or "Rested Area", restLabel)
+            lines[#lines + 1] = { text = line2, color = {0.85, 0.85, 0.85} }
+            if ShowTooltip then
+                ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["RESTED_XP"]) or "Rested XP", lines = lines, anchor = "ANCHOR_RIGHT" })
+            end
+        end)
+        row.levelRestedHitFrame:SetScript("OnLeave", function(self)
+            if HideTooltip then HideTooltip() end
+        end)
+    end
+    row.levelRestedHitFrame._char = char
+    row.levelRestedHitFrame._current = isCurrent
+    row.levelRestedHitFrame:ClearAllPoints()
+    row.levelRestedHitFrame:SetPoint("TOPLEFT", row, "TOPLEFT", levelOffset, 0)
+    row.levelRestedHitFrame:SetPoint("BOTTOMRIGHT", row, "TOPLEFT", levelOffset + levelColW, -46)
+    row.levelRestedHitFrame:Show()
+
+    -- COLUMN: Item Level
     local itemLevelOffset = GetColumnOffset("itemLevel")
     if not row.itemLevelText then
         row.itemLevelText = FontManager:CreateFontString(row, "body", "OVERLAY")

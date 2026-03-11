@@ -1427,8 +1427,7 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
         
         -- Now iterate over our TRACKED characters and update their DB entry
         local currentPlayerGUID = UnitGUID("player")
-        local currentPlayerKey = UnitName("player") .. "-" .. (GetNormalizedRealmName() or "")
-        
+        local currentPlayerKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
         for charKey, charData in pairs(wDB.characters) do
             if charData.isTracked then
                 -- SKIP CURRENT LOGIN CHARACTER! Their data is always fresh locally and might not be in the API response.

@@ -39,11 +39,14 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     if not addon.db.global.characters[charKey] then
         addon.db.global.characters[charKey] = {}
     end
-    
-    -- Set tracking status
-    addon.db.global.characters[charKey].isTracked = isTracked
-    addon.db.global.characters[charKey].lastSeen = time()
-    addon.db.global.characters[charKey].trackingConfirmed = true  -- User made a choice, don't ask again
+    local entry = addon.db.global.characters[charKey]
+    if not entry.name or not entry.realm then
+        entry.name = UnitName("player")
+        entry.realm = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName()
+    end
+    entry.isTracked = isTracked
+    entry.lastSeen = time()
+    entry.trackingConfirmed = true  -- User made a choice, don't ask again
     
     -- HYBRID: Broadcast event for modules to react (event-driven component)
     addon:SendMessage("WN_CHARACTER_TRACKING_CHANGED", {

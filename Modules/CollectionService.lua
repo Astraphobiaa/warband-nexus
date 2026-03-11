@@ -2051,9 +2051,10 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "achievement")
     end
-    -- When "Replace Achievement Popup" is OFF: we don't hook AddAlert, so send WN_COLLECTIBLE_OBTAINED here so Plans/TryCounter/cache get the event. When ON: hook sends it via ShowAchievementNotification.
-    local hideBlizzard = self.db and self.db.profile and self.db.profile.notifications and self.db.profile.notifications.hideBlizzardAchievementAlert
-    if not hideBlizzard then
+    -- Always emit achievement collectible message from ACHIEVEMENT_EARNED as a safe fallback.
+    -- If AddAlert hook path also fires, short-term dedupe prevents duplicate handling.
+    if not WasRecentlyNotified("achievement", achievementID) then
+        MarkAsNotified("achievement", achievementID)
         local ok, _, achName, _, _, _, _, _, _, _, achIcon = pcall(GetAchievementInfo, achievementID)
         if not ok then achName = nil; achIcon = nil end
         if issecretvalue then
@@ -2077,6 +2078,8 @@ end
 function WarbandNexus:ShowAchievementNotification(achievementID)
     if not achievementID or type(achievementID) ~= "number" then return end
     if issecretvalue and issecretvalue(achievementID) then return end
+    if WasRecentlyNotified("achievement", achievementID) then return end
+    MarkAsNotified("achievement", achievementID)
     local ok, _, achName, _, _, _, _, _, _, _, achIcon = pcall(GetAchievementInfo, achievementID)
     if not ok then achName = nil; achIcon = nil end
     if issecretvalue then

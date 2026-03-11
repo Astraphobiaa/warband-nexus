@@ -283,9 +283,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     -- CRITICAL: Use GetCharacterKey() normalization (strips spaces) to match currency DB keys
     local charLookup = {}
     for _, char in ipairs(characters) do
-        local charKey = ns.Utilities:GetCharacterKey(char.name, char.realm)
-            or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
-        charLookup[charKey] = char
+        local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
+        if charKey then charLookup[charKey] = char end
     end
     
     -- Recursive function to process header tree
@@ -348,11 +347,9 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                         
                         -- Ensure current character exists in charLookup
                         if not charLookup[displayChar] then
-                            -- Fallback: pick any tracked character (normalized key)
                             for _, char in ipairs(characters) do
-                                local ck = ns.Utilities:GetCharacterKey(char.name, char.realm)
-                                    or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
-                                if charLookup[ck] then
+                                local ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
+                                if ck and charLookup[ck] then
                                     displayChar = ck
                                     currentCharAmount = (currData.chars and currData.chars[ck]) or 0
                                     break
@@ -561,48 +558,41 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local hasAnyData = false
     
     for _, char in ipairs(characters) do
-        local charKey = ns.Utilities:GetCharacterKey(char.name, char.realm)
-            or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
-        local isOnline = (charKey == currentCharKey)
-        
-        -- Build currencies for this character
-        local matchingCurrencies = {}
-        
-        for currencyID, currData in pairs(globalCurrencies) do
-            local quantity = 0
-            if currData.isAccountWide then
-                quantity = currData.value or 0
-            else
-                quantity = currData.chars and currData.chars[charKey] or 0
+        local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
+        if not charKey then
+            -- Skip if canonical key unavailable (should not happen when Utilities loaded)
+        else
+            local isOnline = (charKey == currentCharKey)
+            local matchingCurrencies = {}
+            for currencyID, currData in pairs(globalCurrencies) do
+                local quantity = 0
+                if currData.isAccountWide then
+                    quantity = currData.value or 0
+                else
+                    quantity = currData.chars and currData.chars[charKey] or 0
+                end
+                local currency = {
+                    name = currData.name,
+                    quantity = quantity,
+                    maxQuantity = currData.maxQuantity or 0,
+                    iconFileID = currData.icon,
+                }
+                local passesZeroFilter = showZero or (quantity > 0)
+                if passesZeroFilter and CurrencyMatchesSearch(currency, currencySearchText) then
+                    table.insert(matchingCurrencies, { id = currencyID, data = currency })
+                end
             end
-            
-            local currency = {
-                name = currData.name,
-                quantity = quantity,
-                maxQuantity = currData.maxQuantity or 0,
-                iconFileID = currData.icon,
-            }
-            
-            local passesZeroFilter = showZero or (quantity > 0)
-            
-            if passesZeroFilter and CurrencyMatchesSearch(currency, currencySearchText) then
-                table.insert(matchingCurrencies, {
-                    id = currencyID,
-                    data = currency,
+            if #matchingCurrencies > 0 then
+                hasAnyData = true
+                table.insert(charactersWithCurrencies, {
+                    char = char,
+                    key = charKey,
+                    currencies = matchingCurrencies,
+                    currencyHeaders = globalHeaders,
+                    isOnline = isOnline,
+                    sortPriority = isOnline and 0 or 1,
                 })
             end
-        end
-        
-        if #matchingCurrencies > 0 then
-            hasAnyData = true
-            table.insert(charactersWithCurrencies, {
-                char = char,
-                key = charKey,
-                currencies = matchingCurrencies,
-                currencyHeaders = globalHeaders,
-                isOnline = isOnline,
-                sortPriority = isOnline and 0 or 1,
-            })
         end
     end
     

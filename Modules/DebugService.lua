@@ -269,12 +269,10 @@ end
 ---@param addon table WarbandNexus addon instance
 function DebugService:PrintPvEData(addon)
     DebugPrint("|cff9370DB[WN DebugService]|r PrintPvEData triggered")
-    
+    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not key then return end
     local name = UnitName("player")
-    local realm = GetRealmName()
-    local key = name .. "-" .. realm
-    
-    addon:Print("=== PvE Data for " .. name .. " ===")
+    addon:Print("=== PvE Data for " .. (name or "?") .. " ===")
     
     local pveData = addon:CollectPvEData()
     

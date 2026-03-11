@@ -167,10 +167,8 @@ function MigrationService:MigrateGenderField(db)
         return
     end
     
-    local currentName = UnitName("player")
-    local currentRealm = GetRealmName()
-    local currentKey = currentName .. "-" .. currentRealm
-    
+    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+    if not currentKey then return end
     -- Fix current character's gender on every login (in case it's wrong)
     if db.global.characters[currentKey] then
         local savedGender = db.global.characters[currentKey].gender
@@ -364,9 +362,8 @@ function MigrationService:MigrateGoldFormat(db)
     -- Gold format migration applied silently
 end
 
----Normalize character keys so db.characters and db.currencyData.currencies use
----Utilities:GetCharacterKey(name, realm) format (spaces stripped). Fixes Gear/Currency
----tab showing wrong or zero data when keys were saved as "Name-Realm " (e.g. GetNormalizedRealmName with space).
+---Normalize character keys across all character-keyed tables to canonical form
+---(Utilities:GetCharacterKey(name, realm)). Handles collision: keep newest by lastSeen, merge non-conflicting fields.
 function MigrationService:MigrateCharacterKeyNormalize(db)
     if not db.global then return end
     if db.global.charactersKeyNormalized then return end
@@ -390,18 +387,27 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
         return
     end
 
-    -- Apply to characters: move data from oldKey to newKey (only if newKey slot is free)
+    local chars = db.global.characters
     for oldKey, newKey in pairs(renames) do
-        local chars = db.global.characters
-        if chars[oldKey] and not chars[newKey] then
+        if not chars[oldKey] then
+            -- already moved or removed
+        elseif not chars[newKey] then
             chars[newKey] = chars[oldKey]
             chars[oldKey] = nil
-        elseif chars[oldKey] and chars[newKey] then
+        else
+            -- Collision: keep newest by lastSeen
+            local oldData = chars[oldKey]
+            local newData = chars[newKey]
+            local oldSeen = (type(oldData.lastSeen) == "number") and oldData.lastSeen or 0
+            local newSeen = (type(newData.lastSeen) == "number") and newData.lastSeen or 0
+            if oldSeen > newSeen then
+                chars[newKey] = oldData
+            end
             chars[oldKey] = nil
         end
     end
 
-    -- Apply to currencyData.currencies so Gear/Currency lookups match
+    -- currencyData.currencies
     local cd = db.global.currencyData
     if cd and cd.currencies then
         for oldKey, newKey in pairs(renames) do
@@ -410,6 +416,85 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
                 cd.currencies[oldKey] = nil
             elseif cd.currencies[oldKey] then
                 cd.currencies[oldKey] = nil
+            end
+        end
+    end
+
+    -- gearData
+    if db.global.gearData then
+        for oldKey, newKey in pairs(renames) do
+            if db.global.gearData[oldKey] and not db.global.gearData[newKey] then
+                db.global.gearData[newKey] = db.global.gearData[oldKey]
+                db.global.gearData[oldKey] = nil
+            elseif db.global.gearData[oldKey] then
+                db.global.gearData[oldKey] = nil
+            end
+        end
+    end
+
+    -- pveProgress
+    if db.global.pveProgress then
+        for oldKey, newKey in pairs(renames) do
+            if db.global.pveProgress[oldKey] and not db.global.pveProgress[newKey] then
+                db.global.pveProgress[newKey] = db.global.pveProgress[oldKey]
+                db.global.pveProgress[oldKey] = nil
+            elseif db.global.pveProgress[oldKey] then
+                db.global.pveProgress[oldKey] = nil
+            end
+        end
+    end
+
+    -- statisticSnapshots
+    if db.global.statisticSnapshots then
+        for oldKey, newKey in pairs(renames) do
+            if db.global.statisticSnapshots[oldKey] and not db.global.statisticSnapshots[newKey] then
+                db.global.statisticSnapshots[newKey] = db.global.statisticSnapshots[oldKey]
+                db.global.statisticSnapshots[oldKey] = nil
+            elseif db.global.statisticSnapshots[oldKey] then
+                db.global.statisticSnapshots[oldKey] = nil
+            end
+        end
+    end
+
+    -- personalBanks
+    if db.global.personalBanks then
+        for oldKey, newKey in pairs(renames) do
+            if db.global.personalBanks[oldKey] and not db.global.personalBanks[newKey] then
+                db.global.personalBanks[newKey] = db.global.personalBanks[oldKey]
+                db.global.personalBanks[oldKey] = nil
+            elseif db.global.personalBanks[oldKey] then
+                db.global.personalBanks[oldKey] = nil
+            end
+        end
+    end
+
+    -- favoriteCharacters (array): replace keys, then dedupe
+    if db.global.favoriteCharacters and type(db.global.favoriteCharacters) == "table" then
+        local seen = {}
+        for i, key in ipairs(db.global.favoriteCharacters) do
+            local canonical = renames[key] or key
+            db.global.favoriteCharacters[i] = canonical
+            seen[canonical] = true
+        end
+        local deduped = {}
+        for i = 1, #db.global.favoriteCharacters do
+            local k = db.global.favoriteCharacters[i]
+            if seen[k] then
+                deduped[#deduped + 1] = k
+                seen[k] = nil
+            end
+        end
+        db.global.favoriteCharacters = deduped
+    end
+
+    -- profile.characterOrder (favorites, regular, untracked arrays)
+    if db.profile and db.profile.characterOrder then
+        for _, orderKey in ipairs({"favorites", "regular", "untracked"}) do
+            local arr = db.profile.characterOrder[orderKey]
+            if type(arr) == "table" then
+                for i, key in ipairs(arr) do
+                    arr[i] = renames[key] or key
+                end
             end
         end
     end

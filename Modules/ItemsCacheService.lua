@@ -998,7 +998,7 @@ function WarbandNexus:GetItemsData(charKey)
     
     -- Check if new storage system exists
     if not self.db.global.itemStorage or not self.db.global.itemStorage[charKey] then
-        -- Fallback: legacy storage (uncompressed)
+        -- Fallback 1: legacy character.items / character.bank (uncompressed)
         if self.db.global.characters and self.db.global.characters[charKey] then
             local charData = self.db.global.characters[charKey]
             local result = {
@@ -1010,8 +1010,40 @@ function WarbandNexus:GetItemsData(charKey)
             decompressedItemCache[charKey] = result
             return result
         end
-        
-        -- No data found (silent - expected for new/unscanned characters)
+        -- Fallback 2: legacy personalBanks (bank only; single store, no duplication)
+        if self.db.global.personalBanks and self.db.global.personalBanks[charKey] then
+            local pb = self.db.global.personalBanks[charKey]
+            local bankData = pb.compressed and (DecompressItemData(pb.data) or {}) or (pb.data or {})
+            local bankArr = {}
+            if type(bankData) == "table" and not bankData[1] then
+                for bagID, bagData in pairs(bankData) do
+                    if type(bagData) == "table" then
+                        for slotID, item in pairs(bagData) do
+                            if type(item) == "table" and item.itemID then
+                                bankArr[#bankArr + 1] = {
+                                    bagID = item.actualBagID or bagID,
+                                    slot = slotID,
+                                    slotIndex = slotID,
+                                    itemID = item.itemID,
+                                    itemLink = item.itemLink,
+                                    stackCount = item.stackCount or 1,
+                                    quality = item.quality,
+                                    isBound = item.isBound or false,
+                                }
+                            end
+                        end
+                    end
+                end
+            end
+            local result = {
+                bags = {},
+                bank = HydrateItems(bankArr),
+                bagsLastUpdate = 0,
+                bankLastUpdate = pb.lastUpdate or 0,
+            }
+            decompressedItemCache[charKey] = result
+            return result
+        end
         return {bags = {}, bank = {}, bagsLastUpdate = 0, bankLastUpdate = 0}
     end
     
@@ -1208,13 +1240,9 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
         characters = {},
     }
     
-    local currentPlayerName = UnitName("player")
-    local currentPlayerRealm = GetRealmName()
-    local currentCharKey = currentPlayerName .. "-" .. currentPlayerRealm
-    
+    local currentCharKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
     for charKey, charData in pairs(self.db.global.characters or {}) do
         local bagCount, bankCount = 0, 0
-        
         if charKey == currentCharKey then
             -- Current character: use live Blizzard API (O(1), always accurate)
             bagCount = GetItemCount(itemID) or 0

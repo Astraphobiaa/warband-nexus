@@ -44,6 +44,32 @@ local function DebugPrint(...)
     end
 end
 
+--- Convert bag/bank table (bagIndex -> slotID -> item) to array for ItemsCacheService (avoids full character save from scan path).
+local function tableToItemArrayForStorage(tbl)
+    if not tbl or type(tbl) ~= "table" then return nil end
+    local arr = {}
+    for bagIndex, bagData in pairs(tbl) do
+        if type(bagData) == "table" then
+            for slotID, item in pairs(bagData) do
+                if type(item) == "table" and item.itemID then
+                    arr[#arr + 1] = {
+                        actualBagID = item.actualBagID or bagIndex,
+                        bagID = item.actualBagID or bagIndex,
+                        slotIndex = slotID,
+                        slot = slotID,
+                        itemID = item.itemID,
+                        itemLink = item.itemLink,
+                        stackCount = item.stackCount or 1,
+                        quality = item.quality,
+                        isBound = item.isBound or false,
+                    }
+                end
+            end
+        end
+    end
+    return #arr > 0 and arr or nil
+end
+
 -- ============================================================================
 -- PLAYED TIME TRACKING
 -- ============================================================================
@@ -294,7 +320,23 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         
     elseif dataType == "resting" then
         charData.isResting = IsResting()
+        charData.restedXP = GetXPExhaustion() or 0
+        charData.xpCurrent = UnitXP("player") or 0
+        charData.xpMax = UnitXPMax("player") or 0
+        -- Session snapshot for logout when API may return nil (used in CaptureLogoutCharacterState)
+        if not ns._lastRestedSnapshot then ns._lastRestedSnapshot = {} end
+        ns._lastRestedSnapshot[charKey] = { restedXP = charData.restedXP, xpMax = charData.xpMax, time = time() }
         
+    elseif dataType == "restedXP" then
+        charData.restedXP = GetXPExhaustion() or 0
+        charData.xpCurrent = UnitXP("player") or 0
+        charData.xpMax = UnitXPMax("player") or 0
+        if not ns._lastRestedSnapshot then ns._lastRestedSnapshot = {} end
+        ns._lastRestedSnapshot[charKey] = { restedXP = charData.restedXP, xpMax = charData.xpMax, time = time() }
+
+    elseif dataType == "guild" then
+        charData.guildName = IsInGuild() and GetGuildInfo("player") or nil
+
     elseif dataType == "zone" then
         charData.zoneName = GetZoneText()
         charData.subZoneName = GetSubZoneText()
@@ -343,6 +385,16 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     self:RegisterEvent("PLAYER_UPDATE_RESTING", function(event)
         ns.DebugPrint("|cff9370DB[DataService]|r [Character Event] PLAYER_UPDATE_RESTING triggered")
         self:UpdateCharacterCache("resting")
+    end)
+
+    -- Rested XP amount changed (consumed or gained)
+    self:RegisterEvent("UPDATE_EXHAUSTION", function(event)
+        self:UpdateCharacterCache("restedXP")
+    end)
+
+    -- Guild membership/name changed (join/leave/switch)
+    self:RegisterEvent("PLAYER_GUILD_UPDATE", function(event)
+        self:UpdateCharacterCache("guild")
     end)
     
     -- Zone changes (debounced 2s — ZONE_CHANGED fires frequently during flight paths)
@@ -723,8 +775,8 @@ function WarbandNexus:SaveMinimalCharacterData()
         return false
     end
     
-    -- CRITICAL: Use same key format as Utilities:GetCharacterKey (strip spaces) so Gear/Currency lookups match.
-    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm) or (name .. "-" .. realm:gsub("%s+", ""))
+    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
+    if not key then return false end
     local Constants = ns.Constants
     
     -- Get basic character info
@@ -733,6 +785,11 @@ function WarbandNexus:SaveMinimalCharacterData()
     local totalCopper = math.floor(GetMoney())
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")
+    local guildName = IsInGuild() and GetGuildInfo("player") or nil
+    local xpCurrent = UnitXP("player") or 0
+    local xpMax = UnitXPMax("player") or 0
+    local restedXP = GetXPExhaustion() or 0
+    local isResting = IsResting() or false
     
     -- Get gender
     local gender = UnitSex("player")
@@ -801,15 +858,21 @@ function WarbandNexus:SaveMinimalCharacterData()
         silver = silver,
         copper = copper,
         faction = faction,
+        guildName = guildName,
         race = race,
         raceFile = raceFile,
         gender = gender,
         itemLevel = itemLevel,
+        xpCurrent = xpCurrent,
+        xpMax = xpMax,
+        restedXP = restedXP,
+        isResting = isResting,
         isTracked = preserveTracked or false,  -- Preserve existing tracking choice
         trackingConfirmed = preserveConfirmed or false,  -- ONLY true if user actually made a choice
         lastSeen = time(),
         mythicKey = preserveMythicKey,  -- Preserve keystone data for CharactersUI display
         timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)
+        -- Session snapshot for rested at logout (CaptureLogoutCharacterState fallback when API returns nil)
         -- Preserve profession service data (CRITICAL: include professions to prevent data loss)
         professions          = preserveProfessions,  -- Profession names, icons, skill levels
         concentration        = preserveConcentration,
@@ -823,6 +886,8 @@ function WarbandNexus:SaveMinimalCharacterData()
         specName             = specName,
         specIcon             = specIcon,
     }
+    if not ns._lastRestedSnapshot then ns._lastRestedSnapshot = {} end
+    ns._lastRestedSnapshot[key] = { restedXP = restedXP, xpMax = xpMax, time = time() }
     
     -- Fire event for UI refresh
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
@@ -859,12 +924,13 @@ function WarbandNexus:SaveCurrentCharacterData()
         return false
     end
     
-    -- CRITICAL: Use same key format as Utilities:GetCharacterKey (strip spaces) so Gear/Currency lookups match.
-    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm) or (name .. "-" .. realm:gsub("%s+", ""))
+    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
+    if not key then return false end
 
     -- Get character info
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")
+    local guildName = IsInGuild() and GetGuildInfo("player") or nil
     
     -- CRITICAL: Store as single totalCopper (Lua number = 64-bit)
     -- Per documentation: GetMoney() returns copper directly
@@ -874,6 +940,10 @@ function WarbandNexus:SaveCurrentCharacterData()
     
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")  -- race = localized name, raceFile = English ID
+    local xpCurrent = UnitXP("player") or 0
+    local xpMax = UnitXPMax("player") or 0
+    local restedXP = GetXPExhaustion() or 0
+    local isResting = IsResting() or false
     
     -- Get gender with C_PlayerInfo fallback (more reliable in TWW)
     local gender = UnitSex("player")  -- 2 = male, 3 = female, 1 = neutral/unknown
@@ -936,58 +1006,13 @@ function WarbandNexus:SaveCurrentCharacterData()
         keystoneData = self:ScanMythicKeystone()
     end
     
-    -- Copy personal bank data to global (for cross-character search and storage browser)
-    local personalBank = nil
-    if self.db.char.personalBank and self.db.char.personalBank.items then
-        personalBank = {}
-        for bagIndex, bagData in pairs(self.db.char.personalBank.items) do
-            personalBank[bagIndex] = {}
-            for slotID, item in pairs(bagData) do
-                -- Deep copy all item fields
-                personalBank[bagIndex][slotID] = {
-                    itemID = item.itemID,
-                    itemLink = item.itemLink,
-                    stackCount = item.stackCount,
-                    quality = item.quality,
-                    iconFileID = item.iconFileID,
-                    name = item.name,
-                    itemLevel = item.itemLevel,
-                    itemType = item.itemType,
-                    itemSubType = item.itemSubType,
-                    classID = item.classID,
-                    subclassID = item.subclassID,
-                    actualBagID = item.actualBagID,  -- Store bag ID for location display
-                }
-            end
-        end
+    local bagsArray = (self.db.char.bags and self.db.char.bags.items) and tableToItemArrayForStorage(self.db.char.bags.items) or nil
+    local bankArray = (self.db.char.personalBank and self.db.char.personalBank.items) and tableToItemArrayForStorage(self.db.char.personalBank.items) or nil
+    if self.SaveItemsCompressed and key then
+        if bagsArray then self:SaveItemsCompressed(key, "bags", bagsArray) end
+        if bankArray then self:SaveItemsCompressed(key, "bank", bankArray) end
     end
-    
-    -- Copy character bags data to global (for tooltip and storage browser)
-    local bagsData = nil
-    if self.db.char.bags and self.db.char.bags.items then
-        bagsData = {}
-        for bagIndex, bagData in pairs(self.db.char.bags.items) do
-            bagsData[bagIndex] = {}
-            for slotID, item in pairs(bagData) do
-                -- Deep copy all item fields
-                bagsData[bagIndex][slotID] = {
-                    itemID = item.itemID,
-                    itemLink = item.itemLink,
-                    stackCount = item.stackCount,
-                    quality = item.quality,
-                    iconFileID = item.iconFileID,
-                    name = item.name,
-                    itemLevel = item.itemLevel,
-                    itemType = item.itemType,
-                    itemSubType = item.itemSubType,
-                    classID = item.classID,
-                    subclassID = item.subclassID,
-                    actualBagID = item.actualBagID,  -- Store bag ID for location display
-                }
-            end
-        end
-    end
-    
+
     -- CRITICAL: WoW SavedVariables uses 32-bit integers (max: 2,147,483,647)
     -- totalCopper can exceed this for high-gold characters (>214k gold)
     -- Solution: Store as gold/silver/copper breakdown (smaller numbers)
@@ -1020,16 +1045,20 @@ function WarbandNexus:SaveCurrentCharacterData()
         silver = silver,
         copper = copper,
         faction = faction,
+        guildName = guildName,
         race = race,
         raceFile = raceFile,
         gender = gender,
         itemLevel = itemLevel,
+        xpCurrent = xpCurrent,
+        xpMax = xpMax,
+        restedXP = restedXP,
+        isResting = isResting,
         mythicKey = keystoneData,
         isTracked = true,     -- Track this character (API calls, data updates enabled)
         trackingConfirmed = preserveConfirmed or true,  -- Preserve existing, default true for tracked chars
         lastSeen = time(),
         professions = professionData,
-        bags = bagsData,      -- Character inventory bags (for Storage tab and tooltip)
         timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)
         -- Preserve profession service data
         concentration        = preserveConcentration,
@@ -1043,14 +1072,13 @@ function WarbandNexus:SaveCurrentCharacterData()
         specName             = specName,
         specIcon             = specIcon,
     }
-    
+    if not ns._lastRestedSnapshot then ns._lastRestedSnapshot = {} end
+    ns._lastRestedSnapshot[key] = { restedXP = restedXP, xpMax = xpMax, time = time() }
     
     -- ========== V2: Store PvE data globally ==========
     self:UpdatePvEDataV2(key, pveData)
     
-    -- ========== V2: Store Personal Bank globally (compressed) ==========
-    self:UpdatePersonalBankV2(key, personalBank)
-    
+    -- Bags/bank stored via SaveItemsCompressed above (itemStorage); no duplicate in character record or personalBanks from this path
     -- Update currencies to global storage (v2)
     self:UpdateCurrencyData()
 
@@ -1131,6 +1159,72 @@ function WarbandNexus:UpdateCharacterGold()
 end
 
 --[[
+    Capture current character state at logout for offline estimations.
+    Stores exact logout timestamp/rested snapshot so CharactersUI can
+    estimate rested XP growth while the character is offline.
+    Uses same key format as SaveCurrentCharacterData (GetNormalizedRealmName).
+]]
+function WarbandNexus:CaptureLogoutCharacterState()
+    local name = UnitName("player")
+    local realm = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName()
+    if not name or name == "" or not realm or realm == "" then
+        return
+    end
+
+    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
+    if not key then return end
+    if not self.db or not self.db.global or not self.db.global.characters then
+        return
+    end
+
+    local charData = self.db.global.characters[key]
+    if not charData then
+        -- Stub so guild/rested are not lost when user logs out before first full save (e.g. before 2s timer)
+        charData = {
+            name = name,
+            realm = realm,
+            level = UnitLevel("player") or 1,
+            guildName = IsInGuild() and GetGuildInfo("player") or nil,
+            restedXP = GetXPExhaustion() or 0,
+            xpCurrent = UnitXP("player") or 0,
+            xpMax = UnitXPMax("player") or 0,
+            lastSeen = time(),
+            isResting = IsResting() or false,
+        }
+        self.db.global.characters[key] = charData
+        return
+    end
+
+    charData.lastSeen = time()
+    charData.isResting = IsResting() or false
+    -- Save restedXP whenever API returns a number (including 0); preserve only when nil (logout API often returns nil)
+    local exhaustion = GetXPExhaustion()
+    local xpCur, xpMax = UnitXP("player"), UnitXPMax("player")
+    if exhaustion ~= nil then
+        charData.restedXP = exhaustion
+    elseif ns._lastRestedSnapshot and ns._lastRestedSnapshot[key] then
+        local snap = ns._lastRestedSnapshot[key]
+        if (time() - (snap.time or 0)) < 600 and snap.restedXP ~= nil then
+            charData.restedXP = snap.restedXP
+        end
+    end
+    if xpMax then
+        charData.xpMax = xpMax
+    elseif ns._lastRestedSnapshot and ns._lastRestedSnapshot[key] then
+        local snap = ns._lastRestedSnapshot[key]
+        if (time() - (snap.time or 0)) < 600 and snap.xpMax and snap.xpMax > 0 then
+            charData.xpMax = snap.xpMax
+        end
+    end
+    if xpCur then charData.xpCurrent = xpCur end
+    local guildName = IsInGuild() and GetGuildInfo("player")
+    if guildName and guildName ~= "" then
+        charData.guildName = guildName
+    end
+    -- If guild/rested API returned nil at logout, keep existing charData.guildName / charData.restedXP
+end
+
+--[[
     Get all characters (tracked AND untracked) (DB-First pattern)
     Direct DB access, no RAM cache
     Returns both tracked and untracked characters - UI modules should filter as needed
@@ -1147,30 +1241,35 @@ function WarbandNexus:GetAllCharacters()
     local seen = {}  -- [normalizedKey] = {charData, originalKey}
     
     for key, data in pairs(self.db.global.characters) do
-        -- Filter: Skip invalid entries only (no name/realm)
-        -- Include BOTH tracked AND untracked characters (UI will separate them)
-        if data.name and data.realm and data.name ~= "" and data.realm ~= "" then
-            -- Normalize key for duplicate detection (remove spaces, lowercase)
-            local normalizedName = (data.name or ""):gsub("%s+", ""):lower()
-            local normalizedRealm = (data.realm or ""):gsub("%s+", ""):lower()
-            local normalizedKey = normalizedName .. "-" .. normalizedRealm
-            
-            if seen[normalizedKey] then
-                -- Duplicate found! Keep the one with newest lastSeen
-                local existingData = seen[normalizedKey]
-                local existingTime = existingData.lastSeen or 0
-                local newTime = data.lastSeen or 0
-                
-                if newTime > existingTime then
-                    -- Current one is newer, replace
+        if type(data) ~= "table" then
+            -- skip
+        else
+            local name, realm = data.name, data.realm
+            if (not name or name == "") or (not realm or realm == "") then
+                if key and type(key) == "string" then
+                    local n, r = key:match("^(.+)%-(.+)$")
+                    if n and r then
+                        name, realm = n, r
+                        data.name = name
+                        data.realm = realm
+                    end
+                end
+            end
+            if name and realm and name ~= "" and realm ~= "" then
+                local normalizedKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
+                if not normalizedKey then normalizedKey = key end
+                if seen[normalizedKey] then
+                    local existingData = seen[normalizedKey]
+                    local existingTime = existingData.lastSeen or 0
+                    local newTime = data.lastSeen or 0
+                    if newTime > existingTime then
+                        data._key = key
+                        seen[normalizedKey] = data
+                    end
+                else
                     data._key = key
                     seen[normalizedKey] = data
                 end
-                -- else: existing one is newer, keep it
-            else
-                -- First occurrence of this character
-                data._key = key
-                seen[normalizedKey] = data
             end
         end
     end
@@ -1238,7 +1337,7 @@ function WarbandNexus:GenerateWeeklyAlerts()
     if not recentChars then return alerts end
     
     for _, char in ipairs(recentChars) do
-        local charKey = char._key or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
+        local charKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)) or char._key
         local charName = char.name or "Unknown"
         
         -- Safely get class color
@@ -3709,10 +3808,11 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
         self.db.char.bags.lastScan = time()
         self.db.char.bags.totalSlots = totalSlots
         self.db.char.bags.usedSlots = usedSlots
-        
-        -- Copy to global database for Storage tab
-        if self.SaveCurrentCharacterData then
-            self:SaveCurrentCharacterData()
+        -- Persist to itemStorage only (no full character save from bag scan path)
+        local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        if key and self.SaveItemsCompressed then
+            local arr = tableToItemArrayForStorage(self.db.char.bags and self.db.char.bags.items)
+            if arr then self:SaveItemsCompressed(key, "bags", arr) end
         end
     end
     
@@ -3781,36 +3881,21 @@ function WarbandNexus:GetItemCountsAcrossCharacters(itemID)
         })
     end
     
-    -- Check each character's personal bank and bags
+    -- Check each character via ItemsCacheService (single source; no character.bags)
     for charKey, charData in pairs(self.db.global.characters or {}) do
         local charTotal = 0
-        
-        -- Check Personal Bank
-        local personalBank = self:GetPersonalBankV2(charKey)
-        if personalBank then
-            for bagID, bagData in pairs(personalBank) do
-                for slotID, item in pairs(bagData) do
-                    if item.itemID == itemID then
-                        charTotal = charTotal + (item.stackCount or 1)
-                    end
-                end
+        local itemsData = self.GetItemsData and self:GetItemsData(charKey)
+        if itemsData then
+            for _, item in ipairs(itemsData.bags or {}) do
+                if item.itemID == itemID then charTotal = charTotal + (item.stackCount or 1) end
+            end
+            for _, item in ipairs(itemsData.bank or {}) do
+                if item.itemID == itemID then charTotal = charTotal + (item.stackCount or 1) end
             end
         end
-        
-        -- Check Character Bags
-        if charData.bags and charData.bags.items then
-            for bagID, bagData in pairs(charData.bags.items) do
-                for slotID, item in pairs(bagData) do
-                    if item.itemID == itemID then
-                        charTotal = charTotal + (item.stackCount or 1)
-                    end
-                end
-            end
-        end
-        
         if charTotal > 0 then
             table.insert(counts, {
-                charName = charKey:match("^([^-]+)"),  -- Extract name (before dash)
+                charName = charKey:match("^([^-]+)"),
                 classFile = charData.classFile or charData.class,
                 count = charTotal,
             })
@@ -3850,34 +3935,18 @@ function WarbandNexus:GetDetailedItemCounts(itemID)
         end
     end
     
-    -- Get current character key for live scanning
+    local currentCharKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey() or nil
     local currentPlayerName = UnitName("player")
-    local currentPlayerRealm = GetRealmName()
-    local currentCharKey = currentPlayerName .. "-" .. currentPlayerRealm
-    
-    -- Check each character's personal bank and bags separately
     for charKey, charData in pairs(self.db.global.characters or {}) do
         local bankCount = 0
         local bagCount = 0
-        local isCurrentChar = (charKey == currentCharKey)
-        
-        -- Check Personal Bank
-        local personalBank = self:GetPersonalBankV2(charKey)
-        if personalBank then
-            for bagID, bagData in pairs(personalBank) do
-                for slotID, item in pairs(bagData) do
-                    if item.itemID == itemID then
-                        bankCount = bankCount + (item.stackCount or 1)
-                    end
-                end
+        local isCurrentChar = (currentCharKey and charKey == currentCharKey)
+        local itemsData = self.GetItemsData and self:GetItemsData(charKey)
+        if itemsData then
+            for _, item in ipairs(itemsData.bank or {}) do
+                if item.itemID == itemID then bankCount = bankCount + (item.stackCount or 1) end
             end
-        end
-        
-        -- Check Character Bags
-        if isCurrentChar then
-            -- LIVE SCAN for current character (most accurate, includes items just picked up)
-            if C_Container and C_Container.GetContainerNumSlots then
-                -- Scan all bags: 0 (backpack), 1-4 (bags), 5 (reagent bag)
+            if isCurrentChar and C_Container and C_Container.GetContainerNumSlots then
                 for bagID = 0, 5 do
                     local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
                     for slotID = 1, numSlots do
@@ -3887,16 +3956,9 @@ function WarbandNexus:GetDetailedItemCounts(itemID)
                         end
                     end
                 end
-            end
-        else
-            -- Use cached data for other characters
-            if charData.bags and charData.bags.items then
-                for bagID, bagData in pairs(charData.bags.items) do
-                    for slotID, item in pairs(bagData) do
-                        if item.itemID == itemID then
-                            bagCount = bagCount + (item.stackCount or 1)
-                        end
-                    end
+            else
+                for _, item in ipairs(itemsData.bags or {}) do
+                    if item.itemID == itemID then bagCount = bagCount + (item.stackCount or 1) end
                 end
             end
         end
@@ -4262,10 +4324,11 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
         self.db.char.personalBank.lastScan = time()
         self.db.char.personalBank.totalSlots = totalSlots
         self.db.char.personalBank.usedSlots = usedSlots
-        
-        -- Copy to global database for Storage tab
-        if self.SaveCurrentCharacterData then
-            self:SaveCurrentCharacterData()
+        -- Persist to itemStorage only (no full character save from bank scan path)
+        local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        if key and self.SaveItemsCompressed then
+            local arr = tableToItemArrayForStorage(self.db.char.personalBank and self.db.char.personalBank.items)
+            if arr then self:SaveItemsCompressed(key, "bank", arr) end
         end
     end
     

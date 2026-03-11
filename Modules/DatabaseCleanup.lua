@@ -63,12 +63,9 @@ function WarbandNexus:CleanupDatabase()
         local seen = {}  -- [normalizedKey] = originalKey
         local toRemove = {}
         
+        local Utilities = ns.Utilities
         for charKey, charData in pairs(self.db.global.characters) do
-            -- Normalize key (remove spaces, lowercase)
-            local normalizedName = (charData.name or ""):gsub("%s+", ""):lower()
-            local normalizedRealm = (charData.realm or ""):gsub("%s+", ""):lower()
-            local normalizedKey = normalizedName .. "-" .. normalizedRealm
-            
+            local normalizedKey = (Utilities and Utilities.GetCharacterKey and Utilities:GetCharacterKey(charData.name, charData.realm)) or charKey
             if seen[normalizedKey] then
                 -- Duplicate found! Keep the one with newest lastSeen
                 local existingKey = seen[normalizedKey]

@@ -278,10 +278,8 @@ end
 ]]
 function WarbandNexus:OnItemLevelChanged()
     Throttle("ITEM_LEVEL_UPDATE", 0.3, function()
-        local name = UnitName("player")
-        local realm = GetRealmName()
-        local key = name .. "-" .. realm
-        
+        local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        if not key then return end
         if self.db.global.characters and self.db.global.characters[key] then
             -- Get current equipped item level
             local _, avgItemLevelEquipped = GetAverageItemLevel()

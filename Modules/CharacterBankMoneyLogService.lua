@@ -137,7 +137,7 @@ local function BuildTransactionEntry(charDelta, warbandDelta)
         timestamp = time(),
         type = txType,
         amount = amount,
-        character = charKey or (UnitName("player") or "Unknown") .. "-" .. (GetRealmName() or "Unknown"):gsub("%s+", ""),
+        character = charKey,
         classFile = classFile,
     }
 end
@@ -195,7 +195,7 @@ local function ProcessMoneyChange()
                     timestamp = time(),
                     type = txType,
                     amount = amount,
-                    character = charKey or (UnitName("player") or "Unknown") .. "-" .. (GetRealmName() or "Unknown"):gsub("%s+", ""),
+                    character = charKey,
                     classFile = classFile,
                 }
                 if ShouldSuppressDuplicateImmediate(txType, amount) then

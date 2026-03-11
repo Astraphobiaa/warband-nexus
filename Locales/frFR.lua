@@ -162,6 +162,13 @@ L["CHARACTER_LAST_SEEN_FORMAT"] = "Vu pour la dernière fois : %s"
 L["CHARACTER_GOLD_FORMAT"] = "Or : %s"
 L["CHARACTER_TOTAL_GOLD_TOOLTIP"] = "Or combiné de tous les personnages sur ce royaume"
 
+L["RESTED_XP"] = "XP reposée"
+L["REMAINING_RESTED_XP"] = "XP reposée restante"
+L["RESTED_AREA"] = "Zone de repos"
+L["MAX_LEVEL"] = "Niveau max"
+L["YES"] = "Oui"
+L["NO"] = "Non"
+
 -- Items Tab
 L["ITEMS_HEADER"] = "Objets de banque"
 L["ITEMS_HEADER_DESC"] = "Parcourir et gérer votre banque de bataillon et personnelle"

@@ -939,6 +939,11 @@ end
     Compress and save SessionCache to SavedVariables
 ]]
 function WarbandNexus:OnPlayerLogout()
+    -- Persist logout-time snapshot for rested XP offline estimation.
+    if self.CaptureLogoutCharacterState then
+        self:CaptureLogoutCharacterState()
+    end
+
     -- Save runtime-discovered NPC names to cache for next session
     if self._saveNpcNameCache then
         self._saveNpcNameCache()

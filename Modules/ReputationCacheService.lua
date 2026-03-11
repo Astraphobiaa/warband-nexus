@@ -1934,10 +1934,10 @@ function WarbandNexus:GetAllReputations()
     for charKey, charFactions in pairs(db.characters) do
         -- Get character class
         local charClass = "WARRIOR"
-        if WarbandNexus.db.global.characters then
+        if WarbandNexus.db.global.characters and ns.Utilities and ns.Utilities.GetCharacterKey then
             for _, char in pairs(WarbandNexus.db.global.characters) do
-                local cKey = (char.name or "") .. "-" .. (char.realm or "")
-                if cKey == charKey then
+                local cKey = ns.Utilities:GetCharacterKey(char.name, char.realm)
+                if cKey and cKey == charKey then
                     charClass = char.class or char.classFile or "WARRIOR"
                     charClass = string.upper(charClass)
                     break

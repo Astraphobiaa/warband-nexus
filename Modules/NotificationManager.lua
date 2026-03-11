@@ -763,29 +763,20 @@ function WarbandNexus:ShowModalNotification(config)
     local anchorKey = point .. "|" .. tostring(baseX) .. "|" .. tostring(baseY)
     local yOffset = baseY + GetCumulativeOffsetForNewAlert(anchorKey, direction)
     
-    -- Compact toast: min size WoW-style (260x64), content-width up to 400, same theme/font/colors as full notification
+    -- Compact toast: icon left, content (backdrop + ornaments + text) right — same layout as full achievement
     if config.compact then
         local MIN_COMPACT_WIDTH = 260
-        local MIN_COMPACT_HEIGHT = 64  -- WoW achievement-style progress is ~64–72px; full notification is 88
-        local compactH = MIN_COMPACT_HEIGHT
+        local COMPACT_HEIGHT = 64
+        local ICON_SLOT_WIDTH_COMPACT = 62
         local leftPad, rightPad, gap = 12, 12, 10
-        local iconSizeCompact = 40  -- Slightly smaller than full (42) but readable
-        local minContentW = MIN_COMPACT_WIDTH - leftPad - iconSizeCompact - gap - rightPad  -- ~186
-        local compactPopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        compactPopup:SetSize(MIN_COMPACT_WIDTH, compactH)
+        local iconSizeCompact = 40
+        local minContentW = MIN_COMPACT_WIDTH - ICON_SLOT_WIDTH_COMPACT - 20  -- content frame padding
+        local compactPopup = CreateFrame("Frame", nil, UIParent)
+        compactPopup:SetSize(MIN_COMPACT_WIDTH, COMPACT_HEIGHT)
         compactPopup:SetFrameStrata("HIGH")
         compactPopup:SetFrameLevel(1000)
         compactPopup:SetClampedToScreen(true)
         compactPopup:EnableMouse(true)
-        compactPopup:SetBackdrop({
-            bgFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-            tile = false,
-            edgeSize = 1,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 },
-        })
-        compactPopup:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
-        compactPopup:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
         compactPopup.currentYOffset = yOffset
         compactPopup.achievementID = config.achievementID
         compactPopup._anchorPoint = point
@@ -796,28 +787,37 @@ function WarbandNexus:ShowModalNotification(config)
         compactPopup.isEntering = true
         RepositionAlerts(true)
         
-        -- Theme: same TopBottom glow as full notification
-        if glowAtlas and glowAtlas:find("TopBottom:") then
-            local baseAtlas = glowAtlas:gsub("TopBottom:", "")
-            local topLine = compactPopup:CreateTexture(nil, "OVERLAY", nil, 5)
-            topLine:SetPoint("TOPLEFT", compactPopup, "TOPLEFT", 0, 2)
-            topLine:SetPoint("TOPRIGHT", compactPopup, "TOPRIGHT", 0, 2)
-            topLine:SetHeight(32)
-            topLine:SetAtlas(baseAtlas .. "-Top", true)
-            topLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
-            topLine:SetBlendMode("ADD")
-            local bottomLine = compactPopup:CreateTexture(nil, "OVERLAY", nil, 5)
-            bottomLine:SetPoint("BOTTOMLEFT", compactPopup, "BOTTOMLEFT", 0, -2)
-            bottomLine:SetPoint("BOTTOMRIGHT", compactPopup, "BOTTOMRIGHT", 0, -2)
-            bottomLine:SetHeight(32)
-            bottomLine:SetAtlas(baseAtlas .. "-bottom", true)
-            bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
-            bottomLine:SetBlendMode("ADD")
-        end
+        -- Layer 0: effects (glow lines) behind the black frame
+        local effectsFrameCompact = CreateFrame("Frame", nil, compactPopup)
+        effectsFrameCompact:SetFrameLevel(0)
+        effectsFrameCompact:SetAllPoints(compactPopup)
+        local contentEffectsFrameCompact = CreateFrame("Frame", nil, effectsFrameCompact)
+        contentEffectsFrameCompact:SetPoint("LEFT", effectsFrameCompact, "LEFT", ICON_SLOT_WIDTH_COMPACT, 0)
+        contentEffectsFrameCompact:SetSize(MIN_COMPACT_WIDTH - ICON_SLOT_WIDTH_COMPACT, COMPACT_HEIGHT)
+        -- Layer 1: black background on top of effects
+        local backdropFrameCompact = CreateFrame("Frame", nil, compactPopup, "BackdropTemplate")
+        backdropFrameCompact:SetFrameLevel(1)
+        backdropFrameCompact:SetAllPoints(compactPopup)
+        backdropFrameCompact:EnableMouse(false)
+        backdropFrameCompact:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+            tile = false,
+            edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        backdropFrameCompact:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
+        backdropFrameCompact:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
         
-        local iconCompact = compactPopup:CreateTexture(nil, "ARTWORK")
+        -- Layer 2: icon slot (icon + bling only)
+        local iconSlotCompact = CreateFrame("Frame", nil, compactPopup)
+        iconSlotCompact:SetFrameLevel(2)
+        iconSlotCompact:SetSize(ICON_SLOT_WIDTH_COMPACT, COMPACT_HEIGHT)
+        iconSlotCompact:SetPoint("LEFT", compactPopup, "LEFT", 0, 0)
+        
+        local iconCompact = iconSlotCompact:CreateTexture(nil, "ARTWORK")
         iconCompact:SetSize(iconSizeCompact, iconSizeCompact)
-        iconCompact:SetPoint("LEFT", compactPopup, "LEFT", leftPad, 0)
+        iconCompact:SetPoint("LEFT", iconSlotCompact, "LEFT", (ICON_SLOT_WIDTH_COMPACT - iconSizeCompact) / 2, 0)
         if config.iconAtlas and config.iconAtlas ~= "" then
             iconCompact:SetAtlas(config.iconAtlas)
         else
@@ -829,14 +829,37 @@ function WarbandNexus:ShowModalNotification(config)
                 iconCompact:SetTexture(tex and tex:gsub("\\", "/") or "Interface/Icons/INV_Misc_QuestionMark")
             end
         end
-        local iconBling = compactPopup:CreateTexture(nil, "OVERLAY", nil, 7)
-        iconBling:SetSize(iconSizeCompact + 8, iconSizeCompact + 8)
-        iconBling:SetPoint("CENTER", iconCompact, "CENTER", 0, 0)
-        iconBling:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
-        iconBling:SetTexCoord(0, 0.5625, 0, 0.5625)
-        iconBling:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
-        iconBling:SetBlendMode("BLEND")
+        local iconBlingCompact = iconSlotCompact:CreateTexture(nil, "OVERLAY", nil, 7)
+        iconBlingCompact:SetSize(iconSizeCompact + 8, iconSizeCompact + 8)
+        iconBlingCompact:SetPoint("CENTER", iconCompact, "CENTER", 0, 0)
+        iconBlingCompact:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
+        iconBlingCompact:SetTexCoord(0, 0.5625, 0, 0.5625)
+        iconBlingCompact:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+        iconBlingCompact:SetBlendMode("BLEND")
         
+        -- Content frame (right): text only (ornaments in contentEffectsFrameCompact)
+        local contentFrameCompact = CreateFrame("Frame", nil, compactPopup)
+        contentFrameCompact:SetFrameLevel(2)
+        contentFrameCompact:SetPoint("LEFT", compactPopup, "LEFT", ICON_SLOT_WIDTH_COMPACT, 0)
+        
+        -- Theme: TopBottom glow in effects layer (behind black)
+        if glowAtlas and glowAtlas:find("TopBottom:") then
+            local baseAtlas = glowAtlas:gsub("TopBottom:", "")
+            local topLine = contentEffectsFrameCompact:CreateTexture(nil, "BACKGROUND", nil, 0)
+            topLine:SetPoint("TOPLEFT", contentEffectsFrameCompact, "TOPLEFT", 0, 2)
+            topLine:SetPoint("TOPRIGHT", contentEffectsFrameCompact, "TOPRIGHT", 0, 2)
+            topLine:SetHeight(32)
+            topLine:SetAtlas(baseAtlas .. "-Top", true)
+            topLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+            topLine:SetBlendMode("ADD")
+            local bottomLine = contentEffectsFrameCompact:CreateTexture(nil, "BACKGROUND", nil, 0)
+            bottomLine:SetPoint("BOTTOMLEFT", contentEffectsFrameCompact, "BOTTOMLEFT", 0, -2)
+            bottomLine:SetPoint("BOTTOMRIGHT", contentEffectsFrameCompact, "BOTTOMRIGHT", 0, -2)
+            bottomLine:SetHeight(32)
+            bottomLine:SetAtlas(baseAtlas .. "-bottom", true)
+            bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+            bottomLine:SetBlendMode("ADD")
+        end
         -- Criteria progress toast: "Achievement Progress" (centered, theme) + criteria name only. Other compact: progress line + name.
         local criteriaTitle = config.criteriaTitle
         local progressStr = (messageText or actionText or "")
@@ -846,28 +869,26 @@ function WarbandNexus:ShowModalNotification(config)
         local tb = math.floor(math.min(255, titleColor[3] * 255 * 1.35))
         local accentHex = string.format("|cff%02x%02x%02x", tr, tg, tb)
         local progressLine, nameLine
-        local textLeft = leftPad + iconSizeCompact + gap
         if criteriaTitle then
-            -- Achievement Progress: title centered + theme color; below it only criteria name (no Progress X/Y)
-            progressLine = FontManager:CreateFontString(compactPopup, "subtitle", "OVERLAY")
+            progressLine = FontManager:CreateFontString(contentFrameCompact, "subtitle", "OVERLAY")
             progressLine:SetJustifyH("CENTER")
             progressLine:SetWordWrap(false)
             progressLine:SetText(accentHex .. (criteriaTitle or "") .. "|r")
             progressLine:SetShadowOffset(1, -1)
             progressLine:SetShadowColor(0, 0, 0, 0.9)
-            nameLine = FontManager:CreateFontString(compactPopup, "body", "OVERLAY")
+            nameLine = FontManager:CreateFontString(contentFrameCompact, "body", "OVERLAY")
             nameLine:SetJustifyH("CENTER")
             nameLine:SetText("|cffffffff" .. (nameStr or "") .. "|r")
             nameLine:SetShadowOffset(1, -1)
             nameLine:SetShadowColor(0, 0, 0, 0.6)
         else
-            progressLine = FontManager:CreateFontString(compactPopup, "body", "OVERLAY")
+            progressLine = FontManager:CreateFontString(contentFrameCompact, "body", "OVERLAY")
             progressLine:SetJustifyH("LEFT")
             progressLine:SetWordWrap(false)
             progressLine:SetText("|cffb0b0b0" .. progressStr .. "|r")
             progressLine:SetShadowOffset(1, -1)
             progressLine:SetShadowColor(0, 0, 0, 0.6)
-            nameLine = FontManager:CreateFontString(compactPopup, "title", "OVERLAY")
+            nameLine = FontManager:CreateFontString(contentFrameCompact, "title", "OVERLAY")
             nameLine:SetJustifyH("LEFT")
             nameLine:SetText(accentHex .. (nameStr or "") .. "|r")
             nameLine:SetShadowOffset(1, -1)
@@ -876,25 +897,22 @@ function WarbandNexus:ShowModalNotification(config)
         local progressW = progressLine:GetStringWidth()
         local nameW = nameLine:GetStringWidth()
         local contentW = math.max(progressW, nameW, minContentW)
-        contentW = math.min(contentW, 400 - leftPad - iconSizeCompact - gap - rightPad)
-        local compactW = math.max(MIN_COMPACT_WIDTH, leftPad + iconSizeCompact + gap + contentW + rightPad)
-        compactPopup:SetSize(compactW, compactH)
+        local maxContentFrameW = 400 - ICON_SLOT_WIDTH_COMPACT
+        local contentFrameCompactW = math.min(maxContentFrameW, math.max(MIN_COMPACT_WIDTH - ICON_SLOT_WIDTH_COMPACT, contentW + 20))
+        contentFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
+        contentEffectsFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
+        compactPopup:SetSize(ICON_SLOT_WIDTH_COMPACT + contentFrameCompactW, COMPACT_HEIGHT)
         
-        if criteriaTitle then
-            progressLine:SetPoint("TOPLEFT", compactPopup, "TOPLEFT", textLeft, -10)
-            progressLine:SetWidth(contentW)
-            nameLine:SetPoint("TOPLEFT", compactPopup, "TOPLEFT", textLeft, -28)
-            nameLine:SetWidth(contentW)
-            nameLine:SetWordWrap(true)
-            nameLine:SetMaxLines(2)
-        else
-            progressLine:SetPoint("TOPLEFT", compactPopup, "TOPLEFT", textLeft, -10)
-            progressLine:SetWidth(contentW)
-            nameLine:SetPoint("TOPLEFT", compactPopup, "TOPLEFT", textLeft, -28)
-            nameLine:SetWidth(contentW)
-            nameLine:SetWordWrap(true)
-            nameLine:SetMaxLines(2)
-        end
+        -- Center text in content frame; clamp so it stays inside padding
+        local textCenterX = contentFrameCompactW / 2
+        local textBlockLeftClamped = math.max(10, math.min(textCenterX - contentW / 2, contentFrameCompactW - 10 - contentW))
+        local line1Y, line2Y = -16, -34
+        progressLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textBlockLeftClamped, line1Y)
+        progressLine:SetWidth(contentW)
+        nameLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textBlockLeftClamped, line2Y)
+        nameLine:SetWidth(contentW)
+        nameLine:SetWordWrap(true)
+        nameLine:SetMaxLines(2)
         
         if config.playSound then
             PlaySound(44295)
@@ -958,122 +976,147 @@ function WarbandNexus:ShowModalNotification(config)
         return
     end
     
-    -- WoW Achievement-style popup frame (exact WoW dimensions: 400x88)
-    local popup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    popup:SetSize(400, 88)
+    -- Full achievement popup: compute width from text so box shrink-wraps (no big empty space on the right)
+    local iconRightFull = 14 + 42 + 12  -- 68px
+    local rightPadFull = 10
+    local MIN_FULL_POPUP_WIDTH = 260
+    local MAX_FULL_POPUP_WIDTH = 400
+    local contentWFull = 200
+    if FontManager and FontManager.CreateFontString then
+        local measureFrame = CreateFrame("Frame", nil, UIParent)
+        measureFrame:Hide()
+        local tLine = FontManager:CreateFontString(measureFrame, "title", "OVERLAY")
+        tLine:SetText(titleText or "")
+        local mLine = FontManager:CreateFontString(measureFrame, "body", "OVERLAY")
+        mLine:SetText(messageText or "")
+        local tw = tLine:GetStringWidth() or 0
+        local mw = mLine:GetStringWidth() or 0
+        contentWFull = math.ceil(math.max(tw, mw)) + 24
+        measureFrame = nil
+    end
+    -- Ensure popup is wide enough so centered text (width contentWFull) does not overlap icon: popupWidth/2 - contentWFull/2 >= iconRight
+    local minWidthForCenter = contentWFull + 2 * iconRightFull
+    local popupWidthFull = math.min(MAX_FULL_POPUP_WIDTH, math.max(MIN_FULL_POPUP_WIDTH, iconRightFull + contentWFull + rightPadFull, minWidthForCenter))
+    
+    -- WoW Achievement-style: container = icon slot (left) + content frame (text + ornaments only). Animations stay behind icon.
+    local ICON_SLOT_WIDTH = 62  -- 14 pad + 42 icon + 6 gap
+    local contentFrameWidth = popupWidthFull - ICON_SLOT_WIDTH
+    
+    local popup = CreateFrame("Frame", nil, UIParent)
+    popup:SetSize(popupWidthFull, 88)
     popup:SetFrameStrata("HIGH")
     popup:SetFrameLevel(1000)
-    popup:SetClampedToScreen(true)  -- Prevent overflow off screen edges
+    popup:SetClampedToScreen(true)
     popup:EnableMouse(true)
     popup:SetMouseClickEnabled(true)
     
-    popup:SetBackdrop({
+    -- Layer 0: effects (rings, border glow, glows) — drawn behind the black frame
+    local effectsFrame = CreateFrame("Frame", nil, popup)
+    effectsFrame:SetFrameLevel(0)
+    effectsFrame:SetAllPoints(popup)
+    local iconEffectsFrame = CreateFrame("Frame", nil, effectsFrame)
+    iconEffectsFrame:SetPoint("LEFT", effectsFrame, "LEFT", 0, 0)
+    iconEffectsFrame:SetSize(ICON_SLOT_WIDTH, 88)
+    local contentEffectsFrame = CreateFrame("Frame", nil, effectsFrame)
+    contentEffectsFrame:SetPoint("LEFT", effectsFrame, "LEFT", ICON_SLOT_WIDTH, 0)
+    contentEffectsFrame:SetSize(contentFrameWidth, 88)
+    
+    -- Layer 1: single black background (drawn on top of effects)
+    local backdropFrame = CreateFrame("Frame", nil, popup, "BackdropTemplate")
+    backdropFrame:SetFrameLevel(1)
+    backdropFrame:SetAllPoints(popup)
+    backdropFrame:EnableMouse(false)
+    backdropFrame:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
         edgeFile = "Interface\\BUTTONS\\WHITE8X8",
         tile = false,
-        edgeSize = 1,  -- Reduced from 2 for thinner border
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },  -- Adjusted insets to match
+        edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
-    popup:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
-    popup:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
+    backdropFrame:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
+    backdropFrame:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
     
-    -- Track this alert (height used by RepositionAlerts for stacking)
-    popup.currentYOffset = yOffset
-    popup.achievementID = config.achievementID  -- nil unless achievement notification
-    popup._alertHeight = ALERT_HEIGHT
+    -- Layer 2: icon slot (icon + bling only; rings live in iconEffectsFrame)
+    local iconSlot = CreateFrame("Frame", nil, popup)
+    iconSlot:SetFrameLevel(2)
+    iconSlot:SetSize(ICON_SLOT_WIDTH, 88)
+    iconSlot:SetPoint("LEFT", popup, "LEFT", 0, 0)
     
-    -- Add to active alerts array
-    table.insert(self.activeAlerts, popup)
-    
-    -- CRITICAL: Mark as entering BEFORE repositioning
-    -- This ensures RepositionAlerts skips this new alert
-    popup.isEntering = true
-    
-    -- CRITICAL: Reposition existing alerts BEFORE starting entrance animation
-    -- This pushes existing alerts down to make room for the new one at -100
-    -- Use INSTANT reposition to avoid animation conflicts
-    RepositionAlerts(true) -- instant=true to cancel any ongoing animations
-    
-    -- Popup dimensions for calculations
-    local popupWidth = 400
-    local popupHeight = 88
-    local ringSize = 180 -- Larger rings for more visibility
-    
-    -- === ICON (LEFT SIDE - Achievement style) ===
-    local iconSize = 42 -- Icon size: 36 + 6px = 42px
-    local icon = popup:CreateTexture(nil, "ARTWORK", nil, 0) -- ARTWORK layer, sublevel 0
+    local iconSize = 42
+    local icon = iconSlot:CreateTexture(nil, "ARTWORK", nil, 0)
     icon:SetSize(iconSize, iconSize)
-    icon:SetPoint("LEFT", popup, "LEFT", 14, 0) -- Centered positioning
-    
-    -- Handle atlas, numeric IDs, and texture paths
+    icon:SetPoint("LEFT", iconSlot, "LEFT", 14, 0)
     if iconAtlas and iconAtlas ~= "" then
-        -- Use atlas (no TexCoord needed)
         icon:SetAtlas(iconAtlas)
     else
-        -- Use texture with standard crop
         icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         if type(iconTexture) == "number" then
             icon:SetTexture(iconTexture)
         elseif iconTexture and iconTexture ~= "" then
-            local cleanPath = iconTexture:gsub("\\", "/")
-            icon:SetTexture(cleanPath)
+            icon:SetTexture(iconTexture:gsub("\\", "/"))
         else
             icon:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
         end
     end
     
-    -- === RING GLOW OBJECTS (USER SPECIFIED POSITIONS) ===
-    -- Symmetric positioning: left ring behind icon, right ring at same distance from right edge
-    local iconCenterFromLeft = 14 + (iconSize / 2) -- Icon is 14px from left + half icon size (42/2) = 35px
-    
-    -- Ring 1: Left side - behind the icon
-    local ring1 = popup:CreateTexture(nil, "BACKGROUND", nil, -3) -- Behind everything
+    local ringSize = 180
+    local iconCenterX = 14 + (iconSize / 2)
+    local iconCenterY = 88 / 2
+    -- Ring 1 exactly behind icon center; ring 2 mirrored to the right side.
+    local mirroredRightX = popupWidthFull - iconCenterX
+    local ring1 = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
     ring1:SetSize(ringSize, ringSize)
-    ring1:SetPoint("CENTER", icon, "CENTER", 0, 0) -- Exact center on icon
+    ring1:SetPoint("CENTER", popup, "BOTTOMLEFT", iconCenterX, iconCenterY)
     ring1:SetTexture("Interface\\Cooldown\\star4")
     ring1:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
     ring1:SetBlendMode("ADD")
-    
-    -- Ring 2: Right side - symmetric position from right edge
-    local ring2 = popup:CreateTexture(nil, "BACKGROUND", nil, -3) -- Behind everything
+    local ring2 = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
     ring2:SetSize(ringSize, ringSize)
-    ring2:SetPoint("CENTER", popup, "RIGHT", -iconCenterFromLeft, 0) -- Same distance from right edge as left ring from left edge
+    ring2:SetPoint("CENTER", popup, "BOTTOMLEFT", mirroredRightX, iconCenterY)
     ring2:SetTexture("Interface\\Cooldown\\star4")
     ring2:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
     ring2:SetBlendMode("ADD")
     
-    -- === BORDER GLOW (Configurable atlas) ===
-    -- Different atlases need different positioning
+    -- Flash shine: one-time overlay when notification first appears
+    local flashShine = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+    flashShine:SetAllPoints(effectsFrame)
+    flashShine:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+    flashShine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+    flashShine:SetBlendMode("ADD")
+    flashShine:SetAlpha(0)
     
-    local borderGlow = nil -- Declare variable first
+    local iconBling = iconSlot:CreateTexture(nil, "OVERLAY", nil, 7)
+    iconBling:SetSize(64, 64)
+    iconBling:SetPoint("CENTER", icon, "CENTER", 0, 0)
+    iconBling:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
+    iconBling:SetTexCoord(0, 0.5625, 0, 0.5625)
+    iconBling:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+    iconBling:SetBlendMode("BLEND")
     
-    -- Special case: If glowAtlas has "TopBottom" prefix, create both top and bottom lines
+    -- Layer 2: content frame (text + timer only; effects live in contentEffectsFrame)
+    local contentFrame = CreateFrame("Frame", nil, popup)
+    contentFrame:SetFrameLevel(2)
+    contentFrame:SetSize(contentFrameWidth, 88)
+    contentFrame:SetPoint("LEFT", popup, "LEFT", ICON_SLOT_WIDTH, 0)
+    
+    local popupHeight = 88
     if glowAtlas:find("TopBottom:") then
-        -- Extract the base atlas name (e.g., "TopBottom:UI-Frame-DastardlyDuos-Line")
         local baseAtlas = glowAtlas:gsub("TopBottom:", "")
-        
-        -- Top line - positioned to align glow with border (not popup edge)
-        local topLine = popup:CreateTexture(nil, "OVERLAY", nil, 5)
-        topLine:SetPoint("TOPLEFT", popup, "TOPLEFT", 0, 2)  -- Reduced offset for slight separation
-        topLine:SetPoint("TOPRIGHT", popup, "TOPRIGHT", 0, 2)
-        topLine:SetHeight(56)  -- Increased for more visible glow
+        local topLine = contentEffectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
+        topLine:SetPoint("TOPLEFT", contentEffectsFrame, "TOPLEFT", 0, 2)
+        topLine:SetPoint("TOPRIGHT", contentEffectsFrame, "TOPRIGHT", 0, 2)
+        topLine:SetHeight(56)
         topLine:SetAtlas(baseAtlas .. "-Top", true)
         topLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
         topLine:SetBlendMode("ADD")
-        topLine:SetAlpha(1.0)  -- Full opacity
-        
-        -- Bottom line - positioned to align glow with border (not popup edge)
-        local bottomLine = popup:CreateTexture(nil, "OVERLAY", nil, 5)
-        bottomLine:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", 0, -2)  -- Reduced offset for slight separation
-        bottomLine:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", 0, -2)
-        bottomLine:SetHeight(56)  -- Increased for more visible glow
-        bottomLine:SetAtlas(baseAtlas .. "-bottom", true)  -- lowercase "bottom" in atlas name
+        local bottomLine = contentEffectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
+        bottomLine:SetPoint("BOTTOMLEFT", contentEffectsFrame, "BOTTOMLEFT", 0, -2)
+        bottomLine:SetPoint("BOTTOMRIGHT", contentEffectsFrame, "BOTTOMRIGHT", 0, -2)
+        bottomLine:SetHeight(56)
+        bottomLine:SetAtlas(baseAtlas .. "-bottom", true)
         bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
         bottomLine:SetBlendMode("ADD")
-        bottomLine:SetAlpha(1.0)  -- Full opacity
-        
-        -- Breathing animation for both lines
-        local topGlowAg = popup:CreateAnimationGroup()
+        local topGlowAg = contentEffectsFrame:CreateAnimationGroup()
         topGlowAg:SetLooping("REPEAT")
         local topGlowIn = topGlowAg:CreateAnimation("Alpha")
         topGlowIn:SetTarget(topLine)
@@ -1089,8 +1132,7 @@ function WarbandNexus:ShowModalNotification(config)
         topGlowOut:SetSmoothing("IN_OUT")
         topGlowOut:SetStartDelay(1.2)
         topGlowAg:Play()
-        
-        local bottomGlowAg = popup:CreateAnimationGroup()
+        local bottomGlowAg = contentEffectsFrame:CreateAnimationGroup()
         bottomGlowAg:SetLooping("REPEAT")
         local bottomGlowIn = bottomGlowAg:CreateAnimation("Alpha")
         bottomGlowIn:SetTarget(bottomLine)
@@ -1106,84 +1148,49 @@ function WarbandNexus:ShowModalNotification(config)
         bottomGlowOut:SetSmoothing("IN_OUT")
         bottomGlowOut:SetStartDelay(1.2)
         bottomGlowAg:Play()
-        
-        -- borderGlow remains nil for TopBottom case
     else
-        -- Create single borderGlow for non-TopBottom cases
-        borderGlow = popup:CreateTexture(nil, "OVERLAY", nil, 5)
-        
-        -- Position based on atlas type
+        local borderGlow = contentEffectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
         if glowAtlas:find("Line%-Top") then
-            -- Top line only - align with border
-            borderGlow:SetPoint("TOPLEFT", popup, "TOPLEFT", 0, 4)
-            borderGlow:SetPoint("TOPRIGHT", popup, "TOPRIGHT", 0, 4)
-            borderGlow:SetHeight(40)  -- Focused on border area
+            borderGlow:SetPoint("TOPLEFT", contentEffectsFrame, "TOPLEFT", 0, 4)
+            borderGlow:SetPoint("TOPRIGHT", contentEffectsFrame, "TOPRIGHT", 0, 4)
+            borderGlow:SetHeight(40)
         elseif glowAtlas:find("Line%-Bottom") or glowAtlas:find("Line%-bottom") then
-            -- Bottom line only - align with border
-            borderGlow:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", 0, -4)
-            borderGlow:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", 0, -4)
-            borderGlow:SetHeight(40)  -- Focused on border area
+            borderGlow:SetPoint("BOTTOMLEFT", contentEffectsFrame, "BOTTOMLEFT", 0, -4)
+            borderGlow:SetPoint("BOTTOMRIGHT", contentEffectsFrame, "BOTTOMRIGHT", 0, -4)
+            borderGlow:SetHeight(40)
         elseif glowAtlas:find("DastardlyDuos%-Bar") then
-            -- Duos Bar has padding, pull inward slightly
-            borderGlow:SetPoint("TOPLEFT", popup, "TOPLEFT", 8, -8)
-            borderGlow:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", -8, 8)
+            borderGlow:SetPoint("TOPLEFT", contentEffectsFrame, "TOPLEFT", 8, -8)
+            borderGlow:SetPoint("BOTTOMRIGHT", contentEffectsFrame, "BOTTOMRIGHT", -8, 8)
         else
-            -- Full frame glow - cover entire popup
-            borderGlow:SetAllPoints(popup)
+            borderGlow:SetAllPoints(contentEffectsFrame)
         end
-        
         borderGlow:SetAtlas(glowAtlas, true)
         borderGlow:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
         borderGlow:SetBlendMode("ADD")
         borderGlow:SetAlpha(0.9)
     end
-    
-    -- === STARBURST EFFECT (Small, subtle) ===
-    local starburst = popup:CreateTexture(nil, "BACKGROUND", nil, -8)
-    starburst:SetSize(popupWidth * 0.8, popupHeight * 1.5) -- More compact, frame-fitting
-    starburst:SetPoint("CENTER", popup, "CENTER", 0, 0)
-    starburst:SetTexture("Interface\\AchievementFrame\\UI-Achievement-Alert-Glow")
-    starburst:SetTexCoord(0, 0.78125, 0, 0.78125)
-    starburst:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0)
-    starburst:SetBlendMode("ADD")
-    
-    -- === EDGE SHINE (Subtle top highlight) ===
-    local edgeShine = popup:CreateTexture(nil, "OVERLAY", nil, 6)
-    edgeShine:SetHeight(1)  -- Reduced from 3 to 1 for subtle effect
-    edgeShine:SetPoint("TOPLEFT", popup, "TOPLEFT", 1, -1)
-    edgeShine:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -1, -1)
+    local edgeShine = contentEffectsFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+    edgeShine:SetHeight(1)
+    edgeShine:SetPoint("TOPLEFT", contentEffectsFrame, "TOPLEFT", 1, -1)
+    edgeShine:SetPoint("TOPRIGHT", contentEffectsFrame, "TOPRIGHT", -1, -1)
     edgeShine:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-    edgeShine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0.3) -- Reduced alpha from 0.5
+    edgeShine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0.3)
     edgeShine:SetBlendMode("ADD")
     
-    -- Icon glow frame (icon already created above with rings) - DISABLED
-    -- local iconFrame = popup:CreateTexture(nil, "OVERLAY", nil, 7)
-    -- iconFrame:SetSize(iconSize * 2.2, iconSize * 2.2)
-    -- iconFrame:SetPoint("CENTER", icon, "CENTER", 0, 0)
-    -- iconFrame:SetAtlas("collections-upgradeglow")
-    -- iconFrame:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0.8)
-    -- iconFrame:SetBlendMode("ADD")
+    -- Track this alert (container = popup for stacking)
+    popup.currentYOffset = yOffset
+    popup.achievementID = config.achievementID
+    popup._alertHeight = ALERT_HEIGHT
+    table.insert(self.activeAlerts, popup)
+    popup.isEntering = true
+    RepositionAlerts(true)
     
-    -- Icon bling border (overlays on top of icon for clean border)
-    local iconBling = popup:CreateTexture(nil, "OVERLAY", nil, 7)
-    iconBling:SetSize(64, 64) -- Frame size: 56 + 8px = 64px, overlays on 42px icon
-    iconBling:SetPoint("CENTER", icon, "CENTER", 0, 0)
-    iconBling:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
-    iconBling:SetTexCoord(0, 0.5625, 0, 0.5625)
-    iconBling:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1.0) -- Full opacity always
-    iconBling:SetBlendMode("BLEND") -- BLEND mode so frame border shows clearly over icon
-    
-    -- === CONTENT (RIGHT SIDE - CENTERED IN TEXT AREA) ===
-    
-    -- Text area dimensions
-    local popupWidth = 400
+    -- === CONTENT: text centered in content frame (ornaments only in this frame) ===
+    -- Symmetric layout: text block center = content frame center.
+    local popupWidth = contentFrameWidth
     local popupHeight = 88
-    local iconRight = 14 + 42 + 12  -- 68px (icon left + width + gap)
-    local textAreaWidth = popupWidth - iconRight - 10  -- 322px
-    -- Visual balance: midpoint between popup center and text-area center
-    -- Pure text-area center (229px) looks right-shifted; popup center (200px) ignores icon
-    local textAreaCenter = iconRight + (textAreaWidth / 2)  -- 229px
-    local textCenterX = (popupWidth / 2 + textAreaCenter) / 2  -- ~215px (visual balance)
+    local textCenterX = contentFrameWidth / 2
+    local textAreaWidth = math.min(contentWFull, contentFrameWidth - 20)
     
     -- Font metrics (adjusted for better centering)
     local smallFontHeight = 13  -- Small font actual height
@@ -1208,18 +1215,18 @@ function WarbandNexus:ShowModalNotification(config)
         totalHeight = totalHeight + ((lineCount - 1) * lineSpacing)
     end
     
-    -- Start from center, adjusted to align with decorative borders (not just geometric center)
-    -- The visual center is slightly lower due to top decorative elements
-    local startY = (totalHeight / 2) - 6  -- -6 for visual balance with ornaments
+    -- Vertical: same logic as criteria-progress — text block centered in usable height between ornaments (88px).
+    -- Use negative offset so block sits in the middle; -8 matches compact toast visual balance.
+    local startY = totalHeight / 2 - 8
     
     -- LINE 1: Category (optional)
     -- NOTE: All text FontStrings use OVERLAY sublevel 7 to render above
     -- glow textures (TopBottom lines at sublevel 5, edgeShine at 6, iconBling at 7)
     if showCategory then
-        local category = FontManager:CreateFontString(popup, "small", "OVERLAY")
+        local category = FontManager:CreateFontString(contentFrame, "small", "OVERLAY")
         category:SetDrawLayer("OVERLAY", 7)
-        category:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
-        category:SetWidth(textAreaWidth - 20)
+        category:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
+        category:SetWidth(textAreaWidth)
         category:SetJustifyH("CENTER")
         category:SetText("|cffaaaaaa" .. categoryText .. "|r")
         category:SetWordWrap(false)
@@ -1230,10 +1237,10 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- LINE 2: Title (BIG, ACCENT COLOR, NORMAL FONT)
     if showTitle then
-        local title = FontManager:CreateFontString(popup, "title", "OVERLAY")
+        local title = FontManager:CreateFontString(contentFrame, "title", "OVERLAY")
         title:SetDrawLayer("OVERLAY", 7)
-        title:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
-        title:SetWidth(textAreaWidth - 20)
+        title:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
+        title:SetWidth(textAreaWidth)
         title:SetJustifyH("CENTER")
         title:SetWordWrap(false)
         title:SetShadowOffset(1, -1)
@@ -1251,10 +1258,10 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- LINE 3: Subtitle (MEDIUM SIZE, NORMAL FONT)
     if showSubtitle then
-        local subtitle = FontManager:CreateFontString(popup, "body", "OVERLAY")
+        local subtitle = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
         subtitle:SetDrawLayer("OVERLAY", 7)
-        subtitle:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
-        subtitle:SetWidth(textAreaWidth - 20)
+        subtitle:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
+        subtitle:SetWidth(textAreaWidth)
         subtitle:SetJustifyH("CENTER")
         subtitle:SetText("|cffffffff" .. messageText .. "|r")
         subtitle:SetWordWrap(true)
@@ -1265,10 +1272,10 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- Legacy subtitle support
     if not showSubtitle and subtitleText and subtitleText ~= "" then
-        local legacySub = FontManager:CreateFontString(popup, "body", "OVERLAY")
+        local legacySub = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
         legacySub:SetDrawLayer("OVERLAY", 7)
-        legacySub:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
-        legacySub:SetWidth(textAreaWidth - 20)
+        legacySub:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
+        legacySub:SetWidth(textAreaWidth)
         legacySub:SetJustifyH("CENTER")
         legacySub:SetText("|cffffffff" .. subtitleText .. "|r")
         legacySub:SetWordWrap(true)
@@ -1279,9 +1286,9 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- === CIRCULAR PROGRESS TIMER (bottom-right corner) ===
     local timerSize = 24
-    local timerFrame = CreateFrame("Frame", nil, popup)
+    local timerFrame = CreateFrame("Frame", nil, contentFrame)
     timerFrame:SetSize(timerSize, timerSize)
-    timerFrame:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", -6, 6)
+    timerFrame:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -6, 6)
     
     -- Timer spinner (WoW naval map glow trails)
     local timerSpinner = timerFrame:CreateTexture(nil, "OVERLAY")
@@ -1343,8 +1350,8 @@ function WarbandNexus:ShowModalNotification(config)
     end)
     
     -- Hover effect
-    popup:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(
+    popup:SetScript("OnEnter", function()
+        backdropFrame:SetBackdropBorderColor(
             math.min(1, titleColor[1]*1.3),
             math.min(1, titleColor[2]*1.3),
             math.min(1, titleColor[3]*1.3),
@@ -1352,8 +1359,8 @@ function WarbandNexus:ShowModalNotification(config)
         )
     end)
     
-    popup:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
+    popup:SetScript("OnLeave", function()
+        backdropFrame:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
     end)
     
     popup.isClosing = false
@@ -1423,100 +1430,45 @@ function WarbandNexus:ShowModalNotification(config)
             self.currentYOffset = entryTarget
             self.isEntering = false -- Clear entering flag
             
-            -- Start visual effects
-            -- STARBURST: Achievement-style burst effect
-            local burstAg = popup:CreateAnimationGroup()
-            
-            starburst:SetAlpha(0)
-            local burstScale = burstAg:CreateAnimation("Scale")
-            burstScale:SetTarget(starburst)
-            burstScale:SetOrigin("CENTER", 0, 0)
-        burstScale:SetScale(1.5, 1.5)
-            burstScale:SetDuration(0.4)
-            burstScale:SetSmoothing("OUT")
-            
-            local burstFadeIn = burstAg:CreateAnimation("Alpha")
-            burstFadeIn:SetTarget(starburst)
-            burstFadeIn:SetFromAlpha(0)
-            burstFadeIn:SetToAlpha(0.9)
-            burstFadeIn:SetDuration(0.15)
-            
-            local burstFadeOut = burstAg:CreateAnimation("Alpha")
-            burstFadeOut:SetTarget(starburst)
-            burstFadeOut:SetFromAlpha(0.9)
-            burstFadeOut:SetToAlpha(0)
-            burstFadeOut:SetDuration(0.5)
-            burstFadeOut:SetStartDelay(0.2)
-            
-            burstAg:Play()
-            
-        -- ROTATING RINGS: Synchronized rotation
-        ring1:SetAlpha(1.0)
+            -- FLASH SHINE: one-time on appear
+            local flashAg = popup:CreateAnimationGroup()
+            local flashIn = flashAg:CreateAnimation("Alpha")
+            flashIn:SetTarget(flashShine)
+            flashIn:SetFromAlpha(0)
+            flashIn:SetToAlpha(0.55)
+            flashIn:SetDuration(0.08)
+            flashIn:SetSmoothing("OUT")
+            local flashOut = flashAg:CreateAnimation("Alpha")
+            flashOut:SetTarget(flashShine)
+            flashOut:SetFromAlpha(0.55)
+            flashOut:SetToAlpha(0)
+            flashOut:SetDuration(0.4)
+            flashOut:SetSmoothing("IN")
+            flashOut:SetStartDelay(0.06)
+            flashAg:Play()
+
+            -- ROTATING RINGS only
+            ring1:SetAlpha(1.0)
             local rotateAg1 = popup:CreateAnimationGroup()
             rotateAg1:SetLooping("REPEAT")
-            
             local rotate1 = rotateAg1:CreateAnimation("Rotation")
             rotate1:SetTarget(ring1)
             rotate1:SetOrigin("CENTER", 0, 0)
             rotate1:SetDegrees(360)
-        rotate1:SetDuration(6)
-            
+            rotate1:SetDuration(5.4)
             rotateAg1:Play()
-            
-        ring2:SetAlpha(1.0)
+
+            ring2:SetAlpha(1.0)
             local rotateAg2 = popup:CreateAnimationGroup()
             rotateAg2:SetLooping("REPEAT")
-            
             local rotate2 = rotateAg2:CreateAnimation("Rotation")
             rotate2:SetTarget(ring2)
             rotate2:SetOrigin("CENTER", 0, 0)
             rotate2:SetDegrees(-360)
-        rotate2:SetDuration(6)
-            
+            rotate2:SetDuration(6.2)
             rotateAg2:Play()
         
-        -- BREATHING GLOW: Pulsing border glow (single texture, skip if TopBottom already animated)
-        if borderGlow then
-            local glowAg = popup:CreateAnimationGroup()
-            glowAg:SetLooping("REPEAT")
-            
-            local glowIn = glowAg:CreateAnimation("Alpha")
-            glowIn:SetTarget(borderGlow)
-            glowIn:SetFromAlpha(0.7)
-            glowIn:SetToAlpha(1.0)
-            glowIn:SetDuration(1.2)
-            glowIn:SetSmoothing("IN_OUT")
-            
-            local glowOut = glowAg:CreateAnimation("Alpha")
-            glowOut:SetTarget(borderGlow)
-            glowOut:SetFromAlpha(1.0)
-            glowOut:SetToAlpha(0.7)
-            glowOut:SetDuration(1.2)
-            glowOut:SetSmoothing("IN_OUT")
-            glowOut:SetStartDelay(1.2)
-            
-            glowAg:Play()
-        end
-        
-        -- EDGE SHINE: Top edge highlight pulse
-        local shineAg = popup:CreateAnimationGroup()
-        local shineIn = shineAg:CreateAnimation("Alpha")
-        shineIn:SetTarget(edgeShine)
-        shineIn:SetFromAlpha(0.5)
-        shineIn:SetToAlpha(0.9)
-        shineIn:SetDuration(0.3)
-        shineIn:SetStartDelay(0.2)
-        
-        local shineOut = shineAg:CreateAnimation("Alpha")
-        shineOut:SetTarget(edgeShine)
-        shineOut:SetFromAlpha(0.9)
-        shineOut:SetToAlpha(0.5)
-        shineOut:SetDuration(0.4)
-        shineOut:SetStartDelay(0.5)
-        
-        shineAg:Play()
-        
-        -- ICON BLING: No animation, always full opacity
+        -- ICON BLING: always full opacity
         iconBling:SetAlpha(1.0)
         
         -- START CIRCULAR PROGRESS TIMER (rotate + fade)
@@ -2020,10 +1972,18 @@ function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
                     end)
                     return
                 end
-                -- Progressive achievement (e.g. Treasures of X): one step done → "Achievement Progress" toast.
+                -- Progressive achievement: defer one frame so client has updated completed state; then show full achievement only if completed, else progress.
                 if hasExtra and type(a1) == "number" then
-                    WarbandNexus:ShowCriteriaProgressNotification(a1, a2)
-                    C_Timer.After(0, HideVisibleBlizzardCriteriaFramesOnly)
+                    local aid, a2copy = a1, a2
+                    C_Timer.After(0, function()
+                        local _, _, _, completed = GetAchievementInfo(aid)
+                        if completed and WarbandNexus.ShowAchievementNotification then
+                            WarbandNexus:ShowAchievementNotification(aid)
+                        else
+                            WarbandNexus:ShowCriteriaProgressNotification(aid, a2copy)
+                        end
+                        HideVisibleBlizzardCriteriaFramesOnly()
+                    end)
                     return
                 end
                 return orig(sys, a1, a2, ...)
@@ -2041,7 +2001,15 @@ function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
         if shouldHide then
             CriteriaAlertSystem.AddAlert = function(sys, a1, a2, ...)
                 if type(a1) == "number" then
-                    WarbandNexus:ShowCriteriaProgressNotification(a1, a2)
+                    local aid, a2copy = a1, a2
+                    C_Timer.After(0, function()
+                        local _, _, _, completed = GetAchievementInfo(aid)
+                        if completed and WarbandNexus.ShowAchievementNotification then
+                            WarbandNexus:ShowAchievementNotification(aid)
+                        else
+                            WarbandNexus:ShowCriteriaProgressNotification(aid, a2copy)
+                        end
+                    end)
                     return
                 end
                 return origCrit(sys, a1, a2, ...)
@@ -2414,8 +2382,10 @@ function WarbandNexus:TestLootNotification(type, id, step)
         self:Print("|cff00ccff=== Notification Test (simulate events) ===|r")
         self:Print("|cff44ff44/wn testloot earn [id]|r - Simulate achievement EARNED (only WN notification, no Blizzard)")
         self:Print("|cff44ff44/wn testloot progress [id] [step]|r - Simulate PROGRESSIVE step (Progress X/Y toast, e.g. Treasures of X)")
+        self:Print("|cff44ff44/wn testloot both [id] [step]|r - Show BOTH progress toast + full notification (for UI testing)")
         self:Print("|cff888888  /wn testloot earn 6|r  Level 10 earned")
-        self:Print("|cff888888  /wn testloot progress 40752 1|r  Progressive achievement, step 1")
+        self:Print("|cff888888  /wn testloot progress|r  or |cff888888progress 6|r  (auto-picks ID with criteria)")
+        self:Print("|cff888888  /wn testloot both|r  or |cff888888both 6|r  (both toasts)")
         self:Print("|cffffcc00/wn testloot mount [id]|r - Mount | |cffffcc00pet|r | |cffffcc00toy|r | |cffffcc00achievement [id]|r | |cffffcc00plan [id]|r")
         self:Print("|cffffcc00/wn testloot blizzard [id]|r - Legacy: trigger Blizzard AddAlert (may show both)")
         return
@@ -2434,21 +2404,58 @@ function WarbandNexus:TestLootNotification(type, id, step)
         return
     end
 
+    -- Resolve achievement ID for progress/both: try preferredID first, then fallback list (40752 may not exist on all clients).
+    local function resolveAchievementWithCriteria(preferredID)
+        local tryIDs = { 6, 7, 8, 11, 12, 60981, 40752 }
+        if preferredID then
+            tryIDs = { preferredID, 6, 7, 8, 11, 12, 60981, 40752 }
+        end
+        for _, fid in ipairs(tryIDs) do
+            local name = select(2, GetAchievementInfo(fid))
+            if name and name ~= "" then
+                local ok, n = pcall(GetAchievementNumCriteria, fid)
+                if ok and n and n > 0 then
+                    return fid, n
+                end
+            end
+        end
+        return nil, 0
+    end
+
     -- Simulate "progressive achievement step" (e.g. Treasures of X — one step done). Only our Progress X/Y toast.
     if type == "progress" then
-        local achievementID = tonumber(id) or 40752
-        local criteriaIndex = tonumber(step) or 1
-        local numCriteria = 1
-        local ok, n = pcall(GetAchievementNumCriteria, achievementID)
-        if ok and n and n > 0 then numCriteria = n end
-        if criteriaIndex < 1 or criteriaIndex > numCriteria then criteriaIndex = 1 end
-        local _, name = GetAchievementInfo(achievementID)
-        if not name then
-            self:Print("|cffff0000Invalid achievement ID: " .. tostring(achievementID) .. "|r")
+        local preferredID = tonumber(id)
+        local achievementID, numCriteria = resolveAchievementWithCriteria(preferredID)
+        if not achievementID then
+            self:Print("|cffff0000No valid achievement with criteria found. Try: /wn testloot progress 6|r")
             return
         end
+        local criteriaIndex = math.min(tonumber(step) or 1, numCriteria)
+        if criteriaIndex < 1 then criteriaIndex = 1 end
+        local _, name = GetAchievementInfo(achievementID)
         self:Print("|cff00ccffSimulating progressive step (ID " .. achievementID .. ", step " .. criteriaIndex .. "/" .. numCriteria .. ") — only WN toast:|r " .. tostring(name))
         self:ShowCriteriaProgressNotification(achievementID, criteriaIndex)
+        return
+    end
+
+    -- Show both progress toast and full achievement notification (stacked, for UI testing)
+    if type == "both" then
+        local preferredID = tonumber(id)
+        local achievementID, numCriteria = resolveAchievementWithCriteria(preferredID)
+        if not achievementID then
+            self:Print("|cffff0000No valid achievement with criteria found. Try: /wn testloot both 6|r")
+            return
+        end
+        local criteriaIndex = math.min(tonumber(step) or 1, numCriteria)
+        if criteriaIndex < 1 then criteriaIndex = 1 end
+        local _, name, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
+        self:Print("|cff00ccffShowing BOTH (progress + full) for UI test:|r " .. tostring(name) .. " (ID " .. achievementID .. ")")
+        self:ShowCriteriaProgressNotification(achievementID, criteriaIndex)
+        C_Timer.After(0.4, function()
+            if WarbandNexus and WarbandNexus.Notify then
+                WarbandNexus:Notify("achievement", name, icon, { achievementID = achievementID })
+            end
+        end)
         return
     end
 

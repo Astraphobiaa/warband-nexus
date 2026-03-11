@@ -2569,10 +2569,15 @@ local CHAR_ROW_COLUMNS = {
         spacing = 15,  -- Standardized to 15px
         total = 115,   -- 100 + 15
     },
+    guild = {
+        width = 130,   -- Guild name (single line, right after name)
+        spacing = 15,
+        total = 145,
+    },
     level = {
-        width = 40,    -- Optimized: "80" centered
+        width = 68,    -- Level + "Rested : %100.00" on two lines (no truncation)
         spacing = 15,  -- Standardized to 15px
-        total = 55,    -- 40 + 15
+        total = 83,    -- 68 + 15
     },
     itemLevel = {
         width = 75,    -- "iLvl 639" centered
@@ -2618,7 +2623,7 @@ local CHAR_ROW_COLUMNS = {
 ]]
 local function GetColumnOffset(columnKey)
     local offset = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "guild", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "delete"}
     
     for _, key in ipairs(order) do
         if key == columnKey then
@@ -2636,7 +2641,7 @@ end
 ]]
 local function GetCharRowTotalWidth()
     local width = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "guild", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "delete"}
     
     for _, key in ipairs(order) do
         width = width + CHAR_ROW_COLUMNS[key].total

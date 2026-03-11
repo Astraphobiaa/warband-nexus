@@ -52,10 +52,11 @@ local max = math.max
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 
--- Canonical character key (same as Utilities:GetCharacterKey / DB).
+-- Canonical character key (Utilities only; no manual key construction).
 local function GetCharKey(char)
     if char and char._key then return char._key end
-    return (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")) or ((char and char.name or "Unknown") .. "-" .. (char and char.realm or "Unknown"))
+    if not ns.Utilities or not ns.Utilities.GetCharacterKey then return nil end
+    return ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")
 end
 
 --============================================================================

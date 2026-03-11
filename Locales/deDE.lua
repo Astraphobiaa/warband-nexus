@@ -170,6 +170,13 @@ L["CHARACTER_LAST_SEEN_FORMAT"] = "Zuletzt gesehen: %s"
 L["CHARACTER_GOLD_FORMAT"] = "Gold: %s"
 L["CHARACTER_TOTAL_GOLD_TOOLTIP"] = "Kombiniertes Gold aller Charaktere auf diesem Realm"
 
+L["RESTED_XP"] = "Ausgeruhte EP"
+L["REMAINING_RESTED_XP"] = "Verbleibende ausgeruhte EP"
+L["RESTED_AREA"] = "Erholungsgebiet"
+L["MAX_LEVEL"] = "Maximalstufe"
+L["YES"] = "Ja"
+L["NO"] = "Nein"
+
 -- Items Tab
 L["ITEMS_HEADER"] = "Bank-Gegenstände"
 L["ITEMS_HEADER_DESC"] = "Durchsuche und verwalte deine Kriegsmeute- und persönliche Bank"

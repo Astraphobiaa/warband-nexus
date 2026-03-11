@@ -140,6 +140,14 @@ L["CHARACTER_LAST_SEEN_FORMAT"] = "Last seen: %s"
 L["CHARACTER_GOLD_FORMAT"] = "Gold: %s"
 L["CHARACTER_TOTAL_GOLD_TOOLTIP"] = "Combined gold from all characters on this realm"
 
+-- Rested XP (Characters tab tooltip)
+L["RESTED_XP"] = "Rested XP"
+L["REMAINING_RESTED_XP"] = "Remaining Rested XP"
+L["RESTED_AREA"] = "Rested Area"
+L["MAX_LEVEL"] = "Max level"
+L["YES"] = "Yes"
+L["NO"] = "No"
+
 -- Items Tab
 L["ITEMS_HEADER"] = "Bank Items"
 L["ITEMS_HEADER_DESC"] = "Browse and manage your Warband and Personal bank"
