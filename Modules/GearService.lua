@@ -1406,6 +1406,7 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
         local amount = 0
         local cName = UPGRADE_CURRENCY_NAMES[currencyID]
         local cIcon = nil
+        local maxQuantity = nil  -- Weekly/total cap from API; nil = use fallback in UI
 
         if isCurrentChar and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
             -- LIVE API: exact same normalization as FetchCurrencyFromAPI in CurrencyCacheService
@@ -1414,6 +1415,10 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
                 if info.name and info.name ~= "" then cName = info.name end
                 if info.iconFileID then cIcon = info.iconFileID end
                 amount = info.quantity or 0
+                -- Cap for display (x / max): maxQuantity or maxWeeklyQuantity; same logic as CurrencyCacheService
+                local maxQ = info.maxQuantity or 0
+                local maxWeekly = info.maxWeeklyQuantity or 0
+                maxQuantity = (maxQ > 0) and maxQ or ((maxWeekly > 0) and maxWeekly or nil)
             end
         else
             -- OFFLINE: read from DB via GetCurrenciesForUI (aggregated per-char data)
@@ -1441,11 +1446,22 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
             end
         end
 
+        -- Cap from API (max is global per currency type, works for both current and offline char)
+        if not maxQuantity and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+            local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+            if ok and info then
+                local maxQ = info.maxQuantity or 0
+                local maxWeekly = info.maxWeeklyQuantity or 0
+                maxQuantity = (maxQ > 0) and maxQ or ((maxWeekly > 0) and maxWeekly or nil)
+            end
+        end
+
         result[#result + 1] = {
             currencyID = currencyID,
             amount     = tonumber(amount) or 0,
             name       = cName,
             icon       = cIcon,
+            maxQuantity = maxQuantity,
         }
     end
 

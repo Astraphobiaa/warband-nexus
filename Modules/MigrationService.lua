@@ -75,6 +75,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateTrackingConfirmed(db)
     self:MigrateGoldFormat(db)
     self:MigrateCharacterKeyNormalize(db)
+    self:MigrateRestedDataReset(db)
     return false
 end
 
@@ -221,6 +222,34 @@ function MigrationService:MigrateTrackingField(db)
     -- Tracking migration applied silently
     
     db.global.trackingMigrationV1 = true
+end
+
+--[[
+    One-time: remove legacy rested XP fields from character records.
+    Rested XP tracking was removed from the addon; keep DB schema clean.
+]]
+function MigrationService:MigrateRestedDataReset(db)
+    if not db or not db.global or not db.global.characters then
+        return
+    end
+    if db.global.restedDataRemovedV4 then
+        return
+    end
+
+    for _, charData in pairs(db.global.characters) do
+        if type(charData) == "table" then
+            charData.restedXP = nil
+            charData.xpMax = nil
+            charData.xpCurrent = nil
+            charData.isResting = nil
+            charData.restedUpdatedAt = nil
+        end
+    end
+
+    db.global.restedDataResetV1 = true
+    db.global.restedDataResetV2 = true
+    db.global.restedDataResetV3 = true
+    db.global.restedDataRemovedV4 = true
 end
 
 ---Migrate reputation cache to v2.1.0 (per-character storage)

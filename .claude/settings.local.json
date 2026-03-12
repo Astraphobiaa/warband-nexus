@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xargs grep -l \"CollectibleSourceDB\\\\|npcDropDB\\\\|npcDrop\")"
+      "Bash(xargs grep -l \"CollectibleSourceDB\\\\|npcDropDB\\\\|npcDrop\")",
+      "Bash(grep -n \"SaveCurrentCharacterData\\\\|SaveMinimalCharacterData\\\\|CaptureLogoutCharacterState\" /c/Users/Mert/Documents/GitHub/warband-nexus/Modules/*.lua)"
     ]
   }
 }

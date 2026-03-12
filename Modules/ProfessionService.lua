@@ -812,6 +812,243 @@ local function GetCurrentProfessionName()
 end
 
 -- ============================================================================
+-- COOLDOWN DATA COLLECTION
+-- ============================================================================
+
+--[[
+    Collect recipe cooldown data for the currently open profession.
+    Called on TRADE_SKILL_SHOW after a delay to ensure API readiness.
+
+    Dynamically scans all known recipes for cooldowns (no hardcoded list).
+    Stores per expansion (keyed by skillLineID):
+    {
+        [recipeID] = {
+            recipeName   = string,
+            recipeIcon   = number,
+            cooldownEnd  = number,   -- time() + remaining cooldown (0 = ready)
+            duration     = number,   -- Full cooldown duration in seconds
+            charges      = number,   -- Current charges
+            maxCharges   = number,   -- Max charges
+            lastUpdate   = number,
+        },
+    }
+
+    Optimization: After first full scan, stores cooldownRecipeIDs[skillLineID]
+    so subsequent opens only check known-cooldown recipes + periodic full rescan.
+]]
+local FULL_COOLDOWN_RESCAN_INTERVAL = 3600  -- Full rescan every 1 hour
+local lastFullCooldownScan = {}             -- [skillLineID] = time()
+
+local function CollectCooldownData()
+    if not WarbandNexus or not WarbandNexus.db then return end
+    if not C_TradeSkillUI then return end
+
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+
+    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return end
+
+    -- Get the currently active child skillLineID
+    local skillLineID = nil
+    if C_TradeSkillUI.GetProfessionChildSkillLineID then
+        local ok, slID = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
+        if ok and slID and slID > 0 then
+            skillLineID = slID
+        end
+    end
+    if not skillLineID then return end
+
+    -- Get base profession name
+    local baseProfName = nil
+    if C_TradeSkillUI.GetBaseProfessionInfo then
+        local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
+        if ok and baseInfo then baseProfName = baseInfo.professionName end
+    end
+
+    -- Initialize tables
+    if not charData.professionCooldowns then charData.professionCooldowns = {} end
+    if not charData.cooldownRecipeIDs then charData.cooldownRecipeIDs = {} end
+    if not charData.professionCooldowns[skillLineID] then charData.professionCooldowns[skillLineID] = {} end
+
+    -- Decide: full scan vs targeted scan of known cooldown recipes
+    local now = time()
+    local needFullScan = not charData.cooldownRecipeIDs[skillLineID]
+        or not lastFullCooldownScan[skillLineID]
+        or (now - lastFullCooldownScan[skillLineID]) >= FULL_COOLDOWN_RESCAN_INTERVAL
+
+    local recipeIDsToCheck = {}
+
+    if needFullScan then
+        -- Full scan: get all recipe IDs from the open profession window
+        if C_TradeSkillUI.GetAllRecipeIDs then
+            local ok, allIDs = pcall(C_TradeSkillUI.GetAllRecipeIDs)
+            if ok and allIDs then
+                recipeIDsToCheck = allIDs
+            end
+        end
+        lastFullCooldownScan[skillLineID] = now
+    else
+        -- Targeted scan: only check known cooldown recipes
+        recipeIDsToCheck = charData.cooldownRecipeIDs[skillLineID] or {}
+    end
+
+    if #recipeIDsToCheck == 0 then return end
+
+    local cooldownEntries = charData.professionCooldowns[skillLineID]
+    local knownCooldownIDs = {}
+    local found = 0
+
+    for _, recipeID in ipairs(recipeIDsToCheck) do
+        if C_TradeSkillUI.GetRecipeCooldown then
+            local cdOk, cooldown, isDayCooldown, charges, maxCharges = pcall(C_TradeSkillUI.GetRecipeCooldown, recipeID)
+            if cdOk then
+                local hasCooldown = (cooldown and cooldown > 0) or (maxCharges and maxCharges > 0 and charges and charges < maxCharges)
+                local wasKnown = cooldownEntries[recipeID] ~= nil
+
+                if hasCooldown or wasKnown then
+                    -- Get recipe info for name/icon
+                    local recipeName, recipeIcon
+                    if C_TradeSkillUI.GetRecipeInfo then
+                        local riOk, recipeInfo = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
+                        if riOk and recipeInfo then
+                            recipeName = recipeInfo.name
+                            recipeIcon = recipeInfo.icon
+                        end
+                    end
+
+                    local cooldownEnd = 0
+                    local duration = 0
+                    if cooldown and cooldown > 0 then
+                        cooldownEnd = now + cooldown
+                        duration = isDayCooldown and 86400 or cooldown
+                    end
+
+                    cooldownEntries[recipeID] = {
+                        recipeName  = recipeName or (cooldownEntries[recipeID] and cooldownEntries[recipeID].recipeName) or "Unknown",
+                        recipeIcon  = recipeIcon or (cooldownEntries[recipeID] and cooldownEntries[recipeID].recipeIcon) or 134400,
+                        cooldownEnd = cooldownEnd,
+                        duration    = duration,
+                        charges     = charges or 0,
+                        maxCharges  = maxCharges or 1,
+                        lastUpdate  = now,
+                    }
+                    knownCooldownIDs[#knownCooldownIDs + 1] = recipeID
+                    found = found + 1
+                end
+            end
+        end
+    end
+
+    -- Update known cooldown recipe IDs for targeted future scans
+    if needFullScan and #knownCooldownIDs > 0 then
+        charData.cooldownRecipeIDs[skillLineID] = knownCooldownIDs
+    end
+
+    -- Clean up expired entries that are no longer in the recipe list (profession dropped, etc.)
+    -- Only on full scan to avoid accidentally removing recipes during targeted scan
+    if needFullScan then
+        local validSet = {}
+        for _, id in ipairs(recipeIDsToCheck) do validSet[id] = true end
+        for recipeID in pairs(cooldownEntries) do
+            if not validSet[recipeID] then
+                cooldownEntries[recipeID] = nil
+            end
+        end
+    end
+
+    if WarbandNexus.Debug then
+        WarbandNexus:Debug("[Cooldowns] Collected " .. found .. " cooldown(s) for skillLineID=" .. tostring(skillLineID) .. " (fullScan=" .. tostring(needFullScan) .. ")")
+    end
+
+    if found > 0 and WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_PROFESSION_COOLDOWNS_UPDATED", charKey)
+    end
+end
+
+-- ============================================================================
+-- CRAFTING ORDERS DATA COLLECTION
+-- ============================================================================
+
+--[[
+    Collect crafting orders count for the currently open profession.
+    Called on TRADE_SKILL_SHOW after a delay.
+
+    Stores per expansion (keyed by skillLineID):
+    {
+        personalCount = number,
+        guildCount    = number,
+        publicCount   = number,
+        lastUpdate    = number,
+    }
+
+    Note: C_CraftingOrders APIs are async and require profession context.
+    We use the simplest available methods for an MVP count.
+]]
+local function CollectCraftingOrdersData()
+    if not WarbandNexus or not WarbandNexus.db then return end
+    if not C_CraftingOrders then return end
+
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+
+    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return end
+
+    -- Get the currently active child skillLineID
+    local skillLineID = nil
+    if C_TradeSkillUI and C_TradeSkillUI.GetProfessionChildSkillLineID then
+        local ok, slID = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
+        if ok and slID and slID > 0 then
+            skillLineID = slID
+        end
+    end
+    if not skillLineID then return end
+
+    -- Initialize
+    if not charData.craftingOrders then charData.craftingOrders = {} end
+
+    local personalCount = 0
+    local guildCount = 0
+    local publicCount = 0
+
+    -- Personal orders count
+    if C_CraftingOrders.GetNumPersonalOrders then
+        local ok, count = pcall(C_CraftingOrders.GetNumPersonalOrders)
+        if ok and count then personalCount = count end
+    end
+
+    -- Claimed order (adds to personal context)
+    if C_CraftingOrders.GetClaimedOrder then
+        local ok, order = pcall(C_CraftingOrders.GetClaimedOrder)
+        if ok and order then
+            -- Claimed order exists — count is already included in personal
+        end
+    end
+
+    -- Guild orders — try synchronous count if available
+    if C_CraftingOrders.GetNumGuildOrders then
+        local ok, count = pcall(C_CraftingOrders.GetNumGuildOrders)
+        if ok and count then guildCount = count end
+    end
+
+    charData.craftingOrders[skillLineID] = {
+        personalCount = personalCount,
+        guildCount    = guildCount,
+        publicCount   = publicCount,
+        lastUpdate    = time(),
+    }
+
+    if WarbandNexus.Debug then
+        WarbandNexus:Debug("[Orders] Collected for skillLineID=" .. tostring(skillLineID) .. " personal=" .. personalCount .. " guild=" .. guildCount)
+    end
+
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_CRAFTING_ORDERS_UPDATED", charKey)
+    end
+end
+
+-- ============================================================================
 -- EVENT HANDLERS
 -- ============================================================================
 

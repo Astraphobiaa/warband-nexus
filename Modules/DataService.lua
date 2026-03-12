@@ -44,6 +44,11 @@ local function DebugPrint(...)
     end
 end
 
+-- Rested XP accumulation constants (Blizzard behavior in resting areas).
+local RESTED_XP_GAIN_PER_8H = 0.05
+local SECONDS_PER_8H = 8 * 60 * 60
+local CollectRestedData
+
 --- Convert bag/bank table (bagIndex -> slotID -> item) to array for ItemsCacheService (avoids full character save from scan path).
 local function tableToItemArrayForStorage(tbl)
     if not tbl or type(tbl) ~= "table" then return nil end
@@ -274,17 +279,17 @@ end
 ---DIRECT DB WRITE - No sessionCache (API > DB > UI pattern)
 ---@param dataType string Specific data type to update ("gold", "level", "spec", "itemLevel", etc.)
 function WarbandNexus:UpdateCharacterCache(dataType)
-    -- GUARD: Only update if character is tracked
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        return
-    end
-    
     local charKey = ns.Utilities:GetCharacterKey()
     if not charKey then return end
     
     -- DIRECT DB ACCESS - No sessionCache
     if not self.db.global.characters or not self.db.global.characters[charKey] then
-        return  -- Character not tracked
+        return
+    end
+    
+    -- GUARD: Only tracked characters get full updates (gold, level, spec, etc.)
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
     end
     
     local charData = self.db.global.characters[charKey]
@@ -318,28 +323,14 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         
         charData.itemLevel = newItemLevel
         
-    elseif dataType == "resting" then
-        charData.isResting = IsResting()
-        charData.restedXP = GetXPExhaustion() or 0
-        charData.xpCurrent = UnitXP("player") or 0
-        charData.xpMax = UnitXPMax("player") or 0
-        -- Session snapshot for logout when API may return nil (used in CaptureLogoutCharacterState)
-        if not ns._lastRestedSnapshot then ns._lastRestedSnapshot = {} end
-        ns._lastRestedSnapshot[charKey] = { restedXP = charData.restedXP, xpMax = charData.xpMax, time = time() }
-        
-    elseif dataType == "restedXP" then
-        charData.restedXP = GetXPExhaustion() or 0
-        charData.xpCurrent = UnitXP("player") or 0
-        charData.xpMax = UnitXPMax("player") or 0
-        if not ns._lastRestedSnapshot then ns._lastRestedSnapshot = {} end
-        ns._lastRestedSnapshot[charKey] = { restedXP = charData.restedXP, xpMax = charData.xpMax, time = time() }
-
     elseif dataType == "guild" then
         charData.guildName = IsInGuild() and GetGuildInfo("player") or nil
 
     elseif dataType == "zone" then
         charData.zoneName = GetZoneText()
         charData.subZoneName = GetSubZoneText()
+    elseif dataType == "rested" then
+        charData.rested = CollectRestedData()
     end
     
     -- Update lastSeen timestamp
@@ -369,6 +360,7 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     self:RegisterEvent("PLAYER_LEVEL_UP", function(event)
         ns.DebugPrint("|cff9370DB[DataService]|r [Character Event] PLAYER_LEVEL_UP triggered")
         self:UpdateCharacterCache("level")
+        self:UpdateCharacterCache("rested")
     end)
     
     -- Specialization changes
@@ -381,16 +373,12 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     -- NOTE: WN_CHARACTER_UPDATED empty handler REMOVED — it was a no-op that overwrote
     -- real handlers in other modules (AceEvent allows only one handler per event per self).
     
-    -- Resting state changes
-    self:RegisterEvent("PLAYER_UPDATE_RESTING", function(event)
-        ns.DebugPrint("|cff9370DB[DataService]|r [Character Event] PLAYER_UPDATE_RESTING triggered")
-        self:UpdateCharacterCache("resting")
-    end)
-
-    -- Rested XP amount changed (consumed or gained)
-    self:RegisterEvent("UPDATE_EXHAUSTION", function(event)
-        self:UpdateCharacterCache("restedXP")
-    end)
+    -- NOTE: PLAYER_ENTERING_WORLD is NOT registered here.
+    -- It fires at T+0s but RegisterCharacterCacheEvents runs at T+2s (too late).
+    -- Also, AceEvent allows only one handler per event per self — registering here
+    -- would overwrite Core.lua's OnPlayerEnteringWorld handler.
+    -- Character save on login is handled by Core.lua raw frame handler (SaveCharacter)
+    -- and Core.lua OnEnable (SaveMinimalCharacterData for untracked characters).
 
     -- Guild membership/name changed (join/leave/switch)
     self:RegisterEvent("PLAYER_GUILD_UPDATE", function(event)
@@ -416,6 +404,18 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", function(event)
         ns.DebugPrint("|cff9370DB[DataService]|r [Zone Event] ZONE_CHANGED_NEW_AREA triggered")
         DebouncedZoneUpdate()
+    end)
+
+    -- Rested state updates are event-driven from game APIs.
+    self:RegisterEvent("PLAYER_UPDATE_RESTING", function(event)
+        self:UpdateCharacterCache("rested")
+    end)
+    self:RegisterEvent("UPDATE_EXHAUSTION", function(event)
+        self:UpdateCharacterCache("rested")
+    end)
+    self:RegisterEvent("PLAYER_XP_UPDATE", function(event, unit)
+        if unit and unit ~= "player" then return end
+        self:UpdateCharacterCache("rested")
     end)
     
     -- SKILL_LINES_CHANGED: owned by EventManager (OnSkillLinesChanged, throttled)
@@ -761,6 +761,31 @@ local function CollectPlayerStats()
     return { primary = primary, secondary = secondary }
 end
 
+--- Collect rested XP snapshot from API for DB persistence (API > DB > UI).
+CollectRestedData = function()
+    local exhaustionID, restStateName, restStateFactor = nil, nil, nil
+    if GetRestState then
+        exhaustionID, restStateName, restStateFactor = GetRestState()
+    end
+
+    local currentRestedXP = (GetXPExhaustion and GetXPExhaustion()) or 0
+    local currentXP = UnitXP("player") or 0
+    local maxXP = UnitXPMax("player") or 0
+    local restedCapXP = (maxXP > 0) and math.floor(maxXP * 1.5) or 0
+
+    return {
+        exhaustionID = exhaustionID,
+        restStateName = restStateName,
+        restStateFactor = restStateFactor,
+        isRestingArea = IsResting() and true or false,
+        currentRestedXP = math.floor(currentRestedXP),
+        currentXP = math.floor(currentXP),
+        maxXP = math.floor(maxXP),
+        restedCapXP = restedCapXP,
+        updatedAt = time(),
+    }
+end
+
 --[[
     Save minimal character data for UNTRACKED characters
     Only collects: name, realm, class, race, faction, level, ilvl, gold
@@ -786,11 +811,6 @@ function WarbandNexus:SaveMinimalCharacterData()
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")
     local guildName = IsInGuild() and GetGuildInfo("player") or nil
-    local xpCurrent = UnitXP("player") or 0
-    local xpMax = UnitXPMax("player") or 0
-    local restedXP = GetXPExhaustion() or 0
-    local isResting = IsResting() or false
-    
     -- Get gender
     local gender = UnitSex("player")
     local raceInfo = C_PlayerInfo.GetRaceInfo and C_PlayerInfo.GetRaceInfo()
@@ -837,7 +857,7 @@ function WarbandNexus:SaveMinimalCharacterData()
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
     local preserveTimePlayed = existingEntry and existingEntry.timePlayed
     local preserveMythicKey = existingEntry and existingEntry.mythicKey  -- Preserve keystone data for CharactersUI display
-    
+
     -- Preserve profession service data (collected separately by ProfessionService)
     local preserveProfessions          = existingEntry and existingEntry.professions  -- CRITICAL FIX: Don't lose profession data on untracked save
     local preserveConcentration       = existingEntry and existingEntry.concentration
@@ -845,6 +865,8 @@ function WarbandNexus:SaveMinimalCharacterData()
     local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
     local         preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
     local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
+    local preserveRested              = existingEntry and existingEntry.rested
+    local restedData                  = CollectRestedData() or preserveRested
     
     -- Store MINIMAL data only
     self.db.global.characters[key] = {
@@ -863,16 +885,11 @@ function WarbandNexus:SaveMinimalCharacterData()
         raceFile = raceFile,
         gender = gender,
         itemLevel = itemLevel,
-        xpCurrent = xpCurrent,
-        xpMax = xpMax,
-        restedXP = restedXP,
-        isResting = isResting,
         isTracked = preserveTracked or false,  -- Preserve existing tracking choice
         trackingConfirmed = preserveConfirmed or false,  -- ONLY true if user actually made a choice
         lastSeen = time(),
         mythicKey = preserveMythicKey,  -- Preserve keystone data for CharactersUI display
         timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)
-        -- Session snapshot for rested at logout (CaptureLogoutCharacterState fallback when API returns nil)
         -- Preserve profession service data (CRITICAL: include professions to prevent data loss)
         professions          = preserveProfessions,  -- Profession names, icons, skill levels
         concentration        = preserveConcentration,
@@ -880,15 +897,13 @@ function WarbandNexus:SaveMinimalCharacterData()
         professionExpansions = preserveProfExpansions,
         discoveredSkillLines = preserveDiscoveredSkillLines,
         knowledgeData        = preserveKnowledgeData,
+        rested               = restedData,
         guid                 = UnitGUID("player"),
         stats                = CollectPlayerStats(),  -- For Gear tab offline Character Stats
         specID               = specID,
         specName             = specName,
         specIcon             = specIcon,
     }
-    if not ns._lastRestedSnapshot then ns._lastRestedSnapshot = {} end
-    ns._lastRestedSnapshot[key] = { restedXP = restedXP, xpMax = xpMax, time = time() }
-    
     -- Fire event for UI refresh
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
         charKey = key,
@@ -940,11 +955,6 @@ function WarbandNexus:SaveCurrentCharacterData()
     
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")  -- race = localized name, raceFile = English ID
-    local xpCurrent = UnitXP("player") or 0
-    local xpMax = UnitXPMax("player") or 0
-    local restedXP = GetXPExhaustion() or 0
-    local isResting = IsResting() or false
-    
     -- Get gender with C_PlayerInfo fallback (more reliable in TWW)
     local gender = UnitSex("player")  -- 2 = male, 3 = female, 1 = neutral/unknown
     
@@ -1026,14 +1036,15 @@ function WarbandNexus:SaveCurrentCharacterData()
     local existingEntry = self.db.global.characters[key]
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
     local preserveTimePlayed = existingEntry and existingEntry.timePlayed
-    
     -- Preserve profession service data (collected separately by ProfessionService)
     local preserveConcentration       = existingEntry and existingEntry.concentration
     local preserveRecipes             = existingEntry and existingEntry.recipes
     local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
     local preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
     local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
-    
+    local preserveRested              = existingEntry and existingEntry.rested
+    local restedData                  = CollectRestedData() or preserveRested
+
     self.db.global.characters[key] = {
         name = name,
         realm = realm,
@@ -1050,10 +1061,6 @@ function WarbandNexus:SaveCurrentCharacterData()
         raceFile = raceFile,
         gender = gender,
         itemLevel = itemLevel,
-        xpCurrent = xpCurrent,
-        xpMax = xpMax,
-        restedXP = restedXP,
-        isResting = isResting,
         mythicKey = keystoneData,
         isTracked = true,     -- Track this character (API calls, data updates enabled)
         trackingConfirmed = preserveConfirmed or true,  -- Preserve existing, default true for tracked chars
@@ -1066,15 +1073,13 @@ function WarbandNexus:SaveCurrentCharacterData()
         professionExpansions = preserveProfExpansions,
         discoveredSkillLines = preserveDiscoveredSkillLines,
         knowledgeData        = preserveKnowledgeData,
+        rested               = restedData,
         guid                 = UnitGUID("player"),
         stats                = CollectPlayerStats(),  -- For Gear tab offline Character Stats
         specID               = specID,
         specName             = specName,
         specIcon             = specIcon,
     }
-    if not ns._lastRestedSnapshot then ns._lastRestedSnapshot = {} end
-    ns._lastRestedSnapshot[key] = { restedXP = restedXP, xpMax = xpMax, time = time() }
-    
     -- ========== V2: Store PvE data globally ==========
     self:UpdatePvEDataV2(key, pveData)
     
@@ -1159,72 +1164,6 @@ function WarbandNexus:UpdateCharacterGold()
 end
 
 --[[
-    Capture current character state at logout for offline estimations.
-    Stores exact logout timestamp/rested snapshot so CharactersUI can
-    estimate rested XP growth while the character is offline.
-    Uses same key format as SaveCurrentCharacterData (GetNormalizedRealmName).
-]]
-function WarbandNexus:CaptureLogoutCharacterState()
-    local name = UnitName("player")
-    local realm = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName()
-    if not name or name == "" or not realm or realm == "" then
-        return
-    end
-
-    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
-    if not key then return end
-    if not self.db or not self.db.global or not self.db.global.characters then
-        return
-    end
-
-    local charData = self.db.global.characters[key]
-    if not charData then
-        -- Stub so guild/rested are not lost when user logs out before first full save (e.g. before 2s timer)
-        charData = {
-            name = name,
-            realm = realm,
-            level = UnitLevel("player") or 1,
-            guildName = IsInGuild() and GetGuildInfo("player") or nil,
-            restedXP = GetXPExhaustion() or 0,
-            xpCurrent = UnitXP("player") or 0,
-            xpMax = UnitXPMax("player") or 0,
-            lastSeen = time(),
-            isResting = IsResting() or false,
-        }
-        self.db.global.characters[key] = charData
-        return
-    end
-
-    charData.lastSeen = time()
-    charData.isResting = IsResting() or false
-    -- Save restedXP whenever API returns a number (including 0); preserve only when nil (logout API often returns nil)
-    local exhaustion = GetXPExhaustion()
-    local xpCur, xpMax = UnitXP("player"), UnitXPMax("player")
-    if exhaustion ~= nil then
-        charData.restedXP = exhaustion
-    elseif ns._lastRestedSnapshot and ns._lastRestedSnapshot[key] then
-        local snap = ns._lastRestedSnapshot[key]
-        if (time() - (snap.time or 0)) < 600 and snap.restedXP ~= nil then
-            charData.restedXP = snap.restedXP
-        end
-    end
-    if xpMax then
-        charData.xpMax = xpMax
-    elseif ns._lastRestedSnapshot and ns._lastRestedSnapshot[key] then
-        local snap = ns._lastRestedSnapshot[key]
-        if (time() - (snap.time or 0)) < 600 and snap.xpMax and snap.xpMax > 0 then
-            charData.xpMax = snap.xpMax
-        end
-    end
-    if xpCur then charData.xpCurrent = xpCur end
-    local guildName = IsInGuild() and GetGuildInfo("player")
-    if guildName and guildName ~= "" then
-        charData.guildName = guildName
-    end
-    -- If guild/rested API returned nil at logout, keep existing charData.guildName / charData.restedXP
-end
-
---[[
     Get all characters (tracked AND untracked) (DB-First pattern)
     Direct DB access, no RAM cache
     Returns both tracked and untracked characters - UI modules should filter as needed
@@ -1265,6 +1204,8 @@ function WarbandNexus:GetAllCharacters()
                     if newTime > existingTime then
                         data._key = key
                         seen[normalizedKey] = data
+                    else
+                        -- Keep existing
                     end
                 else
                     data._key = key
@@ -1288,6 +1229,62 @@ function WarbandNexus:GetAllCharacters()
     end)
     
     return characters
+end
+
+--- Get rested state from DB for UI rendering.
+--- Offline estimate applies only when character logged out in resting area.
+---@param charData table
+---@param nowTs number|nil
+---@return table|nil
+function WarbandNexus:GetCharacterRestedState(charData, nowTs)
+    if type(charData) ~= "table" then return nil end
+    local rested = charData.rested
+    if type(rested) ~= "table" then return nil end
+
+    local baseRestedXP = tonumber(rested.currentRestedXP) or 0
+    local maxXP = tonumber(rested.maxXP) or 0
+    local restedCapXP = tonumber(rested.restedCapXP) or ((maxXP > 0) and (maxXP * 1.5) or 0)
+    local updatedAt = tonumber(rested.updatedAt) or tonumber(charData.lastSeen) or 0
+
+    local estimatedRestedXP = baseRestedXP
+    if rested.isRestingArea and maxXP > 0 and updatedAt > 0 then
+        local currentTime = nowTs or time()
+        if currentTime > updatedAt then
+            local elapsed = currentTime - updatedAt
+            local gainPerSecond = (maxXP * RESTED_XP_GAIN_PER_8H) / SECONDS_PER_8H
+            estimatedRestedXP = estimatedRestedXP + (elapsed * gainPerSecond)
+        end
+    end
+
+    if restedCapXP > 0 then
+        estimatedRestedXP = math.min(estimatedRestedXP, restedCapXP)
+    end
+    estimatedRestedXP = math.max(0, estimatedRestedXP)
+
+    local restedPercentOfLevel = 0
+    if maxXP > 0 then
+        restedPercentOfLevel = (estimatedRestedXP / maxXP) * 100
+    end
+
+    local restedPercentOfCap = 0
+    if restedCapXP > 0 then
+        restedPercentOfCap = (estimatedRestedXP / restedCapXP) * 100
+    end
+
+    return {
+        hasRestedXP = estimatedRestedXP > 0,
+        isRestingArea = rested.isRestingArea == true,
+        restedXP = math.floor(estimatedRestedXP),
+        restedCapXP = math.floor(restedCapXP),
+        currentXP = tonumber(rested.currentXP) or 0,
+        maxXP = maxXP,
+        exhaustionID = rested.exhaustionID,
+        restStateName = rested.restStateName,
+        restStateFactor = rested.restStateFactor,
+        updatedAt = updatedAt,
+        restedPercentOfLevel = restedPercentOfLevel,
+        restedPercentOfCap = restedPercentOfCap,
+    }
 end
 
 -- REMOVED: GetCachedCharacters (DB-First pattern - no cache, use GetAllCharacters directly)

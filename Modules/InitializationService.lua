@@ -312,16 +312,13 @@ function InitializationService:InitializeDataServices(addon)
     if LT and isTrackedEarly then LT:Register("caches", (ns.L and ns.L["LT_CURRENCY_CACHES"]) or "Currency & Caches") end
     C_Timer.After(2, function()
         SafeInit(function()
-            -- Character cache: only for already-tracked characters.
-            -- New characters get this via ConfirmCharacterTracking post-confirmation flow.
+            -- Character cache events.
+            if addon and addon.RegisterCharacterCacheEvents then
+                addon:RegisterCharacterCacheEvents()
+            end
             local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
-            if isTracked then
-                if addon and addon.RegisterCharacterCacheEvents then
-                    addon:RegisterCharacterCacheEvents()
-                end
-                if addon and addon.GetCharacterData then
-                    addon:GetCharacterData(true)
-                end
+            if isTracked and addon and addon.GetCharacterData then
+                addon:GetCharacterData(true)
             end
         end, "P3:CharacterCache")
 

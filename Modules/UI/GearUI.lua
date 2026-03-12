@@ -47,6 +47,7 @@ end
 -- CONSTANTS / LAYOUT  (addon theme: ns.UI_LAYOUT when available)
 -- ============================================================================
 
+local function GetLayout() return ns.UI_LAYOUT or {} end
 local UI_LAYOUT      = ns.UI_LAYOUT or {}
 local SIDE_MARGIN    = UI_LAYOUT.SIDE_MARGIN or 16
 local TOP_MARGIN     = UI_LAYOUT.TOP_MARGIN or 12
@@ -58,7 +59,9 @@ local function P(n) return math.floor(n * PAPERDOLL_SCALE + 0.5) end
 local SLOT_SIZE      = P(38)
 local SLOT_GAP       = P(5)
 local DOLL_PAD       = P(12)
-local SLOT_TO_TEXT_GAP = P(4)  -- yazı ile ok/slot arası daha sıkı
+-- Slot–ok arası eski konum; ok–yazı arası: daha negatif = yazı daha içeri (ikona yakın)
+local SLOT_TO_ARROW_GAP = P(4)   -- slot ile upgrade ikonu arası (eski değer)
+local ARROW_TO_TEXT_GAP = -8     -- yazılar içeri kaydırıldı (sol: sağa, sağ: sola)
 local TRACK_TEXT_W   = P(136)  -- Track metin taşmasını engellemek için genişletildi
 local UPGRADE_ARROW_W = P(16)
 local CURRENCY_PANEL_W = 240
@@ -66,8 +69,8 @@ local CENTER_GAP     = P(10)
 local CURRENCY_PAPERDOLL_GAP = 14  -- boşluk crest paneli ile paperdoll arası
 
 -- Fixed panel widths: sol = yazı + ikon + slot, sağ = slot + ikon + yazı
-local LEFT_PANEL_W   = TRACK_TEXT_W + SLOT_TO_TEXT_GAP + UPGRADE_ARROW_W + SLOT_TO_TEXT_GAP + SLOT_SIZE
-local RIGHT_PANEL_W  = SLOT_SIZE + SLOT_TO_TEXT_GAP + UPGRADE_ARROW_W + 2 + TRACK_TEXT_W
+local LEFT_PANEL_W   = TRACK_TEXT_W + ARROW_TO_TEXT_GAP + UPGRADE_ARROW_W + SLOT_TO_ARROW_GAP + SLOT_SIZE
+local RIGHT_PANEL_W  = SLOT_SIZE + SLOT_TO_ARROW_GAP + UPGRADE_ARROW_W + 2 + ARROW_TO_TEXT_GAP + TRACK_TEXT_W
 local MODEL_W       = P(228)
 -- Paperdoll blok genişliği (sol kolon + model + sağ kolon) — kart içinde ortalanır
 local PAPERDOLL_BLOCK_W = LEFT_PANEL_W + CENTER_GAP + MODEL_W + CENTER_GAP + RIGHT_PANEL_W
@@ -82,10 +85,10 @@ ns.MIN_GEAR_CARD_W = MIN_GEAR_CARD_W  -- used by UI.lua for scrollChild width on
 local SLOT_HALF      = SLOT_SIZE / 2
 local ARROW_HALF     = UPGRADE_ARROW_W / 2
 local TEXT_HALF_W   = TRACK_TEXT_W / 2
--- Slot merkezinden ok merkezine uzaklık (px)
-local ARROW_OFFSET_FROM_SLOT_CENTER = SLOT_HALF + SLOT_TO_TEXT_GAP + ARROW_HALF  -- 19+6+8 = 33
--- Slot merkezinden yazı bloğu merkezine uzaklık (px)
-local TEXT_OFFSET_FROM_SLOT_CENTER  = ARROW_OFFSET_FROM_SLOT_CENTER + ARROW_HALF + SLOT_TO_TEXT_GAP + TEXT_HALF_W  -- 33+8+6+49 = 96
+-- Slot merkezinden ok merkezine uzaklık (px) — ikon eski yerinde
+local ARROW_OFFSET_FROM_SLOT_CENTER = SLOT_HALF + SLOT_TO_ARROW_GAP + ARROW_HALF
+-- Slot merkezinden yazı bloğu merkezine uzaklık (px) — sadece yazı ikona yakın
+local TEXT_OFFSET_FROM_SLOT_CENTER  = ARROW_OFFSET_FROM_SLOT_CENTER + ARROW_HALF + ARROW_TO_TEXT_GAP + TEXT_HALF_W
 
 -- Empty slot textures (standard WoW interface art)
 local EMPTY_SLOT_TEXTURE = {
@@ -738,19 +741,21 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         ilvlOverlay:SetShadowColor(0, 0, 0, 1)
     end
 
-    -- Karakter adı: kart üst border ile model üst border arasında ortalanmış
+    -- Karakter adı: container border ile 3D model border arası bandta, yukarıda (kart border'a yakın)
     local displayName = (charData and charData.name) or ""
     if displayName ~= "" then
-        local nameFrame = CreateFrame("Frame", nil, card)
-        nameFrame:SetPoint("TOP", card, "TOP", 0, -CARD_PAD)
-        nameFrame:SetPoint("BOTTOM", centerRef, "TOP", 0, 0)
-        nameFrame:SetPoint("LEFT", centerRef, "LEFT", 0, 0)
-        nameFrame:SetPoint("RIGHT", centerRef, "RIGHT", 0, 0)
-        if nameFrame.SetFrameLevel and centerRef.GetFrameLevel then
-            nameFrame:SetFrameLevel(centerRef:GetFrameLevel() + 10)
+        local nameWrapper = CreateFrame("Frame", nil, card)
+        nameWrapper:SetPoint("TOP", card, "TOP", 0, -CARD_PAD)
+        nameWrapper:SetPoint("BOTTOM", centerRef, "TOP", 0, 0)
+        nameWrapper:SetPoint("LEFT", centerRef, "LEFT", 0, 0)
+        nameWrapper:SetPoint("RIGHT", centerRef, "RIGHT", 0, 0)
+        if nameWrapper.SetFrameLevel and card.GetFrameLevel then
+            nameWrapper:SetFrameLevel(card:GetFrameLevel() + 100)
         end
-        local nameLabel = FontManager:CreateFontString(nameFrame, "header", "OVERLAY")
-        nameLabel:SetPoint("CENTER", nameFrame, "CENTER", 0, -4)
+        local nameLabel = FontManager:CreateFontString(nameWrapper, "header", "OVERLAY")
+        nameLabel:SetPoint("CENTER", nameWrapper, "CENTER", 0, 10)
+        nameLabel:SetPoint("LEFT", nameWrapper, "LEFT", 0, 0)
+        nameLabel:SetPoint("RIGHT", nameWrapper, "RIGHT", 0, 0)
         nameLabel:SetJustifyH("CENTER")
         local classHex = GetClassHex(classFile)
         nameLabel:SetText("|cff" .. classHex .. displayName .. "|r")
@@ -870,8 +875,9 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         nameText:SetShadowOffset(1, -1)
         nameText:SetShadowColor(0, 0, 0, 0.8)
 
-        -- Amount / 200 (right aligned)
+        -- Amount / cap (right aligned); cap from C_CurrencyInfo API (maxWeeklyQuantity/maxQuantity)
         local amt = cur.amount or 0
+        local cap = (type(cur.maxQuantity) == "number" and cur.maxQuantity > 0) and cur.maxQuantity or 200
         local amountText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
         amountText:SetPoint("RIGHT", leftPanel, "RIGHT", -curPad, 0)
         amountText:SetPoint("TOP", ico, "TOP", 0, 0)
@@ -879,11 +885,11 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         amountText:SetJustifyH("RIGHT")
         amountText:SetShadowOffset(1, -1)
         amountText:SetShadowColor(0, 0, 0, 0.8)
-        -- Color: green if > 0, dim if 0
+        local capStr = (FormatNumber and FormatNumber(cap) or tostring(cap))
         if amt > 0 then
-            amountText:SetText("|cffffffff" .. (FormatNumber and FormatNumber(amt) or tostring(amt)) .. "|r |cff666666/ 200|r")
+            amountText:SetText("|cffffffff" .. (FormatNumber and FormatNumber(amt) or tostring(amt)) .. "|r |cff666666/ " .. capStr .. "|r")
         else
-            amountText:SetText("|cff555555" .. "0" .. "|r |cff444444/ 200|r")
+            amountText:SetText("|cff555555" .. "0" .. "|r |cff444444/ " .. capStr .. "|r")
         end
 
         curY = curY - CREST_ROW_H
@@ -1156,7 +1162,8 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
     local rows = BuildStorageRecommendationRows(storageFindings, gearData)
     local title = (ns.L and ns.L["GEAR_STORAGE_TITLE"]) or "Storage Upgrade Recommendations"
     local rowH = 26
-    local cardH = 52 + (math.max(#rows, 1) * rowH)
+    local titleToContentGap = 16
+    local cardH = 52 + titleToContentGap + (math.max(#rows, 1) * rowH)
 
     local card = CreateCard(parent, cardH)
     card:SetPoint("TOPLEFT", SIDE_MARGIN, yOffset)
@@ -1169,7 +1176,7 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
     titleText:SetPoint("TOPLEFT", 12, -10)
     titleText:SetText("|cff" .. hexAcc .. title .. "|r")
 
-    local startY = -38
+    local startY = -38 - titleToContentGap
     if #rows == 0 then
         local empty = FontManager:CreateFontString(card, "small", "OVERLAY")
         empty:SetPoint("TOPLEFT", 14, startY)
@@ -1347,7 +1354,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     btn:SetBackdropColor(0.08, 0.08, 0.11, 0.9)
     btn:SetBackdropBorderColor(accent[1]*0.6, accent[2]*0.6, accent[3]*0.6, 0.8)
 
-    local label = FontManager:CreateFontString(btn, "small", "OVERLAY")
+    local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
     label:SetPoint("LEFT",  6, 0)
     label:SetPoint("RIGHT", -20, 0)
     label:SetJustifyH("LEFT")
@@ -1363,10 +1370,13 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         local cData = db and db.characters and db.characters[charKey]
         if cData and (cData.name and cData.name ~= "") then
             local hex   = GetClassHex(cData.classFile)
-            local text  = "|cff" .. hex .. cData.name .. "|r"
-            local realm = cData.realm
-            if realm and realm ~= "" then text = text .. " |cff555555(" .. realm .. ")|r" end
-            label:SetText(text)
+            local namePart = "|cff" .. hex .. (cData.name or "") .. "|r"
+            local realm = cData.realm and cData.realm ~= "" and cData.realm or nil
+            if realm then
+                label:SetText(namePart .. "  |  |cffffffff" .. realm .. "|r")
+            else
+                label:SetText(namePart)
+            end
         elseif charKey and charKey ~= "" then
             label:SetText(charKey)
         else
@@ -1385,7 +1395,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
             menu:SetFrameStrata("FULLSCREEN_DIALOG")
             menu:SetFrameLevel(500)
-            menu:SetWidth(220)
+            menu:SetWidth(260)
             menu:SetBackdrop({
                 bgFile   = "Interface\\Buttons\\WHITE8X8",
                 edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -1418,18 +1428,19 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             children[i]:SetParent(nil)
         end
 
-        menu:SetHeight(#chars * 26 + 8)
+        local ENTRY_H = 28
+        menu:SetHeight(#chars * ENTRY_H + 8)
         menu:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
 
         local entryY = -4
         for i = 1, #chars do
             local charEntry = chars[i]
             local entryBtn = CreateFrame("Button", nil, menu)
-            entryBtn:SetHeight(24)
+            entryBtn:SetHeight(ENTRY_H)
             entryBtn:SetPoint("TOPLEFT",  4, entryY)
             entryBtn:SetPoint("TOPRIGHT", -4, entryY)
 
-            local entryLabel = FontManager:CreateFontString(entryBtn, "small", "OVERLAY")
+            local entryLabel = FontManager:CreateFontString(entryBtn, "body", "OVERLAY")
             entryLabel:SetPoint("LEFT", 4, 0)
             entryLabel:SetPoint("RIGHT", -4, 0)
             entryLabel:SetJustifyH("LEFT")
@@ -1437,8 +1448,13 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             local cKey   = charEntry.key
             local cData  = charEntry.data
             local hex    = GetClassHex(cData.classFile)
-            entryLabel:SetText("|cff" .. hex .. (cData.name or cKey) .. "|r"
-                .. " |cff444444" .. (cData.realm or "") .. "|r")
+            local namePart = "|cff" .. hex .. (cData.name or cKey) .. "|r"
+            local r = cData.realm and cData.realm ~= "" and cData.realm or ""
+            if r ~= "" then
+                entryLabel:SetText(namePart .. "  |  |cffffffff" .. r .. "|r")
+            else
+                entryLabel:SetText(namePart)
+            end
 
             if cKey == currentCharKey then
                 entryLabel:SetTextColor(accent[1] + 0.2, accent[2] + 0.2, accent[3] + 0.2)
@@ -1458,7 +1474,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
                 end
             end)
 
-            entryY = entryY - 26
+            entryY = entryY - ENTRY_H
         end
 
         bg:Show()
@@ -1528,8 +1544,8 @@ function WarbandNexus:DrawGearTab(parent)
         return height
     end
 
-    -- ── Header Card ───────────────────────────────────────────────────────────
-    local headerCard = CreateCard(parent, 80)
+    -- ── Header Card (standardized: same format as Currency, Storage, etc.) ─────
+    local headerCard = CreateCard(parent, 70)
     headerCard:SetPoint("TOPLEFT",  SIDE_MARGIN, yOffset)
     headerCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, yOffset)
 
@@ -1537,27 +1553,40 @@ function WarbandNexus:DrawGearTab(parent)
 
     local r, g, b = accent[1], accent[2], accent[3]
     local hexAcc  = format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
-    local titleText = FontManager:CreateFontString(headerCard, "header", "OVERLAY")
-    titleText:SetText("|cff" .. hexAcc .. ((ns.L and ns.L["GEAR_TAB_TITLE"]) or "Gear Management") .. "|r")
-    titleText:SetJustifyH("LEFT")
-    if headerIcon then
-        titleText:SetPoint("TOPLEFT", headerIcon.border, "TOPRIGHT", 10, -4)
+    local titleTextContent = "|cff" .. hexAcc .. ((ns.L and ns.L["GEAR_TAB_TITLE"]) or "Gear Management") .. "|r"
+    local subtitleTextContent = (ns.L and ns.L["GEAR_TAB_DESC"]) or "Equipped gear, upgrade analysis, and crest tracking"
+
+    local textContainer = ns.UI and ns.UI.Factory and ns.UI.Factory:CreateContainer(headerCard, 200, 40)
+    if textContainer then
+        local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
+        titleText:SetText(titleTextContent)
+        titleText:SetJustifyH("LEFT")
+        titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)
+        titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+        local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
+        subtitleText:SetText(subtitleTextContent)
+        subtitleText:SetTextColor(1, 1, 1)
+        subtitleText:SetJustifyH("LEFT")
+        subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)
+        subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+        textContainer:SetPoint("LEFT", headerIcon and headerIcon.border or headerCard, "RIGHT", headerIcon and 12 or 24, 0)
+        textContainer:SetPoint("CENTER", headerCard, "CENTER", 0, 0)
     else
-        titleText:SetPoint("TOPLEFT", 12, -12)
+        local titleText = FontManager:CreateFontString(headerCard, "header", "OVERLAY")
+        titleText:SetText(titleTextContent)
+        titleText:SetJustifyH("LEFT")
+        titleText:SetPoint("TOPLEFT", headerIcon and headerIcon.border or headerCard, "TOPRIGHT", headerIcon and 10 or 12, -4)
+        local subtitleText = FontManager:CreateFontString(headerCard, "subtitle", "OVERLAY")
+        subtitleText:SetText(subtitleTextContent)
+        subtitleText:SetTextColor(0.6, 0.6, 0.6)
+        subtitleText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -3)
+        subtitleText:SetPoint("RIGHT", headerCard, "RIGHT", -270, 0)
     end
 
-    local subText = FontManager:CreateFontString(headerCard, "subtitle", "OVERLAY")
-    subText:SetText((ns.L and ns.L["GEAR_TAB_DESC"]) or "Equipped gear, upgrade analysis, and crest tracking")
-    subText:SetTextColor(0.6, 0.6, 0.6)
-    subText:SetJustifyH("LEFT")
-    subText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -3)
-    subText:SetPoint("RIGHT", headerCard, "RIGHT", -270, 0)
-
-    -- Character selector: large, right-centered vertically in header
     CreateCharacterSelector(headerCard, charKey, 0)
     headerCard:Show()
 
-    yOffset = yOffset - 88 - 12  -- card height + gap
+    yOffset = yOffset - (GetLayout().afterHeader or 75)
 
     -- ── Data retrieval (all by canonical key) ──────────────────────────────────
     local db        = self.db and self.db.global

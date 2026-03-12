@@ -1219,6 +1219,11 @@ end
 function WarbandNexus:PopulateContent()
     if not mainFrame then return end
 
+    -- Chars tab debounce: avoid 2–3x redraw when tab switch + WN_CHARACTER_UPDATED fire in quick succession
+    if mainFrame.currentTab == "chars" and mainFrame._lastCharsDrawTime and (GetTime() - mainFrame._lastCharsDrawTime) < 0.25 then
+        return
+    end
+
     -- Clear virtual scroll callback from previous tab
     if ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
         ns.VirtualListModule.ClearVirtualScroll(mainFrame)
@@ -1262,6 +1267,7 @@ function WarbandNexus:PopulateContent()
     if mainFrame.currentTab == "chars" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawCharacterList(scrollChild)
+        mainFrame._lastCharsDrawTime = GetTime()
     elseif mainFrame.currentTab == "currency" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawCurrencyTab(scrollChild)

@@ -243,7 +243,7 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("|cffff6600Try counter module not loaded.|r")
         end
         return
-    
+
     elseif cmd == "trycount" or cmd == "tc" then
         local _, collectibleType, id = addon:GetArgs(input, 3)
         if not collectibleType or not id then

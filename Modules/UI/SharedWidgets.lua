@@ -2575,9 +2575,9 @@ local CHAR_ROW_COLUMNS = {
         total = 145,
     },
     level = {
-        width = 68,    -- Level + "Rested : %100.00" on two lines (no truncation)
+        width = 82,    -- Level + "Zzz XX.XX%" on two lines (no truncation)
         spacing = 15,  -- Standardized to 15px
-        total = 83,    -- 68 + 15
+        total = 97,    -- 82 + 15
     },
     itemLevel = {
         width = 75,    -- "iLvl 639" centered

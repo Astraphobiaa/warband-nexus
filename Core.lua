@@ -539,17 +539,22 @@ function WarbandNexus:OnInitialize()
                     if ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus) then
                         local charKey = ns.Utilities:GetCharacterKey()
                         local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-                        
+
                         -- Only save if trackingConfirmed (popup already handled by InitializationService)
                         if charData and charData.trackingConfirmed then
                             if WarbandNexus.SaveCharacter then
                                 WarbandNexus:SaveCharacter()
                             end
-                            
+
                             -- NOTE: Notifications are now triggered by:
                             -- 1. InitializationService (returning users - faster path at T+2.0s)
                             -- 2. CharacterService:ConfirmCharacterTracking (first-time users - after popup)
                             -- CheckNotificationsOnLogin() is idempotent, so no double-fire risk
+                        end
+                    else
+                        -- Untracked characters: save minimal data (level, gold, etc.) for CharactersUI.
+                        if WarbandNexus.SaveMinimalCharacterData then
+                            WarbandNexus:SaveMinimalCharacterData()
                         end
                     end
                 end)
@@ -572,12 +577,17 @@ function WarbandNexus:OnInitialize()
                         if WarbandNexus.SaveCharacter then
                             WarbandNexus:SaveCharacter()
                         end
+                    else
+                        -- Untracked characters on reload: save minimal data
+                        if WarbandNexus.SaveMinimalCharacterData then
+                            WarbandNexus:SaveMinimalCharacterData()
+                        end
                     end
                 end)
             end
         end)
     end
-    
+
     -- Initialize configuration (defined in Config.lua)
     self:InitializeConfig()
     
@@ -939,11 +949,6 @@ end
     Compress and save SessionCache to SavedVariables
 ]]
 function WarbandNexus:OnPlayerLogout()
-    -- Persist logout-time snapshot for rested XP offline estimation.
-    if self.CaptureLogoutCharacterState then
-        self:CaptureLogoutCharacterState()
-    end
-
     -- Save runtime-discovered NPC names to cache for next session
     if self._saveNpcNameCache then
         self._saveNpcNameCache()

@@ -66,88 +66,6 @@ local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 
-local RESTED_GAIN_PER_SEC = 0.05 / (8 * 3600) -- 5% of level XP per 8h in rested area
--- Fallback xpMax for display when DB has none (so we can show "0%" and column is visible)
-local function GetFallbackXPMaxForLevel(level)
-    if not level or level < 1 then return 100000 end
-    return 100000 * math.min(level, 80)
-end
-
-local function GetMaxLevelSafe()
-    if type(GetMaxLevelForLatestExpansion) == "function" then
-        local lvl = GetMaxLevelForLatestExpansion()
-        if type(lvl) == "number" and lvl > 0 then
-            return lvl
-        end
-    end
-    return MAX_PLAYER_LEVEL or 80
-end
-
-local function GetEstimatedRestedXP(char, isCurrentCharacter)
-    local xpMax = 0
-    local restedXP = 0
-    local isResting = false
-
-    if isCurrentCharacter then
-        xpMax = UnitXPMax("player") or (char and (tonumber(char.xpMax) or char.xpMax)) or 0
-        restedXP = GetXPExhaustion() or (char and (tonumber(char.restedXP) or char.restedXP)) or 0
-        isResting = IsResting() or false
-    else
-        xpMax = (char and (tonumber(char.xpMax) or char.xpMax)) or 0
-        restedXP = (char and (tonumber(char.restedXP) or char.restedXP)) or 0
-        isResting = (char and char.isResting) == true
-    end
-    xpMax = tonumber(xpMax) or 0
-    restedXP = tonumber(restedXP) or 0
-
-    -- For non-current chars with level but no xpMax in DB, use fallback so we can show "0%" and column is visible
-    if not isCurrentCharacter and char and xpMax <= 0 then
-        local lvl = tonumber(char.level) or 0
-        local maxLvl = GetMaxLevelSafe()
-        if lvl > 0 and lvl < maxLvl then
-            xpMax = GetFallbackXPMaxForLevel(lvl)
-        end
-    end
-    if xpMax <= 0 then
-        return 0, 0, false
-    end
-
-    local restedCap = math.floor((xpMax * 1.5) + 0.5)
-    local totalRested = restedXP
-
-    -- Offline growth (concentration-style): while character is not logged in, rested continues to accumulate.
-    if not isCurrentCharacter and char and char.lastSeen and xpMax > 0 then
-        local elapsed = time() - (char.lastSeen or 0)
-        if elapsed > 0 then
-            totalRested = totalRested + (elapsed * xpMax * RESTED_GAIN_PER_SEC)
-        end
-    end
-
-    if totalRested < 0 then totalRested = 0 end
-    if totalRested > restedCap then totalRested = restedCap end
-
-    return totalRested, xpMax, true
-end
-
-local function BuildRestedXPText(char, isCurrentCharacter)
-    local level = (char and char.level) or 0
-    local maxLvl = GetMaxLevelSafe()
-    if level >= maxLvl then
-        return ""  -- Max level: show nothing
-    end
-
-    local restedXP, xpMax, isValid = GetEstimatedRestedXP(char, isCurrentCharacter)
-    if not isValid or xpMax <= 0 then
-        return ""
-    end
-
-    -- Show percentage even when 0% so the column is visible for non-max-level chars
-    local pct = (restedXP / xpMax) * 100
-    local pctStr = string.format("%.2f", pct)
-    return string.format("|cff6eb5e7%%%s|r", pctStr)
-end
-
-
 local function BuildGuildText(char, isCurrentCharacter)
     local guildName = (char and char.guildName) or nil
     if isCurrentCharacter then
@@ -603,27 +521,6 @@ function WarbandNexus:DrawCharacterList(parent)
         self._charListMaxGuildWidth = math.min(math.max(maxW + GUILD_PADDING, GUILD_MIN), GUILD_MAX)
     end
     
-    -- Debug: Rested column summary (when debugMode enabled)
-    if self.db.profile.debugMode then
-        local maxLvl = GetMaxLevelSafe()
-        local belowMax, withXpMax, showingRested = 0, 0, 0
-        for _, list in ipairs({trackedFavorites, trackedRegular, untracked}) do
-            for i = 1, #list do
-                local c = list[i]
-                local lvl = tonumber(c.level) or 0
-                if lvl > 0 and lvl < maxLvl then
-                    belowMax = belowMax + 1
-                    local xm = tonumber(c.xpMax) or 0
-                    if xm > 0 then withXpMax = withXpMax + 1 end
-                    local isCur = (GetCharKey(c) == currentPlayerKey)
-                    local rst = BuildRestedXPText(c, isCur)
-                    if rst and rst ~= "" then showingRested = showingRested + 1 end
-                end
-            end
-        end
-        DebugPrint(string.format("[CharactersUI] Rested: maxLevel=%s, level<max=%d, with xpMax in DB=%d, showing %%=%d", tostring(maxLvl), belowMax, withXpMax, showingRested))
-    end
-    
     -- ===== EMPTY STATE =====
     if #characters == 0 then
         local _, height = CreateEmptyStateCard(parent, "characters", yOffset)
@@ -975,76 +872,57 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.guildText:SetText(BuildGuildText(char, isCurrent))
     row.guildText:Show()
     
-    -- Level column: level centered; rested % on second line below when present (no truncation)
+    -- Level column: level + rested line (DB-driven).
     local guildTotal = guildColW + guildSpacing
     local levelOffset = guildOffset + guildTotal
     local levelColW = CHAR_ROW_COLUMNS.level.width
     if not row.levelText then
         row.levelText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.levelText:SetPoint("TOPLEFT", levelOffset, -8)
         row.levelText:SetWidth(levelColW)
         row.levelText:SetJustifyH("CENTER")
         row.levelText:SetWordWrap(false)
         row.levelText:SetMaxLines(1)
     end
-    row.levelText:SetText(string.format("|cff%02x%02x%02x%d|r",
-        classColor.r * 255, classColor.g * 255, classColor.b * 255,
-        char.level or 1))
-    row.levelText:Show()
+
     if not row.levelRestedText then
         row.levelRestedText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        row.levelRestedText:SetPoint("TOP", row.levelText, "BOTTOM", 0, -2)
         row.levelRestedText:SetWidth(levelColW)
         row.levelRestedText:SetJustifyH("CENTER")
         row.levelRestedText:SetWordWrap(false)
         row.levelRestedText:SetMaxLines(1)
     end
-    local restedStr = BuildRestedXPText(char, isCurrent)
-    row.levelRestedText:SetText(restedStr)
-    if restedStr and restedStr ~= "" then
+
+    local restedState = self.GetCharacterRestedState and self:GetCharacterRestedState(char)
+    local showRestedLine = restedState ~= nil
+    local showZzz = restedState and restedState.isRestingArea
+
+    row.levelText:ClearAllPoints()
+    if showRestedLine then
+        row.levelText:SetPoint("TOP", row, "TOPLEFT", levelOffset + (levelColW / 2), -7)
+    else
+        row.levelText:SetPoint("LEFT", levelOffset, 0)
+    end
+    row.levelText:SetText(string.format("|cff%02x%02x%02x%d|r",
+        classColor.r * 255, classColor.g * 255, classColor.b * 255,
+        char.level or 1))
+    row.levelText:Show()
+
+    if showRestedLine then
+        local restedPct = restedState.restedPercentOfLevel or 0
+        row.levelRestedText:ClearAllPoints()
+        row.levelRestedText:SetPoint("TOP", row.levelText, "BOTTOM", 0, -2)
+        if showZzz then
+            row.levelRestedText:SetText(string.format("|cff66c0ffZzz %.2f%%|r", restedPct))
+        else
+            row.levelRestedText:SetText(string.format("|cff66c0ff%.2f%%|r", restedPct))
+        end
         row.levelRestedText:Show()
     else
         row.levelRestedText:Hide()
     end
-    if row.restedXPText then row.restedXPText:Hide() end
 
-    -- Hit frame for level column: tooltip with Remaining Rested XP and Rested Area
-    if not row.levelRestedHitFrame then
-        row.levelRestedHitFrame = CreateFrame("Frame", nil, row)
-        row.levelRestedHitFrame:EnableMouse(true)
-        row.levelRestedHitFrame:SetScript("OnEnter", function(self)
-            local c = self._char
-            local cur = self._current
-            if not c then return end
-            local level = (c.level or 0)
-            local maxLvl = GetMaxLevelSafe()
-            local restedXP, xpMax, valid = GetEstimatedRestedXP(c, cur)
-            local isResting = cur and IsResting() or (c.isResting == true)
-            local restLabel = isResting and ((ns.L and ns.L["YES"]) or "Yes") or ((ns.L and ns.L["NO"]) or "No")
-            local lines = {}
-            if level >= maxLvl then
-                lines[#lines + 1] = { text = (ns.L and ns.L["MAX_LEVEL"]) or "Max level", color = {0.6, 0.6, 0.6} }
-            elseif valid and xpMax and xpMax > 0 then
-                local pct = (restedXP / xpMax) * 100
-                local line1 = string.format("%s : %s (%.2f%%)", (ns.L and ns.L["REMAINING_RESTED_XP"]) or "Remaining Rested XP", FormatNumber(math.floor(restedXP)), pct)
-                lines[#lines + 1] = { text = line1, color = {1, 1, 1} }
-            end
-            local line2 = string.format("%s : %s", (ns.L and ns.L["RESTED_AREA"]) or "Rested Area", restLabel)
-            lines[#lines + 1] = { text = line2, color = {0.85, 0.85, 0.85} }
-            if ShowTooltip then
-                ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["RESTED_XP"]) or "Rested XP", lines = lines, anchor = "ANCHOR_RIGHT" })
-            end
-        end)
-        row.levelRestedHitFrame:SetScript("OnLeave", function(self)
-            if HideTooltip then HideTooltip() end
-        end)
-    end
-    row.levelRestedHitFrame._char = char
-    row.levelRestedHitFrame._current = isCurrent
-    row.levelRestedHitFrame:ClearAllPoints()
-    row.levelRestedHitFrame:SetPoint("TOPLEFT", row, "TOPLEFT", levelOffset, 0)
-    row.levelRestedHitFrame:SetPoint("BOTTOMRIGHT", row, "TOPLEFT", levelOffset + levelColW, -46)
-    row.levelRestedHitFrame:Show()
+    if row.levelRestedIcon then row.levelRestedIcon:Hide() end
+    if row.levelRestedHitFrame then row.levelRestedHitFrame:Hide() end
 
     -- COLUMN: Item Level
     local itemLevelOffset = GetColumnOffset("itemLevel")
