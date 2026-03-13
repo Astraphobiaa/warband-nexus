@@ -334,6 +334,11 @@ L["TRACKING_WILL_BEGIN"] = "Data collection will begin immediately."
 L["CHARACTER_NOT_TRACKED"] = "This character is not being tracked."
 L["MUST_LOGIN_TO_ENABLE"] = "You must log in to this character to enable tracking."
 L["ENABLE_TRACKING"] = "Enable Tracking"
+L["TRACKING_NOT_ENABLED_TOOLTIP"] = "Character tracking is disabled. Click to open Characters tab."
+L["TRACKING_BADGE_CLICK_HINT"] = "Click to change tracking."
+L["TRACKING_TAB_LOCKED_TITLE"] = "Character is not tracked"
+L["TRACKING_TAB_LOCKED_DESC"] = "This tab works only for tracked characters.\nEnable tracking from the Characters page using the tracking icon."
+L["OPEN_CHARACTERS_TAB"] = "Open Characters"
 L["DELETE_CHARACTER_TITLE"] = "Delete Character?"
 L["THIS_CHARACTER"] = "this character"
 L["DELETE_CHARACTER"] = "Delete Character"
@@ -656,7 +661,6 @@ L["COMPLETED_REQ_FORMAT"] = "You completed %d of %d total requirements"
 
 -- Plans - Content & Quest Types
 L["CONTENT_MIDNIGHT"] = "Midnight"
-L["CONTENT_TWW"] = "The War Within"
 L["QUEST_TYPE_DAILY"] = "Daily Quests"
 L["QUEST_TYPE_DAILY_DESC"] = "Regular daily quests from NPCs"
 L["QUEST_TYPE_WORLD"] = "World Quests"
@@ -665,6 +669,9 @@ L["QUEST_TYPE_WEEKLY"] = "Weekly Quests"
 L["QUEST_TYPE_WEEKLY_DESC"] = "Weekly recurring quests"
 L["QUEST_TYPE_ASSIGNMENTS"] = "Assignments"
 L["QUEST_TYPE_ASSIGNMENTS_DESC"] = "Special assignments and tasks"
+L["QUEST_TYPE_CONTENT_EVENTS"] = "Content Events"
+L["QUEST_TYPE_CONTENT_EVENTS_DESC"] = "Bonus objectives, event tasks, and campaign-style activities"
+L["QUEST_CAT_CONTENT_EVENTS"] = "Content Event"
 
 -- Plans - Weekly Vault Progress
 L["MYTHIC_PLUS_LABEL"] = "Mythic+"
@@ -922,7 +929,10 @@ L["CHANGELOG_V214"] = "NEW FEATURES:\n- Gold Target: Smart automatic gold manage
 
 -- Changelog (What's New) - v2.2.0
 L["CHANGELOG_V220"] = "NEW FEATURES:\n- Gold Target: Smart automatic gold management system\n  • Set target gold amount per character (default: 10g)\n  • Three modes: Deposit Only, Withdraw Only, or Both\n  • Fully automatic deposits AND withdrawals when bank opens\n\n- Items Tab Restructured:\n  • 4 sub-tabs: Inventory, Personal Bank, Warband Bank, Guild Bank\n  • Gold display per sub-tab\n  • Character-guild tracking with automatic guild change detection\n\n- Storage Tab Enhanced:\n  • Multiple guild banks displayed separately\n  • Section ordering: Personal → Warband → Guild\n  • Each guild bank shows its guild name\n\n- Event-Driven Guild Bank System:\n  • Real-time automatic re-scan when contents change\n  • Cache updates when items/gold are deposited or withdrawn\n  • All characters in same guild see updated data\n\nBUG FIXES:\n- Fixed guild bank gold displaying wrong character's amount\n- Fixed guild bank items not updating after deposits/withdrawals\n- Fixed Guild Bank header not expanding in Storage tab\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
-L["CHANGELOG_V242"] = "NEW FEATURES:\n- Guild & Rested XP Track: Track guild membership and rested experience across characters\n- Money Logs & Gold Automation - Items UI: Per-character gold logs, deposit/withdraw history, gold target automation\n- New Tab: Gears: Equipped gear, upgrade options, storage recommendations, cross-character upgrade candidates\n- New Tab: Collections: Mounts, pets, toys, transmog overview and collection progress\n\nIMPROVEMENTS:\n- Midnight Updates for PvE: Full compatibility with Midnight 12.0.x APIs, encounter/difficulty handling\n- Midnight Updates for Reputations: Reputation cache and API updates for Midnight\n- Midnight Updates for Currencies: Currency cache and metadata for Midnight\n- Profession Improvements & Bug Fixes: Recipe Companion enhancements, profession window handling\n- Plans Revision: Source display fixes (e.g. Nether-Warped Drake), Mythic color consistency\n- Settings Revision: Settings UI updates and module management\n- Recipe Companion Update: Reagent sourcing and quality tier improvements\n- Performance Improvements: Frame budgets, batch sizes, async optimizations\n- Notification & Try Counter Stability: issecretvalue guards, deduplication fixes\n- Midnight Misc. Update: API compatibility, debug output only in debug mode\n\nLOCALIZATION:\n- Changelog and What's New translated to all 11 supported locales\n- Welcome screen tab descriptions updated with Gears and Collections\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+L["CHANGELOG_V242"] = "NEW FEATURES:\n- Guild & Rested XP Track:\n  • Track guild membership and rested experience across all characters\n- Money Logs & Gold Automation - Items UI:\n  • Per-character gold logs with deposit/withdraw history\n  • Gold target automation in Items tab\n- New Tab: Gears:\n  • View equipped gear with item level tracking\n  • Upgrade opportunities and storage recommendations (BoE/Warbound)\n  • Cross-character upgrade candidates\n- New Tab: Collections:\n  • Overview of mounts, pets, toys, transmog, and other collectibles\n  • Track collection progress and find missing items\n\nIMPROVEMENTS:\n- Midnight Updates for PvE:\n  • Full compatibility with Midnight 12.0.x APIs\n  • Encounter/difficulty handling, issecretvalue guards\n- Midnight Updates for Reputations:\n  • Reputation cache and API updates for Midnight\n- Midnight Updates for Currencies:\n  • Currency cache and metadata for Midnight\n- Profession Improvements & Bug Fixes:\n  • Recipe Companion enhancements, profession window handling\n- Plans Revision:\n  • Source display fixes (e.g. Nether-Warped Drake)\n  • Mythic color consistency\n- Settings Revision:\n  • Settings UI updates and module management\n- Recipe Companion Update:\n  • Reagent sourcing and quality tier improvements\n- Performance Improvements:\n  • Frame budgets, batch sizes, async optimizations\n- Notification & Try Counter System Stability:\n  • issecretvalue guards, deduplication fixes\n- Midnight Misc. Update:\n  • API compatibility, debug output only when debug mode enabled\n- Localization:\n  • Changelog and What's New translated to all 11 supported locales\n  • Welcome screen tab descriptions updated with Gears and Collections\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+
+-- Changelog (What's New) - v2.4.3 (same content as 2.4.2, build release)
+L["CHANGELOG_V243"] = "NEW FEATURES:\n- Guild & Rested XP Track:\n  • Track guild membership and rested experience across all characters\n- Money Logs & Gold Automation - Items UI:\n  • Per-character gold logs with deposit/withdraw history\n  • Gold target automation in Items tab\n- New Tab: Gears:\n  • View equipped gear with item level tracking\n  • Upgrade opportunities and storage recommendations (BoE/Warbound)\n  • Cross-character upgrade candidates\n- New Tab: Collections:\n  • Overview of mounts, pets, toys, transmog, and other collectibles\n  • Track collection progress and find missing items\n\nIMPROVEMENTS:\n- Midnight Updates for PvE:\n  • Full compatibility with Midnight 12.0.x APIs\n  • Encounter/difficulty handling, issecretvalue guards\n- Midnight Updates for Reputations:\n  • Reputation cache and API updates for Midnight\n- Midnight Updates for Currencies:\n  • Currency cache and metadata for Midnight\n- Profession Improvements & Bug Fixes:\n  • Recipe Companion enhancements, profession window handling\n- Plans Revision:\n  • Source display fixes (e.g. Nether-Warped Drake)\n  • Mythic color consistency\n- Settings Revision:\n  • Settings UI updates and module management\n- Recipe Companion Update:\n  • Reagent sourcing and quality tier improvements\n- Performance Improvements:\n  • Frame budgets, batch sizes, async optimizations\n- Notification & Try Counter System Stability:\n  • issecretvalue guards, deduplication fixes\n- Midnight Misc. Update:\n  • API compatibility, debug output only when debug mode enabled\n- Localization:\n  • Changelog and What's New translated to all 11 supported locales\n  • Welcome screen tab descriptions updated with Gears and Collections\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"
@@ -1238,10 +1248,13 @@ L["SYNCING_LABEL_FORMAT"] = "WN Syncing : %s"
 L["SETTINGS_UI_UNAVAILABLE"] = "Settings UI not available. Try /wn to open the main window."
 
 -- Character Tracking Dialog
-L["TRACKED_LABEL"] = "Tracked"
+L["TRACKED_LABEL"] = "Tracking"
 L["TRACKED_DETAILED_LINE1"] = "Full detailed data"
 L["TRACKED_DETAILED_LINE2"] = "All features enabled"
-L["UNTRACKED_LABEL"] = "Untracked"
+L["UNTRACKED_LABEL"] = "Not Tracking"
+L["TRACKING_BADGE_TRACKING"] = "Tracking"
+L["TRACKING_BADGE_UNTRACKED"] = "Not\nTracking"
+L["TRACKING_BADGE_BANK"] = "Bank is\nActive"
 L["UNTRACKED_VIEWONLY_LINE1"] = "View-only mode"
 L["UNTRACKED_VIEWONLY_LINE2"] = "Basic info only"
 L["TRACKING_ENABLED_CHAT"] = "Character tracking enabled. Data collection will begin."

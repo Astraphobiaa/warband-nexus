@@ -700,25 +700,6 @@ function WarbandNexus:CreateMainWindow()
     title:SetTextColor(1, 1, 1)  -- Always white
     f.title = title  -- Store reference
     
-    -- Status badge (modern rounded pill badge with NineSlice)
-    local statusBadge = CreateFrame("Frame", nil, header)
-    statusBadge:SetSize(76, 24)
-    statusBadge:SetPoint("LEFT", title, "RIGHT", 12, 0)
-    f.statusBadge = statusBadge
-    
-    -- Background with rounded corners using NineSlice
-    local bg = statusBadge:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.2, 0.7, 0.3, 0.25)
-    statusBadge.bg = bg
-    
-    -- Border removed (no backdrop)
-
-    local statusText = FontManager:CreateFontString(statusBadge, "small", "OVERLAY")
-    statusText:SetPoint("CENTER", 0, 0)
-    statusText:SetFont(statusText:GetFont(), 11, "OUTLINE")
-    f.statusText = statusText
-    
     -- Close button (Factory pattern with atlas icon)
     local closeBtn = CreateFrame("Button", nil, header)
     closeBtn:SetSize(28, 28)
@@ -769,6 +750,7 @@ function WarbandNexus:CreateMainWindow()
     infoBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
     infoBtn:SetScript("OnClick", function() WarbandNexus:ShowInfoDialog() end)
 
+    -- Discord button (tracking status is to its left)
     local discordBtn = CreateFrame("Button", nil, header)
     discordBtn:SetSize(30, 30)
     discordBtn:SetPoint("RIGHT", infoBtn, "LEFT", -6, 0)
@@ -825,6 +807,44 @@ function WarbandNexus:CreateMainWindow()
         discordCopyBox:SetFocus()
         discordCopyBox:HighlightText()
     end)
+
+    -- Tracking status: framed badge [text] [icon] directly left of Discord
+    local trackingStatusFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
+    trackingStatusFrame:SetSize(92, 36)
+    trackingStatusFrame:SetPoint("RIGHT", discordBtn, "LEFT", -6, 0)
+    if ApplyVisuals and ns.UI_COLORS then
+        local COLORS = ns.UI_COLORS
+        ApplyVisuals(trackingStatusFrame, {0.12, 0.12, 0.15, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    end
+
+    local trackingStatusBtn = CreateFrame("Button", nil, trackingStatusFrame)
+    trackingStatusBtn:SetAllPoints(trackingStatusFrame)
+    trackingStatusBtn:EnableMouse(true)
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(trackingStatusBtn)
+    end
+    f.statusBadge = trackingStatusBtn
+
+    local trackingIcon = trackingStatusBtn:CreateTexture(nil, "ARTWORK")
+    trackingIcon:SetSize(16, 16)
+    trackingIcon:SetPoint("RIGHT", trackingStatusFrame, "RIGHT", -6, 0)
+    local ok = pcall(trackingIcon.SetAtlas, trackingIcon, "common-icon-checkmark", false)
+    if not ok then
+        trackingIcon:SetTexture("Interface\\Icons\\Ability_Hunter_BeastTaming")
+    end
+    trackingIcon:SetVertexColor(0.3, 1, 0.4)
+    f.statusIcon = trackingIcon
+
+    local statusText = FontManager:CreateFontString(trackingStatusBtn, "small", "OVERLAY")
+    statusText:SetPoint("RIGHT", trackingIcon, "LEFT", -4, 0)
+    statusText:SetPoint("LEFT", trackingStatusFrame, "LEFT", 6, 0)
+    statusText:SetPoint("TOP", trackingStatusFrame, "TOP", 0, -4)
+    statusText:SetPoint("BOTTOM", trackingStatusFrame, "BOTTOM", 0, 4)
+    statusText:SetJustifyH("CENTER")
+    statusText:SetJustifyV("MIDDLE")
+    statusText:SetWordWrap(true)
+    statusText:SetNonSpaceWrap(false)
+    f.statusText = statusText
 
     -- Window Manager: register main window + ESC hierarchy + combat hide/restore
     if ns.WindowManager then
@@ -1326,8 +1346,19 @@ function WarbandNexus:PopulateContent()
     
     -- Draw based on current tab
     local height
-    
-    if mainFrame.currentTab == "chars" then
+    local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+    local trackedOnlyTabs = {
+        items = true,
+        storage = true,
+        pve = true,
+        reputations = true,
+        currency = true,
+    }
+
+    if not isTracked and trackedOnlyTabs[mainFrame.currentTab] then
+        scrollChild:SetWidth(scrollWidth)
+        height = self:DrawTrackingRequiredBanner(scrollChild)
+    elseif mainFrame.currentTab == "chars" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawCharacterList(scrollChild)
         mainFrame._lastCharsDrawTime = GetTime()
@@ -1397,36 +1428,123 @@ function WarbandNexus:PopulateContent()
 end
 
 --============================================================================
+-- TRACKING REQUIRED BANNER
+--============================================================================
+function WarbandNexus:DrawTrackingRequiredBanner(parent)
+    local card = CreateCard(parent, 170)
+    card:SetPoint("TOPLEFT", 10, -20)
+    card:SetPoint("TOPRIGHT", -10, -20)
+
+    local icon = card:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(34, 34)
+    icon:SetPoint("TOPLEFT", 14, -14)
+    local ok = pcall(icon.SetAtlas, icon, "common-icon-redx", false)
+    if not ok then
+        icon:SetTexture("Interface\\Icons\\Spell_Shadow_Teleport")
+    end
+    icon:SetVertexColor(1, 0.4, 0.4)
+
+    local title = GetFontManager():CreateFontString(card, "title", "OVERLAY")
+    title:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -2)
+    title:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -2)
+    title:SetJustifyH("LEFT")
+    title:SetTextColor(1, 0.55, 0.45)
+    title:SetText((ns.L and ns.L["TRACKING_TAB_LOCKED_TITLE"]) or "Character is not tracked")
+
+    local desc = GetFontManager():CreateFontString(card, "body", "OVERLAY")
+    desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    desc:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -8)
+    desc:SetJustifyH("LEFT")
+    desc:SetTextColor(0.88, 0.88, 0.88)
+    desc:SetText((ns.L and ns.L["TRACKING_TAB_LOCKED_DESC"]) or "This tab works only for tracked characters.\nEnable tracking from the Characters page using the tracking icon.")
+
+    local openCharsBtn = CreateThemedButton(card, (ns.L and ns.L["OPEN_CHARACTERS_TAB"]) or "Open Characters", 170)
+    openCharsBtn:SetPoint("BOTTOMLEFT", 14, 12)
+    openCharsBtn:SetScript("OnClick", function()
+        if mainFrame and mainFrame.tabButtons and mainFrame.tabButtons.chars then
+            mainFrame.currentTab = "chars"
+            if WarbandNexus.db and WarbandNexus.db.profile then
+                WarbandNexus.db.profile.lastTab = "chars"
+            end
+            UpdateTabButtonStates(mainFrame)
+            WarbandNexus:PopulateContent()
+        end
+    end)
+
+    return 200
+end
+
+--============================================================================
 -- UPDATE STATUS
 --============================================================================
 function WarbandNexus:UpdateStatus()
     if not mainFrame then return end
 
-    -- Status badge update (simplified - no conflict detection)
     local isOpen = self.bankIsOpen
-    
-    if isOpen then
-        -- Green badge for "Bank is Active" (rounded style)
-        if mainFrame.statusBadge.bg then
-            mainFrame.statusBadge.bg:SetColorTexture(0.15, 0.6, 0.25, 0.25)
+    local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+
+    local icon = mainFrame.statusIcon
+    local badge = mainFrame.statusBadge
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+
+    local function SetClickAndTooltip(tooltipText, tooltipHint)
+        if badge then
+            badge:SetScript("OnClick", function()
+                if InCombatLockdown() then return end
+                if charKey and ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
+                    ns.CharacterService:ShowCharacterTrackingConfirmation(WarbandNexus, charKey)
+                end
+            end)
+            badge:SetScript("OnEnter", function(b)
+                GameTooltip:SetOwner(b, "ANCHOR_BOTTOM")
+                GameTooltip:SetText(tooltipText or "", 1, 1, 1)
+                if tooltipHint then
+                    GameTooltip:AddLine(tooltipHint, 0.7, 0.7, 0.7, true)
+                end
+                GameTooltip:Show()
+            end)
+            badge:SetScript("OnLeave", function() GameTooltip:Hide() end)
         end
-        if mainFrame.statusBadge.border then
-            mainFrame.statusBadge.border:SetBackdropBorderColor(0.2, 0.9, 0.3, 0.8)
-        end
-        mainFrame.statusText:SetText((ns.L and ns.L["BANK_IS_ACTIVE"]) or "Bank is Active")
-        mainFrame.statusText:SetTextColor(0.3, 1, 0.4)
-    else
-        -- Hide badge when bank closed (cached)
-        if mainFrame.statusBadge.bg then
-            mainFrame.statusBadge.bg:SetColorTexture(0, 0, 0, 0)
-        end
-        if mainFrame.statusBadge.border then
-            mainFrame.statusBadge.border:SetBackdropBorderColor(0, 0, 0, 0)
-        end
-        mainFrame.statusText:SetText("")
-        mainFrame.statusText:SetTextColor(0, 0, 0, 0)
     end
 
+    if mainFrame.statusText then
+        if isOpen then
+            mainFrame.statusText:SetText((ns.L and ns.L["TRACKING_BADGE_BANK"]) or "Bank is\nActive")
+            mainFrame.statusText:SetTextColor(0.3, 1, 0.4)
+        elseif isTracked then
+            mainFrame.statusText:SetText((ns.L and ns.L["TRACKING_BADGE_TRACKING"]) or "Tracking")
+            mainFrame.statusText:SetTextColor(0.3, 1, 0.4)
+        else
+            mainFrame.statusText:SetText((ns.L and ns.L["TRACKING_BADGE_UNTRACKED"]) or "Not\nTracking")
+            mainFrame.statusText:SetTextColor(1, 0.5, 0.3)
+        end
+    end
+
+    if isOpen then
+        if icon then
+            pcall(icon.SetAtlas, icon, "common-icon-checkmark", false)
+            icon:SetVertexColor(0.3, 1, 0.4)
+            icon:Show()
+        end
+        SetClickAndTooltip((ns.L and ns.L["BANK_IS_ACTIVE"]) or "Bank is Active", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to change tracking.")
+    elseif isTracked then
+        if icon then
+            pcall(icon.SetAtlas, icon, "common-icon-checkmark", false)
+            icon:SetVertexColor(0.3, 1, 0.4)
+            icon:Show()
+        end
+        SetClickAndTooltip((ns.L and ns.L["TRACKING_ACTIVE_DESC"]) or "Data collection and updates are active.", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to change tracking.")
+    else
+        if icon then
+            local ok = pcall(icon.SetAtlas, icon, "common-icon-redx", false)
+            if not ok then
+                icon:SetTexture("Interface\\Icons\\Spell_Shadow_Teleport")
+            end
+            icon:SetVertexColor(1, 0.4, 0.3)
+            icon:Show()
+        end
+        SetClickAndTooltip((ns.L and ns.L["TRACKING_NOT_ENABLED_TOOLTIP"]) or "Character tracking is disabled.", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to enable tracking.")
+    end
 end
 
 --============================================================================

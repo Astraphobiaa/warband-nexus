@@ -201,7 +201,7 @@ function CommandService:HandleSlashCommand(addon, input)
         if addon.ShowUpdateNotification and ns.CHANGELOG then
             local ok, err = pcall(function()
                 addon:ShowUpdateNotification({
-                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "2.4.2",
+                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "2.4.3",
                     date = ns.CHANGELOG.date or "",
                     changes = ns.CHANGELOG.changes or {"No changelog available"}
                 })

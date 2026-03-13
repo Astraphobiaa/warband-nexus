@@ -1301,128 +1301,16 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.keystoneIcon:Show()
     row.keystoneText:Show()
     
-    -- Tracking Status Icon (left of Reorder column)
-    local isTracked = char.isTracked ~= false  -- Default to true if not set
-    local currentCharKey = ns.Utilities:GetCharacterKey()
-    local rowCharKey = GetCharKey(char)
-    local isCurrentCharacter = (currentCharKey == rowCharKey)
+    -- RIGHT-ANCHORED COLUMNS: [Delete] [LastSeen] [Reorder] (track column removed)
+    local R_MARGIN = 6
+    local R_GAP = 6
+    local deleteRight = R_MARGIN
+    local lastSeenRight = deleteRight + CHAR_ROW_COLUMNS.delete.width + R_GAP
+    local reorderRight = lastSeenRight + CHAR_ROW_COLUMNS.lastSeen.width + R_GAP
     
-    -- RIGHT-ANCHORED COLUMNS: compact, icon-sized, flush right
-    -- Layout from right: [Delete 24px] 6px [LastSeen 60px] 6px [Reorder 44px] 6px [Track 24px]
-    local R_MARGIN = 6   -- Right edge margin
-    local R_GAP = 6      -- Gap between right-side columns
-    local deleteRight = R_MARGIN                                                           -- 6
-    local lastSeenRight = deleteRight + CHAR_ROW_COLUMNS.delete.width + R_GAP              -- 36
-    local reorderRight = lastSeenRight + CHAR_ROW_COLUMNS.lastSeen.width + R_GAP           -- 102
-    local trackRight = reorderRight + CHAR_ROW_COLUMNS.reorder.width + R_GAP               -- 152
-    
-    if not row.trackingIcon then
-        -- Use Factory pattern (same as Reorder buttons)
-        row.trackingIcon = ns.UI.Factory:CreateButton(row, 24, 24, {0, 0, 0, 0}, nil, true)  -- Transparent bg, no border
-        row.trackingIcon.isPersistentRowElement = true
+    if row.trackingIcon then
+        row.trackingIcon:Hide()
     end
-    row.trackingIcon:ClearAllPoints()
-    row.trackingIcon:SetPoint("CENTER", row, "RIGHT", -(trackRight + 12), 0)
-    
-    if isTracked then
-        -- Tracked: Show green checkpoint
-        row.trackingIcon:SetNormalAtlas("DungeonStoneCheckpoint")
-        row.trackingIcon:SetAlpha(isCurrentCharacter and 1 or 0.3)  -- Dim if not current character
-        
-        -- Tooltip
-        row.trackingIcon:SetScript("OnEnter", function(self)
-            if ShowTooltip then
-                local tooltipLines = {
-                    {text = (ns.L and ns.L["CHARACTER_IS_TRACKED"]) or "This character is being tracked.", color = {0, 1, 0}},
-                    {text = (ns.L and ns.L["TRACKING_ACTIVE_DESC"]) or "Data collection and updates are active.", color = {1, 1, 1}},
-                }
-                
-                if isCurrentCharacter then
-                    table.insert(tooltipLines, {text = " ", color = {1, 1, 1}})
-                    table.insert(tooltipLines, {text = (ns.L and ns.L["CLICK_DISABLE_TRACKING"]) or "Click to disable tracking.", color = {1, 0.8, 0}})
-                else
-                    table.insert(tooltipLines, {text = " ", color = {1, 1, 1}})
-                    table.insert(tooltipLines, {text = (ns.L and ns.L["MUST_LOGIN_TO_CHANGE"]) or "You must log in to this character to change tracking.", color = {1, 0.5, 0.5}})
-                end
-                
-                ShowTooltip(self, {
-                    type = "custom",
-                    icon = "Interface\\Icons\\Spell_ChargePositive",
-                    title = (ns.L and ns.L["TRACKING_ENABLED"]) or "Tracking Enabled",
-                    titleColor = {0, 1, 0},
-                    lines = tooltipLines,
-                    anchor = "ANCHOR_TOP"
-                })
-            end
-        end)
-        row.trackingIcon:SetScript("OnLeave", function(self)
-            if HideTooltip then HideTooltip() end
-        end)
-        
-        -- Only clickable for current character
-        if isCurrentCharacter then
-            row.trackingIcon:Enable()
-            row.trackingIcon:SetScript("OnClick", function(self)
-                local charKey = GetCharKey(char)
-                local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-                if ns.CharacterService then
-                    ns.CharacterService:ShowTrackingChangeConfirmation(WarbandNexus, charKey, charName, false)
-                end
-            end)
-        else
-            row.trackingIcon:Disable()
-            row.trackingIcon:SetScript("OnClick", nil)
-        end
-    else
-        -- Untracked: Show deactivated checkpoint
-        row.trackingIcon:SetNormalAtlas("DungeonStoneCheckpointDeactivated")
-        row.trackingIcon:SetAlpha(isCurrentCharacter and 0.6 or 0.3)  -- Dim if not current character
-        
-        -- Tooltip
-        row.trackingIcon:SetScript("OnEnter", function(self)
-            if ShowTooltip then
-                local tooltipLines = {}
-                
-                if isCurrentCharacter then
-                    table.insert(tooltipLines, {text = (ns.L and ns.L["CLICK_ENABLE_TRACKING"]) or "Click to enable tracking for this character.", color = {1, 0.8, 0}})
-                    table.insert(tooltipLines, {text = (ns.L and ns.L["TRACKING_WILL_BEGIN"]) or "Data collection will begin immediately.", color = {1, 1, 1}})
-                else
-                    table.insert(tooltipLines, {text = (ns.L and ns.L["CHARACTER_NOT_TRACKED"]) or "This character is not being tracked.", color = {1, 0.5, 0.5}})
-                    table.insert(tooltipLines, {text = " ", color = {1, 1, 1}})
-                    table.insert(tooltipLines, {text = (ns.L and ns.L["MUST_LOGIN_TO_ENABLE"]) or "You must log in to this character to enable tracking.", color = {1, 0.5, 0.5}})
-                end
-                
-                ShowTooltip(self, {
-                    type = "custom",
-                    icon = "Interface\\Icons\\Spell_ChargeNegative",
-                    title = (ns.L and ns.L["ENABLE_TRACKING"]) or "Enable Tracking",
-                    titleColor = {1, 0.8, 0},
-                    lines = tooltipLines,
-                    anchor = "ANCHOR_TOP"
-                })
-            end
-        end)
-        row.trackingIcon:SetScript("OnLeave", function(self)
-            if HideTooltip then HideTooltip() end
-        end)
-        
-        -- Only clickable for current character
-        if isCurrentCharacter then
-            row.trackingIcon:Enable()
-            row.trackingIcon:SetScript("OnClick", function(self)
-                local charKey = GetCharKey(char)
-                local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-                if ns.CharacterService then
-                    ns.CharacterService:ShowTrackingChangeConfirmation(WarbandNexus, charKey, charName, true)
-                end
-            end)
-        else
-            row.trackingIcon:Disable()
-            row.trackingIcon:SetScript("OnClick", nil)
-        end
-    end
-    
-    row.trackingIcon:Show()
     
     -- Reorder Buttons (right-aligned column, centered content)
     if not row.reorderButtons then

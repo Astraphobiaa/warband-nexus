@@ -1,4 +1,4 @@
-# Warband Nexus v2.4.2 — Changelog
+# Warband Nexus v2.4.3 — Changelog
 
 **Release Date:** March 13, 2026
 

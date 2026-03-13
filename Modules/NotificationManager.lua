@@ -14,28 +14,30 @@ local NotificationEvents = {}
 local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
--- Changelog for current version (loaded from locale)
+-- Changelog for current version (loaded from locale when called)
+local FALLBACK_CHANGELOG = "CHANGES:\n" ..
+    "- Localization coverage completed for all supported locales.\n" ..
+    "- AddOn version updated to 2.4.3 with version consistency fixes.\n" ..
+    "- Debug chat output reduced to show only when debug mode is enabled.\n" ..
+    "\n" ..
+    "Thank you for your continued support!\n" ..
+    "\n" ..
+    "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V242"]) or
-        "CHANGES:\n" ..
-        "- Localization coverage completed for all supported locales.\n" ..
-        "- AddOn version updated to 2.4.2 with version consistency fixes.\n" ..
-        "- Debug chat output reduced to show only when debug mode is enabled.\n" ..
-        "\n" ..
-        "Thank you for your continued support!\n" ..
-        "\n" ..
-        "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
-
-
+    local changelogText = (ns.L and (ns.L["CHANGELOG_V243"] or ns.L["CHANGELOG_V242"])) or FALLBACK_CHANGELOG
+    if not changelogText or changelogText == "" then
+        changelogText = FALLBACK_CHANGELOG
+    end
     local changes = {}
-    for line in changelogText:gmatch("([^\n]*)") do
+    for line in (changelogText or ""):gmatch("([^\n]*)") do
         changes[#changes + 1] = line
     end
     return changes
 end
 
 local CHANGELOG = {
-    version = "2.4.2",
+    version = "2.4.3",
     date = "2026-03-13",
     changes = BuildChangelog()
 }

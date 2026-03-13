@@ -752,6 +752,7 @@ L["QUEST_CAT_DAILY"] = "Täglich"
 L["QUEST_CAT_WORLD"] = "Welt"
 L["QUEST_CAT_WEEKLY"] = "Wöchentlich"
 L["QUEST_CAT_ASSIGNMENT"] = "Auftrag"
+L["QUEST_CAT_CONTENT_EVENTS"] = "Content Event"
 
 -- Plans - Browse
 L["UNKNOWN_CATEGORY"] = "Unbekannte Kategorie"
@@ -773,6 +774,8 @@ L["QUEST_TYPE_WEEKLY"] = "Wöchentliche Quests"
 L["QUEST_TYPE_WEEKLY_DESC"] = "Wöchentlich wiederkehrende Quests"
 L["QUEST_TYPE_ASSIGNMENTS"] = "Aufträge"
 L["QUEST_TYPE_ASSIGNMENTS_DESC"] = "Spezielle Aufträge und Aufgaben"
+L["QUEST_TYPE_CONTENT_EVENTS"] = "Inhalts-Events"
+L["QUEST_TYPE_CONTENT_EVENTS_DESC"] = "Bonusziele, Event-Aufgaben und kampagnenstil Aktivitäten"
 
 -- Plans - Weekly Vault Progress
 L["MYTHIC_PLUS_LABEL"] = "Mythisch+"
@@ -1701,4 +1704,5 @@ L["MONEY_LOGS_RESET"] = "Reset"
 L["MONEY_LOGS_FILTER_ALL"] = "All"
 L["MONEY_LOGS_CHAT_DEPOSIT"] = "|cff00ff00Money Log:|r Deposited %s to Warband Bank"
 L["MONEY_LOGS_CHAT_WITHDRAW"] = "|cffff9900Money Log:|r Withdrew %s from Warband Bank"
-L["CHANGELOG_V242"] = "NEUE FUNKTIONEN:\n- Gilde & Erholte XP: Gilde-Mitgliedschaft und erholte Erfahrung über Charaktere\n- Geld-Logs & Gold-Automatisierung - Items UI: Pro-Charakter Gold-Logs, Ein-/Auszahlverlauf\n- Neuer Tab: Ausrüstung: Ausgerüstete Items, Upgrade-Optionen, Lager-Empfehlungen, Upgrade-Kandidaten\n- Neuer Tab: Sammlungen: Übersicht Reittiere, Haustiere, Spielzeuge, Transmog und Fortschritt\n\nVERBESSERUNGEN:\n- Midnight Updates für PvE, Ruf, Währungen\n- Berufe & Rezept-Begleiter\n- Pläne-Revision, Einstellungen, Leistung, Benachrichtigungen\n- Lokalisierung für alle 11 Sprachen\n\nDanke für die Unterstützung! CurseForge - Warband Nexus."
+L["CHANGELOG_V242"] = "NEUE FUNKTIONEN:\n- Gilde & Erholte XP:\n  • Gilde-Mitgliedschaft und erholte Erfahrung über alle Charaktere\n- Geld-Logs & Gold-Automatisierung - Items UI:\n  • Pro-Charakter Gold-Logs mit Ein-/Auszahlverlauf\n  • Gold-Ziel-Automatisierung im Items-Tab\n- Neuer Tab: Ausrüstung:\n  • Ausgerüstete Items mit Gegenstandsstufe\n  • Upgrade-Optionen und Lager-Empfehlungen (BoE/Warbound)\n  • Upgrade-Kandidaten über Charaktere\n- Neuer Tab: Sammlungen:\n  • Übersicht Reittiere, Haustiere, Spielzeuge, Transmog\n  • Sammlungsfortschritt und fehlende Items finden\n\nVERBESSERUNGEN:\n- Midnight Updates für PvE:\n  • Volle Kompatibilität mit Midnight 12.0.x APIs\n  • Encounter/Schwierigkeit, issecretvalue Guards\n- Midnight Updates für Ruf & Währungen\n- Berufe & Rezept-Begleiter\n- Pläne-Revision: Quellen-Anzeige (z.B. Nether-Warped Drake), Mythic-Farbkonsistenz\n- Einstellungen-Revision, Rezept-Begleiter Update, Leistung\n- Benachrichtigungs- & Try-Counter-Stabilität\n- Lokalisierung für alle 11 Sprachen\n\nDanke für die Unterstützung! CurseForge - Warband Nexus."
+L["CHANGELOG_V243"] = "NEUE FUNKTIONEN:\n- Gilde & Erholte XP:\n  • Gilde-Mitgliedschaft und erholte Erfahrung über alle Charaktere\n- Geld-Logs & Gold-Automatisierung - Items UI:\n  • Pro-Charakter Gold-Logs mit Ein-/Auszahlverlauf\n  • Gold-Ziel-Automatisierung im Items-Tab\n- Neuer Tab: Ausrüstung:\n  • Ausgerüstete Items mit Gegenstandsstufe\n  • Upgrade-Optionen und Lager-Empfehlungen (BoE/Warbound)\n  • Upgrade-Kandidaten über Charaktere\n- Neuer Tab: Sammlungen:\n  • Übersicht Reittiere, Haustiere, Spielzeuge, Transmog\n  • Sammlungsfortschritt und fehlende Items finden\n\nVERBESSERUNGEN:\n- Midnight Updates für PvE:\n  • Volle Kompatibilität mit Midnight 12.0.x APIs\n  • Encounter/Schwierigkeit, issecretvalue Guards\n- Midnight Updates für Ruf & Währungen\n- Berufe & Rezept-Begleiter\n- Pläne-Revision: Quellen-Anzeige (z.B. Nether-Warped Drake), Mythic-Farbkonsistenz\n- Einstellungen-Revision, Rezept-Begleiter Update, Leistung\n- Benachrichtigungs- & Try-Counter-Stabilität\n- Lokalisierung für alle 11 Sprachen\n\nDanke für die Unterstützung! CurseForge - Warband Nexus."
