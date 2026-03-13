@@ -16,15 +16,11 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (loaded from locale)
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V220"]) or
+    local changelogText = (ns.L and ns.L["CHANGELOG_V242"]) or
         "CHANGES:\n" ..
-        "- Gold Target System: Automatic gold management with deposit/withdraw modes.\n" ..
-        "- Items Tab Restructured: 4 sub-tabs (Inventory, Personal Bank, Warband Bank, Guild Bank).\n" ..
-        "- Storage Tab Enhanced: Multiple guild banks displayed separately.\n" ..
-        "- Event-Driven Guild Bank: Real-time automatic re-scan when contents change.\n" ..
-        "- Fixed guild bank gold displaying wrong character's amount.\n" ..
-        "- Fixed guild bank items not updating after deposits/withdrawals.\n" ..
-        "- Added comprehensive debug logging for guild bank operations.\n" ..
+        "- Localization coverage completed for all supported locales.\n" ..
+        "- AddOn version updated to 2.4.2 with version consistency fixes.\n" ..
+        "- Debug chat output reduced to show only when debug mode is enabled.\n" ..
         "\n" ..
         "Thank you for your continued support!\n" ..
         "\n" ..
@@ -39,8 +35,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.2.0",
-    date = "2026-02-23",
+    version = "2.4.2",
+    date = "2026-03-13",
     changes = BuildChangelog()
 }
 

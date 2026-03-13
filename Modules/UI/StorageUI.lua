@@ -1188,7 +1188,9 @@ if warbandExpanded then
     if self.db and self.db.global and self.db.global.guildBank then
         for guildName, guildData in pairs(self.db.global.guildBank) do
             if guildData and guildData.tabs then
-                print("[StorageUI] Found cached guild bank:", guildName)
+                if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+                    _G.print("[StorageUI] Found cached guild bank:", guildName)
+                end
                 
                 -- Flatten all items from all tabs for this guild
                 local guildItems = {}
@@ -1220,7 +1222,9 @@ if warbandExpanded then
                                 end
                                 table.insert(guildItems[typeName], item)
                                 
-                                print("[StorageUI] Item", item.itemID, "from", guildName, "-> typeName:", typeName)
+                                if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+                                    _G.print("[StorageUI] Item", item.itemID, "from", guildName, "-> typeName:", typeName)
+                                end
                             end
                         end
                     end
@@ -1255,11 +1259,13 @@ if warbandExpanded then
         end
     end
     
-    print("[StorageUI] Total guild bank items:", guildTotalMatches, "from", (function()
-        local count = 0
-        for _ in pairs(allGuildItems) do count = count + 1 end
-        return count
-    end)(), "guilds")
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+        _G.print("[StorageUI] Total guild bank items:", guildTotalMatches, "from", (function()
+            local count = 0
+            for _ in pairs(allGuildItems) do count = count + 1 end
+            return count
+        end)(), "guilds")
+    end
     
     -- Render each guild's bank separately
     for guildName, guildItems in pairs(allGuildItems) do

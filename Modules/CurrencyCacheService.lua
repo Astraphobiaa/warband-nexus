@@ -5,7 +5,7 @@
     
     SV Format (minimal — only data that can't be fetched from API for offline chars):
     {
-      version = "1.0.0",
+      version = "2.0.0",
       lastScan = timestamp,
       currencies = {
         [charKey] = {
@@ -46,7 +46,7 @@ end
 
 local CurrencyCache = {
     -- Metadata only (no data storage)
-    version = "2.0.0",
+    version = Constants.CURRENCY_CACHE_VERSION,
     lastFullScan = 0,
     lastUpdate = 0,
     
@@ -1404,7 +1404,7 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
     
     local updatedAny = false
     
-    print(string.format("|cff9370DB[WN]|r SyncAccountCurrencies started for %d currencies.", #currenciesToSync))
+    DebugPrint(string.format("SyncAccountCurrencies started for %d currencies.", #currenciesToSync))
     
     -- Process each currency
     for _, currencyID in ipairs(currenciesToSync) do

@@ -4335,8 +4335,14 @@ local function CreateExternalWindow(config)
     local dialog = CreateFrame("Frame", globalName, UIParent)
     dialog:SetSize(width, height)
     dialog:SetPoint("CENTER")
-    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-    dialog:SetFrameLevel(100)
+
+    -- WindowManager: standardized strata/level
+    if ns.WindowManager then
+        ns.WindowManager:ApplyStrata(dialog, ns.WindowManager.PRIORITY.POPUP)
+    else
+        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+        dialog:SetFrameLevel(200)
+    end
     
     -- Apply border and background
     if ApplyVisuals then
@@ -4357,16 +4363,20 @@ local function CreateExternalWindow(config)
         ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
     end
     
-    -- Make header draggable
-    header:EnableMouse(true)
-    header:SetMovable(true)
-    header:RegisterForDrag("LeftButton")
-    header:SetScript("OnDragStart", function()
-        dialog:StartMoving()
-    end)
-    header:SetScript("OnDragStop", function()
-        dialog:StopMovingOrSizing()
-    end)
+    -- Make header draggable (combat-safe)
+    if ns.WindowManager then
+        ns.WindowManager:InstallDragHandler(header, dialog)
+    else
+        header:EnableMouse(true)
+        header:SetMovable(true)
+        header:RegisterForDrag("LeftButton")
+        header:SetScript("OnDragStart", function()
+            if not InCombatLockdown() then dialog:StartMoving() end
+        end)
+        header:SetScript("OnDragStop", function()
+            dialog:StopMovingOrSizing()
+        end)
+    end
     
     -- Icon (support both texture and atlas)
     local iconIsAtlas = config.iconIsAtlas or false
@@ -4440,7 +4450,7 @@ local function CreateExternalWindow(config)
     dialog._clickOutsideFrame = clickOutsideFrame
     clickOutsideFrame:SetAllPoints()
     clickOutsideFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-    clickOutsideFrame:SetFrameLevel(99) -- Just below dialog
+    clickOutsideFrame:SetFrameLevel(dialog:GetFrameLevel() - 1) -- Just below dialog
     clickOutsideFrame:EnableMouse(true)
     clickOutsideFrame:SetScript("OnMouseDown", function()
         CloseDialog()
@@ -4457,17 +4467,25 @@ local function CreateExternalWindow(config)
         clickOutsideFrame:Show()
     end)
     
-    -- Close on Escape
-    dialog:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            CloseDialog()
-        end
-    end)
-    if not InCombatLockdown() then dialog:SetPropagateKeyboardInput(true) end
-    
     -- Store close function
     dialog.Close = CloseDialog
-    
+
+    -- WindowManager: register popup + ESC handler + combat hide
+    if ns.WindowManager then
+        ns.WindowManager:Register(dialog, ns.WindowManager.PRIORITY.POPUP, CloseDialog)
+        ns.WindowManager:InstallESCHandler(dialog)
+    else
+        dialog:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
+                CloseDialog()
+            else
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+            end
+        end)
+        if not InCombatLockdown() then dialog:SetPropagateKeyboardInput(true) end
+    end
+
     return dialog, contentFrame, header
 end
 

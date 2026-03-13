@@ -566,7 +566,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 containerY = containerY - 18
             end
             
-            -- Location (Zone) — append difficulty label for mounts
+            -- Location (Zone) — append difficulty label for mounts (consistent white; avoid duplication)
             if source.zone then
                 local zoneDiffLabel = ""
                 if plan and plan.type == "mount" and WarbandNexus and WarbandNexus.GetDropDifficulty then
@@ -574,7 +574,11 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                     if mountID then
                         local diff = WarbandNexus:GetDropDifficulty("mount", mountID)
                         if diff then
-                            zoneDiffLabel = " |cffffcc00(" .. diff .. ")|r"
+                            -- Don't duplicate: zone may already contain "(Mythic)" from API
+                            if not source.zone:find("(" .. diff .. ")", 1, true) then
+                                local bodyColor = (ns.PLAN_UI_COLORS or {}).body or "|cffffffff"
+                                zoneDiffLabel = " " .. bodyColor .. "(" .. diff .. ")|r"
+                            end
                         end
                     end
                 end
@@ -2428,7 +2432,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     yOffset = yOffset - (questText:GetStringHeight() or 18) - 4
                 end
                 
-                -- Location (Zone) — append difficulty label for mounts
+                -- Location (Zone) — append difficulty label for mounts (consistent white; avoid duplication)
                 if source.zone then
                     local zoneDiffLabel = ""
                     if plan and plan.type == "mount" and WarbandNexus and WarbandNexus.GetDropDifficulty then
@@ -2436,7 +2440,11 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                         if mountID then
                             local diff = WarbandNexus:GetDropDifficulty("mount", mountID)
                             if diff then
-                                zoneDiffLabel = " |cffffcc00(" .. diff .. ")|r"
+                                if not source.zone:find("(" .. diff .. ")", 1, true) then
+                                    local P = ns.PLAN_UI_COLORS or {}
+                                    local bodyColor = P.body or "|cffffffff"
+                                    zoneDiffLabel = " " .. bodyColor .. "(" .. diff .. ")|r"
+                                end
                             end
                         end
                     end

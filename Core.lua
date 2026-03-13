@@ -253,8 +253,8 @@ local defaults = {
         },
     },
     global = {
-        -- Database version for migration tracking
-        dataVersion = 1,  -- Will be set to 2 after migration
+        -- Database version for migration tracking (must match Constants.DB_VERSION)
+        dataVersion = 1,
         
         -- Warband bank cache (SHARED across all characters) - working storage
         warbandBank = {

@@ -215,6 +215,12 @@ function WarbandNexus:ShowInfoDialog()
     AddText((ns.L and ns.L["INFO_TAB_PROFESSIONS"]) or "Professions", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["PROFESSIONS_INFO_DESC"]) or "Track profession skills, concentration, knowledge, and specialization trees across all characters. Includes Recipe Companion for reagent sourcing.", "body", {0.9, 0.9, 0.9}, 10)
     
+    AddText((ns.L and ns.L["INFO_TAB_GEAR"]) or "Gear", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["GEAR_DESC"]) or "Equipped gear, upgrade options, storage recommendations, and cross-character upgrade candidates.", "body", {0.9, 0.9, 0.9}, 10)
+    
+    AddText((ns.L and ns.L["INFO_TAB_COLLECTIONS"]) or "Collections", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["COLLECTIONS_DESC"]) or "Overview of mounts, pets, toys, transmog, and other collectibles. Track collection progress and find missing items.", "body", {0.9, 0.9, 0.9}, 10)
+    
     AddText((ns.L and ns.L["INFO_TAB_STATISTICS"]) or "Statistics", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["STATISTICS_DESC"]) or "View achievement points, mount/pet/toy/illusion/title collection progress, unique pet count, and bag/bank usage statistics.", "body", {0.9, 0.9, 0.9}, 25)
     

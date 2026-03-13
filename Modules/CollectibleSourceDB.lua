@@ -48,7 +48,7 @@ local _goldenmane = {
     { type = "mount", itemID = 163573, name = "Goldenmane's Reins", repeatable = true },
 }
 
--- TWW "Isle of Dorn" Crackling Shard - shared drop table (17 rares, ≥1% drop rate)
+-- TWW "Isle of Dorn" Crackling Shard - shared drop table (17 rares, â‰¥1% drop rate)
 -- 10x Crackling Shard -> Storm Vessel -> defeat Alunira -> Alunira mount
 -- Try count stored on mount so mount UI shows attempts (tryCountReflectsTo).
 local _cracklingShard = {
@@ -1037,8 +1037,8 @@ ns.CollectibleSourceDB = {
             },
         },
 
-        -- Isle of Dorn — Crackling Shard sources (10x -> Storm Vessel -> Alunira mount)
-        -- Rares with ≥1% drop rate. All repeatable, no weekly lockout.
+        -- Isle of Dorn â€” Crackling Shard sources (10x -> Storm Vessel -> Alunira mount)
+        -- Rares with â‰¥1% drop rate. All repeatable, no weekly lockout.
         [219266] = _cracklingShard, -- Escaped Cutthroat (Isle of Dorn) ~5%
         [219268] = _cracklingShard, -- Gar'loc (Isle of Dorn) ~3%
         [221128] = _cracklingShard, -- Clawbreaker K'zithix (Isle of Dorn) ~3%
@@ -1075,7 +1075,7 @@ ns.CollectibleSourceDB = {
         },
 
         -- 11.1 - Undermine
-        [234621] = { -- Gallagio Garbage (Undermine) [Verified] — no loot lockout, repeatable
+        [234621] = { -- Gallagio Garbage (Undermine) [Verified] â€” no loot lockout, repeatable
             { type = "mount", itemID = 229953, name = "Salvaged Goblin Gazillionaire's Flying Machine" },
         },
         [231310] = { -- Darkfuse Precipitant (Undermine) [Verified]
@@ -1201,20 +1201,20 @@ ns.CollectibleSourceDB = {
         [256926] = _voidstormRareMounts, -- Queen o' War
         [257027] = _voidstormRareMounts, -- Rakshur the Bonegrinder (Slayer's Rise)
 
-        -- Midnight 12.0 — only bosses that drop mounts (2 dungeons M/M+, 1 raid M)
+        -- Midnight 12.0 â€” only bosses that drop mounts (2 dungeons M/M+, 1 raid M)
         -- Source: warcraftmounts.com Patch 12.0.1; encounter IDs: wago.tools DungeonEncounter DB2
         -- difficultyIDs: 23 = Mythic dungeon, 8 = Mythic Keystone (M+), 16 = Mythic raid (all map to "Mythic")
-        [231636] = { -- Restless Heart (Windrunner Spire) — Spectral Hawkstrider — encounterID 3059
+        [231636] = { -- Restless Heart (Windrunner Spire) â€” Spectral Hawkstrider â€” encounterID 3059
             { type = "mount", itemID = 246592, name = "Spectral Hawkstrider" },
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+); same encounter, no separate M+ entry
         },
-        [219440] = { -- Degentrius (Magisters' Terrace) — Lucent Hawkstrider — encounterID 3074 (npc=219440 warcraftmounts)
+        [219440] = { -- Degentrius (Magisters' Terrace) â€” Lucent Hawkstrider â€” encounterID 3074 (npc=219440 warcraftmounts)
             { type = "mount", itemID = 246591, name = "Lucent Hawkstrider" },
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+)
         },
-        [214650] = { -- L'ura / Midnight Falls (March on Quel'Danas raid final boss) — encounterID 3183
+        [214650] = { -- L'ura / Midnight Falls (March on Quel'Danas raid final boss) â€” encounterID 3183
             { type = "mount", itemID = 246590, name = "Ashes of Belo'ren", guaranteed = true },
             dropDifficulty = "Mythic",
             difficultyIDs = { 16 },  -- Mythic raid only
@@ -1225,9 +1225,9 @@ ns.CollectibleSourceDB = {
         -- ========================================
 
         -- Holiday bosses: mounts drop from CONTAINER ITEMS, not boss corpse loot.
-        -- Headless Horseman → Loot-Filled Pumpkin (container 209024)
-        -- Coren Direbrew → Keg-Shaped Treasure Chest (container 117393)
-        -- Apothecary Hummel → Heart-Shaped Box (container 54537)
+        -- Headless Horseman â†’ Loot-Filled Pumpkin (container 209024)
+        -- Coren Direbrew â†’ Keg-Shaped Treasure Chest (container 117393)
+        -- Apothecary Hummel â†’ Heart-Shaped Box (container 54537)
         -- All holiday boss mounts are tracked in the containers table below.
     },
 
@@ -1266,7 +1266,7 @@ ns.CollectibleSourceDB = {
         },
 
         -- TWW 11.1 - Undermine
-        [469857] = { -- Overflowing Dumpster (Undermine) — dumpster diving
+        [469857] = { -- Overflowing Dumpster (Undermine) â€” dumpster diving
             _miscMechanica[1],
         },
     },
@@ -1535,7 +1535,7 @@ ns.CollectibleSourceDB = {
                 { type = "mount", itemID = 257176, name = "Duskbrute Harrower" },
             },
         },
-        -- Stormarion Assault (Voidstorm) weekly — Victorious Stormarion Pinnacle Cache
+        -- Stormarion Assault (Voidstorm) weekly â€” Victorious Stormarion Pinnacle Cache
         -- If container/mount not detected, verify container item ID in-game (cache in bags) and update key/drops.
         [267300] = { -- Victorious Stormarion Pinnacle Cache
             drops = {
@@ -1559,7 +1559,7 @@ ns.CollectibleSourceDB = {
         -- Holiday Containers
         -- IMPORTANT: Holiday boss mounts drop from these container items, NOT from
         -- boss corpse loot. Players receive the container once per day via LFG,
-        -- open it from bags → LOOT_OPENED fires with isFromItem=true → ProcessContainerLoot.
+        -- open it from bags â†’ LOOT_OPENED fires with isFromItem=true â†’ ProcessContainerLoot.
         -- Multiple item IDs cover different WoW versions (Blizzard changes these per expansion).
 
         [54537] = { -- Heart-Shaped Box (Love is in the Air)
@@ -1601,8 +1601,8 @@ ns.CollectibleSourceDB = {
     },
 
     legacyZones = {
-        -- TWW: Isle of Dorn — Crackling Shard (any mob in zone, <1% for normals)
-        -- 165 mobs total. Rares with ≥1% are also in npcs section for specific tracking.
+        -- TWW: Isle of Dorn â€” Crackling Shard (any mob in zone, <1% for normals)
+        -- 165 mobs total. Rares with â‰¥1% are also in npcs section for specific tracking.
         -- This zone entry catches ALL normal mob kills as a fallback.
         [2248] = _cracklingShard, -- Isle of Dorn (uiMapID)
 
@@ -1691,12 +1691,12 @@ ns.CollectibleSourceDB = {
         [2922] = { 218370 }, -- Queen Ansurek (Nerub-ar Palace)
         [2611] = { 241526 }, -- Chrome King Gallywix (Liberation of Undermine)
 
-        -- Midnight 12.0 — only encounters that drop mounts (wago.tools DungeonEncounter DB2)
+        -- Midnight 12.0 â€” only encounters that drop mounts (wago.tools DungeonEncounter DB2)
         -- difficultyIDs per encounter: dungeons 23 (Mythic) + 8 (Mythic Keystone / M+); raid 16 (Mythic).
         -- Mythic+ uses the SAME encounterID as Mythic dungeon; no separate M+ encounter entry needed.
-        [3059] = { 231636 },   -- Restless Heart (Windrunner Spire) — difficultyIDs 23, 8 — Spectral Hawkstrider
-        [3074] = { 219440 },   -- Degentrius (Magisters' Terrace) — difficultyIDs 23, 8 — Lucent Hawkstrider
-        [3183] = { 214650 },   -- Midnight Falls / L'ura (March on Quel'Danas) — difficultyID 16 — Ashes of Belo'ren
+        [3059] = { 231636 },   -- Restless Heart (Windrunner Spire) â€” difficultyIDs 23, 8 â€” Spectral Hawkstrider
+        [3074] = { 219440 },   -- Degentrius (Magisters' Terrace) â€” difficultyIDs 23, 8 â€” Lucent Hawkstrider
+        [3183] = { 214650 },   -- Midnight Falls / L'ura (March on Quel'Danas) â€” difficultyID 16 â€” Ashes of Belo'ren
     },
 
     legacyEncounterNames = {
@@ -1787,13 +1787,13 @@ ns.CollectibleSourceDB = {
         [231310] = 85010,  -- Darkfuse Precipitant
     },
 
-    -- Display name (EN) → npcID for lockout NPCs; used to gray "Drop: Name" in Plans when no loot this period.
+    -- Display name (EN) â†’ npcID for lockout NPCs; used to gray "Drop: Name" in Plans when no loot this period.
     lockoutNpcNames = {
         ["Darkfuse Precipitant"] = 231310,
     },
 
     -- =================================================================
-    -- NPC NAME → NPC IDs REVERSE INDEX (Midnight 12.0 tooltip fallback)
+    -- NPC NAME â†’ NPC IDs REVERSE INDEX (Midnight 12.0 tooltip fallback)
     -- When UnitGUID returns secret values inside instances, the tooltip
     -- hook reads the NPC name from the tooltip text and looks up drops
     -- by name instead of by GUID.
@@ -2281,4 +2281,115 @@ function ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
     end
 
     return db._toySourceByItemID[itemID]
+end
+
+-- =================================================================
+-- MOUNT SOURCE LOOKUP (for Plans when API returns empty)
+-- Returns display string when mount is in DB (fishing, zone_drop, npc, etc.).
+-- Used when C_MountJournal.GetMountInfoExtraByID returns empty (e.g. Nether-Warped Drake).
+-- Lazy-builds mountID -> sourceString index via GetMountFromItem(itemID).
+-- =================================================================
+function ns.CollectibleSourceDB.GetSourceStringForMount(mountID)
+    if not mountID or type(mountID) ~= "number" then return nil end
+    local db = ns.CollectibleSourceDB
+    if not db then return nil end
+    if not C_MountJournal or not C_MountJournal.GetMountFromItem then return nil end
+
+    if ns.EnsureBlizzardCollectionsLoaded then ns.EnsureBlizzardCollectionsLoaded() end
+
+    if not db._mountSourceByMountID then
+        local dropLabel = (ns.L and ns.L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop"
+        local zoneDrop = (ns.L and ns.L["ZONE_DROP"]) or "Zone drop"
+        local fishing = (ns.L and ns.L["FISHING"]) or "Fishing"
+        local idx = {}
+        local function addMount(itemID, sourceStr)
+            if not itemID then return end
+            local mID = C_MountJournal.GetMountFromItem(itemID)
+            if mID and (not issecretvalue or not issecretvalue(mID)) and not idx[mID] then
+                idx[mID] = sourceStr
+            end
+        end
+        local function collectMountsFromDrops(drops, sourceStr)
+            if not drops or type(drops) ~= "table" then return end
+            for j = 1, #drops do
+                local d = drops[j]
+                if d then
+                    if d.type == "mount" and d.itemID then
+                        addMount(d.itemID, sourceStr)
+                    end
+                    if d.yields and type(d.yields) == "table" then
+                        for k = 1, #d.yields do
+                            local y = d.yields[k]
+                            if y and y.type == "mount" and y.itemID then
+                                addMount(y.itemID, sourceStr)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        local function npcIDToName(npcID)
+            if not db.npcNameIndex then return nil end
+            for name, ids in pairs(db.npcNameIndex or {}) do
+                if ids then
+                    for i = 1, #ids do
+                        if ids[i] == npcID then return name end
+                    end
+                end
+            end
+            return nil
+        end
+        if db.npcs then
+            for npcID, list in pairs(db.npcs) do
+                if type(list) == "table" then
+                    local name = npcIDToName(npcID)
+                    local src = name and (dropLabel .. " : " .. name) or (dropLabel .. " (NPC " .. tostring(npcID) .. ")")
+                    collectMountsFromDrops(list, src)
+                end
+            end
+        end
+        if db.rares then
+            for npcID, list in pairs(db.rares) do
+                if type(list) == "table" then
+                    local name = npcIDToName(npcID)
+                    local src = name and (dropLabel .. " : " .. name) or (dropLabel .. " (NPC " .. tostring(npcID) .. ")")
+                    collectMountsFromDrops(list, src)
+                end
+            end
+        end
+        if db.fishing then
+            for mapID, list in pairs(db.fishing) do
+                if type(list) == "table" then
+                    collectMountsFromDrops(list, fishing)
+                end
+            end
+        end
+        if db.zones then
+            for zMapID, data in pairs(db.zones) do
+                local drops = data and (data.drops or data)
+                if type(drops) == "table" then
+                    collectMountsFromDrops(drops, zoneDrop)
+                end
+            end
+        end
+        if db.containers then
+            for containerItemID, cData in pairs(db.containers) do
+                if cData and cData.drops then
+                    local containerName = (GetItemInfo and GetItemInfo(containerItemID)) or nil
+                    local src = (containerName and containerName ~= "") and ("Contained in : " .. containerName) or "Contained in"
+                    collectMountsFromDrops(cData.drops, src)
+                end
+            end
+        end
+        if db.objects then
+            for objectID, list in pairs(db.objects) do
+                if type(list) == "table" then
+                    collectMountsFromDrops(list, dropLabel .. " (Object " .. tostring(objectID) .. ")")
+                end
+            end
+        end
+        db._mountSourceByMountID = idx
+    end
+
+    return db._mountSourceByMountID[mountID]
 end

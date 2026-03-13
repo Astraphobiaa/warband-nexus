@@ -42,7 +42,7 @@ local Constants = {
     -- Main addon version (must match ## Version in WarbandNexus.toc)
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "2.1.4",
+    ADDON_VERSION = "2.4.2",
     
     --==========================================================================
     -- EXPANSION TARGETING
@@ -59,8 +59,8 @@ local Constants = {
     
     -- All versions reset to 1.0.0 — Schema v4 full wipe gives every user a clean slate.
     COLLECTION_CACHE_VERSION = "2.0.2",  -- Cache refresh (Midnight encounter/achievement incremental invalidation)
-    REPUTATION_CACHE_VERSION = "1.0.0",  -- Reputation (compact progress; metadata on-demand)
-    CURRENCY_CACHE_VERSION = "1.0.0",    -- Currency (quantity-only SV; metadata on-demand)
+    REPUTATION_CACHE_VERSION = "1.5.0",  -- Reputation (parse-first architecture + non-destructive rescan safety)
+    CURRENCY_CACHE_VERSION = "2.0.0",    -- Currency (lean SV + on-demand metadata cache)
     PVE_CACHE_VERSION = "1.0.0",         -- PvE (lean IDs/scores; metadata on-demand)
     ITEMS_CACHE_VERSION = "1.0.0",       -- Items (lean itemID+stack+quality; metadata on-demand)
     

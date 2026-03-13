@@ -792,8 +792,8 @@ local function CreateCompanionWindow()
         ns.WindowManager:Register(frame, ns.WindowManager.PRIORITY.FLOATING)
         ns.WindowManager:InstallESCHandler(frame)
     else
-        frame:SetFrameStrata("HIGH")
-        frame:SetFrameLevel(150)
+        frame:SetFrameStrata("DIALOG")
+        frame:SetFrameLevel(200)
     end
     frame:SetResizeBounds(WINDOW_WIDTH, MIN_FRAME_HEIGHT, 500, MAX_FRAME_HEIGHT)
     frame:SetClampedToScreen(true)

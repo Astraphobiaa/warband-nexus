@@ -869,6 +869,8 @@ L["INFO_TAB_PVE"] = "PvE"
 L["INFO_TAB_REPUTATIONS"] = "Reputations"
 L["INFO_TAB_CURRENCY"] = "Currency"
 L["INFO_TAB_PLANS"] = "Plans"
+L["INFO_TAB_GEAR"] = "Gear"
+L["INFO_TAB_COLLECTIONS"] = "Collections"
 L["INFO_TAB_STATISTICS"] = "Statistics"
 L["SPECIAL_THANKS"] = "Special Thanks"
 L["SUPPORTERS_TITLE"] = "Supporters"
@@ -878,6 +880,10 @@ L["THANK_YOU_MSG"] = "Thank you for using Warband Nexus!"
 -- Information Dialog - Professions Tab
 L["INFO_TAB_PROFESSIONS"] = "Professions"
 L["PROFESSIONS_INFO_DESC"] = "Track profession skills, concentration, knowledge, and specialization trees across all characters. Includes Recipe Companion for reagent sourcing."
+
+-- Information Dialog - Gear & Collections Tabs
+L["GEAR_DESC"] = "View equipped gear, upgrade opportunities, storage recommendations (BoE/Warbound), and cross-character upgrade candidates with item level tracking."
+L["COLLECTIONS_DESC"] = "Overview of mounts, pets, toys, transmog, and other collectibles across your account. Track collection progress and find missing items."
 
 -- Command Help Strings
 L["AVAILABLE_COMMANDS"] = "Available commands:"
@@ -916,6 +922,7 @@ L["CHANGELOG_V214"] = "NEW FEATURES:\n- Gold Target: Smart automatic gold manage
 
 -- Changelog (What's New) - v2.2.0
 L["CHANGELOG_V220"] = "NEW FEATURES:\n- Gold Target: Smart automatic gold management system\n  • Set target gold amount per character (default: 10g)\n  • Three modes: Deposit Only, Withdraw Only, or Both\n  • Fully automatic deposits AND withdrawals when bank opens\n\n- Items Tab Restructured:\n  • 4 sub-tabs: Inventory, Personal Bank, Warband Bank, Guild Bank\n  • Gold display per sub-tab\n  • Character-guild tracking with automatic guild change detection\n\n- Storage Tab Enhanced:\n  • Multiple guild banks displayed separately\n  • Section ordering: Personal → Warband → Guild\n  • Each guild bank shows its guild name\n\n- Event-Driven Guild Bank System:\n  • Real-time automatic re-scan when contents change\n  • Cache updates when items/gold are deposited or withdrawn\n  • All characters in same guild see updated data\n\nBUG FIXES:\n- Fixed guild bank gold displaying wrong character's amount\n- Fixed guild bank items not updating after deposits/withdrawals\n- Fixed Guild Bank header not expanding in Storage tab\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+L["CHANGELOG_V242"] = "NEW FEATURES:\n- Guild & Rested XP Track: Track guild membership and rested experience across characters\n- Money Logs & Gold Automation - Items UI: Per-character gold logs, deposit/withdraw history, gold target automation\n- New Tab: Gears: Equipped gear, upgrade options, storage recommendations, cross-character upgrade candidates\n- New Tab: Collections: Mounts, pets, toys, transmog overview and collection progress\n\nIMPROVEMENTS:\n- Midnight Updates for PvE: Full compatibility with Midnight 12.0.x APIs, encounter/difficulty handling\n- Midnight Updates for Reputations: Reputation cache and API updates for Midnight\n- Midnight Updates for Currencies: Currency cache and metadata for Midnight\n- Profession Improvements & Bug Fixes: Recipe Companion enhancements, profession window handling\n- Plans Revision: Source display fixes (e.g. Nether-Warped Drake), Mythic color consistency\n- Settings Revision: Settings UI updates and module management\n- Recipe Companion Update: Reagent sourcing and quality tier improvements\n- Performance Improvements: Frame budgets, batch sizes, async optimizations\n- Notification & Try Counter Stability: issecretvalue guards, deduplication fixes\n- Midnight Misc. Update: API compatibility, debug output only in debug mode\n\nLOCALIZATION:\n- Changelog and What's New translated to all 11 supported locales\n- Welcome screen tab descriptions updated with Gears and Collections\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"

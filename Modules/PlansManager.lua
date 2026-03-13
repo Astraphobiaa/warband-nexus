@@ -444,6 +444,13 @@ function WarbandNexus:GetPlanDisplaySource(plan)
                 return meta.source
             end
         end
+        -- Fallback: CollectibleSourceDB when WoW API returns empty for known mounts (e.g. Nether-Warped Drake from fishing)
+        if ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetSourceStringForMount then
+            local dbSource = ns.CollectibleSourceDB:GetSourceStringForMount(plan.mountID)
+            if dbSource and dbSource ~= "" then
+                return dbSource
+            end
+        end
     end
     -- Pet: resolve from journal so My Plans matches Pets tab.
     if plan.type == "pet" and plan.speciesID and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then

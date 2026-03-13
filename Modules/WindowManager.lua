@@ -32,10 +32,12 @@ WindowManager.PRIORITY = {
 }
 
 -- Recommended strata/level per priority tier
+-- WoW strata order: FULLSCREEN_DIALOG > DIALOG > HIGH > MEDIUM > LOW > BACKGROUND
+-- FLOATING must be same strata as MAIN (DIALOG) but higher level to appear on top.
 WindowManager.STRATA = {
     [10] = { strata = "DIALOG",            level = 100 },
-    [20] = { strata = "HIGH",              level = 150 },
-    [30] = { strata = "FULLSCREEN_DIALOG", level = 200 },
+    [20] = { strata = "DIALOG",            level = 200 },
+    [30] = { strata = "FULLSCREEN_DIALOG", level = 300 },
 }
 
 -- Internal registry: { { frame, priority, closeFunc, wasVisibleBeforeCombat } }

@@ -50,7 +50,7 @@ end
 
 local ReputationCache = {
     -- Metadata only (no data storage)
-    version = "1.5.0",  -- DB version (non-destructive migration, force rescan only)
+    version = Constants.REPUTATION_CACHE_VERSION,  -- DB version (non-destructive migration, force rescan only)
     lastFullScan = 0,
     lastUpdate = 0,
     

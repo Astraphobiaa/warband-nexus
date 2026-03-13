@@ -193,8 +193,24 @@ local function GetContentWidth(frame)
     return math.max((frame and frame:GetWidth() or 380) - PADDING - SCROLLBAR_GAP, 200)
 end
 
+local function IsPlaceholderSourceText(sourceText)
+    if type(sourceText) ~= "string" then return true end
+    local s = sourceText:gsub("^%s+", ""):gsub("%s+$", "")
+    if s == "" then return true end
+    local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
+    local sourceUnknown = (ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown"
+    return s == "Unknown" or s == unknownSource or s == "Legacy"
+end
+
 --- Short description for card subtitle (same style as My Plans: Quest/Drop/Source with icon when applicable)
 local function GetPlanDescription(plan)
+    -- Resolve placeholder source for mount/pet so Tracker shows correct source (e.g. Nether-Warped Drake)
+    if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(plan.source) and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
+        local resolved = WarbandNexus:GetPlanDisplaySource(plan)
+        if resolved and resolved ~= "" then
+            plan.source = resolved
+        end
+    end
     local parts = {}
     if plan.source and plan.source ~= "" then
         local src = plan.source
@@ -1170,8 +1186,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
         ns.WindowManager:Register(frame, ns.WindowManager.PRIORITY.FLOATING)
         ns.WindowManager:InstallESCHandler(frame)
     else
-        frame:SetFrameStrata("HIGH")
-        frame:SetFrameLevel(150)
+        frame:SetFrameStrata("DIALOG")
+        frame:SetFrameLevel(200)
     end
 
     if ApplyVisuals then

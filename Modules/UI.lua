@@ -106,9 +106,17 @@ local function SaveWindowGeometry(frame)
     
     -- Save absolute position using GetLeft/GetTop (anchor-independent).
     -- This is immune to anchor point changes caused by StartMoving().
+    -- Convert from frame's effective scale to UIParent's coordinate space.
     local left = frame:GetLeft()
     local top = frame:GetTop()
     if left and top then
+        local frameScale = frame:GetEffectiveScale()
+        local parentScale = UIParent:GetEffectiveScale()
+        if frameScale and parentScale and parentScale > 0 and frameScale ~= parentScale then
+            local ratio = frameScale / parentScale
+            left = left * ratio
+            top = top * ratio
+        end
         if not profile.windowPosition then
             profile.windowPosition = {}
         end
@@ -139,16 +147,75 @@ local function RestoreWindowPosition(frame)
     return true
 end
 
--- Re-anchor frame to its current visual position (absolute TOPLEFT/BOTTOMLEFT).
--- Call this BEFORE StartMoving() to prevent the frame from teleporting when
--- WoW's internal anchor state drifts (e.g., after Alt-Tab, UI scale changes).
--- StartMoving() uses the frame's current anchor as the drag handle; if the frame
--- is anchored CENTER, the window "teleports" so its center is under the cursor.
+-- Custom drag: preserves the clicked point under the cursor (no StartMoving teleport).
+-- StartMoving() uses the frame's anchor as handle, causing the window to "jump"
+-- when clicking anywhere except TOPLEFT. This uses GetCursorPosition + OnUpdate instead.
+local function StartCustomDrag(frame)
+    if not frame or InCombatLockdown() then return end
+    local scale = UIParent:GetEffectiveScale()
+    if not scale or scale <= 0 then return end
+
+    local cx, cy = GetCursorPosition()
+    cx, cy = cx / scale, cy / scale
+
+    local left = frame:GetLeft()
+    local top = frame:GetTop()
+    if left == nil or top == nil then return end
+
+    -- Scale conversion if frame has different effective scale
+    local frameScale = frame:GetEffectiveScale()
+    if frameScale and frameScale > 0 and frameScale ~= scale then
+        left = left * (frameScale / scale)
+        top = top * (frameScale / scale)
+    end
+
+    frame._dragOffsetX = cx - left
+    frame._dragOffsetY = cy - top
+    frame._isCustomDragging = true
+
+    frame:SetScript("OnUpdate", function(self)
+        if not self._isCustomDragging then
+            self:SetScript("OnUpdate", nil)
+            return
+        end
+        local x, y = GetCursorPosition()
+        x, y = x / scale, y / scale
+        local newLeft = x - self._dragOffsetX
+        local newTop = y - self._dragOffsetY
+        self:ClearAllPoints()
+        self:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", newLeft, newTop)
+    end)
+end
+
+local function StopCustomDrag(frame)
+    if not frame then return end
+    frame._isCustomDragging = false
+    frame._dragOffsetX = nil
+    frame._dragOffsetY = nil
+    frame:SetScript("OnUpdate", nil)
+end
+
+-- Re-anchor frame to its current visual position using TOPLEFT.
+-- Ensures consistent anchor state before save/restore.
+--
+-- IMPORTANT: GetLeft()/GetTop() return coordinates in the frame's effective scale
+-- space, but SetPoint offsets are in UIParent's coordinate space. We must convert
+-- between the two when they differ (e.g., due to UI scale, custom frame scale).
 local function NormalizeFramePosition(frame)
     if not frame or not frame.GetLeft or not frame.GetTop then return end
     local left = frame:GetLeft()
     local top = frame:GetTop()
     if left == nil or top == nil then return end
+
+    -- Convert from frame's effective scale to UIParent's coordinate space
+    local frameScale = frame:GetEffectiveScale()
+    local parentScale = UIParent:GetEffectiveScale()
+    if frameScale and parentScale and parentScale > 0 and frameScale ~= parentScale then
+        local ratio = frameScale / parentScale
+        left = left * ratio
+        top = top * ratio
+    end
+
     frame:ClearAllPoints()
     frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
 end
@@ -481,11 +548,10 @@ function WarbandNexus:CreateMainWindow()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", function(self)
         if InCombatLockdown() then return end
-        NormalizeFramePosition(self)
-        self:StartMoving()
+        StartCustomDrag(self)
     end)
     f:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
+        StopCustomDrag(self)
         SaveWindowGeometry(self)
     end)
     f:SetFrameStrata("DIALOG")  -- DIALOG is above HIGH, ensures we're above BankFrame
@@ -604,14 +670,14 @@ function WarbandNexus:CreateMainWindow()
     f.header = header  -- Store reference for color updates
     
     -- Header dragging via RegisterForDrag (fires only on actual drag, not plain click).
-    -- This prevents StartMoving from capturing mouse when user clicks the close button.
+    -- Custom drag preserves click offset so the clicked point stays under the cursor.
     header:RegisterForDrag("LeftButton")
     header:SetScript("OnDragStart", function()
-        NormalizeFramePosition(f)
-        f:StartMoving()
+        if InCombatLockdown() then return end
+        StartCustomDrag(f)
     end)
     header:SetScript("OnDragStop", function()
-        f:StopMovingOrSizing()
+        StopCustomDrag(f)
         SaveWindowGeometry(f)
     end)
     
@@ -1188,6 +1254,7 @@ function WarbandNexus:CreateMainWindow()
     
     -- Master OnHide: cleanup when addon window closes
     f:SetScript("OnHide", function(self)
+        StopCustomDrag(self)
         SaveWindowGeometry(self)
         if WarbandNexus.CloseAllPlanDialogs then
             WarbandNexus:CloseAllPlanDialogs()

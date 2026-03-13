@@ -32,9 +32,78 @@ local PROFESSION_SCHEMA_VERSION = 1
 -- Forward declaration used by equipment collection
 local GetCurrentProfessionName
 
+-- Resolve potentially secret API values into usable strings via FontString extraction
+-- In WoW 11.0+ (TWW), many API return values are "secret values" that can be displayed
+-- on FontStrings but cannot be read as plain strings by addons. This function extracts
+-- the displayed text from a hidden FontString to get a usable string.
+local _resolverFS = nil
+local function ResolveAPIString(value)
+    if not value then return nil end
+    if type(value) == "string" and value ~= "" then return value end
+    -- Secret value: extract via FontString (SetText accepts secret values, GetText returns plain string)
+    if issecretvalue and issecretvalue(value) then
+        if not _resolverFS then
+            _resolverFS = UIParent:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+            _resolverFS:Hide()
+        end
+        _resolverFS:SetText(value)
+        local text = _resolverFS:GetText()
+        if text and type(text) == "string" and text ~= "" then
+            return text
+        end
+        return nil
+    end
+    -- Non-nil, non-string, non-secret: try tostring
+    local s = tostring(value)
+    if s and s ~= "" and s ~= "nil" then return s end
+    return nil
+end
+
+-- Robustly resolve a spell name from spellID, handling secret values and API changes
+local function ResolveSpellName(spellID)
+    if not spellID or spellID <= 0 then return nil end
+    -- Method 1: C_Spell.GetSpellName (TWW 11.0+)
+    if C_Spell and C_Spell.GetSpellName then
+        local ok, name = pcall(C_Spell.GetSpellName, spellID)
+        if ok and name then
+            local resolved = ResolveAPIString(name)
+            if resolved then return resolved end
+        end
+    end
+    -- Method 2: Legacy GetSpellInfo
+    if GetSpellInfo then
+        local ok, name = pcall(GetSpellInfo, spellID)
+        if ok and name then
+            local resolved = ResolveAPIString(name)
+            if resolved then return resolved end
+        end
+    end
+    -- Method 3: Parse name from spell link (links are plain strings)
+    if C_Spell and C_Spell.GetSpellLink then
+        local ok, link = pcall(C_Spell.GetSpellLink, spellID)
+        if ok and link and type(link) == "string" then
+            local parsed = link:match("%[(.-)%]")
+            if parsed and parsed ~= "" then return parsed end
+        end
+    end
+    if GetSpellLink then
+        local ok, link = pcall(GetSpellLink, spellID)
+        if ok and link and type(link) == "string" then
+            local parsed = link:match("%[(.-)%]")
+            if parsed and parsed ~= "" then return parsed end
+        end
+    end
+    return nil
+end
+
+-- Safe string extraction from API values — uses ResolveAPIString for secret value support
 local function SafeAPIString(value)
     if not value then return nil end
-    if issecretvalue and issecretvalue(value) then return nil end
+    if type(value) == "string" and value ~= "" then return value end
+    -- Try to resolve secret values via FontString extraction
+    if issecretvalue and issecretvalue(value) then
+        return ResolveAPIString(value)
+    end
     if type(value) ~= "string" then return nil end
     return value
 end
@@ -339,39 +408,86 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
                 end
 
                 -- Resolve node name via definition chain: entryID -> definitionID -> overrideName / spellID
+                -- Uses ResolveAPIString to handle Blizzard secret values (TWW 11.0+)
+                -- Try all entryIDs (active first, then rest) — Midnight API may return name from alternate entry
                 local nodeName = nil
-                local resolveEntryID = nil
+                local entryIDsToTry = {}
                 if nodeInfo.activeEntry and nodeInfo.activeEntry.entryID then
-                    resolveEntryID = nodeInfo.activeEntry.entryID
-                elseif nodeInfo.entryIDs and #nodeInfo.entryIDs > 0 then
-                    resolveEntryID = nodeInfo.entryIDs[1]
+                    entryIDsToTry[#entryIDsToTry + 1] = nodeInfo.activeEntry.entryID
                 end
-                if resolveEntryID and C_Traits.GetEntryInfo and C_Traits.GetDefinitionInfo then
-                    local eOk2, entryInf = pcall(C_Traits.GetEntryInfo, configID, resolveEntryID)
-                    if eOk2 and entryInf and entryInf.definitionID then
-                        local dOk, defInfo = pcall(C_Traits.GetDefinitionInfo, entryInf.definitionID)
-                        if dOk and defInfo then
-                            nodeName = SafeAPIString(defInfo.overrideName)
-                            if not nodeName and defInfo.spellID and GetSpellInfo then
-                                local spOk, spName = pcall(GetSpellInfo, defInfo.spellID)
-                                if spOk then nodeName = SafeAPIString(spName) end
+                if nodeInfo.entryIDs then
+                    for e = 1, #nodeInfo.entryIDs do
+                        local eid = nodeInfo.entryIDs[e]
+                        if eid and (not nodeInfo.activeEntry or eid ~= nodeInfo.activeEntry.entryID) then
+                            entryIDsToTry[#entryIDsToTry + 1] = eid
+                        end
+                    end
+                end
+                for ei = 1, #entryIDsToTry do
+                    if nodeName then break end
+                    local resolveEntryID = entryIDsToTry[ei]
+                    if resolveEntryID and C_Traits.GetEntryInfo and C_Traits.GetDefinitionInfo then
+                        local eOk2, entryInf = pcall(C_Traits.GetEntryInfo, configID, resolveEntryID)
+                        if eOk2 and entryInf and entryInf.definitionID then
+                            -- Entry-level name can exist for some profession trees
+                            if entryInf.name then
+                                nodeName = ResolveAPIString(entryInf.name)
+                            end
+                            local dOk, defInfo = pcall(C_Traits.GetDefinitionInfo, entryInf.definitionID)
+                            if dOk and defInfo then
+                                if not nodeName then
+                                    nodeName = ResolveAPIString(defInfo.overrideName)
+                                end
+                                if not nodeName and defInfo.name then
+                                    nodeName = ResolveAPIString(defInfo.name)
+                                end
+                                if not nodeName and defInfo.spellID then
+                                    nodeName = ResolveSpellName(defInfo.spellID)
+                                end
+                                -- overriddenSpellID can hold the display spell for some profession nodes
+                                if not nodeName and defInfo.overriddenSpellID and defInfo.overriddenSpellID > 0 then
+                                    nodeName = ResolveSpellName(defInfo.overriddenSpellID)
+                                end
                             end
                         end
                     end
                 end
+                -- Additional fallback path for client variants exposing nodeInfo.name directly.
+                if not nodeName and nodeInfo.name then
+                    nodeName = ResolveAPIString(nodeInfo.name)
+                end
 
                 local currentRank = nodeInfo.currentRank or nodeInfo.activeRank or 0
+
+                -- Collect edge targets for tree layout
+                local edgeTargets = nil
+                if nodeInfo.visibleEdges and #nodeInfo.visibleEdges > 0 then
+                    edgeTargets = {}
+                    for e = 1, #nodeInfo.visibleEdges do
+                        local edge = nodeInfo.visibleEdges[e]
+                        if edge and edge.targetNode then
+                            edgeTargets[#edgeTargets + 1] = edge.targetNode
+                        end
+                    end
+                    if #edgeTargets == 0 then edgeTargets = nil end
+                end
 
                 if isNewForMax and type(maxRanks) == "number" and maxRanks > 0 then
                     total = total + maxRanks
                 end
 
-                -- Store node detail for this tree (regardless of seenNodes dedup)
+                -- Store node detail with position data for tree layout
                 if type(maxRanks) == "number" and maxRanks > 0 then
+                    local hasName = (nodeName ~= nil)
                     nodeDetails[#nodeDetails + 1] = {
-                        name = nodeName or ("Node " .. nodeID),
+                        name = nodeName or (currentRank > 0 and "Unknown Node" or nil),
+                        hasRealName = hasName,
                         currentRank = currentRank,
                         maxRanks = maxRanks,
+                        nodeID = nodeID,
+                        posX = nodeInfo.posX or 0,
+                        posY = nodeInfo.posY or 0,
+                        edges = edgeTargets,
                     }
                 end
             end
@@ -575,6 +691,7 @@ end
 
 -- Mapping from profession name to Enum.Profession value
 -- Used to call C_TradeSkillUI.GetProfessionSlots(enumValue)
+local NormalizeProfessionNameForEquipment
 local PROFESSION_NAME_TO_ENUM = {
     ["First Aid"] = 0,
     ["Blacksmithing"] = 1,
@@ -628,6 +745,70 @@ local EQUIPMENT_SLOTS = {
     { slotID = 22, key = "accessory2" },
 }
 
+local function BuildProfessionSlotLookupCandidates(profName)
+    local candidates = {}
+
+    local function PushCandidate(v)
+        if type(v) ~= "number" or v <= 0 then return end
+        for i = 1, #candidates do
+            if candidates[i] == v then
+                return
+            end
+        end
+        candidates[#candidates + 1] = v
+    end
+
+    -- Candidate 1: Enum.Profession mapping
+    PushCandidate(ResolveProfessionEnum(profName))
+
+    -- Candidate 2: currently open child skill line
+    if C_TradeSkillUI and C_TradeSkillUI.GetProfessionChildSkillLineID then
+        local ok, sl = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
+        if ok then
+            PushCandidate(sl)
+        end
+    end
+
+    -- Candidate 3: base skillLine from GetProfessions
+    local p1, p2, arch, fish, cook = GetProfessions()
+    local profIndices = { p1, p2, arch, fish, cook }
+    local normalizedTarget = NormalizeProfessionNameForEquipment(profName)
+    for i = 1, #profIndices do
+        local profIndex = profIndices[i]
+        if profIndex then
+            local ok, foundName, _, _, _, _, skillLine = pcall(GetProfessionInfo, profIndex)
+            if ok and foundName and skillLine and skillLine > 0 then
+                local normFound = NormalizeProfessionNameForEquipment(foundName)
+                if normFound == normalizedTarget then
+                    PushCandidate(skillLine)
+                end
+            end
+        end
+    end
+
+    return candidates
+end
+
+local function ResolveDynamicEquipmentSlots(profName)
+    if not C_TradeSkillUI or not C_TradeSkillUI.GetProfessionSlots then return nil end
+    local candidates = BuildProfessionSlotLookupCandidates(profName)
+    for i = 1, #candidates do
+        local candidate = candidates[i]
+        local ok, dynamicSlots = pcall(C_TradeSkillUI.GetProfessionSlots, candidate)
+        if ok and dynamicSlots and #dynamicSlots > 0 then
+            local slots = {}
+            for s = 1, #dynamicSlots do
+                slots[#slots + 1] = {
+                    slotID = dynamicSlots[s],
+                    key = (s == 1 and "tool") or (s == 2 and "accessory1") or (s == 3 and "accessory2") or ("slot" .. s),
+                }
+            end
+            return slots
+        end
+    end
+    return nil
+end
+
 local function CollectEquipmentDataForCurrentProfession()
     if not WarbandNexus or not WarbandNexus.db then return end
 
@@ -655,21 +836,9 @@ local function CollectEquipmentDataForCurrentProfession()
         lastUpdate = time(),
     }
 
-    local slotsToUse = EQUIPMENT_SLOTS
-    local profEnum = ResolveProfessionEnum(profName)
-    if profEnum and C_TradeSkillUI and C_TradeSkillUI.GetProfessionSlots then
-        local slotsOk, dynamicSlots = pcall(C_TradeSkillUI.GetProfessionSlots, profEnum)
-        if slotsOk and dynamicSlots and #dynamicSlots > 0 then
-            slotsToUse = {}
-            for i = 1, #dynamicSlots do
-                slotsToUse[#slotsToUse + 1] = {
-                    slotID = dynamicSlots[i],
-                    key = (i == 1 and "tool") or (i == 2 and "accessory1") or (i == 3 and "accessory2") or ("slot" .. i),
-                }
-            end
-        end
-    end
+    local slotsToUse = ResolveDynamicEquipmentSlots(profName) or EQUIPMENT_SLOTS
 
+    local hasAny = false
     for _, slot in ipairs(slotsToUse) do
         local itemID = GetInventoryItemID("player", slot.slotID)
         if itemID then
@@ -685,11 +854,37 @@ local function CollectEquipmentDataForCurrentProfession()
                 icon     = icon,
                 name     = itemName or ("Item " .. itemID),
             }
+            hasAny = true
+        end
+    end
+
+    -- Fallback: if dynamic slot resolution returned no items, scan standard slots.
+    if not hasAny and slotsToUse ~= EQUIPMENT_SLOTS then
+        for _, slot in ipairs(EQUIPMENT_SLOTS) do
+            local itemID = GetInventoryItemID("player", slot.slotID)
+            if itemID then
+                local itemLink = GetInventoryItemLink("player", slot.slotID)
+                local icon = GetInventoryItemTexture and GetInventoryItemTexture("player", slot.slotID) or nil
+                local itemName = nil
+                if itemLink then
+                    itemName = itemLink:match("%[(.-)%]")
+                end
+                equipment[slot.key] = {
+                    itemID   = itemID,
+                    itemLink = itemLink,
+                    icon     = icon,
+                    name     = itemName or ("Item " .. itemID),
+                }
+                hasAny = true
+            end
         end
     end
 
     local key = NormalizeProfessionNameForEquipment(profName) or profName
     charData.professionEquipment[key] = equipment
+    if profName and profName ~= key then
+        charData.professionEquipment[profName] = equipment
+    end
 
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_PROFESSION_EQUIPMENT_UPDATED", charKey)
@@ -1039,7 +1234,7 @@ end
     Returns nil if profession frame is not open or API unavailable.
 ]]
 -- Normalize to base profession name so equipment is keyed consistently (Alchemy, Tailoring, etc.).
-local function NormalizeProfessionNameForEquipment(name)
+NormalizeProfessionNameForEquipment = function(name)
     if not name or name == "" then return name end
     local s = name:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", ""):gsub("^Shadowlands ", "")
     return (s ~= "" and s) or name
@@ -1767,6 +1962,7 @@ function WarbandNexus:OnTradeSkillShow()
         pcall(CollectCooldownData)
         pcall(CollectCraftingOrdersData)
         pcall(CollectEquipmentDataForCurrentProfession)
+        pcall(CollectEquipmentByDetection)
     end
 
     -- First pass: 0.6s delay so IsTradeSkillReady / GetProfessionChildSkillLineID are ready
@@ -1843,6 +2039,8 @@ function WarbandNexus:OnTradeSkillListUpdate()
         pcall(CollectMidnightKnowledgeProgressData)
         pcall(CollectCooldownData)
         pcall(CollectCraftingOrdersData)
+        pcall(CollectEquipmentDataForCurrentProfession)
+        pcall(CollectEquipmentByDetection)
     end)
 end
 
