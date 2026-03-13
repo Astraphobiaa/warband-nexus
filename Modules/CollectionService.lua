@@ -3487,21 +3487,39 @@ function WarbandNexus:GetToySourceInfo(itemID)
 end
 
 ---Resolve icon/source/description for a collection entry on demand. Uses session RAM cache; cleared on tab leave.
----Prefers db.global.collectionData when available (no API calls).
+---Mount metadata is API-authoritative to avoid stale legacy DB source text in Plans.
 ---@param collectionType string "mount", "pet", "toy", "achievement", "title", "illusion"
 ---@param id number
 ---@return table|nil { name, icon, source, description, ... } or nil if API fails
 function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
     if not id or not collectionType then return nil end
     local cacheKey = collectionType .. ":" .. tostring(id)
-    if metadataCache[cacheKey] then
-        return metadataCache[cacheKey]
+    local cachedMeta = metadataCache[cacheKey]
+    if cachedMeta then
+        -- Mount source text can become stale after DB migrations; do not trust cached
+        -- values that are placeholders/legacy labels.
+        if collectionType ~= "mount" then
+            return cachedMeta
+        end
+        local cachedSource = cachedMeta.source
+        if type(cachedSource) == "string" then
+            local sourceTrimmed = cachedSource:gsub("^%s+", ""):gsub("%s+$", "")
+            local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
+            local sourceUnknown = (ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown"
+            if sourceTrimmed ~= "" and sourceTrimmed ~= "Legacy" and sourceTrimmed ~= "Unknown" and sourceTrimmed ~= unknownSource and sourceTrimmed ~= sourceUnknown then
+                return cachedMeta
+            end
+        else
+            return cachedMeta
+        end
+        metadataCache[cacheKey] = nil
     end
 
-    -- Prefer full collection data from DB (no API calls)
+    -- Keep a DB fallback for mounts only when API data is temporarily unavailable.
+    local mountFallbackMeta = nil
     if collectionType == "mount" and collectionData.mount and collectionData.mount[id] then
         local d = collectionData.mount[id]
-        local meta = {
+        mountFallbackMeta = {
             name = d.name,
             icon = d.icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
             source = d.source or "",
@@ -3509,9 +3527,8 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             creatureDisplayID = d.creatureDisplayID,
             isCollected = d.collected,
         }
-        metadataCache[cacheKey] = meta
-        return meta
     end
+    -- Prefer full collection data from DB (no API calls) for non-mount types.
     if collectionType == "pet" and collectionData.pet and collectionData.pet[id] then
         local d = collectionData.pet[id]
         local meta = {
@@ -3679,6 +3696,10 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
         end
     end
 
+    if not meta and collectionType == "mount" and mountFallbackMeta then
+        meta = mountFallbackMeta
+    end
+
     if meta then
         meta.id = id
         meta.type = collectionType
@@ -3717,24 +3738,70 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
     if hasData then
         local results = {}
         local count = 0
+        local storeChanged = false
         for mountID, d in pairs(store) do
-            if d and (d.collected == false or d.collected == nil) then
-                local name = d.name or ("ID:" .. tostring(mountID))
-                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
-                    local meta
-                    if d.icon or d.source then
-                        meta = { id = mountID, name = d.name, icon = d.icon, source = d.source, description = d.description, creatureDisplayID = d.creatureDisplayID, isCollected = false }
-                    else
-                        meta = self:ResolveCollectionMetadata("mount", mountID)
-                        if meta then meta.isCollected = false end
+            if d then
+                -- Always resolve from Collections API metadata.
+                -- This prevents stale legacy DB source text from leaking into Plans.
+                local meta = self:ResolveCollectionMetadata("mount", mountID)
+
+                -- If mountID no longer resolves from API, prune stale DB entry.
+                if not meta then
+                    store[mountID] = nil
+                    storeChanged = true
+                elseif meta.isCollected then
+                    -- Keep store in sync when API reports collected.
+                    if d.collected ~= true then
+                        d.collected = true
+                        storeChanged = true
                     end
-                    if meta then
+                else
+                    local includeInPlans = true
+                    if d.shouldHideOnChar then
+                        includeInPlans = false
+                    end
+                    if includeInPlans and ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and ns.CollectionRules.UnobtainableFilters.IsUnobtainableMount then
+                        local unobtainableCandidate = {
+                            id = mountID,
+                            name = meta.name or d.name,
+                            source = meta.source or d.source,
+                            sourceType = d.sourceType,
+                            description = meta.description or d.description,
+                            shouldHideOnChar = d.shouldHideOnChar,
+                            isFactionSpecific = d.isFactionSpecific,
+                            faction = d.faction,
+                        }
+                        if ns.CollectionRules.UnobtainableFilters:IsUnobtainableMount(unobtainableCandidate) then
+                            includeInPlans = false
+                        end
+                    end
+
+                    if includeInPlans then
+                    if d.collected ~= false then
+                        d.collected = false
+                        storeChanged = true
+                    end
+
+                    local name = meta.name or ("ID:" .. tostring(mountID))
+                    if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                        meta.id = mountID
+                        meta.isCollected = false
+                        meta.collected = false
                         results[#results + 1] = meta
                         count = count + 1
-                        if limit and count >= limit then return results end
+                        if limit and count >= limit then
+                            if storeChanged then
+                                self:SaveCollectionStore()
+                            end
+                            return results
+                        end
+                    end
                     end
                 end
             end
+        end
+        if storeChanged then
+            self:SaveCollectionStore()
         end
         return results
     end

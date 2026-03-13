@@ -1,6 +1,6 @@
 --[[
     Warband Nexus - Plans Tracker Window
-    Standalone floating window (AllTheThings-style) opened via /wn plans or /wn plan.
+    Standalone floating window opened via /wn plans or /wn plan.
     Resizable, movable, responsive. Shows active plans by category.
     Card layout: Icon | Name \n Description (source/vendor/zone).
     Achievements: expandable requirements + Blizzard Track button.
@@ -801,19 +801,22 @@ local function RefreshTrackerContentImmediate()
                     rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
                 end
                 
-                -- Try count text (for drop-source collectibles, shown before complete button)
-                local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "illusionID" }
+                -- Try count: only for drop-source collectibles (rare, container, fishing, etc.), not vendor/achievement/guaranteed.
+                local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
                 local idKey = tryCountTypes[plan.type]
-                local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.sourceID))
+                local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
                 if collectibleID and WarbandNexus and WarbandNexus.GetTryCount then
-                    local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
-                    if count and count > 0 then
+                    local isDrop = WarbandNexus.IsDropSourceCollectible and WarbandNexus:IsDropSourceCollectible(plan.type, collectibleID)
+                    local isGuaranteed = WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(plan.type, collectibleID)
+                    if isDrop and not isGuaranteed then
+                        local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
+                        if count == nil then count = 0 end
+                        local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
                         local tryText = FontManager:CreateFontString(card, "small", "OVERLAY")
-                        tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -rightOffset, -ACTION_MARGIN - 1)
-                        tryText:SetText("|cffaaddff(" .. tostring(count) .. ")|r")
+                        tryText:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -ACTION_MARGIN, ACTION_MARGIN)
+                        tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
                         tryText:SetJustifyH("RIGHT")
                         tryText:SetWordWrap(false)
-                        rightOffset = rightOffset + tryText:GetStringWidth() + ACTION_GAP
                     end
                 end
                 
@@ -1155,13 +1158,21 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- ── Main frame ──
     frame = CreateFrame("Frame", "WarbandNexus_PlansTracker", UIParent)
     frame:SetSize(w, h)
-    frame:SetFrameStrata("HIGH")
-    frame:SetFrameLevel(100)
     frame:EnableMouse(true)
     frame:SetMovable(true)
     frame:SetResizable(true)
     frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, MAX_WIDTH, MAX_HEIGHT)
     frame:SetClampedToScreen(true)
+
+    -- WindowManager: standardized strata/level + ESC + combat hide
+    if ns.WindowManager then
+        ns.WindowManager:ApplyStrata(frame, ns.WindowManager.PRIORITY.FLOATING)
+        ns.WindowManager:Register(frame, ns.WindowManager.PRIORITY.FLOATING)
+        ns.WindowManager:InstallESCHandler(frame)
+    else
+        frame:SetFrameStrata("HIGH")
+        frame:SetFrameLevel(150)
+    end
 
     if ApplyVisuals then
         ApplyVisuals(frame, { 0.04, 0.04, 0.06, 0.97 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })

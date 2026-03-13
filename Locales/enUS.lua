@@ -44,7 +44,7 @@ L["MINIMAP_ICON_DESC"] = "Show or hide the minimap button"
 L["DEBUG_MODE"] = "Debug Logging"
 L["DEBUG_MODE_DESC"] = "Output verbose debug messages to chat for troubleshooting"
 L["DEBUG_TRYCOUNTER_LOOT"] = "Try Counter Loot Debug"
-L["DEBUG_TRYCOUNTER_LOOT_DESC"] = "Log loot flow only (LOOT_OPENED, source resolution, zone fallback). Rep/currency cache logs are suppressed."
+L["DEBUG_TRYCOUNTER_LOOT_DESC"] = "Log loot flow (numLoot, source, route, outcome). Use when try count is not counted (fast auto-loot, dumpster/object, fishing). Rep/currency cache logs suppressed."
 
 -- Options Panel - Scanning
 L["SCANNING_SETTINGS"] = "Scanning Settings"
@@ -944,8 +944,8 @@ L["REP_LOADING_COMPLETE"] = "Complete!"
 L["COMBAT_LOCKDOWN_MSG"] = "Cannot open window during combat. Please try again after combat ends."
 L["BANK_IS_ACTIVE"] = "Bank is Active"
 L["ITEMS_CACHED_FORMAT"] = "%d items cached"
--- Table Headers (SharedWidgets)
-L["TABLE_HEADER_CHARACTER"] = "CHARACTER"
+-- Table Headers (SharedWidgets, Professions)
+L["TABLE_HEADER_CHARACTER"] = "Character"
 L["TABLE_HEADER_LEVEL"] = "LEVEL"
 L["TABLE_HEADER_GOLD"] = "GOLD"
 L["TABLE_HEADER_LAST_SEEN"] = "LAST SEEN"
@@ -1062,6 +1062,8 @@ L["KNOWLEDGE"] = "Knowledge"
 L["SKILL"] = "Skill"
 L["RECIPES"] = "Recipes"
 L["UNSPENT_POINTS"] = "Unspent Points"
+L["UNSPENT_KNOWLEDGE_TOOLTIP"] = "Unspent knowledge points"
+L["UNSPENT_KNOWLEDGE_COUNT"] = "%d unspent knowledge point(s)"
 L["COLLECTIBLE"] = "Collectible"
 L["RECHARGE"] = "Recharge"
 L["FULL"] = "Full"
@@ -1082,9 +1084,12 @@ L["PROF_FIRSTCRAFT_NONE"] = "No learned recipes with first-craft bonus remaining
 L["PROF_FIRSTCRAFT_TOTAL"] = "Total"
 L["PROF_FIRSTCRAFT_RECIPES"] = "recipe(s)"
 
--- Professions: Column Headers
-L["FIRST_CRAFT"] = "1st Craft"
-L["SKILL_UPS"] = "Skill Ups"
+-- Professions: Column Headers (label keys used by HEADER_DEFS)
+L["UNIQUES"] = "Uniques"
+L["TREATISE"] = "Treatise"
+L["GATHERING"] = "Gathering"
+L["CATCH_UP"] = "Catch Up"
+L["MOXIE"] = "Moxie"
 L["COOLDOWNS"] = "Cooldowns"
 L["ORDERS"] = "Orders"
 
@@ -1113,6 +1118,26 @@ L["ORDER_NO_DATA"] = "Open profession at crafting table to scan"
 L["EQUIPMENT"] = "Equipment"
 L["TOOL"] = "Tool"
 L["ACCESSORY"] = "Accessory"
+L["PROF_EQUIPMENT_HINT"] = "Open profession (K) on this character to scan equipment."
+
+-- Professions: Info Window
+L["PROF_INFO_TOOLTIP"] = "View profession details"
+L["PROF_INFO_NO_DATA"] = "No profession data available.\nPlease login on this character and open the Profession window (K) to collect data."
+L["PROF_INFO_SKILLS"] = "Expansion Skills"
+L["PROF_INFO_SPENT"] = "Spent"
+L["PROF_INFO_TOOL"] = "Tool"
+L["PROF_INFO_ACC1"] = "Accessory 1"
+L["PROF_INFO_ACC2"] = "Accessory 2"
+L["PROF_INFO_KNOWN"] = "Known"
+L["PROF_INFO_WEEKLY"] = "Weekly Knowledge Progress"
+L["PROF_INFO_COOLDOWNS"] = "Cooldowns"
+L["PROF_INFO_READY"] = "Ready"
+L["PROF_INFO_LAST_UPDATE"] = "Last Updated"
+L["PROF_INFO_UNLOCKED"] = "Unlocked"
+L["PROF_INFO_LOCKED"] = "Locked"
+L["PROF_INFO_UNLEARNED"] = "Unlearned"
+L["PROF_INFO_NODES"] = "nodes"
+L["PROF_INFO_RANKS"] = "ranks"
 
 -- Track Item DB
 L["TRACK_ITEM_DB"] = "Track Item DB"
@@ -1260,6 +1285,11 @@ L["STANDING_FRIENDLY"] = "Friendly"
 L["STANDING_HONORED"] = "Honored"
 L["STANDING_REVERED"] = "Revered"
 L["STANDING_EXALTED"] = "Exalted"
+
+-- Notification (popup) — "BAM" moment when farmed drop obtained
+L["NOTIFICATION_FIRST_TRY"] = "You got it on your first try!"
+L["NOTIFICATION_GRIND_TRIES"] = "What a grind! %d attempts!"
+L["NOTIFICATION_GOT_IT_AFTER"] = "You got it after %d tries!"
 
 -- TryCounterService: Messages
 L["TRYCOUNTER_ATTEMPTS_FOR"] = "%d attempts for %s"

@@ -52,6 +52,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
         addon:Print("  |cff00ccff/wn toydebug <itemID>|r — Toy tooltip/source debug (prints to chat)")
         addon:Print("  |cff00ccff/wn firstcraft|r — " .. ((ns.L and ns.L["CMD_FIRSTCRAFT"]) or "List first-craft bonus recipes per expansion (open profession first)"))
+        addon:Print("  |cff00ccff/wn profverify|r — Print profession Knowledge/Recipes/First Craft/Equipment (open profession K first to verify)")
         addon:Print("  |cff00ccff/wn chartest|r — Print current character's race/class API data (for icon debugging)")
         addon:Print("  |cff00ccff/wn gearupgradedebug|r — Print upgrade costs (API) and affordability per slot (current char)")
         addon:Print("  |cff00ccff/wn gearstoragedebug|r — Scan storage upgrades for all tracked characters/slots")
@@ -142,6 +143,15 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:PrintFirstCraftRecipesByContent()
         else
             addon:Print("|cffff6600[WN]|r " .. (ns.L and ns.L["PROF_FIRSTCRAFT_NO_DATA"] or "Professions module not available."))
+        end
+        return
+
+    elseif cmd == "profverify" or cmd == "pv" then
+        -- Profession: print Knowledge, Recipes, First Craft, Equipment for current char (open profession window first for live data).
+        if addon.PrintProfessionVerify then
+            addon:PrintProfessionVerify()
+        else
+            addon:Print("|cffff6600[WN]|r Profession verify not available.")
         end
         return
 

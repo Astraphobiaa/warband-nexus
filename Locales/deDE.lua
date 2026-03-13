@@ -17,7 +17,7 @@
 local ADDON_NAME, ns = ...
 
 ---@class WarbandNexusLocale
-local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "deDE", true, true)
+local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "deDE")
 if not L then return end
 
 -- General
@@ -1226,6 +1226,8 @@ L["KNOWLEDGE"] = "Wissen"
 L["SKILL"] = "Fertigkeit"
 L["RECIPES"] = "Rezepte"
 L["UNSPENT_POINTS"] = "Unverteilte Punkte"
+L["UNSPENT_KNOWLEDGE_TOOLTIP"] = "Unverteilte Wissenspunkte"
+L["UNSPENT_KNOWLEDGE_COUNT"] = "%d unverteilte(r) Wissenspunkt(e)"
 L["COLLECTIBLE"] = "Sammelbar"
 L["RECHARGE"] = "Aufladen"
 L["FULL"] = "Voll"
@@ -1236,6 +1238,11 @@ L["NO_PROFESSION"] = "Kein Beruf"
 
 -- Professions: Column Headers
 L["FIRST_CRAFT"] = "Erstes Fertigen"
+L["UNIQUES"] = "Einzigartige"
+L["TREATISE"] = "Abhandlung"
+L["GATHERING"] = "Sammeln"
+L["CATCH_UP"] = "Nachholen"
+L["MOXIE"] = "Moxie"
 L["SKILL_UPS"] = "Fertigkeitsstufen"
 L["COOLDOWNS"] = "Abklingzeiten"
 L["ORDERS"] = "Aufträge"

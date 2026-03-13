@@ -102,8 +102,14 @@ local function CreateExternalWindow(config)
     local dialog = CreateFrame("Frame", globalName, UIParent)
     dialog:SetSize(width, height)
     dialog:SetPoint("CENTER")
-    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-    dialog:SetFrameLevel(100)
+
+    -- WindowManager: standardized strata/level
+    if ns.WindowManager then
+        ns.WindowManager:ApplyStrata(dialog, ns.WindowManager.PRIORITY.POPUP)
+    else
+        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+        dialog:SetFrameLevel(200)
+    end
     
     -- Apply border and background
     if ApplyVisuals then
@@ -207,7 +213,7 @@ local function CreateExternalWindow(config)
     dialog._clickOutsideFrame = clickOutsideFrame
     clickOutsideFrame:SetAllPoints()
     clickOutsideFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-    clickOutsideFrame:SetFrameLevel(99) -- Just below dialog
+    clickOutsideFrame:SetFrameLevel(dialog:GetFrameLevel() - 1) -- Just below dialog
     clickOutsideFrame:EnableMouse(true)
     clickOutsideFrame:SetScript("OnMouseDown", function()
         CloseDialog()
@@ -224,23 +230,29 @@ local function CreateExternalWindow(config)
         clickOutsideFrame:Show()
     end)
     
-    -- Close on Escape (combat-safe: SetPropagateKeyboardInput is protected in 12.0)
-    if not InCombatLockdown() then
-        dialog:EnableKeyboard(true)
-        dialog:SetPropagateKeyboardInput(true)
-    end
-    dialog:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
-            CloseDialog()
-        else
-            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
-        end
-    end)
-    
     -- Store close function
     dialog.Close = CloseDialog
-    
+
+    -- WindowManager: register popup + ESC handler + combat hide
+    if ns.WindowManager then
+        ns.WindowManager:Register(dialog, ns.WindowManager.PRIORITY.POPUP, CloseDialog)
+        ns.WindowManager:InstallESCHandler(dialog)
+    else
+        -- Fallback ESC handling (combat-safe)
+        if not InCombatLockdown() then
+            dialog:EnableKeyboard(true)
+            dialog:SetPropagateKeyboardInput(true)
+        end
+        dialog:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
+                CloseDialog()
+            else
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+            end
+        end)
+    end
+
     return dialog, contentFrame, header
 end
 
@@ -278,20 +290,27 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     if not achievementPopup then
         local popup = CreateFrame("Frame", "WarbandNexus_AchievementPopup", UIParent)
         popup:SetSize(POPUP_WIDTH, 180)
-        popup:SetFrameStrata("FULLSCREEN_DIALOG")
-        popup:SetFrameLevel(200)
         popup:EnableMouse(true)
-        if not InCombatLockdown() then
-            popup:EnableKeyboard(true)
-            popup:SetPropagateKeyboardInput(true)
+
+        -- WindowManager: standardized strata/level + ESC + combat hide
+        if ns.WindowManager then
+            ns.WindowManager:ApplyStrata(popup, ns.WindowManager.PRIORITY.POPUP)
+            ns.WindowManager:Register(popup, ns.WindowManager.PRIORITY.POPUP)
+            ns.WindowManager:InstallESCHandler(popup)
+        else
+            popup:SetFrameStrata("FULLSCREEN_DIALOG")
+            popup:SetFrameLevel(200)
+            if not InCombatLockdown() then
+                popup:EnableKeyboard(true)
+                popup:SetPropagateKeyboardInput(true)
+            end
         end
         
         if ApplyVisuals then
             ApplyVisuals(popup, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})
         end
         
-        -- Register with UISpecialFrames for native ESC-to-close
-        tinsert(UISpecialFrames, "WarbandNexus_AchievementPopup")
+        -- ESC handled by WindowManager (no UISpecialFrames to avoid taint)
         
         -- Click-outside dismiss: check popup AND all child buttons
         local function IsMouseOverPopup(frame)

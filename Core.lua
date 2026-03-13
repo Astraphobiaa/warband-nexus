@@ -319,7 +319,7 @@ local defaults = {
             width = 700,
             height = 550,
         },
-        -- Plans Tracker popup position (AllTheThings-style floating window)
+        -- Plans Tracker popup position (floating window)
         plansTracker = {
             point = "CENTER",
             x = 0,
@@ -687,8 +687,22 @@ function WarbandNexus:OnEnable()
             local dialog = CreateFrame("Frame", "WarbandNexusSchemaReloadDialog", UIParent, "BackdropTemplate")
             dialog:SetSize(420, 200)
             dialog:SetPoint("CENTER", 0, 120)
-            dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-            dialog:SetFrameLevel(500)
+            dialog:SetMovable(true)
+            dialog:EnableMouse(true)
+
+            -- WindowManager: standardized strata/level + ESC + combat hide
+            if ns.WindowManager then
+                ns.WindowManager:ApplyStrata(dialog, ns.WindowManager.PRIORITY.POPUP)
+                ns.WindowManager:Register(dialog, ns.WindowManager.PRIORITY.POPUP)
+                ns.WindowManager:InstallESCHandler(dialog)
+                ns.WindowManager:InstallDragHandler(dialog, dialog)
+            else
+                dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+                dialog:SetFrameLevel(200)
+                dialog:RegisterForDrag("LeftButton")
+                dialog:SetScript("OnDragStart", dialog.StartMoving)
+                dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+            end
 
             dialog:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -700,12 +714,6 @@ function WarbandNexus:OnEnable()
             })
             dialog:SetBackdropColor(0.05, 0.05, 0.07, 1)
             dialog:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-
-            dialog:SetMovable(true)
-            dialog:EnableMouse(true)
-            dialog:RegisterForDrag("LeftButton")
-            dialog:SetScript("OnDragStart", dialog.StartMoving)
-            dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
 
             -- Title
             local titleText = FontManager and FontManager:CreateFontString(dialog, "header", "OVERLAY")

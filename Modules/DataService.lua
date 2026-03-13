@@ -330,7 +330,14 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         charData.zoneName = GetZoneText()
         charData.subZoneName = GetSubZoneText()
     elseif dataType == "rested" then
-        charData.rested = CollectRestedData()
+        local newRested = CollectRestedData()
+        local existingRested = charData.rested
+        -- Preserve maxXP when API returned nil so we don't overwrite good DB value
+        if newRested and (newRested.maxXP == nil or newRested.maxXP == 0) and type(existingRested) == "table" and type(existingRested.maxXP) == "number" and existingRested.maxXP > 0 then
+            newRested.maxXP = existingRested.maxXP
+            newRested.restedCapXP = math.floor(existingRested.maxXP * 1.5)
+        end
+        charData.rested = newRested
     end
     
     -- Update lastSeen timestamp
@@ -770,8 +777,10 @@ CollectRestedData = function()
 
     local currentRestedXP = (GetXPExhaustion and GetXPExhaustion()) or 0
     local currentXP = UnitXP("player") or 0
-    local maxXP = UnitXPMax("player") or 0
-    local restedCapXP = (maxXP > 0) and math.floor(maxXP * 1.5) or 0
+    local maxXPApi = UnitXPMax("player")
+    -- Only store maxXP when API returns a number; do not write 0 when nil (caller will preserve from existing rested)
+    local maxXP = (type(maxXPApi) == "number") and maxXPApi or nil
+    local restedCapXP = (maxXP and maxXP > 0) and math.floor(maxXP * 1.5) or 0
 
     return {
         exhaustionID = exhaustionID,
@@ -780,7 +789,7 @@ CollectRestedData = function()
         isRestingArea = IsResting() and true or false,
         currentRestedXP = math.floor(currentRestedXP),
         currentXP = math.floor(currentXP),
-        maxXP = math.floor(maxXP),
+        maxXP = maxXP,
         restedCapXP = restedCapXP,
         updatedAt = time(),
     }
@@ -865,9 +874,19 @@ function WarbandNexus:SaveMinimalCharacterData()
     local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
     local         preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
     local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
+    local preserveProfessionCooldowns = existingEntry and existingEntry.professionCooldowns
+    local preserveCraftingOrders      = existingEntry and existingEntry.craftingOrders
+    local preserveProfessionData      = existingEntry and existingEntry.professionData
     local preserveRested              = existingEntry and existingEntry.rested
     local restedData                  = CollectRestedData() or preserveRested
-    
+    -- Preserve maxXP when API returned nil so we don't overwrite good DB value with nil/0
+    if restedData and (restedData.maxXP == nil or restedData.maxXP == 0) and preserveRested and type(preserveRested.maxXP) == "number" and preserveRested.maxXP > 0 then
+        restedData.maxXP = preserveRested.maxXP
+        if not restedData.restedCapXP or restedData.restedCapXP == 0 then
+            restedData.restedCapXP = math.floor(preserveRested.maxXP * 1.5)
+        end
+    end
+
     -- Store MINIMAL data only
     self.db.global.characters[key] = {
         name = name,
@@ -897,6 +916,9 @@ function WarbandNexus:SaveMinimalCharacterData()
         professionExpansions = preserveProfExpansions,
         discoveredSkillLines = preserveDiscoveredSkillLines,
         knowledgeData        = preserveKnowledgeData,
+        professionCooldowns  = preserveProfessionCooldowns,
+        craftingOrders       = preserveCraftingOrders,
+        professionData       = preserveProfessionData,
         rested               = restedData,
         guid                 = UnitGUID("player"),
         stats                = CollectPlayerStats(),  -- For Gear tab offline Character Stats
@@ -1042,8 +1064,18 @@ function WarbandNexus:SaveCurrentCharacterData()
     local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
     local preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
     local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
+    local preserveProfessionCooldowns = existingEntry and existingEntry.professionCooldowns
+    local preserveCraftingOrders      = existingEntry and existingEntry.craftingOrders
+    local preserveProfessionData      = existingEntry and existingEntry.professionData
     local preserveRested              = existingEntry and existingEntry.rested
     local restedData                  = CollectRestedData() or preserveRested
+    -- Preserve maxXP when API returned nil so we don't overwrite good DB value with nil/0
+    if restedData and (restedData.maxXP == nil or restedData.maxXP == 0) and preserveRested and type(preserveRested.maxXP) == "number" and preserveRested.maxXP > 0 then
+        restedData.maxXP = preserveRested.maxXP
+        if not restedData.restedCapXP or restedData.restedCapXP == 0 then
+            restedData.restedCapXP = math.floor(preserveRested.maxXP * 1.5)
+        end
+    end
 
     self.db.global.characters[key] = {
         name = name,
@@ -1073,6 +1105,9 @@ function WarbandNexus:SaveCurrentCharacterData()
         professionExpansions = preserveProfExpansions,
         discoveredSkillLines = preserveDiscoveredSkillLines,
         knowledgeData        = preserveKnowledgeData,
+        professionCooldowns  = preserveProfessionCooldowns,
+        craftingOrders       = preserveCraftingOrders,
+        professionData       = preserveProfessionData,
         rested               = restedData,
         guid                 = UnitGUID("player"),
         stats                = CollectPlayerStats(),  -- For Gear tab offline Character Stats
@@ -1239,7 +1274,19 @@ end
 function WarbandNexus:GetCharacterRestedState(charData, nowTs)
     if type(charData) ~= "table" then return nil end
     local rested = charData.rested
-    if type(rested) ~= "table" then return nil end
+    -- Support flat format (restedXP, xpMax, restedUpdatedAt, isResting) when char.rested is missing (e.g. from CaptureLogoutCharacterState)
+    if type(rested) ~= "table" then
+        local flatRested = tonumber(charData.restedXP)
+        local flatMax = tonumber(charData.xpMax)
+        if flatRested == nil and flatMax == nil then return nil end
+        rested = {
+            currentRestedXP = flatRested or 0,
+            maxXP = flatMax or 0,
+            restedCapXP = (flatMax and flatMax > 0) and math.floor(flatMax * 1.5) or 0,
+            updatedAt = tonumber(charData.restedUpdatedAt) or tonumber(charData.lastSeen) or 0,
+            isRestingArea = charData.isResting == true,
+        }
+    end
 
     local baseRestedXP = tonumber(rested.currentRestedXP) or 0
     local maxXP = tonumber(rested.maxXP) or 0

@@ -27,6 +27,68 @@ local WarbandNexus = ns.WarbandNexus
 -- ============================================================================
 
 local hooksInstalled = false          -- Guard: install SchematicForm hook only once
+local PROFESSION_SCHEMA_VERSION = 1
+
+-- Forward declaration used by equipment collection
+local GetCurrentProfessionName
+
+local function SafeAPIString(value)
+    if not value then return nil end
+    if issecretvalue and issecretvalue(value) then return nil end
+    if type(value) ~= "string" then return nil end
+    return value
+end
+
+local function EnsureProfessionDataSchema(charData)
+    if type(charData.professionData) ~= "table" then
+        charData.professionData = {
+            schemaVersion = PROFESSION_SCHEMA_VERSION,
+            bySkillLine = {},   -- [skillLineID] = bucket
+            byProfession = {},  -- [professionName] = { [skillLineID] = true }
+            lastUpdate = time(),
+        }
+    end
+
+    local pd = charData.professionData
+    pd.schemaVersion = PROFESSION_SCHEMA_VERSION
+    if type(pd.bySkillLine) ~= "table" then pd.bySkillLine = {} end
+    if type(pd.byProfession) ~= "table" then pd.byProfession = {} end
+    pd.lastUpdate = time()
+    return pd
+end
+
+local function EnsureSkillLineBucket(charData, skillLineID, professionName, expansionName)
+    if not skillLineID or skillLineID <= 0 then return nil, nil end
+    local pd = EnsureProfessionDataSchema(charData)
+
+    local bucket = pd.bySkillLine[skillLineID]
+    if type(bucket) ~= "table" then
+        bucket = {
+            skillLineID = skillLineID,
+            professionName = nil,
+            expansionName = nil,
+            lastUpdate = time(),
+        }
+        pd.bySkillLine[skillLineID] = bucket
+    end
+
+    local safeProfessionName = SafeAPIString(professionName)
+    local safeExpansionName = SafeAPIString(expansionName)
+
+    if safeProfessionName and safeProfessionName ~= "" then
+        bucket.professionName = safeProfessionName
+        if type(pd.byProfession[safeProfessionName]) ~= "table" then
+            pd.byProfession[safeProfessionName] = {}
+        end
+        pd.byProfession[safeProfessionName][skillLineID] = true
+    end
+    if safeExpansionName and safeExpansionName ~= "" then
+        bucket.expansionName = safeExpansionName
+    end
+
+    bucket.lastUpdate = time()
+    return bucket, pd
+end
 
 -- ============================================================================
 -- CONCENTRATION DATA COLLECTION
@@ -133,12 +195,12 @@ local function CollectConcentrationData()
         if concOk and currencyID and currencyID > 0 then
             local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
             if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
-                local professionName = entry.profName
+                local professionName = SafeAPIString(entry.profName)
                 local expansionName = nil
                 local piOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, slID)
                 if piOk and profInfo then
-                    professionName = professionName or profInfo.professionName or profInfo.parentProfessionName
-                    expansionName = profInfo.professionName or profInfo.parentProfessionName
+                    professionName = professionName or SafeAPIString(profInfo.parentProfessionName)
+                    expansionName = SafeAPIString(profInfo.professionName)
                 end
                 professionName = professionName or ("Profession_" .. slID)
 
@@ -155,6 +217,15 @@ local function CollectConcentrationData()
                         expansionName  = expansionName,
                         lastUpdate     = time(),
                     }
+                    local bucket = EnsureSkillLineBucket(charData, slID, professionName, expansionName)
+                    if bucket then
+                        bucket.concentration = {
+                            current = currInfo.quantity or 0,
+                            max = currInfo.maxQuantity or 0,
+                            currencyID = currencyID,
+                            lastUpdate = time(),
+                        }
+                    end
                     found = found + 1
                     if WarbandNexus.Debug then
                         WarbandNexus:Debug("[Concentration] Stored: skillLineID=" .. tostring(slID) .. " " .. tostring(professionName) .. " = "
@@ -229,11 +300,86 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
     local unspentTotal = 0
     local spentTotal = 0
     local maxTotal = 0
+    local estimatedMaxTotal = 0
     local currencyName = ""
     local currencyIcon = nil
     local specTabs = {}
     local foundCurrency = false
 
+    local function EstimateTreeMaxFromNodes(treeID, seenNodes)
+        if not treeID or treeID <= 0 then return 0, {} end
+        if not C_Traits or not C_Traits.GetTreeNodes or not C_Traits.GetNodeInfo then return 0, {} end
+        local ok, nodeIDs = pcall(C_Traits.GetTreeNodes, treeID)
+        if not ok or not nodeIDs or #nodeIDs == 0 then return 0, {} end
+
+        local total = 0
+        local nodeDetails = {}
+        for n = 1, #nodeIDs do
+            local nodeID = nodeIDs[n]
+            local isNewForMax = not seenNodes or not seenNodes[nodeID]
+            if seenNodes then
+                seenNodes[nodeID] = true
+            end
+            local nOk, nodeInfo = pcall(C_Traits.GetNodeInfo, configID, nodeID)
+            if nOk and nodeInfo then
+                local maxRanks = nodeInfo.maxRanks
+                if (not maxRanks or maxRanks <= 0) and nodeInfo.activeEntry and type(nodeInfo.activeEntry.maxRanks) == "number" then
+                    maxRanks = nodeInfo.activeEntry.maxRanks
+                end
+                if (not maxRanks or maxRanks <= 0) and nodeInfo.entryIDs and C_Traits.GetEntryInfo then
+                    local best = 0
+                    for e = 1, #nodeInfo.entryIDs do
+                        local entryID = nodeInfo.entryIDs[e]
+                        local eOk, entryInfo = pcall(C_Traits.GetEntryInfo, configID, entryID)
+                        if eOk and entryInfo and type(entryInfo.maxRanks) == "number" and entryInfo.maxRanks > best then
+                            best = entryInfo.maxRanks
+                        end
+                    end
+                    maxRanks = best
+                end
+
+                -- Resolve node name via definition chain: entryID -> definitionID -> overrideName / spellID
+                local nodeName = nil
+                local resolveEntryID = nil
+                if nodeInfo.activeEntry and nodeInfo.activeEntry.entryID then
+                    resolveEntryID = nodeInfo.activeEntry.entryID
+                elseif nodeInfo.entryIDs and #nodeInfo.entryIDs > 0 then
+                    resolveEntryID = nodeInfo.entryIDs[1]
+                end
+                if resolveEntryID and C_Traits.GetEntryInfo and C_Traits.GetDefinitionInfo then
+                    local eOk2, entryInf = pcall(C_Traits.GetEntryInfo, configID, resolveEntryID)
+                    if eOk2 and entryInf and entryInf.definitionID then
+                        local dOk, defInfo = pcall(C_Traits.GetDefinitionInfo, entryInf.definitionID)
+                        if dOk and defInfo then
+                            nodeName = SafeAPIString(defInfo.overrideName)
+                            if not nodeName and defInfo.spellID and GetSpellInfo then
+                                local spOk, spName = pcall(GetSpellInfo, defInfo.spellID)
+                                if spOk then nodeName = SafeAPIString(spName) end
+                            end
+                        end
+                    end
+                end
+
+                local currentRank = nodeInfo.currentRank or nodeInfo.activeRank or 0
+
+                if isNewForMax and type(maxRanks) == "number" and maxRanks > 0 then
+                    total = total + maxRanks
+                end
+
+                -- Store node detail for this tree (regardless of seenNodes dedup)
+                if type(maxRanks) == "number" and maxRanks > 0 then
+                    nodeDetails[#nodeDetails + 1] = {
+                        name = nodeName or ("Node " .. nodeID),
+                        currentRank = currentRank,
+                        maxRanks = maxRanks,
+                    }
+                end
+            end
+        end
+        return total, nodeDetails
+    end
+
+    local seenKnowledgeNodes = {}
     for i = 1, #tabIDs do
         local tabID = tabIDs[i]
         local tabName = ""
@@ -257,11 +403,18 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
             end
         end
 
+        local treeMax, treeNodeDetails = EstimateTreeMaxFromNodes(tabID, seenKnowledgeNodes)
+
         specTabs[#specTabs + 1] = {
             tabID = tabID,
             name  = tabName,
             state = tabState,
+            nodes = treeNodeDetails,
         }
+
+        if treeMax and treeMax > 0 then
+            estimatedMaxTotal = estimatedMaxTotal + treeMax
+        end
 
         -- Get the spend currency for this tab's root path
         if rootNodeID and C_ProfSpecs.GetSpendCurrencyForPath then
@@ -304,12 +457,25 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
 
     if not foundCurrency then return nil end
 
+    -- If API returns 0 max, fall back to node-based max and finally to (spent+unspent).
+    -- Keep max at least current progress to avoid "Current > Max" displays.
+    local effectiveMax = maxTotal
+    if (not effectiveMax or effectiveMax <= 0) and estimatedMaxTotal > 0 then
+        effectiveMax = estimatedMaxTotal
+    end
+    if (not effectiveMax or effectiveMax <= 0) and (unspentTotal + spentTotal) > 0 then
+        effectiveMax = unspentTotal + spentTotal
+    end
+    if effectiveMax and effectiveMax > 0 and effectiveMax < (unspentTotal + spentTotal) then
+        effectiveMax = unspentTotal + spentTotal
+    end
+
     local result = {
         skillLineID      = skillLineID,
         hasUnspentPoints = (unspentTotal > 0),
         unspentPoints    = unspentTotal,
         spentPoints      = spentTotal,
-        maxPoints        = maxTotal,
+        maxPoints        = effectiveMax,
         currencyName     = currencyName,
         currencyIcon     = currencyIcon,
         specTabs         = specTabs,
@@ -359,13 +525,13 @@ local function CollectKnowledgeData()
     if C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
         local ok, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, skillLineID)
         if ok and profInfo then
-            profName = profInfo.professionName or profInfo.parentProfessionName
-            expansionName = profInfo.professionName or profInfo.parentProfessionName
+            profName = SafeAPIString(profInfo.parentProfessionName) or SafeAPIString(profInfo.professionName)
+            expansionName = SafeAPIString(profInfo.professionName)
         end
     end
     if not profName and C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo then
         local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
-        if ok and baseInfo then profName = baseInfo.professionName end
+        if ok and baseInfo then profName = SafeAPIString(baseInfo.professionName) end
     end
     profName = profName or ("Profession_" .. skillLineID)
 
@@ -374,6 +540,19 @@ local function CollectKnowledgeData()
         result.professionName = profName
         result.expansionName = expansionName
         charData.knowledgeData[skillLineID] = result
+        local bucket = EnsureSkillLineBucket(charData, skillLineID, profName, expansionName)
+        if bucket then
+            bucket.knowledge = {
+                hasUnspentPoints = result.hasUnspentPoints or false,
+                unspentPoints = result.unspentPoints or 0,
+                spentPoints = result.spentPoints or 0,
+                maxPoints = result.maxPoints or 0,
+                currencyName = SafeAPIString(result.currencyName) or "",
+                currencyIcon = result.currencyIcon,
+                specTabs = result.specTabs,
+                lastUpdate = result.lastUpdate or time(),
+            }
+        end
     end
 
     -- Fire event for consumers
@@ -414,6 +593,34 @@ local PROFESSION_NAME_TO_ENUM = {
     ["Archaeology"] = 14,
 }
 
+-- Base profession skillLine -> Enum.Profession
+-- Locale-independent fallback when profession names differ.
+local PROFESSION_SKILLLINE_TO_ENUM = {
+    [164] = 1,   -- Blacksmithing
+    [165] = 2,   -- Leatherworking
+    [171] = 3,   -- Alchemy
+    [182] = 4,   -- Herbalism
+    [185] = 5,   -- Cooking
+    [186] = 6,   -- Mining
+    [197] = 7,   -- Tailoring
+    [202] = 8,   -- Engineering
+    [333] = 9,   -- Enchanting
+    [356] = 10,  -- Fishing
+    [393] = 11,  -- Skinning
+    [755] = 12,  -- Jewelcrafting
+    [773] = 13,  -- Inscription
+    [794] = 14,  -- Archaeology
+}
+
+local function ResolveProfessionEnum(profName, skillLine)
+    if skillLine and PROFESSION_SKILLLINE_TO_ENUM[skillLine] then
+        return PROFESSION_SKILLLINE_TO_ENUM[skillLine]
+    end
+    if not profName or profName == "" then return nil end
+    local normalized = profName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", ""):gsub("^Shadowlands ", "")
+    return PROFESSION_NAME_TO_ENUM[normalized] or PROFESSION_NAME_TO_ENUM[profName]
+end
+
 -- Fallback slots for when GetProfessionSlots is unavailable
 local EQUIPMENT_SLOTS = {
     { slotID = 20, key = "tool" },
@@ -448,7 +655,22 @@ local function CollectEquipmentDataForCurrentProfession()
         lastUpdate = time(),
     }
 
-    for _, slot in ipairs(EQUIPMENT_SLOTS) do
+    local slotsToUse = EQUIPMENT_SLOTS
+    local profEnum = ResolveProfessionEnum(profName)
+    if profEnum and C_TradeSkillUI and C_TradeSkillUI.GetProfessionSlots then
+        local slotsOk, dynamicSlots = pcall(C_TradeSkillUI.GetProfessionSlots, profEnum)
+        if slotsOk and dynamicSlots and #dynamicSlots > 0 then
+            slotsToUse = {}
+            for i = 1, #dynamicSlots do
+                slotsToUse[#slotsToUse + 1] = {
+                    slotID = dynamicSlots[i],
+                    key = (i == 1 and "tool") or (i == 2 and "accessory1") or (i == 3 and "accessory2") or ("slot" .. i),
+                }
+            end
+        end
+    end
+
+    for _, slot in ipairs(slotsToUse) do
         local itemID = GetInventoryItemID("player", slot.slotID)
         if itemID then
             local itemLink = GetInventoryItemLink("player", slot.slotID)
@@ -466,7 +688,8 @@ local function CollectEquipmentDataForCurrentProfession()
         end
     end
 
-    charData.professionEquipment[profName] = equipment
+    local key = NormalizeProfessionNameForEquipment(profName) or profName
+    charData.professionEquipment[key] = equipment
 
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_PROFESSION_EQUIPMENT_UPDATED", charKey)
@@ -546,15 +769,16 @@ local function CollectEquipmentByDetection()
 
     for _, profIndex in ipairs(profIndices) do
         if profIndex then
-            local profName = GetProfessionInfo(profIndex)
+            local profName, _, _, _, _, _, skillLine = GetProfessionInfo(profIndex)
             if profName and profName ~= "" then
-                local profEnum = PROFESSION_NAME_TO_ENUM[profName]
+                local key = NormalizeProfessionNameForEquipment(profName) or profName
+                local profEnum = ResolveProfessionEnum(profName, skillLine)
                 if profEnum then
                     local slots = GetSlotsForProfession(profEnum)
                     if slots and #slots > 0 then
                         local equipment = CollectEquipmentFromSlots(slots)
                         if equipment then
-                            charData.professionEquipment[profName] = equipment
+                            charData.professionEquipment[key] = equipment
                             collectedAny = true
                         end
                     end
@@ -657,12 +881,13 @@ local function CollectExpansionFromOpenProfession()
     local parentName = nil
     if C_TradeSkillUI.GetBaseProfessionInfo then
         local baseOk, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
-        if baseOk and baseInfo and baseInfo.professionName and baseInfo.professionName ~= "" then
-            parentName = baseInfo.professionName
+        local baseName = baseOk and baseInfo and SafeAPIString(baseInfo.professionName) or nil
+        if baseName and baseName ~= "" then
+            parentName = baseName
         end
     end
     if not parentName and childInfos[1] then
-        parentName = childInfos[1].parentProfessionName
+        parentName = SafeAPIString(childInfos[1].parentProfessionName)
     end
 
     local expansions = {}
@@ -671,7 +896,7 @@ local function CollectExpansionFromOpenProfession()
         if info then
             local skillLevel = info.skillLevel or 0
             local maxSkillLevel = info.maxSkillLevel or 0
-            local expansionName = info.professionName or ("Expansion " .. i)
+            local expansionName = SafeAPIString(info.professionName) or ("Expansion " .. i)
             local skillLineID = info.skillLineID or info.professionID
 
             -- Get detailed skill info if skillLineID is available
@@ -680,8 +905,9 @@ local function CollectExpansionFromOpenProfession()
                 if profOk and profInfo then
                     skillLevel = profInfo.skillLevel or skillLevel
                     maxSkillLevel = profInfo.maxSkillLevel or maxSkillLevel
-                    if profInfo.professionName and profInfo.professionName ~= "" then
-                        expansionName = profInfo.professionName
+                    local safeExpName = SafeAPIString(profInfo.professionName)
+                    if safeExpName and safeExpName ~= "" then
+                        expansionName = safeExpName
                     end
                 end
             end
@@ -731,6 +957,7 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
         local parentName, expansions = CollectExpansionFromOpenProfession()
         if parentName and expansions and #expansions > 0 then
             charData.professionExpansions[parentName] = expansions
+            EnsureProfessionDataSchema(charData)
 
             -- Persist discovered skillLineIDs for future login refreshes
             local discovered = {}
@@ -740,6 +967,14 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
                         id   = exp.skillLineID,
                         name = exp.name,
                     }
+                    local bucket = EnsureSkillLineBucket(charData, exp.skillLineID, parentName, exp.name)
+                    if bucket then
+                        bucket.skill = {
+                            current = exp.skillLevel or 0,
+                            max = exp.maxSkillLevel or 0,
+                            lastUpdate = time(),
+                        }
+                    end
                 end
             end
             if #discovered > 0 then
@@ -761,12 +996,21 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
                 if profOk and profInfo then
                     local skillLevel    = profInfo.skillLevel or 0
                     local maxSkillLevel = profInfo.maxSkillLevel or 0
+                    local updatedName = SafeAPIString(profInfo.professionName) or sl.name
                     expansions[#expansions + 1] = {
-                        name          = profInfo.professionName or sl.name,
+                        name          = updatedName,
                         skillLevel    = skillLevel,
                         maxSkillLevel = maxSkillLevel,
                         skillLineID   = sl.id,
                     }
+                    local bucket = EnsureSkillLineBucket(charData, sl.id, profName, updatedName)
+                    if bucket then
+                        bucket.skill = {
+                            current = skillLevel,
+                            max = maxSkillLevel,
+                            lastUpdate = time(),
+                        }
+                    end
                     -- Track if at least one expansion returned real skill data
                     if maxSkillLevel > 0 then
                         hasValidSkill = true
@@ -794,21 +1038,447 @@ end
     Get the parent profession name for the currently open trade skill.
     Returns nil if profession frame is not open or API unavailable.
 ]]
-local function GetCurrentProfessionName()
+-- Normalize to base profession name so equipment is keyed consistently (Alchemy, Tailoring, etc.).
+local function NormalizeProfessionNameForEquipment(name)
+    if not name or name == "" then return name end
+    local s = name:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", ""):gsub("^Shadowlands ", "")
+    return (s ~= "" and s) or name
+end
+
+GetCurrentProfessionName = function()
     if not C_TradeSkillUI then return nil end
+    local raw
     if C_TradeSkillUI.GetBaseProfessionInfo then
         local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
         if ok and baseInfo and baseInfo.professionName and baseInfo.professionName ~= "" then
-            return baseInfo.professionName
+            raw = baseInfo.professionName
         end
     end
-    if C_TradeSkillUI.GetChildProfessionInfos then
+    if not raw and C_TradeSkillUI.GetChildProfessionInfos then
         local ok, childInfos = pcall(C_TradeSkillUI.GetChildProfessionInfos)
         if ok and childInfos and #childInfos > 0 and childInfos[1] then
-            return childInfos[1].parentProfessionName or childInfos[1].professionName
+            raw = childInfos[1].parentProfessionName or childInfos[1].professionName
         end
     end
-    return nil
+    return raw and NormalizeProfessionNameForEquipment(raw) or nil
+end
+
+-- ============================================================================
+-- RECIPE SUMMARY DATA COLLECTION
+-- ============================================================================
+
+local function IsRecipeFlagTrue(recipeInfo, key1, key2, key3, key4)
+    if not recipeInfo then return false end
+    local v1 = key1 and recipeInfo[key1]
+    local v2 = key2 and recipeInfo[key2]
+    local v3 = key3 and recipeInfo[key3]
+    local v4 = key4 and recipeInfo[key4]
+    if v1 == true or v2 == true or v3 == true or v4 == true then return true end
+    if type(v1) == "number" and v1 > 0 then return true end
+    if type(v2) == "number" and v2 > 0 then return true end
+    if type(v3) == "number" and v3 > 0 then return true end
+    if type(v4) == "number" and v4 > 0 then return true end
+    return false
+end
+
+-- Check whether a recipe category belongs to Midnight by walking parent categories.
+-- This keeps recipe counts strictly scoped to Midnight child-skillline content.
+local function IsMidnightRecipeCategory(categoryID, cache)
+    if not categoryID or categoryID <= 0 then return false end
+    cache = cache or {}
+    if cache[categoryID] ~= nil then
+        return cache[categoryID]
+    end
+    if not C_TradeSkillUI or not C_TradeSkillUI.GetCategoryInfo then
+        cache[categoryID] = false
+        return false
+    end
+
+    local seen = {}
+    local cur = categoryID
+    while cur and cur > 0 and not seen[cur] do
+        seen[cur] = true
+        local ok, catInfo = pcall(C_TradeSkillUI.GetCategoryInfo, cur)
+        if not ok or not catInfo then
+            break
+        end
+        local catName = SafeAPIString(catInfo.name)
+        if catName and catName:find("Midnight", 1, true) then
+            cache[categoryID] = true
+            return true
+        end
+        cur = catInfo.parentCategoryID
+    end
+
+    cache[categoryID] = false
+    return false
+end
+
+-- Midnight weekly profession knowledge objective mapping.
+-- Source model: quest completion (hardcoded objective IDs) + catch-up currency (API).
+local MIDNIGHT_WEEKLY_SOURCES = {
+    [2906] = {
+        catchUpCurrencyID = 3189,
+        uniques = {89115, 89117, 89114, 89116, 89113, 89112, 89111, 89118, 93794},
+        treatise = {95127},
+        weeklyQuest = {93690}, weeklyQuestLimit = 1,
+        treasure = {93528, 93529},
+    },
+    [2907] = {
+        catchUpCurrencyID = 3199,
+        uniques = {89177, 89178, 89179, 89180, 89181, 89182, 89183, 89184, 93795},
+        treatise = {95128},
+        weeklyQuest = {93691}, weeklyQuestLimit = 1,
+        treasure = {93530, 93531},
+    },
+    [2909] = {
+        catchUpCurrencyID = 3198,
+        uniques = {89100, 89101, 89102, 89103, 89104, 89105, 89106, 89107, 92374, 92186},
+        treatise = {95129},
+        weeklyQuest = {93698, 93699}, weeklyQuestLimit = 1,
+        treasure = {93532, 93533},
+        gathering = {95048, 95049, 95050, 95051, 95052, 95053},
+    },
+    [2910] = {
+        catchUpCurrencyID = 3197,
+        uniques = {89133, 89134, 89135, 89136, 89137, 89138, 89139, 89140, 93796},
+        treatise = {95138},
+        weeklyQuest = {93692}, weeklyQuestLimit = 1,
+        treasure = {93534, 93535},
+    },
+    [2912] = {
+        catchUpCurrencyID = 3196,
+        uniques = {89162, 89161, 89160, 89159, 89158, 89157, 89156, 89155, 93411, 92174},
+        treatise = {95130},
+        weeklyQuest = {93700, 93702, 93703, 93704}, weeklyQuestLimit = 1,
+        gathering = {81425, 81426, 81427, 81428, 81429, 81430},
+    },
+    [2913] = {
+        catchUpCurrencyID = 3195,
+        uniques = {89067, 89068, 89069, 89070, 89071, 89072, 89073, 89074, 93412},
+        treatise = {95131},
+        weeklyQuest = {93693}, weeklyQuestLimit = 1,
+        treasure = {93536, 93537},
+    },
+    [2914] = {
+        catchUpCurrencyID = 3194,
+        uniques = {89122, 89123, 89124, 89125, 89126, 89127, 89128, 89129, 93222},
+        treatise = {95133},
+        weeklyQuest = {93694}, weeklyQuestLimit = 1,
+        treasure = {93539, 93538},
+    },
+    [2915] = {
+        catchUpCurrencyID = 3193,
+        uniques = {89089, 89090, 89091, 89092, 89093, 89094, 89095, 89096, 92371},
+        treatise = {95134},
+        weeklyQuest = {93695}, weeklyQuestLimit = 1,
+        treasure = {93540, 93541},
+    },
+    [2916] = {
+        catchUpCurrencyID = 3192,
+        uniques = {89144, 89145, 89146, 89147, 89148, 89149, 89150, 89151, 92372, 92187},
+        treatise = {95135},
+        weeklyQuest = {93705, 93706, 93708, 93709}, weeklyQuestLimit = 1,
+        gathering = {88673, 88674, 88675, 88676, 88677, 88678},
+    },
+    [2917] = {
+        catchUpCurrencyID = 3191,
+        uniques = {89166, 89167, 89168, 89169, 89170, 89171, 89172, 89173, 92373, 92188},
+        treatise = {95136},
+        weeklyQuest = {93710, 93711, 93712, 93714}, weeklyQuestLimit = 1,
+        gathering = {88534, 88549, 88537, 88536, 88530, 88529},
+    },
+    [2918] = {
+        catchUpCurrencyID = 3190,
+        uniques = {89078, 89079, 89080, 89081, 89082, 89083, 89084, 89085, 93201},
+        treatise = {95137},
+        weeklyQuest = {93696}, weeklyQuestLimit = 1,
+        treasure = {93542, 93543},
+    },
+}
+
+local MIDNIGHT_CATCHUP_CURRENCY = {
+    [3189] = true, [3199] = true, [3198] = true, [3197] = true, [3196] = true, [3195] = true,
+    [3194] = true, [3193] = true, [3192] = true, [3191] = true, [3190] = true,
+}
+
+local function CountCompletedQuests(questIDs, limit)
+    if type(questIDs) ~= "table" or #questIDs == 0 then
+        return 0, 0
+    end
+    local completed = 0
+    for i = 1, #questIDs do
+        local questID = questIDs[i]
+        if questID and C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then
+            local ok, done = pcall(C_QuestLog.IsQuestFlaggedCompleted, questID)
+            if ok and done == true then
+                completed = completed + 1
+            end
+        end
+    end
+    if limit and limit > 0 then
+        return (completed >= limit) and limit or completed, limit
+    end
+    return completed, #questIDs
+end
+
+local function BuildProgressEntry(current, total, source)
+    if not total or total <= 0 then
+        return { current = 0, total = 0, source = source }
+    end
+    if not current or current < 0 then current = 0 end
+    if current > total then current = total end
+    return { current = current, total = total, source = source }
+end
+
+local function CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName)
+    local source = MIDNIGHT_WEEKLY_SOURCES[skillLineID]
+    if not source then return false end
+
+    local bucket = EnsureSkillLineBucket(charData, skillLineID, professionName, expansionName or "Midnight")
+    if not bucket then return false end
+
+    local recipes = charData.recipes and charData.recipes[skillLineID]
+    local firstCraftCurrent = recipes and recipes.firstCraftDoneCount or 0
+    local firstCraftTotal = recipes and recipes.firstCraftTotalCount or 0
+    -- Legacy fallback: old schema stored "firstCraftCount" against all recipes.
+    -- That value mapped to "available first-craft bonus", not done-count.
+    if firstCraftTotal <= 0 and recipes and recipes.firstCraftCount and recipes.firstCraftCount > 0 then
+        firstCraftCurrent = 0
+        firstCraftTotal = recipes.firstCraftCount
+    end
+
+    local uniquesCur, uniquesTotal = CountCompletedQuests(source.uniques)
+    local treatiseCur, treatiseTotal = CountCompletedQuests(source.treatise)
+    local weeklyCur, weeklyTotal = CountCompletedQuests(source.weeklyQuest, source.weeklyQuestLimit or 1)
+    local treasureCur, treasureTotal = CountCompletedQuests(source.treasure)
+    local gatheringCur, gatheringTotal = CountCompletedQuests(source.gathering)
+
+    local catchUpCurrent, catchUpTotal = 0, 0
+    if source.catchUpCurrencyID and source.catchUpCurrencyID > 0 and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+        local ok, currencyInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, source.catchUpCurrencyID)
+        if ok and currencyInfo then
+            catchUpCurrent = currencyInfo.quantity or 0
+            catchUpTotal = currencyInfo.maxQuantity or 0
+        end
+    end
+
+    local progress = {
+        firstCraft  = BuildProgressEntry(firstCraftCurrent, firstCraftTotal, "api_recipe"),
+        uniques     = BuildProgressEntry(uniquesCur, uniquesTotal, "hardcoded_quest"),
+        treatise    = BuildProgressEntry(treatiseCur, treatiseTotal, "hardcoded_quest"),
+        weeklyQuest = BuildProgressEntry(weeklyCur, weeklyTotal, "hardcoded_quest"),
+        treasure    = BuildProgressEntry(treasureCur, treasureTotal, "hardcoded_quest"),
+        gathering   = BuildProgressEntry(gatheringCur, gatheringTotal, "hardcoded_quest"),
+        catchUp     = BuildProgressEntry(catchUpCurrent, catchUpTotal, "api_currency"),
+        lastUpdate = time(),
+    }
+
+    bucket.weeklyKnowledge = progress
+
+    -- Legacy compatibility mirror
+    charData.professionWeeklyKnowledge = charData.professionWeeklyKnowledge or {}
+    charData.professionWeeklyKnowledge[skillLineID] = progress
+    return true
+end
+
+local function RefreshAllMidnightKnowledgeProgressForCharacter(charData)
+    if not charData then return 0 end
+    local refreshed = 0
+    for skillLineID in pairs(MIDNIGHT_WEEKLY_SOURCES) do
+        local hasData = (charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[skillLineID])
+            or (charData.recipes and charData.recipes[skillLineID])
+            or (charData.knowledgeData and charData.knowledgeData[skillLineID])
+            or (charData.concentration and charData.concentration[skillLineID])
+        if hasData and CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, nil, "Midnight") then
+            refreshed = refreshed + 1
+        end
+    end
+    return refreshed
+end
+
+local function CollectMidnightKnowledgeProgressData()
+    if not WarbandNexus or not WarbandNexus.db then return end
+    if not C_TradeSkillUI or not C_TradeSkillUI.GetProfessionChildSkillLineID then return end
+
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return end
+
+    local slOk, skillLineID = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
+    if not slOk or not skillLineID or not MIDNIGHT_WEEKLY_SOURCES[skillLineID] then return end
+
+    local professionName, expansionName
+    if C_TradeSkillUI.GetProfessionInfoBySkillLineID then
+        local piOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, skillLineID)
+        if piOk and profInfo then
+            professionName = SafeAPIString(profInfo.parentProfessionName) or SafeAPIString(profInfo.professionName)
+            expansionName = SafeAPIString(profInfo.professionName)
+        end
+    end
+
+    if CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName) and WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_PROFESSION_DATA_UPDATED", charKey)
+    end
+end
+
+local function CollectRecipeSummaryData()
+    if not WarbandNexus or not WarbandNexus.db then return end
+    if not C_TradeSkillUI then return end
+    if not C_TradeSkillUI.GetAllRecipeIDs or not C_TradeSkillUI.GetRecipeInfo then return end
+
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+
+    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return end
+
+    local skillLineID = nil
+    if C_TradeSkillUI.GetProfessionChildSkillLineID then
+        local slOk, slID = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
+        if slOk and slID and slID > 0 then
+            skillLineID = slID
+        end
+    end
+    if not skillLineID then return end
+    -- Only collect and persist recipe summary for Midnight profession tabs (no TWW/DF data).
+    if not MIDNIGHT_WEEKLY_SOURCES[skillLineID] or type(MIDNIGHT_WEEKLY_SOURCES[skillLineID]) ~= "table" then
+        return
+    end
+
+    local allIDsOk, recipeIDs = pcall(C_TradeSkillUI.GetAllRecipeIDs)
+    if not allIDsOk or not recipeIDs or #recipeIDs == 0 then return end
+
+    local professionName = nil
+    local expansionName = nil
+    if C_TradeSkillUI.GetProfessionInfoBySkillLineID then
+        local piOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, skillLineID)
+        if piOk and profInfo then
+            professionName = SafeAPIString(profInfo.parentProfessionName) or SafeAPIString(profInfo.professionName)
+            expansionName = SafeAPIString(profInfo.professionName)
+        end
+    end
+    if not professionName and C_TradeSkillUI.GetBaseProfessionInfo then
+        local baseOk, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
+        if baseOk and baseInfo then
+            professionName = SafeAPIString(baseInfo.professionName)
+        end
+    end
+    professionName = professionName or ("Profession_" .. skillLineID)
+
+    if not charData.recipes then
+        charData.recipes = {}
+    end
+
+    local totalCount = 0
+    local knownCount = 0
+    local firstCraftDoneCount = 0
+    local firstCraftTotalCount = 0
+    local firstCraftAvailableCount = 0
+    local skillUpCount = 0
+    local knownRecipes = {}
+    local recipeList = {}
+    local rawRecipeCount = #recipeIDs
+    local categoryCache = {}
+
+    for i = 1, #recipeIDs do
+        local recipeID = recipeIDs[i]
+        local riOk, recipeInfo = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
+        if riOk and recipeInfo then
+            -- Filter to Midnight categories only (strict content isolation).
+            local categoryID = recipeInfo.categoryID
+            if IsMidnightRecipeCategory(categoryID, categoryCache) then
+                totalCount = totalCount + 1
+
+                if recipeInfo.learned == true then
+                    knownCount = knownCount + 1
+                    knownRecipes[recipeID] = true
+                end
+
+                -- Store recipe detail for Info window display
+                recipeList[#recipeList + 1] = {
+                    recipeID = recipeID,
+                    name = SafeAPIString(recipeInfo.name) or ("Recipe " .. recipeID),
+                    icon = recipeInfo.icon,
+                    learned = recipeInfo.learned == true,
+                }
+
+                -- First Craft (Current / Total): total = only recipes that actually have a first-craft bonus (matches other addons e.g. 72 not 88).
+                -- firstCraft == false on unlearned often means "no bonus", so only count: firstCraft==true (available) or learned+firstCraft==false (consumed).
+                if type(recipeInfo.firstCraft) == "boolean" then
+                    local hasBonus = (recipeInfo.firstCraft == true) or (recipeInfo.learned == true and recipeInfo.firstCraft == false)
+                    if hasBonus then
+                        firstCraftTotalCount = firstCraftTotalCount + 1
+                        if recipeInfo.learned == true then
+                            if recipeInfo.firstCraft == false then
+                                firstCraftDoneCount = firstCraftDoneCount + 1
+                            else
+                                firstCraftAvailableCount = firstCraftAvailableCount + 1
+                            end
+                        end
+                    end
+                end
+                if IsRecipeFlagTrue(recipeInfo, "canSkillUp", "hasSkillUp", "isSkillUpRecipe", "isRecipePotentiallyDiscoverable") then
+                    skillUpCount = skillUpCount + 1
+                end
+            end
+        end
+    end
+
+    charData.recipes[skillLineID] = {
+        skillLineID = skillLineID,
+        professionName = professionName,
+        expansionName = expansionName,
+        totalCount = totalCount,
+        knownCount = knownCount,
+        firstCraftCount = firstCraftDoneCount, -- legacy key (now stores done count)
+        firstCraftDoneCount = firstCraftDoneCount,
+        firstCraftTotalCount = firstCraftTotalCount,
+        firstCraftAvailableCount = firstCraftAvailableCount,
+        skillUpCount = skillUpCount,
+        knownRecipes = knownRecipes,
+        recipeList = recipeList,
+        lastScan = time(),
+    }
+
+    local bucket = EnsureSkillLineBucket(charData, skillLineID, professionName, expansionName)
+    if bucket then
+        bucket.recipes = {
+            totalCount = totalCount,
+            knownCount = knownCount,
+            firstCraftCount = firstCraftDoneCount, -- legacy key (now stores done count)
+            firstCraftDoneCount = firstCraftDoneCount,
+            firstCraftTotalCount = firstCraftTotalCount,
+            firstCraftAvailableCount = firstCraftAvailableCount,
+            skillUpCount = skillUpCount,
+            lastUpdate = time(),
+        }
+    end
+    -- Keep weekly knowledge counters in sync after recipe scans.
+    CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName)
+
+    if WarbandNexus.Debug then
+        WarbandNexus:Debug("[Recipes] source=GetAllRecipeIDs raw=" .. tostring(rawRecipeCount)
+            .. " filteredMidnight=" .. tostring(totalCount)
+            .. " prof=" .. tostring(professionName) .. " slID=" .. tostring(skillLineID)
+            .. " known/total=" .. tostring(knownCount) .. "/" .. tostring(totalCount)
+            .. " firstCraft(done/total)=" .. tostring(firstCraftDoneCount) .. "/" .. tostring(firstCraftTotalCount)
+            .. " available=" .. tostring(firstCraftAvailableCount)
+            .. " skillUp=" .. tostring(skillUpCount))
+    end
+    if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode and WarbandNexus.Print then
+        WarbandNexus:Print("[ProfDebug] " .. tostring(professionName)
+            .. " (slID " .. tostring(skillLineID) .. ")"
+            .. " raw=" .. tostring(rawRecipeCount)
+            .. ", midnight=" .. tostring(totalCount)
+            .. ", learned=" .. tostring(knownCount)
+            .. ", firstCraft=" .. tostring(firstCraftDoneCount) .. "/" .. tostring(firstCraftTotalCount))
+    end
+
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_RECIPE_DATA_UPDATED", charKey)
+    end
 end
 
 -- ============================================================================
@@ -863,7 +1533,7 @@ local function CollectCooldownData()
     local baseProfName = nil
     if C_TradeSkillUI.GetBaseProfessionInfo then
         local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
-        if ok and baseInfo then baseProfName = baseInfo.professionName end
+        if ok and baseInfo then baseProfName = SafeAPIString(baseInfo.professionName) end
     end
 
     -- Initialize tables
@@ -961,6 +1631,12 @@ local function CollectCooldownData()
         WarbandNexus:Debug("[Cooldowns] Collected " .. found .. " cooldown(s) for skillLineID=" .. tostring(skillLineID) .. " (fullScan=" .. tostring(needFullScan) .. ")")
     end
 
+    local bucket = EnsureSkillLineBucket(charData, skillLineID, baseProfName, nil)
+    if bucket then
+        bucket.cooldowns = cooldownEntries
+        bucket.lastUpdate = now
+    end
+
     if found > 0 and WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_PROFESSION_COOLDOWNS_UPDATED", charKey)
     end
@@ -1007,6 +1683,11 @@ local function CollectCraftingOrdersData()
 
     -- Initialize
     if not charData.craftingOrders then charData.craftingOrders = {} end
+    local baseProfName = nil
+    if C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo then
+        local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
+        if ok and baseInfo then baseProfName = SafeAPIString(baseInfo.professionName) end
+    end
 
     local personalCount = 0
     local guildCount = 0
@@ -1038,6 +1719,15 @@ local function CollectCraftingOrdersData()
         publicCount   = publicCount,
         lastUpdate    = time(),
     }
+    local bucket = EnsureSkillLineBucket(charData, skillLineID, baseProfName, nil)
+    if bucket then
+        bucket.orders = {
+            personalCount = personalCount,
+            guildCount = guildCount,
+            publicCount = publicCount,
+            lastUpdate = time(),
+        }
+    end
 
     if WarbandNexus.Debug then
         WarbandNexus:Debug("[Orders] Collected for skillLineID=" .. tostring(skillLineID) .. " personal=" .. personalCount .. " guild=" .. guildCount)
@@ -1072,6 +1762,10 @@ function WarbandNexus:OnTradeSkillShow()
         pcall(CollectConcentrationData)
         pcall(CollectKnowledgeData)
         pcall(CollectAllExpansionProfessions, true)
+        pcall(CollectRecipeSummaryData)
+        pcall(CollectMidnightKnowledgeProgressData)
+        pcall(CollectCooldownData)
+        pcall(CollectCraftingOrdersData)
         pcall(CollectEquipmentDataForCurrentProfession)
     end
 
@@ -1145,7 +1839,35 @@ function WarbandNexus:OnTradeSkillListUpdate()
         pcall(CollectConcentrationData)
         pcall(CollectKnowledgeData)
         pcall(CollectAllExpansionProfessions, true)
+        pcall(CollectRecipeSummaryData)
+        pcall(CollectMidnightKnowledgeProgressData)
+        pcall(CollectCooldownData)
+        pcall(CollectCraftingOrdersData)
     end)
+end
+
+--[[
+    Called on NEW_RECIPE_LEARNED.
+    Refresh recipe summary for the current profession context.
+]]
+function WarbandNexus:OnNewRecipeLearned()
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    C_Timer.After(0.3, function()
+        if not WarbandNexus then return end
+        pcall(CollectRecipeSummaryData)
+        pcall(CollectMidnightKnowledgeProgressData)
+    end)
+end
+
+function WarbandNexus:OnProfessionQuestProgressChanged()
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+    local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
+    if not charData then return end
+    if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 and self.SendMessage then
+        self:SendMessage("WN_PROFESSION_DATA_UPDATED", charKey)
+    end
 end
 
 --[[
@@ -1480,6 +2202,108 @@ function WarbandNexus:GetAllKnowledgeDataForProfession(profName)
     return result
 end
 
+--[[
+    Print current profession stats to chat for verification.
+    Call with profession window OPEN (K) to see live API-derived values and DB snapshot.
+    Use: /wn profverify
+]]
+function WarbandNexus:PrintProfessionVerify()
+    if not self.Print then return end
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then
+        self:Print("|cffff6600[WN Prof Verify]|r No character key.")
+        return
+    end
+    local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
+    if not charData then
+        self:Print("|cffff6600[WN Prof Verify]|r No character data.")
+        return
+    end
+
+    local skillLineID
+    if C_TradeSkillUI and C_TradeSkillUI.GetProfessionChildSkillLineID then
+        local ok, slID = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
+        if ok and slID and slID > 0 then skillLineID = slID end
+    end
+
+    if not skillLineID then
+        self:Print("|cff00ccff[WN Prof Verify]|r Open profession window (K) first, then run |cffffcc00/wn profverify|r again.")
+        if charData.knowledgeData or charData.recipes then
+            self:Print("|cff888888 Stored data for this character (Midnight only):|r")
+            if charData.knowledgeData then
+                for k, v in pairs(charData.knowledgeData) do
+                    local expName = type(v) == "table" and v.expansionName
+                    if type(v) == "table" and v.professionName and expName and (not issecretvalue or not issecretvalue(expName)) and expName:find("Midnight", 1, true) then
+                        local sp = v.spentPoints or 0
+                        local mx = v.maxPoints or 0
+                        self:Print("  Knowledge " .. tostring(v.professionName) .. ": " .. sp .. " / " .. (mx > 0 and mx or "--"))
+                    end
+                end
+            end
+            if charData.recipes then
+                for sl, r in pairs(charData.recipes) do
+                    local rExp = type(r) == "table" and r.expansionName
+                    if type(r) == "table" and r.professionName and rExp and (not issecretvalue or not issecretvalue(rExp)) and rExp:find("Midnight", 1, true) then
+                        self:Print("  Recipes " .. tostring(r.professionName) .. ": " .. tostring(r.knownCount or 0) .. " / " .. tostring(r.totalCount or 0) .. "  First craft: " .. tostring(r.firstCraftDoneCount or 0) .. " / " .. tostring(r.firstCraftTotalCount or 0))
+                    end
+                end
+            end
+        end
+        if charData.professionEquipment then
+            local keys = {}
+            for k in pairs(charData.professionEquipment) do if k ~= "_legacy" then keys[#keys + 1] = tostring(k) end end
+            if #keys > 0 then
+                self:Print("  Equipment keys: " .. table.concat(keys, ", "))
+            end
+        end
+        return
+    end
+
+    local profName = "?"
+    local expansionName = ""
+    if C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
+        local ok, info = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, skillLineID)
+        if ok and info then
+            profName = SafeAPIString(info.parentProfessionName) or SafeAPIString(info.professionName) or "?"
+            expansionName = SafeAPIString(info.professionName) or ""
+        end
+    end
+
+    self:Print("|cff00ff00[WN Prof Verify]|r " .. profName .. " (" .. expansionName .. ") | skillLineID=" .. tostring(skillLineID))
+
+    local kd = charData.knowledgeData and charData.knowledgeData[skillLineID]
+    if kd then
+        local cur = (kd.spentPoints or 0) + (kd.unspentPoints or 0)
+        local max = kd.maxPoints or 0
+        self:Print("  Knowledge: " .. cur .. " / " .. (max > 0 and max or "--") .. "  (spent=" .. tostring(kd.spentPoints or 0) .. ", unspent=" .. tostring(kd.unspentPoints or 0) .. ")")
+    else
+        self:Print("  Knowledge: no data (open this profession tab to refresh)")
+    end
+
+    local rec = charData.recipes and charData.recipes[skillLineID]
+    if rec then
+        self:Print("  Recipes: " .. tostring(rec.knownCount or 0) .. " / " .. tostring(rec.totalCount or 0))
+        self:Print("  First craft: " .. tostring(rec.firstCraftDoneCount or 0) .. " / " .. tostring(rec.firstCraftTotalCount or 0))
+    else
+        self:Print("  Recipes / First craft: no data (open this profession tab to refresh)")
+    end
+
+    local eqByProf = charData.professionEquipment
+    local eqKey = profName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
+    local eqData = eqByProf and (eqByProf[profName] or eqByProf[expansionName] or eqByProf[eqKey]) or nil
+    if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
+        local parts = {}
+        if eqData.tool and eqData.tool.name then parts[#parts + 1] = "Tool: " .. eqData.tool.name end
+        if eqData.accessory1 and eqData.accessory1.name then parts[#parts + 1] = "Acc1: " .. eqData.accessory1.name end
+        if eqData.accessory2 and eqData.accessory2.name then parts[#parts + 1] = "Acc2: " .. eqData.accessory2.name end
+        self:Print("  Equipment: " .. (table.concat(parts, "  ") or "ok"))
+    else
+        self:Print("  Equipment: none stored (open profession (K) on this char to scan)")
+    end
+
+    self:Print("|cff888888 Compare with in-game UI to verify numbers.|r")
+end
+
 -- ============================================================================
 -- LOGIN-TIME CONCENTRATION COLLECTION
 -- ============================================================================
@@ -1547,6 +2371,15 @@ function WarbandNexus:CollectConcentrationOnLogin()
                                     expansionName  = expansionName,
                                     lastUpdate     = time(),
                                 }
+                                local bucket = EnsureSkillLineBucket(charData, slID, profName, expansionName)
+                                if bucket then
+                                    bucket.concentration = {
+                                        current = currInfo.quantity or 0,
+                                        max = currInfo.maxQuantity or 0,
+                                        currencyID = currencyID,
+                                        lastUpdate = time(),
+                                    }
+                                end
                                 break
                             end
                         end
@@ -1574,6 +2407,15 @@ function WarbandNexus:CollectConcentrationOnLogin()
                                 expansionName  = nil,
                                 lastUpdate     = time(),
                             }
+                            local bucket = EnsureSkillLineBucket(charData, skillLine, name, nil)
+                            if bucket then
+                                bucket.concentration = {
+                                    current = currInfo.quantity or 0,
+                                    max = currInfo.maxQuantity or 0,
+                                    currencyID = currencyID,
+                                    lastUpdate = time(),
+                                }
+                            end
                         end
                     end
                 end
@@ -1637,6 +2479,19 @@ function WarbandNexus:CollectKnowledgeOnLogin()
                     result.professionName = profName
                     result.expansionName = expansionName
                     charData.knowledgeData[slID] = result
+                    local bucket = EnsureSkillLineBucket(charData, slID, profName, expansionName)
+                    if bucket then
+                        bucket.knowledge = {
+                            hasUnspentPoints = result.hasUnspentPoints or false,
+                            unspentPoints = result.unspentPoints or 0,
+                            spentPoints = result.spentPoints or 0,
+                            maxPoints = result.maxPoints or 0,
+                            currencyName = SafeAPIString(result.currencyName) or "",
+                            currencyIcon = result.currencyIcon,
+                            specTabs = result.specTabs,
+                            lastUpdate = result.lastUpdate or time(),
+                        }
+                    end
                     -- Continue: collect ALL expansion skill lines, not just the first
                 end
             end
@@ -1721,6 +2576,18 @@ function WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
         if self.SendMessage then
             self:SendMessage("WN_CONCENTRATION_UPDATED", charKey)
         end
+    end
+end
+
+function WarbandNexus:OnProfessionProgressCurrencyChanged(currencyID)
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not currencyID or not MIDNIGHT_CATCHUP_CURRENCY[currencyID] then return end
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+    local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
+    if not charData then return end
+    if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 and self.SendMessage then
+        self:SendMessage("WN_PROFESSION_DATA_UPDATED", charKey)
     end
 end
 

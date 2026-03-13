@@ -782,11 +782,19 @@ local function CreateCompanionWindow()
     local frame = CreateFrame("Frame", "WarbandNexus_RecipeCompanion", UIParent)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetSize(DEFAULT_WIDTH, DEFAULT_HEIGHT)
-    frame:SetFrameStrata("HIGH")
-    frame:SetFrameLevel(100)
     frame:EnableMouse(true)
     frame:SetMovable(true)
     frame:SetResizable(true)
+
+    -- WindowManager: standardized strata/level + ESC + combat hide
+    if ns.WindowManager then
+        ns.WindowManager:ApplyStrata(frame, ns.WindowManager.PRIORITY.FLOATING)
+        ns.WindowManager:Register(frame, ns.WindowManager.PRIORITY.FLOATING)
+        ns.WindowManager:InstallESCHandler(frame)
+    else
+        frame:SetFrameStrata("HIGH")
+        frame:SetFrameLevel(150)
+    end
     frame:SetResizeBounds(WINDOW_WIDTH, MIN_FRAME_HEIGHT, 500, MAX_FRAME_HEIGHT)
     frame:SetClampedToScreen(true)
     frame:Hide()
@@ -809,7 +817,7 @@ local function CreateCompanionWindow()
     end)
     header:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
-        SavePosition(frame)
+        if SavePosition then SavePosition(frame) end
     end)
     if ApplyVisuals then
         ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },

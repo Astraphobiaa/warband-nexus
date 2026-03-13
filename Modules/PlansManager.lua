@@ -402,19 +402,58 @@ end
     Resolve the localized source/description for a plan.
     For items with itemID, fetches from tooltip or API.
     Falls back to stored plan.source.
+    Mount/Pet: when plan.source is empty, resolves from C_MountJournal/C_PetJournal
+    so My Plans shows the same source as the Mounts/Pets browser (e.g. "Voidstorm Fishing").
     @param plan table - Plan data
     @return string - Source description
 ]]
 function WarbandNexus:GetPlanDisplaySource(plan)
     if not plan then return "" end
-    -- Source text is usually from WoWHead/API data and stored at creation.
-    -- Most source texts come from English databases, so return as-is.
+    local function IsPlaceholderSource(sourceText)
+        if type(sourceText) ~= "string" then return true end
+        local s = sourceText:gsub("^%s+", ""):gsub("%s+$", "")
+        if s == "" then return true end
+        local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
+        local sourceUnknown = (ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown"
+        local sourceNotAvailable = (ns.L and ns.L["SOURCE_NOT_AVAILABLE"]) or "Source information not available"
+        return s == "Unknown" or s == unknownSource or s == sourceUnknown or s == sourceNotAvailable or s == "Legacy"
+    end
     -- Achievement descriptions can be resolved from API.
     if plan.type == "achievement" and plan.achievementID then
         local _, _, _, _, _, _, _, description = GetAchievementInfo(plan.achievementID)
         if description and description ~= "" then return description end
     end
-    return plan.source or ""
+    -- Stored source takes precedence when present.
+    if plan.source and not IsPlaceholderSource(plan.source) then
+        return plan.source
+    end
+    -- Mount: resolve from journal so My Plans matches Mounts tab (e.g. Nether-Warped Drake -> Voidstorm Fishing).
+    if plan.type == "mount" and plan.mountID then
+        if C_MountJournal and C_MountJournal.GetMountInfoExtraByID then
+            local ok, displayID, description, source = pcall(C_MountJournal.GetMountInfoExtraByID, plan.mountID)
+            if ok and source and type(source) == "string" and source ~= "" then
+                if not (issecretvalue and issecretvalue(source)) then
+                    return source
+                end
+            end
+        end
+        -- Fallback: collection metadata (e.g. Nether-Warped Drake when API returns empty)
+        if self.ResolveCollectionMetadata then
+            local meta = self:ResolveCollectionMetadata("mount", plan.mountID)
+            if meta and type(meta.source) == "string" and meta.source ~= "" then
+                return meta.source
+            end
+        end
+    end
+    -- Pet: resolve from journal so My Plans matches Pets tab.
+    if plan.type == "pet" and plan.speciesID and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then
+        local ok, name, icon, petType, creatureID, sourceText, description, isWild, canBattle, tradeable, unique, obtainable = pcall(C_PetJournal.GetPetInfoBySpeciesID, plan.speciesID)
+        if ok and sourceText and type(sourceText) == "string" and sourceText ~= "" then
+            if issecretvalue and issecretvalue(sourceText) then return "" end
+            return sourceText
+        end
+    end
+    return ""
 end
 
 --[[
@@ -1182,13 +1221,24 @@ function WarbandNexus:AddPlan(planData)
     local planID = self.db.global.plansNextID or 1
     self.db.global.plansNextID = planID + 1
     
+    local sourceText = (type(planData.source) == "string") and planData.source or ""
+    sourceText = sourceText:gsub("^%s+", ""):gsub("%s+$", "")
+    do
+        local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
+        local sourceUnknown = (ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown"
+        local sourceNotAvailable = (ns.L and ns.L["SOURCE_NOT_AVAILABLE"]) or "Source information not available"
+        if sourceText == "Unknown" or sourceText == unknownSource or sourceText == sourceUnknown or sourceText == sourceNotAvailable or sourceText == "Legacy" then
+            sourceText = ""
+        end
+    end
+
     local plan = {
         id = planID,
         type = planType,
         itemID = planData.itemID,
         name = planData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
         icon = planData.icon,
-        source = planData.source or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
+        source = sourceText,
         addedAt = time(),
         notes = planData.notes or "",
         
@@ -1311,36 +1361,43 @@ end
 ]]
 function WarbandNexus:UpdatePlanSources()
     if not ns.CollectionService then return end
-    
-    local collectionCache = ns.CollectionService.collectionCache
-    if not collectionCache or not collectionCache.uncollected then return end
-    
+
     local updated = false
     local plans = self.db.global.plans
     if not plans then return end
     
+    local function IsPlaceholderSource(sourceText)
+        if type(sourceText) ~= "string" then return true end
+        local s = sourceText:gsub("^%s+", ""):gsub("%s+$", "")
+        if s == "" then return true end
+        local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
+        local sourceUnknown = (ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown"
+        local sourceNotAvailable = (ns.L and ns.L["SOURCE_NOT_AVAILABLE"]) or "Source information not available"
+        return s == "Unknown" or s == unknownSource or s == sourceUnknown or s == sourceNotAvailable or s == "Legacy"
+    end
+
     for i = 1, #plans do
         local plan = plans[i]
         local newSource = nil
         
         if plan.type == "pet" and plan.speciesID then
-            local cached = collectionCache.uncollected.pet and collectionCache.uncollected.pet[plan.speciesID]
-            if cached and cached.source then
-                newSource = cached.source
+            local meta = self.ResolveCollectionMetadata and self:ResolveCollectionMetadata("pet", plan.speciesID)
+            if meta and type(meta.source) == "string" and meta.source ~= "" then
+                newSource = meta.source
             end
         elseif plan.type == "mount" and plan.mountID then
-            local cached = collectionCache.uncollected.mount and collectionCache.uncollected.mount[plan.mountID]
-            if cached and cached.source then
-                newSource = cached.source
+            local meta = self.ResolveCollectionMetadata and self:ResolveCollectionMetadata("mount", plan.mountID)
+            if meta and type(meta.source) == "string" and meta.source ~= "" then
+                newSource = meta.source
             end
         elseif plan.type == "toy" and plan.itemID then
-            local cached = collectionCache.uncollected.toy and collectionCache.uncollected.toy[plan.itemID]
-            if cached and cached.source then
-                newSource = cached.source
+            local meta = self.ResolveCollectionMetadata and self:ResolveCollectionMetadata("toy", plan.itemID)
+            if meta and type(meta.source) == "string" and meta.source ~= "" then
+                newSource = meta.source
             end
         end
         
-        if newSource and newSource ~= plan.source then
+        if newSource and (IsPlaceholderSource(plan.source) or newSource ~= plan.source) then
             plan.source = newSource
             updated = true
         end

@@ -2173,24 +2173,24 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         return
     end
     
-    -- Build try count message for mount/pet/toy/illusion
-    -- Try count is shown only for farmable drop sources or items with manual counts.
-    -- All collectibles get a notification regardless of source (vendor, quest, drop).
+    -- Build try count message for mount/pet/toy/illusion/item (the "BAM" moment — farmed drop obtained)
+    -- When TryCounter sends preResetTryCount, we always show the celebratory message and flash.
     local tryMessage = nil
     local hasTryCount = false
     local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true, item = true }
     if tryCountTypes[data.type] and data.id then
-        local isDropSource = self.IsDropSourceCollectible and self:IsDropSourceCollectible(data.type, data.id)
+        -- If TryCounter sent preResetTryCount, this is a detected drop — always treat as drop source for celebration
+        local isDropSource = (data.preResetTryCount ~= nil) or (self.IsDropSourceCollectible and self:IsDropSourceCollectible(data.type, data.id))
         -- Use preResetTryCount if provided (0 = first try; counter was reset before notification fired)
         local failedCount = (data.preResetTryCount ~= nil) and data.preResetTryCount or (self.GetTryCount and self:GetTryCount(data.type, data.id)) or 0
-        
+
         if self.db and self.db.profile and self.db.profile.debugMode then
             self:Print(string.format("|cff00ccff[Notification Debug]|r Try count: isDropSource=%s, failedCount=%d, preResetTryCount=%s",
                 tostring(isDropSource),
                 failedCount,
                 tostring(data.preResetTryCount)))
         end
-        
+
         local isGuaranteed = self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(data.type, data.id)
         if not isGuaranteed then
             -- Add +1 for the current successful attempt if the item is a known drop source
@@ -2199,11 +2199,13 @@ function WarbandNexus:OnCollectibleObtained(event, data)
             if count > 0 then
                 hasTryCount = true
                 if count == 1 then
-                    tryMessage = "You got it on your first try!"
+                    tryMessage = (ns.L and ns.L["NOTIFICATION_FIRST_TRY"]) or "You got it on your first try!"
                 elseif count > 100 then
-                    tryMessage = "What a grind! " .. count .. " attempts!"
+                    local fmt = (ns.L and ns.L["NOTIFICATION_GRIND_TRIES"]) or "What a grind! %d attempts!"
+                    tryMessage = string.format(fmt, count)
                 else
-                    tryMessage = "You got it after " .. count .. " tries!"
+                    local fmt = (ns.L and ns.L["NOTIFICATION_GOT_IT_AFTER"]) or "You got it after %d tries!"
+                    tryMessage = string.format(fmt, count)
                 end
             end
         end
@@ -2215,7 +2217,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
             tryMessage or "nil"))
     end
     
-    -- Show notification (try message only for farmed items)
+    -- Show notification (try message = the "BAM" subtitle for farmed drops)
     local overrides = {
         action = tryMessage,
     }
@@ -2227,10 +2229,13 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     if data.type == "achievement" then
         ns.achievementNotificationShown = true
     end
+    -- Farmed drop obtained: keep notification on screen longer for the "yeeey" moment
+    if hasTryCount then
+        overrides.autoDismiss = 7
+    end
     self:Notify(data.type, displayName, data.icon, overrides)
-    
-    -- Screen flash effect — ONLY for items obtained through farming (try count > 0)
-    -- No flash for: vendor purchases, quest rewards, achievement rewards, 100% drops
+
+    -- Screen flash — BAM moment for items obtained through farming (try count > 0)
     if hasTryCount then
         self:PlayScreenFlash(0.6)
     end

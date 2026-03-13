@@ -54,6 +54,16 @@ local TYPE_ICONS = {
     transmog = "poi-transmogrifier",
 }
 
+local function IsPlaceholderSourceText(sourceText)
+    if type(sourceText) ~= "string" then return true end
+    local s = sourceText:gsub("^%s+", ""):gsub("%s+$", "")
+    if s == "" then return true end
+    local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
+    local sourceUnknown = (ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown"
+    local sourceNotAvailable = (ns.L and ns.L["SOURCE_NOT_AVAILABLE"]) or "Source information not available"
+    return s == "Unknown" or s == unknownSource or s == sourceUnknown or s == sourceNotAvailable or s == "Legacy"
+end
+
 --[[
     Create base card structure
     @param parent Frame - Parent container
@@ -99,10 +109,10 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     card.isExpanded = ns.expandedCards[cardKey] or false
     card.expandedContent = nil
     
-    -- Apply visuals
-    local COLORS = ns.UI_COLORS
+    -- Apply visuals (accent border for My Plans cards)
+    local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 } }
     if ApplyVisuals then
-        local borderColor = {0.30, 0.90, 0.30, 0.8}  -- Green border for all plans
+        local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
         ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
     end
     
@@ -314,6 +324,13 @@ end
 ]]
 function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     local sources = {}
+    -- Mount/Pet: when source is empty/placeholder, resolve from API so My Plans matches browser.
+    if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(plan.source) and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
+        local resolved = WarbandNexus:GetPlanDisplaySource(plan)
+        if resolved and resolved ~= "" then
+            plan.source = resolved
+        end
+    end
     -- For toys: if stored source is generic/unreliable, resolve from metadata so Plans shows correct source only.
     if plan.type == "toy" and plan.itemID and WarbandNexus and WarbandNexus.ResolveCollectionMetadata then
         local function reliable(s)
@@ -657,17 +674,16 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         lastTextElement = placeholderText
     end
 
-    -- Try count badge (top-right, left of delete button)
-    -- Show for mounts only (pet/toy try system not implemented yet)
-    -- Never show for 100% guaranteed drops
-    local tryCountTypes = { mount = "mountID" }
+    -- Try count badge: only for drop-source collectibles (rare, container, fishing, etc.), not vendor/achievement/guaranteed.
+    local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
     local idKey = tryCountTypes[plan.type]
-    local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.sourceID))
+    local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
     if collectibleID and WarbandNexus and WarbandNexus.GetTryCount then
+        local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
+        if count == nil then count = 0 end
+        local isDrop = WarbandNexus.IsDropSourceCollectible and WarbandNexus:IsDropSourceCollectible(plan.type, collectibleID)
         local isGuaranteed = WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(plan.type, collectibleID)
-        if not isGuaranteed then
-            local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
-            if count == nil then count = 0 end
+        if (isDrop and not isGuaranteed) or count > 0 then
             local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
             local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
             tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -32, -10)
@@ -2923,7 +2939,15 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
     sourceText:SetPoint("TOPLEFT", 10, currentY)
     sourceText:SetPoint("RIGHT", parent, "RIGHT", -SOURCE_RIGHT_PAD, 0)
     
+    -- Resolve empty source from API for browser items (mount/pet) so "Unknown source" is avoided.
     local rawText = item.source or ""
+    if IsPlaceholderSourceText(rawText) and item.id and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
+        local planLike = { type = item.category or "mount", mountID = (item.category == "mount") and item.id or nil, speciesID = (item.category == "pet") and item.id or nil, itemID = (item.category == "toy") and item.id or nil, sourceID = (item.category == "illusion") and item.id or nil }
+        if planLike.mountID or planLike.speciesID or planLike.itemID or planLike.sourceID then
+            local resolved = WarbandNexus:GetPlanDisplaySource(planLike)
+            if resolved and resolved ~= "" then rawText = resolved end
+        end
+    end
     if WarbandNexus.CleanSourceText then
         rawText = WarbandNexus:CleanSourceText(rawText)
     end

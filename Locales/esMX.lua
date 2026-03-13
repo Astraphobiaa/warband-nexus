@@ -10,7 +10,7 @@
 local ADDON_NAME, ns = ...
 
 ---@class WarbandNexusLocale
-local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "esMX", true, true)
+local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "esMX")
 if not L then return end
 
 -- General
@@ -839,6 +839,11 @@ L["PROF_OPEN_RECIPE_TOOLTIP"] = "Abrir this profession's recipe list"
 L["PROF_ONLY_CURRENT_CHAR"] = "Only available for the current character"
 L["NO_PROFESSION"] = "No Profesión"
 L["FIRST_CRAFT"] = "1st Craft"
+L["UNIQUES"] = "Únicos"
+L["TREATISE"] = "Tratado"
+L["GATHERING"] = "Recolección"
+L["CATCH_UP"] = "Puesta al día"
+L["MOXIE"] = "Moxie"
 L["SKILL_UPS"] = "Habilidad Ups"
 L["COOLDOWNS"] = "Cooldowns"
 L["ORDERS"] = "Orders"

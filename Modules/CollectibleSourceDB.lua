@@ -1,33 +1,31 @@
 --[[
     Warband Nexus - Collectible Source Database
-    Comprehensive NPC/Object/Fishing/Container -> Mount/Pet/Toy drop mappings
+    Single source of truth: the `sources` array. All try-count and tooltip data is built from it at load.
 
-    ENTRY FORMAT:
-    { type = "mount"|"pet"|"toy", itemID = number, name = "Display Name" [, guaranteed = true] [, repeatable = true] }
+    HOW TO ADD A NEW ENTRY
+    ----------------------
+    Add exactly one element to the `sources` table with:
+      - sourceType: one of instance_boss, world_rare, npc, object, container, fishing, zone_drop,
+                    encounter, encounter_name, lockout_quest
+      - The IDs that type needs: npcID, objectID, containerItemID, mapID/mapIDs, encounterID, etc.
+      - drops: array of { type = "mount"|"pet"|"toy"|"item", itemID, name [, guaranteed] [, repeatable] [, yields] }
 
-    - type:         "mount", "pet", or "toy"
-    - itemID:       The item that drops in the loot window (used for loot scanning)
-    - name:         English display name for chat messages
-    - guaranteed:   Optional. If true, this is a 100% drop rate item. Try counter does not increment
-                    or display for guaranteed drops (Midnight 12.0+).
-    - repeatable:   Optional. If true, this is a farmable item with no loot lockout (or BoE) that can be
-                    obtained again after collection. Try counter resets on obtain instead of freezing,
-                    starting a new cycle. Tooltip shows "X attempts" instead of "Collected".
-    - difficultyIDs: Optional. WoW difficultyID(s) for which this drop is valid (documentation + future use).
-                      Mythic dungeon: 23 (Mythic), 8 (Mythic Keystone / M+). Mythic raid: 16.
-                      TryCounterService maps these to dropDifficulty "Mythic" via DIFFICULTY_ID_TO_LABELS.
+    Examples:
+      Boss drop:    { sourceType = "instance_boss", npcID = 10440, drops = {...}, statisticIds = {1097} }
+      Fishing:      { sourceType = "fishing", mapIDs = { 2405, 2395 }, drops = _someDrops }
+      Zone rare:    { sourceType = "zone_drop", mapID = 2395, raresOnly = true, drops = _quelThalasRareMounts }
+      Container:    { sourceType = "container", containerItemID = 39883, drops = {...} }
+      Encounter:    { sourceType = "encounter", encounterID = 652, npcIDs = { 16152 } }
 
-    collectibleID (mountID/speciesID) is resolved at runtime via:
-      mount: C_MountJournal.GetMountFromItem(itemID)
-      pet:   C_PetJournal.GetPetInfoByItemID(itemID)
-      toy:   same as itemID
+    DROP ENTRY FORMAT (inside drops):
+      - type: "mount", "pet", "toy", or "item"
+      - itemID, name: required
+      - guaranteed: optional; 100% drop, no try count
+      - repeatable: optional; resets try count on obtain
+      - yields: optional; for "item" that leads to mount/pet (e.g. egg -> mount)
 
-    DATA SOURCE: WoWHead / community-verified NPC/item IDs
-    MAINTENANCE:
-    - Update 'version' and 'lastUpdated' when adding new entries
-    - Add entries under the correct expansion section
-    - Use comment format: [npcID] = { -- NPC Name (Instance/Zone)
-    - Run /wn validatedb in-game to check all entries
+    npcs, rares, objects, fishing, containers, zones, encounters, encounterNames, lockoutQuests
+    are built at load from sources only. Do not add data to any legacy table.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -52,11 +50,13 @@ local _goldenmane = {
 
 -- TWW "Isle of Dorn" Crackling Shard - shared drop table (17 rares, ≥1% drop rate)
 -- 10x Crackling Shard -> Storm Vessel -> defeat Alunira -> Alunira mount
+-- Try count stored on mount so mount UI shows attempts (tryCountReflectsTo).
 local _cracklingShard = {
     { type = "item", itemID = 224025, name = "Crackling Shard", repeatable = true,
       yields = {
           { type = "mount", itemID = 223270, name = "Alunira" },
       },
+      tryCountReflectsTo = { type = "mount", itemID = 223270, name = "Alunira" },
     },
 }
 
@@ -115,6 +115,17 @@ local _voidstormRareMounts = {
     { type = "mount", itemID = 260635, name = "Sanguine Harrower" },
 }
 
+-- MIDNIGHT 12.0 Fishing mount chain:
+-- Nether-Warped Egg (fishing/treasure catch in Midnight zones) -> Nether-Warped Drake (mount; item 260916 = "Lost Nether Drake" in-game).
+local _netherWarpedEgg = {
+    { type = "item", itemID = 268730, name = "Nether-Warped Egg",
+      yields = {
+          { type = "mount", itemID = 260916, name = "Nether-Warped Drake" },
+      },
+      tryCountReflectsTo = { type = "mount", itemID = 260916, name = "Nether-Warped Drake" },
+    },
+}
+
 -- NOTE: Additional Midnight mounts NOT tracked (vendor/achievement rewards):
 -- - Amani Blessed Bear (257219) - Renown 17 vendor (Amani Tribe)
 -- - Blessed Amani Burrower (257197) - Abundance Event vendor (1600 Unalloyed Abundance)
@@ -128,15 +139,33 @@ local _voidstormRareMounts = {
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
 
 ns.CollectibleSourceDB = {
-    version = "12.0.22",
-    lastUpdated = "2026-03-06",
+    version = "12.0.24",
+    lastUpdated = "2026-03-12",
+    sourceSchemaVersion = 1,
+    sourceTypes = {
+        "instance_boss", -- npcID + drops
+        "world_rare",    -- npcID + drops
+        "npc",           -- npcID + drops
+        "object",        -- objectID + drops (chests/world objects)
+        "container",     -- containerItemID + drops
+        "fishing",       -- mapID/mapIDs + drops
+        "zone_drop",     -- mapID/mapIDs + drops + raresOnly
+        "encounter",     -- encounterID + npcIDs
+        "encounter_name",-- encounterName + npcIDs
+        "lockout_quest", -- npcID + questID/questIDs
+    },
+    -- Single source of truth for new entries. Add here only; see header "HOW TO ADD".
+    sources = {
+        {
+            sourceType = "fishing",
+            mapIDs = { 2393, 2395, 2424, 2413, 2576, 2437, 2536, 2405, 2541 },
+            drops = _netherWarpedEgg,
+        },
+    },
 
-    -- =================================================================
-    -- NPC / BOSS KILLS
-    -- Key: [npcID] = { { type, itemID, name [, guaranteed] }, ... }
-    -- Detection: CLEU UNIT_DIED + LOOT_OPENED
-    -- =================================================================
-    npcs = {
+    -- DEPRECATED: do not add here. Data is merged into npcs/rares/... at load for backward compatibility.
+    -- New entries go in sources[] only. These tables will be removed once fully migrated to sources.
+    legacyNpcs = {
 
         -- ========================================
         -- CLASSIC
@@ -1004,6 +1033,7 @@ ns.CollectibleSourceDB = {
               questStarters = {
                   { type = "mount", itemID = 224150, name = "Siesbarg", mountID = 2222 },
               },
+              tryCountReflectsTo = { type = "mount", itemID = 224150, name = "Siesbarg", mountID = 2222 },
             },
         },
 
@@ -1038,6 +1068,7 @@ ns.CollectibleSourceDB = {
               questStarters = {
                   { type = "mount", itemID = 221765, name = "Stonevault Mechsuit", mountID = 2119 },
               },
+              tryCountReflectsTo = { type = "mount", itemID = 221765, name = "Stonevault Mechsuit", mountID = 2119 },
             },
             statisticIds = { 20500 },  -- The Stonevault kills (Mythic)
             dropDifficulty = "Mythic",
@@ -1203,9 +1234,7 @@ ns.CollectibleSourceDB = {
     -- =================================================================
     -- GAME OBJECTS (Chests, Caches, Clickable Objects)
     -- Key: [objectID] = { { type, itemID, name }, ... }
-    -- Detection: LOOT_OPENED + GameObject GUID
-    -- =================================================================
-    objects = {
+    legacyObjects = {
         -- WotLK
         [193081] = { -- Alexstrasza's Gift (Eye of Eternity - post-Malygos chest)
             { type = "mount", itemID = 43952, name = "Reins of the Azure Drake" },
@@ -1242,13 +1271,7 @@ ns.CollectibleSourceDB = {
         },
     },
 
-    -- =================================================================
-    -- FISHING
-    -- Key: [zoneMapID] = { { type, itemID, name }, ... }
-    -- Use 0 for drops available in any zone
-    -- Detection: Fishing spell tracking + LOOT_OPENED
-    -- =================================================================
-    fishing = {
+    legacyFishing = {
         -- Global fishing drops (any expansion zone fishing pool)
         [0] = {
             { type = "mount", itemID = 46109, name = "Sea Turtle" },
@@ -1297,31 +1320,18 @@ ns.CollectibleSourceDB = {
             { type = "item", itemID = 187662, name = "Strange Goop", repeatable = true },
         },
 
-        -- Voidstorm (Midnight 12.0) - Lost Nether Drake
-        -- Very low drop rate, any fishable water in zone
-        [2405] = { -- Voidstorm (Fishing)
-            { type = "mount", itemID = 260916, name = "Lost Nether Drake" },
-        },
+        -- Midnight Nether-Warped Egg -> Nether-Warped Drake is in sources.
+        -- They are materialized into this legacy `fishing` table at load time.
     },
 
-    -- =====================================================================
-    -- RARE NPC DROPS (Non-Dungeon/Non-Raid)
-    -- Key: [npcID] = { { type, itemID, name [, repeatable] [, guaranteed] }, ... }
-    -- Detection: ENCOUNTER_END or CLEU UNIT_DIED + LOOT_OPENED
-    -- =====================================================================
-    rares = {
+    legacyRares = {
         -- Shadowlands: Zereth Mortis
         [180978] = { -- Hirukon (Zereth Mortis, summoned via Aurelid Lure from Strange Goop)
             { type = "mount", itemID = 187676, name = "Deepstar Polyp" },  -- Deepstar Aurelid mount
         },
     },
 
-    -- =================================================================
-    -- CONTAINER ITEMS (Open/Use from bags)
-    -- Key: [containerItemID] = { drops = { { type, itemID, name }, ... } }
-    -- Detection: UNIT_SPELLCAST_SUCCEEDED + LOOT_OPENED(isFromItem=true)
-    -- =================================================================
-    containers = {
+    legacyContainers = {
         -- WotLK Containers
         [39883] = { -- Mysterious Egg (The Oracles, Sholazar Basin)
             drops = {
@@ -1590,15 +1600,7 @@ ns.CollectibleSourceDB = {
         },
     },
 
-    -- =================================================================
-    -- ZONE-WIDE DROPS (Kill any mob in zone)
-    -- Key: [zoneMapID] = { { type, itemID, name }, ... }
-    -- Detection: Kill ANY mob in zone + LOOT_OPENED
-    -- =================================================================
-    -- NOTE: BfA "zone drops" (Pack Mule, Dune Scavenger, Bloodfeaster, Goldenmane)
-    -- have been moved to the npcs section with specific verified NPC IDs.
-    -- They were NOT truly zone-wide; each drops only from specific mob factions.
-    zones = {
+    legacyZones = {
         -- TWW: Isle of Dorn — Crackling Shard (any mob in zone, <1% for normals)
         -- 165 mobs total. Rares with ≥1% are also in npcs section for specific tracking.
         -- This zone entry catches ALL normal mob kills as a fallback.
@@ -1627,13 +1629,7 @@ ns.CollectibleSourceDB = {
         [2541] = { drops = _voidstormRareMounts, raresOnly = true },     -- Arcantina
     },
 
-    -- =================================================================
-    -- ENCOUNTER FALLBACK (Midnight-safe)
-    -- Key: [encounterID] = { npcID1, npcID2, ... }
-    -- Maps Encounter Journal encounterID -> NPC IDs in npcs table
-    -- Used when CLEU is blocked during active combat in instances
-    -- =================================================================
-    encounters = {
+    legacyEncounters = {
         -- TBC
         [652] = { 16152 },   -- Attumen the Huntsman (Karazhan)
         [733] = { 19622 },   -- Kael'thas Sunstrider (The Eye)
@@ -1703,25 +1699,13 @@ ns.CollectibleSourceDB = {
         [3183] = { 214650 },   -- Midnight Falls / L'ura (March on Quel'Danas) — difficultyID 16 — Ashes of Belo'ren
     },
 
-    -- =================================================================
-    -- ENCOUNTER NAME FALLBACK (Midnight: encounterID can be secret in instances)
-    -- Only mount-dropping bosses. Names = ENCOUNTER_END encounterName (enUS).
-    -- =================================================================
-    encounterNames = {
+    legacyEncounterNames = {
         ["Restless Heart"] = { 231636 },       -- Windrunner Spire
         ["Degentrius"] = { 219440 },           -- Magisters' Terrace
         ["Midnight Falls"] = { 214650 },       -- March on Quel'Danas
     },
 
-    -- =================================================================
-    -- NPC KILL LOCKOUT QUESTS (daily/weekly rare kill tracking)
-    -- Key: [npcID] = questID  (or { questID1, questID2 } for multi-phase rares)
-    -- When IsQuestFlaggedCompleted(questID) returns true, the player has already
-    -- used their daily/weekly attempt on this NPC. Subsequent kills should NOT
-    -- increment the try counter because the rare item cannot drop again until reset.
-    -- Source: WoWHead quest data
-    -- =================================================================
-    lockoutQuests = {
+    legacyLockoutQuests = {
         -- BfA: Warfront Arathi Highlands (cycle-based lockout)
         [142692] = { 53091, 53517 },  -- Nimar the Slayer
         [142423] = { 53014, 53518 },  -- Overseer Krix
@@ -1965,6 +1949,226 @@ ns.CollectibleSourceDB = {
         ["Rakshur the Bonegrinder"] = { 257027 },
     },
 }
+
+-- =================================================================
+-- SOURCE NORMALIZATION (typed `sources` -> legacy tables)
+-- Keeps backward compatibility while allowing a single standardized source schema.
+-- =================================================================
+local function CopyDropArray(drops)
+    if type(drops) ~= "table" then return nil end
+    local copy = {}
+    for i = 1, #drops do
+        copy[i] = drops[i]
+    end
+    if drops.statisticIds then copy.statisticIds = drops.statisticIds end
+    if drops.dropDifficulty then copy.dropDifficulty = drops.dropDifficulty end
+    return copy
+end
+
+local function MergeDropArray(target, incoming, statisticIds, dropDifficulty)
+    if type(target) ~= "table" or type(incoming) ~= "table" then return end
+    local seen = {}
+    for i = 1, #target do
+        local d = target[i]
+        if d and d.itemID then
+            seen[d.type .. "\0" .. tostring(d.itemID)] = true
+        end
+    end
+    for i = 1, #incoming do
+        local d = incoming[i]
+        if d and d.itemID then
+            local key = d.type .. "\0" .. tostring(d.itemID)
+            if not seen[key] then
+                target[#target + 1] = d
+                seen[key] = true
+            end
+        end
+    end
+    if statisticIds and not target.statisticIds then target.statisticIds = statisticIds end
+    if dropDifficulty and not target.dropDifficulty then target.dropDifficulty = dropDifficulty end
+end
+
+local function ForEachID(source, singleKey, listKey, fn)
+    local id = source[singleKey]
+    if id ~= nil then fn(id) end
+    local ids = source[listKey]
+    if type(ids) == "table" then
+        for i = 1, #ids do
+            if ids[i] ~= nil then fn(ids[i]) end
+        end
+    end
+end
+
+local function ApplyTypedSources(db)
+    if not db or type(db.sources) ~= "table" then return end
+    -- Single source of truth: build these tables only from sources (no legacy merge).
+    db.npcs = {}
+    db.rares = {}
+    db.objects = {}
+    db.fishing = {}
+    db.containers = {}
+    db.zones = {}
+    db.encounters = {}
+    db.encounterNames = {}
+    db.lockoutQuests = {}
+    if #db.sources == 0 then return end
+
+    for i = 1, #db.sources do
+        local source = db.sources[i]
+        if type(source) == "table" then
+            local sourceType = source.sourceType
+            local drops = CopyDropArray(source.drops)
+
+            if sourceType == "instance_boss" or sourceType == "npc" then
+                local npcID = tonumber(source.npcID or source.id)
+                if npcID and drops then
+                    local target = db.npcs[npcID] or {}
+                    MergeDropArray(target, drops, source.statisticIds, source.dropDifficulty)
+                    db.npcs[npcID] = target
+                end
+            elseif sourceType == "world_rare" then
+                local npcID = tonumber(source.npcID or source.id)
+                if npcID and drops then
+                    local rareTarget = db.rares[npcID] or {}
+                    MergeDropArray(rareTarget, drops, source.statisticIds, source.dropDifficulty)
+                    db.rares[npcID] = rareTarget
+                end
+            elseif sourceType == "object" then
+                local objectID = tonumber(source.objectID or source.id)
+                if objectID and drops then
+                    local target = db.objects[objectID] or {}
+                    MergeDropArray(target, drops)
+                    db.objects[objectID] = target
+                end
+            elseif sourceType == "container" then
+                local containerItemID = tonumber(source.containerItemID or source.itemID or source.id)
+                if containerItemID and drops then
+                    local entry = db.containers[containerItemID] or {}
+                    local target = entry.drops or entry
+                    if type(target) ~= "table" then target = {} end
+                    MergeDropArray(target, drops)
+                    db.containers[containerItemID] = { drops = target }
+                end
+            elseif sourceType == "fishing" then
+                if drops then
+                    ForEachID(source, "mapID", "mapIDs", function(rawMapID)
+                        local mapID = tonumber(rawMapID)
+                        if mapID then
+                            local target = db.fishing[mapID] or {}
+                            MergeDropArray(target, drops)
+                            db.fishing[mapID] = target
+                        end
+                    end)
+                end
+            elseif sourceType == "zone_drop" then
+                if drops then
+                    ForEachID(source, "mapID", "mapIDs", function(rawMapID)
+                        local mapID = tonumber(rawMapID)
+                        if mapID then
+                            local existing = db.zones[mapID]
+                            local zoneEntry
+                            if type(existing) == "table" and existing.drops then
+                                zoneEntry = existing
+                            else
+                                zoneEntry = { drops = type(existing) == "table" and existing or {} }
+                            end
+                            MergeDropArray(zoneEntry.drops, drops)
+                            if source.raresOnly then zoneEntry.raresOnly = true end
+                            db.zones[mapID] = zoneEntry
+                        end
+                    end)
+                end
+            elseif sourceType == "encounter" then
+                local encounterID = tonumber(source.encounterID or source.id)
+                if encounterID and type(source.npcIDs) == "table" and #source.npcIDs > 0 then
+                    db.encounters[encounterID] = source.npcIDs
+                end
+            elseif sourceType == "encounter_name" then
+                local encounterName = source.encounterName or source.name
+                if type(encounterName) == "string" and encounterName ~= "" and type(source.npcIDs) == "table" and #source.npcIDs > 0 then
+                    db.encounterNames[encounterName] = source.npcIDs
+                end
+            elseif sourceType == "lockout_quest" then
+                local npcID = tonumber(source.npcID or source.id)
+                if npcID then
+                    if source.questID then
+                        db.lockoutQuests[npcID] = source.questID
+                    elseif type(source.questIDs) == "table" and #source.questIDs > 0 then
+                        db.lockoutQuests[npcID] = source.questIDs
+                    end
+                end
+            end
+        end
+    end
+end
+
+ApplyTypedSources(ns.CollectibleSourceDB)
+
+-- Merge deprecated legacy* tables into runtime npcs/rares/... so existing data still works.
+-- Do not add to legacy*; add only to sources. Legacy tables will be removed once migrated.
+local function MergeLegacyIntoRuntime(db)
+    if not db then return end
+    local function mergeNpc(destKey, src)
+        if type(src) ~= "table" then return end
+        for npcID, data in pairs(src) do
+            if type(data) == "table" then
+                local target = db[destKey][npcID] or {}
+                MergeDropArray(target, data, data.statisticIds, data.dropDifficulty)
+                db[destKey][npcID] = target
+            end
+        end
+    end
+    mergeNpc("npcs", db.legacyNpcs)
+    mergeNpc("rares", db.legacyRares)
+    if db.legacyObjects then
+        for objectID, data in pairs(db.legacyObjects) do
+            if type(data) == "table" and not db.objects[objectID] then
+                db.objects[objectID] = CopyDropArray(data)
+            end
+        end
+    end
+    if db.legacyFishing then
+        for mapID, data in pairs(db.legacyFishing) do
+            if type(data) == "table" and not db.fishing[mapID] then
+                db.fishing[mapID] = CopyDropArray(data)
+            end
+        end
+    end
+    if db.legacyContainers then
+        for cid, data in pairs(db.legacyContainers) do
+            if type(data) == "table" then
+                local drops = data.drops or data
+                if not db.containers[cid] then db.containers[cid] = { drops = CopyDropArray(drops) } end
+            end
+        end
+    end
+    if db.legacyZones then
+        for mapID, data in pairs(db.legacyZones) do
+            if type(data) == "table" then
+                local zd = db.zones[mapID] or { drops = {} }
+                MergeDropArray(zd.drops, data.drops or data)
+                if data.raresOnly then zd.raresOnly = true end
+                db.zones[mapID] = zd
+            end
+        end
+    end
+    if db.legacyEncounters then
+        for eid, npcIDs in pairs(db.legacyEncounters) do
+            if not db.encounters[eid] then db.encounters[eid] = npcIDs end
+        end
+    end
+    if db.legacyEncounterNames then
+        for name, npcIDs in pairs(db.legacyEncounterNames) do
+            if not db.encounterNames[name] then db.encounterNames[name] = npcIDs end
+        end
+    end
+    if db.legacyLockoutQuests then
+        for npcID, q in pairs(db.legacyLockoutQuests) do
+            if not db.lockoutQuests[npcID] then db.lockoutQuests[npcID] = q end
+        end
+    end
+end
+MergeLegacyIntoRuntime(ns.CollectibleSourceDB)
 
 -- =================================================================
 -- TOY SOURCE LOOKUP (for Plans + Collections)

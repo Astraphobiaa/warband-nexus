@@ -142,13 +142,15 @@ end
 -- Re-anchor frame to its current visual position (absolute TOPLEFT/BOTTOMLEFT).
 -- Call this BEFORE StartMoving() to prevent the frame from teleporting when
 -- WoW's internal anchor state drifts (e.g., after Alt-Tab, UI scale changes).
+-- StartMoving() uses the frame's current anchor as the drag handle; if the frame
+-- is anchored CENTER, the window "teleports" so its center is under the cursor.
 local function NormalizeFramePosition(frame)
+    if not frame or not frame.GetLeft or not frame.GetTop then return end
     local left = frame:GetLeft()
     local top = frame:GetTop()
-    if left and top then
-        frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
-    end
+    if left == nil or top == nil then return end
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
 end
 
 -- Reset window to default center position and size
@@ -274,7 +276,10 @@ function WarbandNexus:ShowMainWindow()
     self:PopulateContent()
     mainFrame.isMainTabSwitch = false  -- Reset flag
     mainFrame:Show()
-    
+    -- Ensure frame is always anchored TOPLEFT when visible so drag never "teleports"
+    -- (StartMoving uses current anchor; CENTER would make the window jump to cursor-as-center).
+    NormalizeFramePosition(mainFrame)
+
     -- Loading overlay is standalone — no action needed here
     
     -- SAFETY: Deferred tab label re-render (catches font loading race conditions)
@@ -475,6 +480,7 @@ function WarbandNexus:CreateMainWindow()
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", function(self)
+        if InCombatLockdown() then return end
         NormalizeFramePosition(self)
         self:StartMoving()
     end)
@@ -754,21 +760,11 @@ function WarbandNexus:CreateMainWindow()
         discordCopyBox:HighlightText()
     end)
 
-    -- ESC-to-close: Handle via OnKeyDown to avoid UISpecialFrames taint.
-    -- UISpecialFrames causes CloseSpecialWindows() to run our OnHide in protected
-    -- mode, tainting the execution path and disabling Game Menu buttons.
-    if not InCombatLockdown() then
-        f:EnableKeyboard(true)
-        f:SetPropagateKeyboardInput(true)
+    -- Window Manager: register main window + ESC hierarchy + combat hide/restore
+    if ns.WindowManager then
+        ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.MAIN)
+        ns.WindowManager:InstallESCHandler(f)
     end
-    f:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
-            self:Hide()
-        else
-            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
-        end
-    end)
     
     -- ===== NAV BAR (tabs only; utility buttons are in header to avoid overlap when minimized) =====
     local nav = CreateFrame("Frame", nil, f)
@@ -1287,7 +1283,8 @@ function WarbandNexus:PopulateContent()
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawStatistics(scrollChild)
     elseif mainFrame.currentTab == "professions" then
-        scrollChild:SetWidth(scrollWidth)
+        local profMinW = (ns.MIN_PROFESSIONS_GRID_W and ns.MIN_PROFESSIONS_GRID_W > 0) and ns.MIN_PROFESSIONS_GRID_W or 0
+        scrollChild:SetWidth(profMinW > 0 and math.max(scrollWidth, profMinW) or scrollWidth)
         height = self:DrawProfessionsTab(scrollChild)
     elseif mainFrame.currentTab == "gear" then
         local gearMinW = (ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0) and ns.MIN_GEAR_CARD_W or 0

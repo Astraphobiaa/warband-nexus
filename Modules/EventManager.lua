@@ -593,6 +593,12 @@ function WarbandNexus:InitializeEventManager()
             WarbandNexus:OnTradeSkillListUpdate()
         end
     end)
+    self:RegisterEvent("QUEST_TURNED_IN", function()
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
+        if WarbandNexus.OnProfessionQuestProgressChanged then
+            WarbandNexus:OnProfessionQuestProgressChanged()
+        end
+    end)
     
     -- ====== REAL-TIME PROFESSION UPDATES ======
     
@@ -604,6 +610,9 @@ function WarbandNexus:InitializeEventManager()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if currencyID and WarbandNexus.OnConcentrationCurrencyChanged then
             WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
+        end
+        if currencyID and WarbandNexus.OnProfessionProgressCurrencyChanged then
+            WarbandNexus:OnProfessionProgressCurrencyChanged(currencyID)
         end
     end)
     

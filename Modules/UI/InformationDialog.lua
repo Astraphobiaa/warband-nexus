@@ -25,13 +25,22 @@ function WarbandNexus:ShowInfoDialog()
     local dialog = CreateFrame("Frame", "WarbandNexusInfoDialog", UIParent)
     dialog:SetSize(650, 650)  -- Standard size for full content
     dialog:SetPoint("CENTER")
-    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-    dialog:SetFrameLevel(1000)
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
-    dialog:RegisterForDrag("LeftButton")
-    dialog:SetScript("OnDragStart", dialog.StartMoving)
-    dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+
+    -- WindowManager: standardized strata/level + ESC + combat hide
+    if ns.WindowManager then
+        ns.WindowManager:ApplyStrata(dialog, ns.WindowManager.PRIORITY.POPUP)
+        ns.WindowManager:Register(dialog, ns.WindowManager.PRIORITY.POPUP)
+        ns.WindowManager:InstallESCHandler(dialog)
+        ns.WindowManager:InstallDragHandler(dialog, dialog)
+    else
+        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+        dialog:SetFrameLevel(200)
+        dialog:RegisterForDrag("LeftButton")
+        dialog:SetScript("OnDragStart", dialog.StartMoving)
+        dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+    end
     self.infoDialog = dialog
     
     -- Apply custom theme to main dialog

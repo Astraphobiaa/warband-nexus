@@ -147,17 +147,38 @@ local COLUMNS = {
     skill       = { width = 70,  spacing = COL_SPACING },
     conc        = { width = 120, spacing = ICON_COL_SPACING },    -- bar (wider to match rep bar proportions)
     recharge    = { width = 65,  spacing = COL_SPACING },         -- timer text
-    knowledge   = { width = 70,  spacing = COL_SPACING },
-    open        = { width = 36,  spacing = 0 },
+    knowledge   = { width = 74,  spacing = COL_SPACING },
+    recipes     = { width = 68,  spacing = COL_SPACING },         -- known / total (Midnight only)
+    firstCraft  = { width = 68,  spacing = COL_SPACING },
+    uniques     = { width = 68,  spacing = COL_SPACING },
+    treatise    = { width = 68,  spacing = COL_SPACING },
+    weeklyQuest = { width = 68,  spacing = COL_SPACING },
+    treasure    = { width = 68,  spacing = COL_SPACING },
+    gathering   = { width = 68,  spacing = COL_SPACING },
+    catchUp     = { width = 68,  spacing = COL_SPACING },
+    moxie       = { width = 56,  spacing = COL_SPACING },         -- Artisan Moxie currency (Midnight)
+    open        = { width = 36,  spacing = 4 },
+    info        = { width = 30,  spacing = 0 },                  -- read-only detail window
 }
 
 local COLUMN_ORDER = {
     "favIcon", "classIcon", "name",
     "profIcon", "profName", "skill", "conc", "recharge", "knowledge",
-    "open",
+    "recipes", "firstCraft", "uniques", "treatise", "weeklyQuest", "treasure", "gathering", "catchUp", "moxie",
+    "open", "info",
 }
 
 local LEFT_PAD = 10
+
+-- Calculate the base total grid width from all columns (for horizontal scroll).
+-- Computed at load time since COLUMNS and COLUMN_ORDER are static.
+do
+    local total = LEFT_PAD
+    for _, k in ipairs(COLUMN_ORDER) do
+        total = total + COLUMNS[k].width + COLUMNS[k].spacing
+    end
+    ns.MIN_PROFESSIONS_GRID_W = total + LEFT_PAD
+end
 
 -- Expansion filter: dynamically built from discovered expansion data across all characters.
 -- Falls back to a static list if no character data is available yet.
@@ -175,11 +196,27 @@ local EXPANSION_SORT_ORDER = {
     ["Dragon Isles"] = 3,
 }
 
+-- Midnight profession skillLineID -> Artisan Moxie currency ID (DB2 / Wowhead).
+local MIDNIGHT_MOXIE_CURRENCY = {
+    [2906] = 3256,  -- Alchemy
+    [2907] = 3257,  -- Blacksmithing
+    [2909] = 3258,  -- Enchanting
+    [2910] = 3259,  -- Engineering
+    [2912] = 3260,  -- Herbalism
+    [2913] = 3261,  -- Inscription
+    [2914] = 3262,  -- Jewelcrafting
+    [2915] = 3263,  -- Leatherworking
+    [2916] = 3264,  -- Mining
+    [2917] = 3265,  -- Skinning
+    [2918] = 3266,  -- Tailoring
+}
+
 
 -- Text columns scale with effective font size; icon/bar/button columns stay fixed
 local SCALABLE_COLUMNS = {
-    name = true, profName = true, skill = true, recharge = true,
-    knowledge = true,
+    name = true, profName = true, skill = true, recharge = true, knowledge = true,
+    recipes = true, firstCraft = true, uniques = true, treatise = true, weeklyQuest = true,
+    treasure = true, gathering = true, catchUp = true, moxie = true,
 }
 
 -- Cached row width — set once per DrawProfessionsTab call so columns fill available space.
@@ -248,9 +285,18 @@ local HEADER_DEFS = {
     { col = "name",      label = "TABLE_HEADER_CHARACTER", text = "CHARACTER",     align = "LEFT" },
     { col = "profName",  label = "GROUP_PROFESSION",       text = "Profession",    align = "LEFT" },
     { col = "skill",     label = "SKILL",                  text = "Skill",         align = "CENTER" },
-    { col = "conc",      label = "CONCENTRATION",          text = "Concentration", align = "CENTER",
-      getWidth = function() return ColWidth("conc") + COLUMNS.conc.spacing + ColWidth("recharge") end },
+    { col = "conc",      label = "CONCENTRATION",          text = "Concentration", align = "CENTER" },
+    { col = "recharge",  label = "RECHARGE",               text = "Recharge",      align = "CENTER" },
     { col = "knowledge", label = "KNOWLEDGE",              text = "Knowledge",     align = "CENTER" },
+    { col = "recipes",    label = "RECIPES",               text = "Recipes",       align = "CENTER" },
+    { col = "firstCraft",  label = "FIRST_CRAFT",          text = "First Craft",   align = "CENTER" },
+    { col = "uniques",     label = "UNIQUES",              text = "Uniques",       align = "CENTER" },
+    { col = "treatise",    label = "TREATISE",             text = "Treatise",      align = "CENTER" },
+    { col = "weeklyQuest", label = "WEEKLY_QUEST_CAT",     text = "Weekly Quest",  align = "CENTER" },
+    { col = "treasure",    label = "SOURCE_TYPE_TREASURE", text = "Treasure",      align = "CENTER" },
+    { col = "gathering",   label = "GATHERING",            text = "Gathering",     align = "CENTER" },
+    { col = "catchUp",     label = "CATCH_UP",             text = "Catch Up",      align = "CENTER" },
+    { col = "moxie",       label = "MOXIE",                text = "Moxie",         align = "CENTER" },
 }
 
 --============================================================================
@@ -460,8 +506,7 @@ end
 --============================================================================
 
 local function GetExpansionFilter()
-    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
-    return (db and db.professionExpansionFilter) or "Midnight"
+    return "Midnight"
 end
 
 local function ExpansionNameMatchesFilter(expansionName, filterKey)
@@ -547,42 +592,33 @@ local function FormatSkill(curSkill, maxSkill)
     return FormatValueMax(curSkill, maxSkill, color)
 end
 
+---Format knowledge as "Current / Max". Current = spent + unspent; Max = maxPoints from spec tree.
 local function FormatKnowledge(kd)
     if not kd then return "|cffffffff--|r" end
     local spent = kd.spentPoints or 0
     local maxPts = kd.maxPoints or 0
     local unspent = kd.unspentPoints or 0
     local current = spent + unspent
-    if current <= 0 and maxPts <= 0 then return "|cffffffff--|r" end
-
+    if current <= 0 and (not maxPts or maxPts <= 0) then return "|cffffffff--|r" end
+    local displayMax = (maxPts and maxPts > 0) and maxPts or nil
     local color
     if unspent > 0 then color = {1, 0.82, 0}
-    elseif maxPts > 0 and current >= maxPts then color = {0.3, 0.9, 0.3}
+    elseif displayMax and current >= displayMax then color = {0.3, 0.9, 0.3}
     else color = {1, 1, 1} end
-
-    local text
-    if maxPts > 0 then
-        text = FormatValueMax(current, maxPts, color)
-    else
-        text = format("|cff%02x%02x%02x%d|r", color[1]*255, color[2]*255, color[3]*255, current)
+    if displayMax then
+        return FormatValueMax(current, displayMax, color)
     end
-    if unspent > 0 then
-        text = text .. format(" |cffffd700(%d)|r", unspent)
-    end
-    return text
+    return format("|cff%02x%02x%02x%d|r |cffffffff/|r |cff888888--|r", color[1]*255, color[2]*255, color[3]*255, current)
 end
 
----Format elapsed time since a timestamp into a human-readable string.
----Reusable across all column tooltips for "Last Scanned" display.
----@param timestamp number Unix timestamp
----@return string|nil Formatted string or nil if invalid
-local function FormatElapsedTime(timestamp)
-    if not timestamp or timestamp <= 0 then return nil end
-    local elapsed = time() - timestamp
-    if elapsed < 60 then return (ns.L and ns.L["JUST_NOW"]) or "Just now"
-    elseif elapsed < 3600 then return format("%dm ago", math.floor(elapsed / 60))
-    elseif elapsed < 86400 then return format("%dh ago", math.floor(elapsed / 3600))
-    else return format("%dd ago", math.floor(elapsed / 86400)) end
+local function FormatProgressPair(entry)
+    if not entry then return "|cffffffff--|r" end
+    local current = tonumber(entry.current or 0) or 0
+    local total = tonumber(entry.total or 0) or 0
+    if total <= 0 then return "|cffffffff--|r" end
+    if current > total then current = total end
+    local color = (current >= total) and "ff4de64d" or "ffffffff"
+    return format("|c%s%d / %d|r", color, current, total)
 end
 
 --============================================================================
@@ -639,75 +675,23 @@ function WarbandNexus:DrawProfessionsTab(parent)
     titleTextContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     titleTextContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
 
-    -- Profession expansion filter (strict: show only selected expansion's data)
-    if not self.db.profile.professionExpansionFilter then
-        self.db.profile.professionExpansionFilter = "Midnight"
-    end
-    local expansionFilterKey = self.db.profile.professionExpansionFilter
-    local expansionOptions = BuildDynamicExpansionOptions()
-    local expansionFilterLabel = expansionFilterKey
-    for _, opt in ipairs(expansionOptions) do
-        if opt.key == expansionFilterKey then expansionFilterLabel = opt.label break end
-    end
-    local expBtnWidth = 100
-    local expBtnHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
-    local expFilterBtn = ns.UI.Factory:CreateButton(titleCard, expBtnWidth, expBtnHeight, false)
+    -- Force fixed expansion view: Midnight only (filter selector removed).
+    self.db.profile.professionExpansionFilter = "Midnight"
+    local expBadgeWidth = 100
+    local expBadgeHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
+    local expBadge = ns.UI.Factory:CreateButton(titleCard, expBadgeWidth, expBadgeHeight, false)
     if ApplyVisuals then
-        ApplyVisuals(expFilterBtn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        ApplyVisuals(expBadge, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
-    local expBtnText = FontManager:CreateFontString(expFilterBtn, "body", "OVERLAY")
-    expBtnText:SetPoint("CENTER", 0, 0)
-    expBtnText:SetJustifyH("CENTER")
-    expBtnText:SetText(expansionFilterLabel)
-    expBtnText:SetTextColor(0.9, 0.9, 0.9)
-    expFilterBtn:SetScript("OnEnter", function(self)
-        if ApplyVisuals then ApplyVisuals(self, {0.15, 0.15, 0.15, 0.8}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}) end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText((ns.L and ns.L["PROF_FILTER_EXPANSION"]) or "Expansion filter")
-        GameTooltip:AddLine((ns.L and ns.L["PROF_FILTER_STRICT_NOTE"]) or "Show only this expansion's profession data for all characters.", 0.6, 0.6, 0.6, true)
-        GameTooltip:AddLine((ns.L and ns.L["PROF_DATA_SOURCE_NOTE"]) or "Concentration, knowledge, recipes update when you open the profession window (K) on each character.", 0.5, 0.5, 0.5, true)
-        GameTooltip:Show()
-    end)
-    expFilterBtn:SetScript("OnLeave", function(self)
-        if ApplyVisuals then ApplyVisuals(self, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}) end
-        GameTooltip:Hide()
-    end)
-    local tabRef = self
-    expFilterBtn._menu = nil
-    expFilterBtn:SetScript("OnClick", function(btn)
-        if btn._menu and btn._menu:IsShown() then
-            btn._menu:Hide()
-            btn._menu = nil
-            return
-        end
-        if btn._menu then btn._menu:Hide() btn._menu = nil end
-        local itemHeight = 26
-        local menuWidth = math.max(expBtnWidth, 120)
-        local menuHeight = #expansionOptions * itemHeight + 8
-        local menu = ns.UI.Factory:CreateContainer(UIParent, menuWidth, menuHeight, true)
-        menu:SetFrameStrata("FULLSCREEN_DIALOG")
-        menu:SetFrameLevel(300)
-        menu:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
-        menu:SetClampedToScreen(true)
-        if ApplyVisuals then ApplyVisuals(menu, {0.08, 0.08, 0.10, 0.98}, {COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 0.8}) end
-        btn._menu = menu
-        for i = 1, #expansionOptions do
-            local opt = expansionOptions[i]
-            local rowBtn = ns.UI.Factory:CreateButton(menu, menuWidth - 16, itemHeight, true)
-            rowBtn:SetPoint("TOPLEFT", 8, -(i - 1) * itemHeight - 4)
-            local rowLabel = FontManager:CreateFontString(rowBtn, "body", "OVERLAY")
-            rowLabel:SetPoint("LEFT", 8, 0)
-            rowLabel:SetText(opt.label)
-            rowLabel:SetTextColor(0.9, 0.9, 0.9)
-            rowBtn:SetScript("OnClick", function()
-                tabRef.db.profile.professionExpansionFilter = opt.key
-                if expFilterBtn._menu then expFilterBtn._menu:Hide() expFilterBtn._menu = nil end
-                tabRef:RefreshUI()
-            end)
-        end
-        menu:Show()
-    end)
-    expFilterBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
+    local expBadgeText = FontManager:CreateFontString(expBadge, "body", "OVERLAY")
+    expBadgeText:SetPoint("CENTER", 0, 0)
+    expBadgeText:SetJustifyH("CENTER")
+    expBadgeText:SetText("Midnight")
+    expBadgeText:SetTextColor(0.9, 0.9, 0.9)
+    expBadge:SetScript("OnClick", nil)
+    expBadge:SetScript("OnEnter", nil)
+    expBadge:SetScript("OnLeave", nil)
+    expBadge:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
     
     if ns.UI_CreateCharacterSortDropdown then
         local sortOptions = {
@@ -719,11 +703,42 @@ function WarbandNexus:DrawProfessionsTab(parent)
         }
         if not self.db.profile.professionSort then self.db.profile.professionSort = {} end
         local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function() self:RefreshUI() end)
-        sortBtn:SetPoint("RIGHT", expFilterBtn, "LEFT", -8, 0)
+        sortBtn:SetPoint("RIGHT", expBadge, "LEFT", -8, 0)
     end
     
     titleCard:Show()
     yOffset = yOffset + 75
+
+    -- ===== COLUMN HEADER BAR (always show so user sees column layout even with no data) =====
+    local COLUMN_HEADER_HEIGHT = 22
+    local colHeaderBar = CreateFrame("Frame", nil, parent)
+    colHeaderBar:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    colHeaderBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
+
+    local colHeaderBg = colHeaderBar:CreateTexture(nil, "BACKGROUND")
+    colHeaderBg:SetAllPoints()
+    colHeaderBg:SetColorTexture(1, 1, 1, 0.03)
+
+    local colHeaderLine = colHeaderBar:CreateTexture(nil, "ARTWORK")
+    colHeaderLine:SetPoint("BOTTOMLEFT", 0, 0)
+    colHeaderLine:SetPoint("BOTTOMRIGHT", 0, 0)
+    colHeaderLine:SetHeight(1)
+    colHeaderLine:SetColorTexture(1, 1, 1, 0.08)
+
+    -- Use hdef.text (English) so column headers are always correct regardless of game locale.
+    for _, hdef in ipairs(HEADER_DEFS) do
+        local col = hdef.col
+        local lbl = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
+        lbl:SetText("|cffffffff" .. (hdef.text or (ns.L and ns.L[hdef.label]) or "") .. "|r")
+        lbl:SetJustifyH(hdef.align or "CENTER")
+        local w = (hdef.getWidth and hdef.getWidth()) or ColWidth(col)
+        lbl:SetWidth(w)
+        lbl:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+    end
+    colHeaderBar:Show()
+
+    yOffset = yOffset + COLUMN_HEADER_HEIGHT + 4
 
     -- ===== EMPTY STATE =====
     if totalProfChars == 0 then
@@ -734,37 +749,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
         emptyText:SetText("|cffffffff" .. ((ns.L and ns.L["NO_PROFESSIONS_DATA"]) or "No profession data available yet. Open your profession window (default: K) on each character to collect data.") .. "|r")
         return yOffset + 100
     end
-
-    -- ===== COLUMN HEADER BAR =====
-    local COLUMN_HEADER_HEIGHT = 22
-    local colHeaderBar = CreateFrame("Frame", nil, parent)
-    colHeaderBar:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    colHeaderBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
-
-    -- Subtle background for the header bar
-    local colHeaderBg = colHeaderBar:CreateTexture(nil, "BACKGROUND")
-    colHeaderBg:SetAllPoints()
-    colHeaderBg:SetColorTexture(1, 1, 1, 0.03)
-
-    -- Bottom separator line
-    local colHeaderLine = colHeaderBar:CreateTexture(nil, "ARTWORK")
-    colHeaderLine:SetPoint("BOTTOMLEFT", 0, 0)
-    colHeaderLine:SetPoint("BOTTOMRIGHT", 0, 0)
-    colHeaderLine:SetHeight(1)
-    colHeaderLine:SetColorTexture(1, 1, 1, 0.08)
-
-    for _, hdef in ipairs(HEADER_DEFS) do
-        local col = hdef.col
-        local lbl = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
-        lbl:SetText("|cff888888" .. ((ns.L and ns.L[hdef.label]) or hdef.text) .. "|r")
-        lbl:SetJustifyH(hdef.align or "CENTER")
-        local w = (hdef.getWidth and hdef.getWidth()) or ColWidth(col)
-        lbl:SetWidth(w)
-        lbl:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
-    end
-
-    yOffset = yOffset + COLUMN_HEADER_HEIGHT + 4  -- breathing room after header bar
 
     -- ===== SECTION HEADERS & CHARACTER ROWS =====
     local currentPlayerKey = ns.Utilities:GetCharacterKey()
@@ -1017,16 +1001,52 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     row[p.."Recharge"]:ClearAllPoints()
     row[p.."Recharge"]:SetPoint("LEFT", rechargeX, centerY)
 
-    -- KNOWLEDGE
+    -- KNOWLEDGE (text + optional unspent warning triangle)
     local knowX = ColOffset("knowledge")
+    local knowW = ColWidth("knowledge")
     if not row[p.."Know"] then
         row[p.."Know"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Know"]:SetJustifyH("CENTER")
         row[p.."Know"]:SetMaxLines(1)
     end
-    row[p.."Know"]:SetWidth(ColWidth("knowledge"))
+    row[p.."Know"]:SetWidth(knowW - 16)
     row[p.."Know"]:ClearAllPoints()
     row[p.."Know"]:SetPoint("LEFT", knowX, centerY)
+    if not row[p.."KnowWarn"] then
+        local warnFrame = CreateFrame("Frame", nil, row)
+        warnFrame:SetSize(16, 16)
+        warnFrame:EnableMouse(true)
+        local tex = warnFrame:CreateTexture(nil, "OVERLAY")
+        tex:SetAllPoints()
+        tex:SetAtlas("icons_64x64_important")
+        warnFrame.texture = tex
+        row[p.."KnowWarn"] = warnFrame
+    end
+    row[p.."KnowWarn"]:ClearAllPoints()
+    row[p.."KnowWarn"]:SetPoint("RIGHT", row, "LEFT", knowX + knowW - 2, centerY)
+
+    local function EnsureProgressCell(fieldKey, colKey)
+        local key = p .. fieldKey
+        if not row[key] then
+            row[key] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
+            row[key]:SetJustifyH("CENTER")
+            row[key]:SetMaxLines(1)
+        end
+        row[key]:SetWidth(ColWidth(colKey))
+        row[key]:ClearAllPoints()
+        row[key]:SetPoint("LEFT", ColOffset(colKey), centerY)
+        return row[key]
+    end
+
+    local recipesText = EnsureProgressCell("Recipes", "recipes")
+    local firstCraftText = EnsureProgressCell("FirstCraft", "firstCraft")
+    local uniquesText = EnsureProgressCell("Uniques", "uniques")
+    local treatiseText = EnsureProgressCell("Treatise", "treatise")
+    local weeklyQuestText = EnsureProgressCell("WeeklyQuest", "weeklyQuest")
+    local treasureText = EnsureProgressCell("Treasure", "treasure")
+    local gatheringText = EnsureProgressCell("Gathering", "gathering")
+    local catchUpText = EnsureProgressCell("CatchUp", "catchUp")
+    local moxieText = EnsureProgressCell("Moxie", "moxie")
 
     -- COLUMN HIT-FRAMES (interactive tooltips for skill)
     local skillHit = AcquireColumnHitFrame(row, p.."SkillHit", "skill", centerY)
@@ -1047,6 +1067,25 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     end
     row[p.."Btn"]:ClearAllPoints()
     row[p.."Btn"]:SetPoint("LEFT", openX, centerY)
+
+    -- INFO BUTTON (read-only detail window)
+    local infoX = ColOffset("info")
+    if not row[p.."InfoBtn"] then
+        local ibtn = CreateFrame("Button", nil, row)
+        ibtn:SetSize(ColWidth("info"), 18)
+        if ApplyVisuals then
+            ApplyVisuals(ibtn, {0.12, 0.12, 0.15, 0.8}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
+        end
+        local iicon = ibtn:CreateTexture(nil, "ARTWORK")
+        iicon:SetSize(14, 14)
+        iicon:SetPoint("CENTER", 0, 0)
+        iicon:SetAtlas("QuestTurnin")
+        ibtn.iconTex = iicon
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(ibtn) end
+        row[p.."InfoBtn"] = ibtn
+    end
+    row[p.."InfoBtn"]:ClearAllPoints()
+    row[p.."InfoBtn"]:SetPoint("LEFT", infoX, centerY)
 
     -- ===== POPULATE =====
     if prof and prof.name then
@@ -1103,13 +1142,99 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         UpdateConcentrationBar(row, p.."ConcBar", concX, barTopY, ColWidth("conc"), concCurrent, concMax)
         row[p.."Recharge"]:SetText(rechargeStr)
 
-        -- Knowledge: keyed by skillLineID (expansion-specific).
+        -- Knowledge: keyed by skillLineID (expansion-specific). Always show Current / Max.
         -- String-key legacy fallback only in "All" mode to prevent cross-expansion data bleed.
         local kd = slID and char.knowledgeData and char.knowledgeData[slID]
         if not kd and GetExpansionFilter() == "All" then
             kd = char.knowledgeData and char.knowledgeData[profName]
         end
         row[p.."Know"]:SetText(FormatKnowledge(kd))
+        local unspent = (kd and kd.unspentPoints) and kd.unspentPoints or 0
+        if unspent > 0 then
+            row[p.."KnowWarn"]:Show()
+            row[p.."KnowWarn"]:SetScript("OnEnter", function(self)
+                local msg
+                if ns.L and ns.L["UNSPENT_KNOWLEDGE_COUNT"] then
+                    msg = format(ns.L["UNSPENT_KNOWLEDGE_COUNT"], unspent)
+                else
+                    msg = ((ns.L and ns.L["UNSPENT_KNOWLEDGE_TOOLTIP"]) or "Unspent knowledge points") .. ": " .. tostring(unspent)
+                end
+                if ShowTooltip then ShowTooltip(self, { type = "custom", title = msg, lines = {}, anchor = "ANCHOR_TOP" }) end
+            end)
+            row[p.."KnowWarn"]:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
+        else
+            row[p.."KnowWarn"]:Hide()
+            row[p.."KnowWarn"]:SetScript("OnEnter", nil)
+            row[p.."KnowWarn"]:SetScript("OnLeave", nil)
+        end
+
+        -- Recipes summary: keyed by skillLineID; in All mode fallback to matching profession name.
+        local recipeData = slID and char.recipes and char.recipes[slID]
+        if not recipeData and GetExpansionFilter() == "All" and char.recipes then
+            for _, entry in pairs(char.recipes) do
+                if type(entry) == "table" and entry.professionName == profName then
+                    recipeData = entry
+                    break
+                end
+            end
+        end
+        local progressData = nil
+        if slID and char.professionData and char.professionData.bySkillLine and char.professionData.bySkillLine[slID] then
+            progressData = char.professionData.bySkillLine[slID].weeklyKnowledge
+        end
+        if not progressData and slID and char.professionWeeklyKnowledge then
+            progressData = char.professionWeeklyKnowledge[slID]
+        end
+
+        -- First Craft: only show when data is from Midnight (avoid TWW/DF recipe counts mixing in).
+        local isMidnightRecipeData = recipeData and recipeData.expansionName and recipeData.expansionName:find("Midnight", 1, true)
+        local firstCraftProgress = progressData and progressData.firstCraft
+        if isMidnightRecipeData then
+            local doneCount = recipeData.firstCraftDoneCount
+            local totalBonusCount = recipeData.firstCraftTotalCount
+            local recipeProgress = nil
+            if totalBonusCount and totalBonusCount > 0 then
+                recipeProgress = {
+                    current = doneCount or 0,
+                    total = totalBonusCount or 0,
+                }
+            end
+            -- Recipe summary is authoritative; override stale weekly snapshot when they differ.
+            if recipeProgress and (
+                not firstCraftProgress
+                or (firstCraftProgress.total or 0) <= 0
+                or (firstCraftProgress.current or 0) ~= (recipeProgress.current or 0)
+                or (firstCraftProgress.total or 0) ~= (recipeProgress.total or 0)
+            ) then
+                firstCraftProgress = recipeProgress
+            end
+        end
+
+        -- Recipes: known / total (Midnight only to avoid mixing expansions).
+        if isMidnightRecipeData and recipeData.knownCount ~= nil and recipeData.totalCount and recipeData.totalCount > 0 then
+            recipesText:SetText(FormatProgressPair({ current = recipeData.knownCount, total = recipeData.totalCount }))
+        else
+            recipesText:SetText("|cffffffff--|r")
+        end
+
+        firstCraftText:SetText(FormatProgressPair(firstCraftProgress))
+        uniquesText:SetText(FormatProgressPair(progressData and progressData.uniques))
+        treatiseText:SetText(FormatProgressPair(progressData and progressData.treatise))
+        weeklyQuestText:SetText(FormatProgressPair(progressData and progressData.weeklyQuest))
+        treasureText:SetText(FormatProgressPair(progressData and progressData.treasure))
+        gatheringText:SetText(FormatProgressPair(progressData and progressData.gathering))
+        catchUpText:SetText(FormatProgressPair(progressData and progressData.catchUp))
+
+        -- Moxie: Artisan Moxie currency for this profession (Midnight; from DB/currency cache).
+        local charKey = (ns.Utilities and ns.Utilities.GetCharacterKey) and ns.Utilities:GetCharacterKey(char.name, char.realm) or nil
+        local moxieCurrencyID = slID and MIDNIGHT_MOXIE_CURRENCY[slID]
+        if charKey and moxieCurrencyID and WarbandNexus.GetCurrencyData then
+            local moxieData = WarbandNexus:GetCurrencyData(moxieCurrencyID, charKey)
+            local qty = (moxieData and (moxieData.quantity or moxieData.value)) or 0
+            moxieText:SetText(qty > 0 and format("|cffffffff%d|r", qty) or "|cffffffff--|r")
+        else
+            moxieText:SetText("|cffffffff--|r")
+        end
 
         -- ===== SKILL COLUMN TOOLTIP (expansion breakdown — unique data) =====
         skillHit:SetScript("OnEnter", function(self)
@@ -1161,23 +1286,42 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                 end
             end)
             btn:SetScript("OnEnter", function(self)
-                if ShowTooltip then ShowTooltip(self, { type = "custom", icon = prof.icon, title = (ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open this profession's recipe list", lines = {}, anchor = "ANCHOR_TOP" }) end
+                if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open recipe list", lines = {}, anchor = "ANCHOR_TOP" }) end
             end)
             btn:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
         else
             btn:Disable(); btn:SetAlpha(0.3); btn.label:SetTextColor(0.5, 0.5, 0.5)
             btn:SetScript("OnClick", nil)
             btn:SetScript("OnEnter", function(self)
-                if ShowTooltip then ShowTooltip(self, { type = "custom", icon = prof.icon, title = profName, lines = {{text = (ns.L and ns.L["PROF_ONLY_CURRENT_CHAR"]) or "Only available for the current character", color = {1, 0.5, 0.5}}}, anchor = "ANCHOR_TOP" }) end
+                if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["PROF_ONLY_CURRENT_CHAR"]) or "Only on current character", lines = {}, anchor = "ANCHOR_TOP" }) end
             end)
             btn:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
         end
         btn:Show()
 
-        -- Icon tooltip (detailed breakdown)
+        -- Info button: always enabled — shows read-only DB data for any character
+        local infoBtn = row[p.."InfoBtn"]
+        local infoProfSlot = prof
+        local infoCharKey = GetCharKey(char)
+        infoBtn:Enable()
+        infoBtn:SetAlpha(1)
+        infoBtn:SetScript("OnClick", function()
+            if WarbandNexus.ShowProfessionInfo then
+                WarbandNexus:ShowProfessionInfo(infoCharKey, profName, infoProfSlot)
+            end
+        end)
+        infoBtn:SetScript("OnEnter", function(self)
+            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["PROF_INFO_TOOLTIP"]) or "View profession details", lines = {}, anchor = "ANCHOR_TOP" }) end
+        end)
+        infoBtn:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
+        infoBtn:Show()
+
+        -- Icon tooltip: only when there is meaningful data (skill per expansion, knowledge, concentration, equipment).
+        -- Capture this row's profession name so equipment lookup is per-profession (no cross-show).
+        local rowProfName = profName
         row[p.."Icon"]:SetScript("OnEnter", function(self)
             local lines = {}
-            local expansions = char.professionExpansions and char.professionExpansions[profName]
+            local expansions = char.professionExpansions and char.professionExpansions[rowProfName]
             if expansions and #expansions > 0 then
                 for _, exp in ipairs(expansions) do
                     local maxS = exp.maxSkillLevel or 0
@@ -1186,20 +1330,15 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                     lines[#lines+1] = { left = exp.name or "?", right = maxS > 0 and format("%d / %d", curS, maxS) or "--", leftColor = {1,1,1}, rightColor = sc }
                 end
             end
-            local kdT = (slID and char.knowledgeData and char.knowledgeData[slID]) or (char.knowledgeData and char.knowledgeData[profName])
+            local kdT = (slID and char.knowledgeData and char.knowledgeData[slID]) or (char.knowledgeData and char.knowledgeData[rowProfName])
             if kdT then
                 local unspent, spent, maxPts = kdT.unspentPoints or 0, kdT.spentPoints or 0, kdT.maxPoints or 0
                 local collectible = (maxPts > 0) and (maxPts - unspent - spent) or 0
-                local hasKnowledgeLine = (collectible > 0) or (unspent > 0)
-                if hasKnowledgeLine then
-                    lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
-                    if collectible > 0 then lines[#lines+1] = { left = (ns.L and ns.L["COLLECTIBLE"]) or "Collectible", right = tostring(collectible), leftColor = {1,1,1}, rightColor = {0.3,0.9,0.3} } end
-                    if unspent > 0 then lines[#lines+1] = { left = "|TInterface\\GossipFrame\\AvailableQuestIcon:0|t " .. unspent .. " " .. ((ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent Points"), leftColor = {1, 0.82, 0} } end
-                end
+                if collectible > 0 then lines[#lines+1] = { left = (ns.L and ns.L["COLLECTIBLE"]) or "Collectible", right = tostring(collectible), leftColor = {1,1,1}, rightColor = {0.3,0.9,0.3} } end
+                if unspent > 0 then lines[#lines+1] = { left = (ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent", right = tostring(unspent), leftColor = {1, 0.82, 0}, rightColor = {1, 0.82, 0} } end
             end
-            local concT = (slID and char.concentration and char.concentration[slID]) or (char.concentration and char.concentration[profName])
+            local concT = (slID and char.concentration and char.concentration[slID]) or (char.concentration and char.concentration[rowProfName])
             if concT and concT.max and concT.max > 0 then
-                lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
                 local est = concT.current or 0
                 if WarbandNexus.GetEstimatedConcentration then est = WarbandNexus:GetEstimatedConcentration(concT) end
                 local cc = est >= concT.max and {0.3,0.9,0.3} or (est > 0 and {1,0.82,0} or {1,1,1})
@@ -1209,41 +1348,44 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                     if ts and ts ~= "" and ts ~= "Full" then lines[#lines+1] = { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = ts, leftColor = {1,1,1}, rightColor = {1,0.82,0} } end
                 end
             end
-            -- Profession Equipment section (per-profession only; no fallback to avoid showing wrong profession's equipment)
+            -- Equipment: show per-profession gear; fallback lookup by base name if key differs.
             local eqByProf = char.professionEquipment
-            local eqData = eqByProf and eqByProf[profName] or nil
+            local eqKey = rowProfName and rowProfName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "") or rowProfName
+            local eqData = eqByProf and (eqByProf[rowProfName] or eqByProf[eqKey]) or nil
+            if not eqData and eqByProf and (rowProfName or eqKey) then
+                for k, v in pairs(eqByProf) do
+                    if k ~= "_legacy" and type(v) == "table" and (v.tool or v.accessory1 or v.accessory2) then
+                        local norm = k:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
+                        if norm == eqKey or norm == (rowProfName and rowProfName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "") or nil) or (eqKey and k:find(eqKey, 1, true)) then
+                            eqData = v
+                            break
+                        end
+                    end
+                end
+            end
+            if not eqData and eqByProf and type(eqByProf._legacy) == "table" then
+                local legacy = eqByProf._legacy
+                if legacy.tool or legacy.accessory1 or legacy.accessory2 then
+                    eqData = legacy
+                end
+            end
             if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
-                lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
                 local slotKeys = { "tool", "accessory1", "accessory2" }
                 local tooltipSvc = ns.TooltipService
                 for _, slotKey in ipairs(slotKeys) do
                     local item = eqData[slotKey]
                     if item then
                         local iconStr = item.icon and format("|T%s:0|t ", tostring(item.icon)) or ""
-                        -- Get stat lines first to extract actual slot type (Head, Chest, Tool, etc.)
                         local statLines = tooltipSvc and tooltipSvc.GetItemTooltipSummaryLines and tooltipSvc:GetItemTooltipSummaryLines(item.itemLink, item.itemID, slotKey) or {}
-                        -- First line contains the slot type (e.g., "Head", "Chest", "Tool")
                         local slotLabel = (statLines[1] and statLines[1].left) or (slotKey == "tool" and "Tool" or "Accessory")
-                        lines[#lines+1] = {
-                            left = iconStr .. (item.name or "Unknown"),
-                            right = slotLabel,
-                            leftColor = {1, 1, 1},
-                            rightColor = {0.5, 0.5, 0.5},
-                        }
-                        -- Add remaining stat lines (skip first since it's now used as slot label)
-                        for si = 2, #statLines do
-                            local sLine = statLines[si]
-                            lines[#lines+1] = {
-                                left = "    " .. sLine.left,
-                                right = sLine.right or "",
-                                leftColor = sLine.leftColor or {0.7, 0.7, 0.7},
-                                rightColor = sLine.rightColor or {0.7, 0.7, 0.7},
-                            }
-                        end
+                        lines[#lines+1] = { left = iconStr .. (item.name or "Unknown"), right = slotLabel, leftColor = {1,1,1}, rightColor = {0.5,0.5,0.5} }
                     end
                 end
+            else
+                local eqHint = (ns.L and ns.L["PROF_EQUIPMENT_HINT"]) or "Open profession (K) on this character to scan equipment."
+                lines[#lines+1] = { left = (ns.L and ns.L["EQUIPMENT"]) or "Equipment", right = eqData and "--" or "|cff888888" .. eqHint .. "|r", leftColor = {0.7,0.7,0.7}, rightColor = {0.5,0.5,0.5} }
             end
-            if ShowTooltip then ShowTooltip(self, { type = "custom", icon = prof.icon, title = profName, lines = lines, anchor = "ANCHOR_RIGHT" }) end
+            if #lines > 0 and ShowTooltip then ShowTooltip(self, { type = "custom", icon = prof.icon, title = rowProfName, lines = lines, anchor = "ANCHOR_RIGHT" }) end
         end)
         row[p.."Icon"]:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
     else
@@ -1254,7 +1396,18 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Skill"]:SetText("")
         row[p.."Recharge"]:SetText("")
         row[p.."Know"]:SetText("")
+        if row[p.."KnowWarn"] then row[p.."KnowWarn"]:Hide() end
+        recipesText:SetText("")
+        firstCraftText:SetText("")
+        uniquesText:SetText("")
+        treatiseText:SetText("")
+        weeklyQuestText:SetText("")
+        treasureText:SetText("")
+        gatheringText:SetText("")
+        catchUpText:SetText("")
+        moxieText:SetText("")
         row[p.."Btn"]:Hide()
+        if row[p.."InfoBtn"] then row[p.."InfoBtn"]:Hide() end
         local concX = ColOffset("conc")
         local barTopY = centerY + BAR_HEIGHT / 2 - ROW_HEIGHT / 2
         UpdateConcentrationBar(row, p.."ConcBar", concX, barTopY, ColWidth("conc"), 0, 0)

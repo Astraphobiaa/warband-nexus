@@ -67,8 +67,7 @@ licenses shall be comply when used.
 	Licensed under GPLv2.
 	https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 	For the code to create customized codec.
-4. WeakAuras2,
-	https://github.com/WeakAuras/WeakAuras2
+4. External reference implementation.
 	Licensed under GPLv2.
 	For the 6bit encoding and decoding.
 ]]
@@ -3180,7 +3179,7 @@ function LibDeflate:DecodeForWoWChatChannel(str)
 	return _chat_channel_codec:Decode(str)
 end
 
--- Credits to WeakAuras <https://github.com/WeakAuras/WeakAuras2>,
+-- Credits to an external reference implementation,
 -- and Galmok (galmok@gmail.com) for the 6 bit encoding algorithm.
 -- The result of encoding will be 25% larger than the
 -- origin string, but every single byte of the encoding result will be
@@ -3209,7 +3208,7 @@ local _6bit_to_byte = {
 
 --- Encode the string to make it printable. <br>
 --
--- Credis to WeakAuras2, this function is equivalant to the implementation
+-- Credits to an external reference implementation, this function is equivalent to the implementation
 -- it is using right now. <br>
 -- The encoded string will be 25% larger than the origin string. However, every
 -- single byte of the encoded string will be one of 64 printable ASCII

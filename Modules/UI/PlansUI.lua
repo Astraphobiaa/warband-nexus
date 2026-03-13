@@ -62,13 +62,22 @@ local function ShowTryCountPopup(planData, collectibleID)
         local f = CreateFrame("Frame", "WNTryCountPopup", UIParent, "BackdropTemplate")
         f:SetSize(300, 160)
         f:SetPoint("CENTER")
-        f:SetFrameStrata("FULLSCREEN_DIALOG")
-        f:SetFrameLevel(500)
         f:EnableMouse(true)
         f:SetMovable(true)
-        f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", f.StartMoving)
-        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+
+        -- WindowManager: standardized strata/level + ESC + combat hide
+        if ns.WindowManager then
+            ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.POPUP)
+            ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP)
+            ns.WindowManager:InstallESCHandler(f)
+            ns.WindowManager:InstallDragHandler(f, f)
+        else
+            f:SetFrameStrata("FULLSCREEN_DIALOG")
+            f:SetFrameLevel(200)
+            f:RegisterForDrag("LeftButton")
+            f:SetScript("OnDragStart", f.StartMoving)
+            f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        end
         
         -- Background
         if ApplyVisuals then
@@ -1102,9 +1111,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             card._layoutInfo.isFullWidth = true
             card._layoutInfo.yPos = yPos
             
-            -- Apply green border
+            -- Apply accent border (My Plans cards)
             if ApplyVisuals then
-                local borderColor = {0.30, 0.90, 0.30, 0.8}
+                local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
                 ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
             end
             
@@ -1260,9 +1269,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             
                             questCardIndex = questCardIndex + 1
                             
-                            -- Apply green border for daily quests (added = green)
+                            -- Apply accent border for daily quest plans
                             if ApplyVisuals then
-                                ApplyVisuals(questCard, {0.08, 0.08, 0.10, 1}, {0.30, 0.90, 0.30, 0.8})
+                                ApplyVisuals(questCard, {0.08, 0.08, 0.10, 1}, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
                             end
                             
                             -- NO hover effect on plan cards (as requested)
@@ -1476,9 +1485,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 removeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
             end
 
-            -- Right-click context menu (try count + reset cycle)
+            -- Right-click context menu (try count only for drop-source; reset cycle for custom)
             local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true }
             local hasTryCount = tryCountTypes[plan.type]
+            if hasTryCount then
+                local id = plan.mountID or plan.speciesID or plan.itemID or plan.illusionID or plan.sourceID
+                if not id or (WarbandNexus.IsDropSourceCollectible and not WarbandNexus:IsDropSourceCollectible(plan.type, id)) or (WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(plan.type, id)) then
+                    hasTryCount = false
+                end
+            end
             local hasResetCycle = plan.type == "custom"
 
             if hasTryCount or hasResetCycle then
@@ -1487,7 +1502,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                         local contextPlan = plan
                         
                         MenuUtil.CreateContextMenu(card, function(_, rootDescription)
-                            -- Try count (mount/pet/toy/illusion)
                             if hasTryCount then
                                 rootDescription:CreateButton(ns.L and ns.L["SET_TRY_COUNT"] or "Set Try Count", function()
                                     if contextPlan then
@@ -1498,8 +1512,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                     end
                                 end)
                             end
-                            
-                            -- Reset cycle (custom plans only)
                             if hasResetCycle then
                                 local rc = contextPlan.resetCycle
                                 local resetSubmenu = rootDescription:CreateButton((ns.L and ns.L["SET_RESET_CYCLE"]) or "Set Reset Cycle")
@@ -2584,6 +2596,21 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     
     for i = 1, resultsToRender do
         local item = results[i]
+        item.category = category
+        -- Resolve empty source from API so browser shows same source as collection tabs (e.g. Voidstorm Fishing).
+        if (not item.source or item.source == "") and item.id then
+            if category == "mount" and C_MountJournal and C_MountJournal.GetMountInfoExtraByID then
+                local ok, _, _, src = pcall(C_MountJournal.GetMountInfoExtraByID, item.id)
+                if ok and src and type(src) == "string" and src ~= "" and (not issecretvalue or not issecretvalue(src)) then
+                    item.source = src
+                end
+            elseif category == "pet" and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then
+                local ok, _, _, _, _, src = pcall(C_PetJournal.GetPetInfoBySpeciesID, item.id)
+                if ok and src and type(src) == "string" and src ~= "" and (not issecretvalue or not issecretvalue(src)) then
+                    item.source = src
+                end
+            end
+        end
         -- Parse source for display
         local sources = self:ParseMultipleSources(item.source)
         local firstSource = sources[1] or {}
@@ -2973,9 +3000,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     
                     WarbandNexus:AddPlan(planData)
                     
-                    -- Update card border to green immediately (added state)
-                    if UpdateBorderColor then
-                        UpdateBorderColor(card, {0.30, 0.90, 0.30, 0.8})
+                    -- Update card border to accent immediately (added state)
+                    if UpdateBorderColor and COLORS and COLORS.accent then
+                        UpdateBorderColor(card, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
                     end
                     
                     -- Hide the Add button and show Added indicator (self is the button)
@@ -2989,41 +3016,20 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             })
         end
         
-        -- Try count badge (top-right) for mounts only
-        -- Pet/toy try system not implemented yet
-        -- Never show for 100% guaranteed drops
-        local tryCountBrowserTypes = { mount = true }
-        if tryCountBrowserTypes[category] and item.id and WarbandNexus and WarbandNexus.GetTryCount then
-            local collectibleType = category
-            local collectibleID = item.id
-            local isGuaranteed = WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(collectibleType, collectibleID)
-            if not isGuaranteed then
-                local count = WarbandNexus:GetTryCount(collectibleType, collectibleID) or 0
+        -- Try count badge: only for drop-source collectibles (rare, container, fishing, etc.), not vendor/achievement/guaranteed.
+        local browserTryTypes = { mount = true, pet = true, toy = true, illusion = true }
+        if browserTryTypes[category] and item.id and WarbandNexus and WarbandNexus.GetTryCount then
+            local count = WarbandNexus:GetTryCount(category, item.id)
+            if count == nil then count = 0 end
+            local isDrop = WarbandNexus.IsDropSourceCollectible and WarbandNexus:IsDropSourceCollectible(category, item.id)
+            local isGuaranteed = WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(category, item.id)
+            if (isDrop and not isGuaranteed) or count > 0 then
                 local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
                 local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
                 tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -10)
                 tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
                 tryText:SetJustifyH("RIGHT")
                 tryText:SetWordWrap(false)
-                card.tryCountText = tryText
-            
-                -- Right-click context menu to set try count (only for drop-source, non-guaranteed)
-                card:SetScript("OnMouseDown", function(_, button)
-                    if button == "RightButton" then
-                        MenuUtil.CreateContextMenu(card, function(_, rootDescription)
-                            rootDescription:CreateButton(ns.L and ns.L["SET_TRY_COUNT"] or "Set Try Count", function()
-                                ShowTryCountPopup({
-                                    name = item.name,
-                                    type = collectibleType,
-                                    mountID = (category == "mount") and collectibleID or nil,
-                                    speciesID = (category == "pet") and collectibleID or nil,
-                                    itemID = (category == "toy") and collectibleID or nil,
-                                    illusionID = (category == "illusion") and collectibleID or nil,
-                                }, collectibleID)
-                            end)
-                        end)
-                    end
-                end)
             end
         end
         
