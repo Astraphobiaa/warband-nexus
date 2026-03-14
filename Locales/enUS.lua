@@ -801,6 +801,8 @@ L["MODULE_GEAR"] = "Gear"
 L["MODULE_GEAR_DESC"] = "Gear management and item level tracking across characters"
 L["MODULE_COLLECTIONS"] = "Collections"
 L["MODULE_COLLECTIONS_DESC"] = "Mounts, pets, toys, transmog, and collection overview"
+L["MODULE_TRY_COUNTER"] = "Try Counter"
+L["MODULE_TRY_COUNTER_DESC"] = "Automatic drop attempt tracking for NPC kills, bosses, fishing, and containers. Disabling stops all try count processing, tooltips, and notifications."
 L["PROFESSIONS_DISABLED_TITLE"] = "Professions"
 
 -- Tooltip Service
