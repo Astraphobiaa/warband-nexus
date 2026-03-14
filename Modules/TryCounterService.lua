@@ -370,6 +370,9 @@ local lootReadySlotData = {}
 local lootReadySourceGUIDs = {}
 local lootReadyTime = 0
 local LOOT_READY_STATE_TTL = 5  -- seconds; treat lootReady* as valid for this long
+local wasFishingAtLootReady = false  -- snapshot of isFishing state at LOOT_READY; used by LOOT_CLOSED Route B2 to require fishing evidence
+local lootReadyDeferredTimer = nil  -- 200ms timer from LOOT_READY; fires if LOOT_OPENED was skipped (fast auto-loot)
+local deferredProcessedThisSession = false  -- true when ProcessDeferredLootReady already processed this loot; skip LOOT_OPENED to avoid double count
 -- Deferred fishing try-count messages: shown on LOOT_CLOSED so "X attempts" appears after "You receive loot"
 -- Try count is driven only by LOOT_OPENED. LOOT_SLOT_CHANGED is not used for NPC/object try count.
 
@@ -1728,6 +1731,11 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
         return
     end
 
+    -- Clear fishing context on instance entry (prevents false fishing counts in Delves)
+    isFishing = false
+    lastFishingCastTime = 0
+    if fishingResetTimer then fishingResetTimer:Cancel() fishingResetTimer = nil end
+
     -- Only notify for dungeons and raids (not arenas, pvp, scenarios)
     if instanceType ~= "party" and instanceType ~= "raid" then return end
 
@@ -1937,10 +1945,9 @@ function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, s
         isFishing = true
         lastFishingCastTime = GetTime()
         -- Safety timer: if the cast is cancelled/interrupted and LOOT_CLOSED never fires,
-        -- auto-reset after 45s so the next NPC loot is not misrouted to ProcessFishingLoot.
-        -- 45s reduces "missed" counts when a catch is slow (e.g. pool far away).
+        -- auto-reset after 20s so the next NPC loot is not misrouted to ProcessFishingLoot.
         if fishingResetTimer then fishingResetTimer:Cancel() end
-        fishingResetTimer = C_Timer.NewTimer(45, function()
+        fishingResetTimer = C_Timer.NewTimer(20, function()
             isFishing = false
             lastFishingCastTime = 0
             fishingResetTimer = nil
@@ -1987,22 +1994,18 @@ local function SafeGuardGUID(rawGUID)
     return rawGUID
 end
 
----True if loot source GUIDs indicate fishing (bobber/pool) rather than NPC/object.
----Used by LOOT_OPENED route and LOOT_CLOSED fallback B2.
+---True if loot source GUIDs indicate fishing (bobber/pool) rather than tracked NPC/object.
+---Bobber is Creature (NPC 124736); pools are GameObjects. Only reject when source is in our DB.
 local function IsFishingSourceCompatible(sourceGUIDs)
     if not sourceGUIDs or #sourceGUIDs == 0 then return true end
     for i = 1, #sourceGUIDs do
         local srcGUID = sourceGUIDs[i]
         if type(srcGUID) == "string" then
             local typeStr = srcGUID:match("^(%a+)")
-            if typeStr == "Creature" or typeStr == "Vehicle" then return false end
             local npcID = GetNPCIDFromGUID(srcGUID)
             if npcID and npcDropDB[npcID] then return false end
             local objectID = GetObjectIDFromGUID(srcGUID)
-            if objectID then
-                if objectDropDB[objectID] then return false end
-                if typeStr == "GameObject" then return false end
-            end
+            if objectID and objectDropDB[objectID] then return false end
         end
     end
     return true
@@ -2027,8 +2030,21 @@ function WarbandNexus:OnTryCounterLootReady(autoloot)
         lootReadySlotData[i] = { hasItem = not not hasItem, link = link }
     end
     lootReadyTime = GetTime()
+    -- Snapshot fishing context so LOOT_CLOSED Route B2 can require it even after isFishing is cleared.
+    wasFishingAtLootReady = isFishing and (lootReadyTime - lastFishingCastTime) <= FISHING_CAST_CONTEXT_TTL
     if IsTryCounterLootDebugEnabled(self) then
-        TryCounterLootDebug(self, "LOOT_READY | numLoot=%d srcs=%d (autoloot=%s)", lootReadyNumLoot, #lootReadySourceGUIDs, tostring(not not autoloot))
+        TryCounterLootDebug(self, "LOOT_READY | numLoot=%d srcs=%d (autoloot=%s fishSnap=%s)", lootReadyNumLoot, #lootReadySourceGUIDs, tostring(not not autoloot), tostring(wasFishingAtLootReady))
+    end
+    -- Deferred processing: if LOOT_OPENED is skipped (fast auto-loot), process from LOOT_READY data after 200ms.
+    if IsAutoTryCounterEnabled() and not sawLootOpenedThisSession then
+        if lootReadyDeferredTimer then lootReadyDeferredTimer:Cancel() end
+        lootReadyDeferredTimer = C_Timer.NewTimer(0.2, function()
+            lootReadyDeferredTimer = nil
+            if sawLootOpenedThisSession then return end
+            if WarbandNexus and WarbandNexus.ProcessDeferredLootReady then
+                WarbandNexus:ProcessDeferredLootReady()
+            end
+        end)
     end
 end
 
@@ -2064,6 +2080,26 @@ function WarbandNexus:OnTryCounterLootClosed()
                 self:ProcessContainerLoot()
             end
             didFallback = true
+        end
+
+        -- Route A2: Recent gathering cast safety net (mirrors Route 5b in LOOT_OPENED).
+        -- When LOOT_OPENED was missed but a gathering spell was cast recently and source is a GameObject,
+        -- skip try count — this is profession/gathering loot, not fishing or NPC loot.
+        if not didFallback and lastGatherCastTime and (now - lastGatherCastTime) < 5 then
+            local anyGameObject = false
+            for i = 1, #lootReadySourceGUIDs do
+                local guid = lootReadySourceGUIDs[i]
+                if type(guid) == "string" and guid:match("^GameObject") then
+                    anyGameObject = true
+                    break
+                end
+            end
+            if anyGameObject then
+                didFallback = true
+                if IsTryCounterLootDebugEnabled(self) then
+                    TryCounterLootDebug(self, "LOOT_CLOSED fallback skipped: recent gathering cast + GameObject source")
+                end
+            end
         end
 
         -- Route B: Fishing fallback. Require fresh fishing context to avoid counting normal mob/object loot as fishing.
@@ -2108,8 +2144,10 @@ function WarbandNexus:OnTryCounterLootClosed()
 
         -- Route B2: Fishing fallback when isFishing was cleared by a previous catch's LOOT_CLOSED
         -- (event ordering: Catch 1 LOOT_CLOSED clears isFishing before Catch 2 LOOT_CLOSED runs).
-        -- Uses LOOT_READY evidence: in trackable zone + valid slot data + source GUIDs compatible with fishing.
-        if not didFallback and IsInTrackableFishingZone() then
+        -- Requires wasFishingAtLootReady (captured at LOOT_READY): proves player was actively fishing when this
+        -- loot session started.  Without this gate, ANY loot in a fishing zone (e.g. companion gathering in Delves
+        -- whose parent map chain matches a Midnight fishing zone) would incorrectly count as a fishing attempt.
+        if not didFallback and wasFishingAtLootReady and IsInTrackableFishingZone() then
             local trackable = GetFishingTrackableForCurrentZone()
             if #trackable > 0 then
                 local numLoot = (lootReadyTime and (now - lootReadyTime) <= LOOT_READY_STATE_TTL and lootReadyNumLoot) or 0
@@ -2157,13 +2195,29 @@ function WarbandNexus:OnTryCounterLootClosed()
         if not didFallback and not recentFishingFallback and not (lastTryCountSourceKey == "closed_npc" and (now - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE) then
             lastTryCountSourceKey = "closed_npc"
             lastTryCountSourceTime = now
+            -- LOOT_OPENED was missed — inject LOOT_READY data into LOOT_OPENED snapshots so ProcessNPCLoot
+            -- can use source GUIDs, numLoot, and slotData that were captured before the window opened.
+            if lootReadyTime and (now - lootReadyTime) <= LOOT_READY_STATE_TTL then
+                if #lootOpenedSourceGUIDs == 0 and #lootReadySourceGUIDs > 0 then
+                    lootOpenedSourceGUIDs = lootReadySourceGUIDs
+                end
+                if lootOpenedNumLoot == 0 and lootReadyNumLoot > 0 then
+                    lootOpenedNumLoot = lootReadyNumLoot
+                end
+                if #lootOpenedSlotData == 0 and #lootReadySlotData > 0 then
+                    for i = 1, #lootReadySlotData do lootOpenedSlotData[i] = lootReadySlotData[i] end
+                end
+            end
             if IsTryCounterLootDebugEnabled(self) then
-                TryCounterLootDebug(self, "LOOT_CLOSED fallback: route=npc/object (LOOT_OPENED missed)")
+                TryCounterLootDebug(self, "LOOT_CLOSED fallback: route=npc/object (LOOT_OPENED missed, lootReady=%s)", tostring(lootReadyTime > 0 and (now - lootReadyTime) <= LOOT_READY_STATE_TTL))
             end
             self:ProcessNPCLoot()
         end
     end
     sawLootOpenedThisSession = false
+    deferredProcessedThisSession = false
+    if lootReadyDeferredTimer then lootReadyDeferredTimer:Cancel() lootReadyDeferredTimer = nil end
+    wasFishingAtLootReady = false
     lootReadyNumLoot = 0
     lootReadyTime = 0
     for i = 1, #lootReadySlotData do lootReadySlotData[i] = nil end
@@ -2214,9 +2268,11 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     end
     local playerName = UnitName("player")
     if not playerName then return end
+    local authorBase = author and author:match("^([^%-]+)") or author
     -- CHAT_MSG_LOOT can come with nil/empty author for self-loot depending on locale/client path.
-    -- Only reject when author is explicitly another player.
-    if author and author ~= "" and author ~= playerName then
+    -- Author may include realm suffix (e.g. "Name-Realm") while UnitName("player") returns "Name" only.
+    -- Only reject when author is explicitly another player (check both full match and realm-stripped base).
+    if author and author ~= "" and author ~= playerName and (not authorBase or authorBase ~= playerName) then
         if IsTryCounterLootDebugEnabled(self) then
             TryCounterLootDebug(self, "CHAT skip: foreign author=%s", tostring(author))
         end
@@ -2452,6 +2508,9 @@ end
 ---Returns trackable fishing drops for current zone (same merge as ProcessFishingLoot). Used for CHAT_MSG_LOOT fishing fallback.
 ---@return table trackable Array of drop entries, or empty table
 GetFishingTrackableForCurrentZone = function()
+    local inInstance = IsInInstance()
+    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    if inInstance then return {} end
     local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
     local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
     local drops = {}
@@ -2478,6 +2537,9 @@ end
 ---Returns set of itemIDs that are fishing drops in current zone. Used to avoid counting mob/object loot as fishing attempts in CHAT_MSG_LOOT.
 ---@return table|nil [itemID] = true, or nil if not in a fishing zone
 GetFishingDropItemIDsForCurrentZone = function()
+    local inInstance = IsInInstance()
+    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    if inInstance then return nil end
     local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
     local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
     local drops = {}
@@ -2507,6 +2569,9 @@ end
 ---  Pass true only when fishing context is confirmed (isFishing flag set by spell detection).
 ---  Route B2 heuristic (no isFishing) passes false/nil to avoid false positives from non-fishing loot.
 IsInTrackableFishingZone = function(includeGlobal)
+    local inInstance = IsInInstance()
+    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    if inInstance then return false end
     if includeGlobal and fishingDropDB[0] then return true end
     local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
     local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
@@ -2526,6 +2591,11 @@ end
 ---@param autoLoot boolean
 ---@param isFromItem boolean Added in 8.3.0, true if loot is from opening a container item
 function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
+    if lootReadyDeferredTimer then lootReadyDeferredTimer:Cancel() lootReadyDeferredTimer = nil end
+    if deferredProcessedThisSession then
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip: already processed by deferred") end
+        return
+    end
     -- Snapshot mouseover/target (and npc) immediately so ProcessNPCLoot can use them when GetLootSourceInfo returns nothing.
     if SafeGetMouseoverGUID then lootOpenedMouseoverGUID = SafeGetMouseoverGUID() else lootOpenedMouseoverGUID = nil end
     if SafeGetTargetGUID then lootOpenedTargetGUID = SafeGetTargetGUID() else lootOpenedTargetGUID = nil end
@@ -2578,9 +2648,11 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
         return
     end
 
-    -- Route 2: Fishing (includeGlobal=true: fishing context confirmed by isFishing flag)
-    if fishingContextFresh and fishingSourceCompatible and IsInTrackableFishingZone(true) then
-        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: fishing") end
+    -- Route 2: Fishing — IsFishingLoot() when window open (official API); fallback to spell+zone when deferred/LOOT_CLOSED
+    local isFishingLoot = IsFishingLoot and IsFishingLoot()
+    local fishingByHeuristic = IsInTrackableFishingZone(true) and fishingContextFresh and fishingSourceCompatible
+    if isFishingLoot or fishingByHeuristic then
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: fishing (api=%s)", tostring(not not isFishingLoot)) end
         self:ProcessFishingLoot()
         return
     end
@@ -2622,6 +2694,52 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
 
     -- Route 6: NPC / Object / Zone
     if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: NPC/Object") end
+    self:ProcessNPCLoot()
+end
+
+---Process loot when LOOT_OPENED was skipped (fast auto-loot). Uses LOOT_READY captured data.
+---Called by deferred timer 200ms after LOOT_READY if sawLootOpenedThisSession stayed false.
+function WarbandNexus:ProcessDeferredLootReady()
+    if sawLootOpenedThisSession then return end
+    if not IsAutoTryCounterEnabled() then return end
+    -- Snapshot target/mouseover for ProcessNPCLoot fallback when source GUIDs are empty
+    if SafeGetMouseoverGUID then lootOpenedMouseoverGUID = SafeGetMouseoverGUID() else lootOpenedMouseoverGUID = nil end
+    if SafeGetTargetGUID then lootOpenedTargetGUID = SafeGetTargetGUID() else lootOpenedTargetGUID = nil end
+    if SafeGetUnitGUID then lootOpenedNpcGUID = SafeGetUnitGUID("npc") else lootOpenedNpcGUID = nil end
+    -- Inject lootReady* into lootOpened* so ProcessFishingLoot/ProcessNPCLoot/ProcessContainerLoot work
+    lootOpenedNumLoot = lootReadyNumLoot
+    lootOpenedSourceGUIDs = lootReadySourceGUIDs
+    for i = 1, #lootOpenedSlotData do lootOpenedSlotData[i] = nil end
+    for i = 1, lootReadyNumLoot do lootOpenedSlotData[i] = lootReadySlotData[i] end
+    sawLootOpenedThisSession = true
+    deferredProcessedThisSession = true
+    local now = GetTime()
+    local isFromItem = lastContainerItemID and containerDropDB[lastContainerItemID] and (now - lastContainerItemTime) < 3
+    local fishingContextFresh = isFishing and (now - lastFishingCastTime) <= FISHING_CAST_CONTEXT_TTL
+    local fishingSourceCompatible = fishingContextFresh and IsFishingSourceCompatible(lootReadySourceGUIDs)
+    if fishingContextFresh and not fishingSourceCompatible then
+        isFishing = false
+        lastFishingCastTime = 0
+        if fishingResetTimer then fishingResetTimer:Cancel() fishingResetTimer = nil end
+    end
+    if isFromItem then
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "deferred route: container") end
+        self:ProcessContainerLoot()
+        return
+    end
+    if IsInTrackableFishingZone(true) and fishingContextFresh and fishingSourceCompatible then
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "deferred route: fishing") end
+        self:ProcessFishingLoot()
+        return
+    end
+    if isPickpocketing or isBlockingInteractionOpen or isProfessionLooting then return end
+    if lastGatherCastTime and (now - lastGatherCastTime) < 5 then
+        for i = 1, #lootReadySourceGUIDs do
+            local guid = lootReadySourceGUIDs[i]
+            if type(guid) == "string" and guid:match("^GameObject") then return end
+        end
+    end
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "deferred route: NPC/Object") end
     self:ProcessNPCLoot()
 end
 
@@ -3267,6 +3385,12 @@ end
 ---We do NOT care what dropped (common/rare); we only check: is the trackable drop (e.g. Nether-Warped Egg) in the loot?
 ---If yes → reset try count; if no → increment. So every fishing LOOT_OPENED in zone is counted.
 function WarbandNexus:ProcessFishingLoot()
+    local inInstance = IsInInstance()
+    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    if inInstance then
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "FISHING: in instance, skip") end
+        return
+    end
     -- Get current zone (Midnight 12.0: mapID may be secret in some contexts)
     local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
     local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil

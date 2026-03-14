@@ -960,15 +960,16 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if row.levelRestedIcon then row.levelRestedIcon:Hide() end
     if row.levelRestedHitFrame then row.levelRestedHitFrame:Hide() end
 
-    -- COLUMN: Item Level
-    local itemLevelOffset = GetColumnOffset("itemLevel")
+    -- COLUMN: Item Level (dynamic offset, chained from level column)
+    local itemLevelOffset = levelOffset + (CHAR_ROW_COLUMNS.level.total or 97)
     if not row.itemLevelText then
         row.itemLevelText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.itemLevelText:SetPoint("LEFT", itemLevelOffset, 0)
         row.itemLevelText:SetWidth(CHAR_ROW_COLUMNS.itemLevel.width)
         row.itemLevelText:SetJustifyH("CENTER")
         row.itemLevelText:SetMaxLines(1)  -- Single line only
     end
+    row.itemLevelText:ClearAllPoints()
+    row.itemLevelText:SetPoint("LEFT", itemLevelOffset, 0)
     local itemLevel = char.itemLevel or 0
     if itemLevel > 0 then
         row.itemLevelText:SetText(string.format("|cffffd700%s %d|r", (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", itemLevel))
@@ -977,21 +978,22 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     
     
-    -- COLUMN 8: Gold
-    local goldOffset = GetColumnOffset("gold")
+    -- COLUMN 8: Gold (dynamic offset, chained from itemLevel column)
+    local goldOffset = itemLevelOffset + (CHAR_ROW_COLUMNS.itemLevel.total or 90)
     if not row.goldText then
         row.goldText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.goldText:SetPoint("LEFT", goldOffset, 0)
         row.goldText:SetWidth(CHAR_ROW_COLUMNS.gold.width)
         row.goldText:SetJustifyH("RIGHT")
         row.goldText:SetMaxLines(1)  -- Single line only
     end
+    row.goldText:ClearAllPoints()
+    row.goldText:SetPoint("LEFT", goldOffset, 0)
     local totalCopper = ns.Utilities:GetCharTotalCopper(char)
     row.goldText:SetText(FormatMoney(totalCopper, 12))
     
     
-    -- COLUMN 9: Professions (Dynamic)
-    local profOffset = GetColumnOffset("professions")
+    -- COLUMN 9: Professions (dynamic offset, chained from gold column)
+    local profOffset = goldOffset + (CHAR_ROW_COLUMNS.gold.total or 205)
     if not row.profIcons then row.profIcons = {} end
     
     -- Hide all existing profession icons first
@@ -1279,15 +1281,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     
     
-    -- COLUMN 10: Mythic Keystone (REDESIGNED - Simple & Symmetric)
-    local mythicKeyOffset = GetColumnOffset("mythicKey")
+    -- COLUMN 10: Mythic Keystone (dynamic offset, chained from professions column)
+    local mythicKeyOffset = profOffset + (CHAR_ROW_COLUMNS.professions.total or 150)
     
     -- Create keystone icon (shared for has-key and no-key)
     if not row.keystoneIcon then
         row.keystoneIcon = row:CreateTexture(nil, "ARTWORK")
-        row.keystoneIcon:SetPoint("LEFT", mythicKeyOffset + 5, 0)  -- 5px padding from column edge
         row.keystoneIcon:SetSize(24, 24)  -- Increased 20% (20 → 24)
-        
+
         -- Use atlas with fallback
         local atlasInfo = C_Texture.GetAtlasInfo("ChromieTime-32x32")
         if atlasInfo then
@@ -1297,17 +1298,20 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             row.keystoneIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         end
     end
-    
+    row.keystoneIcon:ClearAllPoints()
+    row.keystoneIcon:SetPoint("LEFT", mythicKeyOffset + 5, 0)  -- 5px padding from column edge
+
     -- Create keystone text (shared for has-key and no-key)
     if not row.keystoneText then
         row.keystoneText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.keystoneText:SetPoint("LEFT", mythicKeyOffset + 34, 0)  -- Icon(24) + gap(5) + padding(5)
         row.keystoneText:SetWidth(CHAR_ROW_COLUMNS.mythicKey.width - 30)
         row.keystoneText:SetJustifyH("LEFT")
         row.keystoneText:SetWordWrap(false)
         row.keystoneText:SetNonSpaceWrap(false)  -- Prevent long word overflow
         row.keystoneText:SetMaxLines(1)  -- Single line only
     end
+    row.keystoneText:ClearAllPoints()
+    row.keystoneText:SetPoint("LEFT", mythicKeyOffset + 34, 0)  -- Icon(24) + gap(5) + padding(5)
     
     -- Format content based on keystone status
     if char.mythicKey and char.mythicKey.level and char.mythicKey.level > 0 then

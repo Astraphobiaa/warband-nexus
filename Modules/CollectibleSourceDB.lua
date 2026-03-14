@@ -1312,6 +1312,9 @@ ns.CollectibleSourceDB = {
         [864] = { -- Vol'dun
             { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
         },
+        [1462] = { -- Mechagon Island
+            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
+        },
 
         -- Zereth Mortis (Shadowlands 9.2) - Strange Goop (BoE, repeatable)
         -- Fishing material for Deepstar Aurelid mount via Hirukon summon chain.

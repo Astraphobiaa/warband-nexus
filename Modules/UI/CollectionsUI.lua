@@ -3005,11 +3005,12 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
         for i = 1, #mountIDs do
             local mountID = mountIDs[i]
             -- Skip hidden mounts (10th return value from GetMountInfoByID)
+            local shouldHide = false
             if C_MountJournal and C_MountJournal.GetMountInfoByID then
-                local _, _, _, _, _, _, _, _, _, shouldHide = C_MountJournal.GetMountInfoByID(mountID)
-                if shouldHide then goto continueMount end
+                local _, _, _, _, _, _, _, _, _, sh = C_MountJournal.GetMountInfoByID(mountID)
+                shouldHide = sh
             end
-            do
+            if not shouldHide then
             local isCollected = SafeGetMountCollected(mountID)
             if (showC and isCollected) or (showU and not isCollected) then
                 local meta = WarbandNexus:ResolveCollectionMetadata("mount", mountID)
@@ -3049,7 +3050,6 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
                 end
             end
             end
-            ::continueMount::
         end
     end
 

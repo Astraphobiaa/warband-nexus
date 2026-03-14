@@ -151,63 +151,71 @@ function WarbandNexus:DrawStorageTab(parent)
     -- Get search text from SearchStateManager
     local storageSearchText = SearchStateManager:GetQuery("storage")
     
-    -- ===== HEADER CARD (Always shown) =====
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    
-    -- Header icon with ring border (standardized)
-    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-    local GetTabIcon = ns.UI_GetTabIcon
-    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("storage"))
-    
-    -- Dynamic theme color for title
+    -- ===== HEADER CARD (Cached on parent to prevent frame leak) =====
+    if not parent._storageTitleCard then
+        local titleCard = CreateCard(parent, 70)
+
+        -- Header icon with ring border (standardized)
+        local CreateHeaderIcon = ns.UI_CreateHeaderIcon
+        local GetTabIcon = ns.UI_GetTabIcon
+        local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("storage"))
+
+        -- Create container for text group (using Factory pattern)
+        local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
+
+        -- Create title text (header font, colored)
+        local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
+        titleText:SetJustifyH("LEFT")
+
+        -- Create subtitle text
+        local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
+        subtitleText:SetTextColor(1, 1, 1)  -- White
+        subtitleText:SetJustifyH("LEFT")
+
+        -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
+        titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)
+        titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+        subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)
+        subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+
+        -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
+        textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
+        textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+
+        -- Sort Dropdown on the Title Card (Header)
+        if ns.UI_CreateCharacterSortDropdown then
+            local sortOptions = {
+                {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+                {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+                {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+                {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+                {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+            }
+            if not self.db.profile.storageSort then self.db.profile.storageSort = {} end
+            local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.storageSort, function() self:RefreshUI() end)
+            sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
+            sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
+        end
+
+        -- Store references for reuse
+        parent._storageTitleCard = titleCard
+        parent._storageTitleText = titleText
+        parent._storageSubtitleText = subtitleText
+    end
+
+    local titleCard = parent._storageTitleCard
+
+    -- Update dynamic theme color for title
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    
-    -- Use factory pattern positioning for standardized header layout
     local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["STORAGE_HEADER"]) or "Storage Browser") .. "|r"
     local subtitleTextContent = (ns.L and ns.L["STORAGE_HEADER_DESC"]) or "Browse all items organized by type"
-    
-    -- Create container for text group (using Factory pattern)
-    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
-    
-    -- Create title text (header font, colored)
-    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
-    titleText:SetText(titleTextContent)
-    titleText:SetJustifyH("LEFT")
-    
-    -- Create subtitle text
-    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
-    subtitleText:SetText(subtitleTextContent)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetJustifyH("LEFT")
-    
-    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
-    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
-    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
-    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    
-    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
-    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
-    
-    -- Sort Dropdown on the Title Card (Header)
-    if ns.UI_CreateCharacterSortDropdown then
-        local sortOptions = {
-            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
-            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
-            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
-            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
-            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
-        }
-        if not self.db.profile.storageSort then self.db.profile.storageSort = {} end
-        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.storageSort, function() self:RefreshUI() end)
-        sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
-        sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
-    end
-    
+    parent._storageTitleText:SetText(titleTextContent)
+    parent._storageSubtitleText:SetText(subtitleTextContent)
+
+    titleCard:ClearAllPoints()
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     titleCard:Show()
     
     yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
@@ -219,36 +227,49 @@ function WarbandNexus:DrawStorageTab(parent)
         return yOffset + cardHeight
     end
     
-    -- ===== SEARCH BOX (Below header) =====
+    -- ===== SEARCH BOX (Cached on parent to prevent frame leak) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
     -- Use SearchStateManager for state management
     local storageSearchText = SearchStateManager:GetQuery("storage")
-    
-    local searchBox = CreateSearchBox(parent, width, (ns.L and ns.L["STORAGE_SEARCH"]) or "Search storage...", function(text)
-        -- Update search state via SearchStateManager (throttled, event-driven)
-        SearchStateManager:SetSearchQuery("storage", text)
-        
-        -- Prepare container for rendering
-        local resultsContainer = parent.storageResultsContainer
-        if resultsContainer then
-            SearchResultsRenderer:PrepareContainer(resultsContainer)
-            
-            -- Redraw results with new search text
-            local contentHeight = self:DrawStorageResults(resultsContainer, 0, width, text)
-            
-            -- Update container height
-            resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
-        end
-    end, 0.4, storageSearchText)
-    
+
+    if not parent._storageSearchBox then
+        parent._storageSearchBox = CreateSearchBox(parent, width, (ns.L and ns.L["STORAGE_SEARCH"]) or "Search storage...", function(text)
+            -- Update search state via SearchStateManager (throttled, event-driven)
+            SearchStateManager:SetSearchQuery("storage", text)
+
+            -- Prepare container for rendering
+            local resultsContainer = parent.storageResultsContainer
+            if resultsContainer then
+                SearchResultsRenderer:PrepareContainer(resultsContainer)
+
+                -- Redraw results with new search text
+                local contentWidth = parent:GetWidth() - 20
+                local contentHeight = self:DrawStorageResults(resultsContainer, 0, contentWidth, text)
+
+                -- Update container height
+                resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
+            end
+        end, 0.4, storageSearchText)
+    end
+
+    local searchBox = parent._storageSearchBox
+    searchBox:ClearAllPoints()
     searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    
+    searchBox:Show()
+
     yOffset = yOffset + 32 + GetLayout().afterElement  -- Search box height + spacing
-    
-    -- ===== RESULTS CONTAINER (After search box) =====
-    local resultsContainer = CreateResultsContainer(parent, yOffset, SIDE_MARGIN)
+
+    -- ===== RESULTS CONTAINER (Cached on parent to prevent frame leak) =====
+    if not parent._storageResultsContainer then
+        parent._storageResultsContainer = CreateResultsContainer(parent, yOffset, SIDE_MARGIN)
+    end
+    local resultsContainer = parent._storageResultsContainer
+    resultsContainer:ClearAllPoints()
+    resultsContainer:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    resultsContainer:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     resultsContainer:SetHeight(1) -- Will be set after content is drawn
+    resultsContainer:Show()
     parent.storageResultsContainer = resultsContainer  -- Store reference for search callback
     
     -- Initial draw of results

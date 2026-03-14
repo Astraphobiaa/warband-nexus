@@ -200,17 +200,68 @@ local function AddToFIFOCache(itemID)
     end
 end
 
+---Sync decompressed item cache with resolved metadata.
+---HydrateItem does value copies (not references), so after async resolution
+---the cached items still have name=nil, pending=true. This function patches
+---them in-place so the UI sees updated names without a full re-hydration.
+---@return number syncedCount Number of items that were patched
+local function SyncDecompressedCacheWithMetadata()
+    local syncedCount = 0
+    -- Sync personal item caches (bags + bank per character)
+    for charKey, data in pairs(decompressedItemCache) do
+        for _, source in ipairs({"bags", "bank"}) do
+            local items = data[source]
+            if items then
+                for _, item in ipairs(items) do
+                    if item.pending and item.itemID then
+                        local meta = itemMetadataCache[item.itemID]
+                        if meta and not meta.pending then
+                            item.name = meta.name
+                            item.link = item.link or meta.link
+                            item.iconFileID = item.iconFileID or meta.iconFileID
+                            item.classID = item.classID or meta.classID
+                            item.pending = nil
+                            syncedCount = syncedCount + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    -- Sync warband bank cache
+    if decompressedWarbandCache and decompressedWarbandCache.items then
+        for _, item in ipairs(decompressedWarbandCache.items) do
+            if item.pending and item.itemID then
+                local meta = itemMetadataCache[item.itemID]
+                if meta and not meta.pending then
+                    item.name = meta.name
+                    item.link = item.link or meta.link
+                    item.iconFileID = item.iconFileID or meta.iconFileID
+                    item.classID = item.classID or meta.classID
+                    item.pending = nil
+                    syncedCount = syncedCount + 1
+                end
+            end
+        end
+    end
+    return syncedCount
+end
+
 ---Debounced UI refresh after async item metadata resolution.
 ---Fires WN_ITEM_METADATA_READY so the UI can re-read metadata from the cache.
----Does NOT wipe decompressed caches; hydrated items reference the same metadata
----objects that were just updated in-place by QueueAsyncItemLoad's callback.
+---Syncs decompressed caches before firing the event so items show resolved names.
 local function ScheduleMetadataRefresh()
     if pendingMetadataRefreshTimer then
         pendingMetadataRefreshTimer:Cancel()
     end
     pendingMetadataRefreshTimer = C_Timer.NewTimer(0.3, function()
         pendingMetadataRefreshTimer = nil
-        WarbandNexus:SendMessage(Constants.EVENTS.ITEM_METADATA_READY)
+        -- Patch cached items with resolved metadata before notifying UI
+        local synced = SyncDecompressedCacheWithMetadata()
+        -- Only notify UI if items were actually updated (prevents unnecessary redraws)
+        if synced > 0 then
+            WarbandNexus:SendMessage(Constants.EVENTS.ITEM_METADATA_READY)
+        end
     end)
 end
 
@@ -310,8 +361,9 @@ local function ResolveItemMetadata(itemID)
     return metadata
 end
 
----Hydrate a lean item (from SV) with on-demand metadata.
+---Hydrate a lean item (from SV) with on-demand metadata (value copy, not reference).
 ---Sets item.pending = true if the item name is still being loaded asynchronously.
+---NOTE: After async resolution, SyncDecompressedCacheWithMetadata() patches items in-place.
 ---@param item table Lean item { itemID, stackCount, quality, isBound, bagID, slotIndex, ... }
 ---@return table hydrated Full item with name, link, icon, classID, etc.
 local function HydrateItem(item)
