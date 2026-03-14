@@ -1043,9 +1043,11 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
             isRepeatable = WarbandNexus:IsRepeatableCollectible(drop.type, collectibleID or drop.itemID)
         end
 
-        -- Try count (do not show for 100% guaranteed drops)
+        -- Try count (do not show for 100% guaranteed drops or when module disabled)
         local tryCount = 0
-        if not isGuaranteed and WarbandNexus and WarbandNexus.GetTryCount then
+        local tryCounterEnabled = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+            and (not WarbandNexus.db.profile.modulesEnabled or WarbandNexus.db.profile.modulesEnabled.tryCounter ~= false)
+        if tryCounterEnabled and not isGuaranteed and WarbandNexus and WarbandNexus.GetTryCount then
             if collectibleID then
                 tryCount = WarbandNexus:GetTryCount(drop.type, collectibleID)
             end

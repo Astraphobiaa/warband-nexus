@@ -100,8 +100,16 @@ local function RegisterStorageEvents(parent)
     
     -- Async item metadata resolution (items that were "Loading..." now have real names)
     -- Keep: UI.lua does NOT handle WN_ITEM_METADATA_READY.
+    -- Rate-limited to prevent infinite redraw loop: metadata refresh wipes caches,
+    -- redraw triggers new async loads which fire another metadata refresh.
+    local lastMetadataRefreshDraw = 0
+    local METADATA_REFRESH_COOLDOWN = 2
+
     WarbandNexus.RegisterMessage(StorageUIEvents, "WN_ITEM_METADATA_READY", function()
         if IsStorageTabActive() then
+            local now = GetTime()
+            if now - lastMetadataRefreshDraw < METADATA_REFRESH_COOLDOWN then return end
+            lastMetadataRefreshDraw = now
             DebugPrint("|cff00ff00[StorageUI]|r WN_ITEM_METADATA_READY received, refreshing names")
             ScheduleDrawStorageTab()
         end

@@ -118,4 +118,3 @@ Modules\UI.lua
 # Gold Management (MUST load after UI modules)
 Modules\GoldManagementService.lua
 Modules\CharacterBankMoneyLogService.lua
-

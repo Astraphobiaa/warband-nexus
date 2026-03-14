@@ -102,7 +102,7 @@ local itemSummaryIndex = {
 local itemMetadataCache = {}       -- [itemID] = { name, link, icon, classID, subclassID, itemType, pending? }
 local itemMetadataCacheOrder = {}  -- FIFO eviction order tracking (head index + count)
 local itemMetadataCacheHead = 1    -- Circular buffer head index
-local ITEM_METADATA_CACHE_MAX = 512
+local ITEM_METADATA_CACHE_MAX = 2048
 
 -- Async item metadata resolution tracking
 local pendingItemLoads = {}              -- [itemID] = true (prevents duplicate async loads)
@@ -201,17 +201,15 @@ local function AddToFIFOCache(itemID)
 end
 
 ---Debounced UI refresh after async item metadata resolution.
----Invalidates decompressed caches and fires WN_ITEM_METADATA_READY.
+---Fires WN_ITEM_METADATA_READY so the UI can re-read metadata from the cache.
+---Does NOT wipe decompressed caches; hydrated items reference the same metadata
+---objects that were just updated in-place by QueueAsyncItemLoad's callback.
 local function ScheduleMetadataRefresh()
     if pendingMetadataRefreshTimer then
         pendingMetadataRefreshTimer:Cancel()
     end
     pendingMetadataRefreshTimer = C_Timer.NewTimer(0.3, function()
         pendingMetadataRefreshTimer = nil
-        -- Invalidate decompressed data caches (they contain hydrated items with stale names)
-        wipe(decompressedItemCache)
-        decompressedWarbandCache = nil
-        -- Fire event for UI refresh
         WarbandNexus:SendMessage(Constants.EVENTS.ITEM_METADATA_READY)
     end)
 end

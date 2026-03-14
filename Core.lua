@@ -134,6 +134,7 @@ local defaults = {
             professions = true,  -- Profession tracking and companion window
             gear = true,         -- Gear management tab
             collections = true,  -- Collections (mounts, pets, toys, transmog) tab
+            tryCounter = true,   -- Automatic try counter for drop attempts
         },
         
         -- Weekly Planner settings

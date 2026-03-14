@@ -612,9 +612,10 @@ end
     Create a new weekly vault plan for a character
     @param characterName string - Character name
     @param characterRealm string - Realm name
+    @param trackedSlots table|nil - Which vault slots to track {dungeon=bool, raid=bool, world=bool}
     @return table - Created plan or nil if failed
 ]]
-function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm)
+function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm, trackedSlots)
     if not characterName or not characterRealm then
         self:Print("|cffff0000" .. ((ns.L and ns.L["ERROR_LABEL"]) or "Error:") .. "|r " .. ((ns.L and ns.L["ERROR_NAME_REALM_REQUIRED"]) or "Character name and realm required"))
         return nil
@@ -651,17 +652,23 @@ function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm)
         characterClass = currentClass
     end
     
+    -- Default: track all slots unless caller specifies
+    if not trackedSlots then
+        trackedSlots = { dungeon = true, raid = true, world = true }
+    end
+    
     -- Create weekly plan structure
     local plan = {
         id = planID,
         type = "weekly_vault",
         characterName = characterName,
         characterRealm = characterRealm,
-        characterClass = characterClass,  -- Store class for color coding
+        characterClass = characterClass,
         name = string.format((ns.L and ns.L["WEEKLY_VAULT_PLAN_NAME"]) or "Weekly Vault - %s", characterName),
-        icon = "Interface\\Icons\\INV_Misc_Chest_03", -- Great Vault chest icon
+        icon = "Interface\\Icons\\INV_Misc_Chest_03",
         createdDate = time(),
         lastReset = time(),
+        trackedSlots = trackedSlots,
         slots = {
             dungeon = {
                 {threshold = 1, completed = false, manualOverride = false},
@@ -838,19 +845,16 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
         end
     end
     
-    -- Check if all slots are completed
+    -- Check if all tracked slots are completed
+    local tracked = plan.trackedSlots or { dungeon = true, raid = true, world = true }
     local allCompleted = true
-    for _, slot in ipairs(plan.slots.dungeon) do
-        if not slot.completed then allCompleted = false break end
-    end
-    if allCompleted then
-        for _, slot in ipairs(plan.slots.raid) do
-            if not slot.completed then allCompleted = false break end
-        end
-    end
-    if allCompleted then
-        for _, slot in ipairs(plan.slots.world) do
-            if not slot.completed then allCompleted = false break end
+    local slotMap = { dungeon = plan.slots.dungeon, raid = plan.slots.raid, world = plan.slots.world }
+    for slotKey, slotList in pairs(slotMap) do
+        if tracked[slotKey] then
+            for _, slot in ipairs(slotList) do
+                if not slot.completed then allCompleted = false break end
+            end
+            if not allCompleted then break end
         end
     end
     

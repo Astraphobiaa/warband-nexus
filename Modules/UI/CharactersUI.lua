@@ -539,9 +539,10 @@ function WarbandNexus:DrawCharacterList(parent)
     end
     
     -- ===== FAVORITES SECTION (Always show header) =====
-    local favHeader, _, favIcon = CreateCollapsibleHeader(
+    local SECTION_H = 44
+    local favHeader, _, favIcon, favHeaderText = CreateCollapsibleHeader(
         parent,
-        string.format(((ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites") .. " |cff888888(%s)|r", FormatNumber(#trackedFavorites)),
+        ((ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites"),
         "favorites",
         self.charactersExpandAllActive or self.db.profile.ui.favoritesExpanded,
         function(isExpanded)
@@ -549,24 +550,32 @@ function WarbandNexus:DrawCharacterList(parent)
             if isExpanded then self.recentlyExpanded["favorites"] = GetTime() end
             self:RefreshUI()
         end,
-        "GM-icon-assistActive-hover",  -- Favorites star atlas icon
-        true  -- isAtlas = true
+        "GM-icon-assistActive-hover",
+        true
     )
-    if favIcon then
-        favIcon:SetSize(34, 34)
-    end
+    favHeader:SetHeight(SECTION_H)
     favHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     favHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    
-    -- Apply visuals with accent border
-    if ApplyVisuals then
-        ApplyVisuals(favHeader, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    if favIcon then favIcon:SetSize(28, 28) end
+    if favHeaderText then
+        local font, _, flags = favHeaderText:GetFont()
+        favHeaderText:SetFont(font, 14, flags)
     end
     
-    -- Remove vertex color tinting for atlas icon
-    -- (Atlas icons should use their natural colors)
+    local favAccent = favHeader:CreateTexture(nil, "ARTWORK", nil, 2)
+    favAccent:SetSize(3, SECTION_H - 8)
+    favAccent:SetPoint("LEFT", 4, 0)
+    favAccent:SetColorTexture(1, 0.82, 0.2, 0.9)
     
-    yOffset = yOffset + HEADER_HEIGHT  -- Header height (32px)
+    local favCount = FontManager:CreateFontString(favHeader, "body", "OVERLAY")
+    favCount:SetPoint("RIGHT", -14, 0)
+    favCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedFavorites) .. "|r")
+    
+    if ApplyVisuals then
+        ApplyVisuals(favHeader, {0.06, 0.06, 0.08, 0.95}, {1, 0.82, 0.2, 0.5})
+    end
+    
+    yOffset = yOffset + SECTION_H
     
     if self.db.profile.ui.favoritesExpanded then
         if #trackedFavorites > 0 then
@@ -589,9 +598,9 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- ===== REGULAR CHARACTERS SECTION (Always show header) =====
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-    local charHeader = CreateCollapsibleHeader(
+    local charHeader, _, charIcon, charHeaderText = CreateCollapsibleHeader(
         parent,
-        string.format(((ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters") .. " |cff888888(%s)|r", FormatNumber(#trackedRegular)),
+        ((ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters"),
         "characters",
         self.db.profile.ui.charactersExpanded,
         function(isExpanded)
@@ -599,18 +608,31 @@ function WarbandNexus:DrawCharacterList(parent)
             if isExpanded then self.recentlyExpanded["characters"] = GetTime() end
             self:RefreshUI()
         end,
-        "GM-icon-headCount", -- New Characters atlas
-        true  -- isAtlas = true
+        "GM-icon-headCount",
+        true
     )
+    charHeader:SetHeight(SECTION_H)
     charHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     charHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    
-    -- Apply visuals with accent border
-    if ApplyVisuals then
-        ApplyVisuals(charHeader, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    if charHeaderText then
+        local font, _, flags = charHeaderText:GetFont()
+        charHeaderText:SetFont(font, 14, flags)
     end
     
-    yOffset = yOffset + HEADER_HEIGHT  -- Header height (32px)
+    local charAccent = charHeader:CreateTexture(nil, "ARTWORK", nil, 2)
+    charAccent:SetSize(3, SECTION_H - 8)
+    charAccent:SetPoint("LEFT", 4, 0)
+    charAccent:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
+    
+    local charCount = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
+    charCount:SetPoint("RIGHT", -14, 0)
+    charCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedRegular) .. "|r")
+    
+    if ApplyVisuals then
+        ApplyVisuals(charHeader, {0.06, 0.06, 0.08, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
+    end
+    
+    yOffset = yOffset + SECTION_H
     
     if self.db.profile.ui.charactersExpanded then
         if #trackedRegular > 0 then
@@ -638,9 +660,9 @@ function WarbandNexus:DrawCharacterList(parent)
             self.db.profile.ui.untrackedExpanded = false  -- Collapsed by default
         end
         
-        local untrackedHeader, _, untrackedIcon = CreateCollapsibleHeader(
+        local untrackedHeader, _, untrackedIcon, untrackedHeaderText = CreateCollapsibleHeader(
             parent,
-            string.format(((ns.L and ns.L["UNTRACKED_CHARACTERS"]) or "Untracked Characters") .. " |cff888888(%s)|r", FormatNumber(#untracked)),
+            ((ns.L and ns.L["UNTRACKED_CHARACTERS"]) or "Untracked Characters"),
             "untracked",
             self.db.profile.ui.untrackedExpanded,
             function(isExpanded)
@@ -648,18 +670,32 @@ function WarbandNexus:DrawCharacterList(parent)
                 if isExpanded then self.recentlyExpanded["untracked"] = GetTime() end
                 self:RefreshUI()
             end,
-            "DungeonStoneCheckpointDeactivated",  -- Deactivated checkpoint icon
-            true  -- isAtlas = true
+            "DungeonStoneCheckpointDeactivated",
+            true
         )
+        untrackedHeader:SetHeight(SECTION_H)
         untrackedHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
         untrackedHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-        
-        -- Apply visuals with red tint border
-        if ApplyVisuals then
-            ApplyVisuals(untrackedHeader, {0.08, 0.08, 0.10, 0.95}, {0.8, 0.2, 0.2, 0.6})  -- Red border
+        if untrackedHeaderText then
+            local font, _, flags = untrackedHeaderText:GetFont()
+            untrackedHeaderText:SetFont(font, 14, flags)
+            untrackedHeaderText:SetTextColor(0.7, 0.7, 0.7)
         end
         
-        yOffset = yOffset + HEADER_HEIGHT
+        local untrackedAccent = untrackedHeader:CreateTexture(nil, "ARTWORK", nil, 2)
+        untrackedAccent:SetSize(3, SECTION_H - 8)
+        untrackedAccent:SetPoint("LEFT", 4, 0)
+        untrackedAccent:SetColorTexture(0.8, 0.25, 0.25, 0.9)
+        
+        local untrackedCount = FontManager:CreateFontString(untrackedHeader, "body", "OVERLAY")
+        untrackedCount:SetPoint("RIGHT", -14, 0)
+        untrackedCount:SetText("|cff888888" .. FormatNumber(#untracked) .. "|r")
+        
+        if ApplyVisuals then
+            ApplyVisuals(untrackedHeader, {0.06, 0.06, 0.08, 0.95}, {0.8, 0.25, 0.25, 0.5})
+        end
+        
+        yOffset = yOffset + SECTION_H
         
         if self.db.profile.ui.untrackedExpanded then
             for i = 1, #untracked do

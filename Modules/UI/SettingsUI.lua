@@ -1052,6 +1052,21 @@ local function BuildSettings(parent, containerWidth)
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
+        {
+            key = "tryCounter",
+            label = (ns.L and ns.L["MODULE_TRY_COUNTER"]) or "Try Counter",
+            tooltip = (ns.L and ns.L["MODULE_TRY_COUNTER_DESC"]) or "Automatic drop attempt tracking for NPC kills, bosses, fishing, and containers. Disabling stops all try count processing, tooltips, and notifications.",
+            get = function() return WarbandNexus.db.profile.modulesEnabled.tryCounter ~= false end,
+            set = function(value)
+                if WarbandNexus.SetTryCounterModuleEnabled then
+                    WarbandNexus:SetTryCounterModuleEnabled(value)
+                else
+                    WarbandNexus.db.profile.modulesEnabled.tryCounter = value
+                    WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "tryCounter", value)
+                end
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end,
+        },
     }
     
     moduleGridYOffset = CreateCheckboxGrid(moduleSection.content, moduleOptions, moduleGridYOffset, effectiveWidth - 30)

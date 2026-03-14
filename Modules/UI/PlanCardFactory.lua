@@ -2687,8 +2687,11 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     local slotWidth = (availableWidth - slotSpacing * 2) / 3
     local slotHeight = 92
     
-    local slots = {
+    local tracked = plan.trackedSlots or { dungeon = true, raid = true, world = true }
+    
+    local allSlots = {
         {
+            key = "dungeon",
             atlas = "questlog-questtypeicon-heroic",
             title = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon",
             current = currentProgress.dungeonCount,
@@ -2697,6 +2700,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
             thresholds = {1, 4, 8}
         },
         {
+            key = "raid",
             atlas = "questlog-questtypeicon-raid",
             title = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",
             current = currentProgress.raidBossCount,
@@ -2705,6 +2709,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
             thresholds = {2, 4, 6}
         },
         {
+            key = "world",
             atlas = "questlog-questtypeicon-Delves",
             title = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World",
             current = currentProgress.worldActivityCount,
@@ -2713,6 +2718,19 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
             thresholds = {2, 4, 8}
         }
     }
+    
+    local slots = {}
+    for _, s in ipairs(allSlots) do
+        if tracked[s.key] then
+            slots[#slots + 1] = s
+        end
+    end
+    
+    -- Recalculate slot width based on visible count
+    local visibleCount = #slots
+    if visibleCount > 0 then
+        slotWidth = (availableWidth - slotSpacing * math.max(0, visibleCount - 1)) / visibleCount
+    end
     
     for slotIndex, slot in ipairs(slots) do
         local slotX = 10 + (slotIndex - 1) * (slotWidth + slotSpacing)
@@ -2798,6 +2816,188 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
                 checkpointSlot.manualOverride = true
             end)
         end
+    end
+end
+
+--[[
+    Create Daily Quest card with category progress slots (mirrors vault card layout)
+    @param card Frame - Parent card frame
+    @param plan table - Daily quest plan data
+]]
+function PlanCardFactory:CreateDailyQuestCard(card, plan)
+    local COLORS = ns.UI_COLORS
+    local CreateIcon = ns.UI_CreateIcon
+    local FontManager = ns.FontManager
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    
+    local classColor = {1, 1, 1}
+    if plan.characterClass then
+        local classColors = RAID_CLASS_COLORS[plan.characterClass]
+        if classColors then
+            classColor = {classColors.r, classColors.g, classColors.b}
+        end
+    end
+    
+    -- === HEADER WITH ICON ===
+    local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
+    iconBorder:SetPoint("TOPLEFT", 10, -10)
+    
+    local resolvedIcon = plan.icon
+    if not resolvedIcon or resolvedIcon == "" then
+        resolvedIcon = "Interface\\Icons\\Achievement_Zone_MidnightIsles"
+    end
+    local iconFrameObj = CreateIcon(card, resolvedIcon, 42, false, nil, false)
+    iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+    iconFrameObj:Show()
+    
+    local allComplete = true
+    local totalAll, completedAll = 0, 0
+    local categoryOrder = {"weeklyQuests", "worldQuests", "dailyQuests", "assignments", "events"}
+    for _, catKey in ipairs(categoryOrder) do
+        if plan.questTypes and plan.questTypes[catKey] then
+            for _, quest in ipairs(plan.quests and plan.quests[catKey] or {}) do
+                if not quest.isSubQuest then
+                    totalAll = totalAll + 1
+                    if quest.isComplete then
+                        completedAll = completedAll + 1
+                    else
+                        allComplete = false
+                    end
+                end
+            end
+        end
+    end
+    if totalAll == 0 then allComplete = false end
+    
+    local titleText = FontManager:CreateFontString(card, "header", "OVERLAY")
+    titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
+    if allComplete then
+        titleText:SetTextColor(0.2, 1, 0.2)
+        titleText:SetText(((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Daily Tasks") .. " - " .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete"))
+    else
+        titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        local displayContent = plan.contentName or "Midnight"
+        if displayContent == "" then displayContent = "Midnight" end
+        titleText:SetText(((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Daily Tasks") .. " - " .. displayContent)
+    end
+    titleText:SetJustifyH("LEFT")
+    titleText:SetWordWrap(false)
+    
+    local charText = FontManager:CreateFontString(card, "body", "OVERLAY")
+    charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
+    charText:SetTextColor(classColor[1], classColor[2], classColor[3])
+    local charDisplay = plan.characterName or "Unknown"
+    if plan.characterRealm and plan.characterRealm ~= "" then
+        charDisplay = charDisplay .. " - " .. plan.characterRealm
+    end
+    charText:SetText(charDisplay)
+    
+    -- Delete button
+    local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)
+    removeBtn:SetPoint("TOPRIGHT", -8, -8)
+    removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+    removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+    removeBtn:SetScript("OnClick", function()
+        WarbandNexus:RemovePlan(plan.id)
+        if WarbandNexus.RefreshUI then
+            WarbandNexus:RefreshUI()
+        end
+    end)
+    
+    -- === CATEGORY PROGRESS SLOTS ===
+    local contentY = -70
+    local cardWidth = card:GetWidth()
+    local availableWidth = cardWidth - 10 - 15
+    local slotSpacing = 8
+    
+    local categoryInfo = {
+        weeklyQuests = {name = (ns.L and ns.L["QUEST_CAT_WEEKLY"]) or "Weekly",     atlas = "quest-legendary-available",         color = {0.9, 0.7, 0.2}},
+        worldQuests  = {name = (ns.L and ns.L["QUEST_CAT_WORLD"]) or "World",       atlas = "worldquest-tracker-questmarker",    color = {0.3, 0.8, 1.0}},
+        dailyQuests  = {name = (ns.L and ns.L["QUEST_CAT_DAILY"]) or "Daily",       atlas = "quest-recurring-available",         color = {0.4, 0.9, 0.4}},
+        assignments  = {name = (ns.L and ns.L["QUEST_CAT_ASSIGNMENT"]) or "Assign.", atlas = "quest-important-available",         color = {1.0, 0.5, 0.25}},
+        events       = {name = (ns.L and ns.L["QUEST_CAT_CONTENT_EVENTS"]) or "Events", atlas = "worldquest-questmarker-epic",    color = {0.8, 0.5, 1.0}},
+    }
+    
+    local visibleSlots = {}
+    for _, catKey in ipairs(categoryOrder) do
+        if plan.questTypes and plan.questTypes[catKey] then
+            local questList = plan.quests and plan.quests[catKey] or {}
+            local completed, total = 0, 0
+            for _, q in ipairs(questList) do
+                if not q.isSubQuest then
+                    total = total + 1
+                    if q.isComplete then completed = completed + 1 end
+                end
+            end
+            if total > 0 then
+                visibleSlots[#visibleSlots + 1] = {
+                    key = catKey,
+                    info = categoryInfo[catKey],
+                    completed = completed,
+                    total = total,
+                }
+            end
+        end
+    end
+    
+    local visibleCount = #visibleSlots
+    if visibleCount == 0 then return end
+    
+    local slotWidth = (availableWidth - slotSpacing * math.max(0, visibleCount - 1)) / visibleCount
+    local slotHeight = 92
+    
+    for slotIndex, slot in ipairs(visibleSlots) do
+        local slotX = 10 + (slotIndex - 1) * (slotWidth + slotSpacing)
+        local ci = slot.info
+        
+        local slotFrame = ns.UI.Factory:CreateContainer(card, slotWidth, slotHeight)
+        slotFrame:SetPoint("TOPLEFT", slotX, contentY)
+        
+        -- Category icon
+        local catIcon = slotFrame:CreateTexture(nil, "ARTWORK")
+        catIcon:SetSize(22, 22)
+        catIcon:SetPoint("TOP", 0, -6)
+        pcall(catIcon.SetAtlas, catIcon, ci.atlas, false)
+        
+        -- Title
+        local title = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
+        title:SetPoint("TOP", catIcon, "BOTTOM", 0, -2)
+        title:SetText(ci.name)
+        title:SetTextColor(ci.color[1], ci.color[2], ci.color[3])
+        
+        -- Progress bar
+        local barY = -52
+        local barPadding = 12
+        local barWidth = slotWidth - (barPadding * 2)
+        local barHeight = 14
+        
+        local barBg = ns.UI.Factory:CreateContainer(slotFrame, barWidth, barHeight)
+        barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
+        
+        if ApplyVisuals then
+            ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.3}, {ci.color[1], ci.color[2], ci.color[3], 0.6})
+        end
+        
+        local fillPercent = slot.total > 0 and math.min(1.0, slot.completed / slot.total) or 0
+        local innerBarWidth = barWidth - 2
+        local fillWidth = innerBarWidth * fillPercent
+        if fillWidth > 0 then
+            local fill = barBg:CreateTexture(nil, "ARTWORK")
+            fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
+            fill:SetSize(fillWidth, barHeight - 2)
+            fill:SetTexture("Interface\\Buttons\\WHITE8x8")
+            fill:SetVertexColor(ci.color[1], ci.color[2], ci.color[3], 1)
+        end
+        
+        -- Progress text below bar
+        local progressLabel = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
+        progressLabel:SetPoint("TOP", barBg, "BOTTOM", 0, -6)
+        if slot.completed == slot.total and slot.total > 0 then
+            progressLabel:SetTextColor(0.3, 1, 0.3)
+        else
+            progressLabel:SetTextColor(1, 1, 1)
+        end
+        progressLabel:SetText(string.format("%d / %d", slot.completed, slot.total))
     end
 end
 

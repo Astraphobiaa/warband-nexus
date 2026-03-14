@@ -268,6 +268,7 @@ local PROFESSION_LOOT_SPELLS = {
     [324801] = true,    -- Skinning (Shadowlands)
     [366262] = true,    -- Skinning (Dragonflight)
     [423344] = true,    -- Skinning (TWW)
+    [471014] = true,    -- Skinning (Midnight 12.0)
     -- Mining (these open loot on mining nodes, not corpses, but guard just in case)
     [2575] = true,      -- Mining (generic)
     [195122] = true,    -- Mining (BfA variant)
@@ -276,6 +277,7 @@ local PROFESSION_LOOT_SPELLS = {
     [324802] = true,    -- Mining (Shadowlands)
     [366260] = true,    -- Mining (Dragonflight)
     [423343] = true,    -- Mining (TWW)
+    [471013] = true,    -- Mining (Midnight 12.0)
     -- Herbalism
     [2366] = true,      -- Herb Gathering (generic)
     [195114] = true,    -- Herbalism (BfA variant)
@@ -284,6 +286,7 @@ local PROFESSION_LOOT_SPELLS = {
     [324804] = true,    -- Herbalism (Shadowlands)
     [366261] = true,    -- Herbalism (Dragonflight)
     [423342] = true,    -- Herbalism (TWW)
+    [471022] = true,    -- Herbalism (Midnight 12.0)
     -- Disenchanting
     [13262] = true,     -- Disenchant
     -- Prospecting
@@ -1442,11 +1445,13 @@ end
 -- SETTING CHECK
 -- =====================================================================
 
----Check if auto try counter is enabled
+---Check if auto try counter is enabled (module toggle AND notification setting must both be on)
 ---@return boolean
 local function IsAutoTryCounterEnabled()
     if not WarbandNexus or not WarbandNexus.db then return false end
-    if not WarbandNexus.db.profile or not WarbandNexus.db.profile.notifications then return false end
+    if not WarbandNexus.db.profile then return false end
+    if WarbandNexus.db.profile.modulesEnabled and WarbandNexus.db.profile.modulesEnabled.tryCounter == false then return false end
+    if not WarbandNexus.db.profile.notifications then return false end
     return WarbandNexus.db.profile.notifications.autoTryCounter == true
 end
 
@@ -1994,7 +1999,10 @@ local function IsFishingSourceCompatible(sourceGUIDs)
             local npcID = GetNPCIDFromGUID(srcGUID)
             if npcID and npcDropDB[npcID] then return false end
             local objectID = GetObjectIDFromGUID(srcGUID)
-            if objectID and objectDropDB[objectID] then return false end
+            if objectID then
+                if objectDropDB[objectID] then return false end
+                if typeStr == "GameObject" then return false end
+            end
         end
     end
     return true
@@ -2060,7 +2068,7 @@ function WarbandNexus:OnTryCounterLootClosed()
 
         -- Route B: Fishing fallback. Require fresh fishing context to avoid counting normal mob/object loot as fishing.
         -- Use LOOT_READY state when available (wiki: valid until LOOT_CLOSED) to scan slots for trackable → reset, else +1.
-        if not didFallback and isFishing and (now - lastFishingCastTime) <= FISHING_CAST_CONTEXT_TTL and IsInTrackableFishingZone() then
+        if not didFallback and isFishing and (now - lastFishingCastTime) <= FISHING_CAST_CONTEXT_TTL and IsInTrackableFishingZone(true) then
             local trackable = GetFishingTrackableForCurrentZone()
             if #trackable > 0 then
                 local skipClosed = (lastTryCountSourceKey == "fishing_closed") and (now - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE
@@ -2351,7 +2359,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT skip: no fresh fishing context") end
         return
     end
-    if not IsInTrackableFishingZone() then return end
+    if not IsInTrackableFishingZone(true) then return end
     local fishingItemIDs = GetFishingDropItemIDsForCurrentZone()
     if not fishingItemIDs or not fishingItemIDs[itemID] then
         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT skip: itemID %s not a fishing drop in zone", tostring(itemID)) end
@@ -2495,8 +2503,11 @@ GetFishingDropItemIDsForCurrentZone = function()
 end
 
 ---True if player is in a zone that has trackable fishing drops (map or any parent in fishingDropDB).
----Used for fishing fallback when isFishing was not set (e.g. spell ID missed, event order).
-IsInTrackableFishingZone = function()
+---@param includeGlobal boolean|nil When true, also checks fishingDropDB[0] (global drops like Sea Turtle).
+---  Pass true only when fishing context is confirmed (isFishing flag set by spell detection).
+---  Route B2 heuristic (no isFishing) passes false/nil to avoid false positives from non-fishing loot.
+IsInTrackableFishingZone = function(includeGlobal)
+    if includeGlobal and fishingDropDB[0] then return true end
     local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
     local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
     if not mapID then return false end
@@ -2514,34 +2525,6 @@ end
 ---@param event string
 ---@param autoLoot boolean
 ---@param isFromItem boolean Added in 8.3.0, true if loot is from opening a container item
-local function IsFishingSourceCompatible(sourceGUIDs)
-    if not sourceGUIDs or #sourceGUIDs == 0 then return true end
-
-    for i = 1, #sourceGUIDs do
-        local srcGUID = sourceGUIDs[i]
-        if type(srcGUID) == "string" then
-            -- Creature/Vehicle GUID means this is not fishing loot.
-            local typeStr = srcGUID:match("^(%a+)")
-            if typeStr == "Creature" or typeStr == "Vehicle" then
-                return false
-            end
-
-            -- If GUID resolves to a tracked NPC/object source, treat as non-fishing.
-            local npcID = GetNPCIDFromGUID(srcGUID)
-            if npcID and npcDropDB[npcID] then
-                return false
-            end
-            local objectID = GetObjectIDFromGUID(srcGUID)
-            if objectID and objectDropDB[objectID] then
-                return false
-            end
-        end
-    end
-
-    -- Unknown/neutral object GUIDs can still be fishing bobber/pool sources.
-    return true
-end
-
 function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     -- Snapshot mouseover/target (and npc) immediately so ProcessNPCLoot can use them when GetLootSourceInfo returns nothing.
     if SafeGetMouseoverGUID then lootOpenedMouseoverGUID = SafeGetMouseoverGUID() else lootOpenedMouseoverGUID = nil end
@@ -2595,8 +2578,8 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
         return
     end
 
-    -- Route 2: Fishing
-    if fishingContextFresh and fishingSourceCompatible and IsInTrackableFishingZone() then
+    -- Route 2: Fishing (includeGlobal=true: fishing context confirmed by isFishing flag)
+    if fishingContextFresh and fishingSourceCompatible and IsInTrackableFishingZone(true) then
         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: fishing") end
         self:ProcessFishingLoot()
         return
@@ -2618,6 +2601,23 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     if isProfessionLooting then
         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip: profession loot") end
         return
+    end
+
+    -- Route 5b: Recent gathering cast safety net (catches profession loot that
+    -- isProfessionLooting missed, e.g. gathering spells not captured in current session)
+    if lastGatherCastTime and (now - lastGatherCastTime) < 5 then
+        local anyGameObject = false
+        for i = 1, #lootOpenedSourceGUIDs do
+            local guid = lootOpenedSourceGUIDs[i]
+            if type(guid) == "string" and guid:match("^GameObject") then
+                anyGameObject = true
+                break
+            end
+        end
+        if anyGameObject then
+            if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip: recent gathering cast + GameObject source") end
+            return
+        end
     end
 
     -- Route 6: NPC / Object / Zone
@@ -2829,10 +2829,10 @@ function WarbandNexus:ProcessNPCLoot()
         if not drops then if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "no match: mouseover/target/lastLoot") end end
     end
 
-    -- Try zone-wide drops if neither NPC nor object matched
-    -- Walks up the parent map chain (sub-zone → zone → continent) to find a match
-    -- New format: { drops = {...}, raresOnly = true } - check if loot source is rare/elite
-    if not drops and next(zoneDropDB) then
+    -- Try zone-wide drops if neither NPC nor object matched.
+    -- Skip when source is an unknown GameObject (herb node, mining node, Delve chest)
+    -- that wasn't found in objectDropDB — these should never trigger zone-based try counts.
+    if not drops and next(zoneDropDB) and not sourceIsGameObject then
         local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
         local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
         while mapID and mapID > 0 do

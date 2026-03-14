@@ -1990,7 +1990,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         ns.UI.Factory:ApplyHighlight(header)
     end
     
-    return header, expandIcon, categoryIcon
+    return header, expandIcon, categoryIcon, headerText
 end
 
 -- Get item type name from class ID

@@ -2966,6 +2966,8 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
             local d = allMounts[i]
             if not d or not d.id then
                 -- skip
+            elseif d.shouldHideOnChar then
+                -- skip hidden/unobtainable mount
             else
                 local name = d.name or tostring(d.id)
                 if MOUNT_NAME_BLACKLIST[name] then
@@ -3002,6 +3004,12 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
         if #mountIDs == 0 then return grouped, 0 end
         for i = 1, #mountIDs do
             local mountID = mountIDs[i]
+            -- Skip hidden mounts (10th return value from GetMountInfoByID)
+            if C_MountJournal and C_MountJournal.GetMountInfoByID then
+                local _, _, _, _, _, _, _, _, _, shouldHide = C_MountJournal.GetMountInfoByID(mountID)
+                if shouldHide then goto continueMount end
+            end
+            do
             local isCollected = SafeGetMountCollected(mountID)
             if (showC and isCollected) or (showU and not isCollected) then
                 local meta = WarbandNexus:ResolveCollectionMetadata("mount", mountID)
@@ -3040,6 +3048,8 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
                     end
                 end
             end
+            end
+            ::continueMount::
         end
     end
 
@@ -3089,7 +3099,7 @@ local function RunChunkedMountBuild(allMounts, searchText, showCollected, showUn
         local limit = math.min(startIdx + RUN_CHUNK_SIZE - 1, total)
         for i = startIdx, limit do
             local d = allMounts[i]
-            if d and d.id then
+            if d and d.id and not d.shouldHideOnChar then
                 local name = d.name or tostring(d.id)
                 if not MOUNT_NAME_BLACKLIST[name] then
                     local isCollected = (d.isCollected == true) or (d.collected == true)

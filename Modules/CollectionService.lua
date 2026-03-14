@@ -668,12 +668,18 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
             local id = items[itemIdx]
             local ok, data = pcall(config.extract, id)
             if ok and data and data.id then
-                if currentType == "mount" then
-                    collectionData.mount[data.id] = data
-                elseif currentType == "pet" then
-                    collectionData.pet[data.id] = data
-                elseif currentType == "toy" then
-                    collectionData.toy[data.id] = { id = data.id, name = data.name }
+                local include = true
+                if config.shouldIncludeInAll then
+                    include = config.shouldIncludeInAll(data)
+                end
+                if include then
+                    if currentType == "mount" then
+                        collectionData.mount[data.id] = data
+                    elseif currentType == "pet" then
+                        collectionData.pet[data.id] = data
+                    elseif currentType == "toy" then
+                        collectionData.toy[data.id] = { id = data.id, name = data.name }
+                    end
                 end
             end
             itemIdx = itemIdx + 1

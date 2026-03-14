@@ -938,84 +938,91 @@ end
 -- ACTIVE PLANS DISPLAY
 -- ============================================================================
 
-local function GetDailyContentName(contentType)
-    if contentType == "midnight" then
-        return (ns.L and ns.L["CONTENT_MIDNIGHT"]) or "Midnight"
-    end
-    return contentType or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-end
-
-local function BuildQuestCategoryStats(plan, categoryKey)
+local function GetCategoryStats(plan, categoryKey)
     if not plan or not plan.questTypes or not plan.questTypes[categoryKey] then
-        return 0, 0, {}
+        return 0, 0
     end
     local questList = (plan.quests and plan.quests[categoryKey]) or {}
-    local total = 0
-    local remaining = 0
-    local remainingQuests = {}
+    local total, completed = 0, 0
     for i = 1, #questList do
-        local quest = questList[i]
-        total = total + 1
-        if not (quest and quest.isComplete) then
-            remaining = remaining + 1
-            remainingQuests[#remainingQuests + 1] = quest
+        local q = questList[i]
+        if q and not q.isSubQuest then
+            total = total + 1
+            if q.isComplete then completed = completed + 1 end
         end
     end
-    return remaining, total, remainingQuests
+    return completed, total
 end
 
-local function FormatQuestCell(remaining, total)
-    return string.format("%d/%d", remaining or 0, total or 0)
+local function FormatTimeLeft(minutes)
+    if not minutes or minutes <= 0 then return "" end
+    if minutes >= 1440 then
+        return string.format("%dd", math.floor(minutes / 1440))
+    elseif minutes >= 60 then
+        return string.format("%dh", math.floor(minutes / 60))
+    end
+    return string.format("%dm", minutes)
 end
 
-local function AttachQuestTooltip(frame, title, questList)
+local EVENT_GROUP_NAMES = {
+    soiree     = "Saltheril's Soiree",
+    abundance  = "Abundance",
+    haranir    = "Legends of the Haranir",
+    stormarion = "Stormarion Assault",
+}
+
+local function AttachQuestRowTooltip(frame, quest)
     frame:SetScript("OnEnter", function(self)
         local lines = {}
-        if not questList or #questList == 0 then
+        if quest.description and quest.description ~= "" then
+            lines[#lines + 1] = { text = quest.description, color = {0.9, 0.9, 0.9} }
+        end
+        if quest.isSubQuest and quest.eventGroup then
+            local parentName = EVENT_GROUP_NAMES[quest.eventGroup] or quest.eventGroup
+            lines[#lines + 1] = { text = "Part of: " .. parentName, color = {0.8, 0.5, 1.0} }
+        end
+        if quest.zone and quest.zone ~= "" then
+            lines[#lines + 1] = { text = quest.zone, color = {0.7, 0.7, 0.7} }
+        end
+        if quest.objective and quest.objective ~= "" then
+            lines[#lines + 1] = { text = quest.objective, color = {1, 1, 1} }
+        end
+        if quest.progress and not quest.isComplete then
+            local pct = math.floor((quest.progress.percent or 0) * 100)
             lines[#lines + 1] = {
-                text = (ns.L and ns.L["NO_ACTIVE_QUESTS"]) or "No active quests.",
-                color = {0.8, 0.8, 0.8},
+                text = string.format("Progress: %d/%d (%d%%)", quest.progress.totalFulfilled or 0, quest.progress.totalRequired or 0, pct),
+                color = pct >= 100 and {0.27, 1, 0.27} or {1, 0.82, 0.2},
             }
-        else
-            local maxLines = 12
-            for i = 1, #questList do
-                if i > maxLines then break end
-                local quest = questList[i]
-                local titleText = (quest and quest.title) or ((ns.L and ns.L["UNKNOWN_QUEST"]) or "Unknown Quest")
-                local zoneText = (quest and quest.zone and quest.zone ~= "") and (" - " .. quest.zone) or ""
-                lines[#lines + 1] = {
-                    text = string.format("%d) %s%s", i, titleText, zoneText),
-                    color = {1, 1, 1},
-                }
-            end
-            if #questList > maxLines then
-                lines[#lines + 1] = {
-                    text = string.format((ns.L and ns.L["MORE_ENTRIES_FORMAT"]) or "... and %d more", #questList - maxLines),
-                    color = {0.7, 0.7, 0.7},
-                }
-            end
+        end
+        if quest.timeLeft and quest.timeLeft > 0 then
+            local timeColor = quest.timeLeft < 60 and {1, 0.3, 0.3} or {0.7, 0.7, 0.7}
+            lines[#lines + 1] = { text = FormatTimeLeft(quest.timeLeft) .. " remaining", color = timeColor }
+        end
+        if quest.isComplete then
+            lines[#lines + 1] = { text = "|cff44ff44Completed|r", color = {0.27, 1, 0.27} }
+        end
+        if quest.questID then
+            lines[#lines + 1] = { text = "Quest ID: " .. quest.questID, color = {0.5, 0.5, 0.5} }
         end
 
         if ns.TooltipService and ns.TooltipService.Show then
             ns.TooltipService:Show(self, {
                 type = "custom",
-                title = title,
+                title = quest.title or "Quest",
                 icon = false,
                 anchor = "ANCHOR_RIGHT",
                 lines = lines,
             })
         else
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(title or "", 1, 1, 1)
+            GameTooltip:SetText(quest.title or "Quest", 1, 1, 1)
             for i = 1, #lines do
-                local line = lines[i]
-                local c = line.color or {1, 1, 1}
-                GameTooltip:AddLine(line.text or "", c[1], c[2], c[3], true)
+                local c = lines[i].color or {1, 1, 1}
+                GameTooltip:AddLine(lines[i].text, c[1], c[2], c[3], true)
             end
             GameTooltip:Show()
         end
     end)
-
     frame:SetScript("OnLeave", function()
         if ns.TooltipService and ns.TooltipService.Hide then
             ns.TooltipService:Hide()
@@ -1025,19 +1032,17 @@ local function AttachQuestTooltip(frame, title, questList)
     end)
 end
 
-function WarbandNexus:DrawDailyTasksCharacterTable(parent, yOffset, width, plans)
+function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     local filteredPlans = {}
     for i = 1, #plans do
-        local plan = plans[i]
-        if plan.contentType == "midnight" then
-            filteredPlans[#filteredPlans + 1] = plan
+        if plans[i].contentType == "midnight" then
+            filteredPlans[#filteredPlans + 1] = plans[i]
         end
     end
 
     table.sort(filteredPlans, function(a, b)
-        local aName = (a.characterName or "") .. "-" .. (a.characterRealm or "")
-        local bName = (b.characterName or "") .. "-" .. (b.characterRealm or "")
-        return aName < bName
+        return ((a.characterName or "") .. (a.characterRealm or ""))
+             < ((b.characterName or "") .. (b.characterRealm or ""))
     end)
 
     if #filteredPlans == 0 then
@@ -1045,115 +1050,230 @@ function WarbandNexus:DrawDailyTasksCharacterTable(parent, yOffset, width, plans
         return yOffset + height + 10
     end
 
-    local rowHeight = 30
-    local headerHeight = 28
-    local tablePadding = 8
-    local tableHeight = headerHeight + (#filteredPlans * rowHeight) + (tablePadding * 2)
-    local tableCard = CreateCard(parent, tableHeight)
-    tableCard:SetPoint("TOPLEFT", 10, -yOffset)
-    tableCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    local CATEGORIES = ns.QUEST_CATEGORIES or {}
+    local CAT_DISPLAY = ns.CATEGORY_DISPLAY or {}
+    local ROW_H = GetLayout().rowHeight
+    local CAT_HEADER_H = GetLayout().headerHeight
+    local expandedGroups = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
 
-    local innerWidth = width - 20
-    local characterW = math.floor(innerWidth * 0.34)
-    local contentW = math.floor(innerWidth * 0.20)
-    local weeklyW = math.floor(innerWidth * 0.14)
-    local dailyW = math.floor(innerWidth * 0.14)
-    local worldW = math.floor(innerWidth * 0.14)
-    local removeW = innerWidth - (characterW + contentW + weeklyW + dailyW + worldW)
-
-    local xCharacter = 10
-    local xContent = xCharacter + characterW
-    local xWeekly = xContent + contentW
-    local xDaily = xWeekly + weeklyW
-    local xWorld = xDaily + dailyW
-    local xRemove = xWorld + worldW
-
-    local function CreateHeader(x, w, text)
-        local fs = FontManager:CreateFontString(tableCard, "small", "OVERLAY")
-        fs:SetPoint("TOPLEFT", x, -10)
-        fs:SetWidth(w)
-        fs:SetJustifyH("CENTER")
-        fs:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-        fs:SetText(text)
-    end
-
-    CreateHeader(xCharacter, characterW, (ns.L and ns.L["CHARACTER"]) or "Character")
-    CreateHeader(xContent, contentW, (ns.L and ns.L["CONTENT_LABEL"]) or "Content")
-    CreateHeader(xWeekly, weeklyW, (ns.L and ns.L["QUEST_CAT_WEEKLY"]) or "Weekly")
-    CreateHeader(xDaily, dailyW, (ns.L and ns.L["QUEST_CAT_DAILY"]) or "Daily")
-    CreateHeader(xWorld, worldW, (ns.L and ns.L["QUEST_CAT_WORLD"]) or "World")
-    CreateHeader(xRemove, removeW, "")
-
-    local rowYOffset = headerHeight
-    for i = 1, #filteredPlans do
-        local plan = filteredPlans[i]
-        local row
-        row, rowYOffset = ns.UI.Factory:CreateDataRow(tableCard, rowYOffset, i, rowHeight)
-
+    for pi = 1, #filteredPlans do
+        local plan = filteredPlans[pi]
         local classColor = RAID_CLASS_COLORS[plan.characterClass or "PRIEST"] or {r = 1, g = 1, b = 1}
-        local charText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        charText:SetPoint("LEFT", xCharacter + 6, 0)
-        charText:SetWidth(characterW - 12)
-        charText:SetJustifyH("LEFT")
-        charText:SetWordWrap(false)
-        charText:SetText(string.format(
-            "|cff%02x%02x%02x%s-%s|r",
+
+        -- Character header card
+        local totalAll, completedAll = 0, 0
+        for _, catInfo in ipairs(CATEGORIES) do
+            if plan.questTypes and plan.questTypes[catInfo.key] then
+                local c, t = GetCategoryStats(plan, catInfo.key)
+                completedAll = completedAll + c
+                totalAll = totalAll + t
+            end
+        end
+
+        local headerH = 56
+        local headerCard = CreateCard(parent, headerH)
+        headerCard:SetPoint("TOPLEFT", 10, -yOffset)
+        headerCard:SetPoint("TOPRIGHT", -10, -yOffset)
+
+        -- Class-colored left accent bar
+        local accentBar = headerCard:CreateTexture(nil, "ARTWORK")
+        accentBar:SetSize(3, headerH - 8)
+        accentBar:SetPoint("LEFT", 4, 0)
+        accentBar:SetColorTexture(classColor.r, classColor.g, classColor.b, 0.9)
+
+        -- Character name
+        local charName = FontManager:CreateFontString(headerCard, "header", "OVERLAY")
+        charName:SetPoint("LEFT", 14, 6)
+        charName:SetText(string.format(
+            "|cff%02x%02x%02x%s|r |cff888888-%s|r",
             classColor.r * 255, classColor.g * 255, classColor.b * 255,
-            plan.characterName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
+            plan.characterName or "Unknown",
             plan.characterRealm or ""
         ))
 
-        local contentText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        contentText:SetPoint("LEFT", xContent + 6, 0)
-        contentText:SetWidth(contentW - 12)
-        contentText:SetJustifyH("CENTER")
-        contentText:SetText(GetDailyContentName(plan.contentType))
+        -- Progress text
+        local progressText = FontManager:CreateFontString(headerCard, "body", "OVERLAY")
+        progressText:SetPoint("LEFT", 14, -10)
+        local pctColor = (totalAll > 0 and completedAll == totalAll) and "|cff44ff44" or "|cffffcc00"
+        progressText:SetText(string.format(
+            "%s%d/%d|r %s",
+            pctColor, completedAll, totalAll,
+            (ns.L and ns.L["CONTENT_MIDNIGHT"]) or "Midnight"
+        ))
 
-        local weeklyRemaining, weeklyTotal, weeklyQuests = BuildQuestCategoryStats(plan, "weeklyQuests")
-        local dailyRemaining, dailyTotal, dailyQuests = BuildQuestCategoryStats(plan, "dailyQuests")
-        local worldRemaining, worldTotal, worldQuests = BuildQuestCategoryStats(plan, "worldQuests")
+        -- Progress bar
+        local barW = 120
+        local barBg = headerCard:CreateTexture(nil, "ARTWORK")
+        barBg:SetSize(barW, 4)
+        barBg:SetPoint("RIGHT", -50, 0)
+        barBg:SetColorTexture(0.15, 0.15, 0.18, 1)
 
-        local function CreateQuestCell(x, w, valueText, tooltipTitle, tooltipQuests)
-            local hit = ns.UI.Factory:CreateContainer(row, w, rowHeight, false)
-            hit:SetPoint("LEFT", x, 0)
-            hit:EnableMouse(true)
-            local text = FontManager:CreateFontString(hit, "body", "OVERLAY")
-            text:SetPoint("CENTER")
-            text:SetText(valueText)
-            text:SetTextColor(1, 1, 1)
-            AttachQuestTooltip(hit, tooltipTitle, tooltipQuests)
+        local barFill = headerCard:CreateTexture(nil, "ARTWORK", nil, 1)
+        barFill:SetHeight(4)
+        barFill:SetPoint("LEFT", barBg, "LEFT", 0, 0)
+        local fillPct = (totalAll > 0) and (completedAll / totalAll) or 0
+        barFill:SetWidth(math.max(1, barW * fillPct))
+        if completedAll == totalAll and totalAll > 0 then
+            barFill:SetColorTexture(0.27, 1, 0.27, 1)
+        else
+            barFill:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
         end
 
-        CreateQuestCell(
-            xWeekly, weeklyW,
-            FormatQuestCell(weeklyRemaining, weeklyTotal),
-            string.format("%s - %s", (plan.characterName or ""), ((ns.L and ns.L["QUEST_CAT_WEEKLY"]) or "Weekly")),
-            weeklyQuests
-        )
-        CreateQuestCell(
-            xDaily, dailyW,
-            FormatQuestCell(dailyRemaining, dailyTotal),
-            string.format("%s - %s", (plan.characterName or ""), ((ns.L and ns.L["QUEST_CAT_DAILY"]) or "Daily")),
-            dailyQuests
-        )
-        CreateQuestCell(
-            xWorld, worldW,
-            FormatQuestCell(worldRemaining, worldTotal),
-            string.format("%s - %s", (plan.characterName or ""), ((ns.L and ns.L["QUEST_CAT_WORLD"]) or "World")),
-            worldQuests
-        )
-
-        local removeBtn = ns.UI.Factory:CreateButton(row, 16, 16, true)
-        removeBtn:SetPoint("LEFT", xRemove + math.floor((removeW - 16) / 2), 0)
+        -- Remove button
+        local removeBtn = ns.UI.Factory:CreateButton(headerCard, 16, 16, true)
+        removeBtn:SetPoint("RIGHT", -12, 0)
         removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
         removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
         removeBtn:SetScript("OnClick", function()
             self:RemovePlan(plan.id)
             if self.RefreshUI then self:RefreshUI() end
         end)
+
+        headerCard:Show()
+        yOffset = yOffset + headerH + 6
+
+        -- Quest category sections
+        for _, catInfo in ipairs(CATEGORIES) do
+            local catKey = catInfo.key
+            if plan.questTypes and plan.questTypes[catKey] then
+                local questList = (plan.quests and plan.quests[catKey]) or {}
+                local showCategory = #questList > 0
+                if showCategory then
+                    local display = CAT_DISPLAY[catKey] or {}
+                    local catColor = display.color or {0.8, 0.8, 0.8}
+                    local catName = display.name and display.name() or catKey
+
+                    local completed, total = GetCategoryStats(plan, catKey)
+                    local groupKey = "dq_" .. tostring(plan.id) .. "_" .. catKey
+                    local isExpanded = (expandedGroups[groupKey] ~= false)
+
+                    -- Category header
+                    local catCard = CreateCard(parent, CAT_HEADER_H)
+                    catCard:SetPoint("TOPLEFT", 10, -yOffset)
+                    catCard:SetPoint("TOPRIGHT", -10, -yOffset)
+                    catCard:EnableMouse(true)
+
+                    -- Category color indicator
+                    local catAccent = catCard:CreateTexture(nil, "ARTWORK")
+                    catAccent:SetSize(3, CAT_HEADER_H - 6)
+                    catAccent:SetPoint("LEFT", 4, 0)
+                    catAccent:SetColorTexture(catColor[1], catColor[2], catColor[3], 0.9)
+
+                    -- Arrow (atlas-based, matching CreateCollapsibleHeader)
+                    local expandIcon = catCard:CreateTexture(nil, "ARTWORK")
+                    expandIcon:SetSize(16, 16)
+                    expandIcon:SetPoint("LEFT", 10, 0)
+                    if isExpanded then
+                        expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)
+                    else
+                        expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
+                    end
+                    expandIcon:SetVertexColor(catColor[1], catColor[2], catColor[3])
+
+                    -- Category name
+                    local catLabel = FontManager:CreateFontString(catCard, "body", "OVERLAY")
+                    catLabel:SetPoint("LEFT", 30, 0)
+                    catLabel:SetTextColor(catColor[1], catColor[2], catColor[3])
+                    catLabel:SetText(catName)
+
+                    -- Count
+                    local countLabel = FontManager:CreateFontString(catCard, "body", "OVERLAY")
+                    countLabel:SetPoint("RIGHT", -12, 0)
+                    local countColor = (completed == total and total > 0) and "|cff44ff44" or "|cffffffff"
+                    countLabel:SetText(countColor .. completed .. "/" .. total .. "|r")
+
+                    catCard:SetScript("OnMouseDown", function()
+                        if ns.UI_SetExpandedGroup then
+                            ns.UI_SetExpandedGroup(groupKey, not isExpanded)
+                        elseif expandedGroups then
+                            expandedGroups[groupKey] = not isExpanded
+                        end
+                        if self.RefreshUI then self:RefreshUI() end
+                    end)
+                    catCard:SetScript("OnEnter", function(self)
+                        if ApplyVisuals then
+                            ApplyVisuals(self, {0.10, 0.10, 0.12, 1}, {catColor[1], catColor[2], catColor[3], 0.6})
+                        end
+                    end)
+                    catCard:SetScript("OnLeave", function(self)
+                        if ApplyVisuals then
+                            ApplyVisuals(self, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+                        end
+                    end)
+
+                    catCard:Show()
+                    yOffset = yOffset + CAT_HEADER_H + 2
+
+                    -- Quest rows (when expanded)
+                    if isExpanded then
+                        if #questList > 0 then
+                            for qi = 1, #questList do
+                                local quest = questList[qi]
+                                local isSub = quest.isSubQuest
+                                local leftIndent = isSub and 26 or 14
+                                local iconSize = isSub and 12 or 14
+
+                                local row
+                                row, yOffset = ns.UI.Factory:CreateDataRow(parent, yOffset, qi, ROW_H)
+                                row:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -yOffset + ROW_H)
+                                row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -yOffset + ROW_H)
+                                row:EnableMouse(true)
+
+                                -- Status icon (atlas-based)
+                                local statusIcon = row:CreateTexture(nil, "ARTWORK")
+                                statusIcon:SetSize(iconSize, iconSize)
+                                statusIcon:SetPoint("LEFT", leftIndent, 0)
+                                if quest.isComplete then
+                                    statusIcon:SetAtlas("common-icon-checkmark", false)
+                                    statusIcon:SetVertexColor(0.27, 1, 0.27)
+                                else
+                                    statusIcon:SetAtlas("Objective-Nub", false)
+                                    statusIcon:SetVertexColor(0.6, 0.6, 0.6)
+                                end
+
+                                -- Quest title
+                                local titleFs = FontManager:CreateFontString(row, isSub and "small" or "body", "OVERLAY")
+                                titleFs:SetPoint("LEFT", leftIndent + iconSize + 4, 0)
+                                titleFs:SetWidth(width * 0.50)
+                                titleFs:SetJustifyH("LEFT")
+                                titleFs:SetWordWrap(false)
+                                if quest.isComplete then
+                                    titleFs:SetText("|cff44ff44" .. (quest.title or "") .. "|r")
+                                elseif isSub then
+                                    titleFs:SetText("|cffaaaaaa" .. (quest.title or "") .. "|r")
+                                else
+                                    titleFs:SetText("|cffffffff" .. (quest.title or "") .. "|r")
+                                end
+
+                                -- Zone
+                                local zoneFs = FontManager:CreateFontString(row, "body", "OVERLAY")
+                                zoneFs:SetPoint("LEFT", 32 + width * 0.52, 0)
+                                zoneFs:SetWidth(width * 0.25)
+                                zoneFs:SetJustifyH("LEFT")
+                                zoneFs:SetWordWrap(false)
+                                zoneFs:SetText("|cff888888" .. (quest.zone or "") .. "|r")
+
+                                -- Time remaining
+                                if quest.timeLeft and quest.timeLeft > 0 then
+                                    local timeFs = FontManager:CreateFontString(row, "body", "OVERLAY")
+                                    timeFs:SetPoint("RIGHT", -14, 0)
+                                    local timeColor = quest.timeLeft < 60 and "|cffff4444" or "|cff888888"
+                                    timeFs:SetText(timeColor .. FormatTimeLeft(quest.timeLeft) .. "|r")
+                                end
+
+                                AttachQuestRowTooltip(row, quest)
+                            end
+                        end
+                        yOffset = yOffset + 4
+                    end
+                end
+            end
+        end
+
+        yOffset = yOffset + 8
     end
 
-    return yOffset + tableHeight + 10
+    return yOffset
 end
 
 function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
@@ -1164,49 +1284,46 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         local dailyPlans = {}
         for _, plan in ipairs(plans) do
             if plan.type == "daily_quests" then
-                table.insert(dailyPlans, plan)
+                dailyPlans[#dailyPlans + 1] = plan
             end
         end
         plans = dailyPlans
     elseif category == "active" then
-        -- For "active" (My Plans), exclude daily_quests (they have their own tab)
         local activePlans = {}
         for _, plan in ipairs(plans) do
-            if plan.type ~= "daily_quests" then
-                table.insert(activePlans, plan)
-            end
+            activePlans[#activePlans + 1] = plan
         end
         plans = activePlans
     end
     
-    -- Apply search filter (My Plans global search)
-    local activeSearch = ns._plansActiveSearch
-    if activeSearch and activeSearch ~= "" then
-        local query = activeSearch:lower()
-        local searchFiltered = {}
-        for _, plan in ipairs(plans) do
-            local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ""
-            local name = resolvedName:lower()
-            local source = (plan.resolvedSource or plan.source or ""):lower()
-            local ptype = (plan.type or ""):lower()
-            if name:find(query, 1, true) or source:find(query, 1, true) or ptype:find(query, 1, true) then
-                table.insert(searchFiltered, plan)
+    -- Apply search filter (My Plans global search, skip for daily_tasks)
+    if category ~= "daily_tasks" then
+        local activeSearch = ns._plansActiveSearch
+        if activeSearch and activeSearch ~= "" then
+            local query = activeSearch:lower()
+            local searchFiltered = {}
+            for _, plan in ipairs(plans) do
+                local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ""
+                local name = resolvedName:lower()
+                local source = (plan.resolvedSource or plan.source or ""):lower()
+                local ptype = (plan.type or ""):lower()
+                if name:find(query, 1, true) or source:find(query, 1, true) or ptype:find(query, 1, true) then
+                    searchFiltered[#searchFiltered + 1] = plan
+                end
             end
+            plans = searchFiltered
         end
-        plans = searchFiltered
     end
 
-    -- Sort plans: Weekly vault plans first, then others
+    -- Sort plans: Weekly vault first, daily quests second, then others
+    local typePriority = { weekly_vault = 1, daily_quests = 2 }
     table.sort(plans, function(a, b)
-        if a.type == "weekly_vault" and b.type ~= "weekly_vault" then
-            return true
-        elseif a.type ~= "weekly_vault" and b.type == "weekly_vault" then
-            return false
-        else
-            local aID = tonumber(a.id) or 0
-            local bID = tonumber(b.id) or 0
-            return aID < bID
-        end
+        local pa = typePriority[a.type] or 99
+        local pb = typePriority[b.type] or 99
+        if pa ~= pb then return pa < pb end
+        local aID = tonumber(a.id) or 0
+        local bID = tonumber(b.id) or 0
+        return aID < bID
     end)
 
     -- Filter plans based on showCompleted flag (read from DB each time so toggle always applies)
@@ -1215,46 +1332,43 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     for _, plan in ipairs(plans) do
         local isComplete = false
         
-        -- Check completion based on plan type
         if plan.type == "weekly_vault" then
-            -- Weekly vault: check fullyCompleted flag
             isComplete = plan.fullyCompleted == true
         elseif plan.type == "daily_quests" then
-            -- Daily quests: check if all quests are complete
             local totalQuests = 0
             local completedQuests = 0
-            for category, questList in pairs(plan.quests or {}) do
-                if plan.questTypes and plan.questTypes[category] then
+            for cat, questList in pairs(plan.quests or {}) do
+                if plan.questTypes and plan.questTypes[cat] then
                     for _, quest in ipairs(questList) do
-                        totalQuests = totalQuests + 1
-                        if quest.isComplete then
-                            completedQuests = completedQuests + 1
+                        if not quest.isSubQuest then
+                            totalQuests = totalQuests + 1
+                            if quest.isComplete then
+                                completedQuests = completedQuests + 1
+                            end
                         end
                     end
                 end
             end
             isComplete = (totalQuests > 0 and completedQuests == totalQuests)
         else
-            -- Regular collection plans: use pre-resolved DB data + plan.completed (set when earned in-session)
             local progress = self:GetResolvedPlanProgress(plan)
             isComplete = (progress and progress.collected) or (plan.completed == true)
         end
         
-        -- Filter based on showCompleted flag: default = only incomplete; when toggled = only completed
         if showCompletedNow then
             if isComplete then
-                table.insert(filteredPlans, plan)
+                filteredPlans[#filteredPlans + 1] = plan
             end
         else
             if not isComplete then
-                table.insert(filteredPlans, plan)
+                filteredPlans[#filteredPlans + 1] = plan
             end
         end
     end
     plans = filteredPlans
 
     if category == "daily_tasks" then
-        return self:DrawDailyTasksCharacterTable(parent, yOffset, width, plans)
+        return self:DrawDailyTasksView(parent, yOffset, width, plans)
     end
     
     if #plans == 0 then
@@ -1328,289 +1442,34 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             
             card:Show()
         
-        -- === DAILY QUEST PLANS (Individual Quest Cards) ===
+        -- === DAILY QUEST PLANS (Single Full-Width Card, vault-style) ===
         elseif plan.type == "daily_quests" then
-            -- Header card with plan info (full width)
-            local headerHeight = 80
-            local headerCard = CreateCard(parent, headerHeight)
-            headerCard:EnableMouse(true)
+            local questCardHeight = 170
             
-            -- Add to layout manager as column 0 (for tracking), but will be full width
-            local headerYPos = CardLayoutManager:AddCard(layoutManager, headerCard, 0, headerHeight)
+            local card = CreateCard(parent, questCardHeight)
+            card:EnableMouse(true)
             
-            -- Override positioning to make it full width
-            headerCard:ClearAllPoints()
-            headerCard:SetPoint("TOPLEFT", 10, -headerYPos)
-            headerCard:SetPoint("TOPRIGHT", -10, -headerYPos)
+            local yPos = CardLayoutManager:AddCard(layoutManager, card, 0, questCardHeight)
             
-            -- Update layout manager for full-width header card (update both columns to same Y)
-            layoutManager.currentYOffsets[0] = headerYPos + headerHeight + cardSpacing
-            layoutManager.currentYOffsets[1] = headerYPos + headerHeight + cardSpacing
+            card:ClearAllPoints()
+            card:SetPoint("TOPLEFT", 10, -yPos)
+            card:SetPoint("TOPRIGHT", -10, -yPos)
             
-            -- Mark card as full width for layout recalculation
-            if headerCard._layoutInfo then
-                headerCard._layoutInfo.isFullWidth = true
+            layoutManager.currentYOffsets[0] = yPos + questCardHeight + cardSpacing
+            layoutManager.currentYOffsets[1] = yPos + questCardHeight + cardSpacing
+            
+            card._layoutInfo = card._layoutInfo or {}
+            card._layoutInfo.isFullWidth = true
+            card._layoutInfo.yPos = yPos
+            
+            if ApplyVisuals then
+                local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
+                ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
             end
             
-            -- NO BORDER for header (clean look)
-            if headerCard.BorderTop then
-                headerCard.BorderTop:Hide()
-                headerCard.BorderBottom:Hide()
-                headerCard.BorderLeft:Hide()
-                headerCard.BorderRight:Hide()
-            end
+            PlanCardFactory:CreateDailyQuestCard(card, plan)
             
-            -- Get character class color
-            local classColor = {1, 1, 1}
-            if plan.characterClass then
-                local classColors = RAID_CLASS_COLORS[plan.characterClass]
-                if classColors then
-                    classColor = {classColors.r, classColors.g, classColors.b}
-                end
-            end
-            
-            -- === HEADER (using Factory pattern) ===
-            local iconBorder = ns.UI.Factory:CreateContainer(headerCard, 42, 42)
-            iconBorder:SetPoint("LEFT", 10, 0)
-            -- Icon border removed (naked frame)
-            
-            local resolvedIcon = (self.GetResolvedPlanIcon and self:GetResolvedPlanIcon(plan)) or plan.icon or "Interface\\Icons\\INV_Misc_Chest_03"
-            local iconFrameObj = CreateIcon(headerCard, resolvedIcon, 38, false, nil, false)
-            iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-            
-            -- Title
-            local titleText = FontManager:CreateFontString(headerCard, "body", "OVERLAY", "accent")
-            titleText:SetPoint("LEFT", iconBorder, "RIGHT", 10, 10)
-            titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-            titleText:SetText(((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Daily Tasks - ") .. (plan.contentName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")))
-            
-            -- Character name
-            local charText = FontManager:CreateFontString(headerCard, "small", "OVERLAY")
-            charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
-            charText:SetTextColor(classColor[1], classColor[2], classColor[3])
-            charText:SetText(plan.characterName)
-            
-            -- Quest count summary
-            local totalQuests = 0
-            local completedQuests = 0
-            for category, questList in pairs(plan.quests or {}) do
-                if plan.questTypes and plan.questTypes[category] then
-                    for _, quest in ipairs(questList) do
-                        totalQuests = totalQuests + 1
-                        if quest.isComplete then
-                            completedQuests = completedQuests + 1
-                        end
-                    end
-                end
-            end
-            
-            local summaryText = FontManager:CreateFontString(headerCard, "title", "OVERLAY")
-            summaryText:SetPoint("RIGHT", -50, 0)
-            if completedQuests == totalQuests and totalQuests > 0 then
-                summaryText:SetTextColor(0.3, 1, 0.3)
-            else
-                summaryText:SetTextColor(1, 1, 1)
-            end
-            summaryText:SetText(string.format("%s / %s", FormatNumber(completedQuests), FormatNumber(totalQuests)))
-            
-            -- Remove button (using Factory pattern)
-            local removeBtn = ns.UI.Factory:CreateButton(headerCard, 16, 16, true)  -- noBorder=true
-            removeBtn:SetPoint("TOPRIGHT", -6, -6)
-            local removeBtnText = FontManager:CreateFontString(removeBtn, "body", "OVERLAY")
-            removeBtnText:SetPoint("CENTER")
-            removeBtnText:SetText("|cffff6060×|r")
-            -- Font size managed by FontManager (uses "title" category ~16px with scale)
-            local font, size = removeBtnText:GetFont()
-            removeBtnText:SetFont(font, size, "THICKOUTLINE")  -- Only apply outline, keep size
-            removeBtn:SetScript("OnClick", function()
-                self:RemovePlan(plan.id)
-                if self.RefreshUI then
-                    self:RefreshUI()
-                end
-            end)
-            
-            -- === INDIVIDUAL QUEST CARDS (Same design as other plans) ===
-            
-            -- Debug: Log selected quest types
-            local selectedTypes = {}
-            for catKey, enabled in pairs(plan.questTypes or {}) do
-                if enabled then
-                    table.insert(selectedTypes, catKey)
-                end
-            end
-            
-            headerCard:Show()
-            
-            local categoryOrder = {"dailyQuests", "worldQuests", "weeklyQuests", "contentEvents", "assignments"}
-            local categoryInfo = {
-                dailyQuests = {name = (ns.L and ns.L["QUEST_CAT_DAILY"]) or "Daily", atlas = "quest-recurring-available", color = {1, 0.9, 0.3}},
-                worldQuests = {name = (ns.L and ns.L["QUEST_CAT_WORLD"]) or "World", atlas = "worldquest-tracker-questmarker", color = {0.3, 0.8, 1}},
-                weeklyQuests = {name = (ns.L and ns.L["QUEST_CAT_WEEKLY"]) or "Weekly", atlas = "quest-legendary-available", color = {1, 0.5, 0.2}},
-                contentEvents = {name = (ns.L and ns.L["QUEST_CAT_CONTENT_EVENTS"]) or "Content Event", texture = "Interface\\Icons\\Achievement_WorldEvent_Brewmaster", color = {0.2, 1, 0.7}},
-                assignments = {name = (ns.L and ns.L["QUEST_CAT_ASSIGNMENT"]) or "Assignment", atlas = "quest-important-available", color = {0.8, 0.3, 1}}
-            }
-            
-            local questCardWidth = (width - 8) / 2  -- 2 columns, same as browse cards
-            local questCardHeight = 130  -- Same height as browse cards
-            local questCardIndex = 0
-            local hasQuests = false
-            
-            for _, catKey in ipairs(categoryOrder) do
-                if plan.questTypes and plan.questTypes[catKey] and plan.quests[catKey] then
-                    
-                    for _, quest in ipairs(plan.quests[catKey]) do
-                        if not quest.isComplete then
-                            hasQuests = true
-                            local catData = categoryInfo[catKey]
-                            
-                            -- Determine column (alternate between 0 and 1)
-                            local questCol = questCardIndex % 2
-                            
-                            -- Create quest card (same as other plans)
-                            local questCard = CreateCard(parent, questCardHeight)
-                            questCard:SetWidth(questCardWidth)
-                            questCard:EnableMouse(true)
-                            
-                            -- Add quest card to layout manager
-                            CardLayoutManager:AddCard(layoutManager, questCard, questCol, questCardHeight)
-                            
-                            questCardIndex = questCardIndex + 1
-                            
-                            -- Apply accent border for daily quest plans
-                            if ApplyVisuals then
-                                ApplyVisuals(questCard, {0.08, 0.08, 0.10, 1}, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
-                            end
-                            
-                            -- NO hover effect on plan cards (as requested)
-                            
-                            -- Icon with border (using Factory pattern)
-                            local iconBorder = ns.UI.Factory:CreateContainer(questCard, 46, 46)
-                            iconBorder:SetPoint("TOPLEFT", 10, -10)
-                            -- Icon border removed (naked frame)
-                            
-                            local iconFrameObj = CreateIcon(questCard, nil, 42, false, nil, false)
-                            iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-                            local iconFrame = iconFrameObj.texture
-                            
-                            if catData.atlas then
-                                iconFrame:SetAtlas(catData.atlas)
-                            elseif catData.texture then
-                                iconFrame:SetTexture(catData.texture)
-                            end
-                            
-                            -- Quest title (right of icon)
-                            local questTitle = FontManager:CreateFontString(questCard, "body", "OVERLAY")
-                            questTitle:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
-                            questTitle:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
-                            questTitle:SetText("|cffffffff" .. (quest.title or ((ns.L and ns.L["UNKNOWN_QUEST"]) or "Unknown Quest")) .. "|r")
-                            questTitle:SetJustifyH("LEFT")
-                            questTitle:SetWordWrap(true)
-                            questTitle:SetMaxLines(2)
-                            
-                            -- Quest type badge with icon (using Factory pattern)
-                            local questIconFrame = ns.UI.Factory:CreateContainer(questCard)
-                            questIconFrame:SetSize(20, 20)
-                            questIconFrame:SetPoint("TOPLEFT", questTitle, "BOTTOMLEFT", 0, -2)
-                            questIconFrame:EnableMouse(false)
-                            
-                            local questIconTexture = questIconFrame:CreateTexture(nil, "OVERLAY")
-                            questIconTexture:SetAllPoints()
-                            local questIconSuccess = pcall(function()
-                                questIconTexture:SetAtlas("quest-legendary-turnin", false)
-                            end)
-                            if not questIconSuccess then
-                                questIconFrame:Hide()
-                            else
-                                questIconTexture:SetSnapToPixelGrid(false)
-                                questIconTexture:SetTexelSnappingBias(0)
-                            end
-                            
-                            local questTypeBadge = FontManager:CreateFontString(questCard, "body", "OVERLAY")
-                            if questIconSuccess then
-                                questTypeBadge:SetPoint("LEFT", questIconFrame, "RIGHT", 4, 0)
-                            else
-                                questTypeBadge:SetPoint("TOPLEFT", questTitle, "BOTTOMLEFT", 0, -2)
-                            end
-                            questTypeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
-                                catData.color[1]*255, catData.color[2]*255, catData.color[3]*255,
-                                catData.name))
-                            questTypeBadge:EnableMouse(false)
-                            
-                            -- Description: "Zone: X - Daily Quest" format
-                            local descY = -50
-                            local descText = FontManager:CreateFontString(questCard, "small", "OVERLAY")
-                            descText:SetPoint("TOPLEFT", 10, descY)
-                            descText:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
-                            
-                            -- Build description
-                            local descParts = {}
-                            if quest.zone and quest.zone ~= "" then
-                                table.insert(descParts, ((ns.L and ns.L["ZONE_PREFIX"]) or "Zone: ") .. quest.zone)
-                            end
-                            table.insert(descParts, catData.name)
-                            
-                            descText:SetText("|cffaaaaaa" .. table.concat(descParts, " - ") .. "|r")
-                            descText:SetJustifyH("LEFT")
-                            descText:SetWordWrap(true)
-                            descText:SetMaxLines(2)
-                            
-                            -- Time left (bottom left)
-                            if quest.timeLeft and quest.timeLeft > 0 then
-                                local days = math.floor(quest.timeLeft / 1440)
-                                local hours = math.floor((quest.timeLeft % 1440) / 60)
-                                local mins = quest.timeLeft % 60
-                                
-                                local timeStr
-                                if days > 0 then
-                                    timeStr = string.format("%dd %dh", days, hours)
-                                elseif hours > 0 then
-                                    timeStr = string.format("%dh %dm", hours, mins)
-                                else
-                                    timeStr = string.format("%dm", mins)
-                                end
-                                
-                                local timeColor = hours < 1 and "|cffff8080" or "|cffffffff"
-                                
-                                local timeText = FontManager:CreateFontString(questCard, "body", "OVERLAY")
-                                timeText:SetPoint("BOTTOMLEFT", 10, 6)
-                                timeText:SetText("|TInterface\\COMMON\\UI-TimeIcon:16:16|t " .. timeColor .. timeStr .. "|r")
-                            end
-                            
-                            questCard:Show()
-                        end
-                    end
-                end
-            end
-            
-            -- No incomplete quests message
-            if not hasQuests then
-                local noQuestsCard = CreateCard(parent, 60)
-                noQuestsCard:EnableMouse(true)
-                
-                -- Add to layout manager as column 0 (for tracking), but will be full width
-                local noQuestsYPos = CardLayoutManager:AddCard(layoutManager, noQuestsCard, 0, 60)
-                
-                -- Override positioning to make it full width
-                noQuestsCard:ClearAllPoints()
-                noQuestsCard:SetPoint("TOPLEFT", 10, -noQuestsYPos)
-                noQuestsCard:SetPoint("TOPRIGHT", -10, -noQuestsYPos)
-                
-                local noQuestsText = FontManager:CreateFontString(noQuestsCard, "title", "OVERLAY")
-                noQuestsText:SetPoint("CENTER")
-                noQuestsText:SetTextColor(0.3, 1, 0.3)
-                noQuestsText:SetText((ns.L and ns.L["ALL_QUESTS_COMPLETE"]) or "All quests complete!")
-                
-                -- Update layout manager for full-width message card (update both columns to same Y)
-                layoutManager.currentYOffsets[0] = noQuestsYPos + 60 + cardSpacing
-                layoutManager.currentYOffsets[1] = noQuestsYPos + 60 + cardSpacing
-                
-                -- Mark card as full width for layout recalculation
-                if noQuestsCard._layoutInfo then
-                    noQuestsCard._layoutInfo.isFullWidth = true
-                end
-                
-                noQuestsCard:Show()
-            end
+            card:Show()
         
         else
             -- === REGULAR PLANS (2-Column Layout) ===
@@ -3788,7 +3647,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         title = (ns.L and ns.L["WEEKLY_VAULT_TRACKER"]) or "Weekly Vault Tracker",
         icon = "Interface\\Icons\\INV_Misc_Note_06",  -- Same as Daily Quest
         width = 500,
-        height = existingPlan and 260 or 470  -- Optimized spacing
+        height = existingPlan and 260 or 560
     })
     
     -- If dialog creation failed (duplicate), return
@@ -4000,15 +3859,61 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 {2, 4, 8}  -- Thresholds
             )
             
-            contentY = contentY - 95  -- Increased from 70 to accommodate taller columns
+            contentY = contentY - 95
+        end
+        
+        -- === SLOT SELECTION ===
+        local slotSelectLabel = FontManager:CreateFontString(contentFrame, "header", "OVERLAY", "accent")
+        slotSelectLabel:SetPoint("TOP", 0, -295)
+        slotSelectLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        slotSelectLabel:SetText((ns.L and ns.L["TRACK_ACTIVITIES"]) or "Track Activities")
+        
+        local selectedSlots = { dungeon = true, raid = true, world = true }
+        
+        local slotOptions = {
+            { key = "dungeon", atlas = "questlog-questtypeicon-heroic",  label = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon (M+)", color = {0.9, 0.7, 0.2} },
+            { key = "raid",    atlas = "questlog-questtypeicon-raid",    label = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",         color = {0.3, 0.8, 1.0} },
+            { key = "world",   atlas = "questlog-questtypeicon-Delves",  label = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World",         color = {0.4, 0.9, 0.4} },
+        }
+        
+        local slotCheckY = -320
+        local slotCheckSpacing = 30
+        for si, opt in ipairs(slotOptions) do
+            local rowFrame = CreateFrame("Frame", nil, contentFrame)
+            rowFrame:SetSize(300, 24)
+            rowFrame:SetPoint("TOP", 0, slotCheckY + (si - 1) * -slotCheckSpacing)
+            
+            local cb = CreateThemedCheckbox(rowFrame, true)
+            cb:SetSize(18, 18)
+            cb:SetPoint("LEFT", 0, 0)
+            
+            local colorBar = rowFrame:CreateTexture(nil, "ARTWORK")
+            colorBar:SetSize(3, 18)
+            colorBar:SetPoint("LEFT", cb, "RIGHT", 6, 0)
+            colorBar:SetColorTexture(opt.color[1], opt.color[2], opt.color[3], 0.9)
+            
+            local icon = rowFrame:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(18, 18)
+            icon:SetPoint("LEFT", colorBar, "RIGHT", 6, 0)
+            icon:SetAtlas(opt.atlas, false)
+            
+            local lbl = FontManager:CreateFontString(rowFrame, "body", "OVERLAY")
+            lbl:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+            lbl:SetText(opt.label)
+            lbl:SetTextColor(1, 1, 1)
+            
+            local capturedKey = opt.key
+            cb:SetScript("OnClick", function(self)
+                selectedSlots[capturedKey] = self:GetChecked()
+            end)
         end
         
         -- Buttons (symmetrically centered)
         local createBtn = CreateThemedButton(contentFrame, (ns.L and ns.L["CREATE_PLAN"]) or "Create Plan", 120)
         createBtn:SetPoint("BOTTOM", -65, 8)
         createBtn:SetScript("OnClick", function()
-            -- Create the weekly plan
-            local plan = self:CreateWeeklyPlan(currentName, currentRealm)
+            -- Create the weekly plan with selected slots
+            local plan = self:CreateWeeklyPlan(currentName, currentRealm, selectedSlots)
             if plan then
                 -- Refresh UI to show new plan
                 if self.RefreshUI then
@@ -4057,142 +3962,128 @@ end
 
 function WarbandNexus:ShowDailyPlanDialog()
     local COLORS = ns.UI_COLORS
+    local CAT_DISPLAY = ns.CATEGORY_DISPLAY or {}
     
-    -- Character info
     local currentName = UnitName("player")
     local currentRealm = GetRealmName()
     local _, currentClass = UnitClass("player")
     local classColors = RAID_CLASS_COLORS[currentClass]
     
-    -- Check for existing plan
     local existingPlan = self:HasActiveDailyPlan(currentName, currentRealm)
     
-    -- Create external window using helper
     local dialog, contentFrame, header = CreateExternalWindow({
         name = "DailyPlanDialog",
-        title = (ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Daily Quest Tracker",
+        title = (ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Midnight Quest Tracker",
         icon = "Interface\\Icons\\INV_Misc_Note_06",
-        width = 500,
-        height = existingPlan and 260 or 520
+        width = 460,
+        height = existingPlan and 220 or 470,
     })
     
-    -- If dialog creation failed (duplicate), return
-    if not dialog then
-        return
-    end
+    if not dialog then return end
     
+    -- Existing plan warning
     if existingPlan then
-        local contentY = -35
-        -- Warning icon
-        local warningIconFrame2 = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew", 48, false, nil, true)
-        warningIconFrame2:SetPoint("TOP", 0, contentY)
-        warningIconFrame2:Show()
-        local warningIcon = warningIconFrame2.texture
+        local warningIconFrame = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew", 40, false, nil, true)
+        warningIconFrame:SetPoint("TOP", 0, -30)
+        warningIconFrame:Show()
         
         local warningText = FontManager:CreateFontString(contentFrame, "title", "OVERLAY")
-        warningText:SetPoint("TOP", warningIcon, "BOTTOM", 0, -10)
-        warningText:SetText("|cffff9900" .. ((ns.L and ns.L["DAILY_PLAN_EXISTS"]) or "Daily Plan Already Exists") .. "|r")
+        warningText:SetPoint("TOP", warningIconFrame, "BOTTOM", 0, -10)
+        warningText:SetText("|cffff9900" .. ((ns.L and ns.L["DAILY_PLAN_EXISTS"]) or "Plan Already Exists") .. "|r")
         
         local infoText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-        infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -10)
-        infoText:SetWidth(440)
+        infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -8)
+        infoText:SetWidth(400)
         infoText:SetWordWrap(true)
         infoText:SetJustifyH("CENTER")
-        local descText = (ns.L and ns.L["DAILY_PLAN_EXISTS_DESC"] and string.format(ns.L["DAILY_PLAN_EXISTS_DESC"], currentName .. "-" .. currentRealm)) or (currentName .. "-" .. currentRealm .. " already has an active daily quest plan. You can find it in the 'Daily Tasks' category.")
-        infoText:SetText("|cffaaaaaa" .. descText .. "|r")
+        infoText:SetText("|cffaaaaaa" .. currentName .. "-" .. currentRealm .. " already has an active quest plan.|r")
         
-        -- OK button
         local okBtn = CreateThemedButton(contentFrame, OKAY or "OK", 120)
-        okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -20)
-        okBtn:SetScript("OnClick", function()
-            dialog.Close()
-        end)
+        okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -16)
+        okBtn:SetScript("OnClick", function() dialog.Close() end)
         
         dialog:Show()
         return
     end
     
-    -- State variables (Midnight only, default)
-    local selectedContent = "midnight"
-    local selectedQuestTypes = {
-        dailyQuests = true,
-        worldQuests = true,
-        weeklyQuests = true,
-        contentEvents = true,
-        assignments = false
-    }
+    -- Character display
+    local charFrame = ns.UI.Factory:CreateContainer(contentFrame, 420, 42)
+    charFrame:SetPoint("TOP", 0, -12)
     
-    -- Character display with icon and border (using Factory pattern)
-    local charFrame = ns.UI.Factory:CreateContainer(contentFrame, 460, 45)
-    charFrame:SetPoint("TOP", 0, -15)
-    
-    -- Get race-gender info
     local _, englishRace = UnitRace("player")
-    local gender = UnitSex("player") -- 2 = male, 3 = female
+    local gender = UnitSex("player")
     local raceAtlas = ns.UI_GetRaceIcon(englishRace, gender)
     
-    -- Character race icon with border (using Factory pattern)
-    local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 36, 36)
-    iconContainer:SetPoint("LEFT", 12, 0)
-    
-    -- Apply border with class color
-    if ApplyVisuals then
-        if classColors then
-            ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {classColors.r, classColors.g, classColors.b, 1})
-        else
-            ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
-        end
+    local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 32, 32)
+    iconContainer:SetPoint("LEFT", 10, 0)
+    if ApplyVisuals and classColors then
+        ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {classColors.r, classColors.g, classColors.b, 1})
     end
     
-    -- Character race icon (using atlas)
-    local charIconFrame = CreateIcon(iconContainer, raceAtlas, 28, true, nil, true)
-    charIconFrame:SetPoint("CENTER", 0, 0)
+    local charIconFrame = CreateIcon(iconContainer, raceAtlas, 26, true, nil, true)
+    charIconFrame:SetPoint("CENTER")
     charIconFrame:Show()
     
-    -- Character name with class color (larger font)
     local charText = FontManager:CreateFontString(charFrame, "title", "OVERLAY")
-    charText:SetPoint("LEFT", iconContainer, "RIGHT", 10, 0)
-    if classColors then
-        charText:SetTextColor(classColors.r, classColors.g, classColors.b)
-    else
-        charText:SetTextColor(1, 0.8, 0)
-    end
+    charText:SetPoint("LEFT", iconContainer, "RIGHT", 8, 0)
+    if classColors then charText:SetTextColor(classColors.r, classColors.g, classColors.b) end
     charText:SetText(currentName .. "-" .. currentRealm)
     
-    -- Quest type selection (content = Midnight only)
-    local questTypeY = -75
-    local questTypeLabel = FontManager:CreateFontString(contentFrame, "title", "OVERLAY", "accent")
-    questTypeLabel:SetPoint("TOPLEFT", 12, questTypeY)
-    questTypeLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-    questTypeLabel:SetText((ns.L and ns.L["QUEST_TYPES"]) or "Quest Types:")
+    -- "Midnight" content label
+    local contentLabel = FontManager:CreateFontString(charFrame, "small", "OVERLAY")
+    contentLabel:SetPoint("RIGHT", -10, 0)
+    contentLabel:SetText("|cff888888Midnight|r")
     
-    local questTypes = {
-        { key = "dailyQuests", name = (ns.L and ns.L["QUEST_TYPE_DAILY"]) or "Daily Quests", desc = (ns.L and ns.L["QUEST_TYPE_DAILY_DESC"]) or "Regular daily quests from NPCs" },
-        { key = "worldQuests", name = (ns.L and ns.L["QUEST_TYPE_WORLD"]) or "World Quests", desc = (ns.L and ns.L["QUEST_TYPE_WORLD_DESC"]) or "Zone-wide world quests" },
-        { key = "weeklyQuests", name = (ns.L and ns.L["QUEST_TYPE_WEEKLY"]) or "Weekly Quests", desc = (ns.L and ns.L["QUEST_TYPE_WEEKLY_DESC"]) or "Weekly recurring quests" },
-        { key = "contentEvents", name = (ns.L and ns.L["QUEST_TYPE_CONTENT_EVENTS"]) or "Content Events", desc = (ns.L and ns.L["QUEST_TYPE_CONTENT_EVENTS_DESC"]) or "Bonus objectives, event tasks, and campaign-style activities" },
-        { key = "assignments", name = (ns.L and ns.L["QUEST_TYPE_ASSIGNMENTS"]) or "Assignments", desc = (ns.L and ns.L["QUEST_TYPE_ASSIGNMENTS_DESC"]) or "Special assignments and tasks" }
+    -- Quest type checkboxes
+    local selectedQuestTypes = {
+        weeklyQuests = true,
+        worldQuests  = true,
+        dailyQuests  = true,
+        assignments  = true,
+        events       = true,
     }
     
-    for i, questType in ipairs(questTypes) do
-        local cb = CreateThemedCheckbox(contentFrame, selectedQuestTypes[questType.key])
-        cb:SetPoint("TOPLEFT", 12, questTypeY - 30 - (i-1) * 50)
+    local questTypeY = -68
+    local sectionLabel = FontManager:CreateFontString(contentFrame, "subtitle", "OVERLAY", "accent")
+    sectionLabel:SetPoint("TOPLEFT", 16, questTypeY)
+    sectionLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    sectionLabel:SetText((ns.L and ns.L["QUEST_TYPES"]) or "Track Categories:")
+    
+    local CATEGORIES = ns.QUEST_CATEGORIES or {}
+    local categoryDescs = {
+        weeklyQuests = "Weekly objectives, hunts, sparks, world boss, delves",
+        worldQuests  = "Zone-wide repeatable world quests",
+        dailyQuests  = "Daily repeatable quests from NPCs",
+        assignments  = "Special assignments and bounties",
+        events       = "Bonus objectives, tasks, and activities",
+    }
+    
+    for i, catInfo in ipairs(CATEGORIES) do
+        local catKey = catInfo.key
+        local display = CAT_DISPLAY[catKey] or {}
+        local catColor = display.color or {0.8, 0.8, 0.8}
+        local catName = display.name and display.name() or catKey
+        
+        local cb = CreateThemedCheckbox(contentFrame, selectedQuestTypes[catKey])
+        cb:SetPoint("TOPLEFT", 16, questTypeY - 28 - (i - 1) * 46)
+        
+        local colorBar = contentFrame:CreateTexture(nil, "ARTWORK")
+        colorBar:SetSize(3, 30)
+        colorBar:SetPoint("LEFT", cb, "RIGHT", 6, 0)
+        colorBar:SetColorTexture(catColor[1], catColor[2], catColor[3], 0.9)
         
         local label = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-        label:SetPoint("LEFT", cb, "RIGHT", 8, 5)  -- Moved up 5 pixels
-        label:SetText(questType.name)
+        label:SetPoint("LEFT", colorBar, "RIGHT", 6, 5)
+        label:SetText(catName)
         
         local desc = FontManager:CreateFontString(contentFrame, "small", "OVERLAY")
         desc:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -2)
-        desc:SetTextColor(0.7, 0.7, 0.7)  -- Softer gray
-        desc:SetText(questType.desc)
+        desc:SetTextColor(0.6, 0.6, 0.6)
+        desc:SetText(categoryDescs[catKey] or "")
         
-        -- Store reference and update handler
         cb:SetScript("OnClick", function(self)
             local isChecked = self:GetChecked()
-            selectedQuestTypes[questType.key] = isChecked
-            
-            -- Update visual state explicitly
+            selectedQuestTypes[catKey] = isChecked
             if isChecked then
                 if self.checkTexture then self.checkTexture:Show() end
             else
@@ -4201,24 +4092,20 @@ function WarbandNexus:ShowDailyPlanDialog()
         end)
     end
     
-    -- Buttons (symmetrically centered)
-    local createBtn = CreateThemedButton(contentFrame, (ns.L and ns.L["CREATE_PLAN"]) or "Create Plan", 120)
-    createBtn:SetPoint("BOTTOM", -65, 8)
+    -- Buttons
+    local createBtn = CreateThemedButton(contentFrame, (ns.L and ns.L["CREATE_PLAN"]) or "Track Character", 140)
+    createBtn:SetPoint("BOTTOM", -75, 10)
     createBtn:SetScript("OnClick", function()
-        local plan = self:CreateDailyPlan(currentName, currentRealm, selectedContent, selectedQuestTypes)
+        local plan = self:CreateDailyPlan(currentName, currentRealm, selectedQuestTypes)
         if plan then
-            if self.RefreshUI then
-                self:RefreshUI()
-            end
+            if self.RefreshUI then self:RefreshUI() end
             dialog.Close()
         end
     end)
     
-    local cancelBtn = CreateThemedButton(contentFrame, CANCEL or "Cancel", 120)
-    cancelBtn:SetPoint("BOTTOM", 65, 8)
-    cancelBtn:SetScript("OnClick", function()
-        dialog.Close()
-    end)
+    local cancelBtn = CreateThemedButton(contentFrame, CANCEL or "Cancel", 100)
+    cancelBtn:SetPoint("BOTTOM", 75, 10)
+    cancelBtn:SetScript("OnClick", function() dialog.Close() end)
     
     dialog:Show()
 end

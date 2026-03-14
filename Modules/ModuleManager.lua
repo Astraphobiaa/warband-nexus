@@ -140,6 +140,25 @@ function WarbandNexus:SetPlansModuleEnabled(enabled)
 end
 
 --[[
+    Enable/disable Try Counter module
+    Controls automatic try counting for NPC/boss/fishing/container drop attempts
+    @param enabled boolean - True to enable, false to disable
+]]
+function WarbandNexus:SetTryCounterModuleEnabled(enabled)
+    if not self.db or not self.db.profile then return end
+    
+    self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+    self.db.profile.modulesEnabled.tryCounter = enabled
+    
+    -- Try counter events are always registered (protected API, cannot re-register safely).
+    -- IsAutoTryCounterEnabled() guards all processing paths; disabling the module
+    -- makes every event handler exit early with zero processing cost.
+    
+    -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
+    self:SendMessage("WN_MODULE_TOGGLED", "tryCounter", enabled)
+end
+
+--[[
     Enable/disable Professions module
     Controls profession tracking, concentration, knowledge, and recipe companion
     @param enabled boolean - True to enable, false to disable
