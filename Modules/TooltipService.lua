@@ -1281,8 +1281,15 @@ function TooltipService:InitializeGameTooltipHook()
     -- ITEM TOOLTIP HANDLER — WN Search counts per character
     -- ================================================================
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
-                and WarbandNexus.db.profile.showItemCount) then
+        if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile) then
+            return
+        end
+        local showTooltipItemCount = WarbandNexus.db.profile.showTooltipItemCount
+        if showTooltipItemCount == nil then
+            -- Backward compatibility for older profiles that only had showItemCount.
+            showTooltipItemCount = WarbandNexus.db.profile.showItemCount
+        end
+        if not showTooltipItemCount then
             return
         end
         if not tooltip or not tooltip.AddLine or not tooltip.AddDoubleLine then return end

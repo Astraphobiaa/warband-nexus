@@ -86,6 +86,7 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     local CHECKBOX_SIZE = 24
 
     local widgets = {}       -- key → {checkbox, label}
+    local optionByKey = {}   -- key → option
     local childKeys = {}     -- parentKey → {childKey1, childKey2, ...}
     local parentKeyMap = {}  -- childKey → parentKey
 
@@ -124,6 +125,7 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
         -- Store widget reference
         if option.key then
             widgets[option.key] = { checkbox = checkbox, label = label }
+            optionByKey[option.key] = option
         end
 
         -- Build dependency tree
@@ -180,6 +182,37 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
             end
         end
     end
+
+    -- Synchronize descendant checkbox state + DB values when a parent is toggled.
+    -- This enforces true hierarchical behavior:
+    -- parent OFF -> all descendants OFF
+    -- parent ON  -> all descendants ON (children can still be manually changed later)
+    local function SyncDescendantsCheckedState(key, newState)
+        local kids = childKeys[key]
+        if not kids then return end
+
+        for _, childKey in ipairs(kids) do
+            local w = widgets[childKey]
+            local childOption = optionByKey[childKey]
+            if w then
+                local current = not not w.checkbox:GetChecked()
+                if current ~= newState then
+                    w.checkbox:SetChecked(newState)
+                    if w.checkbox.checkTexture then
+                        w.checkbox.checkTexture:SetShown(newState)
+                    end
+                    if childOption and childOption.set then
+                        childOption.set(newState)
+                    end
+                elseif w.checkbox.checkTexture then
+                    -- Keep visual marker in sync even when state already matches.
+                    w.checkbox.checkTexture:SetShown(newState)
+                end
+
+                SyncDescendantsCheckedState(childKey, newState)
+            end
+        end
+    end
     
     -- Set OnClick handlers (needs CascadeDescendants to be defined)
     for i, option in ipairs(options) do
@@ -197,6 +230,7 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
                 
                 -- Recursive cascade to all descendants
                 if option.key then
+                    SyncDescendantsCheckedState(option.key, isChecked)
                     CascadeDescendants(option.key, not isChecked)
                 end
                 
