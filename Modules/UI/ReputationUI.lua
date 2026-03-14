@@ -12,6 +12,7 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
+local ReputationUIEvents = {} -- Unique AceEvent identity for this module
 
 -- Debug helper
 local function DebugPrint(...)
@@ -1811,7 +1812,7 @@ function WarbandNexus:DrawReputationTab(parent)
         parent.reputationUpdateHandler = true
         
         -- Loading started - only refresh if visible
-        self:RegisterMessage("WN_REPUTATION_LOADING_STARTED", function()
+        WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_LOADING_STARTED", function()
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil
@@ -1822,7 +1823,7 @@ function WarbandNexus:DrawReputationTab(parent)
         end)
         
         -- v2.0.0: Cache cleared - always refresh
-        self:RegisterMessage("WN_REPUTATION_CACHE_CLEARED", function()
+        WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_CACHE_CLEARED", function()
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil
@@ -1846,7 +1847,7 @@ function WarbandNexus:DrawReputationTab(parent)
         end)
         
     -- v2.0.0: Cache ready (hide loading, show content) - only refresh if visible
-    self:RegisterMessage("WN_REPUTATION_CACHE_READY", function()
+    WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_CACHE_READY", function()
         -- Phase 2.4: Invalidate search cache
         cachedFilteredResults = {}
         cachedSearchText = nil
@@ -1862,7 +1863,7 @@ function WarbandNexus:DrawReputationTab(parent)
     end)
         
         -- Legacy event support (redraw tab) - only refresh if visible
-        self:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
+        WarbandNexus.RegisterMessage(ReputationUIEvents, "WARBAND_REPUTATIONS_UPDATED", function()
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil
@@ -1873,7 +1874,7 @@ function WarbandNexus:DrawReputationTab(parent)
         end)
         
         -- Real-time update event (single faction changed) - only refresh if visible
-        self:RegisterMessage("WN_REPUTATION_UPDATED", function(event, factionID)
+        WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_UPDATED", function(event, factionID)
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil

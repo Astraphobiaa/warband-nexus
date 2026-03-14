@@ -1223,8 +1223,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             row[p.."KnowWarn"]:Show()
             row[p.."KnowWarn"]:SetScript("OnEnter", function(self)
                 local msg
-                if ns.L and ns.L["UNSPENT_KNOWLEDGE_COUNT"] then
-                    msg = format(ns.L["UNSPENT_KNOWLEDGE_COUNT"], unspent)
+                local msgTemplate = (ns.L and ns.L["UNSPENT_KNOWLEDGE_COUNT"]) or "%d unspent knowledge points"
+                local ok, formatted = pcall(format, msgTemplate, unspent)
+                if ok and formatted and formatted ~= "" then
+                    msg = formatted
                 else
                     msg = ((ns.L and ns.L["UNSPENT_KNOWLEDGE_TOOLTIP"]) or "Unspent knowledge points") .. ": " .. tostring(unspent)
                 end

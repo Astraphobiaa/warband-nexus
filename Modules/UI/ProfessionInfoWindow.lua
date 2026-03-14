@@ -13,6 +13,7 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
+local ProfessionInfoEvents = {} -- Unique AceEvent identity for this module
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local ApplyVisuals = ns.UI_ApplyVisuals
 local function GetFactory()
@@ -1125,10 +1126,10 @@ local function RefreshVisibleProfessionInfo(updatedCharKey)
 end
 
 if WarbandNexus and WarbandNexus.RegisterMessage then
-    WarbandNexus:RegisterMessage("WN_PROFESSION_EQUIPMENT_UPDATED", function(_, charKey)
+    WarbandNexus.RegisterMessage(ProfessionInfoEvents, "WN_PROFESSION_EQUIPMENT_UPDATED", function(_, charKey)
         RefreshVisibleProfessionInfo(charKey)
     end)
-    WarbandNexus:RegisterMessage("WN_PROFESSION_DATA_UPDATED", function(_, charKey)
+    WarbandNexus.RegisterMessage(ProfessionInfoEvents, "WN_PROFESSION_DATA_UPDATED", function(_, charKey)
         RefreshVisibleProfessionInfo(charKey)
     end)
 end

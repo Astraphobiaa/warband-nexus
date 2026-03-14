@@ -2511,14 +2511,12 @@ local function BuildSettings(parent, containerWidth)
     itemIDLabel:SetPoint("TOPLEFT", 0, trackYOffset)
     itemIDLabel:SetText((ns.L and ns.L["ITEM_ID_INPUT"]) or "Item ID")
     itemIDLabel:SetTextColor(1, 1, 1, 1)
-    if ns.L and ns.L["ITEM_ID_INPUT_DESC"] then
-        itemIDLabel:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText((ns.L and ns.L["ITEM_ID_INPUT_DESC"]) or "Enter the item ID to track.", 1, 1, 1, 1, true)
-            GameTooltip:Show()
-        end)
-        itemIDLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    end
+    itemIDLabel:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText((ns.L and ns.L["ITEM_ID_INPUT_DESC"]) or "Enter the item ID to track.", 1, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    itemIDLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
     trackYOffset = trackYOffset - 22
     
     -- Item ID editbox + Lookup button on the SAME row

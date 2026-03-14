@@ -2319,29 +2319,54 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     end
 
     -- Path B: item → NPC try count increment (direct loot, world boss, or when LOOT_OPENED was missed)
+    -- IMPORTANT: Only match when the looted itemID is ACTUALLY a tracked drop for that NPC.
+    -- chatLootItemToNpc maps itemID→npcID, but common loot items (Elemental Debris, etc.)
+    -- can be shared by many mobs. If we just match on "this NPC has drops", we'd increment
+    -- try counts for unrelated rare mounts every time a common mob drops a common item
+    -- that happens to also appear in a rare NPC's loot table.
     local npcID = chatLootItemToNpc[itemID]
     if npcID then
         local drops = npcDropDB[npcID]
         if drops then
-            local key = "npc_" .. tostring(npcID)
-            if lastTryCountSourceKey == key and (GetTime() - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE then
-                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT skip: already counted npc=%s", tostring(npcID)) end
-                return
-            end
-            local trackable = {}
+            -- Verify the itemID is actually a TRACKED drop for this NPC (not just any mob loot)
+            local isTrackedDrop = false
             for i = 1, #drops do
-                local drop = drops[i]
-                -- For repeatable items with yields (e.g. Crackling Shard), check if yields are collected
-                if not IsCollectibleCollected(drop) then
-                    trackable[#trackable + 1] = drop
+                if drops[i].itemID == itemID then
+                    isTrackedDrop = true
+                    break
                 end
+                if drops[i].questStarters then
+                    for j = 1, #drops[i].questStarters do
+                        if drops[i].questStarters[j].itemID == itemID then
+                            isTrackedDrop = true
+                            break
+                        end
+                    end
+                end
+                if isTrackedDrop then break end
             end
-            if #trackable > 0 then
-                lastTryCountSourceKey = key
-                lastTryCountSourceTime = GetTime()
-                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT +%d: item %s npc %s", #trackable, tostring(itemID), tostring(npcID)) end
-                ProcessMissedDrops(trackable, drops.statisticIds)
-                return
+            if not isTrackedDrop then
+                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT skip: itemID %s not a tracked drop for npc %s", tostring(itemID), tostring(npcID)) end
+            else
+                local key = "npc_" .. tostring(npcID)
+                if lastTryCountSourceKey == key and (GetTime() - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE then
+                    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT skip: already counted npc=%s", tostring(npcID)) end
+                    return
+                end
+                local trackable = {}
+                for i = 1, #drops do
+                    local drop = drops[i]
+                    if not IsCollectibleCollected(drop) then
+                        trackable[#trackable + 1] = drop
+                    end
+                end
+                if #trackable > 0 then
+                    lastTryCountSourceKey = key
+                    lastTryCountSourceTime = GetTime()
+                    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT +%d: item %s npc %s", #trackable, tostring(itemID), tostring(npcID)) end
+                    ProcessMissedDrops(trackable, drops.statisticIds)
+                    return
+                end
             end
         end
     end
@@ -2642,14 +2667,21 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     end
 
     -- Route 1: Container item
-    if isFromItem then
+    -- Midnight 12.0: isFromItem can be a secret value; guard before boolean evaluation
+    local safeIsFromItem = isFromItem
+    if issecretvalue and safeIsFromItem and issecretvalue(safeIsFromItem) then safeIsFromItem = nil end
+    if safeIsFromItem then
         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: container") end
         self:ProcessContainerLoot()
         return
     end
 
     -- Route 2: Fishing — IsFishingLoot() when window open (official API); fallback to spell+zone when deferred/LOOT_CLOSED
+    -- Midnight 12.0: IsFishingLoot() can return a secret value (truthy but NOT a real boolean);
+    -- without this guard, ALL loot in fishing-tracked zones gets misrouted to ProcessFishingLoot,
+    -- causing fishing try counts (Nether-Warped Egg, Sea Turtle, etc.) to increment on every mob kill.
     local isFishingLoot = IsFishingLoot and IsFishingLoot()
+    if issecretvalue and isFishingLoot and issecretvalue(isFishingLoot) then isFishingLoot = false end
     local fishingByHeuristic = IsInTrackableFishingZone(true) and fishingContextFresh and fishingSourceCompatible
     if isFishingLoot or fishingByHeuristic then
         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: fishing (api=%s)", tostring(not not isFishingLoot)) end
@@ -2950,7 +2982,13 @@ function WarbandNexus:ProcessNPCLoot()
     -- Try zone-wide drops if neither NPC nor object matched.
     -- Skip when source is an unknown GameObject (herb node, mining node, Delve chest)
     -- that wasn't found in objectDropDB — these should never trigger zone-based try counts.
-    if not drops and next(zoneDropDB) and not sourceIsGameObject then
+    -- Skip when in instance: zone drops (Zul'Aman, Voidstorm, etc.) are for OPEN-WORLD rares only.
+    -- In dungeons, dungeon map can be child of zone (e.g. Zul'Aman dungeon → Zul'Aman zone);
+    -- UnitClassification("npc") may return "worldboss" for dungeon bosses, falsely matching raresOnly.
+    -- Instance loot should use NPC/object GUID matching or recentKills (ENCOUNTER_END) only.
+    local inInstance = IsInInstance()
+    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    if not drops and next(zoneDropDB) and not sourceIsGameObject and not inInstance then
         local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
         local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
         while mapID and mapID > 0 do
@@ -3021,16 +3059,14 @@ function WarbandNexus:ProcessNPCLoot()
                     alive = now - killData.time < RECENT_KILL_TTL
                 end
                 if canMatch and alive then
-                    if killData.zoneMapID then
-                        -- Walk parent chain for zone drop matching
-                        -- New format: { drops = {...}, raresOnly = true }
+                    if killData.zoneMapID and not inInstance then
+                        -- Walk parent chain for zone drop matching (open-world only; same guard as direct zone fallback above)
                         local zMapID = killData.zoneMapID
                         while zMapID and zMapID > 0 do
                             local zData = zoneDropDB[zMapID]
                             if zData then
                                 local zDrops = zData.drops or zData
                                 local raresOnly = zData.drops and zData.raresOnly == true
-                                -- For raresOnly, encounter kills count as "rare" (boss), others skip
                                 if raresOnly and not killData.isEncounter then
                                     -- Non-encounter kill in raresOnly zone: skip
                                 else
@@ -3041,7 +3077,7 @@ function WarbandNexus:ProcessNPCLoot()
                             local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(zMapID)
                             zMapID = mapInfo and mapInfo.parentMapID
                         end
-                    else
+                    elseif not killData.zoneMapID then
                         drops = npcDropDB[killData.npcID]
                         if drops then matchedNpcID = killData.npcID end
                     end

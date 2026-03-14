@@ -1566,7 +1566,7 @@ end
 --============================================================================
 -- Track which bank type is selected in Items tab
 -- DEFAULT: Personal Bank (priority over Warband)
-local currentItemsSubTab = "personal"  -- "personal" or "warband"
+-- Uses shared state declared above; do not redeclare here (avoids shadowing).
 
 -- Setter for currentItemsSubTab (called from Core.lua)
 function WarbandNexus:SetItemsSubTab(subTab)
@@ -1580,7 +1580,7 @@ function WarbandNexus:GetItemsSubTab()
 end
 
 -- Track expanded state for each category (persists across refreshes)
-local expandedGroups = {} -- Used by ItemsUI for group expansion state
+-- Uses shared state declared above; do not redeclare here (avoids shadowing).
 
 --============================================================================
 -- TAB DRAWING FUNCTIONS (All moved to separate modules)
