@@ -211,6 +211,10 @@ local MIDNIGHT_MOXIE_CURRENCY = {
     [2918] = 3266,  -- Tailoring
 }
 
+local function IsMidnightSkillLineID(skillLineID)
+    return type(skillLineID) == "number" and MIDNIGHT_MOXIE_CURRENCY[skillLineID] ~= nil
+end
+
 
 -- Text columns scale with effective font size; icon/bar/button columns stay fixed
 local SCALABLE_COLUMNS = {
@@ -574,6 +578,14 @@ local function GetSkillLineIDForFilter(char, profName)
         if filter == "All" then
             return expansions[1].skillLineID
         else
+            -- Locale-safe fast path: Midnight skill lines are fixed IDs.
+            if filter == "Midnight" then
+                for _, exp in ipairs(expansions) do
+                    if exp and exp.skillLineID and IsMidnightSkillLineID(exp.skillLineID) then
+                        return exp.skillLineID
+                    end
+                end
+            end
             for _, exp in ipairs(expansions) do
                 if exp.name and exp.skillLineID and ExpansionNameMatchesFilter(exp.name, filter) then
                     return exp.skillLineID
@@ -597,6 +609,14 @@ local function GetCurrentExpansionSkill(char, profName)
     if not expansions or #expansions == 0 then return nil, nil, nil end
     local filter = GetExpansionFilter()
     if filter ~= "All" then
+        if filter == "Midnight" then
+            for i = 1, #expansions do
+                local exp = expansions[i]
+                if exp and exp.skillLineID and IsMidnightSkillLineID(exp.skillLineID) then
+                    return exp.skillLevel or 0, exp.maxSkillLevel or 0, exp.name
+                end
+            end
+        end
         for i = 1, #expansions do
             local exp = expansions[i]
             if exp and exp.name and ExpansionNameMatchesFilter(exp.name, filter) then
@@ -1236,7 +1256,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         end
 
         -- First Craft: only show when data is from Midnight (avoid TWW/DF recipe counts mixing in).
-        local isMidnightRecipeData = recipeData and recipeData.expansionName and recipeData.expansionName:find("Midnight", 1, true)
+        local isMidnightRecipeData =
+            (slID and IsMidnightSkillLineID(slID))
+            or (recipeData and recipeData.skillLineID and IsMidnightSkillLineID(recipeData.skillLineID))
+            or (recipeData and recipeData.expansionName and recipeData.expansionName:find("Midnight", 1, true))
         local firstCraftProgress = progressData and progressData.firstCraft
         if isMidnightRecipeData then
             local doneCount = recipeData.firstCraftDoneCount

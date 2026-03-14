@@ -426,14 +426,31 @@ function WarbandNexus:ScanMidnightQuests()
     end
 
     -- Phase 2: Map-based scanning (world quests, task quests, bounties)
+    local function IsTaskQuestActive(questID)
+        if not C_TaskQuest or not C_TaskQuest.IsActive then return true end
+        local ok, active = pcall(C_TaskQuest.IsActive, questID)
+        return ok and active == true
+    end
+
     for mapID, zoneName in pairs(MIDNIGHT_MAPS) do
-        if C_TaskQuest and C_TaskQuest.GetQuestsOnMap then
-            local ok, taskPOIs = pcall(C_TaskQuest.GetQuestsOnMap, mapID)
-            if ok and type(taskPOIs) == "table" then
-                for j = 1, #taskPOIs do
-                    local qi = taskPOIs[j]
-                    if qi and qi.questID then
-                        AddQuest(qi.questID, mapID, zoneName, qi)
+        -- TaskQuest: prefer GetQuestsForPlayerByMapID (returns mapID per quest) to avoid wrong-zone WQs
+        local taskPOIs
+        if C_TaskQuest and C_TaskQuest.GetQuestsForPlayerByMapID then
+            local ok, result = pcall(C_TaskQuest.GetQuestsForPlayerByMapID, mapID)
+            if ok and type(result) == "table" then taskPOIs = result end
+        end
+        if not taskPOIs and C_TaskQuest and C_TaskQuest.GetQuestsOnMap then
+            local ok, result = pcall(C_TaskQuest.GetQuestsOnMap, mapID)
+            if ok and type(result) == "table" then taskPOIs = result end
+        end
+        if taskPOIs then
+            for j = 1, #taskPOIs do
+                local qi = taskPOIs[j]
+                local qid = qi and (qi.questID or qi.questId)
+                if qid and IsTaskQuestActive(qid) then
+                    local questMapID = qi.mapID or qi.mapId
+                    if not questMapID or questMapID == mapID then
+                        AddQuest(qid, mapID, zoneName, qi)
                     end
                 end
             end

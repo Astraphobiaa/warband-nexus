@@ -105,8 +105,17 @@ local function RestoreProfInfoPosition(frame)
     frame:SetSize(w, h)
 end
 
+local MIDNIGHT_SKILLLINE_IDS = {
+    [2906] = true, [2907] = true, [2909] = true, [2910] = true, [2912] = true, [2913] = true,
+    [2914] = true, [2915] = true, [2916] = true, [2917] = true, [2918] = true,
+}
+
 -- Midnight-only filter (per midnight-version-policy.mdc)
-local function IsMidnightExpansion(name)
+-- Prefer skillLineID matching to avoid locale-dependent name checks.
+local function IsMidnightExpansion(name, skillLineID)
+    if skillLineID and MIDNIGHT_SKILLLINE_IDS[skillLineID] then
+        return true
+    end
     return name and type(name) == "string" and name:find("Midnight", 1, true)
 end
 
@@ -601,7 +610,7 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     local midnightExpansions = {}
     if charData.professionExpansions and charData.professionExpansions[profName] then
         for _, exp in ipairs(charData.professionExpansions[profName]) do
-            if IsMidnightExpansion(exp.name) then
+            if IsMidnightExpansion(exp.name, exp.skillLineID) then
                 if exp.skillLineID then
                     relevantSkillLines[#relevantSkillLines + 1] = exp.skillLineID
                 end
