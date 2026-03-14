@@ -518,6 +518,44 @@ local function ExpansionNameMatchesFilter(expansionName, filterKey)
     return key and key == filterKey
 end
 
+-- Fallback resolver for cases where strict expansion-name matching fails
+-- (e.g. localized expansion names or stale naming formats).
+-- Preference order:
+-- 1) Skill line with concrete profession payload (weekly/recipes/knowledge/concentration)
+-- 2) Highest max skill line
+-- 3) First available skill line
+local function GetBestAvailableSkillLineID(char, expansions)
+    if not expansions or #expansions == 0 then return nil end
+
+    local bestBySkill = nil
+    local bestMaxSkill = -1
+    local firstSkillLine = nil
+
+    for i = 1, #expansions do
+        local exp = expansions[i]
+        local slID = exp and exp.skillLineID
+        if slID and slID > 0 then
+            if not firstSkillLine then firstSkillLine = slID end
+            local hasPayload =
+                (char.professionData and char.professionData.bySkillLine and char.professionData.bySkillLine[slID])
+                or (char.recipes and char.recipes[slID])
+                or (char.knowledgeData and char.knowledgeData[slID])
+                or (char.concentration and char.concentration[slID])
+                or (char.professionWeeklyKnowledge and char.professionWeeklyKnowledge[slID])
+            if hasPayload then
+                return slID
+            end
+            local maxSkill = exp.maxSkillLevel or 0
+            if maxSkill > bestMaxSkill then
+                bestMaxSkill = maxSkill
+                bestBySkill = slID
+            end
+        end
+    end
+
+    return bestBySkill or firstSkillLine
+end
+
 ---Returns the skillLineID for char+profName that matches the current expansion filter.
 ---Used to look up concentration and knowledge (all stored by skillLineID).
 ---
@@ -541,7 +579,7 @@ local function GetSkillLineIDForFilter(char, profName)
                     return exp.skillLineID
                 end
             end
-            return nil
+            return GetBestAvailableSkillLineID(char, expansions)
         end
     end
 
@@ -563,6 +601,17 @@ local function GetCurrentExpansionSkill(char, profName)
             local exp = expansions[i]
             if exp and exp.name and ExpansionNameMatchesFilter(exp.name, filter) then
                 return exp.skillLevel or 0, exp.maxSkillLevel or 0, exp.name
+            end
+        end
+        -- If strict filter match is unavailable, keep overview populated with
+        -- the most meaningful known skill line for this profession.
+        local fallbackSkillLine = GetBestAvailableSkillLineID(char, expansions)
+        if fallbackSkillLine then
+            for i = 1, #expansions do
+                local exp = expansions[i]
+                if exp and exp.skillLineID == fallbackSkillLine then
+                    return exp.skillLevel or 0, exp.maxSkillLevel or 0, exp.name
+                end
             end
         end
         return nil, nil, nil
