@@ -656,6 +656,10 @@ local function CollectKnowledgeData()
         result.professionName = profName
         result.expansionName = expansionName
         charData.knowledgeData[skillLineID] = result
+        -- Clean up legacy profName-keyed entry to prevent stale data
+        if profName and charData.knowledgeData[profName] then
+            charData.knowledgeData[profName] = nil
+        end
         local bucket = EnsureSkillLineBucket(charData, skillLineID, profName, expansionName)
         if bucket then
             bucket.knowledge = {

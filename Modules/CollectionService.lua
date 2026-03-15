@@ -604,6 +604,12 @@ ns.EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded
 ---Runs on login when DB has no data or version changed. Stores result in collectionStore and DB.
 ---@param onComplete function|nil Callback when done (used by EnsureCollectionData)
 function WarbandNexus:BuildFullCollectionData(onComplete)
+    -- Prevent re-entrant calls while already building
+    if ns.CollectionLoadingState.isLoading then
+        if onComplete then onComplete() end
+        return
+    end
+
     EnsureBlizzardCollectionsLoaded()
     local LT = ns.LoadingTracker
     if LT and not onComplete then

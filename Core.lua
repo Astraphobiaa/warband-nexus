@@ -646,16 +646,9 @@ function WarbandNexus:OnInitialize()
         ns.InitializationService:InitializeMinimapButton(self)
     end
     
-    print("|cffff00ff[CORE] About to initialize Gold Management Service...")
-    print("|cffff00ff[CORE] self.InitializeGoldManagementService exists?", self.InitializeGoldManagementService and "YES" or "NO")
-    
     -- Initialize Gold Management Service
     if self.InitializeGoldManagementService then
-        print("|cffff00ff[CORE] Calling InitializeGoldManagementService...")
         self:InitializeGoldManagementService()
-        print("|cffff00ff[CORE] InitializeGoldManagementService DONE")
-    else
-        print("|cffff0000[CORE] ERROR: InitializeGoldManagementService NOT FOUND!")
     end
 
     -- Initialize Character Bank Money Log Service
@@ -789,8 +782,8 @@ function WarbandNexus:OnEnable()
     -- Delayed to ensure SavedVariables are loaded and initial save is done
     if self.CleanupDatabase then
         C_Timer.After(10, function()
+            if not self or not self.db or not self.CleanupDatabase then return end
             local result = self:CleanupDatabase()
-            -- Database cleanup completed silently
         end)
     end
     
@@ -1064,7 +1057,7 @@ function WarbandNexus:HookGuildBankUI()
         end)
         
         self.guildBankHooked = true
-        self:Print("|cff00ff00[Guild Bank]|r UI hooks installed successfully")
+        ns.DebugPrint("|cff00ff00[Guild Bank]|r UI hooks installed successfully")
     end
 end
 
@@ -1079,15 +1072,13 @@ end
 --- Guild Bank Update handler (GUILDBANKBAGSLOTS_CHANGED)
 function WarbandNexus:OnGuildBankUpdate()
     -- This event fires when guild bank opens or slots change
-    -- Debug: confirm event is firing
-    self:Print("|cff888888[Guild Bank]|r GUILDBANKBAGSLOTS_CHANGED event fired (guildBankIsOpen=" .. tostring(self.guildBankIsOpen) .. ")")
+    ns.DebugPrint("|cff888888[Guild Bank]|r GUILDBANKBAGSLOTS_CHANGED event fired (guildBankIsOpen=" .. tostring(self.guildBankIsOpen) .. ")")
     
     -- If bank wasn't open before, this is the open event
     if not self.guildBankIsOpen then
         self:OnGuildBankOpened()
     else
-        -- Guild bank is already open, this is a slot change (item/gold transaction)
-        self:Print("|cffffff00[Guild Bank]|r Slot change detected, scheduling re-scan in 2.5s...")
+        ns.DebugPrint("|cffffff00[Guild Bank]|r Slot change detected, scheduling re-scan in 2.5s...")
         -- Throttle re-scan to batch rapid changes (2.5s window)
         self:ScheduleTimer("ThrottledGuildBankScan", 2.5)
     end
@@ -1096,8 +1087,7 @@ end
 function WarbandNexus:OnGuildBankOpened()
     self.guildBankIsOpen = true
     
-    -- Debug message
-    self:Print("|cff00ff00[Guild Bank]|r Window opened, preparing scan...")
+    ns.DebugPrint("|cff00ff00[Guild Bank]|r Window opened, preparing scan...")
     
     -- Scan guild bank
     if self.ScanGuildBank then
@@ -1105,9 +1095,9 @@ function WarbandNexus:OnGuildBankOpened()
             if WarbandNexus and WarbandNexus.ScanGuildBank then
                 local success = WarbandNexus:ScanGuildBank()
                 if success then
-                    WarbandNexus:Print("|cff00ff00[Guild Bank]|r Scan completed successfully!")
+                    ns.DebugPrint("|cff00ff00[Guild Bank]|r Scan completed successfully!")
                 else
-                    WarbandNexus:Print("|cffff6600[Guild Bank]|r Scan failed - character may not be tracked or no guild access.")
+                    ns.DebugPrint("|cffff6600[Guild Bank]|r Scan failed - character may not be tracked or no guild access.")
                 end
             end
         end)
@@ -1116,11 +1106,11 @@ end
 
 --- Throttled guild bank re-scan (called via ScheduleTimer)
 function WarbandNexus:ThrottledGuildBankScan()
-    self:Print("|cff888888[Guild Bank]|r ThrottledGuildBankScan called (guildBankIsOpen=" .. tostring(self.guildBankIsOpen) .. ")")
+    ns.DebugPrint("|cff888888[Guild Bank]|r ThrottledGuildBankScan called (guildBankIsOpen=" .. tostring(self.guildBankIsOpen) .. ")")
     
     -- Only scan if guild bank is still open
     if not self.guildBankIsOpen then 
-        self:Print("|cffff6600[Guild Bank]|r Re-scan cancelled: bank closed")
+        ns.DebugPrint("|cffff6600[Guild Bank]|r Re-scan cancelled: bank closed")
         return 
     end
     
@@ -1128,19 +1118,19 @@ function WarbandNexus:ThrottledGuildBankScan()
     if self.ScanGuildBank then
         local success = self:ScanGuildBank()
         if success then
-            self:Print("|cff00ff00[Guild Bank]|r Re-scan completed (slot change detected)")
+            ns.DebugPrint("|cff00ff00[Guild Bank]|r Re-scan completed (slot change detected)")
         else
-            self:Print("|cffff6600[Guild Bank]|r Re-scan failed")
+            ns.DebugPrint("|cffff6600[Guild Bank]|r Re-scan failed")
         end
     else
-        self:Print("|cffff0000[Guild Bank]|r ERROR: ScanGuildBank function not found!")
+        ns.DebugPrint("|cffff0000[Guild Bank]|r ERROR: ScanGuildBank function not found!")
     end
 end
 
 -- Guild Bank Closed Handler
 function WarbandNexus:OnGuildBankClosed()
     self.guildBankIsOpen = false
-    self:Print("|cff888888[Guild Bank]|r Window closed")
+    ns.DebugPrint("|cff888888[Guild Bank]|r Window closed")
 end
 
 -- Check if main window is visible
@@ -1382,7 +1372,7 @@ function WarbandNexus:OnCombatStart()
     end
     
     if anythingHidden then
-        self:Print("|cffff6600UI hidden during combat.|r")
+        ns.DebugPrint("|cffff6600[WN Core]|r UI hidden during combat.")
     end
 end
 

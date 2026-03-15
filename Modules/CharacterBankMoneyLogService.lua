@@ -80,10 +80,15 @@ local function PushLogEntry(charKey, entry)
         end
     end
 
-    local extraCount = #logs - MAX_LOG_ENTRIES
-    if extraCount > 0 then
-        for i = 1, extraCount do
-            table.remove(logs, 1)
+    local totalLogs = #logs
+    if totalLogs > MAX_LOG_ENTRIES then
+        local trimmed = {}
+        for i = totalLogs - MAX_LOG_ENTRIES + 1, totalLogs do
+            trimmed[#trimmed + 1] = logs[i]
+        end
+        wipe(logs)
+        for i = 1, #trimmed do
+            logs[i] = trimmed[i]
         end
     end
 end
@@ -292,6 +297,38 @@ function WarbandNexus:GetCharacterBankMoneyLogs(charKey)
         return {}
     end
     return logs
+end
+
+--- Get per-character contribution summary: deposit total, withdraw total, net (deposit - withdraw).
+--- @return table Array of { charKey, classFile, deposit, withdraw, net } sorted by net descending
+function WarbandNexus:GetCharacterBankMoneyLogSummary()
+    local logs = EnsureLogStorage()
+    if not logs or type(logs) ~= "table" then
+        return {}
+    end
+    local byChar = {}
+    for i = 1, #logs do
+        local e = logs[i]
+        if e and e.character then
+            local ck = e.character
+            if not byChar[ck] then
+                byChar[ck] = { charKey = ck, classFile = e.classFile, deposit = 0, withdraw = 0 }
+            end
+            local amt = e.amount or 0
+            if e.type == "deposit" then
+                byChar[ck].deposit = byChar[ck].deposit + amt
+            elseif e.type == "withdraw" then
+                byChar[ck].withdraw = byChar[ck].withdraw + amt
+            end
+        end
+    end
+    local out = {}
+    for _, v in pairs(byChar) do
+        v.net = v.deposit - v.withdraw
+        out[#out + 1] = v
+    end
+    table.sort(out, function(a, b) return a.net > b.net end)
+    return out
 end
 
 ---Clear all money log entries (account-wide).

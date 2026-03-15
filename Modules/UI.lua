@@ -1404,9 +1404,6 @@ function WarbandNexus:PopulateContent()
     -- Otherwise, WoW scroll frame won't work properly when content < viewport
     scrollChild:SetHeight(math.max(height, mainFrame.scroll:GetHeight()))
     
-    -- #region agent    -- Scroll height populated
-    -- #endregion
-    
     -- Update scroll bar visibility (hide if content fits)
     if ns.UI.Factory.UpdateScrollBarVisibility then
         ns.UI.Factory:UpdateScrollBarVisibility(mainFrame.scroll)

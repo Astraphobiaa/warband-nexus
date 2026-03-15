@@ -1,4 +1,18 @@
 ═══════════════════════════════════════════════════════════════════════════
+  WARBAND NEXUS - Version 2.4.5 (15.03.2026)
+═══════════════════════════════════════════════════════════════════════════
+
+BUG FIXES & IMPROVEMENTS
+─────────────────────────
+• Fixed Concentration tracking
+• Added Ultra-Wide monitor support
+• Updated the World Quest section
+• Fixed Great Vault tracking
+• Fixed Try/Attempt counts
+• General performance improvements
+• Added Memory Leak Debugger
+
+═══════════════════════════════════════════════════════════════════════════
   WARBAND NEXUS - Version 2.4.2 (13.03.2026)
 ═══════════════════════════════════════════════════════════════════════════
 

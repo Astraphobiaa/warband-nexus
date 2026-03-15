@@ -1987,7 +1987,23 @@ end
 local concentrationHookInstalled = false
 local WN_CONCENTRATION_MARKER = (ns.L and ns.L["TOOLTIP_CONCENTRATION_MARKER"]) or "Warband Nexus - Concentration"
 
--- Check if we already injected our data into a tooltip
+local function IsConcentrationCurrencyID(currencyID)
+    if not currencyID then return false end
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return false end
+    local characters = WarbandNexus.db.global.characters
+    if not characters then return false end
+    for _, charData in pairs(characters) do
+        if charData.concentration then
+            for _, concData in pairs(charData.concentration) do
+                if concData.currencyID == currencyID then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
 local function HasAlreadyInjected(tooltip)
     local numLines = tooltip:NumLines()
     for i = 2, numLines do
@@ -2002,13 +2018,36 @@ local function HasAlreadyInjected(tooltip)
     return false
 end
 
--- Check if the tooltip's first line contains "Concentration"
 local function IsConcentrationTooltip(tooltip)
     local firstLine = _G[tooltip:GetName() .. "TextLeft1"]
     if not firstLine then return false end
     local text = firstLine:GetText()
     if not text or (issecretvalue and issecretvalue(text)) then return false end
-    return text:find("Concentration") ~= nil
+    local stripped = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+    stripped = stripped:match("^%s*(.-)%s*$")
+    if not stripped or stripped == "" then return false end
+    if stripped == "Concentration" then return true end
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return false end
+    local characters = WarbandNexus.db.global.characters
+    if not characters then return false end
+    for _, charData in pairs(characters) do
+        if charData.concentration then
+            for _, concData in pairs(charData.concentration) do
+                if concData.currencyID and concData.currencyID > 0 then
+                    local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, concData.currencyID)
+                    if ok and info and info.name then
+                        local safeName = info.name
+                        if not (issecretvalue and issecretvalue(safeName)) and stripped == safeName then
+                            return true
+                        end
+                    end
+                    break
+                end
+            end
+            break
+        end
+    end
+    return false
 end
 
 -- The actual function that appends concentration data to a visible tooltip
@@ -2073,20 +2112,11 @@ function TooltipService:InstallConcentrationTooltipHook()
             if tooltip ~= GameTooltip then return end
             if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
             if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
-            if not IsConcentrationTooltip(tooltip) then return end
+            if not data or not data.id or not IsConcentrationCurrencyID(data.id) then return end
             if HasAlreadyInjected(tooltip) then return end
-            -- Debug: log only when we actually match a Concentration tooltip
-            if WarbandNexus and WarbandNexus.Debug then
-                local line1 = _G["GameTooltipTextLeft1"]
-                local text1 = line1 and line1:GetText() or "nil"
-                WarbandNexus:Debug("[Conc Tooltip] Currency PostCall matched, line1=" .. tostring(text1))
-            end
 
-            local allConc = WarbandNexus and WarbandNexus.GetAllConcentrationData and WarbandNexus:GetAllConcentrationData()
             if WarbandNexus and WarbandNexus.Debug then
-                local count = 0
-                if allConc then for _ in pairs(allConc) do count = count + 1 end end
-                WarbandNexus:Debug("[Conc Tooltip] Matched! allConc professions=" .. count)
+                WarbandNexus:Debug("[Conc Tooltip] Currency PostCall matched, currencyID=" .. tostring(data.id))
             end
 
             pcall(AppendConcentrationData, tooltip)
@@ -2098,17 +2128,13 @@ function TooltipService:InstallConcentrationTooltipHook()
     -- Catches any non-currency code path (custom SetOwner + AddLine).
     -- ----------------------------------------------------------------
     GameTooltip:HookScript("OnShow", function(tooltip)
-        -- Guard: skip when professions module is disabled
         if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
         if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
         if not IsConcentrationTooltip(tooltip) then return end
         if HasAlreadyInjected(tooltip) then return end
 
         if WarbandNexus and WarbandNexus.Debug then
-            local allConc = WarbandNexus.GetAllConcentrationData and WarbandNexus:GetAllConcentrationData()
-            local count = 0
-            if allConc then for _ in pairs(allConc) do count = count + 1 end end
-            WarbandNexus:Debug("[Conc Tooltip] OnShow matched! allConc professions=" .. count)
+            WarbandNexus:Debug("[Conc Tooltip] OnShow fallback matched")
         end
 
         pcall(AppendConcentrationData, tooltip)

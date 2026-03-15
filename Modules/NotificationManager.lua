@@ -16,16 +16,20 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (loaded from locale when called)
 local FALLBACK_CHANGELOG = "CHANGES:\n" ..
-    "- Localization coverage completed for all supported locales.\n" ..
-    "- AddOn version updated to 2.4.3 with version consistency fixes.\n" ..
-    "- Debug chat output reduced to show only when debug mode is enabled.\n" ..
+    "- Fixed Concentration tracking\n" ..
+    "- Added Ultra-Wide monitor support\n" ..
+    "- Updated the World Quest section\n" ..
+    "- Fixed Great Vault tracking\n" ..
+    "- Fixed Try/Attempt counts\n" ..
+    "- General performance improvements\n" ..
+    "- Added Memory Leak Debugger\n" ..
     "\n" ..
     "Thank you for your continued support!\n" ..
     "\n" ..
     "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
 local function BuildChangelog()
-    local changelogText = (ns.L and (ns.L["CHANGELOG_V243"] or ns.L["CHANGELOG_V242"])) or FALLBACK_CHANGELOG
+    local changelogText = (ns.L and ns.L["CHANGELOG_V245"]) or FALLBACK_CHANGELOG
     if not changelogText or changelogText == "" then
         changelogText = FALLBACK_CHANGELOG
     end
@@ -37,8 +41,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.4.3",
-    date = "2026-03-13",
+    version = "2.4.5",
+    date = "2026-03-15",
     changes = BuildChangelog()
 }
 
@@ -1633,7 +1637,7 @@ function WarbandNexus:CheckNotificationsOnLogin()
     if notifs.showVaultReminder then
         C_Timer.After(0.5, function()
             if not C_WeeklyRewards then
-                self:Print("|cff888888[Vault]|r C_WeeklyRewards = nil")
+                ns.DebugPrint("|cff888888[Vault]|r C_WeeklyRewards = nil")
                 return
             end
             local hasRewards = C_WeeklyRewards.HasAvailableRewards and C_WeeklyRewards.HasAvailableRewards()
@@ -1648,31 +1652,31 @@ function WarbandNexus:CheckNotificationsOnLogin()
             local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
             local activityCount = activities and #activities or 0
             local secsUntilReset = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and C_DateAndTime.GetSecondsUntilWeeklyReset()) or nil
-            self:Print(string.format("|cff00ccff[Vault]|r HasAvailableRewards=%s | isCurrentPeriod=%s | canClaim=%s | activities=%s | secsUntilReset=%s",
+            ns.DebugPrint(string.format("|cff00ccff[Vault]|r HasAvailableRewards=%s | isCurrentPeriod=%s | canClaim=%s | activities=%s | secsUntilReset=%s",
                 tostring(hasRewards), tostring(isCurrentPeriod), tostring(canClaim), tostring(activityCount), secsUntilReset and tostring(secsUntilReset) or "n/a"))
             if activities and activityCount > 0 then
                 local a1 = activities[1]
                 if a1 then
-                    self:Print(string.format("|cff00ccff[Vault]|r First activity: type=%s progress=%s threshold=%s",
+                    ns.DebugPrint(string.format("|cff00ccff[Vault]|r First activity: type=%s progress=%s threshold=%s",
                         tostring(a1.type), tostring(a1.progress), tostring(a1.threshold)))
                 end
             end
             local shouldShow = hasRewards and isCurrentPeriod and canClaim and activities and activityCount > 0
             if shouldShow then
-                self:Print("|cff00ccff[Vault]|r Showing reminder (current period, claimable).")
+                ns.DebugPrint("|cff00ccff[Vault]|r Showing reminder (current period, claimable).")
                 QueueNotification({
                     type = "vault",
                     data = {}
                 })
             else
                 if not hasRewards then
-                    self:Print("|cff888888[Vault]|r NOT showing: HasAvailableRewards=false.")
+                    ns.DebugPrint("|cff888888[Vault]|r NOT showing: HasAvailableRewards=false.")
                 elseif not isCurrentPeriod then
-                    self:Print("|cff888888[Vault]|r NOT showing: rewards not for current period (e.g. expired/old season).")
+                    ns.DebugPrint("|cff888888[Vault]|r NOT showing: rewards not for current period (e.g. expired/old season).")
                 elseif not canClaim then
-                    self:Print("|cff888888[Vault]|r NOT showing: CanClaimRewards=false.")
+                    ns.DebugPrint("|cff888888[Vault]|r NOT showing: CanClaimRewards=false.")
                 else
-                    self:Print("|cff888888[Vault]|r NOT showing: no activities.")
+                    ns.DebugPrint("|cff888888[Vault]|r NOT showing: no activities.")
                 end
             end
         end)

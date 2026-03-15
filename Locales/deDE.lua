@@ -765,7 +765,6 @@ L["COMPLETED_REQ_FORMAT"] = "Du hast %d von %d Anforderungen abgeschlossen"
 
 -- Plans - Content & Quest Types
 L["CONTENT_MIDNIGHT"] = "Midnight"
-L["CONTENT_TWW"] = "The War Within"
 L["QUEST_TYPE_DAILY"] = "Tägliche Quests"
 L["QUEST_TYPE_DAILY_DESC"] = "Reguläre tägliche Quests von NPCs"
 L["QUEST_TYPE_WORLD"] = "Weltquests"
@@ -1043,8 +1042,7 @@ L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 -- =============================================
 -- Changelog (What's New)
 -- =============================================
-L["CHANGELOG_V214"] = "NEUE FUNKTIONEN:\n- Goldziel: Intelligentes automatisches Goldverwaltungssystem\n  • Ziel-Goldbetrag pro Charakter festlegen (Standard: 10g)\n  • Drei Modi: Nur Einzahlen, Nur Abheben oder Beide\n  • Vollautomatische Einzahlungen UND Abhebungen beim Öffnen der Bank\n  • Verwendet C_Bank API (DepositMoney/WithdrawMoney)\n  • Intelligente 2-Sekunden-Verzögerung zwischen Vorgängen\n  • Stiller Betrieb (kein Spam)\n  • In Items-Tab-Header integriert\n  • Benutzerdefiniertes themenbezogenes Radio-Button-Widget\n  • 11 Sprachübersetzungen enthalten\n\nVERBESSERUNGEN:\n- UI: Benutzerdefiniertes Radio-Button-Widget zu SharedWidgets hinzugefügt\n- UI: Automatische Schaltflächengröße basierend auf lokalisierter Textbreite\n- Leistung: Debug-Protokollierung für saubereren Betrieb entfernt\n\nVielen Dank für deine anhaltende Unterstützung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
-L["CHANGELOG_V220"] = "NEUE FUNKTIONEN:\n- Goldziel: Intelligentes automatisches Goldverwaltungssystem\n  • Ziel-Goldbetrag pro Charakter festlegen (Standard: 10g)\n  • Drei Modi: Nur Einzahlen, Nur Abheben oder Beide\n  • Vollautomatische Einzahlungen UND Abhebungen beim Öffnen der Bank\n\n- Items-Tab umstrukturiert:\n  • 4 Unter-Tabs: Inventar, Persönliche Bank, Kriegsmeute-Bank, Gildenbank\n  • Gold-Anzeige pro Unter-Tab\n  • Charakter-Gilden-Verfolgung mit automatischer Gildenänderungserkennung\n\n- Lager-Tab erweitert:\n  • Mehrere Gildenbanken separat angezeigt\n  • Abschnittsreihenfolge: Persönlich → Kriegsmeute → Gilde\n  • Jede Gildenbank zeigt ihren Gildennamen\n\n- Event-gestütztes Gildenbank-System:\n  • Echtzeit automatische Neu-Scans bei Inhaltsänderungen\n  • Cache-Updates bei Ein-/Auszahlungen\n  • Alle Charaktere in derselben Gilde sehen aktualisierte Daten\n\nBUGFIXES:\n- Gildenbank-Gold zeigte falschen Charakterbetrag\n- Gildenbank-Gegenstände aktualisierten sich nicht nach Ein-/Auszahlungen\n- Gildenbank-Header expandierte nicht im Lager-Tab\n\nVielen Dank für deine anhaltende Unterstützung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
+L["CHANGELOG_V245"] = "FEHLERBEHEBUNGEN & VERBESSERUNGEN:\n- Konzentrations-Tracking behoben\n- Ultra-Wide-Monitor-Unterstützung hinzugefügt\n- Weltquests-Bereich aktualisiert\n- Große Schatzkammer-Tracking behoben\n- Versuchs-/Anlaufzähler behoben\n- Allgemeine Leistungsverbesserungen\n- Memory-Leak-Debugger hinzugefügt\n\nVielen Dank für eure Unterstützung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasst einen Kommentar auf CurseForge - Warband Nexus."
 
 -- =============================================
 -- Confirm / Tracking Dialog
@@ -1244,13 +1242,11 @@ L["PROF_ONLY_CURRENT_CHAR"] = "Nur für den aktuellen Charakter verfügbar"
 L["NO_PROFESSION"] = "Kein Beruf"
 
 -- Professions: Column Headers
-L["FIRST_CRAFT"] = "Erstes Fertigen"
 L["UNIQUES"] = "Einzigartige"
 L["TREATISE"] = "Abhandlung"
 L["GATHERING"] = "Sammeln"
 L["CATCH_UP"] = "Nachholen"
 L["MOXIE"] = "Moxie"
-L["SKILL_UPS"] = "Fertigkeitsstufen"
 L["COOLDOWNS"] = "Abklingzeiten"
 L["ORDERS"] = "Aufträge"
 
@@ -1384,6 +1380,14 @@ L["UNTRACKED_VIEWONLY_LINE1"] = "Nur-Lesen-Modus"
 L["UNTRACKED_VIEWONLY_LINE2"] = "Nur grundlegende Infos"
 L["TRACKING_ENABLED_CHAT"] = "Charakterverfolgung aktiviert. Datenerfassung beginnt."
 L["TRACKING_DISABLED_CHAT"] = "Charakterverfolgung deaktiviert. Nur-Lesen-Modus aktiv."
+L["TRACKING_NOT_ENABLED_TOOLTIP"] = "Charakterverfolgung ist deaktiviert. Klicke, um den Charaktere-Tab zu öffnen."
+L["TRACKING_BADGE_CLICK_HINT"] = "Klicke, um die Verfolgung zu ändern."
+L["TRACKING_TAB_LOCKED_TITLE"] = "Charakter wird nicht verfolgt"
+L["TRACKING_TAB_LOCKED_DESC"] = "Dieser Tab funktioniert nur für verfolgte Charaktere.\nAktiviere die Verfolgung auf der Charaktere-Seite über das Verfolgungssymbol."
+L["OPEN_CHARACTERS_TAB"] = "Charaktere öffnen"
+L["TRACKING_BADGE_TRACKING"] = "Verfolgt"
+L["TRACKING_BADGE_UNTRACKED"] = "Nicht\nverfolgt"
+L["TRACKING_BADGE_BANK"] = "Bank ist\nAktiv"
 L["ADDED_TO_FAVORITES"] = "Zu Favoriten hinzugefügt:"
 L["REMOVED_FROM_FAVORITES"] = "Aus Favoriten entfernt:"
 
@@ -1692,6 +1696,8 @@ L["NOTIFICATION_GRIND_TRIES"] = "What a grind! %d attempts!"
 L["NOTIFICATION_GOT_IT_AFTER"] = "You got it after %d tries!"
 L["MONEY_LOGS_BTN"] = "Money Logs"
 L["MONEY_LOGS_TITLE"] = "Money Logs"
+L["MONEY_LOGS_SUMMARY_TITLE"] = "Charakterbeiträge"
+L["MONEY_LOGS_COLUMN_NET"] = "Netto"
 L["MONEY_LOGS_COLUMN_TIME"] = "Time"
 L["MONEY_LOGS_COLUMN_CHARACTER"] = "Character"
 L["MONEY_LOGS_COLUMN_TYPE"] = "Type"
@@ -1706,5 +1712,3 @@ L["MONEY_LOGS_RESET"] = "Reset"
 L["MONEY_LOGS_FILTER_ALL"] = "All"
 L["MONEY_LOGS_CHAT_DEPOSIT"] = "|cff00ff00Money Log:|r Deposited %s to Warband Bank"
 L["MONEY_LOGS_CHAT_WITHDRAW"] = "|cffff9900Money Log:|r Withdrew %s from Warband Bank"
-L["CHANGELOG_V242"] = "NEUE FUNKTIONEN:\n- Gilde & Erholte XP:\n  • Gilde-Mitgliedschaft und erholte Erfahrung über alle Charaktere\n- Geld-Logs & Gold-Automatisierung - Items UI:\n  • Pro-Charakter Gold-Logs mit Ein-/Auszahlverlauf\n  • Gold-Ziel-Automatisierung im Items-Tab\n- Neuer Tab: Ausrüstung:\n  • Ausgerüstete Items mit Gegenstandsstufe\n  • Upgrade-Optionen und Lager-Empfehlungen (BoE/Warbound)\n  • Upgrade-Kandidaten über Charaktere\n- Neuer Tab: Sammlungen:\n  • Übersicht Reittiere, Haustiere, Spielzeuge, Transmog\n  • Sammlungsfortschritt und fehlende Items finden\n\nVERBESSERUNGEN:\n- Midnight Updates für PvE:\n  • Volle Kompatibilität mit Midnight 12.0.x APIs\n  • Encounter/Schwierigkeit, issecretvalue Guards\n- Midnight Updates für Ruf & Währungen\n- Berufe & Rezept-Begleiter\n- Pläne-Revision: Quellen-Anzeige (z.B. Nether-Warped Drake), Mythic-Farbkonsistenz\n- Einstellungen-Revision, Rezept-Begleiter Update, Leistung\n- Benachrichtigungs- & Try-Counter-Stabilität\n- Lokalisierung für alle 11 Sprachen\n\nDanke für die Unterstützung! CurseForge - Warband Nexus."
-L["CHANGELOG_V243"] = "NEUE FUNKTIONEN:\n- Gilde & Erholte XP:\n  • Gilde-Mitgliedschaft und erholte Erfahrung über alle Charaktere\n- Geld-Logs & Gold-Automatisierung - Items UI:\n  • Pro-Charakter Gold-Logs mit Ein-/Auszahlverlauf\n  • Gold-Ziel-Automatisierung im Items-Tab\n- Neuer Tab: Ausrüstung:\n  • Ausgerüstete Items mit Gegenstandsstufe\n  • Upgrade-Optionen und Lager-Empfehlungen (BoE/Warbound)\n  • Upgrade-Kandidaten über Charaktere\n- Neuer Tab: Sammlungen:\n  • Übersicht Reittiere, Haustiere, Spielzeuge, Transmog\n  • Sammlungsfortschritt und fehlende Items finden\n\nVERBESSERUNGEN:\n- Midnight Updates für PvE:\n  • Volle Kompatibilität mit Midnight 12.0.x APIs\n  • Encounter/Schwierigkeit, issecretvalue Guards\n- Midnight Updates für Ruf & Währungen\n- Berufe & Rezept-Begleiter\n- Pläne-Revision: Quellen-Anzeige (z.B. Nether-Warped Drake), Mythic-Farbkonsistenz\n- Einstellungen-Revision, Rezept-Begleiter Update, Leistung\n- Benachrichtigungs- & Try-Counter-Stabilität\n- Lokalisierung für alle 11 Sprachen\n\nDanke für die Unterstützung! CurseForge - Warband Nexus."

@@ -136,6 +136,8 @@ function WarbandNexus:DrawStorageTab(parent)
             dataSource = "StorageCache v" .. cacheVersion
         end
         parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
+    elseif parent.dbVersionBadge:GetParent() ~= parent then
+        parent.dbVersionBadge:SetParent(parent)
     end
     
     -- Hide empty state container (will be shown again if needed)
@@ -205,6 +207,11 @@ function WarbandNexus:DrawStorageTab(parent)
 
     local titleCard = parent._storageTitleCard
 
+    -- Re-parent cached frame if it was orphaned by PopulateContent
+    if titleCard:GetParent() ~= parent then
+        titleCard:SetParent(parent)
+    end
+
     -- Update dynamic theme color for title
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -253,6 +260,10 @@ function WarbandNexus:DrawStorageTab(parent)
     end
 
     local searchBox = parent._storageSearchBox
+    -- Re-parent cached frame if it was orphaned by PopulateContent
+    if searchBox:GetParent() ~= parent then
+        searchBox:SetParent(parent)
+    end
     searchBox:ClearAllPoints()
     searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
@@ -265,6 +276,10 @@ function WarbandNexus:DrawStorageTab(parent)
         parent._storageResultsContainer = CreateResultsContainer(parent, yOffset, SIDE_MARGIN)
     end
     local resultsContainer = parent._storageResultsContainer
+    -- Re-parent cached frame if it was orphaned by PopulateContent
+    if resultsContainer:GetParent() ~= parent then
+        resultsContainer:SetParent(parent)
+    end
     resultsContainer:ClearAllPoints()
     resultsContainer:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     resultsContainer:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)

@@ -1248,23 +1248,31 @@ end
 -- =====================================================================
 
 ---Get the item hyperlink (quality-colored) for a drop entry.
----Falls back to orange-colored plain name if item data is not cached.
+---Uses full link from GetItemInfo when cached (rarity color comes from link). Falls back to constructed link with rarity color when not cached.
 ---@param drop table { type, itemID, name }
----@return string displayLink Formatted item link or colored name
+---@return string displayLink Formatted item link (clickable)
 local function GetDropItemLink(drop)
     if not drop or not drop.itemID then
         return "|cffff8000[" .. (drop and drop.name or "Unknown") .. "]|r"
     end
     local GetItemInfo = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
     if GetItemInfo then
-        local _, itemLink = GetItemInfo(drop.itemID)
+        local _, itemLink, itemQuality = GetItemInfo(drop.itemID)
         if itemLink then return itemLink end
+        -- Not cached: GetItemInfo returns nil for all when item not loaded; quality from same call is nil. Use fallback color.
+        -- Build fallback link with correct rarity color when we have quality
+        if C_Item and C_Item.RequestLoadItemDataByID then
+            pcall(C_Item.RequestLoadItemDataByID, drop.itemID)
+        end
+        local name = drop.name or "Unknown"
+        local qualityColor = "|cffa335ee" -- Epic default when quality unknown
+        if itemQuality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[itemQuality] then
+            local c = ITEM_QUALITY_COLORS[itemQuality]
+            qualityColor = format("|cff%02x%02x%02x", (c.r or 0) * 255, (c.g or 0) * 255, (c.b or 0) * 255)
+        end
+        return qualityColor .. "|Hitem:" .. drop.itemID .. ":0:0:0:0:0:0:0:0:0:0|h[" .. name .. "]|h|r"
     end
-    -- Item not cached: request for future use, return orange fallback
-    if C_Item and C_Item.RequestLoadItemDataByID then
-        pcall(C_Item.RequestLoadItemDataByID, drop.itemID)
-    end
-    return "|cffff8000[" .. (drop.name or "Unknown") .. "]|r"
+    return "|cffa335ee[" .. (drop.name or "Unknown") .. "]|r"
 end
 
 ---Re-read WoW Statistics for specific drops and update try counts.
@@ -1644,7 +1652,26 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
             if not IsAutoTryCounterEnabled() then return end
 
             local now = GetTime()
+            -- Check both name-based key (from this handler) and encounter-based key
+            -- (ProcessNPCLoot sets encounter-based key via reverse lookup; mismatch
+            -- with name-based key caused double-count for multi-NPC encounters).
+            local alreadyCounted = false
             if lastTryCountSourceKey == keyForDelayed and (now - lastTryCountSourceTime) < 10 then
+                alreadyCounted = true
+            elseif npcIDs and (now - lastTryCountSourceTime) < 10 then
+                for encID, npcList in pairs(encounterDB or {}) do
+                    for _, nid in ipairs(npcList) do
+                        if nid == npcIDs[1] then
+                            if lastTryCountSourceKey == "encounter_" .. tostring(encID) then
+                                alreadyCounted = true
+                            end
+                            break
+                        end
+                    end
+                    if alreadyCounted then break end
+                end
+            end
+            if alreadyCounted then
                 if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END delayed: key %s already counted", keyForDelayed) end
                 return
             end
@@ -2348,8 +2375,28 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
             if not isTrackedDrop then
                 if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT skip: itemID %s not a tracked drop for npc %s", tostring(itemID), tostring(npcID)) end
             else
-                local key = "npc_" .. tostring(npcID)
-                if lastTryCountSourceKey == key and (GetTime() - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE then
+                -- Check all possible dedup keys: npc-based, encounter-based, and name-based.
+                -- ProcessNPCLoot sets encounter-based key for encounter NPCs; ENCOUNTER_END
+                -- uses name-based key when encounterID is secret (Midnight).
+                local npcKey = "npc_" .. tostring(npcID)
+                local encKey = nil
+                local nameKey = nil
+                for encID, npcList in pairs(encounterDB or {}) do
+                    for _, nid in ipairs(npcList) do
+                        if nid == npcID then encKey = "encounter_" .. tostring(encID); break end
+                    end
+                    if encKey then break end
+                end
+                if encKey then
+                    for eName, eNpcs in pairs(encounterNameToNpcs or {}) do
+                        for _, nid in ipairs(eNpcs) do
+                            if nid == npcID then nameKey = "name_" .. eName; break end
+                        end
+                        if nameKey then break end
+                    end
+                end
+                local elapsed = GetTime() - lastTryCountSourceTime
+                if elapsed < CHAT_LOOT_DEBOUNCE and (lastTryCountSourceKey == npcKey or (encKey and lastTryCountSourceKey == encKey) or (nameKey and lastTryCountSourceKey == nameKey)) then
                     if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT skip: already counted npc=%s", tostring(npcID)) end
                     return
                 end
@@ -2361,7 +2408,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     end
                 end
                 if #trackable > 0 then
-                    lastTryCountSourceKey = key
+                    lastTryCountSourceKey = encKey or npcKey
                     lastTryCountSourceTime = GetTime()
                     if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT +%d: item %s npc %s", #trackable, tostring(itemID), tostring(npcID)) end
                     ProcessMissedDrops(trackable, drops.statisticIds)
@@ -2401,9 +2448,21 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                 end
                 
                 if itemMatches then
-                    -- Avoid double-count if LOOT_OPENED already processed this encounter
-                    local key = "encounter_" .. tostring(killData.npcID)
-                    if lastTryCountSourceKey == key and (GetTime() - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE then
+                    -- Avoid double-count if LOOT_OPENED already processed this encounter.
+                    -- Check encounter-based key (ProcessNPCLoot uses encounterID, not npcID)
+                    -- and name-based key (ENCOUNTER_END uses name when encounterID is secret).
+                    local encID = nil
+                    for eID, npcList in pairs(encounterDB or {}) do
+                        for _, nid in ipairs(npcList) do
+                            if nid == killData.npcID then encID = eID; break end
+                        end
+                        if encID then break end
+                    end
+                    local encKey = encID and ("encounter_" .. tostring(encID)) or ("encounter_" .. tostring(killData.npcID))
+                    local nameKey = killData.name and ("name_" .. killData.name) or nil
+                    local npcKey = "npc_" .. tostring(killData.npcID)
+                    local elapsed = GetTime() - lastTryCountSourceTime
+                    if elapsed < CHAT_LOOT_DEBOUNCE and (lastTryCountSourceKey == encKey or (nameKey and lastTryCountSourceKey == nameKey) or lastTryCountSourceKey == npcKey) then
                         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT skip: encounter npc=%s already counted", tostring(killData.npcID)) end
                         return
                     end
@@ -2419,7 +2478,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     end
                     
                     if #trackable > 0 then
-                        lastTryCountSourceKey = key
+                        lastTryCountSourceKey = encKey
                         lastTryCountSourceTime = GetTime()
                         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT encounter +%d: item %s npc %s", #trackable, tostring(itemID), tostring(killData.npcID)) end
                         ProcessMissedDrops(trackable, drops.statisticIds)
@@ -3179,14 +3238,40 @@ function WarbandNexus:ProcessNPCLoot()
         end
     end
 
-    -- Clean up encounter entries in recentKills for this NPC.
-    -- When boss loot is processed (via targetGUID/sourceGUID or recentKills fallback),
-    -- remove ALL encounter entries that share the same npcID. This prevents the
-    -- recentKills fallback from ever re-using these entries for subsequent loot events.
+    -- Look up encounter ID for this NPC once (reused for cleanup, dedup, and key setting).
+    local matchedEncounterID = nil
+    local matchedEncounterNpcs = nil
     if matchedNpcID then
-        for guid, killData in pairs(recentKills) do
-            if killData.isEncounter and killData.npcID == matchedNpcID then
-                recentKills[guid] = nil
+        for encID, npcList in pairs(encounterDB or {}) do
+            for _, nid in ipairs(npcList) do
+                if nid == matchedNpcID then
+                    matchedEncounterID = encID
+                    matchedEncounterNpcs = npcList
+                    break
+                end
+            end
+            if matchedEncounterID then break end
+        end
+    end
+
+    -- Clean up encounter entries in recentKills for ALL NPCs in this encounter.
+    -- Multi-NPC encounters (e.g. HK-8 Aerial Oppression Unit with IDs 155157 + 150190)
+    -- must clean ALL alt-IDs; otherwise the ENCOUNTER_END delayed fallback finds the
+    -- remaining NPC and increments a second time → double-count.
+    if matchedNpcID then
+        if matchedEncounterNpcs then
+            local npcSet = {}
+            for _, nid in ipairs(matchedEncounterNpcs) do npcSet[nid] = true end
+            for guid, killData in pairs(recentKills) do
+                if killData.isEncounter and npcSet[killData.npcID] then
+                    recentKills[guid] = nil
+                end
+            end
+        else
+            for guid, killData in pairs(recentKills) do
+                if killData.isEncounter and killData.npcID == matchedNpcID then
+                    recentKills[guid] = nil
+                end
             end
         end
     end
@@ -3350,51 +3435,37 @@ function WarbandNexus:ProcessNPCLoot()
     -- If we already counted this encounter from ENCOUNTER_END delayed (no loot opened), do not increment again.
     -- CRITICAL: Only skip INCREMENT, not reset! If mount dropped, reset must run even if already incremented.
     if #dropsToIncrement > 0 and matchedNpcID then
-        -- First check if this NPC is part of an encounter
-        local encounterID = nil
-        for encID, npcList in pairs(encounterDB or {}) do
-            for _, nid in ipairs(npcList) do
-                if nid == matchedNpcID then
-                    encounterID = encID
-                    break
+        if matchedEncounterID then
+            local encKey = "encounter_" .. tostring(matchedEncounterID)
+            -- Midnight: ENCOUNTER_END may use name-based key when encounterID is secret.
+            -- Check both encounter-based and name-based keys for robust dedup.
+            local nameKey = nil
+            if matchedEncounterNpcs then
+                for eName, eNpcs in pairs(encounterNameToNpcs or {}) do
+                    for _, nid in ipairs(eNpcs) do
+                        if nid == matchedNpcID then nameKey = "name_" .. eName; break end
+                    end
+                    if nameKey then break end
                 end
             end
-            if encounterID then break end
-        end
-        
-        -- If this is an encounter, use encounter-based dedup
-        if encounterID then
-            local encKey = "encounter_" .. tostring(encounterID)
-            if lastTryCountSourceKey == encKey and (GetTime() - lastTryCountSourceTime) < 15 then
-                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip increment: already counted encounter %s", tostring(encounterID)) end
-                dropsToIncrement = {} -- Clear increment list but continue to set dedup key
+            local now = GetTime()
+            if (lastTryCountSourceKey == encKey or (nameKey and lastTryCountSourceKey == nameKey)) and (now - lastTryCountSourceTime) < 15 then
+                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip increment: already counted encounter %s", tostring(matchedEncounterID)) end
+                dropsToIncrement = {}
             end
         else
-            -- Non-encounter NPC, use NPC-based dedup
             local npcKey = "encounter_" .. tostring(matchedNpcID)
             if lastTryCountSourceKey == npcKey and (GetTime() - lastTryCountSourceTime) < 15 then
                 if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip increment: already counted npc %s", tostring(matchedNpcID)) end
-                dropsToIncrement = {} -- Clear increment list but continue to set dedup key
+                dropsToIncrement = {}
             end
         end
     end
 
     -- Set dedup key: prefer encounter ID if available, otherwise use NPC/object/GUID
     if matchedNpcID then
-        -- Check if this NPC is part of an encounter
-        local encounterID = nil
-        for encID, npcList in pairs(encounterDB or {}) do
-            for _, nid in ipairs(npcList) do
-                if nid == matchedNpcID then
-                    encounterID = encID
-                    break
-                end
-            end
-            if encounterID then break end
-        end
-        
-        if encounterID then
-            lastTryCountSourceKey = "encounter_" .. tostring(encounterID)
+        if matchedEncounterID then
+            lastTryCountSourceKey = "encounter_" .. tostring(matchedEncounterID)
         else
             lastTryCountSourceKey = "npc_" .. tostring(matchedNpcID)
         end

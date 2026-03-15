@@ -60,6 +60,7 @@ function CommandService:HandleSlashCommand(addon, input)
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
             addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
             addon:Print("  |cff00ccff/wn trydebug|r — Try counter state and source resolution simulation")
+            addon:Print("  |cff00ccff/wn bountydebug|r — Print Special Assignment bounty API results for Midnight maps")
             addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Check try count for a collectible")
             addon:Print("  |cff00ccff/wn check|r — Check what drops from your current target/mouseover")
             addon:Print("  |cff00ccff/wn testevents [type] [id]|r — Test notification events (e.g. reputation valeera)")
@@ -254,6 +255,10 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
+    elseif cmd == "bountydebug" then
+        CommandService:BountyDebugReport(addon)
+        return
+
     elseif cmd == "trycount" or cmd == "tc" then
         local _, collectibleType, id = addon:GetArgs(input, 3)
         if not collectibleType or not id then
@@ -308,6 +313,61 @@ function CommandService:HandleSlashCommand(addon, input)
         
     else
         addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_DEBUG_CMD"]) or "Unknown debug command:") .. "|r " .. cmd)
+    end
+end
+
+--============================================================================
+-- BOUNTY / SPECIAL ASSIGNMENT DEBUG
+--============================================================================
+
+--- Print GetBountySetInfoForMapID and GetBountiesForMapID for Midnight maps.
+--- Usage: /wn bountydebug (requires debug mode)
+---@param addon table WarbandNexus addon instance
+function CommandService:BountyDebugReport(addon)
+    local MIDNIGHT_MAPS = {
+        [2393] = "Silvermoon",
+        [2395] = "Eversong Woods",
+        [2424] = "Isle of Quel'Danas",
+        [2413] = "Harandar",
+        [2437] = "Zul'Aman",
+        [2405] = "Voidstorm",
+    }
+    addon:Print("|cff9370DB[WN BountyDebug]|r Special Assignment API for Midnight maps:")
+    for mapID, zoneName in pairs(MIDNIGHT_MAPS) do
+        addon:Print("  |cff00ccff" .. zoneName .. "|r (mapID=" .. mapID .. "):")
+        if C_QuestLog and C_QuestLog.GetBountySetInfoForMapID then
+            local ok, d1, lockQuestID, bountySetID, isActivity = pcall(C_QuestLog.GetBountySetInfoForMapID, mapID)
+            if ok then
+                addon:Print("    GetBountySetInfoForMapID: lockQuestID=" .. tostring(lockQuestID) .. " bountySetID=" .. tostring(bountySetID))
+            else
+                addon:Print("    GetBountySetInfoForMapID: |cffff0000error|r " .. tostring(d1))
+            end
+        end
+        if C_QuestLog and C_QuestLog.GetBountiesForMapID then
+            local ok, bounties = pcall(C_QuestLog.GetBountiesForMapID, mapID)
+            if ok and type(bounties) == "table" then
+                addon:Print("    GetBountiesForMapID: " .. #bounties .. " bounty(ies)")
+                for i = 1, #bounties do
+                    local b = bounties[i]
+                    if b and b.questID then
+                        local title = "?"
+                        if C_QuestLog and C_QuestLog.GetTitleForQuestID then
+                            local t = C_QuestLog.GetTitleForQuestID(b.questID)
+                            if t and (not issecretvalue or not issecretvalue(t)) then title = t end
+                        end
+                        addon:Print("      questID=" .. b.questID .. " title=" .. tostring(title))
+                    end
+                end
+            else
+                addon:Print("    GetBountiesForMapID: " .. (ok and "0 bounties" or "error " .. tostring(bounties)))
+            end
+        end
+        if C_Map and C_Map.GetMapInfo then
+            local info = C_Map.GetMapInfo(mapID)
+            if info and info.parentMapID and info.parentMapID > 0 then
+                addon:Print("    parentMapID=" .. info.parentMapID)
+            end
+        end
     end
 end
 

@@ -155,9 +155,6 @@ ns.PvELoadingState = {
     cancelled = false,          -- User cancelled collection
 }
 
--- Active coroutines for async collection
-local activeCoroutines = {}
-
 -- Tooltip item count cache: avoid full cross-character scan on every item hover. Invalidated on bag/bank changes.
 local itemCountCache = {}
 local ITEM_COUNT_CACHE_TTL = 30
@@ -1221,7 +1218,7 @@ function WarbandNexus:GetAllCharacters()
             local name, realm = data.name, data.realm
             if (not name or name == "") or (not realm or realm == "") then
                 if key and type(key) == "string" then
-                    local n, r = key:match("^(.+)%-(.+)$")
+                    local n, r = key:match("^(.-)%-(.+)$")
                     if n and r then
                         name, realm = n, r
                         data.name = name
@@ -1528,14 +1525,6 @@ end
 ]]
 function WarbandNexus:CancelPvECollection()
     ns.PvELoadingState.cancelled = true
-    
-    -- Cancel all active coroutines
-    for _, co in pairs(activeCoroutines) do
-        if coroutine.status(co) ~= "dead" then
-            -- Coroutines will check cancelled flag on next yield
-        end
-    end
-    wipe(activeCoroutines)
     
     -- Update loading state
     self:UpdatePvELoadingState({
@@ -3487,7 +3476,7 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
     end
     
     if removed > 0 then
-        self:Print(string.format((ns.L and ns.L["CLEANUP_STALE_FORMAT"]) or "Cleaned up %d stale character(s)", removed))
+        ns.DebugPrint(string.format("|cff9370DB[WN DataService]|r Cleaned up %d stale character(s)", removed))
     end
     
     return removed

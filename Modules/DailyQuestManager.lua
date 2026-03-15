@@ -73,6 +73,7 @@ local KNOWN_WEEKLY_QUESTS = {
     -- Stormarion Assault (Voidstorm)
     { questID = 93892, title = "Stormarion Assault",       category = "events", zone = "Voidstorm",      icon = "Interface\\Icons\\Ability_Warrior_Charge",       eventGroup = "stormarion",
       description = "Tower defense: defend the Singularity Anchor against 3 waves of enemies." },
+
 }
 
 local KNOWN_QUEST_LOOKUP = {}
@@ -279,7 +280,7 @@ local function DetermineQuestCategory(questID, questTitle, flags)
         lowerTitle = questTitle:lower()
     end
 
-    -- Special Assignments (title-based detection)
+    -- Title-based detection (before flag checks)
     if lowerTitle ~= "" then
         if lowerTitle:find("special assignment", 1, true) or lowerTitle:find("assignment:", 1, true) then
             return "assignments"
@@ -287,6 +288,10 @@ local function DetermineQuestCategory(questID, questTitle, flags)
         -- Prey hunts (individual contracts from Astalor Bloodsworn)
         if lowerTitle:find("prey:", 1, true) or lowerTitle:find("prey hunt", 1, true) then
             return "weeklyQuests"
+        end
+        -- WANTED quests (daily repeatable bounty-style, e.g. "WANTED: Toadshade's Petals")
+        if lowerTitle:find("wanted:", 1, true) or lowerTitle:find("wanted ", 1, true) then
+            return "dailyQuests"
         end
     end
 
@@ -385,6 +390,15 @@ function WarbandNexus:ScanMidnightQuests()
         end
 
         local known = KNOWN_QUEST_LOOKUP[questID]
+
+        -- Dynamic (non-hardcoded) weekly/event quests: skip if expired AND incomplete
+        -- Hardcoded quests use IsQuestFlaggedCompleted which auto-resets on weekly server reset
+        -- C_TaskQuest.GetQuestTimeLeftMinutes returns 0 for hardcoded quests (not task quests)
+        if not known and (category == "weeklyQuests" or category == "events") then
+            if not isComplete and (not timeLeft or timeLeft <= 0) then
+                return
+            end
+        end
         local progress = GetQuestProgress(questID)
 
         local questIcon = known and known.icon or nil
@@ -467,6 +481,7 @@ function WarbandNexus:ScanMidnightQuests()
             end
         end
 
+        local hasBountyForMap = false
         if C_QuestLog and C_QuestLog.GetBountiesForMapID then
             local ok, bounties = pcall(C_QuestLog.GetBountiesForMapID, mapID)
             if ok and type(bounties) == "table" then
@@ -475,7 +490,52 @@ function WarbandNexus:ScanMidnightQuests()
                     if bi and bi.questID then
                         bi.isBounty = true
                         AddQuest(bi.questID, mapID, zoneName, bi)
+                        hasBountyForMap = true
                     end
+                end
+            end
+        end
+
+        -- Phase 2b: SA locked — no bounties from API means player hasn't unlocked yet
+        -- lockQuestID is the PREREQUISITE (e.g. "Complete 3 WQs"), NOT the SA itself
+        -- Don't use AddQuest (its IsQuestDone returns stale true from prior weeks)
+        if not hasBountyForMap and C_QuestLog and C_QuestLog.GetBountySetInfoForMapID then
+            local function TryAddLockedSA(checkMapID, saZone)
+                local ok, dispLoc, lockQuestID, bountySetID, isActivitySet = pcall(C_QuestLog.GetBountySetInfoForMapID, checkMapID)
+                if not ok or type(lockQuestID) ~= "number" or lockQuestID <= 0 then return end
+                if addedIDs[lockQuestID] then return end
+
+                local saTitle = GetQuestTitle(lockQuestID)
+                if saTitle == ((ns.L and ns.L["UNKNOWN_QUEST"]) or "Unknown Quest") then
+                    saTitle = "Special Assignment"
+                end
+
+                local progress = GetQuestProgress(lockQuestID)
+                local objectiveText = GetObjectiveText(lockQuestID)
+
+                quests.assignments[#quests.assignments + 1] = {
+                    questID      = lockQuestID,
+                    title        = saTitle,
+                    isComplete   = false,
+                    zone         = saZone,
+                    mapID        = checkMapID,
+                    timeLeft     = 0,
+                    objective    = objectiveText,
+                    icon         = "Interface\\Icons\\Achievement_General",
+                    description  = objectiveText ~= "" and objectiveText or "Complete World Quests to unlock.",
+                    isLocked     = true,
+                    progress     = progress,
+                }
+                addedIDs[lockQuestID] = true
+            end
+
+            TryAddLockedSA(mapID, zoneName)
+
+            if C_Map and C_Map.GetMapInfo then
+                local mapInfo = C_Map.GetMapInfo(mapID)
+                if mapInfo and mapInfo.parentMapID and mapInfo.parentMapID > 0 then
+                    local parentZone = MIDNIGHT_MAPS[mapInfo.parentMapID] or zoneName
+                    TryAddLockedSA(mapInfo.parentMapID, parentZone)
                 end
             end
         end
@@ -505,7 +565,7 @@ function WarbandNexus:ScanMidnightQuests()
         local list = quests[catInfo.key]
         if list then
             if catInfo.key == "events" then
-                -- Events: group by eventGroup (main first, subs after), then incomplete first
+                -- Events: group by eventGroup (main first, subs after), incomplete first, then by title
                 local EVENT_ORDER = { soiree = 1, abundance = 2, haranir = 3, stormarion = 4 }
                 table.sort(list, function(a, b)
                     local aGroup = EVENT_ORDER[a.eventGroup or ""] or 99
@@ -514,13 +574,14 @@ function WarbandNexus:ScanMidnightQuests()
                     local aSub = a.isSubQuest and 1 or 0
                     local bSub = b.isSubQuest and 1 or 0
                     if aSub ~= bSub then return aSub < bSub end
+                    if a.isComplete ~= b.isComplete then return not a.isComplete end
                     return (a.title or "") < (b.title or "")
                 end)
             else
-                -- Other categories: incomplete first, time left, alphabetically
+                -- Other categories: incomplete first (top), completed at bottom; then time left, alphabetically
                 table.sort(list, function(a, b)
                     if a.isComplete ~= b.isComplete then
-                        return not a.isComplete
+                        return not a.isComplete  -- incomplete first (stays at top)
                     end
                     local aTime = (type(a.timeLeft) == "number" and a.timeLeft > 0) and a.timeLeft or math.huge
                     local bTime = (type(b.timeLeft) == "number" and b.timeLeft > 0) and b.timeLeft or math.huge
@@ -627,34 +688,52 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
     local oldQuests = plan.quests
     local newQuests = self:ScanMidnightQuests()
 
-    -- Merge: preserve previously-tracked world quests that disappeared from API
-    -- WQs vanish from C_TaskQuest.GetQuestsOnMap on completion; assume gone = done
-    if oldQuests and oldQuests.worldQuests then
-        local newWQIDs = {}
-        for _, q in ipairs(newQuests.worldQuests or {}) do
-            newWQIDs[q.questID] = true
-        end
-        for _, oldQ in ipairs(oldQuests.worldQuests) do
-            if not newWQIDs[oldQ.questID] then
-                oldQ.isComplete = true
-                newQuests.worldQuests[#newQuests.worldQuests + 1] = oldQ
+    -- Merge completed quests that vanished from API back into the plan
+    -- Dynamic quests (WQ, daily, SA) disappear from API on turn-in
+    -- Hardcoded quests (weekly, events) are always re-scanned so no merge needed
+    if oldQuests then
+        local hasReset = (self.HasWeeklyResetOccurredSince and self:HasWeeklyResetOccurredSince(plan.lastUpdate))
+
+        for _, catKey in ipairs({"worldQuests", "dailyQuests", "assignments"}) do
+            local oldList = oldQuests[catKey]
+            if oldList then
+                local newList = newQuests[catKey] or {}
+                local newIDs = {}
+                for i = 1, #newList do
+                    local q = newList[i]
+                    if q and q.questID then newIDs[q.questID] = true end
+                end
+                for i = 1, #oldList do
+                    local oldQ = oldList[i]
+                    if oldQ and oldQ.questID and not newIDs[oldQ.questID] then
+                        if oldQ.isComplete and not oldQ.isLocked then
+                            oldQ.isComplete = true
+                            newList[#newList + 1] = oldQ
+                        end
+                    end
+                end
+                newQuests[catKey] = newList
             end
         end
-    end
 
-    -- Merge: preserve completed Prey hunts (they leave the quest log after turn-in)
-    if oldQuests and oldQuests.weeklyQuests then
-        local newWeeklyIDs = {}
-        for _, q in ipairs(newQuests.weeklyQuests or {}) do
-            newWeeklyIDs[q.questID] = true
-        end
-        for _, oldQ in ipairs(oldQuests.weeklyQuests) do
-            if not newWeeklyIDs[oldQ.questID] and oldQ.isComplete then
-                local title = oldQ.title or ""
-                local lower = title:lower()
-                local isPrey = lower:find("prey:", 1, true) or lower:find("prey hunt", 1, true)
-                if isPrey then
-                    newQuests.weeklyQuests[#newQuests.weeklyQuests + 1] = oldQ
+        -- Weekly/Events: hardcoded quests auto-refresh via Phase 1
+        -- Dynamic weekly/events that completed but vanished: preserve until weekly reset
+        if not hasReset then
+            for _, catKey in ipairs({"weeklyQuests", "events"}) do
+                local oldList = oldQuests[catKey]
+                local newList = newQuests[catKey]
+                if oldList and newList then
+                    local newIDs = {}
+                    for i = 1, #newList do
+                        local q = newList[i]
+                        if q and q.questID then newIDs[q.questID] = true end
+                    end
+                    for i = 1, #oldList do
+                        local oldQ = oldList[i]
+                        if oldQ and oldQ.questID and not newIDs[oldQ.questID] and oldQ.isComplete then
+                            newList[#newList + 1] = oldQ
+                        end
+                    end
                 end
             end
         end
@@ -678,6 +757,29 @@ function WarbandNexus:InitializeDailyQuestManager()
     self:RegisterEvent("QUEST_TURNED_IN", "OnDailyQuestCompleted")
     self:RegisterEvent("QUEST_LOG_UPDATE", "OnDailyQuestUpdate")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnDailyQuestLogin")
+
+    -- Periodic check for weekly reset: when reset occurs, refresh daily plans
+    -- (expired weeklies are removed; new week's quests appear)
+    if C_Timer and C_Timer.NewTicker then
+        self.dailyQuestWeeklyCheckTime = time()
+        C_Timer.NewTicker(60, function()
+            if not self.HasWeeklyResetOccurredSince then return end
+            if not self.db.global.plans then return end
+            if self:HasWeeklyResetOccurredSince(self.dailyQuestWeeklyCheckTime or 0) then
+                self.dailyQuestWeeklyCheckTime = time()
+                local currentKey = ns.Utilities:GetCharacterKey()
+                for _, plan in ipairs(self.db.global.plans) do
+                    local planKey = ns.Utilities:GetCharacterKey(plan.characterName, plan.characterRealm)
+                    if plan.type == "daily_quests" and planKey == currentKey then
+                        self:UpdateDailyPlanProgress(plan, true)
+                    end
+                end
+                if self.SendMessage then
+                    self:SendMessage("WN_PLANS_UPDATED", { action = "weekly_reset", planType = "daily_quests" })
+                end
+            end
+        end)
+    end
 end
 
 function WarbandNexus:OnDailyQuestLogin()

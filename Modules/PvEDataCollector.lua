@@ -183,10 +183,11 @@ function WarbandNexus:CreateVaultSection(parent, vaultData)
     title:SetText("|cffffcc00Great Vault|r")
     
     -- Group activities by type
-    local grouped = { Raid = {}, ["Mythic+"] = {}, PvP = {} }
+    local grouped = { Raid = {}, ["Mythic+"] = {}, PvP = {}, Other = {} }
     for _, activity in ipairs(vaultData) do
         local activityType = VAULT_ACTIVITY_TYPE[activity.type] or "Other"
-        table.insert(grouped[activityType] or grouped["Other"], activity)
+        if not grouped[activityType] then grouped[activityType] = {} end
+        table.insert(grouped[activityType], activity)
     end
     
     local yOffset = -20

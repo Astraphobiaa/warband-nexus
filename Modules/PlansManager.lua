@@ -333,12 +333,29 @@ function WarbandNexus:CheckItemForPlanCompletion(data)
     -- Use global plans (shared across characters)
     for _, plan in ipairs(self.db.global.plans) do
         if not plan.completed and not plan.completionNotified then
-            -- Check if plan matches the collected item
-            if plan.type == data.type and plan.name == data.name then
-                -- Mark as completed and notified
-                plan.completed = true
-                plan.completionNotified = true
-                return plan
+            -- Check if plan matches the collected item (prefer ID matching, fall back to name)
+            if plan.type == data.type then
+                local matched = false
+                if plan.type == "mount" and plan.mountID and data.mountID then
+                    matched = (plan.mountID == data.mountID)
+                elseif plan.type == "pet" and plan.speciesID and data.speciesID then
+                    matched = (plan.speciesID == data.speciesID)
+                elseif plan.type == "toy" and plan.itemID and data.itemID then
+                    matched = (plan.itemID == data.itemID)
+                elseif plan.type == "achievement" and plan.achievementID and data.achievementID then
+                    matched = (plan.achievementID == data.achievementID)
+                elseif plan.type == "illusion" and plan.illusionID and data.illusionID then
+                    matched = (plan.illusionID == data.illusionID)
+                elseif plan.type == "title" and plan.titleID and data.titleID then
+                    matched = (plan.titleID == data.titleID)
+                elseif plan.name and data.name then
+                    matched = (plan.name == data.name)
+                end
+                if matched then
+                    plan.completed = true
+                    plan.completionNotified = true
+                    return plan
+                end
             end
         end
     end

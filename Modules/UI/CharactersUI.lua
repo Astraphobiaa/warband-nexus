@@ -113,6 +113,11 @@ end
 --============================================================================
 
 function WarbandNexus:DrawCharacterList(parent)
+    -- Request updated WoW Token market price (async; result used by Total Gold card)
+    if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then
+        C_WowTokenPublic.UpdateMarketPrice()
+    end
+
     self.recentlyExpanded = self.recentlyExpanded or {}
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
@@ -333,35 +338,80 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
-    -- Total Gold Card (Right)
+    -- Total Gold + Token Card (Right — wider card spanning remaining space)
     local totalGoldCard = CreateCard(parent, 90)
-    totalGoldCard:SetWidth(threeCardWidth)
     totalGoldCard:SetPoint("LEFT", wbGoldCard, "RIGHT", cardSpacing, 0)
     totalGoldCard:SetPoint("RIGHT", -rightMargin, 0)
-    
+
     -- Apply visuals with accent border
     if ApplyVisuals then
         ApplyVisuals(totalGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
-    
-    -- Use factory for standardized card header layout
-    local tg1Layout = CreateCardHeaderLayout(
-        totalGoldCard,
-        "BonusLoot-Chest",
-        36,
-        true,
-        (ns.L and ns.L["HEADER_TOTAL_GOLD"]) or "TOTAL GOLD",
-        FormatMoney(totalWithWarband, 14),
-        "subtitle",
-        "body"
-    )
-    
-    -- NO TRACKING: Numbers rarely overflow (formatted gold)
-    
+
+    -- Left half: Total Gold (icon + label + value)
+    local tgIcon = CreateIcon(totalGoldCard, "BonusLoot-Chest", 36, true, nil, true)
+    tgIcon:SetPoint("CENTER", totalGoldCard, "LEFT", 15 + 18, 0)
+    tgIcon:Show()
+
+    local tgTextContainer = CreateFrame("Frame", nil, totalGoldCard)
+    tgTextContainer:SetSize(150, 40)
+    tgTextContainer:SetPoint("LEFT", tgIcon, "RIGHT", 12, 0)
+
+    local tgLabel = FontManager:CreateFontString(tgTextContainer, "subtitle", "OVERLAY")
+    tgLabel:SetText((ns.L and ns.L["HEADER_TOTAL_GOLD"]) or "TOTAL GOLD")
+    tgLabel:SetTextColor(1, 1, 1)
+    tgLabel:SetJustifyH("LEFT")
+    tgLabel:SetPoint("BOTTOM", tgTextContainer, "CENTER", 0, 0)
+    tgLabel:SetPoint("LEFT", tgTextContainer, "LEFT", 0, 0)
+
+    local tgValue = FontManager:CreateFontString(tgTextContainer, "body", "OVERLAY")
+    tgValue:SetText(FormatMoney(totalWithWarband, 14))
+    tgValue:SetJustifyH("LEFT")
+    tgValue:SetPoint("TOP", tgTextContainer, "CENTER", 0, -4)
+    tgValue:SetPoint("LEFT", tgTextContainer, "LEFT", 0, 0)
+
+    -- Vertical divider
+    local divider = totalGoldCard:CreateTexture(nil, "ARTWORK")
+    divider:SetSize(1, 50)
+    divider:SetPoint("CENTER", totalGoldCard, "CENTER", 0, 0)
+    divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4)
+
+    -- Right half: WoW Token (icon + label + price with token count)
+    local tokenPrice = C_WowTokenPublic and C_WowTokenPublic.GetCurrentMarketPrice and C_WowTokenPublic.GetCurrentMarketPrice()
+
+    local tkIcon = totalGoldCard:CreateTexture(nil, "ARTWORK")
+    tkIcon:SetSize(28, 28)
+    tkIcon:SetTexture("Interface\\Icons\\WoW_Token01")
+    tkIcon:SetPoint("LEFT", divider, "RIGHT", 14, 0)
+    tkIcon:Show()
+
+    local tkTextContainer = CreateFrame("Frame", nil, totalGoldCard)
+    tkTextContainer:SetSize(150, 40)
+    tkTextContainer:SetPoint("LEFT", tkIcon, "RIGHT", 10, 0)
+
+    local tkLabel = FontManager:CreateFontString(tkTextContainer, "subtitle", "OVERLAY")
+    tkLabel:SetText("WOW TOKEN")
+    tkLabel:SetTextColor(1, 1, 1)
+    tkLabel:SetJustifyH("LEFT")
+    tkLabel:SetPoint("BOTTOM", tkTextContainer, "CENTER", 0, 0)
+    tkLabel:SetPoint("LEFT", tkTextContainer, "LEFT", 0, 0)
+
+    local tkValue = FontManager:CreateFontString(tkTextContainer, "body", "OVERLAY")
+    tkValue:SetJustifyH("LEFT")
+    tkValue:SetPoint("TOP", tkTextContainer, "CENTER", 0, -4)
+    tkValue:SetPoint("LEFT", tkTextContainer, "LEFT", 0, 0)
+
+    if tokenPrice and tokenPrice > 0 then
+        local affordableCount = math.floor(totalWithWarband / tokenPrice)
+        tkValue:SetText(FormatMoney(tokenPrice, 12) .. "  |cff66c0ff(" .. affordableCount .. " Tokens)|r")
+    else
+        tkValue:SetText("|cff888888N/A|r")
+    end
+
     charGoldCard:Show()
     wbGoldCard:Show()
     totalGoldCard:Show()
-    
+
     yOffset = yOffset + 100
     
     local sortOptions = {
@@ -929,7 +979,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
 
     local restedState = self.GetCharacterRestedState and self:GetCharacterRestedState(char)
-    local showRestedLine = restedState ~= nil
+    local maxPlayerLevel = GetMaxPlayerLevel and GetMaxPlayerLevel() or 80
+    local showRestedLine = restedState ~= nil and (char.level or 1) < maxPlayerLevel
     local showZzz = restedState and restedState.isRestingArea
 
     row.levelText:ClearAllPoints()
@@ -1042,7 +1093,20 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             
             -- Unspent knowledge badge (yellow dot)
             local profName = prof.name
-            local kd = profName and char.knowledgeData and char.knowledgeData[profName]
+            local kd = nil
+            if profName and char.knowledgeData then
+                -- Prefer skillLineID-keyed entries (current data written by ProfessionService)
+                for key, entry in pairs(char.knowledgeData) do
+                    if type(key) == "number" and type(entry) == "table" and entry.professionName == profName then
+                        kd = entry
+                        break
+                    end
+                end
+                -- Fallback: legacy profName-keyed data
+                if not kd then
+                    kd = char.knowledgeData[profName]
+                end
+            end
             if kd and kd.unspentPoints and kd.unspentPoints > 0 then
                 if not pFrame.knowledgeBadge then
                     local badge = pFrame:CreateTexture(nil, "OVERLAY")
@@ -1110,7 +1174,20 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 end
 
                 -- ====== SECTION 2: Knowledge Data (C_Traits) ======
-                local kd = char.knowledgeData and char.knowledgeData[profName]
+                local kd = nil
+                if char.knowledgeData then
+                    -- Prefer skillLineID-keyed entries (current data)
+                    for kKey, kEntry in pairs(char.knowledgeData) do
+                        if type(kKey) == "number" and type(kEntry) == "table" and kEntry.professionName == profName then
+                            kd = kEntry
+                            break
+                        end
+                    end
+                    -- Fallback: legacy profName-keyed data
+                    if not kd then
+                        kd = char.knowledgeData[profName]
+                    end
+                end
                 if kd then
                     local unspent = kd.unspentPoints or 0
                     local spent = kd.spentPoints or 0

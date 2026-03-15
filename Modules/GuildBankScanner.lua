@@ -20,36 +20,32 @@ end
 
 -- Scan Guild Bank
 function WarbandNexus:ScanGuildBank()
-    self:Print("|cff888888[Guild Bank Scanner]|r ScanGuildBank() called")
+    ns.DebugPrint("|cff888888[Guild Bank Scanner]|r ScanGuildBank() called")
     
-    -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        self:Print("|cffff6600[Guild Bank Scanner]|r Character not tracked")
+        ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Character not tracked")
         return false
     end
     
     LogOperation("Guild Bank Scan", "Started", self.currentTrigger or "Manual")
     
-    -- Check if guild bank is accessible
     if not self.guildBankIsOpen then
-        self:Print("|cffff6600[Guild Bank Scanner]|r Guild bank not open (guildBankIsOpen=false)")
+        ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Guild bank not open (guildBankIsOpen=false)")
         return false
     end
     
-    -- Check if player is in a guild
     if not IsInGuild() then
-        self:Print("|cffff6600[Guild Bank Scanner]|r Player not in a guild")
+        ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Player not in a guild")
         return false
     end
     
-    -- Get guild name for storage key
     local guildName = GetGuildInfo("player")
     if not guildName then
-        self:Print("|cffff6600[Guild Bank Scanner]|r Could not get guild name")
+        ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Could not get guild name")
         return false
     end
     
-    self:Print("|cff00ff00[Guild Bank Scanner]|r Starting scan for guild: " .. guildName)
+    ns.DebugPrint("|cff00ff00[Guild Bank Scanner]|r Starting scan for guild: " .. guildName)
     
     -- Initialize guild bank structure in global DB (guild bank is shared across characters)
     if not self.db.global.guildBank then
@@ -154,7 +150,7 @@ function WarbandNexus:ScanGuildBank()
         guildData.goldLastUpdated = time()
     end
     
-    self:Print("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. totalItems .. " items in " .. usedSlots .. " slots")
+    ns.DebugPrint("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. totalItems .. " items in " .. usedSlots .. " slots")
     
     LogOperation("Guild Bank Scan", "Finished", self.currentTrigger or "Manual")
     

@@ -14,6 +14,21 @@
 
 local ADDON_NAME, ns = ...
 
+-- Illusion cache: built once per session, maps visualID and sourceID to illusionInfo
+local illusionCache = nil
+local function GetIllusionCache()
+    if illusionCache then return illusionCache end
+    if not C_TransmogCollection or not C_TransmogCollection.GetIllusions then return nil end
+    local illusions = C_TransmogCollection.GetIllusions()
+    if not illusions then return nil end
+    illusionCache = {}
+    for _, info in ipairs(illusions) do
+        if info.visualID then illusionCache[info.visualID] = info end
+        if info.sourceID then illusionCache[info.sourceID] = info end
+    end
+    return illusionCache
+end
+
 -- Debug print helper
 local function DebugPrint(...)
     local addon = _G.WarbandNexus
@@ -145,16 +160,23 @@ CollectionRules.MOUNT = {
         if not itemID or not C_MountJournal then
             return false
         end
-        
-        -- Check item spell effect for mount teaching
-        local itemSpell = C_Item.GetItemSpell(itemID)
-        if not itemSpell then
+
+        -- Get the spell this item teaches
+        local _, itemSpellID = C_Item.GetItemSpell(itemID)
+        if not itemSpellID then
             return false
         end
-        
-        -- Mount items typically have "Teaches you how to summon" in tooltip
-        -- This is a heuristic check; better to use mount journal directly
-        return true -- Simplified for now
+
+        -- Cross-reference against mount journal: find if any mount's spell matches
+        local mountIDs = C_MountJournal.GetMountIDs()
+        if not mountIDs then return false end
+        for _, mountID in ipairs(mountIDs) do
+            local _, spellID = C_MountJournal.GetMountInfoByID(mountID)
+            if spellID and spellID == itemSpellID then
+                return true
+            end
+        end
+        return false
     end,
     
     --[[
@@ -340,18 +362,15 @@ CollectionRules.ILLUSION = {
         if not illusionID or not C_TransmogCollection then
             return "UNKNOWN"
         end
-        
-        local illusions = C_TransmogCollection.GetIllusions()
-        if not illusions then
-            return "UNKNOWN"
+
+        local cache = GetIllusionCache()
+        if not cache then return "UNKNOWN" end
+
+        local info = cache[illusionID]
+        if info then
+            return info.isCollected and "KNOWN" or "UNKNOWN"
         end
-        
-        for _, illusionInfo in ipairs(illusions) do
-            if illusionInfo.visualID == illusionID or illusionInfo.sourceID == illusionID then
-                return illusionInfo.isCollected and "KNOWN" or "UNKNOWN"
-            end
-        end
-        
+
         return "UNKNOWN"
     end,
     
@@ -364,22 +383,21 @@ CollectionRules.ILLUSION = {
         if not illusionID or not C_TransmogCollection then
             return {canUse = true, reason = "", isCollected = false}
         end
-        
-        local illusions = C_TransmogCollection.GetIllusions()
-        if not illusions then
+
+        local cache = GetIllusionCache()
+        if not cache then
             return {canUse = true, reason = "", isCollected = false}
         end
-        
-        for _, illusionInfo in ipairs(illusions) do
-            if illusionInfo.visualID == illusionID or illusionInfo.sourceID == illusionID then
-                return {
-                    isCollected = illusionInfo.isCollected or false,
-                    canUse = true, -- Illusions are account-wide
-                    reason = ""
-                }
-            end
+
+        local info = cache[illusionID]
+        if info then
+            return {
+                isCollected = info.isCollected or false,
+                canUse = true,
+                reason = ""
+            }
         end
-        
+
         return {canUse = true, reason = "", isCollected = false}
     end
 }

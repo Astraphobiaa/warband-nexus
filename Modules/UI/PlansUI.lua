@@ -956,12 +956,29 @@ end
 
 local function FormatTimeLeft(minutes)
     if not minutes or minutes <= 0 then return "" end
+    local L = ns.L
+    local Day = (L and L["PLAYED_DAY"]) or "Day"
+    local Days = (L and L["PLAYED_DAYS"]) or "Days"
+    local Hour = (L and L["PLAYED_HOUR"]) or "Hour"
+    local Hours = (L and L["PLAYED_HOURS"]) or "Hours"
+    local Minute = (L and L["PLAYED_MINUTE"]) or "Minute"
+    local Minutes = (L and L["PLAYED_MINUTES"]) or "Minutes"
     if minutes >= 1440 then
-        return string.format("%dd", math.floor(minutes / 1440))
+        local days = math.floor(minutes / 1440)
+        local hours = math.floor((minutes % 1440) / 60)
+        if hours > 0 then
+            return string.format("%d %s %d %s", days, days == 1 and Day or Days, hours, hours == 1 and Hour or Hours)
+        end
+        return string.format("%d %s", days, days == 1 and Day or Days)
     elseif minutes >= 60 then
-        return string.format("%dh", math.floor(minutes / 60))
+        local hours = math.floor(minutes / 60)
+        local mins = minutes % 60
+        if mins > 0 then
+            return string.format("%d %s %d %s", hours, hours == 1 and Hour or Hours, mins, mins == 1 and Minute or Minutes)
+        end
+        return string.format("%d %s", hours, hours == 1 and Hour or Hours)
     end
-    return string.format("%dm", minutes)
+    return string.format("%d %s", minutes, minutes == 1 and Minute or Minutes)
 end
 
 local EVENT_GROUP_NAMES = {
@@ -1000,6 +1017,8 @@ local function AttachQuestRowTooltip(frame, quest)
         end
         if quest.isComplete then
             lines[#lines + 1] = { text = "|cff44ff44Completed|r", color = {0.27, 1, 0.27} }
+        elseif quest.isLocked then
+            lines[#lines + 1] = { text = "|cffff9933Locked — complete World Quests to unlock|r", color = {1, 0.6, 0.2} }
         end
         if quest.questID then
             lines[#lines + 1] = { text = "Quest ID: " .. quest.questID, color = {0.5, 0.5, 0.5} }
@@ -1083,7 +1102,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
         -- Character name
         local charName = FontManager:CreateFontString(headerCard, "header", "OVERLAY")
-        charName:SetPoint("LEFT", 14, 6)
+        charName:SetPoint("LEFT", 14, 10)
         charName:SetText(string.format(
             "|cff%02x%02x%02x%s|r |cff888888-%s|r",
             classColor.r * 255, classColor.g * 255, classColor.b * 255,
@@ -1093,7 +1112,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
         -- Progress text
         local progressText = FontManager:CreateFontString(headerCard, "body", "OVERLAY")
-        progressText:SetPoint("LEFT", 14, -10)
+        progressText:SetPoint("LEFT", 14, -16)
         local pctColor = (totalAll > 0 and completedAll == totalAll) and "|cff44ff44" or "|cffffcc00"
         progressText:SetText(string.format(
             "%s%d/%d|r %s",
@@ -1101,26 +1120,8 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             (ns.L and ns.L["CONTENT_MIDNIGHT"]) or "Midnight"
         ))
 
-        -- Progress bar
-        local barW = 120
-        local barBg = headerCard:CreateTexture(nil, "ARTWORK")
-        barBg:SetSize(barW, 4)
-        barBg:SetPoint("RIGHT", -50, 0)
-        barBg:SetColorTexture(0.15, 0.15, 0.18, 1)
-
-        local barFill = headerCard:CreateTexture(nil, "ARTWORK", nil, 1)
-        barFill:SetHeight(4)
-        barFill:SetPoint("LEFT", barBg, "LEFT", 0, 0)
-        local fillPct = (totalAll > 0) and (completedAll / totalAll) or 0
-        barFill:SetWidth(math.max(1, barW * fillPct))
-        if completedAll == totalAll and totalAll > 0 then
-            barFill:SetColorTexture(0.27, 1, 0.27, 1)
-        else
-            barFill:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-        end
-
-        -- Remove button
-        local removeBtn = ns.UI.Factory:CreateButton(headerCard, 16, 16, true)
+        -- Remove button (larger for easier clicking)
+        local removeBtn = ns.UI.Factory:CreateButton(headerCard, 24, 24, true)
         removeBtn:SetPoint("RIGHT", -12, 0)
         removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
         removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
@@ -1226,6 +1227,9 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                 if quest.isComplete then
                                     statusIcon:SetAtlas("common-icon-checkmark", false)
                                     statusIcon:SetVertexColor(0.27, 1, 0.27)
+                                elseif quest.isLocked then
+                                    statusIcon:SetAtlas("Padlock", false)
+                                    statusIcon:SetVertexColor(1, 0.6, 0.2)
                                 else
                                     statusIcon:SetAtlas("Objective-Nub", false)
                                     statusIcon:SetVertexColor(0.6, 0.6, 0.6)
@@ -1239,6 +1243,8 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                 titleFs:SetWordWrap(false)
                                 if quest.isComplete then
                                     titleFs:SetText("|cff44ff44" .. (quest.title or "") .. "|r")
+                                elseif quest.isLocked then
+                                    titleFs:SetText("|cffff9933" .. (quest.title or "") .. "|r")
                                 elseif isSub then
                                     titleFs:SetText("|cffaaaaaa" .. (quest.title or "") .. "|r")
                                 else
@@ -1251,14 +1257,13 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                 zoneFs:SetWidth(width * 0.25)
                                 zoneFs:SetJustifyH("LEFT")
                                 zoneFs:SetWordWrap(false)
-                                zoneFs:SetText("|cff888888" .. (quest.zone or "") .. "|r")
+                                zoneFs:SetText("|cffffffff" .. (quest.zone or "") .. "|r")
 
                                 -- Time remaining
                                 if quest.timeLeft and quest.timeLeft > 0 then
                                     local timeFs = FontManager:CreateFontString(row, "body", "OVERLAY")
                                     timeFs:SetPoint("RIGHT", -14, 0)
-                                    local timeColor = quest.timeLeft < 60 and "|cffff4444" or "|cff888888"
-                                    timeFs:SetText(timeColor .. FormatTimeLeft(quest.timeLeft) .. "|r")
+                                    timeFs:SetText("|cffffffff" .. FormatTimeLeft(quest.timeLeft) .. "|r")
                                 end
 
                                 AttachQuestRowTooltip(row, quest)

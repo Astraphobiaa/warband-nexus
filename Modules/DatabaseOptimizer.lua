@@ -410,7 +410,7 @@ function WarbandNexus:CheckAutoOptimization()
         -- Only notify if something was cleaned
         local totalCleaned = results.staleCharacters + results.invalidItems + results.invalidCharacters
         if totalCleaned > 0 then
-            self:Print(string.format("|cff00ff00Auto-optimized database:|r Removed %d items", totalCleaned))
+            ns.DebugPrint(string.format("|cff00ff00[WN DatabaseOptimizer]|r Auto-optimized database: Removed %d items", totalCleaned))
         end
         
         self.db.profile.lastOptimize = time()
@@ -717,8 +717,8 @@ function WarbandNexus:EnforceCharacterLimit(limit)
         end
     end
     
-    if removed > 0 and not self.db.profile.debugMode then
-        self:Print(string.format("|cffff9900Removed %d old characters (limit: %d)|r", removed, limit))
+    if removed > 0 then
+        ns.DebugPrint(string.format("|cffff9900[WN DatabaseOptimizer]|r Removed %d old characters (limit: %d)", removed, limit))
     end
     
     return removed

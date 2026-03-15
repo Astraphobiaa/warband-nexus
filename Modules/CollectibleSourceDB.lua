@@ -1205,12 +1205,12 @@ ns.CollectibleSourceDB = {
         -- Source: warcraftmounts.com Patch 12.0.1; encounter IDs: wago.tools DungeonEncounter DB2
         -- difficultyIDs: 23 = Mythic dungeon, 8 = Mythic Keystone (M+), 16 = Mythic raid (all map to "Mythic")
         [231636] = { -- Restless Heart (Windrunner Spire) â€” Spectral Hawkstrider â€” encounterID 3059
-            { type = "mount", itemID = 246592, name = "Spectral Hawkstrider" },
+            { type = "mount", itemID = 262914, name = "Spectral Hawkstrider" },
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+); same encounter, no separate M+ entry
         },
-        [219440] = { -- Degentrius (Magisters' Terrace) â€” Lucent Hawkstrider â€” encounterID 3074 (npc=219440 warcraftmounts)
-            { type = "mount", itemID = 246591, name = "Lucent Hawkstrider" },
+        [231865] = { -- Degentrius (Magisters' Terrace) â€” Lucent Hawkstrider â€” encounterID 3074 (npc=231865 wowhead)
+            { type = "mount", itemID = 260231, name = "Lucent Hawkstrider" },
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+)
         },
@@ -1542,19 +1542,19 @@ ns.CollectibleSourceDB = {
         -- If container/mount not detected, verify container item ID in-game (cache in bags) and update key/drops.
         [267300] = { -- Victorious Stormarion Pinnacle Cache
             drops = {
-                { type = "mount", itemID = 257177, name = "Reins of the Contained Stormarion Defender" },
+                { type = "mount", itemID = 257180, name = "Reins of the Contained Stormarion Defender" },
                 { type = "pet", itemID = 257178, name = "Kai" },
             },
         },
         [268485] = { -- Victorious Stormarion Pinnacle Cache - Midnight Preseason (same loot table)
             drops = {
-                { type = "mount", itemID = 257177, name = "Reins of the Contained Stormarion Defender" },
+                { type = "mount", itemID = 257180, name = "Reins of the Contained Stormarion Defender" },
                 { type = "pet", itemID = 257178, name = "Kai" },
             },
         },
         [260979] = { -- Victorious Stormarion Cache (blue/uncommon weekly cache; same collectible pool as pinnacle)
             drops = {
-                { type = "mount", itemID = 257177, name = "Reins of the Contained Stormarion Defender" },
+                { type = "mount", itemID = 257180, name = "Reins of the Contained Stormarion Defender" },
                 { type = "pet", itemID = 257178, name = "Kai" },
             },
         },
@@ -1698,13 +1698,13 @@ ns.CollectibleSourceDB = {
         -- difficultyIDs per encounter: dungeons 23 (Mythic) + 8 (Mythic Keystone / M+); raid 16 (Mythic).
         -- Mythic+ uses the SAME encounterID as Mythic dungeon; no separate M+ encounter entry needed.
         [3059] = { 231636 },   -- Restless Heart (Windrunner Spire) â€” difficultyIDs 23, 8 â€” Spectral Hawkstrider
-        [3074] = { 219440 },   -- Degentrius (Magisters' Terrace) â€” difficultyIDs 23, 8 â€” Lucent Hawkstrider
+        [3074] = { 231865 },   -- Degentrius (Magisters' Terrace) â€” difficultyIDs 23, 8 â€” Lucent Hawkstrider
         [3183] = { 214650 },   -- Midnight Falls / L'ura (March on Quel'Danas) â€” difficultyID 16 â€” Ashes of Belo'ren
     },
 
     legacyEncounterNames = {
         ["Restless Heart"] = { 231636 },       -- Windrunner Spire
-        ["Degentrius"] = { 219440 },           -- Magisters' Terrace
+        ["Degentrius"] = { 231865 },           -- Magisters' Terrace
         ["Midnight Falls"] = { 214650 },       -- March on Quel'Danas
     },
 
