@@ -196,6 +196,27 @@ local defaults = {
 
         -- Profession tab: which expansion to show (strict filter; only that expansion's data)
         professionExpansionFilter = "Midnight",  -- "All", "Midnight", "Khaz Algar", "Dragon Isles", etc.
+
+        -- Profession tab: which data columns are visible (user-toggleable)
+        professionVisibleColumns = {
+            skill       = true,
+            conc        = true,
+            recharge    = true,
+            knowledge   = true,
+            recipes     = true,
+            firstCraft  = true,
+            uniques     = true,
+            treatise    = true,
+            weeklyQuest = true,
+            treasure    = true,
+            gathering   = true,
+            catchUp     = true,
+            moxie       = true,
+            cooldowns   = false,
+            tool        = false,
+            acc1        = false,
+            acc2        = false,
+        },
         
         -- PvE list sorting preferences
         pveSort = {

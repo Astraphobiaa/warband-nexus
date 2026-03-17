@@ -684,46 +684,92 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local modelX    = baseX + LEFT_PANEL_W + CENTER_GAP
     local modelTopY = startY
 
+    -- scrollChild is the stable parent — model is parented here once and NEVER
+    -- re-parented. Re-parenting a PlayerModel resets WoW's internal renderer
+    -- causing the "slide up from bottom" animation on every refresh.
+    -- The model is positioned by anchoring to the card (which is recreated each
+    -- refresh) — anchor changes don't trigger animation restarts.
+    local scrollParent = card:GetParent()
+
     local centerRef = nil
     if isCurrentChar == true then
-        local ok, m = pcall(function()
-            local f = CreateFrame("PlayerModel", nil, card)
-            f:SetSize(MODEL_W, MODEL_H)
-            f:SetPoint("TOPLEFT", modelX, modelTopY)
-            f:SetUnit("player")
-            f:SetCamDistanceScale(0.92)
-            f:SetPortraitZoom(0.42)
-            return f
-        end)
-        if ok and m then centerRef = m end
+        local model = ns._gearPlayerModel
+        if not model then
+            local ok, m = pcall(function()
+                local f = CreateFrame("PlayerModel", nil, scrollParent)
+                if f.SetKeepModelOnHide then f:SetKeepModelOnHide(true) end
+                return f
+            end)
+            if ok and m then
+                model = m
+                model.isPersistentRowElement = true
+                ns._gearPlayerModel = model
+            end
+        end
+        if model then
+            -- Ensure stable parent (scrollChild) — NEVER re-parent to card
+            if model:GetParent() ~= scrollParent then
+                model:SetParent(scrollParent)
+            end
+            model:ClearAllPoints()
+            model:SetSize(MODEL_W, MODEL_H)
+            -- Anchor TO the card so model scrolls with it, without being its child
+            model:SetPoint("TOPLEFT", card, "TOPLEFT", modelX, modelTopY)
+            model:SetFrameLevel(card:GetFrameLevel() + 5)
+            model:SetCamDistanceScale(0.92)
+            model:SetPortraitZoom(0.42)
+            if not model._unitSet then
+                model:SetUnit("player")
+                model._unitSet = true
+            end
+            model:Show()
+            centerRef = model
+        end
+    else
+        if ns._gearPlayerModel then
+            ns._gearPlayerModel:Hide()
+            ns._gearPlayerModel._unitSet = false
+        end
     end
 
-    -- Fallback: No Preview (models are not stored for offline characters)
+    -- Fallback: No Preview (same stable-parent pattern)
     if not centerRef then
-        local portrait = CreateFrame("Frame", nil, card, "BackdropTemplate")
+        local portrait = ns._gearNoPreviewFrame
+        if not portrait then
+            portrait = CreateFrame("Frame", nil, scrollParent, "BackdropTemplate")
+            local noPreview = FontManager:CreateFontString(portrait, "header", "OVERLAY")
+            noPreview:SetPoint("CENTER", portrait, "CENTER", 0, 0)
+            noPreview:SetJustifyH("CENTER")
+            noPreview:SetTextColor(0.5, 0.5, 0.55, 1)
+            noPreview:SetText("No Preview")
+            noPreview:SetShadowOffset(1, -1)
+            noPreview:SetShadowColor(0, 0, 0, 0.8)
+            portrait.isPersistentRowElement = true
+            ns._gearNoPreviewFrame = portrait
+        end
+        if portrait:GetParent() ~= scrollParent then
+            portrait:SetParent(scrollParent)
+        end
+        portrait:ClearAllPoints()
         portrait:SetSize(MODEL_W, MODEL_H)
-        portrait:SetPoint("TOPLEFT", modelX, modelTopY)
+        portrait:SetPoint("TOPLEFT", card, "TOPLEFT", modelX, modelTopY)
+        portrait:SetFrameLevel(card:GetFrameLevel() + 5)
         portrait:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
         portrait:SetBackdropColor(0.05, 0.05, 0.07, 0.95)
         portrait:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.65)
-        local noPreview = FontManager:CreateFontString(portrait, "header", "OVERLAY")
-        noPreview:SetPoint("CENTER", portrait, "CENTER", 0, 0)
-        noPreview:SetJustifyH("CENTER")
-        noPreview:SetTextColor(0.5, 0.5, 0.55, 1)
-        noPreview:SetText("No Preview")
-        noPreview:SetShadowOffset(1, -1)
-        noPreview:SetShadowColor(0, 0, 0, 0.8)
+        portrait:Show()
         centerRef = portrait
     end
 
-    -- Border around model/portrait
+    -- Border around model/portrait (parented to card — recycled automatically)
     local modelBorder = CreateFrame("Frame", nil, card, "BackdropTemplate")
     modelBorder:SetPoint("TOPLEFT",     centerRef, "TOPLEFT",      -1,  1)
     modelBorder:SetPoint("BOTTOMRIGHT", centerRef, "BOTTOMRIGHT",   1, -1)
     modelBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     modelBorder:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.65)
+    modelBorder:SetFrameLevel(centerRef:GetFrameLevel() + 6)
 
-    -- Item level overlaid at top of portrait (wrapper frame so we can SetFrameLevel; FontString has no SetFrameLevel)
+    -- Item level overlaid at top of portrait
     local avgIlvl = charData and charData.itemLevel or 0
     if avgIlvl > 0 then
         local ilvlFrame = CreateFrame("Frame", nil, card)
@@ -1422,10 +1468,11 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         end
 
         -- Clear previous entries
+        local bin = ns.UI_RecycleBin
         local children = { menu:GetChildren() }
         for i = 1, #children do
             children[i]:Hide()
-            children[i]:SetParent(nil)
+            if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
         end
 
         local ENTRY_H = 28

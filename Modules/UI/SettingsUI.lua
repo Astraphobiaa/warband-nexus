@@ -484,10 +484,11 @@ local function CreateDropdownWidget(parent, option, yOffset)
         menu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
         
         -- Clear existing children (scrollFrame and buttons)
+        local bin = ns.UI_RecycleBin
         local children = { menu:GetChildren() }
         for _, child in ipairs(children) do
             child:Hide()
-            child:SetParent(nil)
+            if bin then child:SetParent(bin) else child:SetParent(nil) end
         end
         
         activeMenu = menu
@@ -814,9 +815,10 @@ end
 
 local function BuildSettings(parent, containerWidth)
     -- Clear existing
+    local bin = ns.UI_RecycleBin
     for _, child in pairs({parent:GetChildren()}) do
         child:Hide()
-        child:SetParent(nil)
+        if bin then child:SetParent(bin) else child:SetParent(nil) end
     end
     
     -- Clear tracking tables

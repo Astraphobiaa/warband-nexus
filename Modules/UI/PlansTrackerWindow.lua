@@ -446,10 +446,11 @@ local function RefreshTrackerContentImmediate()
     end)
 
     -- Clear existing children (frames AND their FontStrings)
+    local bin = ns.UI_RecycleBin
     local children = { scrollChild:GetChildren() }
     for _, c in ipairs(children) do
         c:Hide()
-        c:SetParent(nil)
+        if bin then c:SetParent(bin) else c:SetParent(nil) end
     end
     -- Also clear any orphan regions (FontStrings created directly on scrollChild)
     for _, r in ipairs({ scrollChild:GetRegions() }) do

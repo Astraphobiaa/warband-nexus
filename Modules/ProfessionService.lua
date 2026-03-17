@@ -693,243 +693,53 @@ end
     Legacy:  if professionEquipment has .tool (flat table), UI treats it as fallback for any profession.
 ]]
 
--- Mapping from profession name to Enum.Profession value
--- Used to call C_TradeSkillUI.GetProfessionSlots(enumValue)
 local NormalizeProfessionNameForEquipment
-local PROFESSION_NAME_TO_ENUM = {
-    ["First Aid"] = 0,
-    ["Blacksmithing"] = 1,
-    ["Leatherworking"] = 2,
-    ["Alchemy"] = 3,
-    ["Herbalism"] = 4,
-    ["Cooking"] = 5,
-    ["Mining"] = 6,
-    ["Tailoring"] = 7,
-    ["Engineering"] = 8,
-    ["Enchanting"] = 9,
-    ["Fishing"] = 10,
-    ["Skinning"] = 11,
-    ["Jewelcrafting"] = 12,
-    ["Inscription"] = 13,
-    ["Archaeology"] = 14,
+
+-- Profession name → Enum.Profession value (used by C_TradeSkillUI.GetProfessionSlots).
+local PROFESSION_ENUM = {
+    ["Blacksmithing"] = 1,  ["Leatherworking"] = 2, ["Alchemy"]     = 3,
+    ["Herbalism"]     = 4,  ["Cooking"]        = 5, ["Mining"]       = 6,
+    ["Tailoring"]     = 7,  ["Engineering"]    = 8, ["Enchanting"]   = 9,
+    ["Fishing"]       = 10, ["Skinning"]       = 11,["Jewelcrafting"] = 12,
+    ["Inscription"]   = 13,
 }
 
--- Base profession skillLine -> Enum.Profession
--- Locale-independent fallback when profession names differ.
-local PROFESSION_SKILLLINE_TO_ENUM = {
-    [164] = 1,   -- Blacksmithing
-    [165] = 2,   -- Leatherworking
-    [171] = 3,   -- Alchemy
-    [182] = 4,   -- Herbalism
-    [185] = 5,   -- Cooking
-    [186] = 6,   -- Mining
-    [197] = 7,   -- Tailoring
-    [202] = 8,   -- Engineering
-    [333] = 9,   -- Enchanting
-    [356] = 10,  -- Fishing
-    [393] = 11,  -- Skinning
-    [755] = 12,  -- Jewelcrafting
-    [773] = 13,  -- Inscription
-    [794] = 14,  -- Archaeology
+-- Base skillLine → Enum.Profession (locale-independent).
+local SKILLLINE_TO_ENUM = {
+    [164] = 1, [165] = 2, [171] = 3, [182] = 4, [185] = 5,
+    [186] = 6, [197] = 7, [202] = 8, [333] = 9, [356] = 10,
+    [393] = 11,[755] = 12,[773] = 13,
 }
 
-local function ResolveProfessionEnum(profName, skillLine)
-    if skillLine and PROFESSION_SKILLLINE_TO_ENUM[skillLine] then
-        return PROFESSION_SKILLLINE_TO_ENUM[skillLine]
-    end
-    if not profName or profName == "" then return nil end
-    local normalized = profName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", ""):gsub("^Shadowlands ", "")
-    return PROFESSION_NAME_TO_ENUM[normalized] or PROFESSION_NAME_TO_ENUM[profName]
-end
-
--- Fallback slots for when GetProfessionSlots is unavailable
-local EQUIPMENT_SLOTS = {
-    { slotID = 20, key = "tool" },
-    { slotID = 21, key = "accessory1" },
-    { slotID = 22, key = "accessory2" },
-}
-
-local function BuildProfessionSlotLookupCandidates(profName)
-    local candidates = {}
-
-    local function PushCandidate(v)
-        if type(v) ~= "number" or v <= 0 then return end
-        for i = 1, #candidates do
-            if candidates[i] == v then
-                return
-            end
-        end
-        candidates[#candidates + 1] = v
-    end
-
-    -- Candidate 1: Enum.Profession mapping
-    PushCandidate(ResolveProfessionEnum(profName))
-
-    -- Candidate 2: currently open child skill line
-    if C_TradeSkillUI and C_TradeSkillUI.GetProfessionChildSkillLineID then
-        local ok, sl = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
-        if ok then
-            PushCandidate(sl)
-        end
-    end
-
-    -- Candidate 3: base skillLine from GetProfessions
-    local p1, p2, arch, fish, cook = GetProfessions()
-    local profIndices = { p1, p2, arch, fish, cook }
-    local normalizedTarget = NormalizeProfessionNameForEquipment(profName)
-    for i = 1, #profIndices do
-        local profIndex = profIndices[i]
-        if profIndex then
-            local ok, foundName, _, _, _, _, skillLine = pcall(GetProfessionInfo, profIndex)
-            if ok and foundName and skillLine and skillLine > 0 then
-                local normFound = NormalizeProfessionNameForEquipment(foundName)
-                if normFound == normalizedTarget then
-                    PushCandidate(skillLine)
-                end
-            end
-        end
-    end
-
-    return candidates
-end
-
-local function ResolveDynamicEquipmentSlots(profName)
+-- Ask the game for the actual equipment slot IDs for a profession.
+-- Returns a plain array like {20,21,22} or {23,24,25} — game decides the mapping.
+local function GetProfessionSlotIDs(profName, skillLine)
     if not C_TradeSkillUI or not C_TradeSkillUI.GetProfessionSlots then return nil end
-    local candidates = BuildProfessionSlotLookupCandidates(profName)
-    for i = 1, #candidates do
-        local candidate = candidates[i]
-        local ok, dynamicSlots = pcall(C_TradeSkillUI.GetProfessionSlots, candidate)
-        if ok and dynamicSlots and #dynamicSlots > 0 then
-            local slots = {}
-            for s = 1, #dynamicSlots do
-                slots[#slots + 1] = {
-                    slotID = dynamicSlots[s],
-                    key = (s == 1 and "tool") or (s == 2 and "accessory1") or (s == 3 and "accessory2") or ("slot" .. s),
-                }
-            end
-            return slots
-        end
-    end
+
+    local normalized = NormalizeProfessionNameForEquipment(profName)
+    local profEnum = (skillLine and SKILLLINE_TO_ENUM[skillLine])
+                  or (normalized and PROFESSION_ENUM[normalized])
+    if not profEnum then return nil end
+
+    local ok, slotIDs = pcall(C_TradeSkillUI.GetProfessionSlots, profEnum)
+    if ok and slotIDs and #slotIDs > 0 then return slotIDs end
     return nil
 end
 
-local function CollectEquipmentDataForCurrentProfession()
-    if not WarbandNexus or not WarbandNexus.db then return end
-
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not charKey then return end
-
-    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-    if not charData then return end
-
-    local profName = GetCurrentProfessionName()
-    if not profName or profName == "" then return end
-
-    -- Ensure professionEquipment is keyed by profession (support legacy flat table)
-    if not charData.professionEquipment or not rawget(charData.professionEquipment, "tool") then
-        if type(charData.professionEquipment) ~= "table" then
-            charData.professionEquipment = {}
-        end
-    else
-        -- Migrate old flat table to per-profession; keep as _legacy fallback
-        local legacy = charData.professionEquipment
-        charData.professionEquipment = { _legacy = legacy }
-    end
-
-    local equipment = {
-        lastUpdate = time(),
-    }
-
-    local slotsToUse = ResolveDynamicEquipmentSlots(profName) or EQUIPMENT_SLOTS
-
-    local hasAny = false
-    for _, slot in ipairs(slotsToUse) do
-        local itemID = GetInventoryItemID("player", slot.slotID)
-        if itemID then
-            local itemLink = GetInventoryItemLink("player", slot.slotID)
-            local icon = GetInventoryItemTexture and GetInventoryItemTexture("player", slot.slotID) or nil
-            local itemName = nil
-            if itemLink then
-                itemName = itemLink:match("%[(.-)%]")
-            end
-            equipment[slot.key] = {
-                itemID   = itemID,
-                itemLink = itemLink,
-                icon     = icon,
-                name     = itemName or ("Item " .. itemID),
-            }
-            hasAny = true
-        end
-    end
-
-    -- Fallback: if dynamic slot resolution returned no items, scan standard slots.
-    if not hasAny and slotsToUse ~= EQUIPMENT_SLOTS then
-        for _, slot in ipairs(EQUIPMENT_SLOTS) do
-            local itemID = GetInventoryItemID("player", slot.slotID)
-            if itemID then
-                local itemLink = GetInventoryItemLink("player", slot.slotID)
-                local icon = GetInventoryItemTexture and GetInventoryItemTexture("player", slot.slotID) or nil
-                local itemName = nil
-                if itemLink then
-                    itemName = itemLink:match("%[(.-)%]")
-                end
-                equipment[slot.key] = {
-                    itemID   = itemID,
-                    itemLink = itemLink,
-                    icon     = icon,
-                    name     = itemName or ("Item " .. itemID),
-                }
-                hasAny = true
-            end
-        end
-    end
-
-    local key = NormalizeProfessionNameForEquipment(profName) or profName
-    charData.professionEquipment[key] = equipment
-    if profName and profName ~= key then
-        charData.professionEquipment[profName] = equipment
-    end
-
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_PROFESSION_EQUIPMENT_UPDATED", charKey)
-    end
-end
-
---[[
-    Helper: Get equipment slot IDs for a profession using GetProfessionSlots API.
-    Returns array of slot IDs, or nil if API unavailable.
-    Note: GetProfessionSlots returns 1-indexed slot IDs directly usable with GetInventoryItemID.
-]]
-local function GetSlotsForProfession(profEnum)
-    if not C_TradeSkillUI or not C_TradeSkillUI.GetProfessionSlots then return nil end
-
-    local ok, slots = pcall(C_TradeSkillUI.GetProfessionSlots, profEnum)
-    if not ok or not slots or #slots == 0 then return nil end
-
-    -- GetProfessionSlots returns slot IDs directly (e.g., 20, 21, 22 for first profession)
-    -- No offset needed - these are the actual inventory slot IDs
-    return slots
-end
-
---[[
-    Helper: Collect equipment from specific slot IDs for a profession.
-    Returns equipment table { tool?, accessory1?, accessory2?, lastUpdate }.
-]]
+-- Collect equipment from an array of inventory slot IDs.
+-- Returns { tool?, accessory1?, accessory2?, lastUpdate } or nil if all slots empty.
 local function CollectEquipmentFromSlots(slotIDs)
     if not slotIDs or #slotIDs == 0 then return nil end
-
-    local equipment = { lastUpdate = time() }
     local slotKeys = { "tool", "accessory1", "accessory2" }
+    local equipment = { lastUpdate = time() }
     local hasAny = false
-
     for i, slotID in ipairs(slotIDs) do
         local key = slotKeys[i] or ("slot" .. i)
         local itemID = GetInventoryItemID("player", slotID)
         if itemID then
             local itemLink = GetInventoryItemLink("player", slotID)
             local icon = GetInventoryItemTexture and GetInventoryItemTexture("player", slotID) or nil
-            local itemName = nil
-            if itemLink then itemName = itemLink:match("%[(.-)%]") end
+            local itemName = itemLink and itemLink:match("%[(.-)%]")
             equipment[key] = {
                 itemID = itemID, itemLink = itemLink, icon = icon,
                 name = itemName or ("Item " .. itemID),
@@ -937,58 +747,93 @@ local function CollectEquipmentFromSlots(slotIDs)
             hasAny = true
         end
     end
-
     return hasAny and equipment or nil
 end
 
---[[
-    Collect equipment for all player professions using GetProfessionSlots API.
-    Each profession has its own dedicated equipment slots.
-]]
-local function CollectEquipmentByDetection()
-    if not WarbandNexus or not WarbandNexus.db then return end
-
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not charKey then return end
-
-    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-    if not charData then return end
-
-    -- Ensure table (migrate legacy flat to { _legacy = old } if needed)
+-- Ensure the professionEquipment table exists and is per-profession keyed.
+local function EnsureEquipmentTable(charData)
     if not charData.professionEquipment or type(charData.professionEquipment) ~= "table" then
         charData.professionEquipment = {}
     elseif rawget(charData.professionEquipment, "tool") then
         charData.professionEquipment = { _legacy = charData.professionEquipment }
     end
+end
 
-    -- Get player's professions (prof1, prof2, archaeology, fishing, cooking)
-    local prof1, prof2, arch, fish, cook = GetProfessions()
-    local profIndices = { prof1, prof2, arch, fish, cook }
-    local collectedAny = false
+-- Store equipment under the normalized profession name.
+local function StoreEquipment(charData, profName, equipment)
+    local key = NormalizeProfessionNameForEquipment(profName) or profName
+    charData.professionEquipment[key] = equipment or { lastUpdate = time() }
+end
 
-    for _, profIndex in ipairs(profIndices) do
-        if profIndex then
-            local profName, _, _, _, _, _, skillLine = GetProfessionInfo(profIndex)
-            if profName and profName ~= "" then
-                local key = NormalizeProfessionNameForEquipment(profName) or profName
-                local profEnum = ResolveProfessionEnum(profName, skillLine)
-                if profEnum then
-                    local slots = GetSlotsForProfession(profEnum)
-                    if slots and #slots > 0 then
-                        local equipment = CollectEquipmentFromSlots(slots)
-                        if equipment then
-                            charData.professionEquipment[key] = equipment
-                            collectedAny = true
-                        end
-                    end
+--[[
+    Collect equipment for the CURRENTLY OPEN profession window.
+    Uses C_TradeSkillUI.GetProfessionSlots to get the correct slot IDs from the game.
+]]
+local function CollectEquipmentDataForCurrentProfession()
+    if not WarbandNexus or not WarbandNexus.db then return end
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return end
+
+    local profName = GetCurrentProfessionName()
+    if not profName or profName == "" then return end
+
+    EnsureEquipmentTable(charData)
+
+    -- Get slot IDs for the currently open profession via its enum
+    local slotIDs = GetProfessionSlotIDs(profName)
+
+    -- If API unavailable, try to get skillLine from GetProfessions for a second attempt
+    if not slotIDs then
+        local p1, p2, _, pFish, pCook = GetProfessions()
+        local normalized = NormalizeProfessionNameForEquipment(profName)
+        for _, idx in ipairs({ p1, p2, pCook, pFish }) do
+            if idx then
+                local n, _, _, _, _, _, sl = GetProfessionInfo(idx)
+                if n and NormalizeProfessionNameForEquipment(n) == normalized then
+                    slotIDs = GetProfessionSlotIDs(n, sl)
+                    break
                 end
             end
         end
     end
+    if not slotIDs then return end
 
-    -- Debug: if GetProfessionSlots failed or returned nothing, log it
-    if not collectedAny and WarbandNexus.Debug then
-        WarbandNexus:Debug("[ProfEquip] No equipment collected via GetProfessionSlots - API may require profession window")
+    local equipment = CollectEquipmentFromSlots(slotIDs)
+    StoreEquipment(charData, profName, equipment)
+
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_PROFESSION_EQUIPMENT_UPDATED", charKey)
+    end
+end
+
+--[[
+    Collect equipment for ALL player professions.
+    Uses C_TradeSkillUI.GetProfessionSlots per profession — the game tells us
+    which inventory slots belong to which profession. No hardcoded assumptions.
+]]
+local function CollectEquipmentByDetection()
+    if not WarbandNexus or not WarbandNexus.db then return end
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return end
+
+    EnsureEquipmentTable(charData)
+
+    local prof1, prof2, _, fish, cook = GetProfessions()
+    for _, profIndex in ipairs({ prof1, prof2, cook, fish }) do
+        if profIndex then
+            local profName, _, _, _, _, _, skillLine = GetProfessionInfo(profIndex)
+            if profName and profName ~= "" then
+                local slotIDs = GetProfessionSlotIDs(profName, skillLine)
+                if slotIDs then
+                    local equipment = CollectEquipmentFromSlots(slotIDs)
+                    StoreEquipment(charData, profName, equipment)
+                end
+            end
+        end
     end
 
     if WarbandNexus.SendMessage then
@@ -1002,7 +847,7 @@ end
 ]]
 function WarbandNexus:OnEquipmentChanged(slot)
     if not ns.Utilities:IsModuleEnabled("professions") then return end
-    if slot and (slot == 20 or slot == 21 or slot == 22) then
+    if slot and slot >= 20 and slot <= 30 then
         C_Timer.After(0.2, function()
             if not WarbandNexus then return end
             pcall(CollectEquipmentDataForCurrentProfession)
@@ -2100,12 +1945,12 @@ function WarbandNexus:OnProfessionChanged()
         end
     end
 
-    -- Guard: Only clear stale data if we have valid current professions to compare against.
-    -- SKILL_LINES_CHANGED fires on login before GetProfessions() is ready, so currentProfs
-    -- can be empty even though the character has professions. Clearing stale data against an
-    -- empty list would destroy ALL saved expansion and knowledge data.
-    if next(currentProfs) then
-        -- Clear stale expansion data
+    -- Clear stale data for unlearned professions.
+    -- Only trust empty currentProfs after the first successful collection
+    -- (ns._professionDataReady set by UpdateProfessionData), otherwise
+    -- SKILL_LINES_CHANGED on login would wipe all data.
+    local canClearStale = next(currentProfs) or ns._professionDataReady
+    if canClearStale then
         if charData.professionExpansions then
             for profName in pairs(charData.professionExpansions) do
                 if not currentProfs[profName] then
@@ -2113,6 +1958,29 @@ function WarbandNexus:OnProfessionChanged()
                     if charData.discoveredSkillLines then
                         charData.discoveredSkillLines[profName] = nil
                     end
+                end
+            end
+        end
+
+        -- Also clear related data stores for unlearned professions
+        if charData.concentration then
+            for key, concEntry in pairs(charData.concentration) do
+                if type(key) == "string" and not currentProfs[key] then
+                    charData.concentration[key] = nil
+                end
+            end
+        end
+        if charData.knowledgeData then
+            for key in pairs(charData.knowledgeData) do
+                if type(key) == "string" and not currentProfs[key] then
+                    charData.knowledgeData[key] = nil
+                end
+            end
+        end
+        if charData.professionEquipment then
+            for profName in pairs(charData.professionEquipment) do
+                if not currentProfs[profName] then
+                    charData.professionEquipment[profName] = nil
                 end
             end
         end
@@ -2273,12 +2141,13 @@ local CONCENTRATION_PER_SECOND = 10 / 3600  -- 10 per hour → per second
 ]]
 function WarbandNexus:GetEstimatedConcentration(entry)
     if not entry or not entry.max or entry.max <= 0 then return 0 end
-    if entry.current >= entry.max then return entry.max end
+    local current = entry.current or 0
+    if current >= entry.max then return entry.max end
 
     local elapsed = time() - (entry.lastUpdate or time())
     if elapsed < 0 then elapsed = 0 end
 
-    local estimated = entry.current + (elapsed * CONCENTRATION_PER_SECOND)
+    local estimated = current + (elapsed * CONCENTRATION_PER_SECOND)
     return math.min(math.floor(estimated), entry.max)
 end
 
@@ -2533,11 +2402,13 @@ function WarbandNexus:CollectConcentrationOnLogin()
             if concData.currencyID and concData.currencyID > 0 then
                 local ok, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, concData.currencyID)
                 if ok and currInfo then
-                    concData.current    = currInfo.quantity or concData.current
-                    concData.max        = currInfo.maxQuantity or concData.max
+                    concData.current    = currInfo.quantity or concData.current or 0
+                    concData.max        = currInfo.maxQuantity or concData.max or 0
                     concData.lastUpdate = time()
                 end
             end
+            if concData.current == nil then concData.current = 0 end
+            if concData.max == nil then concData.max = 0 end
         end
     end
 
@@ -2767,8 +2638,8 @@ function WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
     local ok, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
     if ok and currInfo then
         local entry = charData.concentration[key]
-        entry.current    = currInfo.quantity or entry.current
-        entry.max        = currInfo.maxQuantity or entry.max
+        entry.current    = currInfo.quantity or entry.current or 0
+        entry.max        = currInfo.maxQuantity or entry.max or 0
         entry.lastUpdate = time()
         if self.Debug then
             self:Debug("[Concentration] Real-time update: key=" .. tostring(key) .. " = " .. tostring(entry.current) .. "/" .. tostring(entry.max))

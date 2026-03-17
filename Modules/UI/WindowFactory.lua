@@ -186,10 +186,11 @@ local function CreateExternalWindow(config)
     
     -- Close function (onClose called once here only; OnHide must not call it again)
     local function CloseDialog()
+        local bin = ns.UI_RecycleBin
         local overlay = dialog._clickOutsideFrame
         if overlay then
             overlay:Hide()
-            overlay:SetParent(nil)
+            if bin then overlay:SetParent(bin) else overlay:SetParent(nil) end
             overlay:SetScript("OnMouseDown", nil)
             dialog._clickOutsideFrame = nil
         end
@@ -197,7 +198,7 @@ local function CreateExternalWindow(config)
             config.onClose()
         end
         dialog:Hide()
-        dialog:SetParent(nil)
+        if bin then dialog:SetParent(bin) else dialog:SetParent(nil) end
         _G[globalName] = nil
     end
     

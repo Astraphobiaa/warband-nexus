@@ -173,13 +173,6 @@ local function ResolveProfessionEquipment(charData, profName)
         end
     end
 
-    if (not eqData or type(eqData) ~= "table") and type(eqByProf._legacy) == "table" then
-        local legacy = eqByProf._legacy
-        if legacy.tool or legacy.accessory1 or legacy.accessory2 then
-            eqData = legacy
-        end
-    end
-
     return eqData
 end
 
@@ -593,15 +586,16 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     scrollChild:SetWidth(CONTENT_WIDTH + PADDING * 2)
 
     -- Clear previous content
+    local bin = ns.UI_RecycleBin
     local regions = { scrollChild:GetRegions() }
     for _, region in ipairs(regions) do
         region:Hide()
-        region:SetParent(nil)
+        if bin then region:SetParent(bin) else region:SetParent(nil) end
     end
     local children = { scrollChild:GetChildren() }
     for _, child in ipairs(children) do
         child:Hide()
-        child:SetParent(nil)
+        if bin then child:SetParent(bin) else child:SetParent(nil) end
     end
 
     local yOffset = PADDING
@@ -684,16 +678,18 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
             if concData and concData.max and concData.max > 0 then
                 local current = concData.current or 0
                 if WarbandNexus.GetEstimatedConcentration then
-                    current = WarbandNexus:GetEstimatedConcentration(concData)
+                    local estOk, estVal = pcall(WarbandNexus.GetEstimatedConcentration, WarbandNexus, concData)
+                    if estOk and type(estVal) == "number" then current = estVal end
                 end
-                local color = ProgressColor(current, concData.max)
+                local concMax = concData.max or 0
+                local color = ProgressColor(current, concMax)
                 local expLabel = concData.expansionName or concData.professionName or ("SkillLine " .. slID)
-                yOffset = AddLine(scrollChild, yOffset, expLabel, ValueMax(current, concData.max, color))
+                yOffset = AddLine(scrollChild, yOffset, expLabel, ValueMax(current, concMax, color))
 
                 -- Recharge time
-                if current < concData.max and WarbandNexus.GetConcentrationTimeToFull then
-                    local ts = WarbandNexus:GetConcentrationTimeToFull(concData)
-                    if ts and ts ~= "" and ts ~= "Full" then
+                if current < concMax and WarbandNexus.GetConcentrationTimeToFull then
+                    local tsOk, ts = pcall(WarbandNexus.GetConcentrationTimeToFull, WarbandNexus, concData)
+                    if tsOk and ts and ts ~= "" and ts ~= "Full" then
                         yOffset = AddLine(scrollChild, yOffset, (ns.L and ns.L["RECHARGE"]) or "Recharge", ColorText(ts, YELLOW), 10)
                     end
                 end

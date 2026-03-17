@@ -255,6 +255,16 @@ local mainFrame = nil
 local currentItemsSubTab = "personal" -- Default to Personal Items (Bank + Inventory)
 local expandedGroups = {} -- Persisted expand/collapse state for item groups
 
+-- Hidden frame that collects orphaned non-pooled UI elements.
+-- WoW frames are NEVER garbage collected — SetParent(nil) leaves them permanently
+-- in memory with a nil parent. The recycleBin gives them a valid hidden parent
+-- so they at least have proper frame hierarchy.
+local recycleBin = CreateFrame("Frame", "WarbandNexusRecycleBin", UIParent)
+recycleBin:Hide()
+recycleBin:SetSize(1, 1)
+recycleBin:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -9999, 9999)
+ns.UI_RecycleBin = recycleBin
+
 -- Namespace exports for state management (used by sub-modules)
 ns.UI_GetItemsSubTab = function() return currentItemsSubTab end
 ns.UI_SetItemsSubTab = function(val)
@@ -498,8 +508,8 @@ function WarbandNexus:CreateMainWindow()
             -- Zombie frame detected - cleanup and recreate
             DebugPrint("|cffffff00[WN UI]|r WARNING: Zombie frame detected, cleaning up...")
             existingGlobalFrame:Hide()
-            existingGlobalFrame:SetParent(nil)
             existingGlobalFrame:ClearAllPoints()
+            if recycleBin then existingGlobalFrame:SetParent(recycleBin) else existingGlobalFrame:SetParent(nil) end
             
             -- Try to properly release the frame
             if existingGlobalFrame.UnregisterAllEvents then
@@ -948,7 +958,13 @@ function WarbandNexus:CreateMainWindow()
                 if scrollChild then
                     if ReleaseAllPooledChildren then ReleaseAllPooledChildren(scrollChild) end
                     local children = {scrollChild:GetChildren()}
-                    for i = 1, #children do children[i]:SetParent(nil) end
+                    for i = 1, #children do
+                        local child = children[i]
+                        if not (child.isPooled and child.rowType) and not child.isPersistentRowElement then
+                            child:Hide()
+                            child:SetParent(recycleBin)
+                        end
+                    end
                 end
                 C_Timer.After(0, function()
                     if f.currentTab ~= targetTab then return end
@@ -1329,13 +1345,23 @@ function WarbandNexus:PopulateContent()
         ReleaseAllPooledChildren(scrollChild)
     end
 
-    -- CRITICAL: Remove old tab content from hierarchy to prevent overlap/stacking
-    -- (e.g. Achievements headers/rows from previous visit would stack when returning)
-    -- MUST Hide() before SetParent(nil) so orphaned frames don't appear outside the window
+    -- Move old non-pooled tab content (headers, cards, etc.) to the recycleBin to prevent
+    -- overlap/stacking. Pooled frames are already released to their pools above — skip them.
+    -- Persistent frames (3D models, reused placeholders) are also skipped.
     local children = {scrollChild:GetChildren()}
     for i = 1, #children do
-        children[i]:Hide()
-        children[i]:SetParent(nil)
+        local child = children[i]
+        if not (child.isPooled and child.rowType) and not child.isPersistentRowElement then
+            child:Hide()
+            child:SetParent(recycleBin)
+        end
+    end
+
+    -- Hide persistent 3D models when leaving their tab — they stay on scrollChild
+    -- and would overlap other tab content otherwise.
+    if mainFrame.currentTab ~= "gear" then
+        if ns._gearPlayerModel then ns._gearPlayerModel:Hide() end
+        if ns._gearNoPreviewFrame then ns._gearNoPreviewFrame:Hide() end
     end
     
     -- Update status
@@ -1650,9 +1676,8 @@ function WarbandNexus:RefreshUI()
     
     self.isRefreshing = false
     
-    -- Report error if one occurred (silent for production)
-    if not success then
-        -- Error logged silently
+    if not success and self.Debug then
+        self:Debug("|cffff0000[RefreshUI] PopulateContent error: " .. tostring(err) .. "|r")
     end
 end
 

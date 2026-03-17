@@ -669,7 +669,8 @@ function WarbandNexus:DrawPvEProgress(parent)
         local w = tempMeasure:GetStringWidth()
         if w and w > maxNameRealmWidth then maxNameRealmWidth = w end
     end
-    tempMeasure:SetParent(nil)
+    local bin = ns.UI_RecycleBin
+    if bin then tempMeasure:SetParent(bin) else tempMeasure:SetParent(nil) end
     local nameWidth = math.max(230, math.ceil(maxNameRealmWidth) + 8)
 
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====

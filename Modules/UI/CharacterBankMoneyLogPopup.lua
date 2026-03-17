@@ -159,9 +159,10 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     if not dialog then return end
 
     local children = { contentFrame:GetChildren() }
+    local bin = ns.UI_RecycleBin
     for i = 1, #children do
-        children[i]:SetParent(nil)
         children[i]:Hide()
+        if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
     end
 
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or nil
@@ -328,7 +329,8 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     local function populateLogScroll(filter)
         local kids = { logScrollChild:GetChildren() }
-        for i = 1, #kids do kids[i]:SetParent(nil); kids[i]:Hide() end
+        local bin = ns.UI_RecycleBin
+        for i = 1, #kids do kids[i]:Hide(); if bin then kids[i]:SetParent(bin) else kids[i]:SetParent(nil) end end
         logScrollChild:SetHeight(1)
 
         local entries = getFilteredEntries(filter)
@@ -461,7 +463,8 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     local function populateContribScroll()
         local kids = { contribScrollChild:GetChildren() }
-        for i = 1, #kids do kids[i]:SetParent(nil); kids[i]:Hide() end
+        local bin = ns.UI_RecycleBin
+        for i = 1, #kids do kids[i]:Hide(); if bin then kids[i]:SetParent(bin) else kids[i]:SetParent(nil) end end
         contribScrollChild:SetHeight(1)
 
         local summaryData = getSummary()

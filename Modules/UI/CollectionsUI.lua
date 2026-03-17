@@ -1122,7 +1122,8 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
         local c = children[i]
         c:Hide()
         c:ClearAllPoints()
-        c:SetParent(nil)
+        local bin = ns.UI_RecycleBin
+        if bin then c:SetParent(bin) else c:SetParent(nil) end
     end
     local regions = { scrollChild:GetRegions() }
     for i = 1, #regions do
@@ -1259,7 +1260,8 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
         local c = children[i]
         c:Hide()
         c:ClearAllPoints()
-        c:SetParent(nil)
+        local bin = ns.UI_RecycleBin
+        if bin then c:SetParent(bin) else c:SetParent(nil) end
     end
     local regions = { scrollChild:GetRegions() }
     for i = 1, #regions do
@@ -1395,7 +1397,8 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
         local c = children[i]
         c:Hide()
         c:ClearAllPoints()
-        c:SetParent(nil)
+        local bin = ns.UI_RecycleBin
+        if bin then c:SetParent(bin) else c:SetParent(nil) end
     end
     local regions = { scrollChild:GetRegions() }
     for i = 1, #regions do
@@ -1525,7 +1528,8 @@ local function PopulateAchievementList(scrollChild, listWidth, categoryData, roo
         local c = children[i]
         c:Hide()
         c:ClearAllPoints()
-        c:SetParent(nil)
+        local bin = ns.UI_RecycleBin
+        if bin then c:SetParent(bin) else c:SetParent(nil) end
     end
     local regions = { scrollChild:GetRegions() }
     for i = 1, #regions do
@@ -2433,9 +2437,10 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
     panel._detailElements = {}
 
     local function clearDetailElements()
+        local bin = ns.UI_RecycleBin
         for _, el in ipairs(panel._detailElements) do
             el:Hide()
-            el:SetParent(nil)
+            if bin then el:SetParent(bin) else el:SetParent(nil) end
         end
         panel._detailElements = {}
     end

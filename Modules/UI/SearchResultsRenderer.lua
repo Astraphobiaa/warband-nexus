@@ -53,11 +53,12 @@ function SearchResultsRenderer:PrepareContainer(container)
     end
     
     -- Clear remaining children EXCEPT emptyStateContainer
+    local bin = ns.UI_RecycleBin
     local children = {container:GetChildren()}
     for _, child in ipairs(children) do
         if child ~= container.emptyStateContainer then
             child:Hide()
-            child:SetParent(nil)
+            if bin then child:SetParent(bin) else child:SetParent(nil) end
         end
     end
 end

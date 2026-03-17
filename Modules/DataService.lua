@@ -872,6 +872,8 @@ function WarbandNexus:SaveMinimalCharacterData()
     local         preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
     local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
     local preserveProfessionCooldowns = existingEntry and existingEntry.professionCooldowns
+    local preserveProfessionEquipment = existingEntry and existingEntry.professionEquipment
+    local preserveCooldownRecipeIDs   = existingEntry and existingEntry.cooldownRecipeIDs
     local preserveCraftingOrders      = existingEntry and existingEntry.craftingOrders
     local preserveProfessionData      = existingEntry and existingEntry.professionData
     local preserveRested              = existingEntry and existingEntry.rested
@@ -914,6 +916,8 @@ function WarbandNexus:SaveMinimalCharacterData()
         discoveredSkillLines = preserveDiscoveredSkillLines,
         knowledgeData        = preserveKnowledgeData,
         professionCooldowns  = preserveProfessionCooldowns,
+        professionEquipment  = preserveProfessionEquipment,
+        cooldownRecipeIDs    = preserveCooldownRecipeIDs,
         craftingOrders       = preserveCraftingOrders,
         professionData       = preserveProfessionData,
         rested               = restedData,
@@ -1013,9 +1017,15 @@ function WarbandNexus:SaveCurrentCharacterData()
     local professionData = nil
     if isNew or not self.db.global.characters[key] or not self.db.global.characters[key].professions then
         professionData = self:CollectProfessionData()
+        if professionData and next(professionData) then
+            ns._professionDataReady = true
+        end
     else
         -- Preserve existing profession data (will be updated by SKILL_LINES_CHANGED event if needed)
         professionData = self.db.global.characters[key].professions
+        if professionData and next(professionData) then
+            ns._professionDataReady = true
+        end
     end
     
     -- Get character's average item level (ALWAYS fresh from API)
@@ -1062,6 +1072,8 @@ function WarbandNexus:SaveCurrentCharacterData()
     local preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
     local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
     local preserveProfessionCooldowns = existingEntry and existingEntry.professionCooldowns
+    local preserveProfessionEquipment = existingEntry and existingEntry.professionEquipment
+    local preserveCooldownRecipeIDs   = existingEntry and existingEntry.cooldownRecipeIDs
     local preserveCraftingOrders      = existingEntry and existingEntry.craftingOrders
     local preserveProfessionData      = existingEntry and existingEntry.professionData
     local preserveRested              = existingEntry and existingEntry.rested
@@ -1103,6 +1115,8 @@ function WarbandNexus:SaveCurrentCharacterData()
         discoveredSkillLines = preserveDiscoveredSkillLines,
         knowledgeData        = preserveKnowledgeData,
         professionCooldowns  = preserveProfessionCooldowns,
+        professionEquipment  = preserveProfessionEquipment,
+        cooldownRecipeIDs    = preserveCooldownRecipeIDs,
         craftingOrders       = preserveCraftingOrders,
         professionData       = preserveProfessionData,
         rested               = restedData,
@@ -1143,11 +1157,17 @@ function WarbandNexus:UpdateProfessionData()
 
         local newData = self:CollectProfessionData()
 
-        -- Guard: Don't overwrite saved DB data with empty results.
+        -- Guard: Don't overwrite saved DB data with empty results on login.
         -- GetProfessions() can return nil on login before the profession system is
         -- fully loaded, which would destroy the previous session's saved data.
-        -- Only overwrite if new data has at least one profession entry.
-        if not newData or not next(newData) then return end
+        -- After the first successful collection, trust empty results (user may have
+        -- unlearned all professions).
+        if not newData then return end
+        if not next(newData) then
+            if not ns._professionDataReady then return end
+        else
+            ns._professionDataReady = true
+        end
 
         self.db.global.characters[key].professions = newData
         self.db.global.characters[key].lastSeen = time()

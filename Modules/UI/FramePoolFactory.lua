@@ -216,6 +216,7 @@ local function AcquireProfessionRow(parent)
 end
 
 ---Return profession row to pool
+---Resets scripts and hides lazy-created concentration bars to prevent stale visuals on reuse.
 ---@param row Frame Row to release
 local function ReleaseProfessionRow(row)
     if not row or not row.isPooled then return end
@@ -224,6 +225,22 @@ local function ReleaseProfessionRow(row)
     if row.HasScript and row:HasScript("OnClick") then row:SetScript("OnClick", nil) end
     if row.HasScript and row:HasScript("OnEnter") then row:SetScript("OnEnter", nil) end
     if row.HasScript and row:HasScript("OnLeave") then row:SetScript("OnLeave", nil) end
+
+    -- Reset concentration bars and hit-frames from previous use
+    for _, lineKey in ipairs({"l1", "l2"}) do
+        if row[lineKey .. "ConcBar"] then row[lineKey .. "ConcBar"]:Hide() end
+        if row[lineKey .. "SkillHit"] then row[lineKey .. "SkillHit"]:Hide() end
+        if row[lineKey .. "KnowWarn"] then row[lineKey .. "KnowWarn"]:Hide() end
+        if row[lineKey .. "Btn"] then row[lineKey .. "Btn"]:Hide() end
+        if row[lineKey .. "InfoBtn"] then row[lineKey .. "InfoBtn"]:Hide() end
+        if row[lineKey .. "Icon"] then
+            row[lineKey .. "Icon"]:Hide()
+            if row[lineKey .. "Icon"].knowledgeBadge then row[lineKey .. "Icon"].knowledgeBadge:Hide() end
+            row[lineKey .. "Icon"]:SetScript("OnEnter", nil)
+            row[lineKey .. "Icon"]:SetScript("OnLeave", nil)
+        end
+    end
+
     table.insert(ProfessionRowPool, row)
 end
 

@@ -464,18 +464,19 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         if card._sourceContainer then
             -- Destroy old container completely
             local oldContainer = card._sourceContainer
+            local bin = ns.UI_RecycleBin
             -- Clear all children first
             for i = oldContainer:GetNumChildren(), 1, -1 do
                 local child = select(i, oldContainer:GetChildren())
                 if child then
                     child:Hide()
                     child:ClearAllPoints()
-                    child:SetParent(nil)
+                    if bin then child:SetParent(bin) else child:SetParent(nil) end
                 end
             end
             oldContainer:Hide()
             oldContainer:ClearAllPoints()
-            oldContainer:SetParent(nil)
+            if bin then oldContainer:SetParent(bin) else oldContainer:SetParent(nil) end
             card._sourceContainer = nil
         end
         
@@ -730,8 +731,9 @@ end
 function PlanCardFactory:CreateExpandButton(card, isExpanded)
     -- Remove existing expand button if any
     if card._expandButton then
+        local bin = ns.UI_RecycleBin
         card._expandButton:Hide()
-        card._expandButton:SetParent(nil)
+        if bin then card._expandButton:SetParent(bin) else card._expandButton:SetParent(nil) end
         card._expandButton = nil
     end
     
@@ -1270,11 +1272,12 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     end
     
     -- Clear previous content
+    local bin = ns.UI_RecycleBin
     for i = expandedContent:GetNumChildren(), 1, -1 do
         local child = select(i, expandedContent:GetChildren())
         if child then
             child:Hide()
-            child:SetParent(nil)
+            if bin then child:SetParent(bin) else child:SetParent(nil) end
         end
     end
     
@@ -1460,11 +1463,12 @@ function PlanCardFactory:ExpandAchievementEmpty(card)
     local expandedContent = card.expandedContent
     if not expandedContent then return end
 
+    local bin = ns.UI_RecycleBin
     for i = expandedContent:GetNumChildren(), 1, -1 do
         local child = select(i, expandedContent:GetChildren())
         if child then
             child:Hide()
-            child:SetParent(nil)
+            if bin then child:SetParent(bin) else child:SetParent(nil) end
         end
     end
 
@@ -1867,19 +1871,20 @@ function PlanCardFactory:CreateCustomDescription(card, plan, descY)
     end
     
     -- Destroy old description elements if exist
+    local bin = ns.UI_RecycleBin
     if card.descriptionText then
         card.descriptionText:Hide()
-        card.descriptionText:SetParent(nil)
+        if bin then card.descriptionText:SetParent(bin) else card.descriptionText:SetParent(nil) end
         card.descriptionText = nil
     end
     if card.descriptionTextRest then
         card.descriptionTextRest:Hide()
-        card.descriptionTextRest:SetParent(nil)
+        if bin then card.descriptionTextRest:SetParent(bin) else card.descriptionTextRest:SetParent(nil) end
         card.descriptionTextRest = nil
     end
     if card.descriptionLabel then
         card.descriptionLabel:Hide()
-        card.descriptionLabel:SetParent(nil)
+        if bin then card.descriptionLabel:SetParent(bin) else card.descriptionLabel:SetParent(nil) end
         card.descriptionLabel = nil
     end
     
@@ -2001,19 +2006,20 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
         -- Update description text
         if cardFrame.fullDescription then
             -- Clear old elements
+            local bin = ns.UI_RecycleBin
             if cardFrame.descriptionText then
                 cardFrame.descriptionText:Hide()
-                cardFrame.descriptionText:SetParent(nil)
+                if bin then cardFrame.descriptionText:SetParent(bin) else cardFrame.descriptionText:SetParent(nil) end
                 cardFrame.descriptionText = nil
             end
             if cardFrame.descriptionTextRest then
                 cardFrame.descriptionTextRest:Hide()
-                cardFrame.descriptionTextRest:SetParent(nil)
+                if bin then cardFrame.descriptionTextRest:SetParent(bin) else cardFrame.descriptionTextRest:SetParent(nil) end
                 cardFrame.descriptionTextRest = nil
             end
             if cardFrame.descriptionLabel then
                 cardFrame.descriptionLabel:Hide()
-                cardFrame.descriptionLabel:SetParent(nil)
+                if bin then cardFrame.descriptionLabel:SetParent(bin) else cardFrame.descriptionLabel:SetParent(nil) end
                 cardFrame.descriptionLabel = nil
             end
             
@@ -2327,11 +2333,12 @@ function PlanCardFactory:ExpandCardContent(card, planType)
     if not expandedContent then return end
     
     -- Clear previous content
+    local bin = ns.UI_RecycleBin
     for i = expandedContent:GetNumChildren(), 1, -1 do
         local child = select(i, expandedContent:GetChildren())
         if child then
             child:Hide()
-            child:SetParent(nil)
+            if bin then child:SetParent(bin) else child:SetParent(nil) end
         end
     end
     

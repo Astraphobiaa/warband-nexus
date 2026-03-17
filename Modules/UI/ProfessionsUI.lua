@@ -157,6 +157,10 @@ local COLUMNS = {
     gathering   = { width = 68,  spacing = COL_SPACING },
     catchUp     = { width = 68,  spacing = COL_SPACING },
     moxie       = { width = 56,  spacing = COL_SPACING },         -- Artisan Moxie currency (Midnight)
+    cooldowns   = { width = 68,  spacing = COL_SPACING },         -- crafting cooldowns (ready / total)
+    tool        = { width = 28,  spacing = 2 },                   -- profession tool icon
+    acc1        = { width = 28,  spacing = 2 },                   -- accessory 1 icon
+    acc2        = { width = 28,  spacing = COL_SPACING },          -- accessory 2 icon
     open        = { width = 36,  spacing = 4 },
     info        = { width = 30,  spacing = 0 },                  -- read-only detail window
 }
@@ -165,6 +169,7 @@ local COLUMN_ORDER = {
     "favIcon", "classIcon", "name",
     "profIcon", "profName", "skill", "conc", "recharge", "knowledge",
     "recipes", "firstCraft", "uniques", "treatise", "weeklyQuest", "treasure", "gathering", "catchUp", "moxie",
+    "cooldowns", "tool", "acc1", "acc2",
     "open", "info",
 }
 
@@ -215,12 +220,51 @@ local function IsMidnightSkillLineID(skillLineID)
     return type(skillLineID) == "number" and MIDNIGHT_MOXIE_CURRENCY[skillLineID] ~= nil
 end
 
+-- Columns that users can toggle on/off via the Filter button.
+-- Keys match COLUMNS table; display labels shown in the dropdown.
+local TOGGLEABLE_COLUMNS = {
+    { key = "skill",       label = "Skill" },
+    { key = "conc",        label = "Concentration" },
+    { key = "recharge",    label = "Recharge" },
+    { key = "knowledge",   label = "Knowledge" },
+    { key = "recipes",     label = "Recipes" },
+    { key = "firstCraft",  label = "First Craft" },
+    { key = "uniques",     label = "Uniques" },
+    { key = "treatise",    label = "Treatise" },
+    { key = "weeklyQuest", label = "Weekly Quest" },
+    { key = "treasure",    label = "Treasure" },
+    { key = "gathering",   label = "Gathering" },
+    { key = "catchUp",     label = "Catch Up" },
+    { key = "moxie",       label = "Moxie" },
+    { key = "cooldowns",   label = "Cooldowns" },
+    { key = "tool",        label = "Tool" },
+    { key = "acc1",        label = "Accessory 1" },
+    { key = "acc2",        label = "Accessory 2" },
+}
+
+local COLUMN_DEFAULT_VISIBLE = {
+    cooldowns = false,
+    tool      = false,
+    acc1      = false,
+    acc2      = false,
+}
+
+local function IsColumnVisible(key)
+    local vis = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+        and WarbandNexus.db.profile.professionVisibleColumns
+    if not vis then return true end
+    if vis[key] == nil then
+        local def = COLUMN_DEFAULT_VISIBLE[key]
+        return def == nil and true or def
+    end
+    return vis[key] == true
+end
 
 -- Text columns scale with effective font size; icon/bar/button columns stay fixed
 local SCALABLE_COLUMNS = {
     name = true, profName = true, skill = true, recharge = true, knowledge = true,
     recipes = true, firstCraft = true, uniques = true, treatise = true, weeklyQuest = true,
-    treasure = true, gathering = true, catchUp = true, moxie = true,
+    treasure = true, gathering = true, catchUp = true, moxie = true, cooldowns = true,
 }
 
 -- Cached row width — set once per DrawProfessionsTab call so columns fill available space.
@@ -243,9 +287,11 @@ local function GetColumnScaleFactor()
         local baseTotal = LEFT_PAD
         local scalableBase = 0
         for _, k in ipairs(COLUMN_ORDER) do
-            baseTotal = baseTotal + COLUMNS[k].width + COLUMNS[k].spacing
-            if SCALABLE_COLUMNS[k] then
-                scalableBase = scalableBase + COLUMNS[k].width
+            if IsColumnVisible(k) then
+                baseTotal = baseTotal + COLUMNS[k].width + COLUMNS[k].spacing
+                if SCALABLE_COLUMNS[k] then
+                    scalableBase = scalableBase + COLUMNS[k].width
+                end
             end
         end
         if scalableBase > 0 then
@@ -262,6 +308,7 @@ local function GetColumnScaleFactor()
 end
 
 local function ColWidth(key)
+    if not IsColumnVisible(key) then return 0 end
     local base = COLUMNS[key] and COLUMNS[key].width or 60
     if SCALABLE_COLUMNS[key] then
         return base * GetColumnScaleFactor()
@@ -274,11 +321,13 @@ local function ColOffset(key)
     local scaleFactor = GetColumnScaleFactor()
     for _, k in ipairs(COLUMN_ORDER) do
         if k == key then return offset end
-        local w = COLUMNS[k].width
-        if SCALABLE_COLUMNS[k] then
-            w = w * scaleFactor
+        if IsColumnVisible(k) then
+            local w = COLUMNS[k].width
+            if SCALABLE_COLUMNS[k] then
+                w = w * scaleFactor
+            end
+            offset = offset + w + COLUMNS[k].spacing
         end
-        offset = offset + w + COLUMNS[k].spacing
     end
     return offset
 end
@@ -301,6 +350,10 @@ local HEADER_DEFS = {
     { col = "gathering",   label = "GATHERING",            text = "Gathering",     align = "CENTER" },
     { col = "catchUp",     label = "CATCH_UP",             text = "Catch Up",      align = "CENTER" },
     { col = "moxie",       label = "MOXIE",                text = "Moxie",         align = "CENTER" },
+    { col = "cooldowns",   label = "COOLDOWNS",            text = "Cooldowns",     align = "CENTER" },
+    { col = "tool",        label = "TOOL",                 text = "Tool",          align = "CENTER" },
+    { col = "acc1",        label = "ACCESSORY_1",          text = "Acc 1",         align = "CENTER" },
+    { col = "acc2",        label = "ACCESSORY_2",          text = "Acc 2",         align = "CENTER" },
 }
 
 --============================================================================
@@ -311,6 +364,8 @@ local BAR_HEIGHT = 16
 local BAR_BORDER = 1
 
 local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth, current, maximum)
+    current = current or 0
+    maximum = maximum or 0
     local bar = parent[barKey]
 
     if not bar then
@@ -762,6 +817,131 @@ function WarbandNexus:DrawProfessionsTab(parent)
     expBadge:SetScript("OnLeave", nil)
     expBadge:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
     
+    -- ===== FILTER BUTTON (column visibility toggle) =====
+    local filterBtnW = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH or 80
+    local filterBtnH = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
+    local filterBtn = ns.UI.Factory:CreateButton(titleCard, filterBtnW, filterBtnH, false)
+    if ApplyVisuals then
+        ApplyVisuals(filterBtn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    end
+    local filterBtnText = FontManager:CreateFontString(filterBtn, "body", "OVERLAY")
+    filterBtnText:SetPoint("CENTER", 0, 0)
+    filterBtnText:SetJustifyH("CENTER")
+    filterBtnText:SetText((ns.L and ns.L["FILTER"]) or "Filter")
+    filterBtnText:SetTextColor(0.9, 0.9, 0.9)
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(filterBtn) end
+    filterBtn:SetPoint("RIGHT", expBadge, "LEFT", -8, 0)
+
+    filterBtn:SetScript("OnClick", function(btn)
+        -- Toggle dropdown: close if already open, open if not
+        if btn._dropdown and btn._dropdown:IsShown() then
+            btn._dropdown:Hide()
+            return
+        end
+
+        local dropdown = btn._dropdown
+        if not dropdown then
+            dropdown = CreateFrame("Frame", nil, btn, "BackdropTemplate")
+            dropdown:SetFrameStrata("DIALOG")
+            dropdown:SetClampedToScreen(true)
+            dropdown:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+            dropdown:SetBackdropColor(0.08, 0.08, 0.1, 0.97)
+            dropdown:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7)
+            btn._dropdown = dropdown
+        end
+
+        if not self.db.profile.professionVisibleColumns then
+            self.db.profile.professionVisibleColumns = {}
+            for _, tc in ipairs(TOGGLEABLE_COLUMNS) do
+                local def = COLUMN_DEFAULT_VISIBLE[tc.key]
+                self.db.profile.professionVisibleColumns[tc.key] = (def == nil) and true or def
+            end
+        end
+
+        local ROW_H = 22
+        local PAD = 6
+        local contentH = #TOGGLEABLE_COLUMNS * ROW_H + PAD * 2 + ROW_H
+        dropdown:SetSize(170, contentH)
+        dropdown:ClearAllPoints()
+        dropdown:SetPoint("TOP", btn, "BOTTOM", 0, -4)
+
+        -- Clear old children
+        local bin = ns.UI_RecycleBin
+        local kids = { dropdown:GetChildren() }
+        for i = 1, #kids do
+            kids[i]:Hide()
+            if bin then kids[i]:SetParent(bin) else kids[i]:SetParent(nil) end
+        end
+
+        local yOff = -PAD
+        for _, tc in ipairs(TOGGLEABLE_COLUMNS) do
+            local isVisible = self.db.profile.professionVisibleColumns[tc.key] ~= false
+            local checkRow = CreateFrame("Button", nil, dropdown)
+            checkRow:SetSize(160, ROW_H)
+            checkRow:SetPoint("TOPLEFT", PAD, yOff)
+
+            local checkTex = checkRow:CreateTexture(nil, "ARTWORK")
+            checkTex:SetSize(14, 14)
+            checkTex:SetPoint("LEFT", 4, 0)
+            if isVisible then
+                checkTex:SetAtlas("common-icon-checkmark")
+                checkTex:SetVertexColor(0.3, 0.9, 0.3)
+            else
+                checkTex:SetAtlas("common-icon-redx")
+                checkTex:SetVertexColor(0.5, 0.5, 0.5)
+            end
+
+            local lbl = FontManager:CreateFontString(checkRow, "small", "OVERLAY")
+            lbl:SetPoint("LEFT", checkTex, "RIGHT", 6, 0)
+            lbl:SetText(isVisible and ("|cffffffff" .. tc.label .. "|r") or ("|cff888888" .. tc.label .. "|r"))
+            lbl:SetJustifyH("LEFT")
+
+            local capturedKey = tc.key
+            checkRow:SetScript("OnClick", function()
+                self.db.profile.professionVisibleColumns[capturedKey] = not isVisible
+                dropdown:Hide()
+                self:RefreshUI()
+            end)
+            checkRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
+            checkRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
+            checkRow:Show()
+
+            yOff = yOff - ROW_H
+        end
+
+        -- "Show All" / "Reset" row at the bottom
+        local resetRow = CreateFrame("Button", nil, dropdown)
+        resetRow:SetSize(160, ROW_H)
+        resetRow:SetPoint("TOPLEFT", PAD, yOff)
+        local resetLbl = FontManager:CreateFontString(resetRow, "small", "OVERLAY")
+        resetLbl:SetPoint("CENTER", 0, 0)
+        resetLbl:SetText("|cff" .. GetAccentHexColor() .. "Show All|r")
+        resetLbl:SetJustifyH("CENTER")
+        resetRow:SetScript("OnClick", function()
+            for _, tc2 in ipairs(TOGGLEABLE_COLUMNS) do
+                self.db.profile.professionVisibleColumns[tc2.key] = true
+            end
+            dropdown:Hide()
+            self:RefreshUI()
+        end)
+        resetRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
+        resetRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
+        resetRow:Show()
+
+        dropdown:Show()
+
+        -- Close dropdown when clicking elsewhere
+        if not dropdown._closer then
+            local closer = CreateFrame("Frame", nil, dropdown)
+            closer:SetScript("OnUpdate", function()
+                if dropdown:IsShown() and not dropdown:IsMouseOver() and not btn:IsMouseOver() and IsMouseButtonDown("LeftButton") then
+                    dropdown:Hide()
+                end
+            end)
+            dropdown._closer = closer
+        end
+    end)
+
     if ns.UI_CreateCharacterSortDropdown then
         local sortOptions = {
             {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
@@ -772,7 +952,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         }
         if not self.db.profile.professionSort then self.db.profile.professionSort = {} end
         local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function() self:RefreshUI() end)
-        sortBtn:SetPoint("RIGHT", expBadge, "LEFT", -8, 0)
+        sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -8, 0)
     end
     
     titleCard:Show()
@@ -798,12 +978,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
     -- Use hdef.text (English) so column headers are always correct regardless of game locale.
     for _, hdef in ipairs(HEADER_DEFS) do
         local col = hdef.col
-        local lbl = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
-        lbl:SetText("|cffffffff" .. (hdef.text or (ns.L and ns.L[hdef.label]) or "") .. "|r")
-        lbl:SetJustifyH(hdef.align or "CENTER")
-        local w = (hdef.getWidth and hdef.getWidth()) or ColWidth(col)
-        lbl:SetWidth(w)
-        lbl:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+        if IsColumnVisible(col) then
+            local lbl = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
+            lbl:SetText("|cffffffff" .. (hdef.text or (ns.L and ns.L[hdef.label]) or "") .. "|r")
+            lbl:SetJustifyH(hdef.align or "CENTER")
+            local w = (hdef.getWidth and hdef.getWidth()) or ColWidth(col)
+            lbl:SetWidth(w)
+            lbl:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+        end
     end
     colHeaderBar:Show()
 
@@ -861,7 +1043,15 @@ function WarbandNexus:DrawProfessionsTab(parent)
         if isExpanded then
             for _, char in ipairs(chars) do
                 rowIndex = rowIndex + 1
-                yOffset = self:DrawProfessionRow(parent, char, rowIndex, width, yOffset, currentPlayerKey)
+                local ok, result = pcall(self.DrawProfessionRow, self, parent, char, rowIndex, width, yOffset, currentPlayerKey)
+                if ok and result then
+                    yOffset = result
+                else
+                    yOffset = yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
+                    if WarbandNexus.Debug then
+                        WarbandNexus:Debug("|cffff0000[ProfessionsUI] DrawProfessionRow error for " .. tostring(char.name) .. ": " .. tostring(result) .. "|r")
+                    end
+                end
             end
         end
 
@@ -1017,6 +1207,62 @@ local function AcquireColumnHitFrame(row, key, colKey, centerY)
     return frame
 end
 
+-- Sets an equipment icon cell's texture and tooltip from profession equipment data.
+local SLOT_DISPLAY_NAMES = {
+    tool       = "Tool",
+    accessory1 = "Accessory 1",
+    accessory2 = "Accessory 2",
+}
+
+local function SetEquipCell(cell, eqData, slotKey)
+    local item = eqData and eqData[slotKey]
+    if item and item.icon then
+        cell.icon:SetTexture(item.icon)
+        cell.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        cell.icon:SetDesaturated(false)
+        cell.icon:SetVertexColor(1, 1, 1, 1)
+        cell.icon:Show()
+        if not cell.warnTex then
+            cell.warnTex = cell:CreateTexture(nil, "OVERLAY")
+            cell.warnTex:SetSize(12, 12)
+            cell.warnTex:SetPoint("TOPRIGHT", cell.icon, "TOPRIGHT", 3, 3)
+            cell.warnTex:SetAtlas("services-icon-warning")
+        end
+        cell.warnTex:Hide()
+        cell:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if item.itemLink then
+                GameTooltip:SetHyperlink(item.itemLink)
+            else
+                GameTooltip:AddLine(item.name or "Unknown", 1, 1, 1)
+            end
+            GameTooltip:Show()
+        end)
+        cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    elseif eqData and eqData.lastUpdate then
+        cell.icon:SetAtlas("services-icon-warning")
+        cell.icon:SetTexCoord(0, 1, 0, 1)
+        cell.icon:SetDesaturated(false)
+        cell.icon:SetVertexColor(1, 0.82, 0, 1)
+        cell.icon:Show()
+        if cell.warnTex then cell.warnTex:Hide() end
+        local displayName = SLOT_DISPLAY_NAMES[slotKey] or slotKey
+        cell:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(displayName, 1, 0.82, 0)
+            GameTooltip:AddLine("No item equipped", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        end)
+        cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    else
+        cell.icon:SetTexture(nil)
+        cell.icon:Hide()
+        if cell.warnTex then cell.warnTex:Hide() end
+        cell:SetScript("OnEnter", nil)
+        cell:SetScript("OnLeave", nil)
+    end
+end
+
 --============================================================================
 -- DRAW PROFESSION LINE (single profession within a row)
 --============================================================================
@@ -1049,28 +1295,41 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     row[p.."Name"]:SetPoint("LEFT", nameX, centerY)
 
     -- SKILL
+    local skillVisible = IsColumnVisible("skill")
     local skillX = ColOffset("skill")
     if not row[p.."Skill"] then
         row[p.."Skill"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Skill"]:SetJustifyH("CENTER")
         row[p.."Skill"]:SetMaxLines(1)
     end
-    row[p.."Skill"]:SetWidth(ColWidth("skill"))
-    row[p.."Skill"]:ClearAllPoints()
-    row[p.."Skill"]:SetPoint("LEFT", skillX, centerY)
+    if skillVisible then
+        row[p.."Skill"]:SetWidth(ColWidth("skill"))
+        row[p.."Skill"]:ClearAllPoints()
+        row[p.."Skill"]:SetPoint("LEFT", skillX, centerY)
+        row[p.."Skill"]:Show()
+    else
+        row[p.."Skill"]:Hide()
+    end
 
     -- RECHARGE (timer text, right of bar)
+    local rechargeVisible = IsColumnVisible("recharge")
     local rechargeX = ColOffset("recharge")
     if not row[p.."Recharge"] then
         row[p.."Recharge"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Recharge"]:SetJustifyH("CENTER")
         row[p.."Recharge"]:SetMaxLines(1)
     end
-    row[p.."Recharge"]:SetWidth(ColWidth("recharge"))
-    row[p.."Recharge"]:ClearAllPoints()
-    row[p.."Recharge"]:SetPoint("LEFT", rechargeX, centerY)
+    if rechargeVisible then
+        row[p.."Recharge"]:SetWidth(ColWidth("recharge"))
+        row[p.."Recharge"]:ClearAllPoints()
+        row[p.."Recharge"]:SetPoint("LEFT", rechargeX, centerY)
+        row[p.."Recharge"]:Show()
+    else
+        row[p.."Recharge"]:Hide()
+    end
 
     -- KNOWLEDGE (text + optional unspent warning triangle)
+    local knowVisible = IsColumnVisible("knowledge")
     local knowX = ColOffset("knowledge")
     local knowW = ColWidth("knowledge")
     if not row[p.."Know"] then
@@ -1078,9 +1337,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Know"]:SetJustifyH("CENTER")
         row[p.."Know"]:SetMaxLines(1)
     end
-    row[p.."Know"]:SetWidth(knowW - 16)
-    row[p.."Know"]:ClearAllPoints()
-    row[p.."Know"]:SetPoint("LEFT", knowX, centerY)
     if not row[p.."KnowWarn"] then
         local warnFrame = CreateFrame("Frame", nil, row)
         warnFrame:SetSize(16, 16)
@@ -1091,8 +1347,17 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         warnFrame.texture = tex
         row[p.."KnowWarn"] = warnFrame
     end
-    row[p.."KnowWarn"]:ClearAllPoints()
-    row[p.."KnowWarn"]:SetPoint("RIGHT", row, "LEFT", knowX + knowW - 2, centerY)
+    if knowVisible then
+        row[p.."Know"]:SetWidth(knowW - 16)
+        row[p.."Know"]:ClearAllPoints()
+        row[p.."Know"]:SetPoint("LEFT", knowX, centerY)
+        row[p.."Know"]:Show()
+        row[p.."KnowWarn"]:ClearAllPoints()
+        row[p.."KnowWarn"]:SetPoint("RIGHT", row, "LEFT", knowX + knowW - 2, centerY)
+    else
+        row[p.."Know"]:Hide()
+        row[p.."KnowWarn"]:Hide()
+    end
 
     local function EnsureProgressCell(fieldKey, colKey)
         local key = p .. fieldKey
@@ -1101,9 +1366,14 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             row[key]:SetJustifyH("CENTER")
             row[key]:SetMaxLines(1)
         end
-        row[key]:SetWidth(ColWidth(colKey))
-        row[key]:ClearAllPoints()
-        row[key]:SetPoint("LEFT", ColOffset(colKey), centerY)
+        if IsColumnVisible(colKey) then
+            row[key]:SetWidth(ColWidth(colKey))
+            row[key]:ClearAllPoints()
+            row[key]:SetPoint("LEFT", ColOffset(colKey), centerY)
+            row[key]:Show()
+        else
+            row[key]:Hide()
+        end
         return row[key]
     end
 
@@ -1116,9 +1386,41 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local gatheringText = EnsureProgressCell("Gathering", "gathering")
     local catchUpText = EnsureProgressCell("CatchUp", "catchUp")
     local moxieText = EnsureProgressCell("Moxie", "moxie")
+    local cooldownsText = EnsureProgressCell("Cooldowns", "cooldowns")
 
-    -- COLUMN HIT-FRAMES (interactive tooltips for skill)
+    -- EQUIPMENT ICON CELLS (tool, acc1, acc2)
+    local function EnsureEquipIconCell(fieldKey, colKey)
+        local key = p .. fieldKey
+        if not row[key] then
+            local btn = CreateFrame("Button", nil, row)
+            btn:EnableMouse(true)
+            btn.icon = btn:CreateTexture(nil, "ARTWORK")
+            btn.icon:SetSize(22, 22)
+            btn.icon:SetPoint("CENTER", 0, 0)
+            btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            row[key] = btn
+        end
+        local btn = row[key]
+        if IsColumnVisible(colKey) then
+            btn:SetSize(ColWidth(colKey), ROW_HEIGHT / 2)
+            btn:ClearAllPoints()
+            btn:SetPoint("LEFT", ColOffset(colKey), centerY)
+            btn:Show()
+        else
+            btn:Hide()
+        end
+        return btn
+    end
+
+    local toolCell = EnsureEquipIconCell("Tool", "tool")
+    local acc1Cell = EnsureEquipIconCell("Acc1", "acc1")
+    local acc2Cell = EnsureEquipIconCell("Acc2", "acc2")
+
+    -- COLUMN HIT-FRAMES (interactive tooltips for skill + cooldowns)
     local skillHit = AcquireColumnHitFrame(row, p.."SkillHit", "skill", centerY)
+    if skillVisible then skillHit:Show() else skillHit:Hide() end
+    local cdHit = AcquireColumnHitFrame(row, p.."CdHit", "cooldowns", centerY)
+    if IsColumnVisible("cooldowns") then cdHit:Show() else cdHit:Hide() end
 
     -- OPEN BUTTON
     local openX = ColOffset("open")
@@ -1193,23 +1495,33 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         local rechargeStr = ""
         if concData and concData.max and concData.max > 0 then
             concCurrent = concData.current or 0
+            concMax = concData.max or 0
             if WarbandNexus.GetEstimatedConcentration then
-                concCurrent = WarbandNexus:GetEstimatedConcentration(concData)
+                local estOk, estVal = pcall(WarbandNexus.GetEstimatedConcentration, WarbandNexus, concData)
+                if estOk and type(estVal) == "number" then
+                    concCurrent = estVal
+                end
             end
-            concMax = concData.max
             if concCurrent >= concMax then
                 rechargeStr = "|cff4de64d" .. ((ns.L and ns.L["FULL"]) or "Full") .. "|r"
             elseif WarbandNexus.GetConcentrationTimeToFull then
-                local ts = WarbandNexus:GetConcentrationTimeToFull(concData)
-                if ts and ts ~= "" and ts ~= "Full" then
+                local tsOk, ts = pcall(WarbandNexus.GetConcentrationTimeToFull, WarbandNexus, concData)
+                if tsOk and ts and ts ~= "" and ts ~= "Full" then
                     rechargeStr = "|cffffffff" .. ts .. "|r"
                 end
             end
         end
+        local concVisible = IsColumnVisible("conc")
         local concX = ColOffset("conc")
         local barTopY = centerY + BAR_HEIGHT / 2 - ROW_HEIGHT / 2
-        UpdateConcentrationBar(row, p.."ConcBar", concX, barTopY, ColWidth("conc"), concCurrent, concMax)
-        row[p.."Recharge"]:SetText(rechargeStr)
+        if concVisible then
+            UpdateConcentrationBar(row, p.."ConcBar", concX, barTopY, ColWidth("conc"), concCurrent, concMax)
+        elseif row[p.."ConcBar"] then
+            row[p.."ConcBar"]:Hide()
+        end
+        if rechargeVisible then
+            row[p.."Recharge"]:SetText(rechargeStr)
+        end
 
         -- Knowledge: keyed by skillLineID (expansion-specific). Always show Current / Max.
         -- String-key legacy fallback only in "All" mode to prevent cross-expansion data bleed.
@@ -1217,9 +1529,9 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         if not kd and GetExpansionFilter() == "All" then
             kd = char.knowledgeData and char.knowledgeData[profName]
         end
-        row[p.."Know"]:SetText(FormatKnowledge(kd))
+        if knowVisible then row[p.."Know"]:SetText(FormatKnowledge(kd)) end
         local unspent = (kd and kd.unspentPoints) and kd.unspentPoints or 0
-        if unspent > 0 then
+        if knowVisible and unspent > 0 then
             row[p.."KnowWarn"]:Show()
             row[p.."KnowWarn"]:SetScript("OnEnter", function(self)
                 local msg
@@ -1309,6 +1621,92 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         else
             moxieText:SetText("|cffffffff--|r")
         end
+
+        -- COOLDOWNS: count of ready / total recipes with cooldowns for this profession's skillLineID.
+        local cdReady, cdTotal = 0, 0
+        if charKey and slID then
+            local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[charKey]
+            local cdTable = charData and charData.professionCooldowns and charData.professionCooldowns[slID]
+            if cdTable then
+                local now = time()
+                for _, info in pairs(cdTable) do
+                    cdTotal = cdTotal + 1
+                    if (info.cooldownEnd or 0) <= now then
+                        cdReady = cdReady + 1
+                    end
+                end
+            end
+        end
+        if cdTotal > 0 then
+            local clr = cdReady == cdTotal and "|cff00ff00" or (cdReady > 0 and "|cffffff00" or "|cffff4444")
+            cooldownsText:SetText(format("%s%d / %d|r", clr, cdReady, cdTotal))
+        else
+            cooldownsText:SetText("|cffffffff--|r")
+        end
+
+        -- Cooldown tooltip: show individual recipe cooldowns when hovering.
+        if cdTotal > 0 and charKey and slID then
+            local capturedCharKey, capturedSlID = charKey, slID
+            cdHit:SetScript("OnEnter", function(self)
+                local lines = {}
+                local cData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[capturedCharKey]
+                local tbl = cData and cData.professionCooldowns and cData.professionCooldowns[capturedSlID]
+                if tbl then
+                    local now = time()
+                    local sorted = {}
+                    for _, info in pairs(tbl) do sorted[#sorted+1] = info end
+                    table.sort(sorted, function(a,b) return (a.cooldownEnd or 0) < (b.cooldownEnd or 0) end)
+                    for _, info in ipairs(sorted) do
+                        local remaining = (info.cooldownEnd or 0) - now
+                        local iconStr = info.recipeIcon and format("|T%s:0|t ", tostring(info.recipeIcon)) or ""
+                        local rName = iconStr .. (info.recipeName or "?")
+                        local rStatus, rColor
+                        if remaining <= 0 then
+                            rStatus = "Ready"
+                            rColor = {0.3, 0.9, 0.3}
+                        else
+                            local h = math.floor(remaining / 3600)
+                            local m = math.floor((remaining % 3600) / 60)
+                            rStatus = h > 0 and format("%dh %dm", h, m) or format("%dm", m)
+                            rColor = {1, 0.82, 0}
+                        end
+                        lines[#lines+1] = { left = rName, right = rStatus, leftColor = {1,1,1}, rightColor = rColor }
+                    end
+                end
+                if #lines > 0 and ShowTooltip then
+                    ShowTooltip(self, { type = "custom", title = "Cooldowns", lines = lines, anchor = "ANCHOR_TOP" })
+                end
+            end)
+            cdHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
+        else
+            cdHit:SetScript("OnEnter", nil)
+            cdHit:SetScript("OnLeave", nil)
+        end
+
+        local eqData
+        if charKey then
+            local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[charKey]
+            local eqByProf = charData and charData.professionEquipment
+            if eqByProf then
+                local baseName = profName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
+                eqData = eqByProf[profName] or eqByProf[baseName]
+                if not eqData then
+                    local normName = baseName:gsub("%s+", ""):lower()
+                    for storedName, data in pairs(eqByProf) do
+                        if type(data) == "table" and storedName ~= "_legacy" then
+                            local storedNorm = storedName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", ""):gsub("%s+", ""):lower()
+                            if storedNorm == normName then
+                                eqData = data
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        SetEquipCell(toolCell, eqData, "tool")
+        SetEquipCell(acc1Cell, eqData, "accessory1")
+        SetEquipCell(acc2Cell, eqData, "accessory2")
 
         -- ===== SKILL COLUMN TOOLTIP (expansion breakdown — unique data) =====
         skillHit:SetScript("OnEnter", function(self)
@@ -1406,20 +1804,22 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             end
             local kdT = (slID and char.knowledgeData and char.knowledgeData[slID]) or (char.knowledgeData and char.knowledgeData[rowProfName])
             if kdT then
-                local unspent, spent, maxPts = kdT.unspentPoints or 0, kdT.spentPoints or 0, kdT.maxPoints or 0
-                local collectible = (maxPts > 0) and (maxPts - unspent - spent) or 0
-                if collectible > 0 then lines[#lines+1] = { left = (ns.L and ns.L["COLLECTIBLE"]) or "Collectible", right = tostring(collectible), leftColor = {1,1,1}, rightColor = {0.3,0.9,0.3} } end
+                local unspent = kdT.unspentPoints or 0
                 if unspent > 0 then lines[#lines+1] = { left = (ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent", right = tostring(unspent), leftColor = {1, 0.82, 0}, rightColor = {1, 0.82, 0} } end
             end
             local concT = (slID and char.concentration and char.concentration[slID]) or (char.concentration and char.concentration[rowProfName])
             if concT and concT.max and concT.max > 0 then
                 local est = concT.current or 0
-                if WarbandNexus.GetEstimatedConcentration then est = WarbandNexus:GetEstimatedConcentration(concT) end
-                local cc = est >= concT.max and {0.3,0.9,0.3} or (est > 0 and {1,0.82,0} or {1,1,1})
-                lines[#lines+1] = { left = (ns.L and ns.L["CONCENTRATION"]) or "Concentration", right = format("%d / %d", est, concT.max), leftColor = {1,1,1}, rightColor = cc }
-                if est < concT.max and WarbandNexus.GetConcentrationTimeToFull then
-                    local ts = WarbandNexus:GetConcentrationTimeToFull(concT)
-                    if ts and ts ~= "" and ts ~= "Full" then lines[#lines+1] = { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = ts, leftColor = {1,1,1}, rightColor = {1,0.82,0} } end
+                if WarbandNexus.GetEstimatedConcentration then
+                    local estOk, estVal = pcall(WarbandNexus.GetEstimatedConcentration, WarbandNexus, concT)
+                    if estOk and type(estVal) == "number" then est = estVal end
+                end
+                local concMax = concT.max or 0
+                local cc = est >= concMax and {0.3,0.9,0.3} or (est > 0 and {1,0.82,0} or {1,1,1})
+                lines[#lines+1] = { left = (ns.L and ns.L["CONCENTRATION"]) or "Concentration", right = format("%d / %d", est, concMax), leftColor = {1,1,1}, rightColor = cc }
+                if est < concMax and WarbandNexus.GetConcentrationTimeToFull then
+                    local tsOk, ts = pcall(WarbandNexus.GetConcentrationTimeToFull, WarbandNexus, concT)
+                    if tsOk and ts and ts ~= "" and ts ~= "Full" then lines[#lines+1] = { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = ts, leftColor = {1,1,1}, rightColor = {1,0.82,0} } end
                 end
             end
             -- Equipment: show per-profession gear; fallback lookup by base name if key differs.
@@ -1435,12 +1835,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                             break
                         end
                     end
-                end
-            end
-            if not eqData and eqByProf and type(eqByProf._legacy) == "table" then
-                local legacy = eqByProf._legacy
-                if legacy.tool or legacy.accessory1 or legacy.accessory2 then
-                    eqData = legacy
                 end
             end
             if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
@@ -1480,6 +1874,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         gatheringText:SetText("")
         catchUpText:SetText("")
         moxieText:SetText("")
+        cooldownsText:SetText("")
+        SetEquipCell(toolCell, nil, "tool")
+        SetEquipCell(acc1Cell, nil, "accessory1")
+        SetEquipCell(acc2Cell, nil, "accessory2")
         row[p.."Btn"]:Hide()
         if row[p.."InfoBtn"] then row[p.."InfoBtn"]:Hide() end
         local concX = ColOffset("conc")
@@ -1491,5 +1889,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Icon"]:SetScript("OnLeave", nil)
         -- Hide hit-frames for empty slots
         skillHit:Hide()
+        cdHit:Hide()
     end
 end
