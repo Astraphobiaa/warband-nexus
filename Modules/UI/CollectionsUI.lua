@@ -38,7 +38,6 @@ local SCROLL_CONTENT_TOP_PADDING = LAYOUT.SCROLL_CONTENT_TOP_PADDING or 12
 local CONTENT_INSET = LAYOUT.CONTENT_INSET or LAYOUT.CARD_GAP or 8
 local CONTAINER_INSET = LAYOUT.CONTAINER_INSET or 2
 local TEXT_GAP = AFTER_ELEMENT
-local BAR_EXTEND_H = 60
 local SEARCH_ROW_HEIGHT = 32  -- Plans ile birebir aynı
 -- Header kartı: sadece başlık; search bar sekmelerin altında. Plans ile aynı: header sonrası GetLayout().afterHeader (75)
 local COLLECTIONS_HEADER_CARD_HEIGHT = 70
@@ -53,19 +52,20 @@ local BAR_INSET = 2  -- Bar 2px each side = total 4px inside border
 -- ============================================================================
 
 -- Anlamca eşleşen, projede kullanıldığı bilinen Blizzard atlas'ları (kategori ile doğrudan ilişkili)
+local L = ns.L
 local SOURCE_CATEGORIES = {
-    { key = "drop",        label = "Drop",         iconAtlas = "ParagonReputation_Bag" },       -- torba (loot)
-    { key = "vendor",      label = "Vendor",        iconAtlas = "coin-gold" },
-    { key = "quest",       label = "Quest",         iconAtlas = "quest-legendary-turnin" },
-    { key = "achievement", label = "Achievement",   iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "profession",  label = "Profession",    iconAtlas = "poi-workorders" },
-    { key = "reputation",  label = "Reputation",    iconAtlas = "MajorFactions_MapIcons_Centaur64" }, -- faction/renown
-    { key = "pvp",         label = "PvP",           iconAtlas = "honorsystem-icon-prestige-9" },
-    { key = "worldevent",  label = "World Event",   iconAtlas = "characterupdate_clock-icon" },
-    { key = "promotion",   label = "Promotion",     iconAtlas = "Bonus-Objective-Star" },        -- ödül / yükselme
-    { key = "tradingpost", label = "Trading Post",   iconAtlas = "Auctioneer" },
-    { key = "treasure",    label = "Treasure",      iconAtlas = "VignetteLoot" },
-    { key = "unknown",     label = "Other",         iconAtlas = "poi-town" },                     -- nötr / diğer
+    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or "Drop",              iconAtlas = "ParagonReputation_Bag" },
+    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or "Vendor",          iconAtlas = "coin-gold" },
+    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or "Quest",            iconAtlas = "quest-legendary-turnin" },
+    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or "Achievement", iconAtlas = "UI-Achievement-Shield-NoPoints" },
+    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or "Profession",  iconAtlas = "poi-workorders" },
+    { key = "reputation",  label = (L and L["PARSE_REPUTATION"]) or "Reputation",        iconAtlas = "MajorFactions_MapIcons_Centaur64" },
+    { key = "pvp",         label = (L and L["SOURCE_TYPE_PVP"]) or "PvP",                iconAtlas = "honorsystem-icon-prestige-9" },
+    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or "World Event", iconAtlas = "characterupdate_clock-icon" },
+    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or "Promotion",    iconAtlas = "Bonus-Objective-Star" },
+    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post", iconAtlas = "Auctioneer" },
+    { key = "treasure",    label = (L and L["SOURCE_TYPE_TREASURE"]) or "Treasure",      iconAtlas = "VignetteLoot" },
+    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                 iconAtlas = "poi-town" },
 }
 
 local SOURCE_CATEGORY_ORDER = {}
@@ -76,19 +76,19 @@ end
 -- Pet-specific categories: Pet Battle, Puzzle added; Pet Battle is its own category (not achievement).
 local PET_SOURCE_CATEGORIES = {
     { key = "petbattle",   label = (ns.L and ns.L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle", iconAtlas = "WildBattlePetCapturable" },
-    { key = "drop",        label = "Drop",         iconAtlas = "ParagonReputation_Bag" },
-    { key = "vendor",      label = "Vendor",        iconAtlas = "coin-gold" },
-    { key = "quest",       label = "Quest",         iconAtlas = "quest-legendary-turnin" },
-    { key = "achievement", label = "Achievement",   iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "profession",  label = "Profession",    iconAtlas = "poi-workorders" },
-    { key = "reputation",  label = "Reputation",    iconAtlas = "MajorFactions_MapIcons_Centaur64" },
-    { key = "pvp",         label = "PvP",           iconAtlas = "honorsystem-icon-prestige-9" },
-    { key = "worldevent",  label = "World Event",   iconAtlas = "characterupdate_clock-icon" },
-    { key = "promotion",   label = "Promotion",     iconAtlas = "Bonus-Objective-Star" },
-    { key = "tradingpost", label = "Trading Post",  iconAtlas = "Auctioneer" },
-    { key = "treasure",    label = "Treasure",      iconAtlas = "VignetteLoot" },
-    { key = "puzzle",      label = (ns.L and ns.L["SOURCE_TYPE_PUZZLE"]) or "Puzzle", iconAtlas = "UpgradeItem-32x32" },
-    { key = "unknown",     label = "Other",         iconAtlas = "poi-town" },
+    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or "Drop",              iconAtlas = "ParagonReputation_Bag" },
+    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or "Vendor",          iconAtlas = "coin-gold" },
+    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or "Quest",            iconAtlas = "quest-legendary-turnin" },
+    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or "Achievement", iconAtlas = "UI-Achievement-Shield-NoPoints" },
+    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or "Profession",  iconAtlas = "poi-workorders" },
+    { key = "reputation",  label = (L and L["PARSE_REPUTATION"]) or "Reputation",        iconAtlas = "MajorFactions_MapIcons_Centaur64" },
+    { key = "pvp",         label = (L and L["SOURCE_TYPE_PVP"]) or "PvP",                iconAtlas = "honorsystem-icon-prestige-9" },
+    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or "World Event", iconAtlas = "characterupdate_clock-icon" },
+    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or "Promotion",    iconAtlas = "Bonus-Objective-Star" },
+    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post", iconAtlas = "Auctioneer" },
+    { key = "treasure",    label = (L and L["SOURCE_TYPE_TREASURE"]) or "Treasure",      iconAtlas = "VignetteLoot" },
+    { key = "puzzle",      label = (L and L["SOURCE_TYPE_PUZZLE"]) or "Puzzle",          iconAtlas = "UpgradeItem-32x32" },
+    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                 iconAtlas = "poi-town" },
 }
 
 local PET_SOURCE_CATEGORY_ORDER = {}
@@ -98,17 +98,17 @@ end
 
 -- Toy-specific categories: mapped from C_ToyBox source type filter indices (BattlePetSources DBC enum, 1-indexed in Lua)
 local TOY_SOURCE_CATEGORIES = {
-    { key = "drop",        sourceIndex = 1,  label = "Drop",          iconAtlas = "ParagonReputation_Bag" },
-    { key = "quest",       sourceIndex = 2,  label = "Quest",         iconAtlas = "quest-legendary-turnin" },
-    { key = "vendor",      sourceIndex = 3,  label = "Vendor",        iconAtlas = "coin-gold" },
-    { key = "profession",  sourceIndex = 4,  label = "Profession",    iconAtlas = "poi-workorders" },
-    { key = "achievement", sourceIndex = 6,  label = "Achievement",   iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "worldevent",  sourceIndex = 7,  label = "World Event",   iconAtlas = "characterupdate_clock-icon" },
-    { key = "promotion",   sourceIndex = 8,  label = "Promotion",     iconAtlas = "Bonus-Objective-Star" },
-    { key = "tcg",         sourceIndex = 9,  label = "Trading Card",  iconAtlas = "Auctioneer" },
-    { key = "petstore",    sourceIndex = 10, label = "In-Game Shop",  iconAtlas = "coin-gold" },
-    { key = "tradingpost", sourceIndex = 11, label = "Trading Post",  iconAtlas = "Auctioneer" },
-    { key = "unknown",     sourceIndex = 0,  label = "Other",         iconAtlas = "poi-town" },
+    { key = "drop",        sourceIndex = 1,  label = (L and L["SOURCE_TYPE_DROP"]) or "Drop",                iconAtlas = "ParagonReputation_Bag" },
+    { key = "quest",       sourceIndex = 2,  label = (L and L["SOURCE_TYPE_QUEST"]) or "Quest",              iconAtlas = "quest-legendary-turnin" },
+    { key = "vendor",      sourceIndex = 3,  label = (L and L["SOURCE_TYPE_VENDOR"]) or "Vendor",            iconAtlas = "coin-gold" },
+    { key = "profession",  sourceIndex = 4,  label = (L and L["SOURCE_TYPE_PROFESSION"]) or "Profession",    iconAtlas = "poi-workorders" },
+    { key = "achievement", sourceIndex = 6,  label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or "Achievement",  iconAtlas = "UI-Achievement-Shield-NoPoints" },
+    { key = "worldevent",  sourceIndex = 7,  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or "World Event",  iconAtlas = "characterupdate_clock-icon" },
+    { key = "promotion",   sourceIndex = 8,  label = (L and L["SOURCE_TYPE_PROMOTION"]) or "Promotion",      iconAtlas = "Bonus-Objective-Star" },
+    { key = "tcg",         sourceIndex = 9,  label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card", iconAtlas = "Auctioneer" },
+    { key = "petstore",    sourceIndex = 10, label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or "In-Game Shop", iconAtlas = "coin-gold" },
+    { key = "tradingpost", sourceIndex = 11, label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post", iconAtlas = "Auctioneer" },
+    { key = "unknown",     sourceIndex = 0,  label = (L and L["SOURCE_OTHER"]) or "Other",                   iconAtlas = "poi-town" },
 }
 
 local TOY_SOURCE_CATEGORY_ORDER = {}
@@ -2320,45 +2320,16 @@ end
 -- LOADING STATE PANEL
 -- ============================================================================
 
-local function CreateLoadingPanel(parent, width, height)
-    local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    panel:SetSize(width, height)
-    ApplyVisuals(panel, {0.08, 0.08, 0.10, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
-    panel:SetFrameLevel(parent:GetFrameLevel() + 10)
-
-    local spinner = FontManager:CreateFontString(panel, "header", "OVERLAY")
-    spinner:SetPoint("CENTER", 0, CONTENT_INSET)
-    spinner:SetText("|cff9370DB" .. ((ns.L and ns.L["LOADING_COLLECTIONS"]) or "Scanning collections...") .. "|r")
-
-    local progressText = FontManager:CreateFontString(panel, "body", "OVERLAY")
-    progressText:SetPoint("CENTER", 0, -CONTENT_INSET)
-    progressText:SetTextColor(0.7, 0.7, 0.7)
-    panel.progressText = progressText
-
-    local barBg = panel:CreateTexture(nil, "ARTWORK")
-    barBg:SetHeight(4)
-    barBg:SetPoint("TOPLEFT", progressText, "BOTTOMLEFT", -BAR_EXTEND_H, -CONTENT_INSET)
-    barBg:SetPoint("TOPRIGHT", progressText, "BOTTOMRIGHT", BAR_EXTEND_H, -CONTENT_INSET)
-    barBg:SetColorTexture(0.15, 0.15, 0.18, 1)
-
-    local barFill = panel:CreateTexture(nil, "OVERLAY")
-    barFill:SetHeight(4)
-    barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
-    barFill:SetWidth(1)
-    barFill:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
-    panel.barFill = barFill
-    panel.barBg = barBg
-
-    function panel:UpdateProgress(progress, stage)
-        local pct = math.min(100, math.max(0, progress or 0))
-        progressText:SetText(string.format("%d%% - %s", pct, stage or ""))
-        local barWidth = barBg:GetWidth()
-        if barWidth and barWidth > 0 then
-            barFill:SetWidth(math.max(1, barWidth * (pct / 100)))
-        end
+local function GetOrCreateLoadingPanel(parent)
+    local UI_CreateLoadingStatePanel = ns.UI_CreateLoadingStatePanel
+    if UI_CreateLoadingStatePanel then
+        return UI_CreateLoadingStatePanel(parent)
     end
-
-    return panel
+    local fallback = CreateFrame("Frame", nil, parent)
+    fallback:SetAllPoints(parent)
+    function fallback:ShowLoading() self:Show() end
+    function fallback:HideLoading() self:Hide() end
+    return fallback
 end
 
 -- ============================================================================
@@ -3754,15 +3725,14 @@ local function DrawMountsContent(contentFrame)
     if isLoading then
         SetCollectionProgress(nil, nil)
         if not collectionsState.loadingPanel then
-            collectionsState.loadingPanel = CreateLoadingPanel(contentFrame, cw, ch)
-            collectionsState.loadingPanel:SetPoint("TOPLEFT", 0, 0)
+            collectionsState.loadingPanel = GetOrCreateLoadingPanel(contentFrame)
         end
-        collectionsState.loadingPanel:Show()
         collectionsState.loadingPanel:SetParent(contentFrame)
+        collectionsState.loadingPanel:SetAllPoints(contentFrame)
         collectionsState.loadingPanel:SetFrameLevel(contentFrame:GetFrameLevel() + 20)
         local progress = (loadingState and loadingState.loadingProgress) or 0
         local stage = (loadingState and loadingState.currentStage) or ((ns.L and ns.L["LOADING_COLLECTIONS"]) or "Loading collections...")
-        collectionsState.loadingPanel:UpdateProgress(progress, stage)
+        collectionsState.loadingPanel:ShowLoading((ns.L and ns.L["LOADING_COLLECTIONS"]) or "Scanning collections...", progress, stage)
         if collectionsState.mountListContainer then collectionsState.mountListContainer:Hide() end
         if collectionsState.mountListScrollBarContainer then collectionsState.mountListScrollBarContainer:Hide() end
         if collectionsState.viewerContainer then collectionsState.viewerContainer:Hide() end
@@ -4095,15 +4065,14 @@ local function DrawPetsContent(contentFrame)
     if isLoading then
         SetCollectionProgress(nil, nil)
         if not collectionsState.loadingPanel then
-            collectionsState.loadingPanel = CreateLoadingPanel(contentFrame, cw, ch)
-            collectionsState.loadingPanel:SetPoint("TOPLEFT", 0, 0)
+            collectionsState.loadingPanel = GetOrCreateLoadingPanel(contentFrame)
         end
-        collectionsState.loadingPanel:Show()
         collectionsState.loadingPanel:SetParent(contentFrame)
+        collectionsState.loadingPanel:SetAllPoints(contentFrame)
         collectionsState.loadingPanel:SetFrameLevel(contentFrame:GetFrameLevel() + 20)
         local progress = (loadingState and loadingState.loadingProgress) or 0
         local stage = (loadingState and loadingState.currentStage) or ((ns.L and ns.L["LOADING_COLLECTIONS"]) or "Loading collections...")
-        collectionsState.loadingPanel:UpdateProgress(progress, stage)
+        collectionsState.loadingPanel:ShowLoading((ns.L and ns.L["LOADING_COLLECTIONS"]) or "Scanning collections...", progress, stage)
         if collectionsState.petListContainer then collectionsState.petListContainer:Hide() end
         if collectionsState.petListScrollBarContainer then collectionsState.petListScrollBarContainer:Hide() end
         if collectionsState.viewerContainer then collectionsState.viewerContainer:Hide() end
@@ -4591,15 +4560,14 @@ local function DrawToysContent(contentFrame)
     if isLoading and not dataReady then
         SetCollectionProgress(nil, nil)
         if not collectionsState.loadingPanel then
-            collectionsState.loadingPanel = CreateLoadingPanel(contentFrame, cw, ch)
-            collectionsState.loadingPanel:SetPoint("TOPLEFT", 0, 0)
+            collectionsState.loadingPanel = GetOrCreateLoadingPanel(contentFrame)
         end
-        collectionsState.loadingPanel:Show()
         collectionsState.loadingPanel:SetParent(contentFrame)
+        collectionsState.loadingPanel:SetAllPoints(contentFrame)
         collectionsState.loadingPanel:SetFrameLevel(contentFrame:GetFrameLevel() + 20)
         local progress = (loadingState and loadingState.loadingProgress) or 0
         local stage = (loadingState and loadingState.currentStage) or ((ns.L and ns.L["LOADING_COLLECTIONS"]) or "Loading collections...")
-        collectionsState.loadingPanel:UpdateProgress(progress, stage)
+        collectionsState.loadingPanel:ShowLoading((ns.L and ns.L["LOADING_COLLECTIONS"]) or "Scanning collections...", progress, stage)
         if collectionsState.toyListContainer then collectionsState.toyListContainer:Hide() end
         if collectionsState.toyListScrollBarContainer then collectionsState.toyListScrollBarContainer:Hide() end
         if collectionsState.toyDetailContainer then collectionsState.toyDetailContainer:Hide() end
@@ -4865,15 +4833,14 @@ local function DrawAchievementsContent(contentFrame)
     if isLoading then
         SetCollectionProgress(nil, nil)
         if not collectionsState.loadingPanel then
-            collectionsState.loadingPanel = CreateLoadingPanel(contentFrame, cw, ch)
-            collectionsState.loadingPanel:SetPoint("TOPLEFT", 0, 0)
+            collectionsState.loadingPanel = GetOrCreateLoadingPanel(contentFrame)
         end
-        collectionsState.loadingPanel:Show()
         collectionsState.loadingPanel:SetParent(contentFrame)
+        collectionsState.loadingPanel:SetAllPoints(contentFrame)
         collectionsState.loadingPanel:SetFrameLevel(contentFrame:GetFrameLevel() + 20)
         local progress = (loadingState and loadingState.loadingProgress) or (collLoading and collLoading.loadingProgress) or 0
         local stage = (loadingState and loadingState.currentStage) or (collLoading and collLoading.currentStage) or ((ns.L and ns.L["LOADING_ACHIEVEMENTS"]) or "Loading achievements...")
-        collectionsState.loadingPanel:UpdateProgress(progress, stage)
+        collectionsState.loadingPanel:ShowLoading((ns.L and ns.L["LOADING_ACHIEVEMENTS"]) or "Loading achievements...", progress, stage)
         if collectionsState.achievementListContainer then collectionsState.achievementListContainer:Hide() end
         if collectionsState.achievementListScrollBarContainer then collectionsState.achievementListScrollBarContainer:Hide() end
         if collectionsState.achievementDetailContainer then collectionsState.achievementDetailContainer:Hide() end
@@ -4927,38 +4894,41 @@ end
 -- ============================================================================
 
 function WarbandNexus:DrawCollectionsTab(parent)
-    local yOffset = (LAYOUT.TOP_MARGIN or 8)
     local sideMargin = (LAYOUT.SIDE_MARGIN or 10)
     local width = (parent:GetWidth() or 680) - 20
+
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local headerYOffset = (LAYOUT.TOP_MARGIN or 8)
+
     HideEmptyStateCard(parent, "collections")
 
     -- ===== CHROME CACHING: reuse header/search/filter/subtab frames across tab switches =====
     local chrome = collectionsState._chrome
 
     if chrome and chrome.titleCard then
-        -- Re-parent: titleCard (sadece başlık) -> subTabBar -> searchRow (sekmelerin altında)
-        chrome.titleCard:SetParent(parent)
+        chrome.titleCard:SetParent(headerParent)
         chrome.titleCard:ClearAllPoints()
-        chrome.titleCard:SetPoint("TOPLEFT", sideMargin, -yOffset)
-        chrome.titleCard:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
+        chrome.titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+        chrome.titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         chrome.titleCard:Show()
 
-        yOffset = yOffset + (GetLayout().afterHeader or AFTER_HEADER)
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or AFTER_HEADER)
 
-        chrome.subTabBar:SetParent(parent)
+        chrome.subTabBar:SetParent(headerParent)
         chrome.subTabBar:ClearAllPoints()
-        chrome.subTabBar:SetPoint("TOPLEFT", sideMargin, -yOffset)
-        chrome.subTabBar:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
+        chrome.subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+        chrome.subTabBar:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         chrome.subTabBar:SetActiveTab(collectionsState.currentSubTab)
         chrome.subTabBar:Show()
         collectionsState.subTabBar = chrome.subTabBar
 
-        yOffset = yOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
+        headerYOffset = headerYOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
 
-        chrome.searchRow:SetParent(parent)
+        chrome.searchRow:SetParent(headerParent)
         chrome.searchRow:ClearAllPoints()
-        chrome.searchRow:SetPoint("TOPLEFT", sideMargin, -yOffset)
-        chrome.searchRow:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
+        chrome.searchRow:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+        chrome.searchRow:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         chrome.searchRow:Show()
 
         chrome.filterRow:SetParent(chrome.searchRow)
@@ -4966,16 +4936,16 @@ function WarbandNexus:DrawCollectionsTab(parent)
         chrome.filterRow:SetPoint("TOPRIGHT", chrome.searchRow, "TOPRIGHT", 0, 0)
         chrome.filterRow:Show()
 
-        yOffset = yOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
+        headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
     else
         -- First-time creation of chrome elements
         chrome = {}
         collectionsState._chrome = chrome
 
-        -- ===== HEADER CARD (sadece başlık) =====
-        local titleCard = CreateCard(parent, COLLECTIONS_HEADER_CARD_HEIGHT)
-        titleCard:SetPoint("TOPLEFT", sideMargin, -yOffset)
-        titleCard:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
+        -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
+        local titleCard = CreateCard(headerParent, COLLECTIONS_HEADER_CARD_HEIGHT)
+        titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         chrome.titleCard = titleCard
 
         local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("collections"))
@@ -5000,10 +4970,10 @@ function WarbandNexus:DrawCollectionsTab(parent)
         textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
 
         titleCard:Show()
-        yOffset = yOffset + (GetLayout().afterHeader or AFTER_HEADER)
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or AFTER_HEADER)
 
-        -- ===== SUB-TAB BAR (sekmeler search'ün üstünde) =====
-        local subTabBar = CreateSubTabBar(parent, function(tabKey)
+        -- ===== SUB-TAB BAR (in fixedHeader - non-scrolling) =====
+        local subTabBar = CreateSubTabBar(headerParent, function(tabKey)
             if collectionsState.currentSubTab == tabKey then
                 if collectionsState.subTabBar then
                     collectionsState.subTabBar:SetActiveTab(tabKey)
@@ -5033,19 +5003,19 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 end
             end)
         end)
-        subTabBar:SetPoint("TOPLEFT", sideMargin, -yOffset)
-        subTabBar:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
+        subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+        subTabBar:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         subTabBar:SetActiveTab(collectionsState.currentSubTab)
         chrome.subTabBar = subTabBar
         collectionsState.subTabBar = subTabBar
 
-        yOffset = yOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
+        headerYOffset = headerYOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
 
-        -- ===== SEARCH ROW (Plans ile birebir: container 32px + icon + EditBox) + 2 CHECKBOX =====
-        local searchRow = CreateFrame("Frame", nil, parent)
+        -- ===== SEARCH ROW (in fixedHeader - non-scrolling) =====
+        local searchRow = CreateFrame("Frame", nil, headerParent)
         searchRow:SetHeight(SEARCH_ROW_HEIGHT)
-        searchRow:SetPoint("TOPLEFT", sideMargin, -yOffset)
-        searchRow:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
+        searchRow:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+        searchRow:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         chrome.searchRow = searchRow
 
         local FILTER_BLOCK_WIDTH = 200
@@ -5181,10 +5151,14 @@ function WarbandNexus:DrawCollectionsTab(parent)
             cbUncollected.checkTexture:Show()
         end
 
-        yOffset = yOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
+        headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
     end
 
-    -- ===== CONTENT AREA (search bar sonrası liste + details, footer'a kadar; Plans ile aynı afterElement) =====
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+
+    local yOffset = 8
+
+    -- ===== CONTENT AREA =====
     local scrollFrame = parent:GetParent()
     local viewHeight = (scrollFrame and scrollFrame:GetHeight()) or 450
     local bottomPad = 0

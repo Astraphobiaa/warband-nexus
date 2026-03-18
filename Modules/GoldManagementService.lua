@@ -12,11 +12,24 @@ local lastActionTime = 0
 local ACTION_COOLDOWN = 2
 
 --============================================================================
+-- SETTINGS RESOLUTION: per-character override → profile fallback
+--============================================================================
+
+local function GetEffectiveGoldSettings()
+    if not WarbandNexus.db then return nil end
+    local charSettings = WarbandNexus.db.char and WarbandNexus.db.char.goldManagement
+    if charSettings and charSettings.perCharacter then
+        return charSettings
+    end
+    return WarbandNexus.db.profile and WarbandNexus.db.profile.goldManagement
+end
+
+--============================================================================
 -- CORE LOGIC
 --============================================================================
 
 local function PerformGoldManagement()
-    local settings = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.goldManagement
+    local settings = GetEffectiveGoldSettings()
     if not settings or not settings.enabled then return end
     
     local charGold = GetMoney() or 0
@@ -101,4 +114,8 @@ function WarbandNexus:TriggerGoldManagement()
         if not WarbandNexus.bankIsOpen then return end
         PerformGoldManagement()
     end)
+end
+
+function WarbandNexus:GetEffectiveGoldSettings()
+    return GetEffectiveGoldSettings()
 end

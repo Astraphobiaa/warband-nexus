@@ -295,8 +295,11 @@ end
 --============================================================================
 
 function WarbandNexus:DrawPvEProgress(parent)
-    local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
+
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local headerYOffset = 8
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
@@ -337,10 +340,10 @@ function WarbandNexus:DrawPvEProgress(parent)
         end
     end
     
-    -- ===== HEADER CARD (Always shown) =====
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
+    local titleCard = CreateCard(headerParent, 70)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     -- Header icon with ring border (standardized)
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
@@ -416,78 +419,32 @@ function WarbandNexus:DrawPvEProgress(parent)
     end
     
     titleCard:Show()
-    
-    yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
-    
+    headerYOffset = headerYOffset + GetLayout().afterHeader
+
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+
+    local yOffset = 8
+
     -- ===== LOADING STATE INDICATOR (AUTOMATIC - NO USER ACTION) =====
     if ns.PvELoadingState and ns.PvELoadingState.isLoading then
-        local loadingCard = CreateCard(parent, 90)
-        loadingCard:SetPoint("TOPLEFT", 10, -yOffset)
-        loadingCard:SetPoint("TOPRIGHT", -10, -yOffset)
-        
-        -- Animated spinner (using built-in WoW atlas)
-        local spinnerFrame = CreateIcon(loadingCard, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
-        spinnerFrame:SetPoint("LEFT", 20, 0)
-        spinnerFrame:Show()
-        local spinner = spinnerFrame.texture
-        
-        -- Animate rotation
-        local rotation = 0
-        loadingCard:SetScript("OnUpdate", function(self, elapsed)
-            rotation = rotation + (elapsed * 270) -- 270 degrees per second (smooth rotation)
-            spinner:SetRotation(math.rad(rotation))
-        end)
-        
-        -- Loading text with stage info
-        local loadingText = FontManager:CreateFontString(loadingCard, "title", "OVERLAY")
-        loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
-        local loadingPveLabel = (ns.L and ns.L["LOADING_PVE"]) or "Loading PvE Data..."
-        loadingText:SetText("|cff00ccff" .. loadingPveLabel .. "|r")
-        
-        -- Progress indicator with current stage
-        local progressText = FontManager:CreateFontString(loadingCard, "body", "OVERLAY")
-        progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
-        
-        local attempt = ns.PvELoadingState.attempts or 1
-        local currentStage = ns.PvELoadingState.currentStage or ((ns.L and ns.L["PREPARING"]) or "Preparing")
-        local progress = ns.PvELoadingState.loadingProgress or 0
-        
-        progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, progress))
-        
-        -- Hint text
-        local hintText = FontManager:CreateFontString(loadingCard, "small", "OVERLAY")
-        hintText:SetPoint("LEFT", spinner, "RIGHT", 15, -25)
-        hintText:SetTextColor(0.6, 0.6, 0.6)
-        hintText:SetText((ns.L and ns.L["PVE_APIS_LOADING"]) or "Please wait, WoW APIs are initializing...")
-        
-        loadingCard:Show()
-        
-        yOffset = yOffset + 100
-        
-        -- Don't show character data while loading - return early
-        return yOffset + 50
+        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+        if UI_CreateLoadingStateCard then
+            local newYOffset = UI_CreateLoadingStateCard(
+                parent,
+                yOffset,
+                ns.PvELoadingState,
+                (ns.L and ns.L["LOADING_PVE"]) or "Loading PvE Data..."
+            )
+            return newYOffset + 50
+        end
     end
     
     -- ===== ERROR STATE (IF DATA COLLECTION FAILED) =====
     if ns.PvELoadingState and ns.PvELoadingState.error and not ns.PvELoadingState.isLoading then
-        local errorCard = CreateCard(parent, 60)
-        errorCard:SetPoint("TOPLEFT", 10, -yOffset)
-        errorCard:SetPoint("TOPRIGHT", -10, -yOffset)
-        
-        -- Warning icon
-        local warningIconFrame = CreateIcon(errorCard, "services-icon-warning", 24, true, nil, true)
-        warningIconFrame:SetPoint("LEFT", 20, 0)
-        warningIconFrame:Show()
-        
-        -- Error message
-        local errorText = FontManager:CreateFontString(errorCard, "body", "OVERLAY")
-        errorText:SetPoint("LEFT", warningIconFrame, "RIGHT", 10, 0)
-        errorText:SetTextColor(1, 0.7, 0)
-        errorText:SetText("|cffffcc00" .. ns.PvELoadingState.error .. "|r")
-        
-        errorCard:Show()
-        
-        yOffset = yOffset + 70
+        local UI_CreateErrorStateCard = ns.UI_CreateErrorStateCard
+        if UI_CreateErrorStateCard then
+            yOffset = UI_CreateErrorStateCard(parent, yOffset, ns.PvELoadingState.error)
+        end
     end
     
     -- Check if module is disabled - show beautiful disabled state card
@@ -814,6 +771,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             checkmark:SetPoint("LEFT", vaultText, "RIGHT", 4, 0)
             checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
         end
+        
+        charHeader:SetAlpha(1)
         
         -- 3 Cards (only when expanded)
         if charExpanded then

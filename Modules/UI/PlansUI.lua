@@ -39,7 +39,6 @@ local CreateExternalWindow = ns.UI_CreateExternalWindow
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local CreateTableRow = ns.UI_CreateTableRow
 local CreateExpandableRow = ns.UI_CreateExpandableRow
-local CreateCategorySection = ns.UI_CreateCategorySection
 local CardLayoutManager = ns.UI_CardLayoutManager
 
 -- Loading state for collection scanning (per-category)
@@ -403,9 +402,12 @@ function WarbandNexus:DrawPlansTab(parent)
     -- Hide standardized empty state card
     HideEmptyStateCard(parent, "plans")
     
-    local yOffset = 8
     local width = parent:GetWidth() - 20
-    
+
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local headerYOffset = 8
+
     -- Check if module is enabled (early check for buttons)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false
     
@@ -414,10 +416,10 @@ function WarbandNexus:DrawPlansTab(parent)
         ns.expandedCards = {}
     end
     
-    -- ===== TITLE CARD =====
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
+    local titleCard = CreateCard(headerParent, 70)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     -- Header icon with ring border (standardized)
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
@@ -651,16 +653,15 @@ function WarbandNexus:DrawPlansTab(parent)
     -- Check if module is disabled (before showing controls)
     if not moduleEnabled then
         titleCard:Show()
-        yOffset = yOffset + GetLayout().afterHeader
-        
+        headerYOffset = headerYOffset + GetLayout().afterHeader
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["COLLECTION_PLANS"]) or "Collection Plans")
-        return yOffset + cardHeight
+        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["COLLECTION_PLANS"]) or "Collection Plans")
+        return 8 + cardHeight
     end
-    
+
     titleCard:Show()
-    
-    yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
+    headerYOffset = headerYOffset + GetLayout().afterHeader
     
     -- One-time event registration (following CurrencyUI pattern)
     if not self._plansEventRegistered then
@@ -719,10 +720,10 @@ function WarbandNexus:DrawPlansTab(parent)
         self._plansEventRegistered = true
     end
     
-    -- ===== CATEGORY BUTTONS (using Factory pattern) =====
-    local categoryBar = ns.UI.Factory:CreateContainer(parent, nil, nil, false)  -- NO BORDER
-    categoryBar:SetPoint("TOPLEFT", 10, -yOffset)
-    categoryBar:SetPoint("TOPRIGHT", -10, -yOffset)
+    -- ===== CATEGORY BUTTONS (in fixedHeader - non-scrolling) =====
+    local categoryBar = ns.UI.Factory:CreateContainer(headerParent, nil, nil, false)
+    categoryBar:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    categoryBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     local DEFAULT_CAT_BTN_WIDTH = 150
     local catBtnHeight = 40
@@ -856,9 +857,12 @@ function WarbandNexus:DrawPlansTab(parent)
     local totalHeight = (currentRow + 1) * catBtnHeight + currentRow * catBtnSpacing
     categoryBar:SetHeight(totalHeight)
     
-    -- Use standard afterElement spacing (8px) to match other sections
-    yOffset = yOffset + totalHeight + GetLayout().afterElement
-    
+    headerYOffset = headerYOffset + totalHeight + GetLayout().afterElement
+
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+
+    local yOffset = 8
+
     -- ===== SEARCH BAR FOR MY PLANS (active tab only) =====
     if currentCategory == "active" then
         local searchBar = ns.UI.Factory:CreateContainer(parent, nil, 32, false)
@@ -996,7 +1000,7 @@ local function AttachQuestRowTooltip(frame, quest)
         end
         if quest.isSubQuest and quest.eventGroup then
             local parentName = EVENT_GROUP_NAMES[quest.eventGroup] or quest.eventGroup
-            lines[#lines + 1] = { text = "Part of: " .. parentName, color = {0.8, 0.5, 1.0} }
+            lines[#lines + 1] = { text = format((ns.L and ns.L["PART_OF_FORMAT"]) or "Part of: %s", parentName), color = {0.8, 0.5, 1.0} }
         end
         if quest.zone and quest.zone ~= "" then
             lines[#lines + 1] = { text = quest.zone, color = {0.7, 0.7, 0.7} }
@@ -1016,12 +1020,12 @@ local function AttachQuestRowTooltip(frame, quest)
             lines[#lines + 1] = { text = FormatTimeLeft(quest.timeLeft) .. " remaining", color = timeColor }
         end
         if quest.isComplete then
-            lines[#lines + 1] = { text = "|cff44ff44Completed|r", color = {0.27, 1, 0.27} }
+            lines[#lines + 1] = { text = "|cff44ff44" .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete") .. "|r", color = {0.27, 1, 0.27} }
         elseif quest.isLocked then
-            lines[#lines + 1] = { text = "|cffff9933Locked — complete World Quests to unlock|r", color = {1, 0.6, 0.2} }
+            lines[#lines + 1] = { text = "|cffff9933" .. ((ns.L and ns.L["LOCKED_WORLD_QUESTS"]) or "Locked — complete World Quests to unlock") .. "|r", color = {1, 0.6, 0.2} }
         end
         if quest.questID then
-            lines[#lines + 1] = { text = "Quest ID: " .. quest.questID, color = {0.5, 0.5, 0.5} }
+            lines[#lines + 1] = { text = format((ns.L and ns.L["QUEST_ID_FORMAT"]) or "Quest ID: %s", quest.questID), color = {0.5, 0.5, 0.5} }
         end
 
         if ns.TooltipService and ns.TooltipService.Show then
@@ -3889,7 +3893,6 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             rowFrame:SetPoint("TOP", 0, slotCheckY + (si - 1) * -slotCheckSpacing)
             
             local cb = CreateThemedCheckbox(rowFrame, true)
-            cb:SetSize(18, 18)
             cb:SetPoint("LEFT", 0, 0)
             
             local colorBar = rowFrame:CreateTexture(nil, "ARTWORK")

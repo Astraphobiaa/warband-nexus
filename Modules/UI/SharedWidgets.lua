@@ -24,27 +24,35 @@ end
 -- Cache for pixel scale (automatically invalidated on scale changes)
 local mult = nil
 
--- Calculate exact pixel size for 1px borders
--- Uses GAME RESOLUTION (not physical monitor pixels)
+-- Calculate exact pixel size for 1px borders.
+-- Uses GetPhysicalScreenSize (reliable since BfA 8.0) and GetEffectiveScale
+-- to produce the size of one physical pixel in UIParent coordinate space.
 -- NOTE: Defined before event handler to avoid forward-reference errors
-local function GetPixelScale()
-    if mult then return mult end
-    
-    -- Get game's render resolution (NOT physical screen size)
-    local resolution = GetCVar("gxWindowedResolution") or GetCVar("gxFullscreenResolution") or "1920x1080"
-    local width, height = string.match(resolution, "(%d+)x(%d+)")
-    height = tonumber(height)
-    if not height or height <= 0 then height = 1080 end
-    
-    -- Get UI Scale
-    local uiScale = UIParent and UIParent:GetScale() or 1
-    if not uiScale or uiScale <= 0 then uiScale = 1 end
-    
-    -- Formula: (768 / GameHeight) / UIScale
-    -- 768 is WoW's base UI coordinate system height
-    mult = (768.0 / height) / uiScale
-    
-    return mult
+local function GetPixelScale(frame)
+    local physH = 1080
+    if GetPhysicalScreenSize then
+        local _, h = GetPhysicalScreenSize()
+        if h and h > 0 then physH = h end
+    else
+        local resolution = GetCVar("gxWindowedResolution") or "1920x1080"
+        local _, h = string.match(resolution, "(%d+)x(%d+)")
+        h = tonumber(h)
+        if h and h > 0 then physH = h end
+    end
+
+    local scaleTarget = frame or UIParent
+    local effectiveScale = scaleTarget and scaleTarget.GetEffectiveScale and scaleTarget:GetEffectiveScale() or 1
+    if not effectiveScale or effectiveScale <= 0 then effectiveScale = 1 end
+
+    -- Fast path: cache only UIParent scale (most common callsite)
+    if not frame or frame == UIParent then
+        if mult then return mult end
+        mult = 768.0 / (physH * effectiveScale)
+        return mult
+    end
+
+    -- Frame-specific pixel scale (for custom-scaled frames)
+    return 768.0 / (physH * effectiveScale)
 end
 
 -- Reset pixel scale cache (manual invalidation if needed)
@@ -70,19 +78,19 @@ scaleHandler:SetScript("OnEvent", function(self, event)
     -- Defer border refresh to next frame to allow scale to settle
     C_Timer.After(0, function()
         if ns.UI_UpdateBorderColor and ns.BORDER_REGISTRY then
-            local pixelScale = GetPixelScale()
             for i = 1, #ns.BORDER_REGISTRY do
                 local frame = ns.BORDER_REGISTRY[i]
                 if frame and frame.BorderTop then
+                    local pixelScale = GetPixelScale(frame)
                     frame.BorderTop:SetHeight(pixelScale)
                     frame.BorderBottom:SetHeight(pixelScale)
                     frame.BorderLeft:ClearAllPoints()
-                    frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -pixelScale)
-                    frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, pixelScale)
+                    frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+                    frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
                     frame.BorderLeft:SetWidth(pixelScale)
                     frame.BorderRight:ClearAllPoints()
-                    frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -pixelScale)
-                    frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, pixelScale)
+                    frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+                    frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
                     frame.BorderRight:SetWidth(pixelScale)
                 end
             end
@@ -503,7 +511,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
     -- Create 4-texture border system (Create Once) - SANDWICH METHOD
     -- Borders are INSIDE the frame, using BORDER layer (between backdrop and content)
     if not frame.BorderTop then
-        local pixelScale = GetPixelScale()  -- Pixel-perfect 1px thickness
+        local pixelScale = GetPixelScale(frame)  -- Pixel-perfect 1px thickness for this frame scale
         
         -- Top border (INSIDE frame, at the top edge)
         frame.BorderTop = frame:CreateTexture(nil, "BORDER")
@@ -527,24 +535,22 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderBottom:SetTexelSnappingBias(0)
         frame.BorderBottom:SetDrawLayer("BORDER", 0)
         
-        -- Left border (INSIDE frame, at the left edge, between top and bottom)
+        -- Left border (INSIDE frame, full height — overlaps corners, same color = invisible)
         frame.BorderLeft = frame:CreateTexture(nil, "BORDER")
         frame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
-        frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -pixelScale)
-        frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, pixelScale)
-        frame.BorderLeft:SetWidth(pixelScale)  -- Pixel-perfect 1px
-        -- Disable auto-snapping to prevent thickness fluctuation during resize/scroll
+        frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+        frame.BorderLeft:SetWidth(pixelScale)
         frame.BorderLeft:SetSnapToPixelGrid(false)
         frame.BorderLeft:SetTexelSnappingBias(0)
         frame.BorderLeft:SetDrawLayer("BORDER", 0)
         
-        -- Right border (INSIDE frame, at the right edge, between top and bottom)
+        -- Right border (INSIDE frame, full height — overlaps corners, same color = invisible)
         frame.BorderRight = frame:CreateTexture(nil, "BORDER")
         frame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
-        frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -pixelScale)
-        frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, pixelScale)
-        frame.BorderRight:SetWidth(pixelScale)  -- Pixel-perfect 1px
-        -- Disable auto-snapping to prevent thickness fluctuation during resize/scroll
+        frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        frame.BorderRight:SetWidth(pixelScale)
         frame.BorderRight:SetSnapToPixelGrid(false)
         frame.BorderRight:SetTexelSnappingBias(0)
         frame.BorderRight:SetDrawLayer("BORDER", 0)
@@ -1027,219 +1033,10 @@ local function CreateButton(parent, width, height, bgColor, borderColor, noBorde
     return button
 end
 
---[[
-    Create a two-line button (character row style)
-    Includes space for icon, main text, and sub text
-    @param parent frame - Parent frame
-    @param width number - Button width
-    @param height number - Button height (default 38)
-    @return button - Button with .icon, .mainText, .subText
-]]
-local function CreateTwoLineButton(parent, width, height)
-    if not parent then return nil end
-    
-    height = height or 38
-    
-    -- Create button with border
-    local button = CreateButton(parent, width, height)
-    
-    -- Icon (left side, inset by 5px from border)
-    button.icon = button:CreateTexture(nil, "ARTWORK")
-    button.icon:SetSize(28, 28)
-    button.icon:SetPoint("LEFT", 10, 0)
-    button.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    -- Anti-flicker
-    button.icon:SetSnapToPixelGrid(false)
-    button.icon:SetTexelSnappingBias(0)
-    
-    -- Main text (upper line)
-    button.mainText = FontManager:CreateFontString(button, "body", "OVERLAY")
-    button.mainText:SetPoint("LEFT", button.icon, "RIGHT", 8, 6)
-    button.mainText:SetJustifyH("LEFT")
-    button.mainText:SetTextColor(1, 1, 1)
-    
-    -- Sub text (lower line, smaller)
-    button.subText = FontManager:CreateFontString(button, "small", "OVERLAY")
-    button.subText:SetPoint("LEFT", button.icon, "RIGHT", 8, -6)
-    button.subText:SetJustifyH("LEFT")
-    button.subText:SetTextColor(0.7, 0.7, 0.7)
-    
-    return button
-end
-
---[[
-    Create a reputation progress bar with dynamic fill and colors
-    Handles Paragon, Renown, and Classic reputation systems
-    @param parent frame - Parent frame (usually a row)
-    @param width number - Bar width (default 200)
-    @param height number - Bar height (default 14)
-    @param currentValue number - Current reputation value
-    @param maxValue number - Max reputation value
-    @param isParagon boolean - If true, use paragon styling
-    @param isMaxed boolean - If true, fill bar 100% and use green color
-    @param standingID number - Standing ID for color (optional)
-    @return bgFrame, fillTexture - Background frame and fill texture
-]]
-local function CreateReputationProgressBar(parent, width, height, currentValue, maxValue, isParagon, isMaxed, standingID)
-    if not parent then return nil, nil end
-    
-    width = width or 200
-    height = height or 14
-    currentValue = currentValue or 0
-    maxValue = maxValue or 1
-    
-    -- Background frame - set high frame level to ensure border and text are on top
-    local bgFrame = CreateFrame("Frame", nil, parent)
-    bgFrame:SetSize(width, height)
-    bgFrame:SetFrameLevel(parent:GetFrameLevel() + 10)  -- High frame level for proper layering
-    
-    -- Border is 1px, so inset content by 1px on all sides for symmetry
-    local borderInset = 1
-    local contentWidth = width - (borderInset * 2)
-    local contentHeight = height - (borderInset * 2)
-    
-    -- Background texture (dark) - inset by 1px to sit inside border
-    local bgTexture = bgFrame:CreateTexture(nil, "BACKGROUND")
-    bgTexture:SetPoint("TOPLEFT", bgFrame, "TOPLEFT", borderInset, -borderInset)
-    bgTexture:SetPoint("BOTTOMRIGHT", bgFrame, "BOTTOMRIGHT", -borderInset, borderInset)
-    bgTexture:SetColorTexture(0.1, 0.1, 0.1, 0.8)
-    bgTexture:SetSnapToPixelGrid(false)
-    bgTexture:SetTexelSnappingBias(0)
-    
-    -- Calculate progress (handle maxValue = 0 case)
-    local progress = 0
-    if maxValue > 0 then
-        progress = currentValue / maxValue
-        progress = math.min(1, math.max(0, progress))
-    elseif maxValue == 0 and currentValue == 0 then
-        -- Empty reputation with 0/0 - show as 0% progress
-        progress = 0
-    end
-    
-    -- If maxed and not paragon, fill 100%
-    if isMaxed and not isParagon then
-        progress = 1
-    end
-    
-    -- Only create fill if there's progress
-    -- Fill bar should be 1px inset from border (borderInset + 1 = 2px from frame edge)
-    local fillInset = borderInset + 1  -- 2px total inset (1px border + 1px gap)
-    local fillWidth = contentWidth - 2  -- Subtract 2px (1px on each side) for gap
-    local fillHeight = contentHeight - 2  -- Subtract 2px (1px on each side) for gap
-    
-    local fillTexture = nil
-    -- Always create fill if there's any value or if maxed (even if currentValue is 0, show empty bar)
-    if (currentValue > 0 or isMaxed or maxValue > 0) then
-        fillTexture = bgFrame:CreateTexture(nil, "ARTWORK")
-        fillTexture:SetPoint("LEFT", bgFrame, "LEFT", fillInset, 0)
-        fillTexture:SetPoint("TOP", bgFrame, "TOP", 0, -fillInset)
-        fillTexture:SetPoint("BOTTOM", bgFrame, "BOTTOM", 0, fillInset)
-        fillTexture:SetWidth(fillWidth * progress)
-        fillTexture:SetSnapToPixelGrid(false)
-        fillTexture:SetTexelSnappingBias(0)
-        
-        -- Color based on type
-        if isMaxed and not isParagon then
-            -- Maxed: Green
-            fillTexture:SetColorTexture(0, 0.8, 0, 1)
-        elseif isParagon then
-            -- Paragon: Pink
-            fillTexture:SetColorTexture(1, 0.4, 1, 1)
-        elseif standingID then
-            -- Use standing color
-            local function GetStandingColor(standingID)
-                local colors = {
-                    [1] = {0.8, 0.13, 0.13}, -- Hated
-                    [2] = {0.8, 0.13, 0.13}, -- Hostile
-                    [3] = {0.75, 0.27, 0}, -- Unfriendly
-                    [4] = {0.9, 0.7, 0}, -- Neutral
-                    [5] = {0, 0.6, 0.1}, -- Friendly
-                    [6] = {0, 0.6, 0.1}, -- Honored
-                    [7] = {0, 0.6, 0.1}, -- Revered
-                    [8] = {0, 0.6, 0.1}, -- Exalted
-                }
-                local color = colors[standingID] or {0.9, 0.7, 0}
-                return color[1], color[2], color[3]
-            end
-            local r, g, b = GetStandingColor(standingID)
-            fillTexture:SetColorTexture(r, g, b, 1)
-        else
-            -- Default: Gold (for Renown/Friendship)
-            fillTexture:SetColorTexture(1, 0.82, 0, 1)
-        end
-    end
-    
-    -- Add border in BORDER layer (behind fill bar) for proper hierarchy
-    -- Layer order: BACKGROUND < BORDER < ARTWORK < OVERLAY
-    -- Border should be behind fill bar, so use BORDER layer
-    local COLORS = ns.UI_COLORS or {accent = {0.4, 0.6, 1}}
-    local accentColor = COLORS.accent or {0.4, 0.6, 1}
-    
-    -- Create borders in BORDER layer (behind ARTWORK fill bar)
-    local borderColor = {accentColor[1], accentColor[2], accentColor[3], 0.6}
-    local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
-    
-    -- Top border (BORDER layer - behind fill bar)
-    if not bgFrame.BorderTop then
-        bgFrame.BorderTop = bgFrame:CreateTexture(nil, "BORDER")
-        bgFrame.BorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
-        bgFrame.BorderTop:SetPoint("TOPLEFT", bgFrame, "TOPLEFT", 0, 0)
-        bgFrame.BorderTop:SetPoint("TOPRIGHT", bgFrame, "TOPRIGHT", 0, 0)
-        bgFrame.BorderTop:SetHeight(1)
-        bgFrame.BorderTop:SetSnapToPixelGrid(false)
-        bgFrame.BorderTop:SetTexelSnappingBias(0)
-        bgFrame.BorderTop:SetDrawLayer("BORDER", 0)
-        bgFrame.BorderTop:SetVertexColor(r, g, b, a)
-    end
-    
-    -- Bottom border
-    if not bgFrame.BorderBottom then
-        bgFrame.BorderBottom = bgFrame:CreateTexture(nil, "BORDER")
-        bgFrame.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
-        bgFrame.BorderBottom:SetPoint("BOTTOMLEFT", bgFrame, "BOTTOMLEFT", 0, 0)
-        bgFrame.BorderBottom:SetPoint("BOTTOMRIGHT", bgFrame, "BOTTOMRIGHT", 0, 0)
-        bgFrame.BorderBottom:SetHeight(1)
-        bgFrame.BorderBottom:SetSnapToPixelGrid(false)
-        bgFrame.BorderBottom:SetTexelSnappingBias(0)
-        bgFrame.BorderBottom:SetDrawLayer("BORDER", 0)
-        bgFrame.BorderBottom:SetVertexColor(r, g, b, a)
-    end
-    
-    -- Left border
-    if not bgFrame.BorderLeft then
-        bgFrame.BorderLeft = bgFrame:CreateTexture(nil, "BORDER")
-        bgFrame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
-        bgFrame.BorderLeft:SetPoint("TOPLEFT", bgFrame, "TOPLEFT", 0, -1)
-        bgFrame.BorderLeft:SetPoint("BOTTOMLEFT", bgFrame, "BOTTOMLEFT", 0, 1)
-        bgFrame.BorderLeft:SetWidth(1)
-        bgFrame.BorderLeft:SetSnapToPixelGrid(false)
-        bgFrame.BorderLeft:SetTexelSnappingBias(0)
-        bgFrame.BorderLeft:SetDrawLayer("BORDER", 0)
-        bgFrame.BorderLeft:SetVertexColor(r, g, b, a)
-    end
-    
-    -- Right border
-    if not bgFrame.BorderRight then
-        bgFrame.BorderRight = bgFrame:CreateTexture(nil, "BORDER")
-        bgFrame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
-        bgFrame.BorderRight:SetPoint("TOPRIGHT", bgFrame, "TOPRIGHT", 0, -1)
-        bgFrame.BorderRight:SetPoint("BOTTOMRIGHT", bgFrame, "BOTTOMRIGHT", 0, 1)
-        bgFrame.BorderRight:SetWidth(1)
-        bgFrame.BorderRight:SetSnapToPixelGrid(false)
-        bgFrame.BorderRight:SetTexelSnappingBias(0)
-        bgFrame.BorderRight:SetDrawLayer("BORDER", 0)
-        bgFrame.BorderRight:SetVertexColor(r, g, b, a)
-    end
-    
-    return bgFrame, fillTexture
-end
-
 -- Export factory functions to namespace
 ns.UI_CreateIcon = CreateIcon
 ns.UI_CreateStatusBar = CreateStatusBar
 ns.UI_CreateButton = CreateButton
-ns.UI_CreateTwoLineButton = CreateTwoLineButton
-ns.UI_CreateReputationProgressBar = CreateReputationProgressBar
 ns.UI_CreateParagonIcon = CreateParagonIcon
 
 --============================================================================
@@ -1303,23 +1100,26 @@ local function ReleaseCharacterRow(row)
 end
 
 -- Get a reputation row from pool or create new
-local function AcquireReputationRow(parent)
+local function AcquireReputationRow(parent, width, rowHeight)
     local row = table.remove(ReputationRowPool)
-    
+
     if not row then
         row = CreateFrame("Button", nil, parent)
         row.isPooled = true
         row.rowType = "reputation"
-        
+
         -- Apply highlight effect (only on initial creation)
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
             ns.UI.Factory:ApplyHighlight(row)
         end
     end
-    
+
     row:SetParent(parent)
+    if width and rowHeight then
+        row:SetSize(math.max(1, width), math.max(1, rowHeight))
+    end
     row:Show()
-    
+
     -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
@@ -1394,7 +1194,7 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
     
     -- CRITICAL: Always set parent when acquiring from pool
     row:SetParent(parent)
-    row:SetSize(width, rowHeight or 26)
+    row:SetSize(math.max(1, width or 200), math.max(1, rowHeight or 26))
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     
@@ -1511,7 +1311,7 @@ local function AcquireItemRow(parent, width, rowHeight)
     
     -- No border for items rows
     row:SetParent(parent)
-    row:SetSize(width, rowHeight)
+    row:SetSize(math.max(1, width or 200), math.max(1, rowHeight or 26))
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     
@@ -1595,7 +1395,7 @@ local function AcquireStorageRow(parent, width, rowHeight)
     -- No border for storage rows
     
     row:SetParent(parent)
-    row:SetSize(width, rowHeight or 26)
+    row:SetSize(math.max(1, width or 200), math.max(1, rowHeight or 26))
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     
@@ -1855,41 +1655,6 @@ local function FormatMoney(copper, iconSize, showZero)
     end
     
     return table.concat(parts, " ")
-end
-
---[[
-    Format money compact (short version, only highest denomination)
-    @param copper number - Total copper amount
-    @param iconSize number - Icon size (optional, default 14)
-    @return string - Compact formatted money string
-]]
-local function FormatMoneyCompact(copper, iconSize)
-    -- Validate and sanitize inputs
-    copper = tonumber(copper) or 0
-    if copper < 0 then copper = 0 end
-    iconSize = tonumber(iconSize) or 14
-    -- Clamp iconSize to safe range to prevent integer overflow in texture rendering
-    if iconSize < 8 then iconSize = 8 end
-    if iconSize > 32 then iconSize = 32 end
-    
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local copperAmount = math.floor(copper % 100)
-    
-    -- Show only the highest denomination
-    if gold > 0 then
-        local goldStr = tostring(gold)
-        local k
-        while true do
-            goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
-            if k == 0 then break end
-        end
-        return string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:2:0|t", goldStr, iconSize, iconSize)
-    elseif silver > 0 then
-        return string.format("|cffc7c7cf%d|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:2:0|t", silver, iconSize, iconSize)
-    else
-        return string.format("|cffeda55f%d|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:2:0|t", copperAmount, iconSize, iconSize)
-    end
 end
 
 -- Create collapsible header with expand/collapse button (NO pooling - headers are few)
@@ -2695,7 +2460,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     end
     text:SetPoint("CENTER", btn, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
-    text:SetText("Filter")
+    text:SetText((ns.L and ns.L["FILTER_LABEL"]) or "Filter")
     text:SetTextColor(0.9, 0.9, 0.9)
     icon:SetPoint("RIGHT", text, "LEFT", -6, 0)
 
@@ -2857,144 +2622,6 @@ ns.UI_GetColumnOffset = GetColumnOffset
 ns.UI_GetCharRowTotalWidth = GetCharRowTotalWidth
 ns.UI_CreateCharRowColumnDivider = CreateCharRowColumnDivider
 ns.UI_CreateCharacterSortDropdown = CreateCharacterSortDropdown
-
---============================================================================
--- SORTABLE TABLE HEADER (Reusable for any table with sorting)
---============================================================================
-
---[[
-    Creates a sortable table header with clickable columns
-    
-    @param parent - Parent frame
-    @param columns - Array of column definitions:
-        {
-            {key="name", label="CHARACTER", align="LEFT", offset=12},
-            {key="level", label="LEVEL", align="LEFT", offset=200},
-            {key="gold", label="GOLD", align="RIGHT", offset=-120},
-            {key="lastSeen", label="LAST SEEN", align="RIGHT", offset=-20}
-        }
-    @param width - Total header width
-    @param onSortChanged - Callback: function(sortKey, isAscending)
-    @param defaultSortKey - Initial sort column (optional)
-    @param defaultAscending - Initial sort direction (optional, default true)
-    
-    @return header frame, getCurrentSort function
-]]
-local function CreateSortableTableHeader(parent, columns, width, onSortChanged, defaultSortKey, defaultAscending)
-    -- State
-    local currentSortKey = defaultSortKey or (columns[1] and columns[1].key)
-    local isAscending = (defaultAscending ~= false) -- Default true
-
-    -- Create header frame with backdrop (like collapsible headers)
-    local header = CreateFrame("Frame", nil, parent)
-    header:SetSize(width, 28)
-    
-    -- Backdrop removed (naked frame)
-    
-    -- Column buttons
-    local columnButtons = {}
-    
-    for i, col in ipairs(columns) do
-        -- Create clickable button (no backdrop = no box!)
-        local btn = CreateFrame("Button", nil, header)
-        btn:SetSize(col.width or 100, 28)
-        
-        if col.align == "LEFT" then
-            btn:SetPoint("LEFT", col.offset or 0, 0)
-        elseif col.align == "RIGHT" then
-            btn:SetPoint("RIGHT", col.offset or 0, 0)
-        else
-            btn:SetPoint("CENTER", col.offset or 0, 0)
-        end
-        
-        -- Label text (position based on alignment)
-        btn.label = FontManager:CreateFontString(btn, "body", "OVERLAY")  -- Normal size font
-        if col.align == "LEFT" then
-            btn.label:SetPoint("LEFT", 5, 0)  -- Small padding
-            btn.label:SetJustifyH("LEFT")
-        elseif col.align == "RIGHT" then
-            btn.label:SetPoint("RIGHT", -17, 0) -- Space for arrow on right
-            btn.label:SetJustifyH("RIGHT")
-        else
-            btn.label:SetPoint("CENTER", -6, 0)
-            btn.label:SetJustifyH("CENTER")
-        end
-        btn.label:SetText(col.label)
-        btn.label:SetTextColor(1, 1, 1)  -- White text for all labels
-        
-        -- Sort arrow (^ ascending, v descending, - sortable)
-        btn.arrow = FontManager:CreateFontString(btn, "body", "OVERLAY") -- Bigger font!
-        if col.align == "RIGHT" then
-            btn.arrow:SetPoint("RIGHT", 0, 0)
-        else
-            btn.arrow:SetPoint("LEFT", btn.label, "RIGHT", 4, 0)
-        end
-        btn.arrow:SetText("Ôùå") -- Default: sortable indicator
-        btn.arrow:SetTextColor(1, 1, 1, 0.3) -- White with low alpha for inactive
-        
-        -- Update arrow visibility
-        local function UpdateArrow()
-            if currentSortKey == col.key then
-                btn.arrow:SetText(isAscending and "Ôû▓" or "Ôû╝")
-                btn.arrow:SetTextColor(0.6, 0.4, 0.8, 1) -- Brighter purple for active
-                btn.label:SetTextColor(1, 1, 1) -- White for active column
-            else
-                btn.arrow:SetText("Ôùå") -- Sortable hint (diamond)
-                btn.arrow:SetTextColor(1, 1, 1, 0.3) -- White with low alpha for inactive
-                btn.label:SetTextColor(1, 1, 1) -- White
-            end
-        end
-        
-        UpdateArrow()
-        
-        -- Hover effect
-        btn:SetScript("OnEnter", function(self)
-            if currentSortKey ~= col.key then
-                self.label:SetTextColor(1, 1, 1)
-            end
-        end)
-        
-        btn:SetScript("OnLeave", function(self)
-            if currentSortKey ~= col.key then
-                self.label:SetTextColor(1, 1, 1)  -- White
-            end
-        end)
-        
-        -- Click handler
-        btn:SetScript("OnClick", function()
-            if currentSortKey == col.key then
-                -- Same column - toggle direction
-                isAscending = not isAscending
-            else
-                -- New column - default to ascending
-                currentSortKey = col.key
-                isAscending = true
-            end
-            
-            -- Update all arrows
-            for _, otherBtn in pairs(columnButtons) do
-                if otherBtn.updateArrow then
-                    otherBtn.updateArrow()
-                end
-            end
-            
-            -- Notify parent
-            if onSortChanged then
-                onSortChanged(currentSortKey, isAscending)
-            end
-        end)
-        
-        btn.updateArrow = UpdateArrow
-        columnButtons[i] = btn
-    end
-    
-    -- Function to get current sort state
-    local function GetCurrentSort()
-        return currentSortKey, isAscending
-    end
-    
-    return header, GetCurrentSort
-end
 
 --============================================================================
 -- DRAW EMPTY STATE (Shared by Items and Storage tabs)
@@ -3228,302 +2855,6 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
 end
 
 --============================================================================
--- CURRENCY TRANSFER POPUP
---============================================================================
-
---[[
-    Create a currency transfer popup dialog
-    @param currencyData table - Currency information
-    @param currentCharacterKey string - Current character key
-    @param onConfirm function - Callback(targetCharKey, amount)
-    @return frame - Popup frame
-]]
-local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, onConfirm)
-    -- Create backdrop overlay
-    local overlay = CreateFrame("Frame", nil, UIParent)
-    overlay:SetFrameStrata("FULLSCREEN_DIALOG")  -- Highest strata
-    overlay:SetFrameLevel(1000)
-    overlay:SetAllPoints()
-    overlay:EnableMouse(true)
-    overlay:SetScript("OnMouseDown", function(self)
-        self:Hide()
-    end)
-    
-    -- Create popup frame
-    local popup = CreateFrame("Frame", nil, overlay)
-    popup:SetSize(400, 380)  -- Increased height for instructions
-    popup:SetPoint("CENTER")
-    popup:SetFrameStrata("FULLSCREEN_DIALOG")
-    popup:SetFrameLevel(overlay:GetFrameLevel() + 10)
-    popup:EnableMouse(true)
-    
-    -- Title
-    local title = FontManager:CreateFontString(popup, "title", "OVERLAY")
-    title:SetPoint("TOP", 0, -15)
-    title:SetText("|cff6a0dad" .. ((ns.L and ns.L["TRANSFER_CURRENCY"]) or "Transfer Currency") .. "|r")
-    
-    -- Get WarbandNexus and current character info
-    local WarbandNexus = ns.WarbandNexus
-    local currentPlayerName = UnitName("player")
-    local currentRealm = GetRealmName()
-    
-    -- From Character (current/online)
-    local fromText = FontManager:CreateFontString(popup, "small", "OVERLAY")
-    fromText:SetPoint("TOP", 0, -38)
-    local fromLabel = (ns.L and ns.L["FROM_LABEL"]) or "From:"
-    local onlineLabel = (ns.L and ns.L["ONLINE_LABEL"]) or "(Online)"
-    fromText:SetText(string.format("|cff888888%s|r |cff00ff00%s|r |cff888888%s|r", fromLabel, currentPlayerName, onlineLabel))
-    
-    -- Currency Icon
-    local icon = popup:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(32, 32)
-    icon:SetPoint("TOP", 0, -65)
-    if currencyData.iconFileID then
-        icon:SetTexture(currencyData.iconFileID)
-    end
-    
-    -- Currency Name
-    local nameText = FontManager:CreateFontString(popup, "body", "OVERLAY")
-    nameText:SetPoint("TOP", 0, -105)
-    nameText:SetText(currencyData.name or ((ns.L and ns.L["CURRENCY_UNKNOWN"]) or "Unknown Currency"))
-    nameText:SetTextColor(1, 0.82, 0)
-    
-    -- Available Amount
-    local availableText = FontManager:CreateFontString(popup, "small", "OVERLAY")
-    availableText:SetPoint("TOP", 0, -125)
-    local availLbl = (ns.L and ns.L["AVAILABLE_LABEL"]) or "Available:"
-    availableText:SetText(string.format("|cff888888%s|r |cffffffff%d|r", availLbl, currencyData.quantity or 0))
-    
-    -- Amount Input Label
-    local amountLabel = FontManager:CreateFontString(popup, "body", "OVERLAY")
-    amountLabel:SetPoint("TOPLEFT", 30, -155)
-    amountLabel:SetText((ns.L and ns.L["AMOUNT_LABEL"]) or "Amount:")
-    
-    -- Amount Input Box
-    local amountBox = CreateFrame("EditBox", nil, popup)
-    amountBox:SetSize(100, 28)
-    amountBox:SetPoint("LEFT", amountLabel, "RIGHT", 10, 0)
-    
-    -- Use FontManager for consistent font styling
-    -- Use FontManager for consistent font styling (SAFE version)
-    FontManager:SafeSetFont(amountBox, "body")
-    
-    amountBox:SetTextInsets(8, 8, 0, 0)
-    amountBox:SetAutoFocus(false)
-    amountBox:SetNumeric(true)
-    amountBox:SetMaxLetters(10)
-    amountBox:SetText("1")
-    
-    -- Max Button
-    local maxBtn = CreateThemedButton(popup, (ns.L and ns.L["MAX_BUTTON"]) or "Max", 70)
-    maxBtn:SetPoint("LEFT", amountBox, "RIGHT", 5, 0)
-    maxBtn:SetScript("OnClick", function()
-        amountBox:SetText(tostring(currencyData.quantity or 0))
-    end)
-    
-    -- Confirm Button (create early so it can be referenced)
-    local confirmBtn = CreateThemedButton(popup, (ns.L and ns.L["OPEN_AND_GUIDE"]) or "Open & Guide", 120)
-    confirmBtn:SetPoint("BOTTOMRIGHT", -20, 15)
-    confirmBtn:Disable() -- Initially disabled until character selected
-    
-    -- Cancel Button
-    local cancelBtn = CreateThemedButton(popup, (ns.L and ns.L["CANCEL"]) or "Cancel", 90)
-    cancelBtn:SetPoint("RIGHT", confirmBtn, "LEFT", -5, 0)
-    cancelBtn:SetScript("OnClick", function()
-        overlay:Hide()
-    end)
-    
-    -- Info note at bottom
-    local infoNote = FontManager:CreateFontString(popup, "small", "OVERLAY")
-    infoNote:SetPoint("BOTTOM", 0, 50)
-    infoNote:SetWidth(360)
-    local currencyTransferInfo = (ns.L and ns.L["CURRENCY_TRANSFER_INFO"]) or "Currency window will be opened automatically.\nYou'll need to manually right-click the currency to transfer."
-    infoNote:SetText("|cff00ff00Ô£ô|r " .. currencyTransferInfo)
-    infoNote:SetJustifyH("CENTER")
-    infoNote:SetWordWrap(true)
-    
-    -- Target Character Label
-    local targetLabel = FontManager:CreateFontString(popup, "body", "OVERLAY")
-    targetLabel:SetPoint("TOPLEFT", 30, -195)
-    targetLabel:SetText((ns.L and ns.L["TO_CHARACTER"]) or "To Character:")
-    
-    -- Get WarbandNexus addon reference
-    local WarbandNexus = ns.WarbandNexus
-    
-    -- Build character list (exclude current character)
-    local characterList = {}
-    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global.characters then
-        for charKey, charData in pairs(WarbandNexus.db.global.characters) do
-            -- Filter: Skip untracked characters (only show explicitly tracked)
-            if charKey ~= currentCharacterKey and charData.name and charData.isTracked == true then
-                table.insert(characterList, {
-                    key = charKey,
-                    name = charData.name,
-                    realm = charData.realm or "",
-                    class = charData.class or "UNKNOWN",
-                    level = charData.level or 0,
-                })
-            end
-        end
-        
-        -- Sort by name
-        table.sort(characterList, function(a, b) return a.name < b.name end)
-    end
-    
-    -- Selected character
-    local selectedTargetKey = nil
-    local selectedCharData = nil
-    
-    -- Character selection dropdown container
-    local charDropdown = CreateFrame("Frame", nil, popup)
-    charDropdown:SetSize(320, 28)
-    charDropdown:SetPoint("TOPLEFT", 30, -215)
-    charDropdown:EnableMouse(true)
-    
-    local charText = FontManager:CreateFontString(charDropdown, "body", "OVERLAY")
-    charText:SetPoint("LEFT", 10, 0)
-    charText:SetText("|cff888888" .. ((ns.L and ns.L["SELECT_CHARACTER"]) or "Select character...") .. "|r")
-    charText:SetJustifyH("LEFT")
-    
-    -- Dropdown arrow icon
-    local arrowIcon = charDropdown:CreateTexture(nil, "ARTWORK")
-    arrowIcon:SetSize(16, 16)
-    arrowIcon:SetPoint("RIGHT", -5, 0)
-    arrowIcon:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
-    
-    -- Character list frame (dropdown menu)
-    local charListFrame = CreateFrame("Frame", nil, popup)
-    charListFrame:SetSize(320, math.min(#characterList * 28 + 4, 200))  -- Max 200px height
-    charListFrame:SetPoint("TOPLEFT", charDropdown, "BOTTOMLEFT", 0, -2)
-    charListFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-    charListFrame:SetFrameLevel(popup:GetFrameLevel() + 20)
-    charListFrame:Hide()  -- Initially hidden
-    
-    -- Scroll frame for character list (if many characters)
-    local scrollFrame = CreateFrame("ScrollFrame", nil, charListFrame)
-    scrollFrame:SetPoint("TOPLEFT", 2, -2)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -2, 2)
-    
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollFrame:SetScrollChild(scrollChild)
-    scrollChild:SetSize(316, #characterList * 28)
-    
-    -- Create character buttons
-    for i, charData in ipairs(characterList) do
-        local charBtn = CreateFrame("Button", nil, scrollChild)
-        charBtn:SetSize(316, 26)
-        charBtn:SetPoint("TOPLEFT", 0, -(i-1) * 28)
-        
-        -- Class color
-        local classColor = RAID_CLASS_COLORS[charData.class] or {r=1, g=1, b=1}
-        
-        local btnText = FontManager:CreateFontString(charBtn, "body", "OVERLAY")
-        btnText:SetPoint("LEFT", 8, 0)
-        local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(charData.realm) or charData.realm or ""
-        btnText:SetText(string.format("|c%s%s|r |cff888888(%d - %s)|r", 
-            string.format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
-            charData.name,
-            charData.level,
-            displayRealm
-        ))
-        btnText:SetJustifyH("LEFT")
-        
-        -- Hover effects removed (no backdrop)
-        charBtn:SetScript("OnClick", function(self)
-            selectedTargetKey = charData.key
-            selectedCharData = charData
-            charText:SetText(string.format("|c%s%s|r", 
-                string.format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
-                charData.name
-            ))
-            charListFrame:Hide()
-            confirmBtn:Enable()  -- Enable confirm button
-        end)
-    end
-    
-    -- Toggle dropdown
-    charDropdown:SetScript("OnMouseDown", function(self)
-        if charListFrame:IsShown() then
-            charListFrame:Hide()
-        else
-            charListFrame:Show()
-        end
-    end)
-    
-    -- Set confirm button click handler (now that we have all variables)
-    confirmBtn:SetScript("OnClick", function()
-        local amount = tonumber(amountBox:GetText()) or 0
-        if amount > 0 and amount <= (currencyData.quantity or 0) and selectedTargetKey and selectedCharData then
-            -- TAINT GUARD: ToggleCharacter is a protected function; block during combat
-            if InCombatLockdown() then
-                if ns.WarbandNexus and ns.WarbandNexus.Print then
-                    ns.WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_CURRENCY_ERROR"]) or "Cannot open currency frame during combat. Try again after combat.") .. "|r")
-                end
-                return
-            end
-            
-            -- STEP 1: Open Currency Frame (SAFE - No Taint when out of combat)
-            -- TWW (11.x) uses different frame name
-            if not CharacterFrame or not CharacterFrame:IsShown() then
-                ToggleCharacter("PaperDollFrame")
-            end
-            
-            -- Switch to currency tab
-            C_Timer.After(0.1, function()
-                if InCombatLockdown() then return end -- Guard timer callback too
-                if CharacterFrame and CharacterFrame:IsShown() then
-                    -- Click the Token (Currency) tab
-                    if CharacterFrameTab4 then
-                        CharacterFrameTab4:Click()
-                    end
-                end
-            end)
-            
-            -- STEP 2: Try to expand currency categories (SAFE)
-            C_Timer.After(0.3, function()
-                -- Expand all currency categories so user can see target currency
-                for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
-                    local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-                    if info and info.isHeader and not info.isHeaderExpanded then
-                        C_CurrencyInfo.ExpandCurrencyList(i, true)
-                    end
-                end
-            end)
-            
-            -- STEP 3: Show instructions in chat
-            local WarbandNexus = ns.WarbandNexus
-            if WarbandNexus then
-                WarbandNexus:Print("|cff00ff00=== Currency Transfer Instructions ===|r")
-                WarbandNexus:Print(string.format("|cffffaa00Currency:|r %s", currencyData.name))
-                WarbandNexus:Print(string.format("|cffffaa00Amount:|r %d", amount))
-                WarbandNexus:Print(string.format("|cffffaa00From:|r %s |cff888888(current character)|r", currentPlayerName))
-                WarbandNexus:Print(string.format("|cffffaa00To:|r |cff00ff00%s|r", selectedCharData.name))
-                WarbandNexus:Print(" ")
-                WarbandNexus:Print("|cff00aaff" .. ((ns.L and ns.L["CURRENCY_TRANSFER_NEXT_STEPS"]) or "Next steps:") .. "|r")
-                WarbandNexus:Print("|cff00ff001.|r " .. string.format((ns.L and ns.L["CURRENCY_TRANSFER_STEP_1"]) or "Find |cffffffff%s|r in the Currency window", currencyData.name))
-                WarbandNexus:Print("|cff00ff002.|r " .. ((ns.L and ns.L["CURRENCY_TRANSFER_STEP_2"]) or "|cffff8800Right-click|r on it"))
-                WarbandNexus:Print("|cff00ff003.|r " .. ((ns.L and ns.L["CURRENCY_TRANSFER_STEP_3"]) or "Select |cffffffff'Transfer to Warband'|r"))
-                WarbandNexus:Print("|cff00ff004.|r " .. string.format((ns.L and ns.L["CURRENCY_TRANSFER_STEP_4"]) or "Choose |cff00ff00%s|r", selectedCharData.name))
-                WarbandNexus:Print("|cff00ff005.|r " .. string.format((ns.L and ns.L["CURRENCY_TRANSFER_STEP_5"]) or "Enter amount: |cffffffff%s|r", amount))
-                WarbandNexus:Print(" ")
-                WarbandNexus:Print("|cff00ff00Ô£ô|r " .. ((ns.L and ns.L["CURRENCY_WINDOW_OPENED"]) or "Currency window is now open!"))
-                WarbandNexus:Print("|cff888888" .. ((ns.L and ns.L["CURRENCY_TRANSFER_SECURITY"]) or "(Blizzard security prevents automatic transfer)") .. "|r")
-            end
-            
-            overlay:Hide()
-        end
-    end)
-    
-    -- Store reference for cleanup
-    overlay.popup = popup
-    
-    -- Show overlay
-    overlay:Show()
-    
-    return overlay
-end
-
---============================================================================
 -- SHARED UI CONSTANTS
 --============================================================================
 
@@ -3578,8 +2909,38 @@ end
 -- SHARED CHECKBOX WIDGET
 --============================================================================
 
+--============================================================================
+-- SHARED TOGGLE INDICATOR (unified base for checkbox & radio)
+--============================================================================
+
+-- Shared visual constants for all toggle indicators
+local TOGGLE_SIZE = 16
+local TOGGLE_DOT_SIZE = 6
+local TOGGLE_DOT_COLOR = {1, 0.82, 0, 1}  -- yellow/gold = active
+local TOGGLE_BG = {0.08, 0.08, 0.10, 1}
+local TOGGLE_BORDER = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}
+local TOGGLE_BORDER_HOVER = {COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 1}
+
+local function ApplyToggleVisuals(frame)
+    frame:SetSize(TOGGLE_SIZE, TOGGLE_SIZE)
+    ApplyVisuals(frame, TOGGLE_BG, TOGGLE_BORDER)
+
+    local dot = frame:CreateTexture(nil, "ARTWORK")
+    dot:SetSize(TOGGLE_DOT_SIZE, TOGGLE_DOT_SIZE)
+    dot:SetPoint("CENTER")
+    dot:SetColorTexture(unpack(TOGGLE_DOT_COLOR))
+
+    frame.innerDot = dot
+    frame.checkTexture = dot  -- alias so .checkTexture API keeps working
+
+    frame.defaultBorderColor = {unpack(TOGGLE_BORDER)}
+    frame.hoverBorderColor   = {unpack(TOGGLE_BORDER_HOVER)}
+
+    return dot
+end
+
 --[[
-    Create a themed checkbox with consistent styling
+    Create a themed checkbox (CheckButton with toggle behavior)
     @param parent - Parent frame
     @param initialState - Initial checked state (boolean)
     @return checkbox - Created checkbox
@@ -3589,63 +2950,35 @@ local function CreateThemedCheckbox(parent, initialState)
         DebugPrint("WarbandNexus DEBUG: CreateThemedCheckbox called with nil parent!")
         return nil
     end
-    
+
     local checkbox = CreateFrame("CheckButton", nil, parent)
-    checkbox:SetSize(18, 18)  -- Increased from default for better visibility
-    
-    -- Apply border (default state)
-    ApplyVisuals(checkbox, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-    
-    -- Store border reference for hover effect
-    checkbox.defaultBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
-    checkbox.hoverBorderColor = {COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 0.9}
-    
-    -- Green tick texture (brighter for better contrast)
-    local checkTexture = checkbox:CreateTexture(nil, "OVERLAY")
-    checkTexture:SetSize(16, 16)
-    checkTexture:SetPoint("CENTER")
-    checkTexture:SetTexture("Interface\\BUTTONS\\UI-CheckBox-Check")
-    checkTexture:SetVertexColor(0.3, 0.95, 0.3, 1) -- Brighter green for better contrast
-    checkbox.checkTexture = checkTexture
-    
+    local dot = ApplyToggleVisuals(checkbox)
+
     if initialState then
-        checkTexture:Show()
+        dot:Show()
         checkbox:SetChecked(true)
     else
-        checkTexture:Hide()
+        dot:Hide()
         checkbox:SetChecked(false)
     end
-    
+
     checkbox:SetScript("OnClick", function(self)
-        if self:GetChecked() then
-            self.checkTexture:Show()
-        else
-            self.checkTexture:Hide()
-        end
+        self.innerDot:SetShown(self:GetChecked())
     end)
-    
-    -- Add hover effect
+
     checkbox:SetScript("OnEnter", function(self)
-        if UpdateBorderColor then
-            UpdateBorderColor(self, self.hoverBorderColor)
-        end
+        if UpdateBorderColor then UpdateBorderColor(self, self.hoverBorderColor) end
     end)
-    
+
     checkbox:SetScript("OnLeave", function(self)
-        if UpdateBorderColor then
-            UpdateBorderColor(self, self.defaultBorderColor)
-        end
+        if UpdateBorderColor then UpdateBorderColor(self, self.defaultBorderColor) end
     end)
-    
+
     return checkbox
 end
 
---============================================================================
--- SHARED RADIO BUTTON WIDGET
---============================================================================
-
 --[[
-    Create a themed radio button with consistent styling
+    Create a themed radio button (visual-only Frame, selection managed by caller)
     @param parent - Parent frame
     @param isSelected - Initial selected state (boolean)
     @return radioButton - Created radio button frame with innerDot reference
@@ -3655,25 +2988,11 @@ local function CreateThemedRadioButton(parent, isSelected)
         DebugPrint("WarbandNexus DEBUG: CreateThemedRadioButton called with nil parent!")
         return nil
     end
-    
+
     local radioButton = CreateFrame("Frame", nil, parent)
-    radioButton:SetSize(16, 16)
-    
-    -- Apply border using ApplyVisuals (creates the outer ring)
-    ApplyVisuals(radioButton, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-    
-    -- Inner dot (only visible when selected) - centered square
-    local innerDot = radioButton:CreateTexture(nil, "ARTWORK")
-    innerDot:SetSize(6, 6)
-    innerDot:SetPoint("CENTER")
-    innerDot:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-    innerDot:SetShown(isSelected or false)
-    radioButton.innerDot = innerDot
-    
-    -- Store border reference for hover
-    radioButton.defaultBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}
-    radioButton.hoverBorderColor = {COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 1}
-    
+    local dot = ApplyToggleVisuals(radioButton)
+    dot:SetShown(isSelected or false)
+
     return radioButton
 end
 
@@ -3717,539 +3036,18 @@ local function CreateTableRow(parent, width, height, columns)
 end
 
 --============================================================================
--- EXPANDABLE ROW FACTORY
---============================================================================
-
---[[
-    Create an expandable row for achievements/collections
-    @param parent - Parent frame
-    @param width - Row width
-    @param rowHeight - Collapsed row height (default 32)
-    @param data - Row data { icon, score, title, information, criteria }
-    @param isExpanded - Initial expanded state
-    @param onToggle - Callback function(isExpanded)
-    @return row - Created expandable row frame
-]]
-local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, onToggle)
-    if not parent then return nil end
-    
-    rowHeight = rowHeight or 34
-    local COLORS = GetColors()
-    
-    -- Main container (will grow/shrink but header stays at top)
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetWidth(width)
-    row:SetHeight(rowHeight) -- Initial height
-    
-    -- Store state
-    row.isExpanded = isExpanded or false
-    row.data = data
-    row.rowHeight = rowHeight
-    row.onToggle = onToggle
-    
-    -- Alternating row color (set by caller based on index)
-    row.bgColor = {0.08, 0.08, 0.10, 1}
-    
-    -- Header frame (FIXED HEIGHT, always visible at top) - Button for hover support
-    local headerFrame = CreateFrame("Button", nil, row)
-    headerFrame:SetPoint("TOPLEFT", 0, 0)
-    headerFrame:SetPoint("TOPRIGHT", 0, 0)
-    headerFrame:SetHeight(rowHeight)
-    row.headerFrame = headerFrame
-    
-    -- Apply background and gradient border to header
-    if ApplyVisuals then
-        -- Gradient border: brighter at top, darker at bottom
-        local borderColor = {
-            COLORS.accent[1] * 0.8,
-            COLORS.accent[2] * 0.8,
-            COLORS.accent[3] * 0.8,
-            0.4
-        }
-        ApplyVisuals(headerFrame, row.bgColor, borderColor)
-    end
-    
-    -- Apply highlight effect
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-        ns.UI.Factory:ApplyHighlight(headerFrame)
-    else
-        -- Fallback: simple border
-        if headerFrame.SetBackdrop then
-            headerFrame:SetBackdrop({
-                bgFile = "Interface\\Buttons\\WHITE8X8",
-                edgeFile = "Interface\\Buttons\\WHITE8X8",
-                tile = false,
-                tileSize = 1,
-                edgeSize = 1,
-                insets = { left = 0, right = 0, top = 0, bottom = 0 }
-            })
-            headerFrame:SetBackdropColor(row.bgColor[1], row.bgColor[2], row.bgColor[3], row.bgColor[4])
-            headerFrame:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.5)
-        end
-    end
-    
-    -- Toggle function (header stays fixed, only details expand below)
-    local function ToggleExpand()
-        row.isExpanded = not row.isExpanded
-        
-        if row.isExpanded then
-            -- Use atlas for up arrow (collapse)
-            if row.expandBtnNormalTex then
-                row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-            end
-            if row.expandBtnHighlightTex then
-                row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-            end
-            
-            -- Create details frame if not exists (positioned BELOW header)
-            if not row.detailsFrame then
-                local detailsFrame = CreateFrame("Frame", nil, row)
-                detailsFrame:SetPoint("TOPLEFT", row.headerFrame, "BOTTOMLEFT", 0, -1) -- -1 for seamless connection
-                detailsFrame:SetPoint("TOPRIGHT", row.headerFrame, "BOTTOMRIGHT", 0, -1)
-                
-                -- Background and border for expanded section (darker gradient border)
-                local detailsBgColor = {row.bgColor[1] * 0.7, row.bgColor[2] * 0.7, row.bgColor[3] * 0.7, 1}
-                local detailsBorderColor = {
-                    COLORS.accent[1] * 0.4,
-                    COLORS.accent[2] * 0.4,
-                    COLORS.accent[3] * 0.4,
-                    0.6
-                }
-                
-                if ApplyVisuals then
-                    ApplyVisuals(detailsFrame, detailsBgColor, detailsBorderColor)
-                else
-                    -- Fallback
-                    if detailsFrame.SetBackdrop then
-                        detailsFrame:SetBackdrop({
-                            bgFile = "Interface\\Buttons\\WHITE8X8",
-                            edgeFile = "Interface\\Buttons\\WHITE8X8",
-                            tile = false,
-                            edgeSize = 1,
-                            insets = { left = 0, right = 0, top = 0, bottom = 0 }
-                        })
-                        detailsFrame:SetBackdropColor(detailsBgColor[1], detailsBgColor[2], detailsBgColor[3], detailsBgColor[4])
-                        detailsFrame:SetBackdropBorderColor(detailsBorderColor[1], detailsBorderColor[2], detailsBorderColor[3], detailsBorderColor[4])
-                    end
-                end
-                
-                -- Divider line between header and details
-                local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
-                divider:SetTexture("Interface\\Buttons\\WHITE8X8")
-                divider:SetHeight(1)
-                divider:SetPoint("TOPLEFT", 0, 0)
-                divider:SetPoint("TOPRIGHT", 0, 0)
-                divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
-                
-                local yOffset = -8
-                local leftMargin = 48
-                local rightMargin = 16
-                local sectionSpacing = 6
-                
-                -- Information Section (inline: "Description: text...")
-                if data.information and data.information ~= "" then
-                    -- Combined header + text in one line
-                    local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-                    infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
-                    infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-                    infoText:SetJustifyH("LEFT")
-                    infoText:SetText("|cff88cc88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffdddddd" .. data.information .. "|r")
-                    infoText:SetWordWrap(true)
-                    infoText:SetSpacing(2)
-                    
-                    local textHeight = infoText:GetStringHeight()
-                    yOffset = yOffset - textHeight - sectionSpacing - 4
-                end
-                
-                -- Criteria Section (Blizzard-style multi-column centered layout)
-                if data.criteria and data.criteria ~= "" then
-                    -- Split criteria into lines
-                    local criteriaLines = {}
-                    local progressLine = nil
-                    local firstLine = true
-                    for line in string.gmatch(data.criteria, "[^\n]+") do
-                        if firstLine then
-                            -- First line is the progress (e.g., "5 of 15 (33%)")
-                            progressLine = line
-                            firstLine = false
-                        else
-                            table.insert(criteriaLines, line)
-                        end
-                    end
-                    
-                    -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
-                    local headerText = "|cffffcc00" .. (ns.L["REQUIREMENTS_LABEL"] or "Requirements:") .. "|r"
-                    if progressLine then
-                        headerText = headerText .. " " .. progressLine
-                    end
-                    
-                    local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-                    criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-                    criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-                    criteriaHeader:SetJustifyH("LEFT")
-                    criteriaHeader:SetText(headerText)
-                    
-                    yOffset = yOffset - 20
-                    
-                    -- Create 3-column symmetric layout
-                    if #criteriaLines > 0 then
-                        local columnsPerRow = 3
-                        -- Use row width instead of detailsFrame width (which might be 0)
-                        local availableWidth = row:GetWidth() - leftMargin - rightMargin
-                        local columnWidth = availableWidth / columnsPerRow
-                        local currentRow = {}
-                        
-                        for i, line in ipairs(criteriaLines) do
-                            table.insert(currentRow, line)
-                            
-                            -- When row is full OR last item, render the row
-                            if #currentRow == columnsPerRow or i == #criteriaLines then
-                                -- Create separate FontString for each column
-                                for colIndex, criteriaText in ipairs(currentRow) do
-                                    local xOffset = leftMargin + (colIndex - 1) * columnWidth
-                                    
-                                    local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-                                    colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
-                                    colLabel:SetWidth(columnWidth)
-                                    colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
-                                    colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
-                                    colLabel:SetWordWrap(false)
-                                end
-                                
-                                yOffset = yOffset - 16
-                                currentRow = {}
-                            end
-                        end
-                        
-                        yOffset = yOffset - sectionSpacing
-                    end
-                end
-                
-                -- Set height based on content (WoW-like: tight)
-                local detailsHeight = math.abs(yOffset) + 8
-                detailsFrame:SetHeight(detailsHeight)
-                
-                row.detailsFrame = detailsFrame
-            end
-            
-            -- Show details and resize row
-            row.detailsFrame:Show()
-            local totalHeight = rowHeight + row.detailsFrame:GetHeight()
-            row:SetHeight(totalHeight)
-        else
-            -- Use atlas for down arrow (expand)
-            if row.expandBtnNormalTex then
-                row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-            end
-            if row.expandBtnHighlightTex then
-                row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-            end
-            
-            -- Hide details and collapse row
-            if row.detailsFrame then
-                row.detailsFrame:Hide()
-            end
-            row:SetHeight(rowHeight)
-        end
-        
-        -- Callback
-        if row.onToggle then
-            row.onToggle(row.isExpanded)
-        end
-    end
-    
-    -- Expand/Collapse button (inside header) - Using atlas arrows
-    local expandBtn = CreateFrame("Button", nil, headerFrame)
-    expandBtn:SetSize(20, 20)
-    expandBtn:SetPoint("LEFT", 6, 0)
-    
-    -- Create textures and set atlas
-    local normalTex = expandBtn:CreateTexture(nil, "ARTWORK")
-    normalTex:SetAllPoints()
-    if isExpanded then
-        normalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-    else
-        normalTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-    end
-    expandBtn:SetNormalTexture(normalTex)
-    
-    local highlightTex = expandBtn:CreateTexture(nil, "HIGHLIGHT")
-    highlightTex:SetAllPoints()
-    if isExpanded then
-        highlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-    else
-        highlightTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-    end
-    highlightTex:SetAlpha(0.3)
-    expandBtn:SetHighlightTexture(highlightTex)
-    
-    -- Store texture references for toggle updates
-    row.expandBtnNormalTex = normalTex
-    row.expandBtnHighlightTex = highlightTex
-    
-    expandBtn:SetScript("OnClick", function()
-        ToggleExpand()
-    end)
-    row.expandBtn = expandBtn
-    
-    -- Make entire header clickable for expand/collapse
-    headerFrame:EnableMouse(true)
-    headerFrame:SetScript("OnMouseDown", function(self, button)
-        if button == "LeftButton" then
-            ToggleExpand()
-        end
-    end)
-    
-    -- Item Icon (after expand button) - WoW-like smaller
-    if data.icon then
-        local iconFrame = CreateIcon(headerFrame, data.icon, 28, false, nil, true)
-        iconFrame:SetPoint("LEFT", 32, 0)
-        iconFrame:Show()  -- CRITICAL: Show the row icon!
-        row.iconFrame = iconFrame
-    end
-    
-    -- Score (for achievements) or Type badge - WoW-like compact
-    if data.score then
-        local scoreText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
-        scoreText:SetPoint("LEFT", 68, 0)
-        scoreText:SetWidth(60)
-        scoreText:SetJustifyH("LEFT")
-        scoreText:SetText("|cffffd700" .. data.score .. " " .. ((ns.L and ns.L["POINTS_SHORT"]) or "pts") .. "|r")
-        row.scoreText = scoreText
-    end
-    
-    -- Title - WoW-like normal font
-    local titleText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
-    titleText:SetPoint("LEFT", data.score and 134 or 68, 0)
-    titleText:SetPoint("RIGHT", -90, 0)
-    titleText:SetJustifyH("LEFT")
-    titleText:SetText("|cffffffff" .. (data.title or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r")
-    titleText:SetWordWrap(false)
-    row.titleText = titleText
-    
-    -- Expanded details container (created on demand)
-    row.detailsFrame = nil
-    
-    -- Initialize expanded state (without triggering callbacks)
-    if isExpanded then
-        row.isExpanded = true
-        -- Update textures to collapsed state (up arrow)
-        if row.expandBtnNormalTex then
-            row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-        end
-        if row.expandBtnHighlightTex then
-            row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-        end
-        
-        -- Manually create and show details without calling ToggleExpand
-        -- (to avoid triggering onToggle callback during initialization)
-        -- CRITICAL: Details anchored BELOW header, not at row top
-        local detailsFrame = CreateFrame("Frame", nil, row)
-        detailsFrame:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, -1)
-        detailsFrame:SetPoint("TOPRIGHT", headerFrame, "BOTTOMRIGHT", 0, -1)
-        
-        -- Background and border for expanded section
-        local detailsBgColor = {row.bgColor[1] * 0.7, row.bgColor[2] * 0.7, row.bgColor[3] * 0.7, 1}
-        local detailsBorderColor = {
-            COLORS.accent[1] * 0.4,
-            COLORS.accent[2] * 0.4,
-            COLORS.accent[3] * 0.4,
-            0.6
-        }
-        
-        if ApplyVisuals then
-            ApplyVisuals(detailsFrame, detailsBgColor, detailsBorderColor)
-        else
-            if detailsFrame.SetBackdrop then
-                detailsFrame:SetBackdrop({
-                    bgFile = "Interface\\Buttons\\WHITE8X8",
-                    edgeFile = "Interface\\Buttons\\WHITE8X8",
-                    tile = false,
-                    edgeSize = 1,
-                    insets = { left = 0, right = 0, top = 0, bottom = 0 }
-                })
-                detailsFrame:SetBackdropColor(detailsBgColor[1], detailsBgColor[2], detailsBgColor[3], detailsBgColor[4])
-                detailsFrame:SetBackdropBorderColor(detailsBorderColor[1], detailsBorderColor[2], detailsBorderColor[3], detailsBorderColor[4])
-            end
-        end
-        
-        -- Divider line between header and details
-        local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
-        divider:SetTexture("Interface\\Buttons\\WHITE8X8")
-        divider:SetHeight(1)
-        divider:SetPoint("TOPLEFT", 0, 0)
-        divider:SetPoint("TOPRIGHT", 0, 0)
-        divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
-        
-        local yOffset = -8
-        local leftMargin = 48
-        local rightMargin = 16
-        local sectionSpacing = 6
-        
-        -- Information Section (inline: "Description: text...")
-        if data.information and data.information ~= "" then
-            -- Combined header + text in one line
-            local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-            infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
-            infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-            infoText:SetJustifyH("LEFT")
-            infoText:SetText("|cff88cc88" .. (ns.L["DESCRIPTION_LABEL"] or "Description:") .. "|r |cffdddddd" .. data.information .. "|r")
-            infoText:SetWordWrap(true)
-            infoText:SetSpacing(2)
-            
-            local textHeight = infoText:GetStringHeight()
-            yOffset = yOffset - textHeight - sectionSpacing - 4
-        end
-        
-        -- Criteria Section (Blizzard-style multi-column centered layout)
-        if data.criteria and data.criteria ~= "" then
-            -- Split criteria into lines
-            local criteriaLines = {}
-            local progressLine = nil
-            local firstLine = true
-            for line in string.gmatch(data.criteria, "[^\n]+") do
-                if firstLine then
-                    -- First line is the progress (e.g., "5 of 15 (33%)")
-                    progressLine = line
-                    firstLine = false
-                else
-                    table.insert(criteriaLines, line)
-                end
-            end
-            
-            -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
-            local headerText = "|cffffcc00" .. (ns.L["REQUIREMENTS_LABEL"] or "Requirements:") .. "|r"
-            if progressLine then
-                headerText = headerText .. " " .. progressLine
-            end
-            
-            local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-            criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-            criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-            criteriaHeader:SetJustifyH("LEFT")
-            criteriaHeader:SetText(headerText)
-            
-            yOffset = yOffset - 20
-            
-            -- Create 3-column symmetric layout
-            if #criteriaLines > 0 then
-                local columnsPerRow = 3
-                -- Use row width instead of detailsFrame width
-                local availableWidth = row:GetWidth() - leftMargin - rightMargin
-                local columnWidth = availableWidth / columnsPerRow
-                local currentRow = {}
-                
-                for i, line in ipairs(criteriaLines) do
-                    table.insert(currentRow, line)
-                    
-                    -- When row is full OR last item, render the row
-                    if #currentRow == columnsPerRow or i == #criteriaLines then
-                        -- Create separate FontString for each column
-                        for colIndex, criteriaText in ipairs(currentRow) do
-                            local xOffset = leftMargin + (colIndex - 1) * columnWidth
-                            
-                            local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-                            colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
-                            colLabel:SetWidth(columnWidth)
-                            colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
-                            colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
-                            colLabel:SetWordWrap(false)
-                        end
-                        
-                        yOffset = yOffset - 16
-                        currentRow = {}
-                    end
-                end
-                
-                yOffset = yOffset - sectionSpacing
-            end
-        end
-        
-        local detailsHeight = math.abs(yOffset) + 8
-        detailsFrame:SetHeight(detailsHeight)
-        
-        row.detailsFrame = detailsFrame
-        detailsFrame:Show()
-        
-        local totalHeight = rowHeight + detailsFrame:GetHeight()
-        row:SetHeight(totalHeight)
-    end
-    
-    return row
-end
-
---============================================================================
--- CATEGORY SECTION FACTORY
---============================================================================
-
---[[
-    Create a category section with header and item rows
-    @param parent - Parent frame
-    @param width - Section width
-    @param categoryName - Category display name
-    @param categoryKey - Unique key for expand state
-    @param items - Array of items to display
-    @param isExpanded - Initial expanded state
-    @param onToggle - Callback function(isExpanded)
-    @param createRowFunc - Function to create item rows: function(parent, item, index)
-    @return section - Created section frame with header and rows
-]]
-local function CreateCategorySection(parent, width, categoryName, categoryKey, items, isExpanded, onToggle, createRowFunc)
-    if not parent or not categoryName then return nil end
-    
-    local section = CreateFrame("Frame", nil, parent)
-    section:SetWidth(width)
-    
-    -- Store state
-    section.categoryKey = categoryKey
-    section.items = items or {}
-    section.isExpanded = isExpanded
-    section.createRowFunc = createRowFunc
-    
-    -- Create collapsible header
-    local header = CreateCollapsibleHeader(
-        section,
-        string.format("%s (%d)", categoryName, #section.items),
-        categoryKey,
-        isExpanded,
-        onToggle,
-        nil -- icon (optional)
-    )
-    header:SetPoint("TOPLEFT", 0, 0)
-    header:SetWidth(width)
-    section.header = header
-    
-    -- Rows container
-    local rowsContainer = CreateFrame("Frame", nil, section)
-    rowsContainer:SetPoint("TOPLEFT", 0, -UI_LAYOUT.HEADER_HEIGHT)
-    rowsContainer:SetWidth(width)
-    section.rowsContainer = rowsContainer
-    
-    -- Calculate total height
-    local totalHeight = UI_LAYOUT.HEADER_HEIGHT
-    if isExpanded and #section.items > 0 then
-        -- Rows will be added by caller
-        totalHeight = totalHeight + (#section.items * (UI_LAYOUT.ROW_HEIGHT or 32))
-    end
-    section:SetHeight(totalHeight)
-    
-    return section
-end
-
---============================================================================
 -- NAMESPACE EXPORTS
 --============================================================================
 
 ns.UI_GetQualityHex = GetQualityHex
 ns.UI_GetAccentHexColor = GetAccentHexColor
 ns.UI_CreateCard = CreateCard
--- FormatGold, FormatNumber, FormatTextNumbers, FormatMoney, FormatMoneyCompact
+-- FormatGold, FormatNumber, FormatTextNumbers, FormatMoney
 -- are exported by FormatHelpers.lua (authoritative source, loads after SharedWidgets)
 ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
 ns.UI_GetItemTypeName = GetItemTypeName
 ns.UI_GetItemClassID = GetItemClassID
 ns.UI_GetTypeIcon = GetTypeIcon
-ns.UI_CreateSortableTableHeader = CreateSortableTableHeader
 ns.UI_DrawEmptyState = DrawEmptyState
 ns.UI_DrawSectionEmptyState = DrawSectionEmptyState
 ns.UI_CreateSearchBox = CreateSearchBox
@@ -4274,14 +3072,10 @@ ns.UI_ReleaseAllPooledChildren = ReleaseAllPooledChildren
 ns.UI_CreateThemedButton = CreateThemedButton
 ns.UI_CreateThemedCheckbox = CreateThemedCheckbox
 ns.UI_CreateThemedRadioButton = CreateThemedRadioButton
+ns.UI_TOGGLE_SIZE = TOGGLE_SIZE
 
 -- Table factory exports
 ns.UI_CreateTableRow = CreateTableRow
-ns.UI_CreateExpandableRow = CreateExpandableRow
-ns.UI_CreateCategorySection = CreateCategorySection
-
--- Currency transfer popup export
-ns.UI_CreateCurrencyTransferPopup = CreateCurrencyTransferPopup
 
 -- ============================================================================
 -- CREATE EXTERNAL WINDOW (Unified Dialog System)
@@ -4509,212 +3303,6 @@ ns.UI_HideTooltip = function()
     end
 end
 
---============================================================================
--- DYNAMIC CARD LAYOUT MANAGER
---============================================================================
--- Add dynamic card layout manager at the end of the file
--- This will handle card positioning when cards expand/collapse
-
---[[
-    Dynamic Card Layout Manager
-    Handles card positioning in a grid layout, automatically adjusting when cards expand/collapse
-]]
-local CardLayoutManager = {}
-CardLayoutManager.instances = {}  -- Track layout instances per parent
-
---[[
-    Create a new card layout manager for a parent container
-    @param parent Frame - Parent container
-    @param columns number - Number of columns (default 2)
-    @param cardSpacing number - Spacing between cards (default 8)
-    @param startYOffset number - Starting Y offset (default 0)
-    @return table - Layout manager instance
-]]
-function CardLayoutManager:Create(parent, columns, cardSpacing, startYOffset)
-    columns = columns or 2
-    cardSpacing = cardSpacing or 8
-    startYOffset = startYOffset or 0
-    
-    local instance = {
-        parent = parent,
-        columns = columns,
-        cardSpacing = cardSpacing,
-        cards = {},  -- Array of {card, col, rowIndex}
-        currentYOffsets = {},  -- Track Y offset for each column
-        startYOffset = startYOffset,
-    }
-    
-    -- Initialize column offsets
-    for col = 0, columns - 1 do
-        instance.currentYOffsets[col] = startYOffset
-    end
-    
-    -- Store instance
-    local instanceKey = tostring(parent)
-    self.instances[instanceKey] = instance
-    
-    return instance
-end
-
---[[
-    Add a card to the layout
-    @param instance table - Layout instance
-    @param card Frame - Card frame
-    @param col number - Column index (0-based)
-    @param baseHeight number - Base height of card (before expansion)
-    @return number - Y offset where card was placed
-]]
-function CardLayoutManager:AddCard(instance, card, col, baseHeight)
-    col = col or 0
-    baseHeight = baseHeight or 130
-    
-    -- Get current Y offset for this column
-    local yOffset = instance.currentYOffsets[col] or instance.startYOffset
-    
-    -- Calculate X offset
-    local cardWidth = (instance.parent:GetWidth() - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns
-    local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
-    
-    -- Position card
-    card:ClearAllPoints()
-    card:SetPoint("TOPLEFT", xOffset, -yOffset)
-    
-    -- Store card info
-    local cardInfo = {
-        card = card,
-        col = col,
-        baseHeight = baseHeight,
-        currentHeight = baseHeight,
-        yOffset = yOffset,
-        rowIndex = #instance.cards,
-    }
-    table.insert(instance.cards, cardInfo)
-    
-    -- Update column Y offset
-    instance.currentYOffsets[col] = yOffset + baseHeight + instance.cardSpacing
-    
-    -- Store layout reference on card
-    card._layoutManager = instance
-    card._layoutInfo = cardInfo
-    
-    return yOffset
-end
-
---[[
-    Update layout when a card's height changes
-    @param card Frame - Card that changed height
-    @param newHeight number - New height of the card
-]]
-function CardLayoutManager:UpdateCardHeight(card, newHeight)
-    local instance = card._layoutManager
-    local cardInfo = card._layoutInfo
-    
-    if not instance or not cardInfo then
-        return
-    end
-    
-    -- Update stored height
-    cardInfo.currentHeight = newHeight
-    
-    -- Recalculate all positions to handle cross-column scenarios
-    self:RecalculateAllPositions(instance)
-end
-
---[[
-    Get final Y offset (for return value)
-    @param instance table - Layout instance
-    @return number - Maximum Y offset across all columns
-]]
-function CardLayoutManager:GetFinalYOffset(instance)
-    local maxY = instance.startYOffset
-    for col = 0, instance.columns - 1 do
-        local colY = instance.currentYOffsets[col] or instance.startYOffset
-        if colY > maxY then
-            maxY = colY
-        end
-    end
-    return maxY
-end
-
---[[
-    Recalculate all card positions from scratch
-    Handles expanded cards, window resize, and cross-column scenarios
-    @param instance table - Layout instance
-]]
-function CardLayoutManager:RecalculateAllPositions(instance)
-    if not instance or not instance.parent then
-        return
-    end
-    
-    -- Recalculate card width based on current parent width
-    local cardWidth = (instance.parent:GetWidth() - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns
-    
-    -- Reset column Y offsets
-    for col = 0, instance.columns - 1 do
-        instance.currentYOffsets[col] = instance.startYOffset
-    end
-    
-    -- Sort cards by their original row index to maintain order
-    local sortedCards = {}
-    for i, cardInfo in ipairs(instance.cards) do
-        table.insert(sortedCards, cardInfo)
-    end
-    table.sort(sortedCards, function(a, b)
-        return a.rowIndex < b.rowIndex
-    end)
-    
-    -- Reposition all cards, maintaining column assignment but recalculating Y positions
-    for i, cardInfo in ipairs(sortedCards) do
-        local col = cardInfo.col
-        local currentHeight = cardInfo.currentHeight or cardInfo.baseHeight
-        
-        -- Get current Y offset for this column
-        local yOffset = instance.currentYOffsets[col] or instance.startYOffset
-        
-        -- Handle full-width cards (weekly vault, daily quest header, etc.)
-        if cardInfo.isFullWidth then
-            -- Full width card: span both columns
-            cardInfo.card:ClearAllPoints()
-            cardInfo.card:SetPoint("TOPLEFT", instance.parent, "TOPLEFT", 10, -yOffset)
-            cardInfo.card:SetPoint("TOPRIGHT", instance.parent, "TOPRIGHT", -10, -yOffset)
-            -- Update both columns to same Y offset
-            instance.currentYOffsets[0] = yOffset + currentHeight + instance.cardSpacing
-            instance.currentYOffsets[1] = yOffset + currentHeight + instance.cardSpacing
-        else
-            -- Regular card: single column
-            local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
-            
-            -- Update card position
-            cardInfo.card:ClearAllPoints()
-            cardInfo.card:SetPoint("TOPLEFT", xOffset, -yOffset)
-            cardInfo.card:SetWidth(cardWidth)
-            
-            -- Update column Y offset for next card
-            instance.currentYOffsets[col] = yOffset + currentHeight + instance.cardSpacing
-        end
-        
-        -- Update stored Y offset
-        cardInfo.yOffset = yOffset
-    end
-end
-
---[[
-    Refresh layout when parent frame is resized
-    Recalculates both X and Y positions for all cards
-    @param instance table - Layout instance
-]]
-function CardLayoutManager:RefreshLayout(instance)
-    if not instance or not instance.parent then
-        return
-    end
-    
-    -- Use RecalculateAllPositions to handle both X and Y repositioning
-    self:RecalculateAllPositions(instance)
-end
-
--- Export
-ns.UI_CardLayoutManager = CardLayoutManager
-
 -- Export PixelScale functions (used by FontManager for resolution normalization)
 ns.GetPixelScale = GetPixelScale
 ns.PixelSnap = PixelSnap
@@ -4914,8 +3502,10 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     description:SetPoint("TOP", title, "BOTTOM", 0, -16)
     description:SetWidth(380)
     description:SetJustifyH("CENTER")
+    local settingsStr = "|cffffffff" .. ((ns.L and ns.L["BTN_SETTINGS"]) or SETTINGS or "Settings") .. "|r"
+    local moduleStr = "|cff" .. hexColor .. moduleName .. "|r"
     description:SetText(
-        "|cff999999Enable it in |r|cffffffffSettings|r |cff999999to use |r|cff" .. hexColor .. moduleName .. "|r|cff999999.|r"
+        "|cff999999" .. format((ns.L and ns.L["MODULE_DISABLED_DESC_FORMAT"]) or "Enable it in %s to use %s.", settingsStr, moduleStr) .. "|r"
     )
     
     card:Show()
@@ -5471,11 +4061,14 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.ScrollUpBtn.icon = upIcon
             scrollBar.ScrollUpBtn._iconTexture = upIcon  -- Store for theme refresh
             
-            -- Click handler
+            -- Click handler (pixel-snapped)
             scrollBar.ScrollUpBtn:SetScript("OnClick", function()
                 local step = GetScrollStep()
                 local current = scrollFrame:GetVerticalScroll()
-                scrollFrame:SetVerticalScroll(math.max(0, current - step))
+                local val = math.max(0, current - step)
+                local PS = ns.PixelSnap
+                if PS then val = PS(val) end
+                scrollFrame:SetVerticalScroll(val)
             end)
             
             -- Hover effects
@@ -5556,12 +4149,15 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.ScrollDownBtn.icon = downIcon
             scrollBar.ScrollDownBtn._iconTexture = downIcon  -- Store for theme refresh
             
-            -- Click handler
+            -- Click handler (pixel-snapped)
             scrollBar.ScrollDownBtn:SetScript("OnClick", function()
                 local step = GetScrollStep()
                 local current = scrollFrame:GetVerticalScroll()
                 local maxScroll = scrollFrame:GetVerticalScrollRange()
-                scrollFrame:SetVerticalScroll(math.min(maxScroll, current + step))
+                local val = math.min(maxScroll, current + step)
+                local PS = ns.PixelSnap
+                if PS then val = PS(val) end
+                scrollFrame:SetVerticalScroll(val)
             end)
             
             -- Hover effects
@@ -5654,6 +4250,8 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         local current = self:GetVerticalScroll()
         local maxScroll = self:GetVerticalScrollRange()
         local newScroll = math.max(0, math.min(maxScroll, current - (delta * step)))
+        local PS = ns.PixelSnap
+        if PS then newScroll = PS(newScroll) end
         self:SetVerticalScroll(newScroll)
     end)
     
@@ -6162,10 +4760,89 @@ function UI_CreateInlineLoadingSpinner(parent, anchorFrame, anchorPoint, xOffset
     return spinnerFrame
 end
 
+--- Create a persistent loading state panel that fills its parent.
+--- Reusable: call panel:ShowLoading(title, progress, stage) / panel:HideLoading().
+--- Visual style matches UI_CreateLoadingStateCard for consistency.
+---@param parent Frame - Parent container to fill
+---@return Frame panel - Panel with :ShowLoading() / :HideLoading()
+local function UI_CreateLoadingStatePanel(parent)
+    local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    panel:SetAllPoints(parent)
+    ApplyVisuals(panel, {0.06, 0.06, 0.08, 0.98}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4})
+    panel:SetFrameLevel(parent:GetFrameLevel() + 10)
+    panel:Hide()
+
+    -- Spinner (same atlas as transient card)
+    local spinnerFrame = CreateIcon(panel, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
+    spinnerFrame:SetPoint("CENTER", 0, 20)
+    spinnerFrame:Show()
+    local spinnerTex = spinnerFrame.texture
+    panel._spinnerTex = spinnerTex
+
+    local rotation = 0
+    panel:SetScript("OnUpdate", function(_, elapsed)
+        rotation = rotation + (elapsed * 270)
+        if spinnerTex then spinnerTex:SetRotation(math.rad(rotation)) end
+    end)
+
+    -- Title
+    local FM = ns.FontManager
+    local titleText = FM:CreateFontString(panel, "title", "OVERLAY")
+    titleText:SetPoint("TOP", spinnerFrame, "BOTTOM", 0, -10)
+    titleText:SetJustifyH("CENTER")
+    panel._titleText = titleText
+
+    -- Progress text (stage + %)
+    local progressText = FM:CreateFontString(panel, "body", "OVERLAY")
+    progressText:SetPoint("TOP", titleText, "BOTTOM", 0, -6)
+    progressText:SetJustifyH("CENTER")
+    progressText:SetTextColor(0.55, 0.55, 0.55)
+    panel._progressText = progressText
+
+    -- Progress bar
+    local BAR_W = 200
+    local barBg = panel:CreateTexture(nil, "ARTWORK")
+    barBg:SetSize(BAR_W, 4)
+    barBg:SetPoint("TOP", progressText, "BOTTOM", 0, -8)
+    barBg:SetColorTexture(0.15, 0.15, 0.18, 1)
+    panel._barBg = barBg
+
+    local barFill = panel:CreateTexture(nil, "OVERLAY")
+    barFill:SetHeight(4)
+    barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
+    barFill:SetWidth(1)
+    barFill:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
+    panel._barFill = barFill
+
+    function panel:ShowLoading(title, progress, stage)
+        local t = title or ((ns.L and ns.L["LOADING"]) or "Loading...")
+        self._titleText:SetText("|cff00ccff" .. t .. "|r")
+        local pct = math.min(100, math.max(0, progress or 0))
+        local s = stage or ""
+        if s ~= "" then
+            self._progressText:SetText(string.format("%s - %d%%", s, pct))
+        else
+            self._progressText:SetText(string.format("%d%%", pct))
+        end
+        local barWidth = self._barBg:GetWidth()
+        if barWidth and barWidth > 0 then
+            self._barFill:SetWidth(math.max(1, barWidth * (pct / 100)))
+        end
+        self:Show()
+    end
+
+    function panel:HideLoading()
+        self:Hide()
+    end
+
+    return panel
+end
+
 -- Export to namespace
 ns.UI_CreateLoadingStateCard = UI_CreateLoadingStateCard
 ns.UI_CreateErrorStateCard = UI_CreateErrorStateCard
 ns.UI_CreateInlineLoadingSpinner = UI_CreateInlineLoadingSpinner
+ns.UI_CreateLoadingStatePanel = UI_CreateLoadingStatePanel
 
 --============================================================================
 -- FACTORY PATTERN BRIDGE (ns.UI.Factory.* → Local Functions)
@@ -6242,44 +4919,6 @@ function ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     row.bgColor = bgColor
 end
 
---- Apply staggered fade-in animation to a row.
---- Centralized helper that replaces duplicate animation code across CurrencyUI, ItemsUI, ReputationUI.
---- Reuses animation objects on the row to prevent memory leaks.
----@param row Frame - The row frame to animate
----@param rowIndex number - Row index for stagger delay calculation (1-based)
----@param shouldAnimate boolean - Whether to animate (false = instant alpha=1)
----@param duration number|nil - Fade duration in seconds (default 0.15)
----@param staggerDelay number|nil - Per-row stagger delay in seconds (default 0.05)
-function ns.UI.Factory:ApplyStaggerAnimation(row, rowIndex, shouldAnimate, duration, staggerDelay)
-    if not row then return end
-    
-    -- Stop any previous animations (prevent overlap from rapid toggles)
-    if row.anim then row.anim:Stop() end
-    
-    if shouldAnimate then
-        row:SetAlpha(0)
-        
-        -- Reuse animation objects to prevent memory leaks
-        if not row.anim then
-            local anim = row:CreateAnimationGroup()
-            local fade = anim:CreateAnimation("Alpha")
-            fade:SetSmoothing("OUT")
-            anim:SetScript("OnFinished", function() row:SetAlpha(1) end)
-            
-            row.anim = anim
-            row.fade = fade
-        end
-        
-        row.fade:SetFromAlpha(0)
-        row.fade:SetToAlpha(1)
-        row.fade:SetDuration(duration or 0.15)
-        row.fade:SetStartDelay((rowIndex or 1) * (staggerDelay or 0.05))
-        
-        row.anim:Play()
-    else
-        row:SetAlpha(1)
-    end
-end
 
 --- Create a data row with alternating background color.
 --- Standard pattern for creating new rows with proper positioning and alternating bg.

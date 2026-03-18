@@ -45,6 +45,7 @@ local COLORS = ns.UI_COLORS
 
 -- Import pooling functions (performance: reuse frames instead of creating new ones)
 local AcquireReputationRow = ns.UI_AcquireReputationRow
+local ReleaseReputationRow = ns.UI_ReleaseReputationRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
 -- Performance: Local function references
@@ -546,10 +547,9 @@ end
 ---@param IsExpanded function Function to check expand state
 ---@param ToggleExpand function Function to toggle expand state
 ---@param characterInfo table|nil Optional {name, class, level, isAccountWide} for filtered view
----@param shouldAnimate boolean|nil Whether to play stagger animation
 ---@return number newYOffset
 ---@return boolean|nil isExpanded
-local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, rowWidth, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo, shouldAnimate)
+local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, rowWidth, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
     -- PERFORMANCE: Acquire from pool instead of creating new frames every refresh
     local row = AcquireReputationRow(parent, rowWidth, ROW_HEIGHT)
     row:ClearAllPoints()
@@ -737,18 +737,18 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         baseReputationMaxed = true
     elseif reputation.type == "renown" and reputation.renown then
         if reputation.renown.maxLevel and reputation.renown.maxLevel > 0 then
-            baseReputationMaxed = (reputation.renown.level >= reputation.renown.maxLevel)
-        elseif reputation.maxValue == 1 and reputation.currentValue >= 1 then
+            baseReputationMaxed = ((reputation.renown.level or 0) >= reputation.renown.maxLevel)
+        elseif reputation.maxValue == 1 and currentValue >= 1 then
             baseReputationMaxed = true
         end
     elseif reputation.type == "friendship" and reputation.friendship then
         if reputation.friendship.maxLevel and reputation.friendship.maxLevel > 0 then
-            baseReputationMaxed = (reputation.friendship.level >= reputation.friendship.maxLevel)
-        elseif reputation.maxValue == 1 and reputation.currentValue >= 1 then
+            baseReputationMaxed = ((reputation.friendship.level or 0) >= reputation.friendship.maxLevel)
+        elseif reputation.maxValue == 1 and currentValue >= 1 then
             baseReputationMaxed = true
         end
     elseif reputation.standingID == 8 then
-        baseReputationMaxed = (reputation.maxValue == 1 or reputation.currentValue >= reputation.maxValue)
+        baseReputationMaxed = (reputation.maxValue == 1 or currentValue >= maxValue)
     end
     
     -- ===== PROGRESS BAR (lazy-created, reused across pool cycles) =====
@@ -1085,9 +1085,523 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     end)
     
     -- ===== ANIMATION: Staggered fade-in (centralized helper) =====
-    ns.UI.Factory:ApplyStaggerAnimation(row, rowIndex, shouldAnimate)
-    
     return yOffset + ROW_HEIGHT + GetLayout().betweenRows, isExpanded
+end
+
+---Populate a reputation row frame with data (for virtual list reuse)
+---@param row Frame Pooled reputation row frame
+---@param entry table Flat list entry with .data (reputation), .factionID, .rowIdx, .rowWidth, .subfactions, .characterInfo, .IsExpanded, .ToggleExpand, .isSubfaction
+local function PopulateReputationRow(row, entry)
+    local reputation = entry.data
+    local factionID = entry.factionID
+    local rowIndex = entry.rowIdx
+    local rowWidth = entry.rowWidth or 800
+    local subfactions = entry.subfactions
+    local characterInfo = entry.characterInfo
+    local IsExpanded = entry.IsExpanded
+    local ToggleExpand = entry.ToggleExpand
+
+    -- Alternating background
+    ns.UI.Factory:ApplyRowBackground(row, rowIndex)
+
+    -- ===== COLLAPSE BUTTON (conditional: only for rows with subfactions) =====
+    local isExpanded = false
+    local hasSubfactions = subfactions and #subfactions > 0
+
+    if hasSubfactions then
+        local collapseKey = "rep-subfactions-" .. factionID
+        isExpanded = IsExpanded(collapseKey, true)
+
+        if not row.collapseBtn then
+            row.collapseBtn = CreateFrame("Button", nil, row)
+            row.collapseBtn:SetSize(20, 20)
+            row.collapseBtnTexture = row.collapseBtn:CreateTexture(nil, "ARTWORK")
+            row.collapseBtnTexture:SetAllPoints()
+        end
+
+        row.collapseBtn:ClearAllPoints()
+        row.collapseBtn:SetPoint("LEFT", 6, 0)
+
+        if isExpanded then
+            row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+        else
+            row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+        end
+
+        local function onSubfactionToggle()
+            isExpanded = not isExpanded
+            if isExpanded then
+                row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+            else
+                row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+            end
+            ToggleExpand(collapseKey, isExpanded)
+        end
+
+        row.collapseBtn:SetScript("OnClick", onSubfactionToggle)
+        row:SetScript("OnClick", onSubfactionToggle)
+        row.collapseBtn:Show()
+    else
+        if row.collapseBtn then row.collapseBtn:Hide() end
+    end
+
+    -- ===== STANDING DISPLAY =====
+    local standingWord = ""
+    local standingNumber = ""
+    local standingColorCode = ""
+
+    if reputation.friendship and reputation.friendship.reactionText then
+        standingWord = reputation.friendship.reactionText
+        standingColorCode = "|cffffcc00"
+    elseif reputation.renown and reputation.renown.level and reputation.renown.level > 0 then
+        standingWord = (ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown"
+        standingNumber = tostring(reputation.renown.level)
+        standingColorCode = "|cffffcc00"
+    elseif reputation.friendship and reputation.friendship.level and reputation.friendship.level > 0 then
+        standingWord = LEVEL or "Level"
+        standingNumber = tostring(reputation.friendship.level)
+        standingColorCode = "|cffffcc00"
+    elseif reputation.standing and reputation.standing.name then
+        standingWord = reputation.standing.name
+        local c = reputation.standing.color
+        if c then
+            standingColorCode = format("|cff%02x%02x%02x", (c.r or 1) * 255, (c.g or 1) * 255, (c.b or 1) * 255)
+        else
+            standingColorCode = "|cffffffff"
+        end
+    else
+        standingWord = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+        standingColorCode = "|cffff0000"
+    end
+
+    local textStartOffset = hasSubfactions and 32 or 10
+
+    if standingWord ~= "" then
+        if not row.standingText then
+            row.standingText = FontManager:CreateFontString(row, "body", "OVERLAY")
+            row.standingText:SetJustifyH("LEFT")
+            row.standingText:SetWidth(120)
+        end
+        row.standingText:ClearAllPoints()
+        row.standingText:SetPoint("LEFT", textStartOffset, 0)
+        local fullStandingText = standingWord
+        if standingNumber ~= "" then
+            fullStandingText = standingWord .. " " .. standingNumber
+        end
+        row.standingText:SetText(standingColorCode .. fullStandingText .. "|r")
+        row.standingText:Show()
+
+        if not row.separator then
+            row.separator = FontManager:CreateFontString(row, "body", "OVERLAY")
+        end
+        row.separator:ClearAllPoints()
+        row.separator:SetPoint("LEFT", row.standingText, "RIGHT", 10, 0)
+        row.separator:SetText("|cff666666-|r")
+        row.separator:Show()
+
+        if not row.nameText then
+            row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
+            row.nameText:SetJustifyH("LEFT")
+            row.nameText:SetWordWrap(false)
+            row.nameText:SetNonSpaceWrap(false)
+            row.nameText:SetMaxLines(1)
+        end
+        row.nameText:ClearAllPoints()
+        row.nameText:SetPoint("LEFT", row.separator, "RIGHT", 12, 0)
+        local actualMaxWidth = math.max(280, (rowWidth or 800) - 240)
+        row.nameText:SetWidth(actualMaxWidth)
+        row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
+        row.nameText:SetTextColor(1, 1, 1)
+        row.nameText:Show()
+    else
+        if row.standingText then row.standingText:Hide() end
+        if row.separator then row.separator:Hide() end
+
+        if not row.nameText then
+            row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
+            row.nameText:SetJustifyH("LEFT")
+            row.nameText:SetWordWrap(false)
+            row.nameText:SetNonSpaceWrap(false)
+            row.nameText:SetMaxLines(1)
+        end
+        row.nameText:ClearAllPoints()
+        row.nameText:SetPoint("LEFT", textStartOffset, 0)
+        local actualMaxWidth = math.max(300, (rowWidth or 800) - 200)
+        row.nameText:SetWidth(actualMaxWidth)
+        row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
+        row.nameText:SetTextColor(1, 1, 1)
+        row.nameText:Show()
+    end
+
+    -- ===== CHARACTER BADGE =====
+    if characterInfo then
+        if not row.badgeText then
+            row.badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
+            row.badgeText:SetJustifyH("LEFT")
+            row.badgeText:SetWidth(220)
+        end
+        local BADGE_ABSOLUTE_X = 475
+        local indent = entry.xOffset or 0
+        local badgeLeftOffset = BADGE_ABSOLUTE_X - indent
+        row.badgeText:ClearAllPoints()
+        row.badgeText:SetPoint("LEFT", badgeLeftOffset, 0)
+
+        if characterInfo.isAccountWide then
+            row.badgeText:SetText("|cff666666(|r|cff00ff00" .. ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide") .. "|r|cff666666)|r")
+        elseif characterInfo.name then
+            local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
+            local classHex = format("%02x%02x%02x", classColor.r*255, classColor.g*255, classColor.b*255)
+            local badgeString = "|cff666666(|r|cff" .. classHex .. characterInfo.name
+            if characterInfo.realm and characterInfo.realm ~= "" then
+                local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(characterInfo.realm) or characterInfo.realm
+                badgeString = badgeString .. " - " .. displayRealm
+            end
+            badgeString = badgeString .. "|r|cff666666)|r"
+            row.badgeText:SetText(badgeString)
+        end
+        row.badgeText:Show()
+    else
+        if row.badgeText then row.badgeText:Hide() end
+    end
+
+    -- ===== PROGRESS DATA =====
+    local currentValue = reputation.currentValue or 0
+    local maxValue = reputation.maxValue or 1
+    local isParagon = reputation.hasParagon or false
+
+    local baseReputationMaxed = false
+    if isParagon then
+        baseReputationMaxed = true
+    elseif reputation.type == "renown" and reputation.renown then
+        if reputation.renown.maxLevel and reputation.renown.maxLevel > 0 then
+            baseReputationMaxed = ((reputation.renown.level or 0) >= reputation.renown.maxLevel)
+        elseif reputation.maxValue == 1 and currentValue >= 1 then
+            baseReputationMaxed = true
+        end
+    elseif reputation.type == "friendship" and reputation.friendship then
+        if reputation.friendship.maxLevel and reputation.friendship.maxLevel > 0 then
+            baseReputationMaxed = ((reputation.friendship.level or 0) >= reputation.friendship.maxLevel)
+        elseif reputation.maxValue == 1 and currentValue >= 1 then
+            baseReputationMaxed = true
+        end
+    elseif reputation.standingID == 8 then
+        baseReputationMaxed = (reputation.maxValue == 1 or currentValue >= maxValue)
+    end
+
+    -- ===== PROGRESS BAR =====
+    local standingID = reputation.standingID or 4
+    local hasRenown = (reputation.type == "renown") or false
+
+    if not row._progressBar then
+        local pb = {}
+        pb.bg = CreateFrame("Frame", nil, row)
+        pb.bg:SetFrameLevel(row:GetFrameLevel() + 10)
+
+        pb.bgTexture = pb.bg:CreateTexture(nil, "BACKGROUND")
+        pb.bgTexture:SetSnapToPixelGrid(false)
+        pb.bgTexture:SetTexelSnappingBias(0)
+
+        pb.fill = pb.bg:CreateTexture(nil, "ARTWORK")
+        pb.fill:SetSnapToPixelGrid(false)
+        pb.fill:SetTexelSnappingBias(0)
+
+        local function MakeBorder()
+            local t = pb.bg:CreateTexture(nil, "BORDER")
+            t:SetTexture("Interface\\Buttons\\WHITE8x8")
+            t:SetSnapToPixelGrid(false)
+            t:SetTexelSnappingBias(0)
+            t:SetDrawLayer("BORDER", 0)
+            return t
+        end
+        pb.borderTop = MakeBorder()
+        pb.borderBottom = MakeBorder()
+        pb.borderLeft = MakeBorder()
+        pb.borderRight = MakeBorder()
+
+        row._progressBar = pb
+    end
+
+    local pb = row._progressBar
+    local barWidth, barHeight = 200, 19
+    local borderInset = 1
+    local fillInset = borderInset + 1
+    local contentWidth = barWidth - (borderInset * 2)
+
+    pb.bg:SetSize(barWidth, barHeight)
+    pb.bg:ClearAllPoints()
+    pb.bg:SetPoint("RIGHT", -10, 0)
+    pb.bg:Show()
+
+    local bgColor = COLORS.bgCard or {COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], 0.8}
+    pb.bgTexture:ClearAllPoints()
+    pb.bgTexture:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", borderInset, -borderInset)
+    pb.bgTexture:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", -borderInset, borderInset)
+    pb.bgTexture:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 0.8)
+
+    local progress = 0
+    if maxValue > 0 then
+        progress = math.min(1, math.max(0, currentValue / maxValue))
+    end
+    if baseReputationMaxed and not isParagon then progress = 1 end
+
+    local fillWidth = math.max((contentWidth - 2) * progress, 0.001)
+    pb.fill:ClearAllPoints()
+    pb.fill:SetPoint("LEFT", pb.bg, "LEFT", fillInset, 0)
+    pb.fill:SetPoint("TOP", pb.bg, "TOP", 0, -fillInset)
+    pb.fill:SetPoint("BOTTOM", pb.bg, "BOTTOM", 0, fillInset)
+    pb.fill:SetWidth(fillWidth)
+    pb.fill:Show()
+
+    if baseReputationMaxed and not isParagon then
+        pb.fill:SetColorTexture(0, 0.8, 0, 1)
+    elseif isParagon then
+        pb.fill:SetColorTexture(1, 0.4, 1, 1)
+    elseif (not hasRenown and reputation.type ~= "friendship") and standingID then
+        local standingColors = {
+            [1] = {0.8, 0.13, 0.13}, [2] = {0.8, 0.13, 0.13},
+            [3] = {0.75, 0.27, 0},    [4] = {0.9, 0.7, 0},
+            [5] = {0, 0.6, 0.1},      [6] = {0, 0.6, 0.1},
+            [7] = {0, 0.6, 0.1},      [8] = {0, 0.6, 0.1},
+        }
+        local c = standingColors[standingID] or {0.9, 0.7, 0}
+        pb.fill:SetColorTexture(c[1], c[2], c[3], 1)
+    else
+        local goldColor = COLORS.gold or {1, 0.82, 0, 1}
+        pb.fill:SetColorTexture(goldColor[1], goldColor[2], goldColor[3], goldColor[4] or 1)
+    end
+
+    local accentColor = COLORS.accent or {0.4, 0.6, 1}
+    local br, bgc, bb, ba = accentColor[1], accentColor[2], accentColor[3], 0.6
+
+    pb.borderTop:ClearAllPoints()
+    pb.borderTop:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, 0)
+    pb.borderTop:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, 0)
+    pb.borderTop:SetHeight(1)
+    pb.borderTop:SetVertexColor(br, bgc, bb, ba)
+
+    pb.borderBottom:ClearAllPoints()
+    pb.borderBottom:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 0)
+    pb.borderBottom:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 0)
+    pb.borderBottom:SetHeight(1)
+    pb.borderBottom:SetVertexColor(br, bgc, bb, ba)
+
+    pb.borderLeft:ClearAllPoints()
+    pb.borderLeft:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, -1)
+    pb.borderLeft:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 1)
+    pb.borderLeft:SetWidth(1)
+    pb.borderLeft:SetVertexColor(br, bgc, bb, ba)
+
+    pb.borderRight:ClearAllPoints()
+    pb.borderRight:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, -1)
+    pb.borderRight:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 1)
+    pb.borderRight:SetWidth(1)
+    pb.borderRight:SetVertexColor(br, bgc, bb, ba)
+
+    local progressBg = pb.bg
+
+    -- ===== PARAGON ICON =====
+    if isParagon then
+        local iconCreated = false
+        local CreateParagonIcon = ns.UI_CreateParagonIcon
+        if CreateParagonIcon then
+            local hasReward = reputation.paragon and reputation.paragon.hasRewardPending or false
+
+            if not row.paragonFrame then
+                local success, pFrame = pcall(CreateParagonIcon, row, 18, hasReward)
+                if success and pFrame then
+                    row.paragonFrame = pFrame
+                    row.paragonFrame:EnableMouse(true)
+                end
+            end
+
+            if row.paragonFrame then
+                row.paragonFrame:ClearAllPoints()
+                row.paragonFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -24, 0)
+
+                row.paragonFrame:SetScript("OnEnter", function(self)
+                    local tooltipData = {
+                        type = "custom",
+                        icon = "Interface\\Icons\\INV_Misc_Bag_10",
+                        title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
+                        lines = {}
+                    }
+                    if reputation.paragon and reputation.paragon.hasRewardPending then
+                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward available!", color = {0, 1, 0}})
+                    else
+                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
+                    end
+                    if reputation.paragon then
+                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
+                    end
+                    ns.TooltipService:Show(self, tooltipData)
+                end)
+                row.paragonFrame:SetScript("OnLeave", function(self)
+                    ns.TooltipService:Hide()
+                end)
+                row.paragonFrame:Show()
+                iconCreated = true
+            end
+        end
+
+        if not iconCreated then
+            if not row.paragonFrame then
+                row.paragonFrame = CreateIcon(row, "Interface\\Icons\\INV_Misc_Bag_10", 18, false, nil, true)
+                if row.paragonFrame then
+                    row.paragonFrame:EnableMouse(true)
+                end
+            end
+            if row.paragonFrame then
+                row.paragonFrame:ClearAllPoints()
+                row.paragonFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -24, 0)
+                if not (reputation.paragon and reputation.paragon.hasRewardPending) then
+                    if row.paragonFrame.texture then
+                        row.paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
+                    end
+                else
+                    if row.paragonFrame.texture then
+                        row.paragonFrame.texture:SetVertexColor(1, 1, 1, 1)
+                    end
+                end
+                row.paragonFrame:SetScript("OnEnter", function(self)
+                    local tooltipData = {
+                        type = "custom",
+                        icon = "Interface\\Icons\\INV_Misc_Bag_10",
+                        title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
+                        lines = {}
+                    }
+                    if reputation.paragon and reputation.paragon.hasRewardPending then
+                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward available!", color = {0, 1, 0}})
+                    else
+                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
+                    end
+                    if reputation.paragon then
+                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_PROGRESS_HEADER"]) or "Progress: %d / %d", reputation.paragon.current or 0, reputation.paragon.max or 10000), color = {0.8, 0.8, 0.8}})
+                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
+                    end
+                    ns.TooltipService:Show(self, tooltipData)
+                end)
+                row.paragonFrame:SetScript("OnLeave", function(self)
+                    ns.TooltipService:Hide()
+                end)
+                row.paragonFrame:Show()
+                iconCreated = true
+            end
+        end
+    else
+        if row.paragonFrame then row.paragonFrame:Hide() end
+    end
+
+    -- ===== CHECKMARK =====
+    if baseReputationMaxed then
+        if not row.checkFrame then
+            row.checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)
+        end
+        row.checkFrame:ClearAllPoints()
+        row.checkFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -4, 0)
+        row.checkFrame:Show()
+    else
+        if row.checkFrame then row.checkFrame:Hide() end
+    end
+
+    -- ===== PROGRESS TEXT =====
+    if progressBg then
+        if not row.progressText then
+            row.progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
+            local font, _ = row.progressText:GetFont()
+            row.progressText:SetFont(font, 11, "OUTLINE")
+            row.progressText:SetJustifyH("CENTER")
+            row.progressText:SetJustifyV("MIDDLE")
+        end
+        row.progressText:SetParent(progressBg)
+        row.progressText:ClearAllPoints()
+        row.progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)
+        row.progressText:SetText(FormatReputationProgress(currentValue, maxValue))
+        row.progressText:SetTextColor(1, 1, 1)
+        row.progressText:Show()
+    end
+
+    -- ===== TOOLTIPS =====
+    row:SetScript("OnEnter", function(self)
+        local tooltipService = ShowTooltip or (ns and ns.UI_ShowTooltip)
+        if not tooltipService then return end
+
+        local success, err = pcall(function()
+            local lines = {}
+
+            if reputation.hasParagon and reputation.paragon then
+                table.insert(lines, {
+                    left = (ns.L and ns.L["REP_PARAGON_PROGRESS"]) or "Paragon Progress:",
+                    right = FormatReputationProgress(reputation.paragon.current, reputation.paragon.max),
+                    leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}
+                })
+                if reputation.paragon.completedCycles and reputation.paragon.completedCycles > 0 then
+                    table.insert(lines, {
+                        left = (ns.L and ns.L["REP_CYCLES_COLON"]) or "Cycles:",
+                        right = tostring(reputation.paragon.completedCycles),
+                        leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}
+                    })
+                end
+                if reputation.paragon.hasRewardPending then
+                    table.insert(lines, {text = "|cff00ff00" .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})
+                end
+            end
+
+            local allCharData = (characterInfo and characterInfo.allCharData) or {}
+            if #allCharData >= 1 then
+                table.insert(lines, {type = "spacer", height = 8})
+                table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {1, 0.82, 0}})
+
+                for _, charData in ipairs(allCharData) do
+                    local charName = charData.characterName
+                    local charReputation = charData.reputation
+                    local classFile = string.upper(charData.characterClass or "WARRIOR")
+                    local classColor = RAID_CLASS_COLORS[classFile] or {r=1, g=1, b=1}
+
+                    local charProgressText
+                    if charReputation.renown and charReputation.renown.level then
+                        charProgressText = string.format((ns.L and ns.L["REP_RENOWN_FORMAT"]) or "Renown %d", charReputation.renown.level)
+                    elseif charReputation.friendship and charReputation.friendship.standing then
+                        charProgressText = string.format("%s (%s)",
+                            charReputation.friendship.standing,
+                            FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
+                    elseif charReputation.hasParagon and charReputation.paragon then
+                        charProgressText = string.format((ns.L and ns.L["REP_PARAGON_FORMAT"]) or "Paragon (%s)",
+                            FormatReputationProgress(charReputation.paragon.current, charReputation.paragon.max))
+                    else
+                        charProgressText = string.format("%s (%s)",
+                            charReputation.standing.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
+                            FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
+                    end
+
+                    table.insert(lines, {
+                        left = charName .. ":",
+                        right = charProgressText,
+                        leftColor = {classColor.r, classColor.g, classColor.b},
+                        rightColor = {1, 1, 1}
+                    })
+                end
+            end
+
+            tooltipService(self, {
+                type = "custom",
+                icon = reputation.iconTexture,
+                title = reputation.name or ((ns.L and ns.L["TAB_REPUTATION"]) or "Reputation"),
+                description = (reputation.description and reputation.description ~= "") and reputation.description or nil,
+                lines = lines,
+                anchor = "ANCHOR_RIGHT"
+            })
+        end)
+
+        if not success then
+            DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. tostring(err))
+        end
+    end)
+
+    row:SetScript("OnLeave", function(self)
+        if HideTooltip then
+            HideTooltip()
+        end
+    end)
 end
 
 --============================================================================
@@ -1104,9 +1618,28 @@ function WarbandNexus:DrawReputationList(container, width)
     HideEmptyStateCard(container, "reputation")
     
     -- PERFORMANCE: Release pooled frames back to pool (prevents frame leaks)
-    -- This replaces the old SetParent(nil) pattern that caused orphaned frames
     if ReleaseAllPooledChildren then
         ReleaseAllPooledChildren(container)
+    end
+    
+    -- Clean up old non-virtual children (headers, notice frames, empty-state text)
+    -- from previous render. VLM handles its own _isVirtualRow frames.
+    local recycleBin = ns.UI_RecycleBin
+    local oldChildren = {container:GetChildren()}
+    for i = 1, #oldChildren do
+        local child = oldChildren[i]
+        if not child._isVirtualRow then
+            child:Hide()
+            child:ClearAllPoints()
+            child:SetParent(recycleBin or UIParent)
+        end
+    end
+    local oldRegions = {container:GetRegions()}
+    for i = 1, #oldRegions do
+        local region = oldRegions[i]
+        if region:GetObjectType() == "FontString" then
+            region:Hide()
+        end
     end
     
     local parent = container
@@ -1344,7 +1877,12 @@ function WarbandNexus:DrawReputationList(container, width)
     -- awSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
     
     yOffset = yOffset + HEADER_SPACING  -- Section header + spacing before content
-    
+
+    local flatList = {}
+    local globalRowIdx = 0
+    local betweenRows = GetLayout().betweenRows or 0
+    local rowHeightWithSpacing = ROW_HEIGHT + betweenRows
+
     if awSectionExpanded then
         if totalAccountWide == 0 then
             -- Empty state
@@ -1458,14 +1996,12 @@ function WarbandNexus:DrawReputationList(container, width)
                     
                     if headerExpanded then
                 
-                -- Compute animation state for this expansion header's rows
-                local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
-                
-                -- Render factions
+                -- Build flat list entries for factions (virtualized)
                 local rowIdx = 0
                 for _, item in ipairs(filteredFactionList) do
                     rowIdx = rowIdx + 1
-                    
+                    globalRowIdx = globalRowIdx + 1
+
                     local charInfo = {
                         name = item.faction.characterName,
                         class = item.faction.characterClass,
@@ -1474,37 +2010,35 @@ function WarbandNexus:DrawReputationList(container, width)
                         realm = item.faction.characterRealm,
                         allCharData = item.faction.allCharData or {}
                     }
-                    
+
                     local rowWidth = width - headerIndent
                     local subsToRender = item.subfactions
-                    local newYOffset, isExpanded = CreateReputationRow(
-                        parent, 
-                        item.faction.data, 
-                        item.faction.factionID, 
-                        rowIdx, 
-                        headerIndent, 
-                        rowWidth, 
-                        yOffset, 
-                        subsToRender, 
-                        IsExpanded, 
-                        ToggleExpand, 
-                        charInfo,
-                        shouldAnimate
-                    )
-                    yOffset = newYOffset
-                    
-                    -- Show sub-factions if expanded OR force-expanded by search
+                    local collapseKey = "rep-subfactions-" .. item.faction.factionID
+                    local isExpanded = IsExpanded(collapseKey, true)
                     local showSubs = isExpanded or item._forceExpand
+
+                    flatList[#flatList + 1] = {
+                        type = "row",
+                        yOffset = yOffset,
+                        height = rowHeightWithSpacing,
+                        xOffset = headerIndent,
+                        data = item.faction.data,
+                        factionID = item.faction.factionID,
+                        rowIdx = globalRowIdx,
+                        rowWidth = rowWidth,
+                        isSubfaction = false,
+                        subfactions = subsToRender,
+                        characterInfo = charInfo,
+                        IsExpanded = IsExpanded,
+                        ToggleExpand = ToggleExpand,
+                    }
+                    yOffset = yOffset + rowHeightWithSpacing
+
                     if showSubs and subsToRender and #subsToRender > 0 then
-                        -- Compute animation for subfaction expand
-                        local subfactionKey = "rep-subfactions-" .. item.faction.factionID
-                        local subShouldAnimate = self.recentlyExpanded[subfactionKey] and (GetTime() - self.recentlyExpanded[subfactionKey] < 0.5)
-                        
                         local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT
-                        local subRowIdx = 0
                         for _, subFaction in ipairs(subsToRender) do
-                            subRowIdx = subRowIdx + 1
-                            
+                            globalRowIdx = globalRowIdx + 1
+
                             local subCharInfo = {
                                 name = subFaction.characterName,
                                 class = subFaction.characterClass,
@@ -1513,22 +2047,24 @@ function WarbandNexus:DrawReputationList(container, width)
                                 realm = subFaction.characterRealm,
                                 allCharData = subFaction.allCharData or {}
                             }
-                            
+
                             local subRowWidth = width - subIndent
-                            yOffset = CreateReputationRow(
-                                parent, 
-                                subFaction.data,
-                                subFaction.factionID, 
-                                subRowIdx, 
-                                subIndent, 
-                                subRowWidth, 
-                                yOffset, 
-                                nil,
-                                IsExpanded, 
-                                ToggleExpand, 
-                                subCharInfo,
-                                subShouldAnimate or shouldAnimate
-                            )
+                            flatList[#flatList + 1] = {
+                                type = "row",
+                                yOffset = yOffset,
+                                height = rowHeightWithSpacing,
+                                xOffset = subIndent,
+                                data = subFaction.data,
+                                factionID = subFaction.factionID,
+                                rowIdx = globalRowIdx,
+                                rowWidth = subRowWidth,
+                                isSubfaction = true,
+                                subfactions = nil,
+                                characterInfo = subCharInfo,
+                                IsExpanded = IsExpanded,
+                                ToggleExpand = ToggleExpand,
+                            }
+                            yOffset = yOffset + rowHeightWithSpacing
                         end
                     end
                 end
@@ -1683,14 +2219,12 @@ function WarbandNexus:DrawReputationList(container, width)
                     
                     if headerExpanded then
                         
-                        -- Compute animation state for this expansion header's rows
-                        local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
-                        
-                        -- Render factions
+                        -- Build flat list entries for factions (virtualized)
                         local rowIdx = 0
                         for _, item in ipairs(filteredFactionList) do
                             rowIdx = rowIdx + 1
-                            
+                            globalRowIdx = globalRowIdx + 1
+
                             local charInfo = {
                                 name = item.faction.characterName,
                                 class = item.faction.characterClass,
@@ -1699,36 +2233,35 @@ function WarbandNexus:DrawReputationList(container, width)
                                 realm = item.faction.characterRealm,
                                 allCharData = item.faction.allCharData or {}
                             }
-                            
+
                             local rowWidth = width - headerIndent
                             local subsToRender = item.subfactions
-                            local newYOffset, isExpanded = CreateReputationRow(
-                                parent, 
-                                item.faction.data, 
-                                item.faction.factionID, 
-                                rowIdx, 
-                                headerIndent, 
-                                rowWidth, 
-                                yOffset, 
-                                subsToRender, 
-                                IsExpanded, 
-                                ToggleExpand, 
-                                charInfo,
-                                shouldAnimate
-                            )
-                            yOffset = newYOffset
-                            
+                            local collapseKey = "rep-subfactions-" .. item.faction.factionID
+                            local isExpanded = IsExpanded(collapseKey, true)
                             local showSubs = isExpanded or item._forceExpand
+
+                            flatList[#flatList + 1] = {
+                                type = "row",
+                                yOffset = yOffset,
+                                height = rowHeightWithSpacing,
+                                xOffset = headerIndent,
+                                data = item.faction.data,
+                                factionID = item.faction.factionID,
+                                rowIdx = globalRowIdx,
+                                rowWidth = rowWidth,
+                                isSubfaction = false,
+                                subfactions = subsToRender,
+                                characterInfo = charInfo,
+                                IsExpanded = IsExpanded,
+                                ToggleExpand = ToggleExpand,
+                            }
+                            yOffset = yOffset + rowHeightWithSpacing
+
                             if showSubs and subsToRender and #subsToRender > 0 then
-                                -- Compute animation for subfaction expand
-                                local subfactionKey = "rep-subfactions-" .. item.faction.factionID
-                                local subShouldAnimate = self.recentlyExpanded[subfactionKey] and (GetTime() - self.recentlyExpanded[subfactionKey] < 0.5)
-                                
                                 local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT
-                                local subRowIdx = 0
                                 for _, subFaction in ipairs(subsToRender) do
-                                    subRowIdx = subRowIdx + 1
-                                    
+                                    globalRowIdx = globalRowIdx + 1
+
                                     local subCharInfo = {
                                         name = subFaction.characterName,
                                         class = subFaction.characterClass,
@@ -1737,25 +2270,27 @@ function WarbandNexus:DrawReputationList(container, width)
                                         realm = subFaction.characterRealm,
                                         allCharData = subFaction.allCharData or {}
                                     }
-                                    
+
                                     local subRowWidth = width - subIndent
-                                    yOffset = CreateReputationRow(
-                                        parent, 
-                                        subFaction.data,
-                                        subFaction.factionID, 
-                                        subRowIdx, 
-                                        subIndent, 
-                                        subRowWidth, 
-                                        yOffset, 
-                                        nil,
-                                        IsExpanded, 
-                                        ToggleExpand, 
-                                        subCharInfo,
-                                        subShouldAnimate or shouldAnimate
-                                    )
+                                    flatList[#flatList + 1] = {
+                                        type = "row",
+                                        yOffset = yOffset,
+                                        height = rowHeightWithSpacing,
+                                        xOffset = subIndent,
+                                        data = subFaction.data,
+                                        factionID = subFaction.factionID,
+                                        rowIdx = globalRowIdx,
+                                        rowWidth = subRowWidth,
+                                        isSubfaction = true,
+                                        subfactions = nil,
+                                        characterInfo = subCharInfo,
+                                        IsExpanded = IsExpanded,
+                                        ToggleExpand = ToggleExpand,
+                                    }
+                                    yOffset = yOffset + rowHeightWithSpacing
+                                end
                             end
                         end
-                    end
                     end
                     
                     -- Add spacing after each expansion section (whether expanded or not)
@@ -1779,11 +2314,10 @@ function WarbandNexus:DrawReputationList(container, width)
         60
     )
     noticeFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    
+
     yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after notice
-    
+
     -- Update SearchStateManager with result count
-    -- Count from aggregated filtered data
     local totalReputations = 0
     if aggregatedHeaders then
         for _, headerGroup in ipairs(aggregatedHeaders) do
@@ -1793,8 +2327,25 @@ function WarbandNexus:DrawReputationList(container, width)
         end
     end
     SearchStateManager:UpdateResults("reputation", totalReputations)
-    
-    return yOffset
+
+    -- ===== RENDER ROWS DIRECTLY (Bypass VLM to fix invisible rows) =====
+    if #flatList > 0 then
+        for i, entry in ipairs(flatList) do
+            local row = AcquireReputationRow(parent, entry.rowWidth, ROW_HEIGHT)
+            row._isVirtualRow = true -- Mark for cleanup exclusion (handled by pool)
+            row:SetParent(parent)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", parent, "TOPLEFT", entry.xOffset or 0, -(entry.yOffset or 0))
+            PopulateReputationRow(row, entry)
+            row:Show()
+        end
+        
+        local lastEntry = flatList[#flatList]
+        local totalHeight = (lastEntry.yOffset or 0) + (lastEntry.height or ROW_HEIGHT)
+        return math.max(totalHeight, yOffset) + GetLayout().minBottomSpacing
+    end
+
+    return yOffset + GetLayout().minBottomSpacing
 end
 
 --============================================================================
@@ -1829,9 +2380,11 @@ function WarbandNexus:DrawReputationTab(parent)
             cachedSearchText = nil
             -- Show loading UI if tab is currently visible
             if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
-                if parent.loadingText then
-                    parent.loadingText:Show()
-                    parent.loadingText:SetText("|cffffcc00" .. ((ns.L and ns.L["REP_CLEARING_CACHE"]) or "Clearing cache and reloading...") .. "|r")
+                if parent._loadingPanel then
+                    parent._loadingPanel:ShowLoading(
+                        (ns.L and ns.L["REP_CLEARING_CACHE"]) or "Clearing cache and reloading...",
+                        0, ""
+                    )
                 end
                 
                 -- Hide all content frames
@@ -1839,7 +2392,7 @@ function WarbandNexus:DrawReputationTab(parent)
                 for _, child in pairs(children) do
                     if child ~= parent.dbVersionBadge 
                        and child ~= parent.emptyStateContainer 
-                       and child ~= parent.loadingText then
+                       and child ~= parent._loadingPanel then
                         child:Hide()
                     end
                 end
@@ -1852,8 +2405,8 @@ function WarbandNexus:DrawReputationTab(parent)
         cachedFilteredResults = {}
         cachedSearchText = nil
         
-        if parent.loadingText then
-            parent.loadingText:Hide()
+        if parent._loadingPanel then
+            parent._loadingPanel:HideLoading()
         end
         
         -- Only refresh if visible
@@ -1895,13 +2448,12 @@ function WarbandNexus:DrawReputationTab(parent)
         parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
     end
     
-    -- Create loading text (persistent element)
-    if not parent.loadingText then
-        parent.loadingText = FontManager:CreateFontString(parent, "header", "OVERLAY")
-        parent.loadingText:SetPoint("CENTER", 0, 0)
-        parent.loadingText:SetTextColor(1, 0.8, 0, 1)  -- Gold
-        parent.loadingText:SetText("|cffffcc00" .. ((ns.L and ns.L["REP_LOADING_DATA"]) or "Loading reputation data...") .. "|r")
-        parent.loadingText:Hide()  -- Hidden by default
+    -- Persistent loading overlay (standard panel from SharedWidgets)
+    if not parent._loadingPanel then
+        local UI_CreateLoadingStatePanel = ns.UI_CreateLoadingStatePanel
+        if UI_CreateLoadingStatePanel then
+            parent._loadingPanel = UI_CreateLoadingStatePanel(parent)
+        end
     end
     
     -- Hide empty state container (will be shown again if needed)
@@ -1910,10 +2462,10 @@ function WarbandNexus:DrawReputationTab(parent)
     -- Clear all old frames (including FontStrings)
     local children = {parent:GetChildren()}
     for _, child in pairs(children) do
-        -- Keep only persistent UI elements (badge, title card, loading text)
+        -- Keep only persistent UI elements (badge, title card, loading panel)
         if child ~= parent.dbVersionBadge 
            and child ~= parent.emptyStateContainer 
-           and child ~= parent.loadingText then
+           and child ~= parent._loadingPanel then
             pcall(function()
                 child:Hide()
                 child:ClearAllPoints()
@@ -1932,17 +2484,19 @@ function WarbandNexus:DrawReputationTab(parent)
         end
     end
     
-    local yOffset = 8 -- Top padding
     local width = parent:GetWidth() - 20
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local headerYOffset = 8
     
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.reputations ~= false
     
-    -- ===== TITLE CARD =====
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
     local CreateCard = ns.UI_CreateCard
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    local titleCard = CreateCard(headerParent, 70)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     -- Header icon with ring border
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
@@ -1984,69 +2538,61 @@ function WarbandNexus:DrawReputationTab(parent)
     
     titleCard:Show()
     
-    yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
+    headerYOffset = headerYOffset + GetLayout().afterHeader
     
-    -- If module is disabled, show beautiful disabled state card
+    -- If module is disabled, show disabled state card in scroll area
     if not moduleEnabled then
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")
-        return yOffset + cardHeight
+        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")
+        return 8 + cardHeight
     end
     
     -- ===== LOADING STATE =====
-    -- Show loading card if reputation scan is in progress
     if ns.ReputationLoadingState and ns.ReputationLoadingState.isLoading then
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
         if UI_CreateLoadingStateCard then
-            local newYOffset = UI_CreateLoadingStateCard(
-                parent,
-                yOffset,
-                ns.ReputationLoadingState,
-                (ns.L and ns.L["REP_LOADING_TITLE"]) or "Loading Reputation Data"
-            )
+            local newYOffset = UI_CreateLoadingStateCard(parent, 8, ns.ReputationLoadingState, (ns.L and ns.L["REP_LOADING_TITLE"]) or "Loading Reputation Data")
             return newYOffset
         end
     end
     
-    -- ===== SEARCH BOX =====
+    -- ===== SEARCH BOX (in fixedHeader - non-scrolling) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
-    -- Use SearchStateManager for state management
     local reputationSearchText = SearchStateManager:GetQuery("reputation")
     
-    local searchBox = CreateSearchBox(parent, width, (ns.L and ns.L["REP_SEARCH"]) or "Search reputations...", function(text)
-        -- Update search state via SearchStateManager (throttled, event-driven)
+    local searchBox = CreateSearchBox(headerParent, width, (ns.L and ns.L["REP_SEARCH"]) or "Search reputations...", function(text)
         SearchStateManager:SetSearchQuery("reputation", text)
-        
-        -- Prepare container for rendering
         if parent.resultsContainer then
             SearchResultsRenderer:PrepareContainer(parent.resultsContainer)
-            
-            -- Redraw reputation list
             self:DrawReputationList(parent.resultsContainer, width)
         end
     end, 0.4, reputationSearchText)
     
-    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
-    yOffset = yOffset + 32 + GetLayout().afterElement  -- Search box height + standard gap
+    headerYOffset = headerYOffset + 32 + GetLayout().afterElement
+
+    -- Set fixedHeader height so scroll area starts below it
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     
-    -- Results Container (re-parent if orphaned by PopulateContent)
+    -- Results Container (in scroll area)
     if not parent.resultsContainer then
         local container = ns.UI.Factory:CreateContainer(parent)
         parent.resultsContainer = container
     end
     
     local container = parent.resultsContainer
-    container:SetParent(parent)  -- Re-attach if orphaned by PopulateContent
+    container:SetParent(parent)
     container:ClearAllPoints()
-    container:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -yOffset)
+    container:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -8)
     container:SetWidth(width)
-    container:SetHeight(1) -- Dynamic, but needed for layout
+    container:SetHeight(1)
     container:Show()
     
-    -- Draw List
     local listHeight = self:DrawReputationList(container, width)
     
-    return yOffset + listHeight
+    return 8 + listHeight
 end

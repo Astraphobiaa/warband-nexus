@@ -35,27 +35,13 @@ end
 
 -- Import shared UI components from SharedWidgets
 local COLORS = ns.UI_COLORS
-local QUALITY_COLORS = ns.UI_QUALITY_COLORS
-local GetQualityHex = ns.UI_GetQualityHex
 local CreateCard = ns.UI_CreateCard
-local FormatGold = ns.UI_FormatGold
-local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
-local GetItemTypeName = ns.UI_GetItemTypeName
-local GetItemClassID = ns.UI_GetItemClassID
-local GetTypeIcon = ns.UI_GetTypeIcon
-local AcquireItemRow = ns.UI_AcquireItemRow
-local ReleaseItemRow = ns.UI_ReleaseItemRow
-local AcquireStorageRow = ns.UI_AcquireStorageRow
-local ReleaseStorageRow = ns.UI_ReleaseStorageRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
 local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 
--- Performance: Local function references
 local format = string.format
-local floor = math.floor
-local date = date
 
 -- Layout Constants (computed dynamically)
 local CONTENT_MIN_WIDTH = 1280   -- Minimum to fit Statistics 3-card row + character/gear layouts without overflow
@@ -76,8 +62,8 @@ local function GetWindowDimensions()
         
         -- Validate saved values are within bounds
         local screen = WarbandNexus:API_GetScreenInfo()
-        local maxWidth = math.floor(screen.width * 0.90)
-        local maxHeight = math.floor(screen.height * 0.90)
+        local maxWidth = math.floor(screen.width * 0.95)
+        local maxHeight = math.floor(screen.height * 0.95)
         
         savedWidth = math.max(CONTENT_MIN_WIDTH, math.min(savedWidth, maxWidth))
         savedHeight = math.max(CONTENT_MIN_HEIGHT, math.min(savedHeight, maxHeight))
@@ -90,6 +76,21 @@ local function GetWindowDimensions()
         WarbandNexus:API_CalculateOptimalWindowSize(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT)
     
     return defaultWidth, defaultHeight
+end
+
+-- Convert frame top-left to UIParent offset space using physical-pixel conversion.
+-- This avoids coordinate drift when frame scale differs from UIParent scale.
+local function GetFrameTopLeftInParentCoords(frame)
+    if not frame then return nil, nil end
+    local left = frame:GetLeft()
+    local top = frame:GetTop()
+    if left == nil or top == nil then return nil, nil end
+
+    -- GetLeft() and GetTop() are already in the frame's effective scale coordinate space.
+    -- When using SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y), the x and y offsets
+    -- are also interpreted in the frame's effective scale coordinate space.
+    -- Therefore, we can use GetLeft/GetTop directly without any scale conversion.
+    return left, top
 end
 
 -- Save window position and size to DB.
@@ -107,16 +108,8 @@ local function SaveWindowGeometry(frame)
     -- Save absolute position using GetLeft/GetTop (anchor-independent).
     -- This is immune to anchor point changes caused by StartMoving().
     -- Convert from frame's effective scale to UIParent's coordinate space.
-    local left = frame:GetLeft()
-    local top = frame:GetTop()
+    local left, top = GetFrameTopLeftInParentCoords(frame)
     if left and top then
-        local frameScale = frame:GetEffectiveScale()
-        local parentScale = UIParent:GetEffectiveScale()
-        if frameScale and parentScale and parentScale > 0 and frameScale ~= parentScale then
-            local ratio = frameScale / parentScale
-            left = left * ratio
-            top = top * ratio
-        end
         if not profile.windowPosition then
             profile.windowPosition = {}
         end
@@ -131,17 +124,28 @@ end
 local function RestoreWindowPosition(frame)
     local profile = GetWindowProfile()
     if not profile or not profile.windowPosition then return false end
-    
+
     local pos = profile.windowPosition
     if not pos.x or not pos.y then return false end
-    
+
     -- Validate position is on-screen (clamp to visible area)
     local screen = WarbandNexus:API_GetScreenInfo()
+    local frameScale = frame:GetEffectiveScale() or 1
+    local parentScale = UIParent:GetEffectiveScale() or 1
+    if frameScale <= 0 then frameScale = 1 end
+    if parentScale <= 0 then parentScale = 1 end
+    
+    -- Get screen dimensions in the frame's coordinate space
+    -- screen.width/height are in UIParent's coordinate space.
+    local screenWidthInFrameCoords = (screen.width * parentScale) / frameScale
+    local screenHeightInFrameCoords = (screen.height * parentScale) / frameScale
+    
     local frameW = frame:GetWidth() or 0
     local frameH = frame:GetHeight() or 0
-    local x = math.max(0, math.min(pos.x, screen.width - frameW * 0.25))
-    local y = math.max(frameH * 0.25, math.min(pos.y, screen.height))
     
+    local x = math.max(0, math.min(pos.x, screenWidthInFrameCoords - frameW * 0.25))
+    local y = math.max(frameH * 0.25, math.min(pos.y, screenHeightInFrameCoords))
+
     frame:ClearAllPoints()
     frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
     return true
@@ -152,25 +156,21 @@ end
 -- when clicking anywhere except TOPLEFT. This uses GetCursorPosition + OnUpdate instead.
 local function StartCustomDrag(frame)
     if not frame or InCombatLockdown() then return end
-    local scale = UIParent:GetEffectiveScale()
-    if not scale or scale <= 0 then return end
 
     local cx, cy = GetCursorPosition()
-    cx, cy = cx / scale, cy / scale
 
     local left = frame:GetLeft()
     local top = frame:GetTop()
     if left == nil or top == nil then return end
 
-    -- Scale conversion if frame has different effective scale
     local frameScale = frame:GetEffectiveScale()
-    if frameScale and frameScale > 0 and frameScale ~= scale then
-        left = left * (frameScale / scale)
-        top = top * (frameScale / scale)
-    end
+    if not frameScale or frameScale <= 0 then frameScale = 1 end
 
-    frame._dragOffsetX = cx - left
-    frame._dragOffsetY = cy - top
+    local leftPx = left * frameScale
+    local topPx = top * frameScale
+
+    frame._dragOffsetX = cx - leftPx
+    frame._dragOffsetY = cy - topPx
     frame._isCustomDragging = true
 
     frame:SetScript("OnUpdate", function(self)
@@ -179,9 +179,13 @@ local function StartCustomDrag(frame)
             return
         end
         local x, y = GetCursorPosition()
-        x, y = x / scale, y / scale
-        local newLeft = x - self._dragOffsetX
-        local newTop = y - self._dragOffsetY
+        local newLeftPx = x - self._dragOffsetX
+        local newTopPx = y - self._dragOffsetY
+        
+        -- Convert physical pixels back to the frame's coordinate space
+        local newLeft = newLeftPx / frameScale
+        local newTop = newTopPx / frameScale
+        
         self:ClearAllPoints()
         self:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", newLeft, newTop)
     end)
@@ -203,18 +207,8 @@ end
 -- between the two when they differ (e.g., due to UI scale, custom frame scale).
 local function NormalizeFramePosition(frame)
     if not frame or not frame.GetLeft or not frame.GetTop then return end
-    local left = frame:GetLeft()
-    local top = frame:GetTop()
+    local left, top = GetFrameTopLeftInParentCoords(frame)
     if left == nil or top == nil then return end
-
-    -- Convert from frame's effective scale to UIParent's coordinate space
-    local frameScale = frame:GetEffectiveScale()
-    local parentScale = UIParent:GetEffectiveScale()
-    if frameScale and parentScale and parentScale > 0 and frameScale ~= parentScale then
-        local ratio = frameScale / parentScale
-        left = left * ratio
-        top = top * ratio
-    end
 
     frame:ClearAllPoints()
     frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
@@ -239,13 +233,20 @@ local function ResetWindowGeometry(frame)
         profile.windowPosition = nil
     end
     
-    -- Refresh content at new size (gear tab: keep minimum width so content does not squeeze)
+    -- Refresh content at new size (gear/professions: keep minimum width so content does not squeeze)
     if frame.scrollChild and frame.scroll then
         local w = frame.scroll:GetWidth()
         if frame.currentTab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
             w = math.max(w, ns.MIN_GEAR_CARD_W)
         end
+        if frame.currentTab == "professions" and ns.ComputeProfessionsGridWidth then
+            local profW = ns.ComputeProfessionsGridWidth()
+            if profW > 0 then w = math.max(w, profW) end
+        end
         frame.scrollChild:SetWidth(w)
+        if frame.columnHeaderInner and frame.columnHeaderClip and frame.columnHeaderClip:GetHeight() > 1 then
+            frame.columnHeaderInner:SetWidth(w)
+        end
     end
     WarbandNexus:PopulateContent()
 end
@@ -543,8 +544,8 @@ function WarbandNexus:CreateMainWindow()
     
     -- Calculate bounds
     local screen = self:API_GetScreenInfo()
-    local maxWidth = math.floor(screen.width * 0.90)
-    local maxHeight = math.floor(screen.height * 0.90)
+    local maxWidth = math.floor(screen.width * 0.95)
+    local maxHeight = math.floor(screen.height * 0.95)
     
     -- Main frame
     local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent)
@@ -567,6 +568,11 @@ function WarbandNexus:CreateMainWindow()
     f:SetFrameStrata("DIALOG")  -- DIALOG is above HIGH, ensures we're above BankFrame
     f:SetFrameLevel(100)         -- Extra high level for safety
     f:SetClampedToScreen(true)
+    
+    -- Apply user-configured UI scale (scales entire addon window + children)
+    local uiScale = (WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.uiScale) or 1.0
+    uiScale = math.max(0.6, math.min(1.5, uiScale))
+    f:SetScale(uiScale)
     
     -- Restore saved position, or center on first use
     if not RestoreWindowPosition(f) then
@@ -597,29 +603,30 @@ function WarbandNexus:CreateMainWindow()
         if self.BorderTop then
             local GetPixelScale = ns.GetPixelScale
             if GetPixelScale then
-                local pixelScale = GetPixelScale()
+                local pixelScale = (ns.GetPixelScale and ns.GetPixelScale(self)) or 1
                 
                 -- Reset border thickness to pixel-perfect value
                 self.BorderTop:SetHeight(pixelScale)
                 self.BorderBottom:SetHeight(pixelScale)
                 self.BorderLeft:SetWidth(pixelScale)
                 self.BorderRight:SetWidth(pixelScale)
-                
-                -- Adjust corner offsets (borders shouldn't overlap)
-                self.BorderLeft:SetPoint("TOPLEFT", self, "TOPLEFT", 0, -pixelScale)
-                self.BorderLeft:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 0, pixelScale)
-                self.BorderRight:SetPoint("TOPRIGHT", self, "TOPRIGHT", 0, -pixelScale)
-                self.BorderRight:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 0, pixelScale)
             end
         end
         
-        -- Update scrollChild width; gear tab keeps minimum so content does not squeeze (horizontal scroll instead)
+        -- Update scrollChild width; gear/professions tabs keep minimum so content does not squeeze
         if self.scrollChild and self.scroll then
             local w = self.scroll:GetWidth()
             if self.currentTab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
                 w = math.max(w, ns.MIN_GEAR_CARD_W)
             end
+            if self.currentTab == "professions" and ns.ComputeProfessionsGridWidth then
+                local profW = ns.ComputeProfessionsGridWidth()
+                if profW > 0 then w = math.max(w, profW) end
+            end
             self.scrollChild:SetWidth(w)
+            if self.columnHeaderInner and self.columnHeaderClip and self.columnHeaderClip:GetHeight() > 1 then
+                self.columnHeaderInner:SetWidth(w)
+            end
         end
         if self.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
             ns.UI.Factory:UpdateHorizontalScrollBarVisibility(self.scroll)
@@ -656,13 +663,20 @@ function WarbandNexus:CreateMainWindow()
             resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
             f:StopMovingOrSizing()
             SaveWindowGeometry(f)
-            -- Ensure scrollChild width is updated BEFORE PopulateContent (gear tab: keep minimum to avoid squeeze)
+            -- Ensure scrollChild width is updated BEFORE PopulateContent
             if f.scrollChild and f.scroll then
                 local w = f.scroll:GetWidth()
                 if f.currentTab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
                     w = math.max(w, ns.MIN_GEAR_CARD_W)
                 end
+                if f.currentTab == "professions" and ns.ComputeProfessionsGridWidth then
+                    local profW = ns.ComputeProfessionsGridWidth()
+                    if profW > 0 then w = math.max(w, profW) end
+                end
                 f.scrollChild:SetWidth(w)
+                if f.columnHeaderInner and f.columnHeaderClip and f.columnHeaderClip:GetHeight() > 1 then
+                    f.columnHeaderInner:SetWidth(w)
+                end
             end
             if f.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
                 ns.UI.Factory:UpdateHorizontalScrollBarVisibility(f.scroll)
@@ -671,6 +685,20 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
+    -- ===== SCALE / DISPLAY CHANGE HANDLER =====
+    local scaleFrame = CreateFrame("Frame")
+    scaleFrame:RegisterEvent("UI_SCALE_CHANGED")
+    scaleFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
+    scaleFrame:SetScript("OnEvent", function()
+        C_Timer.After(0, function()
+            if not f then return end
+            local screen = WarbandNexus:API_GetScreenInfo()
+            local newMaxW = math.floor(screen.width * 0.95)
+            local newMaxH = math.floor(screen.height * 0.95)
+            f:SetResizeBounds(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT, newMaxW, newMaxH)
+        end)
+    end)
+
     -- ===== HEADER BAR =====
     local header = CreateFrame("Frame", nil, f)
     header:SetHeight(40)
@@ -799,7 +827,7 @@ function WarbandNexus:CreateMainWindow()
     discordBtn:SetScript("OnEnter", function(self)
         discordIcon:SetAlpha(0.75)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Warband Nexus Discord", 1, 1, 1)
+        GameTooltip:SetText((ns.L and ns.L["DISCORD_TOOLTIP"]) or "Warband Nexus Discord", 1, 1, 1)
         GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY"]) or "Click to copy invite link", 0.6, 0.6, 0.6)
         GameTooltip:Show()
     end)
@@ -871,6 +899,7 @@ function WarbandNexus:CreateMainWindow()
     -- Default tab set here; overridden by ShowMainWindow with persisted lastTab
     f.currentTab = "chars"
     f.tabButtons = {}
+    f._tabScrollPositions = {}
     
     -- Tab styling function (default width fits 10 tabs in CONTENT_MIN_WIDTH without overflow)
     local DEFAULT_TAB_WIDTH = 108
@@ -907,6 +936,14 @@ function WarbandNexus:CreateMainWindow()
         label:SetPoint("CENTER", 0, 1)
         label:SetText(text)
         btn.label = label
+
+        -- Row count badge (dimmed, right of label)
+        local countLabel = FontManager:CreateFontString(btn, "small", "OVERLAY")
+        countLabel:SetPoint("LEFT", label, "RIGHT", 3, 0)
+        countLabel:SetTextColor(0.5, 0.5, 0.5, 0.8)
+        countLabel:SetText("")
+        countLabel:Hide()
+        btn.countLabel = countLabel
         
         -- Keep default 95px, only expand if text doesn't fit
         local textWidth = label:GetStringWidth() or 0
@@ -919,6 +956,16 @@ function WarbandNexus:CreateMainWindow()
             if f.currentTab == self.key then return end
 
             local previousTab = f.currentTab
+
+            -- Save scroll position of the tab we're leaving
+            if previousTab and f.scroll then
+                if not f._tabScrollPositions then f._tabScrollPositions = {} end
+                f._tabScrollPositions[previousTab] = {
+                    v = f.scroll:GetVerticalScroll() or 0,
+                    h = f.scroll:GetHorizontalScroll() or 0,
+                }
+            end
+
             f.currentTab = self.key
 
             -- PERFORMANCE: Update tab bar visuals immediately so user sees switch without waiting for content
@@ -1052,7 +1099,7 @@ function WarbandNexus:CreateMainWindow()
     local H_BAR_BOTTOM = LAYOUT.SIDE_MARGIN or 10
     local H_ROW_H = SCROLL_COLUMN_W
     local SCROLL_INSET_BOTTOM = H_BAR_BOTTOM + H_ROW_H + SCROLL_GAP
-    local SCROLL_INSET_LEFT = 0
+    local SCROLL_INSET_LEFT = 4
     local SCROLL_INSET_RIGHT = SCROLL_COLUMN_W + SCROLL_GAP
 
     -- Viewport border frame: only the scroll area gets the border; scrollbars sit outside with SCROLL_GAP
@@ -1068,11 +1115,46 @@ function WarbandNexus:CreateMainWindow()
     end
     f.viewportBorder = viewportBorder
 
+    -- Fixed header area: title cards, search boxes stay here (non-scrolling)
+    -- Inset by 1px from viewport border so content doesn't overlap the border line
+    local BORDER_INSET = 1
+    local fixedHeader = CreateFrame("Frame", nil, content)
+    fixedHeader:SetPoint("TOPLEFT", content, "TOPLEFT", SCROLL_INSET_LEFT + BORDER_INSET, -(SCROLL_INSET_TOP + BORDER_INSET))
+    fixedHeader:SetPoint("TOPRIGHT", content, "TOPRIGHT", -(SCROLL_INSET_RIGHT + BORDER_INSET), -(SCROLL_INSET_TOP + BORDER_INSET))
+    fixedHeader:SetHeight(1)
+    fixedHeader:SetFrameLevel(viewportBorder:GetFrameLevel() + 1)
+    f.fixedHeader = fixedHeader
+
+    -- Column header clip: overlays the top of the scroll area at a higher frame level.
+    -- Clips tab-specific column headers that sync horizontally with the scroll child
+    -- but stay vertically fixed (frozen header pattern).
+    -- Height = 1 when collapsed (invisible); tabs like ProfessionsUI expand it.
+    -- Frame level content+6 ensures the BACKGROUND layer of this frame renders
+    -- AFTER all layers of scroll (content+2), so the opaque backdrop properly
+    -- covers data rows scrolling underneath the frozen column headers.
+    local columnHeaderClip = CreateFrame("Frame", nil, content)
+    columnHeaderClip:SetClipsChildren(true)
+    columnHeaderClip:SetPoint("TOPLEFT", fixedHeader, "BOTTOMLEFT", 0, 0)
+    columnHeaderClip:SetPoint("TOPRIGHT", fixedHeader, "BOTTOMRIGHT", 0, 0)
+    columnHeaderClip:SetHeight(1)
+    columnHeaderClip:SetFrameLevel(viewportBorder:GetFrameLevel() + 5)
+    f.columnHeaderClip = columnHeaderClip
+
+    local columnHeaderBg = columnHeaderClip:CreateTexture(nil, "BACKGROUND")
+    columnHeaderBg:SetAllPoints()
+    columnHeaderBg:SetColorTexture(0.08, 0.08, 0.10, 1)
+
+    local columnHeaderInner = CreateFrame("Frame", nil, columnHeaderClip)
+    columnHeaderInner:SetPoint("TOPLEFT", 0, 0)
+    columnHeaderInner:SetPoint("BOTTOMLEFT", 0, 0)
+    columnHeaderInner:SetWidth(1)
+    f.columnHeaderInner = columnHeaderInner
+
     local scroll = ns.UI.Factory:CreateScrollFrame(content, "UIPanelScrollFrameTemplate", true)
-    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", SCROLL_INSET_LEFT, -SCROLL_INSET_TOP)
-    scroll:SetPoint("TOPRIGHT", content, "TOPRIGHT", -SCROLL_INSET_RIGHT, -SCROLL_INSET_TOP)
-    scroll:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", SCROLL_INSET_LEFT, SCROLL_INSET_BOTTOM)
-    scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -SCROLL_INSET_RIGHT, SCROLL_INSET_BOTTOM)
+    scroll:SetPoint("TOPLEFT", fixedHeader, "BOTTOMLEFT", 0, 0)
+    scroll:SetPoint("TOPRIGHT", fixedHeader, "BOTTOMRIGHT", 0, 0)
+    scroll:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", SCROLL_INSET_LEFT + BORDER_INSET, SCROLL_INSET_BOTTOM + BORDER_INSET)
+    scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -(SCROLL_INSET_RIGHT + BORDER_INSET), SCROLL_INSET_BOTTOM + BORDER_INSET)
     scroll:SetFrameLevel(viewportBorder:GetFrameLevel() + 1)
     f.scroll = scroll
 
@@ -1107,28 +1189,45 @@ function WarbandNexus:CreateMainWindow()
         end
     end
 
-    -- Virtual scroll: dispatch OnVerticalScroll to active tab's virtual list updater
-    -- Must pass (self, offset) to origOnScroll so Blizzard SecureScrollTemplates receives valid self
+    -- Sync column header horizontal offset with main scroll frame.
+    -- Every call to SetHorizontalScroll (scrollbar drag, Shift+wheel, button click,
+    -- tab-switch restore) automatically repositions the frozen column header.
+    local origSetHScroll = scroll.SetHorizontalScroll
+    scroll.SetHorizontalScroll = function(self, value)
+        origSetHScroll(self, value)
+        if f.columnHeaderInner and f.columnHeaderClip then
+            f.columnHeaderInner:ClearAllPoints()
+            f.columnHeaderInner:SetPoint("TOPLEFT", f.columnHeaderClip, "TOPLEFT", -(value or 0), 0)
+            f.columnHeaderInner:SetPoint("BOTTOMLEFT", f.columnHeaderClip, "BOTTOMLEFT", -(value or 0), 0)
+        end
+    end
+
+    -- Pixel-snap scroll: snap every scroll offset to the nearest physical pixel boundary.
+    -- Without this, scrollChild sits at sub-pixel positions (e.g., 123.456) causing ALL
+    -- child frames to render with anti-aliasing — visible as wobbling/jittering borders.
     local origOnScroll = scroll:GetScript("OnVerticalScroll")
+    local isSnappingScroll = false
     scroll:SetScript("OnVerticalScroll", function(self, offset)
+        local PixelSnap = ns.PixelSnap
+        if PixelSnap and not isSnappingScroll then
+            local snapped = PixelSnap(offset)
+            if math.abs(snapped - offset) > 0.001 then
+                isSnappingScroll = true
+                self:SetVerticalScroll(snapped)
+                isSnappingScroll = false
+                return
+            end
+        end
         if origOnScroll then origOnScroll(self, offset) end
         if f._virtualScrollUpdate then
             f._virtualScrollUpdate()
         end
     end)
 
+    -- Clip children to viewport so rows outside the visible area never bleed through
+    scroll:SetClipsChildren(true)
+
     -- Note: scrollChild width is managed in PopulateContent() for consistency
-    
-    -- ===== FOOTER =====
-    local footer = CreateFrame("Frame", nil, f)
-    footer:SetHeight(35)
-    footer:SetPoint("BOTTOMLEFT", 8, 5)
-    footer:SetPoint("BOTTOMRIGHT", -8, 5)
-    
-    local footerText = FontManager:CreateFontString(footer, "small", "OVERLAY")
-    footerText:SetPoint("LEFT", 5, 0)
-    footerText:SetTextColor(unpack(COLORS.textDim))
-    f.footerText = footerText
     
     -- Store reference in WarbandNexus for cross-module access
     if not WarbandNexus.UI then
@@ -1259,6 +1358,12 @@ function WarbandNexus:CreateMainWindow()
     end)
 
     -- Profession equipment (slots 20/21/22): refresh when chars or professions tab visible so equipped gear updates in real time
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_COOLDOWNS_UPDATED, function()
+        if f and f:IsShown() and f.currentTab == "professions" then
+            SchedulePopulateContent(true)
+        end
+    end)
+
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_EQUIPMENT_UPDATED, function()
         if f and f:IsShown() and (f.currentTab == "professions" or f.currentTab == "chars") then
             SchedulePopulateContent(true)
@@ -1323,13 +1428,52 @@ function WarbandNexus:PopulateContent()
         return
     end
 
+    -- Detect tab switch vs same-tab refresh
+    local isTabSwitch = (mainFrame._prevPopulatedTab ~= mainFrame.currentTab)
+    mainFrame._prevPopulatedTab = mainFrame.currentTab
+
     -- Clear virtual scroll callback from previous tab
+    local scrollChild = mainFrame.scrollChild
     if ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
         ns.VirtualListModule.ClearVirtualScroll(mainFrame)
     end
 
-    local scrollChild = mainFrame.scrollChild
     if not scrollChild then return end
+
+    -- Clear fixed header area and reset to minimal height
+    local fixedHeader = mainFrame.fixedHeader
+    if fixedHeader then
+        local fhChildren = {fixedHeader:GetChildren()}
+        for i = 1, #fhChildren do
+            fhChildren[i]:Hide()
+            fhChildren[i]:SetParent(recycleBin)
+        end
+        local fhRegions = {fixedHeader:GetRegions()}
+        for i = 1, #fhRegions do
+            fhRegions[i]:Hide()
+        end
+        fixedHeader:SetHeight(1)
+    end
+
+    -- Reset column header overlay to collapsed state.
+    -- Child frames (colHeaderBar etc.) go to recycleBin; their textures/fontstrings
+    -- travel with them. columnHeaderInner is repositioned to origin for the next tab.
+    local columnHeaderClip = mainFrame.columnHeaderClip
+    local columnHeaderInner = mainFrame.columnHeaderInner
+    if columnHeaderClip then
+        columnHeaderClip:SetHeight(1)
+    end
+    if columnHeaderInner then
+        local chChildren = {columnHeaderInner:GetChildren()}
+        for i = 1, #chChildren do
+            chChildren[i]:Hide()
+            chChildren[i]:SetParent(recycleBin)
+        end
+        columnHeaderInner:SetWidth(1)
+        columnHeaderInner:ClearAllPoints()
+        columnHeaderInner:SetPoint("TOPLEFT", columnHeaderClip, "TOPLEFT", 0, 0)
+        columnHeaderInner:SetPoint("BOTTOMLEFT", columnHeaderClip, "BOTTOMLEFT", 0, 0)
+    end
     
     -- Get scroll frame width (already reduced by 24px for scroll bar)
     local scrollWidth = mainFrame.scroll:GetWidth()
@@ -1351,6 +1495,12 @@ function WarbandNexus:PopulateContent()
     local children = {scrollChild:GetChildren()}
     for i = 1, #children do
         local child = children[i]
+        if child._virtualVisibleFrames then
+            child._virtualVisibleFrames = nil
+        end
+        if isTabSwitch then
+            child._hasRenderedOnce = nil
+        end
         if not (child.isPooled and child.rowType) and not child.isPersistentRowElement then
             child:Hide()
             child:SetParent(recycleBin)
@@ -1407,7 +1557,7 @@ function WarbandNexus:PopulateContent()
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawStatistics(scrollChild)
     elseif mainFrame.currentTab == "professions" then
-        local profMinW = (ns.MIN_PROFESSIONS_GRID_W and ns.MIN_PROFESSIONS_GRID_W > 0) and ns.MIN_PROFESSIONS_GRID_W or 0
+        local profMinW = ns.ComputeProfessionsGridWidth and ns.ComputeProfessionsGridWidth() or 0
         scrollChild:SetWidth(profMinW > 0 and math.max(scrollWidth, profMinW) or scrollWidth)
         height = self:DrawProfessionsTab(scrollChild)
     elseif mainFrame.currentTab == "gear" then
@@ -1425,10 +1575,11 @@ function WarbandNexus:PopulateContent()
         height = self:DrawCharacterList(scrollChild)
     end
     
-    -- Set scrollChild height based on content
+    -- Set scrollChild height based on content + bottom padding
     -- CRITICAL: Use math.max to ensure scrollChild is at least viewport size
     -- Otherwise, WoW scroll frame won't work properly when content < viewport
-    scrollChild:SetHeight(math.max(height, mainFrame.scroll:GetHeight()))
+    local CONTENT_BOTTOM_PADDING = 8
+    scrollChild:SetHeight(math.max(height + CONTENT_BOTTOM_PADDING, mainFrame.scroll:GetHeight()))
     
     -- Update scroll bar visibility (hide if content fits)
     if ns.UI.Factory.UpdateScrollBarVisibility then
@@ -1438,16 +1589,60 @@ function WarbandNexus:PopulateContent()
         ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
     end
     
-    -- CRITICAL: Reset scroll position ONLY on MAIN tab switches (not sub-tab or header expand)
+    -- Scroll position persistence: restore saved position on main tab switch,
+    -- or reset to 0 if no saved position exists for this tab.
     if mainFrame.isMainTabSwitch then
-        mainFrame.scroll:SetVerticalScroll(0)
-        mainFrame.scroll:SetHorizontalScroll(0)
+        local savedScroll = mainFrame._tabScrollPositions and mainFrame._tabScrollPositions[mainFrame.currentTab]
+        local restoreY = (savedScroll and savedScroll.v) or 0
+        local restoreH = (savedScroll and savedScroll.h) or 0
+        -- Clamp to valid range
+        local maxV = mainFrame.scroll:GetVerticalScrollRange() or 0
+        restoreY = math.max(0, math.min(restoreY, maxV))
+        mainFrame.scroll:SetVerticalScroll(restoreY)
+        mainFrame.scroll:SetHorizontalScroll(restoreH)
         if mainFrame.hScroll then
-            mainFrame.hScroll:SetValue(0)
+            mainFrame.hScroll:SetValue(restoreH)
         end
     end
     
-    self:UpdateFooter()
+    self:UpdateTabCountBadges()
+end
+
+--============================================================================
+-- TAB COUNT BADGES
+--============================================================================
+function WarbandNexus:UpdateTabCountBadges()
+    if not mainFrame or not mainFrame.tabButtons then return end
+    local db = self.db and self.db.profile
+    local globalDB = self.db and self.db.global
+
+    local counts = {}
+
+    -- Currencies: use cache service count
+    if ns.CurrencyCacheService and ns.CurrencyCacheService.GetAllCachedCurrencyIDs then
+        local ids = ns.CurrencyCacheService:GetAllCachedCurrencyIDs()
+        if ids then counts.currency = #ids end
+    end
+
+    -- Reputations: use cache service count
+    if ns.ReputationCacheService and ns.ReputationCacheService.GetCachedFactionCount then
+        local ok, n = pcall(ns.ReputationCacheService.GetCachedFactionCount, ns.ReputationCacheService)
+        if ok and type(n) == "number" then counts.reputations = n end
+    end
+
+    for key, btn in pairs(mainFrame.tabButtons) do
+        local cl = btn.countLabel
+        if cl then
+            local c = counts[key]
+            if c and c > 0 then
+                cl:SetText("(" .. c .. ")")
+                cl:Show()
+            else
+                cl:SetText("")
+                cl:Hide()
+            end
+        end
+    end
 end
 
 --============================================================================
@@ -1570,18 +1765,7 @@ function WarbandNexus:UpdateStatus()
     end
 end
 
---============================================================================
--- UPDATE FOOTER
---============================================================================
 function WarbandNexus:UpdateFooter()
-    if not mainFrame or not mainFrame.footerText then return end
-    
-    local stats = self:GetBankStatistics()
-    local wbCount = stats.warband and stats.warband.itemCount or 0
-    local pbCount = stats.personal and stats.personal.itemCount or 0
-    local totalCount = wbCount + pbCount
-    
-    mainFrame.footerText:SetText(format((ns.L and ns.L["ITEMS_CACHED_FORMAT"]) or "%d items cached", totalCount))
 end
 
 --============================================================================
@@ -1678,6 +1862,27 @@ function WarbandNexus:RefreshUI()
     
     if not success and self.Debug then
         self:Debug("|cffff0000[RefreshUI] PopulateContent error: " .. tostring(err) .. "|r")
+    end
+end
+
+--- Apply global UI scale to the main window. Called from SettingsUI when slider changes.
+---@param newScale number Scale value (0.6 - 1.5)
+function WarbandNexus:ApplyUIScale(newScale)
+    if not mainFrame then return end
+    newScale = math.max(0.6, math.min(1.5, newScale or 1.0))
+
+    -- Save before scale change (position is in old scale space)
+    SaveWindowGeometry(mainFrame)
+
+    mainFrame:SetScale(newScale)
+
+    -- Re-clamp to screen after scale change (frame may have shifted off-screen)
+    NormalizeFramePosition(mainFrame)
+    SaveWindowGeometry(mainFrame)
+
+    -- Rebuild content so scroll dimensions and scrollbar visibility are recalculated
+    if mainFrame:IsShown() then
+        self:PopulateContent()
     end
 end
 

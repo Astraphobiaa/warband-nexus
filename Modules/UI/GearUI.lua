@@ -443,29 +443,29 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                     local targetIlvl = TRACK_ILVLS and TRACK_ILVLS[up.trackName] and TRACK_ILVLS[up.trackName][targetTier]
                     local ilvlStr = targetIlvl and format(" (%d)", targetIlvl) or ""
                     additionalLines[#additionalLines + 1] = {
-                        text = format("Available upgrade to %s %d/%d%s", up.trackName or "", targetTier, up.maxUpgrade or 0, ilvlStr),
+                        text = format((ns.L and ns.L["GEAR_UPGRADE_AVAILABLE_FORMAT"]) or "Available upgrade to %s %d/%d%s", up.trackName or "", targetTier, up.maxUpgrade or 0, ilvlStr),
                         color = { 0.4, 1, 0.4 }
                     }
                     additionalLines[#additionalLines + 1] = {
-                        text = format("%d upgrade(s) with current currency", affordable),
+                        text = format((ns.L and ns.L["GEAR_UPGRADES_WITH_CURRENCY_FORMAT"]) or "%d upgrade(s) with current currency", affordable),
                         color = { 0.6, 0.9, 0.6 }
                     }
                     if goldOnly > 0 then
                         if goldOnly >= affordable then
                             additionalLines[#additionalLines + 1] = {
-                                text = "Crests needed: 0 (gold only — previously reached)",
+                                text = (ns.L and ns.L["GEAR_CRESTS_GOLD_ONLY"]) or "Crests needed: 0 (gold only — previously reached)",
                                 color = { 1, 0.85, 0.4 }
                             }
                         else
                             additionalLines[#additionalLines + 1] = {
-                                text = format("%d upgrade(s) gold only (previously reached)", goldOnly),
+                                text = format((ns.L and ns.L["GEAR_UPGRADES_GOLD_ONLY_FORMAT"]) or "%d upgrade(s) gold only (previously reached)", goldOnly),
                                 color = { 1, 0.85, 0.4 }
                             }
                         end
                     end
                 else
                     additionalLines[#additionalLines + 1] = {
-                        text = format("%s %d/%d — need more crests", up.trackName or "", up.currUpgrade or 0, up.maxUpgrade or 0),
+                        text = format((ns.L and ns.L["GEAR_NEED_MORE_CRESTS_FORMAT"]) or "%s %d/%d — need more crests", up.trackName or "", up.currUpgrade or 0, up.maxUpgrade or 0),
                         color = { 0.8, 0.5, 0.2 }
                     }
                 end
@@ -494,7 +494,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                     type = "custom",
                     title = title,
                     lines = {
-                        { text = "No item equipped in this slot.", color = { 0.65, 0.65, 0.7 } },
+                        { text = (ns.L and ns.L["GEAR_NO_ITEM_EQUIPPED"]) or "No item equipped in this slot.", color = { 0.65, 0.65, 0.7 } },
                     },
                     anchor = "ANCHOR_RIGHT",
                 })
@@ -503,7 +503,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                     type = "custom",
                     title = title,
                     lines = {
-                        { text = "No item equipped in this slot.", color = { 0.65, 0.65, 0.7 } },
+                        { text = (ns.L and ns.L["GEAR_NO_ITEM_EQUIPPED"]) or "No item equipped in this slot.", color = { 0.65, 0.65, 0.7 } },
                     },
                     anchor = "ANCHOR_RIGHT",
                 })
@@ -526,10 +526,10 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
     -- Slot adı (Head, Trinket 1, Main Hand vb.) — Veteran/Champion yazısının üstünde
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
     local slotName = (slotDef and slotDef.label) and slotDef.label or ""
-    if slotID == 11 then slotName = "Ring 1"
-    elseif slotID == 12 then slotName = "Ring 2"
-    elseif slotID == 13 then slotName = "Trinket 1"
-    elseif slotID == 14 then slotName = "Trinket 2"
+    if slotID == 11 then slotName = (ns.L and ns.L["GEAR_SLOT_RING1"]) or "Ring 1"
+    elseif slotID == 12 then slotName = (ns.L and ns.L["GEAR_SLOT_RING2"]) or "Ring 2"
+    elseif slotID == 13 then slotName = (ns.L and ns.L["GEAR_SLOT_TRINKET1"]) or "Trinket 1"
+    elseif slotID == 14 then slotName = (ns.L and ns.L["GEAR_SLOT_TRINKET2"]) or "Trinket 2"
     end
     local slotNameLabel
     if slotName ~= "" then
@@ -741,7 +741,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
             noPreview:SetPoint("CENTER", portrait, "CENTER", 0, 0)
             noPreview:SetJustifyH("CENTER")
             noPreview:SetTextColor(0.5, 0.5, 0.55, 1)
-            noPreview:SetText("No Preview")
+            noPreview:SetText((ns.L and ns.L["GEAR_NO_PREVIEW"]) or "No Preview")
             noPreview:SetShadowOffset(1, -1)
             noPreview:SetShadowColor(0, 0, 0, 0.8)
             portrait.isPersistentRowElement = true
@@ -812,16 +812,16 @@ end
 
 -- ── Stat helpers (live API for current char) ────────────────────────────────
 local STAT_IDS = {
-    { id = 1, label = "Strength",    icon = "Interface\\Icons\\spell_nature_strength" },
-    { id = 2, label = "Agility",     icon = "Interface\\Icons\\ability_backstab" },
-    { id = 3, label = "Stamina",     icon = "Interface\\Icons\\spell_holy_wordfortitude" },
-    { id = 4, label = "Intellect",   icon = "Interface\\Icons\\spell_holy_magicalsentry" },
+    { id = 1, label = (ns.L and ns.L["STAT_STRENGTH"]) or SPELL_STAT1_NAME or "Strength",    icon = "Interface\\Icons\\spell_nature_strength" },
+    { id = 2, label = (ns.L and ns.L["STAT_AGILITY"]) or SPELL_STAT2_NAME or "Agility",      icon = "Interface\\Icons\\ability_backstab" },
+    { id = 3, label = (ns.L and ns.L["STAT_STAMINA"]) or SPELL_STAT3_NAME or "Stamina",      icon = "Interface\\Icons\\spell_holy_wordfortitude" },
+    { id = 4, label = (ns.L and ns.L["STAT_INTELLECT"]) or SPELL_STAT4_NAME or "Intellect",  icon = "Interface\\Icons\\spell_holy_magicalsentry" },
 }
 local SECONDARY_STATS = {
-    { label = "Critical Strike", fn = function() return GetCombatRating and GetCombatRating(9) or 0 end,  pctFn = function() return GetCritChance and GetCritChance() or 0 end },
-    { label = "Haste",           fn = function() return GetCombatRating and GetCombatRating(18) or 0 end, pctFn = function() return GetHaste and GetHaste() or 0 end },
-    { label = "Mastery",         fn = function() return GetCombatRating and GetCombatRating(26) or 0 end, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
-    { label = "Versatility",     fn = function() return GetCombatRating and GetCombatRating(29) or 0 end, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
+    { label = (ns.L and ns.L["STAT_CRITICAL_STRIKE"]) or "Critical Strike", fn = function() return GetCombatRating and GetCombatRating(9) or 0 end,  pctFn = function() return GetCritChance and GetCritChance() or 0 end },
+    { label = (ns.L and ns.L["STAT_HASTE"]) or "Haste",                     fn = function() return GetCombatRating and GetCombatRating(18) or 0 end, pctFn = function() return GetHaste and GetHaste() or 0 end },
+    { label = (ns.L and ns.L["STAT_MASTERY"]) or "Mastery",                 fn = function() return GetCombatRating and GetCombatRating(26) or 0 end, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
+    { label = (ns.L and ns.L["STAT_VERSATILITY"]) or "Versatility",         fn = function() return GetCombatRating and GetCombatRating(29) or 0 end, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
 }
 
 --- Equipped gear card: 3-panel layout — Currency (left) | Paperdoll (center) | Stats (right).
@@ -889,7 +889,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     panelTitle:SetPoint("TOPLEFT", leftPanel, "TOPLEFT", 10, -8)
     panelTitle:SetPoint("TOPRIGHT", leftPanel, "TOPRIGHT", -10, -8)
     panelTitle:SetJustifyH("CENTER")
-    panelTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1]*255), math.floor(accent[2]*255), math.floor(accent[3]*255)) .. "Upgrade Currencies|r")
+    panelTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1]*255), math.floor(accent[2]*255), math.floor(accent[3]*255)) .. ((ns.L and ns.L["GEAR_UPGRADE_CURRENCIES"]) or "Upgrade Currencies") .. "|r")
     panelTitle:SetShadowOffset(1, -1)
     panelTitle:SetShadowColor(0, 0, 0, 1)
 
@@ -960,7 +960,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         local goldText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
         goldText:SetPoint("LEFT", goldIco, "RIGHT", 6, 0)
         goldText:SetTextColor(1, 0.82, 0)
-        goldText:SetText("Gold")
+        goldText:SetText((ns.L and ns.L["GOLD_LABEL"]) or "Gold")
         goldText:SetShadowOffset(1, -1)
         goldText:SetShadowColor(0, 0, 0, 0.8)
 
@@ -1080,7 +1080,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     statTitle:SetPoint("TOPLEFT", statPanel, "TOPLEFT", 10, -8)
     statTitle:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -10, -8)
     statTitle:SetJustifyH("CENTER")
-    statTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1]*255), math.floor(accent[2]*255), math.floor(accent[3]*255)) .. "Character Stats|r")
+    statTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1]*255), math.floor(accent[2]*255), math.floor(accent[3]*255)) .. ((ns.L and ns.L["GEAR_CHARACTER_STATS"]) or "Character Stats") .. "|r")
     statTitle:SetShadowOffset(1, -1)
     statTitle:SetShadowColor(0, 0, 0, 1)
 
@@ -1149,7 +1149,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         local noStats = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
         noStats:SetPoint("TOPLEFT", statPad, statY)
         noStats:SetTextColor(0.45, 0.45, 0.45)
-        noStats:SetText("Stats available for\ncurrent character only")
+        noStats:SetText((ns.L and ns.L["GEAR_STATS_CURRENT_ONLY"]) or "Stats available for\ncurrent character only")
         noStats:SetShadowOffset(1, -1)
         noStats:SetShadowColor(0, 0, 0, 0.8)
     end
@@ -1565,7 +1565,9 @@ function WarbandNexus:DrawGearTab(parent)
 
     if not COLORS or not CreateCard or not FontManager then return 0 end
 
-    local yOffset    = -TOP_MARGIN
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local headerYOffset = TOP_MARGIN
     local accent     = COLORS.accent
 
     -- ── Character selection ───────────────────────────────────────────────────
@@ -1585,16 +1587,17 @@ function WarbandNexus:DrawGearTab(parent)
 
     local allChars = GetTrackedCharacters()
     if #allChars == 0 then
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local height = DrawEmptyState and DrawEmptyState(parent,
             "No tracked characters",
             "Log in to a character to start tracking gear.") or 200
         return height
     end
 
-    -- ── Header Card (standardized: same format as Currency, Storage, etc.) ─────
-    local headerCard = CreateCard(parent, 70)
-    headerCard:SetPoint("TOPLEFT",  SIDE_MARGIN, yOffset)
-    headerCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, yOffset)
+    -- ── Header Card (in fixedHeader - non-scrolling) ─────
+    local headerCard = CreateCard(headerParent, 70)
+    headerCard:SetPoint("TOPLEFT",  SIDE_MARGIN, -headerYOffset)
+    headerCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
 
     local headerIcon = CreateHeaderIcon and CreateHeaderIcon(headerCard, GetTabIcon and GetTabIcon("gear") or nil)
 
@@ -1633,7 +1636,11 @@ function WarbandNexus:DrawGearTab(parent)
     CreateCharacterSelector(headerCard, charKey, 0)
     headerCard:Show()
 
-    yOffset = yOffset - (GetLayout().afterHeader or 75)
+    headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
+
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+
+    local yOffset = -TOP_MARGIN
 
     -- ── Data retrieval (all by canonical key) ──────────────────────────────────
     local db        = self.db and self.db.global

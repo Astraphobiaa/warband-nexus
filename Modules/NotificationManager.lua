@@ -15,21 +15,29 @@ local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (loaded from locale when called)
-local FALLBACK_CHANGELOG = "CHANGES:\n" ..
-    "- Fixed Concentration tracking\n" ..
-    "- Added Ultra-Wide monitor support\n" ..
-    "- Updated the World Quest section\n" ..
-    "- Fixed Great Vault tracking\n" ..
-    "- Fixed Try/Attempt counts\n" ..
-    "- General performance improvements\n" ..
-    "- Added Memory Leak Debugger\n" ..
+local FALLBACK_CHANGELOG = "NEW FEATURES:\n" ..
+    "- UI Scaling: Adjust addon interface size from Settings\n" ..
+    "- Gold Automation: Per-character gold management settings\n" ..
+    "- Gold Input: Live formatting with 9,999,999g cap\n" ..
+    "\n" ..
+    "IMPROVEMENTS:\n" ..
+    "- Reputation UI: Major overhaul with improved layout\n" ..
+    "- Storage UI: Refactored for better performance\n" ..
+    "- Professions UI: Enhanced columns and layout\n" ..
+    "- Minimap: Class-colored names, improved tooltip\n" ..
+    "- Gold Logs: Improved transaction display\n" ..
+    "- UI Hierarchy: Optimized frame ordering\n" ..
+    "\n" ..
+    "PERFORMANCE & LOCALIZATION:\n" ..
+    "- Removed deprecated modules, major code cleanup\n" ..
+    "- All 11 locales synced (1,404 keys, zero gaps)\n" ..
+    "- WoW Global Strings integration\n" ..
     "\n" ..
     "Thank you for your continued support!\n" ..
-    "\n" ..
     "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V245"]) or FALLBACK_CHANGELOG
+    local changelogText = (ns.L and ns.L["CHANGELOG_V247"]) or FALLBACK_CHANGELOG
     if not changelogText or changelogText == "" then
         changelogText = FALLBACK_CHANGELOG
     end
@@ -41,8 +49,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.4.5",
-    date = "2026-03-15",
+    version = "2.4.7",
+    date = "2026-03-18",
     changes = BuildChangelog()
 }
 

@@ -138,24 +138,28 @@ end
 --============================================================================
 
 function WarbandNexus:DrawStatistics(parent)
-    local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     local cardWidth = (width - 15) / 2
-    
+
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local headerYOffset = 8
+
     -- Hide previous empty state
     HideEmptyStateCard(parent, "statistics")
-    
+
     -- Check for data availability
     local characters = self.db and self.db.global and self.db.global.characters
     if not characters or not next(characters) then
-        local _, height = CreateEmptyStateCard(parent, "statistics", yOffset)
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+        local _, height = CreateEmptyStateCard(parent, "statistics", headerYOffset)
         return
     end
-    
-    -- ===== HEADER CARD =====
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+
+    -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
+    local titleCard = CreateCard(headerParent, 70)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     -- Header icon with ring border (standardized)
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
@@ -193,9 +197,12 @@ function WarbandNexus:DrawStatistics(parent)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     titleCard:Show()
-    
-    yOffset = yOffset + 75 -- Reduced spacing
-    
+    headerYOffset = headerYOffset + 75
+
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+
+    local yOffset = 8
+
     -- Get statistics
     local stats = self:GetBankStatistics()
     
@@ -263,7 +270,7 @@ function WarbandNexus:DrawStatistics(parent)
     achNote:SetTextColor(1, 1, 1)  -- White
     
     achCard:Show()
-    
+
     yOffset = yOffset + 100
     
     -- Mount Card (collection row)
@@ -293,7 +300,7 @@ function WarbandNexus:DrawStatistics(parent)
     mountNote:SetTextColor(1, 1, 1)  -- White
     
     mountCard:Show()
-    
+
     -- Pet Card (collection row)
     local petCard = CreateCard(parent, 90)
     petCard:SetWidth(cardW)
@@ -338,7 +345,7 @@ function WarbandNexus:DrawStatistics(parent)
     petNote:SetTextColor(1, 1, 1)
     
     petCard:Show()
-    
+
     -- Toys Card: dar alanda ikinci satırda, geniş alanda aynı satırda
     local toyCard = CreateCard(parent, 90)
     if useTwoRows then
@@ -372,7 +379,7 @@ function WarbandNexus:DrawStatistics(parent)
     toyNote:SetTextColor(1, 1, 1)  -- White
     
     toyCard:Show()
-    
+
     yOffset = yOffset + (useTwoRows and 200 or 100)  -- 2 satırda 200, tek satırda 100
     
     -- ===== STORAGE STATS =====
@@ -423,7 +430,7 @@ function WarbandNexus:DrawStatistics(parent)
     AddStat(storageCard, (ns.L and ns.L["TOTAL_ITEMS"]) or "TOTAL ITEMS", FormatNumber((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
     
     storageCard:Show()
-    
+
     -- Progress bar removed (will be redesigned in new styling system)
     
     yOffset = yOffset + 110  -- Adjusted from 130 to 110
@@ -538,7 +545,7 @@ function WarbandNexus:DrawStatistics(parent)
 
         local fmtBtnLabel = FontManager:CreateFontString(fmtBtn, "body", "OVERLAY")
         fmtBtnLabel:SetPoint("CENTER")
-        fmtBtnLabel:SetText("Format")
+        fmtBtnLabel:SetText((ns.L and ns.L["FORMAT_BUTTON"]) or "Format")
         fmtBtnLabel:SetTextColor(0.85, 0.85, 0.85)
 
         fmtBtn:SetScript("OnEnter", function()

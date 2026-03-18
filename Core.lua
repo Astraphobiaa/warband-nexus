@@ -150,6 +150,7 @@ local defaults = {
         
         -- Display settings
         scrollSpeed = 1.0,         -- Scroll speed multiplier (1.0 = default 28px per step)
+        uiScale = 1.0,            -- Global UI scale for the entire addon window (0.6 - 1.5)
         
         -- Theme Colors (RGB 0-1 format) - All calculated from master color
         themeColors = {
@@ -382,13 +383,15 @@ local defaults = {
             lastScan = 0,
         },
         lastKnownGold = 0,
+        -- Per-character gold management override (nil = use profile settings)
+        goldManagement = nil,
     },
 }
 
 --[[============================================================================
     EXTRACTED FUNCTIONS - See Service Modules:
-    → Modules/Utilities.lua: GetCharTotalCopper, GetWarbandBankMoney, GetWarbandBankTotalCopper, IsWarbandBag, IsWarbandBankOpen, GetBagSize, GetItemDisplayName, GetPetNameFromTooltip
-    → Modules/CharacterService.lua: ConfirmCharacterTracking, IsCharacterTracked, ShowCharacterTrackingConfirmation, IsFavoriteCharacter, ToggleFavoriteCharacter, GetFavoriteCharacters
+    → Modules/Utilities.lua: GetCharTotalCopper, GetWarbandBankMoney, GetWarbandBankTotalCopper, IsWarbandBag, IsWarbandBankOpen, GetItemDisplayName, GetPetNameFromTooltip
+    → Modules/CharacterService.lua: ConfirmCharacterTracking, IsCharacterTracked, ShowCharacterTrackingConfirmation, IsFavoriteCharacter, ToggleFavoriteCharacter
     → Modules/DebugService.lua: Debug, PrintCharacterList, PrintPvEData, PrintBankDebugInfo, ForceScanWarbandBank, WipeAllData
     → Modules/CommandService.lua: SlashCommand (full routing logic)
     → Modules/DataService.lua: SaveCurrentCharacterData, UpdateCharacterGold, CollectPvEData, GetAllCharacters, PerformItemSearch
@@ -555,7 +558,7 @@ function WarbandNexus:OnInitialize()
                     
                     -- SaveCharacter will be called automatically by:
                     -- 1. InitializationService after tracking confirmation
-                    -- 2. CharacterService:EnableTracking if user confirms tracking
+                    -- 2. CharacterService:ConfirmCharacterTracking when user confirms tracking
                     -- 3. This handler as fallback for already-tracked characters
                     
                     -- Check if character is tracked and confirmation is done

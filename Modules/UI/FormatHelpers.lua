@@ -6,7 +6,6 @@
     Provides:
     - Number formatting with thousand separators
     - Money formatting (gold/silver/copper with icons)
-    - Compact money formatting (highest denomination only)
     - Text number auto-formatting
     - Legacy gold formatting
     
@@ -162,39 +161,6 @@ local function FormatMoney(copper, iconSize, showZero)
     return table.concat(parts, " ")
 end
 
----Format money compact (short version, only highest denomination)
----@param copper number Total copper amount
----@param iconSize number|nil Icon size (optional, default 14)
----@return string Compact formatted money string
-local function FormatMoneyCompact(copper, iconSize)
-    -- Validate and sanitize inputs
-    copper = tonumber(copper) or 0
-    if copper < 0 then copper = 0 end
-    iconSize = tonumber(iconSize) or 14
-    -- Clamp iconSize to safe range to prevent integer overflow in texture rendering
-    if iconSize < 8 then iconSize = 8 end
-    if iconSize > 32 then iconSize = 32 end
-    
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local copperAmount = math.floor(copper % 100)
-    
-    -- Show only the highest denomination
-    if gold > 0 then
-        local goldStr = tostring(gold)
-        local k
-        while true do
-            goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1,%2')
-            if k == 0 then break end
-        end
-        return string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:2:0|t", goldStr, iconSize, iconSize)
-    elseif silver > 0 then
-        return string.format("|cffc7c7cf%d|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:2:0|t", silver, iconSize, iconSize)
-    else
-        return string.format("|cffeda55f%d|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:2:0|t", copperAmount, iconSize, iconSize)
-    end
-end
-
 --============================================================================
 -- NAMESPACE EXPORTS
 --============================================================================
@@ -205,7 +171,6 @@ local FormatHelpers = {
     FormatNumber = FormatNumber,
     FormatTextNumbers = FormatTextNumbers,
     FormatMoney = FormatMoney,
-    FormatMoneyCompact = FormatMoneyCompact,
 }
 
 -- Export to namespace
@@ -216,6 +181,5 @@ ns.UI_FormatNumber = FormatNumber
 ns.UI_FormatTextNumbers = FormatTextNumbers
 ns.UI_FormatGold = FormatGold
 ns.UI_FormatMoney = FormatMoney
-ns.UI_FormatMoneyCompact = FormatMoneyCompact
 
 -- Module loaded - verbose logging removed

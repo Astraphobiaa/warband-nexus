@@ -111,9 +111,8 @@ function WarbandNexus:ScanGuildBank()
                         usedSlots = usedSlots + 1
                         totalItems = totalItems + (itemCount or 1)
                         
-                        -- Get item info using API wrapper
                         local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
-                              _, _, itemTexture, _, classID, subclassID = self:API_GetItemInfo(itemID)
+                              _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemID)
                         
                         -- Store item data (standardized field names matching Personal/Warband)
                         tabData.items[slotID] = {

@@ -946,21 +946,15 @@ local function CreateInfoFrame()
         ApplyVisuals(header, {0.06, 0.06, 0.08, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
     end
 
-    -- Combat-safe drag handler
-    if ns.WindowManager then
-        ns.WindowManager:InstallDragHandler(header, frame)
-    else
-        header:EnableMouse(true)
-        header:RegisterForDrag("LeftButton")
-        header:SetScript("OnDragStart", function() frame:StartMoving() end)
-        header:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
-    end
-    if ns.WindowManager and header.SetScript then
-        header:SetScript("OnDragStop", function()
-            frame:StopMovingOrSizing()
+    -- Combat-safe, scale-correct drag handler
+    header:EnableMouse(true)
+    if ns.WindowManager and ns.WindowManager.InstallDragHandler then
+        ns.WindowManager:InstallDragHandler(header, frame, function()
             SaveProfInfoPosition(frame)
         end)
-    elseif header.SetScript then
+    else
+        header:RegisterForDrag("LeftButton")
+        header:SetScript("OnDragStart", function() frame:StartMoving() end)
         header:SetScript("OnDragStop", function()
             frame:StopMovingOrSizing()
             SaveProfInfoPosition(frame)

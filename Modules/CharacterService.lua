@@ -304,16 +304,6 @@ function CharacterService:IsCharacterTracked(addon)
     return charData.isTracked == true
 end
 
----Enable tracking for current character
----@param addon table The WarbandNexus addon instance
-function CharacterService:EnableTracking(addon)
-    if not addon then
-        return
-    end
-    local charKey = ns.Utilities:GetCharacterKey()
-    self:ConfirmCharacterTracking(addon, charKey, true)
-end
-
 ---Show character tracking confirmation dialog (Custom UI)
 ---@param addon table The WarbandNexus addon instance
 ---@param charKey string Character key ("Name-Realm")
@@ -737,17 +727,6 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
         DebugPrint("|cff00ff00[WN CharacterService]|r Favorite added")
         return true
     end
-end
-
----Get all favorite characters
----@param addon table The WarbandNexus addon instance
----@return table Array of favorite character keys
-function CharacterService:GetFavoriteCharacters(addon)
-    if not addon.db or not addon.db.global or not addon.db.global.favoriteCharacters then
-        return {}
-    end
-    
-    return addon.db.global.favoriteCharacters
 end
 
 --============================================================================

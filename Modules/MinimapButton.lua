@@ -39,84 +39,91 @@ function WarbandNexus:InitializeMinimapButton()
     local addon = self
     
     -- Localized labels
-    local totalGoldLbl = (ns.L and ns.L["TOTAL_GOLD_LABEL"]) or "Total Gold:"
-    local charsLbl = (ns.L and ns.L["CHARACTERS_COLON"]) or "Characters:"
-    local leftClickLbl = (ns.L and ns.L["LEFT_CLICK_TOGGLE"]) or "Left-Click: Toggle window"
-    local rightClickLbl = (ns.L and ns.L["RIGHT_CLICK_PLANS"]) or "Right-Click: Open Plans"
+    local L = ns.L
+    local charsGoldLbl  = (L and L["MINIMAP_CHARS_GOLD"])  or "Characters Gold:"
+    local warbandGoldLbl = (L and L["HEADER_WARBAND_GOLD"]) or "Warband Gold"
+    local totalGoldLbl  = (L and L["TOTAL_GOLD_LABEL"])    or "Total Gold:"
+    local leftClickLbl  = (L and L["LEFT_CLICK_TOGGLE"])   or "Left-Click: Toggle window"
+    local rightClickLbl = (L and L["RIGHT_CLICK_PLANS"])   or "Right-Click: Open Plans"
+    local holdShiftLbl  = (L and L["TOOLTIP_HOLD_SHIFT"])  or "  Hold [Shift] for full list"
     
-    -- Use shared formatter from FormatHelpers
     local FormatGold = ns.UI_FormatGold
-    
-    -- Max characters shown in tooltip before requiring Shift
     local TOOLTIP_CHAR_LIMIT = 10
+    local currentCharKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     
-    -- Consolidated tooltip function (used by both OnTooltipShow and OnEnter)
+    -- Hidden frame for Shift key polling (LibDBIcon frames don't reliably support OnUpdate)
+    local shiftPollFrame = CreateFrame("Frame")
+    shiftPollFrame:Hide()
+    
     local function UpdateTooltip(tooltip)
         if not tooltip or not tooltip.AddLine then return end
         
         tooltip:SetText("|cff6a0dad[Warband Nexus]|r", 1, 1, 1)
         tooltip:AddLine(" ")
 
-        -- Collect per-character gold data and total
         local totalCopper = 0
         local charGoldList = {}
+        local showAll = IsShiftKeyDown()
+        
         if addon.db.global.characters then
             for charKey, charData in pairs(addon.db.global.characters) do
-                local copper = ns.Utilities:GetCharTotalCopper(charData)
+                local copper
+                if charKey == currentCharKey then
+                    copper = GetMoney() or 0
+                else
+                    copper = ns.Utilities:GetCharTotalCopper(charData)
+                end
                 totalCopper = totalCopper + copper
-                -- Extract character name from key (format: "Name-Realm")
                 local charName = charKey:match("^(.+)%-") or charKey
                 local charClass = charData.class or "WARRIOR"
                 table.insert(charGoldList, { name = charName, copper = copper, class = charClass })
             end
         end
         
-        -- Sort by gold amount descending
         table.sort(charGoldList, function(a, b) return a.copper > b.copper end)
         
-        -- Determine how many characters to show
+        -- Character list (Shift expands full list)
         local totalChars = #charGoldList
-        local showAll = IsShiftKeyDown()
         local displayCount = (showAll or totalChars <= TOOLTIP_CHAR_LIMIT) and totalChars or TOOLTIP_CHAR_LIMIT
         
-        -- Show per-character gold with class colors (limited)
         for i = 1, displayCount do
             local charInfo = charGoldList[i]
             local classColor = RAID_CLASS_COLORS[charInfo.class]
             local r, g, b = 0.8, 0.8, 0.8
-            if classColor then
-                r, g, b = classColor.r, classColor.g, classColor.b
-            end
+            if classColor then r, g, b = classColor.r, classColor.g, classColor.b end
             tooltip:AddDoubleLine(charInfo.name, FormatGold(charInfo.copper), r, g, b, 1, 0.82, 0)
         end
         
-        -- Show "hold Shift" hint when there are hidden characters
         if not showAll and totalChars > TOOLTIP_CHAR_LIMIT then
             local remaining = totalChars - TOOLTIP_CHAR_LIMIT
-            tooltip:AddLine(string.format("|cff888888... +%d more (Hold Shift)|r", remaining))
+            tooltip:AddLine(string.format("|cff888888" .. ((L and L["MINIMAP_MORE_FORMAT"]) or "... +%d more") .. "|r", remaining))
+            tooltip:AddLine(holdShiftLbl, 0.5, 0.5, 0.5)
         end
         
-        -- Total line
-        if totalChars > 0 then
-            tooltip:AddLine(" ")
+        -- Summary: Characters Gold / Warband Gold / Total Gold
+        tooltip:AddLine(" ")
+        
+        local warbandCopper = ns.Utilities:GetWarbandBankMoney() or 0
+        if warbandCopper == 0 then
+            warbandCopper = ns.Utilities:GetWarbandBankTotalCopper(addon) or 0
         end
-        tooltip:AddDoubleLine("|cffffffff" .. totalGoldLbl .. "|r", "|cffffff00" .. FormatGold(totalCopper) .. "|r")
+        
+        tooltip:AddDoubleLine("|cffffffff" .. charsGoldLbl .. "|r",  "|cffffff00" .. FormatGold(totalCopper) .. "|r")
+        tooltip:AddDoubleLine("|cffffffff" .. warbandGoldLbl .. ":|r", "|cffffff00" .. FormatGold(warbandCopper) .. "|r")
+        tooltip:AddDoubleLine("|cffffffff" .. totalGoldLbl .. "|r",  "|cff00ff00" .. FormatGold(totalCopper + warbandCopper) .. "|r")
 
         tooltip:AddLine(" ")
         tooltip:AddLine("|cff00ff00" .. leftClickLbl .. "|r", 0.7, 0.7, 0.7)
         tooltip:AddLine("|cff00ff00" .. rightClickLbl .. "|r", 0.7, 0.7, 0.7)
         
-        -- Prevent tooltip from overflowing off-screen
         tooltip:SetClampedToScreen(true)
     end
     
-    -- Create DataBroker object
     local dataObj = LDB:NewDataObject(ADDON_NAME, {
         type = "launcher",
         text = (ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus",
         icon = "Interface\\AddOns\\WarbandNexus\\Media\\icon",
         
-        -- Left-click: Toggle main window
         OnClick = function(clickedframe, button)
             if InCombatLockdown() then return end
             if button == "LeftButton" then
@@ -126,7 +133,6 @@ function WarbandNexus:InitializeMinimapButton()
             end
         end,
         
-        -- Tooltip (Total Gold + Char Count, no Last Scan)
         OnTooltipShow = function(tooltip)
             UpdateTooltip(tooltip)
         end,
@@ -137,24 +143,23 @@ function WarbandNexus:InitializeMinimapButton()
             UpdateTooltip(GameTooltip)
             GameTooltip:Show()
             
-            -- Track Shift state to refresh tooltip dynamically
-            frame._lastShiftState = IsShiftKeyDown()
-            frame:SetScript("OnUpdate", function(self)
-                local shiftNow = IsShiftKeyDown()
-                if shiftNow ~= self._lastShiftState then
-                    self._lastShiftState = shiftNow
+            -- Poll Shift state on a dedicated frame for instant refresh
+            shiftPollFrame._lastShift = IsShiftKeyDown()
+            shiftPollFrame:SetScript("OnUpdate", function(self)
+                local now = IsShiftKeyDown()
+                if now ~= self._lastShift then
+                    self._lastShift = now
                     GameTooltip:ClearLines()
                     UpdateTooltip(GameTooltip)
                     GameTooltip:Show()
                 end
             end)
+            shiftPollFrame:Show()
         end,
         
         OnLeave = function(frame)
-            if frame and frame.SetScript then
-                frame:SetScript("OnUpdate", nil)
-                frame._lastShiftState = nil
-            end
+            shiftPollFrame:Hide()
+            shiftPollFrame:SetScript("OnUpdate", nil)
             GameTooltip:Hide()
         end,
     })
@@ -290,7 +295,7 @@ function WarbandNexus:ShowMinimapMenu()
     else
         -- Fallback: Show commands
         self:Print((ns.L and ns.L["MENU_UNAVAILABLE_MSG"]) or "Right-click menu unavailable")
-        self:Print((ns.L and ns.L["USE_COMMANDS_MSG"]) or "Use /wn show, /wn scan, /wn config")
+        self:Print((ns.L and ns.L["USE_COMMANDS_MSG"]) or "Use /wn show, /wn options, /wn help")
     end
 end
 

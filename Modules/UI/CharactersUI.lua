@@ -119,8 +119,11 @@ function WarbandNexus:DrawCharacterList(parent)
     end
 
     self.recentlyExpanded = self.recentlyExpanded or {}
-    local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
+
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local headerYOffset = 8
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
@@ -153,10 +156,10 @@ function WarbandNexus:DrawCharacterList(parent)
         DebugPrint(string.format("[CharactersUI] db.global.characters count=%d GetAllCharacters count=%d", nDb, #characters))
     end
     
-    -- ===== TITLE CARD =====
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
+    local titleCard = CreateCard(headerParent, 70)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     -- Apply visuals (dark background, accent border)
     if ApplyVisuals then
@@ -213,11 +216,12 @@ function WarbandNexus:DrawCharacterList(parent)
     -- NO TRACKING: Static text, never overflows
     
     titleCard:Show()
-    
-    yOffset = yOffset + 75 -- Reduced spacing
-    
-    -- ===== WEEKLY PLANNER SECTION REMOVED =====
-    
+    headerYOffset = headerYOffset + 75
+
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+
+    local yOffset = 8
+
     -- ===== TOTAL GOLD DISPLAY =====
     -- Get current character's gold (only if tracked)
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
@@ -390,7 +394,7 @@ function WarbandNexus:DrawCharacterList(parent)
     tkTextContainer:SetPoint("LEFT", tkIcon, "RIGHT", 10, 0)
 
     local tkLabel = FontManager:CreateFontString(tkTextContainer, "subtitle", "OVERLAY")
-    tkLabel:SetText("WOW TOKEN")
+    tkLabel:SetText((ns.L and ns.L["WOW_TOKEN_LABEL"]) or "WOW TOKEN")
     tkLabel:SetTextColor(1, 1, 1)
     tkLabel:SetJustifyH("LEFT")
     tkLabel:SetPoint("BOTTOM", tkTextContainer, "CENTER", 0, 0)
@@ -631,8 +635,12 @@ function WarbandNexus:DrawCharacterList(parent)
         if #trackedFavorites > 0 then
             for i = 1, #trackedFavorites do
                 local char = trackedFavorites[i]
-                local shouldAnimate = self.recentlyExpanded["favorites"] and (GetTime() - self.recentlyExpanded["favorites"] < 0.5)
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, currentSortKey == "manual", trackedFavorites, "favorites", i, #trackedFavorites, currentPlayerKey, shouldAnimate)
+                local ok, result = pcall(self.DrawCharacterRow, self, parent, char, i, width, yOffset, true, currentSortKey == "manual", trackedFavorites, "favorites", i, #trackedFavorites, currentPlayerKey)
+                if ok and result then
+                    yOffset = result
+                else
+                    yOffset = yOffset + (ROW_HEIGHT or 36)
+                end
             end
         else
             -- Empty state - anchor to favorites header
@@ -688,8 +696,12 @@ function WarbandNexus:DrawCharacterList(parent)
         if #trackedRegular > 0 then
             for i = 1, #trackedRegular do
                 local char = trackedRegular[i]
-                local shouldAnimate = self.recentlyExpanded["characters"] and (GetTime() - self.recentlyExpanded["characters"] < 0.5)
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, currentSortKey == "manual", trackedRegular, "regular", i, #trackedRegular, currentPlayerKey, shouldAnimate)
+                local ok, result = pcall(self.DrawCharacterRow, self, parent, char, i, width, yOffset, false, currentSortKey == "manual", trackedRegular, "regular", i, #trackedRegular, currentPlayerKey)
+                if ok and result then
+                    yOffset = result
+                else
+                    yOffset = yOffset + (ROW_HEIGHT or 36)
+                end
             end
         else
             -- Empty state - anchor to characters header
@@ -750,8 +762,12 @@ function WarbandNexus:DrawCharacterList(parent)
         if self.db.profile.ui.untrackedExpanded then
             for i = 1, #untracked do
                 local char = untracked[i]
-                local shouldAnimate = self.recentlyExpanded["untracked"] and (GetTime() - self.recentlyExpanded["untracked"] < 0.5)
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, currentSortKey == "manual", untracked, "untracked", i, #untracked, currentPlayerKey, shouldAnimate)
+                local ok, result = pcall(self.DrawCharacterRow, self, parent, char, i, width, yOffset, false, currentSortKey == "manual", untracked, "untracked", i, #untracked, currentPlayerKey)
+                if ok and result then
+                    yOffset = result
+                else
+                    yOffset = yOffset + (ROW_HEIGHT or 36)
+                end
             end
         end
     end
@@ -763,7 +779,7 @@ end
 -- DRAW SINGLE CHARACTER ROW
 --============================================================================
 
-function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey, shouldAnimate)
+function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey)
     -- PERFORMANCE: Acquire from pool
     local row = AcquireCharacterRow(parent)
     row:ClearAllPoints()
@@ -774,31 +790,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Ensure alpha is reset (pooling safety)
     row:SetAlpha(1)
     
-    -- Stop any previous animations
+    row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
-    
-    -- Smart Animation
-    if shouldAnimate then
-        row:SetAlpha(0)
-        
-        -- Reuse animation objects to prevent leaks
-        if not row.anim then
-            local anim = row:CreateAnimationGroup()
-            local fade = anim:CreateAnimation("Alpha")
-            fade:SetSmoothing("OUT")
-            anim:SetScript("OnFinished", function() row:SetAlpha(1) end)
-            
-            row.anim = anim
-            row.fade = fade
-        end
-        
-        row.fade:SetFromAlpha(0)
-        row.fade:SetToAlpha(1)
-        row.fade:SetDuration(0.15)
-        row.fade:SetStartDelay(index * 0.05) -- Stagger relative to group start
-        
-        row.anim:Play()
-    end
 
     -- Define charKey for use in buttons (canonical key for DB/service consistency)
     local charKey = GetCharKey(char)

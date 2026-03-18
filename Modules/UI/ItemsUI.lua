@@ -30,6 +30,7 @@ local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local AcquireItemRow = ns.UI_AcquireItemRow
+local ReleaseItemRow = ns.UI_ReleaseItemRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
@@ -121,8 +122,10 @@ function WarbandNexus:DrawItemList(parent)
     -- Register event listeners (only once)
     RegisterItemsEvents(parent)
     self.recentlyExpanded = self.recentlyExpanded or {}
-    local yOffset = 8 -- Top padding for consistency with other tabs
-    local width = parent:GetWidth() - 20 -- Match header padding (10 left + 10 right)
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local yOffset = 8
+    local width = parent:GetWidth() - 20
     
     -- Hide empty state container (will be shown again if needed)
     if parent.emptyStateContainer then
@@ -133,8 +136,8 @@ function WarbandNexus:DrawItemList(parent)
     -- PERFORMANCE: Release pooled frames back to pool before redrawing
     ReleaseAllPooledChildren(parent)
     
-    -- ===== HEADER CARD (Always shown) =====
-    local titleCard = CreateCard(parent, 70)
+    -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
+    local titleCard = CreateCard(headerParent, 70)
     titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
@@ -249,22 +252,19 @@ function WarbandNexus:DrawItemList(parent)
     
     -- Check if module is disabled - show beautiful disabled state card
     if not ns.Utilities:IsModuleEnabled("items") then
+        if fixedHeader then fixedHeader:SetHeight(yOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["ITEMS_DISABLED_TITLE"]) or "Warband Bank Items")
-        return yOffset + cardHeight
+        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["ITEMS_DISABLED_TITLE"]) or "Warband Bank Items")
+        return 8 + cardHeight
     end
     
     -- ===== LOADING STATE (INITIAL SCAN) =====
     if ns.ItemsLoadingState and ns.ItemsLoadingState.isLoading then
+        if fixedHeader then fixedHeader:SetHeight(yOffset) end
         local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
         if UI_CreateLoadingStateCard then
-            local newYOffset = UI_CreateLoadingStateCard(
-                parent,
-                yOffset,
-                ns.ItemsLoadingState,
-                (ns.L and ns.L["ITEMS_LOADING"]) or "Loading Inventory Data"
-            )
-            return newYOffset  -- STOP HERE - don't render anything else
+            local newYOffset = UI_CreateLoadingStateCard(parent, 8, ns.ItemsLoadingState, (ns.L and ns.L["ITEMS_LOADING"]) or "Loading Inventory Data")
+            return newYOffset
         end
     end
     
@@ -273,8 +273,8 @@ function WarbandNexus:DrawItemList(parent)
     local itemsSearchText = SearchStateManager:GetQuery("items")
     local expandedGroups = ns.UI_GetExpandedGroups()
     
-    -- ===== SUB-TAB BUTTONS (4 tabs: Inventory, Personal Bank, Warband Bank, Guild Bank) =====
-    local tabFrame = ns.UI.Factory:CreateContainer(parent)
+    -- ===== SUB-TAB BUTTONS (in fixedHeader - non-scrolling) =====
+    local tabFrame = ns.UI.Factory:CreateContainer(headerParent)
     tabFrame:SetHeight(32)
     tabFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     tabFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
@@ -523,24 +523,16 @@ function WarbandNexus:DrawItemList(parent)
     
     yOffset = yOffset + 32 + GetLayout().afterElement  -- Tab frame height + spacing
     
-    -- ===== SEARCH BOX (Below sub-tabs) =====
+    -- ===== SEARCH BOX (in fixedHeader - non-scrolling) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
-    -- Use SearchStateManager for state management
     local itemsSearchText = SearchStateManager:GetQuery("items")
     
-    local searchBox = CreateSearchBox(parent, width, (ns.L and ns.L["ITEMS_SEARCH"]) or "Search items...", function(text)
-        -- Update search state via SearchStateManager (throttled, event-driven)
+    local searchBox = CreateSearchBox(headerParent, width, (ns.L and ns.L["ITEMS_SEARCH"]) or "Search items...", function(text)
         SearchStateManager:SetSearchQuery("items", text)
-        
-        -- Prepare container for rendering
         local resultsContainer = parent.resultsContainer
         if resultsContainer then
             SearchResultsRenderer:PrepareContainer(resultsContainer)
-            
-            -- Redraw results with new search text
             local contentHeight = WarbandNexus:DrawItemsResults(resultsContainer, 0, width, ns.UI_GetItemsSubTab(), text)
-            
-            -- Update state with result count
             resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
         end
     end, 0.4, itemsSearchText)
@@ -548,9 +540,9 @@ function WarbandNexus:DrawItemList(parent)
     searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
-    yOffset = yOffset + 32 + GetLayout().afterElement  -- Search box height + spacing
+    yOffset = yOffset + 32 + GetLayout().afterElement
     
-    -- ===== STATS BAR =====
+    -- ===== STATS BAR (in fixedHeader) =====
     -- Get items for stats (before results container)
     local items = {}
     if currentItemsSubTab == "warband" then
@@ -563,7 +555,7 @@ function WarbandNexus:DrawItemList(parent)
         items = self:GetBankItems() or {}
     end
     
-    local statsBar, statsText = CreateStatsBar(parent, 24)
+    local statsBar, statsText = CreateStatsBar(headerParent, 24)
     statsBar:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     statsBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
@@ -610,19 +602,19 @@ function WarbandNexus:DrawItemList(parent)
     end
     statsText:SetTextColor(1, 1, 1)  -- White
     
-    yOffset = yOffset + 24 + GetLayout().afterElement  -- Stats bar height + spacing
+    yOffset = yOffset + 24 + GetLayout().afterElement
+
+    -- Set fixedHeader height so scroll area starts below all header elements
+    if fixedHeader then fixedHeader:SetHeight(yOffset) end
     
-    -- ===== RESULTS CONTAINER (After stats bar) =====
-    local resultsContainer = CreateResultsContainer(parent, yOffset, SIDE_MARGIN)
-    parent.resultsContainer = resultsContainer  -- Store reference for search callback
+    -- ===== RESULTS CONTAINER (in scroll area) =====
+    local resultsContainer = CreateResultsContainer(parent, 8, SIDE_MARGIN)
+    parent.resultsContainer = resultsContainer
     
-    -- Initial draw of results
     local contentHeight = self:DrawItemsResults(resultsContainer, 0, width, currentItemsSubTab, itemsSearchText)
-    
-    -- CRITICAL FIX: Update container height AFTER content is drawn
     resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
     
-    return yOffset + (contentHeight or 0)
+    return 8 + (contentHeight or 0)
 end
 
 --============================================================================
@@ -711,233 +703,178 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     -- Sort group names alphabetically
     table.sort(groupOrder)
     
-    -- ===== DRAW GROUPS =====
+    -- ===== BUILD FLAT LIST FOR VIRTUAL SCROLLING =====
+    local HEADER_HEIGHT = GetLayout().HEADER_HEIGHT or 30
+    local flatList = {}
     local rowIdx = 0
+    
     for _, typeName in ipairs(groupOrder) do
         local group = groups[typeName]
         local isExpanded = self.itemsExpandAllActive or expandedGroups[group.groupKey]
-        -- Default to true if never set (first time)
         if isExpanded == nil then
             isExpanded = true
             expandedGroups[group.groupKey] = true
         end
         
-        -- Get icon from first item in group
         local typeIcon = nil
         if group.items[1] and group.items[1].classID then
             typeIcon = GetTypeIcon(group.items[1].classID)
         end
         
-        -- Toggle function for this group
-        local gKey = group.groupKey
-        local function ToggleGroup(key, isExpanded)
-            -- Use isExpanded if provided (new style), otherwise toggle (old style)
-            if type(isExpanded) == "boolean" then
-                expandedGroups[key] = isExpanded
-                if isExpanded then self.recentlyExpanded[key] = GetTime() end
-            else
-                expandedGroups[key] = not expandedGroups[key]
-                if expandedGroups[key] then self.recentlyExpanded[key] = GetTime() end
-            end
-            WarbandNexus:RefreshUI()
-        end
+        flatList[#flatList + 1] = {
+            type = "header",
+            yOffset = yOffset,
+            height = HEADER_HEIGHT,
+            data = {
+                typeName = typeName,
+                group = group,
+                isExpanded = isExpanded,
+                typeIcon = typeIcon,
+            },
+        }
+        yOffset = yOffset + HEADER_HEIGHT
         
-        -- Create collapsible header with purple border and icon
-        local groupHeader, expandBtn = CreateCollapsibleHeader(
-            parent,
-            format("%s (%s)", typeName, FormatNumber(#group.items)),
-            gKey,
-            isExpanded,
-            function(isExpanded) ToggleGroup(gKey, isExpanded) end,
-            typeIcon
-        )
-        groupHeader:SetPoint("TOPLEFT", 0, -yOffset)
-        groupHeader:SetWidth(width)  -- Set width to match content area
-        
-        yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Header (no extra spacing before rows)
-        
-        -- Draw items in this group (if expanded)
         if isExpanded then
-            local shouldAnimate = self.recentlyExpanded[gKey] and (GetTime() - self.recentlyExpanded[gKey] < 0.5)
-            local animIdx = 0
-            
             for _, item in ipairs(group.items) do
                 rowIdx = rowIdx + 1
-                animIdx = animIdx + 1
-                local i = rowIdx
-                
-                -- PERFORMANCE: Acquire from pool instead of creating new
-                local row = AcquireItemRow(parent, width, ROW_HEIGHT)
-                row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", 0, -yOffset)  -- Items tab has NO subheaders, rows at 0px is correct
-                
-                -- Ensure alpha is reset (pooling safety)
-                row:SetAlpha(1)
-                
-                -- Stop any previous animations
-                if row.anim then row.anim:Stop() end
-                
-                -- Smart Animation
-                if shouldAnimate then
-                    row:SetAlpha(0)
-                    
-                    -- Reuse animation objects to prevent leaks
-                    if not row.anim then
-                        local anim = row:CreateAnimationGroup()
-                        local fade = anim:CreateAnimation("Alpha")
-                        fade:SetSmoothing("OUT")
-                        anim:SetScript("OnFinished", function() row:SetAlpha(1) end)
-                        
-                        row.anim = anim
-                        row.fade = fade
-                    end
-                    
-                    row.fade:SetFromAlpha(0)
-                    row.fade:SetToAlpha(1)
-                    row.fade:SetDuration(0.15)
-                    row.fade:SetStartDelay(animIdx * 0.05) -- Stagger relative to group start
-                    
-                    row.anim:Play()
-                end
-                row.idx = i
-                
-                -- Set alternating background colors (Factory pattern)
-                ns.UI.Factory:ApplyRowBackground(row, animIdx)
-                
-                -- Update quantity
-                row.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
-                
-                -- Update icon
-                row.icon:SetTexture(item.iconFileID or 134400)
-                
-                -- Update name (with pet cage handling)
-                -- Give more space for location text, reduce name width
-                local nameWidth = width - 350
-                row.nameText:SetWidth(nameWidth)
-                
-                -- Get item name (pending items show "Loading..." until async resolves)
-                local baseName = item.name
-                if not baseName and item.link then
-                    baseName = item.link:match("%[(.-)%]")
-                end
-                if not baseName and item.pending then
-                    baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
-                end
-                if not baseName and item.itemID then
-                    baseName = C_Item.GetItemInfo(item.itemID)
-                end
-                baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
-                
-                -- Use GetItemDisplayName to handle caged pets (shows pet name instead of "Pet Cage")
-                local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                if item.pending then
-                    row.nameText:SetText(format("|cff888888%s|r", displayName))
-                else
-                    row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
-                end
-                
-                -- Update location
-                local locText = ""
-                if currentItemsSubTab == "warband" then
-                    locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
-                elseif currentItemsSubTab == "guild" then
-                    locText = item.tabName or (item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex)) or ""
-                elseif currentItemsSubTab == "inventory" or currentItemsSubTab == "personal" then
-                    -- Inventory and Personal Bank: show bag/bank info
-                    if item.actualBagID then
-                        if item.actualBagID == -1 then
-                            locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
-                        else
-                            -- Use actualBagID directly (0-5 = Bags, 6+ = Bank Bags)
-                            locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
-                        end
-                    end
-                end
-                row.locationText:SetWidth(0)
-                row.locationText:SetText(locText)
-                row.locationText:SetTextColor(1, 1, 1)  -- White
-                row.locationText:SetWordWrap(false)
-                row.locationText:SetNonSpaceWrap(false)
-                
-                -- Update hover/tooltip handlers (full item data via C_TooltipInfo)
-                row:SetScript("OnEnter", function(self)
-                    if not ShowTooltip then
-                        return
-                    end
-                    
-                    -- Build additional info lines (shown after Blizzard item data)
-                    local additionalLines = {}
-                    
-                    -- Stack count
-                    if item.stackCount and item.stackCount > 1 then
-                        local stackLabel = (ns.L and ns.L["STACK_LABEL"]) or "Stack: "
-                        table.insert(additionalLines, {text = stackLabel .. FormatNumber(item.stackCount), color = {1, 1, 1}})
-                    end
-                    
-                    -- Location
-                    if item.location then
-                        local locationLabel = (ns.L and ns.L["LOCATION_LABEL"]) or "Location: "
-                        table.insert(additionalLines, {text = locationLabel .. item.location, color = {0.7, 0.7, 0.7}})
-                    end
-                    
-                    -- Item ID
-                    local itemIdLabel = (ns.L and ns.L["ITEM_ID_LABEL"]) or "Item ID: "
-                    local unknownText = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-                    table.insert(additionalLines, {text = itemIdLabel .. tostring(item.itemID or unknownText), color = {0.4, 0.8, 1}})
-                    
-                    table.insert(additionalLines, {type = "spacer"})
-                    
-                    -- Instructions
-                    if WarbandNexus.bankIsOpen then
-                        local rightClickMove = (ns.L and ns.L["RIGHT_CLICK_MOVE"]) or "Move to bag"
-                        table.insert(additionalLines, {text = "|cff00ff00Right-Click|r " .. rightClickMove, color = {1, 1, 1}})
-                        if item.stackCount and item.stackCount > 1 then
-                            local shiftRightSplit = (ns.L and ns.L["SHIFT_RIGHT_CLICK_SPLIT"]) or "Split stack"
-                            table.insert(additionalLines, {text = "|cff00ff00Shift+Right-Click|r " .. shiftRightSplit, color = {1, 1, 1}})
-                        end
-                        local leftClickPickup = (ns.L and ns.L["LEFT_CLICK_PICKUP"]) or "Pick up"
-                        table.insert(additionalLines, {text = "|cff888888Left-Click|r " .. leftClickPickup, color = {0.7, 0.7, 0.7}})
-                    else
-                        local bankNotOpen = (ns.L and ns.L["ITEMS_BANK_NOT_OPEN"]) or "Bank not open"
-                        table.insert(additionalLines, {text = "|cffff6600" .. bankNotOpen .. "|r", color = {1, 1, 1}})
-                    end
-                    local shiftLeftLink = (ns.L and ns.L["SHIFT_LEFT_CLICK_LINK"]) or "Link in chat"
-                    table.insert(additionalLines, {text = "|cff888888Shift+Left-Click|r " .. shiftLeftLink, color = {0.7, 0.7, 0.7}})
-                    
-                    -- Show item tooltip (full data from C_TooltipInfo + our custom lines)
-                    ShowTooltip(self, {
-                        type = "item",
-                        itemID = item.itemID,
-                        itemLink = item.link,
-                        additionalLines = additionalLines,
-                        anchor = "ANCHOR_LEFT"
-                    })
-                end)
-                row:SetScript("OnLeave", function(self)
-                    if HideTooltip then
-                        HideTooltip()
-                    end
-                end)
-                
-                -- Click handlers for item interaction (read-only: chat link only)
-                row:SetScript("OnMouseUp", function(self, button)
-                    -- Shift+Left-click: Link item in chat (safe, non-protected function)
-                    if button == "LeftButton" and IsShiftKeyDown() and item.itemLink then
-                        ChatEdit_InsertLink(item.itemLink)
-                        return
-                    end
-                    
-                    -- All other clicks: No action (read-only mode)
-                    -- Item manipulation has been removed to prevent taint
-                end)
-                
+                flatList[#flatList + 1] = {
+                    type = "row",
+                    yOffset = yOffset,
+                    height = ROW_SPACING,
+                    data = item,
+                    rowIdx = rowIdx,
+                }
                 yOffset = yOffset + ROW_SPACING
-            end  -- for item in group.items
-        end  -- if group.expanded
+            end
+        end
         
-        -- Add spacing after each group section
         yOffset = yOffset + SECTION_SPACING
-    end  -- for typeName in groupOrder
+    end
+    
+    -- ===== VIRTUAL SCROLL SETUP =====
+    local mainFrame = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local VLM = ns.VirtualListModule
+    
+    if mainFrame and VLM and #flatList > 0 then
+        
+        local function PopulateRow(row, item, idx, rowNum)
+            row:SetAlpha(1)
+            if row.anim then row.anim:Stop() end
+            row.idx = rowNum
+            ns.UI.Factory:ApplyRowBackground(row, rowNum)
+            
+            row.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
+            row.icon:SetTexture(item.iconFileID or 134400)
+            
+            local nameWidth = width - 350
+            row.nameText:SetWidth(nameWidth)
+            
+            local baseName = item.name
+            if not baseName and item.link then
+                baseName = item.link:match("%[(.-)%]")
+            end
+            if not baseName and item.pending then
+                baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
+            end
+            if not baseName and item.itemID then
+                baseName = C_Item.GetItemInfo(item.itemID)
+            end
+            baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
+            
+            local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
+            if item.pending then
+                row.nameText:SetText(format("|cff888888%s|r", displayName))
+            else
+                row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+            end
+            
+            local locText = ""
+            if currentItemsSubTab == "warband" then
+                locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
+            elseif currentItemsSubTab == "guild" then
+                locText = item.tabName or (item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex)) or ""
+            elseif currentItemsSubTab == "inventory" or currentItemsSubTab == "personal" then
+                if item.actualBagID then
+                    if item.actualBagID == -1 then
+                        locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
+                    else
+                        locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
+                    end
+                end
+            end
+            row.locationText:SetWidth(0)
+            row.locationText:SetText(locText)
+            row.locationText:SetTextColor(1, 1, 1)
+            row.locationText:SetWordWrap(false)
+            row.locationText:SetNonSpaceWrap(false)
+            
+            row:SetScript("OnEnter", function(self)
+                if not ShowTooltip then return end
+                local additionalLines = {}
+                if item.stackCount and item.stackCount > 1 then
+                    table.insert(additionalLines, {text = ((ns.L and ns.L["STACK_LABEL"]) or "Stack: ") .. FormatNumber(item.stackCount), color = {1, 1, 1}})
+                end
+                if item.location then
+                    table.insert(additionalLines, {text = ((ns.L and ns.L["LOCATION_LABEL"]) or "Location: ") .. item.location, color = {0.7, 0.7, 0.7}})
+                end
+                table.insert(additionalLines, {text = ((ns.L and ns.L["ITEM_ID_LABEL"]) or "Item ID: ") .. tostring(item.itemID or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")), color = {0.4, 0.8, 1}})
+                table.insert(additionalLines, {type = "spacer"})
+                if WarbandNexus.bankIsOpen then
+                    table.insert(additionalLines, {text = "|cff00ff00Right-Click|r " .. ((ns.L and ns.L["RIGHT_CLICK_MOVE"]) or "Move to bag"), color = {1, 1, 1}})
+                    if item.stackCount and item.stackCount > 1 then
+                        table.insert(additionalLines, {text = "|cff00ff00Shift+Right-Click|r " .. ((ns.L and ns.L["SHIFT_RIGHT_CLICK_SPLIT"]) or "Split stack"), color = {1, 1, 1}})
+                    end
+                    table.insert(additionalLines, {text = "|cff888888Left-Click|r " .. ((ns.L and ns.L["LEFT_CLICK_PICKUP"]) or "Pick up"), color = {0.7, 0.7, 0.7}})
+                else
+                    table.insert(additionalLines, {text = "|cffff6600" .. ((ns.L and ns.L["ITEMS_BANK_NOT_OPEN"]) or "Bank not open") .. "|r", color = {1, 1, 1}})
+                end
+                table.insert(additionalLines, {text = "|cff888888Shift+Left-Click|r " .. ((ns.L and ns.L["SHIFT_LEFT_CLICK_LINK"]) or "Link in chat"), color = {0.7, 0.7, 0.7}})
+                ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.link, additionalLines = additionalLines, anchor = "ANCHOR_LEFT" })
+            end)
+            row:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
+            row:SetScript("OnMouseUp", function(_, button)
+                if button == "LeftButton" and IsShiftKeyDown() and item.itemLink then
+                    ChatEdit_InsertLink(item.itemLink)
+                end
+            end)
+        end
+        
+        local totalHeight = VLM.SetupVirtualList(mainFrame, parent, 0, flatList, {
+            createHeaderFn = function(container, entry)
+                local d = entry.data
+                local gKey = d.group.groupKey
+                local groupHeader = CreateCollapsibleHeader(
+                    container,
+                    format("%s (%s)", d.typeName, FormatNumber(#d.group.items)),
+                    gKey,
+                    d.isExpanded,
+                    function(exp)
+                        if type(exp) == "boolean" then
+                            expandedGroups[gKey] = exp
+                            if exp then self.recentlyExpanded[gKey] = GetTime() end
+                        else
+                            expandedGroups[gKey] = not expandedGroups[gKey]
+                            if expandedGroups[gKey] then self.recentlyExpanded[gKey] = GetTime() end
+                        end
+                        WarbandNexus:RefreshUI()
+                    end,
+                    d.typeIcon
+                )
+                groupHeader:SetWidth(width)
+                return groupHeader
+            end,
+            createRowFn = function(container, entry)
+                local row = AcquireItemRow(container, width, ROW_HEIGHT)
+                PopulateRow(row, entry.data, entry.rowIdx, entry.rowIdx)
+                return row
+            end,
+            releaseRowFn = function(frame)
+                ReleaseItemRow(frame)
+            end,
+        })
+        
+        return math.max(totalHeight, yOffset) + GetLayout().minBottomSpacing
+    end
     
     return yOffset + GetLayout().minBottomSpacing
 end -- DrawItemsResults

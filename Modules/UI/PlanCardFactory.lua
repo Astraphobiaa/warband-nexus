@@ -2849,13 +2849,32 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
     iconBorder:SetPoint("TOPLEFT", 10, -10)
     
-    local resolvedIcon = plan.icon
-    if not resolvedIcon or resolvedIcon == "" then
-        resolvedIcon = "Interface\\Icons\\Achievement_Zone_MidnightIsles"
+    local FALLBACK_ATLAS = "questlog-questtypeicon-daily"
+    local iconTexture = plan.iconAtlas or plan.icon
+    local iconIsAtlas = false
+    
+    if plan.iconAtlas then
+        iconIsAtlas = true
+    elseif plan.iconIsAtlas then
+        iconIsAtlas = true
+    elseif plan.icon and plan.icon ~= "" and ns.Utilities and ns.Utilities.IsAtlasName then
+        local ok, result = pcall(ns.Utilities.IsAtlasName, ns.Utilities, plan.icon)
+        iconIsAtlas = ok and result or false
     end
-    local iconFrameObj = CreateIcon(card, resolvedIcon, 42, false, nil, false)
-    iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-    iconFrameObj:Show()
+    
+    if not iconTexture or iconTexture == "" then
+        iconTexture = FALLBACK_ATLAS
+        iconIsAtlas = true
+    elseif not iconIsAtlas and plan.type == "daily_quests" then
+        iconTexture = FALLBACK_ATLAS
+        iconIsAtlas = true
+    end
+    
+    local iconFrameObj = CreateIcon(card, iconTexture, 42, iconIsAtlas, nil, false)
+    if iconFrameObj then
+        iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+        iconFrameObj:Show()
+    end
     
     local allComplete = true
     local totalAll, completedAll = 0, 0
@@ -2917,13 +2936,22 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     local availableWidth = cardWidth - 10 - 15
     local slotSpacing = 8
     
-    local categoryInfo = {
-        weeklyQuests = {name = (ns.L and ns.L["QUEST_CAT_WEEKLY"]) or "Weekly",     atlas = "quest-legendary-available",         color = {0.9, 0.7, 0.2}},
-        worldQuests  = {name = (ns.L and ns.L["QUEST_CAT_WORLD"]) or "World",       atlas = "worldquest-tracker-questmarker",    color = {0.3, 0.8, 1.0}},
-        dailyQuests  = {name = (ns.L and ns.L["QUEST_CAT_DAILY"]) or "Daily",       atlas = "quest-recurring-available",         color = {0.4, 0.9, 0.4}},
-        assignments  = {name = (ns.L and ns.L["QUEST_CAT_ASSIGNMENT"]) or "Assign.", atlas = "quest-important-available",         color = {1.0, 0.5, 0.25}},
-        events       = {name = (ns.L and ns.L["QUEST_CAT_CONTENT_EVENTS"]) or "Events", atlas = "worldquest-questmarker-epic",    color = {0.8, 0.5, 1.0}},
+    local catDisplay = ns.CATEGORY_DISPLAY or {}
+    local shortNames = {
+        weeklyQuests = (ns.L and ns.L["QUEST_CAT_WEEKLY"])        or "Weekly",
+        worldQuests  = (ns.L and ns.L["QUEST_CAT_WORLD"])         or "World",
+        dailyQuests  = (ns.L and ns.L["QUEST_CAT_DAILY"])         or "Daily",
+        assignments  = (ns.L and ns.L["QUEST_CAT_ASSIGNMENT"])    or "Assign.",
+        events       = (ns.L and ns.L["QUEST_CAT_CONTENT_EVENTS"]) or "Events",
     }
+    local categoryInfo = {}
+    for key, display in pairs(catDisplay) do
+        categoryInfo[key] = {
+            name  = shortNames[key] or key,
+            atlas = display.atlas,
+            color = display.color,
+        }
+    end
     
     local visibleSlots = {}
     for _, catKey in ipairs(categoryOrder) do

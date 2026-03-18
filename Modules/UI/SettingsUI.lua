@@ -83,8 +83,6 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     local colWidth = (containerWidth - (COL_SPACING * (numCols - 1))) / numCols
 
     local ROW_HEIGHT = 36
-    local CHECKBOX_SIZE = 24
-
     local widgets = {}       -- key → {checkbox, label}
     local optionByKey = {}   -- key → option
     local childKeys = {}     -- parentKey → {childKey1, childKey2, ...}
@@ -100,9 +98,7 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
         local xPos = col * (colWidth + COL_SPACING)
         local yPos  = yOffset + (row * -ROW_HEIGHT)
 
-        -- Create checkbox
         local checkbox = CreateThemedCheckbox(parent)
-        checkbox:SetSize(CHECKBOX_SIZE, CHECKBOX_SIZE)
         checkbox:SetPoint("TOPLEFT", xPos, yPos)
 
         -- Label (to the right of checkbox)
@@ -112,7 +108,7 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
         label:SetTextColor(1, 1, 1, 1)
         label:SetPoint("LEFT", checkbox, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
         -- Constrain label width so it never bleeds into the next column
-        label:SetWidth(colWidth - CHECKBOX_SIZE - UI_SPACING.AFTER_ELEMENT)
+        label:SetWidth(colWidth - (ns.UI_TOGGLE_SIZE or 16) - UI_SPACING.AFTER_ELEMENT)
 
         -- Set initial value
         if option.get then
@@ -950,8 +946,26 @@ local function BuildSettings(parent, containerWidth)
         valueFormat = function(v) return string.format("%.1fx", v) end,
     }, scrollSpeedYOffset, sliderElements)
     
+    -- UI Scale slider (below scroll speed) – scales entire addon window
+    local uiScaleYOffset = CreateSliderWidget(generalSection.content, {
+        name = (ns.L and ns.L["UI_SCALE"]) or "UI Scale",
+        desc = (ns.L and ns.L["UI_SCALE_TOOLTIP"]) or "Scale the entire addon window. Reduce if the window takes up too much screen space.",
+        min = 0.6,
+        max = 1.5,
+        step = 0.05,
+        get = function() return WarbandNexus.db.profile.uiScale or 1.0 end,
+        set = function(_, value)
+            value = math.floor(value * 20 + 0.5) / 20
+            WarbandNexus.db.profile.uiScale = value
+            if WarbandNexus.ApplyUIScale then
+                WarbandNexus:ApplyUIScale(value)
+            end
+        end,
+        valueFormat = function(v) return string.format("%d%%", v * 100) end,
+    }, scrollSpeedYOffset, sliderElements)
+    
     -- Calculate section height (content height + title + bottom padding)
-    local contentHeight = math.abs(scrollSpeedYOffset) + 10
+    local contentHeight = math.abs(uiScaleYOffset) + 10
     generalSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
     generalSection.content:SetHeight(contentHeight)
     
@@ -1732,7 +1746,6 @@ local function BuildSettings(parent, containerWidth)
     notifGridYOffset = notifGridYOffset - 40
 
     useAlertFrameCheck = CreateThemedCheckbox(notifSection.content)
-    useAlertFrameCheck:SetSize(24, 24)
     useAlertFrameCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
     local useAlertFrameLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
     useAlertFrameLabel:SetJustifyH("LEFT")
@@ -2286,7 +2299,6 @@ local function BuildSettings(parent, containerWidth)
     
     -- Tracked checkbox (inside detail card)
     local trackedCheckbox = CreateThemedCheckbox(detailCard)
-    trackedCheckbox:SetSize(22, 22)
     trackedCheckbox:SetPoint("TOPLEFT", 8, -48)
     
     local trackedLabel = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
@@ -2296,7 +2308,6 @@ local function BuildSettings(parent, containerWidth)
     
     -- Repeatable checkbox (inside detail card, right of Tracked)
     local repeatableCheckbox = CreateThemedCheckbox(detailCard)
-    repeatableCheckbox:SetSize(22, 22)
     repeatableCheckbox:SetPoint("LEFT", trackedLabel, "RIGHT", 20, 0)
     
     local repeatableLabel = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
@@ -2870,17 +2881,21 @@ function WarbandNexus:ShowSettings()
     header:SetPoint("TOPLEFT", 2, -2)
     header:SetPoint("TOPRIGHT", -2, -2)
     header:EnableMouse(true)
-    header:RegisterForDrag("LeftButton")
-    header:SetScript("OnDragStart", function()
-        -- Re-anchor to current visual position to prevent teleport after Alt-Tab
-        local left, top = f:GetLeft(), f:GetTop()
-        if left and top then
-            f:ClearAllPoints()
-            f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
-        end
-        f:StartMoving()
-    end)
-    header:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
+    if ns.WindowManager and ns.WindowManager.InstallDragHandler then
+        ns.WindowManager:InstallDragHandler(header, f)
+    else
+        header:RegisterForDrag("LeftButton")
+        header:SetScript("OnDragStart", function()
+            -- Re-anchor to current visual position to prevent teleport after Alt-Tab
+            local left, top = f:GetLeft(), f:GetTop()
+            if left and top then
+                f:ClearAllPoints()
+                f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+            end
+            f:StartMoving()
+        end)
+        header:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
+    end
     
     if ApplyVisuals then
         ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})

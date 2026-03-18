@@ -190,23 +190,65 @@ end)
 -- DRAG PROTECTION HELPER
 -- ============================================================================
 
+local function StartScaledDrag(dragFrame, moveFrame)
+    local left = moveFrame:GetLeft()
+    local top = moveFrame:GetTop()
+    if not left or not top then return end
+
+    local frameScale = moveFrame:GetEffectiveScale() or 1
+    if frameScale <= 0 then frameScale = 1 end
+
+    local cx, cy = GetCursorPosition()
+    local leftPx = left * frameScale
+    local topPx = top * frameScale
+
+    dragFrame._wnDragState = {
+        moveFrame = moveFrame,
+        frameScale = frameScale,
+        offsetX = cx - leftPx,
+        offsetY = cy - topPx,
+    }
+
+    dragFrame:SetScript("OnUpdate", function(self)
+        local state = self._wnDragState
+        if not state then
+            self:SetScript("OnUpdate", nil)
+            return
+        end
+        local x, y = GetCursorPosition()
+        local newLeft = (x - state.offsetX) / state.frameScale
+        local newTop = (y - state.offsetY) / state.frameScale
+        state.moveFrame:ClearAllPoints()
+        state.moveFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", newLeft, newTop)
+    end)
+end
+
+local function StopScaledDrag(dragFrame)
+    dragFrame._wnDragState = nil
+    dragFrame:SetScript("OnUpdate", nil)
+end
+
 --[[
-    Install combat-safe drag handlers on a header/drag frame.
-    Prevents StartMoving/StartSizing during combat lockdown.
+    Install combat-safe, scale-correct drag handlers on a header/drag frame.
+    Keeps cursor-grab point stable at any UI/frame scale.
 
     @param dragFrame Frame - The frame that receives drag events
     @param moveFrame Frame - The frame to move (usually the parent window)
+    @param onDragStop function|nil - Optional callback after drag stops
 ]]
-function WindowManager:InstallDragHandler(dragFrame, moveFrame)
+function WindowManager:InstallDragHandler(dragFrame, moveFrame, onDragStop)
     if not dragFrame or not moveFrame then return end
     dragFrame:EnableMouse(true)
     dragFrame:RegisterForDrag("LeftButton")
     dragFrame:SetScript("OnDragStart", function()
         if not InCombatLockdown() then
-            moveFrame:StartMoving()
+            StartScaledDrag(dragFrame, moveFrame)
         end
     end)
     dragFrame:SetScript("OnDragStop", function()
-        moveFrame:StopMovingOrSizing()
+        StopScaledDrag(dragFrame)
+        if onDragStop then
+            onDragStop(moveFrame)
+        end
     end)
 end

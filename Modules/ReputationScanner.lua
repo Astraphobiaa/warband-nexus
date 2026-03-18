@@ -228,17 +228,6 @@ end
 -- BATCH API: Fetch All Factions
 -- ============================================================================
 
----Fetch all factions using GetFactionDataByIndex (synchronous fallback)
----@return table Array of raw faction data
-function ReputationScanner:FetchAllFactions()
-    -- Synchronous wrapper for backwards compatibility (CommandService etc.)
-    local result = {}
-    self:FetchAllFactionsAsync(function(factions)
-        result = factions
-    end, true)  -- immediate=true forces synchronous execution
-    return result
-end
-
 local FETCH_BUDGET_MS = 4  -- max milliseconds per batch frame
 
 ---Fetch all factions asynchronously with time-budgeted batching.

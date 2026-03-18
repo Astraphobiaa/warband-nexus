@@ -28,11 +28,6 @@ function Utilities:GetCharacterKey(name, realm)
     realm = realm:gsub("%s+", "")
     
     local key = name .. "-" .. realm
-    
-    -- Debug log (only on first call per session)
-    if not self._keyLogged then
-        self._keyLogged = true
-    end
     return key
 end
 
@@ -83,46 +78,6 @@ function Utilities:IsModuleEnabled(moduleName)
     if not modules then return false end
     
     return modules[moduleName] == true
-end
-
---============================================================================
--- SAFE TABLE ACCESS
---============================================================================
-
---- Safely access nested table values without nil errors
----@param tbl table The root table
----@param ... string Keys to traverse
----@return any|nil The value if found, nil otherwise
-function Utilities:SafeTableGet(tbl, ...)
-    if not tbl then return nil end
-    
-    local current = tbl
-    for i = 1, select("#", ...) do
-        local key = select(i, ...)
-        if type(current) ~= "table" then return nil end
-        current = current[key]
-        if current == nil then return nil end
-    end
-    
-    return current
-end
-
---============================================================================
--- VALIDATION
---============================================================================
-
---- Check if a value is a valid number
----@param value any Value to check
----@return boolean Whether the value is a valid number
-function Utilities:IsValidNumber(value)
-    return type(value) == "number" and value == value -- NaN check
-end
-
---- Check if a string is empty or nil
----@param str string|nil String to check
----@return boolean Whether the string is empty or nil
-function Utilities:IsEmptyString(str)
-    return not str or str == "" or str:match("^%s*$") ~= nil
 end
 
 --============================================================================
@@ -314,18 +269,6 @@ function Utilities:IsWarbandBankOpen(addon)
     end
     
     return false
-end
-
---- Get the number of slots in a bag (with fallback)
---- Uses API wrapper for future-proofing
----@param addon table The WarbandNexus addon instance
----@param bagID number The bag ID
----@return number Number of slots in the bag
-function Utilities:GetBagSize(addon, bagID)
-    if not addon or not addon.API_GetBagSize then
-        return C_Container.GetContainerNumSlots(bagID) or 0
-    end
-    return addon:API_GetBagSize(bagID)
 end
 
 --============================================================================

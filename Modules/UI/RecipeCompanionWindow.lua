@@ -809,16 +809,22 @@ local function CreateCompanionWindow()
     header:SetPoint("TOPLEFT", 0, 0)
     header:SetPoint("TOPRIGHT", 0, 0)
     header:EnableMouse(true)
-    header:RegisterForDrag("LeftButton")
-    header:SetScript("OnDragStart", function()
-        if not InCombatLockdown() then
-            frame:StartMoving()
-        end
-    end)
-    header:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        if SavePosition then SavePosition(frame) end
-    end)
+    if ns.WindowManager and ns.WindowManager.InstallDragHandler then
+        ns.WindowManager:InstallDragHandler(header, frame, function()
+            if SavePosition then SavePosition(frame) end
+        end)
+    else
+        header:RegisterForDrag("LeftButton")
+        header:SetScript("OnDragStart", function()
+            if not InCombatLockdown() then
+                frame:StartMoving()
+            end
+        end)
+        header:SetScript("OnDragStop", function()
+            frame:StopMovingOrSizing()
+            if SavePosition then SavePosition(frame) end
+        end)
+    end
     if ApplyVisuals then
         ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
             { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })

@@ -132,7 +132,7 @@ L["TAB_PVE"] = "PvE"
 
 -- Characters Tab
 L["HEADER_CURRENT_CHARACTER"] = "CURRENT CHARACTER"
-L["HEADER_WARBAND_GOLD"] = "WARBAND GOLD"
+L["HEADER_WARBAND_GOLD"] = "Warband Gold"
 L["HEADER_TOTAL_GOLD"] = "TOTAL GOLD"
 L["HEADER_REALM_GOLD"] = "REALM GOLD"
 L["HEADER_REALM_TOTAL"] = "REALM TOTAL"
@@ -141,8 +141,8 @@ L["CHARACTER_GOLD_FORMAT"] = "Gold: %s"
 L["CHARACTER_TOTAL_GOLD_TOOLTIP"] = "Combined gold from all characters on this realm"
 
 L["MAX_LEVEL"] = "Max level"
-L["YES"] = "Yes"
-L["NO"] = "No"
+L["YES"] = YES or "Yes"
+L["NO"] = NO or "No"
 
 -- Items Tab
 L["ITEMS_HEADER"] = "Bank Items"
@@ -199,7 +199,7 @@ L["STATS_FREE_SLOTS"] = "Free Slots"
 L["STATS_USED_SLOTS"] = "Used Slots"
 L["STATS_TOTAL_VALUE"] = "Total Value"
 L["COLLECTED"] = "Collected"
-L["TOTAL"] = "Total"
+L["TOTAL"] = TOTAL or "Total"
 
 -- Tooltips
 L["TOOLTIP_WARBAND_BANK"] = "Warband Bank"
@@ -265,7 +265,7 @@ L["RIGHT_CLICK_REMOVE"] = "Right-click to remove"
 L["TRACKED"] = "Tracked"
 L["TRACK"] = "Track"
 L["TRACK_BLIZZARD_OBJECTIVES"] = "Track in Blizzard objectives (max 10)"
-L["UNKNOWN"] = "Unknown"
+L["UNKNOWN"] = UNKNOWN or "Unknown"
 L["NO_REQUIREMENTS"] = "No requirements (instant completion)"
 
 -- Plans UI
@@ -474,6 +474,7 @@ L["WEEKLY_VAULT_CARD"] = "Weekly Vault Card"
 L["WEEKLY_VAULT_COMPLETE"] = "Weekly Vault Card - Complete"
 L["UNKNOWN_SOURCE"] = "Unknown source"
 L["DAILY_TASKS_PREFIX"] = "Daily Tasks - "
+L["COMPLETE_LABEL"] = "Complete"
 L["NO_FOUND_FORMAT"] = "No %ss found"
 L["PLANS_COUNT_FORMAT"] = "%d plans"
 L["PET_BATTLE_LABEL"] = "Pet Battle:"
@@ -842,6 +843,7 @@ L["UNCLAIMED_REWARDS"] = "You have unclaimed rewards"
 
 -- Minimap Button
 L["TOTAL_GOLD_LABEL"] = "Total Gold:"
+L["MINIMAP_CHARS_GOLD"] = "Characters Gold:"
 L["CHARACTERS_COLON"] = "Characters:"
 L["LEFT_CLICK_TOGGLE"] = "Left-Click: Toggle window"
 L["RIGHT_CLICK_PLANS"] = "Right-Click: Open Plans"
@@ -926,9 +928,8 @@ L["WELCOME_MSG_FORMAT"] = "Welcome to Warband Nexus v%s"
 L["WELCOME_TYPE_CMD"] = "Please type"
 L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
 
--- Changelog (What's New) - v2.1.4
--- Changelog (What's New) - v2.4.5
-L["CHANGELOG_V245"] = "BUG FIXES & IMPROVEMENTS:\n- Fixed Concentration tracking\n- Added Ultra-Wide monitor support\n- Updated the World Quest section\n- Fixed Great Vault tracking\n- Fixed Try/Attempt counts\n- General performance improvements\n- Added Memory Leak Debugger\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+-- Changelog (What's New) - v2.4.7
+L["CHANGELOG_V247"] = "NEW FEATURES:\n- UI Scaling: Adjust addon interface size from Settings\n- Gold Automation: Per-character gold management settings\n- Gold Input: Live formatting with 9,999,999g cap\n\nIMPROVEMENTS:\n- Reputation UI: Major overhaul with improved layout\n- Storage UI: Refactored for better performance\n- Professions UI: Enhanced columns and layout\n- Minimap: Class-colored names, improved tooltip\n- Gold Logs: Improved transaction display\n- UI Hierarchy: Optimized frame ordering\n\nPERFORMANCE & LOCALIZATION:\n- Removed deprecated modules, major code cleanup\n- All 11 locales synced (1,404 keys, zero gaps)\n- WoW Global Strings integration\n\nThank you for your continued support!\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"
@@ -1098,12 +1099,16 @@ L["PROF_FIRSTCRAFT_TOTAL"] = "Total"
 L["PROF_FIRSTCRAFT_RECIPES"] = "recipe(s)"
 
 -- Professions: Column Headers (label keys used by HEADER_DEFS)
+L["FIRST_CRAFT"] = "First Craft"
 L["UNIQUES"] = "Uniques"
 L["TREATISE"] = "Treatise"
 L["GATHERING"] = "Gathering"
 L["CATCH_UP"] = "Catch Up"
 L["MOXIE"] = "Moxie"
 L["COOLDOWNS"] = "Cooldowns"
+L["ACCESSORY_1"] = "Acc 1"
+L["ACCESSORY_2"] = "Acc 2"
+L["COLUMNS_BUTTON"] = "Columns"
 L["ORDERS"] = "Orders"
 
 -- Professions: Tooltips & Details
@@ -1160,8 +1165,6 @@ L["SELECT_ITEM"] = "Select Item"
 L["SELECT_ITEM_DESC"] = "Choose a collectible to manage."
 L["SELECT_ITEM_HINT"] = "Select an item above to view details."
 L["REPEATABLE_LABEL"] = "Repeatable"
-L["YES"] = "Yes"
-L["NO"] = "No"
 L["SOURCE_SINGULAR"] = "source"
 L["SOURCE_PLURAL"] = "sources"
 L["UNTRACKED"] = "Untracked"
@@ -1448,6 +1451,17 @@ L["GOLD_MANAGEMENT_MODE_BOTH_DESC"] = "Automatically maintain exactly X gold on 
 L["GOLD_MANAGEMENT_TARGET"] = "Target Gold Amount"
 L["GOLD_MANAGEMENT_GOLD_LABEL"] = "gold"
 L["GOLD_MANAGEMENT_HELPER"] = "Enter the amount of gold you want to keep on this character. The addon will automatically manage your gold when you open the bank."
+L["GOLD_MANAGEMENT_CHAR_ONLY"] = "Only For This Character (%s)"
+L["GOLD_MANAGEMENT_CHAR_ONLY_DESC"] = "Use separate gold management settings for this character only. Other characters will use the shared profile settings."
+L["GOLD_MGMT_PROFILE_TITLE"] = "Profile (All Characters)"
+L["GOLD_MGMT_TARGET_LABEL"] = "Target"
+L["GOLD_MGMT_USING_PROFILE"] = "Using profile"
+L["GOLD_MGMT_MODE_SHORT_DEPOSIT"] = "Deposit"
+L["GOLD_MGMT_MODE_SHORT_WITHDRAW"] = "Withdraw"
+L["GOLD_MGMT_MODE_SHORT_BOTH"] = "Both"
+L["GOLD_MGMT_ACTIVE"] = "Active"
+L["ENABLED"] = "Enabled"
+L["DISABLED"] = "Disabled"
 L["GOLD_MANAGEMENT_NOTIFICATION_DEPOSIT"] = "Deposit %s to warband bank (you have %s)"
 L["GOLD_MANAGEMENT_NOTIFICATION_WITHDRAW"] = "Withdraw %s from warband bank (you have %s)"
 L["GOLD_MANAGEMENT_DEPOSITED"] = "Deposited %s to warband bank"
@@ -1470,6 +1484,55 @@ L["MONEY_LOGS_RESET"] = "Reset"
 L["MONEY_LOGS_FILTER_ALL"] = "All"
 L["MONEY_LOGS_CHAT_DEPOSIT"] = "|cff00ff00Money Log:|r Deposited %s to Warband Bank"
 L["MONEY_LOGS_CHAT_WITHDRAW"] = "|cffff9900Money Log:|r Withdrew %s from Warband Bank"
+
+-- Minimap Tooltip
+L["MINIMAP_MORE_FORMAT"] = "... +%d more"
+
+-- Gear UI
+L["GEAR_UPGRADE_CURRENCIES"] = "Upgrade Currencies"
+L["GEAR_CHARACTER_STATS"] = "Character Stats"
+L["GEAR_NO_ITEM_EQUIPPED"] = "No item equipped in this slot."
+L["GEAR_NO_PREVIEW"] = "No Preview"
+L["GEAR_STATS_CURRENT_ONLY"] = "Stats available for\ncurrent character only"
+L["GEAR_SLOT_RING1"] = "Ring 1"
+L["GEAR_SLOT_RING2"] = "Ring 2"
+L["GEAR_SLOT_TRINKET1"] = "Trinket 1"
+L["GEAR_SLOT_TRINKET2"] = "Trinket 2"
+L["GEAR_UPGRADE_AVAILABLE_FORMAT"] = "Available upgrade to %s %d/%d%s"
+L["GEAR_UPGRADES_WITH_CURRENCY_FORMAT"] = "%d upgrade(s) with current currency"
+L["GEAR_CRESTS_GOLD_ONLY"] = "Crests needed: 0 (gold only — previously reached)"
+L["GEAR_UPGRADES_GOLD_ONLY_FORMAT"] = "%d upgrade(s) gold only (previously reached)"
+L["GEAR_NEED_MORE_CRESTS_FORMAT"] = "%s %d/%d — need more crests"
+
+-- Characters UI
+L["WOW_TOKEN_LABEL"] = "WOW TOKEN"
+
+-- SharedWidgets
+L["FILTER_LABEL"] = FILTER or "Filter"
+
+-- Statistics UI
+L["FORMAT_BUTTON"] = "Format"
+
+-- Professions UI
+L["SHOW_ALL"] = "Show All"
+
+-- Social
+L["DISCORD_TOOLTIP"] = "Warband Nexus Discord"
+
+-- Collection Source Filters
+L["SOURCE_OTHER"] = "Other"
+
+-- Expansion / Content Names
+L["CONTENT_KHAZ_ALGAR"] = "Khaz Algar"
+L["CONTENT_DRAGON_ISLES"] = "Dragon Isles"
+
+-- Module Disabled
+L["MODULE_DISABLED_DESC_FORMAT"] = "Enable it in %s to use %s."
+
+-- Plans UI (extended)
+L["PART_OF_FORMAT"] = "Part of: %s"
+L["LOCKED_WORLD_QUESTS"] = "Locked — complete World Quests to unlock"
+L["QUEST_ID_FORMAT"] = "Quest ID: %s"
 
 -- Blizzard GlobalStrings (Auto-localized by WoW)
 L["BANK_LABEL"] = BANK or "Bank"
@@ -1609,6 +1672,14 @@ L["TYPE_MOUNT"] = MOUNT or "Mount"
 L["TYPE_PET"] = PET or "Pet"
 L["TYPE_TOY"] = TOY or "Toy"
 L["TYPE_TRANSMOG"] = TRANSMOGRIFY or "Transmog"
+L["STAT_STRENGTH"] = SPELL_STAT1_NAME or "Strength"
+L["STAT_AGILITY"] = SPELL_STAT2_NAME or "Agility"
+L["STAT_STAMINA"] = SPELL_STAT3_NAME or "Stamina"
+L["STAT_INTELLECT"] = SPELL_STAT4_NAME or "Intellect"
+L["STAT_CRITICAL_STRIKE"] = STAT_CRITICAL_STRIKE or "Critical Strike"
+L["STAT_HASTE"] = STAT_HASTE or "Haste"
+L["STAT_MASTERY"] = STAT_MASTERY or "Mastery"
+L["STAT_VERSATILITY"] = STAT_VERSATILITY or "Versatility"
 L["VAULT_DUNGEON"] = LFG_TYPE_DUNGEON or "Dungeon"
 L["VAULT_RAID"] = RAID or "Raid"
 L["VAULT_SLOT_DUNGEON"] = LFG_TYPE_DUNGEON or "Dungeon"

@@ -1,4 +1,42 @@
 ═══════════════════════════════════════════════════════════════════════════
+  WARBAND NEXUS - Version 2.4.7 (18.03.2026)
+═══════════════════════════════════════════════════════════════════════════
+
+NEW FEATURES
+────────────
+• UI Scaling: Adjust addon interface size from Settings tab
+• Gold Automation: Per-character option for separate gold management settings
+• Gold Input: Live thousand-separator formatting with 9,999,999g maximum cap
+
+IMPROVEMENTS
+────────────
+• Reputation UI: Major overhaul with improved layout and tracking
+• Storage UI: Refactored for better performance and reliability
+• Professions UI: Enhanced column system and layout improvements
+• Collections UI: Improved source categorization and filtering
+• Currency UI: Layout and display improvements
+• Items UI: Refactored search and display system
+• Minimap Tooltip: Class-colored character names, proper "Warband Gold" casing
+• Gold Logs: Improved transaction display and filtering
+• UI Hierarchy: Optimized frame ordering and stacking
+• VirtualList: Improved scrolling and rendering performance
+
+PERFORMANCE & CODE QUALITY
+──────────────────────────
+• Removed deprecated DebugLogger and EventRegistry modules
+• APIWrapper cleanup and optimization
+• EventManager refactoring for better event handling
+• SharedWidgets major refactoring for consistency
+• WindowFactory and FramePoolFactory improvements
+
+LOCALIZATION
+────────────
+• Added 50+ new locale keys across all modules
+• Synced all 11 locales to 1,404 keys (zero missing, zero duplicates)
+• Integrated WoW Global Strings where available
+• Full translations: DE, ES, ES-MX, FR, IT, KO, PT-BR, RU, ZH-CN, ZH-TW
+
+═══════════════════════════════════════════════════════════════════════════
   WARBAND NEXUS - Version 2.4.5 (15.03.2026)
 ═══════════════════════════════════════════════════════════════════════════
 

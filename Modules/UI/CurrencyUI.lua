@@ -40,6 +40,7 @@ local FormatNumber = ns.UI_FormatNumber
 local DrawEmptyState = ns.UI_DrawEmptyState
 local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
 local AcquireCurrencyRow = ns.UI_AcquireCurrencyRow
+local ReleaseCurrencyRow = ns.UI_ReleaseCurrencyRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
@@ -126,23 +127,15 @@ end
 -- CURRENCY ROW RENDERING (EXACT StorageUI style)
 --============================================================================
 
----Create a single currency row (PIXEL-PERFECT StorageUI style) - NO POOLING for stability
----@param parent Frame Parent frame
+---Populate a currency row frame with display data (shared by CreateCurrencyRow and virtual list createRowFn)
+---@param row Frame Row frame from AcquireCurrencyRow
 ---@param currency table Currency data
 ---@param currencyID number Currency ID
 ---@param rowIndex number Row index for alternating colors
----@param indent number Left indent
----@param width number Parent width
----@param yOffset number Y position
----@return number newYOffset
-local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent, rowWidth, yOffset, shouldAnimate, hideMax)
-    -- PERFORMANCE: Acquire from pool (StorageUI pattern: rowWidth is pre-calculated by caller)
-    local row = AcquireCurrencyRow(parent, rowWidth, ROW_HEIGHT)
-    
-    row:ClearAllPoints()  -- Clear any existing anchors
-    row:SetSize(rowWidth, ROW_HEIGHT)  -- Set exact row width
-    row:SetPoint("TOPLEFT", indent, -yOffset)  -- Position at indent
-    
+---@param rowWidth number Row width
+---@param hideMax boolean Unused (kept for API compatibility)
+local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, rowWidth, hideMax)
+    row:SetSize(rowWidth, ROW_HEIGHT)
     -- Set alternating background colors
     local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
     local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
@@ -245,8 +238,22 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     end)
     
     -- ANIMATION: Use centralized stagger animation helper
-    ns.UI.Factory:ApplyStaggerAnimation(row, rowIndex, shouldAnimate)
-    
+end
+
+---Create a single currency row (PIXEL-PERFECT StorageUI style) - NO POOLING for stability
+---@param parent Frame Parent frame
+---@param currency table Currency data
+---@param currencyID number Currency ID
+---@param rowIndex number Row index for alternating colors
+---@param indent number Left indent
+---@param width number Parent width
+---@param yOffset number Y position
+---@return number newYOffset
+local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent, rowWidth, yOffset, hideMax)
+    local row = AcquireCurrencyRow(parent, rowWidth, ROW_HEIGHT)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", indent, -yOffset)
+    PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, rowWidth, hideMax)
     return yOffset + ROW_HEIGHT + GetLayout().betweenRows
 end
 
@@ -476,21 +483,35 @@ end
 
 function WarbandNexus:DrawCurrencyList(container, width)
     if not container then return 0 end
-    
+
     self.recentlyExpanded = self.recentlyExpanded or {}
-    
+
     -- Hide empty state container (will be shown again if needed)
     HideEmptyStateCard(container, "currency")
-    
+
     -- PERFORMANCE: Release pooled frames (safe - doesn't touch emptyStateContainer)
-    if ReleaseAllPooledChildren then 
+    if ReleaseAllPooledChildren then
         ReleaseAllPooledChildren(container)
+    end
+
+    -- Clean up old non-virtual children (headers, notice frames) from previous render.
+    -- VLM handles its own _isVirtualRow frames; we only need to recycle stale headers.
+    local recycleBin = ns.UI_RecycleBin
+    local oldChildren = {container:GetChildren()}
+    for i = 1, #oldChildren do
+        local child = oldChildren[i]
+        if not child._isVirtualRow then
+            child:Hide()
+            child:ClearAllPoints()
+            child:SetParent(recycleBin or UIParent)
+        end
     end
     
     local parent = container
     local yOffset = 0
-    
-    
+    local flatList = {}
+    local globalRowIdx = 0
+
     local showZero = self.db.profile.currencyShowZero
     if showZero == nil then showZero = true end
     
@@ -683,22 +704,27 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         yOffset = yOffset + HEADER_HEIGHT
                         
                         if headerExpanded then
-                            -- Compute animation state for this header's rows
-                            local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
-                            
-                            -- Render direct currency rows
+                            -- Render direct currency rows (build flat list for virtual scroll)
                             if #headerData.currencies > 0 then
-                                local rowIdx = 0
                                 for _, curr in ipairs(headerData.currencies) do
-                                    rowIdx = rowIdx + 1
-                                    -- Create display data with aggregated quantity
+                                    globalRowIdx = globalRowIdx + 1
                                     local displayData = {}
-                                    for k, v in pairs(curr.data) do 
-                                        displayData[k] = v 
-                                    end
+                                    for k, v in pairs(curr.data) do displayData[k] = v end
                                     displayData.quantity = curr.quantity
-                                    
-                                    yOffset = CreateCurrencyRow(parent, displayData, curr.id, rowIdx, headerIndent, width - headerIndent, yOffset, shouldAnimate, true)
+
+                                    flatList[#flatList + 1] = {
+                                        type = "row",
+                                        yOffset = yOffset,
+                                        height = ROW_HEIGHT + (GetLayout().betweenRows or 0),
+                                        xOffset = headerIndent,
+                                        data = displayData,
+                                        currencyID = curr.id,
+                                        rowIdx = globalRowIdx,
+                                        rowWidth = width - headerIndent,
+                                        indent = headerIndent,
+                                        isShowAll = true,
+                                    }
+                                    yOffset = yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
                                 end
                             end
                             
@@ -784,30 +810,34 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         yOffset = yOffset + HEADER_HEIGHT
                         
                         if headerExpanded then
-                            -- Compute animation state for this header's rows
-                            local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
-                            
-                            -- Render rows with "Best: CharName" suffix
+                            -- Render rows with "Best: CharName" suffix (build flat list for virtual scroll)
                             if #headerData.currencies > 0 then
-                                local rowIdx = 0
                                 for _, curr in ipairs(headerData.currencies) do
-                                    rowIdx = rowIdx + 1
-                                    
-                                    -- Modify currency data to show best character
+                                    globalRowIdx = globalRowIdx + 1
                                     local displayData = {}
                                     for k, v in pairs(curr.data) do displayData[k] = v end
-                                    
                                     local classColor = RAID_CLASS_COLORS[curr.bestCharacter.classFile] or {r=1, g=1, b=1}
                                     local bestRealm = ns.Utilities and ns.Utilities:FormatRealmName(curr.bestCharacter.realm) or curr.bestCharacter.realm or ""
-                                    local charName = format("|c%s%s  -  %s|r", 
+                                    local charName = format("|c%s%s  -  %s|r",
                                         format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
                                         curr.bestCharacter.name,
                                         bestRealm)
-                                    
                                     displayData.characterName = format("|cff666666(|r%s|cff666666)|r", charName)
                                     displayData.quantity = curr.quantity
-                                    
-                                    yOffset = CreateCurrencyRow(parent, displayData, curr.id, rowIdx, headerIndent, width - headerIndent, yOffset, shouldAnimate, true)
+
+                                    flatList[#flatList + 1] = {
+                                        type = "row",
+                                        yOffset = yOffset,
+                                        height = ROW_HEIGHT + (GetLayout().betweenRows or 0),
+                                        xOffset = headerIndent,
+                                        data = displayData,
+                                        currencyID = curr.id,
+                                        rowIdx = globalRowIdx,
+                                        rowWidth = width - headerIndent,
+                                        indent = headerIndent,
+                                        isShowAll = true,
+                                    }
+                                    yOffset = yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
                                 end
                             end
                             
@@ -879,7 +909,25 @@ function WarbandNexus:DrawCurrencyList(container, width)
         totalCurrencies = totalCurrencies + #(charData.currencies or {})
     end
     SearchStateManager:UpdateResults("currency", totalCurrencies)
-    
+
+    -- ===== VIRTUAL SCROLL SETUP =====
+    local mainFrame = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local VLM = ns.VirtualListModule
+
+    if mainFrame and VLM and #flatList > 0 then
+        local totalHeight = VLM.SetupVirtualList(mainFrame, parent, 0, flatList, {
+            createRowFn = function(container, entry)
+                local row = AcquireCurrencyRow(container, entry.rowWidth, ROW_HEIGHT)
+                PopulateCurrencyRowFrame(row, entry.data, entry.currencyID, entry.rowIdx, entry.rowWidth, entry.isShowAll)
+                return row
+            end,
+            releaseRowFn = function(frame)
+                if ReleaseCurrencyRow then ReleaseCurrencyRow(frame) end
+            end,
+        })
+        return math.max(totalHeight, yOffset) + GetLayout().minBottomSpacing
+    end
+
     return yOffset
 end
 
@@ -963,20 +1011,22 @@ function WarbandNexus:DrawCurrencyTab(parent)
         end
     end
     
-    local yOffset = 8 -- Top padding
     local width = parent:GetWidth() - 20
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerYOffset = 8
     
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
 
-    -- ===== TITLE CARD Setup =====
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
+    local headerParent = fixedHeader or parent
     local showZero = self.db.profile.currencyShowZero
     if showZero == nil then showZero = true end
     
     local CreateCard = ns.UI_CreateCard
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    local titleCard = CreateCard(headerParent, 70)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
     local GetTabIcon = ns.UI_GetTabIcon
@@ -986,104 +1036,80 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    -- Use factory pattern positioning for standardized header layout
     local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["CURRENCY_TITLE"]) or "Currency Tracker") .. "|r"
     local subtitleTextContent = (ns.L and ns.L["CURRENCY_SUBTITLE"]) or "Track all currencies across your characters"
     
-    -- Create container for text group (using Factory pattern)
     local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
-    
-    -- Create title text (header font, colored)
     local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
     titleText:SetText(titleTextContent)
     titleText:SetJustifyH("LEFT")
-    
-    -- Create subtitle text
     local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
     subtitleText:SetText(subtitleTextContent)
     subtitleText:SetTextColor(1, 1, 1)
     subtitleText:SetJustifyH("LEFT")
-    
-    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
-    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
+    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)
     titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
+    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)
     subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    
-    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
     textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
+    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
     
-    -- Show 0 Toggle (rightmost, standardized to 100px)
     local showZeroBtn = CreateThemedButton(titleCard, showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"), 100)
     showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
-    
-    -- Hide button if module disabled
-    if not moduleEnabled then
-        showZeroBtn:Hide()
-    end
-    
+    if not moduleEnabled then showZeroBtn:Hide() end
     showZeroBtn:SetScript("OnClick", function(btn)
         showZero = not showZero
         self.db.profile.currencyShowZero = showZero
         btn.text:SetText(showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"))
         self:RefreshUI()
     end)
-    
     titleCard:Show()
     
-    yOffset = yOffset + GetLayout().afterHeader
+    headerYOffset = headerYOffset + GetLayout().afterHeader
     
-    -- If module is disabled, show beautiful disabled state card
+    -- If module is disabled, show disabled state card (in scroll area)
     if not moduleEnabled then
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["CURRENCY_DISABLED_TITLE"]) or "Currency Tracking")
-        return yOffset + cardHeight
+        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["CURRENCY_DISABLED_TITLE"]) or "Currency Tracking")
+        return 8 + cardHeight
     end
     
     -- ===== LOADING STATE =====
-    -- Show loading card if currency scan is in progress
     if ns.CurrencyLoadingState and ns.CurrencyLoadingState.isLoading then
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
         if UI_CreateLoadingStateCard then
-            local newYOffset = UI_CreateLoadingStateCard(
-                parent,
-                yOffset,
-                ns.CurrencyLoadingState,
-                (ns.L and ns.L["CURRENCY_LOADING_TITLE"]) or "Loading Currency Data"
-            )
-            return newYOffset  -- STOP HERE - don't render anything else
+            local newYOffset = UI_CreateLoadingStateCard(parent, 8, ns.CurrencyLoadingState, (ns.L and ns.L["CURRENCY_LOADING_TITLE"]) or "Loading Currency Data")
+            return newYOffset
         end
     end
     
-    -- Search Box
+    -- Search Box (in fixedHeader - non-scrolling)
     local CreateSearchBox = ns.UI_CreateSearchBox
-    -- Use SearchStateManager for state management
     local currencySearchText = SearchStateManager:GetQuery("currency")
     
-    local searchBox = CreateSearchBox(parent, width, (ns.L and ns.L["CURRENCY_SEARCH"]) or "Search currencies...", function(text)
-        -- Update search state via SearchStateManager (throttled, event-driven)
+    local searchBox = CreateSearchBox(headerParent, width, (ns.L and ns.L["CURRENCY_SEARCH"]) or "Search currencies...", function(text)
         SearchStateManager:SetSearchQuery("currency", text)
-        
-        -- Prepare container for rendering
         if parent.resultsContainer then
             SearchResultsRenderer:PrepareContainer(parent.resultsContainer)
-            
-            -- Redraw currency list
             self:DrawCurrencyList(parent.resultsContainer, width)
         end
     end, 0.4, currencySearchText)
     
-    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
-    yOffset = yOffset + 32 + GetLayout().afterElement  -- Search box height + standard gap
+    headerYOffset = headerYOffset + 32 + GetLayout().afterElement
     
-    -- Container - Reuse if present; re-parent in case PopulateContent orphaned it (SetParent(nil))
+    -- Set fixedHeader height so scroll area starts below it
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    
+    -- Results container starts at top of scrollChild (scroll area)
     local container
     if parent.resultsContainer then
         container = parent.resultsContainer
-        container:SetParent(parent)  -- Re-attach: orphaned by PopulateContent, must be inside scrollChild again
+        container:SetParent(parent)
         HideEmptyStateCard(container, "currency")
         SearchResultsRenderer:PrepareContainer(container)
     else
@@ -1091,18 +1117,14 @@ function WarbandNexus:DrawCurrencyTab(parent)
         parent.resultsContainer = container
     end
     container:ClearAllPoints()
-    container:SetPoint("TOPLEFT", parent, "TOPLEFT", SIDE_MARGIN, -yOffset)
-    container:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    container:SetWidth(width)  -- Explicit width so CreateCollapsibleHeader sees valid parent:GetWidth()
-    container:SetHeight(1)  -- Dynamic height
+    container:SetPoint("TOPLEFT", parent, "TOPLEFT", SIDE_MARGIN, -8)
+    container:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SIDE_MARGIN, -8)
+    container:SetWidth(width)
+    container:SetHeight(1)
     container:Show()
     
-    -- Draw List
     local listHeight = self:DrawCurrencyList(container, width)
-    
-    -- CRITICAL FIX: Update container height AFTER content is drawn
-    -- Without this, WoW UI engine thinks container is 1px tall and layout breaks
     container:SetHeight(math.max(listHeight, 1))
     
-    return yOffset + listHeight
+    return 8 + listHeight
 end

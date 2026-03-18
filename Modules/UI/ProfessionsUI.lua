@@ -141,9 +141,9 @@ local LINE2_Y = -12                  -- Line 2: below row center
 local COLUMNS = {
     favIcon     = { width = 33,  spacing = 5 },                  -- favorite star (matches Characters tab)
     classIcon   = { width = 33,  spacing = 5 },                  -- class icon (matches Characters tab)
-    name        = { width = 120, spacing = COL_SPACING + 4 },    -- character name + realm
+    name        = { width = 100, spacing = COL_SPACING },         -- character name + realm (matches CharactersUI)
     profIcon    = { width = 20,  spacing = ICON_COL_SPACING },
-    profName    = { width = 115, spacing = COL_SPACING },         -- fits Blacksmithing/Leatherworking at 12px
+    profName    = { width = 100, spacing = COL_SPACING },         -- fits Blacksmithing/Leatherworking at 12px
     skill       = { width = 70,  spacing = COL_SPACING },
     conc        = { width = 120, spacing = ICON_COL_SPACING },    -- bar (wider to match rep bar proportions)
     recharge    = { width = 65,  spacing = COL_SPACING },         -- timer text
@@ -158,40 +158,30 @@ local COLUMNS = {
     catchUp     = { width = 68,  spacing = COL_SPACING },
     moxie       = { width = 56,  spacing = COL_SPACING },         -- Artisan Moxie currency (Midnight)
     cooldowns   = { width = 68,  spacing = COL_SPACING },         -- crafting cooldowns (ready / total)
-    tool        = { width = 28,  spacing = 2 },                   -- profession tool icon
-    acc1        = { width = 28,  spacing = 2 },                   -- accessory 1 icon
-    acc2        = { width = 28,  spacing = COL_SPACING },          -- accessory 2 icon
+    equipment   = { width = 76,  spacing = COL_SPACING },         -- tool + acc1 + acc2 (3×22 icons, 4px gaps)
     open        = { width = 36,  spacing = 4 },
     info        = { width = 30,  spacing = 0 },                  -- read-only detail window
 }
 
 local COLUMN_ORDER = {
     "favIcon", "classIcon", "name",
-    "profIcon", "profName", "skill", "conc", "recharge", "knowledge",
+    "profIcon", "profName", "equipment", "skill", "conc", "recharge", "knowledge",
     "recipes", "firstCraft", "uniques", "treatise", "weeklyQuest", "treasure", "gathering", "catchUp", "moxie",
-    "cooldowns", "tool", "acc1", "acc2",
+    "cooldowns",
     "open", "info",
 }
 
 local LEFT_PAD = 10
 
--- Calculate the base total grid width from all columns (for horizontal scroll).
--- Computed at load time since COLUMNS and COLUMN_ORDER are static.
-do
-    local total = LEFT_PAD
-    for _, k in ipairs(COLUMN_ORDER) do
-        total = total + COLUMNS[k].width + COLUMNS[k].spacing
-    end
-    ns.MIN_PROFESSIONS_GRID_W = total + LEFT_PAD
-end
+ns.MIN_PROFESSIONS_GRID_W = 0
 
 -- Expansion filter: dynamically built from discovered expansion data across all characters.
 -- Falls back to a static list if no character data is available yet.
 local EXPANSION_FILTER_STATIC_FALLBACK = {
-    { key = "All",          label = (ns.L and ns.L["PROF_FILTER_ALL"]) and ns.L["PROF_FILTER_ALL"] or "All" },
-    { key = "Midnight",     label = "Midnight" },
-    { key = "Khaz Algar",   label = "Khaz Algar" },
-    { key = "Dragon Isles", label = "Dragon Isles" },
+    { key = "All",          label = (ns.L and ns.L["PROF_FILTER_ALL"]) or "All" },
+    { key = "Midnight",     label = (ns.L and ns.L["CONTENT_MIDNIGHT"]) or "Midnight" },
+    { key = "Khaz Algar",   label = (ns.L and ns.L["CONTENT_KHAZ_ALGAR"]) or "Khaz Algar" },
+    { key = "Dragon Isles", label = (ns.L and ns.L["CONTENT_DRAGON_ISLES"]) or "Dragon Isles" },
 }
 
 -- Known expansion ordering: newest first. Expansions not in this list go after these.
@@ -220,7 +210,7 @@ local function IsMidnightSkillLineID(skillLineID)
     return type(skillLineID) == "number" and MIDNIGHT_MOXIE_CURRENCY[skillLineID] ~= nil
 end
 
--- Columns that users can toggle on/off via the Filter button.
+-- Columns that users can toggle on/off via the Columns button.
 -- Keys match COLUMNS table; display labels shown in the dropdown.
 local TOGGLEABLE_COLUMNS = {
     { key = "skill",       label = "Skill" },
@@ -237,22 +227,20 @@ local TOGGLEABLE_COLUMNS = {
     { key = "catchUp",     label = "Catch Up" },
     { key = "moxie",       label = "Moxie" },
     { key = "cooldowns",   label = "Cooldowns" },
-    { key = "tool",        label = "Tool" },
-    { key = "acc1",        label = "Accessory 1" },
-    { key = "acc2",        label = "Accessory 2" },
+    { key = "equipment",   label = "Equipment" },
 }
 
 local COLUMN_DEFAULT_VISIBLE = {
     cooldowns = false,
-    tool      = false,
-    acc1      = false,
-    acc2      = false,
 }
 
 local function IsColumnVisible(key)
     local vis = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
         and WarbandNexus.db.profile.professionVisibleColumns
-    if not vis then return true end
+    if not vis then
+        local def = COLUMN_DEFAULT_VISIBLE[key]
+        return def == nil and true or def
+    end
     if vis[key] == nil then
         local def = COLUMN_DEFAULT_VISIBLE[key]
         return def == nil and true or def
@@ -266,6 +254,33 @@ local SCALABLE_COLUMNS = {
     recipes = true, firstCraft = true, uniques = true, treatise = true, weeklyQuest = true,
     treasure = true, gathering = true, catchUp = true, moxie = true, cooldowns = true,
 }
+
+-- Dynamic grid width: accounts for current column visibility and font-based scaling.
+-- Called every time the professions tab is drawn or the window is resized so that
+-- the scrollChild is always wide enough to show all visible columns without clipping.
+function ns.ComputeProfessionsGridWidth()
+    local fontScale = 1.0
+    if FontManager and FontManager.GetFontSize then
+        local actualSize = FontManager:GetFontSize(DATA_FONT)
+        if actualSize and actualSize > 0 then
+            fontScale = math.max(1.0, actualSize / 12)
+        end
+    end
+
+    local total = 0
+    for _, k in ipairs(COLUMN_ORDER) do
+        if IsColumnVisible(k) then
+            local w = COLUMNS[k].width
+            if SCALABLE_COLUMNS[k] then
+                w = w * fontScale
+            end
+            total = total + w + COLUMNS[k].spacing
+        end
+    end
+
+    local sideMargin = (ns.UI_LAYOUT and ns.UI_LAYOUT.SIDE_MARGIN) or 10
+    return math.ceil(2 * sideMargin + LEFT_PAD + total)
+end
 
 -- Cached row width — set once per DrawProfessionsTab call so columns fill available space.
 local cachedRowWidth = nil
@@ -335,25 +350,23 @@ end
 -- Column header definitions — alignment matches each column's data alignment
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
 local HEADER_DEFS = {
-    { col = "name",      label = "TABLE_HEADER_CHARACTER", text = "CHARACTER",     align = "LEFT" },
-    { col = "profName",  label = "GROUP_PROFESSION",       text = "Profession",    align = "LEFT" },
-    { col = "skill",     label = "SKILL",                  text = "Skill",         align = "CENTER" },
-    { col = "conc",      label = "CONCENTRATION",          text = "Concentration", align = "CENTER" },
-    { col = "recharge",  label = "RECHARGE",               text = "Recharge",      align = "CENTER" },
-    { col = "knowledge", label = "KNOWLEDGE",              text = "Knowledge",     align = "CENTER" },
-    { col = "recipes",    label = "RECIPES",               text = "Recipes",       align = "CENTER" },
-    { col = "firstCraft",  label = "FIRST_CRAFT",          text = "First Craft",   align = "CENTER" },
-    { col = "uniques",     label = "UNIQUES",              text = "Uniques",       align = "CENTER" },
-    { col = "treatise",    label = "TREATISE",             text = "Treatise",      align = "CENTER" },
-    { col = "weeklyQuest", label = "WEEKLY_QUEST_CAT",     text = "Weekly Quest",  align = "CENTER" },
-    { col = "treasure",    label = "SOURCE_TYPE_TREASURE", text = "Treasure",      align = "CENTER" },
-    { col = "gathering",   label = "GATHERING",            text = "Gathering",     align = "CENTER" },
-    { col = "catchUp",     label = "CATCH_UP",             text = "Catch Up",      align = "CENTER" },
-    { col = "moxie",       label = "MOXIE",                text = "Moxie",         align = "CENTER" },
-    { col = "cooldowns",   label = "COOLDOWNS",            text = "Cooldowns",     align = "CENTER" },
-    { col = "tool",        label = "TOOL",                 text = "Tool",          align = "CENTER" },
-    { col = "acc1",        label = "ACCESSORY_1",          text = "Acc 1",         align = "CENTER" },
-    { col = "acc2",        label = "ACCESSORY_2",          text = "Acc 2",         align = "CENTER" },
+    { col = "name",        label = "TABLE_HEADER_CHARACTER", text = "Character",     align = "LEFT" },
+    { col = "profName",    label = "GROUP_PROFESSION",       text = "Profession",    align = "LEFT" },
+    { col = "equipment",   label = "EQUIPMENT",              text = "Equipment",     align = "CENTER" },
+    { col = "skill",       label = "SKILL",                  text = "Skill",         align = "CENTER" },
+    { col = "conc",        label = "CONCENTRATION",          text = "Concentration", align = "CENTER" },
+    { col = "recharge",    label = "RECHARGE",               text = "Recharge",      align = "CENTER" },
+    { col = "knowledge",   label = "KNOWLEDGE",              text = "Knowledge",     align = "CENTER" },
+    { col = "recipes",     label = "RECIPES",                text = "Recipes",       align = "CENTER" },
+    { col = "firstCraft",  label = "FIRST_CRAFT",            text = "First Craft",   align = "CENTER" },
+    { col = "uniques",     label = "UNIQUES",                text = "Uniques",       align = "CENTER" },
+    { col = "treatise",    label = "TREATISE",               text = "Treatise",      align = "CENTER" },
+    { col = "weeklyQuest", label = "WEEKLY_QUEST_CAT",       text = "Weekly Quest",  align = "CENTER" },
+    { col = "treasure",    label = "SOURCE_TYPE_TREASURE",   text = "Treasure",      align = "CENTER" },
+    { col = "gathering",   label = "GATHERING",              text = "Gathering",     align = "CENTER" },
+    { col = "catchUp",     label = "CATCH_UP",               text = "Catch Up",      align = "CENTER" },
+    { col = "moxie",       label = "MOXIE",                  text = "Moxie",         align = "CENTER" },
+    { col = "cooldowns",   label = "COOLDOWNS",              text = "Cooldowns",     align = "CENTER" },
 }
 
 --============================================================================
@@ -750,7 +763,6 @@ end
 --============================================================================
 
 function WarbandNexus:DrawProfessionsTab(parent)
-    local yOffset = 8
     local width = parent:GetWidth() - 20
     cachedRowWidth = width
 
@@ -758,21 +770,27 @@ function WarbandNexus:DrawProfessionsTab(parent)
     HideEmptyStateCard(parent, "professions")
     if ReleaseAllPooledChildren then ReleaseAllPooledChildren(parent) end
 
+    -- fixedHeader: non-scrolling area for title card + column headers
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local headerYOffset = 8
+
     -- If module is disabled, show disabled state card
     if not ns.Utilities:IsModuleEnabled("professions") then
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["PROFESSIONS_DISABLED_TITLE"]) or "Professions")
-        return yOffset + cardHeight
+        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["PROFESSIONS_DISABLED_TITLE"]) or "Professions")
+        return 8 + cardHeight
     end
 
     local characters = self:GetAllCharacters()
     local trackedFavorites, trackedRegular, untrackedChars = CategorizeCharacters(characters)
     local totalProfChars = #trackedFavorites + #trackedRegular + #untrackedChars
 
-    -- ===== TITLE CARD =====
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
+    local titleCard = CreateCard(headerParent, 70)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     if ApplyVisuals then
         ApplyVisuals(titleCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
@@ -810,14 +828,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local expBadgeText = FontManager:CreateFontString(expBadge, "body", "OVERLAY")
     expBadgeText:SetPoint("CENTER", 0, 0)
     expBadgeText:SetJustifyH("CENTER")
-    expBadgeText:SetText("Midnight")
+    expBadgeText:SetText((ns.L and ns.L["CONTENT_MIDNIGHT"]) or "Midnight")
     expBadgeText:SetTextColor(0.9, 0.9, 0.9)
     expBadge:SetScript("OnClick", nil)
     expBadge:SetScript("OnEnter", nil)
     expBadge:SetScript("OnLeave", nil)
     expBadge:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
     
-    -- ===== FILTER BUTTON (column visibility toggle) =====
+    -- ===== COLUMNS BUTTON (column visibility toggle) =====
     local filterBtnW = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH or 80
     local filterBtnH = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
     local filterBtn = ns.UI.Factory:CreateButton(titleCard, filterBtnW, filterBtnH, false)
@@ -827,7 +845,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local filterBtnText = FontManager:CreateFontString(filterBtn, "body", "OVERLAY")
     filterBtnText:SetPoint("CENTER", 0, 0)
     filterBtnText:SetJustifyH("CENTER")
-    filterBtnText:SetText((ns.L and ns.L["FILTER"]) or "Filter")
+    filterBtnText:SetText((ns.L and ns.L["COLUMNS_BUTTON"]) or "Columns")
     filterBtnText:SetTextColor(0.9, 0.9, 0.9)
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(filterBtn) end
     filterBtn:SetPoint("RIGHT", expBadge, "LEFT", -8, 0)
@@ -842,11 +860,33 @@ function WarbandNexus:DrawProfessionsTab(parent)
         local dropdown = btn._dropdown
         if not dropdown then
             dropdown = CreateFrame("Frame", nil, btn, "BackdropTemplate")
-            dropdown:SetFrameStrata("DIALOG")
+            dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
+            dropdown:SetFrameLevel(100)
             dropdown:SetClampedToScreen(true)
-            dropdown:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-            dropdown:SetBackdropColor(0.08, 0.08, 0.1, 0.97)
-            dropdown:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7)
+            dropdown:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+            dropdown:SetBackdropColor(0.08, 0.08, 0.1, 1)
+
+            local pxScale = (ns.GetPixelScale and ns.GetPixelScale(dropdown)) or 1
+            local bR, bG, bB = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+            local bA = 0.7
+            local function MakeBorder(point1, rel1, point2, rel2, isHoriz)
+                local tex = dropdown:CreateTexture(nil, "BORDER")
+                tex:SetTexture("Interface\\Buttons\\WHITE8x8")
+                tex:SetVertexColor(bR, bG, bB, bA)
+                tex:SetSnapToPixelGrid(false)
+                tex:SetTexelSnappingBias(0)
+                tex:SetPoint(point1, dropdown, rel1, 0, 0)
+                tex:SetPoint(point2, dropdown, rel2, 0, 0)
+                if isHoriz then tex:SetHeight(pxScale) else tex:SetWidth(pxScale) end
+                return tex
+            end
+            MakeBorder("TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", true)
+            MakeBorder("BOTTOMLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "BOTTOMRIGHT", true)
+            MakeBorder("TOPLEFT", "TOPLEFT", "BOTTOMLEFT", "BOTTOMLEFT", false)
+            MakeBorder("TOPRIGHT", "TOPRIGHT", "BOTTOMRIGHT", "BOTTOMRIGHT", false)
+
+            dropdown:EnableMouseWheel(true)
+            dropdown:SetScript("OnMouseWheel", function() end)
             btn._dropdown = dropdown
         end
 
@@ -915,7 +955,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         resetRow:SetPoint("TOPLEFT", PAD, yOff)
         local resetLbl = FontManager:CreateFontString(resetRow, "small", "OVERLAY")
         resetLbl:SetPoint("CENTER", 0, 0)
-        resetLbl:SetText("|cff" .. GetAccentHexColor() .. "Show All|r")
+        resetLbl:SetText("|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["SHOW_ALL"]) or "Show All") .. "|r")
         resetLbl:SetJustifyH("CENTER")
         resetRow:SetScript("OnClick", function()
             for _, tc2 in ipairs(TOGGLEABLE_COLUMNS) do
@@ -956,31 +996,59 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     
     titleCard:Show()
-    yOffset = yOffset + 75
+    headerYOffset = headerYOffset + 75
 
-    -- ===== COLUMN HEADER BAR (always show so user sees column layout even with no data) =====
+    -- Set fixedHeader height (title card only; column headers go in columnHeaderClip)
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+
+    -- ===== COLUMN HEADER BAR (in columnHeaderClip — scrolls horizontally with data) =====
     local COLUMN_HEADER_HEIGHT = 22
-    local colHeaderBar = CreateFrame("Frame", nil, parent)
-    colHeaderBar:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    colHeaderBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    local COLUMN_HEADER_PAD = 4
+    local mainFrameRef = WarbandNexus.UI.mainFrame
+    local columnHeaderClip = mainFrameRef and mainFrameRef.columnHeaderClip
+    local columnHeaderInner = mainFrameRef and mainFrameRef.columnHeaderInner
+    local colHeaderParent = columnHeaderInner or headerParent
+
+    if columnHeaderClip then
+        columnHeaderClip:SetHeight(COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD)
+    end
+    if columnHeaderInner then
+        local scrollChild = mainFrameRef.scrollChild
+        local innerWidth = scrollChild and scrollChild:GetWidth() or (width + SIDE_MARGIN * 2)
+        columnHeaderInner:SetWidth(innerWidth)
+    end
+
+    local colHeaderBar = CreateFrame("Frame", nil, colHeaderParent)
     colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
+    if columnHeaderInner then
+        colHeaderBar:SetPoint("TOPLEFT", SIDE_MARGIN, 0)
+        colHeaderBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, 0)
+    else
+        colHeaderBar:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+        colHeaderBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+        headerYOffset = headerYOffset + COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    end
 
     local colHeaderBg = colHeaderBar:CreateTexture(nil, "BACKGROUND")
     colHeaderBg:SetAllPoints()
-    colHeaderBg:SetColorTexture(1, 1, 1, 0.03)
+    colHeaderBg:SetColorTexture(0.08, 0.08, 0.10, 0.95)
 
+    local accentR = COLORS.accent[1] or 0.40
+    local accentG = COLORS.accent[2] or 0.20
+    local accentB = COLORS.accent[3] or 0.58
     local colHeaderLine = colHeaderBar:CreateTexture(nil, "ARTWORK")
     colHeaderLine:SetPoint("BOTTOMLEFT", 0, 0)
     colHeaderLine:SetPoint("BOTTOMRIGHT", 0, 0)
     colHeaderLine:SetHeight(1)
-    colHeaderLine:SetColorTexture(1, 1, 1, 0.08)
+    colHeaderLine:SetColorTexture(accentR, accentG, accentB, 0.5)
 
-    -- Use hdef.text (English) so column headers are always correct regardless of game locale.
     for _, hdef in ipairs(HEADER_DEFS) do
         local col = hdef.col
         if IsColumnVisible(col) then
             local lbl = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
-            lbl:SetText("|cffffffff" .. (hdef.text or (ns.L and ns.L[hdef.label]) or "") .. "|r")
+            local displayText = hdef.text or (ns.L and ns.L[hdef.label]) or ""
+            lbl:SetText("|cffcccccc" .. displayText .. "|r")
             lbl:SetJustifyH(hdef.align or "CENTER")
             local w = (hdef.getWidth and hdef.getWidth()) or ColWidth(col)
             lbl:SetWidth(w)
@@ -989,7 +1057,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     colHeaderBar:Show()
 
-    yOffset = yOffset + COLUMN_HEADER_HEIGHT + 4
+    -- Scroll content starts below the column header overlay area.
+    -- The overlay covers the top (COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD) pixels of the scroll area,
+    -- so data rows must begin after that to avoid rendering behind the frozen headers.
+    local colHeaderOverlayH = columnHeaderClip and (COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD) or 0
+    local yOffset = 8 + colHeaderOverlayH
 
     -- ===== EMPTY STATE =====
     if totalProfChars == 0 then
@@ -1038,6 +1110,13 @@ function WarbandNexus:DrawProfessionsTab(parent)
         if ApplyVisuals then
             ApplyVisuals(header, {0.08, 0.08, 0.10, 0.95}, borderColor)
         end
+        -- Gold accent bar for Favorites section (matching CharactersUI style)
+        if sectionKey == "profFavoritesExpanded" then
+            local accent = header:CreateTexture(nil, "ARTWORK", nil, 2)
+            accent:SetSize(3, HEADER_HEIGHT - 8)
+            accent:SetPoint("LEFT", 4, 0)
+            accent:SetColorTexture(1, 0.82, 0.2, 0.9)
+        end
         yOffset = yOffset + HEADER_HEIGHT
 
         if isExpanded then
@@ -1058,14 +1137,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
         yOffset = yOffset + 4  -- breathing room between sections
     end
 
-    -- Favorites section (always visible if has entries)
+    -- Favorites section (always visible if has entries) - gold/yellow accent like CharactersUI
     DrawSection(
         trackedFavorites,
         (ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites",
         "profFavoritesExpanded",
         true,
         "GM-icon-assistActive-hover",
-        {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+        {1, 0.82, 0.2, 0.5}
     )
 
     -- Regular characters section
@@ -1250,7 +1329,7 @@ local function SetEquipCell(cell, eqData, slotKey)
         cell:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:AddLine(displayName, 1, 0.82, 0)
-            GameTooltip:AddLine("No item equipped", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine((ns.L and ns.L["GEAR_NO_ITEM_EQUIPPED"]) or "No item equipped in this slot.", 0.7, 0.7, 0.7)
             GameTooltip:Show()
         end)
         cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1388,23 +1467,31 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local moxieText = EnsureProgressCell("Moxie", "moxie")
     local cooldownsText = EnsureProgressCell("Cooldowns", "cooldowns")
 
-    -- EQUIPMENT ICON CELLS (tool, acc1, acc2)
-    local function EnsureEquipIconCell(fieldKey, colKey)
+    -- EQUIPMENT ICONS (tool + acc1 + acc2 in single "equipment" column)
+    local EQUIP_ICON_SIZE = 22
+    local EQUIP_ICON_GAP = 4
+    local equipVisible = IsColumnVisible("equipment")
+    local equipX = ColOffset("equipment")
+    local equipW = ColWidth("equipment")
+
+    local function EnsureEquipIcon(fieldKey, iconIndex)
         local key = p .. fieldKey
         if not row[key] then
             local btn = CreateFrame("Button", nil, row)
             btn:EnableMouse(true)
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
-            btn.icon:SetSize(22, 22)
+            btn.icon:SetSize(EQUIP_ICON_SIZE, EQUIP_ICON_SIZE)
             btn.icon:SetPoint("CENTER", 0, 0)
             btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             row[key] = btn
         end
         local btn = row[key]
-        if IsColumnVisible(colKey) then
-            btn:SetSize(ColWidth(colKey), ROW_HEIGHT / 2)
+        if equipVisible then
+            btn:SetSize(EQUIP_ICON_SIZE, EQUIP_ICON_SIZE)
             btn:ClearAllPoints()
-            btn:SetPoint("LEFT", ColOffset(colKey), centerY)
+            local xOff = equipX + (iconIndex - 1) * (EQUIP_ICON_SIZE + EQUIP_ICON_GAP)
+            local padding = math.floor((equipW - 3 * EQUIP_ICON_SIZE - 2 * EQUIP_ICON_GAP) / 2)
+            btn:SetPoint("LEFT", xOff + padding, centerY)
             btn:Show()
         else
             btn:Hide()
@@ -1412,9 +1499,9 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         return btn
     end
 
-    local toolCell = EnsureEquipIconCell("Tool", "tool")
-    local acc1Cell = EnsureEquipIconCell("Acc1", "acc1")
-    local acc2Cell = EnsureEquipIconCell("Acc2", "acc2")
+    local toolCell = EnsureEquipIcon("Tool", 1)
+    local acc1Cell = EnsureEquipIcon("Acc1", 2)
+    local acc2Cell = EnsureEquipIcon("Acc2", 3)
 
     -- COLUMN HIT-FRAMES (interactive tooltips for skill + cooldowns)
     local skillHit = AcquireColumnHitFrame(row, p.."SkillHit", "skill", centerY)

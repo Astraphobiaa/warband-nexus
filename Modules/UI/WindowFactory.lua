@@ -130,16 +130,20 @@ local function CreateExternalWindow(config)
         ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
     end
     
-    -- Make header draggable
+    -- Make header draggable (scale-correct)
     header:EnableMouse(true)
-    header:SetMovable(true)
-    header:RegisterForDrag("LeftButton")
-    header:SetScript("OnDragStart", function()
-        dialog:StartMoving()
-    end)
-    header:SetScript("OnDragStop", function()
-        dialog:StopMovingOrSizing()
-    end)
+    if ns.WindowManager and ns.WindowManager.InstallDragHandler then
+        ns.WindowManager:InstallDragHandler(header, dialog)
+    else
+        header:SetMovable(true)
+        header:RegisterForDrag("LeftButton")
+        header:SetScript("OnDragStart", function()
+            dialog:StartMoving()
+        end)
+        header:SetScript("OnDragStop", function()
+            dialog:StopMovingOrSizing()
+        end)
+    end
     
     -- Icon (support both texture and atlas)
     local iconIsAtlas = config.iconIsAtlas or false

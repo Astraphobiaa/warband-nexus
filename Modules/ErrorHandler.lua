@@ -64,34 +64,6 @@ function WarbandNexus:SafeCall(func, context, ...)
     return true, result
 end
 
---[[
-    Safely execute a function and return nil on error (silent failure)
-    @param func function - Function to execute
-    @param context string - Context for logging
-    @param ... any - Arguments
-    @return any - Result or nil
-]]
-function WarbandNexus:SafeCallSilent(func, context, ...)
-    local success, result = self:SafeCall(func, context, ...)
-    if success then
-        return result
-    end
-    return nil
-end
-
---[[
-    Wrap a function with error handling
-    Returns a new function that catches errors
-    @param func function - Original function
-    @param context string - Context name
-    @return function - Wrapped function
-]]
-function WarbandNexus:WrapFunction(func, context)
-    return function(...)
-        return self:SafeCall(func, context, ...)
-    end
-end
-
 -- ============================================================================
 -- ERROR LOGGING
 -- ============================================================================

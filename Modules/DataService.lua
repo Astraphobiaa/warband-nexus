@@ -104,10 +104,6 @@ function WarbandNexus:ShouldSuppressPlayedMessage()
     return GetTime() < suppressPlayedUntilTime
 end
 
---- No-op kept for API compatibility
-function WarbandNexus:DecrementSuppressPlayedCounter()
-end
-
 --- Handle TIME_PLAYED_MSG event
 --- @param totalTimePlayed number Total seconds played on this character
 --- @param timePlayedThisLevel number Seconds played at current level
@@ -3808,14 +3804,13 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
                 wipe(self.db.char.bags.items[bagIndex])
             end
             
-            -- Use API wrapper (TWW compatible)
-            local numSlots = self:API_GetBagSize(bagID)
+            local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
             totalSlots = totalSlots + numSlots
-            
+
             for slotID = 1, numSlots do
                 -- PERFORMANCE: Quick check first (skip empty slots)
                 if C_Container.HasContainerItem(bagID, slotID) then
-                    local itemInfo = self:API_GetContainerItemInfo(bagID, slotID)
+                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
                     
                     if itemInfo and itemInfo.itemID then
                         usedSlots = usedSlots + 1
@@ -4118,7 +4113,7 @@ function WarbandNexus:ScanWarbandBank(specificBagIDs)
         local isOpen = ns.Utilities:IsWarbandBankOpen(self)
         if not isOpen then
             local firstBagID = Enum.BagIndex.AccountBankTab_1
-            local numSlots = self:API_GetBagSize(firstBagID)
+            local numSlots = C_Container.GetContainerNumSlots(firstBagID) or 0
             if not numSlots or numSlots == 0 then
                 return false
             end
@@ -4163,12 +4158,11 @@ function WarbandNexus:ScanWarbandBank(specificBagIDs)
                 wipe(self.db.global.warbandBank.items[tabIndex])
             end
             
-            -- Use API wrapper (TWW compatible)
-            local numSlots = self:API_GetBagSize(bagID)
+            local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
             totalSlots = totalSlots + numSlots
-            
+
             for slotID = 1, numSlots do
-                local itemInfo = self:API_GetContainerItemInfo(bagID, slotID)
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
                 
                 if itemInfo and itemInfo.itemID then
                     usedSlots = usedSlots + 1
@@ -4176,7 +4170,7 @@ function WarbandNexus:ScanWarbandBank(specificBagIDs)
                     
                     -- Get extended item info
                     local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
-                          _, _, itemTexture, _, classID, subclassID = self:API_GetItemInfo(itemInfo.itemID)
+                          _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemInfo.itemID)
                     
                     -- Special handling for Battle Pets (classID 17)
                     local displayName = itemName
@@ -4276,7 +4270,7 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
     
     if isFullScan then
         -- Full scan: Verify bank is accessible
-        local mainBankSlots = self:API_GetBagSize(Enum.BagIndex.Bank or -1)
+        local mainBankSlots = C_Container.GetContainerNumSlots(Enum.BagIndex.Bank or -1) or 0
         if mainBankSlots == 0 and not self.bankIsOpen then
             return false
         end
@@ -4319,12 +4313,11 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
                 wipe(self.db.char.personalBank.items[bagIndex])
             end
             
-            -- Use API wrapper (TWW compatible)
-            local numSlots = self:API_GetBagSize(bagID)
+            local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
             totalSlots = totalSlots + numSlots
-            
+
             for slotID = 1, numSlots do
-                local itemInfo = self:API_GetContainerItemInfo(bagID, slotID)
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
                 
                 if itemInfo and itemInfo.itemID then
                     usedSlots = usedSlots + 1
@@ -4332,7 +4325,7 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
                     
                     -- Get extended item info
                     local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
-                          _, _, itemTexture, _, classID, subclassID = self:API_GetItemInfo(itemInfo.itemID)
+                          _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemInfo.itemID)
                     
                     -- Special handling for Battle Pets (classID 17)
                     local displayName = itemName

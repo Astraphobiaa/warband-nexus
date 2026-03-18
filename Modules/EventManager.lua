@@ -47,10 +47,9 @@ local EVENT_CONFIG = {
 }
 
 -- ============================================================================
--- EVENT QUEUE & STATE
+-- STATE
 -- ============================================================================
 
-local eventQueue = {}      -- Priority queue for pending events
 local activeTimers = {}    -- Active throttle/debounce timers
 local eventStats = {       -- Event processing statistics
     processed = {},
@@ -116,76 +115,8 @@ local function Debounce(key, interval, func, ...)
 end
 
 -- ============================================================================
--- PRIORITY QUEUE MANAGEMENT
--- ============================================================================
-
--- Forward declaration for queue processor frame (Show/Hide pattern)
-local queueProcessorFrame = nil
-
---[[
-    Add event to priority queue
-    @param eventName string - Event identifier
-    @param priority number - Priority level
-    @param handler function - Event handler function
-    @param ... any - Handler arguments
-]]
-local function QueueEvent(eventName, priority, handler, ...)
-    table.insert(eventQueue, {
-        name = eventName,
-        priority = priority,
-        handler = handler,
-        args = {...},
-        timestamp = time(),
-    })
-    
-    -- Sort queue by priority (descending)
-    table.sort(eventQueue, function(a, b)
-        return a.priority > b.priority
-    end)
-    
-    -- Activate the OnUpdate processor (Show/Hide pattern)
-    if queueProcessorFrame and not queueProcessorFrame:IsShown() then
-        queueProcessorFrame:Show()
-    end
-end
-
---[[
-    Process next event in priority queue
-    @return boolean - True if event was processed, false if queue empty
-]]
-local function ProcessNextEvent()
-    if #eventQueue == 0 then
-        return false
-    end
-    
-    local event = table.remove(eventQueue, 1) -- Remove highest priority
-    if not event or not event.handler then return false end
-    event.handler(unpack(event.args or {}))
-    eventStats.processed[event.name] = (eventStats.processed[event.name] or 0) + 1
-    
-    return true
-end
-
---[[
-    Process all queued events (up to max limit per frame)
-    @param maxEvents number - Max events to process (default 10)
-]]
-local function ProcessEventQueue(maxEvents)
-    maxEvents = maxEvents or 10
-    local processed = 0
-    
-    while processed < maxEvents and ProcessNextEvent() do
-        processed = processed + 1
-    end
-    
-    return processed
-end
-
--- ============================================================================
 -- PUBLIC API (WarbandNexus Event Handlers)
 -- ============================================================================
-
--- OnBagUpdateThrottled: REMOVED — BAG_UPDATE owned by ItemsCacheService (0.5s bucket)
 
 --[[
     Debounced COLLECTION_CHANGED handler
@@ -213,38 +144,6 @@ end
 function WarbandNexus:OnPetListChangedDebounced()
     Debounce("PET_LIST_CHANGED", EVENT_CONFIG.THROTTLE.PET_LIST_CHANGED, function()
         self:OnPetListChanged()
-    end)
-end
-
---[[
-    Throttled PVE_DATA_CHANGED handler
-    Reduces redundant PvE data refreshes
-]]
-
---[[
-    Process manual UI refresh with high priority
-    User-initiated, process quickly
-    NOTE: Event-driven architecture - UI modules listen to data update events
-]]
--- REMOVED: RefreshUIWithPriority() - never called, event-driven architecture handles refreshes
-
--- ============================================================================
--- AUTOMATIC QUEUE PROCESSOR (Show/Hide pattern)
--- ============================================================================
--- OnUpdate only runs when the frame is shown.
--- QueueEvent() shows the frame when items are added.
--- The processor hides itself when the queue is empty.
--- This eliminates per-frame function call overhead when idle.
-
-if WarbandNexus then
-    queueProcessorFrame = CreateFrame("Frame")
-    queueProcessorFrame:Hide()  -- Start hidden (no queue items yet)
-    queueProcessorFrame:SetScript("OnUpdate", function(self, elapsed)
-        if #eventQueue == 0 then
-            self:Hide()  -- Queue empty: stop OnUpdate until next QueueEvent
-            return
-        end
-        ProcessEventQueue(5) -- Process up to 5 events per frame
     end)
 end
 
@@ -316,7 +215,6 @@ end
     @param quantityGainSource number - Source of gain
     @param quantityLostSource number - Source of loss
 ]]
--- REMOVED: OnCurrencyChangedThrottled() - deprecated, handled by CurrencyCacheService
 
 --[[
     Called when player money changes

@@ -693,20 +693,6 @@ function WarbandNexus:GetTryCount(collectibleType, id)
             end
         end
         if sourceItemID then
-            local statCount = 0
-            local statIds = questStarterSourceToStatisticIds[sourceItemID]
-            if statIds and #statIds > 0 and GetStatistic then
-                for idx = 1, #statIds do
-                    local sid = statIds[idx]
-                    if sid and (not issecretvalue or not issecretvalue(sid)) then
-                        local ok, val = pcall(GetStatistic, sid)
-                        if ok and val and (not issecretvalue or not issecretvalue(val)) then
-                            local n = tonumber(val)
-                            if n and n > statCount then statCount = n end
-                        end
-                    end
-                end
-            end
             local itemCount = WarbandNexus.db.global.tryCounts.item and WarbandNexus.db.global.tryCounts.item[sourceItemID]
             local localStored = type(itemCount) == "number" and itemCount or 0
             local mountCounts = WarbandNexus.db.global.tryCounts.mount
@@ -720,7 +706,7 @@ function WarbandNexus:GetTryCount(collectibleType, id)
                     localStored = mountCounts[2119]
                 end
             end
-            return statCount + localStored
+            return localStored
         end
     end
     local count = WarbandNexus.db.global.tryCounts[collectibleType][id]
@@ -744,12 +730,13 @@ end
 function WarbandNexus:IncrementTryCount(collectibleType, id)
     if not VALID_TYPES[collectibleType] or not id then return 0 end
     if not EnsureDB() then return 0 end
-    local current = WarbandNexus:GetTryCount(collectibleType, id)
-    -- CRITICAL FIX: First attempt should be 1, not 0
-    -- When user loots for first time, they want to see "1 attempt" not "0 attempts"
-    local newCount = current + 1
-    WarbandNexus.db.global.tryCounts[collectibleType][id] = newCount
-    return newCount
+    
+    local stored = WarbandNexus.db.global.tryCounts[collectibleType][id]
+    local currentStored = type(stored) == "number" and stored or 0
+    local newStored = currentStored + 1
+    WarbandNexus.db.global.tryCounts[collectibleType][id] = newStored
+    
+    return WarbandNexus:GetTryCount(collectibleType, id)
 end
 
 ---Reset try count to 0 for a repeatable collectible (BoE/farmable mounts).
@@ -1306,7 +1293,10 @@ local function ReseedStatisticsForDrops(drops, statIds)
         local val = GetStat(sid)
         local num
         if val and not (issecretvalue and issecretvalue(val)) then
-            num = tonumber(val)
+            local s = string.gsub(tostring(val), "[^%d]", "")
+            if s ~= "" then
+                num = tonumber(s)
+            end
         end
         if num and num > 0 then
             thisCharTotal = thisCharTotal + num
@@ -4028,7 +4018,10 @@ local function SeedFromStatistics()
                 local val = GetStat(sid)
                 local num
                 if val and not (issecretvalue and issecretvalue(val)) then
-                    num = tonumber(val)
+                    local s = string.gsub(tostring(val), "[^%d]", "")
+                    if s ~= "" then
+                        num = tonumber(s)
+                    end
                 end
                 if num and num > 0 then
                     thisCharTotal = thisCharTotal + num

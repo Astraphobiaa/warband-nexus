@@ -146,16 +146,18 @@ function WarbandNexus:DrawStorageTab(parent)
     end
     HideEmptyStateCard(parent, "storage")
     
-    local yOffset = 8 -- Top padding for consistency with other tabs
     local width = parent:GetWidth() - 20
     local indent = 20
+    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local headerYOffset = 8
     
     -- Get search text from SearchStateManager
     local storageSearchText = SearchStateManager:GetQuery("storage")
     
-    -- ===== HEADER CARD (Cached on parent to prevent frame leak) =====
+    -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
     if not parent._storageTitleCard then
-        local titleCard = CreateCard(parent, 70)
+        local titleCard = CreateCard(headerParent, 70)
 
         -- Header icon with ring border (standardized)
         local CreateHeaderIcon = ns.UI_CreateHeaderIcon
@@ -207,12 +209,11 @@ function WarbandNexus:DrawStorageTab(parent)
 
     local titleCard = parent._storageTitleCard
 
-    -- Re-parent cached frame if it was orphaned by PopulateContent
-    if titleCard:GetParent() ~= parent then
-        titleCard:SetParent(parent)
+    -- Re-parent to fixedHeader
+    if titleCard:GetParent() ~= headerParent then
+        titleCard:SetParent(headerParent)
     end
 
-    -- Update dynamic theme color for title
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["STORAGE_HEADER"]) or "Storage Browser") .. "|r"
@@ -221,79 +222,69 @@ function WarbandNexus:DrawStorageTab(parent)
     parent._storageSubtitleText:SetText(subtitleTextContent)
 
     titleCard:ClearAllPoints()
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     titleCard:Show()
     
-    yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
+    headerYOffset = headerYOffset + GetLayout().afterHeader
     
-    -- Check if module is disabled - show beautiful disabled state card
+    -- Check if module is disabled
     if not ns.Utilities:IsModuleEnabled("storage") then
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["STORAGE_DISABLED_TITLE"]) or "Character Storage")
-        return yOffset + cardHeight
+        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["STORAGE_DISABLED_TITLE"]) or "Character Storage")
+        return 8 + cardHeight
     end
     
-    -- ===== SEARCH BOX (Cached on parent to prevent frame leak) =====
+    -- ===== SEARCH BOX (in fixedHeader - non-scrolling) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
-    -- Use SearchStateManager for state management
-    local storageSearchText = SearchStateManager:GetQuery("storage")
 
     if not parent._storageSearchBox then
-        parent._storageSearchBox = CreateSearchBox(parent, width, (ns.L and ns.L["STORAGE_SEARCH"]) or "Search storage...", function(text)
-            -- Update search state via SearchStateManager (throttled, event-driven)
+        parent._storageSearchBox = CreateSearchBox(headerParent, width, (ns.L and ns.L["STORAGE_SEARCH"]) or "Search storage...", function(text)
             SearchStateManager:SetSearchQuery("storage", text)
-
-            -- Prepare container for rendering
             local resultsContainer = parent.storageResultsContainer
             if resultsContainer then
                 SearchResultsRenderer:PrepareContainer(resultsContainer)
-
-                -- Redraw results with new search text
                 local contentWidth = parent:GetWidth() - 20
                 local contentHeight = self:DrawStorageResults(resultsContainer, 0, contentWidth, text)
-
-                -- Update container height
                 resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
             end
         end, 0.4, storageSearchText)
     end
 
     local searchBox = parent._storageSearchBox
-    -- Re-parent cached frame if it was orphaned by PopulateContent
-    if searchBox:GetParent() ~= parent then
-        searchBox:SetParent(parent)
+    if searchBox:GetParent() ~= headerParent then
+        searchBox:SetParent(headerParent)
     end
     searchBox:ClearAllPoints()
-    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     searchBox:Show()
 
-    yOffset = yOffset + 32 + GetLayout().afterElement  -- Search box height + spacing
+    headerYOffset = headerYOffset + 32 + GetLayout().afterElement
 
-    -- ===== RESULTS CONTAINER (Cached on parent to prevent frame leak) =====
+    -- Set fixedHeader height so scroll area starts below it
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+
+    -- ===== RESULTS CONTAINER (in scroll area) =====
     if not parent._storageResultsContainer then
-        parent._storageResultsContainer = CreateResultsContainer(parent, yOffset, SIDE_MARGIN)
+        parent._storageResultsContainer = CreateResultsContainer(parent, 8, SIDE_MARGIN)
     end
     local resultsContainer = parent._storageResultsContainer
-    -- Re-parent cached frame if it was orphaned by PopulateContent
     if resultsContainer:GetParent() ~= parent then
         resultsContainer:SetParent(parent)
     end
     resultsContainer:ClearAllPoints()
-    resultsContainer:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    resultsContainer:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    resultsContainer:SetHeight(1) -- Will be set after content is drawn
+    resultsContainer:SetPoint("TOPLEFT", SIDE_MARGIN, -8)
+    resultsContainer:SetPoint("TOPRIGHT", -SIDE_MARGIN, -8)
+    resultsContainer:SetHeight(1)
     resultsContainer:Show()
-    parent.storageResultsContainer = resultsContainer  -- Store reference for search callback
+    parent.storageResultsContainer = resultsContainer
     
-    -- Initial draw of results
     local contentHeight = self:DrawStorageResults(resultsContainer, 0, width, storageSearchText)
-    
-    -- CRITICAL FIX: Update container height AFTER content is drawn
     resultsContainer:SetHeight(math.max(contentHeight, 1))
     
-    return yOffset + contentHeight
+    return 8 + contentHeight
 end
 
 --============================================================================
@@ -301,7 +292,22 @@ end
 --============================================================================
 
 function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchText)
-local indent = BASE_INDENT  -- Level 1 indent
+    -- Clean up old non-virtual children (headers, cards) from previous render.
+    -- VLM handles its own _isVirtualRow frames; we only need to recycle stale headers.
+    local recycleBin = ns.UI_RecycleBin
+    local oldChildren = {parent:GetChildren()}
+    for i = 1, #oldChildren do
+        local child = oldChildren[i]
+        if not child._isVirtualRow then
+            child:Hide()
+            child:ClearAllPoints()
+            child:SetParent(recycleBin or UIParent)
+        end
+    end
+
+    local indent = BASE_INDENT
+    local flatList = {}
+    local globalRowIdxAll = 0
     self.recentlyExpanded = self.recentlyExpanded or {}
     
     -- Get expanded state
@@ -321,14 +327,16 @@ local indent = BASE_INDENT  -- Level 1 indent
                 if isExpanded then self.recentlyExpanded[key] = GetTime() end
             end
         else
-            -- Old style toggle (fallback)
             if key == "warband" or key == "personal" or key == "guild" then
                 expanded[key] = not expanded[key]
+                isExpanded = expanded[key]
             else
                 expanded.categories[key] = not expanded.categories[key]
+                isExpanded = expanded.categories[key]
             end
         end
 
+        self._storageExpandedKey = isExpanded and key or nil
         self:RefreshUI()
     end
     
@@ -569,9 +577,6 @@ local indent = BASE_INDENT  -- Level 1 indent
         
         yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
 if personalExpanded then
--- Global row counter for zebra striping across all characters and types
-        local globalRowIdx = 0
-        
         -- Iterate through each character
         local hasAnyPersonalItems = false
         
@@ -806,79 +811,12 @@ if isCharExpanded then
                             yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Type header (no extra spacing before rows)
 if isTypeExpanded then
 -- Display items (with search filter)
-                                    local shouldAnimate = self.recentlyExpanded[typeKey] and (GetTime() - self.recentlyExpanded[typeKey] < 0.5)
-                                    local animIdx = 0  -- Local animation counter for this category only
                                     for _, item in ipairs(charItems[typeName]) do
                                     -- Apply search filter
                                     local shouldShow = ItemMatchesSearch(item)
                                     
                                     if shouldShow then
-                                        animIdx = animIdx + 1  -- Increment local counter
-                                        globalRowIdx = globalRowIdx + 1  -- Increment global counter
-                                        
-                                        -- ITEMS ROW (Pooled) - Level 2 indent (same as Type header)
-                                        local itemIndent = BASE_INDENT * 2  -- 30px (same as type header)
-                                        local itemRow = AcquireStorageRow(parent, width - itemIndent, ROW_HEIGHT)
-                                        
-                                        -- Smart Animation
-                                        if not shouldAnimate then itemRow:SetAlpha(1) end
-                                        if itemRow.anim then itemRow.anim:Stop() end
-
-                                        if shouldAnimate then
-                                            itemRow:SetAlpha(0)
-                                            if not itemRow.anim then
-                                                local anim = itemRow:CreateAnimationGroup()
-                                                local fade = anim:CreateAnimation("Alpha")
-                                                fade:SetSmoothing("OUT")
-                                                anim:SetScript("OnFinished", function() itemRow:SetAlpha(1) end)
-                                                itemRow.anim = anim
-                                                itemRow.fade = fade
-                                            end
-                                            
-                                            itemRow.fade:SetFromAlpha(0)
-                                            itemRow.fade:SetToAlpha(1)
-                                            itemRow.fade:SetDuration(0.15)
-                                            itemRow.fade:SetStartDelay(animIdx * 0.05)  -- Use local animIdx instead of global
-                                            itemRow.anim:Play()
-                                        end
-                                        
-                                        itemRow:ClearAllPoints()
-                                        itemRow:SetPoint("TOPLEFT", itemIndent, -yOffset)  -- Row at Level 2 (30px, same as Type header)
-                                        
-                                        -- Set alternating background colors (Factory pattern)
-                                        ns.UI.Factory:ApplyRowBackground(itemRow, globalRowIdx)
-                                        
-                                        -- Update Data
-                                        itemRow.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
-                                        itemRow.icon:SetTexture(item.iconFileID or 134400)
-                                        
-                                        -- Give more space for location text, reduce name width
-                                        local nameWidth = width - itemIndent - 350  -- Account for row indent
-                                        itemRow.nameText:SetWidth(nameWidth)
-                                        
-                                        -- Get item name (pending items show "Loading..." until async resolves)
-                                        local baseName = item.name
-                                        if not baseName and item.link then
-                                            baseName = item.link:match("%[(.-)%]")
-                                        end
-                                        if not baseName and item.pending then
-                                            -- Item metadata is being loaded asynchronously
-                                            baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
-                                        end
-                                        if not baseName and item.itemID then
-                                            baseName = C_Item.GetItemInfo(item.itemID)
-                                        end
-                                        baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
-                                        
-                                        local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                                        if item.pending then
-                                            itemRow.nameText:SetText(format("|cff888888%s|r", displayName))
-                                        else
-                                            itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
-                                        end
-                                        
-                                        itemRow.locationText:SetWidth(80)
-                                        -- Distinguish between bank and inventory bags using actualBagID
+                                        globalRowIdxAll = globalRowIdxAll + 1
                                         local locText = ""
                                         if item.actualBagID then
                                             if item.actualBagID == -1 then
@@ -889,42 +827,18 @@ if isTypeExpanded then
                                                 locText = format((ns.L and ns.L["BANK_BAG_FORMAT"]) or "Bank Bag %d", item.actualBagID - 5)
                                             end
                                         end
-                                        itemRow.locationText:SetWidth(0)
-                                        itemRow.locationText:SetText(locText)
-                                        itemRow.locationText:SetTextColor(1, 1, 1)
-                                        itemRow.locationText:SetWordWrap(false)
-                                        itemRow.locationText:SetNonSpaceWrap(false)
-                                        
-                                        -- Tooltip
-                                        itemRow:SetScript("OnEnter", function(self)
-                                            if not ShowTooltip then
-                                                if item.itemLink then
-                                                    local tooltipData = {
-                                                        type = "item",
-                                                        itemID = item.itemID,
-                                                        itemLink = item.itemLink
-                                                    }
-                                                    ns.TooltipService:Show(self, tooltipData)
-                                                end
-                                                return
-                                            end
-                                            
-                                            ShowTooltip(self, {
-                                                type = "item",
-                                                itemID = item.itemID,
-                                                itemLink = item.itemLink,
-                                                anchor = "ANCHOR_LEFT"
-                                            })
-                                        end)
-                                        itemRow:SetScript("OnLeave", function(self)
-                                            if HideTooltip then
-                                                HideTooltip()
-                                            else
-                                                ns.TooltipService:Hide()
-                                            end
-                                        end)
-                                        
-                                        yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows  -- Row height + standardized spacing
+                                        flatList[#flatList + 1] = {
+                                            type = "row",
+                                            yOffset = yOffset,
+                                            height = ROW_HEIGHT + GetLayout().betweenRows,
+                                            xOffset = BASE_INDENT * 2,
+                                            data = item,
+                                            rowIdx = globalRowIdxAll,
+                                            rowWidth = width - BASE_INDENT * 2,
+                                            locText = locText,
+                                            sectionKey = typeKey,
+                                        }
+                                        yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows
                                     end
                                 end
                                 end
@@ -1038,9 +952,6 @@ if warbandExpanded then
             end
             table.sort(sortedTypes)
         
-        -- Global row counter for zebra striping across all categories
-        local globalRowIdx = 0
-        
         -- Draw each type category
         for _, typeName in ipairs(sortedTypes) do
             local categoryKey = "warband_" .. typeName
@@ -1096,118 +1007,25 @@ if warbandExpanded then
                     
                     if isTypeExpanded then
                         -- Display items in this category (with search filter)
-                        local shouldAnimate = self.recentlyExpanded[categoryKey] and (GetTime() - self.recentlyExpanded[categoryKey] < 0.5)
-                        local animIdx = 0  -- Local animation counter for this category only
                         for _, item in ipairs(warbandItems[typeName]) do
                         -- Apply search filter
                         local shouldShow = ItemMatchesSearch(item)
                         
                         if shouldShow then
-                            animIdx = animIdx + 1  -- Increment local counter
-                            globalRowIdx = globalRowIdx + 1  -- Increment global counter
-                            
-                            -- ITEMS ROW (Pooled)
-                            local itemRow = AcquireStorageRow(parent, width - BASE_INDENT, ROW_HEIGHT)  -- Row width: parent width - header indent
-                            -- Note: AcquireStorageRow sets size. Since we need width-indent, pass it above.
-                            
-                            -- Smart Animation
-                            -- Reset Alpha (pooling safety)
-                            if not shouldAnimate then itemRow:SetAlpha(1) end
-                            if itemRow.anim then itemRow.anim:Stop() end
-
-                            if shouldAnimate then
-                                itemRow:SetAlpha(0)
-                                if not itemRow.anim then
-                                    local anim = itemRow:CreateAnimationGroup()
-                                    local fade = anim:CreateAnimation("Alpha")
-                                    fade:SetSmoothing("OUT")
-                                    anim:SetScript("OnFinished", function() itemRow:SetAlpha(1) end)
-                                    itemRow.anim = anim
-                                    itemRow.fade = fade
-                                end
-                                
-                                itemRow.fade:SetFromAlpha(0)
-                                itemRow.fade:SetToAlpha(1)
-                                itemRow.fade:SetDuration(0.15)
-                                itemRow.fade:SetStartDelay(animIdx * 0.05)  -- Use local animIdx
-                                itemRow.anim:Play()
-                            end
-                            
-                            itemRow:ClearAllPoints()
-                            itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
-                            
-                            -- Set alternating background colors (Factory pattern)
-                            ns.UI.Factory:ApplyRowBackground(itemRow, globalRowIdx)
-                            
-                            -- Update Data (qty, icon, name, location)
-                            itemRow.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
-                            itemRow.icon:SetTexture(item.iconFileID or 134400)
-                            
-                            -- Give more space for location text, reduce name width
-                            local nameWidth = width - 350  -- No indent for rows
-                            itemRow.nameText:SetWidth(nameWidth)
-                            
-                            -- Get item name (pending items show "Loading..." until async resolves)
-                            local baseName = item.name
-                            if not baseName and item.link then
-                                baseName = item.link:match("%[(.-)%]")
-                            end
-                            if not baseName and item.pending then
-                                -- Item metadata is being loaded asynchronously
-                                baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
-                            end
-                            if not baseName and item.itemID then
-                                baseName = C_Item.GetItemInfo(item.itemID)
-                            end
-                            baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
-                            
-                            local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                            if item.pending then
-                                -- Dim appearance for loading items
-                                itemRow.nameText:SetText(format("|cff888888%s|r", displayName))
-                            else
-                                itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
-                            end
-                            
-                            -- Location text: auto-width (no truncation)
+                            globalRowIdxAll = globalRowIdxAll + 1
                             local locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
-                            itemRow.locationText:SetWidth(0)
-                            itemRow.locationText:SetText(locText)
-                            itemRow.locationText:SetTextColor(1, 1, 1)
-                            itemRow.locationText:SetWordWrap(false)
-                            itemRow.locationText:SetNonSpaceWrap(false)
-                            
-                            -- Tooltip support
-                            itemRow:SetScript("OnEnter", function(self)
-                                if not ShowTooltip then
-                                    -- Fallback
-                                    if item.itemLink then
-                                        local tooltipData = {
-                                            type = "item",
-                                            itemID = item.itemID,
-                                            itemLink = item.itemLink
-                                        }
-                                        ns.TooltipService:Show(self, tooltipData)
-                                    end
-                                    return
-                                end
-                                
-                                ShowTooltip(self, {
-                                    type = "item",
-                                    itemID = item.itemID,
-                                    itemLink = item.itemLink,
-                                    anchor = "ANCHOR_LEFT"
-                                })
-                            end)
-                            itemRow:SetScript("OnLeave", function(self)
-                                if HideTooltip then
-                                    HideTooltip()
-                                else
-                                    ns.TooltipService:Hide()
-                                end
-                            end)
-                            
-                            yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows  -- Row height + standardized spacing
+                            flatList[#flatList + 1] = {
+                                type = "row",
+                                yOffset = yOffset,
+                                height = ROW_HEIGHT + GetLayout().betweenRows,
+                                xOffset = BASE_INDENT,
+                                data = item,
+                                rowIdx = globalRowIdxAll,
+                                rowWidth = width - BASE_INDENT,
+                                locText = locText,
+                                sectionKey = categoryKey,
+                            }
+                            yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows
                         end
                     end
                     end
@@ -1394,9 +1212,6 @@ if warbandExpanded then
             end
             table.sort(sortedTypes)
             
-            -- Global row counter for zebra striping across all categories
-            local globalRowIdx = 0
-            
             -- Draw each type category for this guild
             for _, typeName in ipairs(sortedTypes) do
                 local categoryKey = guildKey .. "_" .. typeName  -- Changed: unique per guild
@@ -1454,113 +1269,25 @@ if warbandExpanded then
                         
                         if isTypeExpanded then
                             -- Display items in this category (with search filter)
-                            local shouldAnimate = self.recentlyExpanded[categoryKey] and (GetTime() - self.recentlyExpanded[categoryKey] < 0.5)
-                            local animIdx = 0  -- Local animation counter for this category only
                             for _, item in ipairs(guildItems[typeName]) do
                                 -- Apply search filter
                                 local shouldShow = ItemMatchesSearch(item)
                                 
                                 if shouldShow then
-                                    animIdx = animIdx + 1  -- Increment local counter
-                                    globalRowIdx = globalRowIdx + 1  -- Increment global counter
-                                    
-                                    -- ITEMS ROW (Pooled)
-                                    local itemRow = AcquireStorageRow(parent, width - BASE_INDENT, ROW_HEIGHT)
-                                    
-                                    -- Smart Animation
-                                    if not shouldAnimate then itemRow:SetAlpha(1) end
-                                    if itemRow.anim then itemRow.anim:Stop() end
-
-                                    if shouldAnimate then
-                                        itemRow:SetAlpha(0)
-                                        if not itemRow.anim then
-                                            local anim = itemRow:CreateAnimationGroup()
-                                            local fade = anim:CreateAnimation("Alpha")
-                                            fade:SetSmoothing("OUT")
-                                            anim:SetScript("OnFinished", function() itemRow:SetAlpha(1) end)
-                                            itemRow.anim = anim
-                                            itemRow.fade = fade
-                                        end
-                                        
-                                        itemRow.fade:SetFromAlpha(0)
-                                        itemRow.fade:SetToAlpha(1)
-                                        itemRow.fade:SetDuration(0.15)
-                                        itemRow.fade:SetStartDelay(animIdx * 0.05)  -- Use local animIdx
-                                        itemRow.anim:Play()
-                                    end
-                                    
-                                    itemRow:ClearAllPoints()
-                                    itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
-                                    
-                                    -- Set alternating background colors (Factory pattern)
-                                    ns.UI.Factory:ApplyRowBackground(itemRow, globalRowIdx)
-                                    
-                                    -- Update Data (qty, icon, name, location)
-                                    itemRow.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
-                                    itemRow.icon:SetTexture(item.iconFileID or 134400)
-                                    
-                                    -- Give more space for location text, reduce name width
-                                    local nameWidth = width - 350
-                                    itemRow.nameText:SetWidth(nameWidth)
-                                    
-                                    -- Get item name (pending items show "Loading..." until async resolves)
-                                    local baseName = item.name
-                                    if not baseName and item.link then
-                                        baseName = item.link:match("%[(.-)%]")
-                                    end
-                                    if not baseName and item.pending then
-                                        baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
-                                    end
-                                    if not baseName and item.itemID then
-                                        baseName = C_Item.GetItemInfo(item.itemID)
-                                    end
-                                    baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
-                                    
-                                    local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                                    if item.pending then
-                                        itemRow.nameText:SetText(format("|cff888888%s|r", displayName))
-                                    else
-                                        itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
-                                    end
-                                    
-                                    -- Location text: Guild Bank tab name or number
+                                    globalRowIdxAll = globalRowIdxAll + 1
                                     local locText = item.tabName or (item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex)) or ""
-                                    itemRow.locationText:SetWidth(0)
-                                    itemRow.locationText:SetText(locText)
-                                    itemRow.locationText:SetTextColor(1, 1, 1)
-                                    itemRow.locationText:SetWordWrap(false)
-                                    itemRow.locationText:SetNonSpaceWrap(false)
-                                    
-                                    -- Tooltip support
-                                    itemRow:SetScript("OnEnter", function(self)
-                                        if not ShowTooltip then
-                                            if item.itemLink then
-                                                local tooltipData = {
-                                                    type = "item",
-                                                    itemID = item.itemID,
-                                                    itemLink = item.itemLink
-                                                }
-                                                ns.TooltipService:Show(self, tooltipData)
-                                            end
-                                            return
-                                        end
-                                        
-                                        ShowTooltip(self, {
-                                            type = "item",
-                                            itemID = item.itemID,
-                                            itemLink = item.itemLink,
-                                            anchor = "ANCHOR_LEFT"
-                                        })
-                                    end)
-                                    itemRow:SetScript("OnLeave", function(self)
-                                        if HideTooltip then
-                                            HideTooltip()
-                                        else
-                                            ns.TooltipService:Hide()
-                                        end
-                                    end)
-                                    
-                                    yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows  -- Row height + standardized spacing
+                                    flatList[#flatList + 1] = {
+                                        type = "row",
+                                        yOffset = yOffset,
+                                        height = ROW_HEIGHT + GetLayout().betweenRows,
+                                        xOffset = BASE_INDENT,
+                                        data = item,
+                                        rowIdx = globalRowIdxAll,
+                                        rowWidth = width - BASE_INDENT,
+                                        locText = locText,
+                                        sectionKey = categoryKey,
+                                    }
+                                    yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows
                                 end
                             end
                         end
@@ -1574,6 +1301,75 @@ if warbandExpanded then
         end  -- if guildMatches > 0
     end  -- for guildName (all guilds loop)
     
+    -- Virtual scroll setup
+    local mainFrame = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local VLM = ns.VirtualListModule
+
+    if mainFrame and VLM and #flatList > 0 then
+        local function PopulateStorageRow(row, item, entry)
+            row:SetAlpha(1)
+            if row.anim then row.anim:Stop() end
+            ns.UI.Factory:ApplyRowBackground(row, entry.rowIdx)
+            
+            row.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
+            row.icon:SetTexture(item.iconFileID or 134400)
+            
+            local nameWidth = entry.rowWidth - 350
+            row.nameText:SetWidth(nameWidth)
+            
+            local baseName = item.name
+            if not baseName and item.link then
+                baseName = item.link:match("%[(.-)%]")
+            end
+            if not baseName and item.pending then
+                baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
+            end
+            if not baseName and item.itemID then
+                baseName = C_Item.GetItemInfo(item.itemID)
+            end
+            baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
+            
+            local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
+            if item.pending then
+                row.nameText:SetText(format("|cff888888%s|r", displayName))
+            else
+                row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+            end
+            
+            row.locationText:SetWidth(0)
+            row.locationText:SetText(entry.locText or "")
+            row.locationText:SetTextColor(1, 1, 1)
+            row.locationText:SetWordWrap(false)
+            row.locationText:SetNonSpaceWrap(false)
+            
+            row:SetScript("OnEnter", function(self)
+                if not ShowTooltip then
+                    if item.itemLink then
+                        ns.TooltipService:Show(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
+                    end
+                    return
+                end
+                ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink, anchor = "ANCHOR_LEFT" })
+            end)
+            row:SetScript("OnLeave", function()
+                if HideTooltip then HideTooltip() else ns.TooltipService:Hide() end
+            end)
+        end
+        
+        local totalHeight = VLM.SetupVirtualList(mainFrame, parent, 0, flatList, {
+            createRowFn = function(container, entry)
+                local row = AcquireStorageRow(container, entry.rowWidth, ROW_HEIGHT)
+                PopulateStorageRow(row, entry.data, entry)
+                return row
+            end,
+            releaseRowFn = function(frame)
+                ReleaseStorageRow(frame)
+            end,
+        })
+        
+        return math.max(totalHeight, yOffset) + GetLayout().minBottomSpacing
+    end
+
     return yOffset + GetLayout().minBottomSpacing
 end -- DrawStorageResults
 
