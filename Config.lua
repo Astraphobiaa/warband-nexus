@@ -187,8 +187,8 @@ local options = {
         modulePlans = {
             order = 27,
             type = "toggle",
-            name = function() return (ns.L and ns.L["CONFIG_MOD_PLANS"]) or "Plans" end,
-            desc = function() return (ns.L and ns.L["CONFIG_MOD_PLANS_DESC"]) or "Collection plan tracking and completion goals." end,
+            name = function() return (ns.L and ns.L["CONFIG_MOD_PLANS"]) or "To-Do" end,
+            desc = function() return (ns.L and ns.L["CONFIG_MOD_PLANS_DESC"]) or "Weekly task tracking, collection goals, and vault progress." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.plans ~= false end,
             set = CreateModuleToggleHandler("plans"),

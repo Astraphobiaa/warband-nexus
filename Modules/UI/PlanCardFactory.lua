@@ -2899,12 +2899,12 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     if allComplete then
         titleText:SetTextColor(0.2, 1, 0.2)
-        titleText:SetText(((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Daily Tasks") .. " - " .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete"))
+        titleText:SetText(((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Weekly Progress - ") .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete"))
     else
         titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         local displayContent = plan.contentName or "Midnight"
         if displayContent == "" then displayContent = "Midnight" end
-        titleText:SetText(((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Daily Tasks") .. " - " .. displayContent)
+        titleText:SetText(((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Weekly Progress - ") .. displayContent)
     end
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)

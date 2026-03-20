@@ -232,7 +232,7 @@ local PLAN_TYPES = ns.PLAN_TYPES
 local CATEGORIES = {
     { key = "active", name = (ns.L and ns.L["CATEGORY_MY_PLANS"]) or "My Plans", icon = "Interface\\Icons\\INV_Misc_Map_01" },
     { key = "achievement", name = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", icon = "Interface\\Icons\\Achievement_General" },
-    { key = "daily_tasks", name = (ns.L and ns.L["CATEGORY_DAILY_TASKS"]) or "Daily Tasks", icon = "Interface\\Icons\\INV_Misc_Note_06" },
+    { key = "daily_tasks", name = (ns.L and ns.L["CATEGORY_DAILY_TASKS"]) or "Weekly Progress", icon = "Interface\\Icons\\INV_Misc_Note_06" },
     { key = "illusion", name = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions", iconAtlas = "UpgradeItem-32x32" },
     { key = "mount", name = (ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts", iconAtlas = "dragon-rostrum" },
     { key = "pet", name = (ns.L and ns.L["CATEGORY_PETS"]) or "Pets", iconAtlas = "WildBattlePetCapturable" },
@@ -444,9 +444,9 @@ function WarbandNexus:DrawPlansTab(parent)
     
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "Collection Plans"
+    local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List"
     local titleTextContent = "|cff" .. hexColor .. collectionPlansLabel .. "|r"
-    local plansSubtitle = (ns.L and ns.L["PLANS_SUBTITLE_TEXT"]) or "Track your collection goals"
+    local plansSubtitle = (ns.L and ns.L["PLANS_SUBTITLE_TEXT"]) or "Track your weekly goals & collections"
     local activePlanText = activePlanCount ~= 1
         and string.format((ns.L and ns.L["ACTIVE_PLANS_FORMAT"]) or "%d active plans", activePlanCount)
         or string.format((ns.L and ns.L["ACTIVE_PLAN_FORMAT"]) or "%d active plan", activePlanCount)
@@ -656,7 +656,7 @@ function WarbandNexus:DrawPlansTab(parent)
         headerYOffset = headerYOffset + GetLayout().afterHeader
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["COLLECTION_PLANS"]) or "Collection Plans")
+        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List")
         return 8 + cardHeight
     end
 
@@ -1079,6 +1079,209 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     local CAT_HEADER_H = GetLayout().headerHeight
     local expandedGroups = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
 
+    -- ===== WEEKLY RESET TIMER BAR =====
+    local resetBarH = 30
+    local resetBar = CreateCard(parent, resetBarH)
+    resetBar:SetPoint("TOPLEFT", 10, -yOffset)
+    resetBar:SetPoint("TOPRIGHT", -10, -yOffset)
+    if ApplyVisuals then
+        ApplyVisuals(resetBar, {0.06, 0.04, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7})
+    end
+
+    local resetIcon = resetBar:CreateTexture(nil, "ARTWORK")
+    resetIcon:SetSize(16, 16)
+    resetIcon:SetPoint("LEFT", 12, 0)
+    resetIcon:SetAtlas("characterupdate_clock-icon", true)
+
+    local resetLabel = FontManager:CreateFontString(resetBar, "body", "OVERLAY")
+    resetLabel:SetPoint("LEFT", resetIcon, "RIGHT", 6, 0)
+    resetLabel:SetTextColor(0.8, 0.8, 0.8)
+    resetLabel:SetText((ns.L and ns.L["WEEKLY_RESET_LABEL"]) or "Weekly Reset")
+
+    local resetTimeText = FontManager:CreateFontString(resetBar, "body", "OVERLAY")
+    resetTimeText:SetPoint("RIGHT", -12, 0)
+    resetTimeText:SetTextColor(0.3, 0.9, 0.3)
+    do
+        local ok, seconds = pcall(function()
+            if self.GetWeeklyResetTime then
+                return self:GetWeeklyResetTime() - GetServerTime()
+            elseif C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+                return C_DateAndTime.GetSecondsUntilWeeklyReset() or 0
+            end
+            return 0
+        end)
+        local sec = (ok and type(seconds) == "number") and seconds or 0
+        resetTimeText:SetText(ns.Utilities:FormatTimeCompact(sec))
+    end
+
+    resetBar.timeSinceUpdate = 0
+    resetBar:SetScript("OnUpdate", function(self2, elapsed)
+        self2.timeSinceUpdate = self2.timeSinceUpdate + elapsed
+        if self2.timeSinceUpdate >= 60 then
+            self2.timeSinceUpdate = 0
+            local ok2, sec2 = pcall(function()
+                if WarbandNexus.GetWeeklyResetTime then
+                    return WarbandNexus:GetWeeklyResetTime() - GetServerTime()
+                elseif C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+                    return C_DateAndTime.GetSecondsUntilWeeklyReset() or 0
+                end
+                return 0
+            end)
+            local s = (ok2 and type(sec2) == "number") and sec2 or 0
+            resetTimeText:SetText(ns.Utilities:FormatTimeCompact(s))
+        end
+    end)
+
+    resetBar:Show()
+    yOffset = yOffset + resetBarH + 6
+
+    -- ===== CROSS-CHARACTER SUMMARY CARD =====
+    local summaryGroupKey = "dq_summary"
+    local summaryExpanded = (expandedGroups[summaryGroupKey] ~= false)
+
+    local summaryHeaderH = 32
+    local summaryHeader = CreateCard(parent, summaryHeaderH)
+    summaryHeader:SetPoint("TOPLEFT", 10, -yOffset)
+    summaryHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+    summaryHeader:EnableMouse(true)
+
+    local summaryAccent = summaryHeader:CreateTexture(nil, "ARTWORK")
+    summaryAccent:SetSize(3, summaryHeaderH - 6)
+    summaryAccent:SetPoint("LEFT", 4, 0)
+    summaryAccent:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
+
+    local summaryArrow = summaryHeader:CreateTexture(nil, "ARTWORK")
+    summaryArrow:SetSize(16, 16)
+    summaryArrow:SetPoint("LEFT", 10, 0)
+    if summaryExpanded then
+        summaryArrow:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)
+    else
+        summaryArrow:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
+    end
+    summaryArrow:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+
+    local summaryTitle = FontManager:CreateFontString(summaryHeader, "body", "OVERLAY")
+    summaryTitle:SetPoint("LEFT", 30, 0)
+    summaryTitle:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    summaryTitle:SetText((ns.L and ns.L["CROSS_CHAR_SUMMARY"]) or "Character Overview")
+
+    summaryHeader:SetScript("OnMouseDown", function()
+        if ns.UI_SetExpandedGroup then
+            ns.UI_SetExpandedGroup(summaryGroupKey, not summaryExpanded)
+        elseif expandedGroups then
+            expandedGroups[summaryGroupKey] = not summaryExpanded
+        end
+        if self.RefreshUI then self:RefreshUI() end
+    end)
+    summaryHeader:SetScript("OnEnter", function(f)
+        if ApplyVisuals then
+            ApplyVisuals(f, {0.10, 0.10, 0.12, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        end
+    end)
+    summaryHeader:SetScript("OnLeave", function(f)
+        if ApplyVisuals then
+            ApplyVisuals(f, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        end
+    end)
+    summaryHeader:Show()
+    yOffset = yOffset + summaryHeaderH + 2
+
+    if summaryExpanded then
+        local summaryRowH = 26
+        for si = 1, #filteredPlans do
+            local ok, result = pcall(function()
+                local sPlan = filteredPlans[si]
+                local sClassColor = RAID_CLASS_COLORS[sPlan.characterClass or "PRIEST"] or {r = 1, g = 1, b = 1}
+
+                local sTotalAll, sCompletedAll = 0, 0
+                for _, catInfo in ipairs(CATEGORIES) do
+                    if sPlan.questTypes and sPlan.questTypes[catInfo.key] then
+                        local c, t = GetCategoryStats(sPlan, catInfo.key)
+                        sCompletedAll = sCompletedAll + c
+                        sTotalAll = sTotalAll + t
+                    end
+                end
+
+                local sRow = CreateCard(parent, summaryRowH)
+                sRow:SetPoint("TOPLEFT", 10, -yOffset)
+                sRow:SetPoint("TOPRIGHT", -10, -yOffset)
+
+                local sAccent = sRow:CreateTexture(nil, "ARTWORK")
+                sAccent:SetSize(3, summaryRowH - 4)
+                sAccent:SetPoint("LEFT", 4, 0)
+                sAccent:SetColorTexture(sClassColor.r, sClassColor.g, sClassColor.b, 0.9)
+
+                local sName = FontManager:CreateFontString(sRow, "body", "OVERLAY")
+                sName:SetPoint("LEFT", 14, 0)
+                sName:SetWidth(width * 0.25)
+                sName:SetJustifyH("LEFT")
+                sName:SetWordWrap(false)
+                sName:SetText(string.format("|cff%02x%02x%02x%s|r",
+                    sClassColor.r * 255, sClassColor.g * 255, sClassColor.b * 255,
+                    sPlan.characterName or "Unknown"))
+
+                -- Per-category mini progress
+                local catX = width * 0.30
+                for _, catInfo in ipairs(CATEGORIES) do
+                    if sPlan.questTypes and sPlan.questTypes[catInfo.key] then
+                        local display = CAT_DISPLAY[catInfo.key] or {}
+                        local catColor = display.color or {0.8, 0.8, 0.8}
+                        local c, t = GetCategoryStats(sPlan, catInfo.key)
+                        if t > 0 then
+                            local catFs = FontManager:CreateFontString(sRow, "small", "OVERLAY")
+                            catFs:SetPoint("LEFT", catX, 0)
+                            local cColor = (c == t) and "|cff44ff44" or string.format("|cff%02x%02x%02x", catColor[1] * 255, catColor[2] * 255, catColor[3] * 255)
+                            catFs:SetText(cColor .. c .. "/" .. t .. "|r")
+                            catX = catX + 48
+                        end
+                    end
+                end
+
+                -- Total progress on right
+                local sTotalFs = FontManager:CreateFontString(sRow, "body", "OVERLAY")
+                sTotalFs:SetPoint("RIGHT", -12, 0)
+                local sTotalColor = (sTotalAll > 0 and sCompletedAll == sTotalAll) and "|cff44ff44" or "|cffffcc00"
+                sTotalFs:SetText(sTotalColor .. sCompletedAll .. "/" .. sTotalAll .. "|r")
+
+                -- Vault mini-progress (if character has a vault plan)
+                local vaultPlan = self:HasActiveWeeklyPlan(sPlan.characterName, sPlan.characterRealm)
+                if vaultPlan and vaultPlan.slots then
+                    local tracked = vaultPlan.trackedSlots or { dungeon = true, raid = true, world = true }
+                    local vaultParts = {}
+                    local slotDefs = {
+                        { key = "dungeon", label = "M+", prog = vaultPlan.progress and vaultPlan.progress.dungeonCount or 0, max = 8 },
+                        { key = "raid",    label = "R",  prog = vaultPlan.progress and vaultPlan.progress.raidBossCount or 0, max = 6 },
+                        { key = "world",   label = "W",  prog = vaultPlan.progress and vaultPlan.progress.worldActivityCount or 0, max = 8 },
+                    }
+                    for _, sd in ipairs(slotDefs) do
+                        if tracked[sd.key] then
+                            local vColor = (sd.prog >= sd.max) and "|cff44ff44" or "|cffffcc00"
+                            vaultParts[#vaultParts + 1] = sd.label .. ":" .. vColor .. sd.prog .. "|r"
+                        end
+                    end
+                    if #vaultParts > 0 then
+                        local vaultFs = FontManager:CreateFontString(sRow, "small", "OVERLAY")
+                        vaultFs:SetPoint("RIGHT", sTotalFs, "LEFT", -14, 0)
+                        vaultFs:SetTextColor(0.7, 0.7, 0.7)
+                        vaultFs:SetText(table.concat(vaultParts, " "))
+                    end
+                end
+
+                sRow:Show()
+                return summaryRowH + 2
+            end)
+            if ok and result then
+                yOffset = yOffset + result
+            else
+                yOffset = yOffset + summaryRowH + 2
+            end
+        end
+        yOffset = yOffset + 4
+    end
+
+    yOffset = yOffset + 4
+
+    -- ===== PER-CHARACTER DETAIL SECTIONS =====
     for pi = 1, #filteredPlans do
         local plan = filteredPlans[pi]
         local classColor = RAID_CLASS_COLORS[plan.characterClass or "PRIEST"] or {r = 1, g = 1, b = 1}

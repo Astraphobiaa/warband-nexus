@@ -1035,7 +1035,7 @@ function WarbandNexus:CreateMainWindow()
         { key = "professions", text = (ns.L and ns.L["TAB_PROFESSIONS"]) or "Professions" },
         { key = "gear", text = (ns.L and ns.L["TAB_GEAR"]) or "Gear" },
         { key = "collections", text = (ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections" },
-        { key = "plans",       text = (ns.L and ns.L["TAB_PLANS"]) or "Plans" },
+        { key = "plans",       text = (ns.L and ns.L["TAB_PLANS"]) or "To-Do" },
         { key = "stats",       text = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics" },
     }
     

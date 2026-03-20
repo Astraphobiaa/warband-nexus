@@ -560,6 +560,43 @@ function WarbandNexus:ScanMidnightQuests()
         end
     end
 
+    -- Post-process events: main event isComplete derived from sub-quest completion
+    do
+        local eventList = quests.events
+        if eventList and #eventList > 0 then
+            local groupSubs = {}
+            local groupMains = {}
+            for i = 1, #eventList do
+                local q = eventList[i]
+                local grp = q.eventGroup
+                if grp then
+                    if q.isSubQuest then
+                        if not groupSubs[grp] then groupSubs[grp] = {} end
+                        groupSubs[grp][#groupSubs[grp] + 1] = q
+                    else
+                        if not groupMains[grp] then groupMains[grp] = {} end
+                        groupMains[grp][#groupMains[grp] + 1] = q
+                    end
+                end
+            end
+            for grp, mains in pairs(groupMains) do
+                local subs = groupSubs[grp]
+                if subs and #subs > 0 then
+                    local allSubsDone = true
+                    for i = 1, #subs do
+                        if not subs[i].isComplete then
+                            allSubsDone = false
+                            break
+                        end
+                    end
+                    for i = 1, #mains do
+                        mains[i].isComplete = allSubsDone
+                    end
+                end
+            end
+        end
+    end
+
     -- Sort each category
     for _, catInfo in ipairs(QUEST_CATEGORIES) do
         local list = quests[catInfo.key]
@@ -636,7 +673,7 @@ function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes)
         contentType    = "midnight",
         contentName    = "Midnight",
         questTypes     = normalizedTypes,
-        name           = "Daily Tasks - " .. characterName,
+        name           = ((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Weekly Progress - ") .. characterName,
         iconAtlas      = "questlog-questtypeicon-daily",
         iconIsAtlas    = true,
         createdDate    = time(),

@@ -209,7 +209,7 @@ function WarbandNexus:ShowInfoDialog()
     AddText((ns.L and ns.L["INFO_TAB_CURRENCY"]) or "Currency", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["CURRENCY_DESC"]) or "View all currencies organized by expansion. Compare amounts across characters with hover tooltips. Hide empty currencies with one click.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText((ns.L and ns.L["INFO_TAB_PLANS"]) or "Plans", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["INFO_TAB_PLANS"]) or "To-Do", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["PLANS_DESC"]) or "Track uncollected mounts, pets, toys, achievements, and transmogs. Add goals, view drop sources, and monitor try counts. Access via /wn plan or minimap icon.", "body", {0.9, 0.9, 0.9}, 10)
     
     AddText((ns.L and ns.L["INFO_TAB_PROFESSIONS"]) or "Professions", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)

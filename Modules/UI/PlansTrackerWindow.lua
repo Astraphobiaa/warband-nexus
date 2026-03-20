@@ -1,6 +1,6 @@
 --[[
     Warband Nexus - Plans Tracker Window
-    Standalone floating window opened via /wn plans or /wn plan.
+    Standalone floating window opened via /wn todo.
     Resizable, movable, responsive. Shows active plans by category.
     Card layout: Icon | Name \n Description (source/vendor/zone).
     Achievements: expandable requirements + Blizzard Track button.
@@ -71,7 +71,7 @@ local function GetCategoryKeys()
         { key = "title",         label = (L and L["CATEGORY_TITLES"]) or "Titles" },
         { key = "achievement",   label = (L and L["CATEGORY_ACHIEVEMENTS"]) or "Achievements" },
         { key = "weekly_vault",  label = (L and L["WEEKLY_VAULT"]) or "Weekly Vault" },
-        { key = "daily_quests",  label = (L and L["CATEGORY_DAILY_TASKS"]) or "Daily Tasks" },
+        { key = "daily_quests",  label = (L and L["CATEGORY_DAILY_TASKS"]) or "Weekly Progress" },
         { key = "custom",        label = (L and L["CUSTOM"]) or "Custom" },
     }
 end
@@ -1231,7 +1231,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- Title
     local titleText = FontManager:CreateFontString(header, "body", "OVERLAY")
     titleText:SetPoint("LEFT", hIcon, "RIGHT", 6, 0)
-    local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "Collection Plans"
+    local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List"
     titleText:SetText("|cffffffff" .. collectionPlansLabel .. "|r")
 
     -- Close button (Factory)

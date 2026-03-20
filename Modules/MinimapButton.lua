@@ -273,7 +273,7 @@ function WarbandNexus:ShowMinimapMenu()
             end
             
             -- Plans Tracker
-            rootDescription:CreateButton((ns.L and ns.L["COLLECTION_PLANS"]) or "Collection Plans", function()
+            rootDescription:CreateButton((ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List", function()
                 if self.TogglePlansTrackerWindow then
                     self:TogglePlansTrackerWindow()
                 end

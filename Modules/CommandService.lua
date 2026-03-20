@@ -4,7 +4,7 @@
     
     Handles:
     - Main slash command routing (/wn, /warbandnexus)
-    - Public commands (show, options, help, plans, etc.)
+    - Public commands (show, options, help, todo, etc.)
     - Debug toggle and profiler
 ============================================================================]]
 
@@ -43,7 +43,7 @@ function CommandService:HandleSlashCommand(addon, input)
     if cmd == "help" then
         addon:Print("|cff00ccffWarband Nexus|r — " .. ((ns.L and ns.L["AVAILABLE_COMMANDS"]) or "Available commands:"))
         addon:Print("  |cff00ccff/wn|r — " .. ((ns.L and ns.L["CMD_OPEN"]) or "Open addon window"))
-        addon:Print("  |cff00ccff/wn plan|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "Toggle Plans Tracker window"))
+        addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "Toggle To-Do Tracker window"))
         addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Open settings"))
         addon:Print("  |cff00ccff/wn minimap|r — " .. ((ns.L and ns.L["CMD_MINIMAP"]) or "Toggle minimap button"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
@@ -75,11 +75,11 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:ShowMainWindow()
         return
         
-    elseif cmd == "plans" or cmd == "plan" then
+    elseif cmd == "todo" or cmd == "plans" or cmd == "plan" then
         if addon.TogglePlansTrackerWindow then
             addon:TogglePlansTrackerWindow()
         else
-            addon:Print("|cffff6600" .. ((ns.L and ns.L["PLANS_NOT_AVAILABLE"]) or "Plans Tracker not available.") .. "|r")
+            addon:Print("|cffff6600" .. ((ns.L and ns.L["PLANS_NOT_AVAILABLE"]) or "To-Do Tracker not available.") .. "|r")
         end
         return
         
