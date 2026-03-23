@@ -414,6 +414,15 @@ function InitializationService:InitializeBackgroundServices(addon)
     -- [REMOVED] Legacy CollectionScanner:Initialize() call (7 lines removed)
     -- CollectionService is now initialized automatically in Core.lua:OnInitialize
     
+    -- Reminder Service: Time & zone-based plan reminders (4s)
+    C_Timer.After(4, function()
+        SafeInit(function()
+            if addon and addon.InitializeReminderService then
+                addon:InitializeReminderService()
+            end
+        end, "ReminderService")
+    end)
+    
     -- Database Optimizer: Auto-cleanup and optimization (5s)
     C_Timer.After(5, function()
         if addon and addon.InitializeDatabaseOptimizer then

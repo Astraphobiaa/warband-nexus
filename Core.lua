@@ -338,6 +338,12 @@ local defaults = {
         -- Plan structure: { id, type, itemID, mountID/petID/recipeID, name, icon, source, addedAt, notes }
         plansNextID = 1,  -- Auto-increment ID for plans
         
+        -- ========== REMINDER SETTINGS ==========
+        reminderSettings = {
+            enabled = true,
+            throttleSeconds = 300,
+        },
+        
         -- Window size persistence
         window = {
             width = 700,
@@ -1347,6 +1353,7 @@ local EPHEMERAL_WINDOWS = {
     "WarbandNexus_CustomPlanDialog",
     "WarbandNexusInfoDialog",
     "WarbandNexusUpdateBackdrop",
+    "WarbandNexus_ReminderDialog",
 }
 
 function WarbandNexus:OnCombatStart()

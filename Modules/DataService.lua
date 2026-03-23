@@ -45,9 +45,18 @@ local function DebugPrint(...)
 end
 
 -- Rested XP accumulation constants (Blizzard behavior in resting areas).
+-- Pandaren "Inner Peace" racial doubles both the cap and accumulation rate.
 local RESTED_XP_GAIN_PER_8H = 0.05
 local SECONDS_PER_8H = 8 * 60 * 60
 local CollectRestedData
+
+local function GetRestedCapMultiplier(raceFile)
+    return (raceFile == "Pandaren") and 3.0 or 1.5
+end
+
+local function GetRestedAccumulationMultiplier(raceFile)
+    return (raceFile == "Pandaren") and 2 or 1
+end
 
 --- Convert bag/bank table (bagIndex -> slotID -> item) to array for ItemsCacheService (avoids full character save from scan path).
 local function tableToItemArrayForStorage(tbl)
@@ -328,7 +337,8 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         -- Preserve maxXP when API returned nil so we don't overwrite good DB value
         if newRested and (newRested.maxXP == nil or newRested.maxXP == 0) and type(existingRested) == "table" and type(existingRested.maxXP) == "number" and existingRested.maxXP > 0 then
             newRested.maxXP = existingRested.maxXP
-            newRested.restedCapXP = math.floor(existingRested.maxXP * 1.5)
+            local capMul = GetRestedCapMultiplier(charData.raceFile)
+            newRested.restedCapXP = math.floor(existingRested.maxXP * capMul)
         end
         charData.rested = newRested
     end
@@ -771,9 +781,10 @@ CollectRestedData = function()
     local currentRestedXP = (GetXPExhaustion and GetXPExhaustion()) or 0
     local currentXP = UnitXP("player") or 0
     local maxXPApi = UnitXPMax("player")
-    -- Only store maxXP when API returns a number; do not write 0 when nil (caller will preserve from existing rested)
     local maxXP = (type(maxXPApi) == "number") and maxXPApi or nil
-    local restedCapXP = (maxXP and maxXP > 0) and math.floor(maxXP * 1.5) or 0
+    local _, playerRaceFile = UnitRace("player")
+    local capMultiplier = GetRestedCapMultiplier(playerRaceFile)
+    local restedCapXP = (maxXP and maxXP > 0) and math.floor(maxXP * capMultiplier) or 0
 
     return {
         exhaustionID = exhaustionID,
@@ -878,7 +889,8 @@ function WarbandNexus:SaveMinimalCharacterData()
     if restedData and (restedData.maxXP == nil or restedData.maxXP == 0) and preserveRested and type(preserveRested.maxXP) == "number" and preserveRested.maxXP > 0 then
         restedData.maxXP = preserveRested.maxXP
         if not restedData.restedCapXP or restedData.restedCapXP == 0 then
-            restedData.restedCapXP = math.floor(preserveRested.maxXP * 1.5)
+            local capMul = GetRestedCapMultiplier(raceFile)
+            restedData.restedCapXP = math.floor(preserveRested.maxXP * capMul)
         end
     end
 
@@ -1078,7 +1090,8 @@ function WarbandNexus:SaveCurrentCharacterData()
     if restedData and (restedData.maxXP == nil or restedData.maxXP == 0) and preserveRested and type(preserveRested.maxXP) == "number" and preserveRested.maxXP > 0 then
         restedData.maxXP = preserveRested.maxXP
         if not restedData.restedCapXP or restedData.restedCapXP == 0 then
-            restedData.restedCapXP = math.floor(preserveRested.maxXP * 1.5)
+            local capMul = GetRestedCapMultiplier(raceFile)
+            restedData.restedCapXP = math.floor(preserveRested.maxXP * capMul)
         end
     end
 
@@ -1287,6 +1300,7 @@ end
 function WarbandNexus:GetCharacterRestedState(charData, nowTs)
     if type(charData) ~= "table" then return nil end
     local rested = charData.rested
+    local capMultiplier = GetRestedCapMultiplier(charData.raceFile)
     -- Support flat format (restedXP, xpMax, restedUpdatedAt, isResting) when char.rested is missing (e.g. from CaptureLogoutCharacterState)
     if type(rested) ~= "table" then
         local flatRested = tonumber(charData.restedXP)
@@ -1295,7 +1309,7 @@ function WarbandNexus:GetCharacterRestedState(charData, nowTs)
         rested = {
             currentRestedXP = flatRested or 0,
             maxXP = flatMax or 0,
-            restedCapXP = (flatMax and flatMax > 0) and math.floor(flatMax * 1.5) or 0,
+            restedCapXP = (flatMax and flatMax > 0) and math.floor(flatMax * capMultiplier) or 0,
             updatedAt = tonumber(charData.restedUpdatedAt) or tonumber(charData.lastSeen) or 0,
             isRestingArea = charData.isResting == true,
         }
@@ -1303,7 +1317,7 @@ function WarbandNexus:GetCharacterRestedState(charData, nowTs)
 
     local baseRestedXP = tonumber(rested.currentRestedXP) or 0
     local maxXP = tonumber(rested.maxXP) or 0
-    local restedCapXP = tonumber(rested.restedCapXP) or ((maxXP > 0) and (maxXP * 1.5) or 0)
+    local restedCapXP = tonumber(rested.restedCapXP) or ((maxXP > 0) and (maxXP * capMultiplier) or 0)
     local updatedAt = tonumber(rested.updatedAt) or tonumber(charData.lastSeen) or 0
 
     local estimatedRestedXP = baseRestedXP
@@ -1311,7 +1325,8 @@ function WarbandNexus:GetCharacterRestedState(charData, nowTs)
         local currentTime = nowTs or time()
         if currentTime > updatedAt then
             local elapsed = currentTime - updatedAt
-            local gainPerSecond = (maxXP * RESTED_XP_GAIN_PER_8H) / SECONDS_PER_8H
+            local accelMultiplier = GetRestedAccumulationMultiplier(charData.raceFile)
+            local gainPerSecond = (maxXP * RESTED_XP_GAIN_PER_8H * accelMultiplier) / SECONDS_PER_8H
             estimatedRestedXP = estimatedRestedXP + (elapsed * gainPerSecond)
         end
     end

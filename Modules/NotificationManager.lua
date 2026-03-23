@@ -381,6 +381,7 @@ local CATEGORY_ICONS = {
     reputation = "Interface\\Icons\\INV_Scroll_11",
     quest = "Interface\\Icons\\INV_Misc_Map_01",
     item = "Interface\\Icons\\INV_Misc_Bag_10",
+    reminder = "minimap-genericevent-hornicon-small",
 }
 
 -- Action text mapping (subtitle line)
@@ -394,6 +395,7 @@ local ACTION_TEXT = {
     title = (ns.L and ns.L["EARNED_TITLE_MSG"]) or "You have earned a title",
     plan = (ns.L and ns.L["COMPLETED_PLAN_MSG"]) or "You have completed a plan",
     item = (ns.L and ns.L["COLLECTED_ITEM_MSG"]) or "You received a rare drop",
+    reminder = (ns.L and ns.L["REMINDER_PREFIX"]) or "Reminder",
 }
 
 ---Build a standardized notification config
@@ -924,7 +926,7 @@ function WarbandNexus:ShowModalNotification(config)
         nameLine:SetMaxLines(2)
         
         if config.playSound then
-            PlaySound(44295)
+            PlaySound(config.soundID or 44295)
         end
         
         compactPopup:SetScript("OnMouseDown", function(self, button)
@@ -1376,7 +1378,7 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- === PLAY SOUND ===
     if playSound then
-        PlaySound(44295) -- SOUNDKIT.UI_EPICACHIEVEMENTUNLOCKED
+        PlaySound(config.soundID or 44295)
     end
     
     -- === ANIMATIONS (WoW-STYLE SLIDE DOWN) ===
@@ -1774,6 +1776,7 @@ function WarbandNexus:InitializeNotificationListeners()
     self:RegisterMessage("WN_QUEST_COMPLETED", "OnQuestCompleted")
     -- WN_REPUTATION_GAINED is handled in Core.lua (chat notifications)
     self:RegisterMessage("WN_VAULT_REWARD_AVAILABLE", "OnVaultRewardAvailable")
+    -- Reminders now use progress-based indicators on plan cards (no popup)
     
     -- Font change listener (low-impact: active notifications auto-dismiss quickly, new ones will use updated font)
     -- NOTE: Uses NotificationEvents as 'self' key to avoid overwriting PlansTrackerWindow's handler.

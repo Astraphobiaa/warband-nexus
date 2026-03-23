@@ -622,6 +622,29 @@ function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
     table.sort(progress.raidSlots, function(a, b) return a.threshold < b.threshold end)
     table.sort(progress.worldSlots, function(a, b) return a.threshold < b.threshold end)
     
+    -- Special Assignments: scan bounties across known zone maps
+    local saCompleted, saTotal = 0, 0
+    local saMaps = ns.MIDNIGHT_MAPS_FOR_SA
+    if saMaps and C_QuestLog and C_QuestLog.GetBountiesForMapID then
+        local seenQuests = {}
+        for _, mapID in ipairs(saMaps) do
+            local ok, bounties = pcall(C_QuestLog.GetBountiesForMapID, mapID)
+            if ok and type(bounties) == "table" then
+                for _, bi in ipairs(bounties) do
+                    if bi and bi.questID and not seenQuests[bi.questID] then
+                        seenQuests[bi.questID] = true
+                        saTotal = saTotal + 1
+                        if C_QuestLog.IsQuestFlaggedCompleted(bi.questID) then
+                            saCompleted = saCompleted + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    progress.specialAssignmentCount = saCompleted
+    progress.specialAssignmentTotal = math.max(saTotal, 2)
+    
     return progress
 end
 
@@ -671,7 +694,7 @@ function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm, trackedSlo
     
     -- Default: track all slots unless caller specifies
     if not trackedSlots then
-        trackedSlots = { dungeon = true, raid = true, world = true }
+        trackedSlots = { dungeon = true, raid = true, world = true, specialAssignment = true }
     end
     
     -- Create weekly plan structure
@@ -701,6 +724,10 @@ function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm, trackedSlo
                 {threshold = 2, completed = false, manualOverride = false},
                 {threshold = 4, completed = false, manualOverride = false},
                 {threshold = 8, completed = false, manualOverride = false}
+            },
+            specialAssignment = {
+                {threshold = 1, completed = false, manualOverride = false},
+                {threshold = 2, completed = false, manualOverride = false}
             }
         },
         progress = currentProgress
@@ -728,6 +755,17 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
     
     self:Debug("UpdateWeeklyPlanProgress called for: " .. (plan.characterName or "Unknown"))
     
+    -- Ensure SA slots exist for plans created before SA tracking was added
+    if not plan.slots.specialAssignment then
+        plan.slots.specialAssignment = {
+            {threshold = 1, completed = false, manualOverride = false},
+            {threshold = 2, completed = false, manualOverride = false}
+        }
+    end
+    if not plan.trackedSlots.specialAssignment then
+        plan.trackedSlots.specialAssignment = true
+    end
+    
     -- Get current progress from API
     local currentProgress = self:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm)
     if not currentProgress then
@@ -742,17 +780,20 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
     local oldProgress = {
         dungeonCount = plan.progress and plan.progress.dungeonCount or 0,
         raidBossCount = plan.progress and plan.progress.raidBossCount or 0,
-        worldActivityCount = plan.progress and plan.progress.worldActivityCount or 0
+        worldActivityCount = plan.progress and plan.progress.worldActivityCount or 0,
+        specialAssignmentCount = plan.progress and plan.progress.specialAssignmentCount or 0
     }
     
-    self:Debug(string.format("Old progress: M+=%d, Raid=%d, World=%d", 
-        oldProgress.dungeonCount, oldProgress.raidBossCount, oldProgress.worldActivityCount))
+    self:Debug(string.format("Old progress: M+=%d, Raid=%d, World=%d, SA=%d", 
+        oldProgress.dungeonCount, oldProgress.raidBossCount, oldProgress.worldActivityCount, oldProgress.specialAssignmentCount))
     
     -- Update progress
     plan.progress = plan.progress or {}
     plan.progress.dungeonCount = currentProgress.dungeonCount
     plan.progress.raidBossCount = currentProgress.raidBossCount
     plan.progress.worldActivityCount = currentProgress.worldActivityCount
+    plan.progress.specialAssignmentCount = currentProgress.specialAssignmentCount or 0
+    plan.progress.specialAssignmentTotal = currentProgress.specialAssignmentTotal or 2
     
     -- Update slot completions and check for newly completed slots
     self:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress)
@@ -840,6 +881,27 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
             category = "world",
             progress = plan.progress.worldActivityCount,
             oldProgress = oldWorldCount
+        })
+    end
+    
+    -- Update special assignment slots
+    local oldSACount = oldProgress and oldProgress.specialAssignmentCount or (plan.progress.specialAssignmentCount or 0)
+    if plan.slots.specialAssignment then
+        for i, slot in ipairs(plan.slots.specialAssignment) do
+            if not slot.manualOverride then
+                local wasCompleted = slot.completed
+                slot.completed = (plan.progress.specialAssignmentCount or 0) >= slot.threshold
+                if slot.completed and not wasCompleted then
+                    table.insert(newlyCompletedSlots, {category = "specialAssignment", index = i, threshold = slot.threshold})
+                end
+            end
+        end
+    end
+    if (plan.progress.specialAssignmentCount or 0) > oldSACount then
+        table.insert(newlyCompletedCheckpoints, {
+            category = "specialAssignment",
+            progress = plan.progress.specialAssignmentCount,
+            oldProgress = oldSACount
         })
     end
     
@@ -982,11 +1044,19 @@ function WarbandNexus:ResetWeeklyPlans()
                 slot.completed = false
                 slot.manualOverride = false
             end
-            
+            if plan.slots.specialAssignment then
+                for _, slot in ipairs(plan.slots.specialAssignment) do
+                    slot.completed = false
+                    slot.manualOverride = false
+                end
+            end
+
             -- Reset progress
             plan.progress.dungeonCount = 0
             plan.progress.raidBossCount = 0
             plan.progress.worldActivityCount = 0
+            plan.progress.specialAssignmentCount = 0
+            plan.progress.specialAssignmentTotal = 2
             
             -- Reset completion flags so notification can show again next week
             plan.completed = false
@@ -1288,6 +1358,9 @@ function WarbandNexus:AddPlan(planData)
     }
     
     table.insert(self.db.global.plans, plan)
+    
+    -- Resolve display data immediately so My Plans renders complete info
+    self:_ResolveSinglePlan(plan, time())
     
     -- Refresh lookup index
     self:RefreshPlanCache()

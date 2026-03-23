@@ -673,14 +673,16 @@ local function RefreshTrackerContentImmediate()
                 -- Expanded content: Raid / Dungeon / World progress
                 if isExpanded then
                     local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
-                        dungeonCount = 0, raidBossCount = 0, worldActivityCount = 0,
+                        dungeonCount = 0, raidBossCount = 0, worldActivityCount = 0, specialAssignmentCount = 0, specialAssignmentTotal = 2,
                         dungeonSlots = {}, raidSlots = {}, worldSlots = {}
                     }
-                    
+
+                    local saMax = currentProgress.specialAssignmentTotal or 2
                     local progressRows = {
                         { label = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",     current = currentProgress.raidBossCount,       max = 6, thresholds = {2, 4, 6} },
                         { label = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon",  current = currentProgress.dungeonCount,        max = 8, thresholds = {1, 4, 8} },
                         { label = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World",      current = currentProgress.worldActivityCount,  max = 8, thresholds = {2, 4, 8} },
+                        { label = (ns.L and ns.L["VAULT_SLOT_SA"]) or "SA",            current = currentProgress.specialAssignmentCount or 0, max = saMax, thresholds = {1, saMax} },
                     }
                     
                     local contentY = -(VAULT_HEADER_HEIGHT + VAULT_PADDING)

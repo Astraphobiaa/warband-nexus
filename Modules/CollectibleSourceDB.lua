@@ -1604,10 +1604,10 @@ ns.CollectibleSourceDB = {
     },
 
     legacyZones = {
-        -- TWW: Isle of Dorn â€” Crackling Shard (any mob in zone, <1% for normals)
-        -- 165 mobs total. Rares with â‰¥1% are also in npcs section for specific tracking.
-        -- This zone entry catches ALL normal mob kills as a fallback.
-        [2248] = _cracklingShard, -- Isle of Dorn (uiMapID)
+        -- TWW: Isle of Dorn — Crackling Shard (any killable mob in zone, <1% for normals)
+        -- 17 rares with ≥1% are also in npcs section for specific tracking.
+        -- hostileOnly=true: tooltip only shows on attackable units (excludes friendly NPCs/vendors)
+        [2248] = { drops = _cracklingShard, hostileOnly = true }, -- Isle of Dorn (uiMapID)
 
         -- ========================================
         -- MIDNIGHT 12.0 - Zone Rare Mounts
@@ -2151,6 +2151,7 @@ local function MergeLegacyIntoRuntime(db)
                 local zd = db.zones[mapID] or { drops = {} }
                 MergeDropArray(zd.drops, data.drops or data)
                 if data.raresOnly then zd.raresOnly = true end
+                if data.hostileOnly then zd.hostileOnly = true end
                 db.zones[mapID] = zd
             end
         end

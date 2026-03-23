@@ -92,6 +92,13 @@ local questStarterMountToSourceItemID = {}
 local questStarterSourceToStatisticIds = {}  -- sourceItemID -> { statId, ... } for "statistic + local" try count
 local questStarterMountList = {}
 
+-- Forward declarations for local functions used before their definition
+local ResetLootSession
+local CaptureLootSessionState
+local PromoteLootReadyToSession
+local ClassifyLootSession
+local RouteLootSession
+
 ---Send try counter / drops message to all chat panels that have Loot, Currency, or Reputation
 ---enabled (via ChatMessageService), so messages appear on every such tab and when switching panels.
 ---Falls back to WarbandNexus:Print if ChatMessageService not available.
@@ -466,6 +473,7 @@ local function CopyZoneMap(src)
             out[key] = {
                 drops = CopyDropArray(data.drops),
                 raresOnly = data.raresOnly == true,
+                hostileOnly = data.hostileOnly == true,
             }
         else
             out[key] = CopyDropArray(data)
@@ -2524,7 +2532,7 @@ end
 ---Fully reset lootSession to a clean state. Called at the start of every new
 ---loot event (LOOT_READY) and at the end of LOOT_CLOSED to prevent stale data
 ---from bleeding into the next session.
-local function ResetLootSession()
+ResetLootSession = function()
     lootSession.numLoot = 0
     lootSession.sourceGUIDs = {}
     wipe(lootSession.slotData)
@@ -2535,7 +2543,7 @@ local function ResetLootSession()
 end
 
 ---Snapshot unit GUIDs + loot window data into lootSession (same-frame read before fast auto-loot clears it).
-local function CaptureLootSessionState()
+CaptureLootSessionState = function()
     ResetLootSession()
     lootSession.mouseoverGUID = SafeGetMouseoverGUID and SafeGetMouseoverGUID() or nil
     lootSession.targetGUID = SafeGetTargetGUID and SafeGetTargetGUID() or nil
@@ -2554,7 +2562,7 @@ end
 ---Promote LOOT_READY captured data into lootSession when LOOT_OPENED was missed.
 ---Uses unit GUIDs captured at LOOT_READY time (guaranteed valid) instead of fresh reads
 ---(which may be nil by the time LOOT_CLOSED fires if the player moved on).
-local function PromoteLootReadyToSession()
+PromoteLootReadyToSession = function()
     ResetLootSession()
     if lootReady.time > 0 and (GetTime() - lootReady.time) <= LOOT_READY_STATE_TTL then
         lootSession.mouseoverGUID = lootReady.mouseoverGUID
@@ -2583,7 +2591,7 @@ end
 
 ---Classify the loot session source into exactly one route.
 ---@return string route "skip"|"container"|"fishing"|"npc"|"none"
-local function ClassifyLootSession(source, isFromItem)
+ClassifyLootSession = function(source, isFromItem)
     -- 1. SKIP: non-combat loot sources
     if isPickpocketing then return "skip" end
     if isBlockingInteractionOpen then return "skip" end
@@ -2642,7 +2650,7 @@ end
 ---@param self table WarbandNexus addon reference
 ---@param source string "opened"|"closed"
 ---@param isFromItem boolean|nil Container item flag (only from LOOT_OPENED)
-local function RouteLootSession(self, source, isFromItem)
+RouteLootSession = function(self, source, isFromItem)
     if not IsAutoTryCounterEnabled() then return end
 
     local route = ClassifyLootSession(source, isFromItem)
@@ -2830,8 +2838,9 @@ local function ResolveFromUnits(ctx, numLoot, addon)
     if IsTryCounterLootDebugEnabled(addon) then TryCounterLootDebug(addon, "miss", "P2 no match") end
 end
 
----P3: Resolve from zone raresOnly pools (Midnight zone rare mounts).
----Requires: raresOnly zone + rare-class unit on mouseover/target/npc + open world.
+---P3: Resolve from zone pools (rare-only or hostile-only zones).
+---raresOnly: requires rare-class unit on mouseover/target/npc + open world.
+---hostileOnly: any killable mob in zone (looting a corpse implies hostile).
 local function ResolveFromZone(ctx, inInstance, addon)
     if ctx.drops then return end
     if not next(zoneDropDB) then return end
@@ -2842,26 +2851,37 @@ local function ResolveFromZone(ctx, inInstance, addon)
         return
     end
 
-    local rareLike = false
-    for _, unit in ipairs({"mouseover", "target", "npc"}) do
-        local ok, cls = pcall(UnitClassification, unit)
-        if ok and cls and (not issecretvalue or not issecretvalue(cls)) then
-            if cls == "rare" or cls == "rareelite" or cls == "worldboss" then
-                rareLike = true
-                break
+    local rareLike
+    local function CheckRareLike()
+        if rareLike ~= nil then return rareLike end
+        rareLike = false
+        for _, unit in ipairs({"mouseover", "target", "npc"}) do
+            local ok, cls = pcall(UnitClassification, unit)
+            if ok and cls and (not issecretvalue or not issecretvalue(cls)) then
+                if cls == "rare" or cls == "rareelite" or cls == "worldboss" then
+                    rareLike = true
+                    break
+                end
             end
         end
+        return rareLike
     end
-    if not rareLike then return end
 
     local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
     local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
     while mapID and mapID > 0 do
         local zData = zoneDropDB[mapID]
-        if type(zData) == "table" and zData.raresOnly == true then
-            ctx.drops = zData.drops or zData
-            if IsTryCounterLootDebugEnabled(addon) then TryCounterLootDebug(addon, "match", "P3 zone=%s", tostring(mapID)) end
-            return
+        if type(zData) == "table" then
+            if zData.hostileOnly == true then
+                ctx.drops = zData.drops or zData
+                if IsTryCounterLootDebugEnabled(addon) then TryCounterLootDebug(addon, "match", "P3 zone=%s (hostileOnly)", tostring(mapID)) end
+                return
+            end
+            if zData.raresOnly == true and CheckRareLike() then
+                ctx.drops = zData.drops or zData
+                if IsTryCounterLootDebugEnabled(addon) then TryCounterLootDebug(addon, "match", "P3 zone=%s (raresOnly)", tostring(mapID)) end
+                return
+            end
         end
         local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
         local nextID = mapInfo and mapInfo.parentMapID

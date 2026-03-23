@@ -122,6 +122,9 @@ local Constants = {
         VAULT_SLOT_COMPLETED = "WN_VAULT_SLOT_COMPLETED",
         VAULT_PLAN_COMPLETED = "WN_VAULT_PLAN_COMPLETED",
         
+        -- Reminders (progress-based, shown on plan cards)
+        REMINDER_ACTIVATED = "WN_REMINDER_ACTIVATED",
+        
         -- Item metadata
         ITEM_METADATA_READY = "WN_ITEM_METADATA_READY",
         

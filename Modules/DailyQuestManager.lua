@@ -21,9 +21,12 @@ local MIDNIGHT_MAPS = {
 }
 
 local MIDNIGHT_MAP_SET = {}
+local MIDNIGHT_MAPS_LIST = {}
 for mapID in pairs(MIDNIGHT_MAPS) do
     MIDNIGHT_MAP_SET[mapID] = true
+    MIDNIGHT_MAPS_LIST[#MIDNIGHT_MAPS_LIST + 1] = mapID
 end
+ns.MIDNIGHT_MAPS_FOR_SA = MIDNIGHT_MAPS_LIST
 
 -- ============================================================================
 -- KNOWN QUESTS (hardcoded for reliable tracking via IsQuestFlaggedCompleted)
@@ -266,6 +269,27 @@ local function GetObjectiveText(questID)
     return ""
 end
 
+local function GetAllObjectiveDetails(questID)
+    if not questID or not C_QuestLog or not C_QuestLog.GetQuestObjectives then return nil end
+    local ok, objectives = pcall(C_QuestLog.GetQuestObjectives, questID)
+    if not ok or type(objectives) ~= "table" or #objectives == 0 then return nil end
+
+    local result = {}
+    for i = 1, #objectives do
+        local obj = objectives[i]
+        if obj and type(obj) == "table" then
+            local text = (obj.text and obj.text ~= "" and not IsSecretValue(obj.text)) and obj.text or nil
+            result[#result + 1] = {
+                text         = text,
+                numFulfilled = obj.numFulfilled or 0,
+                numRequired  = obj.numRequired or 1,
+                finished     = obj.finished or false,
+            }
+        end
+    end
+    return #result > 0 and result or nil
+end
+
 -- ============================================================================
 -- QUEST CATEGORIZATION
 -- ============================================================================
@@ -429,6 +453,10 @@ function WarbandNexus:ScanMidnightQuests()
             isSubQuest   = known and known.isSubQuest or nil,
         }
 
+        if category == "assignments" then
+            questData.objectives = GetAllObjectiveDetails(questID)
+        end
+
         quests[category][#quests[category] + 1] = questData
         addedIDs[questID] = true
     end
@@ -541,19 +569,60 @@ function WarbandNexus:ScanMidnightQuests()
         end
     end
 
-    -- Phase 3: Quest log scan (Midnight maps + Prey hunts regardless of map)
+    -- Discover parent/continent maps for Midnight zones (used by Phase 2c + Phase 3)
+    local midnightParentMaps = {}
+    if C_Map and C_Map.GetMapInfo then
+        for mapID in pairs(MIDNIGHT_MAPS) do
+            local ok, mapInfo = pcall(C_Map.GetMapInfo, mapID)
+            if ok and mapInfo and type(mapInfo) == "table"
+                and mapInfo.parentMapID and mapInfo.parentMapID > 0
+                and not MIDNIGHT_MAP_SET[mapInfo.parentMapID] then
+                midnightParentMaps[mapInfo.parentMapID] = true
+            end
+        end
+    end
+
+    -- Phase 2c: Continent-level bounty scan for Special Assignments
+    -- SAs are often registered on the parent/continent map (Quel'Thalas), not
+    -- individual zone maps.  Title filter prevents non-SA bounties ("Level XX" etc).
+    if C_QuestLog and C_QuestLog.GetBountiesForMapID then
+        for parentID in pairs(midnightParentMaps) do
+            local bok, bounties = pcall(C_QuestLog.GetBountiesForMapID, parentID)
+            if bok and type(bounties) == "table" then
+                for j = 1, #bounties do
+                    local bi = bounties[j]
+                    if bi and bi.questID and not addedIDs[bi.questID] then
+                        local bTitle = GetQuestTitle(bi.questID, bi)
+                        local lt = bTitle:lower()
+                        if lt:find("assignment", 1, true) then
+                            bi.isBounty = true
+                            AddQuest(bi.questID, parentID, "Quel'Thalas", bi)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Phase 3: Quest log scan (Midnight maps + Prey hunts + Midnight SAs)
+    -- SAs in the quest log may have continent-level mapID (parent map), not a zone
+    -- mapID, so we also accept SA-titled quests from midnightParentMaps.
     if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
         local numEntries = C_QuestLog.GetNumQuestLogEntries()
         for i = 1, numEntries do
             local info = C_QuestLog.GetInfo(i)
             if info and not info.isHeader and info.questID then
                 local inMidnight = info.mapID and MIDNIGHT_MAP_SET[info.mapID]
+                local inMidnightParent = info.mapID and midnightParentMaps[info.mapID]
                 local title = info.title or ""
                 local lTitle = title:lower()
                 local isPrey = lTitle:find("prey:", 1, true) or lTitle:find("prey hunt", 1, true)
-                if inMidnight or isPrey then
+                local isMidnightSA = (inMidnight or inMidnightParent)
+                    and (lTitle:find("special assignment", 1, true) or lTitle:find("assignment:", 1, true))
+
+                if inMidnight or isPrey or isMidnightSA then
                     local zoneName = info.zoneName or (info.mapID and MIDNIGHT_MAPS[info.mapID]) or ""
-                    if isPrey and zoneName == "" then zoneName = "Quel'Thalas" end
+                    if (isPrey or isMidnightSA) and zoneName == "" then zoneName = "Quel'Thalas" end
                     AddQuest(info.questID, info.mapID or 0, zoneName, info)
                 end
             end
@@ -626,6 +695,22 @@ function WarbandNexus:ScanMidnightQuests()
                     return (a.title or "") < (b.title or "")
                 end)
             end
+        end
+    end
+
+    -- Debug: dump scan results for assignments
+    if ns.DebugPrint then
+        local a = quests.assignments
+        ns.DebugPrint("|cff9370DB[DailyQuest]|r ScanMidnightQuests: assignments=" .. #a)
+        for i = 1, #a do
+            ns.DebugPrint("|cff9370DB[DailyQuest]|r   SA[" .. i .. "] id=" .. a[i].questID
+                .. " title=" .. tostring(a[i].title)
+                .. " zone=" .. tostring(a[i].zone)
+                .. " map=" .. tostring(a[i].mapID)
+                .. " done=" .. tostring(a[i].isComplete))
+        end
+        for parentID in pairs(midnightParentMaps) do
+            ns.DebugPrint("|cff9370DB[DailyQuest]|r   midnightParentMap=" .. parentID)
         end
     end
 

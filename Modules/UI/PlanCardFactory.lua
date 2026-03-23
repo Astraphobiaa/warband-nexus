@@ -2680,6 +2680,83 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         end
     end)
     
+    -- Alert button
+    local hasReminder = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
+    local hasActiveReminder = WarbandNexus.HasActiveReminder and WarbandNexus:HasActiveReminder(plan.id)
+    local alertBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)
+    alertBtn:SetPoint("TOPRIGHT", -60, -8)
+    local bellTex = alertBtn:CreateTexture(nil, "ARTWORK")
+    bellTex:SetSize(18, 18)
+    bellTex:SetPoint("CENTER")
+    bellTex:SetAtlas("minimap-genericevent-hornicon-small", true)
+    if hasActiveReminder then
+        bellTex:SetVertexColor(1, 0.6, 0)
+    elseif hasReminder then
+        bellTex:SetVertexColor(1, 0.82, 0)
+    else
+        bellTex:SetVertexColor(0.5, 0.5, 0.5)
+    end
+    alertBtn._bellTex = bellTex
+
+    if hasActiveReminder then
+        local pulseAG = alertBtn:CreateAnimationGroup()
+        pulseAG:SetLooping("BOUNCE")
+        local pulseAnim = pulseAG:CreateAnimation("Alpha")
+        pulseAnim:SetFromAlpha(1)
+        pulseAnim:SetToAlpha(0.3)
+        pulseAnim:SetDuration(0.8)
+        pulseAnim:SetSmoothing("IN_OUT")
+        pulseAG:Play()
+        alertBtn._pulseAG = pulseAG
+    end
+
+    alertBtn:SetScript("OnClick", function()
+        if hasActiveReminder and WarbandNexus.DismissReminders then
+            WarbandNexus:DismissReminders(plan.id)
+            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            return
+        end
+        if WarbandNexus.ShowSetAlertDialog then
+            WarbandNexus:ShowSetAlertDialog(plan.id)
+        end
+    end)
+    alertBtn:SetScript("OnEnter", function(btn)
+        if btn._bellTex then btn._bellTex:SetVertexColor(1, 0.9, 0.3) end
+        if btn._pulseAG then btn._pulseAG:Stop(); btn:SetAlpha(1) end
+        local tooltipTitle, tooltipLines
+        local activeReminders = WarbandNexus.GetActiveReminders and WarbandNexus:GetActiveReminders(plan.id)
+        if activeReminders then
+            tooltipTitle = (ns.L and ns.L["REMINDER_PREFIX"]) or "Reminder"
+            tooltipLines = {}
+            for _, label in ipairs(activeReminders) do
+                tooltipLines[#tooltipLines + 1] = { text = "|cffffd100" .. label .. "|r" }
+            end
+            tooltipLines[#tooltipLines + 1] = { text = " " }
+            tooltipLines[#tooltipLines + 1] = { text = "|cff888888" .. ((ns.L and ns.L["CLICK_TO_DISMISS"]) or "Click to dismiss") .. "|r" }
+        else
+            tooltipTitle = hasReminder and ((ns.L and ns.L["ALERT_ACTIVE"]) or "Alert Active") or ((ns.L and ns.L["SET_ALERT"]) or "Set Alert")
+            tooltipLines = {}
+        end
+        if ns.TooltipService then
+            ns.TooltipService:Show(btn, { type = "custom", title = tooltipTitle, icon = false, anchor = "ANCHOR_TOP", lines = tooltipLines })
+        end
+    end)
+    alertBtn:SetScript("OnLeave", function(btn)
+        if btn._pulseAG then btn._pulseAG:Play() end
+        if btn._bellTex then
+            local activeNow = WarbandNexus.HasActiveReminder and WarbandNexus:HasActiveReminder(plan.id)
+            local reminderSet = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
+            if activeNow then
+                btn._bellTex:SetVertexColor(1, 0.6, 0)
+            elseif reminderSet then
+                btn._bellTex:SetVertexColor(1, 0.82, 0)
+            else
+                btn._bellTex:SetVertexColor(0.5, 0.5, 0.5)
+            end
+        end
+        if ns.TooltipService then ns.TooltipService:Hide() end
+    end)
+    
     -- === 3 PROGRESS SLOTS ===
     local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
         dungeonCount = 0,
@@ -2694,7 +2771,13 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     local slotWidth = (availableWidth - slotSpacing * 2) / 3
     local slotHeight = 92
     
-    local tracked = plan.trackedSlots or { dungeon = true, raid = true, world = true }
+    local tracked = plan.trackedSlots or { dungeon = true, raid = true, world = true, specialAssignment = true }
+    
+    local saTotal = currentProgress.specialAssignmentTotal or (plan.progress and plan.progress.specialAssignmentTotal) or 2
+    local saSlotData = plan.slots.specialAssignment or {
+        {threshold = 1, completed = false, manualOverride = false},
+        {threshold = 2, completed = false, manualOverride = false}
+    }
     
     local allSlots = {
         {
@@ -2723,6 +2806,15 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
             max = 8,
             slotData = plan.slots.world,
             thresholds = {2, 4, 8}
+        },
+        {
+            key = "specialAssignment",
+            atlas = "questlog-questtypeicon-important",
+            title = (ns.L and ns.L["VAULT_SLOT_SA"]) or "Assignments",
+            current = currentProgress.specialAssignmentCount or 0,
+            max = saTotal,
+            slotData = saSlotData,
+            thresholds = {1, saTotal}
         }
     }
     
@@ -2928,6 +3020,83 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         if WarbandNexus.RefreshUI then
             WarbandNexus:RefreshUI()
         end
+    end)
+    
+    -- Alert button
+    local hasReminderDQ = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
+    local hasActiveReminderDQ = WarbandNexus.HasActiveReminder and WarbandNexus:HasActiveReminder(plan.id)
+    local alertBtnDQ = ns.UI.Factory:CreateButton(card, 20, 20, true)
+    alertBtnDQ:SetPoint("TOPRIGHT", -60, -8)
+    local bellTexDQ = alertBtnDQ:CreateTexture(nil, "ARTWORK")
+    bellTexDQ:SetSize(18, 18)
+    bellTexDQ:SetPoint("CENTER")
+    bellTexDQ:SetAtlas("minimap-genericevent-hornicon-small", true)
+    if hasActiveReminderDQ then
+        bellTexDQ:SetVertexColor(1, 0.6, 0)
+    elseif hasReminderDQ then
+        bellTexDQ:SetVertexColor(1, 0.82, 0)
+    else
+        bellTexDQ:SetVertexColor(0.5, 0.5, 0.5)
+    end
+    alertBtnDQ._bellTex = bellTexDQ
+
+    if hasActiveReminderDQ then
+        local pulseAG = alertBtnDQ:CreateAnimationGroup()
+        pulseAG:SetLooping("BOUNCE")
+        local pulseAnim = pulseAG:CreateAnimation("Alpha")
+        pulseAnim:SetFromAlpha(1)
+        pulseAnim:SetToAlpha(0.3)
+        pulseAnim:SetDuration(0.8)
+        pulseAnim:SetSmoothing("IN_OUT")
+        pulseAG:Play()
+        alertBtnDQ._pulseAG = pulseAG
+    end
+
+    alertBtnDQ:SetScript("OnClick", function()
+        if hasActiveReminderDQ and WarbandNexus.DismissReminders then
+            WarbandNexus:DismissReminders(plan.id)
+            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            return
+        end
+        if WarbandNexus.ShowSetAlertDialog then
+            WarbandNexus:ShowSetAlertDialog(plan.id)
+        end
+    end)
+    alertBtnDQ:SetScript("OnEnter", function(btn)
+        if btn._bellTex then btn._bellTex:SetVertexColor(1, 0.9, 0.3) end
+        if btn._pulseAG then btn._pulseAG:Stop(); btn:SetAlpha(1) end
+        local tooltipTitle, tooltipLines
+        local activeReminders = WarbandNexus.GetActiveReminders and WarbandNexus:GetActiveReminders(plan.id)
+        if activeReminders then
+            tooltipTitle = (ns.L and ns.L["REMINDER_PREFIX"]) or "Reminder"
+            tooltipLines = {}
+            for _, label in ipairs(activeReminders) do
+                tooltipLines[#tooltipLines + 1] = { text = "|cffffd100" .. label .. "|r" }
+            end
+            tooltipLines[#tooltipLines + 1] = { text = " " }
+            tooltipLines[#tooltipLines + 1] = { text = "|cff888888" .. ((ns.L and ns.L["CLICK_TO_DISMISS"]) or "Click to dismiss") .. "|r" }
+        else
+            tooltipTitle = hasReminderDQ and ((ns.L and ns.L["ALERT_ACTIVE"]) or "Alert Active") or ((ns.L and ns.L["SET_ALERT"]) or "Set Alert")
+            tooltipLines = {}
+        end
+        if ns.TooltipService then
+            ns.TooltipService:Show(btn, { type = "custom", title = tooltipTitle, icon = false, anchor = "ANCHOR_TOP", lines = tooltipLines })
+        end
+    end)
+    alertBtnDQ:SetScript("OnLeave", function(btn)
+        if btn._pulseAG then btn._pulseAG:Play() end
+        if btn._bellTex then
+            local activeNow = WarbandNexus.HasActiveReminder and WarbandNexus:HasActiveReminder(plan.id)
+            local reminderSet = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
+            if activeNow then
+                btn._bellTex:SetVertexColor(1, 0.6, 0)
+            elseif reminderSet then
+                btn._bellTex:SetVertexColor(1, 0.82, 0)
+            else
+                btn._bellTex:SetVertexColor(0.5, 0.5, 0.5)
+            end
+        end
+        if ns.TooltipService then ns.TooltipService:Hide() end
     end)
     
     -- === CATEGORY PROGRESS SLOTS ===

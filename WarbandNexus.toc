@@ -77,6 +77,7 @@ Modules\CollectibleSourceDB.lua
 Modules\TryCounterService.lua
 Modules\TransmogManager.lua
 Modules\DailyQuestManager.lua
+Modules\ReminderService.lua
 Modules\GearService.lua
 
 # UI Modules (SharedWidgets must load first!)

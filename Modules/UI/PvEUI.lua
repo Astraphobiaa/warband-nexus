@@ -123,10 +123,10 @@ local function IsVaultSlotAtMax(activity, typeName)
     
     -- Define max thresholds per activity type
     if typeName == "Raid" then
-        -- For raids, level is difficulty ID (14=Normal, 15=Heroic, 16=Mythic)
-        return level >= 16 -- Mythic is max
+        -- DifficultyIDs: 14=Normal, 15=Heroic, 16=Mythic, 17=LFR
+        return level == 16 -- Only Mythic is max
     elseif typeName == "M+" then
-        -- For M+: 0=Heroic, 1=Mythic, 2+=Keystone level
+        -- For M+: 0=Mythic 0 (base mythic), 2+=Keystone level
         -- Max is keystone level 10 or higher
         return level >= 10
     elseif typeName == "World" then
@@ -184,34 +184,31 @@ local function GetNextTierName(activity, typeName)
         return string.format(tierFmt, currentLevel + 1)
     end
     
-    -- Raid difficulty progression
+    -- Raid difficulty progression: LFR(17) → Normal(14) → Heroic(15) → Mythic(16)
     if typeName == "Raid" then
-        -- Level: 14=Normal, 15=Heroic, 16=Mythic, <14=LFR
-        if currentLevel >= 16 then
+        if currentLevel == 16 then
             return nil -- Already at Mythic (max)
-        elseif currentLevel >= 15 then
+        elseif currentLevel == 15 then
             return mythicLabel
-        elseif currentLevel >= 14 then
+        elseif currentLevel == 14 then
             return heroicLabel
-        else
+        elseif currentLevel == 17 then
             return normalLabel
         end
     end
     
-    -- M+ keystone progression
+    -- M+ keystone progression: 0=Mythic 0, 2+=Keystone level
     if typeName == "M+" or typeName == "Dungeon" then
         if currentLevel >= 10 then
             return nil -- Max is +10
         end
         
+        -- From Mythic 0, next meaningful tier is +2 (keystones start at 2)
         local nextLevel = currentLevel + 1
-        if nextLevel == 0 then
-            return heroicLabel
-        elseif nextLevel == 1 then
-            return mythicLabel
-        else
-            return string.format("+%d", nextLevel)
+        if currentLevel == 0 then
+            nextLevel = 2
         end
+        return string.format("+%d", nextLevel)
     end
     
     return nil
@@ -258,24 +255,23 @@ local function GetVaultActivityDisplayText(activity, typeName)
     if typeName == "Raid" then
         local difficulty = unknownLabel
         if activity.level then
-            -- Raid level corresponds to difficulty ID
-            if activity.level >= 16 then
+            -- Raid difficultyIDs: 14=Normal, 15=Heroic, 16=Mythic, 17=LFR
+            -- CRITICAL: Use exact matches — LFR (17) > Mythic (16) by ID
+            if activity.level == 16 then
                 difficulty = mythicLabel
-            elseif activity.level >= 15 then
+            elseif activity.level == 15 then
                 difficulty = heroicLabel
-            elseif activity.level >= 14 then
+            elseif activity.level == 14 then
                 difficulty = normalLabel
-            else
+            elseif activity.level == 17 then
                 difficulty = lfrLabel
             end
         end
         return difficulty
     elseif typeName == "M+" then
         local level = activity.level or 0
-        -- Level 0 = Heroic dungeon, Level 1 = Mythic dungeon, Level 2+ = Keystone
+        -- Level 0 = Mythic 0 (base mythic dungeon, no keystone), Level 2+ = Keystone
         if level == 0 then
-            return heroicLabel
-        elseif level == 1 then
             return mythicLabel
         else
             return string.format("+%d", level)

@@ -1577,26 +1577,26 @@ function TooltipService:InitializeGameTooltipHook()
             local zoneDrops = nil      -- Zone-wide drops to merge
 
             -- Helper: Get current zone's drops (if any)
-            -- Returns: drops, raresOnly (boolean)
+            -- Returns: drops, raresOnly (boolean), hostileOnly (boolean)
             local function GetCurrentZoneDrops()
-                if not sourceDB.zones then return nil, false end
+                if not sourceDB.zones then return nil, false, false end
                 local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
                 local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
                 while mapID and mapID > 0 do
                     local zData = sourceDB.zones[mapID]
                     if zData then
-                        -- New format: { drops = {...}, raresOnly = true }
+                        -- New format: { drops = {...}, raresOnly = true, hostileOnly = true }
                         if zData.drops then
-                            return zData.drops, zData.raresOnly == true
+                            return zData.drops, zData.raresOnly == true, zData.hostileOnly == true
                         end
                         -- Old format: direct array of drops
-                        return zData, false
+                        return zData, false, false
                     end
                     local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
                     local nextID = mapInfo and mapInfo.parentMapID
                     mapID = (nextID and (not issecretvalue or not issecretvalue(nextID))) and nextID or nil
                 end
-                return nil, false
+                return nil, false, false
             end
 
             -- Helper: Check if mouseover unit is rare/elite (for raresOnly zones)
@@ -1606,6 +1606,19 @@ function TooltipService:InitializeGameTooltipHook()
                 if issecretvalue and issecretvalue(classification) then return false end
                 -- "rare", "rareelite", "worldboss" are rare-quality units
                 return classification == "rare" or classification == "rareelite" or classification == "worldboss"
+            end
+
+            -- Helper: Check if mouseover unit is attackable (for hostileOnly zones)
+            local function IsMouseoverAttackable()
+                local ok, canAttack = pcall(UnitCanAttack, "player", "mouseover")
+                if ok and canAttack == true then return true end
+                -- Dead units are no longer attackable; check if it's a lootable corpse
+                local okDead, isDead = pcall(UnitIsDead, "mouseover")
+                if okDead and isDead == true then
+                    local okReact, reaction = pcall(UnitReaction, "mouseover", "player")
+                    if okReact and type(reaction) == "number" and reaction <= 4 then return true end
+                end
+                return false
             end
 
             -- In instances, do not show zone-wide drops on unit tooltips (avoids e.g. "Mount"
@@ -1632,10 +1645,14 @@ function TooltipService:InitializeGameTooltipHook()
                         drops = sourceDB.npcs[npcID]
                         if drops then resolvedNpcID = npcID end
                         -- Check for zone-wide drops (e.g., Midnight zone rare mounts)
-                        local zRaresOnly
-                        zoneDrops, zRaresOnly = GetCurrentZoneDrops()
+                        local zRaresOnly, zHostileOnly
+                        zoneDrops, zRaresOnly, zHostileOnly = GetCurrentZoneDrops()
                         -- If zone is raresOnly, only show on rare/elite units
                         if zoneDrops and zRaresOnly and not IsMouseoverRareOrElite() then
+                            zoneDrops = nil
+                        end
+                        -- If zone is hostileOnly, only show on attackable units (not friendly NPCs/vendors)
+                        if zoneDrops and zHostileOnly and not IsMouseoverAttackable() then
                             zoneDrops = nil
                         end
                         -- In instances, never show zone drops on unit tooltip (e.g. Empowered Restoration Stone)

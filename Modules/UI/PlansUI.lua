@@ -1421,16 +1421,24 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                 local leftIndent = isSub and 26 or 14
                                 local iconSize = isSub and 12 or 14
 
+                                -- Assignment rows with objectives get extra height
+                                local hasObjectives = (catKey == "assignments" and quest.objectives and #quest.objectives > 0 and not quest.isComplete)
+                                local rowH = hasObjectives and (ROW_H + #quest.objectives * 16) or ROW_H
+
                                 local row
-                                row, yOffset = ns.UI.Factory:CreateDataRow(parent, yOffset, qi, ROW_H)
-                                row:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -yOffset + ROW_H)
-                                row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -yOffset + ROW_H)
+                                row, yOffset = ns.UI.Factory:CreateDataRow(parent, yOffset, qi, rowH)
+                                row:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -yOffset + rowH)
+                                row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -yOffset + rowH)
                                 row:EnableMouse(true)
 
                                 -- Status icon (atlas-based)
                                 local statusIcon = row:CreateTexture(nil, "ARTWORK")
                                 statusIcon:SetSize(iconSize, iconSize)
-                                statusIcon:SetPoint("LEFT", leftIndent, 0)
+                                if hasObjectives then
+                                    statusIcon:SetPoint("TOPLEFT", leftIndent, -6)
+                                else
+                                    statusIcon:SetPoint("LEFT", leftIndent, 0)
+                                end
                                 if quest.isComplete then
                                     statusIcon:SetAtlas("common-icon-checkmark", false)
                                     statusIcon:SetVertexColor(0.27, 1, 0.27)
@@ -1444,7 +1452,11 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
                                 -- Quest title
                                 local titleFs = FontManager:CreateFontString(row, isSub and "small" or "body", "OVERLAY")
-                                titleFs:SetPoint("LEFT", leftIndent + iconSize + 4, 0)
+                                if hasObjectives then
+                                    titleFs:SetPoint("TOPLEFT", leftIndent + iconSize + 4, -4)
+                                else
+                                    titleFs:SetPoint("LEFT", leftIndent + iconSize + 4, 0)
+                                end
                                 titleFs:SetWidth(width * 0.50)
                                 titleFs:SetJustifyH("LEFT")
                                 titleFs:SetWordWrap(false)
@@ -1458,19 +1470,60 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                     titleFs:SetText("|cffffffff" .. (quest.title or "") .. "|r")
                                 end
 
-                                -- Zone
-                                local zoneFs = FontManager:CreateFontString(row, "body", "OVERLAY")
-                                zoneFs:SetPoint("LEFT", 32 + width * 0.52, 0)
-                                zoneFs:SetWidth(width * 0.25)
-                                zoneFs:SetJustifyH("LEFT")
-                                zoneFs:SetWordWrap(false)
-                                zoneFs:SetText("|cffffffff" .. (quest.zone or "") .. "|r")
+                                -- Assignment: show each objective with individual progress
+                                if hasObjectives then
+                                    local objY = -4
+                                    for oi = 1, #quest.objectives do
+                                        local obj = quest.objectives[oi]
+                                        objY = objY - 16
+                                        local objIcon = row:CreateTexture(nil, "ARTWORK")
+                                        objIcon:SetSize(8, 8)
+                                        objIcon:SetPoint("TOPLEFT", leftIndent + iconSize + 8, objY)
+                                        if obj.finished then
+                                            objIcon:SetAtlas("common-icon-checkmark", false)
+                                            objIcon:SetVertexColor(0.27, 1, 0.27)
+                                        else
+                                            objIcon:SetAtlas("Objective-Nub", false)
+                                            objIcon:SetVertexColor(0.5, 0.5, 0.5)
+                                        end
 
-                                -- Time remaining
-                                if quest.timeLeft and quest.timeLeft > 0 then
-                                    local timeFs = FontManager:CreateFontString(row, "body", "OVERLAY")
-                                    timeFs:SetPoint("RIGHT", -14, 0)
-                                    timeFs:SetText("|cffffffff" .. FormatTimeLeft(quest.timeLeft) .. "|r")
+                                        local objText = obj.text or string.format("Objective %d", oi)
+                                        local objColor = obj.finished and "|cff44ff44" or "|cffaaaaaa"
+                                        local objFs = FontManager:CreateFontString(row, "small", "OVERLAY")
+                                        objFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20, objY + 2)
+                                        objFs:SetWidth(width * 0.45)
+                                        objFs:SetJustifyH("LEFT")
+                                        objFs:SetWordWrap(false)
+                                        objFs:SetText(objColor .. objText .. "|r")
+
+                                        local progFs = FontManager:CreateFontString(row, "small", "OVERLAY")
+                                        progFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20 + width * 0.46, objY + 2)
+                                        progFs:SetJustifyH("LEFT")
+                                        local progColor = obj.finished and "|cff44ff44" or "|cffffcc00"
+                                        progFs:SetText(string.format("%s%d/%d|r", progColor, obj.numFulfilled, obj.numRequired))
+                                    end
+
+                                    -- Zone on the right side
+                                    if quest.zone and quest.zone ~= "" then
+                                        local zoneFs = FontManager:CreateFontString(row, "small", "OVERLAY")
+                                        zoneFs:SetPoint("TOPRIGHT", -14, -6)
+                                        zoneFs:SetJustifyH("RIGHT")
+                                        zoneFs:SetText("|cff888888" .. quest.zone .. "|r")
+                                    end
+                                else
+                                    -- Standard row: zone + time
+                                    local zoneFs = FontManager:CreateFontString(row, "body", "OVERLAY")
+                                    zoneFs:SetPoint("LEFT", 32 + width * 0.52, 0)
+                                    zoneFs:SetWidth(width * 0.25)
+                                    zoneFs:SetJustifyH("LEFT")
+                                    zoneFs:SetWordWrap(false)
+                                    zoneFs:SetText("|cffffffff" .. (quest.zone or "") .. "|r")
+
+                                    if quest.timeLeft and quest.timeLeft > 0 then
+                                        local timeFs = FontManager:CreateFontString(row, "body", "OVERLAY")
+                                        timeFs:SetPoint("RIGHT", -14, 0)
+                                        timeFs:SetText("|cffffffff" .. FormatTimeLeft(quest.timeLeft) .. "|r")
+                                    end
                                 end
 
                                 AttachQuestRowTooltip(row, quest)
@@ -1761,6 +1814,55 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     ns.TooltipService:Show(btn, { type = "custom", title = "Delete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
                 end)
                 removeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
+                
+                local hasReminder = self.HasPlanReminder and self:HasPlanReminder(plan.id)
+                local alertBtnX = -(actionMargin + actionSize + actionGap)
+                if plan.type == "custom" then
+                    alertBtnX = -(actionMargin + (actionSize + actionGap) * 2)
+                end
+                local alertBtn = ns.UI.Factory:CreateButton(card, actionSize, actionSize, true)
+                alertBtn:SetPoint("TOPRIGHT", alertBtnX, -actionMargin)
+                local bellTex = alertBtn:CreateTexture(nil, "ARTWORK")
+                bellTex:SetSize(actionSize - 2, actionSize - 2)
+                bellTex:SetPoint("CENTER")
+                bellTex:SetAtlas("minimap-genericevent-hornicon-small", true)
+                if hasReminder then
+                    bellTex:SetVertexColor(1, 0.82, 0)
+                else
+                    bellTex:SetVertexColor(0.5, 0.5, 0.5)
+                end
+                alertBtn._bellTex = bellTex
+                alertBtn:SetScript("OnMouseDown", function(self, button)
+                    if card then card.clickedOnRemoveBtn = true end
+                end)
+                alertBtn:SetScript("OnClick", function()
+                    if self.ShowSetAlertDialog then
+                        self:ShowSetAlertDialog(plan.id)
+                    end
+                end)
+                alertBtn:SetScript("OnEnter", function(btn)
+                    if btn._bellTex then btn._bellTex:SetVertexColor(1, 0.9, 0.3) end
+                    local title = hasReminder and ((ns.L and ns.L["ALERT_ACTIVE"]) or "Alert Active") or ((ns.L and ns.L["SET_ALERT"]) or "Set Alert")
+                    ns.TooltipService:Show(btn, { type = "custom", title = title, icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                end)
+                alertBtn:SetScript("OnLeave", function(btn)
+                    if btn._bellTex then
+                        local active = self.HasPlanReminder and self:HasPlanReminder(plan.id)
+                        btn._bellTex:SetVertexColor(active and 1 or 0.5, active and 0.82 or 0.5, active and 0 or 0.5)
+                    end
+                    ns.TooltipService:Hide()
+                end)
+
+                -- Adjust nameText right anchor to avoid overlap with action buttons
+                if card.nameText then
+                    local nameRightOffset = alertBtnX - actionSize - 2
+                    local pt1, rel1, relPt1, x1, y1 = card.nameText:GetPoint(1)
+                    card.nameText:ClearAllPoints()
+                    if pt1 and rel1 then
+                        card.nameText:SetPoint(pt1, rel1, relPt1, x1, y1)
+                    end
+                    card.nameText:SetPoint("RIGHT", card, "RIGHT", nameRightOffset, 0)
+                end
             end
 
             -- Right-click context menu (try count only for drop-source; reset cycle for custom)
@@ -3784,6 +3886,11 @@ function WarbandNexus:SaveCustomPlan(title, description, resetType, cycleCount)
     }
     
     table.insert(self.db.global.customPlans, customPlan)
+
+    -- Resolve display data immediately so My Plans renders complete info
+    if self._ResolveSinglePlan then
+        self:_ResolveSinglePlan(customPlan, time())
+    end
 end
 
 function WarbandNexus:GetCustomPlans()
@@ -3960,9 +4067,9 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             progressHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
             progressHeader:SetText((ns.L and ns.L["CURRENT_PROGRESS"]) or "Current Progress")
             
-            -- 3-column progress display (centered) - PREMIUM DASHBOARD
-            local colWidth = 145
-            local colSpacing = 12
+            -- 4-column progress display (centered) - PREMIUM DASHBOARD
+            local colWidth = 108
+            local colSpacing = 10
             local totalWidth = colWidth * 3 + colSpacing * 2
             local startX = -(totalWidth / 2) + (colWidth / 2)
             
@@ -4004,12 +4111,13 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 titleText:SetText(title)
                 
                 -- Reward tier indicators (stars) - Inside card, bigger, with milestone text
+                local starCount = #thresholds
                 local starSpacing = 42
                 local starSize = 24  -- Bigger stars
-                local starTotalWidth = (3 - 1) * starSpacing
+                local starTotalWidth = (starCount - 1) * starSpacing
                 local starStartX = -starTotalWidth / 2
                 
-                for i = 1, 3 do
+                for i = 1, starCount do
                     -- Star container (using Factory pattern)
                     local starContainer = ns.UI.Factory:CreateContainer(col, starSize, starSize + 20)  -- Extra height for text
                     starContainer:SetPoint("TOP", titleText, "BOTTOM", starStartX + (i - 1) * starSpacing, -12)
@@ -4084,8 +4192,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         
         local slotOptions = {
             { key = "dungeon", atlas = "questlog-questtypeicon-heroic",  label = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon (M+)", color = {0.9, 0.7, 0.2} },
-            { key = "raid",    atlas = "questlog-questtypeicon-raid",    label = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",         color = {0.3, 0.8, 1.0} },
-            { key = "world",   atlas = "questlog-questtypeicon-Delves",  label = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World",         color = {0.4, 0.9, 0.4} },
+            { key = "raid",    atlas = "questlog-questtypeicon-raid",    label = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",          color = {0.3, 0.8, 1.0} },
+            { key = "world",   atlas = "questlog-questtypeicon-Delves",  label = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World",          color = {0.4, 0.9, 0.4} },
         }
         
         local slotCheckY = -320
@@ -4115,7 +4223,9 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             
             local capturedKey = opt.key
             cb:SetScript("OnClick", function(self)
-                selectedSlots[capturedKey] = self:GetChecked()
+                local checked = self:GetChecked()
+                selectedSlots[capturedKey] = checked
+                if self.innerDot then self.innerDot:SetShown(checked) end
             end)
         end
         
@@ -4295,11 +4405,7 @@ function WarbandNexus:ShowDailyPlanDialog()
         cb:SetScript("OnClick", function(self)
             local isChecked = self:GetChecked()
             selectedQuestTypes[catKey] = isChecked
-            if isChecked then
-                if self.checkTexture then self.checkTexture:Show() end
-            else
-                if self.checkTexture then self.checkTexture:Hide() end
-            end
+            if self.innerDot then self.innerDot:SetShown(isChecked) end
         end)
     end
     
