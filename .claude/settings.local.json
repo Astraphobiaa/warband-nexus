@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(xargs grep -l \"CollectibleSourceDB\\\\|npcDropDB\\\\|npcDrop\")",
-      "Bash(grep -n \"SaveCurrentCharacterData\\\\|SaveMinimalCharacterData\\\\|CaptureLogoutCharacterState\" /c/Users/Mert/Documents/GitHub/warband-nexus/Modules/*.lua)"
+      "Bash(grep -n \"SaveCurrentCharacterData\\\\|SaveMinimalCharacterData\\\\|CaptureLogoutCharacterState\" /c/Users/Mert/Documents/GitHub/warband-nexus/Modules/*.lua)",
+      "Bash(ls \"C:\\\\Users\\\\Mert\\\\.claude\\\\projects\\\\c--Users-Mert-Documents-GitHub-warband-nexus\\\\memory\"\" 2>/dev/null || echo \"Directory empty or doesn 't exist \")",
+      "Bash(grep -rn \"CRAFTED_CREST_MAX_ILVL\\\\|CRAFTED_CREST_COST\\\\|TRACK_ILVLS\" \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\\\\Modules\"\" --include=\"*.lua \")",
+      "Bash(grep -rn \"undefined\\\\|not found\\\\|FIXME\\\\|BUG\\\\|XXX\" /c/Users/Mert/Documents/GitHub/warband-nexus/Modules/*.lua)",
+      "Bash(grep -n \"LibStub:GetLibrary\" /c/Users/Mert/Documents/GitHub/warband-nexus/Modules/*.lua)",
+      "Bash(grep -n 'LibStub\\(\"\"' /c/Users/Mert/Documents/GitHub/warband-nexus/Modules/*.lua)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Mert\\.claude\\projects\\c--Users-Mert-Documents-GitHub-warband-nexus"
     ]
   }
 }

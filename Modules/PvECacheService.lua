@@ -54,6 +54,7 @@ function WarbandNexus:InitializePvECache()
             mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} },
             greatVault = { activities = {}, rewards = {} },
             lockouts = { raids = {}, worldBosses = {} },
+            delves = { companion = {}, season = 0 },
             version = CACHE_VERSION,
             lastUpdate = 0,
         }
@@ -66,10 +67,16 @@ function WarbandNexus:InitializePvECache()
             mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} },
             greatVault = { activities = {}, rewards = {} },
             lockouts = { raids = {}, worldBosses = {} },
+            delves = { companion = {}, season = 0 },
             version = CACHE_VERSION,
             lastUpdate = 0,
         }
         return
+    end
+    
+    -- Ensure delves structure exists (for existing DBs pre-delves)
+    if not self.db.global.pveCache.delves then
+        self.db.global.pveCache.delves = { companion = {}, season = 0 }
     end
     
     -- CRITICAL: Validate and clear corrupted vault data
@@ -114,8 +121,8 @@ function WarbandNexus:UpdateMythicPlusAffixes()
     
     if affixes and #affixes > 0 then
         self.db.global.pveCache.mythicPlus.currentAffixes = {}
-        for _, affixData in ipairs(affixes) do
-            -- Extract affixID (supports both direct ID and struct format)
+        for i = 1, #affixes do
+            local affixData = affixes[i]
             local affixID = type(affixData) == "table" and affixData.id or affixData
             
             if affixID and type(affixID) == "number" then
@@ -198,7 +205,8 @@ function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
     self.db.global.pveCache.mythicPlus.bestRuns[charKey].scoreSource = scoreSource
     
     -- Store best runs for each dungeon
-    for _, mapID in ipairs(maps) do
+    for i = 1, #maps do
+        local mapID = maps[i]
         local _, level, _, onTime = C_MythicPlus.GetWeeklyBestForMap and C_MythicPlus.GetWeeklyBestForMap(mapID)
         if level and level > 0 then
             self.db.global.pveCache.mythicPlus.bestRuns[charKey][mapID] = {
@@ -244,8 +252,8 @@ function WarbandNexus:UpdateDungeonScores(charKey)
     -- Metadata (name, texture, timeLimit) resolved on-demand from C_ChallengeMode.GetMapUIInfo()
     local maps = C_ChallengeMode.GetMapTable()
     if maps then
-        for _, mapID in ipairs(maps) do
-            -- Get score for this specific map
+        for i = 1, #maps do
+            local mapID = maps[i]
             local intimeInfo, overtimeInfo = C_MythicPlus.GetSeasonBestForMap(mapID)
             
             -- Calculate HIGHEST score from best runs
@@ -324,48 +332,118 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
         lastUpdate = time(),
         weeklyResetTime = weeklyResetTime,
     }
-        
-        for _, activity in ipairs(activities) do
-            if activity then
-                local data = {
-                    type = activity.type,
-                    index = activity.index,
-                    progress = activity.progress,
-                    threshold = activity.threshold,
-                    level = activity.level,
-                    id = activity.id,
-                    rewards = activity.rewards or nil,
-                }
-                
-                -- Extract reward item level using GetExampleRewardItemHyperlinks (RELIABLE!)
-                if activity.id and C_WeeklyRewards.GetExampleRewardItemHyperlinks then
-                    local currentLink, upgradeLink = C_WeeklyRewards.GetExampleRewardItemHyperlinks(activity.id)
-                    
+    
+    local charData = self.db.global.pveCache.greatVault.activities[charKey]
+    
+    for i = 1, #activities do
+        local activity = activities[i]
+        if activity then
+            local data = {
+                type = activity.type,
+                index = activity.index,
+                progress = activity.progress,
+                threshold = activity.threshold,
+                level = activity.level,
+                id = activity.id,
+                activityTierID = activity.activityTierID,
+                raidString = activity.raidString,
+                rewards = activity.rewards or nil,
+            }
+            
+            -- Extract reward item level using GetExampleRewardItemHyperlinks
+            if activity.id and C_WeeklyRewards.GetExampleRewardItemHyperlinks then
+                local currentLink, upgradeLink = C_WeeklyRewards.GetExampleRewardItemHyperlinks(activity.id)
                 if currentLink then
-                    -- Parse item level from hyperlink
                     local effectiveILvl, _, baseILvl = C_Item.GetDetailedItemLevelInfo(currentLink)
-                    -- CRITICAL: Default to 0 if nil (never save nil)
                     data.rewardItemLevel = effectiveILvl or baseILvl or 0
                 end
             end
-                
-                -- Categorize by activity type
-                if activity.type == Enum.WeeklyRewardChestThresholdType.Raid then
-                    table.insert(self.db.global.pveCache.greatVault.activities[charKey].raids, data)
-                elseif activity.type == Enum.WeeklyRewardChestThresholdType.Activities then
-                    -- Activities = Mythic+ Dungeons
-                    table.insert(self.db.global.pveCache.greatVault.activities[charKey].mythicPlus, data)
-                elseif activity.type == Enum.WeeklyRewardChestThresholdType.RankedPvP then
-                    table.insert(self.db.global.pveCache.greatVault.activities[charKey].pvp, data)
-                elseif activity.type == Enum.WeeklyRewardChestThresholdType.World then
-                    -- World activities (Delves, World Quests, etc.)
-                    if not self.db.global.pveCache.greatVault.activities[charKey].world then
-                        self.db.global.pveCache.greatVault.activities[charKey].world = {}
+            
+            -- Capture encounter info for raid slots (Blizzard's GetActivityEncounterInfo)
+            if activity.type == Enum.WeeklyRewardChestThresholdType.Raid
+                and C_WeeklyRewards.GetActivityEncounterInfo then
+                local encounters = C_WeeklyRewards.GetActivityEncounterInfo(activity.type, activity.index)
+                if encounters and #encounters > 0 then
+                    -- EJ APIs require Blizzard_EncounterJournal to be loaded
+                    if not EJ_GetEncounterInfo and not InCombatLockdown() then
+                        pcall(C_AddOns.LoadAddOn, "Blizzard_EncounterJournal")
                     end
-                    table.insert(self.db.global.pveCache.greatVault.activities[charKey].world, data)
+                    data.encounters = {}
+                    for ei = 1, #encounters do
+                        local enc = encounters[ei]
+                        local encName, instanceID
+                        if EJ_GetEncounterInfo then
+                            local name, _, _, _, _, instID = EJ_GetEncounterInfo(enc.encounterID)
+                            encName = name
+                            instanceID = instID
+                        end
+                        local instanceName
+                        if instanceID and EJ_GetInstanceInfo then
+                            instanceName = EJ_GetInstanceInfo(instanceID)
+                        end
+                        local diffName
+                        if enc.bestDifficulty and enc.bestDifficulty > 0 then
+                            if DifficultyUtil and DifficultyUtil.GetDifficultyName then
+                                diffName = DifficultyUtil.GetDifficultyName(enc.bestDifficulty)
+                            elseif GetDifficultyInfo then
+                                diffName = GetDifficultyInfo(enc.bestDifficulty)
+                            end
+                        end
+                        -- Guard secret values
+                        if issecretvalue and encName and issecretvalue(encName) then encName = nil end
+                        if issecretvalue and instanceName and issecretvalue(instanceName) then instanceName = nil end
+                        if issecretvalue and diffName and issecretvalue(diffName) then diffName = nil end
+                        data.encounters[ei] = {
+                            encounterID = enc.encounterID,
+                            bestDifficulty = enc.bestDifficulty,
+                            uiOrder = enc.uiOrder,
+                            instanceID = enc.instanceID or instanceID,
+                            name = encName,
+                            instanceName = instanceName,
+                            difficultyName = diffName,
+                        }
+                    end
                 end
             end
+            
+            -- Categorize by activity type
+            if activity.type == Enum.WeeklyRewardChestThresholdType.Raid then
+                table.insert(charData.raids, data)
+            elseif activity.type == Enum.WeeklyRewardChestThresholdType.Activities then
+                table.insert(charData.mythicPlus, data)
+            elseif activity.type == Enum.WeeklyRewardChestThresholdType.RankedPvP then
+                table.insert(charData.pvp, data)
+            elseif activity.type == Enum.WeeklyRewardChestThresholdType.World then
+                table.insert(charData.world, data)
+            end
         end
+    end
+    
+    -- Capture dungeon run counts (Heroic/Mythic/M+ separately)
+    if C_WeeklyRewards.GetNumCompletedDungeonRuns then
+        local numHeroic, numMythic, numMythicPlus = C_WeeklyRewards.GetNumCompletedDungeonRuns()
+        charData.dungeonRunCounts = {
+            heroic = numHeroic or 0,
+            mythic = numMythic or 0,
+            mythicPlus = numMythicPlus or 0,
+        }
+    end
+    
+    -- Capture sorted world/delve tier progress
+    if C_WeeklyRewards.GetSortedProgressForActivity and Enum.WeeklyRewardChestThresholdType.World then
+        local ok, worldProgress = pcall(C_WeeklyRewards.GetSortedProgressForActivity,
+            Enum.WeeklyRewardChestThresholdType.World, true)
+        if ok and worldProgress and #worldProgress > 0 then
+            charData.worldTierProgress = {}
+            for wi = 1, #worldProgress do
+                charData.worldTierProgress[wi] = {
+                    activityTierID = worldProgress[wi].activityTierID,
+                    difficulty = worldProgress[wi].difficulty,
+                    numPoints = worldProgress[wi].numPoints,
+                }
+            end
+        end
+    end
         
     -- CRITICAL: Save to DB after data is populated
     WarbandNexus:SavePvECache()
@@ -438,17 +516,33 @@ function WarbandNexus:UpdateRaidLockouts(charKey)
     for i = 1, numSavedInstances do
         local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress = GetSavedInstanceInfo(i)
         
+        if issecretvalue and name and issecretvalue(name) then name = nil end
+        if issecretvalue and difficulty and issecretvalue(difficulty) then difficulty = nil end
+        if issecretvalue and difficultyName and issecretvalue(difficultyName) then difficultyName = nil end
+        
         if name and isRaid and locked then
-            -- Store lean: progress data + name (name can't be resolved from lockout ID alone).
-            -- difficultyName resolved on-demand via GetDifficultyInfo(difficulty).
-            -- Lockout count is tiny (0-5 per char), so storing name has negligible SV impact.
+            local encounters = {}
+            if numEncounters and numEncounters > 0 then
+                for j = 1, numEncounters do
+                    local bossName, _, isKilled = GetSavedInstanceEncounterInfo(i, j)
+                    if issecretvalue and bossName and issecretvalue(bossName) then bossName = nil end
+                    if bossName then
+                        encounters[#encounters + 1] = {
+                            name = bossName,
+                            killed = isKilled or false,
+                        }
+                    end
+                end
+            end
             self.db.global.pveCache.lockouts.raids[charKey][id] = {
                 name = name,
                 difficulty = difficulty,
+                difficultyName = difficultyName,
                 reset = reset,
                 extended = extended or false,
                 numEncounters = numEncounters,
                 encounterProgress = encounterProgress,
+                encounters = encounters,
             }
         end
     end
@@ -460,11 +554,9 @@ function WarbandNexus:UpdateWorldBossKills(charKey)
     if not charKey or not self.db.global.pveCache then return end
     
     -- World boss kills tracked via quest completion
-    -- Common world boss quest IDs (TWW)
+    -- Midnight 12.0.1 world boss quest IDs
     local worldBossQuests = {
-        81653, -- Aggregation of Horrors
-        81652, -- Orta, the Broken Mountain
-        -- Add more as needed
+        93913, -- Midnight: World Boss (Quel'Thalas weekly world boss)
     }
     
     if not self.db.global.pveCache.lockouts.worldBosses then
@@ -473,10 +565,118 @@ function WarbandNexus:UpdateWorldBossKills(charKey)
     
     self.db.global.pveCache.lockouts.worldBosses[charKey] = {}
     
-    for _, questID in ipairs(worldBossQuests) do
+    for i = 1, #worldBossQuests do
+        local questID = worldBossQuests[i]
         if C_QuestLog.IsQuestFlaggedCompleted(questID) then
             self.db.global.pveCache.lockouts.worldBosses[charKey][questID] = true
         end
+    end
+end
+
+---Collect M+ run history for current character (this week only)
+---@param charKey string Character key (name-realm)
+function WarbandNexus:UpdateMythicPlusRunHistory(charKey)
+    if not charKey or not self.db.global.pveCache then return end
+    if not C_MythicPlus or not C_MythicPlus.GetRunHistory then return end
+
+    if not self.db.global.pveCache.mythicPlus.runHistory then
+        self.db.global.pveCache.mythicPlus.runHistory = {}
+    end
+
+    local runs = C_MythicPlus.GetRunHistory(false, false)
+    if not runs then
+        self.db.global.pveCache.mythicPlus.runHistory[charKey] = {}
+        return
+    end
+
+    local history = {}
+    for i = 1, #runs do
+        local run = runs[i]
+        if run and run.mapChallengeModeID and run.level then
+            local dungeonName
+            if C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
+                dungeonName = C_ChallengeMode.GetMapUIInfo(run.mapChallengeModeID)
+                if issecretvalue and dungeonName and issecretvalue(dungeonName) then
+                    dungeonName = nil
+                end
+            end
+            history[#history + 1] = {
+                dungeon = dungeonName or ("Map " .. run.mapChallengeModeID),
+                level = run.level,
+                timed = run.completed or false,
+            }
+        end
+    end
+
+    table.sort(history, function(a, b) return a.level > b.level end)
+
+    self.db.global.pveCache.mythicPlus.runHistory[charKey] = history
+end
+
+-- ============================================================================
+-- DELVES DATA
+-- ============================================================================
+
+---Update Delves companion data (account-wide) and per-character delve progress.
+---Uses C_DelvesUI APIs (Midnight 12.0+) for companion info and season tracking.
+function WarbandNexus:UpdateDelvesData(charKey)
+    if not self.db.global.pveCache or not self.db.global.pveCache.delves then return end
+    
+    local delves = self.db.global.pveCache.delves
+    
+    -- Season number (account-wide)
+    if C_DelvesUI and C_DelvesUI.GetCurrentDelvesSeasonNumber then
+        local seasonNum = C_DelvesUI.GetCurrentDelvesSeasonNumber()
+        if seasonNum and type(seasonNum) == "number" then
+            delves.season = seasonNum
+        end
+    end
+    
+    -- Companion info (account-wide — same companion for all characters)
+    if C_DelvesUI and C_DelvesUI.GetCompanionInfoForActivePlayer then
+        local companionInfoID = C_DelvesUI.GetCompanionInfoForActivePlayer()
+        if companionInfoID and not (issecretvalue and issecretvalue(companionInfoID)) then
+            delves.companion.infoID = companionInfoID
+        end
+        
+        -- Companion faction (for renown/level tracking)
+        if C_DelvesUI.GetFactionForCompanion then
+            local factionID = C_DelvesUI.GetFactionForCompanion()
+            if factionID and type(factionID) == "number" then
+                delves.companion.factionID = factionID
+                
+                -- Resolve companion renown level from reputation API
+                if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+                    local factionData = C_MajorFactions.GetMajorFactionData(factionID)
+                    if factionData then
+                        delves.companion.renownLevel = factionData.renownLevel or 0
+                        delves.companion.name = factionData.name
+                    end
+                end
+            end
+        end
+        
+        -- Companion role info
+        if C_DelvesUI.GetRoleNodeForCompanion then
+            local roleNodeID = C_DelvesUI.GetRoleNodeForCompanion()
+            if roleNodeID and not (issecretvalue and issecretvalue(roleNodeID)) then
+                delves.companion.roleNodeID = roleNodeID
+            end
+        end
+    end
+    
+    delves.companion.lastUpdate = time()
+    
+    -- Per-character: bountiful delve quest completion
+    if charKey then
+        if not delves.characters then delves.characters = {} end
+        if not delves.characters[charKey] then delves.characters[charKey] = {} end
+        
+        -- Bountiful Delves weekly (quest 81514)
+        delves.characters[charKey].bountifulComplete = C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted(81514) or false
+        -- Cracked Keystone weekly (quest 92600)
+        delves.characters[charKey].crackedKeystoneComplete = C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted(92600) or false
+        delves.characters[charKey].lastUpdate = time()
     end
 end
 
@@ -518,6 +718,8 @@ function WarbandNexus:UpdatePvEData()
     self:UpdateGreatVaultRewards(charKey)
     self:UpdateRaidLockouts(charKey)
     self:UpdateWorldBossKills(charKey)
+    self:UpdateMythicPlusRunHistory(charKey)
+    self:UpdateDelvesData(charKey)
     
     -- FALLBACK: Populate vault activities from C_WeeklyRewards.GetActivities() only if
     -- VaultScanner hasn't already provided richer data for this character.
@@ -578,11 +780,11 @@ function WarbandNexus:GetPvEData(charKey)
         if C_ChallengeMode then
             local maps = C_ChallengeMode.GetMapTable()
             if maps then
-                for _, mapID in ipairs(maps) do
-                    -- Get dungeon metadata
+                for i = 1, #maps do
+                    local mapID = maps[i]
                     local mapName, _, _, texture = C_ChallengeMode.GetMapUIInfo(mapID)
+                    if issecretvalue and mapName and issecretvalue(mapName) then mapName = nil end
                     
-                    -- Get score and bestLevel from dungeonScores cache (primary source)
                     local dungeonScore = 0
                     local bestLevel = 0
                     
@@ -626,12 +828,12 @@ function WarbandNexus:GetPvEData(charKey)
                 instanceID = instanceID,
                 name = lockout.name or ("Instance #" .. instanceID),
                 difficulty = lockout.difficulty,
-                difficultyName = difficultyName or "Unknown",
+                difficultyName = difficultyName or lockout.difficultyName or "Unknown",
                 reset = lockout.reset,
                 extended = lockout.extended or false,
                 numEncounters = lockout.numEncounters,
                 encounterProgress = lockout.encounterProgress,
-                -- UI-compatible aliases
+                encounters = lockout.encounters or {},
                 progress = lockout.encounterProgress or 0,
                 total = lockout.numEncounters or 0,
                 isRaid = true,
@@ -652,12 +854,19 @@ function WarbandNexus:GetPvEData(charKey)
             raidLockouts = hydratedLockouts,
             lockouts = hydratedLockouts,  -- Alias: PvEDataCollector and DataService use .lockouts
             worldBosses = dbCache.lockouts and dbCache.lockouts.worldBosses and dbCache.lockouts.worldBosses[charKey],
+            -- Delves data (companion is account-wide, per-char quest status)
+            delves = {
+                companion = dbCache.delves and dbCache.delves.companion or {},
+                season = dbCache.delves and dbCache.delves.season or 0,
+                character = dbCache.delves and dbCache.delves.characters and dbCache.delves.characters[charKey] or {},
+            },
             -- Add legacy-compatible mythicPlus structure
             mythicPlus = {
-                overallScore = overallScore,  -- Use cached score from dungeonScores
-                dungeons = dungeons,  -- Includes score from dungeonScores
+                overallScore = overallScore,
+                dungeons = dungeons,
                 bestRuns = bestRuns,
                 dungeonScores = dungeonScoresData,
+                runHistory = dbCache.mythicPlus and dbCache.mythicPlus.runHistory and dbCache.mythicPlus.runHistory[charKey] or {},
             },
         }
         
@@ -667,8 +876,8 @@ function WarbandNexus:GetPvEData(charKey)
         -- Hydrate affixes: SV stores only IDs, resolve name/description/icon on-demand
         local rawAffixes = dbCache.mythicPlus and dbCache.mythicPlus.currentAffixes or {}
         local hydratedAffixes = {}
-        for _, affixEntry in ipairs(rawAffixes) do
-            -- Handle both lean (number) and legacy (table) format
+        for i = 1, #rawAffixes do
+            local affixEntry = rawAffixes[i]
             local affixID = type(affixEntry) == "number" and affixEntry or (type(affixEntry) == "table" and affixEntry.id)
             if affixID and C_ChallengeMode then
                 local name, description, filedataid = C_ChallengeMode.GetAffixInfo(affixID)
@@ -687,6 +896,7 @@ function WarbandNexus:GetPvEData(charKey)
             mythicPlus = dbCache.mythicPlus or {},
             greatVault = dbCache.greatVault or {},
             lockouts = dbCache.lockouts or {},
+            delves = dbCache.delves or {},
             currentAffixes = hydratedAffixes,
         }
     end
@@ -751,7 +961,8 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
             
             pc.mythicPlus.dungeonScores[charKey].dungeons = pc.mythicPlus.dungeonScores[charKey].dungeons or {}
             
-            for _, dungeon in ipairs(mp.dungeons) do
+            for i = 1, #mp.dungeons do
+                local dungeon = mp.dungeons[i]
                 if dungeon.mapID then
                     pc.mythicPlus.bestRuns[charKey][dungeon.mapID] = {
                         level = dungeon.bestLevel or 0,
@@ -771,7 +982,8 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
         pc.greatVault.activities = pc.greatVault.activities or {}
         local vaultData = { raids = {}, mythicPlus = {}, pvp = {}, world = {}, lastUpdate = time() }
         
-        for _, activity in ipairs(legacyData.greatVault) do
+        for i = 1, #legacyData.greatVault do
+            local activity = legacyData.greatVault[i]
             local entry = {
                 progress = activity.progress or 0,
                 threshold = activity.threshold or 0,
@@ -808,7 +1020,8 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
         pc.lockouts.raids = pc.lockouts.raids or {}
         pc.lockouts.raids[charKey] = {}
         
-        for _, lockout in ipairs(legacyData.lockouts) do
+        for i = 1, #legacyData.lockouts do
+            local lockout = legacyData.lockouts[i]
             local id = lockout.instanceID or lockout.id
             if id then
                 pc.lockouts.raids[charKey][id] = {
@@ -834,6 +1047,7 @@ function WarbandNexus:ClearPvECache()
     self.db.global.pveCache.mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} }
     self.db.global.pveCache.greatVault = { activities = {}, rewards = {} }
     self.db.global.pveCache.lockouts = { raids = {}, worldBosses = {} }
+    self.db.global.pveCache.delves = { companion = {}, season = 0 }
     self.db.global.pveCache.lastUpdate = 0
     
     self:SavePvECache()
@@ -854,6 +1068,17 @@ function WarbandNexus:RegisterPvECacheEvents()
         if C_MythicPlus then
             C_MythicPlus.RequestMapInfo()
             C_MythicPlus.RequestCurrentAffixes()
+        end
+    end)
+    
+    -- Vault warm-up: VaultScanner fires OnUIInteract at T+1s, server responds ~T+2-4s.
+    -- Re-collect vault data at T+5s to catch any iLvl that arrived after initial scan.
+    C_Timer.After(5, function()
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
+        local charKey = ns.Utilities:GetCharacterKey()
+        if charKey then
+            WarbandNexus:ProcessGreatVaultActivities(charKey)
+            WarbandNexus:SavePvECache()
         end
     end)
     
@@ -948,6 +1173,14 @@ function WarbandNexus:RegisterPvECacheEvents()
         ThrottledPvEUpdate()
     end)
     
+    -- Delves events (Midnight 12.0+)
+    pcall(function()
+        self:RegisterEvent("DELVES_ACCOUNT_DATA_ELEMENT_CHANGED", function()
+            DebugPrint("|cff9370DB[PvECache]|r [PvE Event] DELVES_ACCOUNT_DATA_ELEMENT_CHANGED triggered")
+            ThrottledPvEUpdate()
+        end)
+    end)
+    
 end
 
 -- ============================================================================
@@ -1025,9 +1258,13 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     -- activityID so known-good values survive a re-scan that returns 0.
     local activities = self.db.global.pveCache.greatVault.activities[charKey]
     local preservedILvl = {}
-    for _, category in ipairs({"raids", "mythicPlus", "pvp", "world"}) do
+    local vaultCategories = {"raids", "mythicPlus", "pvp", "world"}
+    for ci = 1, #vaultCategories do
+        local category = vaultCategories[ci]
         if activities[category] then
-            for _, a in ipairs(activities[category]) do
+            local catList = activities[category]
+            for ai = 1, #catList do
+                local a = catList[ai]
                 if a.id and a.rewardItemLevel and a.rewardItemLevel > 0 then
                     preservedILvl[a.id] = {
                         rewardItemLevel = a.rewardItemLevel,
@@ -1046,7 +1283,8 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     activities.world = {}
     
     -- Convert VaultScanner format to PvECacheService format
-    for _, slot in ipairs(vaultSlots) do
+    for i = 1, #vaultSlots do
+        local slot = vaultSlots[i]
         local newILvl = slot.currentILvl or 0
         local newNextILvl = slot.nextILvl or 0
         local newMaxILvl = slot.maxILvl or 0

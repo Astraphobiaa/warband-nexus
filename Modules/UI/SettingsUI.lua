@@ -38,6 +38,28 @@ local CONTENT_PADDING_BOTTOM = UI_SPACING.MIN_BOTTOM_SPACING  -- Bottom padding 
 
 -- Forward declaration: BuildSettings and ShowSettings share this reference.
 local settingsFrame = nil
+local IGNORED_KEYS = {
+    LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true,
+    LALT = true, RALT = true, UNKNOWN = true,
+}
+
+local function GetToggleBindingDisplayText()
+    local key = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+                and WarbandNexus.db.profile.toggleKeybind
+    if not key or key == "" then
+        return (ns.L and ns.L["KEYBINDING_UNBOUND"]) or "Not set"
+    end
+    return (GetBindingText and GetBindingText(key)) or key
+end
+
+local function SaveToggleKeybind(key)
+    if not WarbandNexus or not WarbandNexus.db then return false end
+    WarbandNexus.db.profile.toggleKeybind = key
+    if WarbandNexus.ApplyToggleKeybind then
+        WarbandNexus:ApplyToggleKeybind()
+    end
+    return true
+end
 
 --============================================================================
 -- GRID LAYOUT SYSTEM
@@ -646,7 +668,6 @@ local function CreateInputWidget(parent, option, yOffset)
     local boxWidth = option.width or 200
     editBox:SetWidth(boxWidth)
     editBox:SetPoint("TOPLEFT", 0, yOffset - 22)
-    editBox:SetFontObject(GameFontHighlight)
     editBox:SetTextInsets(10, 10, 0, 0)
     editBox:SetMaxLetters(option.maxLetters or 128)
 
@@ -929,9 +950,129 @@ local function BuildSettings(parent, containerWidth)
         GameTooltip:Show()
     end)
     langLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    
-    -- Scroll speed slider (below language label) – scale multiplier
-    local scrollSpeedYOffset = generalGridYOffset - 45
+
+    -- Keybinding row (label + capture button + clear button)
+    local keybindTitle = (ns.L and ns.L["KEYBINDING"]) or "Keybinding"
+    local keybindLabel = FontManager:CreateFontString(generalSection.content, "body", "OVERLAY")
+    keybindLabel:SetPoint("TOPLEFT", 0, generalGridYOffset - 45)
+    keybindLabel:SetJustifyH("LEFT")
+    keybindLabel:SetText(keybindTitle .. ":")
+    keybindLabel:SetTextColor(1, 1, 1, 1)
+
+    local keybindBtn = CreateFrame("Button", nil, generalSection.content, "BackdropTemplate")
+    keybindBtn:SetSize(160, 26)
+    keybindBtn:SetPoint("LEFT", keybindLabel, "RIGHT", 10, 0)
+    if ApplyVisuals then
+        ApplyVisuals(keybindBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
+
+    local keybindBtnText = FontManager:CreateFontString(keybindBtn, "body", "OVERLAY")
+    keybindBtnText:SetPoint("CENTER")
+    keybindBtnText:SetText(GetToggleBindingDisplayText())
+    keybindBtnText:SetTextColor(1, 1, 1, 1)
+
+    local isListening = false
+
+    local function StopListening()
+        isListening = false
+        keybindBtn:EnableKeyboard(false)
+        keybindBtnText:SetText(GetToggleBindingDisplayText())
+        keybindBtnText:SetTextColor(1, 1, 1, 1)
+        if ApplyVisuals then
+            ApplyVisuals(keybindBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        end
+    end
+
+    local function StartListening()
+        if InCombatLockdown() then return end
+        isListening = true
+        keybindBtn:EnableKeyboard(true)
+        keybindBtnText:SetText((ns.L and ns.L["KEYBINDING_PRESS_KEY"]) or "Press a key...")
+        keybindBtnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+        if ApplyVisuals then
+            ApplyVisuals(keybindBtn, {0.12, 0.08, 0.18, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+        end
+    end
+
+    keybindBtn:SetScript("OnClick", function()
+        if isListening then
+            StopListening()
+        else
+            StartListening()
+        end
+    end)
+
+    keybindBtn:SetScript("OnKeyDown", function(_, key)
+        if not isListening then return end
+        if IGNORED_KEYS[key] then return end
+
+        if key == "ESCAPE" then
+            StopListening()
+            return
+        end
+
+        if InCombatLockdown() then
+            if WarbandNexus and WarbandNexus.Print then
+                WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["KEYBINDING_COMBAT"]) or "Cannot change keybindings in combat.") .. "|r")
+            end
+            StopListening()
+            return
+        end
+
+        local prefix = ""
+        if IsShiftKeyDown() then prefix = "SHIFT-" end
+        if IsControlKeyDown() then prefix = "CTRL-" .. prefix end
+        if IsAltKeyDown() then prefix = "ALT-" .. prefix end
+
+        local fullKey = prefix .. key
+        SaveToggleKeybind(fullKey)
+
+        if WarbandNexus and WarbandNexus.Print then
+            WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["KEYBINDING_SAVED"]) or "Keybinding saved.") .. "|r")
+        end
+
+        StopListening()
+    end)
+
+    keybindBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText((ns.L and ns.L["KEYBINDING_TOOLTIP"]) or "Click to set a keybinding for toggling Warband Nexus.\nPress ESC to cancel.", 1, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    keybindBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- Clear binding button
+    local clearBtn = CreateFrame("Button", nil, generalSection.content, "BackdropTemplate")
+    clearBtn:SetSize(24, 24)
+    clearBtn:SetPoint("LEFT", keybindBtn, "RIGHT", 6, 0)
+    if ApplyVisuals then
+        ApplyVisuals(clearBtn, {0.15, 0.08, 0.08, 1}, {0.6, 0.2, 0.2, 0.8})
+    end
+
+    local clearIcon = clearBtn:CreateTexture(nil, "ARTWORK")
+    clearIcon:SetSize(12, 12)
+    clearIcon:SetPoint("CENTER")
+    clearIcon:SetAtlas("uitools-icon-close")
+    clearIcon:SetVertexColor(0.9, 0.3, 0.3)
+
+    clearBtn:SetScript("OnClick", function()
+        if InCombatLockdown() then return end
+        SaveToggleKeybind(nil)
+        StopListening()
+    end)
+    clearBtn:SetScript("OnEnter", function(self)
+        clearIcon:SetVertexColor(1, 0.2, 0.2)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText((ns.L and ns.L["KEYBINDING_CLEAR"]) or "Clear keybinding", 1, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    clearBtn:SetScript("OnLeave", function()
+        clearIcon:SetVertexColor(0.9, 0.3, 0.3)
+        GameTooltip:Hide()
+    end)
+
+    -- Scroll speed slider (below keybinding row) – scale multiplier
+    local scrollSpeedYOffset = generalGridYOffset - 80
     scrollSpeedYOffset = CreateSliderWidget(generalSection.content, {
         name = (ns.L and ns.L["SCROLL_SPEED"]) or "Scroll Speed",
         desc = (ns.L and ns.L["SCROLL_SPEED_TOOLTIP"]) or "Multiplier for scroll speed (1.0x = 28 px per step)",
@@ -2146,7 +2287,7 @@ local function BuildSettings(parent, containerWidth)
         {
             key = "usePixelNormalization",
             label = (ns.L and ns.L["RESOLUTION_NORMALIZATION"]) or "Auto-Scale for Resolution",
-            tooltip = (ns.L and ns.L["RESOLUTION_NORMALIZATION_TOOLTIP"]) or "Automatically adjust font sizes based on your screen resolution and UI scale so text appears the same physical size across different monitors",
+            tooltip = (ns.L and ns.L["RESOLUTION_NORMALIZATION_TOOLTIP"]) or "Adjust font sizes for your monitor resolution (4K vs 1080p). WoW UI Scale still scales text with the rest of the interface.",
             get = function() return WarbandNexus.db.profile.fonts.usePixelNormalization end,
             set = function(value)
                 WarbandNexus.db.profile.fonts.usePixelNormalization = value
@@ -2542,7 +2683,6 @@ local function BuildSettings(parent, containerWidth)
         itemIDBox:SetHeight(30)
         itemIDBox:SetWidth(editBoxWidth)
         itemIDBox:SetPoint("TOPLEFT", 0, trackYOffset)
-        itemIDBox:SetFontObject(GameFontHighlight)
         itemIDBox:SetTextInsets(10, 10, 0, 0)
         itemIDBox:SetMaxLetters(20)
         itemIDBox:SetNumeric(false)

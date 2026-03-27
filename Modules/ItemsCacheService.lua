@@ -49,9 +49,18 @@ local WARBAND_BAGS = ns.WARBAND_BAGS or {13, 14, 15, 16, 17}
 
 -- O(1) bag type lookup table (replaces 3 sequential linear searches in ThrottledBagUpdate)
 local BAG_TYPE_LOOKUP = {}  -- [bagID] = "inventory" | "bank" | "warband"
-for _, id in ipairs(INVENTORY_BAGS) do BAG_TYPE_LOOKUP[id] = "inventory" end
-for _, id in ipairs(BANK_BAGS) do BAG_TYPE_LOOKUP[id] = "bank" end
-for _, id in ipairs(WARBAND_BAGS) do BAG_TYPE_LOOKUP[id] = "warband" end
+for i = 1, #INVENTORY_BAGS do
+    local id = INVENTORY_BAGS[i]
+    BAG_TYPE_LOOKUP[id] = "inventory"
+end
+for i = 1, #BANK_BAGS do
+    local id = BANK_BAGS[i]
+    BAG_TYPE_LOOKUP[id] = "bank"
+end
+for i = 1, #WARBAND_BAGS do
+    local id = WARBAND_BAGS[i]
+    BAG_TYPE_LOOKUP[id] = "warband"
+end
 
 -- ============================================================================
 -- STATE MANAGEMENT
@@ -209,10 +218,13 @@ local function SyncDecompressedCacheWithMetadata()
     local syncedCount = 0
     -- Sync personal item caches (bags + bank per character)
     for charKey, data in pairs(decompressedItemCache) do
-        for _, source in ipairs({"bags", "bank"}) do
+        local sources = {"bags", "bank"}
+        for i = 1, #sources do
+            local source = sources[i]
             local items = data[source]
             if items then
-                for _, item in ipairs(items) do
+                for j = 1, #items do
+                    local item = items[j]
                     if item.pending and item.itemID then
                         local meta = itemMetadataCache[item.itemID]
                         if meta and not meta.pending then
@@ -230,7 +242,8 @@ local function SyncDecompressedCacheWithMetadata()
     end
     -- Sync warband bank cache
     if decompressedWarbandCache and decompressedWarbandCache.items then
-        for _, item in ipairs(decompressedWarbandCache.items) do
+        for i = 1, #decompressedWarbandCache.items do
+            local item = decompressedWarbandCache.items[i]
             if item.pending and item.itemID then
                 local meta = itemMetadataCache[item.itemID]
                 if meta and not meta.pending then
@@ -398,7 +411,8 @@ end
 ---@return table items Same array, items hydrated in-place
 local function HydrateItems(items)
     if not items then return items end
-    for _, item in ipairs(items) do
+    for i = 1, #items do
+        local item = items[i]
         HydrateItem(item)
     end
     return items
@@ -557,14 +571,16 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
     local isInventoryBag = false
     local isBankBag = false
     
-    for _, invBagID in ipairs(INVENTORY_BAGS) do
+    for i = 1, #INVENTORY_BAGS do
+        local invBagID = INVENTORY_BAGS[i]
         if bagID == invBagID then
             isInventoryBag = true
             break
         end
     end
     
-    for _, bankBagID in ipairs(BANK_BAGS) do
+    for i = 1, #BANK_BAGS do
+        local bankBagID = BANK_BAGS[i]
         if bagID == bankBagID then
             isBankBag = true
             break
@@ -612,9 +628,10 @@ function WarbandNexus:UpdateSingleWarbandBag(bagID)
     
     -- Determine tabIndex from WARBAND_BAGS array position
     local tabIndex = nil
-    for idx, warbandBagID in ipairs(WARBAND_BAGS) do
+    for i = 1, #WARBAND_BAGS do
+        local warbandBagID = WARBAND_BAGS[i]
         if bagID == warbandBagID then
-            tabIndex = idx
+            tabIndex = i
             break
         end
     end
@@ -664,7 +681,8 @@ function WarbandNexus:ScanInventoryBags(charKey)
     local totalSlots = 0
     
     -- Scan ALL inventory bags
-    for _, bagID in ipairs(INVENTORY_BAGS) do
+    for ii = 1, #INVENTORY_BAGS do
+        local bagID = INVENTORY_BAGS[ii]
         totalSlots = totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
         local bagItems = ScanBag(bagID)
         for i = 1, #bagItems do
@@ -703,7 +721,8 @@ function WarbandNexus:ScanBankBags(charKey)
     local allItems = {}
     
     -- Scan ALL bank bags (NO FLAG CHECK - just scan)
-    for _, bagID in ipairs(BANK_BAGS) do
+    for ii = 1, #BANK_BAGS do
+        local bagID = BANK_BAGS[ii]
         local bagItems = ScanBag(bagID)
         for i = 1, #bagItems do
             allItems[#allItems + 1] = bagItems[i]
@@ -726,12 +745,13 @@ function WarbandNexus:ScanWarbandBank()
     local allItems = {}
     
     -- Scan ALL warband bank tabs (NO FLAG CHECK - just scan)
-    for tabIndex, bagID in ipairs(WARBAND_BAGS) do
+    for ii = 1, #WARBAND_BAGS do
+        local bagID = WARBAND_BAGS[ii]
         local bagItems = ScanBag(bagID)
         for i = 1, #bagItems do
             local item = bagItems[i]
             -- Add tab index for warband bank (1-5)
-            item.tabIndex = tabIndex
+            item.tabIndex = ii
             allItems[#allItems + 1] = item
         end
     end
@@ -1195,7 +1215,8 @@ local function BuildCharacterSummary(charKey)
     
     -- Count bags
     if itemsData.bags then
-        for _, item in ipairs(itemsData.bags) do
+        for i = 1, #itemsData.bags do
+            local item = itemsData.bags[i]
             if item.itemID then
                 local entry = summary[item.itemID]
                 if not entry then
@@ -1209,7 +1230,8 @@ local function BuildCharacterSummary(charKey)
     
     -- Count bank
     if itemsData.bank then
-        for _, item in ipairs(itemsData.bank) do
+        for i = 1, #itemsData.bank do
+            local item = itemsData.bank[i]
             if item.itemID then
                 local entry = summary[item.itemID]
                 if not entry then
@@ -1230,7 +1252,8 @@ local function BuildWarbandSummary()
     
     local warbandData = WarbandNexus:GetWarbandBankData()
     if warbandData and warbandData.items then
-        for _, item in ipairs(warbandData.items) do
+        for i = 1, #warbandData.items do
+            local item = warbandData.items[i]
             if item.itemID then
                 summary[item.itemID] = (summary[item.itemID] or 0) + (item.stackCount or 1)
             end

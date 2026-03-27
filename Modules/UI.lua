@@ -243,6 +243,10 @@ local function ResetWindowGeometry(frame)
             local profW = ns.ComputeProfessionsGridWidth()
             if profW > 0 then w = math.max(w, profW) end
         end
+        if frame.currentTab == "pve" and ns.ComputePvEMinScrollWidth then
+            local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
+            if pveW > 0 then w = math.max(w, pveW) end
+        end
         frame.scrollChild:SetWidth(w)
         if frame.columnHeaderInner and frame.columnHeaderClip and frame.columnHeaderClip:GetHeight() > 1 then
             frame.columnHeaderInner:SetWidth(w)
@@ -623,6 +627,10 @@ function WarbandNexus:CreateMainWindow()
                 local profW = ns.ComputeProfessionsGridWidth()
                 if profW > 0 then w = math.max(w, profW) end
             end
+            if self.currentTab == "pve" and ns.ComputePvEMinScrollWidth then
+                local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
+                if pveW > 0 then w = math.max(w, pveW) end
+            end
             self.scrollChild:SetWidth(w)
             if self.columnHeaderInner and self.columnHeaderClip and self.columnHeaderClip:GetHeight() > 1 then
                 self.columnHeaderInner:SetWidth(w)
@@ -672,6 +680,10 @@ function WarbandNexus:CreateMainWindow()
                 if f.currentTab == "professions" and ns.ComputeProfessionsGridWidth then
                     local profW = ns.ComputeProfessionsGridWidth()
                     if profW > 0 then w = math.max(w, profW) end
+                end
+                if f.currentTab == "pve" and ns.ComputePvEMinScrollWidth then
+                    local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
+                    if pveW > 0 then w = math.max(w, pveW) end
                 end
                 f.scrollChild:SetWidth(w)
                 if f.columnHeaderInner and f.columnHeaderClip and f.columnHeaderClip:GetHeight() > 1 then
@@ -814,7 +826,13 @@ function WarbandNexus:CreateMainWindow()
     discordCopyBox:SetPoint("TOPLEFT", 6, -4)
     discordCopyBox:SetPoint("BOTTOMRIGHT", -6, 4)
     discordCopyBox:SetAutoFocus(false)
-    discordCopyBox:SetFontObject(ChatFontNormal)
+    discordCopyBox:SetFontObject(ChatFontNormal) -- required initial FontObject
+    if ns.FontManager then
+        local p = ns.FontManager:GetFontFace()
+        local s = ns.FontManager:GetFontSize("body")
+        local f = ns.FontManager:GetAAFlags()
+        pcall(discordCopyBox.SetFont, discordCopyBox, p, s, f)
+    end
     discordCopyBox:SetText(DISCORD_URL)
     discordCopyBox:SetCursorPosition(0)
     discordCopyBox:SetScript("OnEscapePressed", function() discordCopyFrame:Hide() end)
@@ -1269,7 +1287,7 @@ function WarbandNexus:CreateMainWindow()
     -- overwriting other modules' handlers for the same AceEvent message.
     -- AceEvent allows only ONE handler per (event, self) pair.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function()
-        if f and f:IsShown() and (f.currentTab == "chars" or f.currentTab == "gear") then
+        if f and f:IsShown() and (f.currentTab == "chars" or f.currentTab == "gear" or f.currentTab == "stats") then
             SchedulePopulateContent()
         end
     end)
@@ -1328,13 +1346,13 @@ function WarbandNexus:CreateMainWindow()
     
     -- Profession tab: skip cooldown so concentration/knowledge/recipe updates always refresh (no stale data)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, function()
-        if f and f:IsShown() and f.currentTab == "professions" then
+        if f and f:IsShown() and (f.currentTab == "professions" or f.currentTab == "chars") then
             SchedulePopulateContent(true)
         end
     end)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.KNOWLEDGE_UPDATED, function()
-        if f and f:IsShown() and f.currentTab == "professions" then
+        if f and f:IsShown() and (f.currentTab == "professions" or f.currentTab == "chars") then
             SchedulePopulateContent(true)
         end
     end)
@@ -1390,7 +1408,13 @@ function WarbandNexus:CreateMainWindow()
             SchedulePopulateContent()
         end
     end)
-    
+
+    WarbandNexus.RegisterMessage(UIEvents, "WN_FONT_CHANGED", function()
+        if f and f:IsShown() then
+            SchedulePopulateContent()
+        end
+    end)
+
     -- Loading bar is now a standalone floating frame (see CreateLoadingOverlay below)
     
     -- Master OnHide: cleanup when addon window closes
@@ -1548,7 +1572,8 @@ function WarbandNexus:PopulateContent()
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawStorageTab(scrollChild)
     elseif mainFrame.currentTab == "pve" then
-        scrollChild:SetWidth(scrollWidth)
+        local pveMinW = ns.ComputePvEMinScrollWidth and ns.ComputePvEMinScrollWidth(self) or 0
+        scrollChild:SetWidth(pveMinW > 0 and math.max(scrollWidth, pveMinW) or scrollWidth)
         height = self:DrawPvEProgress(scrollChild)
     elseif mainFrame.currentTab == "reputations" then
         scrollChild:SetWidth(scrollWidth)
@@ -2000,8 +2025,12 @@ do
         spinGroup:SetLooping("REPEAT")
         bar.spinGroup = spinGroup
 
-        -- Loading text (green, bold)
-        local loadText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local loadText
+        if ns.FontManager then
+            loadText = ns.FontManager:CreateFontString(bar, "body", "OVERLAY")
+        else
+            loadText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        end
         loadText:SetPoint("LEFT", spinner, "RIGHT", 6, 0)
         loadText:SetPoint("RIGHT", bar, "RIGHT", -55, 0)
         loadText:SetJustifyH("LEFT")
@@ -2009,8 +2038,12 @@ do
         loadText:SetWordWrap(false)
         bar.loadingText = loadText
 
-        -- Progress counter (right side, green, bold)
-        local progText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local progText
+        if ns.FontManager then
+            progText = ns.FontManager:CreateFontString(bar, "body", "OVERLAY")
+        else
+            progText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        end
         progText:SetPoint("RIGHT", -8, 0)
         progText:SetTextColor(0.3, 0.9, 0.4, 1)
         bar.progressText = progText

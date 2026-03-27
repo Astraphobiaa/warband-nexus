@@ -2970,7 +2970,7 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     
     local allComplete = true
     local totalAll, completedAll = 0, 0
-    local categoryOrder = {"weeklyQuests", "worldQuests", "dailyQuests", "assignments", "events"}
+    local categoryOrder = {"weeklyQuests", "worldQuests", "dailyQuests", "events"}
     for _, catKey in ipairs(categoryOrder) do
         if plan.questTypes and plan.questTypes[catKey] then
             for _, quest in ipairs(plan.quests and plan.quests[catKey] or {}) do
@@ -3110,7 +3110,6 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         weeklyQuests = (ns.L and ns.L["QUEST_CAT_WEEKLY"])        or "Weekly",
         worldQuests  = (ns.L and ns.L["QUEST_CAT_WORLD"])         or "World",
         dailyQuests  = (ns.L and ns.L["QUEST_CAT_DAILY"])         or "Daily",
-        assignments  = (ns.L and ns.L["QUEST_CAT_ASSIGNMENT"])    or "Assign.",
         events       = (ns.L and ns.L["QUEST_CAT_CONTENT_EVENTS"]) or "Events",
     }
     local categoryInfo = {}
@@ -3133,17 +3132,19 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
                     if q.isComplete then completed = completed + 1 end
                 end
             end
-            if total > 0 then
-                visibleSlots[#visibleSlots + 1] = {
-                    key = catKey,
-                    info = categoryInfo[catKey],
-                    completed = completed,
-                    total = total,
-                }
-            end
+            -- Always include tracked categories so the user sees them even when the
+            -- live scan hasn't found any active quests yet (e.g. Midnight Assignments
+            -- not yet unlocked or between weekly resets).
+            visibleSlots[#visibleSlots + 1] = {
+                key     = catKey,
+                info    = categoryInfo[catKey],
+                completed = completed,
+                total   = total,
+                isEmpty = (total == 0),
+            }
         end
     end
-    
+
     local visibleCount = #visibleSlots
     if visibleCount == 0 then return end
     
@@ -3157,51 +3158,75 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         local slotFrame = ns.UI.Factory:CreateContainer(card, slotWidth, slotHeight)
         slotFrame:SetPoint("TOPLEFT", slotX, contentY)
         
+        local isEmpty = slot.isEmpty
+        -- Dim alpha for empty/untracked categories so they look visually distinct
+        -- from categories with active content.
+        if isEmpty then
+            slotFrame:SetAlpha(0.45)
+        end
+
         -- Category icon
         local catIcon = slotFrame:CreateTexture(nil, "ARTWORK")
         catIcon:SetSize(22, 22)
         catIcon:SetPoint("TOP", 0, -6)
         pcall(catIcon.SetAtlas, catIcon, ci.atlas, false)
-        
+        if isEmpty then
+            catIcon:SetVertexColor(0.5, 0.5, 0.5)
+        end
+
         -- Title
         local title = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
         title:SetPoint("TOP", catIcon, "BOTTOM", 0, -2)
         title:SetText(ci.name)
-        title:SetTextColor(ci.color[1], ci.color[2], ci.color[3])
-        
+        if isEmpty then
+            title:SetTextColor(0.5, 0.5, 0.5)
+        else
+            title:SetTextColor(ci.color[1], ci.color[2], ci.color[3])
+        end
+
         -- Progress bar
         local barY = -52
         local barPadding = 12
         local barWidth = slotWidth - (barPadding * 2)
         local barHeight = 14
-        
+
         local barBg = ns.UI.Factory:CreateContainer(slotFrame, barWidth, barHeight)
         barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
-        
+
         if ApplyVisuals then
-            ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.3}, {ci.color[1], ci.color[2], ci.color[3], 0.6})
+            if isEmpty then
+                ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.2}, {0.3, 0.3, 0.3, 0.3})
+            else
+                ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.3}, {ci.color[1], ci.color[2], ci.color[3], 0.6})
+            end
         end
-        
-        local fillPercent = slot.total > 0 and math.min(1.0, slot.completed / slot.total) or 0
-        local innerBarWidth = barWidth - 2
-        local fillWidth = innerBarWidth * fillPercent
-        if fillWidth > 0 then
-            local fill = barBg:CreateTexture(nil, "ARTWORK")
-            fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
-            fill:SetSize(fillWidth, barHeight - 2)
-            fill:SetTexture("Interface\\Buttons\\WHITE8x8")
-            fill:SetVertexColor(ci.color[1], ci.color[2], ci.color[3], 1)
+
+        if not isEmpty then
+            local fillPercent = slot.total > 0 and math.min(1.0, slot.completed / slot.total) or 0
+            local innerBarWidth = barWidth - 2
+            local fillWidth = innerBarWidth * fillPercent
+            if fillWidth > 0 then
+                local fill = barBg:CreateTexture(nil, "ARTWORK")
+                fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
+                fill:SetSize(fillWidth, barHeight - 2)
+                fill:SetTexture("Interface\\Buttons\\WHITE8x8")
+                fill:SetVertexColor(ci.color[1], ci.color[2], ci.color[3], 1)
+            end
         end
-        
+
         -- Progress text below bar
         local progressLabel = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
         progressLabel:SetPoint("TOP", barBg, "BOTTOM", 0, -6)
-        if slot.completed == slot.total and slot.total > 0 then
+        if isEmpty then
+            progressLabel:SetTextColor(0.4, 0.4, 0.4)
+            progressLabel:SetText("—")
+        elseif slot.completed == slot.total and slot.total > 0 then
             progressLabel:SetTextColor(0.3, 1, 0.3)
+            progressLabel:SetText(string.format("%d / %d", slot.completed, slot.total))
         else
             progressLabel:SetTextColor(1, 1, 1)
+            progressLabel:SetText(string.format("%d / %d", slot.completed, slot.total))
         end
-        progressLabel:SetText(string.format("%d / %d", slot.completed, slot.total))
     end
 end
 

@@ -139,8 +139,8 @@ local _netherWarpedEgg = {
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
 
 ns.CollectibleSourceDB = {
-    version = "12.0.24",
-    lastUpdated = "2026-03-12",
+    version = "12.0.25",
+    lastUpdated = "2026-03-25",
     sourceSchemaVersion = 1,
     sourceTypes = {
         "instance_boss", -- npcID + drops
@@ -161,6 +161,97 @@ ns.CollectibleSourceDB = {
             mapIDs = { 2393, 2395, 2424, 2413, 2576, 2437, 2536, 2405, 2541 },
             drops = _netherWarpedEgg,
         },
+
+        -- =====================================================================
+        -- MIDNIGHT 12.0 — Daily lockout quests for zone rares
+        -- Each rare can be looted once per day; quest flag resets on daily reset.
+        -- =====================================================================
+
+        -- Eversong Woods / Quel'Thalas (A Bloody Song) — 15 rares
+        { sourceType = "lockout_quest", npcID = 246332, questID = 91280 },  -- Warden of Weeds
+        { sourceType = "lockout_quest", npcID = 246633, questID = 91315 },  -- Harried Hawkstrider
+        { sourceType = "lockout_quest", npcID = 240129, questID = 92392 },  -- Overfester Hydra
+        { sourceType = "lockout_quest", npcID = 250582, questID = 92366 },  -- Bloated Snapdragon
+        { sourceType = "lockout_quest", npcID = 250719, questID = 92391 },  -- Cre'van
+        { sourceType = "lockout_quest", npcID = 250683, questID = 92389 },  -- Coralfang
+        { sourceType = "lockout_quest", npcID = 250754, questID = 92393 },  -- Lady Liminus
+        { sourceType = "lockout_quest", npcID = 250876, questID = 92409 },  -- Terrinor
+        { sourceType = "lockout_quest", npcID = 250841, questID = 92404 },  -- Bad Zed
+        { sourceType = "lockout_quest", npcID = 250780, questID = 92395 },  -- Waverly
+        { sourceType = "lockout_quest", npcID = 250826, questID = 92403 },  -- Banuran
+        { sourceType = "lockout_quest", npcID = 250806, questID = 92399 },  -- Lost Guardian
+        { sourceType = "lockout_quest", npcID = 255302, questID = 93550 },  -- Duskburn
+        { sourceType = "lockout_quest", npcID = 255329, questID = 93555 },  -- Malfunctioning Construct
+        { sourceType = "lockout_quest", npcID = 255348, questID = 93561 },  -- Dame Bloodshed
+
+        -- Zul'Aman / Atal'Aman (Tallest Tree in the Forest) — 15 rares
+        { sourceType = "lockout_quest", npcID = 242023, questID = 89569 },  -- Necrohexxer Raz'ka
+        { sourceType = "lockout_quest", npcID = 242024, questID = 89570 },  -- The Snapping Scourge
+        { sourceType = "lockout_quest", npcID = 242025, questID = 89571 },  -- Skullcrusher Harak
+        { sourceType = "lockout_quest", npcID = 242026, questID = 89572 },  -- Elder Oaktalon
+        { sourceType = "lockout_quest", npcID = 242027, questID = 89573 },  -- Depthborn Eelamental
+        { sourceType = "lockout_quest", npcID = 242028, questID = 89575 },  -- Lightwood Borer
+        { sourceType = "lockout_quest", npcID = 242031, questID = 89578 },  -- Spinefrill
+        { sourceType = "lockout_quest", npcID = 242032, questID = 89579 },  -- Oophaga
+        { sourceType = "lockout_quest", npcID = 242033, questID = 89580 },  -- Tiny Vermin
+        { sourceType = "lockout_quest", npcID = 242034, questID = 89581 },  -- Voidtouched Crustacean
+        { sourceType = "lockout_quest", npcID = 242035, questID = 89583 },  -- The Devouring Invader
+        { sourceType = "lockout_quest", npcID = 245691, questID = 91072 },  -- The Decaying Diamondback
+        { sourceType = "lockout_quest", npcID = 245692, questID = 91073 },  -- Ash'an the Empowered
+        { sourceType = "lockout_quest", npcID = 245975, questID = 91174 },  -- Mrrlokk
+        { sourceType = "lockout_quest", npcID = 247976, questID = 91634 },  -- Poacher Rav'ik (Atal'Aman)
+
+        -- Harandar (Leaf None Behind) — 15 rares (Aln'sharan quest ID unknown)
+        { sourceType = "lockout_quest", npcID = 248741, questID = 91832 },  -- Rhazul
+        { sourceType = "lockout_quest", npcID = 249844, questID = 92137 },  -- Chironex
+        { sourceType = "lockout_quest", npcID = 249849, questID = 92142 },  -- Ha'kalawe
+        { sourceType = "lockout_quest", npcID = 249902, questID = 92148 },  -- Tallcap the Truthspreader
+        { sourceType = "lockout_quest", npcID = 249962, questID = 92154 },  -- Queen Lashtongue
+        { sourceType = "lockout_quest", npcID = 249997, questID = 92161 },  -- Chlorokyll
+        { sourceType = "lockout_quest", npcID = 250086, questID = 92168 },  -- Stumpy
+        { sourceType = "lockout_quest", npcID = 250180, questID = 92170 },  -- Serrasa
+        { sourceType = "lockout_quest", npcID = 250226, questID = 92172 },  -- Mindrot
+        { sourceType = "lockout_quest", npcID = 250231, questID = 92176 },  -- Dracaena
+        { sourceType = "lockout_quest", npcID = 250246, questID = 92183 },  -- Treetop
+        { sourceType = "lockout_quest", npcID = 250317, questID = 92190 },  -- Oro'ohna
+        { sourceType = "lockout_quest", npcID = 250321, questID = 92191 },  -- Pterrock
+        { sourceType = "lockout_quest", npcID = 250347, questID = 92193 },  -- Ahl'ua'huhi
+        { sourceType = "lockout_quest", npcID = 250358, questID = 92194 },  -- Annulus the Worldshaker
+
+        -- Voidstorm / Slayer's Rise (The Ultimate Predator) — 14 rares
+        { sourceType = "lockout_quest", npcID = 238498, questID = 91050 },  -- Territorial Voidscythe
+        { sourceType = "lockout_quest", npcID = 241443, questID = 91048 },  -- Tremora
+        { sourceType = "lockout_quest", npcID = 244272, questID = 90805 },  -- Sundereth the Caller
+        { sourceType = "lockout_quest", npcID = 245044, questID = 91051 },  -- Nightbrood
+        { sourceType = "lockout_quest", npcID = 245182, questID = 91047 },  -- Eruundi (Slayer's Rise)
+        { sourceType = "lockout_quest", npcID = 256770, questID = 93884 },  -- Bilemaw the Gluttonous
+        { sourceType = "lockout_quest", npcID = 256808, questID = 93895 },  -- Ravengerus
+        { sourceType = "lockout_quest", npcID = 256821, questID = 93896 },  -- Far'thana the Mad
+        { sourceType = "lockout_quest", npcID = 256922, questID = 93966 },  -- Screammaxa the Matriarch
+        { sourceType = "lockout_quest", npcID = 256923, questID = 93946 },  -- Bane of the Vilebloods
+        { sourceType = "lockout_quest", npcID = 256924, questID = 93944 },  -- Aeonelle Blackstar
+        { sourceType = "lockout_quest", npcID = 256925, questID = 93947 },  -- Lotus Darkblossom
+        { sourceType = "lockout_quest", npcID = 256926, questID = 93934 },  -- Queen o' War
+        { sourceType = "lockout_quest", npcID = 257027, questID = 93953 },  -- Rakshur the Bonegrinder (Slayer's Rise)
+
+        -- Arcantina / Slayer's Rise — additional rares (gear-only drops)
+        { sourceType = "lockout_quest", npcID = 248791, questID = 94459 },  -- Voidseer Orivane
+        { sourceType = "lockout_quest", npcID = 248459, questID = 94458 },  -- The Many-Broken
+        { sourceType = "lockout_quest", npcID = 248700, questID = 94462 },  -- Abysslick
+        { sourceType = "lockout_quest", npcID = 248068, questID = 94460 },  -- Nullspiral
+        { sourceType = "lockout_quest", npcID = 248823, questID = 94463 },  -- Blackcore
+        { sourceType = "lockout_quest", npcID = 257199, questID = 94461 },  -- Hardin Steellock (Horde)
+        { sourceType = "lockout_quest", npcID = 257231, questID = 94461 },  -- Gar'chak Skullcleave (Alliance, shared quest)
+
+        -- Isle of Quel'Danas — 2 rares (gear-only drops)
+        { sourceType = "lockout_quest", npcID = 252465, questID = 95011 },  -- Tarhu the Ransacker
+        { sourceType = "lockout_quest", npcID = 239864, questID = 95010 },  -- Dripping Shadow
+
+        -- World Bosses — weekly lockout (via world quest)
+        { sourceType = "lockout_quest", npcID = 244762, questID = 92560 },  -- Lu'ashal (Eversong Woods)
+        { sourceType = "lockout_quest", npcID = 244424, questID = 92123 },  -- Cragpine (Zul'Aman)
+        { sourceType = "lockout_quest", npcID = 249776, questID = 92034 },  -- Thorm'belan (Harandar)
+        { sourceType = "lockout_quest", npcID = 248864, questID = 92636 },  -- Predaxas (Voidstorm)
     },
 
     -- DEPRECATED: do not add here. Data is merged into npcs/rares/... at load for backward compatibility.
@@ -1128,7 +1219,7 @@ ns.CollectibleSourceDB = {
 
         -- ========================================
         -- MIDNIGHT 12.0
-        -- Source: kemayo/wow-handynotes-midnight (NPC IDs), Docs/Midnight-Rare-NPC-IDs.md
+        -- NPC IDs cross-referenced with Docs/Midnight-Rare-NPC-IDs.md
         -- ========================================
 
         -- Harandar Zone Rares (Rootstalker Grimlynx / Vibrant Petalwing)
@@ -1615,7 +1706,7 @@ ns.CollectibleSourceDB = {
         -- raresOnly=true means tooltip only shows on rare/elite units
         -- Zone IDs: Silvermoon 2393, Isle of Quel'Danas 2424, Eversong 2395, Harandar 2413,
         --   The Den 2576, Zul'Aman 2437, Atal'Aman 2536, Arcantina 2541, Voidstorm 2405
-        -- Source: kemayo/wow-handynotes-midnight
+        -- Zone IDs verified via in-game C_Map data
         -- ========================================
         -- Quel'Thalas region (Cerulean Hawkstrider, Cobalt Dragonhawk)
         [2393] = { drops = _quelThalasRareMounts, raresOnly = true },   -- Silvermoon
@@ -1709,6 +1800,50 @@ ns.CollectibleSourceDB = {
     },
 
     legacyLockoutQuests = {
+        -- ========================================
+        -- MISTS OF PANDARIA
+        -- ========================================
+
+        -- MoP: World Bosses (weekly lockout via bonus roll quest)
+        [60491] = 32099,  -- Sha of Anger (Kun-Lai Summit)
+        [62346] = 32098,  -- Galleon (Valley of the Four Winds)
+        [69099] = 32518,  -- Nalak (Isle of Thunder)
+        [69161] = 32519,  -- Oondasta (Isle of Giants)
+
+        -- MoP: Timeless Isle (daily lockout)
+        [73167] = 33311,  -- Huolon
+
+        -- ========================================
+        -- WARLORDS OF DRAENOR
+        -- ========================================
+
+        -- WoD: World Boss (weekly lockout)
+        [83746] = 37464,  -- Rukhmar (Spires of Arak)
+        [87493] = 37464,  -- Rukhmar (alt NPC ID)
+
+        -- WoD: Tanaan Jungle Champions (daily lockout)
+        [95044] = 39288,  -- Terrorfist
+        [95053] = 39287,  -- Deathtalon
+        [95054] = 39290,  -- Vengeance
+        [95056] = 39289,  -- Doomroller
+
+        -- ========================================
+        -- LEGION
+        -- ========================================
+
+        -- Legion: Argus rares (daily lockout)
+        [122958] = 49183,  -- Blistermaw (Antoran Wastes)
+        [126040] = 48809,  -- Puscilla (Antoran Wastes)
+        [126199] = 48810,  -- Vrax'thul (Antoran Wastes)
+        [126852] = 48695,  -- Wrangler Kravos (Mac'Aree)
+        [126867] = 48705,  -- Venomtail Skyfin (Mac'Aree)
+        [126912] = 48721,  -- Skreeg the Devourer (Mac'Aree)
+        [127288] = 48821,  -- Houndmaster Kerrax (Antoran Wastes)
+
+        -- ========================================
+        -- BATTLE FOR AZEROTH
+        -- ========================================
+
         -- BfA: Warfront Arathi Highlands (cycle-based lockout)
         [142692] = { 53091, 53517 },  -- Nimar the Slayer
         [142423] = { 53014, 53518 },  -- Overseer Krix
@@ -1745,13 +1880,25 @@ ns.CollectibleSourceDB = {
         -- BfA: World Boss (weekly lockout via world quest)
         [138794] = 53000,  -- Dunegorger Kraulok
 
-        -- Shadowlands: Revendreth rares (daily lockout) [Verified]
+        -- ========================================
+        -- SHADOWLANDS
+        -- ========================================
+
+        -- Shadowlands: Ardenweald rares (daily lockout)
+        [164107] = 59145,  -- Gormtamer Tizo
+        [164112] = 59157,  -- Humon'gozz
+        [168647] = 61632,  -- Valfir the Unrelenting
+
+        -- Shadowlands: Bastion (daily lockout)
+        [170548] = 60862,  -- Sundancer
+
+        -- Shadowlands: Revendreth rares (daily lockout)
         [166521] = 59869,  -- Famu the Infinite
         [165290] = 59612,  -- Harika the Horrid
         [166679] = 59900,  -- Hopecrusher
         [160821] = 58259,  -- Worldedge Gorger
 
-        -- Shadowlands: Maldraxxus rares (daily lockout) [Verified]
+        -- Shadowlands: Maldraxxus rares (daily lockout)
         [162741] = 58872,  -- Gieger
         [162586] = 58783,  -- Tahonta
         [157309] = 61720,  -- Violet Mistake
@@ -1768,26 +1915,82 @@ ns.CollectibleSourceDB = {
         [162874] = 62786,  -- Theater of Pain combatant
         [162872] = 62786,  -- Theater of Pain combatant
 
-        -- Shadowlands: Ardenweald rares (daily lockout) [Verified]
-        [168647] = 61632,  -- Valfir the Unrelenting
-
-        -- Shadowlands: Maw rares [Verified]
+        -- Shadowlands: Maw rares (daily lockout)
         [174861] = 63433,  -- Gorged Shadehound
+        [179460] = 64164,  -- Fallen Charger
 
-        -- Shadowlands: Korthia rares (daily lockout) [Verified]
+        -- Shadowlands: Korthia rares (daily lockout)
         [179472] = 64246,  -- Konthrogz the Obliterator
         [180160] = 64455,  -- Reliwik the Defiant
         [179684] = 64233,  -- Malbog
+        [179985] = 64313,  -- Stygian Stonecrusher
+        [180032] = 64338,  -- Wild Worldcracker
+        [180042] = 64349,  -- Fleshwing
 
-        -- Dragonflight: Zaralek Cavern (daily lockout) [Verified]
+        -- Shadowlands: Zereth Mortis (daily lockout)
+        [180978] = 65548,  -- Hirukon
+
+        -- ========================================
+        -- DRAGONFLIGHT
+        -- ========================================
+
+        -- Dragonflight: Zaralek Cavern (daily lockout)
         [203625] = 75333,  -- Karokta
 
-        -- TWW: Hallowfall / Ringing Deeps (daily lockout) [Verified]
+        -- Dragonflight: Forbidden Reach rares (daily lockout, shared Ancient Salamanther mount)
+        [200537] = 73095,  -- Gahz'raxes
+        [200579] = 73100,  -- Ishyra
+        [200584] = 73111,  -- Vraken the Hunter
+        [200600] = 73117,  -- Reisa the Drowned
+        [200610] = 73118,  -- Duzalgor
+        [200681] = 74341,  -- Bonesifter Marwak
+        [200717] = 74342,  -- Galakhad
+        [200721] = 73154,  -- Grugoth the Hullcrusher
+        [200885] = 73222,  -- Lady Shaz'ra
+        [200904] = 73229,  -- Veltrax
+        [200911] = 73225,  -- Volcanakk
+        [200956] = 74349,  -- Ookbeard
+        [200960] = 73367,  -- Warden Entrix
+        [200978] = 73385,  -- Pyrachniss
+        [201013] = 73409,  -- Wyrmslayer Angvardi
+        [201181] = 74283,  -- Mad-Eye Carrey
+
+        -- ========================================
+        -- THE WAR WITHIN
+        -- ========================================
+
+        -- TWW: Hallowfall / Ringing Deeps (daily lockout)
         [207802] = 81763,  -- Beledar's Spawn
         [220285] = 81633,  -- Regurgitated Mole Reins rare
 
-        -- TWW 11.1: Undermine (weekly loot lockout; rep is separate) [Verified]
+        -- TWW: Azj-Kahet (daily lockout)
+        [216046] = 82289,  -- Tka'ktath
+
+        -- TWW 11.1: Undermine — Darkfuse Precipitant (weekly loot lockout)
         [231310] = 85010,  -- Darkfuse Precipitant
+
+        -- TWW 11.1: Undermine — weekly elite rares
+        [230746] = 84877,  -- Ephemeral Agent Lathyd
+        [230793] = 84884,  -- The Junk-Wall
+        [230800] = 84895,  -- Slugger the Smart
+        [230828] = 84907,  -- Chief Foreman Gutso
+        [230840] = 84911,  -- Flyboy Snooty
+
+        -- TWW 11.1: Undermine — daily rares
+        [230931] = 84917,  -- Scrapbeak
+        [230934] = 84918,  -- Ratspit
+        [230940] = 84919,  -- Tally Doublespeak
+        [230946] = 84920,  -- V.V. Goosworth
+        [230951] = 84921,  -- Thwack
+        [230979] = 84922,  -- S.A.L.
+        [230995] = 84926,  -- Nitro
+        [231012] = 84927,  -- Candy Stickemup
+        [231017] = 84928,  -- Grimewick
+        [231288] = 85004,  -- Swigs Farsight
+
+        -- TWW 11.2: Karesh (daily lockout)
+        [232195] = 90593,  -- Pearlescent Krolusk
+        [234845] = 91293,  -- Sthaarbs
     },
 
     -- Display name (EN) â†’ npcID for lockout NPCs; used to gray "Drop: Name" in Plans when no loot this period.
@@ -1886,7 +2089,7 @@ ns.CollectibleSourceDB = {
         -- Midnight raid boss (mount drops)
         ["Midnight Falls"] = { 214650 },
         ["L'ura"] = { 214650 },
-        -- Midnight zone rares (mount drops); IDs from kemayo/wow-handynotes-midnight
+        -- Midnight zone rares (mount drops)
         ["Aln'sharan"] = { 242086 },
         ["Rhazul"] = { 248741 },
         ["Chironex"] = { 249844 },

@@ -291,8 +291,13 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         ApplyVisuals(inputBox, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
-    -- Font - Use standard WoW font object
-    inputBox:SetFontObject(GameFontHighlight)
+    inputBox:SetFontObject(GameFontHighlight) -- required initial FontObject
+    if ns.FontManager then
+        local p = ns.FontManager:GetFontFace()
+        local s = ns.FontManager:GetFontSize("body")
+        local f = ns.FontManager:GetAAFlags()
+        pcall(inputBox.SetFont, inputBox, p, s, f)
+    end
     inputBox:SetTextInsets(8, 8, 0, 0)
     inputBox:SetTextColor(1, 1, 1)
     

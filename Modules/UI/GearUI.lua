@@ -189,6 +189,47 @@ local function GetItemIconSafe(linkOrId)
     return (ok and result) or nil
 end
 
+-- ============================================================================
+-- CRAFTED ITEM RECRAFT RANGE
+-- ============================================================================
+
+--- Calculate achievable ilvl range for a crafted item based on player's crest inventory.
+--- Crafted items can be recrafted with crests to jump to higher ilvl tiers.
+--- Each tier has its own crest type and cost (e.g. Myth = 80 crests, Hero = 60).
+---@param upInfo table slot upgrade info with isCrafted=true
+---@param currencyAmounts table map currencyID → amount
+---@return table|nil { minIlvl, maxIlvl, bestCrestName, bestCrestCost } or nil if no crests
+local function GetCraftedIlvlRange(upInfo, currencyAmounts)
+    if not upInfo or not upInfo.isCrafted then return nil end
+    local currentIlvl = upInfo.currentIlvl or 0
+    local tiers = ns.CRAFTED_CREST_TIERS
+    if not tiers or not currencyAmounts then return nil end
+
+    -- Check each crest tier from highest to lowest: find the best affordable tier
+    local bestMaxIlvl = currentIlvl
+    local bestCrestName = nil
+    local bestCrestCost = 0
+    for i = 1, #tiers do
+        local tier = tiers[i]
+        local have = currencyAmounts[tier.crestID] or 0
+        if have >= tier.cost and tier.maxIlvl > currentIlvl then
+            bestMaxIlvl = tier.maxIlvl
+            bestCrestName = tier.name
+            bestCrestCost = tier.cost
+            break  -- Highest affordable tier wins
+        end
+    end
+
+    if bestMaxIlvl <= currentIlvl then return nil end
+
+    return {
+        minIlvl = currentIlvl,
+        maxIlvl = bestMaxIlvl,
+        bestCrestName = bestCrestName,
+        bestCrestCost = bestCrestCost,
+    }
+end
+
 --- Hesaplama matematiği (upgrade affordability):
 --- - Her tier 20 crest + gold. Watermark: o slotta daha önce ulaşılan max ilvl; o ilvl'e kadar tier'lar "gold only".
 --- - Döngü: currTier+1 .. maxTier. Her adımda: ilvl <= watermark ise sadece gold düş; değilse 20 crest + gold düş.
@@ -252,6 +293,10 @@ end
 ---@return boolean
 local function CanAffordNextUpgrade(upInfo, currencyAmounts)
     if not upInfo or not upInfo.canUpgrade then return false end
+    if upInfo.isCrafted then
+        local range = GetCraftedIlvlRange(upInfo, currencyAmounts)
+        return range and range.maxIlvl > (upInfo.currentIlvl or 0)
+    end
     local count = CalculateAffordableUpgrades(upInfo, currencyAmounts)
     return count > 0
 end
@@ -396,10 +441,14 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
     end
 
     -- Ortadan çizgi: yazı merkezi, ikon merkezi, slot merkezi aynı yatay çizgide (sol/sağ/alt)
+    local upSlot = upgradeInfo and upgradeInfo[slotID]
+    local isCraftedSlot = upSlot and upSlot.isCrafted
     if isUpgradable then
         upgradeArrow = btn:CreateTexture(nil, "OVERLAY")
         upgradeArrow:SetSize(UPGRADE_ARROW_W, UPGRADE_ARROW_W)
-        if upgradeArrow.SetAtlas then
+        if isCraftedSlot and upgradeArrow.SetAtlas then
+            upgradeArrow:SetAtlas("Professions-Crafting-Orders-Icon", false)
+        elseif upgradeArrow.SetAtlas then
             upgradeArrow:SetAtlas("loottoast-arrow-green", false)
         else
             upgradeArrow:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
@@ -433,7 +482,26 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
         if slotData and slotData.itemLink then
             local up = upgradeInfo and upgradeInfo[slotID]
             local additionalLines = {}
-            if up and up.canUpgrade then
+            if up and up.isCrafted then
+                -- Crafted item: show achievable ilvl range via recraft
+                local range = GetCraftedIlvlRange(up, currencyAmounts)
+                additionalLines[#additionalLines + 1] = { type = "spacer", height = 6 }
+                if range then
+                    additionalLines[#additionalLines + 1] = {
+                        text = format((ns.L and ns.L["GEAR_CRAFTED_RECRAFT_RANGE"]) or "Recraft range: %d-%d (%s Dawncrest)", range.minIlvl, range.maxIlvl, range.bestCrestName or ""),
+                        color = { 0.6, 0.8, 1 }
+                    }
+                    additionalLines[#additionalLines + 1] = {
+                        text = format((ns.L and ns.L["GEAR_CRAFTED_CREST_COST"]) or "Recraft cost: %d crests", range.bestCrestCost or 0),
+                        color = { 0.6, 0.9, 0.6 }
+                    }
+                else
+                    additionalLines[#additionalLines + 1] = {
+                        text = (ns.L and ns.L["GEAR_CRAFTED_NO_CRESTS"]) or "No crests available for recraft",
+                        color = { 0.8, 0.5, 0.2 }
+                    }
+                end
+            elseif up and up.canUpgrade then
                 local affordable, goldOnly = CalculateAffordableUpgrades(up, currencyAmounts)
                 additionalLines[#additionalLines + 1] = { type = "spacer", height = 6 }
                 if affordable > 0 then
@@ -608,12 +676,23 @@ local ROW_H = 34
 local CARD_PAD = 12
 
 --- Build track/tier string from upgradeInfo[slotID], e.g. "Veteran 2/6".
-local function GetSlotTrackText(upgradeInfo, slotID, quality)
+--- For crafted items, shows achievable ilvl range (e.g. "Crafted 276-289").
+local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts)
     local up = upgradeInfo and upgradeInfo[slotID]
     if not up then return nil end
+    local hex = GetQualityHex and GetQualityHex(quality or 0) or "ffffff"
+
+    -- Crafted items: show ilvl range achievable via recraft
+    if up.isCrafted and currencyAmounts then
+        local range = GetCraftedIlvlRange(up, currencyAmounts)
+        if range then
+            return format("|cff%sCrafted %d-%d|r", hex, range.minIlvl, range.maxIlvl)
+        end
+        return format("|cff%sCrafted %d/%d|r", hex, up.currUpgrade or 0, up.maxUpgrade or 0)
+    end
+
     local track = (up.trackName and up.trackName ~= "") and up.trackName or nil
     local curT, maxT = up.currUpgrade or 0, up.maxUpgrade or 0
-    local hex = GetQualityHex and GetQualityHex(quality or 0) or "ffffff"
     if maxT and maxT > 0 and track then
         return format("|cff%s%s %d/%d|r", hex, track, curT, maxT)
     end
@@ -651,14 +730,14 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local leftSlots = { 1, 2, 3, 15, 5, 9 }
     for i, slotID in ipairs(leftSlots) do
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        CreateSlotButton(card, slotID, GetSlotData(slotID), leftX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), leftX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts)
     end
 
     -- Right column: 6 armor + 2 trinkets — slot | ikon | yazı
     local rightSlots = { 10, 6, 7, 8, 11, 12, 13, 14 }
     for i, slotID in ipairs(rightSlots) do
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        CreateSlotButton(card, slotID, GetSlotData(slotID), rightX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), rightX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts)
     end
 
     -- Alt panel: slot üstte, altında ikon + yazı (yazılar aşağı); silahlar birbirine yakın
@@ -673,7 +752,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         local quality = (slots[slotID] and slots[slotID].quality) or 0
         local wx = (i == 1) and weaponStartX or (weaponStartX + SLOT_SIZE + WEAPON_GAP)
         local weaponSide = (i == 1) and "bottom_left" or "bottom_right"  -- Main Hand solunda, Off Hand sağında
-        CreateSlotButton(card, slotID, GetSlotData(slotID), wx, bottomY, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), wx, bottomY, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts)
     end
 
     -- Orta panel: model frame alt ucu trinket satırının altına denk gelecek şekilde uzatıldı
@@ -778,7 +857,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         if ilvlFrame.SetFrameLevel and centerRef.GetFrameLevel then
             ilvlFrame:SetFrameLevel(centerRef:GetFrameLevel() + 10)
         end
-        local ilvlOverlay = ilvlFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+        local ilvlOverlay = FontManager:CreateFontString(ilvlFrame, "header", "OVERLAY")
         ilvlOverlay:SetPoint("CENTER", 0, 0)
         ilvlOverlay:SetJustifyH("CENTER")
         ilvlOverlay:SetTextColor(1, 0.9, 0)
@@ -910,6 +989,36 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         ico:SetPoint("TOPLEFT", curPad, curY - (CREST_ROW_H - iconSize) / 2)
         ico:SetTexture(cur.icon or "Interface\\Icons\\INV_Misc_Coin_01")
         ico:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        local crestHit = CreateFrame("Frame", nil, leftPanel)
+        crestHit:SetPoint("TOPLEFT", 2, curY + 1)
+        crestHit:SetPoint("TOPRIGHT", -2, curY + 1)
+        crestHit:SetHeight(CREST_ROW_H)
+        crestHit:EnableMouse(true)
+        crestHit:SetScript("OnEnter", function(self)
+            if ShowTooltip then
+                ShowTooltip(self, {
+                    type = "currency",
+                    currencyID = cur.currencyID,
+                    charKey = charKey,
+                    anchor = "ANCHOR_RIGHT",
+                })
+            elseif ns.TooltipService then
+                ns.TooltipService:Show(self, {
+                    type = "currency",
+                    currencyID = cur.currencyID,
+                    charKey = charKey,
+                    anchor = "ANCHOR_RIGHT",
+                })
+            end
+        end)
+        crestHit:SetScript("OnLeave", function()
+            if HideTooltip then
+                HideTooltip()
+            elseif ns.TooltipService then
+                ns.TooltipService:Hide()
+            end
+        end)
 
         -- Name (left aligned)
         local nameText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")

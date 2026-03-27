@@ -882,14 +882,20 @@ function WarbandNexus:DrawPlansTab(parent)
         searchInput:SetSize(1, 26)
         searchInput:SetPoint("LEFT", searchIcon, "RIGHT", 6, 0)
         searchInput:SetPoint("RIGHT", searchBar, "RIGHT", -8, 0)
-        searchInput:SetFontObject(ChatFontNormal)
+        if FontManager then
+            local p = FontManager:GetFontFace()
+            local s = FontManager:GetFontSize("body")
+            local f = FontManager:GetAAFlags()
+            pcall(searchInput.SetFont, searchInput, p, s, f)
+        end
         searchInput:SetTextColor(1, 1, 1, 1)
         searchInput:SetAutoFocus(false)
         searchInput:SetMaxLetters(50)
-        -- Placeholder text (search plans)
         local searchPlaceholder = (ns.L and ns.L["SEARCH_PLANS"]) or "Search plans..."
         searchInput.Instructions = searchInput:CreateFontString(nil, "ARTWORK")
-        searchInput.Instructions:SetFontObject(ChatFontNormal)
+        if FontManager then
+            FontManager:ApplyFont(searchInput.Instructions, "body")
+        end
         searchInput.Instructions:SetPoint("LEFT", 0, 0)
         searchInput.Instructions:SetPoint("RIGHT", 0, 0)
         searchInput.Instructions:SetJustifyH("LEFT")
@@ -1345,7 +1351,10 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             local catKey = catInfo.key
             if plan.questTypes and plan.questTypes[catKey] then
                 local questList = (plan.quests and plan.quests[catKey]) or {}
-                local showCategory = #questList > 0
+                -- Always render the header when the category is tracked, even when the
+                -- live scan returned no quests (e.g. Special Assignments not yet unlocked,
+                -- or the player is between weekly resets).
+                local showCategory = true
                 if showCategory then
                     local display = CAT_DISPLAY[catKey] or {}
                     local catColor = display.color or {0.8, 0.8, 0.8}
@@ -1414,16 +1423,31 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
                     -- Quest rows (when expanded)
                     if isExpanded then
-                        if #questList > 0 then
+                        if #questList == 0 then
+                            -- Empty-state row: category is tracked but the live scan found
+                            -- nothing right now (unlocked later, between resets, or API
+                            -- not yet ready).
+                            local emptyRow, newY = ns.UI.Factory:CreateDataRow(parent, yOffset, 1, ROW_H)
+                            emptyRow:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -newY + ROW_H)
+                            emptyRow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -newY + ROW_H)
+                            yOffset = newY
+                            local emptyIcon = emptyRow:CreateTexture(nil, "ARTWORK")
+                            emptyIcon:SetSize(14, 14)
+                            emptyIcon:SetPoint("LEFT", 14, 0)
+                            emptyIcon:SetAtlas("Objective-Nub", false)
+                            emptyIcon:SetVertexColor(0.4, 0.4, 0.4)
+                            local emptyFs = FontManager:CreateFontString(emptyRow, "body", "OVERLAY")
+                            emptyFs:SetPoint("LEFT", 32, 0)
+                            emptyFs:SetTextColor(0.5, 0.5, 0.5)
+                            emptyFs:SetText((ns.L and ns.L["NO_ACTIVE_CONTENT"]) or "No active content this week")
+                        elseif #questList > 0 then
                             for qi = 1, #questList do
                                 local quest = questList[qi]
                                 local isSub = quest.isSubQuest
                                 local leftIndent = isSub and 26 or 14
                                 local iconSize = isSub and 12 or 14
 
-                                -- Assignment rows with objectives get extra height
-                                local hasObjectives = (catKey == "assignments" and quest.objectives and #quest.objectives > 0 and not quest.isComplete)
-                                local rowH = hasObjectives and (ROW_H + #quest.objectives * 16) or ROW_H
+                                local rowH = ROW_H
 
                                 local row
                                 row, yOffset = ns.UI.Factory:CreateDataRow(parent, yOffset, qi, rowH)
@@ -3542,7 +3566,6 @@ function WarbandNexus:ShowCustomPlanDialog()
     local titleInput = ns.UI.Factory:CreateEditBox(titleInputBg)
     titleInput:SetSize(395, 30)
     titleInput:SetPoint("LEFT", 8, 0)
-    titleInput:SetFontObject(ChatFontNormal)
     titleInput:SetTextColor(1, 1, 1, 1)
     titleInput:SetAutoFocus(false)
     titleInput:SetMaxLetters(32)  -- Max 32 characters
@@ -3579,7 +3602,6 @@ function WarbandNexus:ShowCustomPlanDialog()
     local descInput = ns.UI.Factory:CreateEditBox(descInputBg)
     descInput:SetSize(395, 30)
     descInput:SetPoint("LEFT", 8, 0)
-    descInput:SetFontObject(ChatFontNormal)
     descInput:SetTextColor(1, 1, 1, 1)
     descInput:SetAutoFocus(false)
     descInput:SetMultiLine(false)  -- Single line only - prevents Enter from creating new lines
@@ -4360,7 +4382,6 @@ function WarbandNexus:ShowDailyPlanDialog()
         weeklyQuests = true,
         worldQuests  = true,
         dailyQuests  = true,
-        assignments  = true,
         events       = true,
     }
     
@@ -4375,7 +4396,6 @@ function WarbandNexus:ShowDailyPlanDialog()
         weeklyQuests = "Weekly objectives, hunts, sparks, world boss, delves",
         worldQuests  = "Zone-wide repeatable world quests",
         dailyQuests  = "Daily repeatable quests from NPCs",
-        assignments  = "Special assignments and bounties",
         events       = "Bonus objectives, tasks, and activities",
     }
     

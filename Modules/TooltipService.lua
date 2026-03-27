@@ -564,6 +564,47 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
     if info.description and info.description ~= "" then
         frame:SetDescription(info.description, 1, 1, 1)
     end
+
+    -- Progress details (Current / Max / Season / Remaining) for key currencies.
+    do
+        local charKey = data.charKey or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+        local currencyData = nil
+        if WarbandNexus and WarbandNexus.GetCurrencyData and charKey then
+            currencyData = WarbandNexus:GetCurrencyData(currencyID, charKey)
+        end
+
+        local qty = (currencyData and currencyData.quantity) or info.quantity or 0
+        local maxQty = (currencyData and currencyData.maxQuantity) or info.maxQuantity or 0
+        local totalEarned = currencyData and currencyData.totalEarned or nil
+        local seasonMax = currencyData and currencyData.seasonMax or nil
+        local hasSeason = (type(seasonMax) == "number" and seasonMax > 0 and type(totalEarned) == "number")
+
+        if hasSeason or (type(maxQty) == "number" and maxQty > 0) then
+            local fmtNumber = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
+            local currentFmt = (ns.L and ns.L["CURRENT_MAX_FORMAT"]) or "Current: %s / %s"
+            local remainingLabel = (ns.L and ns.L["REMAINING"]) or "Remaining"
+            frame:AddSpacer(6)
+
+            if hasSeason then
+                local rem = math.max((seasonMax or 0) - (totalEarned or 0), 0)
+                frame:AddLine(string.format(currentFmt, fmtNumber(qty), fmtNumber(seasonMax)), 1, 1, 1, false)
+                frame:AddLine(string.format("Season: %s / %s", fmtNumber(totalEarned), fmtNumber(seasonMax)), 0.8, 0.8, 0.8, false)
+                if rem > 0 then
+                    frame:AddLine(string.format("%s: %s", remainingLabel, fmtNumber(rem)), 0.5, 1, 0.5, false)
+                else
+                    frame:AddLine(string.format("%s: %s", remainingLabel, fmtNumber(rem)), 1, 0.35, 0.35, false)
+                end
+            else
+                local rem = math.max((maxQty or 0) - (qty or 0), 0)
+                frame:AddLine(string.format(currentFmt, fmtNumber(qty), fmtNumber(maxQty)), 1, 1, 1, false)
+                if rem > 0 then
+                    frame:AddLine(string.format("%s: %s", remainingLabel, fmtNumber(rem)), 0.5, 1, 0.5, false)
+                else
+                    frame:AddLine(string.format("%s: %s", remainingLabel, fmtNumber(rem)), 1, 0.35, 0.35, false)
+                end
+            end
+        end
+    end
     
     -- ===== CROSS-CHARACTER QUANTITIES =====
     -- Show how much this currency exists on ALL tracked characters (including 0)
@@ -668,14 +709,12 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                         0.4, 1, 0.4
                     )
                 else
-                    -- Character-specific: full breakdown (REPUTATION STYLE)
-                    -- Respect "Hide Empty" setting: skip 0-quantity characters when currencyShowZero is false
-                    local hideZero = WarbandNexus.db and WarbandNexus.db.profile and not WarbandNexus.db.profile.currencyShowZero
+                    -- Character-specific: full breakdown — only show relevant characters (quantity > 0)
+                    -- Current character is always shown; others only when they have the currency
                     frame:AddLine((ns.L and ns.L["CHARACTER_CURRENCIES"]) or "Character Currencies:", 1, 0.82, 0, false)
                     for _, charEntry in ipairs(charQuantities) do
-                        -- Skip 0-quantity characters in Hide Empty mode (always show current character)
-                        if hideZero and charEntry.quantity == 0 and not charEntry.isCurrent then
-                            -- skip
+                        if charEntry.quantity == 0 and not charEntry.isCurrent then
+                            -- skip: irrelevant character (no currency)
                         else
                         local charName = charEntry.charKey:match("^([^%-]+)") or charEntry.charKey
                         local classColor = {0.7, 0.7, 0.7}
@@ -1000,7 +1039,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 collectibleID = C_MountJournal.GetMountFromItem(drop.itemID)
                 -- Midnight 12.0: GetMountFromItem can return secret value; still check collected via pcall
                 if collectibleID then
-                    local ok, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, collectibleID)
+                    local ok, _, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, collectibleID)
                     if ok and isCollected and not (issecretvalue and issecretvalue(isCollected)) then
                         collected = isCollected == true
                     end
@@ -1331,23 +1370,25 @@ function TooltipService:InitializeGameTooltipHook()
                 for i = 1, #details.characters do
                     if shown >= maxShow then break end
                     local char = details.characters[i]
-                    local cc   = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
-
-                    if char.bankCount > 0 then
-                        tooltip:AddDoubleLine(
-                            bankIcon .. " " .. char.charName,
-                            "x" .. char.bankCount,
-                            cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
-                        )
+                    -- Only show characters that actually have this item
+                    if char.bankCount > 0 or char.bagCount > 0 then
+                        local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
+                        if char.bankCount > 0 then
+                            tooltip:AddDoubleLine(
+                                bankIcon .. " " .. char.charName,
+                                "x" .. char.bankCount,
+                                cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
+                            )
+                        end
+                        if char.bagCount > 0 then
+                            tooltip:AddDoubleLine(
+                                bagIcon .. " " .. char.charName,
+                                "x" .. char.bagCount,
+                                cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
+                            )
+                        end
+                        shown = shown + 1
                     end
-                    if char.bagCount > 0 then
-                        tooltip:AddDoubleLine(
-                            bagIcon .. " " .. char.charName,
-                            "x" .. char.bagCount,
-                            cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
-                        )
-                    end
-                    shown = shown + 1
                 end
 
                 if not isShift and #details.characters > 5 then

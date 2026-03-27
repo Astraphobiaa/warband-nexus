@@ -1,7 +1,8 @@
 --[[
     Warband Nexus - Font Manager
     Centralized font management with resolution-aware scaling
-    Provides consistent font rendering across all resolutions and UI scales
+    Font sizes follow WoW UI Scale via the frame hierarchy; optional normalization
+    applies a DPI comfort factor: sqrt(physH / 1080) — no effectiveScale division.
 
     TYPOGRAPHY STANDARD (use only these roles via CreateFontString(parent, role, layer)):
     - header   : Section titles, tab labels, main card headings (largest)
@@ -137,9 +138,40 @@ local function GetScaleMultiplier()
     return db.scaleCustom or 1.0
 end
 
--- Get pixel scale for resolution normalization
-local function GetPixelScale()
-    return ns.GetPixelScale and ns.GetPixelScale() or 1.0
+--[[
+    Resolution-aware scaling factor for FONT sizes.
+
+    WoW's SetFont() uses logical points in the 768-unit coordinate space.
+    UIParent scales these up via effectiveScale, so on a 4K monitor at
+    UI Scale 1.0 a "12pt" font already renders at the correct physical size.
+    No division by physH or effectiveScale is needed — that would shrink text.
+
+    What we DO want: a small bump on very-high-DPI screens (≥ 1440p) where
+    even correctly scaled 12pt feels physically tiny (small monitor, high PPI).
+    We scale font sizes by  sqrt(physH / 1080):
+      1080p → 1.00   (no change)
+      1440p → 1.15
+      2160p → 1.41   (4K: ~40 % larger base sizes, nicely readable)
+    This is purely a DPI comfort factor, not a coordinate-space conversion.
+
+    Cached per session; invalidated on DISPLAY_SIZE_CHANGED via ResetPixelScale.
+]]
+local cachedFontResNorm = nil
+local function GetFontResolutionNormalization()
+    if cachedFontResNorm then return cachedFontResNorm end
+    local physH = 1080
+    if GetPhysicalScreenSize then
+        local _, h = GetPhysicalScreenSize()
+        if h and h > 0 then physH = h end
+    else
+        local resolution = GetCVar("gxWindowedResolution") or "1920x1080"
+        local _, h = string.match(resolution, "(%d+)x(%d+)")
+        h = tonumber(h)
+        if h and h > 0 then physH = h end
+    end
+    if physH <= 0 then physH = 1080 end
+    cachedFontResNorm = math.sqrt(physH / 1080)
+    return cachedFontResNorm
 end
 
 --============================================================================
@@ -247,7 +279,12 @@ local FONT_REGISTRY = {}
     @return number - Final font size in pixels
 ]]
 function FontManager:GetFontSize(category)
-    category = (category == "smalltext") and "small" or (category or "body")
+    -- Normalize aliases to canonical categories
+    if category == "smalltext" or category == "tiny" then
+        category = "small"
+    else
+        category = category or "body"
+    end
     -- GUARD: Check if namespace and DB exist (race condition protection)
     if not ns or not ns.db then
         DebugPrint("|cffffff00[WN FontManager]|r WARNING: Database not ready, using default font size")
@@ -275,13 +312,15 @@ function FontManager:GetFontSize(category)
     end
     local baseSize = db.baseSizes[category] or 12
     local scaleMultiplier = GetScaleMultiplier()
-    local pixelScale = db.usePixelNormalization and GetPixelScale() or 1.0
+    local resNorm = db.usePixelNormalization and GetFontResolutionNormalization() or 1.0
+
+    -- Final: base × addon font slider × resolution normalization (not WoW UI Scale).
+    -- WoW UI Scale still scales rendered text via UIParent / frame effective scale.
+    local finalSize = baseSize * scaleMultiplier * resNorm
     
-    -- Final calculation: base × userScale × pixelNormalization
-    local finalSize = baseSize * scaleMultiplier * pixelScale
-    
-    -- Clamp to reasonable bounds (8px - 32px)
-    return math.max(8, math.min(32, finalSize))
+    -- Clamp to reasonable bounds (6px - 72px)
+    -- Upper bound must accommodate 4K + resolution normalization + user scale slider
+    return math.max(6, math.min(72, finalSize))
 end
 
 --[[
@@ -447,8 +486,11 @@ function FontManager:ApplyFont(fontString, category)
         return
     end
     
-    category = category or "body"
-    if category == "smalltext" then category = "small" end
+    if category == "smalltext" or category == "tiny" then
+        category = "small"
+    else
+        category = category or "body"
+    end
     
     local fontFace = self:GetFontFace()
     local fontSize = self:GetFontSize(category)
@@ -527,10 +569,11 @@ end
     Called when user changes font settings in Config / SettingsUI.
 ]]
 function FontManager:RefreshAllFonts()
-    -- Clear pixel scale cache
+    -- Clear pixel scale cache (borders) and font resolution cache
     if ns.ResetPixelScale then
         ns.ResetPixelScale()
     end
+    cachedFontResNorm = nil
 
     local fontPath = self:GetFontFace()
     local needsWarmup = fontPath and not warmedUpPaths[fontPath]

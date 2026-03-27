@@ -68,6 +68,7 @@ end
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
+local FormatMoney = ns.UI_FormatMoney
 local FormatNumber = ns.UI_FormatNumber
 local CreateIcon = ns.UI_CreateIcon
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
@@ -382,58 +383,190 @@ function WarbandNexus:DrawStatistics(parent)
 
     yOffset = yOffset + (useTwoRows and 200 or 100)  -- 2 satırda 200, tek satırda 100
     
-    -- ===== STORAGE STATS =====
-    local storageCard = CreateCard(parent, 100)  -- Reduced height from 120 to 100
-    storageCard:SetPoint("TOPLEFT", 10, -yOffset)
-    storageCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    -- ===== WARBAND WEALTH =====
+    local GW_VISIBLE_ROWS = 5
+    local GW_ROW_HEIGHT = 22
+    local GW_ROW_SPACING = 1
+    local GW_HEADER_AREA = 48
+    local GW_TOGGLE_HEIGHT = 28
+    local GW_BOTTOM_PAD = 8
     
-    local stTitle = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
-    stTitle:SetPoint("TOPLEFT", 15, -12)
-    -- Dynamic theme color for title
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local storageOverviewLabel = (ns.L and ns.L["STORAGE_OVERVIEW"]) or "Storage Overview"
-    stTitle:SetText("|cff" .. hexColor .. storageOverviewLabel .. "|r")
-    
-    -- Stats grid - improved layout with better spacing and alignment
-    local function AddStat(parent, label, value, x, y, color)
-        local l = FontManager:CreateFontString(parent, "small", "OVERLAY")
-        l:SetPoint("TOPLEFT", x, y)
-        l:SetText(label)
-        l:SetTextColor(0.8, 0.8, 0.8)  -- Light gray for labels
-        
-        local v = FontManager:CreateFontString(parent, "title", "OVERLAY")
-        v:SetPoint("TOPLEFT", x, y - 16)
-        v:SetText(value)
-        if color then 
-            v:SetTextColor(unpack(color))
-        else
-            v:SetTextColor(1, 1, 1)  -- White for values
+    local goldChars = {}
+    local totalCharCopper = 0
+    for charKey, charData in pairs(characters) do
+        if charData.isTracked then
+            local copper = ns.Utilities:GetCharTotalCopper(charData)
+            goldChars[#goldChars + 1] = {
+                name = charData.name or charKey:match("^(.+)%-") or "Unknown",
+                classFile = charData.classFile,
+                copper = copper,
+            }
+            totalCharCopper = totalCharCopper + copper
         end
     end
+    table.sort(goldChars, function(a, b) return a.copper > b.copper end)
     
-    -- Use warband stats from new structure
-    local wb = stats.warband or {}
-    local pb = stats.personal or {}
-    local totalSlots = (wb.totalSlots or 0) + (pb.totalSlots or 0)
-    local usedSlots = (wb.usedSlots or 0) + (pb.usedSlots or 0)
-    local freeSlots = (wb.freeSlots or 0) + (pb.freeSlots or 0)
-    local usedPct = totalSlots > 0 and floor((usedSlots / totalSlots) * 100) or 0
+    local warbandBankCopper = ns.Utilities:GetWarbandBankMoney() or 0
+    local grandTotalCopper = totalCharCopper + warbandBankCopper
     
-    -- Calculate column width for perfect symmetry (4 columns)
-    local cardWidth = storageCard:GetWidth() or 600
-    local columnWidth = (cardWidth - 30) / 4  -- 30 = 15px left + 15px right padding
-    
-    AddStat(storageCard, (ns.L and ns.L["WARBAND_SLOTS"]) or "WARBAND SLOTS", FormatNumber(wb.usedSlots or 0) .. "/" .. FormatNumber(wb.totalSlots or 0), 15, -40)
-    AddStat(storageCard, (ns.L and ns.L["PERSONAL_SLOTS"]) or "PERSONAL SLOTS", FormatNumber(pb.usedSlots or 0) .. "/" .. FormatNumber(pb.totalSlots or 0), 15 + columnWidth * 1, -40)
-    AddStat(storageCard, (ns.L and ns.L["TOTAL_FREE"]) or "TOTAL FREE", FormatNumber(freeSlots), 15 + columnWidth * 2, -40, {0.3, 0.9, 0.3})
-    AddStat(storageCard, (ns.L and ns.L["TOTAL_ITEMS"]) or "TOTAL ITEMS", FormatNumber((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
-    
-    storageCard:Show()
-
-    -- Progress bar removed (will be redesigned in new styling system)
-    
-    yOffset = yOffset + 110  -- Adjusted from 130 to 110
+    if #goldChars > 0 then
+        if not ns._statisticsExpandedStates then
+            ns._statisticsExpandedStates = {}
+        end
+        local isGoldExpanded = ns._statisticsExpandedStates["warbandWealth"] or false
+        local goldVisibleCount = isGoldExpanded and #goldChars or math.min(#goldChars, GW_VISIBLE_ROWS)
+        local goldHasOverflow = #goldChars > GW_VISIBLE_ROWS
+        local goldToggleSpace = goldHasOverflow and GW_TOGGLE_HEIGHT or 0
+        
+        local goldRowsHeight = goldVisibleCount * (GW_ROW_HEIGHT + GW_ROW_SPACING)
+        local goldCardHeight = GW_HEADER_AREA + goldRowsHeight + goldToggleSpace + GW_BOTTOM_PAD
+        
+        -- Add warband bank row space (always shown)
+        if warbandBankCopper > 0 then
+            goldCardHeight = goldCardHeight + GW_ROW_HEIGHT + GW_ROW_SPACING
+        end
+        
+        local goldCard = CreateCard(parent, goldCardHeight)
+        goldCard:SetPoint("TOPLEFT", 10, -yOffset)
+        goldCard:SetPoint("TOPRIGHT", -10, -yOffset)
+        
+        local gwIcon = CreateIcon(goldCard, "BonusLoot-Chest", 28, true, nil, true)
+        gwIcon:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 15, -10)
+        gwIcon:Show()
+        
+        local gwTitle = FontManager:CreateFontString(goldCard, "subtitle", "OVERLAY")
+        gwTitle:SetPoint("LEFT", gwIcon, "RIGHT", 10, 0)
+        gwTitle:SetText((ns.L and ns.L["WARBAND_WEALTH"]) or "WARBAND WEALTH")
+        gwTitle:SetTextColor(1, 1, 1)
+        gwTitle:SetJustifyH("LEFT")
+        
+        local gwTotal = FontManager:CreateFontString(goldCard, "header", "OVERLAY")
+        gwTotal:SetPoint("RIGHT", goldCard, "TOPRIGHT", -15, -24)
+        gwTotal:SetText(FormatMoney(grandTotalCopper, 14))
+        gwTotal:SetJustifyH("RIGHT")
+        
+        local gwRowY = GW_HEADER_AREA
+        local maxCopper = goldChars[1] and goldChars[1].copper or 1
+        if maxCopper <= 0 then maxCopper = 1 end
+        
+        for i = 1, goldVisibleCount do
+            local charInfo = goldChars[i]
+            local rowTop = -gwRowY
+            local rowCenterY = rowTop - (GW_ROW_HEIGHT / 2)
+            
+            if i % 2 == 0 then
+                local rowBg = goldCard:CreateTexture(nil, "BACKGROUND", nil, 1)
+                rowBg:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 10, rowTop)
+                rowBg:SetPoint("TOPRIGHT", goldCard, "TOPRIGHT", -10, rowTop)
+                rowBg:SetHeight(GW_ROW_HEIGHT)
+                rowBg:SetColorTexture(1, 1, 1, 0.03)
+            end
+            
+            local classR, classG, classB = 0.8, 0.8, 0.8
+            if charInfo.classFile then
+                local cr, cg, cb = GetClassColor(charInfo.classFile)
+                if cr then classR, classG, classB = cr, cg, cb end
+            end
+            
+            local colorBar = goldCard:CreateTexture(nil, "ARTWORK")
+            colorBar:SetSize(3, GW_ROW_HEIGHT - 4)
+            colorBar:SetPoint("LEFT", goldCard, "TOPLEFT", 15, rowCenterY)
+            colorBar:SetColorTexture(classR, classG, classB, 1)
+            
+            local nameText = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
+            nameText:SetPoint("LEFT", colorBar, "RIGHT", 8, 0)
+            nameText:SetPoint("RIGHT", goldCard, "RIGHT", -160, 0)
+            nameText:SetWordWrap(false)
+            local hexClass = format("%02x%02x%02x", classR * 255, classG * 255, classB * 255)
+            nameText:SetText("|cff" .. hexClass .. charInfo.name .. "|r")
+            nameText:SetJustifyH("LEFT")
+            
+            local goldText = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
+            goldText:SetPoint("RIGHT", goldCard, "TOPRIGHT", -15, rowCenterY)
+            if charInfo.copper > 0 then
+                goldText:SetText(FormatMoney(charInfo.copper, 12))
+            else
+                goldText:SetText("|cff555555—|r")
+            end
+            goldText:SetJustifyH("RIGHT")
+            
+            gwRowY = gwRowY + GW_ROW_HEIGHT + GW_ROW_SPACING
+        end
+        
+        -- Warband bank row (distinct style)
+        if warbandBankCopper > 0 then
+            local rowTop = -gwRowY
+            local rowCenterY = rowTop - (GW_ROW_HEIGHT / 2)
+            
+            local wbSep = goldCard:CreateTexture(nil, "ARTWORK")
+            wbSep:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 15, rowTop)
+            wbSep:SetPoint("TOPRIGHT", goldCard, "TOPRIGHT", -15, rowTop)
+            wbSep:SetHeight(1)
+            wbSep:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
+            
+            local wbIcon = goldCard:CreateTexture(nil, "ARTWORK")
+            wbIcon:SetSize(16, 16)
+            wbIcon:SetPoint("LEFT", goldCard, "TOPLEFT", 18, rowCenterY)
+            wbIcon:SetAtlas("warbands-icon")
+            
+            local wbName = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
+            wbName:SetPoint("LEFT", wbIcon, "RIGHT", 6, 0)
+            wbName:SetText("|cff66c0ff" .. ((ns.L and ns.L["WARBAND_BANK"]) or "Warband Bank") .. "|r")
+            wbName:SetJustifyH("LEFT")
+            
+            local wbGold = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
+            wbGold:SetPoint("RIGHT", goldCard, "TOPRIGHT", -15, rowCenterY)
+            wbGold:SetText(FormatMoney(warbandBankCopper, 12))
+            wbGold:SetJustifyH("RIGHT")
+            
+            gwRowY = gwRowY + GW_ROW_HEIGHT + GW_ROW_SPACING
+        end
+        
+        -- Expand/collapse
+        if goldHasOverflow then
+            local hiddenCount = #goldChars - GW_VISIBLE_ROWS
+            
+            local expandBtn = ns.UI.Factory:CreateButton(goldCard, 20, 20, true)
+            expandBtn:SetPoint("BOTTOMRIGHT", goldCard, "BOTTOMRIGHT", -10, GW_BOTTOM_PAD)
+            expandBtn:EnableMouse(true)
+            
+            local arrowTex = expandBtn:CreateTexture(nil, "OVERLAY")
+            arrowTex:SetAllPoints(expandBtn)
+            if isGoldExpanded then
+                arrowTex:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
+            else
+                arrowTex:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
+            end
+            
+            expandBtn:SetScript("OnClick", function()
+                ns._statisticsExpandedStates["warbandWealth"] = not isGoldExpanded
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end)
+            
+            if not isGoldExpanded then
+                local moreText = FontManager:CreateFontString(goldCard, "small", "OVERLAY")
+                moreText:SetPoint("RIGHT", expandBtn, "LEFT", -4, 0)
+                moreText:SetJustifyH("RIGHT")
+                local moreLabel = hiddenCount > 1
+                    and ((ns.L and ns.L["MORE_CHARACTERS_PLURAL"]) or "more characters")
+                    or ((ns.L and ns.L["MORE_CHARACTERS"]) or "more character")
+                moreText:SetText("|cff888888" .. hiddenCount .. " " .. moreLabel .. "|r")
+            end
+        end
+        
+        if goldHasOverflow then
+            goldCard:EnableMouse(true)
+            goldCard:SetScript("OnMouseDown", function(self, button)
+                if button == "LeftButton" then
+                    ns._statisticsExpandedStates["warbandWealth"] = not isGoldExpanded
+                    if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                end
+            end)
+        end
+        
+        goldCard:Show()
+        yOffset = yOffset + goldCardHeight + 10
+    end
     
     -- ===== MOST PLAYED CARD =====
     local MP_VISIBLE_ROWS = 5
@@ -670,7 +803,50 @@ function WarbandNexus:DrawStatistics(parent)
         yOffset = yOffset + cardHeight + 10
     end
     
-    -- Last scan info removed - now only shown in footer
+    -- ===== STORAGE STATS (bottom) =====
+    local storageCard = CreateCard(parent, 100)
+    storageCard:SetPoint("TOPLEFT", 10, -yOffset)
+    storageCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local stTitle = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
+    stTitle:SetPoint("TOPLEFT", 15, -12)
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    local storageOverviewLabel = (ns.L and ns.L["STORAGE_OVERVIEW"]) or "Storage Overview"
+    stTitle:SetText("|cff" .. hexColor .. storageOverviewLabel .. "|r")
+    
+    local function AddStat(statParent, label, value, x, y, color)
+        local l = FontManager:CreateFontString(statParent, "small", "OVERLAY")
+        l:SetPoint("TOPLEFT", x, y)
+        l:SetText(label)
+        l:SetTextColor(0.8, 0.8, 0.8)
+        
+        local v = FontManager:CreateFontString(statParent, "title", "OVERLAY")
+        v:SetPoint("TOPLEFT", x, y - 16)
+        v:SetText(value)
+        if color then
+            v:SetTextColor(unpack(color))
+        else
+            v:SetTextColor(1, 1, 1)
+        end
+    end
+    
+    local wb = stats.warband or {}
+    local pb = stats.personal or {}
+    local totalSlots = (wb.totalSlots or 0) + (pb.totalSlots or 0)
+    local usedSlots = (wb.usedSlots or 0) + (pb.usedSlots or 0)
+    local freeSlots = (wb.freeSlots or 0) + (pb.freeSlots or 0)
+    
+    local cardWidth = storageCard:GetWidth() or 600
+    local columnWidth = (cardWidth - 30) / 4
+    
+    AddStat(storageCard, (ns.L and ns.L["WARBAND_SLOTS"]) or "WARBAND SLOTS", FormatNumber(wb.usedSlots or 0) .. "/" .. FormatNumber(wb.totalSlots or 0), 15, -40)
+    AddStat(storageCard, (ns.L and ns.L["PERSONAL_SLOTS"]) or "PERSONAL SLOTS", FormatNumber(pb.usedSlots or 0) .. "/" .. FormatNumber(pb.totalSlots or 0), 15 + columnWidth * 1, -40)
+    AddStat(storageCard, (ns.L and ns.L["TOTAL_FREE"]) or "TOTAL FREE", FormatNumber(freeSlots), 15 + columnWidth * 2, -40, {0.3, 0.9, 0.3})
+    AddStat(storageCard, (ns.L and ns.L["TOTAL_ITEMS"]) or "TOTAL ITEMS", FormatNumber((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
+    
+    storageCard:Show()
+    yOffset = yOffset + 110
     
     return yOffset
 end

@@ -349,25 +349,59 @@ end
 
 -- Column header definitions — alignment matches each column's data alignment
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
+-- sortable = true means clicking the header toggles ascending/descending sort
 local HEADER_DEFS = {
-    { col = "name",        label = "TABLE_HEADER_CHARACTER", text = "Character",     align = "LEFT" },
-    { col = "profName",    label = "GROUP_PROFESSION",       text = "Profession",    align = "LEFT" },
-    { col = "equipment",   label = "EQUIPMENT",              text = "Equipment",     align = "CENTER" },
-    { col = "skill",       label = "SKILL",                  text = "Skill",         align = "CENTER" },
-    { col = "conc",        label = "CONCENTRATION",          text = "Concentration", align = "CENTER" },
-    { col = "recharge",    label = "RECHARGE",               text = "Recharge",      align = "CENTER" },
-    { col = "knowledge",   label = "KNOWLEDGE",              text = "Knowledge",     align = "CENTER" },
-    { col = "recipes",     label = "RECIPES",                text = "Recipes",       align = "CENTER" },
-    { col = "firstCraft",  label = "FIRST_CRAFT",            text = "First Craft",   align = "CENTER" },
-    { col = "uniques",     label = "UNIQUES",                text = "Uniques",       align = "CENTER" },
-    { col = "treatise",    label = "TREATISE",               text = "Treatise",      align = "CENTER" },
-    { col = "weeklyQuest", label = "WEEKLY_QUEST_CAT",       text = "Weekly Quest",  align = "CENTER" },
-    { col = "treasure",    label = "SOURCE_TYPE_TREASURE",   text = "Treasure",      align = "CENTER" },
-    { col = "gathering",   label = "GATHERING",              text = "Gathering",     align = "CENTER" },
-    { col = "catchUp",     label = "CATCH_UP",               text = "Catch Up",      align = "CENTER" },
-    { col = "moxie",       label = "MOXIE",                  text = "Moxie",         align = "CENTER" },
-    { col = "cooldowns",   label = "COOLDOWNS",              text = "Cooldowns",     align = "CENTER" },
+    { col = "name",        label = "TABLE_HEADER_CHARACTER", text = "Character",     align = "LEFT",   sortable = true },
+    { col = "profName",    label = "GROUP_PROFESSION",       text = "Profession",    align = "LEFT",   sortable = true },
+    { col = "equipment",   label = "EQUIPMENT",              text = "Equipment",     align = "CENTER", sortable = false },
+    { col = "skill",       label = "SKILL",                  text = "Skill",         align = "CENTER", sortable = true },
+    { col = "conc",        label = "CONCENTRATION",          text = "Concentration", align = "CENTER", sortable = true },
+    { col = "recharge",    label = "RECHARGE",               text = "Recharge",      align = "CENTER", sortable = true },
+    { col = "knowledge",   label = "KNOWLEDGE",              text = "Knowledge",     align = "CENTER", sortable = true },
+    { col = "recipes",     label = "RECIPES",                text = "Recipes",       align = "CENTER", sortable = true },
+    { col = "firstCraft",  label = "FIRST_CRAFT",            text = "First Craft",   align = "CENTER", sortable = true },
+    { col = "uniques",     label = "UNIQUES",                text = "Uniques",       align = "CENTER", sortable = true },
+    { col = "treatise",    label = "TREATISE",               text = "Treatise",      align = "CENTER", sortable = true },
+    { col = "weeklyQuest", label = "WEEKLY_QUEST_CAT",       text = "Weekly Quest",  align = "CENTER", sortable = true },
+    { col = "treasure",    label = "SOURCE_TYPE_TREASURE",   text = "Treasure",      align = "CENTER", sortable = true },
+    { col = "gathering",   label = "GATHERING",              text = "Gathering",     align = "CENTER", sortable = true },
+    { col = "catchUp",     label = "CATCH_UP",               text = "Catch Up",      align = "CENTER", sortable = true },
+    { col = "moxie",       label = "MOXIE",                  text = "Moxie",         align = "CENTER", sortable = true },
+    { col = "cooldowns",   label = "COOLDOWNS",              text = "Cooldowns",     align = "CENTER", sortable = true },
 }
+
+--============================================================================
+-- COLUMN SORT STATE & COMPARATORS
+-- Stored in db.profile.professionColumnSort = { col = "skill", dir = "asc"|"desc" }
+--============================================================================
+
+local function GetColumnSortState()
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    return db and db.professionColumnSort
+end
+
+local function SetColumnSortState(col, dir)
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.profile then return end
+    if not col then
+        WarbandNexus.db.profile.professionColumnSort = nil
+    else
+        WarbandNexus.db.profile.professionColumnSort = { col = col, dir = dir }
+    end
+end
+
+local function ToggleColumnSort(col)
+    local state = GetColumnSortState()
+    if state and state.col == col then
+        if state.dir == "asc" then
+            SetColumnSortState(col, "desc")
+        else
+            SetColumnSortState(nil)
+        end
+    else
+        SetColumnSortState(col, "asc")
+    end
+    WarbandNexus:RefreshUI()
+end
 
 --============================================================================
 -- CONCENTRATION BAR
@@ -759,6 +793,154 @@ local function FormatProgressPair(entry)
 end
 
 --============================================================================
+-- COLUMN SORT: FLAT LIST BUILDER & COMPARATOR
+-- Placed after all helper functions to ensure GetExpansionFilter,
+-- GetSkillLineIDForFilter, GetCurrentExpansionSkill are in scope.
+--============================================================================
+
+-- Extracts the best (max across both professions) sortable numeric value for a character.
+local function GetCharSortValue(char, col)
+    if col == "name" then return nil end
+
+    local filter = GetExpansionFilter()
+    local bestVal = -999999999
+    local CONC_PER_SEC = 10 / 3600
+
+    local PROGRESS_KEY_MAP = {
+        firstCraft = "firstCraft", uniques = "uniques", treatise = "treatise",
+        weeklyQuest = "weeklyQuest", treasure = "treasure", gathering = "gathering",
+        catchUp = "catchUp",
+    }
+
+    for profIdx = 1, 2 do
+        local prof = char.professions and char.professions[profIdx]
+        local profName = prof and prof.name
+        if profName then
+            local val = -1
+            local slID = GetSkillLineIDForFilter(char, profName)
+
+            if col == "profName" then
+                val = profName:lower():byte() or 0
+            elseif col == "skill" then
+                local cs, ms = GetCurrentExpansionSkill(char, profName)
+                cs = cs or 0; ms = ms or 0
+                val = ms > 0 and (cs / ms) or -1
+            elseif col == "conc" or col == "recharge" then
+                local concData = slID and char.concentration and char.concentration[slID]
+                if not concData and filter == "All" then
+                    concData = char.concentration and char.concentration[profName]
+                end
+                if concData and concData.max and concData.max > 0 then
+                    local est = concData.current or 0
+                    if WarbandNexus.GetEstimatedConcentration then
+                        local ok, v = pcall(WarbandNexus.GetEstimatedConcentration, WarbandNexus, concData)
+                        if ok and type(v) == "number" then est = v end
+                    end
+                    if col == "conc" then
+                        val = est / concData.max
+                    elseif est >= concData.max then
+                        val = 0
+                    else
+                        val = (concData.max - est) / CONC_PER_SEC
+                    end
+                else
+                    val = col == "recharge" and 999999999 or -1
+                end
+            elseif col == "knowledge" then
+                local kd = slID and char.knowledgeData and char.knowledgeData[slID]
+                if not kd and filter == "All" then kd = char.knowledgeData and char.knowledgeData[profName] end
+                if kd then
+                    local cur = (kd.spentPoints or 0) + (kd.unspentPoints or 0)
+                    local mx = kd.maxPoints or 0
+                    val = mx > 0 and (cur / mx) or -1
+                end
+            elseif col == "moxie" then
+                local charKey = (ns.Utilities and ns.Utilities.GetCharacterKey) and ns.Utilities:GetCharacterKey(char.name, char.realm) or nil
+                local moxieCurrencyID = slID and MIDNIGHT_MOXIE_CURRENCY[slID]
+                if charKey and moxieCurrencyID and WarbandNexus.GetCurrencyData then
+                    local moxieData = WarbandNexus:GetCurrencyData(moxieCurrencyID, charKey)
+                    val = (moxieData and (moxieData.quantity or moxieData.value)) or 0
+                end
+            elseif col == "cooldowns" then
+                local charKey = (ns.Utilities and ns.Utilities.GetCharacterKey) and ns.Utilities:GetCharacterKey(char.name, char.realm) or nil
+                if charKey and slID then
+                    local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[charKey]
+                    local cdTable = charData and charData.professionCooldowns and charData.professionCooldowns[slID]
+                    if cdTable then
+                        local ready, total = 0, 0
+                        local now = time()
+                        for _, info in pairs(cdTable) do
+                            total = total + 1
+                            if (info.cooldownEnd or 0) <= now then ready = ready + 1 end
+                        end
+                        val = total > 0 and (ready / total) or -1
+                    end
+                end
+            elseif col == "recipes" then
+                local recipeData = slID and char.recipes and char.recipes[slID]
+                if recipeData and (recipeData.totalCount or 0) > 0 then
+                    val = (recipeData.knownCount or 0) / recipeData.totalCount
+                end
+            elseif PROGRESS_KEY_MAP[col] then
+                local progressData = nil
+                if slID and char.professionData and char.professionData.bySkillLine and char.professionData.bySkillLine[slID] then
+                    progressData = char.professionData.bySkillLine[slID].weeklyKnowledge
+                end
+                if not progressData and slID and char.professionWeeklyKnowledge then
+                    progressData = char.professionWeeklyKnowledge[slID]
+                end
+                local pd = progressData and progressData[PROGRESS_KEY_MAP[col]]
+                if pd then
+                    local cur = tonumber(pd.current or 0) or 0
+                    local tot = tonumber(pd.total or 0) or 0
+                    val = tot > 0 and (cur / tot) or -1
+                end
+            end
+
+            bestVal = max(bestVal, val)
+        end
+    end
+
+    return bestVal
+end
+
+-- Returns a character comparator for sorting within sections by column header.
+-- pcall-protected so table.sort never aborts on data edge cases.
+local function GetColumnSortCharComparator()
+    local state = GetColumnSortState()
+    if not state or not state.col then return nil end
+
+    local col = state.col
+    local isAsc = (state.dir == "asc")
+
+    local function SafeCompare(a, b)
+        if col == "name" then
+            local nameA = (a.name or ""):lower()
+            local nameB = (b.name or ""):lower()
+            if nameA ~= nameB then
+                if isAsc then return nameA < nameB else return nameA > nameB end
+            end
+            return false
+        end
+
+        local valA = GetCharSortValue(a, col) or -999999999
+        local valB = GetCharSortValue(b, col) or -999999999
+
+        if valA ~= valB then
+            if isAsc then return valA < valB else return valA > valB end
+        end
+        if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+        return (a.name or ""):lower() < (b.name or ""):lower()
+    end
+
+    return function(a, b)
+        local ok, result = pcall(SafeCompare, a, b)
+        if ok then return result end
+        return false
+    end
+end
+
+--============================================================================
 -- DRAW TAB
 --============================================================================
 
@@ -1043,16 +1225,69 @@ function WarbandNexus:DrawProfessionsTab(parent)
     colHeaderLine:SetHeight(1)
     colHeaderLine:SetColorTexture(accentR, accentG, accentB, 0.5)
 
+    local SORT_ARROW_SIZE = 10
+    local sortState = GetColumnSortState()
     for _, hdef in ipairs(HEADER_DEFS) do
         local col = hdef.col
         if IsColumnVisible(col) then
-            local lbl = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
-            local displayText = hdef.text or (ns.L and ns.L[hdef.label]) or ""
-            lbl:SetText("|cffcccccc" .. displayText .. "|r")
-            lbl:SetJustifyH(hdef.align or "CENTER")
             local w = (hdef.getWidth and hdef.getWidth()) or ColWidth(col)
-            lbl:SetWidth(w)
-            lbl:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+            local displayText = hdef.text or (ns.L and ns.L[hdef.label]) or ""
+            local isSorted = sortState and sortState.col == col
+
+            if hdef.sortable then
+                local hitBtn = CreateFrame("Button", nil, colHeaderBar)
+                hitBtn:SetSize(w, COLUMN_HEADER_HEIGHT)
+                hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+                hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 1)
+
+                local lbl = FontManager:CreateFontString(hitBtn, "small", "OVERLAY")
+                local color = isSorted and GetAccentHexColor() or "cccccc"
+                lbl:SetText("|cff" .. color .. displayText .. "|r")
+                lbl:SetJustifyH(hdef.align or "CENTER")
+                lbl:SetWidth(w)
+                lbl:SetPoint("CENTER", 0, 0)
+
+                local arrow = hitBtn:CreateTexture(nil, "OVERLAY")
+                arrow:SetSize(SORT_ARROW_SIZE, SORT_ARROW_SIZE)
+                arrow:SetPoint("LEFT", lbl, "RIGHT", 2, 0)
+                if isSorted then
+                    if sortState.dir == "asc" then
+                        arrow:SetAtlas("hud-MainMenuBar-arrowup")
+                    else
+                        arrow:SetAtlas("hud-MainMenuBar-arrowdown")
+                    end
+                    arrow:SetVertexColor(accentR, accentG, accentB, 1)
+                    arrow:Show()
+                else
+                    arrow:Hide()
+                end
+
+                local capturedCol = col
+                hitBtn:SetScript("OnClick", function()
+                    ToggleColumnSort(capturedCol)
+                end)
+                hitBtn:SetScript("OnEnter", function()
+                    lbl:SetText("|cffffffff" .. displayText .. "|r")
+                    if not isSorted then
+                        arrow:SetAtlas("hud-MainMenuBar-arrowup")
+                        arrow:SetVertexColor(1, 1, 1, 0.4)
+                        arrow:Show()
+                    end
+                end)
+                hitBtn:SetScript("OnLeave", function()
+                    local c = isSorted and GetAccentHexColor() or "cccccc"
+                    lbl:SetText("|cff" .. c .. displayText .. "|r")
+                    if not isSorted then
+                        arrow:Hide()
+                    end
+                end)
+            else
+                local lbl = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
+                lbl:SetText("|cffcccccc" .. displayText .. "|r")
+                lbl:SetJustifyH(hdef.align or "CENTER")
+                lbl:SetWidth(w)
+                lbl:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+            end
         end
     end
     colHeaderBar:Show()
@@ -1082,7 +1317,15 @@ function WarbandNexus:DrawProfessionsTab(parent)
     if not self.db.profile.ui then self.db.profile.ui = {} end
     self.profRecentlyExpanded = self.profRecentlyExpanded or {}
 
-    -- Helper: draw a section with collapsible header
+    -- Column sort: re-order characters within each section by the clicked column
+    local colSortCmp = GetColumnSortCharComparator()
+    if colSortCmp then
+        table.sort(trackedFavorites, colSortCmp)
+        table.sort(trackedRegular, colSortCmp)
+        table.sort(untrackedChars, colSortCmp)
+    end
+
+    -- Grouped sections with collapsible headers
     local function DrawSection(chars, headerLabel, sectionKey, defaultExpanded, headerAtlas, borderColor)
         if #chars == 0 then return end
 
@@ -1503,11 +1746,13 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local acc1Cell = EnsureEquipIcon("Acc1", 2)
     local acc2Cell = EnsureEquipIcon("Acc2", 3)
 
-    -- COLUMN HIT-FRAMES (interactive tooltips for skill + cooldowns)
+    -- COLUMN HIT-FRAMES (interactive tooltips for skill + cooldowns + recharge)
     local skillHit = AcquireColumnHitFrame(row, p.."SkillHit", "skill", centerY)
     if skillVisible then skillHit:Show() else skillHit:Hide() end
     local cdHit = AcquireColumnHitFrame(row, p.."CdHit", "cooldowns", centerY)
     if IsColumnVisible("cooldowns") then cdHit:Show() else cdHit:Hide() end
+    local rechargeHit = AcquireColumnHitFrame(row, p.."RechargeHit", "recharge", centerY)
+    if rechargeVisible then rechargeHit:Show() else rechargeHit:Hide() end
 
     -- OPEN BUTTON
     local openX = ColOffset("open")
@@ -1608,6 +1853,32 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         end
         if rechargeVisible then
             row[p.."Recharge"]:SetText(rechargeStr)
+        end
+
+        -- Recharge tooltip: show detailed time breakdown on hover
+        if rechargeVisible and concData and concData.max and concData.max > 0 then
+            local capturedConcData = concData
+            rechargeHit:SetScript("OnEnter", function(self)
+                local est = capturedConcData.current or 0
+                if WarbandNexus.GetEstimatedConcentration then
+                    local eOk, eVal = pcall(WarbandNexus.GetEstimatedConcentration, WarbandNexus, capturedConcData)
+                    if eOk and type(eVal) == "number" then est = eVal end
+                end
+                if est >= (capturedConcData.max or 0) then return end
+                if WarbandNexus.GetConcentrationTimeToFullDetailed then
+                    local dOk, detailed = pcall(WarbandNexus.GetConcentrationTimeToFullDetailed, WarbandNexus, capturedConcData)
+                    if dOk and detailed and detailed ~= "" and detailed ~= "Full" then
+                        local lines = {
+                            { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = detailed, leftColor = {1,1,1}, rightColor = {1, 0.82, 0} },
+                        }
+                        if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["CONCENTRATION"]) or "Concentration", lines = lines, anchor = "ANCHOR_TOP" }) end
+                    end
+                end
+            end)
+            rechargeHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
+        else
+            rechargeHit:SetScript("OnEnter", nil)
+            rechargeHit:SetScript("OnLeave", nil)
         end
 
         -- Knowledge: keyed by skillLineID (expansion-specific). Always show Current / Max.
@@ -1904,8 +2175,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                 local concMax = concT.max or 0
                 local cc = est >= concMax and {0.3,0.9,0.3} or (est > 0 and {1,0.82,0} or {1,1,1})
                 lines[#lines+1] = { left = (ns.L and ns.L["CONCENTRATION"]) or "Concentration", right = format("%d / %d", est, concMax), leftColor = {1,1,1}, rightColor = cc }
-                if est < concMax and WarbandNexus.GetConcentrationTimeToFull then
-                    local tsOk, ts = pcall(WarbandNexus.GetConcentrationTimeToFull, WarbandNexus, concT)
+                if est < concMax and WarbandNexus.GetConcentrationTimeToFullDetailed then
+                    local tsOk, ts = pcall(WarbandNexus.GetConcentrationTimeToFullDetailed, WarbandNexus, concT)
                     if tsOk and ts and ts ~= "" and ts ~= "Full" then lines[#lines+1] = { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = ts, leftColor = {1,1,1}, rightColor = {1,0.82,0} } end
                 end
             end
@@ -1977,5 +2248,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         -- Hide hit-frames for empty slots
         skillHit:Hide()
         cdHit:Hide()
+        rechargeHit:Hide()
     end
 end

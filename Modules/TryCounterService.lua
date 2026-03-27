@@ -24,7 +24,7 @@
                         gathering+GameObject (no mob context)
         2) CONTAINER  — isFromItem flag OR recent tracked container use
         3) FISHING    — IsFishingLoot() OR (fish context + source compatible +
-                        NO eligible NPC GUID in session)
+                        NO Creature/Vehicle corpse in session or unit context)
         4) NPC/OBJECT — ProcessNPCLoot (exact GUID→ID match only)
       Once classified, ALL other routes are locked out.
     
@@ -69,7 +69,6 @@ local GetTime = GetTime
 local strsplit = strsplit
 local tonumber = tonumber
 local pairs = pairs
-local ipairs = ipairs
 local format = string.format
 local C_MountJournal = C_MountJournal
 local C_PetJournal = C_PetJournal
@@ -98,6 +97,22 @@ local CaptureLootSessionState
 local PromoteLootReadyToSession
 local ClassifyLootSession
 local RouteLootSession
+local GetSafeMapID
+local GetNPCIDFromGUID
+local GetObjectIDFromGUID
+local SafeGetUnitGUID
+local SafeGetTargetGUID
+local SafeGetMouseoverGUID
+local SafeGuardGUID
+local TryDiscoverLockoutQuest
+-- Forward declarations for state variables used in OnEvent closure (declared after it)
+local npcDropDB
+local tryCounterNpcEligible
+local objectDropDB
+local isBlockingInteractionOpen
+local lastLootSourceGUID
+local lastLootSourceTime
+local discoveryPendingNpcID
 
 ---Send try counter / drops message to all chat panels that have Loot, Currency, or Reputation
 ---enabled (via ChatMessageService), so messages appear on every such tab and when switching panels.
@@ -143,10 +158,13 @@ local TRYCOUNTER_EVENTS = {
     "ENCOUNTER_END",
     "PLAYER_ENTERING_WORLD",
     "UNIT_SPELLCAST_SENT",
+    "UNIT_SPELLCAST_INTERRUPTED",
+    "UNIT_SPELLCAST_FAILED_QUIET",
     "ITEM_LOCK_CHANGED",
     "PLAYER_INTERACTION_MANAGER_FRAME_SHOW",
     "PLAYER_INTERACTION_MANAGER_FRAME_HIDE",
     "PLAYER_TARGET_CHANGED",
+    "QUEST_LOG_UPDATE",
 }
 
 -- PlayerInteractionType values that should block ProcessNPCLoot.
@@ -228,18 +246,20 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
         addon:OnTryCounterSpellcastSent(event, ...)
     elseif event == "ITEM_LOCK_CHANGED" then
         addon:OnTryCounterItemLockChanged(event, ...)
+    elseif event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED_QUIET" then
+        addon:OnTryCounterSpellcastFailed(event, ...)
     elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
         local interactionType = ...
-        if interactionType and BLOCKING_INTERACTION_TYPES[interactionType] then
+        if interactionType and (not issecretvalue or not issecretvalue(interactionType)) and BLOCKING_INTERACTION_TYPES[interactionType] then
             isBlockingInteractionOpen = true
         end
     elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
         local interactionType = ...
-        if interactionType and BLOCKING_INTERACTION_TYPES[interactionType] then
+        if interactionType and (not issecretvalue or not issecretvalue(interactionType)) and BLOCKING_INTERACTION_TYPES[interactionType] then
             isBlockingInteractionOpen = false
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
-        local guid = SafeGetTargetGUID and SafeGetTargetGUID() or nil
+        local guid = SafeGetTargetGUID()
         if guid then
             local nid = GetNPCIDFromGUID(guid)
             local oid = GetObjectIDFromGUID(guid)
@@ -249,6 +269,10 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
             end
         else
             lastLootSourceGUID = nil
+        end
+    elseif event == "QUEST_LOG_UPDATE" then
+        if discoveryPendingNpcID then
+            TryDiscoverLockoutQuest()
         end
     end
 end)
@@ -326,14 +350,14 @@ local PROFESSION_LOOT_SPELLS = {
 -- =====================================================================
 
 -- DB references (set at init from ns.CollectibleSourceDB)
-local npcDropDB = {}
+npcDropDB = {}
 -- NPCs allowed for corpse/GUID/CHAT/target try-counter attribution (subset of npcDropDB keys)
-local tryCounterNpcEligible = {}
+tryCounterNpcEligible = {}
 local TRY_COUNTER_SHARED_TRASH_NPC = {
     -- AQ40: six mob types share the same mount table — loot must not attribute to one arbitrary ID
     [15246] = true, [15317] = true, [15247] = true, [15311] = true, [15249] = true, [15310] = true,
 }
-local objectDropDB = {}
+objectDropDB = {}
 local fishingDropDB = {}
 local containerDropDB = {}
 local zoneDropDB = {}
@@ -353,17 +377,18 @@ local fishingCtx = {
 local FISHING_CAST_CONTEXT_TTL = 35 -- seconds: valid window for treating loot as fishing context
 local isPickpocketing = false -- set on pickpocket cast, cleared on LOOT_CLOSED
 local isProfessionLooting = false -- set on profession spell cast, cleared on LOOT_CLOSED
-local isBlockingInteractionOpen = false -- true when bank/vendor/AH/mail/trade UI is open
+isBlockingInteractionOpen = false -- true when bank/vendor/AH/mail/trade UI is open
 local lastContainerItemID = nil  -- set on container use
 local lastContainerItemTime = 0  -- timestamp when container use/lock was observed (for LOOT_CLOSED fallback)
 local resolvedIDs = {}       -- [itemID] = { type, collectibleID } - runtime resolved mount/pet IDs
+local resolvedIDsReverse = {} -- [collectibleID] = itemID - reverse lookup for O(1) IndexLookup
 local lockoutAttempted = {}  -- [questID] = true : tracks which lockout quests we've already counted this reset period
                              -- Keyed by questID (not npcID) so multiple NPCs sharing the same quest
                              -- (e.g. Arachnoid Harvester 154342/151934 both use quest 55512) are handled correctly.
 -- When loot has 0 item slots (only rep/currency), GetLootSourceInfo has nothing to return; target may be cleared.
 -- Cache last targeted GUID that is in our DB so we can still attribute the loot open and count the try.
-local lastLootSourceGUID = nil
-local lastLootSourceTime = 0
+lastLootSourceGUID = nil
+lastLootSourceTime = 0
 local LAST_LOOT_SOURCE_TTL = 3  -- seconds
 -- Structured loot session state (active session used by all processors).
 -- Captured at LOOT_OPENED (best quality, includes isFromItem) or promoted from lootReady
@@ -395,6 +420,7 @@ local LOOT_READY_STATE_TTL = 5  -- seconds; treat lootReady data as valid for th
 
 local lastGatherCastName = nil
 local lastGatherCastTime = 0
+local lastSafeMapID = nil  -- cached last known good mapID for fallback when API returns nil/secret
 
 -- Forward declaration: defined later in file; used at top of OnTryCounterLootOpened.
 local GetAllLootSourceGUIDs
@@ -784,7 +810,7 @@ local function EnsureDB()
     end
     if not WarbandNexus.db.global.tryCounts then
         WarbandNexus.db.global.tryCounts = {
-            mount = {}, pet = {}, toy = {}, illusion = {},
+            mount = {}, pet = {}, toy = {}, illusion = {}, item = {},
         }
     end
     for t in pairs(VALID_TYPES) do
@@ -792,7 +818,29 @@ local function EnsureDB()
             WarbandNexus.db.global.tryCounts[t] = {}
         end
     end
+    if not WarbandNexus.db.global.tryCounts.obtained then
+        WarbandNexus.db.global.tryCounts.obtained = {}
+    end
     return true
+end
+
+---Mark a non-repeatable drop item as obtained so IsCollectibleCollected stops
+---tracking it even when the WoW collection API can't confirm yet (e.g. egg
+---hatch timers, unresolvable mountIDs).
+---@param itemID number
+local function MarkItemObtained(itemID)
+    if not itemID or not EnsureDB() then return end
+    WarbandNexus.db.global.tryCounts.obtained[itemID] = true
+end
+
+---Check if a drop item was previously marked as obtained.
+---@param itemID number
+---@return boolean
+local function IsItemMarkedObtained(itemID)
+    if not itemID then return false end
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return false end
+    local tc = WarbandNexus.db.global.tryCounts
+    return tc and tc.obtained and tc.obtained[itemID] == true
 end
 
 -- =====================================================================
@@ -826,13 +874,16 @@ function WarbandNexus:GetTryCount(collectibleType, id)
             local localStored = type(itemCount) == "number" and itemCount or 0
             local mountCounts = WarbandNexus.db.global.tryCounts.mount
             if mountCounts then
+                -- Check all known keys for this quest-starter mount (itemID, mountID, resolved ID)
+                -- to find the highest stored count. Covers legacy data stored under different keys.
                 local m1 = type(mountCounts[id]) == "number" and mountCounts[id] or 0
                 if m1 > localStored then localStored = m1 end
-                if id ~= 221765 and type(mountCounts[221765]) == "number" and mountCounts[221765] > localStored then
-                    localStored = mountCounts[221765]
-                end
-                if id ~= 2119 and type(mountCounts[2119]) == "number" and mountCounts[2119] > localStored then
-                    localStored = mountCounts[2119]
+                -- Check all reverse-mapped keys for this source item (covers itemID/mountID variants)
+                for mappedKey, srcID in pairs(questStarterMountToSourceItemID) do
+                    if srcID == sourceItemID and mappedKey ~= id then
+                        local mv = type(mountCounts[mappedKey]) == "number" and mountCounts[mappedKey] or 0
+                        if mv > localStored then localStored = mv end
+                    end
                 end
             end
             return localStored
@@ -878,6 +929,28 @@ function WarbandNexus:ResetTryCount(collectibleType, id)
     WarbandNexus.db.global.tryCounts[collectibleType][id] = 0
 end
 
+---Mark a drop item as obtained so the try counter stops tracking it.
+---Useful for items with delayed yields (e.g. Nether-Warped Egg with 7-day hatch)
+---or when the WoW collection API can't resolve the mount/pet ID.
+---@param itemID number The item ID of the drop to mark
+function WarbandNexus:MarkItemObtained(itemID)
+    MarkItemObtained(itemID)
+end
+
+---Check if a drop item has been marked as obtained.
+---@param itemID number
+---@return boolean
+function WarbandNexus:IsItemObtained(itemID)
+    return IsItemMarkedObtained(itemID)
+end
+
+---Clear the obtained marker for a drop item (e.g. if marked by mistake).
+---@param itemID number
+function WarbandNexus:ClearItemObtained(itemID)
+    if not itemID or not EnsureDB() then return end
+    WarbandNexus.db.global.tryCounts.obtained[itemID] = nil
+end
+
 ---Return quest-starter mounts (e.g. Stonevault Mechsuit) that are not yet collected, for Mounts browser.
 ---So they appear in Plans → Mounts tab even when not in C_MountJournal.GetMountIDs() yet (quest reward flow).
 ---@return table[] Array of { mountID = number, itemID = number, name = string }
@@ -910,7 +983,7 @@ end
 ---Extract NPC ID from a creature/vehicle GUID
 ---@param guid string
 ---@return number|nil npcID
-local function GetNPCIDFromGUID(guid)
+GetNPCIDFromGUID = function(guid)
     if not guid or type(guid) ~= "string" then return nil end
     -- Midnight 12.0: GUID may be a secret value during instanced combat
     if issecretvalue and issecretvalue(guid) then return nil end
@@ -924,7 +997,7 @@ end
 ---Extract object ID from a GameObject GUID
 ---@param guid string
 ---@return number|nil objectID
-local function GetObjectIDFromGUID(guid)
+GetObjectIDFromGUID = function(guid)
     if not guid or type(guid) ~= "string" then return nil end
     -- Midnight 12.0: GUID may be a secret value during instanced combat
     if issecretvalue and issecretvalue(guid) then return nil end
@@ -985,6 +1058,7 @@ local function ResolveCollectibleID(drop)
     -- Only cache successful resolutions; nil is NOT cached so retries are possible
     if id then
         resolvedIDs[drop.itemID] = id
+        resolvedIDsReverse[id] = drop.itemID
     end
 
     return id
@@ -1068,19 +1142,14 @@ local function IndexLookup(index, cache, collectibleType, id)
     end
 
     -- For non-toy types, the caller may pass a native collectibleID (mountID/speciesID)
-    -- but the index is keyed by itemID. We need to check if any itemID resolves to this id.
-    -- Since resolvedIDs maps itemID -> collectibleID, we can check the reverse.
-    -- However, we can't reverse-iterate resolvedIDs efficiently.
-    -- Instead, rely on the session cache: once a drop has been processed (via ProcessNPCLoot etc.),
-    -- ResolveCollectibleID populates resolvedIDs. We check all resolved entries.
+    -- but the index is keyed by itemID. Use the O(1) reverse map to find the source itemID.
     if collectibleType ~= "toy" then
-        for itemID, resolvedID in pairs(resolvedIDs) do
-            if resolvedID == id then
-                local altKey = collectibleType .. "\0" .. tostring(itemID)
-                if index[altKey] then
-                    cache[cacheKey] = true
-                    return true
-                end
+        local sourceItemID = resolvedIDsReverse[id]
+        if sourceItemID then
+            local altKey = collectibleType .. "\0" .. tostring(sourceItemID)
+            if index[altKey] then
+                cache[cacheKey] = true
+                return true
             end
         end
     end
@@ -1258,6 +1327,11 @@ local function IsCollectibleCollected(drop)
     local collectibleID = ResolveCollectibleID(drop)
 
     if drop.type == "item" then
+        -- Short-circuit: if this item was already found in loot and marked as
+        -- obtained (e.g. Nether-Warped Egg fished but mount still hatching),
+        -- skip the yield/API check entirely.
+        if IsItemMarkedObtained(drop.itemID) then return true end
+
         -- Accumulation items (Crackling Shard, Miscellaneous Mechanica): check if all
         -- yields (the end-goal mounts/pets they lead to) have been collected.
         -- If ALL yields are collected, stop tracking — no point farming further.
@@ -1265,7 +1339,8 @@ local function IsCollectibleCollected(drop)
         -- no need to keep counting Crackling Shard attempts.
         if drop.yields and #drop.yields > 0 then
             local allCollected = true
-            for _, yield in ipairs(drop.yields) do
+            for i = 1, #drop.yields do
+                local yield = drop.yields[i]
                 local yieldDrop = { type = yield.type, itemID = yield.itemID, name = yield.name }
                 if not IsCollectibleCollected(yieldDrop) then
                     allCollected = false
@@ -1273,15 +1348,14 @@ local function IsCollectibleCollected(drop)
                 end
             end
             if allCollected then
-                -- Debug: All yields collected, stopping tracking
                 return true  -- All yields collected → treat item as "collected"
             else
-                -- Debug: At least one yield missing, continue tracking
                 return false
             end
         end
         if drop.questStarters and #drop.questStarters > 0 then
-            for _, qs in ipairs(drop.questStarters) do
+            for i = 1, #drop.questStarters do
+                local qs = drop.questStarters[i]
                 if not IsCollectibleCollected(qs) then
                     return false
                 end
@@ -1418,7 +1492,8 @@ local function ReseedStatisticsForDrops(drops, statIds)
 
     -- Sum all statisticIds for this boss on THIS character
     local thisCharTotal = 0
-    for _, sid in ipairs(statIds) do
+    for i = 1, #statIds do
+        local sid = statIds[i]
         local val = GetStat(sid)
         local num
         if val and not (issecretvalue and issecretvalue(val)) then
@@ -1455,7 +1530,8 @@ local function ReseedStatisticsForDrops(drops, statIds)
 
                 -- Quest-item mounts (Mechagon/Stonevault): mirror to mount so plan card shows same count
                 if drop.type == "item" and drop.questStarters then
-                    for _, qs in ipairs(drop.questStarters) do
+                    for i = 1, #drop.questStarters do
+                        local qs = drop.questStarters[i]
                         if qs.type == "mount" and qs.itemID then
                             local mountKey1 = ResolveCollectibleID(qs)
                             local mountKey2 = qs.itemID
@@ -1477,7 +1553,8 @@ local function ReseedStatisticsForDrops(drops, statIds)
             end
         end
         if drop and drop.questStarters then
-            for _, qs in ipairs(drop.questStarters) do
+            for i = 1, #drop.questStarters do
+                local qs = drop.questStarters[i]
                 ProcessSeedDrop(qs)
             end
         end
@@ -1529,7 +1606,8 @@ local function ProcessMissedDrops(drops, statIds, options)
                     local newCount = WarbandNexus:IncrementTryCount(tcType, tryKey)
                     -- Quest-item mounts: mirror same count to mount so plan card shows it (skip when tryCountReflectsTo already stores on mount)
                     if drop.type == "item" and drop.questStarters and not drop.tryCountReflectsTo then
-                        for _, qs in ipairs(drop.questStarters) do
+                        for i = 1, #drop.questStarters do
+                            local qs = drop.questStarters[i]
                             if qs.type == "mount" and qs.itemID then
                                 local k1 = ResolveCollectibleID(qs)
                                 local k2 = qs.itemID
@@ -1556,7 +1634,8 @@ local function ProcessMissedDrops(drops, statIds, options)
             end
             -- Recurse for questStarters only when we did not already mirror (item->mount already mirrored above)
             if drop and drop.questStarters then
-                for _, qs in ipairs(drop.questStarters) do
+                for i = 1, #drop.questStarters do
+                    local qs = drop.questStarters[i]
                     if not (drop.type == "item" and qs.type == "mount") then
                         ProcessManualDrop(qs)
                     end
@@ -1674,6 +1753,119 @@ local function SyncLockoutState()
 end
 
 -- =====================================================================
+-- LOCKOUT QUEST AUTO-DISCOVERY
+-- =====================================================================
+-- When an NPC in our drop DB has no lockout quest, detect the hidden
+-- tracking quest that flipped by comparing pre-kill and post-kill quest
+-- flags.  Approach: maintain a running snapshot of completed quest IDs
+-- in the Midnight range; on QUEST_LOG_UPDATE, diff to find new
+-- completions.  If a loot event for an unknown-lockout NPC happened
+-- recently, associate the newly-completed quest with that NPC.
+-- Persisted to db.global.discoveredLockoutQuests so it survives reload.
+
+local DISCOVERY_QUEST_RANGES = {
+    { 89560, 89590 },   -- Zul'Aman rares
+    { 90790, 90810 },   -- Sundereth the Caller area + Zul'Aman treasures
+    { 91040, 91340 },   -- Various zone rares (Eruundi, Tremora, etc.)
+    { 91620, 91850 },   -- Harandar rares + misc
+    { 92020, 92200 },   -- Harandar / Eversong rares + world bosses (Thorm'belan 92034, Cragpine 92123)
+    { 92350, 92650 },   -- Eversong rares + world bosses (Lu'ashal 92560, Predaxas 92636)
+    { 93440, 93980 },   -- Newer rares (Voidstorm, Duskburn, Dame Bloodshed, etc.)
+    { 94440, 94480 },   -- Arcantina rares (Orivane, Many-Broken, Abysslick, Nullspiral, Blackcore, Steellock)
+    { 95005, 95020 },   -- Isle of Quel'Danas rares (Tarhu, Dripping Shadow)
+}
+
+local discoverySnapshot = {}           -- [questID] = true for quest IDs completed at snapshot time
+discoveryPendingNpcID = nil      -- NPC ID awaiting lockout quest discovery
+local discoveryPendingTime = 0         -- GetTime() when pending was set
+local DISCOVERY_PENDING_TTL = 8        -- seconds to wait for QUEST_LOG_UPDATE after loot
+
+local function GetClaimedQuestIDs()
+    local claimed = {}
+    for _, questData in pairs(lockoutQuestsDB) do
+        local qids = type(questData) == "table" and questData or { questData }
+        for i = 1, #qids do claimed[qids[i]] = true end
+    end
+    return claimed
+end
+
+local function TakeDiscoverySnapshot()
+    wipe(discoverySnapshot)
+    if not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then return end
+    for ri = 1, #DISCOVERY_QUEST_RANGES do
+        local lo, hi = DISCOVERY_QUEST_RANGES[ri][1], DISCOVERY_QUEST_RANGES[ri][2]
+        for qid = lo, hi do
+            local ok, result = pcall(C_QuestLog.IsQuestFlaggedCompleted, qid)
+            if ok and result then
+                discoverySnapshot[qid] = true
+            end
+        end
+    end
+end
+
+TryDiscoverLockoutQuest = function()
+    if not discoveryPendingNpcID then return end
+    if GetTime() - discoveryPendingTime > DISCOVERY_PENDING_TTL then
+        discoveryPendingNpcID = nil
+        TakeDiscoverySnapshot()
+        return
+    end
+    if not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then
+        discoveryPendingNpcID = nil
+        return
+    end
+
+    local claimed = GetClaimedQuestIDs()
+    local candidates = {}
+    for ri = 1, #DISCOVERY_QUEST_RANGES do
+        local lo, hi = DISCOVERY_QUEST_RANGES[ri][1], DISCOVERY_QUEST_RANGES[ri][2]
+        for qid = lo, hi do
+            if not discoverySnapshot[qid] and not claimed[qid] then
+                local ok, result = pcall(C_QuestLog.IsQuestFlaggedCompleted, qid)
+                if ok and result then
+                    candidates[#candidates + 1] = qid
+                end
+            end
+        end
+    end
+
+    if #candidates == 1 then
+        local questID = candidates[1]
+        local npcID = discoveryPendingNpcID
+
+        lockoutQuestsDB[npcID] = questID
+        lockoutAttempted[questID] = true
+
+        if WarbandNexus.db and WarbandNexus.db.global then
+            if not WarbandNexus.db.global.discoveredLockoutQuests then
+                WarbandNexus.db.global.discoveredLockoutQuests = {}
+            end
+            WarbandNexus.db.global.discoveredLockoutQuests[npcID] = questID
+        end
+
+        if ns.DebugPrint then
+            ns.DebugPrint(format("|cff00ff00[LockoutDiscovery]|r NPC %d → quest %d", npcID, questID))
+        end
+    elseif #candidates > 1 and ns.DebugPrint then
+        ns.DebugPrint(format("|cffff9900[LockoutDiscovery]|r NPC %d: %d candidates, skipping (ambiguous)", discoveryPendingNpcID, #candidates))
+    end
+
+    discoveryPendingNpcID = nil
+    TakeDiscoverySnapshot()
+end
+
+local function MergeDiscoveredLockoutQuests()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    local disc = WarbandNexus.db.global.discoveredLockoutQuests
+    if type(disc) ~= "table" then return end
+    for npcID, questID in pairs(disc) do
+        if not lockoutQuestsDB[npcID] then
+            lockoutQuestsDB[npcID] = questID
+        end
+    end
+end
+
+-- =====================================================================
 -- EVENT HANDLERS
 -- =====================================================================
 
@@ -1699,6 +1891,18 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     local npcIDs = nil
     local encounterKey = nil
     local useNameFallback = false
+    local function TryResolveEncounterNPCFromLastTarget()
+        -- Fallback for encounters not present in encounterDB/encounterNameToNpcs:
+        -- if we recently had a valid tracked target GUID, attribute this kill to that NPC.
+        -- This is especially important for custom tracked bosses and new patch encounters.
+        if not lastLootSourceGUID then return nil end
+        if not lastLootSourceTime or (GetTime() - lastLootSourceTime) > 120 then return nil end
+        local fallbackNpcID = GetNPCIDFromGUID(lastLootSourceGUID)
+        if not fallbackNpcID then return nil end
+        if not tryCounterNpcEligible[fallbackNpcID] then return nil end
+        if not npcDropDB[fallbackNpcID] then return nil end
+        return fallbackNpcID
+    end
 
     -- Midnight 12.0: encounterID can be secret in dungeons; cannot use as table key or tostring().
     if issecretvalue and encounterID and issecretvalue(encounterID) then
@@ -1709,17 +1913,38 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
             useNameFallback = true
             if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "flow", "ENC name='%s' npcs=%d (secret ID)", encounterName, #npcIDs) end
         else
-            if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip", "ENC secret ID, no name match") end
-            return
+            local fallbackNpcID = TryResolveEncounterNPCFromLastTarget()
+            if fallbackNpcID then
+                npcIDs = { fallbackNpcID }
+                encounterKey = "fallback_target_" .. tostring(fallbackNpcID)
+                useNameFallback = true
+                if IsTryCounterLootDebugEnabled(self) then
+                    TryCounterLootDebug(self, "flow", "ENC secret ID fallback target npc=%s", tostring(fallbackNpcID))
+                end
+            else
+                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip", "ENC secret ID, no name/target match") end
+                return
+            end
         end
     else
         npcIDs = encounterDB[encounterID]
         if not npcIDs then
-            if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip", "ENC %s not in DB", tostring(encounterID)) end
-            return
+            local fallbackNpcID = TryResolveEncounterNPCFromLastTarget()
+            if fallbackNpcID then
+                npcIDs = { fallbackNpcID }
+                encounterKey = "fallback_target_" .. tostring(fallbackNpcID)
+                useNameFallback = true
+                if IsTryCounterLootDebugEnabled(self) then
+                    TryCounterLootDebug(self, "flow", "ENC %s fallback target npc=%s", tostring(encounterID), tostring(fallbackNpcID))
+                end
+            else
+                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip", "ENC %s not in DB", tostring(encounterID)) end
+                return
+            end
+        else
+            if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "flow", "ENC %s npcs=%d", tostring(encounterID), #npcIDs) end
+            encounterKey = "encounter_" .. tostring(encounterID)
         end
-        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "flow", "ENC %s npcs=%d", tostring(encounterID), #npcIDs) end
-        encounterKey = "encounter_" .. tostring(encounterID)
     end
 
     -- Check if this encounter was already processed in last 10 seconds (prevent double-counting)
@@ -1777,7 +2002,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
             local matchedNpcID = nil
             local trackable = {}
             for guid, killData in pairs(recentKills) do
-                if killData.isEncounter and (delayedNow - killData.time < 6) and tryCounterNpcEligible[killData.npcID] then
+                if killData.isEncounter and (delayedNow - killData.time < 10) and tryCounterNpcEligible[killData.npcID] then
                     local drops = npcDropDB[killData.npcID]
                     if drops then
                         matchedNpcID = killData.npcID
@@ -1797,7 +2022,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
             end
 
             for guid, killData in pairs(recentKills) do
-                if killData.isEncounter and (delayedNow - killData.time < 6) then recentKills[guid] = nil end
+                if killData.isEncounter and (delayedNow - killData.time < 10) then recentKills[guid] = nil end
             end
         end)
     end
@@ -1834,13 +2059,15 @@ local lastShownJournalInstanceID = nil -- from EJ_GetCurrentInstance(), used to 
 function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadingUi)
     if not IsAutoTryCounterEnabled() then return end
 
+    -- Refresh safe map cache on zone transitions (login, reload, instance entry/exit)
+    GetSafeMapID()
+
     local inInstance, instanceType = IsInInstance()
     if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
     if issecretvalue and instanceType and issecretvalue(instanceType) then instanceType = nil end
     if not inInstance then
         lastNotifiedInstanceID = nil
         lastShownJournalInstanceID = nil
-        -- Clean up encounter kills when leaving instance (they persist until this point)
         for guid, data in pairs(recentKills) do
             if data.isEncounter then
                 recentKills[guid] = nil
@@ -1928,7 +2155,8 @@ local function TryCounterShowInstanceDrops(journalInstanceID)
                     local encounterDrops = {}
                     local seenItems = {}
                     local dropDiffMap = {}
-                    for _, npcID in ipairs(npcIDs) do
+                    for i = 1, #npcIDs do
+                        local npcID = npcIDs[i]
                         local npcDrops = npcDropDB[npcID]
                         if npcDrops then
                             local npcDiff = npcDrops.dropDifficulty
@@ -1961,8 +2189,10 @@ local function TryCounterShowInstanceDrops(journalInstanceID)
         if #dropsToShow == 0 then return end
 
         -- Pre-request item data so hyperlinks resolve (C_Item caches are async)
-        for _, entry in ipairs(dropsToShow) do
-            for _, drop in ipairs(entry.drops) do
+        for i = 1, #dropsToShow do
+            local entry = dropsToShow[i]
+            for j = 1, #entry.drops do
+                local drop = entry.drops[j]
                 if C_Item and C_Item.RequestLoadItemDataByID then
                     pcall(C_Item.RequestLoadItemDataByID, drop.itemID)
                 end
@@ -1975,8 +2205,10 @@ local function TryCounterShowInstanceDrops(journalInstanceID)
 
             TryChat("|cff9370DB[WN-Drops]|r " .. ((ns.L and ns.L["TRYCOUNTER_INSTANCE_DROPS"]) or "Collectible drops in this instance:"))
 
-            for _, entry in ipairs(dropsToShow) do
-                for _, drop in ipairs(entry.drops) do
+            for i = 1, #dropsToShow do
+                local entry = dropsToShow[i]
+                for j = 1, #entry.drops do
+                    local drop = entry.drops[j]
                     -- Get item hyperlink (quality-colored, bracketed)
                     local itemLink = GetDropItemLink(drop)
 
@@ -2062,7 +2294,7 @@ function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, s
     if FISHING_SPELLS[spellID] then
         fishingCtx.active = true
         fishingCtx.castTime = GetTime()
-        -- Safety timer: if the cast is cancelled/interrupted and LOOT_CLOSED never fires,
+        -- Safety timer: if the channel times out (fish escapes) and LOOT_CLOSED never fires,
         -- auto-reset after 20s so the next NPC loot is not misrouted to ProcessFishingLoot.
         if fishingCtx.resetTimer then fishingCtx.resetTimer:Cancel() end
         fishingCtx.resetTimer = C_Timer.NewTimer(20, function()
@@ -2077,6 +2309,24 @@ function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, s
     end
 end
 
+---UNIT_SPELLCAST_INTERRUPTED / UNIT_SPELLCAST_FAILED_QUIET handler.
+---Clears fishing context immediately when the initial cast fails (player moved, interrupted).
+---Without this, fishingCtx.active stays true for up to 20s (safety timer), during which
+---unrelated loot events (chests, untracked mobs) could be misclassified as fishing.
+---Args: (unit, castGUID, spellID) — note: no target param unlike UNIT_SPELLCAST_SENT.
+---@param event string
+---@param unit string
+---@param castGUID string
+---@param spellID number
+function WarbandNexus:OnTryCounterSpellcastFailed(event, unit, castGUID, spellID)
+    if unit ~= "player" then return end
+    if issecretvalue and spellID and issecretvalue(spellID) then return end
+    if not FISHING_SPELLS[spellID] then return end
+    fishingCtx.active = false
+    fishingCtx.castTime = 0
+    if fishingCtx.resetTimer then fishingCtx.resetTimer:Cancel() fishingCtx.resetTimer = nil end
+end
+
 -- =====================================================================
 -- SAFE GUID HELPERS (must be defined before event handlers)
 -- =====================================================================
@@ -2084,7 +2334,7 @@ end
 ---Safely get unit GUID (Midnight 12.0: UnitGUID returns secret values for NPC/object units)
 ---@param unit string e.g. "target", "mouseover"
 ---@return string|nil guid Safe GUID string or nil
-local function SafeGetUnitGUID(unit)
+SafeGetUnitGUID = function(unit)
     if not unit then return nil end
     local ok, guid = pcall(UnitGUID, unit)
     if not ok or not guid then return nil end
@@ -2093,19 +2343,19 @@ local function SafeGetUnitGUID(unit)
     return guid
 end
 
-local function SafeGetTargetGUID()
+SafeGetTargetGUID = function()
     return SafeGetUnitGUID("target")
 end
 
 ---Mouseover at LOOT_OPENED: when opening an object (e.g. dumpster) by right-click, mouse is often still over it.
-local function SafeGetMouseoverGUID()
+SafeGetMouseoverGUID = function()
     return SafeGetUnitGUID("mouseover")
 end
 
 ---Safely get a GUID string, guarding against Midnight 12.0 secret values.
 ---@param rawGUID any A potentially secret GUID value
 ---@return string|nil guid Safe GUID string or nil
-local function SafeGuardGUID(rawGUID)
+SafeGuardGUID = function(rawGUID)
     if not rawGUID then return nil end
     if type(rawGUID) ~= "string" then return nil end
     if issecretvalue and issecretvalue(rawGUID) then return nil end
@@ -2200,7 +2450,10 @@ function WarbandNexus:OnTryCounterLootClosed()
     end
     isPickpocketing = false
     isProfessionLooting = false
-    isBlockingInteractionOpen = false
+    -- NOTE: Do NOT clear isBlockingInteractionOpen here.
+    -- It is managed exclusively by PLAYER_INTERACTION_MANAGER_FRAME_SHOW/HIDE events.
+    -- Clearing it on LOOT_CLOSED would incorrectly allow NPC loot processing
+    -- when a bank/vendor/AH UI is still open (e.g. loot window closed while banking).
     lastContainerItemID = nil
     lastContainerItemTime = 0
     if fishingCtx.resetTimer then fishingCtx.resetTimer:Cancel() end
@@ -2279,8 +2532,57 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
             if #trackable > 0 then
                 lastTryCountSourceKey = "npc_" .. tostring(npcID)
                 lastTryCountSourceTime = now
-                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "count", "CHAT npc=%s +%d (item %s)", tostring(npcID), #trackable, tostring(itemID)) end
-                ProcessMissedDrops(trackable, drops.statisticIds)
+
+                -- Separate found item from missed items: the looted itemID may be one of our tracked drops.
+                -- Without this, the found item would be incorrectly incremented as "missed".
+                local foundDrop = nil
+                local missed = {}
+                for i = 1, #trackable do
+                    local drop = trackable[i]
+                    if drop.itemID == itemID then
+                        foundDrop = drop
+                    elseif drop.questStarters then
+                        local isQS = false
+                        for j = 1, #drop.questStarters do
+                            if drop.questStarters[j].itemID == itemID then isQS = true; break end
+                        end
+                        if isQS then foundDrop = drop else missed[#missed + 1] = drop end
+                    else
+                        missed[#missed + 1] = drop
+                    end
+                end
+
+                -- Handle found item: reset try count + celebrate
+                if foundDrop then
+                    if not foundDrop.repeatable and foundDrop.type == "item" then MarkItemObtained(foundDrop.itemID) end
+                    local tcType, tryKey = GetTryCountTypeAndKey(foundDrop)
+                    if tryKey then
+                        local preResetCount = self:GetTryCount(tcType, tryKey)
+                        self:ResetTryCount(tcType, tryKey)
+                        if preResetCount and preResetCount > 0 then
+                            local cacheKey = tcType .. "\0" .. tostring(tryKey)
+                            pendingPreResetCounts[cacheKey] = preResetCount
+                            C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
+                        end
+                        local itemLink = GetDropItemLink(foundDrop)
+                        TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
+                        if self.SendMessage then
+                            local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+                            local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(foundDrop.itemID)
+                            self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                                type = tcType, id = (foundDrop.type == "item") and foundDrop.itemID or tryKey,
+                                name = itemName or foundDrop.name or "Unknown", icon = itemIcon,
+                                preResetTryCount = preResetCount,
+                            })
+                        end
+                    end
+                end
+
+                -- Increment missed drops (items NOT found in this loot)
+                if #missed > 0 then
+                    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "count", "CHAT npc=%s +%d (item %s)", tostring(npcID), #missed, tostring(itemID)) end
+                    ProcessMissedDrops(missed, drops.statisticIds)
+                end
                 return
             end
         end
@@ -2309,8 +2611,56 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     if #trackable > 0 then
                         lastTryCountSourceKey = "encounter_" .. tostring(killData.npcID)
                         lastTryCountSourceTime = now
-                        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "count", "CHAT enc npc=%s +%d (item %s)", tostring(killData.npcID), #trackable, tostring(itemID)) end
-                        ProcessMissedDrops(trackable, drops.statisticIds)
+
+                        -- Separate found item from missed: the looted itemID is one of our tracked drops.
+                        local foundDrop = nil
+                        local missed = {}
+                        for i = 1, #trackable do
+                            local drop = trackable[i]
+                            if drop.itemID == itemID then
+                                foundDrop = drop
+                            elseif drop.questStarters then
+                                local isQS = false
+                                for j = 1, #drop.questStarters do
+                                    if drop.questStarters[j].itemID == itemID then isQS = true; break end
+                                end
+                                if isQS then foundDrop = drop else missed[#missed + 1] = drop end
+                            else
+                                missed[#missed + 1] = drop
+                            end
+                        end
+
+                        -- Handle found item: reset try count + celebrate
+                        if foundDrop then
+                            if not foundDrop.repeatable and foundDrop.type == "item" then MarkItemObtained(foundDrop.itemID) end
+                            local tcType, tryKey = GetTryCountTypeAndKey(foundDrop)
+                            if tryKey then
+                                local preResetCount = self:GetTryCount(tcType, tryKey)
+                                self:ResetTryCount(tcType, tryKey)
+                                if preResetCount and preResetCount > 0 then
+                                    local cacheKey = tcType .. "\0" .. tostring(tryKey)
+                                    pendingPreResetCounts[cacheKey] = preResetCount
+                                    C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
+                                end
+                                local itemLink = GetDropItemLink(foundDrop)
+                                TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
+                                if self.SendMessage then
+                                    local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+                                    local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(foundDrop.itemID)
+                                    self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                                        type = tcType, id = (foundDrop.type == "item") and foundDrop.itemID or tryKey,
+                                        name = itemName or foundDrop.name or "Unknown", icon = itemIcon,
+                                        preResetTryCount = preResetCount,
+                                    })
+                                end
+                            end
+                        end
+
+                        -- Increment missed drops only
+                        if #missed > 0 then
+                            if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "count", "CHAT enc npc=%s +%d (item %s)", tostring(killData.npcID), #missed, tostring(itemID)) end
+                            ProcessMissedDrops(missed, drops.statisticIds)
+                        end
                         recentKills[guid] = nil
                         return
                     end
@@ -2322,7 +2672,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     -- Path 4: Exact item→fishing (item must be in current zone's fishing drop table)
     if fishingCtx.active and (now - fishingCtx.castTime) <= FISHING_CAST_CONTEXT_TTL
         and IsInTrackableFishingZone(true)
-        and not CurrentUnitsHaveEligibleNpcContext() then
+        and not CurrentUnitsHaveMobLootContext() then
         local fishingItemIDs = GetFishingDropItemIDsForCurrentZone()
         if fishingItemIDs and fishingItemIDs[itemID] then
             local trackable = GetFishingTrackableForCurrentZone()
@@ -2333,6 +2683,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     if trackable[i].itemID == itemID then caughtDrop = trackable[i]; break end
                 end
                 if caughtDrop then
+                    if not caughtDrop.repeatable then MarkItemObtained(caughtDrop.itemID) end
                     local tcType, tryKey = GetTryCountTypeAndKey(caughtDrop)
                     if tryKey then
                         local preResetCount = self:GetTryCount(tcType, tryKey)
@@ -2382,29 +2733,32 @@ end
 ---@param bagID number Bag index (0-4 for bags, -1 for bank, etc.)
 ---@param slotID number|nil Slot index within the bag. nil = equipment slot change.
 function WarbandNexus:OnTryCounterItemLockChanged(event, bagID, slotID)
-    -- Equipment slot changes have nil slotID - skip
     if not bagID or not slotID then return end
-
-    -- Only check player bags (0-4), not bank or other containers
+    if issecretvalue and (issecretvalue(bagID) or issecretvalue(slotID)) then return end
     if bagID < 0 or bagID > 4 then return end
-
-    -- Check if C_Container is available
     if not C_Container or not C_Container.GetContainerItemID then return end
 
-    -- Get the item in this slot
     local itemID = C_Container.GetContainerItemID(bagID, slotID)
     if not itemID then return end
-
-    -- Check if this item is a known container in our DB
+    if issecretvalue and issecretvalue(itemID) then return end
     if not containerDropDB[itemID] then return end
 
-    -- Record the container item. We intentionally do NOT check isLocked here:
-    -- some containers (especially holiday boxes like Heart-Shaped Box) are consumed
-    -- so quickly that the isLocked state is never captured by the time this handler
-    -- runs. Since lastContainerItemID is consumed immediately in ProcessContainerLoot
-    -- and cleared in OnTryCounterLootClosed, false positives from bag moves are harmless.
     lastContainerItemID = itemID
     lastContainerItemTime = GetTime()
+end
+
+---Resolve the player's current mapID safely, caching the last known good value.
+---Midnight 12.0: GetBestMapForUnit may return nil/secret during instanced combat.
+---@return number|nil mapID
+GetSafeMapID = function()
+    local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+    local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
+    if mapID then
+        lastSafeMapID = mapID
+    else
+        mapID = lastSafeMapID
+    end
+    return mapID
 end
 
 ---Collect ALL fishing drops for the player's current zone (global + map chain).
@@ -2415,16 +2769,17 @@ local function CollectFishingDropsForZone()
     local inInstance = IsInInstance()
     if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
     if inInstance then return {}, true end
-    local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-    local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
+    local mapID = GetSafeMapID()
     local drops = {}
-    if fishingDropDB[0] then
-        for i = 1, #fishingDropDB[0] do drops[#drops + 1] = fishingDropDB[0][i] end
-    end
+    -- IMPORTANT:
+    -- Do not auto-merge fishingDropDB[0] (global pool) into every map.
+    -- Global entries (e.g. Sea Turtle) would make every zone look like a fishing
+    -- try-counter zone and cause wrong attribution in Midnight maps.
     local currentMapID = mapID
     while currentMapID and currentMapID > 0 do
         if fishingDropDB[currentMapID] then
-            for i = 1, #fishingDropDB[currentMapID] do drops[#drops + 1] = fishingDropDB[currentMapID][i] end
+            local mapDrops = fishingDropDB[currentMapID]
+            for i = 1, #mapDrops do drops[#drops + 1] = mapDrops[i] end
         end
         local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(currentMapID)
         local nextID = mapInfo and mapInfo.parentMapID
@@ -2461,9 +2816,7 @@ IsInTrackableFishingZone = function(includeGlobal)
     local inInstance = IsInInstance()
     if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
     if inInstance then return false end
-    if includeGlobal and fishingDropDB[0] then return true end
-    local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-    local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
+    local mapID = GetSafeMapID()
     if not mapID then return false end
     local current = mapID
     while current and current > 0 do
@@ -2485,25 +2838,22 @@ local function UnitGuidLooksLikeMobCorpse(guid)
     return guid:match("^Creature") ~= nil or guid:match("^Vehicle") ~= nil
 end
 
+---Any loot slot source is a mob corpse — not limited to try-counter-eligible NPCs.
+---Without this, trash mobs fail LootEligibleNpcFromGuid() and ClassifyLootSession
+---misroutes corpse loot to ProcessFishingLoot when fishingCtx is fresh (Nether-Warped Egg +1).
+local function LootSessionHasAnyMobCorpseSources(sourceGUIDs)
+    for i = 1, #(sourceGUIDs or {}) do
+        if UnitGuidLooksLikeMobCorpse(sourceGUIDs[i]) then return true end
+    end
+    return false
+end
+
 ---Eligible try-counter NPC from corpse GUID (nil if not a rare-tier source we track on corpses).
 local function LootEligibleNpcFromGuid(guid)
     if not guid or type(guid) ~= "string" then return nil end
     local nid = GetNPCIDFromGUID(guid)
     if nid and tryCounterNpcEligible[nid] and npcDropDB[nid] then return nid end
     return nil
-end
-
-local function LootSessionHasEligibleNpcSources(sourceGUIDs)
-    for i = 1, #(sourceGUIDs or {}) do
-        if LootEligibleNpcFromGuid(sourceGUIDs[i]) then return true end
-    end
-    return false
-end
-
-local function LootSessionHasEligibleNpcUnitContext()
-    return LootEligibleNpcFromGuid(lootSession.mouseoverGUID)
-        or LootEligibleNpcFromGuid(lootSession.targetGUID)
-        or LootEligibleNpcFromGuid(lootSession.npcGUID)
 end
 
 local function CurrentUnitsHaveEligibleNpcContext()
@@ -2549,7 +2899,7 @@ CaptureLootSessionState = function()
     lootSession.targetGUID = SafeGetTargetGUID and SafeGetTargetGUID() or nil
     lootSession.npcGUID = SafeGetUnitGUID and SafeGetUnitGUID("npc") or nil
     lootSession.numLoot = (GetNumLootItems and GetNumLootItems()) or 0
-    lootSession.sourceGUIDs = GetAllLootSourceGUIDs()
+    lootSession.sourceGUIDs = GetAllLootSourceGUIDs() or {}
     wipe(lootSession.slotData)
     for i = 1, lootSession.numLoot do
         local hasItem = LootSlotHasItem and LootSlotHasItem(i)
@@ -2631,8 +2981,9 @@ ClassifyLootSession = function(source, isFromItem)
     local sourceCompatible = fishingContextFresh and IsFishingSourceCompatible(lootSession.sourceGUIDs)
     local fishingByHeuristic = IsInTrackableFishingZone(true) and sourceCompatible
     if fishingLootAPI or fishingByHeuristic then
-        local corpsePresent = LootSessionHasEligibleNpcSources(lootSession.sourceGUIDs)
-            or LootSessionHasEligibleNpcUnitContext()
+        -- Any corpse loot (including untracked trash) must use NPC path, not fishing.
+        local corpsePresent = LootSessionHasAnyMobCorpseSources(lootSession.sourceGUIDs)
+            or LootSessionHasMobLootContext()
         if not corpsePresent then return "fishing" end
     end
     -- Clear stale fishing context when source GUIDs point to a tracked NPC/object
@@ -2673,7 +3024,7 @@ end
 
 ---LOOT_OPENED handler (warcraft.wiki.gg/wiki/LOOT_OPENED).
 ---Fires AFTER LOOT_READY, but ONLY when the loot frame is actually rendered.
----Fast auto-loot or addons like Faster-Loot may skip this entirely.
+---Fast auto-loot or third-party auto-loot addons may skip this entirely.
 ---When it does fire, it provides the best-quality data: fresh unit GUIDs + isFromItem flag.
 ---@param event string
 ---@param autoLoot boolean
@@ -2764,10 +3115,11 @@ end
 ---Each GUID is checked for exact ID match. Already-processed GUIDs are skipped.
 ---@return boolean|nil earlyExit  true = all GUIDs processed (caller should return)
 local function ResolveFromGUIDs(ctx, sourceGUIDs, addon)
-    if #sourceGUIDs == 0 then return nil end
+    if not sourceGUIDs or #sourceGUIDs == 0 then return nil end
 
     local allProcessed = true
-    for _, srcGUID in ipairs(sourceGUIDs) do
+    for i = 1, #sourceGUIDs do
+        local srcGUID = sourceGUIDs[i]
         if srcGUID:match("^GameObject") then ctx.sourceIsGameObject = true end
         if processedGUIDs[srcGUID] then
             -- already handled
@@ -2791,7 +3143,8 @@ local function ResolveFromGUIDs(ctx, sourceGUIDs, addon)
         return true
     end
     -- Keep first unprocessed GUID for housekeeping even when no drop table matched
-    for _, srcGUID in ipairs(sourceGUIDs) do
+    for i = 1, #sourceGUIDs do
+        local srcGUID = sourceGUIDs[i]
         if not processedGUIDs[srcGUID] then ctx.dedupGUID = srcGUID; break end
     end
     return nil
@@ -2819,7 +3172,8 @@ local function ResolveFromUnits(ctx, numLoot, addon)
     if lastLootSourceGUID and (GetTime() - lastLootSourceTime) <= LAST_LOOT_SOURCE_TTL then
         candidates[#candidates + 1] = lastLootSourceGUID
     end
-    for _, guid in ipairs(candidates) do
+    for i = 1, #candidates do
+        local guid = candidates[i]
         if guid and (lootIsEmpty or not processedGUIDs[guid]) then
             local drops, npcID, objectID = MatchGuidExact(guid)
             if drops then
@@ -2855,7 +3209,9 @@ local function ResolveFromZone(ctx, inInstance, addon)
     local function CheckRareLike()
         if rareLike ~= nil then return rareLike end
         rareLike = false
-        for _, unit in ipairs({"mouseover", "target", "npc"}) do
+        local rareUnitTokens = {"mouseover", "target", "npc"}
+        for i = 1, #rareUnitTokens do
+            local unit = rareUnitTokens[i]
             local ok, cls = pcall(UnitClassification, unit)
             if ok and cls and (not issecretvalue or not issecretvalue(cls)) then
                 if cls == "rare" or cls == "rareelite" or cls == "worldboss" then
@@ -2867,8 +3223,7 @@ local function ResolveFromZone(ctx, inInstance, addon)
         return rareLike
     end
 
-    local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-    local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
+    local mapID = GetSafeMapID()
     while mapID and mapID > 0 do
         local zData = zoneDropDB[mapID]
         if type(zData) == "table" then
@@ -2975,6 +3330,13 @@ function WarbandNexus:ProcessNPCLoot()
     local isLockoutSkip = matchedNpcID and IsLockoutDuplicate(matchedNpcID)
     if isLockoutSkip then if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip", "lockout npc=%s", tostring(matchedNpcID)) end end
 
+    -- Auto-discovery: if this NPC has drops but no lockout quest, schedule discovery
+    if matchedNpcID and not lockoutQuestsDB[matchedNpcID] and (npcDropDB[matchedNpcID] or (ns.CollectibleSourceDB and ns.CollectibleSourceDB.rares and ns.CollectibleSourceDB.rares[matchedNpcID])) then
+        discoveryPendingNpcID = matchedNpcID
+        discoveryPendingTime = GetTime()
+        C_Timer.After(2, TryDiscoverLockoutQuest)
+    end
+
     -- ===================================================================
     -- HOUSEKEEPING: Mark GUIDs and clean encounter entries BEFORE filtering.
     -- These MUST run even when all drops are collected (#trackable == 0),
@@ -2987,7 +3349,8 @@ function WarbandNexus:ProcessNPCLoot()
     if dedupGUID and (type(dedupGUID) ~= "string" or not dedupGUID:match("^zone_")) then
         processedGUIDs[dedupGUID] = now
     end
-    for _, srcGUID in ipairs(allSourceGUIDs) do
+    for i = 1, #allSourceGUIDs do
+        local srcGUID = allSourceGUIDs[i]
         if not processedGUIDs[srcGUID] then processedGUIDs[srcGUID] = now end
     end
     if ctx.targetGUID and not processedGUIDs[ctx.targetGUID] then
@@ -3024,7 +3387,8 @@ function WarbandNexus:ProcessNPCLoot()
     local matchedEncounterNpcs = nil
     if matchedNpcID then
         for encID, npcList in pairs(encounterDB or {}) do
-            for _, nid in ipairs(npcList) do
+            for j = 1, #npcList do
+                local nid = npcList[j]
                 if nid == matchedNpcID then
                     matchedEncounterID = encID
                     matchedEncounterNpcs = npcList
@@ -3039,7 +3403,10 @@ function WarbandNexus:ProcessNPCLoot()
     if matchedNpcID then
         if matchedEncounterNpcs then
             local npcSet = {}
-            for _, nid in ipairs(matchedEncounterNpcs) do npcSet[nid] = true end
+            for i = 1, #matchedEncounterNpcs do
+                local nid = matchedEncounterNpcs[i]
+                npcSet[nid] = true
+            end
             for guid, killData in pairs(recentKills) do
                 if killData.isEncounter and npcSet[killData.npcID] then recentKills[guid] = nil end
             end
@@ -3134,6 +3501,7 @@ function WarbandNexus:ProcessNPCLoot()
     for i = 1, #trackable do
         local drop = trackable[i]
         if not drop.repeatable and found[drop.itemID] then
+            if drop.type == "item" then MarkItemObtained(drop.itemID) end
             local tcType, tryKey = GetTryCountTypeAndKey(drop)
             if tryKey then
                 local currentCount = WarbandNexus:GetTryCount(tcType, tryKey)
@@ -3288,6 +3656,7 @@ function WarbandNexus:ProcessFishingLoot()
     for i = 1, #trackable do
         local drop = trackable[i]
         if not drop.repeatable and found[drop.itemID] and drop.tryCountReflectsTo then
+            MarkItemObtained(drop.itemID)
             local tcType, tryKey = GetTryCountTypeAndKey(drop)
             if tryKey then
                 local preResetCount = WarbandNexus:GetTryCount(tcType, tryKey)
@@ -3366,6 +3735,9 @@ function WarbandNexus:ProcessContainerLoot()
         for i = 1, #trackable do
             local drop = trackable[i]
             if found[drop.itemID] then
+                if not drop.repeatable and drop.type == "item" then
+                    MarkItemObtained(drop.itemID)
+                end
                 local tcType, tryKey = GetTryCountTypeAndKey(drop)
                 if tryKey then
                     ResolveCollectibleID(drop)
@@ -3537,7 +3909,8 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
                 -- New format: { drops = {...}, raresOnly = true }
                 local drops = entry.drops or entry
                 if type(drops) == "table" then
-                    for _, drop in ipairs(drops) do
+                    for i = 1, #drops do
+                        local drop = drops[i]
                         if TryMigrateDrop(drop) then return end
                     end
                 end
@@ -3550,7 +3923,8 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
         if type(containerData) == "table" then
             local drops = containerData.drops or containerData
             if type(drops) == "table" then
-                for _, drop in ipairs(drops) do
+                for i = 1, #drops do
+                    local drop = drops[i]
                     if TryMigrateDrop(drop) then return end
                 end
             end
@@ -3720,7 +4094,8 @@ local function SeedFromStatistics()
             local statIds = npcData.statisticIds
 
             local thisCharTotal = 0
-            for _, sid in ipairs(statIds) do
+            for i = 1, #statIds do
+                local sid = statIds[i]
                 local val = GetStat(sid)
                 local num
                 if val and not (issecretvalue and issecretvalue(val)) then
@@ -3750,7 +4125,8 @@ local function SeedFromStatistics()
                         if globalTotal > currentCount then
                             WarbandNexus:SetTryCount(tcType, tryKey, globalTotal)
                             if drop.type == "item" and drop.questStarters then
-                                for _, qs in ipairs(drop.questStarters) do
+                                for i = 1, #drop.questStarters do
+                                    local qs = drop.questStarters[i]
                                     if qs and qs.type == "mount" and qs.itemID then
                                         local k1 = ResolveCollectibleID(qs)
                                         local k2 = qs.itemID
@@ -3769,13 +4145,15 @@ local function SeedFromStatistics()
                     end
                 end
                 if drop and drop.questStarters then
-                    for _, qs in ipairs(drop.questStarters) do
+                    for i = 1, #drop.questStarters do
+                        local qs = drop.questStarters[i]
                         ProcessBatchDrop(qs)
                     end
                 end
             end
 
-            for _, drop in ipairs(npcData) do
+            for i = 1, #npcData do
+                local drop = npcData[i]
                 ProcessBatchDrop(drop)
             end
 
@@ -3804,7 +4182,8 @@ local function SeedFromStatistics()
                 if not EnsureDB() then return end
                 local retrySeeded = 0
                 local stillUnresolved = {}
-                for _, uEntry in ipairs(unresolvedDrops) do
+                for i = 1, #unresolvedDrops do
+                    local uEntry = unresolvedDrops[i]
                     local drop = uEntry.drop
                     local tcType, tryKey = GetTryCountTypeAndKey(drop)
                     if tryKey then
@@ -3838,7 +4217,8 @@ local function SeedFromStatistics()
                         if not EnsureDB() then return end
                         local finalSeeded = 0
                         local snaps = WarbandNexus.db.global.statisticSnapshots
-                        for _, fEntry in ipairs(stillUnresolved) do
+                        for i = 1, #stillUnresolved do
+                            local fEntry = stillUnresolved[i]
                             local drop = fEntry.drop
                             local tcType, finalKey = GetTryCountTypeAndKey(drop)
                             if finalKey and snaps then
@@ -4124,16 +4504,21 @@ function WarbandNexus:InitializeTryCounter()
     -- Set lastContainerItemID before LOOT_OPENED: hook UseContainerItem so we know which
     -- container was opened even when LOOT_OPENED fires before ITEM_LOCK_CHANGED (e.g. Pinnacle Cache).
     if not self.useContainerItemHooked and _G.UseContainerItem and C_Container and C_Container.GetContainerItemID then
+        local hookSelf = self
         local ok = pcall(function()
-            self:RawHook("UseContainerItem", function(addon, bagID, slotIndex)
-                if bagID and slotIndex and bagID >= 0 and bagID <= 4 then
-                    local itemID = C_Container.GetContainerItemID(bagID, slotIndex)
-                    if itemID and containerDropDB[itemID] then
-                        lastContainerItemID = itemID
-                        lastContainerItemTime = GetTime()
+            hookSelf:RawHook("UseContainerItem", function(bagID, slotIndex)
+                if bagID and slotIndex then
+                    local safeBag = (not issecretvalue or not issecretvalue(bagID)) and bagID or nil
+                    local safeSlot = (not issecretvalue or not issecretvalue(slotIndex)) and slotIndex or nil
+                    if safeBag and safeSlot and safeBag >= 0 and safeBag <= 4 then
+                        local itemID = C_Container.GetContainerItemID(safeBag, safeSlot)
+                        if itemID and (not issecretvalue or not issecretvalue(itemID)) and containerDropDB[itemID] then
+                            lastContainerItemID = itemID
+                            lastContainerItemTime = GetTime()
+                        end
                     end
                 end
-                local orig = addon.hooks["UseContainerItem"]
+                local orig = hookSelf.hooks["UseContainerItem"]
                 if orig then return orig(bagID, slotIndex) end
             end)
         end)
@@ -4143,6 +4528,9 @@ function WarbandNexus:InitializeTryCounter()
     -- Build reverse lookup indices for O(1) Is*Collectible() queries.
     -- Must run AFTER DB references are loaded and trackDB is merged.
     BuildReverseIndices()
+
+    -- Merge previously discovered lockout quests from SavedVariables
+    MergeDiscoveredLockoutQuests()
 
     -- Sync lockout state with server quest flags (prevents false increments after /reload mid-farm)
     SyncLockoutState()
@@ -4155,7 +4543,8 @@ function WarbandNexus:InitializeTryCounter()
         local resolveQueue = {}
         for _, npcData in pairs(npcDropDB) do
             if npcData.statisticIds then
-                for _, drop in ipairs(npcData) do
+                for j = 1, #npcData do
+                    local drop = npcData[j]
                     if drop.itemID and not resolvedIDs[drop.itemID] then
                         resolveQueue[#resolveQueue + 1] = drop
                     end
@@ -4193,7 +4582,11 @@ function WarbandNexus:InitializeTryCounter()
 
     -- Sync lockout state with server quest flags (clean stale + pre-populate).
     -- Delayed 2s to ensure quest log data is available after login/reload.
-    C_Timer.After(2, SyncLockoutState)
+    -- Also refreshes discovery snapshot so auto-discovery has a clean baseline.
+    C_Timer.After(2, function()
+        SyncLockoutState()
+        TakeDiscoverySnapshot()
+    end)
 
     -- Ensure events are registered (at load if allowed; retry here if load was in protected context).
     RegisterTryCounterEvents()
@@ -4318,7 +4711,8 @@ function WarbandNexus:TryCounterDebugReport()
             if #sampleStatIds >= 2 then break end
         end
     end
-    for _, sid in ipairs(sampleStatIds) do
+    for i = 1, #sampleStatIds do
+        local sid = sampleStatIds[i]
         local val = GetStatistic(sid)
         local display = "(secret)"
         if val ~= nil and not (issecretvalue and issecretvalue(val)) then
@@ -4384,7 +4778,8 @@ function WarbandNexus:CheckTargetDrops()
             -- Check if it's a boss with encounter mapping
             local encounterIDs = {}
             for encID, npcList in pairs(encounterDB or {}) do
-                for _, nid in ipairs(npcList) do
+                for j = 1, #npcList do
+                    local nid = npcList[j]
                     if nid == npcID then
                         encounterIDs[#encounterIDs + 1] = encID
                         break

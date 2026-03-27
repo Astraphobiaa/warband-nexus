@@ -295,7 +295,12 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         scrollChild:SetPoint("TOPLEFT", 30, -185)
         scrollChild:SetPoint("BOTTOMRIGHT", -30, 60)
         scrollFrame = nil
-        local fallbackText = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local fallbackText
+        if FontManager and FontManager.CreateFontString then
+            fallbackText = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
+        else
+            fallbackText = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        end
         fallbackText:SetPoint("TOPLEFT", TEXT_PAD, 0)
         fallbackText:SetWidth(TEXT_WIDTH)
         fallbackText:SetJustifyH("LEFT")

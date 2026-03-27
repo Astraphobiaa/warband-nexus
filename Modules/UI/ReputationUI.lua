@@ -985,12 +985,9 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     if progressBg then
         if not row.progressText then
             row.progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
-            local font, _ = row.progressText:GetFont()
-            row.progressText:SetFont(font, 11, "OUTLINE")
             row.progressText:SetJustifyH("CENTER")
             row.progressText:SetJustifyV("MIDDLE")
         end
-        -- Reparent to current progress bar (in case it was created by a different pool cycle)
         row.progressText:SetParent(progressBg)
         row.progressText:ClearAllPoints()
         row.progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)
@@ -1507,8 +1504,6 @@ local function PopulateReputationRow(row, entry)
     if progressBg then
         if not row.progressText then
             row.progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
-            local font, _ = row.progressText:GetFont()
-            row.progressText:SetFont(font, 11, "OUTLINE")
             row.progressText:SetJustifyH("CENTER")
             row.progressText:SetJustifyV("MIDDLE")
         end

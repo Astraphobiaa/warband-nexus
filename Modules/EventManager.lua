@@ -180,10 +180,9 @@ function WarbandNexus:OnItemLevelChanged()
         local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
         if not key then return end
         if self.db.global.characters and self.db.global.characters[key] then
-            -- Get current equipped item level
             local _, avgItemLevelEquipped = GetAverageItemLevel()
+            if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then return end
             
-            -- Update in database
             self.db.global.characters[key].itemLevel = avgItemLevelEquipped
             self.db.global.characters[key].lastSeen = time()
             
@@ -287,18 +286,11 @@ end
 function WarbandNexus:CHALLENGE_MODE_COMPLETED(mapChallengeModeID, level, time, onTime, keystoneUpgradeLevels)
     local charKey = ns.Utilities:GetCharacterKey()
     
-    -- Re-collect PvE data via DataService
-    if self.CollectPvEData then
-        local pveData = self:CollectPvEData()
-        
-        -- Update via DataService
-        if self.UpdatePvEDataV2 and self.db.global.characters and self.db.global.characters[charKey] then
-            self:UpdatePvEDataV2(charKey, pveData)
-        end
-        
-        -- Fire event for UI refresh (instead of direct call)
-        self:SendMessage("WN_PVE_UPDATED", charKey)
+    -- Route to PvECacheService directly (Phase 3: bypasses legacy DataService wrappers)
+    if self.UpdatePvEData then
+        self:UpdatePvEData()
     end
+    self:SendMessage("WN_PVE_UPDATED", charKey)
 end
 
 --[[
@@ -390,21 +382,8 @@ function WarbandNexus:OnPvEDataChangedThrottled(event)
     -- Wait for API responses (300ms delay for data to populate)
     C_Timer.After(0.3, function()
         Throttle("PVE_DATA_UPDATE", EVENT_CONFIG.THROTTLE.PVE_DATA_CHANGED, function()
-            -- Route to PvECacheService (Phase 1)
             if self.UpdatePvEData then
                 self:UpdatePvEData()
-            elseif self.CollectPvEData then
-                -- Fallback: Legacy DataService (will be removed in Phase 2)
-                local pveData = self:CollectPvEData()
-                if pveData then
-                    local charKey = ns.Utilities:GetCharacterKey()
-                    if self.UpdatePvEDataV2 then
-                        self:UpdatePvEDataV2(charKey, pveData)
-                    end
-                    if self.SendMessage then
-                        self:SendMessage(ns.Constants.EVENTS.PVE_UPDATED)
-                    end
-                end
             end
         end)
     end)
@@ -419,15 +398,27 @@ end
     Resets PixelScale cache and refreshes fonts when UI scale or resolution changes
 ]]
 function WarbandNexus:OnUIScaleChanged()
-    -- Reset pixel scale cache (force recalculation)
+    -- Immediately clear the pixel-scale cache so stale value is not used during this frame.
     if ns.ResetPixelScale then
         ns.ResetPixelScale()
     end
-    
-    -- Refresh all fonts with new scale
-    if ns.FontManager and ns.FontManager.RefreshAllFonts then
-        ns.FontManager:RefreshAllFonts()
-    end
+
+    -- Defer the actual font refresh to the next frame.
+    -- UIParent:GetEffectiveScale() is only guaranteed to reflect the new scale on the
+    -- frame AFTER UI_SCALE_CHANGED / DISPLAY_SIZE_CHANGED fires.  Calling
+    -- RefreshAllFonts() synchronously here would sample the old effectiveScale, cache
+    -- it into `mult`, and render every FontString at the wrong size until the next
+    -- manual font change.  The border-registry handler in SharedWidgets already uses
+    -- C_Timer.After(0) for the same reason.
+    C_Timer.After(0, function()
+        -- Reset again: the deferred call may arrive after another stale cache was built.
+        if ns.ResetPixelScale then
+            ns.ResetPixelScale()
+        end
+        if ns.FontManager and ns.FontManager.RefreshAllFonts then
+            ns.FontManager:RefreshAllFonts()
+        end
+    end)
 end
 
 --[[
@@ -445,7 +436,7 @@ function WarbandNexus:InitializeEventManager()
     -- ── Collection events (single owner: CollectionService) ──
     -- NEW_MOUNT_ADDED, NEW_PET_ADDED, NEW_TOY_ADDED are registered at file load
     -- in CollectionService.lua (OnNewMount, OnNewPet, OnNewToy).
-    -- Each handler includes InvalidateCollectionCache() — no EventManager routing needed.
+    -- Each handler uses incremental updates + SendMessage(COLLECTION_UPDATED) — no EventManager routing needed.
     -- Do NOT register here — AceEvent allows only one handler per event per object,
     -- and re-registering here would OVERWRITE the CollectionService handlers.
     self:RegisterEvent("TRANSMOG_COLLECTION_UPDATED", "OnCollectionChangedDebounced")

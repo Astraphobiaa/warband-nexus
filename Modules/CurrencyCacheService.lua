@@ -150,14 +150,23 @@ local function ResolveCurrencyMetadata(currencyID)
     
     local maxQ = info.maxQuantity or 0
     local maxWeekly = info.maxWeeklyQuantity or 0
-    -- Use weekly cap for display when maxQuantity is 0 (e.g. Dawncrests) so UI can show "10 / 200"
-    local effectiveMax = (maxQ > 0) and maxQ or maxWeekly
+    -- Dawncrests: maxQuantity = season cap (e.g. 500), maxWeeklyQuantity = weekly cap (e.g. 100).
+    -- For display we want the weekly cap; for NormalizeQuantity we need the season cap.
+    local effectiveMax
+    if DAWNCREST_IDS[currencyID] and maxWeekly > 0 then
+        effectiveMax = maxWeekly
+    elseif maxQ > 0 then
+        effectiveMax = maxQ
+    else
+        effectiveMax = maxWeekly
+    end
     local metadata = {
         currencyID = currencyID,
         name = info.name,
         icon = info.iconFileID,
         iconFileID = info.iconFileID,
         maxQuantity = effectiveMax,
+        seasonMax = (DAWNCREST_IDS[currencyID] and maxQ > 0) and maxQ or nil,
         maxWeeklyQuantity = maxWeekly,
         useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty or false,
         isAccountWide = info.isAccountWide or false,
@@ -333,14 +342,19 @@ local function FetchCurrencyFromAPI(currencyID)
     if not info or not info.name then return nil end
     local maxQ = info.maxQuantity or 0
     local maxWeekly = info.maxWeeklyQuantity or 0
-    -- Weekly-capped currencies (e.g. Dawncrests): game UI shows e.g. 30/200; use API cap or 200 fallback.
-    local cap = (maxQ > 0) and maxQ or maxWeekly
-    if cap == 0 and DAWNCREST_IDS[currencyID] then
-        cap = 200
+    -- Normalization needs the LARGER cap (season cap) to strip the embedded cap from raw quantity.
+    local normCap = (maxQ > 0) and maxQ or maxWeekly
+    if normCap == 0 and DAWNCREST_IDS[currencyID] then
+        normCap = 200
     end
-    local normalizedQuantity = NormalizeQuantity(info.quantity, cap, info.useTotalEarnedForMaxQty)
-    -- Dawncrests: use quantity (total on hand) so Currency tab matches Gear tab and Blizzard frame.
-    -- Do not override with quantityEarnedThisWeek so we never show 0 when player has crests.
+    local normalizedQuantity = NormalizeQuantity(info.quantity, normCap, info.useTotalEarnedForMaxQty)
+    -- Display cap: weekly cap for Dawncrests (what matters for progress), season cap otherwise.
+    local displayCap
+    if DAWNCREST_IDS[currencyID] and maxWeekly > 0 then
+        displayCap = maxWeekly
+    else
+        displayCap = normCap
+    end
     return {
         currencyID = currencyID,
         quantity = normalizedQuantity,
@@ -348,7 +362,9 @@ local function FetchCurrencyFromAPI(currencyID)
         isDiscovered = info.isDiscovered or false,
         isAccountWide = info.isAccountWide or false,
         isAccountTransferable = info.isAccountTransferable or false,
-        maxQuantity = cap,  -- effective cap for display (e.g. 30/100)
+        maxQuantity = displayCap,
+        seasonMax = (DAWNCREST_IDS[currencyID] and maxQ > 0) and maxQ or nil,
+        totalEarned = info.totalEarned,
         useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty or false,
     }
 end
@@ -394,6 +410,13 @@ local function UpdateSingleCurrency(currencyID)
     
     -- Store ONLY quantity in SV (lean format)
     db.currencies[charKey][currencyID] = newQuantity
+
+    -- Persist totalEarned for capped currencies (Dawncrests) so offline chars show correct Remaining
+    if currencyData.totalEarned and currencyData.totalEarned > 0 then
+        if not db.totalEarned then db.totalEarned = {} end
+        if not db.totalEarned[charKey] then db.totalEarned[charKey] = {} end
+        db.totalEarned[charKey][currencyID] = currencyData.totalEarned
+    end
     
     -- Update scan timestamp
     CurrencyCache.lastUpdate = time()
@@ -615,9 +638,13 @@ end
 ---@return table { [headerName] = { [currencyID] = true } }
 local function BuildOldCurrencyLookup(headers)
     local lookup = {}
-    for _, h in ipairs(headers or {}) do
+    local hdrs = headers or {}
+    for i = 1, #hdrs do
+        local h = hdrs[i]
         lookup[h.name] = lookup[h.name] or {}
-        for _, cid in ipairs(h.currencies or {}) do
+        local hcurrencies = h.currencies or {}
+        for j = 1, #hcurrencies do
+            local cid = hcurrencies[j]
             lookup[h.name][cid] = true
         end
         if h.children then
@@ -637,11 +664,13 @@ end
 ---@param newHeaders table New header tree (roots)
 ---@param oldLookup table From BuildOldCurrencyLookup
 local function MergeOldCurrencyIDs(newHeaders, oldLookup)
-    for _, h in ipairs(newHeaders) do
+    for i = 1, #newHeaders do
+        local h = newHeaders[i]
         local old = oldLookup[h.name]
         if old then
             local newSet = {}
-            for _, cid in ipairs(h.currencies) do
+            for j = 1, #h.currencies do
+                local cid = h.currencies[j]
                 newSet[cid] = true
             end
             for cid in pairs(old) do
@@ -786,13 +815,22 @@ function CurrencyCache:UpdateAll(currencyDataArray)
     else
         wipe(db.currencies[currentCharKey])
     end
+    if db.totalEarned and db.totalEarned[currentCharKey] then
+        wipe(db.totalEarned[currentCharKey])
+    end
     
     -- Write ONLY quantity to SV (lean format)
     local currencyCount = 0
-    
-    for _, data in ipairs(currencyDataArray) do
+    if not db.totalEarned then db.totalEarned = {} end
+    if not db.totalEarned[currentCharKey] then db.totalEarned[currentCharKey] = {} end
+
+    for i = 1, #currencyDataArray do
+        local data = currencyDataArray[i]
         if data.currencyID then
             db.currencies[currentCharKey][data.currencyID] = data.quantity or 0
+            if data.totalEarned and data.totalEarned > 0 then
+                db.totalEarned[currentCharKey][data.currencyID] = data.totalEarned
+            end
             currencyCount = currencyCount + 1
         end
     end
@@ -913,14 +951,25 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     local isCurrentChar = (currentKey and norm(charKey) == norm(currentKey))
 
     -- Current character: always fetch live from API so we never show stale DB/dummy data
+    local liveTotalEarned = nil
+    local liveSeasonMax = nil
+    local liveUseTotalEarned = nil
     if isCurrentChar then
         local liveData = FetchCurrencyFromAPI(currencyID)
         if liveData and liveData.quantity ~= nil then
             quantity = liveData.quantity
+            liveTotalEarned = liveData.totalEarned
+            liveSeasonMax = liveData.seasonMax
+            liveUseTotalEarned = liveData.useTotalEarnedForMaxQty
             if not db.currencies[charKey] then
                 db.currencies[charKey] = {}
             end
             db.currencies[charKey][currencyID] = quantity
+            if liveTotalEarned and liveTotalEarned > 0 then
+                if not db.totalEarned then db.totalEarned = {} end
+                if not db.totalEarned[charKey] then db.totalEarned[charKey] = {} end
+                db.totalEarned[charKey][currencyID] = liveTotalEarned
+            end
         end
     end
 
@@ -967,6 +1016,12 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
         }
     end
     
+    -- Resolve totalEarned: live value for current char, SV for offline chars
+    local totalEarned = liveTotalEarned
+    if not totalEarned and db.totalEarned and db.totalEarned[charKey] then
+        totalEarned = db.totalEarned[charKey][currencyID]
+    end
+
     -- Combine: SV quantity + RAM metadata
     return {
         currencyID = currencyID,
@@ -975,6 +1030,9 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
         icon = metadata.icon,
         iconFileID = metadata.iconFileID,
         maxQuantity = metadata.maxQuantity,
+        seasonMax = liveSeasonMax or metadata.seasonMax,
+        totalEarned = totalEarned,
+        useTotalEarnedForMaxQty = liveUseTotalEarned or metadata.useTotalEarnedForMaxQty,
         isAccountWide = metadata.isAccountWide,
         isAccountTransferable = metadata.isAccountTransferable,
         description = metadata.description,
@@ -1157,6 +1215,9 @@ function CurrencyCache:Clear(clearDB)
             -- IMPORTANT: Only clear CURRENT character's currency data
             if db.currencies and db.currencies[currentCharKey] then
                 wipe(db.currencies[currentCharKey])
+            end
+            if db.totalEarned and db.totalEarned[currentCharKey] then
+                wipe(db.totalEarned[currentCharKey])
             end
             
             -- Reset scan time for current character only
@@ -1407,14 +1468,16 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
     DebugPrint(string.format("SyncAccountCurrencies started for %d currencies.", #currenciesToSync))
     
     -- Process each currency
-    for _, currencyID in ipairs(currenciesToSync) do
+    for i = 1, #currenciesToSync do
+        local currencyID = currenciesToSync[i]
         local accountCharacters = C_CurrencyInfo.FetchCurrencyDataFromAccountCharacters(currencyID)
         
         -- Create a list of characters that the API reported having this currency
         local apiChars = {}
         
         if accountCharacters and type(accountCharacters) == "table" then
-            for _, info in ipairs(accountCharacters) do
+            for j = 1, #accountCharacters do
+                local info = accountCharacters[j]
                 if info.characterName and info.quantity then
                     table.insert(apiChars, {
                         name = info.characterName,
@@ -1437,7 +1500,8 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
                     local newQuantity = 0
                     local dbNameBase = strsplit("-", charData.name)
                     
-                    for _, apiChar in ipairs(apiChars) do
+                    for k = 1, #apiChars do
+                        local apiChar = apiChars[k]
                         local isMatch = false
                         -- Strategy 1: Match by GUID (100% accurate)
                         if charData.guid and apiChar.guid and charData.guid == apiChar.guid then

@@ -56,6 +56,8 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn chartest|r — Print current character's race/class API data (for icon debugging)")
         addon:Print("  |cff00ccff/wn gearupgradedebug|r — Print upgrade costs (API) and affordability per slot (current char)")
         addon:Print("  |cff00ccff/wn gearstoragedebug|r — Scan storage upgrades for all tracked characters/slots")
+        addon:Print("  |cff00ccff/wn markobtained <itemID>|r — Mark a drop as obtained (stops try counter)")
+        addon:Print("  |cff00ccff/wn clearobtained <itemID>|r — Clear obtained marker (resumes tracking)")
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
             addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
@@ -173,6 +175,41 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:GearStorageUpgradeDebugReportAll()
         else
             addon:Print("|cffff6600[WN]|r Gear module not loaded.")
+        end
+        return
+
+    elseif cmd == "markobtained" then
+        local _, arg1 = addon:GetArgs(input, 2)
+        local itemID = arg1 and tonumber(arg1)
+        if not itemID or itemID < 1 then
+            addon:Print("|cff00ccff/wn markobtained <itemID>|r — Mark a drop item as obtained so the try counter stops tracking it.")
+            addon:Print("Example: |cff888888/wn markobtained 268730|r (Nether-Warped Egg)")
+            return
+        end
+        if addon.MarkItemObtained then
+            addon:MarkItemObtained(itemID)
+            local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+            local itemName = GetItemInfoFn and GetItemInfoFn(itemID)
+            addon:Print("|cff00ff00[WN]|r Marked " .. (itemName and ("|cffffd100" .. itemName .. "|r") or ("itemID " .. itemID)) .. " as obtained. Try counter will stop tracking it.")
+        else
+            addon:Print("|cffff6600[WN]|r TryCounter module not loaded.")
+        end
+        return
+
+    elseif cmd == "clearobtained" then
+        local _, arg1 = addon:GetArgs(input, 2)
+        local itemID = arg1 and tonumber(arg1)
+        if not itemID or itemID < 1 then
+            addon:Print("|cff00ccff/wn clearobtained <itemID>|r — Clear the obtained marker so the try counter resumes tracking.")
+            return
+        end
+        if addon.ClearItemObtained then
+            addon:ClearItemObtained(itemID)
+            local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+            local itemName = GetItemInfoFn and GetItemInfoFn(itemID)
+            addon:Print("|cff00ff00[WN]|r Cleared obtained marker for " .. (itemName and ("|cffffd100" .. itemName .. "|r") or ("itemID " .. itemID)) .. ". Try counter will resume tracking.")
+        else
+            addon:Print("|cffff6600[WN]|r TryCounter module not loaded.")
         end
         return
     end

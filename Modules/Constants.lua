@@ -182,6 +182,18 @@ local Constants = {
     },
     
     --==========================================================================
+    -- MIDNIGHT KEY CURRENCIES (auto-highlighted in UI)
+    --==========================================================================
+    
+    MIDNIGHT_KEY_CURRENCIES = {
+        [3378] = { name = "Dawnlight Manaflux", category = "catalyst" },   -- Catalyst charges
+        [3314] = { name = "Radiant Ember", category = "crest" },           -- Gilded Crest equivalent
+        [3313] = { name = "Radiant Dust", category = "crest" },            -- Runed Crest equivalent
+        [3312] = { name = "Radiant Shard", category = "crest" },           -- Carved Crest equivalent
+        [3089] = { name = "Coffer Key", category = "delves" },             -- Delve Coffer Keys
+    },
+    
+    --==========================================================================
     -- REPUTATION STANDARDS (for validation)
     --==========================================================================
     -- Classic Reputation uses FIXED threshold ranges (never changes)

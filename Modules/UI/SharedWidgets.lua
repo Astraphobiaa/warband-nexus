@@ -4888,7 +4888,13 @@ function ns.UI.Factory:CreateEditBox(parent)
     
     local editBox = CreateFrame("EditBox", nil, parent)
     editBox:SetAutoFocus(false)
-    editBox:SetFontObject(ChatFontNormal)
+    editBox:SetFontObject(ChatFontNormal) -- required initial FontObject (WoW crashes without one)
+    if ns.FontManager then
+        local path = ns.FontManager:GetFontFace()
+        local size = ns.FontManager:GetFontSize("body")
+        local flags = ns.FontManager:GetAAFlags()
+        pcall(editBox.SetFont, editBox, path, size, flags)
+    end
     editBox:SetMaxLetters(256)
     editBox:SetTextInsets(5, 5, 0, 0)
     

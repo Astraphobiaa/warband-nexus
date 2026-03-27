@@ -175,7 +175,8 @@ local function UpdateVaultData()
         PvP = {},
     }
     
-    for _, activity in ipairs(activities) do
+    for i = 1, #activities do
+        local activity = activities[i]
         local typeName = "Unknown"
         local typeNum = activity.type
         
@@ -207,7 +208,8 @@ local function UpdateVaultData()
     -- Process each type
     for typeName, typeActivities in pairs(activitiesByType) do
         if #typeActivities > 0 then
-            for _, activity in ipairs(typeActivities) do
+            for j = 1, #typeActivities do
+                local activity = typeActivities[j]
                 local slot = {
                     index = activity.index,
                     activityID = activity.id,
@@ -283,18 +285,23 @@ local function UpdateVaultData()
     end
     
     -- RETRY: If any completed slot has no reward iLvl, the server may not have
-    -- computed rewards yet. Re-request data after a short delay (max 2 retries).
-    if (vaultCache.retryCount or 0) < 2 then
+    -- computed rewards yet. Progressive delay: 2s, 4s, 7s, 12s (max 4 retries).
+    local MAX_RETRIES = 4
+    local RETRY_DELAYS = { 2, 4, 7, 12 }
+    local currentRetry = vaultCache.retryCount or 0
+    if currentRetry < MAX_RETRIES then
         local needsRetry = false
-        for _, slot in ipairs(vaultCache.slots) do
+        for i = 1, #vaultCache.slots do
+            local slot = vaultCache.slots[i]
             if not slot.isLocked and slot.currentILvl == 0 then
                 needsRetry = true
                 break
             end
         end
         if needsRetry then
-            vaultCache.retryCount = (vaultCache.retryCount or 0) + 1
-            C_Timer.After(3, function()
+            vaultCache.retryCount = currentRetry + 1
+            local delay = RETRY_DELAYS[vaultCache.retryCount] or 12
+            C_Timer.After(delay, function()
                 RequestVaultData()
             end)
         else

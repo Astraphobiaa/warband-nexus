@@ -259,6 +259,9 @@ local defaults = {
             dismissedNotifications = {},       -- Array of dismissed notification IDs
         },
         
+        -- Keybinding (override binding, saved in addon DB)
+        toggleKeybind = nil,  -- e.g. "CTRL-SHIFT-N" or nil = unbound
+        
         -- Font Management (Resolution-aware scaling)
         fonts = {
             fontFace = "Friz Quadrata TT",  -- LSM key; default font
@@ -503,14 +506,16 @@ function WarbandNexus:OnInitialize()
                     local popup = _G["StaticPopup" .. i]
                     if popup and popup:IsShown() then
                         local txt = popup.text and popup.text.GetText and popup.text:GetText() or ""
-                        if txt:find(ADDON_NAME) or txt:find("WarbandNexus") then
-                            popup:Hide()
-                            local debugMode = WarbandNexus and WarbandNexus.db
-                                and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode
-                            if debugMode then
-                                _G.print("|cff9370DB[WN Taint]|r Suppressed ADDON_ACTION_FORBIDDEN popup")
+                        if not (issecretvalue and issecretvalue(txt)) then
+                            if txt:find(ADDON_NAME) or txt:find("WarbandNexus") then
+                                popup:Hide()
+                                local debugMode = WarbandNexus and WarbandNexus.db
+                                    and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode
+                                if debugMode then
+                                    _G.print("|cff9370DB[WN Taint]|r Suppressed ADDON_ACTION_FORBIDDEN popup")
+                                end
+                                break
                             end
-                            break
                         end
                     end
                 end
@@ -532,12 +537,14 @@ function WarbandNexus:OnInitialize()
                         local popup = _G["StaticPopup" .. i]
                         if popup and popup:IsShown() then
                             local txt = popup.text and popup.text.GetText and popup.text:GetText() or ""
-                            if txt:find(ADDON_NAME) or txt:find("WarbandNexus") then
-                                popup:Hide()
-                                if debugMode then
-                                    _G.print("|cff9370DB[WN Taint]|r Safety net: hid popup #" .. i)
+                            if not (issecretvalue and issecretvalue(txt)) then
+                                if txt:find(ADDON_NAME) or txt:find("WarbandNexus") then
+                                    popup:Hide()
+                                    if debugMode then
+                                        _G.print("|cff9370DB[WN Taint]|r Safety net: hid popup #" .. i)
+                                    end
+                                    break
                                 end
-                                break
                             end
                         end
                     end
@@ -686,6 +693,33 @@ function WarbandNexus:OnInitialize()
         self:InitializeCharacterBankMoneyLogService()
     end
     
+    -- Create hidden button for keybind toggle (override binding target)
+    if not _G["WarbandNexusToggleButton"] then
+        local btn = CreateFrame("Button", "WarbandNexusToggleButton", UIParent)
+        btn:Hide()
+        btn:SetScript("OnClick", function()
+            if WarbandNexus and WarbandNexus.ToggleMainWindow then
+                WarbandNexus:ToggleMainWindow()
+            end
+        end)
+    end
+    
+    -- Apply saved keybind (override binding)
+    self:ApplyToggleKeybind()
+end
+
+---Apply (or clear) the toggle keybind from db.profile.toggleKeybind using override binding.
+---Safe to call multiple times; clears previous binding first.
+function WarbandNexus:ApplyToggleKeybind()
+    local btn = _G["WarbandNexusToggleButton"]
+    if not btn then return end
+
+    ClearOverrideBindings(btn)
+
+    local key = self.db and self.db.profile and self.db.profile.toggleKeybind
+    if key and key ~= "" and not InCombatLockdown() then
+        SetOverrideBindingClick(btn, true, key, "WarbandNexusToggleButton")
+    end
 end
 
 --[[
@@ -1454,19 +1488,9 @@ function WarbandNexus:OnPvEDataChanged()
         return
     end
     
-    -- Collect updated PvE data via DataService
-    if self.CollectPvEData then
-        local pveData = self:CollectPvEData()
-        
-        -- Update database via DataService
-        if self.UpdatePvEDataV2 then
-            self:UpdatePvEDataV2(charKey, pveData)
-        end
-        
-        -- Invalidate cache to trigger UI refresh
-        if self.InvalidatePvECache then
-            self:InvalidatePvECache(charKey)
-        end
+    -- Route to PvECacheService directly (Phase 3: bypasses legacy DataService wrappers)
+    if self.UpdatePvEData then
+        self:UpdatePvEData()
     end
 end
 

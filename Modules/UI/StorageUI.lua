@@ -84,13 +84,21 @@ local function RegisterStorageEvents(parent)
         return mf and mf:IsShown() and mf.currentTab == "storage"
     end
     
-    local function ScheduleDrawStorageTab()
+    local function ScheduleStorageRefresh()
         if not IsStorageTabActive() then return end
         if pendingDrawTimer then return end  -- already scheduled
         pendingDrawTimer = C_Timer.After(DRAW_DEBOUNCE, function()
             pendingDrawTimer = nil
             if IsStorageTabActive() and parent then
-                WarbandNexus:DrawStorageTab(parent)
+                local resultsContainer = parent.storageResultsContainer or parent._storageResultsContainer
+                if resultsContainer and resultsContainer:GetParent() == parent and WarbandNexus.DrawStorageResults then
+                    local searchText = SearchStateManager:GetQuery("storage")
+                    local contentWidth = parent:GetWidth() - 20
+                    local contentHeight = WarbandNexus:DrawStorageResults(resultsContainer, 0, contentWidth, searchText)
+                    resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
+                else
+                    WarbandNexus:DrawStorageTab(parent)
+                end
             end
         end)
     end
@@ -111,7 +119,7 @@ local function RegisterStorageEvents(parent)
             if now - lastMetadataRefreshDraw < METADATA_REFRESH_COOLDOWN then return end
             lastMetadataRefreshDraw = now
             DebugPrint("|cff00ff00[StorageUI]|r WN_ITEM_METADATA_READY received, refreshing names")
-            ScheduleDrawStorageTab()
+            ScheduleStorageRefresh()
         end
     end)
     
@@ -1368,6 +1376,23 @@ if warbandExpanded then
         })
         
         return math.max(totalHeight, yOffset) + GetLayout().minBottomSpacing
+    end
+
+    -- Nothing to virtualize (all collapsed / filtered out):
+    -- ensure stale virtual rows from previous render are removed.
+    if mainFrame and VLM then
+        VLM.ClearVirtualScroll(mainFrame)
+    end
+    local recycleBin = ns.UI_RecycleBin
+    local remainingChildren = { parent:GetChildren() }
+    for i = 1, #remainingChildren do
+        local child = remainingChildren[i]
+        if child and child._isVirtualRow then
+            child._isVirtualRow = nil
+            child:Hide()
+            child:ClearAllPoints()
+            child:SetParent(recycleBin or UIParent)
+        end
     end
 
     return yOffset + GetLayout().minBottomSpacing

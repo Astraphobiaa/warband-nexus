@@ -1,0 +1,7 @@
+<Bindings>
+	<Binding name="WARBANDNEXUS_TOGGLE" header="WARBANDNEXUS">
+		if WarbandNexus and WarbandNexus.ToggleMainWindow then
+			WarbandNexus:ToggleMainWindow()
+		end
+	</Binding>
+</Bindings>

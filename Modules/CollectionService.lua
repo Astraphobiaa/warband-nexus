@@ -1583,15 +1583,15 @@ end
 ---@param id number mountID, speciesID, or itemID
 ---@return boolean owned
 function WarbandNexus:IsCollectibleOwned(collectibleType, id)
-    -- Cache uses plural keys (mounts/pets/toys), callers pass singular (mount/pet/toy)
     local key = collectibleType and (collectibleType .. "s") or nil
     if not key then return false end
 
-    if not collectionCache.owned[key] then
+    local cache = collectionCache.owned[key]
+    if not cache or next(cache) == nil then
         self:BuildCollectionCache()
+        cache = collectionCache.owned[key]
     end
 
-    local cache = collectionCache.owned[key]
     return cache and cache[id] == true
 end
 
@@ -1680,8 +1680,12 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
         })
     end
 
-    -- Always fire data-update event so UI refreshes (even when notification is deduped)
-    self:InvalidateCollectionCache("mount")
+    -- Fire data-update event so UI refreshes (even when notification is deduped).
+    -- NOTE: Do NOT call InvalidateCollectionCache here — the incremental updates above
+    -- (RemoveFromUncollected + direct store write) are correct and sufficient.
+    -- InvalidateCollectionCache would clear collectionCache.owned.mounts={}, undoing
+    -- the owned cache set we just did. WN_COLLECTION_UPDATED triggers the UI to
+    -- invalidate its own display caches and refresh.
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "mount")
     end
@@ -1783,8 +1787,8 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
         })
     end
 
-    -- Always fire data-update event so UI refreshes (even when notification is deduped)
-    self:InvalidateCollectionCache("pet")
+    -- Fire data-update event so UI refreshes (even when notification is deduped).
+    -- NOTE: Do NOT call InvalidateCollectionCache here — incremental updates are sufficient.
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "pet")
     end
@@ -1857,8 +1861,8 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
         })
     end
 
-    -- Always fire data-update event so UI refreshes (even when notification is deduped)
-    self:InvalidateCollectionCache("toy")
+    -- Fire data-update event so UI refreshes (even when notification is deduped).
+    -- NOTE: Do NOT call InvalidateCollectionCache here — incremental updates are sufficient.
     if ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache.map = nil end
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "toy")
@@ -1885,7 +1889,8 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     
     -- Build current collected set
     local currentCollected = {}
-    for _, illusionInfo in ipairs(illusions) do
+    for i = 1, #illusions do
+        local illusionInfo = illusions[i]
         if illusionInfo and illusionInfo.visualID and illusionInfo.isCollected then
             currentCollected[illusionInfo.visualID] = illusionInfo
         end
@@ -2007,7 +2012,8 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     if C_AchievementInfo and C_AchievementInfo.GetSupercedingAchievements then
         local supercedingAchievements = C_AchievementInfo.GetSupercedingAchievements(achievementID)
         if supercedingAchievements and #supercedingAchievements > 0 then
-            for _, nextAchievementID in ipairs(supercedingAchievements) do
+            for i = 1, #supercedingAchievements do
+                local nextAchievementID = supercedingAchievements[i]
                 -- Get achievement info with pcall protection
                 local success, id, name, points, completed, month, day, year, description, flags, icon = pcall(GetAchievementInfo, nextAchievementID)
                 
@@ -2719,7 +2725,8 @@ COLLECTION_CONFIGS = {
             local categoryList = GetCategoryList() or {}
             local allAchievements = {}
             
-            for _, categoryID in ipairs(categoryList) do
+            for i = 1, #categoryList do
+                local categoryID = categoryList[i]
                 if categoryID then
                     local numAchievements = GetCategoryNumAchievements(categoryID)
                     for achIndex = 1, numAchievements do
@@ -2777,7 +2784,8 @@ COLLECTION_CONFIGS = {
             local categoryList = GetCategoryList() or {}
             local allTitles = {}
             
-            for _, categoryID in ipairs(categoryList) do
+            for i = 1, #categoryList do
+                local categoryID = categoryList[i]
                 if categoryID then
                     local numAchievements = GetCategoryNumAchievements(categoryID)
                     for achIndex = 1, numAchievements do
@@ -2895,7 +2903,8 @@ COLLECTION_CONFIGS = {
             illusionRuntimeCache = {}
             
             local illusionList = {}
-            for _, illusionInfo in ipairs(illusions) do
+            for i = 1, #illusions do
+                local illusionInfo = illusions[i]
                 if illusionInfo and illusionInfo.sourceID then
                     -- CRITICAL: Use sourceID (not visualID!) - GetIllusionStrings needs sourceID
                     illusionRuntimeCache[illusionInfo.sourceID] = illusionInfo
@@ -3144,7 +3153,8 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         end
 
         local shouldIncludeFn = config.shouldIncludeInAll or config.shouldInclude
-        for i, item in ipairs(items) do
+        for i = 1, #items do
+            local item = items[i]
             local data = config.extract(item)
 
             if data and data.id and shouldIncludeFn and shouldIncludeFn(data) then
@@ -3186,7 +3196,15 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         end
         
         -- Merkezi kaynak: collectionStore'a tam veri yaz (mount, pet, toy, achievement, title, illusion)
+        -- Preserve collected=true from incremental updates (OnNewMount etc.) that may have
+        -- run AFTER the scan already processed that ID — prevents race condition overwrite.
         if collectionStore[collectionType] ~= nil then
+            local oldStore = collectionStore[collectionType]
+            for id, data in pairs(results) do
+                if not data.collected and oldStore[id] and oldStore[id].collected == true then
+                    data.collected = true
+                end
+            end
             collectionStore[collectionType] = results
         end
         -- collectionCache.uncollected: Plans/GetUncollectedItems için id->name (sadece uncollected)
@@ -3438,7 +3456,8 @@ function WarbandNexus:GetToySourceInfo(itemID)
         if left and sourceLabelClean ~= "" and left:find(sourceLabelClean, 1, true) then return true end
         if right and sourceLabelClean ~= "" and right:find(sourceLabelClean, 1, true) then return true end
         -- Only treat as source if line starts with "Keyword:" so description text containing "drop" etc. is not misclassified
-        for _, kw in ipairs(sourceKeywords) do
+        for i = 1, #sourceKeywords do
+            local kw = sourceKeywords[i]
             local escaped = kw:gsub("%%", "%%%%")
             if (left and left:match("^%s*" .. escaped .. "%s*:")) or (right and right:match("^%s*" .. escaped .. "%s*:")) then
                 return true
@@ -3450,7 +3469,9 @@ function WarbandNexus:GetToySourceInfo(itemID)
     if tooltipData and tooltipData.lines then
         local sourceParts = {}
         local descParts = {}
-        for idx, line in ipairs(tooltipData.lines) do
+        local lines = tooltipData.lines
+        for i = 1, #lines do
+            local line = lines[i]
             local left = safeText(line.leftText)
             local right = safeText(line.rightText)
             local lineText = (left and left ~= "" and left) or (right and right ~= "" and right) or nil
@@ -3462,7 +3483,7 @@ function WarbandNexus:GetToySourceInfo(itemID)
                 else
                     sourceParts[#sourceParts + 1] = lineText
                 end
-            elseif idx > 1 then
+            elseif i > 1 then
                 descParts[#descParts + 1] = lineText
             end
         end
@@ -3961,7 +3982,8 @@ function WarbandNexus:ScanAchievementsAsync()
             return
         end
         
-        for _, categoryID in ipairs(categoryList) do
+        for i = 1, #categoryList do
+            local categoryID = categoryList[i]
             if categoryID then
                 local numAchievements = GetCategoryNumAchievements(categoryID)
                 
@@ -4534,7 +4556,8 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
     
     if newCollectibles then
     DebugPrint("|cff00ccff[WN BAG SCAN]|r Found " .. #newCollectibles .. " new collectible(s)")
-        for _, collectible in ipairs(newCollectibles) do
+        for i = 1, #newCollectibles do
+            local collectible = newCollectibles[i]
             -- LAYER 1: Quick name-based debounce (1-2s) - Prevents rapid-fire duplicates
             if not WasRecentlyShownByName(collectible.itemName) then
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW " .. string.upper(collectible.type) .. " IN BAG: " .. collectible.itemName)

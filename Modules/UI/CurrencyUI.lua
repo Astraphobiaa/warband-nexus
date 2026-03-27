@@ -145,8 +145,22 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         row.bg = row:CreateTexture(nil, "BACKGROUND")
         row.bg:SetAllPoints()
     end
+    local keyCurrencies = ns.Constants and ns.Constants.MIDNIGHT_KEY_CURRENCIES
+    local isKeyCurrency = keyCurrencies and keyCurrencies[currencyID]
+    if isKeyCurrency then
+        bgColor = {0.12, 0.10, 0.02, 1}
+    end
     row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
     row.bgColor = bgColor
+
+    if not row.keyBadge then
+        row.keyBadge = row:CreateTexture(nil, "OVERLAY")
+        row.keyBadge:SetSize(12, 12)
+        row.keyBadge:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+        row.keyBadge:SetTexture("Interface\\COMMON\\ReputationStar")
+        row.keyBadge:SetVertexColor(1, 0.82, 0)
+    end
+    row.keyBadge:SetShown(isKeyCurrency ~= nil)
 
     local hasQuantity = (currency.quantity or 0) > 0
     

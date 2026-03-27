@@ -2,24 +2,23 @@
     Warband Nexus - Data Service Module
     Centralized data collection, processing, and retrieval
     
-    REFACTOR STATUS (Phase 2):
-    ==========================
-    This module is being refactored to delegate to specialized cache services:
-    - PvE data → PvECacheService.lua
+    REFACTOR STATUS (Phase 3 in progress):
+    ======================================
+    Specialized cache services now own their domains:
+    - PvE data → PvECacheService.lua (direct via UpdatePvEData)
     - Items/Bank → ItemsCacheService.lua
     - Currency → CurrencyCacheService.lua
     - Reputation → ReputationCacheService.lua
     
     Current Responsibilities:
-    - Character orchestration (gold, level, class, profession)
+    - Character orchestration (gold, level, class, spec, hero talent, profession)
     - Cross-character aggregation queries
-    - Legacy function wrappers (will be removed in Phase 3)
+    - Rested XP estimation (EstimateOfflineRestedXP)
+    - Legacy wrappers (kept for internal callers, external callers migrated)
     
-    DEPRECATED FUNCTIONS (Use cache services directly):
-    - CollectPvEData() → PvECacheService:GetPvEData()
-    - UpdatePvEDataV2() → PvECacheService:UpdatePvEData()
-    - GetPvEDataV2() → PvECacheService:GetPvEData()
-    - ScanBagV2() → ItemsCacheService:ScanInventoryBags()
+    DEPRECATED WRAPPERS (route to cache services internally):
+    - CollectPvEData() → PvECacheService:UpdatePvEData()
+    - UpdatePvEDataV2() → PvECacheService:ImportLegacyPvEData()
     - GetPersonalBankV2() → ItemsCacheService:GetItemsData()
     - GetWarbandBankV2() → ItemsCacheService:GetWarbandBankData()
 ]]
@@ -314,13 +313,27 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         local specIndex = GetSpecialization()
         if specIndex and GetSpecializationInfo then
             local specID, specName, _, specIcon = GetSpecializationInfo(specIndex)
-            charData.specID = specID  -- store global spec ID (e.g. 262 for Elemental), not index
+            charData.specID = specID
             charData.specName = specName
             charData.specIcon = specIcon
+        end
+        -- Hero Talent (Midnight 12.0+): active hero spec subclass name
+        if C_ClassTalents and C_ClassTalents.GetActiveHeroTalentSpec then
+            local heroSpecID = C_ClassTalents.GetActiveHeroTalentSpec()
+            if heroSpecID and not (issecretvalue and issecretvalue(heroSpecID)) then
+                charData.heroSpecID = heroSpecID
+                if C_ClassTalents.GetHeroTalentSpecInfo then
+                    local heroInfo = C_ClassTalents.GetHeroTalentSpecInfo(heroSpecID)
+                    if heroInfo then
+                        charData.heroSpecName = heroInfo.name
+                    end
+                end
+            end
         end
         
     elseif dataType == "itemLevel" then
         local avgItemLevel, avgItemLevelEquipped = GetAverageItemLevel()
+        if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then return end
         local newItemLevel = math.floor(avgItemLevelEquipped or 0)
         
         charData.itemLevel = newItemLevel
@@ -756,7 +769,8 @@ local function CollectPlayerStats()
         { label = "Mastery",         rating = 26, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
         { label = "Versatility",     rating = 29, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
     }
-    for _, s in ipairs(secondFns) do
+    for i = 1, #secondFns do
+        local s = secondFns[i]
         local okR, rating = pcall(GetCombatRating, s.rating)
         local okP, pct = pcall(s.pctFn)
         if okR and type(rating) == "number" and rating > 0 then
@@ -776,9 +790,12 @@ CollectRestedData = function()
     local exhaustionID, restStateName, restStateFactor = nil, nil, nil
     if GetRestState then
         exhaustionID, restStateName, restStateFactor = GetRestState()
+        if issecretvalue and exhaustionID and issecretvalue(exhaustionID) then exhaustionID = nil end
     end
 
-    local currentRestedXP = (GetXPExhaustion and GetXPExhaustion()) or 0
+    local rawRestedXP = (GetXPExhaustion and GetXPExhaustion()) or 0
+    if issecretvalue and rawRestedXP and issecretvalue(rawRestedXP) then rawRestedXP = 0 end
+    local currentRestedXP = rawRestedXP
     local currentXP = UnitXP("player") or 0
     local maxXPApi = UnitXPMax("player")
     local maxXP = (type(maxXPApi) == "number") and maxXPApi or nil
@@ -797,6 +814,34 @@ CollectRestedData = function()
         restedCapXP = restedCapXP,
         updatedAt = time(),
     }
+end
+
+---Estimate current rested XP for an offline character based on last snapshot.
+---@param rested table Saved rested data from character record
+---@param raceFile string|nil Race file (e.g. "Pandaren") for cap multiplier
+---@return number estimatedRested Current estimated rested XP
+---@return number restedCap Maximum rested XP cap
+---@return number percentage 0-100 rested percentage toward cap
+function WarbandNexus:EstimateOfflineRestedXP(rested, raceFile)
+    if not rested or not rested.updatedAt then return 0, 0, 0 end
+    
+    local elapsed = time() - rested.updatedAt
+    local maxXP = rested.maxXP or 0
+    if maxXP <= 0 then return rested.currentRestedXP or 0, 0, 0 end
+    
+    local capMul = GetRestedCapMultiplier(raceFile)
+    local restedCap = math.floor(maxXP * capMul)
+    
+    -- 5% of a level per 8 hours resting in inn/city, half rate in wilderness
+    -- Resting area status was captured at snapshot time
+    local gainRate = RESTED_XP_GAIN_PER_8H * maxXP
+    local gain8h = rested.isRestingArea and gainRate or (gainRate * 0.25)
+    local totalGain = math.floor(gain8h * (elapsed / SECONDS_PER_8H))
+    
+    local estimated = math.min((rested.currentRestedXP or 0) + totalGain, restedCap)
+    local pct = (restedCap > 0) and math.floor((estimated / restedCap) * 100) or 0
+    
+    return estimated, restedCap, pct
 end
 
 --[[
@@ -836,6 +881,7 @@ function WarbandNexus:SaveMinimalCharacterData()
     
     -- Get item level
     local _, avgItemLevelEquipped = GetAverageItemLevel()
+    if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then avgItemLevelEquipped = nil end
     local itemLevel = avgItemLevelEquipped or 0
     
     -- Spec (for offline main stat in Gear tab)
@@ -843,6 +889,20 @@ function WarbandNexus:SaveMinimalCharacterData()
     if GetSpecialization and GetSpecializationInfo then
         local idx = GetSpecialization()
         if idx then specID, specName, _, specIcon = GetSpecializationInfo(idx) end
+    end
+    
+    -- Hero Talent (Midnight 12.0+)
+    local heroSpecID, heroSpecName = nil, nil
+    if C_ClassTalents and C_ClassTalents.GetActiveHeroTalentSpec then
+        heroSpecID = C_ClassTalents.GetActiveHeroTalentSpec()
+        if heroSpecID and not (issecretvalue and issecretvalue(heroSpecID)) then
+            if C_ClassTalents.GetHeroTalentSpecInfo then
+                local heroInfo = C_ClassTalents.GetHeroTalentSpecInfo(heroSpecID)
+                if heroInfo then heroSpecName = heroInfo.name end
+            end
+        else
+            heroSpecID = nil
+        end
     end
     
     -- Validate critical data
@@ -934,6 +994,8 @@ function WarbandNexus:SaveMinimalCharacterData()
         specID               = specID,
         specName             = specName,
         specIcon             = specIcon,
+        heroSpecID           = heroSpecID,
+        heroSpecName         = heroSpecName,
     }
     -- Fire event for UI refresh
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
@@ -1038,6 +1100,7 @@ function WarbandNexus:SaveCurrentCharacterData()
     
     -- Get character's average item level (ALWAYS fresh from API)
     local _, avgItemLevelEquipped = GetAverageItemLevel()
+    if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then avgItemLevelEquipped = nil end
     local itemLevel = avgItemLevelEquipped or 0
     
     -- Spec (for offline main stat in Gear tab)
@@ -1045,6 +1108,20 @@ function WarbandNexus:SaveCurrentCharacterData()
     if GetSpecialization and GetSpecializationInfo then
         local idx = GetSpecialization()
         if idx then specID, specName, _, specIcon = GetSpecializationInfo(idx) end
+    end
+    
+    -- Hero Talent (Midnight 12.0+)
+    local heroSpecID, heroSpecName = nil, nil
+    if C_ClassTalents and C_ClassTalents.GetActiveHeroTalentSpec then
+        heroSpecID = C_ClassTalents.GetActiveHeroTalentSpec()
+        if heroSpecID and not (issecretvalue and issecretvalue(heroSpecID)) then
+            if C_ClassTalents.GetHeroTalentSpecInfo then
+                local heroInfo = C_ClassTalents.GetHeroTalentSpecInfo(heroSpecID)
+                if heroInfo then heroSpecName = heroInfo.name end
+            end
+        else
+            heroSpecID = nil
+        end
     end
     
     -- Scan for Mythic Keystone (always scan on login to check if key exists)
@@ -1134,6 +1211,8 @@ function WarbandNexus:SaveCurrentCharacterData()
         specID               = specID,
         specName             = specName,
         specIcon             = specIcon,
+        heroSpecID           = heroSpecID,
+        heroSpecName         = heroSpecName,
     }
     -- ========== V2: Store PvE data globally ==========
     self:UpdatePvEDataV2(key, pveData)
@@ -1408,7 +1487,8 @@ function WarbandNexus:GenerateWeeklyAlerts()
     
     if not recentChars then return alerts end
     
-    for _, char in ipairs(recentChars) do
+    for i = 1, #recentChars do
+        local char = recentChars[i]
         local charKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)) or char._key
         local charName = char.name or "Unknown"
         
@@ -1426,9 +1506,11 @@ function WarbandNexus:GenerateWeeklyAlerts()
             local filledSlots = 0
             local totalSlots = 0
             
-            for _, activity in ipairs(pveData.greatVault) do
+            for j = 1, #pveData.greatVault do
+                local activity = pveData.greatVault[j]
                 if activity.progress then
-                    for _, slot in ipairs(activity.progress) do
+                    for k = 1, #activity.progress do
+                        local slot = activity.progress[k]
                         totalSlots = totalSlots + 1
                         if slot.progress and slot.threshold and slot.progress >= slot.threshold then
                             filledSlots = filledSlots + 1
@@ -1636,7 +1718,8 @@ local function ValidatePvEDataCompleteness(pve)
     
     -- Validate Great Vault data
     if pve.greatVault and #pve.greatVault > 0 then
-        for _, activity in ipairs(pve.greatVault) do
+        for i = 1, #pve.greatVault do
+            local activity = pve.greatVault[i]
             -- Check completed slots
             if activity.progress and activity.threshold and activity.progress >= activity.threshold then
                 -- Completed slot should have reward ilvl
@@ -1723,7 +1806,8 @@ function WarbandNexus:CollectPvEData()
     if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
         local activities = C_WeeklyRewards.GetActivities()
         if activities then
-            for _, activity in ipairs(activities) do
+            for i = 1, #activities do
+                local activity = activities[i]
                 local activityData = {
                     type = activity.type,
                     index = activity.index,
@@ -1859,9 +1943,10 @@ function WarbandNexus:CollectPvEData()
                 -- Raid: Difficulty progression
                 if activityTypeName == "Raid" then
                     local difficultyOrder = { 17, 14, 15, 16 } -- LFR → Normal → Heroic → Mythic
-                    for i, diff in ipairs(difficultyOrder) do
-                        if diff == currentLevel and i < #difficultyOrder then
-                            activityData.nextLevel = difficultyOrder[i + 1]
+                    for ii = 1, #difficultyOrder do
+                        local diff = difficultyOrder[ii]
+                        if diff == currentLevel and ii < #difficultyOrder then
+                            activityData.nextLevel = difficultyOrder[ii + 1]
                             break
                         end
                     end
@@ -1911,6 +1996,8 @@ function WarbandNexus:CollectPvEData()
             local instanceName, lockoutID, resetTime, difficultyID, locked, extended, 
                   instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, 
                   encounterProgress, extendDisabled, instanceID = GetSavedInstanceInfo(i)
+            if issecretvalue and instanceName and issecretvalue(instanceName) then instanceName = nil end
+            if issecretvalue and difficultyName and issecretvalue(difficultyName) then difficultyName = nil end
             
             if locked or extended then
                 table.insert(pve.lockouts, {
@@ -1977,7 +2064,8 @@ function WarbandNexus:CollectPvEData()
                 pve.mythicPlus.runsThisWeek = #runs
                 -- Get highest run level for weekly best
                 local bestLevel = 0
-                for _, run in ipairs(runs) do
+                for i = 1, #runs do
+                    local run = runs[i]
                     if run.level and run.level > bestLevel then
                         bestLevel = run.level
                     end
@@ -2001,7 +2089,8 @@ function WarbandNexus:CollectPvEData()
             
             -- Create lookup table by mapChallengeModeID
             local scoresByMapID = {}
-            for _, scoreData in ipairs(allScores) do
+            for i = 1, #allScores do
+                local scoreData = allScores[i]
                 if scoreData.mapChallengeModeID then
                     scoresByMapID[scoreData.mapChallengeModeID] = scoreData
                 end
@@ -2009,7 +2098,8 @@ function WarbandNexus:CollectPvEData()
             
             local mapTable = C_ChallengeMode.GetMapTable()
             if mapTable then
-                for _, mapID in ipairs(mapTable) do
+                for i = 1, #mapTable do
+                    local mapID = mapTable[i]
                     local name, id, timeLimit, texture = C_ChallengeMode.GetMapUIInfo(mapID)
                     if name then
                         local bestLevel = 0
@@ -2173,7 +2263,8 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
         if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
             local activities = C_WeeklyRewards.GetActivities()
             if activities then
-                for _, activity in ipairs(activities) do
+                for i = 1, #activities do
+                    local activity = activities[i]
                     local activityData = {
                         type = activity.type,
                         index = activity.index,
@@ -2238,7 +2329,8 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
             -- Get map scores
             local allScores = C_ChallengeMode.GetMapScoreInfo() or {}
             local scoresByMapID = {}
-            for _, scoreData in ipairs(allScores) do
+            for i = 1, #allScores do
+                local scoreData = allScores[i]
                 if scoreData.mapChallengeModeID then
                     scoresByMapID[scoreData.mapChallengeModeID] = scoreData
                 end
@@ -2247,7 +2339,8 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
             -- Get dungeon details
             local mapTable = C_ChallengeMode.GetMapTable()
             if mapTable then
-                for _, mapID in ipairs(mapTable) do
+                for i = 1, #mapTable do
+                    local mapID = mapTable[i]
                     local name, id, timeLimit, texture = C_ChallengeMode.GetMapUIInfo(mapID)
                     if name then
                         local scoreData = scoresByMapID[mapID]
@@ -2282,6 +2375,8 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
             local numSaved = GetNumSavedInstances()
             for i = 1, numSaved do
                 local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress = GetSavedInstanceInfo(i)
+                if issecretvalue and name and issecretvalue(name) then name = nil end
+                if issecretvalue and difficultyName and issecretvalue(difficultyName) then difficultyName = nil end
                 if name and isRaid then
                     table.insert(pve.lockouts, {
                         name = name,
@@ -2669,7 +2764,8 @@ function WarbandNexus:CollectCurrencyData()
             -- If API provides depth/level/indent, we should use it instead of inference
         end
         
-        for i, header in ipairs(headerList) do
+        for i = 1, #headerList do
+            local header = headerList[i]
             local name = header.name
             
             -- Root level headers (depth 0)
@@ -2709,7 +2805,8 @@ function WarbandNexus:CollectCurrencyData()
     -- Build header tree structure (parent-child relationships)
     local function BuildHeaderTree(headerList)
         -- Initialize children array and hasDescendants flag
-        for i, header in ipairs(headerList) do
+        for i = 1, #headerList do
+            local header = headerList[i]
             header.children = {}
             header.hasDescendants = #header.currencies > 0
         end
@@ -2924,7 +3021,8 @@ function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
     
     -- Extract and store dungeon metadata globally
     if pveData.mythicPlus and pveData.mythicPlus.dungeons then
-        for _, dungeon in ipairs(pveData.mythicPlus.dungeons) do
+        for i = 1, #pveData.mythicPlus.dungeons do
+            local dungeon = pveData.mythicPlus.dungeons[i]
             if dungeon.mapID and dungeon.name then
                 self.db.global.pveMetadata.dungeons[dungeon.mapID] = {
                     name = dungeon.name,
@@ -2936,7 +3034,8 @@ function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
     
     -- Extract and store raid metadata globally
     if pveData.lockouts then
-        for _, lockout in ipairs(pveData.lockouts) do
+        for i = 1, #pveData.lockouts do
+            local lockout = pveData.lockouts[i]
             if lockout.instanceID and lockout.name then
                 self.db.global.pveMetadata.raids[lockout.instanceID] = {
                     name = lockout.name,
@@ -2971,7 +3070,8 @@ function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
     
     -- Copy Great Vault data (minimal, no heavy metadata)
     if pveData.greatVault then
-        for _, activity in ipairs(pveData.greatVault) do
+        for i = 1, #pveData.greatVault do
+            local activity = pveData.greatVault[i]
             table.insert(progress.greatVault, {
                 type = activity.type,
                 index = activity.index,
@@ -2990,7 +3090,8 @@ function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
     
     -- Copy Lockouts (reference by instanceID, not full metadata)
     if pveData.lockouts then
-        for _, lockout in ipairs(pveData.lockouts) do
+        for i = 1, #pveData.lockouts do
+            local lockout = pveData.lockouts[i]
             table.insert(progress.lockouts, {
                 instanceID = lockout.instanceID or lockout.id,
                 name = lockout.name,  -- Keep name for display (small)
@@ -3006,7 +3107,8 @@ function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
     
     -- Copy M+ dungeon progress (reference by mapID)
     if pveData.mythicPlus and pveData.mythicPlus.dungeons then
-        for _, dungeon in ipairs(pveData.mythicPlus.dungeons) do
+        for i = 1, #pveData.mythicPlus.dungeons do
+            local dungeon = pveData.mythicPlus.dungeons[i]
             if dungeon.mapID then
                 progress.mythicPlus.dungeonProgress[dungeon.mapID] = {
                     score = dungeon.score or 0,
@@ -3165,7 +3267,8 @@ function WarbandNexus:GetPersonalBankV2(charKey)
             
             -- Add bags (convert array to bagID-indexed)
             if itemsData.bags then
-                for _, item in ipairs(itemsData.bags) do
+                for i = 1, #itemsData.bags do
+                    local item = itemsData.bags[i]
                     local bagID = item.bagID or 0
                     local slot = item.slot or 1
                     if not combined[bagID] then
@@ -3177,7 +3280,8 @@ function WarbandNexus:GetPersonalBankV2(charKey)
             
             -- Add bank (convert array to bagID-indexed)
             if itemsData.bank then
-                for _, item in ipairs(itemsData.bank) do
+                for i = 1, #itemsData.bank do
+                    local item = itemsData.bank[i]
                     local bagID = item.bagID or -1
                     local slot = item.slot or 1
                     if not combined[bagID] then
@@ -3211,7 +3315,8 @@ function WarbandNexus:GetPersonalItemsV2(charKey)
             
             -- Add bags
             if itemsData.bags then
-                for _, item in ipairs(itemsData.bags) do
+                for i = 1, #itemsData.bags do
+                    local item = itemsData.bags[i]
                     local bagID = item.bagID or 0
                     local slot = item.slot or 1
                     if not combined[bagID] then
@@ -3223,7 +3328,8 @@ function WarbandNexus:GetPersonalItemsV2(charKey)
             
             -- Add bank
             if itemsData.bank then
-                for _, item in ipairs(itemsData.bank) do
+                for i = 1, #itemsData.bank do
+                    local item = itemsData.bank[i]
                     local bagID = item.bagID or -1
                     local slot = item.slot or 1
                     if not combined[bagID] then
@@ -3321,7 +3427,8 @@ function WarbandNexus:GetWarbandBankV2()
             }
             
             if warbandData.items then
-                for _, item in ipairs(warbandData.items) do
+                for i = 1, #warbandData.items do
+                    local item = warbandData.items[i]
                     local bagID = item.bagID or 13
                     local slot = item.slot or 1
                     if not result.items[bagID] then
@@ -3456,7 +3563,8 @@ function WarbandNexus:ValidateCharacterData(characterKey)
     
     -- Check required fields
     local required = {"name", "realm", "class", "classFile", "level"}
-    for _, field in ipairs(required) do
+    for i = 1, #required do
+        local field = required[i]
         if not char[field] then
             return false, "Missing required field: " .. field
         end
@@ -3638,7 +3746,8 @@ function WarbandNexus:GetPersonalBankItems()
     
     -- Add inventory bags items
     if itemsData.bags then
-        for _, item in ipairs(itemsData.bags) do
+        for i = 1, #itemsData.bags do
+            local item = itemsData.bags[i]
             if item.itemID then
                 item.bagIndex = item.actualBagID or item.bagID
                 item.slotID = item.slotIndex
@@ -3650,7 +3759,8 @@ function WarbandNexus:GetPersonalBankItems()
     
     -- Add bank items
     if itemsData.bank then
-        for _, item in ipairs(itemsData.bank) do
+        for i = 1, #itemsData.bank do
+            local item = itemsData.bank[i]
             if item.itemID then
                 item.bagIndex = item.actualBagID or item.bagID
                 item.slotID = item.slotIndex
@@ -3688,7 +3798,8 @@ function WarbandNexus:GetInventoryItems()
     
     -- Add ONLY inventory bags items (bags field)
     if itemsData.bags then
-        for _, item in ipairs(itemsData.bags) do
+        for i = 1, #itemsData.bags do
+            local item = itemsData.bags[i]
             if item.itemID then
                 item.bagIndex = item.actualBagID or item.bagID
                 item.slotID = item.slotIndex
@@ -3726,7 +3837,8 @@ function WarbandNexus:GetBankItems()
     
     -- Add ONLY bank items (bank field)
     if itemsData.bank then
-        for _, item in ipairs(itemsData.bank) do
+        for i = 1, #itemsData.bank do
+            local item = itemsData.bank[i]
             if item.itemID then
                 item.bagIndex = item.actualBagID or item.bagID
                 item.slotID = item.slotIndex
@@ -3794,12 +3906,14 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
     local usedSlots = 0
     
     -- Scan specified bags
-    for _, bagID in ipairs(bagsToScan) do
+    for i = 1, #bagsToScan do
+        local bagID = bagsToScan[i]
         -- Find bagIndex from bagID
         local bagIndex = nil
-        for idx, invBagID in ipairs(ns.INVENTORY_BAGS) do
+        for j = 1, #ns.INVENTORY_BAGS do
+            local invBagID = ns.INVENTORY_BAGS[j]
             if invBagID == bagID then
-                bagIndex = idx
+                bagIndex = j
                 break
             end
         end
@@ -3949,10 +4063,14 @@ function WarbandNexus:GetItemCountsAcrossCharacters(itemID)
         local charTotal = 0
         local itemsData = self.GetItemsData and self:GetItemsData(charKey)
         if itemsData then
-            for _, item in ipairs(itemsData.bags or {}) do
+            local _bags = itemsData.bags or {}
+            for i = 1, #_bags do
+                local item = _bags[i]
                 if item.itemID == itemID then charTotal = charTotal + (item.stackCount or 1) end
             end
-            for _, item in ipairs(itemsData.bank or {}) do
+            local _bank = itemsData.bank or {}
+            for i = 1, #_bank do
+                local item = _bank[i]
                 if item.itemID == itemID then charTotal = charTotal + (item.stackCount or 1) end
             end
         end
@@ -4006,7 +4124,9 @@ function WarbandNexus:GetDetailedItemCounts(itemID)
         local isCurrentChar = (currentCharKey and charKey == currentCharKey)
         local itemsData = self.GetItemsData and self:GetItemsData(charKey)
         if itemsData then
-            for _, item in ipairs(itemsData.bank or {}) do
+            local _bank = itemsData.bank or {}
+            for i = 1, #_bank do
+                local item = _bank[i]
                 if item.itemID == itemID then bankCount = bankCount + (item.stackCount or 1) end
             end
             if isCurrentChar and C_Container and C_Container.GetContainerNumSlots then
@@ -4020,7 +4140,9 @@ function WarbandNexus:GetDetailedItemCounts(itemID)
                     end
                 end
             else
-                for _, item in ipairs(itemsData.bags or {}) do
+                local _bags = itemsData.bags or {}
+                for i = 1, #_bags do
+                    local item = _bags[i]
                     if item.itemID == itemID then bagCount = bagCount + (item.stackCount or 1) end
                 end
             end
@@ -4093,7 +4215,6 @@ BACKWARD COMPATIBILITY:
 -- Local references for performance
 local wipe = wipe
 local pairs = pairs
-local ipairs = ipairs
 local tinsert = table.insert
 local time = time
 
@@ -4148,12 +4269,14 @@ function WarbandNexus:ScanWarbandBank(specificBagIDs)
     local usedSlots = 0
     
     -- Scan specified bags
-    for _, bagID in ipairs(bagsToScan) do
+    for i = 1, #bagsToScan do
+        local bagID = bagsToScan[i]
         -- Find tabIndex from bagID
         local tabIndex = nil
-        for idx, wbBagID in ipairs(ns.WARBAND_BAGS) do
+        for j = 1, #ns.WARBAND_BAGS do
+            local wbBagID = ns.WARBAND_BAGS[j]
             if wbBagID == bagID then
-                tabIndex = idx
+                tabIndex = j
                 break
             end
         end
@@ -4303,12 +4426,14 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
     local usedSlots = 0
     
     -- Scan specified bags
-    for _, bagID in ipairs(bagsToScan) do
+    for i = 1, #bagsToScan do
+        local bagID = bagsToScan[i]
         -- Find bagIndex from bagID
         local bagIndex = nil
-        for idx, pbBagID in ipairs(ns.PERSONAL_BANK_BAGS) do
+        for j = 1, #ns.PERSONAL_BANK_BAGS do
+            local pbBagID = ns.PERSONAL_BANK_BAGS[j]
             if pbBagID == bagID then
-                bagIndex = idx
+                bagIndex = j
                 break
             end
         end
@@ -4422,7 +4547,8 @@ function WarbandNexus:GetWarbandBankItems(groupByCategory)
     
     -- ItemsCacheService returns: { items = {}, lastUpdate = 0 }
     -- Add source metadata for UI
-    for _, item in ipairs(warbandData.items) do
+    for i = 1, #warbandData.items do
+        local item = warbandData.items[i]
         if item.itemID then
             item.tabIndex = item.tabIndex
             item.slotID = item.slotIndex
@@ -4471,7 +4597,8 @@ function WarbandNexus:SearchWarbandItems(searchTerm)
     
     searchTerm = searchTerm:lower()
     
-    for _, item in ipairs(allItems) do
+    for i = 1, #allItems do
+        local item = allItems[i]
         if item.name and item.name:lower():find(searchTerm, 1, true) then
             tinsert(results, item)
         end
@@ -4525,14 +4652,16 @@ function WarbandNexus:GetBankStatistics()
     local warbandData = self.GetWarbandBankData and self:GetWarbandBankData()
     if warbandData and warbandData.items and #warbandData.items > 0 then
         stats.warband.usedSlots = #warbandData.items
-        for _, item in ipairs(warbandData.items) do
+        for i = 1, #warbandData.items do
+            local item = warbandData.items[i]
             stats.warband.itemCount = stats.warband.itemCount + (item.stackCount or 1)
         end
         stats.warband.lastScan = warbandData.lastUpdate or 0
     end
     -- Live API for total warband bank slots (works even when bank is closed in TWW)
     local WARBAND_BAGS = ns.WARBAND_BAGS or {13, 14, 15, 16, 17}
-    for _, bagID in ipairs(WARBAND_BAGS) do
+    for i = 1, #WARBAND_BAGS do
+        local bagID = WARBAND_BAGS[i]
         stats.warband.totalSlots = stats.warband.totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
     end
     -- If API returned 0 (no purchased tabs), use stored item count as minimum
@@ -4550,10 +4679,14 @@ function WarbandNexus:GetBankStatistics()
         local bankSlots = itemsData.bank and #itemsData.bank or 0
         stats.personal.usedSlots = bagSlots + bankSlots
         
-        for _, item in ipairs(itemsData.bags or {}) do
+        local _bags = itemsData.bags or {}
+        for i = 1, #_bags do
+            local item = _bags[i]
             stats.personal.itemCount = stats.personal.itemCount + (item.stackCount or 1)
         end
-        for _, item in ipairs(itemsData.bank or {}) do
+        local _bank = itemsData.bank or {}
+        for i = 1, #_bank do
+            local item = _bank[i]
             stats.personal.itemCount = stats.personal.itemCount + (item.stackCount or 1)
         end
         
@@ -4562,10 +4695,12 @@ function WarbandNexus:GetBankStatistics()
     -- Live API for total personal slots (inventory bags always accessible)
     local INVENTORY_BAGS = ns.INVENTORY_BAGS or {0, 1, 2, 3, 4, 5}
     local BANK_BAGS = ns.PERSONAL_BANK_BAGS or {-1, 6, 7, 8, 9, 10, 11}
-    for _, bagID in ipairs(INVENTORY_BAGS) do
+    for i = 1, #INVENTORY_BAGS do
+        local bagID = INVENTORY_BAGS[i]
         stats.personal.totalSlots = stats.personal.totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
     end
-    for _, bagID in ipairs(BANK_BAGS) do
+    for i = 1, #BANK_BAGS do
+        local bagID = BANK_BAGS[i]
         stats.personal.totalSlots = stats.personal.totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
     end
     -- If API returned 0 for everything, use stored item count as minimum

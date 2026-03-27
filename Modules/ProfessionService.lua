@@ -2166,17 +2166,42 @@ function WarbandNexus:GetConcentrationTimeToFull(entry)
     local remainingDeficit = entry.max - estimated
     local secondsToFull = remainingDeficit / CONCENTRATION_PER_SECOND
 
-    -- Format time
+    local totalHours = math.floor(secondsToFull / 3600)
+    local totalMinutes = math.floor(secondsToFull / 60)
+
+    if totalHours >= 1 then
+        return string.format("%d Hours", totalHours)
+    else
+        return string.format("%d Min", math.max(1, totalMinutes))
+    end
+end
+
+--[[
+    Detailed time-to-full breakdown for tooltip display.
+    Returns "X Days Y Hours Z Minutes" format.
+
+    @param entry table - Single concentration entry from GetAllConcentrationData()
+    @return string - Detailed time string ("2 Days 5 Hours 13 Minutes", etc.)
+]]
+function WarbandNexus:GetConcentrationTimeToFullDetailed(entry)
+    if not entry or not entry.max or entry.max <= 0 then return "" end
+
+    local estimated = self:GetEstimatedConcentration(entry)
+    if estimated >= entry.max then return "Full" end
+
+    local remainingDeficit = entry.max - estimated
+    local secondsToFull = remainingDeficit / CONCENTRATION_PER_SECOND
+
     local days = math.floor(secondsToFull / 86400)
     local hours = math.floor((secondsToFull % 86400) / 3600)
     local minutes = math.floor((secondsToFull % 3600) / 60)
 
     if days > 0 then
-        return string.format("%dd %dh %dm", days, hours, minutes)
+        return string.format("%d Days %d Hours %d Min", days, hours, minutes)
     elseif hours > 0 then
-        return string.format("%dh %dm", hours, minutes)
+        return string.format("%d Hours %d Min", hours, minutes)
     else
-        return string.format("%dm", math.max(1, minutes))
+        return string.format("%d Min", math.max(1, minutes))
     end
 end
 

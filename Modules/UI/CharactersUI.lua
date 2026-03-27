@@ -612,8 +612,7 @@ function WarbandNexus:DrawCharacterList(parent)
     favHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     if favIcon then favIcon:SetSize(28, 28) end
     if favHeaderText then
-        local font, _, flags = favHeaderText:GetFont()
-        favHeaderText:SetFont(font, 14, flags)
+        FontManager:ApplyFont(favHeaderText, "title")
     end
     
     local favAccent = favHeader:CreateTexture(nil, "ARTWORK", nil, 2)
@@ -673,8 +672,7 @@ function WarbandNexus:DrawCharacterList(parent)
     charHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     charHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     if charHeaderText then
-        local font, _, flags = charHeaderText:GetFont()
-        charHeaderText:SetFont(font, 14, flags)
+        FontManager:ApplyFont(charHeaderText, "title")
     end
     
     local charAccent = charHeader:CreateTexture(nil, "ARTWORK", nil, 2)
@@ -739,8 +737,7 @@ function WarbandNexus:DrawCharacterList(parent)
         untrackedHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
         untrackedHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
         if untrackedHeaderText then
-            local font, _, flags = untrackedHeaderText:GetFont()
-            untrackedHeaderText:SetFont(font, 14, flags)
+            FontManager:ApplyFont(untrackedHeaderText, "title")
             untrackedHeaderText:SetTextColor(0.7, 0.7, 0.7)
         end
         
@@ -1088,11 +1085,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             local profName = prof.name
             local kd = nil
             if profName and char.knowledgeData then
-                -- Prefer skillLineID-keyed entries (current data written by ProfessionService)
+                -- Prefer highest skillLineID (newest expansion) for current data
+                local bestKey = -1
                 for key, entry in pairs(char.knowledgeData) do
                     if type(key) == "number" and type(entry) == "table" and entry.professionName == profName then
-                        kd = entry
-                        break
+                        if key > bestKey then
+                            bestKey = key
+                            kd = entry
+                        end
                     end
                 end
                 -- Fallback: legacy profName-keyed data
@@ -1169,11 +1169,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 -- ====== SECTION 2: Knowledge Data (C_Traits) ======
                 local kd = nil
                 if char.knowledgeData then
-                    -- Prefer skillLineID-keyed entries (current data)
+                    -- Prefer highest skillLineID (newest expansion) for current data
+                    local bestKey = -1
                     for kKey, kEntry in pairs(char.knowledgeData) do
                         if type(kKey) == "number" and type(kEntry) == "table" and kEntry.professionName == profName then
-                            kd = kEntry
-                            break
+                            if kKey > bestKey then
+                                bestKey = kKey
+                                kd = kEntry
+                            end
                         end
                     end
                     -- Fallback: legacy profName-keyed data

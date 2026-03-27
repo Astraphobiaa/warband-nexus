@@ -70,7 +70,8 @@ local ITEM_CLASS_ARMOR = LE_ITEM_CLASS_ARMOR or 4
 
 -- Reverse map: slotID -> slot def (O(1) lookup)
 local SLOT_BY_ID = {}
-for _, s in ipairs(GEAR_SLOTS) do
+for i = 1, #GEAR_SLOTS do
+    local s = GEAR_SLOTS[i]
     SLOT_BY_ID[s.id] = s
 end
 
@@ -349,7 +350,8 @@ local TRACK_ORDER = { "Adventurer", "Veteran", "Champion", "Hero", "Myth" }
 -- Reverse map: ilvl → { trackName, tier, maxTier }.
 -- Overlapping ilvls: higher tracks overwrite lower, so 233 → Veteran 1/6 (not Adventurer 5/6).
 local ILVL_TO_UPGRADE = {}
-for _, trackName in ipairs(TRACK_ORDER) do
+for i = 1, #TRACK_ORDER do
+    local trackName = TRACK_ORDER[i]
     local tiers = TRACK_ILVLS[trackName]
     for tier = 1, #tiers do
         ILVL_TO_UPGRADE[tiers[tier]] = { trackName, tier, #tiers }
@@ -397,6 +399,19 @@ local TRACK_NAME_TO_CURRENCY_ID = {
     Hero       = 3345,
     Myth       = 3347,
 }
+
+-- Crafted items: recraft with crests to reach higher ilvl tiers.
+-- Each tier has its own crest type, cost, and max achievable ilvl.
+-- Recraft is a single operation: player picks target tier, pays that tier's crest cost.
+-- Ordered highest → lowest so UI picks the best affordable tier first.
+local CRAFTED_CREST_TIERS = {
+    { crestID = 3347, name = "Myth",       maxIlvl = 289, cost = 80 },
+    { crestID = 3345, name = "Hero",       maxIlvl = 276, cost = 60 },
+    { crestID = 3343, name = "Champion",   maxIlvl = 263, cost = 60 },
+    { crestID = 3341, name = "Veteran",    maxIlvl = 250, cost = 45 },
+    { crestID = 3383, name = "Adventurer", maxIlvl = 237, cost = 30 },
+}
+ns.CRAFTED_CREST_TIERS = CRAFTED_CREST_TIERS
 
 -- Export slot definitions and upgrade tables for use by GearUI
 ns.GEAR_SLOTS              = GEAR_SLOTS
@@ -503,7 +518,8 @@ local function ScanUpgradeFromTooltip(slotID)
     local ok, data = pcall(C_TooltipInfo.GetInventoryItem, "player", slotID)
     if not ok or not data or not data.lines then return nil end
 
-    for _, line in ipairs(data.lines) do
+    for i = 1, #data.lines do
+        local line = data.lines[i]
         local text = line.leftText
         if text then
             -- Matches "Upgrade Level: Adventurer 6/6" (English client)
@@ -556,6 +572,9 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
                 slotEntry.upgradeTrack = tooltipInfo.trackName
                 slotEntry.currUpgrade  = tooltipInfo.currUpgrade
                 slotEntry.maxUpgrade   = tooltipInfo.maxUpgrade
+                if tooltipInfo.trackName == "Crafted" then
+                    slotEntry.isCrafted = true
+                end
             end
             return
         end
@@ -569,6 +588,10 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
         slotEntry.currUpgrade  = currUpgrade
         slotEntry.maxUpgrade   = maxUpgrade
         slotEntry.maxIlvl      = info.maxItemLevel or 0
+        -- Mark crafted items for special UI handling (crafting icon + ilvl range)
+        if trackName == "Crafted" then
+            slotEntry.isCrafted = true
+        end
 
         -- Persist next-level costs so UI can show "affordable" badge offline
         local hasNext = (currUpgrade < maxUpgrade)
@@ -577,7 +600,8 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
             local nextInfo   = levelInfos[currUpgrade + 1]
             if nextInfo and nextInfo.currencyCostsToUpgrade then
                 local costs = {}
-                for _, entry in ipairs(nextInfo.currencyCostsToUpgrade) do
+                for i = 1, #nextInfo.currencyCostsToUpgrade do
+                    local entry = nextInfo.currencyCostsToUpgrade[i]
                     if entry.currencyID and (entry.cost or entry.amount) then
                         costs[#costs + 1] = { currencyID = entry.currencyID, amount = entry.cost or entry.amount }
                     end
@@ -589,7 +613,8 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
             if not slotEntry.nextUpgradeCosts and C_ItemUpgrade.GetItemUpgradeCost then -- legacy; not in current API list
                 local rawCosts = C_ItemUpgrade.GetItemUpgradeCost(location, currUpgrade + 1) or {}
                 local costs = {}
-                for _, entry in ipairs(rawCosts) do
+                for i = 1, #rawCosts do
+                    local entry = rawCosts[i]
                     if entry.currencyID and (entry.amount or entry.cost) then
                         costs[#costs + 1] = {
                             currencyID = entry.currencyID,
@@ -624,7 +649,8 @@ function WarbandNexus:ScanEquippedGear()
     local existingData = db[charKey]
     local watermarks = (existingData and existingData.watermarks) or {}
 
-    for _, slotDef in ipairs(GEAR_SLOTS) do
+    for i = 1, #GEAR_SLOTS do
+        local slotDef = GEAR_SLOTS[i]
         local slotID = slotDef.id
         local itemLink = GetInventoryItemLink("player", slotID)
         if itemLink then
@@ -661,6 +687,10 @@ function WarbandNexus:ScanEquippedGear()
                     slotEntry.upgradeTrack = tooltipInfo.trackName
                     slotEntry.currUpgrade  = tooltipInfo.currUpgrade
                     slotEntry.maxUpgrade   = tooltipInfo.maxUpgrade
+                    -- Mark crafted items for special UI handling (crafting icon + ilvl range)
+                    if tooltipInfo.trackName == "Crafted" then
+                        slotEntry.isCrafted = true
+                    end
                 end
 
                 -- Priority 2: ilvl inference fallback
@@ -789,6 +819,23 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 currencyID = 0, crestCost = 0, moneyCost = 0,
                 watermarkIlvl = watermarks[slotID] or 0,
             }
+        elseif slot.isCrafted or trackName == "Crafted" then
+            -- Crafted items: recraft with crests to reach higher ilvl.
+            -- Determine achievable ilvl range based on player's crest inventory.
+            upgrades[slotID] = {
+                canUpgrade    = true,
+                isCrafted     = true,
+                currentIlvl   = itemLevel,
+                nextIlvl      = itemLevel,
+                maxIlvl       = 289,
+                currUpgrade   = currUpgrade or 0,
+                maxUpgrade    = maxUpgrade or 0,
+                trackName     = "Crafted",
+                currencyID    = 0,
+                crestCost     = 0,
+                moneyCost     = 0,
+                watermarkIlvl = watermarks[slotID] or 0,
+            }
         elseif trackName and currUpgrade and maxUpgrade and maxUpgrade > 0 then
             local hasNext = (currUpgrade < maxUpgrade)
             local tiers = TRACK_ILVLS[trackName]
@@ -885,7 +932,8 @@ function WarbandNexus:GearUpgradeDebugReport()
     local upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(currentKey)) or {}
     local currencies = (self.GetGearUpgradeCurrenciesFromDB and self:GetGearUpgradeCurrenciesFromDB(currentKey)) or {}
     local currencyAmounts = {}
-    for _, c in ipairs(currencies) do
+    for i = 1, #currencies do
+        local c = currencies[i]
         if c and c.currencyID ~= nil then
             currencyAmounts[c.currencyID] = (c.amount ~= nil) and c.amount or 0
         end
@@ -902,7 +950,8 @@ function WarbandNexus:GearUpgradeDebugReport()
         self:Print("  " .. tostring(id) .. " " .. tostring(nameStr) .. " = " .. tostring(amt))
     end
     self:Print("|cff888888Slots: crest=have/need (need 20 or 0=gold-only/max), afford:|r")
-    for _, slotDef in ipairs(GEAR_SLOTS) do
+    for i = 1, #GEAR_SLOTS do
+        local slotDef = GEAR_SLOTS[i]
         local slotID = slotDef.id
         local up = upgradeInfo[slotID]
         if up then
@@ -964,7 +1013,8 @@ function WarbandNexus:GearStorageUpgradeDebugReportAll()
             tostring(charName), tostring(entry.canonical), totalSlotsWithUpgrade))
 
         if totalSlotsWithUpgrade > 0 then
-            for _, slotDef in ipairs(GEAR_SLOTS) do
+            for ii = 1, #GEAR_SLOTS do
+                local slotDef = GEAR_SLOTS[ii]
                 local slotID = slotDef.id
                 local cands = findings[slotID]
                 local best = cands and cands[1]
@@ -1138,7 +1188,8 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             end
         end
         if (candidate.itemLevel or 0) == 0 then return end
-        for _, ex in ipairs(findings[slotID]) do
+        for i = 1, #findings[slotID] do
+            local ex = findings[slotID][i]
             if ex.itemLink == candidate.itemLink and ex.source == candidate.source then return end
         end
         findings[slotID][#findings[slotID] + 1] = candidate
@@ -1184,7 +1235,8 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         local link = item.itemLink or item.link
         local itemName = link and link:match("%[(.-)%]") or tostring(item.itemID)
 
-        for _, slotID in ipairs(targetSlots) do
+        for i = 1, #targetSlots do
+            local slotID = targetSlots[i]
             local isArmorOK = IsArmorCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc)
             local isWeaponOK = IsWeaponCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc, mainStat)
             local isStatOK = IsMainStatCompatible(link, mainStat, slotID)
@@ -1220,7 +1272,8 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     -- ── Warband Bank ──────────────────────────────────────────────────────────
     local wbData = (WarbandNexus.GetWarbandBankData and WarbandNexus:GetWarbandBankData()) or nil
     if wbData and wbData.items then
-        for _, item in ipairs(wbData.items) do
+        for i = 1, #wbData.items do
+            local item = wbData.items[i]
             EvaluateItem(item, nil, "warband")
         end
     end
@@ -1256,10 +1309,14 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             end
             local itemsData = getItemsForChar()
             if itemsData then
-                for _, item in ipairs(itemsData.bags or {}) do
+                local bags = itemsData.bags or {}
+                for i = 1, #bags do
+                    local item = bags[i]
                     EvaluateItem(item, charKey, "bag")
                 end
-                for _, item in ipairs(itemsData.bank or {}) do
+                local bank = itemsData.bank or {}
+                for i = 1, #bank do
+                    local item = bank[i]
                     EvaluateItem(item, charKey, "bank")
                 end
             end
@@ -1321,7 +1378,8 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                                         end)
                                     end
                                     local ok = true
-                                    for _, sid in ipairs(targetSlots) do
+                                    for i = 1, #targetSlots do
+                                        local sid = targetSlots[i]
                                         if not IsArmorCompatible(charData, sid, itemClassID, itemSubclassID, equipLoc) then ok = false break end
                                         if not IsWeaponCompatible(charData, sid, itemClassID, itemSubclassID, equipLoc, mainStat) then ok = false break end
                                         if not IsMainStatCompatible(slotData.itemLink, mainStat, sid) then ok = false break end
@@ -1402,7 +1460,8 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
     local function norm(k) return (k and k:gsub("%s+", "")) or "" end
     local isCurrentChar = (norm(canonicalKey) == norm(currentKey) or norm(charKey) == norm(currentKey))
 
-    for _, currencyID in ipairs(UPGRADE_CURRENCY_IDS) do
+    for i = 1, #UPGRADE_CURRENCY_IDS do
+        local currencyID = UPGRADE_CURRENCY_IDS[i]
         local amount = 0
         local cName = UPGRADE_CURRENCY_NAMES[currencyID]
         local cIcon = nil

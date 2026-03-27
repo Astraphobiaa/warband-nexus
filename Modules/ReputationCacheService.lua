@@ -1995,6 +1995,80 @@ function WarbandNexus:ClearReputationCache()
 end
 
 -- ============================================================================
+-- WARBAND REPUTATION AGGREGATION
+-- ============================================================================
+
+---Aggregate reputation data across all characters into a warband-wide view.
+---For each faction, returns the best standing across all tracked characters.
+---@return table { [factionID] = { name, bestStanding, bestCharKey, characters = { [charKey] = {standing, value, max} } } }
+function WarbandNexus:GetWarbandReputationSummary()
+    local db = self.db and self.db.global and self.db.global.reputationCache
+    if not db then return {} end
+    
+    local summary = {}
+    
+    -- Account-wide factions (same for all characters)
+    if db.accountWide then
+        for factionID, compact in pairs(db.accountWide) do
+            local numID = tonumber(factionID) or factionID
+            if not summary[numID] then
+                summary[numID] = {
+                    isAccountWide = true,
+                    standing = compact.s or 0,
+                    value = compact.v or 0,
+                    maxValue = compact.m or 0,
+                    renownLevel = compact.r,
+                    characters = {},
+                }
+            end
+        end
+    end
+    
+    -- Character-specific factions: find best standing per faction
+    if db.characters then
+        for charKey, charFactions in pairs(db.characters) do
+            for factionID, compact in pairs(charFactions) do
+                local numID = tonumber(factionID) or factionID
+                local standing = compact.s or 0
+                local value = compact.v or 0
+                local renown = compact.r
+                
+                if not summary[numID] then
+                    summary[numID] = {
+                        isAccountWide = false,
+                        standing = standing,
+                        value = value,
+                        maxValue = compact.m or 0,
+                        renownLevel = renown,
+                        bestCharKey = charKey,
+                        characters = {},
+                    }
+                end
+                
+                summary[numID].characters[charKey] = {
+                    standing = standing,
+                    value = value,
+                    maxValue = compact.m or 0,
+                    renownLevel = renown,
+                }
+                
+                -- Track best standing (higher is better, with renown as tiebreaker)
+                local currentBest = summary[numID].standing or 0
+                local currentBestRenown = summary[numID].renownLevel or 0
+                if standing > currentBest or (standing == currentBest and (renown or 0) > currentBestRenown) then
+                    summary[numID].standing = standing
+                    summary[numID].value = value
+                    summary[numID].maxValue = compact.m or 0
+                    summary[numID].renownLevel = renown
+                    summary[numID].bestCharKey = charKey
+                end
+            end
+        end
+    end
+    
+    return summary
+end
+
 -- ============================================================================
 -- EXPORT
 -- ============================================================================

@@ -1,7 +1,7 @@
 # Midnight Zone Rare NPC IDs (CollectibleSourceDB)
 
 NPC IDs are used for try counter + tooltip (loot match and name fallback).  
-**Source:** [kemayo/wow-handynotes-midnight](https://github.com/kemayo/wow-handynotes-midnight) (zone Lua files). All IDs below are implemented in `CollectibleSourceDB.lua`.
+All IDs below are implemented in `CollectibleSourceDB.lua`. Verified via in-game targeting and Encounter Journal data.
 
 ## Zone IDs (uiMapID)
 
