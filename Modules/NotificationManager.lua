@@ -18,19 +18,25 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 local FALLBACK_CHANGELOG = "NEW FEATURES:\n" ..
     "- To-Do Tab: Plans section renamed to To-Do with refreshed branding\n" ..
     "- Weekly Reset Timer: Live countdown at the top of Weekly Progress view\n" ..
-    "- Character Overview: Cross-character summary card showing quest & vault progress\n" ..
-    "- Slash Command: /wn todo opens the To-Do Tracker (/wn plans still works)\n" ..
+    "- Character Overview: Cross-character summary card with quest & vault progress\n" ..
+    "- Wowhead Links: Right-click collectibles, plans, and quest items to copy URLs\n" ..
+    "- Crafted Gear Overhaul: Tier-based recraft info replaces misleading X/6 notation\n" ..
+    "- Reminder System: Daily login, weekly reset, and countdown triggers for plans\n" ..
     "\n" ..
-    "IMPROVEMENTS:\n" ..
-    "- Weekly Progress: 'Daily Tasks' renamed to 'Weekly Progress' across all views\n" ..
-    "- Per-category mini progress (Weekly, World, Daily, Assignments, Events)\n" ..
-    "- Vault Tracking: Condensed M+/Raid/World progress per character in overview\n" ..
-    "- Content Events: Main event completion now derived from sub-quest status\n" ..
-    "- Collapsible Sections: Character Overview card supports expand/collapse\n" ..
+    "GEAR TAB:\n" ..
+    "- Crafted items show tier name + ilvl (e.g. 'Myth 285') instead of 'Myth 5/6'\n" ..
+    "- Max ilvl crafted items no longer show a false upgrade arrow\n" ..
+    "- Tooltip displays recraft cost, recommended tier, and crests needed\n" ..
     "\n" ..
-    "LOCALIZATION:\n" ..
-    "- Full translations for all 11 locales updated\n" ..
-    "- New strings: Weekly Reset, Character Overview, To-Do descriptions\n" ..
+    "PERFORMANCE:\n" ..
+    "- Throttled resize updates — no more frame drops during window resize\n" ..
+    "- Pooled gear tab frames — reduced frame creation by ~60 per refresh\n" ..
+    "- Fixed frame leak in plan description expand\n" ..
+    "\n" ..
+    "BUG FIXES:\n" ..
+    "- Fixed reminder dialog clearing zone alerts when saving other settings\n" ..
+    "- Fixed tooltip taint protection gap for profession gear detection\n" ..
+    "- Fixed crafted tier name resolving to wrong tier\n" ..
     "\n" ..
     "Thank you for your continued support!\n" ..
     "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."

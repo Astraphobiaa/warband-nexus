@@ -717,20 +717,10 @@ function WarbandNexus:ShowSetAlertDialog(planID)
     f.days5Check:SetChecked(has5)
     f.days3Check:SetChecked(has3)
     f.days1Check:SetChecked(has1)
-    f.zoneCheck:SetChecked(r.onZoneEnter or false)
-    
-    local hasZoneData = GetMapIDsFromPlanSource(plan)
-    local isWeeklyVault = plan.type == "weekly_vault"
-    local isCustom = plan.type == "custom"
-    if not hasZoneData and not isCustom then
-        f.zoneCheck:Disable()
-        f.zoneCheck:SetAlpha(0.4)
-        f.zoneLabel:SetTextColor(0.5, 0.5, 0.5)
-    else
-        f.zoneCheck:Enable()
-        f.zoneCheck:SetAlpha(1)
-        f.zoneLabel:SetTextColor(0.9, 0.9, 0.9)
-    end
+    f.zoneCheck:SetChecked(false)
+    f.zoneCheck:Disable()
+    f.zoneCheck:SetAlpha(0.4)
+    f.zoneLabel:SetTextColor(0.5, 0.5, 0.5)
     
     f.saveBtn:SetScript("OnClick", function()
         local days = {}
@@ -739,12 +729,15 @@ function WarbandNexus:ShowSetAlertDialog(planID)
         if f.days1Check:GetChecked() then days[#days + 1] = 1 end
         table.sort(days, function(a, b) return a > b end)
         
-        self:SetPlanReminder(f._currentPlanID, {
+        local settings = {
             onDailyLogin = f.dailyCheck:GetChecked() or false,
             onWeeklyReset = f.weeklyCheck:GetChecked() or false,
             daysBeforeReset = days,
-            onZoneEnter = f.zoneCheck:GetChecked() or false,
-        })
+        }
+        if f.zoneCheck:IsEnabled() then
+            settings.onZoneEnter = f.zoneCheck:GetChecked() or false
+        end
+        self:SetPlanReminder(f._currentPlanID, settings)
         
         f:Hide()
         if self.RefreshUI then self:RefreshUI() end

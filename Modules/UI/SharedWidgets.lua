@@ -5100,5 +5100,86 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
     end
 end
 
+--============================================================================
+-- WOWHEAD URL COPY POPUP
+--============================================================================
+
+local wowheadCopyFrame = nil
+
+---Show a small popup with a Wowhead URL for the user to copy (Ctrl+C).
+---@param entityType string "mount"|"pet"|"toy"|"achievement"|"item"|"quest"|"spell"|"npc"|"currency"|"illusion"|"title"
+---@param id number
+---@param anchorFrame Frame|nil Optional frame to anchor near (defaults to UIParent center)
+function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
+    if not ns.Utilities or not ns.Utilities.GetWowheadURL then return end
+    local url = ns.Utilities:GetWowheadURL(entityType, id)
+    if not url then return end
+
+    if not wowheadCopyFrame then
+        local f = CreateFrame("Frame", "WarbandNexus_WowheadCopy", UIParent, "BackdropTemplate")
+        f:SetSize(360, 60)
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+        f:SetFrameStrata("DIALOG")
+        f:SetFrameLevel(500)
+        f:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        })
+        f:SetBackdropColor(0.06, 0.06, 0.08, 0.97)
+        local COLORS = ns.UI_COLORS or { accent = {0.5, 0.4, 0.7} }
+        f:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+        f:EnableMouse(true)
+        f:SetMovable(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+
+        local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        title:SetPoint("TOPLEFT", 10, -8)
+        title:SetText("|cffffcc00Wowhead|r  |cff888888Ctrl+C|r")
+        f._title = title
+
+        local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        closeBtn:SetSize(20, 20)
+        closeBtn:SetPoint("TOPRIGHT", -2, -2)
+        closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+        local editBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+        editBox:SetSize(336, 22)
+        editBox:SetPoint("BOTTOMLEFT", 12, 8)
+        editBox:SetAutoFocus(false)
+        editBox:SetMaxLetters(512)
+        if FontManager then
+            local path = FontManager:GetFontFace()
+            local size = FontManager:GetFontSize("body")
+            local flags = FontManager:GetAAFlags()
+            pcall(editBox.SetFont, editBox, path, size, flags)
+        end
+        editBox:SetScript("OnEscapePressed", function() f:Hide() end)
+        editBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+        editBox:SetScript("OnChar", function(self) self:SetText(f._url or ""); self:HighlightText() end)
+        f._editBox = editBox
+
+        wowheadCopyFrame = f
+    end
+
+    wowheadCopyFrame._url = url
+    wowheadCopyFrame._editBox:SetText(url)
+
+    if anchorFrame and anchorFrame.GetCenter then
+        wowheadCopyFrame:ClearAllPoints()
+        wowheadCopyFrame:SetPoint("TOP", anchorFrame, "BOTTOM", 0, -4)
+    else
+        wowheadCopyFrame:ClearAllPoints()
+        wowheadCopyFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    end
+
+    wowheadCopyFrame:Show()
+    wowheadCopyFrame._editBox:SetFocus()
+    wowheadCopyFrame._editBox:HighlightText()
+end
+
 -- Load message
 -- Factory loaded - verbose logging hidden (debug mode only)

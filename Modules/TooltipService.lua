@@ -480,8 +480,14 @@ function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
                     for i = 1, math.min(#tooltipData.lines, 5) do
                         local line = tooltipData.lines[i]
                         if line then
-                            local left = (line.leftText and tostring(line.leftText)) or ""
-                            local right = (line.rightText and tostring(line.rightText)) or ""
+                            local left = line.leftText
+                            local right = line.rightText
+                            if issecretvalue then
+                                if left and issecretvalue(left) then left = nil end
+                                if right and issecretvalue(right) then right = nil end
+                            end
+                            left = (left and tostring(left)) or ""
+                            right = (right and tostring(right)) or ""
                             for _, pat in ipairs(TOOLTIP_SLOT_PATTERNS) do
                                 local escaped = pat:gsub("%%", "%%%%")
                                 local word = "[%s%(:]" .. escaped .. "[%s%(]"
@@ -581,186 +587,27 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
 
         if hasSeason or (type(maxQty) == "number" and maxQty > 0) then
             local fmtNumber = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
-            local currentFmt = (ns.L and ns.L["CURRENT_MAX_FORMAT"]) or "Current: %s / %s"
-            local remainingLabel = (ns.L and ns.L["REMAINING"]) or "Remaining"
+            local currentLabel = (ns.L and ns.L["CURRENT_ENTRIES_LABEL"]) or "Current:"
+            local seasonLabel = (ns.L and ns.L["SEASON"]) or "Season"
+            local cappedText = CAPPED or "Capped"
+            local remainingSuffix = (ns.L and ns.L["VAULT_REMAINING_SUFFIX"]) or "remaining"
             frame:AddSpacer(6)
 
-            if hasSeason then
-                local rem = math.max((seasonMax or 0) - (totalEarned or 0), 0)
-                frame:AddLine(string.format(currentFmt, fmtNumber(qty), fmtNumber(seasonMax)), 1, 1, 1, false)
-                frame:AddLine(string.format("Season: %s / %s", fmtNumber(totalEarned), fmtNumber(seasonMax)), 0.8, 0.8, 0.8, false)
-                if rem > 0 then
-                    frame:AddLine(string.format("%s: %s", remainingLabel, fmtNumber(rem)), 0.5, 1, 0.5, false)
-                else
-                    frame:AddLine(string.format("%s: %s", remainingLabel, fmtNumber(rem)), 1, 0.35, 0.35, false)
-                end
-            else
-                local rem = math.max((maxQty or 0) - (qty or 0), 0)
-                frame:AddLine(string.format(currentFmt, fmtNumber(qty), fmtNumber(maxQty)), 1, 1, 1, false)
-                if rem > 0 then
-                    frame:AddLine(string.format("%s: %s", remainingLabel, fmtNumber(rem)), 0.5, 1, 0.5, false)
-                else
-                    frame:AddLine(string.format("%s: %s", remainingLabel, fmtNumber(rem)), 1, 0.35, 0.35, false)
-                end
-            end
-        end
-    end
-    
-    -- ===== CROSS-CHARACTER QUANTITIES =====
-    -- Show how much this currency exists on ALL tracked characters (including 0)
-    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global then
-        local currencyDB = WarbandNexus.db.global.currencyData
-        if currencyDB and currencyDB.currencies then
-            local charQuantities = {}
-            local totalQuantity = 0
-            local totalMaxQuantity = 0
-            local hasMaxQuantity = false
-            local currentCharKey = ns.Utilities:GetCharacterKey()
-            
-            -- Build tracked character list first
-            local trackedChars = {}
-            if WarbandNexus.db.global.characters then
-                for charKey, charData in pairs(WarbandNexus.db.global.characters) do
-                    if charData.isTracked ~= false then
-                        trackedChars[charKey] = charData
-                    end
-                end
-            end
-            
-            -- Iterate ALL tracked characters, show 0 if they don't have the currency
-            local isAccountWide = info.isAccountWide or false
-            local maxQuantitySeen = 0
-            for charKey, charData in pairs(trackedChars) do
-                local quantity = 0
-                local maxQuantity = 0
-                
-                local charCurrencies = currencyDB.currencies[charKey]
-                if charCurrencies and charCurrencies[currencyID] then
-                    local rawValue = charCurrencies[currencyID]
-                    if type(rawValue) == "table" then
-                        quantity = rawValue.quantity or 0
-                        maxQuantity = rawValue.maxQuantity or 0
-                    else
-                        quantity = tonumber(rawValue) or 0
-                        maxQuantity = 0
-                    end
-                end
-                
-                -- Prefer classFile (English token e.g. "DEATHKNIGHT") over class (localized e.g. "Death Knight")
-                local classFile = charData.classFile or charData.class or nil
-                
-                table.insert(charQuantities, {
-                    charKey = charKey,
-                    quantity = quantity,
-                    maxQuantity = maxQuantity,
-                    isCurrent = (charKey == currentCharKey),
-                    classFile = classFile
-                })
-                if not isAccountWide then
-                    totalQuantity = totalQuantity + quantity
-                    if maxQuantity and maxQuantity > 0 then
-                        hasMaxQuantity = true
-                        totalMaxQuantity = totalMaxQuantity + maxQuantity
-                    end
-                else
-                    -- Warband (account-wide): one shared pool — use max, not sum
-                    if quantity > totalQuantity then totalQuantity = quantity end
-                    if maxQuantity and maxQuantity > maxQuantitySeen then
-                        maxQuantitySeen = maxQuantity
-                        hasMaxQuantity = true
-                    end
-                end
-            end
-            if isAccountWide and maxQuantitySeen > 0 then
-                totalMaxQuantity = maxQuantitySeen
-            end
-            
-            -- Sort: Current character first, then by quantity descending, then alphabetically
-            table.sort(charQuantities, function(a, b)
-                if a.isCurrent ~= b.isCurrent then
-                    return a.isCurrent
-                end
-                if a.quantity ~= b.quantity then
-                    return a.quantity > b.quantity
-                end
-                return a.charKey < b.charKey
-            end)
-            
-            -- Show currency amount (account-wide: note + single balance; character: full breakdown)
-            if #charQuantities > 0 then
-                local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(n) end
-                local totalText
-                if hasMaxQuantity and totalMaxQuantity > 0 then
-                    totalText = string.format("%s / %s",
-                        FormatNumber(totalQuantity),
-                        FormatNumber(totalMaxQuantity))
-                else
-                    totalText = FormatNumber(totalQuantity)
-                end
+            local cap = hasSeason and seasonMax or maxQty
+            local earned = hasSeason and totalEarned or qty
+            local rem = math.max((cap or 0) - (earned or 0), 0)
 
-                if isAccountWide then
-                    -- Warband: only the note and balance, no character list
-                    frame:AddLine((ns.L and ns.L["CURRENCY_ACCOUNT_WIDE_NOTE"]) or "Account-wide (Warband) — same balance on all characters.", 0.6, 0.8, 1, false)
-                    local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
-                    frame:AddDoubleLine(
-                        totalLabel .. ":",
-                        totalText,
-                        0.4, 1, 0.4,
-                        0.4, 1, 0.4
-                    )
-                else
-                    -- Character-specific: full breakdown — only show relevant characters (quantity > 0)
-                    -- Current character is always shown; others only when they have the currency
-                    frame:AddLine((ns.L and ns.L["CHARACTER_CURRENCIES"]) or "Character Currencies:", 1, 0.82, 0, false)
-                    for _, charEntry in ipairs(charQuantities) do
-                        if charEntry.quantity == 0 and not charEntry.isCurrent then
-                            -- skip: irrelevant character (no currency)
-                        else
-                        local charName = charEntry.charKey:match("^([^%-]+)") or charEntry.charKey
-                        local classColor = {0.7, 0.7, 0.7}
-                        local classKey = charEntry.classFile or charEntry.class
-                        if classKey then
-                            classKey = string.upper(tostring(classKey))
-                            local classColorObj = C_ClassColor and C_ClassColor.GetClassColor(classKey)
-                            if classColorObj then
-                                classColor = {classColorObj.r, classColorObj.g, classColorObj.b}
-                            elseif RAID_CLASS_COLORS and RAID_CLASS_COLORS[classKey] then
-                                local c = RAID_CLASS_COLORS[classKey]
-                                classColor = {c.r, c.g, c.b}
-                            end
-                        end
-                        local marker = charEntry.isCurrent and (" " .. ((ns.L and ns.L["YOU_MARKER"]) or "(You)")) or ""
-                        local amountText
-                        if hasMaxQuantity and charEntry.maxQuantity and charEntry.maxQuantity > 0 then
-                            amountText = string.format("%s / %s",
-                                FormatNumber(charEntry.quantity),
-                                FormatNumber(charEntry.maxQuantity))
-                        else
-                            amountText = FormatNumber(charEntry.quantity)
-                        end
-                        local leftR, leftG, leftB = classColor[1], classColor[2], classColor[3]
-                        local rightR, rightG, rightB = 1, 1, 1
-                        if charEntry.quantity == 0 then
-                            leftR, leftG, leftB = 0.4, 0.4, 0.4
-                            rightR, rightG, rightB = 0.4, 0.4, 0.4
-                        end
-                        frame:AddDoubleLine(
-                            string.format("%s%s:", charName, marker),
-                            amountText,
-                            leftR, leftG, leftB,
-                            rightR, rightG, rightB
-                        )
-                        end -- hideZero filter
-                    end
-                    frame:AddSpacer(8)
-                    local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
-                    frame:AddDoubleLine(
-                        totalLabel .. ":",
-                        totalText,
-                        0.4, 1, 0.4,
-                        0.4, 1, 0.4
-                    )
-                end
+            if hasSeason then
+                frame:AddLine(string.format("%s %s", currentLabel, fmtNumber(qty)), 1, 1, 1, false)
+                frame:AddLine(string.format("%s: %s / %s", seasonLabel, fmtNumber(totalEarned or 0), fmtNumber(seasonMax or 0)), 1, 1, 1, false)
+            else
+                frame:AddLine(string.format("%s / %s", fmtNumber(qty), fmtNumber(cap)), 1, 1, 1, false)
+            end
+
+            if rem > 0 then
+                frame:AddLine(string.format("%s %s", fmtNumber(rem), remainingSuffix), 0.5, 1, 0.5, false)
+            else
+                frame:AddLine(cappedText, 1, 0.35, 0.35, false)
             end
         end
     end

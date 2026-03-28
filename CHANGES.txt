@@ -1,389 +1,59 @@
 ═══════════════════════════════════════════════════════════════════════════
-  WARBAND NEXUS - Version 2.4.7 (18.03.2026)
+  WARBAND NEXUS - Version 2.5.0 (28.03.2026)
 ═══════════════════════════════════════════════════════════════════════════
 
 NEW FEATURES
 ────────────
-• UI Scaling: Adjust addon interface size from Settings tab
-• Gold Automation: Per-character option for separate gold management settings
-• Gold Input: Live thousand-separator formatting with 9,999,999g maximum cap
+• To-Do Tab: Plans section renamed to To-Do with refreshed branding
+• Weekly Reset Timer: Live countdown at the top of Weekly Progress view
+• Character Overview: Cross-character summary card showing quest & vault progress
+• Wowhead Links: Right-click collectibles, plans, and quest items to copy Wowhead URLs
+• Crafted Gear Overhaul: Gear tab now displays crafted items with tier-based recraft info
+• Reminder System: Set reminders for plans with daily login, weekly reset, and countdown triggers
+
+GEAR TAB
+────────
+• Crafted items show tier name + ilvl (e.g. "Myth 285") instead of misleading "Myth 5/6"
+• Crafted items at max ilvl (285) no longer show a false upgrade arrow
+• Tooltip displays recraft cost, recommended tier, and crests needed for next tier
+• Corrected crafted gear ilvl caps: Myth=285, Hero=272 (distinct from dropped gear)
+• Crafted detection via tooltip quality line ("Radiance Crafted" etc.)
+• Runtime crafted detection fallback for offline character data
+
+PROFESSION KNOWLEDGE
+────────────────────
+• Added Herbalism weekly gathering tracking (6 quest IDs)
+• Added Mining weekly gathering tracking (6 quest IDs)
+• Added missing Enchanting weekly quest variant
+• Verified all treatise, unique, treasure, and gathering IDs for all 11 professions
+
+PERFORMANCE
+───────────
+• Throttled OnSizeChanged: resize no longer fires redundant layout updates every frame
+• Singleton paperdoll chrome: model border, ilvl overlay, and name band reused across refreshes
+• Character selector button pooled: no longer recreated on every tab draw
+• Dropdown entry buttons pooled: no more unbounded frame accumulation
+• PlanCardFactory frame leak fixed: description expand reuses a single update frame
+
+BUG FIXES
+─────────
+• Fixed reminder dialog clearing zone-based alerts when saving other settings
+• Fixed tooltip taint protection gap for profession gear slot detection
+• Fixed crafted gear tier name resolving to wrong tier (Adventurer instead of Myth)
+• Fixed crafted gear showing 289 max ilvl instead of correct 285 cap
 
 IMPROVEMENTS
 ────────────
-• Reputation UI: Major overhaul with improved layout and tracking
-• Storage UI: Refactored for better performance and reliability
-• Professions UI: Enhanced column system and layout improvements
-• Collections UI: Improved source categorization and filtering
-• Currency UI: Layout and display improvements
-• Items UI: Refactored search and display system
-• Minimap Tooltip: Class-colored character names, proper "Warband Gold" casing
-• Gold Logs: Improved transaction display and filtering
-• UI Hierarchy: Optimized frame ordering and stacking
-• VirtualList: Improved scrolling and rendering performance
-
-PERFORMANCE & CODE QUALITY
-──────────────────────────
-• Removed deprecated DebugLogger and EventRegistry modules
-• APIWrapper cleanup and optimization
-• EventManager refactoring for better event handling
-• SharedWidgets major refactoring for consistency
-• WindowFactory and FramePoolFactory improvements
+• Collections: Wowhead link integration for mounts, pets, toys, and transmog
+• Plans: Wowhead link for quest-based plan items
+• PvE: Streamlined currency tooltip (removed duplicate season/cap info)
+• Tooltip: Enhanced issecretvalue safety across all tooltip branches
+• Weekly Progress: "Daily Tasks" renamed to "Weekly Progress" across all views
+• Per-category mini progress bars (Weekly, World, Daily, Assignments, Events)
+• Vault Tracking: Condensed M+/Raid/World progress per character in overview
+• Collapsible Sections: Character Overview card supports expand/collapse
 
 LOCALIZATION
 ────────────
-• Added 50+ new locale keys across all modules
-• Synced all 11 locales to 1,404 keys (zero missing, zero duplicates)
-• Integrated WoW Global Strings where available
-• Full translations: DE, ES, ES-MX, FR, IT, KO, PT-BR, RU, ZH-CN, ZH-TW
-
-═══════════════════════════════════════════════════════════════════════════
-  WARBAND NEXUS - Version 2.4.5 (15.03.2026)
-═══════════════════════════════════════════════════════════════════════════
-
-BUG FIXES & IMPROVEMENTS
-─────────────────────────
-• Fixed Concentration tracking
-• Added Ultra-Wide monitor support
-• Updated the World Quest section
-• Fixed Great Vault tracking
-• Fixed Try/Attempt counts
-• General performance improvements
-• Added Memory Leak Debugger
-
-═══════════════════════════════════════════════════════════════════════════
-  WARBAND NEXUS - Version 2.4.2 (13.03.2026)
-═══════════════════════════════════════════════════════════════════════════
-
-NEW FEATURES
-────────────
-• Guild & Rested XP Track: Track guild membership and rested experience across characters
-• Money Logs & Gold Automation - Items UI: Per-character gold logs, deposit/withdraw history, gold target automation
-• New Tab: Gears: Equipped gear, upgrade options, storage recommendations (BoE/Warbound), cross-character upgrade candidates
-• New Tab: Collections: Mounts, pets, toys, transmog overview and collection progress
-
-IMPROVEMENTS & CHANGES
-──────────────────────
-• Midnight Updates for PvE: Full compatibility with Midnight 12.0.x APIs, encounter/difficulty handling, issecretvalue guards
-• Midnight Updates for Reputations: Reputation cache and API updates for Midnight
-• Midnight Updates for Currencies: Currency cache and metadata for Midnight
-• Profession Improvements & Bug Fixes: Recipe Companion enhancements, profession window handling
-• Plans Revision: Source display fixes (e.g. Nether-Warped Drake), Mythic color consistency
-• Settings Revision: Settings UI updates and module management
-• Recipe Companion Update: Reagent sourcing and quality tier improvements
-• Performance Improvements: Frame budgets, batch sizes, async optimizations
-• Notification & Try Counter System Stability: issecretvalue guards, deduplication fixes
-• Midnight Misc. Update: API compatibility, debug output only when debug mode enabled
-• Localization: Changelog and What's New translated to all 11 supported locales
-• Welcome screen: Tab descriptions updated with Gears and Collections
-
-═══════════════════════════════════════════════════════════════════════════
-  WARBAND NEXUS - Version 2.2.0 (23.02.2026)
-═══════════════════════════════════════════════════════════════════════════
-
-NEW FEATURES
-────────────
-• Gold Target: Smart automatic gold management system
-  - Set target gold amount per character (default: 10g)
-  - Three modes: Deposit Only, Withdraw Only, or Both
-  - Fully automatic deposits AND withdrawals when bank opens
-  - Uses C_Bank API (DepositMoney/WithdrawMoney)
-  - Smart 2-second cooldown between operations
-  - Silent operation (no spam)
-  - Integrated into Items tab header
-  - Custom themed radio button widget
-  - 11 language translations included
-
-• Personal Items Tab Restructured
-  - 4 separate sub-tabs: Inventory, Personal Bank, Warband Bank, Guild Bank
-  - Each sub-tab shows items from its specific source
-  - Guild Bank tab automatically enabled/disabled based on guild membership
-  - Gold display per sub-tab (Inventory, Warband Bank, Guild Bank)
-  - Character-guild tracking with automatic guild change detection
-  - Guild membership changes detected on login (kick/leave/join)
-  - Guild bank data persists per guild name (shared across characters in same guild)
-
-• Storage Tab Enhanced
-  - Guild Bank section added to hierarchical storage browser
-  - Multiple guild banks displayed separately if characters are in different guilds
-  - Guild Bank items organized by type (same as Warband and Personal)
-  - Search functionality includes Guild Bank items
-  - Section ordering: Personal Banks → Warband Bank → Guild Bank(s)
-  - Each guild bank displays its guild name in the header
-
-• Event-Driven Guild Bank System
-  - Real-time automatic re-scan when guild bank contents change
-  - GUILDBANKBAGSLOTS_CHANGED event triggers smart throttled re-scan (2.5s)
-  - Cache updates automatically when items/gold are deposited or withdrawn
-  - All characters in the same guild see updated data immediately on next login
-  - Comprehensive debug logging for troubleshooting guild bank operations
-
-IMPROVEMENTS & CHANGES
-──────────────────────
-• Items Tab: Split combined "Personal Items" into dedicated Inventory and Personal Bank tabs
-• Items Tab: Guild Bank now always visible (disabled if not in guild)
-• Items Tab: Guild bank gold now uses cached value instead of live API (fixes cross-character display bug)
-• Storage Tab: Guild Bank section integrated into storage hierarchy
-• Storage Tab: Fixed expand/collapse functionality for Guild Bank headers
-• Data Service: Added GetInventoryItems() and GetBankItems() functions
-• Character Service: Added guildName tracking to character data
-• Guild Bank Scanner: Caches guild bank gold amount during scan
-• Guild Bank Scanner: Automatic re-scan on slot changes (event-driven)
-• Core: Guild change detection on PLAYER_ENTERING_WORLD event
-• Core: GUILDBANKBAGSLOTS_CHANGED handler with throttled re-scan
-• UI: Custom radio button widget added to SharedWidgets
-• UI: Auto-sizing buttons based on localized text width
-• Performance: Removed debug logging for cleaner operation (except Guild Bank debugging)
-• Locales: Updated translations for new sub-tabs (5 languages)
-
-BUG FIXES
-─────────
-• Fixed: Guild bank gold displaying wrong character's amount when switching characters
-• Fixed: Guild bank items not updating after deposits/withdrawals
-• Fixed: Guild Bank header not expanding when clicked in Storage tab
-• Fixed: Multiple guild banks not displaying if characters are in different guilds
-
-═══════════════════════════════════════════════════════════════════════════
-
-  WARBAND NEXUS - Version 2.1.4 (23.02.2026)
-═══════════════════════════════════════════════════════════════════════════
-
-NEW FEATURES
-────────────
-• Gold Target: Smart automatic gold management system
-  - Set target gold amount per character (default: 10g)
-  - Three modes: Deposit Only, Withdraw Only, or Both
-  - Fully automatic deposits AND withdrawals when bank opens
-  - Uses C_Bank API (DepositMoney/WithdrawMoney)
-  - Smart 2-second cooldown between operations
-  - Silent operation (no spam)
-  - Integrated into Items tab header
-  - Custom themed radio button widget
-  - 11 language translations included
-
-IMPROVEMENTS & CHANGES
-──────────────────────
-• UI: Custom radio button widget added to SharedWidgets
-• UI: Auto-sizing buttons based on localized text width
-• Performance: Removed debug logging for cleaner operation
-
-═══════════════════════════════════════════════════════════════════════════
-
-NEW FEATURES
-────────────
-• Professions Tab
-  - Track profession skills, concentration, knowledge, and specialization trees
-  - View all characters' professions in a unified table
-  - Characters without professions are now properly displayed
-
-• Recipe Companion Window
-  - Browse recipes with reagent availability per character
-  - Quality tier breakdown (Q1/Q2/Q3) for reagents
-  - Warband Bank reagent sourcing
-
-• Loading Overlay
-  - Visual progress indicator during data synchronization
-  - Shows step-by-step progress of background operations
-  - Appears automatically on first login and after tracking confirmation
-
-• Persistent Notification Deduplication
-  - Collectible notifications no longer repeat across sessions
-  - Already-owned collectibles are pre-seeded to prevent false positives
-  - Non-farmable items (quest rewards, vendor items) are automatically suppressed
-
-IMPROVEMENTS
-────────────
-• Performance
-  - Significantly reduced login FPS drops with time-budgeted initialization
-  - Removed Encounter Journal scan to eliminate frame spikes
-  - Staggered initialization with coroutine-based batching
-  - Reputation cache scan delay reduced for faster data population
-
-• PvE System
-  - Alt character data now correctly persists across character switches
-  - Legacy PvE data migration properly imports per-character data
-  - Great Vault data saved on logout to prevent async data loss
-
-• Currency System
-  - Hierarchical header display matching Blizzard's native UI
-  - "Legacy" main header with old expansion currencies
-  - "Season" headers nested inside expansion headers
-  - Faster initial currency data population (1.5s vs 5s delay)
-
-• Character Tracking
-  - Data collection fully gated behind tracking confirmation
-  - No API calls or debug logs before user makes tracking decision
-  - Played time request only for tracked characters
-  - Profession recharge timer only for tracked characters
-
-• Notifications
-  - Suppressed alerts for non-farmable items with zero attempts
-  - Notifications require item to be in CollectibleSourceDB or have manual attempts
-  - Permanent deduplication layer prevents recurring false positives
-
-• Settings Window
-  - Frame reuse prevents orphaned frame leaks
-  - Main window position preserved when Settings is closed
-  - Track Item DB section with add/remove custom entries
-
-• Localization
-  - Comprehensive localization pass for all user-facing strings
-  - Command help strings, welcome messages, and dialog texts localized
-  - Recipe Companion strings localized
-  - 11 languages continue to be supported
-
-• Slash Commands
-  - Cleaned up debug commands for production build
-  - Profiler command preserved for performance analysis
-  - Help command shows all available commands with descriptions
-
-BUG FIXES
-─────────
-• Fixed recurring loot notification for already-owned collectibles on every login
-• Fixed ESC menu becoming disabled after deleting a character
-• Fixed main window anchor shifting when Settings is closed with ESC
-• Fixed "Most Played" displaying characters incorrectly
-• Fixed characters without professions not showing in Professions tab
-• Fixed currency data appearing incomplete on first login
-• Fixed alt character PvE data not visible after switching characters
-• Fixed Great Vault data not showing for alt characters (character key mismatch)
-• Fixed realm names displaying without spaces (e.g. "TwistingNether" → "Twisting Nether")
-• Fixed tooltip collectible info not showing on first hover (item data pre-caching)
-• Fixed Great Vault data not showing for current character (sync processing + cooldown bypass)
-
-═══════════════════════════════════════════════════════════════════════════
-  WARBAND NEXUS - Version 2.0.0
-═══════════════════════════════════════════════════════════════════════════
-
-MAJOR RELEASE
-─────────────
-Complete addon overhaul with new architecture, UI, and features.
-
-NEW FEATURES
-────────────
-• Plans System
-  - Create and track collection plans (mounts, pets, toys, achievements)
-  - Plan cards with progress tracking and completion notifications
-  - Floating Plans Tracker window (/wn plan)
-
-• Try Counter System
-  - Automatic kill/attempt tracking for rare drops
-  - CollectibleSourceDB with NPC, encounter, container, and fishing sources
-  - Chat notifications showing attempt count on collectible obtain
-  - Full diagnostic tools for verification
-
-• Notification System
-  - Modal notifications for collectible obtains (mount, pet, toy, achievement, etc.)
-  - Screen flash effects and sound alerts
-  - Event-driven notification pipeline
-  - Vault reminder notifications
-
-• Chat Message Service
-  - Real-time reputation gain notifications with progress bars
-  - Currency gain notifications with rarity-colored links
-  - FIFO message queue for smooth output
-
-• PvE Data Tracking
-  - Great Vault progress tracking across characters
-  - Mythic+ and raid vault slot monitoring
-  - Daily quest completion tracking
-
-• Transmog Manager
-  - Cross-character transmog collection tracking
-  - Slot-based collection progress
-
-• Enhanced Character Management
-  - Character tracking enable/disable per character
-  - Automatic character data cleanup (configurable staleness threshold)
-  - Character-specific vs account-wide data separation
-
-IMPROVEMENTS
-────────────
-• Complete UI Rewrite
-  - Modern card-based layout with shared widget factory
-  - Collapsible headers with smooth expand/collapse
-  - Search functionality across all tabs (reputation, currency, items, etc.)
-  - Responsive layout adapting to window size
-  - Centralized font management via FontManager
-  - Frame pool factory for optimized widget reuse
-
-• Reputation System v2
-  - Per-character reputation storage (not just account-wide)
-  - Account-wide vs character-based reputation separation in UI
-  - Paragon reputation support with cycle tracking
-  - Friendship reputation with named rank display
-  - Renown factions with max level detection
-  - Real-time reputation gain tracking via Snapshot-Diff
-  - Expansion header grouping with icons
-
-• Currency System v2
-  - Warband (account-wide) vs character currencies separated
-  - Currency category grouping
-  - Real-time currency gain detection
-
-• Database Architecture
-  - Migration service for seamless upgrades
-  - Database optimizer for storage efficiency
-  - Database cleanup for stale data removal
-  - Compact storage format reducing memory usage
-
-• Internationalization
-  - 11 locale files (enUS, deDE, esES, esMX, frFR, itIT, koKR, ptBR, ruRU, zhCN, zhTW)
-  - 830+ localization keys
-
-• Performance
-  - Event-driven architecture (no polling)
-  - AceBucket debouncing for rapid events
-  - Lazy loading and on-demand data fetching
-  - Search result caching
-
-BUG FIXES
-─────────
-• Fixed reputation progress calculation for all faction types
-• Fixed paragon detection for renown factions (per-character vs account-wide)
-• Fixed friendship reputation max level display
-• Fixed currency max quantity display
-• Improved error handling throughout all modules
-
-═══════════════════════════════════════════════════════════════════════════
-  WARBAND NEXUS - Version 1.0.8 (28.12.2025)
-═══════════════════════════════════════════════════════════════════════════
-
-NEW FEATURES
-────────────
-• Enhanced Reputation UI
-  - Renown and Friendship rewards display with icons
-  - Icon slider showing current and nearby level rewards
-  - Color-coded icons: unlocked (color) vs locked (grayscale)
-  - Scroll arrows to navigate through all reward levels
-  - Current level highlighted with gold border
-  - Tooltips showing reward details (Item, Currency, Mount, etc.)
-
-• Improved Progress Bars
-  - Progress values now displayed inside the bar with shadow
-  - Increased bar height for better visibility
-  - Maxed reputations show green bar with "Maxed" text
-  - Bar positioned closer to right edge for more space
-
-• Icon Tooltips
-  - Checkmark (✓): Shows reputation type (friendship/renown/reputation)
-  - Paragon icon (!): Shows reward availability status
-  - Reward icons: Show level, unlock status, and reward type
-
-• Reputation Display Improvements
-  - Friendship factions: Show rank name (e.g., "Mastermind")
-  - Renown factions: Show "Renown X" format (no max if unknown)
-  - Tooltip format: Rank + Paragon Progress (pink) when applicable
-  - Removed redundant "Progress:" lines from tooltips
-
-IMPROVEMENTS
-────────────
-• TWW 11.2.7 API compatibility improvements
-  - Correct max level detection using GetRenownRewardsForLevel
-  - Fixed max level display for all factions
-  - Improved Friendship reputation rank tracking
-
-BUG FIXES
-─────────
-• Fixed "attempt to compare number with string" error in ReputationUI
-• Fixed max renown level detection for factions
-• Fixed Friendship reputation display (named ranks vs numeric levels)
+• Full changelog translated to all 11 locales
+• New locale keys for gear recraft, reminders, Wowhead integration, and weekly progress

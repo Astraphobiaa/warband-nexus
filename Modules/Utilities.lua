@@ -476,6 +476,35 @@ function Utilities:IsAtlasName(texturePath)
 end
 
 --============================================================================
+-- WOWHEAD URL
+--============================================================================
+
+local WOWHEAD_TYPE_MAP = {
+    mount       = "spell",
+    pet         = "npc",
+    toy         = "item",
+    achievement = "achievement",
+    item        = "item",
+    quest       = "quest",
+    spell       = "spell",
+    npc         = "npc",
+    currency    = "currency",
+    illusion    = "item",
+    title       = "title",
+}
+
+---Build a Wowhead URL for a given collectible/entity type and ID.
+---@param entityType string "mount"|"pet"|"toy"|"achievement"|"item"|"quest"|"spell"|"npc"|"currency"|"illusion"|"title"
+---@param id number
+---@return string|nil url
+function Utilities:GetWowheadURL(entityType, id)
+    if not entityType or not id or id <= 0 then return nil end
+    local wowheadType = WOWHEAD_TYPE_MAP[entityType]
+    if not wowheadType then return nil end
+    return "https://www.wowhead.com/" .. wowheadType .. "=" .. id
+end
+
+--============================================================================
 -- EXPORT
 --============================================================================
 

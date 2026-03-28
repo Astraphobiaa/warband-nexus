@@ -1158,8 +1158,19 @@ local function IsMidnightRecipeCategory(categoryID, cache)
     return false
 end
 
--- Midnight weekly profession knowledge objective mapping.
--- Source model: quest completion (hardcoded objective IDs) + catch-up currency (API).
+-- Midnight weekly profession knowledge (MIDNIGHT_WEEKLY_SOURCES)
+-- -----------------------------------------------------------------------------
+-- Detection: QuestProgressComplete() = flagged OR in-log complete OR ready for turn-in
+--   OR GetInfo(logIndex).isComplete (quest still in journal).
+-- Uniques / treasure: quest IDs match wow-professions.com "Treasure Check Macro" per profession
+--   (891xx), plus extra one-time/patch IDs where listed (e.g. 93794 Alchemy).
+-- Treatise (95127–95138): hidden weekly "consumed treatise" quests. Verified via WeeklyKnowledge addon.
+--   Engineering intentionally uses 95138 (not sequential); 95132 unused.
+-- Weekly trainer: 93690 Alch, 93691 BS, {93698,93699} Ench, 93692 Eng, 93693 Insc, 93694 JC,
+--   93695 LW, 93696 Tailor. Enchanting has two variants (93698 + 93699) instead of "Services Requested".
+-- Gathering (weekly drop caps): Enchanting (95048–95053), Herbalism (81425–81430),
+--   Mining (88673–88678), Skinning (88534/88549/88537/88536/88530/88529). Verified via WeeklyKnowledge addon.
+-- Source model: hardcoded quest IDs + catch-up currency (API).
 local MIDNIGHT_WEEKLY_SOURCES = {
     [2906] = {
         catchUpCurrencyID = 3189,
@@ -1175,6 +1186,9 @@ local MIDNIGHT_WEEKLY_SOURCES = {
         weeklyQuest = {93691}, weeklyQuestLimit = 1,
         treasure = {93530, 93531},
     },
+    -- Enchanting weekly: two variants — 93698 and 93699 ("A Ray of Sunlight" / Dawn Crystal turn-in to Dolothos).
+    -- Unlike other crafting professions, Enchanting has NO "Services Requested" crafting-order weekly.
+    -- Gathering: 5x Swirling Arcane Essence (95048-95052, 1 KP each) + 1x Brimming Mana Shard (95053, 4 KP).
     [2909] = {
         catchUpCurrencyID = 3198,
         uniques = {89100, 89101, 89102, 89103, 89104, 89105, 89106, 89107, 92374, 92186},
@@ -1190,6 +1204,7 @@ local MIDNIGHT_WEEKLY_SOURCES = {
         weeklyQuest = {93692}, weeklyQuestLimit = 1,
         treasure = {93534, 93535},
     },
+    -- Herbalism gathering: 5x Thalassian Phoenix Plume (81425-81429, 1 KP each) + 1x Thalassian Phoenix Tail (81430, 4 KP).
     [2912] = {
         catchUpCurrencyID = 3196,
         uniques = {89162, 89161, 89160, 89159, 89158, 89157, 89156, 89155, 93411, 92174},
@@ -1218,6 +1233,7 @@ local MIDNIGHT_WEEKLY_SOURCES = {
         weeklyQuest = {93695}, weeklyQuestLimit = 1,
         treasure = {93540, 93541},
     },
+    -- Mining gathering: 5x Igneous Rock Specimen (88673-88677, 1 KP each) + 1x Septarian Nodule (88678, 3 KP).
     [2916] = {
         catchUpCurrencyID = 3192,
         uniques = {89144, 89145, 89146, 89147, 89148, 89149, 89150, 89151, 92372, 92187},
@@ -1225,6 +1241,7 @@ local MIDNIGHT_WEEKLY_SOURCES = {
         weeklyQuest = {93705, 93706, 93708, 93709}, weeklyQuestLimit = 1,
         gathering = {88673, 88674, 88675, 88676, 88677, 88678},
     },
+    -- Skinning gathering: 5x Fine Void-Tempered Hide (88534/88549/88537/88536/88530, 1 KP each) + 1x Mana-Infused Bone (88529, 3 KP).
     [2917] = {
         catchUpCurrencyID = 3191,
         uniques = {89166, 89167, 89168, 89169, 89170, 89171, 89172, 89173, 92373, 92188},
@@ -1246,6 +1263,35 @@ local MIDNIGHT_CATCHUP_CURRENCY = {
     [3194] = true, [3193] = true, [3192] = true, [3191] = true, [3190] = true,
 }
 
+--- True if the quest counts as "done" for UI: flagged complete, in-log complete, or ready to turn in.
+--- Matches DailyQuestManager so weekly profession rows update before the flag bit catches up.
+local function QuestProgressComplete(questID)
+    if not questID or not C_QuestLog then return false end
+    if C_QuestLog.IsQuestFlaggedCompleted then
+        local ok, done = pcall(C_QuestLog.IsQuestFlaggedCompleted, questID)
+        if ok and done == true then return true end
+    end
+    if C_QuestLog.IsComplete then
+        local ok, done = pcall(C_QuestLog.IsComplete, questID)
+        if ok and done == true then return true end
+    end
+    if C_QuestLog.ReadyForTurnIn then
+        local ok, done = pcall(C_QuestLog.ReadyForTurnIn, questID)
+        if ok and done == true then return true end
+    end
+    -- Still in quest log and all objectives done (flag may lag after instance/combat).
+    if C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetInfo then
+        local ok, logIndex = pcall(C_QuestLog.GetLogIndexForQuestID, questID)
+        if ok and logIndex and logIndex > 0 then
+            local ok2, info = pcall(C_QuestLog.GetInfo, logIndex)
+            if ok2 and type(info) == "table" and info.isComplete then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function CountCompletedQuests(questIDs, limit)
     if type(questIDs) ~= "table" or #questIDs == 0 then
         return 0, 0
@@ -1253,11 +1299,8 @@ local function CountCompletedQuests(questIDs, limit)
     local completed = 0
     for i = 1, #questIDs do
         local questID = questIDs[i]
-        if questID and C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then
-            local ok, done = pcall(C_QuestLog.IsQuestFlaggedCompleted, questID)
-            if ok and done == true then
-                completed = completed + 1
-            end
+        if questID and QuestProgressComplete(questID) then
+            completed = completed + 1
         end
     end
     if limit and limit > 0 then

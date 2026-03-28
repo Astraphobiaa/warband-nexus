@@ -1305,10 +1305,9 @@ function WarbandNexus:DrawPvEProgress(parent)
                 return table.concat(parts, "")
             end
 
-            --- Format currency for inline row: show only "owned" amount for instant readability.
-            local function FormatCurrencyStatus(qty, maxQty, totalEarned, seasonMax)
+            --- Format currency for inline row: always show current quantity.
+            local function FormatCurrencyStatus(qty)
                 qty = qty or 0
-                maxQty = maxQty or 0
                 if qty > 0 then
                     return FormatNumber(qty)
                 end
@@ -1317,42 +1316,34 @@ function WarbandNexus:DrawPvEProgress(parent)
 
             local function BuildCurrencyTooltip(qty, maxQty, totalEarned, seasonMax)
                 local lines = {}
-                local currentFmt = (ns.L and ns.L["CURRENT_MAX_FORMAT"]) or "Current: %s / %s"
-                local remainingLabel = (ns.L and ns.L["REMAINING"]) or "Remaining"
+                local currentLabel = (ns.L and ns.L["CURRENT_ENTRIES_LABEL"]) or "Current:"
+                local seasonLabel = (ns.L and ns.L["SEASON"]) or "Season"
+                local remainingSuffix = (ns.L and ns.L["VAULT_REMAINING_SUFFIX"]) or "remaining"
+                local cappedText = CAPPED or "Capped"
                 qty = qty or 0
                 maxQty = maxQty or 0
 
-                if totalEarned and seasonMax and seasonMax > 0 then
-                    local rem = math.max(seasonMax - totalEarned, 0)
-                    table.insert(lines, {
-                        text = string.format(currentFmt, FormatNumber(qty), FormatNumber(seasonMax)),
-                        color = {1, 1, 1},
-                    })
-                    table.insert(lines, {
-                        text = string.format("Season: %s / %s", FormatNumber(totalEarned), FormatNumber(seasonMax)),
-                        color = {0.8, 0.8, 0.8},
-                    })
-                    table.insert(lines, {
-                        text = string.format("%s: %s", remainingLabel, FormatNumber(rem)),
-                        color = rem > 0 and {0.5, 1, 0.5} or {1, 0.35, 0.35},
-                    })
+                local hasSeason = totalEarned and seasonMax and seasonMax > 0
+                local cap = hasSeason and seasonMax or maxQty
+                local earned = hasSeason and totalEarned or qty
+
+                if cap and cap > 0 then
+                    local rem = math.max(cap - earned, 0)
+                    if hasSeason then
+                        table.insert(lines, { text = string.format("%s %s", currentLabel, FormatNumber(qty)), color = {1, 1, 1} })
+                        table.insert(lines, { text = string.format("%s: %s / %s", seasonLabel, FormatNumber(totalEarned or 0), FormatNumber(seasonMax or 0)), color = {1, 1, 1} })
+                    else
+                        table.insert(lines, { text = string.format("%s / %s", FormatNumber(qty), FormatNumber(cap)), color = {1, 1, 1} })
+                    end
+                    if rem > 0 then
+                        table.insert(lines, { text = string.format("%s %s", FormatNumber(rem), remainingSuffix), color = {0.5, 1, 0.5} })
+                    else
+                        table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
+                    end
                     return lines
                 end
 
-                if maxQty > 0 then
-                    local rem = math.max(maxQty - qty, 0)
-                    table.insert(lines, {
-                        text = string.format(currentFmt, FormatNumber(qty), FormatNumber(maxQty)),
-                        color = {1, 1, 1},
-                    })
-                    table.insert(lines, {
-                        text = string.format("%s: %s", remainingLabel, FormatNumber(rem)),
-                        color = rem > 0 and {0.5, 1, 0.5} or {1, 0.35, 0.35},
-                    })
-                    return lines
-                end
-
-                table.insert(lines, { text = string.format("Current: %s", FormatNumber(qty)), color = {1, 1, 1} })
+                table.insert(lines, { text = FormatNumber(qty), color = {1, 1, 1} })
                 return lines
             end
 
@@ -1362,7 +1353,21 @@ function WarbandNexus:DrawPvEProgress(parent)
 
             local DIM_COLOR = {0.45, 0.45, 0.45}
             local NORMAL_COLOR = {1, 1, 1}
+            local CAP_OPEN_COLOR = {0.5, 1, 0.5}
+            local CAPPED_COLOR = {1, 0.35, 0.35}
             local EM_DASH = "\226\128\148"
+
+            local function GetCapStateColor(qty, maxQty, totalEarned, seasonMax)
+                if totalEarned and seasonMax and seasonMax > 0 then
+                    local rem = math.max(seasonMax - totalEarned, 0)
+                    return (rem > 0) and CAP_OPEN_COLOR or CAPPED_COLOR
+                end
+                if maxQty and maxQty > 0 then
+                    local rem = math.max(maxQty - (qty or 0), 0)
+                    return (rem > 0) and CAP_OPEN_COLOR or CAPPED_COLOR
+                end
+                return NORMAL_COLOR
+            end
 
             for i = 1, #PVE_DAWNCRESTS do
                 local cd = WarbandNexus:GetCurrencyData(PVE_DAWNCRESTS[i].id, charKey)
@@ -1370,11 +1375,11 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local m = cd and cd.maxQuantity or 0
                 local te = cd and cd.totalEarned
                 local sm = cd and cd.seasonMax
-                local txt = FormatCurrencyStatus(q, m, te, sm)
+                local txt = FormatCurrencyStatus(q)
                 local tipTitle = PVE_DAWNCRESTS[i] and PVE_DAWNCRESTS[i].name or ((ns.L and ns.L["TAB_CURRENCY"]) or "Currency")
                 colValues[i] = {
                     text = txt,
-                    color = (txt == EM_DASH) and DIM_COLOR or NORMAL_COLOR,
+                    color = (txt == EM_DASH) and DIM_COLOR or GetCapStateColor(q, m, te, sm),
                     tooltip = BuildCurrencyTooltip(q, m, te, sm),
                     tooltipTitle = tipTitle,
                     tooltipIcon = cd and cd.icon,
@@ -1383,10 +1388,10 @@ function WarbandNexus:DrawPvEProgress(parent)
             end
 
             local n = #PVE_DAWNCRESTS
-            local shardTxt = FormatCurrencyStatus(shardQty, shardMax, shardTE, shardSM)
+            local shardTxt = FormatCurrencyStatus(shardQty)
             colValues[n + 1] = {
                 text = shardTxt,
-                color = (shardTxt == EM_DASH) and DIM_COLOR or NORMAL_COLOR,
+                color = (shardTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(shardQty, shardMax, shardTE, shardSM),
                 tooltip = BuildCurrencyTooltip(shardQty, shardMax, shardTE, shardSM),
                 tooltipTitle = (ns.L and ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards",
                 tooltipIcon = shardData and shardData.icon,
@@ -1428,7 +1433,6 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     type = "currency",
                                     currencyID = val.currencyID,
                                     charKey = charKey,
-                                    additionalLines = val.tooltip,
                                     anchor = "ANCHOR_TOP",
                                 })
                             else
@@ -1443,6 +1447,11 @@ function WarbandNexus:DrawPvEProgress(parent)
                         end)
                         hit:SetScript("OnLeave", function()
                             if HideTooltip then HideTooltip() end
+                        end)
+                        hit:SetScript("OnMouseUp", function(_, button)
+                            if button == "LeftButton" and charBtn and charBtn.Click then
+                                charBtn:Click()
+                            end
                         end)
                     end
                     if ci > 1 then

@@ -1087,7 +1087,7 @@ L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 -- =============================================
 -- Changelog (What's New)
 -- =============================================
-L["CHANGELOG_V250"] = "NEUE FUNKTIONEN:\n- To-Do-Tab: Pläne-Bereich umbenannt in To-Do mit neuem Branding\n- Wöchentlicher Reset-Timer: Live-Countdown oben in der täglichen Aufgabenansicht\n- Charakterübersicht: Charakterübergreifende Zusammenfassung mit Quest- & Tresorfortschritt\n\nVERBESSERUNGEN:\n- Tägliche Aufgaben: Fortschritt pro Kategorie (Wöchentlich, Welt, Täglich, Aufträge, Events)\n- Tresorverfolgung: Kompakter M+/Schlachtzug/Welt-Fortschritt pro Charakter\n- Einklappbare Abschnitte: Charakterübersicht unterstützt Ein-/Ausklappen\n\nLOKALISIERUNG:\n- Vollständige Übersetzungen für alle 11 Sprachen aktualisiert\n- Neue Texte: Wöchentlicher Reset, Charakterübersicht, To-Do-Beschreibungen\n\nVielen Dank für eure Unterstützung!\nUm Probleme zu melden oder Feedback zu geben, hinterlasst einen Kommentar auf CurseForge - Warband Nexus."
+L["CHANGELOG_V250"] = "NEUE FUNKTIONEN:\n- To-Do-Tab: Pläne-Bereich umbenannt in To-Do mit neuem Branding\n- Wöchentlicher Reset-Timer: Live-Countdown oben in der Aufgabenansicht\n- Charakterübersicht: Zusammenfassungskarte mit Quest- & Tresorfortschritt\n- Wowhead-Links: Rechtsklick auf Sammlerstücke, Pläne und Questgegenstände für URLs\n- Hergestellte Ausrüstung: Tier-basierte Umschmiedeinfo statt irreführender X/6-Notation\n- Erinnerungssystem: Täglicher Login, wöchentlicher Reset und Countdown-Auslöser\n\nGEAR-TAB:\n- Hergestellte Items zeigen Tier-Name + Ilvl (z.B. 'Mythos 285') statt 'Mythos 5/6'\n- Max-Ilvl hergestellte Items zeigen keinen falschen Upgrade-Pfeil mehr\n- Tooltip zeigt Umschmiedekosten, empfohlenen Tier und benötigte Wappen\n\nBERUFSWISSEN:\n- Kräuterkunde und Bergbau: Wöchentliche Sammelquest-Verfolgung hinzugefügt\n- Fehlende Verzauberungskunst-Wochenquest-Variante ergänzt\n- Alle Abhandlungs-, Unikat-, Schatz- und Sammel-IDs verifiziert\n\nLEISTUNG:\n- Gedrosselte Größenänderung — keine Frame-Drops mehr beim Fenster-Resize\n- Gepoolte Gear-Tab-Frames — ~60 weniger Frame-Erstellungen pro Aktualisierung\n- Frame-Leak bei Planbeschreibungs-Erweiterung behoben\n\nFEHLERBEHEBUNGEN:\n- Erinnerungsdialog überschreibt Zonen-Benachrichtigungen nicht mehr\n- Tooltip-Taint-Schutzlücke bei Berufsausrüstungs-Erkennung behoben\n- Hergestellte Ausrüstung: Tier-Name-Auflösung korrigiert\n- Hergestellte Ausrüstung: 289 Max-Ilvl auf korrekte 285 korrigiert\n\nVielen Dank für eure Unterstützung!\nUm Probleme zu melden oder Feedback zu geben, hinterlasst einen Kommentar auf CurseForge - Warband Nexus."
 
 -- =============================================
 -- Confirm / Tracking Dialog
@@ -1809,3 +1809,65 @@ L["FIRST_CRAFT"] = "Erstherstellung"
 L["ACCESSORY_1"] = "Zub 1"
 L["ACCESSORY_2"] = "Zub 2"
 L["COLUMNS_BUTTON"] = "Spalten"
+
+-- Reminder / Alert System
+L["ALERT_ACTIVE"] = "Alert Active"
+L["REMINDER_PREFIX"] = "Reminder"
+L["REMINDER_DAILY_LOGIN"] = "Daily Login"
+L["REMINDER_WEEKLY_RESET"] = "Weekly Reset"
+L["REMINDER_DAYS_BEFORE"] = "%d days before reset"
+L["REMINDER_ZONE_ENTER"] = "Entered %s"
+L["REMINDER_OPT_DAILY"] = "Remind on daily login"
+L["REMINDER_OPT_WEEKLY"] = "Remind after weekly reset"
+L["REMINDER_OPT_DAYS_BEFORE"] = "Remind %d days before reset"
+L["REMINDER_OPT_ZONE"] = "Remind when entering source zone"
+L["SET_ALERT"] = "Set Alert"
+L["SET_ALERT_TITLE"] = "Set Alert"
+L["REMOVE_ALERT"] = "Remove Alert"
+
+-- PvE Columns & Crests
+L["PVE_COL_COFFER_SHARDS"] = "Coffer Shards"
+L["PVE_COL_CREST"] = "Crest"
+L["PVE_COL_EARNED"] = "Earned"
+L["PVE_COL_LOOTED"] = "Looted"
+L["PVE_COL_OWNED"] = "Owned"
+L["PVE_COL_OWNED_VAULT"] = "Owned"
+L["PVE_COL_RESTORED_KEY"] = "Restored Key"
+L["PVE_COL_STASHES"] = "Stashes"
+L["PVE_COL_VAULT_SLOT1"] = "Vault Slot 1"
+L["PVE_COL_VAULT_SLOT2"] = "Vault Slot 2"
+L["PVE_COL_VAULT_SLOT3"] = "Vault Slot 3"
+L["PVE_CREST_ADV"] = "Adventurer"
+L["PVE_CREST_CHAMP"] = "Champion"
+L["PVE_CREST_HERO"] = "Hero"
+L["PVE_CREST_MYTH"] = "Myth"
+L["PVE_CREST_VET"] = "Veteran"
+
+-- Vault Tooltips
+L["VAULT_BASED_ON_FORMAT"] = "The item level of this reward will be based on the lowest of your top %d runs this week (currently %s)."
+L["VAULT_COMPLETE_MORE_FORMAT"] = "Complete %d more %s this week to unlock."
+L["VAULT_COMPLETE_ON"] = "Complete this activity on %s"
+L["VAULT_DELVE_TIER_FORMAT"] = "Tier %d (%d)"
+L["VAULT_ENCOUNTER_LIST_FORMAT"] = "%s"
+L["VAULT_IMPROVE_TO"] = "Improve to"
+L["VAULT_RAID_BASED_FORMAT"] = "Reward based on highest difficulty defeated (currently %s)."
+L["VAULT_REWARD_HIGHEST"] = "Reward at Highest Item Level"
+L["VAULT_SLOT_SA"] = "Assignments"
+L["VAULT_TOP_RUNS_FORMAT"] = "Top %d Runs This Week"
+L["VAULT_UNLOCK_REWARD"] = "Unlock Reward"
+
+-- Character / Statistics
+L["CHARACTER_OVERVIEW"] = "Character Overview"
+L["FACTION_SPLIT"] = "FACTION"
+L["TOTAL_CHARACTERS"] = "TOTAL"
+L["TRACKED_CHARACTERS"] = "TRACKED"
+L["WARBAND_BANK"] = "Warband Bank"
+L["WARBAND_WEALTH"] = "Warband Wealth"
+
+-- Gear Crafting
+L["GEAR_CRAFTED_CREST_COST"] = "Recraft cost: %d crests"
+L["GEAR_CRAFTED_NO_CRESTS"] = "No crests available for recraft"
+L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
+
+-- Other
+L["TRACK_ACTIVITIES"] = "Track Activities"

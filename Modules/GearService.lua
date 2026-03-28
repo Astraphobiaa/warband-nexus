@@ -329,7 +329,7 @@ local function GetBindingType(item)
     return nil
 end
 
-local GEAR_DATA_VERSION = "1.0.0"
+local GEAR_DATA_VERSION = "1.1.0"
 
 -- ============================================================================
 -- UPGRADE ANALYSIS  (No API — ilvl-based inference from DB only, works offline)
@@ -401,12 +401,13 @@ local TRACK_NAME_TO_CURRENCY_ID = {
 }
 
 -- Crafted items: recraft with crests to reach higher ilvl tiers.
--- Each tier has its own crest type, cost, and max achievable ilvl.
+-- Crafted gear caps at 5/6 (285 for Myth, 272 for Hero) — NOT 6/6 like dropped gear.
+-- Hero/Myth crafted ilvls are offset: Hero 259-272 (not 263-276), Myth 272-285 (not 276-289).
 -- Recraft is a single operation: player picks target tier, pays that tier's crest cost.
 -- Ordered highest → lowest so UI picks the best affordable tier first.
 local CRAFTED_CREST_TIERS = {
-    { crestID = 3347, name = "Myth",       maxIlvl = 289, cost = 80 },
-    { crestID = 3345, name = "Hero",       maxIlvl = 276, cost = 60 },
+    { crestID = 3347, name = "Myth",       maxIlvl = 285, cost = 80 },
+    { crestID = 3345, name = "Hero",       maxIlvl = 272, cost = 60 },
     { crestID = 3343, name = "Champion",   maxIlvl = 263, cost = 60 },
     { crestID = 3341, name = "Veteran",    maxIlvl = 250, cost = 45 },
     { crestID = 3383, name = "Adventurer", maxIlvl = 237, cost = 30 },
@@ -518,24 +519,38 @@ local function ScanUpgradeFromTooltip(slotID)
     local ok, data = pcall(C_TooltipInfo.GetInventoryItem, "player", slotID)
     if not ok or not data or not data.lines then return nil end
 
+    local result = nil
+    local isCrafted = false
+
     for i = 1, #data.lines do
         local line = data.lines[i]
         local text = line.leftText
         if text then
-            -- Matches "Upgrade Level: Adventurer 6/6" (English client)
-            local track, cur, max = text:match("Upgrade Level: (%a[%a ]*) (%d+)/(%d+)")
-            if track and cur and max then
-                -- Trim trailing space from track name
-                track = track:match("^(.-)%s*$")
-                return {
-                    trackName   = track,
-                    currUpgrade = tonumber(cur),
-                    maxUpgrade  = tonumber(max),
-                }
+            if issecretvalue and issecretvalue(text) then
+                -- skip secret lines
+            else
+                if not result then
+                    local track, cur, max = text:match("Upgrade Level: (%a[%a ]*) (%d+)/(%d+)")
+                    if track and cur and max then
+                        track = track:match("^(.-)%s*$")
+                        result = {
+                            trackName   = track,
+                            currUpgrade = tonumber(cur),
+                            maxUpgrade  = tonumber(max),
+                        }
+                    end
+                end
+                if not isCrafted and text:find("Crafted") then
+                    isCrafted = true
+                end
             end
         end
     end
-    return nil
+
+    if result then
+        result.isCrafted = isCrafted or (result.trackName == "Crafted")
+    end
+    return result
 end
 
 -- ============================================================================
@@ -572,7 +587,7 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
                 slotEntry.upgradeTrack = tooltipInfo.trackName
                 slotEntry.currUpgrade  = tooltipInfo.currUpgrade
                 slotEntry.maxUpgrade   = tooltipInfo.maxUpgrade
-                if tooltipInfo.trackName == "Crafted" then
+                if tooltipInfo.isCrafted then
                     slotEntry.isCrafted = true
                 end
             end
@@ -588,9 +603,15 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
         slotEntry.currUpgrade  = currUpgrade
         slotEntry.maxUpgrade   = maxUpgrade
         slotEntry.maxIlvl      = info.maxItemLevel or 0
-        -- Mark crafted items for special UI handling (crafting icon + ilvl range)
+        -- Mark crafted items: check track name AND tooltip for "Crafted" quality line.
+        -- Midnight crafted items show "Myth 5/6" as track, not "Crafted", so tooltip scan is needed.
         if trackName == "Crafted" then
             slotEntry.isCrafted = true
+        elseif not slotEntry.isCrafted then
+            local tooltipInfo = ScanUpgradeFromTooltip(slotID)
+            if tooltipInfo and tooltipInfo.isCrafted then
+                slotEntry.isCrafted = true
+            end
         end
 
         -- Persist next-level costs so UI can show "affordable" badge offline
@@ -687,8 +708,7 @@ function WarbandNexus:ScanEquippedGear()
                     slotEntry.upgradeTrack = tooltipInfo.trackName
                     slotEntry.currUpgrade  = tooltipInfo.currUpgrade
                     slotEntry.maxUpgrade   = tooltipInfo.maxUpgrade
-                    -- Mark crafted items for special UI handling (crafting icon + ilvl range)
-                    if tooltipInfo.trackName == "Crafted" then
+                    if tooltipInfo.isCrafted then
                         slotEntry.isCrafted = true
                     end
                 end
@@ -811,6 +831,24 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
             trackName, currUpgrade, maxUpgrade = InferUpgradeFromIlvl(itemLevel)
         end
 
+        -- Runtime crafted detection for old persisted data missing isCrafted flag.
+        -- Scans the stored itemLink tooltip for "Crafted" quality text.
+        if not slot.isCrafted and trackName ~= "Crafted" and slot.itemLink then
+            local tipOk, tipData
+            if C_TooltipInfo and C_TooltipInfo.GetHyperlink then
+                tipOk, tipData = pcall(C_TooltipInfo.GetHyperlink, slot.itemLink)
+            end
+            if tipOk and tipData and tipData.lines then
+                for li = 1, #tipData.lines do
+                    local lt = tipData.lines[li] and tipData.lines[li].leftText
+                    if lt and not (issecretvalue and issecretvalue(lt)) and lt:find("Crafted") then
+                        slot.isCrafted = true
+                        break
+                    end
+                end
+            end
+        end
+
         if slot.notUpgradeable then
             upgrades[slotID] = {
                 canUpgrade = false, notUpgradeable = true,
@@ -821,20 +859,30 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
             }
         elseif slot.isCrafted or trackName == "Crafted" then
             -- Crafted items: recraft with crests to reach higher ilvl.
-            -- Determine achievable ilvl range based on player's crest inventory.
+            -- Crafted gear caps at 285 (Myth), not 289 like dropped gear.
+            -- Determine current tier name from ilvl (table is highest → lowest; scan 1→N to match highest first).
+            local craftedTierName = "Crafted"
+            for ci = 1, #CRAFTED_CREST_TIERS do
+                if itemLevel >= CRAFTED_CREST_TIERS[ci].maxIlvl then
+                    craftedTierName = CRAFTED_CREST_TIERS[ci].name
+                    break
+                end
+            end
+            local canUpgrade = (itemLevel < CRAFTED_CREST_TIERS[1].maxIlvl)
             upgrades[slotID] = {
-                canUpgrade    = true,
-                isCrafted     = true,
-                currentIlvl   = itemLevel,
-                nextIlvl      = itemLevel,
-                maxIlvl       = 289,
-                currUpgrade   = currUpgrade or 0,
-                maxUpgrade    = maxUpgrade or 0,
-                trackName     = "Crafted",
-                currencyID    = 0,
-                crestCost     = 0,
-                moneyCost     = 0,
-                watermarkIlvl = watermarks[slotID] or 0,
+                canUpgrade      = canUpgrade,
+                isCrafted       = true,
+                currentIlvl     = itemLevel,
+                nextIlvl        = itemLevel,
+                maxIlvl         = 285,
+                currUpgrade     = currUpgrade or 0,
+                maxUpgrade      = maxUpgrade or 0,
+                trackName       = "Crafted",
+                craftedTierName = craftedTierName,
+                currencyID      = 0,
+                crestCost       = 0,
+                moneyCost       = 0,
+                watermarkIlvl   = watermarks[slotID] or 0,
             }
         elseif trackName and currUpgrade and maxUpgrade and maxUpgrade > 0 then
             local hasNext = (currUpgrade < maxUpgrade)

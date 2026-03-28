@@ -83,20 +83,9 @@ local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 ---@return string Formatted text with color
 local function FormatCurrencyAmount(quantity, maxQuantity)
     if maxQuantity > 0 then
-        local percentage = (quantity / maxQuantity) * 100
-        local color
-        
-        if percentage >= 100 then
-            color = "|cffff4444" -- Red (capped)
-        elseif percentage >= 80 then
-            color = "|cffffaa00" -- Orange (near cap)
-        elseif percentage >= 50 then
-            color = "|cffffff00" -- Yellow (half)
-        else
-            color = "|cffffffff" -- White (safe)
-        end
-        
-        return format("%s%s|r / %s", color, FormatNumber(quantity), FormatNumber(maxQuantity))
+        local isCapped = quantity >= maxQuantity
+        local color = isCapped and "|cffff5959" or "|cff80ff80"
+        return format("%s%s / %s|r", color, FormatNumber(quantity), FormatNumber(maxQuantity))
     else
         return format("|cffffffff%s|r", FormatNumber(quantity))
     end

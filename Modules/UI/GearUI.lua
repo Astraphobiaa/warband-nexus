@@ -196,19 +196,21 @@ end
 --- Calculate achievable ilvl range for a crafted item based on player's crest inventory.
 --- Crafted items can be recrafted with crests to jump to higher ilvl tiers.
 --- Each tier has its own crest type and cost (e.g. Myth = 80 crests, Hero = 60).
+--- Also returns the next unaffordable tier info so UI can show what's needed.
 ---@param upInfo table slot upgrade info with isCrafted=true
 ---@param currencyAmounts table map currencyID → amount
----@return table|nil { minIlvl, maxIlvl, bestCrestName, bestCrestCost } or nil if no crests
+---@return table|nil { minIlvl, maxIlvl, bestCrestName, bestCrestCost, nextTierName, nextTierCost, nextTierHave, nextTierMaxIlvl } or nil if no crests
 local function GetCraftedIlvlRange(upInfo, currencyAmounts)
     if not upInfo or not upInfo.isCrafted then return nil end
     local currentIlvl = upInfo.currentIlvl or 0
     local tiers = ns.CRAFTED_CREST_TIERS
     if not tiers or not currencyAmounts then return nil end
 
-    -- Check each crest tier from highest to lowest: find the best affordable tier
     local bestMaxIlvl = currentIlvl
     local bestCrestName = nil
     local bestCrestCost = 0
+    local nextTierName, nextTierCost, nextTierHave, nextTierMaxIlvl = nil, nil, nil, nil
+
     for i = 1, #tiers do
         local tier = tiers[i]
         local have = currencyAmounts[tier.crestID] or 0
@@ -216,7 +218,12 @@ local function GetCraftedIlvlRange(upInfo, currencyAmounts)
             bestMaxIlvl = tier.maxIlvl
             bestCrestName = tier.name
             bestCrestCost = tier.cost
-            break  -- Highest affordable tier wins
+            break
+        elseif tier.maxIlvl > currentIlvl and not nextTierName then
+            nextTierName = tier.name
+            nextTierCost = tier.cost
+            nextTierHave = have
+            nextTierMaxIlvl = tier.maxIlvl
         end
     end
 
@@ -227,6 +234,10 @@ local function GetCraftedIlvlRange(upInfo, currencyAmounts)
         maxIlvl = bestMaxIlvl,
         bestCrestName = bestCrestName,
         bestCrestCost = bestCrestCost,
+        nextTierName = nextTierName,
+        nextTierCost = nextTierCost,
+        nextTierHave = nextTierHave,
+        nextTierMaxIlvl = nextTierMaxIlvl,
     }
 end
 
@@ -483,23 +494,39 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
             local up = upgradeInfo and upgradeInfo[slotID]
             local additionalLines = {}
             if up and up.isCrafted then
-                -- Crafted item: show achievable ilvl range via recraft
-                local range = GetCraftedIlvlRange(up, currencyAmounts)
                 additionalLines[#additionalLines + 1] = { type = "spacer", height = 6 }
-                if range then
+                local tierLabel = up.craftedTierName or "Crafted"
+                if not up.canUpgrade then
                     additionalLines[#additionalLines + 1] = {
-                        text = format((ns.L and ns.L["GEAR_CRAFTED_RECRAFT_RANGE"]) or "Recraft range: %d-%d (%s Dawncrest)", range.minIlvl, range.maxIlvl, range.bestCrestName or ""),
-                        color = { 0.6, 0.8, 1 }
-                    }
-                    additionalLines[#additionalLines + 1] = {
-                        text = format((ns.L and ns.L["GEAR_CRAFTED_CREST_COST"]) or "Recraft cost: %d crests", range.bestCrestCost or 0),
-                        color = { 0.6, 0.9, 0.6 }
+                        text = format("%s (max ilvl %d)", tierLabel, up.currentIlvl or 0),
+                        color = { 0.6, 0.6, 0.6 }
                     }
                 else
-                    additionalLines[#additionalLines + 1] = {
-                        text = (ns.L and ns.L["GEAR_CRAFTED_NO_CRESTS"]) or "No crests available for recraft",
-                        color = { 0.8, 0.5, 0.2 }
-                    }
+                    local range = GetCraftedIlvlRange(up, currencyAmounts)
+                    if range then
+                        additionalLines[#additionalLines + 1] = {
+                            text = format("Recraft to %s (ilvl %d)", range.bestCrestName or "", range.maxIlvl),
+                            color = { 0.4, 1, 0.4 }
+                        }
+                        additionalLines[#additionalLines + 1] = {
+                            text = format("Cost: %d %s Dawncrest", range.bestCrestCost or 0, range.bestCrestName or ""),
+                            color = { 0.6, 0.9, 0.6 }
+                        }
+                        if range.nextTierName and range.nextTierCost and range.nextTierHave then
+                            local needed = range.nextTierCost - range.nextTierHave
+                            if needed > 0 then
+                                additionalLines[#additionalLines + 1] = {
+                                    text = format("%s (ilvl %d): %d/%d crests (%d more needed)", range.nextTierName, range.nextTierMaxIlvl or 0, range.nextTierHave, range.nextTierCost, needed),
+                                    color = { 0.7, 0.7, 0.7 }
+                                }
+                            end
+                        end
+                    else
+                        additionalLines[#additionalLines + 1] = {
+                            text = (ns.L and ns.L["GEAR_CRAFTED_NO_CRESTS"]) or "No crests available for recraft",
+                            color = { 0.8, 0.5, 0.2 }
+                        }
+                    end
                 end
             elseif up and up.canUpgrade then
                 local affordable, goldOnly = CalculateAffordableUpgrades(up, currencyAmounts)
@@ -676,19 +703,20 @@ local ROW_H = 34
 local CARD_PAD = 12
 
 --- Build track/tier string from upgradeInfo[slotID], e.g. "Veteran 2/6".
---- For crafted items, shows achievable ilvl range (e.g. "Crafted 276-289").
+--- For crafted items, shows tier name + ilvl (e.g. "Myth 285") or upgrade arrow (e.g. "Hero → Myth 285").
 local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts)
     local up = upgradeInfo and upgradeInfo[slotID]
     if not up then return nil end
     local hex = GetQualityHex and GetQualityHex(quality or 0) or "ffffff"
 
-    -- Crafted items: show ilvl range achievable via recraft
-    if up.isCrafted and currencyAmounts then
-        local range = GetCraftedIlvlRange(up, currencyAmounts)
-        if range then
-            return format("|cff%sCrafted %d-%d|r", hex, range.minIlvl, range.maxIlvl)
+    -- Crafted items: show current tier + achievable recraft target
+    if up.isCrafted then
+        local currentTier = up.craftedTierName or "Crafted"
+        local range = currencyAmounts and GetCraftedIlvlRange(up, currencyAmounts) or nil
+        if range and range.maxIlvl > (up.currentIlvl or 0) then
+            return format("|cff%s%s → %s %d|r", hex, currentTier, range.bestCrestName or "", range.maxIlvl)
         end
-        return format("|cff%sCrafted %d/%d|r", hex, up.currUpgrade or 0, up.maxUpgrade or 0)
+        return format("|cff%s%s %d|r", hex, currentTier, up.currentIlvl or 0)
     end
 
     local track = (up.trackName and up.trackName ~= "") and up.trackName or nil
@@ -840,36 +868,70 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         centerRef = portrait
     end
 
-    -- Border around model/portrait (parented to card — recycled automatically)
-    local modelBorder = CreateFrame("Frame", nil, card, "BackdropTemplate")
+    -- Border around model/portrait (singleton — reused across refreshes)
+    local modelBorder = ns._gearModelBorder
+    if not modelBorder then
+        modelBorder = CreateFrame("Frame", nil, card, "BackdropTemplate")
+        modelBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        modelBorder.isPersistentRowElement = true
+        ns._gearModelBorder = modelBorder
+    end
+    modelBorder:SetParent(card)
+    modelBorder:ClearAllPoints()
     modelBorder:SetPoint("TOPLEFT",     centerRef, "TOPLEFT",      -1,  1)
     modelBorder:SetPoint("BOTTOMRIGHT", centerRef, "BOTTOMRIGHT",   1, -1)
-    modelBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     modelBorder:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.65)
     modelBorder:SetFrameLevel(centerRef:GetFrameLevel() + 6)
+    modelBorder:Show()
 
-    -- Item level overlaid at top of portrait
+    -- Item level overlaid at top of portrait (singleton)
     local avgIlvl = charData and charData.itemLevel or 0
-    if avgIlvl > 0 then
-        local ilvlFrame = CreateFrame("Frame", nil, card)
-        ilvlFrame:SetPoint("TOP", centerRef, "TOP", 0, -6)
+    local ilvlFrame = ns._gearIlvlFrame
+    if not ilvlFrame then
+        ilvlFrame = CreateFrame("Frame", nil, card)
         ilvlFrame:SetSize(120, 24)
-        if ilvlFrame.SetFrameLevel and centerRef.GetFrameLevel then
-            ilvlFrame:SetFrameLevel(centerRef:GetFrameLevel() + 10)
-        end
         local ilvlOverlay = FontManager:CreateFontString(ilvlFrame, "header", "OVERLAY")
         ilvlOverlay:SetPoint("CENTER", 0, 0)
         ilvlOverlay:SetJustifyH("CENTER")
-        ilvlOverlay:SetTextColor(1, 0.9, 0)
-        ilvlOverlay:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " iLvl")
         ilvlOverlay:SetShadowOffset(1, -1)
         ilvlOverlay:SetShadowColor(0, 0, 0, 1)
+        ilvlFrame._label = ilvlOverlay
+        ilvlFrame.isPersistentRowElement = true
+        ns._gearIlvlFrame = ilvlFrame
+    end
+    if avgIlvl > 0 then
+        ilvlFrame:SetParent(card)
+        ilvlFrame:ClearAllPoints()
+        ilvlFrame:SetPoint("TOP", centerRef, "TOP", 0, -6)
+        if ilvlFrame.SetFrameLevel and centerRef.GetFrameLevel then
+            ilvlFrame:SetFrameLevel(centerRef:GetFrameLevel() + 10)
+        end
+        ilvlFrame._label:SetTextColor(1, 0.9, 0)
+        ilvlFrame._label:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " iLvl")
+        ilvlFrame:Show()
+    else
+        ilvlFrame:Hide()
     end
 
-    -- Karakter adı: container border ile 3D model border arası bandta, yukarıda (kart border'a yakın)
+    -- Character name band above portrait (singleton)
     local displayName = (charData and charData.name) or ""
+    local nameWrapper = ns._gearNameWrapper
+    if not nameWrapper then
+        nameWrapper = CreateFrame("Frame", nil, card)
+        local nameLabel = FontManager:CreateFontString(nameWrapper, "header", "OVERLAY")
+        nameLabel:SetPoint("CENTER", nameWrapper, "CENTER", 0, 10)
+        nameLabel:SetPoint("LEFT", nameWrapper, "LEFT", 0, 0)
+        nameLabel:SetPoint("RIGHT", nameWrapper, "RIGHT", 0, 0)
+        nameLabel:SetJustifyH("CENTER")
+        nameLabel:SetShadowOffset(1, -1)
+        nameLabel:SetShadowColor(0, 0, 0, 1)
+        nameWrapper._label = nameLabel
+        nameWrapper.isPersistentRowElement = true
+        ns._gearNameWrapper = nameWrapper
+    end
     if displayName ~= "" then
-        local nameWrapper = CreateFrame("Frame", nil, card)
+        nameWrapper:SetParent(card)
+        nameWrapper:ClearAllPoints()
         nameWrapper:SetPoint("TOP", card, "TOP", 0, -CARD_PAD)
         nameWrapper:SetPoint("BOTTOM", centerRef, "TOP", 0, 0)
         nameWrapper:SetPoint("LEFT", centerRef, "LEFT", 0, 0)
@@ -877,15 +939,11 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         if nameWrapper.SetFrameLevel and card.GetFrameLevel then
             nameWrapper:SetFrameLevel(card:GetFrameLevel() + 100)
         end
-        local nameLabel = FontManager:CreateFontString(nameWrapper, "header", "OVERLAY")
-        nameLabel:SetPoint("CENTER", nameWrapper, "CENTER", 0, 10)
-        nameLabel:SetPoint("LEFT", nameWrapper, "LEFT", 0, 0)
-        nameLabel:SetPoint("RIGHT", nameWrapper, "RIGHT", 0, 0)
-        nameLabel:SetJustifyH("CENTER")
         local classHex = GetClassHex(classFile)
-        nameLabel:SetText("|cff" .. classHex .. displayName .. "|r")
-        nameLabel:SetShadowOffset(1, -1)
-        nameLabel:SetShadowColor(0, 0, 0, 1)
+        nameWrapper._label:SetText("|cff" .. classHex .. displayName .. "|r")
+        nameWrapper:Show()
+    else
+        nameWrapper:Hide()
     end
 end
 
@@ -1487,6 +1545,8 @@ end
 -- Singleton dropdown frames (reused to avoid frame buildup)
 local gearCharDropdownMenu = nil
 local gearCharDropdownBg   = nil
+local gearCharSelectorBtn  = nil
+local gearCharDropdownEntryPool = {}
 
 local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     local chars  = GetTrackedCharacters()
@@ -1496,29 +1556,44 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     local accent = COLORS.accent
     local PAD    = 8
 
-    local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    btn:SetHeight(36)
-    btn:SetWidth(260)
+    local btn = gearCharSelectorBtn
+    if not btn then
+        btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        btn:SetHeight(36)
+        btn:SetWidth(260)
+        btn:SetBackdrop({
+            bgFile   = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1,
+            insets   = { left = 0, right = 0, top = 0, bottom = 0 },
+        })
+
+        local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
+        label:SetPoint("LEFT",  6, 0)
+        label:SetPoint("RIGHT", -20, 0)
+        label:SetJustifyH("LEFT")
+        btn._label = label
+
+        local arrow = btn:CreateTexture(nil, "ARTWORK")
+        arrow:SetSize(12, 12)
+        arrow:SetPoint("RIGHT", -5, 0)
+        arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
+
+        local hi = btn:CreateTexture(nil, "HIGHLIGHT")
+        hi:SetAllPoints()
+        hi:SetColorTexture(1, 1, 1, 0.08)
+
+        btn.isPersistentRowElement = true
+        gearCharSelectorBtn = btn
+    end
+
+    btn:SetParent(parent)
+    btn:ClearAllPoints()
     btn:SetPoint("RIGHT", parent, "RIGHT", -SIDE_MARGIN - PAD, 0)
-    btn:SetBackdrop({
-        bgFile   = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
-        insets   = { left = 0, right = 0, top = 0, bottom = 0 },
-    })
     btn:SetBackdropColor(0.08, 0.08, 0.11, 0.9)
     btn:SetBackdropBorderColor(accent[1]*0.6, accent[2]*0.6, accent[3]*0.6, 0.8)
 
-    local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
-    label:SetPoint("LEFT",  6, 0)
-    label:SetPoint("RIGHT", -20, 0)
-    label:SetJustifyH("LEFT")
-
-    -- Arrow icon
-    local arrow = btn:CreateTexture(nil, "ARTWORK")
-    arrow:SetSize(12, 12)
-    arrow:SetPoint("RIGHT", -5, 0)
-    arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
+    local label = btn._label
 
     local function SetLabelToChar(charKey)
         local db    = WarbandNexus.db and WarbandNexus.db.global
@@ -1576,31 +1651,40 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             gearCharDropdownBg = bg
         end
 
-        -- Clear previous entries
-        local bin = ns.UI_RecycleBin
-        local children = { menu:GetChildren() }
-        for i = 1, #children do
-            children[i]:Hide()
-            if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
-        end
-
         local ENTRY_H = 28
         menu:SetHeight(#chars * ENTRY_H + 8)
         menu:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
 
+        -- Hide excess pooled entries, reuse or create as needed
+        for pi = #chars + 1, #gearCharDropdownEntryPool do
+            local poolBtn = gearCharDropdownEntryPool[pi]
+            if poolBtn then poolBtn:Hide() end
+        end
+
         local entryY = -4
         for i = 1, #chars do
             local charEntry = chars[i]
-            local entryBtn = CreateFrame("Button", nil, menu)
-            entryBtn:SetHeight(ENTRY_H)
+            local entryBtn = gearCharDropdownEntryPool[i]
+            if not entryBtn then
+                entryBtn = CreateFrame("Button", nil, menu)
+                entryBtn:SetHeight(ENTRY_H)
+                local entryLabel = FontManager:CreateFontString(entryBtn, "body", "OVERLAY")
+                entryLabel:SetPoint("LEFT", 4, 0)
+                entryLabel:SetPoint("RIGHT", -4, 0)
+                entryLabel:SetJustifyH("LEFT")
+                entryBtn._label = entryLabel
+                local entryHi = entryBtn:CreateTexture(nil, "HIGHLIGHT")
+                entryHi:SetAllPoints()
+                entryHi:SetColorTexture(1, 1, 1, 0.1)
+                gearCharDropdownEntryPool[i] = entryBtn
+            end
+
+            entryBtn:SetParent(menu)
+            entryBtn:ClearAllPoints()
             entryBtn:SetPoint("TOPLEFT",  4, entryY)
             entryBtn:SetPoint("TOPRIGHT", -4, entryY)
 
-            local entryLabel = FontManager:CreateFontString(entryBtn, "body", "OVERLAY")
-            entryLabel:SetPoint("LEFT", 4, 0)
-            entryLabel:SetPoint("RIGHT", -4, 0)
-            entryLabel:SetJustifyH("LEFT")
-
+            local entryLabel = entryBtn._label
             local cKey   = charEntry.key
             local cData  = charEntry.data
             local hex    = GetClassHex(cData.classFile)
@@ -1614,11 +1698,9 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
 
             if cKey == currentCharKey then
                 entryLabel:SetTextColor(accent[1] + 0.2, accent[2] + 0.2, accent[3] + 0.2)
+            else
+                entryLabel:SetTextColor(1, 1, 1)
             end
-
-            local entryHi = entryBtn:CreateTexture(nil, "HIGHLIGHT")
-            entryHi:SetAllPoints()
-            entryHi:SetColorTexture(1, 1, 1, 0.1)
 
             entryBtn:SetScript("OnClick", function()
                 selectedCharKey = cKey
@@ -1630,6 +1712,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
                 end
             end)
 
+            entryBtn:Show()
             entryY = entryY - ENTRY_H
         end
 
@@ -1637,12 +1720,13 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         menu:Show()
     end)
 
-    -- Hover effect
     btn:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(accent[1], accent[2], accent[3], 1)
+        local a = (ns.UI_COLORS or {}).accent or {0.5, 0.3, 0.8}
+        self:SetBackdropBorderColor(a[1], a[2], a[3], 1)
     end)
     btn:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(accent[1]*0.6, accent[2]*0.6, accent[3]*0.6, 0.8)
+        local a = (ns.UI_COLORS or {}).accent or {0.5, 0.3, 0.8}
+        self:SetBackdropBorderColor(a[1]*0.6, a[2]*0.6, a[3]*0.6, 0.8)
     end)
 
     return btn, yOffset

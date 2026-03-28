@@ -1882,6 +1882,21 @@ local function CreateModelViewer(parent, width, height)
     collectedBadge:Hide()
     panel.collectedBadge = collectedBadge
 
+    local wowheadBtn = CreateFrame("Button", nil, textOverlay)
+    wowheadBtn:SetSize(20, 20)
+    wowheadBtn:SetPoint("BOTTOMRIGHT", textOverlay, "BOTTOMRIGHT", -CONTENT_INSET, CONTENT_INSET)
+    wowheadBtn:SetNormalAtlas("socialqueuing-icon-eye")
+    wowheadBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    wowheadBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
+        GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
+        GameTooltip:Show()
+    end)
+    wowheadBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    wowheadBtn:Hide()
+    panel._wowheadBtn = wowheadBtn
+
     panel.model = model
 
     panel:SetScript("OnShow", function()
@@ -2011,6 +2026,7 @@ local function CreateModelViewer(parent, width, height)
             descText:SetPoint("TOPLEFT", sourceContainer, "BOTTOMLEFT", 0, -TEXT_GAP)
             descText:SetPoint("TOPRIGHT", sourceContainer, "BOTTOMRIGHT", 0, -TEXT_GAP)
             if panel._addContainer then panel._addContainer:Hide() end
+            if panel._wowheadBtn then panel._wowheadBtn:Hide() end
             return
         end
         if panel._addContainer and panel._addBtn and panel._addedIndicator then
@@ -2147,6 +2163,25 @@ local function CreateModelViewer(parent, width, height)
                 isCollected = collected == true
             end
         end
+
+        if panel._wowheadBtn then
+            local spellID = nil
+            if C_MountJournal and C_MountJournal.GetMountInfoByID then
+                local _, sid = C_MountJournal.GetMountInfoByID(mountID)
+                if sid and sid > 0 then spellID = sid end
+            end
+            if spellID then
+                panel._wowheadBtn:SetScript("OnClick", function(self)
+                    if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
+                        ns.UI.Factory:ShowWowheadCopyURL("mount", spellID, self)
+                    end
+                end)
+                panel._wowheadBtn:Show()
+            else
+                panel._wowheadBtn:Hide()
+            end
+        end
+
         if C_Timer and C_Timer.After and panel.UpdateModelFrameSize then
             C_Timer.After(0, function() panel.UpdateModelFrameSize() end)
         end
@@ -2173,6 +2208,7 @@ local function CreateModelViewer(parent, width, height)
             descText:SetPoint("TOPLEFT", sourceContainer, "BOTTOMLEFT", 0, -TEXT_GAP)
             descText:SetPoint("TOPRIGHT", sourceContainer, "BOTTOMRIGHT", 0, -TEXT_GAP)
             if panel._addContainer then panel._addContainer:Hide() end
+            if panel._wowheadBtn then panel._wowheadBtn:Hide() end
             return
         end
         if panel._addContainer and panel._addBtn and panel._addedIndicator then
@@ -2296,6 +2332,18 @@ local function CreateModelViewer(parent, width, height)
         descText:SetPoint("TOPRIGHT", lastAnchor, "BOTTOMRIGHT", 0, lastY)
         description = (description or ""):gsub("^%s+", ""):gsub("%s+$", "")
         descText:SetText(description ~= "" and (whiteHex .. description .. "|r") or "")
+
+        if panel._wowheadBtn and speciesID then
+            panel._wowheadBtn:SetScript("OnClick", function(self)
+                if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
+                    ns.UI.Factory:ShowWowheadCopyURL("pet", speciesID, self)
+                end
+            end)
+            panel._wowheadBtn:Show()
+        elseif panel._wowheadBtn then
+            panel._wowheadBtn:Hide()
+        end
+
         if C_Timer and C_Timer.After and panel.UpdateModelFrameSize then
             C_Timer.After(0, function() panel.UpdateModelFrameSize() end)
         end
@@ -2724,6 +2772,31 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                     end
                 end
             end)
+        end
+
+        if achievement.id and achievement.id > 0 then
+            local achWhBtn = CreateFrame("Button", nil, content)
+            achWhBtn:SetSize(18, 18)
+            achWhBtn:SetPoint("TOPLEFT", lastAnchor, "BOTTOMLEFT", 0, lastY)
+            achWhBtn:SetNormalAtlas("socialqueuing-icon-eye")
+            achWhBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+            achWhBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
+                GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
+                GameTooltip:Show()
+            end)
+            achWhBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            local achID = achievement.id
+            achWhBtn:SetScript("OnClick", function(self)
+                if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
+                    ns.UI.Factory:ShowWowheadCopyURL("achievement", achID, self)
+                end
+            end)
+            addDetailElement(achWhBtn)
+            lastAnchor = achWhBtn
+            lastPoint = "BOTTOMLEFT"
+            lastY = -SECTION_GAP
         end
 
         local totalH = math.abs(lastY) + PADDING
@@ -4415,6 +4488,21 @@ local function DrawToysContent(contentFrame)
         sourceLabel:SetWordWrap(true)
         sourceLabel:SetText("")
         collectionsState._toyDetailSourceLabel = sourceLabel
+
+        local toyWhBtn = CreateFrame("Button", nil, scrollChild)
+        toyWhBtn:SetSize(20, 20)
+        toyWhBtn:SetPoint("BOTTOMRIGHT", collectionsState.toyDetailContainer, "BOTTOMRIGHT", -CONTENT_INSET, CONTENT_INSET)
+        toyWhBtn:SetNormalAtlas("socialqueuing-icon-eye")
+        toyWhBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        toyWhBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
+            GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
+            GameTooltip:Show()
+        end)
+        toyWhBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        toyWhBtn:Hide()
+        collectionsState._toyDetailWowheadBtn = toyWhBtn
     else
         collectionsState.toyDetailContainer:SetParent(rightCol)
         collectionsState.toyDetailContainer:SetSize(detailWidth, detailH)
@@ -4521,6 +4609,18 @@ local function DrawToysContent(contentFrame)
             local gB = (COLORS.gold and COLORS.gold[3]) or 0
             local goldHex = string.format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
             srcLabel:SetText(goldHex .. sourceTitle .. ":|r |cffffffff" .. srcText .. "|r")
+        end
+        if collectionsState._toyDetailWowheadBtn then
+            if itemID and itemID > 0 then
+                collectionsState._toyDetailWowheadBtn:SetScript("OnClick", function(self)
+                    if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
+                        ns.UI.Factory:ShowWowheadCopyURL("toy", itemID, self)
+                    end
+                end)
+                collectionsState._toyDetailWowheadBtn:Show()
+            else
+                collectionsState._toyDetailWowheadBtn:Hide()
+            end
         end
         if collectionsState._toyDetailScrollChild and C_Timer and C_Timer.After then
             C_Timer.After(0, function()

@@ -188,6 +188,47 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     card.nameText = nameText
     card.planNameText = nameText  -- Store reference for overflow checking
     
+    -- Wowhead link button (bottom-right of card)
+    local wowheadEntityType, wowheadID
+    if plan.type == "mount" then
+        wowheadEntityType = "mount"
+        if plan.mountID and C_MountJournal and C_MountJournal.GetMountInfoByID then
+            local _, sid = C_MountJournal.GetMountInfoByID(plan.mountID)
+            if sid and sid > 0 then wowheadID = sid end
+        end
+    elseif plan.type == "pet" then
+        wowheadEntityType, wowheadID = "pet", plan.speciesID
+    elseif plan.type == "toy" then
+        wowheadEntityType, wowheadID = "toy", plan.itemID
+    elseif plan.type == "achievement" then
+        wowheadEntityType, wowheadID = "achievement", plan.achievementID
+    elseif plan.type == "illusion" then
+        wowheadEntityType, wowheadID = "illusion", plan.illusionID or plan.itemID
+    elseif plan.type == "title" then
+        wowheadEntityType, wowheadID = "title", plan.titleID
+    end
+    if wowheadEntityType and wowheadID and wowheadID > 0 then
+        local whBtn = CreateFrame("Button", nil, card)
+        whBtn:SetSize(18, 18)
+        whBtn:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -8, 6)
+        whBtn:SetNormalAtlas("socialqueuing-icon-eye")
+        whBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        whBtn:SetFrameLevel(card:GetFrameLevel() + 5)
+        whBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
+            GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
+            GameTooltip:Show()
+        end)
+        whBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        local capturedType, capturedID = wowheadEntityType, wowheadID
+        whBtn:SetScript("OnClick", function(self)
+            if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
+                ns.UI.Factory:ShowWowheadCopyURL(capturedType, capturedID, self)
+            end
+        end)
+    end
+
     -- Show icon and card after full setup (prevents flickering)
     if iconFrameObj then
         iconFrameObj:Show()
@@ -691,7 +732,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         if (isDrop and not isGuaranteed) or count > 0 then
             local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
             local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
-            tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -32, -10)
+            tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -56, -10)
             tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
             tryText:SetJustifyH("RIGHT")
             tryText:SetWordWrap(false)
@@ -2103,33 +2144,39 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
             local newHeight = originalHeight
             
             if cardFrame._isDescriptionExpanded then
-                -- Wait for text to render, then calculate accurate height
-                local updateFrame = ns.UI.Factory:CreateContainer(UIParent)
-                local updateCount = 0
+                -- Wait for text to render, then calculate accurate height.
+                -- Reuse a single hidden frame to avoid frame accumulation.
+                local updateFrame = ns._planDescUpdateFrame
+                if not updateFrame then
+                    updateFrame = CreateFrame("Frame", nil, UIParent)
+                    updateFrame:SetSize(1, 1)
+                    updateFrame:Hide()
+                    ns._planDescUpdateFrame = updateFrame
+                end
+                updateFrame._targetCard = cardFrame
+                updateFrame._origHeight = originalHeight
+                updateFrame._count = 0
                 updateFrame:SetScript("OnUpdate", function(self, elapsed)
-                    updateCount = updateCount + 1
-                    if updateCount >= 2 then
-                        -- Get height of rest text (multi-line part)
+                    self._count = self._count + 1
+                    if self._count >= 2 then
+                        local cf = self._targetCard
                         local restTextHeight = 0
-                        if cardFrame.descriptionTextRest then
-                            restTextHeight = cardFrame.descriptionTextRest:GetStringHeight()
+                        if cf and cf.descriptionTextRest then
+                            restTextHeight = cf.descriptionTextRest:GetStringHeight()
                         end
-                        
-                        -- Expanded: collapsed(14) replaced by: label(14) + firstLine(14) + restText
-                        -- Height change = 14 + restText
                         local collapsedHeight = 14
-                        local labelAndFirstLineHeight = 14  -- Label and first line share same height
-                        local calculatedHeight = originalHeight - collapsedHeight + labelAndFirstLineHeight + restTextHeight
-                        
-                        cardFrame:SetHeight(calculatedHeight)
-                        if CardLayoutManager and cardFrame._layoutManager then
-                            CardLayoutManager:UpdateCardHeight(cardFrame, calculatedHeight)
+                        local labelAndFirstLineHeight = 14
+                        local calculatedHeight = (self._origHeight or 130) - collapsedHeight + labelAndFirstLineHeight + restTextHeight
+                        if cf then
+                            cf:SetHeight(calculatedHeight)
+                            if CardLayoutManager and cf._layoutManager then
+                                CardLayoutManager:UpdateCardHeight(cf, calculatedHeight)
+                            end
                         end
-                        
                         self:SetScript("OnUpdate", nil)
-                        updateFrame = nil
                     end
                 end)
+                updateFrame:Show()
                 
                 -- Set estimated height immediately
                 local remainingTextLen = math.max(0, string.len(cardFrame.fullDescription) - (cardFrame._charsPerFirstLine or 0))

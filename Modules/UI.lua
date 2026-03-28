@@ -594,30 +594,27 @@ function WarbandNexus:CreateMainWindow()
     
     -- OnSizeChanged handler - Update borders and scrollChild width
     -- Content will refresh on OnMouseUp (when resize is complete)
+    local lastSizeW, lastSizeH = 0, 0
     f:SetScript("OnSizeChanged", function(self, width, height)
-        -- CRITICAL: Snap dimensions to physical pixels to prevent blur
         local PixelSnap = ns.PixelSnap
         if PixelSnap then
             width = PixelSnap(width)
             height = PixelSnap(height)
         end
-        
-        -- CRITICAL: Recalculate border thickness during resize
-        -- This prevents border "thickening/thinning" artifacts
+
+        local dw = width - lastSizeW
+        local dh = height - lastSizeH
+        if dw < 1 and dw > -1 and dh < 1 and dh > -1 then return end
+        lastSizeW, lastSizeH = width, height
+
         if self.BorderTop then
-            local GetPixelScale = ns.GetPixelScale
-            if GetPixelScale then
-                local pixelScale = (ns.GetPixelScale and ns.GetPixelScale(self)) or 1
-                
-                -- Reset border thickness to pixel-perfect value
-                self.BorderTop:SetHeight(pixelScale)
-                self.BorderBottom:SetHeight(pixelScale)
-                self.BorderLeft:SetWidth(pixelScale)
-                self.BorderRight:SetWidth(pixelScale)
-            end
+            local pixelScale = (ns.GetPixelScale and ns.GetPixelScale(self)) or 1
+            self.BorderTop:SetHeight(pixelScale)
+            self.BorderBottom:SetHeight(pixelScale)
+            self.BorderLeft:SetWidth(pixelScale)
+            self.BorderRight:SetWidth(pixelScale)
         end
-        
-        -- Update scrollChild width; gear/professions tabs keep minimum so content does not squeeze
+
         if self.scrollChild and self.scroll then
             local w = self.scroll:GetWidth()
             if self.currentTab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
@@ -639,8 +636,6 @@ function WarbandNexus:CreateMainWindow()
         if self.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
             ns.UI.Factory:UpdateHorizontalScrollBarVisibility(self.scroll)
         end
-        -- DO NOT refresh content here (causes severe lag during resize)
-        -- Content is refreshed in OnMouseUp when resize is complete
     end)
     
     -- Resize handle — anchored exactly at BOTTOMRIGHT to prevent size jump on click
@@ -1531,11 +1526,13 @@ function WarbandNexus:PopulateContent()
         end
     end
 
-    -- Hide persistent 3D models when leaving their tab — they stay on scrollChild
-    -- and would overlap other tab content otherwise.
+    -- Hide persistent gear frames when leaving their tab
     if mainFrame.currentTab ~= "gear" then
         if ns._gearPlayerModel then ns._gearPlayerModel:Hide() end
         if ns._gearNoPreviewFrame then ns._gearNoPreviewFrame:Hide() end
+        if ns._gearModelBorder then ns._gearModelBorder:Hide() end
+        if ns._gearIlvlFrame then ns._gearIlvlFrame:Hide() end
+        if ns._gearNameWrapper then ns._gearNameWrapper:Hide() end
     end
     
     -- Update status

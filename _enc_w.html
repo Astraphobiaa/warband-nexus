@@ -1,0 +1,2234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- InMobi Choice. Consent Manager Tag v3.0 (for TCF 2.2) -->
+<script id="inmobi-consent-script" class="ad-related">
+  (function() {
+    var host = window.location.hostname;
+    var element = document.createElement('script');
+    var firstScript = document.getElementsByTagName('script')[0];
+    var url = 'https://cmp.inmobi.com'
+      .concat('/choice/', 'R49-_XfAAzJmS', '/', host, '/choice.js?tag_version=V3');
+    var uspTries = 0;
+    var uspTriesLimit = 3;
+    element.async = true;
+    element.type = 'text/javascript';
+    element.src = url;
+  
+    firstScript.parentNode.insertBefore(element, firstScript);
+  
+    function makeStub() {
+      var TCF_LOCATOR_NAME = '__tcfapiLocator';
+      var queue = [];
+      var win = window;
+      var cmpFrame;
+  
+      function addFrame() {
+        var doc = win.document;
+        var otherCMP = !!(win.frames[TCF_LOCATOR_NAME]);
+  
+        if (!otherCMP) {
+          if (doc.body) {
+            var iframe = doc.createElement('iframe');
+  
+            iframe.style.cssText = 'display:none';
+            iframe.name = TCF_LOCATOR_NAME;
+            doc.body.appendChild(iframe);
+          } else {
+            setTimeout(addFrame, 5);
+          }
+        }
+        return !otherCMP;
+      }
+  
+      function tcfAPIHandler() {
+        var gdprApplies;
+        var args = arguments;
+  
+        if (!args.length) {
+          return queue;
+        } else if (args[0] === 'setGdprApplies') {
+          if (
+            args.length > 3 &&
+            args[2] === 2 &&
+            typeof args[3] === 'boolean'
+          ) {
+            gdprApplies = args[3];
+            if (typeof args[2] === 'function') {
+              args[2]('set', true);
+            }
+          }
+        } else if (args[0] === 'ping') {
+          var retr = {
+            gdprApplies: gdprApplies,
+            cmpLoaded: false,
+            cmpStatus: 'stub'
+          };
+  
+          if (typeof args[2] === 'function') {
+            args[2](retr);
+          }
+        } else {
+          if(args[0] === 'init' && typeof args[3] === 'object') {
+            args[3] = Object.assign(args[3], { tag_version: 'V3' });
+          }
+          queue.push(args);
+        }
+      }
+  
+      function postMessageEventHandler(event) {
+        var msgIsString = typeof event.data === 'string';
+        var json = {};
+  
+        try {
+          if (msgIsString) {
+            json = JSON.parse(event.data);
+          } else {
+            json = event.data;
+          }
+        } catch (ignore) {}
+  
+        var payload = json.__tcfapiCall;
+  
+        if (payload) {
+          window.__tcfapi(
+            payload.command,
+            payload.version,
+            function(retValue, success) {
+              var returnMsg = {
+                __tcfapiReturn: {
+                  returnValue: retValue,
+                  success: success,
+                  callId: payload.callId
+                }
+              };
+              if (msgIsString) {
+                returnMsg = JSON.stringify(returnMsg);
+              }
+              if (event && event.source && event.source.postMessage) {
+                event.source.postMessage(returnMsg, '*');
+              }
+            },
+            payload.parameter
+          );
+        }
+      }
+  
+      while (win) {
+        try {
+          if (win.frames[TCF_LOCATOR_NAME]) {
+            cmpFrame = win;
+            break;
+          }
+        } catch (ignore) {}
+  
+        if (win === window.top) {
+          break;
+        }
+        win = win.parent;
+      }
+      if (!cmpFrame) {
+        addFrame();
+        win.__tcfapi = tcfAPIHandler;
+        win.addEventListener('message', postMessageEventHandler, false);
+      }
+    };
+  
+    makeStub();
+  
+    function makeGppStub() {
+      const CMP_ID = 10;
+      const SUPPORTED_APIS = [
+        '2:tcfeuv2',
+        '6:uspv1',
+        '7:usnatv1',
+        '8:usca',
+        '9:usvav1',
+        '10:uscov1',
+        '11:usutv1',
+        '12:usctv1'
+      ];
+  
+      window.__gpp_addFrame = function (n) {
+        if (!window.frames[n]) {
+          if (document.body) {
+            var i = document.createElement("iframe");
+            i.style.cssText = "display:none";
+            i.name = n;
+            document.body.appendChild(i);
+          } else {
+            window.setTimeout(window.__gpp_addFrame, 10, n);
+          }
+        }
+      };
+      window.__gpp_stub = function () {
+        var b = arguments;
+        __gpp.queue = __gpp.queue || [];
+        __gpp.events = __gpp.events || [];
+  
+        if (!b.length || (b.length == 1 && b[0] == "queue")) {
+          return __gpp.queue;
+        }
+  
+        if (b.length == 1 && b[0] == "events") {
+          return __gpp.events;
+        }
+  
+        var cmd = b[0];
+        var clb = b.length > 1 ? b[1] : null;
+        var par = b.length > 2 ? b[2] : null;
+        if (cmd === "ping") {
+          clb(
+            {
+              gppVersion: "1.1", // must be “Version.Subversion”, current: “1.1”
+              cmpStatus: "stub", // possible values: stub, loading, loaded, error
+              cmpDisplayStatus: "hidden", // possible values: hidden, visible, disabled
+              signalStatus: "not ready", // possible values: not ready, ready
+              supportedAPIs: SUPPORTED_APIS, // list of supported APIs
+              cmpId: CMP_ID, // IAB assigned CMP ID, may be 0 during stub/loading
+              sectionList: [],
+              applicableSections: [-1],
+              gppString: "",
+              parsedSections: {},
+            },
+            true
+          );
+        } else if (cmd === "addEventListener") {
+          if (!("lastId" in __gpp)) {
+            __gpp.lastId = 0;
+          }
+          __gpp.lastId++;
+          var lnr = __gpp.lastId;
+          __gpp.events.push({
+            id: lnr,
+            callback: clb,
+            parameter: par,
+          });
+          clb(
+            {
+              eventName: "listenerRegistered",
+              listenerId: lnr, // Registered ID of the listener
+              data: true, // positive signal
+              pingData: {
+                gppVersion: "1.1", // must be “Version.Subversion”, current: “1.1”
+                cmpStatus: "stub", // possible values: stub, loading, loaded, error
+                cmpDisplayStatus: "hidden", // possible values: hidden, visible, disabled
+                signalStatus: "not ready", // possible values: not ready, ready
+                supportedAPIs: SUPPORTED_APIS, // list of supported APIs
+                cmpId: CMP_ID, // list of supported APIs
+                sectionList: [],
+                applicableSections: [-1],
+                gppString: "",
+                parsedSections: {},
+              },
+            },
+            true
+          );
+        } else if (cmd === "removeEventListener") {
+          var success = false;
+          for (var i = 0; i < __gpp.events.length; i++) {
+            if (__gpp.events[i].id == par) {
+              __gpp.events.splice(i, 1);
+              success = true;
+              break;
+            }
+          }
+          clb(
+            {
+              eventName: "listenerRemoved",
+              listenerId: par, // Registered ID of the listener
+              data: success, // status info
+              pingData: {
+                gppVersion: "1.1", // must be “Version.Subversion”, current: “1.1”
+                cmpStatus: "stub", // possible values: stub, loading, loaded, error
+                cmpDisplayStatus: "hidden", // possible values: hidden, visible, disabled
+                signalStatus: "not ready", // possible values: not ready, ready
+                supportedAPIs: SUPPORTED_APIS, // list of supported APIs
+                cmpId: CMP_ID, // CMP ID
+                sectionList: [],
+                applicableSections: [-1],
+                gppString: "",
+                parsedSections: {},
+              },
+            },
+            true
+          );
+        } else if (cmd === "hasSection") {
+          clb(false, true);
+        } else if (cmd === "getSection" || cmd === "getField") {
+          clb(null, true);
+        }
+        //queue all other commands
+        else {
+          __gpp.queue.push([].slice.apply(b));
+        }
+      };
+      window.__gpp_msghandler = function (event) {
+        var msgIsString = typeof event.data === "string";
+        try {
+          var json = msgIsString ? JSON.parse(event.data) : event.data;
+        } catch (e) {
+          var json = null;
+        }
+        if (typeof json === "object" && json !== null && "__gppCall" in json) {
+          var i = json.__gppCall;
+          window.__gpp(
+            i.command,
+            function (retValue, success) {
+              var returnMsg = {
+                __gppReturn: {
+                  returnValue: retValue,
+                  success: success,
+                  callId: i.callId,
+                },
+              };
+              event.source.postMessage(msgIsString ? JSON.stringify(returnMsg) : returnMsg, "*");
+            },
+            "parameter" in i ? i.parameter : null,
+            "version" in i ? i.version : "1.1"
+          );
+        }
+      };
+      if (!("__gpp" in window) || typeof window.__gpp !== "function") {
+        window.__gpp = window.__gpp_stub;
+        window.addEventListener("message", window.__gpp_msghandler, false);
+        window.__gpp_addFrame("__gppLocator");
+      }
+    };
+  
+    makeGppStub();
+  
+    var uspStubFunction = function() {
+      var arg = arguments;
+      if (typeof window.__uspapi !== uspStubFunction) {
+        setTimeout(function() {
+          if (typeof window.__uspapi !== 'undefined') {
+            window.__uspapi.apply(window.__uspapi, arg);
+          }
+        }, 500);
+      }
+    };
+  
+    var checkIfUspIsReady = function() {
+      uspTries++;
+      if (window.__uspapi === uspStubFunction && uspTries < uspTriesLimit) {
+        console.warn('USP is not accessible');
+      } else {
+        clearInterval(uspInterval);
+      }
+    };
+  
+    if (typeof window.__uspapi === 'undefined') {
+      window.__uspapi = uspStubFunction;
+      var uspInterval = setInterval(checkIfUspIsReady, 6000);
+    }
+  })();
+  </script>
+  <!-- End InMobi Choice. Consent Manager Tag v3.0 (for TCF 2.2) -->
+  <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-WCX9MQDXGQ" class="ad-related"></script>
+<script class="ad-related">
+  window.dataLayer = window.dataLayer || [];
+  function gtag() { dataLayer.push(arguments); }
+  gtag('js', new Date());
+  gtag('config', 'G-WCX9MQDXGQ');
+</script>
+<!-- Meta Tags -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Midnight Enchanting guide with all Knowledge Points (weekly sources and 8 one-time treasures), specializations, and full recipe lists for enchants, oils, wands, and House Decor.">
+<meta property="og:title" content="Midnight Enchanting Guide: Recipes &amp; Knowledge Points">
+<meta property="og:description" content="Midnight Enchanting guide with all Knowledge Points (weekly sources and 8 one-time treasures), specializations, and full recipe lists for enchants, oils, wands, and House Decor.">
+<meta property="og:image" content="https://www.wow-professions.com/assets/img/share-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.wow-professions.com/midnight/enchanting-guide">
+<!-- Favicons -->
+<link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png"><!-- 180×180 -->
+<title>Midnight Enchanting Guide: Recipes &amp; Knowledge Points</title>
+<script type="text/javascript" src="//wow.zamimg.com/widgets/power.js" async></script>
+<!-- Styles and JS -->
+
+<script>
+  (function() {
+    var savedTheme = localStorage.getItem("theme");
+    if (savedTheme && savedTheme !== "system") {
+      document.documentElement.setAttribute("data-theme", savedTheme);
+    }
+  })();
+</script>
+<link rel="stylesheet" href="/assets/styles-848c2e2b.css">
+<script defer src="/assets/scripts-ac541ff8.js"></script>
+<script defer src="/assets/js/session-manager.js"></script>
+<!-- Wowhead tooltips -->
+<script>var whTooltips = { colorLinks: false, iconizeLinks: false, renameLinks: false };</script>
+<!-- Freestar preconnect start -->
+<link rel="preconnect" href="https://a.pub.network/" crossorigin class="ad-related" />
+<link rel="preconnect" href="https://b.pub.network/" crossorigin class="ad-related" />
+<link rel="preconnect" href="https://c.pub.network/" crossorigin class="ad-related" />
+<link rel="preconnect" href="https://d.pub.network/" crossorigin class="ad-related" />
+<link rel="preconnect" href="https://c.amazon-adsystem.com" crossorigin class="ad-related" />
+<link rel="preconnect" href="https://s.amazon-adsystem.com" crossorigin class="ad-related" />
+<link rel="preconnect" href="https://btloader.com/" crossorigin class="ad-related" />
+<link rel="preconnect" href="https://api.btloader.com/" crossorigin class="ad-related" />
+<link rel="preconnect" href="https://cdn.confiant-integrations.net" crossorigin class="ad-related" />
+<!-- Freestar preconnect end -->
+<script async src="//secure.freestar.com/config.js" class="ad-related"></script>
+<script async src="//secure.freestar.com/api.js" class="ad-related"></script>
+<link rel="stylesheet" href="https://a.pub.network/wow-professions-com/cls.css" class="ad-related">
+<!-- Freestar -->
+<script data-cfasync="false" type="text/javascript" class="ad-related">
+  var freestar = freestar || {};
+  freestar.queue = freestar.queue || [];
+  freestar.config = freestar.config || {};
+  freestar.config.enabled_slots = [];
+  freestar.initCallback = function () { (freestar.config.enabled_slots.length === 0) ? freestar.initCallbackCalled = false : freestar.newAdSlots(freestar.config.enabled_slots) }
+</script>
+<script src="https://a.pub.network/wow-professions-com/pubfig.min.js" data-cfasync="false" async class="ad-related"></script>  
+</head>
+<body><a href="https://www.wow-professions.com/cdn-cgi/content?id=DCrZWX2UHxyj7gAkigmOxA54phJI7uROzuMkIZToMQk-1774631419.027196-1.0.1.1-vVnf2xcax2.SXwmZhB75ld4gVhbEtfj9txmA14lbons" aria-hidden="true" rel="nofollow noopener" style="display: none !important; visibility: hidden !important"></a>
+    <!-- SVG Icon Sprite -->
+    <!-- Font Awesome Style SVG Icon Sprite -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  
+  <!-- Success/Check Circle (fa-check-circle) -->
+  <symbol id="icon-success" viewBox="0 0 512 512">
+    <path fill="currentColor" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM369 209L241 337c-9.4 9.4-24.6 9.4-33.9 0l-64-64c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l47 47L335 175c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9z"/>
+  </symbol>
+
+  <!-- Simple Checkmark (fa-check) -->
+  <symbol id="icon-checkmark" viewBox="0 0 448 512">
+    <path fill="currentColor" d="M438.6 105.4c12.5 12.5 12.5 32.8 0 45.3l-256 256c-12.5 12.5-32.8 12.5-45.3 0l-128-128c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0L160 338.7 393.4 105.4c12.5-12.5 32.8-12.5 45.3 0z"/>
+  </symbol>
+
+  <!-- Error/X Circle (fa-times-circle) -->
+  <symbol id="icon-error" viewBox="0 0 512 512">
+    <path fill="currentColor" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM175 175c9.4-9.4 24.6-9.4 33.9 0l47 47 47-47c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9l-47 47 47 47c9.4 9.4 9.4 24.6 0 33.9s-24.6 9.4-33.9 0l-47-47-47 47c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l47-47-47-47c-9.4-9.4-9.4-24.6 0-33.9z"/>
+  </symbol>
+
+  <!-- Simple X/Cross (fa-times) -->
+  <symbol id="icon-cross" viewBox="0 0 384 512">
+    <path fill="currentColor" d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256 342.6 150.6z"/>
+  </symbol>
+
+  <!-- Warning Triangle (fa-exclamation-triangle) -->
+  <symbol id="icon-warning" viewBox="0 0 512 512">
+    <path fill="currentColor" d="M256 32c14.2 0 27.3 7.5 34.5 19.8l216 368c7.3 12.4 7.3 27.7 .2 40.1S486.3 480 472 480H40c-14.3 0-27.6-7.7-34.7-20.1s-7-27.8 .2-40.1l216-368C228.7 39.5 241.8 32 256 32zm0 128c-13.3 0-24 10.7-24 24V296c0 13.3 10.7 24 24 24s24-10.7 24-24V184c0-13.3-10.7-24-24-24zm32 224a32 32 0 1 0 -64 0 32 32 0 1 0 64 0z"/>
+  </symbol>
+
+  <!-- Loading Spinner (fa-spinner) -->
+  <symbol id="icon-loading" viewBox="0 0 512 512">
+    <path fill="currentColor" d="M304 48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zm0 416a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM48 304a48 48 0 1 0 0-96 48 48 0 1 0 0 96zm464-48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM142.9 437A48 48 0 1 0 75 369.1 48 48 0 1 0 142.9 437zm0-294.2A48 48 0 1 0 75 75a48 48 0 1 0 67.9 67.9zM369.1 437A48 48 0 1 0 437 369.1 48 48 0 1 0 369.1 437z"/>
+  </symbol>
+
+  <!-- Star/Celebration (fa-star) -->
+  <symbol id="icon-celebration" viewBox="0 0 576 512">
+    <path fill="currentColor" d="M316.9 18C311.6 7 300.4 0 288.1 0s-23.4 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L438.5 329 542.7 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L381.2 150.3 316.9 18z"/>
+  </symbol>
+
+</svg>
+    
+    <header class="navbar">
+  <div class="container">
+
+
+    <!-- Logo / Brand -->
+    <div class="navbar-header">
+      <a class="navbar-brand" href="/">
+        <img src="/assets/img/logo.svg" alt="" width="40" height="40">
+      </a>
+    </div>
+
+    <!-- Desktop Navigation -->
+    <nav class="desktop-nav">
+      <ul>
+        <li><a href="/midnight">Midnight</a></li>        
+        <li><a href="/classic">Classic Era</a></li>
+        <li><a href="/tbc-classic">TBC</a></li>        
+        <li><a href="/mop">MoP</a></li>
+        <li><a href="/profession-leveling-guides">Profession Leveling</a></li>
+        <li><a href="/farming-guides">Farming</a></li>
+      </ul>
+    </nav>
+
+    <div class="navbar-widgets">
+      <!-- NEW: Go Ad-Free Button (Desktop)  -->
+      <a href="/support" class="go-ad-free-btn hide-for-supporters-global">Go Ad Free</a>
+<a href="/support" class="supporter-badge show-for-supporters-global" style="display: none;">✨ Supporter</a>
+
+      <!-- Feedback Desktop -->
+      <div class="feedback-container"><a href="/contact"><svg width="20px" height="20px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M3.75 5.25L3 6V18L3.75 18.75H20.25L21 18V6L20.25 5.25H3.75ZM4.5 7.6955V17.25H19.5V7.69525L11.9999 14.5136L4.5 7.6955ZM18.3099 6.75H5.68986L11.9999 12.4864L18.3099 6.75Z" fill="#fff"></path>
+          </svg>Feedback</a></div>
+      <!-- Theme Switcher (Right) -->
+      <div class="theme-switcher" id="desktop-theme-switcher">
+        <button type="button" id="theme-toggle" class="theme-button" aria-haspopup="menu" aria-expanded="false">
+          <span class="theme-button-wrap">
+            <img id="theme-icon" src="/assets/img/theme-light.svg" alt="Theme Switcher" width="16" height="16">
+            Theme
+          </span>
+          <svg aria-hidden="true" class="" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"></path>
+          </svg>
+        </button>
+        <ul id="theme-menu" class="theme-dropdown hidden" aria-labelledby="theme-toggle">
+          <li><button type="button" class="theme-option" data-theme-option="system">
+              <span class="theme-option-wrap">
+                <img src="/assets/img/theme-os-default.svg" alt="Auto" width="16" height="16"> Auto
+              </span>
+            </button></li>
+          <li><button type="button" class="theme-option" data-theme-option="light">
+              <span class="theme-option-wrap">
+                <img src="/assets/img/theme-light.svg" alt="Light Mode" width="16" height="16"> Light
+              </span>
+            </button></li>
+          <li><button type="button" class="theme-option" data-theme-option="dark">
+              <span class="theme-option-wrap">
+                <img src="/assets/img/theme-dark.svg" alt="Dark Mode" width="16" height="16"> Dark
+              </span>
+            </button></li>
+        </ul>
+      </div>
+
+      <!-- Search Widget -->
+      <script src="/pagefind/pagefind-ui.js"></script>
+      <div id="search"></div>
+      <script>
+        window.addEventListener('DOMContentLoaded', (event) => {
+          new PagefindUI({
+            element: "#search",
+            showSubResults: false,
+            excerptLength: 0,
+            ranking: {
+              termSaturation: 2.0,
+              termFrequency: 0.2,
+              termSimilarity: 10.0
+            },
+            excerptLength: 7,
+          });
+        });
+      </script>
+    </div>
+    <!-- Mobile Menu Button -->
+    <button id="mobile-menu-toggle" class="mobile-menu-button">
+      ☰
+    </button>
+
+    <!-- Mobile Navigation (Hidden by Default) -->
+    <nav id="mobile-nav" class="mobile-nav">
+      <ul>
+        <li><a href="/midnight">Midnight</a></li>        
+        <li><a href="/classic">Classic Era</a></li>        
+        <li><a href="/tbc-classic">TBC</a></li>        
+        <li><a href="/mop">MoP</a></li>
+        <li><a href="/profession-leveling-guides">Profession Leveling</a></li>
+        <li><a href="/farming-guides">Farming</a></li>
+      </ul>
+      <!-- Mobile Theme Switcher -->
+      <div class="mobile-navbar-widgets">
+        <!-- Mobile Go Ad-Free Button  -->
+        <a href="/support" class="go-ad-free-btn hide-for-supporters-global">Go Ad Free</a>
+        <a href="/support" class="supporter-badge show-for-supporters-global" style="display: none;">✨ Supporter</a>
+
+        <!-- Mobile Feedback button  -->
+        <div class="feedback-container"><a href="/contact"><svg width="20px" height="20px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M3.75 5.25L3 6V18L3.75 18.75H20.25L21 18V6L20.25 5.25H3.75ZM4.5 7.6955V17.25H19.5V7.69525L11.9999 14.5136L4.5 7.6955ZM18.3099 6.75H5.68986L11.9999 12.4864L18.3099 6.75Z" fill="#fff"></path>
+            </svg>Feedback</a></div>
+        
+        <div class="theme-switcher" id="mobile-theme-switcher">
+          <button type="button" id="theme-toggle-mobile" class="theme-button" aria-haspopup="menu" aria-expanded="false">
+            <span class="theme-button-wrap">
+              <img id="theme-icon-mobile" src="/assets/img/theme-light.svg" alt="Theme Switcher" width="16" height="16">
+              Theme
+            </span>
+            <svg aria-hidden="true" class="" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"></path>
+            </svg>
+          </button>
+          <ul id="theme-menu-mobile" class="theme-dropdown hidden" aria-labelledby="theme-toggle-mobile">
+            <li><button type="button" class="theme-option" data-theme-option="system">
+                <span class="theme-option-wrap">
+                  <img src="/assets/img/theme-os-default.svg" alt="Auto" width="16" height="16"> Auto
+                </span>
+              </button></li>
+            <li><button type="button" class="theme-option" data-theme-option="light">
+                <span class="theme-option-wrap">
+                  <img src="/assets/img/theme-light.svg" alt="Light Mode" width="16" height="16"> Light
+                </span>
+              </button></li>
+            <li><button type="button" class="theme-option" data-theme-option="dark">
+                <span class="theme-option-wrap">
+                  <img src="/assets/img/theme-dark.svg" alt="Dark Mode" width="16" height="16"> Dark
+                </span>
+              </button></li>
+          </ul>
+        </div>        
+      </div>
+    </nav>
+  </div>  
+</header>    
+    <div class="wrapper">
+        
+<div class="grid-layout grid--4 mn-layout">
+  
+    <aside class="sidebar-sticky left">
+      
+      <!-- TOC: show in left sidebar unless midnightNav moves it to right column -->
+      
+
+      <!-- Related links -->
+      
+      <!-- Midnight profession navigation -->
+      
+      <nav class="mn" data-pagefind-ignore="all">
+        <h4 class="sidebar-header">Midnight Guides</h4>
+        
+          
+          
+            
+          
+            
+          
+            
+          
+
+          
+            <details class="mn-group">
+              <summary>
+                <span>Alchemy</span>
+                <svg class="mn-chev" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <ul>
+                
+                  
+                  <li><a href="/guides/wow-alchemy-leveling-guide">Leveling 1-100</a></li>
+                
+                  
+                  <li><a href="/midnight/alchemy-guide">Recipes &amp; Knowledge</a></li>
+                
+                  
+                  <li><a href="/midnight/alchemy-specialization-guide-and-builds">Specializations</a></li>
+                
+              </ul>
+            </details>
+          
+        
+          
+          
+            
+          
+            
+          
+            
+          
+
+          
+            <details class="mn-group">
+              <summary>
+                <span>Blacksmithing</span>
+                <svg class="mn-chev" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <ul>
+                
+                  
+                  <li><a href="/guides/wow-blacksmithing-leveling-guide">Leveling 1-100</a></li>
+                
+                  
+                  <li><a href="/midnight/blacksmithing-guide">Recipes &amp; Knowledge</a></li>
+                
+                  
+                  <li><a href="/midnight/blacksmithing-specialization-guide-and-builds">Specializations</a></li>
+                
+              </ul>
+            </details>
+          
+        
+          
+          
+            
+          
+            
+              
+            
+          
+            
+          
+
+          
+            <details class="mn-group" open>
+              <summary>
+                <span>Enchanting</span>
+                <svg class="mn-chev" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <ul>
+                
+                  
+                  <li><a href="/guides/wow-enchanting-leveling-guide">Leveling 1-100</a></li>
+                
+                  
+                  <li><a href="/midnight/enchanting-guide" class="active">Recipes &amp; Knowledge</a></li>
+                
+                  
+                  <li><a href="/midnight/enchanting-specialization-guide-and-builds">Specializations</a></li>
+                
+              </ul>
+            </details>
+          
+        
+          
+          
+            
+          
+            
+          
+            
+          
+
+          
+            <details class="mn-group">
+              <summary>
+                <span>Engineering</span>
+                <svg class="mn-chev" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <ul>
+                
+                  
+                  <li><a href="/guides/wow-engineering-leveling-guide">Leveling 1-100</a></li>
+                
+                  
+                  <li><a href="/midnight/engineering-guide">Recipes &amp; Knowledge</a></li>
+                
+                  
+                  <li><a href="/midnight/engineering-specialization-guide-and-builds">Specializations</a></li>
+                
+              </ul>
+            </details>
+          
+        
+          
+          
+            
+          
+            
+          
+
+          
+            <details class="mn-group">
+              <summary>
+                <span>Herbalism</span>
+                <svg class="mn-chev" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <ul>
+                
+                  
+                  <li><a href="/guides/wow-herbalism-leveling-guide">Leveling &amp; Routes</a></li>
+                
+                  
+                  <li><a href="/midnight/herbalism-specialization-guide-and-builds">Specializations</a></li>
+                
+              </ul>
+            </details>
+          
+        
+          
+          
+            
+          
+            
+          
+            
+          
+
+          
+            <details class="mn-group">
+              <summary>
+                <span>Inscription</span>
+                <svg class="mn-chev" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <ul>
+                
+                  
+                  <li><a href="/guides/wow-inscription-leveling-guide">Leveling 1-100</a></li>
+                
+                  
+                  <li><a href="/midnight/inscription-guide">Recipes &amp; Knowledge</a></li>
+                
+                  
+                  <li><a href="/midnight/inscription-specialization-guide-and-builds">Specializations</a></li>
+                
+              </ul>
+            </details>
+          
+        
+          
+          
+            
+          
+            
+          
+            
+          
+
+          
+            <details class="mn-group">
+              <summary>
+                <span>Jewelcrafting</span>
+                <svg class="mn-chev" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <ul>
+                
+                  
+                  <li><a href="/guides/wow-jewelcrafting-leveling-guide">Leveling 1-100</a></li>
+                
+                  
+                  <li><a href="/midnight/jewelcrafting-guide">Recipes &amp; Knowledge</a></li>
+                
+                  
+                  <li><a href="/midnight/jewelcrafting-specialization-guide-and-builds">Specializations</a></li>
+                
+              </ul>
+            </details>
+          
+        
+          
+          
+            
+          
+            
+          
+            
+          
+
+          
+            <details class="mn-group">
+              <summary>
+                <span>Leatherworking</span>
+                <svg class="mn-chev" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <ul>
+                
+                  
+                  <li><a href="/guides/wow-leatherworking-leveling-guide">Leveling 1-100</a></li>
+                
+                  
+                  <li><a href="/midnight/leatherworking-guide">Recipes &amp; Knowledge</a></li>
+                
+                  
+                  <li><a href="/midnight/leatherworking-specialization-guide-and-builds">Specializations</a></li>
+                
+              </ul>
+            </details>
+          
+        
+          
+          
+            
+          
+            
+          
+
+          
+            <details class="mn-group">
+              <summary>
+                <span>Mining</span>
+                <svg class="mn-chev" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <ul>
+                
+                  
+                  <li><a href="/guides/wow-mining-leveling-guide">Leveling &amp; Routes</a></li>
+                
+                  
+                  <li><a href="/midnight/mining-specialization-guide-and-builds">Specializations</a></li>
+                
+              </ul>
+            </details>
+          
+        
+          
+          
+            
+          
+
+          
+            
+            
+            <a href="/guides/wow-skinning-leveling-guide" class="mn-row">
+              <span>Skinning</span>
+            </a>
+          
+        
+          
+          
+            
+          
+            
+          
+            
+          
+
+          
+            <details class="mn-group">
+              <summary>
+                <span>Tailoring</span>
+                <svg class="mn-chev" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <ul>
+                
+                  
+                  <li><a href="/guides/wow-tailoring-leveling-guide">Leveling 1-100</a></li>
+                
+                  
+                  <li><a href="/midnight/tailoring-guide">Recipes &amp; Knowledge</a></li>
+                
+                  
+                  <li><a href="/midnight/tailoring-specialization-guide-and-builds">Specializations</a></li>
+                
+              </ul>
+            </details>
+          
+        
+          
+          
+            
+          
+
+          
+            
+            
+            <a href="/guides/wow-cooking-leveling-guide" class="mn-row">
+              <span>Cooking</span>
+            </a>
+          
+        
+          
+          
+            
+          
+
+          
+            
+            
+            <a href="/guides/wow-fishing-leveling-guide" class="mn-row">
+              <span>Fishing</span>
+            </a>
+          
+        
+      </nav>
+      
+    </aside>
+  
+ 
+        <main class="content" data-pagefind-body>
+            
+  <h1 data-pagefind-weight="10">Midnight Enchanting Guide: Recipes &amp; Knowledge Points</h1>
+  <article>    
+    <p>This guide covers all of Midnight Enchanting. You'll find every weekly and one-time Knowledge source, profession equipment, renown-gated recipes, and full recipe lists for weapon, armor, ring, helm, shoulder, and tool enchants, plus oils, wands, and house decor.</p>
+<p>Enchanting in Midnight works similarly to The War Within, but there are some new enchant slots (helm, shoulders) and the quality system got simplified. The recipes are split between trainers, vendors in different zones, and dungeon drops.</p>
+<p>If you need help leveling Enchanting from 1 to 100, check out my leveling guide:</p>
+<p class="text-align-center">
+    <a href="/guides/wow-enchanting-leveling-guide" class="gblock">
+        Midnight Enchanting Leveling Guide
+    </a>
+</p>
+<h2 class="line-header" id="changes">Midnight Enchanting Changes</h2>
+<p>These are the notable Enchanting changes in the Midnight expansion. If you played an Enchanter in The War Within, you'll adapt quickly since most systems work the same way.</p>
+<ul class="spaced-list">
+    <li><b>Artisan Enchanter's Moxie</b> - The BoP currency <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=210814"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_10_gearcraft_artisansmettle_color3.jpg">Artisan's Acuity</a> from The War Within has been changed to a profession-specific currency, <a rel="nofollow noopener noreferrer" class="white" target="_blank" href="https://www.wowhead.com/currency=3258"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_10_gearcraft_artisansmettle_color2.jpg">Artisan Enchanter's Moxie</a>. You can now only use it for Enchanting recipes, not other professions.</li>
+    <li><b>No More Bronze Quality</b> - Bronze-quality enchants and reagents no longer exist. All consumables and reagents now only have two quality levels: Silver and Gold. You'll always get at least Silver quality, and Concentration guarantees Gold.</li>
+    <li><b>New Enchant Slots</b> - Midnight introduces new enchant slots for <b>Helm</b> and <b>Shoulder</b> armor in addition to the existing ones.</li>
+    <li><b>Cloak & Bracer Enchants Removed</b> - There are no Cloak or Bracer enchants in Midnight. These slots have been dropped entirely.</li>
+    <li><b>Epic Profession Gear</b> - The War Within already had an Epic enchanting rod, but Midnight adds Epic-quality accessories too. They give the same Skill as Rare, but have higher secondary stats.</li>
+    <li><b>Shattering Available From Day 1</b> - In The War Within, shattering recipes (Dawn Shatter, Radiant Shatter) were locked behind later patches, which made Enchanting dust extremely expensive at launch. In Midnight, shattering is available right away, so dust prices should be much more reasonable from the start.</li>
+</ul>
+<h2 class="line-header" id="knowledge">Enchanting Knowledge in Midnight</h2>
+<h3>One-Time Sources</h3>
+<p>These are one-time sources of Enchanting Knowledge Points. Once you collect them, they are gone forever on that character.</p>
+<ul class="guide-list">
+    <li><b>Renown Book</b> - <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=257600"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_offhand_sunwell_d_01.jpg">Skill Issue: Enchanting</a> gives 10 Knowledge Points. Sold by <a href="/midnight/npc/caeris-fairdawn">Caeris Fairdawn</a> in Eversong Woods for 75 <a rel="nofollow noopener noreferrer" class="white" target="_blank" href="https://www.wowhead.com/currency=3258"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_10_gearcraft_artisansmettle_color2.jpg">Artisan Enchanter's Moxie</a>. Requires <b>Renown 6 with Silvermoon Court</b>.</li>
+    <li><b>Event Book</b> - <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=250445"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_10_specialization_professionbook_enchanting_orig.jpg">Echo of Abundance: Enchanting</a> gives 10 Knowledge Points. Sold by <a rel="nofollow noopener noreferrer" target="_blank" href="https://www.wowhead.com/npc=241928">Chel the Chip</a> for 1600x <a rel="nofollow noopener noreferrer" class="white" target="_blank" href="https://www.wowhead.com/currency=3377"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_10_gathering_bioluminescentspores_large.jpg">Unalloyed Abundance</a> and 75 <a rel="nofollow noopener noreferrer" class="white" target="_blank" href="https://www.wowhead.com/currency=3258"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_10_gearcraft_artisansmettle_color2.jpg">Artisan Enchanter's Moxie</a>. Available during the Abundance event.</li>
+    <li><b>Treasures</b> - There are 8 Enchanting treasures scattered across the Midnight zones. Each one gives 3 Knowledge Points, for a total of 24 extra points. See the <a href="#treasures">treasure locations</a> below.</li>
+</ul>
+<h3>Weekly Sources</h3>
+<p>In Midnight, there are five weekly sources of Enchanting Knowledge. Enchanters don't have the Crafting Orders quest that other professions get. Instead, you earn extra Knowledge from Disenchanting drops.</p>
+<div class="table-container">
+<table class="tbl-desc">
+    <thead>
+        <tr>
+            <th>Source</th>
+            <th>Details</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><b>Weekly Quest (3 KP)</b></td>
+            <td>Your Enchanting trainer will offer a weekly quest that rewards a <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=263464"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_misc_profession_book_enchanting.jpg">Thalassian Enchanter's Folio</a> worth 3 Knowledge Points. Unlike other crafting professions, this is a turn-in quest rather than a crafting orders quest. If you don't see the quest, you first need to complete the <a rel="nofollow noopener noreferrer"  target="_blank" href="https://www.wowhead.com/quest=93723"><img  align="absmiddle" src="/images/icons/quest_start.gif" width="15" height="15">Crafters Needed</a> questline from <a rel="nofollow noopener noreferrer"  target="_blank" href="https://www.wowhead.com/npc=243283">Captain Flaresworn</a> to unlock it.</td>
+        </tr>
+        <tr>
+            <td><b>Weekly Drops (4 KP)</b></td>
+            <td>Each week, you can loot 1 of each of the following items from treasures scattered around the new zones: <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=259193"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_inscription_majorglyph13.jpg">Lost Thalassian Vellum</a> and <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=259192"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_enchanting_dust_color2.jpg">Voidstorm Ashes</a>.</td>
+        </tr>
+        <tr>
+            <td><b>Disenchanting Drops (~9 KP)</b></td>
+            <td>Instead of the Crafting Orders weekly quest, Enchanters earn knowledge by disenchanting gear. This works similarly to how gathering professions get extra knowledge from gathering. You can loot 5x <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=267654"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_10_enchanting2_magicswirl_black.jpg">Swirling Arcane Essence</a> and 1x <a rel="nofollow noopener noreferrer" class="epic" target="_blank" href="https://www.wowhead.com/item=267655"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_jewelcrafting_70_songcrystal.jpg">Brimming Mana Shard</a>.</td>
+        </tr>
+        <tr>
+            <td><b>Inscription Treatise (1 KP)</b></td>
+            <td>To get a <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=245759"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_misc_profession_book_enchanting.jpg">Thalassian Treatise on Enchanting</a>, you need to submit a Public Crafting Order since they are bind-on-pickup (BoP). Treatises are Warbound, so if you have an alt with Inscription, you can craft them and send them to your main.</td>
+        </tr>
+        <tr>
+            <td><b>Darkmoon Faire (3 KP / month)</b></td>
+            <td>Once a month, the Darkmoon Faire comes to town and you can complete a quick <a href="/wowguides/darkmoon-faire-profession-quests">profession quest</a> for +3 Knowledge Points and +2 Profession Skill. It's not a weekly source, but don't skip it. The Faire starts on the Sunday before the first Monday of each month.</td>
+        </tr>
+    </tbody>
+</table>
+</div>
+<h3>Disenchanting Catch-Up</h3>
+<p>Enchanters can earn extra Knowledge Points by Disenchanting. After getting all your Weekly Knowledge Points, you'll start looting <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=267653"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_10_enchanting_dust_color5.jpg">Glimmering Powder</a>, which gives +1 Knowledge per drop. The amount you get depends on how many points you're behind.</p>
+<p>To make Glimmering Powder start dropping, <b>you must first complete your weekly Enchanting tasks</b>:</p>
+<ul>
+    <li>Trainer weekly quest</li>
+    <li>Disenchant items until you get the 5x <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=267654"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_10_enchanting2_magicswirl_black.jpg">Swirling Arcane Essence</a> and 1x <a rel="nofollow noopener noreferrer" class="epic" target="_blank" href="https://www.wowhead.com/item=267655"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_jewelcrafting_70_songcrystal.jpg">Brimming Mana Shard</a> weekly Knowledge Points</li>
+    <li>Loot the 2 weekly items from treasures: <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=259193"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_inscription_majorglyph13.jpg">Lost Thalassian Vellum</a> and <a rel="nofollow noopener noreferrer" class="rare" target="_blank" href="https://www.wowhead.com/item=259192"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_enchanting_dust_color2.jpg">Voidstorm Ashes</a></li>
+</ul>
+<p>Once those are done, Glimmering Powder will begin to drop from disenchanting eligible items. Just like gathering professions, these do not have a weekly cap, you can earn them until you're caught up.</p>
+<h3>Glimmering Powder Drop Rates</h3>
+<p>I only tested a few hundred disenchanting attempts, but the results should be close enough to give you a good idea of the drop rates:</p>
+<ul>
+    <li><b>Greens:</b> ~10%</li>
+    <li><b>Blues:</b> ~50%</li>
+    <li><b>Epics:</b> Always drop 1 (100%)</li>
+</ul>
+<h2 class="line-header" id="treasures">Enchanting Knowledge Treasures</h2>
+<p>There are 8 Enchanting treasures in Midnight. Collecting them provides 24 Knowledge Points in total. Each treasure is a one-time pickup per character.  They are located in Eversong Woods, Zul'Aman, Harandar, and Voidstorm.</p>
+<details class="details-simple">
+<summary><h4>TomTom Waypoints & Treasure Check Macro</h4></summary>
+<div class="details-content">
+<h4>TomTom Waypoints</h4>
+<div class="code-copy">
+<div class="code-header">Copy all, then type <code>/ttpaste</code> in-game</div>
+<button class="btn-copy" data-clipboard-text="/way #2395 63.5, 32.6 Sin'dorei Enchanting Rod&#10;/way #2395 60.8, 53.0 Everblazing Sunmote&#10;/way #2395 40.2, 61.2 Enchanted Sunfire Silk&#10;/way #2437 40.4, 51.1 Loa-Blessed Dust&#10;/way #2536 48.4, 22.9 Enchanted Amani Mask&#10;/way #2413 65.8, 50.2 Primal Essence Orb&#10;/way #2413 37.7, 65.3 Entropic Shard&#10;/way #2405 35.5, 58.8 Pure Void Crystal"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+<pre>/way #2395 63.5, 32.6 Sin'dorei Enchanting Rod
+/way #2395 60.8, 53.0 Everblazing Sunmote
+/way #2395 40.2, 61.2 Enchanted Sunfire Silk
+/way #2437 40.4, 51.1 Loa-Blessed Dust
+/way #2536 48.4, 22.9 Enchanted Amani Mask
+/way #2413 65.8, 50.2 Primal Essence Orb
+/way #2413 37.7, 65.3 Entropic Shard
+/way #2405 35.5, 58.8 Pure Void Crystal</pre>
+</div>
+<h4>Treasure Check Macro</h4>
+<div class="code-copy">
+<div class="code-header">Paste into chat - <code>true</code> = collected</div>
+<button class="btn-copy" data-clipboard-text='/run local f,p=C_QuestLog.IsQuestFlaggedCompleted,print p("Sin&#39;dorei:",f(89107)) p("Everblazing:",f(89103)) p("Enchanted S:",f(89101)) p("Loa:",f(89106)) p("Enchanted A:",f(89100)) p("Primal:",f(89105)) p("Entropic:",f(89104)) p("Pure:",f(89102))'><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+<div class="code-wrap">/run local f,p=C_QuestLog.IsQuestFlaggedCompleted,print p("Sin'dorei:",f(89107)) p("Everblazing:",f(89103)) p("Enchanted S:",f(89101)) p("Loa:",f(89106)) p("Enchanted A:",f(89100)) p("Primal:",f(89105)) p("Entropic:",f(89104)) p("Pure:",f(89102))</div>
+</div>
+</div>
+</details>
+<h3 class="text-align-center">Treasures locations by zone</h3>
+<div class="tab-container">
+  <div class="tabs spread-buttons">
+        <button class="tab-button active" data-tab="tab-eversong">Eversong Woods <span class="tab-count">3</span></button>
+    <button class="tab-button" data-tab="tab-zulaman">Zul'Aman <span class="tab-count">2</span></button>
+    <button class="tab-button" data-tab="tab-harandar">Harandar <span class="tab-count">2</span></button>
+    <button class="tab-button" data-tab="tab-voidstorm">Voidstorm <span class="tab-count">1</span></button>
+  </div>
+  <div class="tab-content active" id="tab-eversong">
+        <p>Eversong Woods has 3 treasures.</p>
+<h4>Sin'dorei Enchanting Rod</h4>
+<div class="npc-media">
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Eversong Woods</span>
+<div class="waypoint-actions">
+<button class="btn-waypoint" data-clipboard-text="/way #2395 63.5 32.6 Sin'dorei Enchanting Rod">TomTom</button>
+<button class="btn-waypoint" data-clipboard-text="/run local m=2395;local x=0.635;local y=0.326;C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(m,x,y));C_SuperTrack.SetSuperTrackedUserWaypoint(true)">In-Game Pin</button>
+</div>
+</div>
+<div class="media-content">
+<div class="map-embed" data-zone="2395" data-coords="63.5, 32.6" data-title="Sin'dorei Enchanting Rod" data-map-img="/images/maps/normal/eversong-woods.jpg" data-zone-name="Eversong Woods">
+<div class="map-zone">Eversong Woods</div>
+<div class="map-image" style="background-image: url('/images/maps/normal/eversong-woods.jpg');">
+<div class="map-pin" style="left: 63.5%; top: 32.6%;"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Sin'dorei Enchanting Rod</span>
+</div>
+<div class="media-content">
+<img  class="lightbox" alt="Sin'dorei Enchanting Rod" src="/images/midnight/enc-sin-dorei-enchanting-rod.jpg" width="3082" height="2054">
+</div>
+</div>
+</div><h4>Everblazing Sunmote</h4>
+<div class="npc-media">
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Eversong Woods</span>
+<div class="waypoint-actions">
+<button class="btn-waypoint" data-clipboard-text="/way #2395 60.8 53.0 Everblazing Sunmote">TomTom</button>
+<button class="btn-waypoint" data-clipboard-text="/run local m=2395;local x=0.608;local y=0.530;C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(m,x,y));C_SuperTrack.SetSuperTrackedUserWaypoint(true)">In-Game Pin</button>
+</div>
+</div>
+<div class="media-content">
+<div class="map-embed" data-zone="2395" data-coords="60.8, 53.0" data-title="Everblazing Sunmote" data-map-img="/images/maps/normal/eversong-woods.jpg" data-zone-name="Eversong Woods">
+<div class="map-zone">Eversong Woods</div>
+<div class="map-image" style="background-image: url('/images/maps/normal/eversong-woods.jpg');">
+<div class="map-pin" style="left: 60.8%; top: 53.0%;"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Everblazing Sunmote</span>
+</div>
+<div class="media-content">
+<img  class="lightbox" alt="Everblazing Sunmote" src="/images/midnight/enc-everblazing-sunmote.jpg" width="3082" height="2054">
+</div>
+</div>
+</div><h4>Enchanted Sunfire Silk</h4>
+<div class="npc-media">
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Eversong Woods</span>
+<div class="waypoint-actions">
+<button class="btn-waypoint" data-clipboard-text="/way #2395 40.2 61.2 Enchanted Sunfire Silk">TomTom</button>
+<button class="btn-waypoint" data-clipboard-text="/run local m=2395;local x=0.402;local y=0.612;C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(m,x,y));C_SuperTrack.SetSuperTrackedUserWaypoint(true)">In-Game Pin</button>
+</div>
+</div>
+<div class="media-content">
+<div class="map-embed" data-zone="2395" data-coords="40.2, 61.2" data-title="Enchanted Sunfire Silk" data-map-img="/images/maps/normal/eversong-woods.jpg" data-zone-name="Eversong Woods">
+<div class="map-zone">Eversong Woods</div>
+<div class="map-image" style="background-image: url('/images/maps/normal/eversong-woods.jpg');">
+<div class="map-pin" style="left: 40.2%; top: 61.2%;"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Enchanted Sunfire Silk</span>
+</div>
+<div class="media-content">
+<img  class="lightbox" alt="Enchanted Sunfire Silk" src="/images/midnight/enchanting-treasure-enchanted-sunfire-silk.jpg" width="1002" height="668">
+</div>
+</div>
+</div>  </div>
+  <div class="tab-content" id="tab-zulaman">
+    <p>Zul'Aman has 2 treasures.</p>
+<h4>Loa-Blessed Dust</h4>
+<div class="npc-media">
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Zul'Aman</span>
+<div class="waypoint-actions">
+<button class="btn-waypoint" data-clipboard-text="/way #2437 40.4 51.1 Loa-Blessed Dust">TomTom</button>
+<button class="btn-waypoint" data-clipboard-text="/run local m=2437;local x=0.404;local y=0.511;C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(m,x,y));C_SuperTrack.SetSuperTrackedUserWaypoint(true)">In-Game Pin</button>
+</div>
+</div>
+<div class="media-content">
+<div class="map-embed" data-zone="2437" data-coords="40.4, 51.1" data-title="Loa-Blessed Dust" data-map-img="/images/maps/normal/zulaman.jpg" data-zone-name="Zul'Aman">
+<div class="map-zone">Zul'Aman</div>
+<div class="map-image" style="background-image: url('/images/maps/normal/zulaman.jpg');">
+<div class="map-pin" style="left: 40.4%; top: 51.1%;"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Loa-Blessed Dust</span>
+</div>
+<div class="media-content">
+<img  class="lightbox" alt="Loa-Blessed Dust" src="/images/midnight/enc-loa-blessed-dust.jpg" width="3082" height="2054">
+</div>
+</div>
+</div><h4>Enchanted Amani Mask</h4>
+<div class="alert-box notice">This treasure is in Atal'Aman and may be phased. You might need to progress further in the campaign before it appears.</div>
+<div class="npc-media">
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Zul'Aman, Atal'Aman</span>
+<div class="waypoint-actions">
+<button class="btn-waypoint" data-clipboard-text="/way #2536 48.4 22.9 Enchanted Amani Mask">TomTom</button>
+<button class="btn-waypoint" data-clipboard-text="/run local m=2536;local x=0.484;local y=0.229;C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(m,x,y));C_SuperTrack.SetSuperTrackedUserWaypoint(true)">In-Game Pin</button>
+</div>
+</div>
+<div class="media-content">
+<div class="map-embed" data-zone="2536" data-coords="48.4, 22.9" data-title="Enchanted Amani Mask" data-map-img="/images/maps/normal/atalaman.jpg" data-zone-name="Zul'Aman, Atal'Aman">
+<div class="map-zone">Zul'Aman, Atal'Aman</div>
+<div class="map-image" style="background-image: url('/images/maps/normal/atalaman.jpg');">
+<div class="map-pin" style="left: 48.4%; top: 22.9%;"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Enchanted Amani Mask</span>
+</div>
+<div class="media-content">
+<img  class="lightbox" alt="Enchanted Amani Mask" src="/images/midnight/enc-enchanted-amani-mask.jpg" width="3082" height="2054">
+</div>
+</div>
+</div>  </div>
+  <div class="tab-content" id="tab-harandar">
+    <p>Harandar has 2 treasures.</p>
+<h4>Primal Essence Orb</h4>
+<div class="npc-media">
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Harandar</span>
+<div class="waypoint-actions">
+<button class="btn-waypoint" data-clipboard-text="/way #2413 65.8 50.2 Primal Essence Orb">TomTom</button>
+<button class="btn-waypoint" data-clipboard-text="/run local m=2413;local x=0.658;local y=0.502;C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(m,x,y));C_SuperTrack.SetSuperTrackedUserWaypoint(true)">In-Game Pin</button>
+</div>
+</div>
+<div class="media-content">
+<div class="map-embed" data-zone="2413" data-coords="65.8, 50.2" data-title="Primal Essence Orb" data-map-img="/images/maps/normal/harandar.jpg" data-zone-name="Harandar">
+<div class="map-zone">Harandar</div>
+<div class="map-image" style="background-image: url('/images/maps/normal/harandar.jpg');">
+<div class="map-pin" style="left: 65.8%; top: 50.2%;"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Primal Essence Orb</span>
+</div>
+<div class="media-content">
+<img  class="lightbox" alt="Primal Essence Orb" src="/images/midnight/enc-primal-essence-orb.jpg" width="3082" height="2054">
+</div>
+</div>
+</div><h4>Entropic Shard</h4>
+<div class="npc-media">
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Harandar</span>
+<div class="waypoint-actions">
+<button class="btn-waypoint" data-clipboard-text="/way #2413 37.7 65.3 Entropic Shard">TomTom</button>
+<button class="btn-waypoint" data-clipboard-text="/run local m=2413;local x=0.377;local y=0.653;C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(m,x,y));C_SuperTrack.SetSuperTrackedUserWaypoint(true)">In-Game Pin</button>
+</div>
+</div>
+<div class="media-content">
+<div class="map-embed" data-zone="2413" data-coords="37.7, 65.3" data-title="Entropic Shard" data-map-img="/images/maps/normal/harandar.jpg" data-zone-name="Harandar">
+<div class="map-zone">Harandar</div>
+<div class="map-image" style="background-image: url('/images/maps/normal/harandar.jpg');">
+<div class="map-pin" style="left: 37.7%; top: 65.3%;"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Entropic Shard</span>
+</div>
+<div class="media-content">
+<img  class="lightbox" alt="Entropic Shard" src="/images/midnight/enc-entropic-shard.jpg" width="3082" height="2054">
+</div>
+</div>
+</div>  </div>
+  <div class="tab-content" id="tab-voidstorm">
+    <p>Voidstorm has 1 treasure.</p>
+<h4>Pure Void Crystal</h4>
+<div class="npc-media">
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Voidstorm</span>
+<div class="waypoint-actions">
+<button class="btn-waypoint" data-clipboard-text="/way #2405 35.5 58.8 Pure Void Crystal">TomTom</button>
+<button class="btn-waypoint" data-clipboard-text="/run local m=2405;local x=0.355;local y=0.588;C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(m,x,y));C_SuperTrack.SetSuperTrackedUserWaypoint(true)">In-Game Pin</button>
+</div>
+</div>
+<div class="media-content">
+<div class="map-embed" data-zone="2405" data-coords="35.5, 58.8" data-title="Pure Void Crystal" data-map-img="/images/maps/normal/voidstorm.jpg" data-zone-name="Voidstorm">
+<div class="map-zone">Voidstorm</div>
+<div class="map-image" style="background-image: url('/images/maps/normal/voidstorm.jpg');">
+<div class="map-pin" style="left: 35.5%; top: 58.8%;"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="media-card">
+<div class="media-header">
+<span class="media-title">Pure Void Crystal</span>
+</div>
+<div class="media-content">
+<img  class="lightbox" alt="Pure Void Crystal" src="/images/midnight/enc-pure-void-crystal.jpg" width="3082" height="2054">
+</div>
+</div>
+</div>  </div>
+</div>
+<h2 class="line-header" id="specializations">Enchanting Specializations</h2>
+<p>There are four specialization trees available. You unlock them at Enchanting skill levels 25, 50, 60, and 75.</p>
+<ul class="guide-list">
+    <li><b>Elevating Equipment</b> - All the enchants organized by faction style (Thalassian, Amani, Haranir), including profession tool enchants.</li>
+    <li><b>Transitories, Tonics, and Tools</b> - Mana Oils, Combat Wands, the Enchanting Rod, and Temporary Illusions.</li>
+    <li><b>Disenchanting Delegate</b> - Better materials when you disenchant gear.</li>
+    <li><b>Spellbound Shatterer</b> - Crafting stats.</li>
+</ul>
+<p>I have a separate guide that walks through the best builds for each playstyle with step-by-step Knowledge Point allocation.</p>
+<p class="text-align-center">
+    <a href="/midnight/enchanting-specialization-guide-and-builds" class="gblock">        
+        Midnight Enchanting Specialization Guide & Best Builds
+    </a>  
+</p>
+<h2 class="line-header" id="profession-equipment">Profession Equipment</h2>
+<p>Enchanters were unique in The War Within because they were the only profession with Epic tools (the Enchanted Runed Warpstone Rod). In Midnight, every profession now has access to Epic tools, so Enchanting is no longer special in this regard.</p>
+<p>The key thing to remember: <b>Epic and Rare tools give the same Skill bonus</b> (+18 for tools, +11 for accessories = +40 total). Epic tools only provide higher secondary stats (Resourcefulness, Ingenuity, Multicraft). Rare tools work fine for crafting max-rank items.</p>
+<h3>Profession Gear for Enchanters</h3>
+<p>Enchanters can craft their own Runed Rod (main tool). You'll need to get a Hat from a <b>Tailor</b> and a Focusing Crystal from a <b>Jewelcrafter</b>.</p>
+<div class="table-container wrap">
+<table class="tbl-minimal">
+    <thead>
+        <tr>
+            <th>Slot</th>
+            <th>Crafted By</th>
+            <th>Green Quality</th>
+            <th>Blue Quality</th>
+            <th>Epic Quality</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Tool (Rod)</td>
+            <td>Enchanting</td>
+            <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236486"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_misc_1h_enchantingbloodelf_b_01.jpg">Runed Refulgent Copper Rod</a></td>
+            <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236487"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_misc_1h_enchantingbloodelf_b_01.jpg">Runed Brilliant Silver Rod</a></td>
+            <td><a class="epic" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236488"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_misc_1h_enchantingbloodelf_b_01.jpg">Runed Dazzling Thorium Rod</a></td>
+        </tr>
+        <tr>
+            <td>Accessory (Hat)</td>
+            <td>Tailoring</td>
+            <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1228970"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_armor_enchantinghat_b_01.jpg">Bright Linen Enchanting Hat</a></td>
+            <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1228964"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_armor_enchantinghat_b_01.jpg">Elegant Artisan's Enchanting Hat</a></td>
+            <td><a class="epic" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1279125"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_armor_enchantinghat_b_01.jpg">Thalassian Enchanter's Bonnet</a></td>
+        </tr>
+        <tr>
+            <td>Accessory (Crystal)</td>
+            <td>Jewelcrafting</td>
+            <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1230491"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_offhand_1h_questbloodelf_b_01.jpg">Silvermoon Focusing Shard</a></td>
+            <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1230495"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_offhand_1h_questbloodelf_b_01.jpg">Sin'dorei Enchanter's Crystal</a></td>
+            <td><a class="epic" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1242464"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_offhand_1h_questbloodelf_b_01.jpg">Attuned Thalassian Rune-Prism</a></td>
+        </tr>
+    </tbody>
+</table>
+</div>
+<h3>Rod Recipes</h3>
+<p>Enchanters can craft their own profession tool. The recipes come from:</p>
+<ul>
+    <li><b>Green (Runed Refulgent Copper Rod):</b> Trainer at skill 1</li>
+    <li><b>Blue (Runed Brilliant Silver Rod):</b> Specialization: Transitories, Tonics, and Tools</li>
+    <li><b>Epic (Runed Dazzling Thorium Rod):</b> Vendor: <a href="/midnight/npc/lyna">Lyna</a> in Silvermoon City</li>
+</ul>
+<h2 class="line-header" id="renown-recipes">Renown Recipes</h2>
+<p>Each faction sells 2-4 recipes at Renown Rank 5, including weapon enchants, tool enchants, and some unique items like the Codex off-hands and Gleeful Glamour.</p>
+<div class="table-container">
+<table class="tbl-minimal tbl-center">
+    <thead>
+        <tr>
+            <th>Recipe</th>
+            <th>Effect</th>
+            <th>Faction</th>
+            <th>Vendor</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236063"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Tool - Amani Perception</a></td>
+            <td>+Perception</td>
+            <td>Amani Tribe (Rank 5)</td>
+            <td><a href="/midnight/npc/magovu">Magovu</a></td>
+        </tr>
+        <tr>
+            <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236065"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Strength of Halazzi</a></td>
+            <td>Proc: Bleed damage</td>
+            <td>Amani Tribe (Rank 5)</td>
+            <td><a href="/midnight/npc/magovu">Magovu</a></td>
+        </tr>
+        <tr>
+            <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1281348"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7633266.jpg">Endless Codex of Nature's Grace</a></td>
+            <td>House Decor</td>
+            <td>Amani Tribe (Rank 5)</td>
+            <td><a href="/midnight/npc/magovu">Magovu</a></td>
+        </tr>
+        <tr>
+            <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236068"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Chest - Mark of the Rootwarden</a></td>
+            <td>+Agility, +Speed</td>
+            <td>Hara'ti (Rank 5)</td>
+            <td><a href="/midnight/npc/naynar">Naynar</a></td>
+        </tr>
+        <tr>
+            <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236078"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Tool - Haranir Multicrafting</a></td>
+            <td>+Multicrafting</td>
+            <td>Hara'ti (Rank 5)</td>
+            <td><a href="/midnight/npc/naynar">Naynar</a></td>
+        </tr>
+        <tr>
+            <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236081"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Worldsoul Tenacity</a></td>
+            <td>Vers + absorb (tank)</td>
+            <td>Hara'ti (Rank 5)</td>
+            <td><a href="/midnight/npc/naynar">Naynar</a></td>
+        </tr>
+        <tr>
+            <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236464"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Haranir</a></td>
+            <td>Cosmetic toy</td>
+            <td>Hara'ti (Rank 5)</td>
+            <td><a href="/midnight/npc/naynar">Naynar</a></td>
+        </tr>
+        <tr>
+            <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236089"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Ring - Silvermoon's Tenacity</a></td>
+            <td>+Vers (higher)</td>
+            <td>Silvermoon Court (Rank 5)</td>
+            <td><a href="/midnight/npc/caeris-fairdawn">Caeris Fairdawn</a></td>
+        </tr>
+        <tr>
+            <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1281342"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7633265.jpg">Endless Codex of Blooming Light</a></td>
+            <td>House Decor</td>
+            <td>Silvermoon Court (Rank 5)</td>
+            <td><a href="/midnight/npc/caeris-fairdawn">Caeris Fairdawn</a></td>
+        </tr>
+        <tr>
+            <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1246907"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7479474.jpg">Spellbound Tome of Thalassian Magics</a></td>
+            <td>House Decor</td>
+            <td>Silvermoon Court (Rank 5)</td>
+            <td><a href="/midnight/npc/caeris-fairdawn">Caeris Fairdawn</a></td>
+        </tr>
+        <tr>
+            <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236093"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Tool - Ren'dorei Ingenuity</a></td>
+            <td>+Ingenuity</td>
+            <td>The Singularity (Rank 5)</td>
+            <td><a href="/midnight/npc/void-researcher-anomander">Void Researcher Anomander</a></td>
+        </tr>
+        <tr>
+            <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236095"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Acuity of the Ren'dorei</a></td>
+            <td>Proc: Primary Stat buff</td>
+            <td>The Singularity (Rank 5)</td>
+            <td><a href="/midnight/npc/void-researcher-anomander">Void Researcher Anomander</a></td>
+        </tr>
+        <tr>
+            <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1281349"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7633267.jpg">Endless Codex of the Voidtouched</a></td>
+            <td>House Decor</td>
+            <td>The Singularity (Rank 5)</td>
+            <td><a href="/midnight/npc/void-researcher-anomander">Void Researcher Anomander</a></td>
+        </tr>
+    </tbody>
+</table>
+</div>
+<h2 class="line-header" id="recipes">Enchants</h2>
+<p>Here is the complete list of new Enchanting recipes in Midnight. Recipes come from trainers, specialization unlocks, vendors (different factions sell different recipes), treasure drops, and dungeon drops.</p>
+<h3>Enchant Categories</h3>
+<p>Enchants in Midnight are organized into themed categories that correspond to specialization skill bonuses:</p>
+<ul>
+    <li><b>Amani Augments</b></li>
+    <li><b>Haranir Heightening</b></li>
+    <li><b>Thalassian Talents</b></li>
+</ul>
+<p>Pay attention to which <b>category</b> an enchant belongs to when planning your specializations. Each category has its own skill bonus node in the specialization tree, so investing in the right branch directly increases the quality of the enchants you craft in that category.</p>
+<div class="tab-container">
+  <div class="tabs">
+    <button class="tab-button active" data-tab="tab-weapon">Weapon</button>
+    <button class="tab-button" data-tab="tab-boots">Boots</button>
+    <button class="tab-button" data-tab="tab-chest">Chest</button>
+    <button class="tab-button" data-tab="tab-helm">Helm</button>
+    <button class="tab-button" data-tab="tab-shoulder">Shoulders</button>
+    <button class="tab-button" data-tab="tab-ring">Rings</button>
+    <button class="tab-button" data-tab="tab-tool">Tools</button>
+  </div>
+  <div class="tab-content active" id="tab-weapon">
+    <h3>Weapon Enchants</h3>
+    <p>Most of these are stat procs for DPS. The Worldsoul enchants are defensive options for tanks and healers.</p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Effect</th>
+                    <th>Type</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236067"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Berserker's Rage</a></td>
+                    <td>Proc: Haste buff</td>
+                    <td>Amani</td>
+                    <td>Trainer (20)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236066"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Jan'alai's Precision</a></td>
+                    <td>Proc: Crit buff</td>
+                    <td>Amani</td>
+                    <td>Trainer (55)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236097"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Arcane Mastery</a></td>
+                    <td>Proc: Mastery buff</td>
+                    <td>Thalassian</td>
+                    <td>Trainer (40)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236095"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Acuity of the Ren'dorei</a></td>
+                    <td>Proc: Primary Stat buff</td>
+                    <td>Thalassian</td>
+                    <td>Vendor: <a href="/midnight/npc/void-researcher-anomander">Void Researcher Anomander</a> (Voidstorm)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236065"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Strength of Halazzi</a></td>
+                    <td>Proc: Bleed damage</td>
+                    <td>Amani</td>
+                    <td>Vendor: <a href="/midnight/npc/magovu">Magovu</a> (Zul'Aman)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236094"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Flames of the Sin'dorei</a></td>
+                    <td>Ignite + AoE on kill</td>
+                    <td>Thalassian</td>
+                    <td>Drop: Degentrius (Magisters' Terrace)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236080"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Worldsoul Aegis</a></td>
+                    <td>Shield on damage taken (tank)</td>
+                    <td>Haranir</td>
+                    <td>Trainer (55)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236081"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Worldsoul Tenacity</a></td>
+                    <td>Vers + absorb (tank)</td>
+                    <td>Haranir</td>
+                    <td>Vendor: <a href="/midnight/npc/naynar">Naynar</a> (Harandar)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236079"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Weapon - Worldsoul Cradle</a></td>
+                    <td>Heal absorb shield (healer)</td>
+                    <td>Haranir</td>
+                    <td>Drop: Chimaerus (The Dreamrift)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-boots">
+    <h3>Boot Enchants</h3>
+    <p>All boot enchants give a tertiary stat plus some Stamina.</p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Effect</th>
+                    <th>Type</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236057"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Boots - Lynx's Dexterity</a></td>
+                    <td>+Avoidance, +Stamina</td>
+                    <td>Amani</td>
+                    <td>Amani Augments → Berserker Brawn</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236072"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Boots - Shaladrassil's Roots</a></td>
+                    <td>+Leech, +Stamina</td>
+                    <td>Haranir</td>
+                    <td>Drop: Heavy Trunk (Delves)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236085"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Boots - Farstrider's Hunt</a></td>
+                    <td>+Speed, +Stamina</td>
+                    <td>Thalassian</td>
+                    <td>Vendor: Construct V'anore (Silvermoon City)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-chest">
+    <h3>Chest Enchants</h3>
+    <p>Pick the one that matches your primary stat. <b>Mark of the Worldsoul</b> works for everyone and gives the most raw stats.</p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Effect</th>
+                    <th>Type</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236068"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Chest - Mark of the Rootwarden</a></td>
+                    <td>+Agility, +Speed</td>
+                    <td>Haranir</td>
+                    <td>Vendor: <a href="/midnight/npc/naynar">Naynar</a> (Harandar)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236082"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Chest - Mark of the Magister</a></td>
+                    <td>+Intellect, +Mana%</td>
+                    <td>Thalassian</td>
+                    <td>Drop: Degentrius (Magisters' Terrace)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236054"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Chest - Mark of Nalorakk</a></td>
+                    <td>+Strength, +Stamina</td>
+                    <td>Amani</td>
+                    <td>Drop: Chest of Proven Valor (Den of Nalorakk)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236069"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Chest - Mark of the Worldsoul</a></td>
+                    <td>+Primary Stat</td>
+                    <td>Haranir</td>
+                    <td>Haranir Heightening → Azerothian Arms</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-helm">
+    <h3>Helm Enchants</h3>
+    <p>Tertiary stats again. The <b>Empowered</b> versions give more stats and a bonus proc when you kill outdoor mobs, so they're better for world content.</p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Effect</th>
+                    <th>Type</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236083"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Helm - Rune of Avoidance</a></td>
+                    <td>+Avoidance</td>
+                    <td>Thalassian</td>
+                    <td>Trainer (15)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236084"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Helm - Empowered Rune of Avoidance</a></td>
+                    <td>+Avoidance, +Speed burst on kill</td>
+                    <td>Thalassian</td>
+                    <td>Drop: Heavy Trunk (Delves)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236055"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Helm - Hex of Leeching</a></td>
+                    <td>+Leech</td>
+                    <td>Amani</td>
+                    <td>Trainer (35)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236056"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Helm - Empowered Hex of Leeching</a></td>
+                    <td>+Leech, +Heal on kill</td>
+                    <td>Amani</td>
+                    <td>Drop: Heavy Trunk (Delves)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236070"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Helm - Blessing of Speed</a></td>
+                    <td>+Speed</td>
+                    <td>Haranir</td>
+                    <td>Trainer (50)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236071"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Helm - Empowered Blessing of Speed</a></td>
+                    <td>+Speed, +Vigor on kill</td>
+                    <td>Haranir</td>
+                    <td>Haranir Heightening → Worldsoul Wards</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-shoulder">
+    <h3>Shoulder Enchants</h3>
+    <p>More tertiary stats. Same deal as boots and helm. Each type has a base and a higher version.</p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Effect</th>
+                    <th>Type</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236075"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Shoulders - Nature's Grace</a></td>
+                    <td>+Avoidance</td>
+                    <td>Haranir</td>
+                    <td>Trainer (10)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236076"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Shoulders - Amirdrassil's Grace</a></td>
+                    <td>+Avoidance (higher)</td>
+                    <td>Haranir</td>
+                    <td>Drop: Heavy Trunk (Delves)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236090"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Shoulders - Thalassian Recovery</a></td>
+                    <td>+Leech</td>
+                    <td>Thalassian</td>
+                    <td>Trainer (50)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236091"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Shoulders - Silvermoon's Mending</a></td>
+                    <td>+Leech (higher)</td>
+                    <td>Thalassian</td>
+                    <td>Thalassian Talents → Eversong Empowerments</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236061"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Shoulders - Flight of the Eagle</a></td>
+                    <td>+Speed</td>
+                    <td>Amani</td>
+                    <td>Trainer (30)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236062"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Shoulders - Akil'zon's Swiftness</a></td>
+                    <td>+Speed (higher)</td>
+                    <td>Amani</td>
+                    <td>Drop: Heavy Trunk (Delves)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-ring">
+    <h3>Ring Enchants</h3>
+    <p>Secondary stats. You have two ring slots, so you can double up on one stat or mix. The spec/drop versions give more stats than trainer ones.</p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Effect</th>
+                    <th>Type</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>                
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236073"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Ring - Nature's Wrath</a></td>
+                    <td>+Crit</td>
+                    <td>Haranir</td>
+                    <td>Trainer (25)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236074"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Ring - Nature's Fury</a></td>
+                    <td>+Crit (higher)</td>
+                    <td>Haranir</td>
+                    <td>Drop: Heavy Trunk (Delves)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236059"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Ring - Eyes of the Eagle</a></td>
+                    <td>+Crit Effectiveness%</td>
+                    <td>Amani</td>
+                    <td>Drop: Zul'Aman Treasures</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236086"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Ring - Thalassian Haste</a></td>
+                    <td>+Haste</td>
+                    <td>Thalassian</td>
+                    <td>Trainer (1)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236088"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Ring - Silvermoon's Alacrity</a></td>
+                    <td>+Haste (higher)</td>
+                    <td>Thalassian</td>
+                    <td>Thalassian Talents → Silvermoon's Spellpower</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236058"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Ring - Amani Mastery</a></td>
+                    <td>+Mastery</td>
+                    <td>Amani</td>
+                    <td>Trainer (45)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236060"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Ring - Zul'jin's Mastery</a></td>
+                    <td>+Mastery (higher)</td>
+                    <td>Amani</td>
+                    <td>Amani Augments → Zul'Aman Zeal</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236087"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Ring - Thalassian Versatility</a></td>
+                    <td>+Vers</td>
+                    <td>Thalassian</td>
+                    <td>Trainer (5)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236089"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Ring - Silvermoon's Tenacity</a></td>
+                    <td>+Vers (higher)</td>
+                    <td>Thalassian</td>
+                    <td>Vendor: <a href="/midnight/npc/caeris-fairdawn">Caeris Fairdawn</a> (Eversong Woods)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-tool">
+    <h3>Tool Enchants</h3>
+    <p>These go on your profession tools. Resourcefulness saves materials, Multicraft gives bonus procs, Perception helps find rare reagents.</p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Effect</th>
+                    <th>Type</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236063"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Tool - Amani Perception</a></td>
+                    <td>+Perception</td>
+                    <td>Amani</td>
+                    <td>Vendor: <a href="/midnight/npc/magovu">Magovu</a> (Zul'Aman)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236064"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Tool - Amani Resourcefulness</a></td>
+                    <td>+Resourcefulness</td>
+                    <td>Amani</td>
+                    <td>Amani Augments → Trollish Tools</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236077"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Tool - Haranir Finesse</a></td>
+                    <td>+Finesse</td>
+                    <td>Haranir</td>
+                    <td>Haranir Heightening → Nature's Novelties</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236078"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Tool - Haranir Multicrafting</a></td>
+                    <td>+Multicrafting</td>
+                    <td>Haranir</td>
+                    <td>Vendor: <a href="/midnight/npc/naynar">Naynar</a> (Harandar)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236093"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Tool - Ren'dorei Ingenuity</a></td>
+                    <td>+Ingenuity</td>
+                    <td>Thalassian</td>
+                    <td>Vendor: <a href="/midnight/npc/void-researcher-anomander">Void Researcher Anomander</a> (Voidstorm)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236092"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Enchant Tool - Sin'dorei Deftness</a></td>
+                    <td>+Deftness</td>
+                    <td>Thalassian</td>
+                    <td>Thalassian Talents → Quel'Thalas Quality</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+  </div>
+</div>
+<h2 class="line-header" id="other-recipes">Oils, Rods & Cosmetics</h2>
+<p>Beyond gear enchants, Enchanting also gives you consumables, cosmetics, and housing decorations.</p>
+<h3>Consumables</h3>
+<p>Enchanting consumables are weapon oils that apply temporary buffs to weapons. These are 1-hour buffs that persist through death.</p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Effect</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236492"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_12_profession_enchanting_manaoil_orange.jpg">Oil of Dawn</a></td>
+                    <td>Healer oil: chance to shield your target</td>
+                    <td>Spec: Transitories, Tonics, and Tools</td>
+                </tr>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236493"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_12_profession_enchanting_manaoil_purple.jpg">Smuggler's Enchanted Edge</a></td>
+                    <td>DPS oil: chance to deal Arcane damage</td>
+                    <td>Drop: Lithiel Cinderfury (Murder Row)</td>
+                </tr>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236491"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_12_profession_enchanting_manaoil_red.jpg">Thalassian Phoenix Oil</a></td>
+                    <td>Stat oil: +Crit and +Haste</td>
+                    <td>Trainer (20)</td>
+                </tr>
+            </tbody>
+        </table>
+</div>
+<h3>Rods</h3>
+<p>Enchanting rods are your profession tool. Higher tier rods provide better profession stats. </p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Quality</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236486"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_misc_1h_enchantingbloodelf_b_01.jpg">Runed Refulgent Copper Rod</a></td>
+                    <td>Common - Starter rod</td>
+                    <td>Trainer (1)</td>
+                </tr>
+                <tr>
+                    <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236487"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_misc_1h_enchantingbloodelf_b_01.jpg">Runed Brilliant Silver Rod</a></td>
+                    <td>Rare - Mid-tier profession stats</td>
+                    <td>Spec: Transitories, Tonics, and Tools</td>
+                </tr>
+                <tr>
+                    <td><a class="epic" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236488"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_misc_1h_enchantingbloodelf_b_01.jpg">Runed Dazzling Thorium Rod</a></td>
+                    <td>Epic - Best profession stats</td>
+                    <td>Vendor: <a href="/midnight/npc/lyna">Lyna</a> (Silvermoon City)</td>
+                </tr>
+            </tbody>
+        </table>
+</div>
+<h3>Shattering</h3>
+<p>Shattering recipes convert higher-tier enchanting materials into multiple lower-tier ones. They are useful when you have excess of one type and need another.</p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Conversion</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1280401"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_12_profession_enchanting_enchantingcrystal_orange.jpg">Dawn Shatter</a></td>
+                    <td>Dawn Crystal → 3 Radiant Shards</td>
+                    <td>Trainer (25)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1280394"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_12_profession_enchanting_enchantingshard_blue.jpg">Radiant Shatter</a></td>
+                    <td>Radiant Shard → 3 Eversinging Dust</td>
+                    <td>Trainer (50)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1235731"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_12_profession_enchanting_spellboundshatterer.jpg">Shatter Essence</a></td>
+                    <td>Buff: +Resourcefulness, +Ingenuity, +Multicraft</td>
+                    <td>Spec: Spellbound Shatterer</td>
+                </tr>
+            </tbody>
+        </table>
+</div>
+<h3>Illusions</h3>
+<p>Illusions are cosmetic weapon enchant effects.</p>
+    <div class="table-container">
+        <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Visual Effect</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236098"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Illusory Adornment - Blooming Light</a></td>
+                    <td>Golden/holy glow</td>
+                    <td>Trainer (25)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236099"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Illusory Adornment - Nature's Embrace</a></td>
+                    <td>Green nature effect</td>
+                    <td>Vendor: Construct V'anore (Silvermoon City)</td>
+                </tr>
+                <tr>
+                    <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236100"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/ui_profession_enchanting.jpg">Illusory Adornment - Voidtouched</a></td>
+                    <td>Purple void effect</td>
+                    <td>Drop: Victorious Stormarion Pinnacle Cache</td>
+                </tr>
+            </tbody>
+        </table>
+</div>
+<h3>Gleeful Glamours</h3>
+<p>Gleeful Glamours are cosmetic toys that transform you into various races. There are <b>25 Glamours total</b>, one for every playable race. All except one are learned from the trainer:</p>
+<ul>
+    <li><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236464"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Haranir</a> - Vendor: <a href="/midnight/npc/naynar">Naynar</a> (Harandar)</li>
+</ul>
+<details class="details-simple">
+<summary>All Trainer Glamours</summary>
+<div class="details-simple-content">
+<div class="alert-box notice">These are not taught by the regular trainer in Silvermoon City but by a different one. You can learn them from <a href="/midnight/npc/jennara-sunglow">Jennara Sunglow</a>.</div><div class="table-container">
+    <table class="tbl-minimal tbl-center">
+        <thead>
+            <tr>
+                <th>Recipe</th>
+                <th>Source</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236461"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Blood Elf</a></td>
+                <td>Trainer (5)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236475"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Night Elf</a></td>
+                <td>Trainer (5)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236466"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Dwarf</a></td>
+                <td>Trainer (10)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236594"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Earthen</a></td>
+                <td>Trainer (10)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236481"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Undead</a></td>
+                <td>Trainer (10)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236470"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Human</a></td>
+                <td>Trainer (15)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236477"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Orc</a></td>
+                <td>Trainer (15)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236465"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Draenei</a></td>
+                <td>Trainer (20)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236479"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Tauren</a></td>
+                <td>Trainer (20)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236476"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Nightborne</a></td>
+                <td>Trainer (25)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236482"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Void Elf</a></td>
+                <td>Trainer (25)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236483"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Vulpera</a></td>
+                <td>Trainer (30)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236484"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Worgen</a></td>
+                <td>Trainer (30)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236471"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Kul Tiran</a></td>
+                <td>Trainer (35)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236485"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Zandalari Troll</a></td>
+                <td>Trainer (35)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236469"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Highmountain Tauren</a></td>
+                <td>Trainer (40)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236472"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Lightforged Draenei</a></td>
+                <td>Trainer (40)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236463"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Dark Iron Dwarf</a></td>
+                <td>Trainer (45)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236478"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Pandaren</a></td>
+                <td>Trainer (45)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236480"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Troll</a></td>
+                <td>Trainer (45)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236467"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Gnome</a></td>
+                <td>Trainer (50)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236468"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Goblin</a></td>
+                <td>Trainer (50)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236473"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Mag'har Orc</a></td>
+                <td>Trainer (55)</td>
+            </tr>
+            <tr>
+                <td><a class="white" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1236474"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/inv_helm_mask_fittedalpha_b_01_nightborne_02.jpg">Gleeful Glamour - Mechagnome</a></td>
+                <td>Trainer (55)</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+</div>
+</details>
+<h2 class="line-header" id="decor">House Decor</h2>
+<p>These are housing decorations you can place in your home. Enchanting offers animated objects and magic-themed decor.</p>
+<div class="table-container">
+    <table class="tbl-minimal tbl-center">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1246906"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7479494.jpg">Animated Sin'dorei Hammer</a></td>
+                    <td>Vendor: World Vendors (Eversong Woods)</td>
+                </tr>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1246902"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7479470.jpg">Animated Sin'dorei Pick</a></td>
+                    <td>Vendor: World Vendors (Eversong Woods)</td>
+                </tr>
+                <tr>
+                    <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1281342"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7633265.jpg">Endless Codex of Blooming Light</a></td>
+                    <td>Vendor: <a href="/midnight/npc/caeris-fairdawn">Caeris Fairdawn</a> (Eversong Woods)</td>
+                </tr>
+                <tr>
+                    <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1281348"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7633266.jpg">Endless Codex of Nature's Grace</a></td>
+                    <td>Vendor: <a href="/midnight/npc/magovu">Magovu</a> (Zul'Aman)</td>
+                </tr>
+                <tr>
+                    <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1281349"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7633267.jpg">Endless Codex of the Voidtouched</a></td>
+                    <td>Vendor: <a href="/midnight/npc/void-researcher-anomander">Void Researcher Anomander</a> (Voidstorm)</td>
+                </tr>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1246904"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7479478.jpg">Ensorcelled Broom</a></td>
+                    <td>Trainer (80)</td>
+                </tr>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1246905"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7479482.jpg">Font of Gleaming Water</a></td>
+                    <td>Trainer (80)</td>
+                </tr>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1246903"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7479486.jpg">Ren'dorei Postage Repository</a></td>
+                    <td>Drop: Voidstorm Treasures</td>
+                </tr>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1246908"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7479490.jpg">Rootflame Campfire</a></td>
+                    <td>Drop: Heavy Trunk (Delves)</td>
+                </tr>
+                <tr>
+                    <td><a class="zold" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1246909"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7422807.jpg">Self-Pouring Thalassian Sunwine</a></td>
+                    <td>Vendor: Neriv (Eversong Woods)</td>
+                </tr>
+                <tr>
+                    <td><a class="rare" target="_blank" rel="nofollow noopener noreferrer" href="https://www.wowhead.com/spell=1246907"><img align="absmiddle" class="icon" src="https://wow.zamimg.com/images/wow/icons/small/7479474.jpg">Spellbound Tome of Thalassian Magics</a></td>
+                    <td>Vendor: <a href="/midnight/npc/caeris-fairdawn">Caeris Fairdawn</a> (Eversong Woods)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+  </article>
+
+        </main>
+        
+  
+    
+      
+      <aside class="sidebar-sticky midnight-toc-right">
+        <nav class="toc">
+          <h4 class="sidebar-header">Table of Contents</h4>
+          <ul>
+  <li><a href="#changes">Midnight Enchanting Changes</a></li>
+  <li><a href="#knowledge">Enchanting Knowledge</a></li>
+  <li><a href="#treasures">Knowledge Treasures</a></li>
+  <li><a href="#specializations">Enchanting Specializations</a></li>
+  <li><a href="#profession-equipment">Profession Equipment</a></li>
+  <li><a href="#renown-recipes">Renown Recipes</a></li>
+  <li><a href="#recipes">Enchants</a></li>
+  <li><a href="#other-recipes">Oils, Rods & Cosmetics</a></li>
+  <li><a href="#decor">House Decor</a></li>
+</ul>
+
+        </nav>
+      </aside>
+    
+  
+             
+        <aside class="sidebar-right">
+            <aside class="sticky-ad ad-related">
+                <div class="ad-slot">
+                    <!-- Tag ID: wowprofessions_medrec_right -->
+
+                    <div align="center" data-freestar-ad="__300x250" id="wowprofessions_medrec_right">
+                        <script data-cfasync="false" type="text/javascript">
+                          freestar.config.enabled_slots.push({ placementName: "wowprofessions_medrec_right", slotId: "wowprofessions_medrec_right" });
+                        </script>
+                      </div>
+                </div>
+                <div class="ad-slot second-ad">
+                    <!-- Tag ID: wowprofessions_medrec_right_2 -->
+
+                    <div align="center" data-freestar-ad="__300x250" id="wowprofessions_medrec_right_2">
+                        <script data-cfasync="false" type="text/javascript">
+                          freestar.config.enabled_slots.push({ placementName: "wowprofessions_medrec_right_2", slotId: "wowprofessions_medrec_right_2" });
+                        </script>
+                      </div>                      
+                </div>
+            </aside>
+        </aside>
+    </div>
+    
+    <div class="leaderboard-ad ad-related">
+        <div class="leader-ad-slot">
+            <!-- Tag ID: wowprofessions_leaderboard_btf -->
+            <div align="center" data-freestar-ad="__320x100 __970x90" id="wowprofessions_leaderboard_btf">
+                <script data-cfasync="false" type="text/javascript">
+                  freestar.config.enabled_slots.push({ placementName: "wowprofessions_leaderboard_btf", slotId: "wowprofessions_leaderboard_btf" });
+                </script>
+              </div>
+        </div>
+    </div>
+    
+    <footer>
+  <div class="flex-container" style="justify-content: center; flex-direction: column;">
+    <div style="display: flex; gap: 2rem; justify-content: center;"><a href="/contact">Contact</a><a href="/privacy-policy">Privacy Policy</a><a href="/disclaimer">Disclaimer</a></div><span>&copy; 2026 WoW-Professions.com</span>
+  </div>
+</footer>
+
+<!-- Map Modal -->
+<div id="map-modal" class="map-modal" aria-hidden="true">
+  <div class="map-modal-overlay"></div>
+  <div class="map-modal-container">
+    <div class="map-modal-header">
+      <span id="map-modal-title" class="map-modal-title"></span>
+      <button class="map-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="map-modal-actions">
+      <button id="map-modal-tomtom" class="btn-waypoint">TomTom</button>
+      <button id="map-modal-ingame" class="btn-waypoint">In-Game Pin</button>
+    </div>
+    <div class="map-modal-body">
+      <div class="map-viewport">
+        <div id="map-image-container" class="map-image">
+          <div id="map-pin" class="map-pin" data-pulse></div>
+        </div>
+      </div>
+      <div id="map-screenshot" class="map-screenshot">
+        <img id="map-screenshot-img" src="" alt="">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Image Lightbox -->
+<div id="lightbox" class="lightbox-modal" aria-hidden="true">
+  <div class="lightbox-overlay"></div>
+  <div class="lightbox-container">
+    <div class="lightbox-header">
+      <span id="lightbox-title" class="lightbox-title"></span>
+      <button class="lightbox-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="lightbox-body">
+      <img id="lightbox-image" src="" alt="">
+    </div>
+  </div>
+</div>    
+<!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "7b64878bef804239928fdc05ff3a5600"}'></script><!-- Cloudflare Pages Analytics --><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7dc11e5b295a412b81d135dffc00683e","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
