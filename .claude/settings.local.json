@@ -7,7 +7,10 @@
       "Bash(grep -rn \"CRAFTED_CREST_MAX_ILVL\\\\|CRAFTED_CREST_COST\\\\|TRACK_ILVLS\" \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\\\\Modules\"\" --include=\"*.lua \")",
       "Bash(grep -rn \"undefined\\\\|not found\\\\|FIXME\\\\|BUG\\\\|XXX\" /c/Users/Mert/Documents/GitHub/warband-nexus/Modules/*.lua)",
       "Bash(grep -n \"LibStub:GetLibrary\" /c/Users/Mert/Documents/GitHub/warband-nexus/Modules/*.lua)",
-      "Bash(grep -n 'LibStub\\(\"\"' /c/Users/Mert/Documents/GitHub/warband-nexus/Modules/*.lua)"
+      "Bash(grep -n 'LibStub\\(\"\"' /c/Users/Mert/Documents/GitHub/warband-nexus/Modules/*.lua)",
+      "WebFetch(domain:www.icy-veins.com)",
+      "WebFetch(domain:wowpedia.fandom.com)",
+      "WebFetch(domain:boostmatch.gg)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Mert\\.claude\\projects\\c--Users-Mert-Documents-GitHub-warband-nexus"

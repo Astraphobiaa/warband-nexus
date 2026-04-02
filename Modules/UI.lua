@@ -803,6 +803,15 @@ function WarbandNexus:CreateMainWindow()
     infoBtn:SetNormalTexture("Interface\\BUTTONS\\UI-GuildButton-PublicNote-Up")
     infoBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
     infoBtn:SetScript("OnClick", function() WarbandNexus:ShowInfoDialog() end)
+    infoBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText((ns.L and ns.L["HEADER_INFO_TOOLTIP"]) or "Addon guide & credits", 1, 1, 1)
+        GameTooltip:AddLine((ns.L and ns.L["HEADER_INFO_TOOLTIP_HINT"]) or "Features, supporters, and contributors at the top", 0.65, 0.65, 0.65, true)
+        GameTooltip:Show()
+    end)
+    infoBtn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
 
     -- Discord button (tracking status is to its left)
     local discordBtn = CreateFrame("Button", nil, header)
@@ -1423,6 +1432,9 @@ function WarbandNexus:CreateMainWindow()
     f:SetScript("OnHide", function(self)
         StopCustomDrag(self)
         SaveWindowGeometry(self)
+        if ns.HideGearCharacterDropdown then
+            ns.HideGearCharacterDropdown()
+        end
         if WarbandNexus.CloseAllPlanDialogs then
             WarbandNexus:CloseAllPlanDialogs()
         end

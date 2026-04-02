@@ -963,6 +963,10 @@ L["INFO_TAB_GEAR"] = "Gear"
 L["INFO_TAB_COLLECTIONS"] = "Collections"
 L["INFO_TAB_STATISTICS"] = "Statistics"
 L["SPECIAL_THANKS"] = "Special Thanks"
+L["INFO_CREDITS_SECTION_TITLE"] = "Credits & thanks"
+L["INFO_FEATURES_SECTION_TITLE"] = "Features overview"
+L["HEADER_INFO_TOOLTIP"] = "Addon guide & credits"
+L["HEADER_INFO_TOOLTIP_HINT"] = "Contributors and feature help — credits are at the top."
 L["SUPPORTERS_TITLE"] = "Supporters"
 L["CONTRIBUTORS_TITLE"] = "Contributors"
 L["THANK_YOU_MSG"] = "Thank you for using Warband Nexus!"
@@ -1008,7 +1012,7 @@ L["WELCOME_TYPE_CMD"] = "Please type"
 L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
 
 -- What's New (current release only; older entries are not kept in-repo)
-L["CHANGELOG_V256"] = "v2.5.6\nImprovements:\n- Readable realm spacing in Gear, weekly plans, Plans tracker, tracking dialog (saved keys still use Blizzard normalized realm text)\n- Collectibles: wider BfA Bloodfeaster NPC list; clearer notes for chest vs boss and multi-corpse try counting\n- SplitCharacterKey + first-hyphen-only parsing for Name-Realm strings\n- CONTRIBUTING + scripts/audit_wn_vs_rarity.py for Rarity mount audits\n\nBug fixes:\n- Try Counter: chat loot + shared drop tables (e.g. Tamed Bloodfeaster) no longer lose CHAT try updates\n- Hyphenated realms (Azjol-Nerub): canonical keys, GetAllCharacters repair, stats/minimap labels; one-time realm-field migration\n- Mount item IDs: Verdant Skitterfly (192764), Red Qiraji crystal (21321)\n- Tracking dialog: GetRealmName guarded for secret values\n\nLocalization:\n- TRY_COUNT click / right-click hints in all locales\n\nRepo: redundant dev scratch files removed; Rarity import notes in CONTRIBUTING\n\nCurseForge: Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\nImprovements:\n- Readable realm spacing in Gear, weekly plans, Plans tracker, tracking dialog (saved keys still use Blizzard normalized realm text)\n- Collectibles: wider BfA Bloodfeaster NPC list; clearer notes for chest vs boss and multi-corpse try counting\n- SplitCharacterKey + first-hyphen-only parsing for Name-Realm strings\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py for mount DB audits\n\nBug fixes:\n- Try Counter: chat loot + shared drop tables (e.g. Tamed Bloodfeaster) no longer lose CHAT try updates\n- Hyphenated realms (Azjol-Nerub): canonical keys, GetAllCharacters repair, stats/minimap labels; one-time realm-field migration\n- Mount item IDs: Verdant Skitterfly (192764), Red Qiraji crystal (21321)\n- Tracking dialog: GetRealmName guarded for secret values\n\nLocalization:\n- TRY_COUNT click / right-click hints in all locales\n\nRepo: redundant dev scratch files removed; legacy mount import notes in CONTRIBUTING\n\nCurseForge: Warband Nexus"
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"

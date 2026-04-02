@@ -61,8 +61,8 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
             addon:Print("  |cff00ccff/wn trydebug|r — Try counter state / source simulation")
             addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Try count for item|mount|pet|toy")
-            addon:Print("  |cff00ccff/wn raritymountpreview|r — Rarity vs WN try counts (needs Rarity)")
-            addon:Print("  |cff00ccff/wn rarityseedreset|r — Reset one-time Rarity import flag")
+            addon:Print("  |cff00ccff/wn legacymountpreview|r — Compare external mount tracker vs WN try counts")
+            addon:Print("  |cff00ccff/wn legacyseedreset|r — Reset one-time legacy mount-tracker import flag")
             addon:Print("  |cff00ccff/wn check|r — Drops from target/mouseover")
             addon:Print("  |cff00ccff/wn test ...|r — Same as |cff00ccff/wntest ...|r (rep ui, rep event, overflow, …)")
             addon:Print("  |cff00ccff/wn testevents [type] [id]|r — Test notification events")
@@ -280,17 +280,17 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "raritymountpreview" or cmd == "raritypreview" then
-        if addon.DebugRarityMountsImportPreview then
-            addon:DebugRarityMountsImportPreview()
+    elseif cmd == "legacymountpreview" or cmd == "legacypreview" then
+        if addon.DebugLegacyMountTrackerImportPreview then
+            addon:DebugLegacyMountTrackerImportPreview()
         else
             addon:Print("|cffff6600Try counter module not loaded.|r")
         end
         return
 
-    elseif cmd == "rarityseedreset" then
-        if addon.DebugResetRarityMountsSeedFlag then
-            addon:DebugResetRarityMountsSeedFlag()
+    elseif cmd == "legacyseedreset" then
+        if addon.DebugResetLegacyMountTrackerSeed then
+            addon:DebugResetLegacyMountTrackerSeed()
         else
             addon:Print("|cffff6600Try counter module not loaded.|r")
         end

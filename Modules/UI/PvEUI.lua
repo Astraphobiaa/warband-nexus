@@ -131,6 +131,16 @@ end
 local format = string.format
 local date = date
 
+--- Tooltip / icon frames use EnableMouse and would block wheel; forward to main tab ScrollFrame.
+local function BindForwardScrollWheel(frame)
+    local fwd = ns.UI_ForwardMouseWheelToScrollAncestor
+    if not frame or not fwd then return end
+    frame:EnableMouseWheel(true)
+    frame:SetScript("OnMouseWheel", function(self, delta)
+        fwd(self, delta)
+    end)
+end
+
 -- Expand/Collapse State Management
 local expandedStates = {}
 
@@ -1142,6 +1152,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 hitFrame:SetScript("OnLeave", function()
                     if HideTooltip then HideTooltip() end
                 end)
+                BindForwardScrollWheel(hitFrame)
             end
         end
 
@@ -1517,6 +1528,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 charHeader:Click()
                             end
                         end)
+                        BindForwardScrollWheel(hit)
                     end
                     if ci > 1 then
                         inlineX = inlineX - GapBetweenColumns(ci - 1)
@@ -1636,6 +1648,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         local roundedY = math.floor(rowY + 0.5)
                         iconFrame:SetPoint("TOPLEFT", roundedX, -roundedY)
                         iconFrame:EnableMouse(true)
+                        BindForwardScrollWheel(iconFrame)
                         
                         local texture = iconFrame.texture
                         
@@ -1885,6 +1898,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 affixIcon:SetScript("OnLeave", function(self)
                                     if HideTooltip then HideTooltip() end
                                 end)
+                                BindForwardScrollWheel(affixIcon)
                             end
                             
                             affixIcon:Show()
@@ -1960,6 +1974,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                     crestIcon:SetScript("OnLeave", function()
                         HideTooltip()
                     end)
+                    BindForwardScrollWheel(crestIcon)
                 end
             end
             
@@ -2255,6 +2270,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     HideTooltip()
                                 end
                             end)
+                            BindForwardScrollWheel(slotFrame)
                         end
 
 
@@ -2365,6 +2381,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     HideTooltip()
                                 end
                             end)
+                            BindForwardScrollWheel(slotFrame)
                         end
                     else
                         -- No data: Show empty with threshold (centered, body font to prevent overflow)
@@ -2420,6 +2437,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                         HideTooltip()
                                     end
                                 end)
+                                BindForwardScrollWheel(slotFrame)
                             end
                         else
                             emptyText:SetText("|cff666666-|r")

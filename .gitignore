@@ -35,6 +35,7 @@ desktop.ini
 # Temporary files
 *.tmp
 .tmp/
+.tmp-addon-db-audit/
 *.temp
 *.swp
 *.swo

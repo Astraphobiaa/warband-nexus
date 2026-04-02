@@ -367,8 +367,8 @@ local defaults = {
             pet = {},
             toy = {},
             illusion = {},
-            -- One-time Rarity mount seed (sum); after true, Rarity is never read again for counts
-            rarityMountsOneTimeSeedComplete = false,
+            -- One-time merge of third-party mount attempt totals; after true, import is skipped
+            legacyMountTrackerSeedComplete = false,
         },
         
         -- ========== TRACK ITEM DB (User overlays on CollectibleSourceDB) ==========

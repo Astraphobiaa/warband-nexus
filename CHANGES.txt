@@ -4,7 +4,7 @@ Improvements
 - Realm display: Blizzard’s normalized realm strings (e.g. TwistingNether) are shown with friendlier spacing in more UI — Gear character selector, weekly plan headers, Plans tracker cards, and the tracking confirmation dialog. Storage and character keys still use the API/normalized form for consistency.
 - Collectible source database: expanded NPC list for Reins of a Tamed Bloodfeaster (BfA Nazmir) and clearer file comments for raid chest vs boss rows, intentional duplicate mount entries, and multi-corpse / AoE loot behavior for try counting.
 - Character tooling: `Utilities:SplitCharacterKey` and safer parsing anywhere `Name-Realm` is derived from a string (first hyphen only, full realm suffix preserved).
-- Contributor workflow: CONTRIBUTING.md updates (collectible audits, Rarity mount files); optional `scripts/audit_wn_vs_rarity.py` for full NPC / USE-container checks against Rarity (see `.tmp/rarity-mounts/`).
+- Contributor workflow: CONTRIBUTING.md updates (collectible audits, external mount DB file layout); optional `scripts/extract_external_db_npcs.py` and `scripts/audit_external_npcs_vs_wn.py` for NPC / mount-source checks (clone the reference addon repo locally; path is gitignored).
 
 Bug fixes
 - Try Counter: merging chat-loot NPC mappings no longer clears a mount’s CHAT path when several NPCs share the same drop table — fixes missing attempts for mounts such as Tamed Bloodfeaster when loot is reported via chat with multiple possible sources.
@@ -16,6 +16,6 @@ Localization
 - All supported locales include `TRY_COUNT_CLICK_HINT` and `TRY_COUNT_RIGHT_CLICK_HINT` (try-count editor tooltips).
 
 Repository / packaging
-- Removed redundant one-off scripts and scratch files; Rarity one-time try-import behavior is documented in CONTRIBUTING instead of a separate package readme.
+- Removed redundant one-off scripts and scratch files; one-time legacy mount try-import behavior is documented in CONTRIBUTING instead of a separate package readme.
 
 Details: CurseForge — Warband Nexus

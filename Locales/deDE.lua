@@ -1047,6 +1047,10 @@ L["INFO_TAB_STATISTICS"] = "Statistiken"
 L["GEAR_DESC"] = "Ausgerüstete Items, Upgrade-Optionen, Lager-Empfehlungen (BoE/Warbound) und Upgrade-Kandidaten über Charaktere."
 L["COLLECTIONS_DESC"] = "Übersicht Reittiere, Haustiere, Spielzeuge, Transmog. Sammlungsfortschritt und fehlende Items finden."
 L["SPECIAL_THANKS"] = "Besonderer Dank"
+L["INFO_CREDITS_SECTION_TITLE"] = "Danksagungen"
+L["INFO_FEATURES_SECTION_TITLE"] = "Funktionsübersicht"
+L["HEADER_INFO_TOOLTIP"] = "Anleitung & Danksagungen"
+L["HEADER_INFO_TOOLTIP_HINT"] = "Funktionen und Mitwirkende — Danksagungen stehen oben."
 L["SUPPORTERS_TITLE"] = "Unterstützer"
 L["CONTRIBUTORS_TITLE"] = "Mitwirkende"
 L["THANK_YOU_MSG"] = "Vielen Dank, dass du Warband Nexus verwendest!"
@@ -1087,7 +1091,7 @@ L["WELCOME_TYPE_CMD"] = "Bitte tippe"
 L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 
 -- What's New (nur aktuelle Version)
-L["CHANGELOG_V256"] = "v2.5.6\nVerbesserungen:\n- Lesbarere Realm-Darstellung in Ausrüstung, Wochenplänen, Plans-Tracker, Tracking-Dialog (Schlüssel weiter mit Blizzards normalisiertem Text)\n- Sammlungen: erweiterte BfA-Blutgreifer-NPC-Liste; klarere Hinweise Truhe vs Boss und Multi-Leiche-Try-Count\n- SplitCharacterKey + Aufteilung nur am ersten Bindestrich bei Name-Realm\n- CONTRIBUTING + scripts/audit_wn_vs_rarity.py für Rarity-Mount-Audits\n\nFehlerbehebungen:\n- Versuchszähler: Chat-Beute + geteilte Droptabellen (z. B. Gezähmter Blutgreifer) — CHAT-Updates gehen nicht mehr verloren\n- Bindestrich-Realms (z. B. Azjol-Nerub): kanonische Schlüssel, GetAllCharacters-Reparatur, Statistik/Minimap; einmalige Realm-Feld-Migration\n- Mount-IDs: Verdant Skitterfly (192764), roter Qirajikristall (21321)\n- Tracking-Dialog: GetRealmName gegen Geheimwerte abgesichert\n\nLokalisierung:\n- TRY_COUNT Klick-/Rechtsklick-Hinweise in allen Sprachen\n\nRepo: überflüssige Dev-Dateien entfernt; Rarity-Import in CONTRIBUTING\n\nCurseForge: Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\nVerbesserungen:\n- Lesbarere Realm-Darstellung in Ausrüstung, Wochenplänen, Plans-Tracker, Tracking-Dialog (Schlüssel weiter mit Blizzards normalisiertem Text)\n- Sammlungen: erweiterte BfA-Blutgreifer-NPC-Liste; klarere Hinweise Truhe vs Boss und Multi-Leiche-Try-Count\n- SplitCharacterKey + Aufteilung nur am ersten Bindestrich bei Name-Realm\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py für Mount-DB-Audits\n\nFehlerbehebungen:\n- Versuchszähler: Chat-Beute + geteilte Droptabellen (z. B. Gezähmter Blutgreifer) — CHAT-Updates gehen nicht mehr verloren\n- Bindestrich-Realms (z. B. Azjol-Nerub): kanonische Schlüssel, GetAllCharacters-Reparatur, Statistik/Minimap; einmalige Realm-Feld-Migration\n- Mount-IDs: Verdant Skitterfly (192764), roter Qirajikristall (21321)\n- Tracking-Dialog: GetRealmName gegen Geheimwerte abgesichert\n\nLokalisierung:\n- TRY_COUNT Klick-/Rechtsklick-Hinweise in allen Sprachen\n\nRepo: überflüssige Dev-Dateien entfernt; Import aus externem Tracker in CONTRIBUTING\n\nCurseForge: Warband Nexus"
 
 -- =============================================
 -- Confirm / Tracking Dialog

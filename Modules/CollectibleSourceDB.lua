@@ -27,9 +27,8 @@
     npcs, rares, objects, fishing, containers, zones, encounters, encounterNames, lockoutQuests
     are built at load from sources only. Do not add data to any legacy table.
 
-    Full mount audit (all expansions): cross-check external NPC lists in
-    https://github.com/WowRarity/Rarity/tree/master/DB/Mounts (Classic → Midnight).
-    See CONTRIBUTING.md — "Collectible drop sources & try counts".
+    Mount NPC audits: cross-check open-source DB/Mounts/*.lua trees (community collector addons;
+    Classic through Midnight) plus Wowhead/WoWDB “Dropped by”. See CONTRIBUTING.md.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -38,9 +37,8 @@ local ADDON_NAME, ns = ...
 -- BfA "Zone Drop" mounts - shared drop tables (referenced by multiple NPC entries)
 -- These mounts drop from specific mob factions within a zone, NOT every mob.
 --
--- Cross-check (open-source, parseable NPC lists):
---   * WowRarity/Rarity: DB/Mounts/BattleForAzeroth.lua — baseline npcs={} per itemId
---   * WoWDB/Wowhead "Dropped by" counts can exceed Rarity (shared loot templates, phasing).
+-- Cross-check: community DB/Mounts/BattleForAzeroth.lua (baseline npcs={} per itemId) and
+-- WoWDB/Wowhead "Dropped by" (often larger: shared loot templates, phasing, creature templates).
 -- DataForAzeroth / SimpleArmory: collection leaderboards — they do not publish per-NPC drop IDs.
 -- =====================================================================
 local _duneScavenger = {
@@ -101,23 +99,23 @@ local _quelThalasRareMounts = {
 }
 
 -- Zul'Aman - 2 mounts from any zone rare
--- NOTE: Ancestral War Bear (257223) is from Honored Warrior's Cache treasure
--- NOTE: Hexed Vilefeather Eagle (257444) is from Abandoned Ritual Skull treasure
+-- NOTE: Ancestral War Bear (257223) — Honored Warrior's Cache (obj 613727); guaranteed puzzle reward, not tracked.
+-- NOTE: Hexed Vilefeather Eagle (257444) — Abandoned Ritual Skull (obj 539047); guaranteed, not tracked.
 local _zulAmanRareMounts = {
     { type = "mount", itemID = 257152, name = "Amani Sharptalon" },
     { type = "mount", itemID = 257200, name = "Escaped Witherbark Pango" },
 }
 
 -- Harandar - 2 mounts from any zone rare
--- NOTE: Ruddy Sporeglider (252017) is from Peculiar Cauldron treasure
--- NOTE: Untainted Grove Crawler (256423) is from Sporespawned Cache treasure
+-- NOTE: Ruddy Sporeglider (252017) — Peculiar Cauldron (obj 614483); guaranteed puzzle reward, not tracked.
+-- NOTE: Untainted Grove Crawler (256423) — Sporespawned Cache (obj 615963); guaranteed, not tracked.
 local _harandarRareMounts = {
     { type = "mount", itemID = 246735, name = "Rootstalker Grimlynx" },
     { type = "mount", itemID = 252012, name = "Vibrant Petalwing" },
 }
 
 -- Voidstorm - 2 mounts from any zone rare
--- NOTE: Reins of the Insatiable Shredclaw (257446) is from Final Clutch of Predaxas treasure
+-- NOTE: Reins of the Insatiable Shredclaw (257446) — Final Clutch of Predaxas (obj 605169); guaranteed puzzle reward, not tracked.
 local _voidstormRareMounts = {
     { type = "mount", itemID = 257085, name = "Augmented Stormray" },
     { type = "mount", itemID = 260635, name = "Sanguine Harrower" },
@@ -147,8 +145,8 @@ local _netherWarpedEgg = {
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
 
 ns.CollectibleSourceDB = {
-    version = "12.0.27",
-    lastUpdated = "2026-04-02",
+    version = "12.0.28",
+    lastUpdated = "2026-04-03",
     sourceSchemaVersion = 1,
     sourceTypes = {
         "instance_boss", -- npcID + drops
@@ -646,6 +644,16 @@ ns.CollectibleSourceDB = {
             -- NOTE: Mythic-only mount, 100% drop during Legion/BfA, rare after Shadowlands
         },
 
+        -- World Bosses
+        [111573] = { -- Kosumoth the Hungering (Eye of Azshara / Broken Isles)
+            { type = "mount", itemID = 138201, name = "Fathom Dweller" },
+            { type = "pet",   itemID = 140261, name = "Hungering Claw" },
+            -- NOTE: Biweekly world boss; region alternates between mount and pet reward weekly.
+            -- Requires attunement (activate 10 Hungering Orbs hidden across Broken Isles).
+            -- Lockout quest: 43798 (DANGER: Kosumoth the Hungering).
+            -- TODO: Verify NPC ID, item IDs, and questID in-game.
+        },
+
         -- Toys
         [100230] = { -- Nazak the Fiend (Suramar)
             { type = "toy", itemID = 129149, name = "Skin of the Soulflayer" },
@@ -664,7 +672,7 @@ ns.CollectibleSourceDB = {
         },
 
         -- BfA Zone Drops: Captured Dune Scavenger (Vol'dun - Sethrak/Faithless mobs)
-        -- Matches Rarity BattleForAzeroth.lua (21 NPC IDs)
+        -- Matches community BfA mount DB (21 NPC IDs)
         [128682] = _duneScavenger,  -- Faithless Defender
         [123774] = _duneScavenger,  -- Sethrak Aggressor
         [136191] = _duneScavenger,  -- Sethrak Ravager
@@ -686,24 +694,28 @@ ns.CollectibleSourceDB = {
         [122782] = _duneScavenger,  -- Sethrak Skirmisher
         [123863] = _duneScavenger,  -- Sethrak Outrider
 
-        -- BfA Zone Drops: Terrified Pack Mule (Drustvar - Heartsbane Coven mobs)
-        -- Source: WoWHead-verified (9 NPC IDs)
-        [131534] = _terrifiedPackMule,  -- Hexthralled Crossbowman
-        [133892] = _terrifiedPackMule,  -- Hexthralled Soldier
-        [133889] = _terrifiedPackMule,  -- Hexthralled Guardsman
-        [141642] = _terrifiedPackMule,  -- Hexthralled Halberdier
+        -- BfA Zone Drops: Terrified Pack Mule (Drustvar - Hexthralled / Corlain line)
+        -- Community baseline + Wowhead item=163574 "Dropped by" (duplicate display names = extra creature ids).
+        [129995] = _terrifiedPackMule,  -- Emily Mayville (rare)
+        [130016] = _terrifiedPackMule,  -- Emily Mayville (alt spawn / phase)
         [131519] = _terrifiedPackMule,  -- Hexthralled Falconer
-        [137134] = _terrifiedPackMule,  -- Heartsbane Vinetwister
-        [133736] = _terrifiedPackMule,  -- Coven Thornshaper
+        [131529] = _terrifiedPackMule,  -- Hexthralled Villager (verify in-game if renamed)
         [131530] = _terrifiedPackMule,  -- Hexthralled Ravager
-        [131529] = _terrifiedPackMule,  -- Hexthralled Villager
+        [131534] = _terrifiedPackMule,  -- Hexthralled Guardsman (cursed horse, Corlain)
+        [131859] = _terrifiedPackMule,  -- Hexthralled Crossbowman (alt template)
+        [133736] = _terrifiedPackMule,  -- Hexthralled Falconer (alt template)
+        [133889] = _terrifiedPackMule,  -- Hexthralled Halberdier
+        [133892] = _terrifiedPackMule,  -- Hexthralled Crossbowman
+        [137134] = _terrifiedPackMule,  -- Hexthralled Soldier
+        [138245] = _terrifiedPackMule,  -- Hexthralled Crossbowman (Midnight-scale template)
+        [141642] = _terrifiedPackMule,  -- Hexthralled Halberdier (Goodspeed's Guard, etc.)
 
         -- BfA Zone Drops: Reins of a Tamed Bloodfeaster (Nazmir - Blood Troll mobs)
-        -- Baseline: Rarity BattleForAzeroth.lua npcs (16). Extended: Loa-Gutter Impaler, Nazwathan trio,
-        -- generic Blood Troll, Bloodhunter line (incl. River Toll WQ: Cursecarver), Blood Witch Najima,
-        -- Warmother Boatema (Wowhead NPC pages). WoWDB "Dropped by" may list more template-linked creatures.
-        [120606] = _bloodfeaster,  -- Blood Troll Mystic / Blood Troll Hexxer
-        [120607] = _bloodfeaster,  -- Blood Troll Warrior
+        -- Baseline: community BfA mount DB npcs (16). Extended: Wowhead/WoWDB "Dropped by", Amaki/Zalamar
+        -- lines, Loa-Gutter summoners (Midnight), ritualists, extra warrior template — verify on item=163575.
+        [120606] = _bloodfeaster,  -- Blood Troll Hexxer / Mystic
+        [120607] = _bloodfeaster,  -- Blood Troll Warrior (template)
+        [120613] = _bloodfeaster,  -- Blood Troll Warmother
         [122204] = _bloodfeaster,  -- Blood Witch Najima
         [122239] = _bloodfeaster,  -- Blood Priest
         [123071] = _bloodfeaster,  -- Blood Hunter
@@ -712,24 +724,35 @@ ns.CollectibleSourceDB = {
         [123439] = _bloodfeaster,  -- Bloodhunter War-Witch
         [123441] = _bloodfeaster,  -- Bloodhunter Warmother
         [124547] = _bloodfeaster,  -- Blood Troll Marauder
-        [124688] = _bloodfeaster,  -- Blood Ritualist
+        [124688] = _bloodfeaster,  -- Natha'vor Cannibal
         [126089] = _bloodfeaster,  -- Bloodhunter Warrior
-        [126187] = _bloodfeaster,  -- Blood Witch Tashka
-        [126888] = _bloodfeaster,  -- Blood Troll Warder
-        [127224] = _bloodfeaster,  -- Blood Troll Shaman
-        [127919] = _bloodfeaster,  -- Blood Troll Reaver
+        [126187] = _bloodfeaster,  -- Corpse Bringer Yal'kar (rare)
+        [126888] = _bloodfeaster,  -- Blood Witch Vashera
+        [126890] = _bloodfeaster,  -- Blood Priestess Zu'Anji
+        [126891] = _bloodfeaster,  -- Blood Witch Yialu
+        [127040] = _bloodfeaster,  -- Zalamar Zealot (Wowhead drop list: Zalamar line)
+        [127145] = _bloodfeaster,  -- Zalamar Bloodsinger
+        [127224] = _bloodfeaster,  -- Blood Troll Shaman / Empowered Worshipper (display)
+        [127770] = _bloodfeaster,  -- Blood Troll Warrior (alt template, Nazmir)
+        [127919] = _bloodfeaster,  -- Loa-Gutter Skullcrusher / Blood Troll Reaver
         [127928] = _bloodfeaster,  -- Loa-Gutter Drudge
         [128371] = _bloodfeaster,  -- Loa-Gutter Impaler
-        [128734] = _bloodfeaster,  -- Blood Troll Rampager
+        [128734] = _bloodfeaster,  -- Amaki Guard (also listed as Blood Troll Rampager in some builds)
+        [128770] = _bloodfeaster,  -- Warmother Nagla
+        [128773] = _bloodfeaster,  -- Amaki Bloodsinger
         [129723] = _bloodfeaster,  -- Blood Troll (generic Nazmir)
         [131155] = _bloodfeaster,  -- Nazwathan Guardian
         [131156] = _bloodfeaster,  -- Nazwathan Hulk
         [131157] = _bloodfeaster,  -- Nazwathan Blood Bender
-        [133063] = _bloodfeaster,  -- Nazmani Blood Witch / Blood Troll Tracker (same id)
-        [133077] = _bloodfeaster,  -- Blood Priestess Kel'zo
-        [133279] = _bloodfeaster,  -- Nazmani Drudge / Blood Priestess Vatat (same id)
+        [131658] = _bloodfeaster,  -- Amaki Warrider
+        [133063] = _bloodfeaster,  -- Nazmani Blood Witch
+        [133077] = _bloodfeaster,  -- Nazmani War Slave
+        [133181] = _bloodfeaster,  -- Nazmani Ritualist
+        [133279] = _bloodfeaster,  -- Nazmani Drudge
+        [133445] = _bloodfeaster,  -- Nazmani Raider (Wowhead npc=133445 / item=163575 dropped-by)
         [136293] = _bloodfeaster,  -- Blood Troll Savage
         [136639] = _bloodfeaster,  -- Blood Troll Berserker
+        [138816] = _bloodfeaster,  -- Loa-Gutter Summoner (Midnight+ Nazmir)
 
         -- BfA Zone Drops: Goldenmane's Reins (Stormsong Valley - Tidesage/Irontide mobs)
         -- Source: WoWHead-verified (25 NPC IDs)
@@ -1116,6 +1139,12 @@ ns.CollectibleSourceDB = {
             dropDifficulty = "Mythic",
             -- NOTE: Mythic-only phoenix mount from Dragonflight final raid
         },
+        [201791] = { -- Scalecommander Sarkareth (Aberrus, the Shadowed Crucible Mythic)
+            { type = "mount", itemID = 205876, name = "Highland Drake: Embodiment of the Hellforged" },
+            dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only drakewatcher manuscript; encounterID 2685
+            -- TODO: Add statisticIds after in-game verification
+        },
 
         -- Dungeon Bosses [Verified]
         [198933] = { -- Chrono-Lord Deios (Dawn of the Infinite Mythic)
@@ -1385,7 +1414,7 @@ ns.CollectibleSourceDB = {
         },
 
         -- TWW 11.1 - Undermine
-        [469857] = { -- Overflowing Dumpster (Undermine) â€” dumpster diving
+        [469857] = { -- Overflowing Dumpster (Undermine) — dumpster diving
             _miscMechanica[1],
         },
     },
@@ -1805,6 +1834,8 @@ ns.CollectibleSourceDB = {
         [2464] = { 180990 }, -- The Jailer (Sepulcher)
 
         -- Dragonflight
+        [2605] = { 189492 }, -- Raszageth the Storm-Eater (Vault of the Incarnates)
+        [2685] = { 201791 }, -- Scalecommander Sarkareth (Aberrus, the Shadowed Crucible)
         [2708] = { 204931 }, -- Fyrakk (Amirdrassil)
 
         -- TWW
@@ -1858,6 +1889,9 @@ ns.CollectibleSourceDB = {
         -- ========================================
         -- LEGION
         -- ========================================
+
+        -- Legion: World Bosses (biweekly lockout)
+        [111573] = 43798,  -- Kosumoth the Hungering (Eye of Azshara) — TODO: verify questID in-game
 
         -- Legion: Argus rares (daily lockout)
         [122958] = 49183,  -- Blistermaw (Antoran Wastes)
@@ -2082,12 +2116,14 @@ ns.CollectibleSourceDB = {
         ["Rukhmar"] = { 87493, 83746 },
         -- Legion
         ["Nightbane"] = { 114895 },
+        ["Kosumoth the Hungering"] = { 111573 },
         ["Gul'dan"] = { 105503, 104154, 111022 },
         ["The Demon Within"] = { 111022 },
         ["Mistress Sassz'ine"] = { 115767 },
         ["Felhounds of Sargeras"] = { 126915, 126916 },
         ["Argus the Unmaker"] = { 130352 },
         -- BfA
+        ["Nazmani Raider"] = { 133445 }, -- Tamed Bloodfeaster; GUID→npcs also (secret GUID fallback)
         ["Mail Muncher"] = { 160708 },
         ["Harlan Sweete"] = { 126983 },
         ["Unbound Abomination"] = { 133007 },
@@ -2109,6 +2145,7 @@ ns.CollectibleSourceDB = {
         ["Raszageth the Storm-Eater"] = { 189492 },
         ["Chrono-Lord Deios"] = { 198933 },
         ["Fyrakk the Blazing"] = { 204931 },
+        ["Scalecommander Sarkareth"] = { 201791 },
         -- TWW
         ["Wick"] = { 210797 },
         ["Void Speaker Eirich"] = { 213119 },

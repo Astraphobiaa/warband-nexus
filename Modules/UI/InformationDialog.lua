@@ -185,6 +185,40 @@ function WarbandNexus:ShowInfoDialog()
     end
     
     AddText((ns.L and ns.L["WELCOME_TITLE"]) or "Welcome to Warband Nexus!", "header", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 12, true)
+
+    -- Credits up front so supporters / contributors are visible without scrolling past the full feature list
+    AddText((ns.L and ns.L["INFO_CREDITS_SECTION_TITLE"]) or "Credits & thanks", "title", {1, 0.84, 0}, 10, true)
+
+    AddText((ns.L and ns.L["SPECIAL_THANKS"]) or "Special Thanks", "title", {1, 0.84, 0}, 8, true)
+    AddText("Egzolinas the Loremaster!", "body", {0.96, 0.55, 0.73}, 14, true)  -- Paladin color (F58CBA)
+
+    AddText((ns.L and ns.L["CONTRIBUTORS_TITLE"]) or "Contributors", "title", {0.4, 0.8, 1}, 6, true)
+
+    -- Class-colored where requested; otherwise Blizzard gold (GOLD_FONT_COLOR-style ~ |cffffd100)
+    local CLASS_COLORS = ns.Constants.CLASS_COLORS
+    local colorEnd = "|r"
+    local blizzGold = "|cffffd100"
+
+    local contribText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
+    contribText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
+    contribText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
+    contribText:SetJustifyH("CENTER")
+    contribText:SetWordWrap(true)
+    contribText:SetText(
+        CLASS_COLORS.MAGE .. "Vidotrieth" .. colorEnd .. "  " ..
+        CLASS_COLORS.DEMONHUNTER .. "Ragepull" .. colorEnd .. "  " ..
+        CLASS_COLORS.WARRIOR .. "Mysticsong" .. colorEnd .. "  " ..
+        CLASS_COLORS.HUNTER .. "Aztech" .. colorEnd .. "  " ..
+        CLASS_COLORS.WARLOCK .. "DivaDelirium" .. colorEnd .. "  " ..
+        blizzGold .. "Jack the Dipper" .. colorEnd .. "  " ..
+        blizzGold .. "Koralia91" .. colorEnd .. "  " ..
+        blizzGold .. "Nexus-Hub" .. colorEnd .. "  " ..
+        blizzGold .. "huchang47" .. colorEnd
+    )
+    yOffset = yOffset + contribText:GetStringHeight() + 20
+    lastElement = contribText
+
+    AddText((ns.L and ns.L["INFO_FEATURES_SECTION_TITLE"]) or "Features overview", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 14, true)
     
     -- AddOn Summary
     AddText((ns.L and ns.L["ADDON_OVERVIEW_TITLE"]) or "AddOn Overview", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 6)
@@ -223,47 +257,6 @@ function WarbandNexus:ShowInfoDialog()
 
     AddText((ns.L and ns.L["INFO_TAB_STATISTICS"]) or "Statistics", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["STATISTICS_DESC"]) or "View achievement points, mount/pet/toy/illusion/title collection progress, unique pet count, and bag/bank usage statistics.", "body", {0.9, 0.9, 0.9}, 25)
-    
-    -- Special Thanks
-    AddText((ns.L and ns.L["SPECIAL_THANKS"]) or "Special Thanks", "title", {1, 0.84, 0}, 8, true)
-    AddText("Egzolinas the Loremaster!", "body", {0.96, 0.55, 0.73}, 14, true)  -- Paladin color (F58CBA)
-    
-    -- Supporters (inline, class-colored)
-    AddText((ns.L and ns.L["SUPPORTERS_TITLE"]) or "Supporters", "title", {0.4, 0.8, 1}, 6, true)
-    
-    local CLASS_COLORS = ns.Constants.CLASS_COLORS
-    local colorEnd = "|r"
-    
-    local supporterText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
-    supporterText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
-    supporterText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
-    supporterText:SetJustifyH("CENTER")
-    supporterText:SetWordWrap(true)
-    supporterText:SetText(
-        CLASS_COLORS.MAGE .. "Vidotrieth" .. colorEnd .. "  " ..
-        CLASS_COLORS.DEMONHUNTER .. "Ragepull" .. colorEnd .. "  " ..
-        CLASS_COLORS.WARRIOR .. "Mysticsong" .. colorEnd .. "  " ..
-        CLASS_COLORS.HUNTER .. "Aztech" .. colorEnd .. "  " ..
-        "|cff57F287" .. "Jack the Dipper" .. colorEnd
-    )
-    yOffset = yOffset + supporterText:GetStringHeight() + 14
-    lastElement = supporterText
-    
-    -- Contributors
-    AddText((ns.L and ns.L["CONTRIBUTORS_TITLE"]) or "Contributors", "title", {0.4, 0.8, 1}, 6, true)
-    
-    local contribText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
-    contribText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
-    contribText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
-    contribText:SetJustifyH("CENTER")
-    contribText:SetWordWrap(true)
-    contribText:SetText(
-        "|cffbbddffKoralia91" .. colorEnd .. "  " ..
-        "|cffbbddffNexus-Hub" .. colorEnd .. "  " ..
-        "|cffbbddffhuchang47" .. colorEnd
-    )
-    yOffset = yOffset + contribText:GetStringHeight() + 16
-    lastElement = contribText
     
     -- Footer
     AddText((ns.L and ns.L["THANK_YOU_MSG"]) or "Thank you for using Warband Nexus!", "title", {0.2, 0.8, 0.2}, 8, true)

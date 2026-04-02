@@ -551,7 +551,7 @@ local function GetEquipLoc(itemLink)
     return loc
 end
 
---- Get quality (rarity) integer for an item link.
+--- Get item quality tier integer for an item link.
 ---@param itemLink string
 ---@return number quality (0 = Poor, 2 = Uncommon, 3 = Rare, 4 = Epic, ...)
 local function GetItemQuality(itemLink)

@@ -14,7 +14,7 @@
     Color Scheme:
     - [WN-Currency] prefix: WN brand purple (#9370DB)
     - [WN-Reputation] prefix: WN brand purple (#9370DB)
-    - Currency name: rarity-colored hyperlink via C_CurrencyInfo.GetCurrencyLink, fallback to ITEM_QUALITY_COLORS
+    - Currency name: quality-colored hyperlink via C_CurrencyInfo.GetCurrencyLink, fallback to ITEM_QUALITY_COLORS
     - Faction name: white (#ffffff)
     - Gain amount: green (#00ff00) — the "action" stands out
     - Current total: white (#ffffff)
@@ -73,7 +73,7 @@ local function RGBToHex(rgb)
     )
 end
 
----Get rarity hex color for a currency quality value.
+---Get item-quality hex color for a currency quality value.
 ---@param quality number Quality index (0=Poor, 1=Common, 2=Uncommon, 3=Rare, 4=Epic, ...)
 ---@return string Hex color code
 local function GetQualityHex(quality)

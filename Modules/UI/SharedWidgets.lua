@@ -1671,6 +1671,41 @@ local function FormatMoney(copper, iconSize, showZero)
     return table.concat(parts, " ")
 end
 
+-- Forward mouse wheel to the nearest ancestor ScrollFrame (vertical; Shift+wheel horizontal when in range).
+-- Full-width header Buttons and tooltip hit-frames sit above scroll content and otherwise eat wheel events.
+local function ForwardMouseWheelToScrollAncestor(frame, delta)
+    if not frame or not delta then return end
+    local ancestor = frame
+    while ancestor do
+        local ot = ancestor.GetObjectType and ancestor:GetObjectType()
+        if ot == "ScrollFrame" and ancestor.GetVerticalScrollRange and ancestor.SetVerticalScroll then
+            local addon = _G.WarbandNexus or ns.WarbandNexus
+            local base = (ns.UI_LAYOUT or {}).SCROLL_BASE_STEP or 28
+            local speed = (addon and addon.db and addon.db.profile and addon.db.profile.scrollSpeed) or (ns.UI_LAYOUT or {}).SCROLL_SPEED_DEFAULT or 1.0
+            local step = math.floor(base * speed + 0.5)
+            if IsShiftKeyDown and IsShiftKeyDown() and ancestor.GetHorizontalScrollRange and ancestor.SetHorizontalScroll then
+                local maxH = ancestor:GetHorizontalScrollRange() or 0
+                if maxH > 0 then
+                    local currentH = ancestor:GetHorizontalScroll() or 0
+                    local newH = math.max(0, math.min(maxH, currentH - (delta * step)))
+                    ancestor:SetHorizontalScroll(newH)
+                    if ancestor.HorizontalScrollBar then
+                        ancestor.HorizontalScrollBar:SetValue(newH)
+                    end
+                    return
+                end
+            end
+            local current = ancestor:GetVerticalScroll() or 0
+            local maxScroll = ancestor:GetVerticalScrollRange() or 0
+            local newScroll = math.max(0, math.min(maxScroll, current - (delta * step)))
+            newScroll = PixelSnap(newScroll)
+            ancestor:SetVerticalScroll(newScroll)
+            return
+        end
+        ancestor = ancestor:GetParent()
+    end
+end
+
 -- Create collapsible header with expand/collapse button (NO pooling - headers are few)
 -- noCategoryIcon: when true, skip category icon (e.g. PvE character headers use favorite star only)
 local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas, indentLevel, noCategoryIcon)
@@ -1768,6 +1803,11 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
         ns.UI.Factory:ApplyHighlight(header)
     end
+
+    header:EnableMouseWheel(true)
+    header:SetScript("OnMouseWheel", function(self, d)
+        ForwardMouseWheelToScrollAncestor(self, d)
+    end)
     
     return header, expandIcon, categoryIcon, headerText
 end
@@ -3059,6 +3099,7 @@ ns.UI_CreateCard = CreateCard
 -- FormatGold, FormatNumber, FormatTextNumbers, FormatMoney
 -- are exported by FormatHelpers.lua (authoritative source, loads after SharedWidgets)
 ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
+ns.UI_ForwardMouseWheelToScrollAncestor = ForwardMouseWheelToScrollAncestor
 ns.UI_GetItemTypeName = GetItemTypeName
 ns.UI_GetItemClassID = GetItemClassID
 ns.UI_GetTypeIcon = GetTypeIcon

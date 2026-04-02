@@ -35,17 +35,17 @@ Thank you for your interest in contributing to **Warband Nexus**! We welcome bug
 
 `Modules/CollectibleSourceDB.lua` is the source of truth for **which NPCs/objects/containers/zones** drive try counters and tooltips. We cannot scrape Wowhead reliably from all regions; use this workflow when adding or auditing drops:
 
-1. **Baseline NPC lists (mounts):** cross-check [WowRarity/Rarity](https://github.com/WowRarity/Rarity) `DB/Mounts/*.lua` — each mount entry often has `npcs = { ... }` or `itemId` / `statisticId` for bosses.
-2. **Midnight zone rares:** Rarity `DB/Mounts/Midnight.lua` vs our `legacyZones` + `sources` (`zone_drop`, `raresOnly`) and per-NPC `legacyNpcs` rows — **map IDs** must match in-game `C_Map.GetMapInfo` (see comments in `CollectibleSourceDB.lua`).
-3. **Containers / chests:** Rarity `items = { ... }` or `USE` method vs our `legacyContainers` / `sourceType = "container"`.
+1. **Baseline NPC lists (mounts):** cross-check a well-known open-source mount DB’s `DB/Mounts/*.lua` — entries often list `npcs = { ... }` or `itemId` / `statisticId` for bosses.
+2. **Midnight zone rares:** that project’s `DB/Mounts/Midnight.lua` vs our `legacyZones` + `sources` (`zone_drop`, `raresOnly`) and per-NPC `legacyNpcs` rows — **map IDs** must match in-game `C_Map.GetMapInfo` (see comments in `CollectibleSourceDB.lua`).
+3. **Containers / chests:** external `items = { ... }` or `USE` method vs our `legacyContainers` / `sourceType = "container"`.
 4. **Do not** add `zone_drop` with `hostileOnly` for a whole zone unless every hostile there should share the same try counter (e.g. Isle of Dorn shard), not faction-specific zone drops (e.g. Nazmir blood trolls).
 5. **Same mount, multiple source types is often correct:** e.g. holiday bosses use **`legacyContainers`** (Pumpkin, Heart-Shaped Box) — see comments above `legacyContainers` / `legacyObjects`. Raid mounts may appear on **both** the **boss NPC** (`legacyNpcs`, stats) and the **loot chest object** (`legacyObjects`, actual `GetLootSourceInfo` GUID). Do not delete one “duplicate” without confirming in-game loot flow.
-6. Optional audit (requires downloading Rarity `DB/Mounts/*.lua` to `.tmp/rarity-mounts/`): `python scripts/audit_wn_vs_rarity.py --out .tmp/audit-wn-rarity.txt` — section-level mount rows, Rarity method breakdown (NPC / USE / BOSS / …), set diffs, NPC gaps, USE container parity vs `legacyContainers`.
+6. **Scripts:** shallow-clone that mount DB repo to `.tmp-addon-db-audit/`, then `python scripts/extract_external_db_npcs.py` and `python scripts/audit_external_npcs_vs_wn.py` for itemId→NPC coverage vs our shared `_`-prefixed drop tables. (Full-file NPC assignment diff needs a richer parser than the alias-based audit.)
 7. After edits, `/reload` and use **Settings → debug `debugTryCounterLoot`** while looting to confirm P1/P2 match lines in chat.
 
-### Rarity mount try counts (optional one-time import)
+### Optional one-time mount attempt import
 
-If **Rarity** is installed, WN can merge Rarity’s mount attempt totals **once** into WN try counts, then set SavedVariables `tryCounts.rarityMountsOneTimeSeedComplete` so `/reload` does not keep adding. With **`/wn debug`**: `/wn raritymountpreview` (inspect), `/wn rarityseedreset` (re-test seed). Implementation: `TryCounterService.lua` (RARITY IMPORT).
+If a third-party mount collector (AceDB `profile.groups.mounts`) is enabled, WN can merge its stored attempt totals **once** into WN try counts (`legacyMountTrackerSeedComplete`). With **`/wn debug`**: `/wn legacymountpreview`, `/wn legacyseedreset`. See `TryCounterService.lua` (legacy mount tracker import).
 
 ### Localization
 

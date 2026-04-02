@@ -4,7 +4,7 @@
 
     Layout:
     ┌────────────────────────────────────────────────────────────────────────────┐
-    │ [Header: Title + Character Selector ▼]                                      │
+    │ [Header: Title / subtitle (left)                    Character ▼ (right)]    │
     ├────────────────────────────────────────────────────────────────────────────┤
     │ Paperdoll — Slot icons (left/right/bottom) + portrait (center) + crests    │
     └────────────────────────────────────────────────────────────────────────────┘
@@ -52,6 +52,8 @@ local UI_LAYOUT      = ns.UI_LAYOUT or {}
 local SIDE_MARGIN    = UI_LAYOUT.SIDE_MARGIN or 16
 local TOP_MARGIN     = UI_LAYOUT.TOP_MARGIN or 12
 local HEADER_H       = UI_LAYOUT.HEADER_HEIGHT or 32
+-- Character strip + dropdown share this outer width (OnClick syncs menu:SetWidth(btn:GetWidth())).
+local GEAR_CHAR_SELECTOR_WIDTH = 220
 
 -- Paper doll: sol panel | orta panel | sağ panel | alt panel (fixed widths); %10 büyütme
 local PAPERDOLL_SCALE = 1.10
@@ -1546,6 +1548,91 @@ local gearCharDropdownBg   = nil
 local gearCharSelectorBtn  = nil
 local gearCharDropdownEntryPool = {}
 
+local GEAR_CHAR_SEP = "|cff888888 | |r"
+
+--- Max pixel width of colored character names (for aligned name column).
+local function MeasureGearCharNameColumnWidth(chars, measureFs)
+    local maxW = 0
+    for i = 1, #chars do
+        local c = chars[i].data
+        local hex = GetClassHex(c.classFile)
+        local nm = c.name or chars[i].key or ""
+        measureFs:SetText("|cff" .. hex .. nm .. "|r")
+        maxW = math.max(maxW, measureFs:GetStringWidth())
+    end
+    return maxW
+end
+
+--- Name column width: wide enough for longest name, capped so realm column keeps space.
+local function ComputeGearCharNameColW(chars, measureFs, textBudget)
+    if textBudget < 56 then
+        return math.max(36, math.floor(textBudget * 0.38))
+    end
+    local raw = MeasureGearCharNameColumnWidth(chars, measureFs) + 6
+    local cap = math.floor(textBudget * 0.52)
+    return math.min(math.max(raw, 48), cap)
+end
+
+--- Two fontstrings: fixed-width name column, then separator, then realm (remaining width).
+local function LayoutGearCharNameRealmColumns(parent, nameColW, leftPad, arrowReserve)
+    local nm = parent._nameLabel
+    local sp = parent._sepLabel
+    local rm = parent._realmLabel
+    if not nm or not sp or not rm then return end
+    nm:ClearAllPoints()
+    sp:ClearAllPoints()
+    rm:ClearAllPoints()
+    nm:SetWidth(nameColW)
+    nm:SetJustifyH("LEFT")
+    nm:SetWordWrap(false)
+    nm:SetPoint("LEFT", parent, "LEFT", leftPad, 0)
+    nm:SetPoint("TOP", parent, "TOP", 0, 0)
+    nm:SetPoint("BOTTOM", parent, "BOTTOM", 0, 0)
+    sp:SetText(GEAR_CHAR_SEP)
+    sp:SetWidth(20)
+    sp:SetJustifyH("CENTER")
+    sp:SetPoint("LEFT", nm, "RIGHT", 0, 0)
+    sp:SetPoint("TOP", parent, "TOP", 0, 0)
+    sp:SetPoint("BOTTOM", parent, "BOTTOM", 0, 0)
+    rm:SetJustifyH("LEFT")
+    rm:SetWordWrap(false)
+    rm:SetPoint("LEFT", sp, "RIGHT", 2, 0)
+    rm:SetPoint("RIGHT", parent, "RIGHT", -arrowReserve, 0)
+    rm:SetPoint("TOP", parent, "TOP", 0, 0)
+    rm:SetPoint("BOTTOM", parent, "BOTTOM", 0, 0)
+end
+
+local function EnsureGearSelectorColumnLabels(btn)
+    if btn._nameLabel then return end
+    if btn._label then
+        btn._label:Hide()
+        btn._label = nil
+    end
+    btn._nameLabel = FontManager:CreateFontString(btn, "body", "OVERLAY")
+    btn._sepLabel = FontManager:CreateFontString(btn, "body", "OVERLAY")
+    btn._realmLabel = FontManager:CreateFontString(btn, "body", "OVERLAY")
+    btn._measureFs = FontManager:CreateFontString(btn, "body", "ARTWORK")
+    btn._measureFs:SetAlpha(0)
+    btn._measureFs:SetPoint("TOPLEFT", btn, "TOPLEFT", -4000, 0)
+end
+
+local function EnsureGearEntryColumnLabels(entryBtn)
+    if entryBtn._nameLabel then return end
+    if entryBtn._label then
+        entryBtn._label:Hide()
+        entryBtn._label = nil
+    end
+    entryBtn._nameLabel = FontManager:CreateFontString(entryBtn, "body", "OVERLAY")
+    entryBtn._sepLabel = FontManager:CreateFontString(entryBtn, "body", "OVERLAY")
+    entryBtn._realmLabel = FontManager:CreateFontString(entryBtn, "body", "OVERLAY")
+end
+
+--- Close Gear character picker when main addon frame hides (menu is parented to UIParent).
+function ns.HideGearCharacterDropdown()
+    if gearCharDropdownMenu then gearCharDropdownMenu:Hide() end
+    if gearCharDropdownBg then gearCharDropdownBg:Hide() end
+end
+
 local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     local chars  = GetTrackedCharacters()
     if #chars == 0 then return nil, yOffset end
@@ -1553,12 +1640,14 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     local COLORS = ns.UI_COLORS
     local accent = COLORS.accent
     local PAD    = 8
+    local layout = ns.UI_LAYOUT or {}
+    local SCROLL_COL_EST = layout.SCROLLBAR_COLUMN_WIDTH or 22
+    local MENU_EDGE_EST = 4
 
     local btn = gearCharSelectorBtn
     if not btn then
         btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
         btn:SetHeight(36)
-        btn:SetWidth(260)
         btn:SetBackdrop({
             bgFile   = "Interface\\Buttons\\WHITE8X8",
             edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -1566,11 +1655,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             insets   = { left = 0, right = 0, top = 0, bottom = 0 },
         })
 
-        local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
-        label:SetPoint("LEFT",  6, 0)
-        label:SetPoint("RIGHT", -20, 0)
-        label:SetJustifyH("LEFT")
-        btn._label = label
+        EnsureGearSelectorColumnLabels(btn)
 
         local arrow = btn:CreateTexture(nil, "ARTWORK")
         arrow:SetSize(12, 12)
@@ -1585,38 +1670,69 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         gearCharSelectorBtn = btn
     end
 
+    EnsureGearSelectorColumnLabels(btn)
+
     btn:SetParent(parent)
     btn:ClearAllPoints()
-    btn:SetPoint("RIGHT", parent, "RIGHT", -SIDE_MARGIN - PAD, 0)
+    btn:SetWidth(GEAR_CHAR_SELECTOR_WIDTH)
+    btn:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SIDE_MARGIN - PAD, 8)
     btn:SetBackdropColor(0.08, 0.08, 0.11, 0.9)
     btn:SetBackdropBorderColor(accent[1]*0.6, accent[2]*0.6, accent[3]*0.6, 0.8)
-
-    local label = btn._label
 
     local function SetLabelToChar(charKey)
         local db    = WarbandNexus.db and WarbandNexus.db.global
         local cData = db and db.characters and db.characters[charKey]
+        local nm = btn._nameLabel
+        local rm = btn._realmLabel
+        if not nm then return end
         if cData and (cData.name and cData.name ~= "") then
             local hex   = GetClassHex(cData.classFile)
             local namePart = "|cff" .. hex .. (cData.name or "") .. "|r"
+            nm:SetText(namePart)
+            nm:SetTextColor(1, 1, 1)
             local realm = cData.realm and cData.realm ~= "" and cData.realm or nil
-            if realm then
+            if realm and rm then
                 local realmShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(realm)) or realm
-                label:SetText(namePart .. "  |  |cffffffff" .. realmShown .. "|r")
-            else
-                label:SetText(namePart)
+                rm:SetText("|cffffffff" .. realmShown .. "|r")
+            elseif rm then
+                rm:SetText("")
             end
         elseif charKey and charKey ~= "" then
-            label:SetText(charKey)
+            nm:SetText(charKey)
+            nm:SetTextColor(1, 1, 1)
+            if rm then rm:SetText("") end
         else
-            label:SetText("")
+            nm:SetText("")
+            if rm then rm:SetText("") end
         end
     end
 
+    -- Shared text budget: header strip and scroll rows use the same name column width.
+    local function RefreshSelectorColumns(charList)
+        local list = charList or GetTrackedCharacters()
+        if #list == 0 or not btn._measureFs then return end
+        local btnW = math.max(1, btn:GetWidth())
+        local btnBudget = btnW - 6 - 20 - 22
+        local scrollBudget = btnW - 2 * MENU_EDGE_EST - SCROLL_COL_EST - 2 - 8
+        local textBudget = math.max(48, math.min(btnBudget, scrollBudget))
+        local nameColW = ComputeGearCharNameColW(list, btn._measureFs, textBudget)
+        LayoutGearCharNameRealmColumns(btn, nameColW, 6, 20)
+        for i = 1, #gearCharDropdownEntryPool do
+            local eb = gearCharDropdownEntryPool[i]
+            if eb and eb._nameLabel then
+                LayoutGearCharNameRealmColumns(eb, nameColW, 4, 4)
+            end
+        end
+    end
+
+    RefreshSelectorColumns(chars)
     SetLabelToChar(currentCharKey)
 
     -- Dropdown: reuse singleton menu and bg to avoid frame buildup
     btn:SetScript("OnClick", function(self)
+        local list = GetTrackedCharacters()
+        if #list == 0 then return end
+
         local menu = gearCharDropdownMenu
         local bg   = gearCharDropdownBg
 
@@ -1624,7 +1740,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
             menu:SetFrameStrata("FULLSCREEN_DIALOG")
             menu:SetFrameLevel(500)
-            menu:SetWidth(260)
+            menu:SetWidth(GEAR_CHAR_SELECTOR_WIDTH)
             menu:SetBackdrop({
                 bgFile   = "Interface\\Buttons\\WHITE8X8",
                 edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -1633,6 +1749,51 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             })
             menu:SetBackdropColor(0.06, 0.06, 0.10, 0.98)
             menu:SetBackdropBorderColor(accent[1]*0.5, accent[2]*0.5, accent[3]*0.5, 0.9)
+
+            -- Factory scroll + dedicated scrollbar column (matches main window / Collections)
+            local Factory = ns.UI and ns.UI.Factory
+            local layoutLocal = ns.UI_LAYOUT or {}
+            local SCROLL_COL = layoutLocal.SCROLLBAR_COLUMN_WIDTH or 22
+            local MENU_EDGE = 4
+
+            if Factory and Factory.CreateScrollFrame and Factory.CreateScrollBarColumn and Factory.PositionScrollBarInContainer then
+                menu._barColumn = Factory:CreateScrollBarColumn(menu, SCROLL_COL, MENU_EDGE, MENU_EDGE)
+                local sf = Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
+                sf:SetPoint("TOPLEFT", menu, "TOPLEFT", MENU_EDGE, -MENU_EDGE)
+                sf:SetPoint("BOTTOMRIGHT", menu._barColumn, "BOTTOMLEFT", -2, MENU_EDGE)
+                if sf.SetClipsChildren then
+                    sf:SetClipsChildren(true)
+                end
+                local sc = CreateFrame("Frame", nil, sf)
+                sf:SetScrollChild(sc)
+                menu._charScroll = sf
+                menu._charScrollChild = sc
+                if sf.ScrollBar then
+                    Factory:PositionScrollBarInContainer(sf.ScrollBar, menu._barColumn, 0)
+                end
+                sf:SetScript("OnSizeChanged", function(frame, w)
+                    if sc and w and w > 0 then
+                        sc:SetWidth(w)
+                    end
+                end)
+            else
+                local sf = CreateFrame("ScrollFrame", nil, menu, "UIPanelScrollFrameTemplate")
+                sf:SetPoint("TOPLEFT", 4, -4)
+                sf:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -4, 4)
+                if sf.SetClipsChildren then
+                    sf:SetClipsChildren(true)
+                end
+                local sc = CreateFrame("Frame", nil, sf)
+                sf:SetScrollChild(sc)
+                menu._charScroll = sf
+                menu._charScrollChild = sc
+                menu._barColumn = nil
+                sf:SetScript("OnSizeChanged", function(frame, w)
+                    if sc and w and w > 0 then
+                        sc:SetWidth(w)
+                    end
+                end)
+            end
             gearCharDropdownMenu = menu
         end
         if not bg then
@@ -1651,55 +1812,85 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         end
 
         local ENTRY_H = 28
-        menu:SetHeight(#chars * ENTRY_H + 8)
+        local contentH = #list * ENTRY_H + 8
+        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 800
+        local maxMenuH = math.max(ENTRY_H + 8, math.floor(screenH * 0.42))
+        local menuH = math.min(contentH, maxMenuH)
+        menu:SetHeight(menuH)
+        menu:ClearAllPoints()
+        -- Same outer width and horizontal alignment as header selector (full card strip).
+        local btnW = math.max(1, math.floor(self:GetWidth() + 0.5))
+        menu:SetWidth(btnW)
         menu:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
 
+        local scroll = menu._charScroll
+        local scrollChild = menu._charScrollChild
+        if scroll and scrollChild then
+            scrollChild:SetHeight(math.max(contentH, 1))
+            scroll:SetVerticalScroll(0)
+            local sw = scroll:GetWidth()
+            if sw and sw > 0 then
+                scrollChild:SetWidth(sw)
+            end
+        end
+
+        local selKey = selectedCharKey or GetSelectedCharKey()
+
         -- Hide excess pooled entries, reuse or create as needed
-        for pi = #chars + 1, #gearCharDropdownEntryPool do
+        for pi = #list + 1, #gearCharDropdownEntryPool do
             local poolBtn = gearCharDropdownEntryPool[pi]
             if poolBtn then poolBtn:Hide() end
         end
 
+        local entryParent = scrollChild or menu
         local entryY = -4
-        for i = 1, #chars do
-            local charEntry = chars[i]
+        for i = 1, #list do
+            local charEntry = list[i]
             local entryBtn = gearCharDropdownEntryPool[i]
             if not entryBtn then
-                entryBtn = CreateFrame("Button", nil, menu)
+                entryBtn = CreateFrame("Button", nil, entryParent)
                 entryBtn:SetHeight(ENTRY_H)
-                local entryLabel = FontManager:CreateFontString(entryBtn, "body", "OVERLAY")
-                entryLabel:SetPoint("LEFT", 4, 0)
-                entryLabel:SetPoint("RIGHT", -4, 0)
-                entryLabel:SetJustifyH("LEFT")
-                entryBtn._label = entryLabel
+                EnsureGearEntryColumnLabels(entryBtn)
                 local entryHi = entryBtn:CreateTexture(nil, "HIGHLIGHT")
                 entryHi:SetAllPoints()
                 entryHi:SetColorTexture(1, 1, 1, 0.1)
                 gearCharDropdownEntryPool[i] = entryBtn
             end
+            EnsureGearEntryColumnLabels(entryBtn)
 
-            entryBtn:SetParent(menu)
+            entryBtn:EnableMouseWheel(true)
+            entryBtn:SetScript("OnMouseWheel", function(entry, delta)
+                if ns.UI_ForwardMouseWheelToScrollAncestor then
+                    ns.UI_ForwardMouseWheelToScrollAncestor(entry, delta)
+                end
+            end)
+
+            entryBtn:SetParent(entryParent)
             entryBtn:ClearAllPoints()
             entryBtn:SetPoint("TOPLEFT",  4, entryY)
             entryBtn:SetPoint("TOPRIGHT", -4, entryY)
 
-            local entryLabel = entryBtn._label
+            if entryBtn.SetClippingChildren then
+                entryBtn:SetClippingChildren(true)
+            end
             local cKey   = charEntry.key
             local cData  = charEntry.data
             local hex    = GetClassHex(cData.classFile)
             local namePart = "|cff" .. hex .. (cData.name or cKey) .. "|r"
             local r = cData.realm and cData.realm ~= "" and cData.realm or ""
+            entryBtn._nameLabel:SetText(namePart)
+            entryBtn._nameLabel:SetTextColor(1, 1, 1)
             if r ~= "" then
                 local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(r)) or r
-                entryLabel:SetText(namePart .. "  |  |cffffffff" .. rShown .. "|r")
+                entryBtn._realmLabel:SetText("|cffffffff" .. rShown .. "|r")
             else
-                entryLabel:SetText(namePart)
+                entryBtn._realmLabel:SetText("")
             end
 
-            if cKey == currentCharKey then
-                entryLabel:SetTextColor(accent[1] + 0.2, accent[2] + 0.2, accent[3] + 0.2)
+            if cKey == selKey then
+                entryBtn._realmLabel:SetTextColor(accent[1] + 0.2, accent[2] + 0.2, accent[3] + 0.2)
             else
-                entryLabel:SetTextColor(1, 1, 1)
+                entryBtn._realmLabel:SetTextColor(1, 1, 1)
             end
 
             entryBtn:SetScript("OnClick", function()
@@ -1716,8 +1907,30 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             entryY = entryY - ENTRY_H
         end
 
+        local Factory = ns.UI and ns.UI.Factory
+        local function SyncDropdownScroll()
+            if not menu or not menu:IsShown() or not scroll or not scrollChild then return end
+            local sw = scroll:GetWidth()
+            if sw and sw > 0 then
+                scrollChild:SetWidth(sw)
+            end
+            if Factory and Factory.UpdateScrollBarVisibility then
+                Factory:UpdateScrollBarVisibility(scroll)
+            elseif scroll.UpdateScrollBarVisibility then
+                scroll:UpdateScrollBarVisibility()
+            end
+        end
+
+        local function RelayoutColumnsAfterSize()
+            SyncDropdownScroll()
+            RefreshSelectorColumns(list)
+            SetLabelToChar(selKey)
+        end
+
         bg:Show()
         menu:Show()
+        RelayoutColumnsAfterSize()
+        C_Timer.After(0, RelayoutColumnsAfterSize)
     end)
 
     btn:SetScript("OnEnter", function(self)
@@ -1728,6 +1941,13 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         local a = (ns.UI_COLORS or {}).accent or {0.5, 0.3, 0.8}
         self:SetBackdropBorderColor(a[1]*0.6, a[2]*0.6, a[3]*0.6, 0.8)
     end)
+
+    btn._refreshGearCharColumns = function()
+        local cl = GetTrackedCharacters()
+        if #cl == 0 then return end
+        RefreshSelectorColumns(cl)
+        SetLabelToChar(selectedCharKey or GetSelectedCharKey())
+    end
 
     return btn, yOffset
 end
@@ -1798,6 +2018,7 @@ function WarbandNexus:DrawGearTab(parent)
     local hexAcc  = format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
     local titleTextContent = "|cff" .. hexAcc .. ((ns.L and ns.L["GEAR_TAB_TITLE"]) or "Gear Management") .. "|r"
     local subtitleTextContent = (ns.L and ns.L["GEAR_TAB_DESC"]) or "Equipped gear, upgrade analysis, and crest tracking"
+    local gearHeaderRightReserve = GEAR_CHAR_SELECTOR_WIDTH + SIDE_MARGIN + 8 + 12
 
     local textContainer = ns.UI and ns.UI.Factory and ns.UI.Factory:CreateContainer(headerCard, 200, 40)
     if textContainer then
@@ -1813,7 +2034,7 @@ function WarbandNexus:DrawGearTab(parent)
         subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)
         subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
         textContainer:SetPoint("LEFT", headerIcon and headerIcon.border or headerCard, "RIGHT", headerIcon and 12 or 24, 0)
-        textContainer:SetPoint("CENTER", headerCard, "CENTER", 0, 0)
+        textContainer:SetPoint("RIGHT", headerCard, "RIGHT", -gearHeaderRightReserve, 0)
     else
         local titleText = FontManager:CreateFontString(headerCard, "header", "OVERLAY")
         titleText:SetText(titleTextContent)
@@ -1823,11 +2044,18 @@ function WarbandNexus:DrawGearTab(parent)
         subtitleText:SetText(subtitleTextContent)
         subtitleText:SetTextColor(0.6, 0.6, 0.6)
         subtitleText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -3)
-        subtitleText:SetPoint("RIGHT", headerCard, "RIGHT", -270, 0)
+        subtitleText:SetPoint("RIGHT", headerCard, "RIGHT", -gearHeaderRightReserve, 0)
     end
 
-    CreateCharacterSelector(headerCard, charKey, 0)
+    local gearCharSel = CreateCharacterSelector(headerCard, charKey, 0)
     headerCard:Show()
+    if gearCharSel and gearCharSel._refreshGearCharColumns then
+        C_Timer.After(0, function()
+            if gearCharSel.GetParent and gearCharSel:GetParent() then
+                gearCharSel._refreshGearCharColumns()
+            end
+        end)
+    end
 
     headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
 
