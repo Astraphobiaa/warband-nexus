@@ -2713,7 +2713,8 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     charText:SetTextColor(classColor[1], classColor[2], classColor[3])
     local characterDisplay = plan.characterName
     if plan.characterRealm and plan.characterRealm ~= "" then
-        characterDisplay = characterDisplay .. " - " .. plan.characterRealm
+        local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(plan.characterRealm)) or plan.characterRealm
+        characterDisplay = characterDisplay .. " - " .. rShown
     end
     charText:SetText(characterDisplay)
     
@@ -3069,7 +3070,8 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     charText:SetTextColor(classColor[1], classColor[2], classColor[3])
     local charDisplay = plan.characterName or "Unknown"
     if plan.characterRealm and plan.characterRealm ~= "" then
-        charDisplay = charDisplay .. " - " .. plan.characterRealm
+        local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(plan.characterRealm)) or plan.characterRealm
+        charDisplay = charDisplay .. " - " .. rShown
     end
     charText:SetText(charDisplay)
     

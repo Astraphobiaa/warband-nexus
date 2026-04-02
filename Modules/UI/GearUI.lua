@@ -1601,7 +1601,8 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             local namePart = "|cff" .. hex .. (cData.name or "") .. "|r"
             local realm = cData.realm and cData.realm ~= "" and cData.realm or nil
             if realm then
-                label:SetText(namePart .. "  |  |cffffffff" .. realm .. "|r")
+                local realmShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(realm)) or realm
+                label:SetText(namePart .. "  |  |cffffffff" .. realmShown .. "|r")
             else
                 label:SetText(namePart)
             end
@@ -1689,7 +1690,8 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             local namePart = "|cff" .. hex .. (cData.name or cKey) .. "|r"
             local r = cData.realm and cData.realm ~= "" and cData.realm or ""
             if r ~= "" then
-                entryLabel:SetText(namePart .. "  |  |cffffffff" .. r .. "|r")
+                local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(r)) or r
+                entryLabel:SetText(namePart .. "  |  |cffffffff" .. rShown .. "|r")
             else
                 entryLabel:SetText(namePart)
             end

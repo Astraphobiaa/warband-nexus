@@ -13,6 +13,19 @@ ns.Utilities = Utilities
 -- CHARACTER IDENTIFICATION
 --============================================================================
 
+--- Split a stored "Name-Realm" key using only the **first** hyphen.
+--- Realms may contain hyphens (e.g. Azjol-Nerub); player names do not use `-` in WoW.
+--- Greedy patterns like "^(.+)%-(.+)$" mis-parse as Name=Player-Azjol, Realm=Nerub.
+---@param charKey string|nil
+---@return string|nil namePart Space-stripped name prefix
+---@return string|nil realmPart Space-stripped realm suffix (may include hyphens, apostrophes)
+function Utilities:SplitCharacterKey(charKey)
+    if not charKey or charKey == "" then return nil, nil end
+    local name, realm = tostring(charKey):match("^([^-]+)%-(.+)$")
+    if not name or not realm then return nil, nil end
+    return name:gsub("%s+", ""), realm:gsub("%s+", "")
+end
+
 --- Get character key (Name-Realm format, normalized: no spaces).
 --- Single source of truth for character identification in DB and services.
 --- When realm is omitted, prefers GetNormalizedRealmName() — same as DataService / SaveCurrentCharacterData.
@@ -53,8 +66,8 @@ function Utilities:GetCanonicalCharacterKey(charKey)
     end
 
     -- Legacy fallback: normalize any incoming "Name - Realm" / spaced variants.
-    -- Keeps services consistent even if db.characters key is old-format.
-    local name, realm = tostring(charKey):match("^(.+)%-(.+)$")
+    -- First hyphen only — realm may be "Azjol-Nerub" etc.
+    local name, realm = self:SplitCharacterKey(tostring(charKey))
     if name and realm then
         return self:GetCharacterKey(name, realm)
     end
@@ -62,7 +75,8 @@ function Utilities:GetCanonicalCharacterKey(charKey)
     return tostring(charKey):gsub("%s+", "")
 end
 
---- Format normalized realm name for display (e.g. "TwistingNether" -> "Twisting Nether")
+--- Display-only: pretty-print API/normalized realm (e.g. "TwistingNether" -> "Twisting Nether").
+--- Persisted `charData.realm` and keys stay as returned by GetNormalizedRealmName / UnitName — do not rewrite storage.
 --- Inserts a space before each uppercase letter that follows a lowercase letter.
 ---@param realm string Realm name (possibly normalized / spaceless)
 ---@return string Display-friendly realm name with proper spacing

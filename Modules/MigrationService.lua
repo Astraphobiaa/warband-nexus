@@ -74,6 +74,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateTrackingField(db)
     self:MigrateTrackingConfirmed(db)
     self:MigrateGoldFormat(db)
+    self:MigrateRealmSuffixRepairFromCharKey(db)
     self:MigrateCharacterKeyNormalize(db)
     self:MigrateRestedDataReset(db)
     return false
@@ -389,6 +390,41 @@ function MigrationService:MigrateGoldFormat(db)
     end
     
     -- Gold format migration applied silently
+end
+
+---Fix charData.realm when it was truncated by greedy "Name-Realm" parsing (realm contains hyphens, e.g. Azjol-Nerub).
+---Table key is authoritative: first hyphen separates name from full realm suffix.
+function MigrationService:MigrateRealmSuffixRepairFromCharKey(db)
+    if not db.global or db.global._realmSuffixRepairV1 then return end
+    local Utilities = ns.Utilities
+    if not Utilities or not Utilities.GetCharacterKey or not Utilities.SplitCharacterKey then
+        return
+    end
+    local chars = db.global.characters
+    if type(chars) ~= "table" then
+        db.global._realmSuffixRepairV1 = true
+        return
+    end
+    for charKey, charData in pairs(chars) do
+        if type(charKey) == "string" and type(charData) == "table" and charData.name then
+            local nKey, rKey = Utilities:SplitCharacterKey(charKey)
+            if nKey and rKey then
+                local nameNorm = tostring(charData.name):gsub("%s+", "")
+                if nameNorm == nKey then
+                    local splitCanon = Utilities:GetCharacterKey(nKey, rKey)
+                    if splitCanon == charKey then
+                        local rStored = charData.realm
+                        local currentCanon = (type(rStored) == "string" and rStored ~= "")
+                            and Utilities:GetCharacterKey(nameNorm, rStored) or nil
+                        if currentCanon ~= charKey then
+                            charData.realm = rKey
+                        end
+                    end
+                end
+            end
+        end
+    end
+    db.global._realmSuffixRepairV1 = true
 end
 
 ---Normalize character keys across all character-keyed tables to canonical form

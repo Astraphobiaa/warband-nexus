@@ -1275,8 +1275,8 @@ function WarbandNexus:GetAllCharacters()
         else
             local name, realm = data.name, data.realm
             if (not name or name == "") or (not realm or realm == "") then
-                if key and type(key) == "string" then
-                    local n, r = key:match("^(.-)%-(.+)$")
+                if key and type(key) == "string" and ns.Utilities and ns.Utilities.SplitCharacterKey then
+                    local n, r = ns.Utilities:SplitCharacterKey(key)
                     if n and r then
                         name, realm = n, r
                         data.name = name

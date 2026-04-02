@@ -397,7 +397,7 @@ function WarbandNexus:DrawStatistics(parent)
         if charData.isTracked then
             local copper = ns.Utilities:GetCharTotalCopper(charData)
             goldChars[#goldChars + 1] = {
-                name = charData.name or charKey:match("^(.+)%-") or "Unknown",
+                name = charData.name or charKey:match("^([^-]+)") or "Unknown",
                 classFile = charData.classFile,
                 copper = copper,
             }
@@ -630,7 +630,7 @@ function WarbandNexus:DrawStatistics(parent)
         if charData.isTracked then
             local played = charData.timePlayed or 0
             playedChars[#playedChars + 1] = {
-                name = charData.name or charKey:match("^(.+)%-") or "Unknown",
+                name = charData.name or charKey:match("^([^-]+)") or "Unknown",
                 classFile = charData.classFile,
                 timePlayed = played,
             }

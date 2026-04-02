@@ -1015,11 +1015,15 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
         local charName = FontManager:CreateFontString(headerCard, "header", "OVERLAY")
         charName:SetPoint("LEFT", 14, 8)
+        local realmHdr = plan.characterRealm or ""
+        if realmHdr ~= "" and ns.Utilities and ns.Utilities.FormatRealmName then
+            realmHdr = ns.Utilities:FormatRealmName(realmHdr)
+        end
         charName:SetText(string.format(
             "|cff%02x%02x%02x%s|r |cff888888-%s|r",
             classColor.r * 255, classColor.g * 255, classColor.b * 255,
             plan.characterName or "Unknown",
-            plan.characterRealm or ""
+            realmHdr
         ))
 
         -- Total progress on right of character name

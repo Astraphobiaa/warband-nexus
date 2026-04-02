@@ -74,7 +74,7 @@ function WarbandNexus:InitializeMinimapButton()
                     copper = ns.Utilities:GetCharTotalCopper(charData)
                 end
                 totalCopper = totalCopper + copper
-                local charName = charKey:match("^(.+)%-") or charKey
+                local charName = charKey:match("^([^-]+)") or charKey
                 local charClass = charData.class or "WARRIOR"
                 table.insert(charGoldList, { name = charName, copper = copper, class = charClass })
             end

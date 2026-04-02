@@ -627,7 +627,8 @@ local function RefreshTrackerContentImmediate()
                 nameText:SetMaxLines(1)
                 local charDisplay = plan.characterName or ""
                 if plan.characterRealm and plan.characterRealm ~= "" then
-                    charDisplay = charDisplay .. "-" .. plan.characterRealm
+                    local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(plan.characterRealm)) or plan.characterRealm
+                    charDisplay = charDisplay .. "-" .. rShown
                 end
                 nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
                     math.floor(classColor[1]*255), math.floor(classColor[2]*255), math.floor(classColor[3]*255), 

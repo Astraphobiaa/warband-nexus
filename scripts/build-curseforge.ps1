@@ -63,7 +63,7 @@ New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
 # Core files
 Write-Host "Copying core files..." -ForegroundColor Yellow
-@("WarbandNexus.toc", "embeds.xml", "Core.lua", "Config.lua", "LICENSE", "RARITY_IMPORT_README.txt") | ForEach-Object {
+@("WarbandNexus.toc", "embeds.xml", "Core.lua", "Config.lua", "LICENSE") | ForEach-Object {
     $src = Join-Path $RootDir $_
     if (Test-Path $src) { Copy-Item $src -Destination $OutputDir -Force }
 }

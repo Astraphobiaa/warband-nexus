@@ -26,6 +26,10 @@
 
     npcs, rares, objects, fishing, containers, zones, encounters, encounterNames, lockoutQuests
     are built at load from sources only. Do not add data to any legacy table.
+
+    Full mount audit (all expansions): cross-check external NPC lists in
+    https://github.com/WowRarity/Rarity/tree/master/DB/Mounts (Classic → Midnight).
+    See CONTRIBUTING.md — "Collectible drop sources & try counts".
 ]]
 
 local ADDON_NAME, ns = ...
@@ -33,7 +37,11 @@ local ADDON_NAME, ns = ...
 -- =====================================================================
 -- BfA "Zone Drop" mounts - shared drop tables (referenced by multiple NPC entries)
 -- These mounts drop from specific mob factions within a zone, NOT every mob.
--- Source: WoWHead / community-verified NPC IDs
+--
+-- Cross-check (open-source, parseable NPC lists):
+--   * WowRarity/Rarity: DB/Mounts/BattleForAzeroth.lua — baseline npcs={} per itemId
+--   * WoWDB/Wowhead "Dropped by" counts can exceed Rarity (shared loot templates, phasing).
+-- DataForAzeroth / SimpleArmory: collection leaderboards — they do not publish per-NPC drop IDs.
 -- =====================================================================
 local _duneScavenger = {
     { type = "mount", itemID = 163576, name = "Captured Dune Scavenger", repeatable = true },
@@ -272,37 +280,37 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
         },
         [15317] = { -- Qiraji Champion (AQ40)
             { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
         },
         [15247] = { -- Vekniss Stinger (AQ40)
             { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
         },
         [15311] = { -- Anubisath Sentinel (AQ40)
             { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
         },
         [15249] = { -- Vekniss Wasp (AQ40)
             { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
         },
         [15310] = { -- Vekniss Hive Crawler (AQ40)
             { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
             { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
         },
 
         -- ========================================
@@ -656,7 +664,7 @@ ns.CollectibleSourceDB = {
         },
 
         -- BfA Zone Drops: Captured Dune Scavenger (Vol'dun - Sethrak/Faithless mobs)
-        -- Source: WoWHead-verified (20 NPC IDs)
+        -- Matches Rarity BattleForAzeroth.lua (21 NPC IDs)
         [128682] = _duneScavenger,  -- Faithless Defender
         [123774] = _duneScavenger,  -- Sethrak Aggressor
         [136191] = _duneScavenger,  -- Sethrak Ravager
@@ -691,23 +699,37 @@ ns.CollectibleSourceDB = {
         [131529] = _terrifiedPackMule,  -- Hexthralled Villager
 
         -- BfA Zone Drops: Reins of a Tamed Bloodfeaster (Nazmir - Blood Troll mobs)
-        -- Source: WoWHead-verified (16 NPC IDs)
-        [126888] = _bloodfeaster,  -- Blood Troll Warder
-        [126187] = _bloodfeaster,  -- Blood Witch Tashka
-        [133077] = _bloodfeaster,  -- Blood Priestess Kel'zo
-        [122239] = _bloodfeaster,  -- Blood Priest
-        [127919] = _bloodfeaster,  -- Blood Troll Reaver
+        -- Baseline: Rarity BattleForAzeroth.lua npcs (16). Extended: Loa-Gutter Impaler, Nazwathan trio,
+        -- generic Blood Troll, Bloodhunter line (incl. River Toll WQ: Cursecarver), Blood Witch Najima,
+        -- Warmother Boatema (Wowhead NPC pages). WoWDB "Dropped by" may list more template-linked creatures.
+        [120606] = _bloodfeaster,  -- Blood Troll Mystic / Blood Troll Hexxer
         [120607] = _bloodfeaster,  -- Blood Troll Warrior
-        [136639] = _bloodfeaster,  -- Blood Troll Berserker
-        [127224] = _bloodfeaster,  -- Blood Troll Shaman
-        [136293] = _bloodfeaster,  -- Blood Troll Savage
-        [133279] = _bloodfeaster,  -- Blood Priestess Vatat
-        [133063] = _bloodfeaster,  -- Blood Troll Tracker
-        [128734] = _bloodfeaster,  -- Blood Troll Rampager
-        [127928] = _bloodfeaster,  -- Blood Hexlord
-        [120606] = _bloodfeaster,  -- Blood Troll Mystic
+        [122204] = _bloodfeaster,  -- Blood Witch Najima
+        [122239] = _bloodfeaster,  -- Blood Priest
+        [123071] = _bloodfeaster,  -- Blood Hunter
+        [123328] = _bloodfeaster,  -- Warmother Boatema
+        [123437] = _bloodfeaster,  -- Bloodhunter Cursecarver
+        [123439] = _bloodfeaster,  -- Bloodhunter War-Witch
+        [123441] = _bloodfeaster,  -- Bloodhunter Warmother
         [124547] = _bloodfeaster,  -- Blood Troll Marauder
         [124688] = _bloodfeaster,  -- Blood Ritualist
+        [126089] = _bloodfeaster,  -- Bloodhunter Warrior
+        [126187] = _bloodfeaster,  -- Blood Witch Tashka
+        [126888] = _bloodfeaster,  -- Blood Troll Warder
+        [127224] = _bloodfeaster,  -- Blood Troll Shaman
+        [127919] = _bloodfeaster,  -- Blood Troll Reaver
+        [127928] = _bloodfeaster,  -- Loa-Gutter Drudge
+        [128371] = _bloodfeaster,  -- Loa-Gutter Impaler
+        [128734] = _bloodfeaster,  -- Blood Troll Rampager
+        [129723] = _bloodfeaster,  -- Blood Troll (generic Nazmir)
+        [131155] = _bloodfeaster,  -- Nazwathan Guardian
+        [131156] = _bloodfeaster,  -- Nazwathan Hulk
+        [131157] = _bloodfeaster,  -- Nazwathan Blood Bender
+        [133063] = _bloodfeaster,  -- Nazmani Blood Witch / Blood Troll Tracker (same id)
+        [133077] = _bloodfeaster,  -- Blood Priestess Kel'zo
+        [133279] = _bloodfeaster,  -- Nazmani Drudge / Blood Priestess Vatat (same id)
+        [136293] = _bloodfeaster,  -- Blood Troll Savage
+        [136639] = _bloodfeaster,  -- Blood Troll Berserker
 
         -- BfA Zone Drops: Goldenmane's Reins (Stormsong Valley - Tidesage/Irontide mobs)
         -- Source: WoWHead-verified (25 NPC IDs)
@@ -1327,6 +1349,10 @@ ns.CollectibleSourceDB = {
     -- =================================================================
     -- GAME OBJECTS (Chests, Caches, Clickable Objects)
     -- Key: [objectID] = { { type, itemID, name }, ... }
+    --
+    -- INTENTIONAL DUPLICATE mount itemIDs vs legacyNpcs: many raids put loot on a
+    -- GameObject chest (e.g. Alexstrasza's Gift) while the boss NPC row still drives
+    -- statistics / encounter context. Try counter matches corpse OR chest GUID.
     legacyObjects = {
         -- WotLK
         [193081] = { -- Alexstrasza's Gift (Eye of Eternity - post-Malygos chest)
@@ -1350,7 +1376,7 @@ ns.CollectibleSourceDB = {
 
         -- Dragonflight
         [376587] = { -- Expedition Scout's Pack (Dragon Isles - rare event)
-            { type = "mount", itemID = 192055, name = "Verdant Skitterfly" },
+            { type = "mount", itemID = 192764, name = "Verdant Skitterfly" },
         },
 
         -- Shadowlands

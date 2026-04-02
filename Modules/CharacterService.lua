@@ -359,7 +359,13 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     
     -- Character name with class color
     local charName = charKey:match("^([^%-]+)") or charKey
-    local charRealm = charKey:match("%-(.+)") or GetRealmName()
+    local charRealmRaw = charKey:match("%-(.+)")
+    if not charRealmRaw and GetRealmName then
+        charRealmRaw = GetRealmName() or ""
+        if issecretvalue and charRealmRaw and issecretvalue(charRealmRaw) then charRealmRaw = "" end
+    end
+    charRealmRaw = charRealmRaw or ""
+    local charRealm = (charRealmRaw ~= "" and ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(charRealmRaw)) or charRealmRaw
     
     -- Get character data for class color
     local charData = addon.db and addon.db.global and addon.db.global.characters and addon.db.global.characters[charKey]

@@ -34,6 +34,16 @@
       P3: Zone raresOnly pools → open world + rare-class unit only
       P4: Encounter recentKills → instance boss bookkeeping
     
+    MULTI-CORPSE / AoE LOOT (same loot window):
+      GetAllLootSourceGUIDs() walks every loot slot via GetLootSourceInfo(i) and dedupes
+      GUIDs — so all corpses contributing items are represented in sourceGUIDs.
+      ResolveFromGUIDs uses the first UNPROCESSED GUID that MatchGuidExact() resolves;
+      after ProcessNPCLoot, every GUID in that session is marked processed (TTL) so
+      reopening the same corpses does not double-count. Same shared drop table from
+      two corpses → one attribution (correct). Two different tracked NPCs with
+      different drop tables in one AoE window → only the first matching GUID drives
+      increments this session (rare; CHAT_MSG_LOOT may still attribute some cases).
+    
     Fallbacks (all use global debounce — cannot double-count):
       CHAT_MSG_LOOT → repeatable reset → exact item→NPC → item→encounter → item→fishing
       ENCOUNTER_END → delayed 5s: only if no prior path counted
@@ -807,29 +817,34 @@ local function BuildReverseIndices()
     end
 
     -- itemID → npcID for CHAT_MSG_LOOT when loot window never opens (direct loot, world boss, etc.)
-    -- Only rare-tier NPCs; if two eligible NPCs share an itemID, mark false (ambiguous — do not guess).
+    -- If two eligible NPCs share an itemID with different drop tables → false (ambiguous).
+    -- Same shared table (e.g. BfA zone-drop mounts: many NPCs → one _drops array) → keep first npcID;
+    -- try counts use the same drops/mount key regardless of which spawner dropped loot.
     chatLootItemToNpc = {}
+    local function MergeChatLootItemToNpc(itemID, npcID)
+        if not itemID or not npcID then return end
+        local ex = chatLootItemToNpc[itemID]
+        if not ex then
+            chatLootItemToNpc[itemID] = npcID
+        elseif ex ~= npcID then
+            local prevDrops = npcDropDB[ex]
+            local newDrops = npcDropDB[npcID]
+            if prevDrops ~= newDrops then
+                chatLootItemToNpc[itemID] = false
+            end
+        end
+    end
     for npcID, npcData in pairs(npcDropDB) do
         if tryCounterNpcEligible[npcID] then
             for i = 1, #npcData do
                 local drop = npcData[i]
                 if drop and drop.itemID then
-                    local ex = chatLootItemToNpc[drop.itemID]
-                    if not ex then
-                        chatLootItemToNpc[drop.itemID] = npcID
-                    elseif ex ~= npcID then
-                        chatLootItemToNpc[drop.itemID] = false
-                    end
+                    MergeChatLootItemToNpc(drop.itemID, npcID)
                     if drop.questStarters then
                         for j = 1, #drop.questStarters do
                             local qs = drop.questStarters[j]
                             if qs and qs.itemID then
-                                local qex = chatLootItemToNpc[qs.itemID]
-                                if not qex then
-                                    chatLootItemToNpc[qs.itemID] = npcID
-                                elseif qex ~= npcID then
-                                    chatLootItemToNpc[qs.itemID] = false
-                                end
+                                MergeChatLootItemToNpc(qs.itemID, npcID)
                             end
                         end
                     end
@@ -3292,7 +3307,8 @@ local function MatchGuidExact(guid)
 end
 
 ---P1: Resolve from per-slot source GUIDs (GetLootSourceInfo + UnitGUID("npc")).
----Each GUID is checked for exact ID match. Already-processed GUIDs are skipped.
+---Each GUID is checked in order; first MatchGuidExact hit wins (see file header: AoE).
+---Already-processed GUIDs are skipped.
 ---@return boolean|nil earlyExit  true = all GUIDs processed (caller should return)
 local function ResolveFromGUIDs(ctx, sourceGUIDs, addon)
     if not sourceGUIDs or #sourceGUIDs == 0 then return nil end
