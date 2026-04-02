@@ -196,6 +196,16 @@ local function GetCharacterMainStat(charData)
             return SPEC_MAIN_STAT[specID]
         end
     end
+    -- No spec in DB: infer from the class's first specialization (e.g. Mage → Arcane → INT).
+    if charData.classFile and GetSpecializationInfoForClassID then
+        local classID = CLASS_FILE_TO_ID[charData.classFile]
+        if classID then
+            local firstSpecID = GetSpecializationInfoForClassID(classID, 1)
+            if firstSpecID and SPEC_MAIN_STAT[firstSpecID] then
+                return SPEC_MAIN_STAT[firstSpecID]
+            end
+        end
+    end
     return nil
 end
 
@@ -215,23 +225,74 @@ function WarbandNexus:GetCurrentCharacterMainStat()
     return (specID and SPEC_MAIN_STAT[specID]) or nil
 end
 
+--- Resolve item stat table (prefer C_Item API; fallback to legacy GetItemStats).
+local function GetItemStatTableForLink(itemLink)
+    if not itemLink then return nil end
+    if C_Item and C_Item.GetItemStats then
+        local ok, t = pcall(C_Item.GetItemStats, itemLink)
+        if ok and t and next(t) then
+            return t
+        end
+    end
+    if GetItemStats then
+        local statTable = {}
+        local ok = pcall(GetItemStats, itemLink, statTable)
+        if ok and statTable and next(statTable) then
+            return statTable
+        end
+    end
+    return nil
+end
+
+local function TableHasPrimaryStats(statTable)
+    if not statTable then return false, false, false end
+    local s = (statTable.ITEM_MOD_STRENGTH_SHORT or statTable.ITEM_MOD_STRENGTH or 0)
+    local a = (statTable.ITEM_MOD_AGILITY_SHORT or statTable.ITEM_MOD_AGILITY or 0)
+    local it = (statTable.ITEM_MOD_INTELLECT_SHORT or statTable.ITEM_MOD_INTELLECT or 0)
+    local hasStr = s > 0
+    local hasAgi = a > 0
+    local hasInt = it > 0
+    if not hasStr and not hasAgi and not hasInt then
+        for k, v in pairs(statTable) do
+            if type(v) == "number" and v > 0 and type(k) == "string" then
+                if k:find("STRENGTH", 1, true) then hasStr = true end
+                if k:find("AGILITY", 1, true) then hasAgi = true end
+                if k:find("INTELLECT", 1, true) then hasInt = true end
+            end
+        end
+    end
+    return hasStr, hasAgi, hasInt
+end
+
+local function SlotExpectsPrimaryStatForFilter(slotID)
+    if slotID == 13 or slotID == 14 then
+        return false
+    end
+    if slotID == 2 or slotID == 11 or slotID == 12 then
+        return false
+    end
+    if slotID == 15 then
+        return false
+    end
+    if slotID == 16 or slotID == 17 then
+        return true
+    end
+    return ARMOR_SLOT_IDS[slotID] == true
+end
+
 local function IsMainStatCompatible(itemLink, mainStat, slotID)
     if not itemLink then return true end
     local isTrinket = (slotID == 13 or slotID == 14)
 
-    if not GetItemStats then
-        return not isTrinket or not mainStat
+    local statTable = GetItemStatTableForLink(itemLink)
+    if not statTable then
+        if mainStat and SlotExpectsPrimaryStatForFilter(slotID) and not isTrinket then
+            return false
+        end
+        return true
     end
 
-    local statTable = {}
-    local ok = pcall(GetItemStats, itemLink, statTable)
-    if not ok or not statTable then
-        return not isTrinket or not mainStat
-    end
-
-    local hasStr = (statTable.ITEM_MOD_STRENGTH_SHORT or 0) > 0
-    local hasAgi = (statTable.ITEM_MOD_AGILITY_SHORT or 0) > 0
-    local hasInt = (statTable.ITEM_MOD_INTELLECT_SHORT or 0) > 0
+    local hasStr, hasAgi, hasInt = TableHasPrimaryStats(statTable)
 
     if not hasStr and not hasAgi and not hasInt then
         return true
