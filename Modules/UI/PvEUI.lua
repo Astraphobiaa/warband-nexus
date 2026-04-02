@@ -1215,7 +1215,8 @@ function WarbandNexus:DrawPvEProgress(parent)
         local charExpanded = IsExpanded(charExpandKey, isCurrentChar)
         
         -- Create collapsible header
-        local charHeader, charBtn = CreateCollapsibleHeader(
+        -- Returns: header Button, expand arrow Texture (not a click target — use charHeader:Click() for toggle)
+        local charHeader, expandIconTex = CreateCollapsibleHeader(
             parent,
             "", -- Empty text, we'll add it manually
             charExpandKey,
@@ -1239,7 +1240,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         
         local favFrame = CreateFrame("Frame", nil, charHeader)
         favFrame:SetSize(favColSize, favColSize)
-        favFrame:SetPoint("LEFT", charBtn, "RIGHT", 4, 0)
+        favFrame:SetPoint("LEFT", expandIconTex, "RIGHT", 4, 0)
         
         local favIcon = favFrame:CreateTexture(nil, "ARTWORK")
         favIcon:SetSize(favIconSize, favIconSize)
@@ -1512,8 +1513,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                             if HideTooltip then HideTooltip() end
                         end)
                         hit:SetScript("OnMouseUp", function(_, button)
-                            if button == "LeftButton" and charBtn and charBtn.Click then
-                                charBtn:Click()
+                            if button == "LeftButton" and charHeader then
+                                charHeader:Click()
                             end
                         end)
                     end
