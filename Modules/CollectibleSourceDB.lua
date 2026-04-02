@@ -147,8 +147,8 @@ local _netherWarpedEgg = {
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
 
 ns.CollectibleSourceDB = {
-    version = "12.0.26",
-    lastUpdated = "2026-03-25",
+    version = "12.0.27",
+    lastUpdated = "2026-04-02",
     sourceSchemaVersion = 1,
     sourceTypes = {
         "instance_boss", -- npcID + drops

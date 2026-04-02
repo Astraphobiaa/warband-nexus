@@ -15,10 +15,10 @@ local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version only (locale key CHANGELOG_V<version>; no legacy chain)
-local FALLBACK_CHANGELOG = "v2.5.5\nImprovements:\n- Main tabs reordered — inventory, gear, and currencies are easier to find\n- Gear tab: upgrade crests use green/red; amounts show what you hold vs season cap\n- To-Do: My Plans is now To-Do List; try-count popup is easier to edit; works on Mounts cards too\n- To-Do cards: buttons and links no longer overlap\n- Shorter help text and simpler update notes\n\nBug fixes:\n- Login sync bar no longer gets stuck when you are in combat or if a step fails\n- If the sync bar ever stays too long, it now hides automatically as a fallback\n\nCurseForge: Warband Nexus"
+local FALLBACK_CHANGELOG = "v2.5.6\nImprovements:\n- Readable realm spacing in Gear, weekly plans, Plans tracker, tracking dialog (saved keys still use Blizzard normalized realm text)\n- Collectibles: wider BfA Bloodfeaster NPC list; clearer notes for chest vs boss and multi-corpse try counting\n- SplitCharacterKey + first-hyphen-only parsing for Name-Realm strings\n- CONTRIBUTING + scripts/audit_wn_vs_rarity.py for Rarity mount audits\n\nBug fixes:\n- Try Counter: chat loot + shared drop tables (e.g. Tamed Bloodfeaster) no longer lose CHAT try updates\n- Hyphenated realms (Azjol-Nerub): canonical keys, GetAllCharacters repair, stats/minimap labels; one-time realm-field migration\n- Mount item IDs: Verdant Skitterfly (192764), Red Qiraji crystal (21321)\n- Tracking dialog: GetRealmName guarded for secret values\n\nLocalization:\n- TRY_COUNT click / right-click hints in all locales\n\nRepo: redundant dev scratch files removed; Rarity import notes in CONTRIBUTING\n\nCurseForge: Warband Nexus"
 
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V255"]) or FALLBACK_CHANGELOG
+    local changelogText = (ns.L and ns.L["CHANGELOG_V256"]) or FALLBACK_CHANGELOG
     if not changelogText or changelogText == "" then
         changelogText = FALLBACK_CHANGELOG
     end
@@ -30,8 +30,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.5.5",
-    date = "2026-04-01",
+    version = "2.5.6",
+    date = "2026-04-02",
     changes = BuildChangelog()
 }
 

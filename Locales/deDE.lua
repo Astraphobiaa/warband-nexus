@@ -280,6 +280,8 @@ L["CHARACTER_BANK"] = "Persönliche Bank"
 -- Try Counter
 L["TRY_COUNT"] = "Versuchszähler"
 L["SET_TRY_COUNT"] = "Versuche festlegen"
+L["TRY_COUNT_RIGHT_CLICK_HINT"] = "Rechtsklicken, um die Versuchszahl zu bearbeiten."
+L["TRY_COUNT_CLICK_HINT"] = "Klicken, um die Versuchszahl zu bearbeiten."
 L["TRIES"] = "Versuche"
 
 -- Reset Cycle
@@ -1085,7 +1087,7 @@ L["WELCOME_TYPE_CMD"] = "Bitte tippe"
 L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 
 -- What's New (nur aktuelle Version)
-L["CHANGELOG_V255"] = "v2.5.5\nVerbesserungen:\n- Tabs neu sortiert — Lager, Ausrüstung und Währungen schneller zu finden\n- Ausrüstung: Aufwertungs-Crests farbig; Anzeige Bestand vs. Saisonlimit\n- To-Do: To-Do-Liste; Versuche-Zähler; Rechtsklick auch in der Mount-Liste\n- To-Do-Karten: Buttons ohne Überlappung\n- Kürzere Hilfe und Update-Hinweise\n\nFehlerbehebungen:\n- Sync-Leiste beim Login klemmt nicht mehr (Kampf oder fehlgeschlagener Schritt)\n- Sync-Leiste blendet nach langer Wartezeit automatisch aus\n\nCurseForge: Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\nVerbesserungen:\n- Lesbarere Realm-Darstellung in Ausrüstung, Wochenplänen, Plans-Tracker, Tracking-Dialog (Schlüssel weiter mit Blizzards normalisiertem Text)\n- Sammlungen: erweiterte BfA-Blutgreifer-NPC-Liste; klarere Hinweise Truhe vs Boss und Multi-Leiche-Try-Count\n- SplitCharacterKey + Aufteilung nur am ersten Bindestrich bei Name-Realm\n- CONTRIBUTING + scripts/audit_wn_vs_rarity.py für Rarity-Mount-Audits\n\nFehlerbehebungen:\n- Versuchszähler: Chat-Beute + geteilte Droptabellen (z. B. Gezähmter Blutgreifer) — CHAT-Updates gehen nicht mehr verloren\n- Bindestrich-Realms (z. B. Azjol-Nerub): kanonische Schlüssel, GetAllCharacters-Reparatur, Statistik/Minimap; einmalige Realm-Feld-Migration\n- Mount-IDs: Verdant Skitterfly (192764), roter Qirajikristall (21321)\n- Tracking-Dialog: GetRealmName gegen Geheimwerte abgesichert\n\nLokalisierung:\n- TRY_COUNT Klick-/Rechtsklick-Hinweise in allen Sprachen\n\nRepo: überflüssige Dev-Dateien entfernt; Rarity-Import in CONTRIBUTING\n\nCurseForge: Warband Nexus"
 
 -- =============================================
 -- Confirm / Tracking Dialog
