@@ -171,7 +171,7 @@ L["STORAGE_BAG_HEADER"] = "Warband Bags"
 L["STORAGE_PERSONAL_HEADER"] = "Personal Bank"
 
 -- Plans Tab
-L["PLANS_MY_PLANS"] = "My Plans"
+L["PLANS_MY_PLANS"] = "To-Do List"
 L["PLANS_COLLECTIONS"] = "To-Do List"
 L["PLANS_ADD_CUSTOM"] = "Add Custom Plan"
 L["PLANS_NO_RESULTS"] = "No results found."
@@ -185,7 +185,7 @@ L["SHOW_PLANNED"] = "Show Planned"
 L["NO_PLANNED_ITEMS"] = "No planned %ss yet"
 
 -- Plans Categories
-L["CATEGORY_MY_PLANS"] = "My Plans"
+L["CATEGORY_MY_PLANS"] = "To-Do List"
 L["CATEGORY_DAILY_TASKS"] = "Weekly Progress"
 L["CATEGORY_ILLUSIONS"] = "Illusions"
 
@@ -222,6 +222,8 @@ L["CHARACTER_BANK"] = "Bank"
 -- Try Counter
 L["TRY_COUNT"] = "Try Count"
 L["SET_TRY_COUNT"] = "Set Try Count"
+L["TRY_COUNT_RIGHT_CLICK_HINT"] = "Right-click to edit attempt count."
+L["TRY_COUNT_CLICK_HINT"] = "Click to edit attempt count."
 L["TRIES"] = "Tries"
 
 -- Reset Cycle
@@ -476,7 +478,7 @@ L["VAULT_RAID_BASED_FORMAT"] = "Reward based on highest difficulty defeated (cur
 -- Delves Section (PvE Tab)
 L["DELVES"] = "Delves"
 L["COMPANION"] = "Companion"
-L["BOUNTIFUL_DELVE"] = "Bountiful"
+L["BOUNTIFUL_DELVE"] = "Trovehunter's Bounty"
 L["CRACKED_KEYSTONE"] = "Cracked Keystone"
 L["SEASON"] = "Season"
 
@@ -1005,8 +1007,8 @@ L["WELCOME_MSG_FORMAT"] = "Welcome to Warband Nexus v%s"
 L["WELCOME_TYPE_CMD"] = "Please type"
 L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
 
--- Changelog (What's New) - v2.5.0
-L["CHANGELOG_V250"] = "NEW FEATURES:\n- To-Do Tab: Plans section renamed to To-Do with refreshed branding\n- Weekly Reset Timer: Live countdown at the top of Weekly Progress view\n- Character Overview: Cross-character summary card with quest & vault progress\n- Wowhead Links: Right-click collectibles, plans, and quest items to copy URLs\n- Crafted Gear Overhaul: Tier-based recraft info replaces misleading X/6 notation\n- Reminder System: Daily login, weekly reset, and countdown triggers for plans\n\nGEAR TAB:\n- Crafted items show tier name + ilvl (e.g. 'Myth 285') instead of 'Myth 5/6'\n- Max ilvl crafted items no longer show a false upgrade arrow\n- Tooltip displays recraft cost, recommended tier, and crests needed\n- Corrected crafted ilvl caps: Myth=285, Hero=272\n\nPROFESSION KNOWLEDGE:\n- Added Herbalism and Mining weekly gathering quest tracking\n- Added missing Enchanting weekly quest variant\n- Verified all treatise, unique, treasure, and gathering IDs\n\nPERFORMANCE:\n- Throttled resize updates — no more frame drops during window resize\n- Pooled gear tab frames — reduced frame creation by ~60 per refresh\n- Fixed frame leak in plan description expand\n\nBUG FIXES:\n- Fixed reminder dialog clearing zone alerts when saving other settings\n- Fixed tooltip taint protection gap for profession gear detection\n- Fixed crafted tier name resolving to wrong tier\n- Fixed crafted gear showing 289 max ilvl instead of 285\n\nThank you for your continued support!\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+-- What's New (current release only; older entries are not kept in-repo)
+L["CHANGELOG_V255"] = "v2.5.5\nImprovements:\n- Main tabs reordered — inventory, gear, and currencies are easier to find\n- Gear tab: upgrade crests use green/red; amounts show what you hold vs season cap\n- To-Do: My Plans is now To-Do List; try-count popup is easier to edit; works on Mounts cards too\n- To-Do cards: buttons and links no longer overlap\n- Shorter help text and simpler update notes\n\nBug fixes:\n- Login sync bar no longer gets stuck when you are in combat or if a step fails\n- If the sync bar ever stays too long, it now hides automatically as a fallback\n\nCurseForge: Warband Nexus"
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"
@@ -1407,7 +1409,11 @@ L["NOTIFICATION_GOT_IT_AFTER"] = "You got it after %d tries!"
 L["TRYCOUNTER_ATTEMPTS_FOR"] = "%d attempts for %s"
 L["TRYCOUNTER_OBTAINED_RESET"] = "Obtained %s! Try counter reset."
 L["TRYCOUNTER_CAUGHT_RESET"] = "Caught %s! Try counter reset."
+L["TRYCOUNTER_CAUGHT"] = "Caught %s!"
 L["TRYCOUNTER_CONTAINER_RESET"] = "Obtained %s from container! Try counter reset."
+L["TRYCOUNTER_CONTAINER"] = "Obtained %s from container!"
+L["TRYCOUNTER_AFTER_TRIES"] = "after %d tries"
+L["TRYCOUNTER_FIRST_TRY"] = "on the first try!"
 L["TRYCOUNTER_LOCKOUT_SKIP"] = "Skipped: daily/weekly lockout active for this NPC."
 L["TRYCOUNTER_INSTANCE_DROPS"] = "Collectible drops in this instance:"
 L["TRYCOUNTER_COLLECTED_TAG"] = "(Collected)"

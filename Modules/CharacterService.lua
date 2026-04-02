@@ -78,34 +78,31 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         C_Timer.After(0.05, function()
             local function doStep1()
                 local addonInstance = _G.WarbandNexus or addon
-                
-                -- Character cache (was skipped in InitializationService P3 because not tracked)
-                if addonInstance and addonInstance.RegisterCharacterCacheEvents then
-                    addonInstance:RegisterCharacterCacheEvents()
+                local ok, err = pcall(function()
+                    -- Character cache (was skipped in InitializationService P3 because not tracked)
+                    if addonInstance and addonInstance.RegisterCharacterCacheEvents then
+                        addonInstance:RegisterCharacterCacheEvents()
+                    end
+                    if addonInstance and addonInstance.GetCharacterData then
+                        addonInstance:GetCharacterData(true)
+                    end
+                    -- Items Cache events (BAG_UPDATE, BANKFRAME_OPENED, etc.)
+                    if addonInstance and addonInstance.InitializeItemsCache then
+                        addonInstance:InitializeItemsCache()
+                    end
+                    -- Currency Cache (handles event registration internally, guarded)
+                    if addonInstance and addonInstance.InitializeCurrencyCache then
+                        addonInstance:InitializeCurrencyCache()
+                    end
+                    -- PvE Cache events (M+, Vault, etc.)
+                    if addonInstance and addonInstance.RegisterPvECacheEvents then
+                        addonInstance:RegisterPvECacheEvents()
+                    end
+                end)
+                if not ok and DebugPrint then
+                    DebugPrint("|cffff4444[WN CharacterService]|r PostConfirm cache init failed: " .. tostring(err))
                 end
-                if addonInstance and addonInstance.GetCharacterData then
-                    addonInstance:GetCharacterData(true)
-                end
-                
-                -- Items Cache events (BAG_UPDATE, BANKFRAME_OPENED, etc.)
-                if addonInstance and addonInstance.InitializeItemsCache then
-                    addonInstance:InitializeItemsCache()
-                end
-                
-                -- Currency Cache (handles event registration internally, guarded)
-                if addonInstance and addonInstance.InitializeCurrencyCache then
-                    addonInstance:InitializeCurrencyCache()
-                end
-                
-                -- PvE Cache events (M+, Vault, etc.)
-                if addonInstance and addonInstance.RegisterPvECacheEvents then
-                    addonInstance:RegisterPvECacheEvents()
-                end
-                
-                -- NOTE: Vault priming removed — VaultScanner is the sole owner
-                -- of OnUIInteract() (PLAYER_ENTERING_WORLD, T+1s).
-                
-                -- Caches initialized
+                -- Always clear "caches" loading step (combat-deferred SafeInit or pcall failure must not leave UI stuck)
                 local LT = ns.LoadingTracker
                 if LT then LT:Complete("caches") end
             end

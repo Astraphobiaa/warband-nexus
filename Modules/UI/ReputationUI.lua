@@ -11,6 +11,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local Constants = ns.Constants
 local FontManager = ns.FontManager  -- Centralized font management
 local ReputationUIEvents = {} -- Unique AceEvent identity for this module
 
@@ -2410,19 +2411,8 @@ function WarbandNexus:DrawReputationTab(parent)
         end
     end)
         
-        -- Legacy event support (redraw tab) - only refresh if visible
-        WarbandNexus.RegisterMessage(ReputationUIEvents, "WARBAND_REPUTATIONS_UPDATED", function()
-            -- Phase 2.4: Invalidate search cache
-            cachedFilteredResults = {}
-            cachedSearchText = nil
-            
-            if parent and parent:IsVisible() then
-                self:DrawReputationTab(parent)
-            end
-        end)
-        
         -- Real-time update event (single faction changed) - only refresh if visible
-        WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_UPDATED", function(event, factionID)
+        WarbandNexus.RegisterMessage(ReputationUIEvents, Constants.EVENTS.REPUTATION_UPDATED, function(event, factionID)
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil

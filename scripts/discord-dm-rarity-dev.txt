@@ -1,0 +1,3 @@
+**Warband Nexus v2.5.4** — Rarity mount tries: one-time WN+Rarity sum, then WN-only (no double stack on /reload). Debug: `/wn raritymountpreview`, `/wn rarityseedreset` (needs `/wn debug`). Details: `RARITY_IMPORT_README.txt` in the zip.
+
+Build: `.\scripts\build-curseforge.ps1` → `build\WarbandNexus-2.5.4.zip`

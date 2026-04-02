@@ -190,37 +190,37 @@ function WarbandNexus:ShowInfoDialog()
     AddText((ns.L and ns.L["ADDON_OVERVIEW_TITLE"]) or "AddOn Overview", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 6)
     AddText((ns.L and ns.L["ADDON_OVERVIEW_DESC"]) or "Warband Nexus provides a centralized interface for managing all your characters, currencies, reputations, items, and PvE progress across your entire Warband.", "body", {0.9, 0.9, 0.9}, 18)
     
-    -- Tab Descriptions
+    -- Tab descriptions (same order as main window nav: Characters → Storage → Items → Gear → …)
     AddText((ns.L and ns.L["INFO_TAB_CHARACTERS"]) or "Characters", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["CHARACTERS_DESC"]) or "View all characters with gold, level, iLvl, faction, race, class, professions, keystone, and last played info. Track or untrack characters, mark favorites.", "body", {0.9, 0.9, 0.9}, 10)
-    
-    AddText((ns.L and ns.L["INFO_TAB_ITEMS"]) or "Items", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["ITEMS_DESC"]) or "Search and browse items across all bags, banks, and warband bank. Auto-scans when you open a bank. Shows which characters own each item via tooltip.", "body", {0.9, 0.9, 0.9}, 10)
-    
+
     AddText((ns.L and ns.L["INFO_TAB_STORAGE"]) or "Storage", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["STORAGE_DESC"]) or "Aggregated inventory view from all characters — bags, personal bank, and warband bank combined in one place.", "body", {0.9, 0.9, 0.9}, 10)
-    
-    AddText((ns.L and ns.L["INFO_TAB_PVE"]) or "PvE", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["PVE_DESC"]) or "Track Great Vault progress with next-tier indicators, Mythic+ scores and keys, keystone affixes, dungeon history, and upgrade currency across all characters.", "body", {0.9, 0.9, 0.9}, 10)
-    
-    AddText((ns.L and ns.L["INFO_TAB_REPUTATIONS"]) or "Reputations", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["REPUTATIONS_DESC"]) or "Compare reputation progress across all characters. Shows Account-Wide vs Character-Specific factions with hover tooltips for per-character breakdown.", "body", {0.9, 0.9, 0.9}, 10)
-    
-    AddText((ns.L and ns.L["INFO_TAB_CURRENCY"]) or "Currency", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["CURRENCY_DESC"]) or "View all currencies organized by expansion. Compare amounts across characters with hover tooltips. Hide empty currencies with one click.", "body", {0.9, 0.9, 0.9}, 10)
-    
-    AddText((ns.L and ns.L["INFO_TAB_PLANS"]) or "To-Do", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["PLANS_DESC"]) or "Track uncollected mounts, pets, toys, achievements, and transmogs. Add goals, view drop sources, and monitor try counts. Access via /wn plan or minimap icon.", "body", {0.9, 0.9, 0.9}, 10)
-    
-    AddText((ns.L and ns.L["INFO_TAB_PROFESSIONS"]) or "Professions", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["PROFESSIONS_INFO_DESC"]) or "Track profession skills, concentration, knowledge, and specialization trees across all characters. Includes Recipe Companion for reagent sourcing.", "body", {0.9, 0.9, 0.9}, 10)
-    
+
+    AddText((ns.L and ns.L["INFO_TAB_ITEMS"]) or "Items", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["ITEMS_DESC"]) or "Search and browse items across all bags, banks, and warband bank. Auto-scans when you open a bank. Shows which characters own each item via tooltip.", "body", {0.9, 0.9, 0.9}, 10)
+
     AddText((ns.L and ns.L["INFO_TAB_GEAR"]) or "Gear", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["GEAR_DESC"]) or "Equipped gear, upgrade options, storage recommendations, and cross-character upgrade candidates.", "body", {0.9, 0.9, 0.9}, 10)
-    
+
+    AddText((ns.L and ns.L["INFO_TAB_CURRENCY"]) or "Currency", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["CURRENCY_DESC"]) or "View all currencies organized by expansion. Compare amounts across characters with hover tooltips. Hide empty currencies with one click.", "body", {0.9, 0.9, 0.9}, 10)
+
+    AddText((ns.L and ns.L["INFO_TAB_REPUTATIONS"]) or "Reputations", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["REPUTATIONS_DESC"]) or "Compare reputation progress across all characters. Shows Account-Wide vs Character-Specific factions with hover tooltips for per-character breakdown.", "body", {0.9, 0.9, 0.9}, 10)
+
+    AddText((ns.L and ns.L["INFO_TAB_PVE"]) or "PvE", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["PVE_DESC"]) or "Track Great Vault progress with next-tier indicators, Mythic+ scores and keys, keystone affixes, dungeon history, and upgrade currency across all characters.", "body", {0.9, 0.9, 0.9}, 10)
+
+    AddText((ns.L and ns.L["INFO_TAB_PROFESSIONS"]) or "Professions", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["PROFESSIONS_INFO_DESC"]) or "Track profession skills, concentration, knowledge, and specialization trees across all characters. Includes Recipe Companion for reagent sourcing.", "body", {0.9, 0.9, 0.9}, 10)
+
     AddText((ns.L and ns.L["INFO_TAB_COLLECTIONS"]) or "Collections", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["COLLECTIONS_DESC"]) or "Overview of mounts, pets, toys, transmog, and other collectibles. Track collection progress and find missing items.", "body", {0.9, 0.9, 0.9}, 10)
-    
+
+    AddText((ns.L and ns.L["INFO_TAB_PLANS"]) or "To-Do", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["PLANS_DESC"]) or "Track uncollected mounts, pets, toys, achievements, and transmogs. Add goals, view drop sources, and monitor try counts. Access via /wn plan or minimap icon.", "body", {0.9, 0.9, 0.9}, 10)
+
     AddText((ns.L and ns.L["INFO_TAB_STATISTICS"]) or "Statistics", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["STATISTICS_DESC"]) or "View achievement points, mount/pet/toy/illusion/title collection progress, unique pet count, and bag/bank usage statistics.", "body", {0.9, 0.9, 0.9}, 25)
     

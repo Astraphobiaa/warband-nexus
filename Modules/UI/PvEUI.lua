@@ -12,6 +12,7 @@
     - C_DateAndTime.GetSecondsUntilWeeklyReset() - Fallback for weekly reset timer
     - C_ChallengeMode.GetMapUIInfo() - Dungeon name/icon (not cached, static data)
     - C_CurrencyInfo.GetCurrencyInfo() - Currency details for TWW currencies
+    - C_Item.GetItemIconByID() - Trovehunter's Bounty icon for Bountiful column header
     
     DEPRECATED API CALLS (Moved to PvECacheService):
     - C_MythicPlus.GetOwnedKeystoneLevel() → Use pveData.keystone.level
@@ -71,6 +72,27 @@ local PVE_DAWNCREST_COL_W = 128                  -- qty/max (R:rem)
 local PVE_COFFER_COL_W = 132
 local PVE_KEY_COL_W = 88
 local PVE_VAULT_COL_W = 70                       -- triplet of marks per track
+
+--- Header icon for Bountiful column — Blizzard art from Trovehunter's Bounty item.
+---@return number|string fileID from API, or texture path fallback
+local function GetTrovehunterBountyColumnIcon()
+    local Constants = ns.Constants
+    local primary = (Constants and Constants.TROVEHUNTERS_BOUNTY_ITEM_ID) or 252415
+    local alt = Constants and Constants.TROVEHUNTERS_BOUNTY_ITEM_ID_ALT
+    if C_Item and C_Item.GetItemIconByID then
+        local ok, fileID = pcall(C_Item.GetItemIconByID, primary)
+        if ok and type(fileID) == "number" and fileID > 0 then
+            return fileID
+        end
+        if alt and alt ~= primary then
+            local ok2, fileID2 = pcall(C_Item.GetItemIconByID, alt)
+            if ok2 and type(fileID2) == "number" and fileID2 > 0 then
+                return fileID2
+            end
+        end
+    end
+    return "Interface\\Icons\\INV_10_WorldQuests_Scroll"
+end
 
 --- Minimum scrollChild width so inline columns do not overlap; enables horizontal scrollbar.
 function ns.ComputePvEMinScrollWidth(self)
@@ -827,12 +849,13 @@ function WarbandNexus:DrawPvEProgress(parent)
         icon = "Interface\\Icons\\INV_Misc_Map_01",
         tooltipTitle = (ns.L and ns.L["VAULT_WORLD"]) or "World",
     }
+    -- Bountiful weekly — Trovehunter's Bounty item icon (live fileID when API returns it)
     PVE_COLUMNS[#PVE_COLUMNS + 1] = {
         key = "bountiful",
         label = "",
         width = 44,
-        icon = "Interface\\Icons\\INV_Misc_Bag_33",
-        tooltipTitle = (ns.L and ns.L["BOUNTIFUL_DELVE"]) or "Bountiful Delve",
+        icon = GetTrovehunterBountyColumnIcon(),
+        tooltipTitle = (ns.L and ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty",
     }
 
     local COL_SPACING = PVE_COL_SPACING
@@ -1073,7 +1096,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         colX = colX - col.width
         local colCenterX = colX + col.width * 0.5
 
-        if col.icon then
+        if col.icon or col.iconAtlas then
             local hitFrame = CreateFrame("Frame", nil, colHeaderRow)
             hitFrame:SetSize(COL_ICON_SIZE + 4, COL_ICON_SIZE + 4)
             hitFrame:SetPoint("RIGHT", colHeaderRow, "RIGHT", colCenterX + COL_ICON_SIZE * 0.5 + 2, 0)
@@ -1081,8 +1104,20 @@ function WarbandNexus:DrawPvEProgress(parent)
             local iconTex = hitFrame:CreateTexture(nil, "ARTWORK")
             iconTex:SetSize(COL_ICON_SIZE, COL_ICON_SIZE)
             iconTex:SetPoint("CENTER")
-            iconTex:SetTexture(col.icon)
-            iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            if col.iconAtlas and iconTex.SetAtlas then
+                iconTex:SetTexture(nil)
+                pcall(function()
+                    iconTex:SetAtlas(col.iconAtlas)
+                end)
+                local okAtlas = iconTex.GetAtlas and iconTex:GetAtlas()
+                if not okAtlas and col.icon then
+                    iconTex:SetTexture(col.icon)
+                    iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                end
+            elseif col.icon then
+                iconTex:SetTexture(col.icon)
+                iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
 
             if ShowTooltip then
                 hitFrame:EnableMouse(true)
@@ -1097,7 +1132,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 hitFrame:SetScript("OnEnter", function(self)
                     ShowTooltip(self, {
                         type = "custom",
-                        icon = col.icon,
+                        icon = col.iconAtlas or col.icon,
+                        iconIsAtlas = col.iconAtlas ~= nil,
                         title = tooltipTitle,
                         lines = {},
                         anchor = "ANCHOR_BOTTOM"
@@ -1150,8 +1186,11 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====
     for i, char in ipairs(characters) do
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
-        -- CRITICAL: Use GetCharacterKey() normalization to match PvECacheService DB keys
+        -- CRITICAL: Match DB keys (currency + PvE cache) — same canonical form as scans / SavedVariables.
         local charKey = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
+        if ns.Utilities.GetCanonicalCharacterKey then
+            charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+        end
         local isFavorite = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey)
         
         -- Get PvE data from PvECacheService
@@ -1322,19 +1361,27 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local cappedText = CAPPED or "Capped"
                 qty = qty or 0
                 maxQty = maxQty or 0
+                local sm = tonumber(seasonMax) or 0
+                local teN = tonumber(totalEarned)
 
-                local hasSeason = totalEarned and seasonMax and seasonMax > 0
-                local cap = hasSeason and seasonMax or maxQty
-                local earned = hasSeason and totalEarned or qty
-
-                if cap and cap > 0 then
-                    local rem = math.max(cap - earned, 0)
-                    if hasSeason then
-                        table.insert(lines, { text = string.format("%s %s", currentLabel, FormatNumber(qty)), color = {1, 1, 1} })
-                        table.insert(lines, { text = string.format("%s: %s / %s", seasonLabel, FormatNumber(totalEarned or 0), FormatNumber(seasonMax or 0)), color = {1, 1, 1} })
+                local hasSeasonProgress = sm > 0
+                if hasSeasonProgress then
+                    local teForSeason = (teN ~= nil) and teN or 0
+                    local remSeason = math.max(sm - teForSeason, 0)
+                    table.insert(lines, { text = string.format("%s %s", currentLabel, FormatNumber(qty)), color = {1, 1, 1} })
+                    table.insert(lines, { text = string.format("%s: %s / %s", seasonLabel, FormatNumber(teForSeason), FormatNumber(sm)), color = {1, 1, 1} })
+                    if remSeason > 0 then
+                        table.insert(lines, { text = string.format("%s %s", FormatNumber(remSeason), remainingSuffix), color = {0.5, 1, 0.5} })
                     else
-                        table.insert(lines, { text = string.format("%s / %s", FormatNumber(qty), FormatNumber(cap)), color = {1, 1, 1} })
+                        table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
                     end
+                    return lines
+                end
+
+                local cap = maxQty
+                if cap and cap > 0 then
+                    local rem = math.max(cap - qty, 0)
+                    table.insert(lines, { text = string.format("%s / %s", FormatNumber(qty), FormatNumber(cap)), color = {1, 1, 1} })
                     if rem > 0 then
                         table.insert(lines, { text = string.format("%s %s", FormatNumber(rem), remainingSuffix), color = {0.5, 1, 0.5} })
                     else
@@ -1358,8 +1405,13 @@ function WarbandNexus:DrawPvEProgress(parent)
             local EM_DASH = "\226\128\148"
 
             local function GetCapStateColor(qty, maxQty, totalEarned, seasonMax)
-                if totalEarned and seasonMax and seasonMax > 0 then
-                    local rem = math.max(seasonMax - totalEarned, 0)
+                local sm = tonumber(seasonMax) or 0
+                if sm > 0 then
+                    local teN = tonumber(totalEarned)
+                    if teN == nil then
+                        return NORMAL_COLOR
+                    end
+                    local rem = math.max(sm - teN, 0)
                     return (rem > 0) and CAP_OPEN_COLOR or CAPPED_COLOR
                 end
                 if maxQty and maxQty > 0 then
@@ -1369,17 +1421,19 @@ function WarbandNexus:DrawPvEProgress(parent)
                 return NORMAL_COLOR
             end
 
+            local FormatSeasonLine = ns.UI_FormatSeasonProgressCurrencyLine
             for i = 1, #PVE_DAWNCRESTS do
                 local cd = WarbandNexus:GetCurrencyData(PVE_DAWNCRESTS[i].id, charKey)
                 local q = cd and cd.quantity or 0
                 local m = cd and cd.maxQuantity or 0
                 local te = cd and cd.totalEarned
                 local sm = cd and cd.seasonMax
-                local txt = FormatCurrencyStatus(q)
+                local txt = FormatSeasonLine and FormatSeasonLine(cd) or FormatCurrencyStatus(q)
                 local tipTitle = PVE_DAWNCRESTS[i] and PVE_DAWNCRESTS[i].name or ((ns.L and ns.L["TAB_CURRENCY"]) or "Currency")
                 colValues[i] = {
                     text = txt,
-                    color = (txt == EM_DASH) and DIM_COLOR or GetCapStateColor(q, m, te, sm),
+                    richText = FormatSeasonLine ~= nil,
+                    color = (not FormatSeasonLine) and ((txt == EM_DASH) and DIM_COLOR or GetCapStateColor(q, m, te, sm)) or nil,
                     tooltip = BuildCurrencyTooltip(q, m, te, sm),
                     tooltipTitle = tipTitle,
                     tooltipIcon = cd and cd.icon,
@@ -1388,10 +1442,11 @@ function WarbandNexus:DrawPvEProgress(parent)
             end
 
             local n = #PVE_DAWNCRESTS
-            local shardTxt = FormatCurrencyStatus(shardQty)
+            local shardTxt = FormatSeasonLine and FormatSeasonLine(shardData) or FormatCurrencyStatus(shardQty)
             colValues[n + 1] = {
                 text = shardTxt,
-                color = (shardTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(shardQty, shardMax, shardTE, shardSM),
+                richText = FormatSeasonLine ~= nil,
+                color = (not FormatSeasonLine) and ((shardTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(shardQty, shardMax, shardTE, shardSM)) or nil,
                 tooltip = BuildCurrencyTooltip(shardQty, shardMax, shardTE, shardSM),
                 tooltipTitle = (ns.L and ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards",
                 tooltipIcon = shardData and shardData.icon,
@@ -1404,7 +1459,13 @@ function WarbandNexus:DrawPvEProgress(parent)
             colValues[n + 3] = { text = FormatVaultSlots(raidUnlocked, raidTotal), color = {1, 1, 1} }
             colValues[n + 4] = { text = FormatVaultSlots(dungeonUnlocked, dungeonTotal), color = {1, 1, 1} }
             colValues[n + 5] = { text = FormatVaultSlots(worldUnlocked, worldTotal), color = {1, 1, 1} }
-            local bountifulDone = pve.delves and pve.delves.character and pve.delves.character.bountifulComplete
+            -- Current character: live quest API. Other rows: last value saved when that character was played.
+            local bountifulDone = false
+            if charKey == currentPlayerKey then
+                bountifulDone = WarbandNexus.IsBountifulDelveWeeklyDone and WarbandNexus:IsBountifulDelveWeeklyDone() or false
+            else
+                bountifulDone = (pve.delves and pve.delves.character and pve.delves.character.bountifulComplete) or false
+            end
             colValues[n + 6] = { text = bountifulDone and READY_ICON or NOT_READY_ICON, color = {1, 1, 1} }
 
             for ci = #PVE_COLUMNS, 1, -1 do
@@ -1419,8 +1480,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                     colText:SetJustifyH("CENTER")
                     colText:SetWordWrap(false)
                     colText:SetText(val.text)
-                    if val.color then
+                    if not val.richText and val.color then
                         colText:SetTextColor(val.color[1], val.color[2], val.color[3])
+                    elseif val.richText then
+                        colText:SetTextColor(1, 1, 1)
                     end
                     if val.tooltip and ShowTooltip then
                         local hit = CreateFrame("Frame", nil, charHeader)
@@ -1704,7 +1767,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             -- Keystone (Left Column)
             local col1X = cardPadding
-            local col1Y = 15
+            local col1Y = 12
             
             local keystoneTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             keystoneTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col1X + topColumnWidth / 2, -col1Y)
@@ -1723,7 +1786,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                     
                     local iconSize = 50
                     local keystoneIcon = CreateIcon(summaryCard, texture or "Interface\\Icons\\Achievement_ChallengeMode_Gold", iconSize, false, nil, false)
-                    keystoneIcon:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -8)
+                    keystoneIcon:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -5)
                     
                     if keystoneIcon.BorderTop then
                         local r, g, b, a = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8
@@ -1735,12 +1798,12 @@ function WarbandNexus:DrawPvEProgress(parent)
                     keystoneIcon:Show()
                     
                     local kLevelText = FontManager:CreateFontString(summaryCard, "header", "OVERLAY")
-                    kLevelText:SetPoint("TOP", keystoneIcon, "BOTTOM", 0, -6)
+                    kLevelText:SetPoint("TOP", keystoneIcon, "BOTTOM", 0, -3)
                     kLevelText:SetText(string.format("|cff00ff00+%d|r", keystoneLevel))
                     kLevelText:SetJustifyH("CENTER")
                     
-                    local nameText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
-                    nameText:SetPoint("TOP", kLevelText, "BOTTOM", 0, -4)
+                    local nameText = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
+                    nameText:SetPoint("TOP", kLevelText, "BOTTOM", 0, 0)
                     nameText:SetWidth(topColumnWidth - 10)
                     nameText:SetJustifyH("CENTER")
                     nameText:SetWordWrap(true)
@@ -1763,7 +1826,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             -- Affixes (Right Column)
             local col2X = col1X + topColumnWidth + columnSpacing
-            local col2Y = 15
+            local col2Y = col1Y
             
             local affixesTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             affixesTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col2X + topColumnWidth / 2, -col2Y)
@@ -1846,7 +1909,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             local numCurrencies = #crestCurrencies
             local rowIconSize = 30
             local rowSpacing = 8
-            local rowTopY = 130
+            local rowTopY = 138
             local rowAvailableW = (card2Width - cardSpacing) - (cardPadding * 2)
             local rowItemW = (rowAvailableW - (rowSpacing * (numCurrencies - 1))) / numCurrencies
             local rowStartX = cardPadding
@@ -1871,13 +1934,17 @@ function WarbandNexus:DrawPvEProgress(parent)
                 amountText:SetWidth(rowItemW + 8)
                 amountText:SetJustifyH("CENTER")
                 amountText:SetWordWrap(false)
-                local amtColor = "|cffffffff"
-                if maxQuantity > 0 then
-                    local pct = (quantity / maxQuantity) * 100
-                    if pct >= 100 then amtColor = "|cffff4444"
-                    elseif pct >= 80 then amtColor = "|cffffaa00" end
+                if ns.UI_FormatSeasonProgressCurrencyLine then
+                    amountText:SetText(ns.UI_FormatSeasonProgressCurrencyLine(currencyEntry))
+                else
+                    local amtColor = "|cffffffff"
+                    if maxQuantity > 0 then
+                        local pct = (quantity / maxQuantity) * 100
+                        if pct >= 100 then amtColor = "|cffff4444"
+                        elseif pct >= 80 then amtColor = "|cffffaa00" end
+                    end
+                    amountText:SetText(string.format("%s%s|r", amtColor, FormatNumber(quantity)))
                 end
-                amountText:SetText(string.format("%s%s|r", amtColor, FormatNumber(quantity)))
 
                 if ShowTooltip and HideTooltip then
                     crestIcon:EnableMouse(true)

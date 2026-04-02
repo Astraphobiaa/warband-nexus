@@ -210,6 +210,13 @@ local function ClassifyPetSourceCached(cache, sourceText)
     return ClassifySource(cache, sourceText, "pet")
 end
 
+local function FormatMountPetToyListTrySuffix(collectibleType, id)
+    if not id or not WarbandNexus or not WarbandNexus.ShouldShowTryCountInUI or not WarbandNexus:ShouldShowTryCountInUI(collectibleType, id) then return "" end
+    local c = WarbandNexus:GetTryCount(collectibleType, id) or 0
+    local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
+    return " |cff888888(" .. triesLabel .. " " .. tostring(c) .. ")|r"
+end
+
 -- Para birimi ikonu (altın); Cost/Amount satırlarında fiyat yanında gösterilir.
 local CURRENCY_ICON_GOLD = "|TInterface\\Icons\\INV_Misc_Coin_01:14:14:0:0:64:64:4:60:4:60|t"
 
@@ -552,7 +559,7 @@ end
 
 -- State for Collections tab (must be defined before PopulateMountList/UpdateMountListVisibleRange/DrawMountsContent)
 local collectionsState = {
-    currentSubTab = "mounts",
+    currentSubTab = "achievements",
     mountListContainer = nil,
     mountListScrollFrame = nil,
     mountListScrollChild = nil,
@@ -980,7 +987,7 @@ end
 local function AcquireMountRow(scrollChild, listWidth, item, selectedMountID, onSelectMount, redraw, cf)
     local mount = item.mount
     local nameColor = mount.isCollected and COLLECTED_COLOR or "|cffffffff"
-    local labelText = nameColor .. (mount.name or "") .. "|r"
+    local labelText = nameColor .. (mount.name or "") .. "|r" .. FormatMountPetToyListTrySuffix("mount", mount.id)
     return AcquireCollectionRow(scrollChild, item, 0, mount.icon or DEFAULT_ICON_MOUNT, labelText, mount.isCollected, selectedMountID, mount.id, function()
         if onSelectMount then
             onSelectMount(mount.id, mount.name, mount.icon, mount.source, mount.creatureDisplayID, mount.description, mount.isCollected)
@@ -997,7 +1004,7 @@ end
 local function AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSelectPet, redraw, cf)
     local pet = item.pet
     local nameColor = pet.isCollected and COLLECTED_COLOR or "|cffffffff"
-    local labelText = nameColor .. (pet.name or "") .. "|r"
+    local labelText = nameColor .. (pet.name or "") .. "|r" .. FormatMountPetToyListTrySuffix("pet", pet.id)
     return AcquireCollectionRow(scrollChild, item, 0, pet.icon or DEFAULT_ICON_PET, labelText, pet.isCollected, selectedPetID, pet.id, function()
         if onSelectPet then
             onSelectPet(pet.id, pet.name, pet.icon, pet.source, pet.creatureDisplayID, pet.description, pet.isCollected)
@@ -1014,7 +1021,7 @@ end
 local function AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSelectToy, redraw, cf)
     local toy = item.toy
     local nameColor = (toy.isCollected or toy.collected) and COLLECTED_COLOR or "|cffffffff"
-    local labelText = nameColor .. (toy.name or "") .. "|r"
+    local labelText = nameColor .. (toy.name or "") .. "|r" .. FormatMountPetToyListTrySuffix("toy", toy.id)
     return AcquireCollectionRow(scrollChild, item, 0, toy.icon or DEFAULT_ICON_TOY, labelText, (toy.isCollected == true) or (toy.collected == true), selectedToyID, toy.id, function()
         if onSelectToy then
             onSelectToy(toy.id, toy.name, toy.icon, toy.source, toy.description, (toy.isCollected == true) or (toy.collected == true), toy.sourceTypeName)
@@ -1807,38 +1814,53 @@ local function CreateModelViewer(parent, width, height)
     local goldB = (COLORS.gold and COLORS.gold[3]) or 0
     local whiteR, whiteG, whiteB = 1, 1, 1
 
-    -- Sağ üst Add container (nameText bunun soluna dayanacak)
-    local addContainer = CreateFrame("Frame", nil, textOverlay)
-    addContainer:SetPoint("TOPRIGHT", textOverlay, "TOPRIGHT", -CONTENT_INSET, -CONTENT_INSET)
-    addContainer:SetSize(80, 28)
-    addContainer:Hide()
+    -- Sağ üst: Factory sütunu — Wowhead + Add/Added; try satırı yalnızca Add sütunu genişliğinde (hizalı).
+    local addCol = (Factory and Factory.CreateCollectionsDetailRightColumn) and Factory:CreateCollectionsDetailRightColumn(textOverlay, { withTryRow = true })
+    local addContainer = addCol and addCol.root
+    local actionSlot = addCol and addCol.actionSlot
+    if addContainer then
+        addContainer:SetPoint("TOPRIGHT", textOverlay, "TOPRIGHT", -CONTENT_INSET, -CONTENT_INSET)
+        addContainer:Hide()
+    end
     panel._addContainer = addContainer
-    if PlanCardFactory then
-        panel._addBtn = PlanCardFactory.CreateAddButton(addContainer, {
+    panel._detailActionSlot = actionSlot
+
+    if PlanCardFactory and actionSlot then
+        panel._addBtn = PlanCardFactory.CreateAddButton(actionSlot, {
             buttonType = "row",
-            anchorPoint = "RIGHT",
+            anchorPoint = "TOPRIGHT",
             x = 0,
             y = 0,
         })
-        if panel._addBtn then panel._addBtn:ClearAllPoints(); panel._addBtn:SetPoint("TOPRIGHT", addContainer, "TOPRIGHT", 0, 0) end
-        panel._addedIndicator = PlanCardFactory.CreateAddedIndicator(addContainer, {
+        if panel._addBtn then
+            panel._addBtn:ClearAllPoints()
+            panel._addBtn:SetPoint("TOPRIGHT", actionSlot, "TOPRIGHT", 0, 0)
+        end
+        panel._addedIndicator = PlanCardFactory.CreateAddedIndicator(actionSlot, {
             buttonType = "row",
             label = (ns.L and ns.L["ADDED"]) or "Added",
             fontCategory = "body",
-            anchorPoint = "RIGHT",
+            anchorPoint = "TOPRIGHT",
             x = 0,
             y = 0,
         })
         if panel._addedIndicator then
             panel._addedIndicator:ClearAllPoints()
-            panel._addedIndicator:SetPoint("TOPRIGHT", addContainer, "TOPRIGHT", 0, 0)
+            panel._addedIndicator:SetPoint("TOPRIGHT", actionSlot, "TOPRIGHT", 0, 0)
             panel._addedIndicator:Hide()
         end
     end
 
+    panel._wowheadBtn = addCol and addCol.wowheadBtn
+    panel._tryCountRow = addCol and addCol.tryCountRow
+
     local nameText = FontManager:CreateFontString(textOverlay, "header", "OVERLAY")
     nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", DETAIL_HEADER_GAP, 0)
-    nameText:SetPoint("TOPRIGHT", addContainer, "TOPLEFT", -DETAIL_HEADER_GAP, 0)
+    if addContainer then
+        nameText:SetPoint("TOPRIGHT", addContainer, "TOPLEFT", -DETAIL_HEADER_GAP, 0)
+    else
+        nameText:SetPoint("TOPRIGHT", textOverlay, "TOPRIGHT", -CONTENT_INSET, -CONTENT_INSET)
+    end
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(true)
     nameText:SetTextColor(whiteR, whiteG, whiteB)
@@ -1881,21 +1903,6 @@ local function CreateModelViewer(parent, width, height)
     collectedBadge:SetJustifyH("LEFT")
     collectedBadge:Hide()
     panel.collectedBadge = collectedBadge
-
-    local wowheadBtn = CreateFrame("Button", nil, textOverlay)
-    wowheadBtn:SetSize(20, 20)
-    wowheadBtn:SetPoint("BOTTOMRIGHT", textOverlay, "BOTTOMRIGHT", -CONTENT_INSET, CONTENT_INSET)
-    wowheadBtn:SetNormalAtlas("socialqueuing-icon-eye")
-    wowheadBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-    wowheadBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
-        GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
-        GameTooltip:Show()
-    end)
-    wowheadBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    wowheadBtn:Hide()
-    panel._wowheadBtn = wowheadBtn
 
     panel.model = model
 
@@ -2027,6 +2034,7 @@ local function CreateModelViewer(parent, width, height)
             descText:SetPoint("TOPRIGHT", sourceContainer, "BOTTOMRIGHT", 0, -TEXT_GAP)
             if panel._addContainer then panel._addContainer:Hide() end
             if panel._wowheadBtn then panel._wowheadBtn:Hide() end
+            if panel._tryCountRow then panel._tryCountRow:Hide() end
             return
         end
         if panel._addContainer and panel._addBtn and panel._addedIndicator then
@@ -2182,6 +2190,10 @@ local function CreateModelViewer(parent, width, height)
             end
         end
 
+        if panel._tryCountRow and panel._tryCountRow.WnUpdateTryCount then
+            panel._tryCountRow:WnUpdateTryCount("mount", mountID, name)
+        end
+
         if C_Timer and C_Timer.After and panel.UpdateModelFrameSize then
             C_Timer.After(0, function() panel.UpdateModelFrameSize() end)
         end
@@ -2209,6 +2221,7 @@ local function CreateModelViewer(parent, width, height)
             descText:SetPoint("TOPRIGHT", sourceContainer, "BOTTOMRIGHT", 0, -TEXT_GAP)
             if panel._addContainer then panel._addContainer:Hide() end
             if panel._wowheadBtn then panel._wowheadBtn:Hide() end
+            if panel._tryCountRow then panel._tryCountRow:Hide() end
             return
         end
         if panel._addContainer and panel._addBtn and panel._addedIndicator then
@@ -2342,6 +2355,10 @@ local function CreateModelViewer(parent, width, height)
             panel._wowheadBtn:Show()
         elseif panel._wowheadBtn then
             panel._wowheadBtn:Hide()
+        end
+
+        if panel._tryCountRow and panel._tryCountRow.WnUpdateTryCount then
+            panel._tryCountRow:WnUpdateTryCount("pet", speciesID, name)
         end
 
         if C_Timer and C_Timer.After and panel.UpdateModelFrameSize then
@@ -2566,14 +2583,39 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         local goldR = (COLORS.gold and COLORS.gold[1]) or 1
         local goldG = (COLORS.gold and COLORS.gold[2]) or 0.82
         local goldB = (COLORS.gold and COLORS.gold[3]) or 0
-        -- Sağ üst: Add + Track (mount/pet/toy ile birebir aynı: PlanCardFactory row + Track 52x20, Plans ile aynı görsel)
+        -- Sağ üst: Add + Track (solda), Wowhead en sağda (mount/pet/toy ile aynı)
+        local CDL = ns.CollectionsDetailHeaderLayout or {}
+        local whSz = CDL.WOWHEAD_SIZE or 18
+        local whGap = CDL.WOWHEAD_GAP or 10
+        local achControls = CreateFrame("Frame", nil, headerRow)
+        achControls:SetSize(ACH_ROW_ADD_WIDTH + ACH_ACTION_GAP + ACH_TRACK_WIDTH, ACH_ROW_ADD_HEIGHT)
         local addContainer = CreateFrame("Frame", nil, headerRow)
         addContainer:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", 0, 0)
-        addContainer:SetSize(ACH_ROW_ADD_WIDTH + ACH_ACTION_GAP + ACH_TRACK_WIDTH, ACH_ROW_ADD_HEIGHT)
+        addContainer:SetSize(whSz + whGap + achControls:GetWidth(), ACH_ROW_ADD_HEIGHT)
+        achControls:SetPoint("TOPRIGHT", addContainer, "TOPRIGHT", -(whSz + whGap), 0)
+
+        local headerWowheadBtn = CreateFrame("Button", nil, addContainer)
+        headerWowheadBtn:SetSize(whSz, whSz)
+        headerWowheadBtn:SetPoint("TOPRIGHT", addContainer, "TOPRIGHT", 0, -math.max(0, (ACH_ROW_ADD_HEIGHT - whSz) / 2))
+        headerWowheadBtn:SetNormalAtlas("socialqueuing-icon-eye")
+        headerWowheadBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        headerWowheadBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
+            GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
+            GameTooltip:Show()
+        end)
+        headerWowheadBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        local achIDForWh = achievement.id
+        headerWowheadBtn:SetScript("OnClick", function(self)
+            if achIDForWh and ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
+                ns.UI.Factory:ShowWowheadCopyURL("achievement", achIDForWh, self)
+            end
+        end)
 
         -- Track: Add ile aynı köşesiz stil (border/background yok, sadece metin)
-        local trackBtn = Factory:CreateButton(addContainer, ACH_TRACK_WIDTH, ACH_TRACK_HEIGHT, true)
-        trackBtn:SetPoint("TOPRIGHT", addContainer, "TOPRIGHT", 0, 0)
+        local trackBtn = Factory:CreateButton(achControls, ACH_TRACK_WIDTH, ACH_TRACK_HEIGHT, true)
+        trackBtn:SetPoint("TOPRIGHT", achControls, "TOPRIGHT", 0, 0)
         trackBtn:SetFrameLevel(headerRow:GetFrameLevel() + 10)
         trackBtn:SetScript("OnMouseDown", function() end)
         trackBtn:RegisterForClicks("AnyUp")
@@ -2618,7 +2660,7 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         local isPlanned = WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(achievement.id)
         local addBtn, addedIndicator
         if achievement.isCollected then
-            addedIndicator = PlanCardFactory and PlanCardFactory.CreateAddedIndicator(addContainer, {
+            addedIndicator = PlanCardFactory and PlanCardFactory.CreateAddedIndicator(achControls, {
                 buttonType = "row",
                 label = addedLabelText,
                 fontCategory = "body",
@@ -2632,7 +2674,7 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                 addedIndicator:SetAlpha(0.45)
             end
         elseif isPlanned then
-            addedIndicator = PlanCardFactory and PlanCardFactory.CreateAddedIndicator(addContainer, {
+            addedIndicator = PlanCardFactory and PlanCardFactory.CreateAddedIndicator(achControls, {
                 buttonType = "row",
                 label = addedLabelText,
                 fontCategory = "body",
@@ -2645,7 +2687,7 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                 addedIndicator:SetPoint("RIGHT", trackBtn, "LEFT", -ACH_ACTION_GAP, 0)
             end
         else
-            addBtn = PlanCardFactory and PlanCardFactory.CreateAddButton(addContainer, {
+            addBtn = PlanCardFactory and PlanCardFactory.CreateAddButton(achControls, {
                 buttonType = "row",
                 label = addLabelText,
                 anchorPoint = "RIGHT",
@@ -2774,31 +2816,6 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
             end)
         end
 
-        if achievement.id and achievement.id > 0 then
-            local achWhBtn = CreateFrame("Button", nil, content)
-            achWhBtn:SetSize(18, 18)
-            achWhBtn:SetPoint("TOPLEFT", lastAnchor, "BOTTOMLEFT", 0, lastY)
-            achWhBtn:SetNormalAtlas("socialqueuing-icon-eye")
-            achWhBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-            achWhBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
-                GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
-                GameTooltip:Show()
-            end)
-            achWhBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            local achID = achievement.id
-            achWhBtn:SetScript("OnClick", function(self)
-                if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
-                    ns.UI.Factory:ShowWowheadCopyURL("achievement", achID, self)
-                end
-            end)
-            addDetailElement(achWhBtn)
-            lastAnchor = achWhBtn
-            lastPoint = "BOTTOMLEFT"
-            lastY = -SECTION_GAP
-        end
-
         local totalH = math.abs(lastY) + PADDING
         child:SetHeight(math.max(totalH, 1))
     end
@@ -2811,10 +2828,10 @@ end
 -- ============================================================================
 
 local SUB_TABS = {
+    { key = "achievements", label = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", icon = "Interface\\Icons\\Achievement_General" },
     { key = "mounts", label = (ns.L and ns.L["CATEGORY_MOUNTS"]) or MOUNTS or "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
     { key = "pets", label = (ns.L and ns.L["CATEGORY_PETS"]) or PETS or "Pets", icon = "Interface\\Icons\\INV_Box_PetCarrier_01" },
     { key = "toys", label = (ns.L and ns.L["CATEGORY_TOYS"]) or (TOY_BOX or "Toys"), icon = "Interface\\Icons\\INV_Misc_Toy_07" },
-    { key = "achievements", label = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", icon = "Interface\\Icons\\Achievement_General" },
 }
 
 -- Plans category bar ile birebir aynı (catBtnHeight=40, catBtnSpacing=8, DEFAULT_CAT_BTN_WIDTH=150)
@@ -4402,11 +4419,13 @@ local function DrawToysContent(contentFrame)
             Factory:PositionScrollBarInContainer(scroll.ScrollBar, collectionsState.toyDetailScrollBarContainer, CONTAINER_INSET)
         end
 
-        -- Header row: same hierarchy as Mounts/Pets (CONTENT_INSET from edges, icon then name)
+        -- Header row: Mounts/Pets ile aynı sağ sütun (Wowhead + Add + try, try Add genişliğinde).
         local headerRow = CreateFrame("Frame", nil, scrollChild)
         headerRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)
         headerRow:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -CONTENT_INSET, -CONTENT_INSET)
-        headerRow:SetHeight(math.max(ROW_HEIGHT + TEXT_GAP_LINE, DETAIL_ICON_SIZE + TEXT_GAP_LINE))
+        local CDL = ns.CollectionsDetailHeaderLayout or {}
+        local toyRightColH = (CDL.ACTION_SLOT_H or 28) + (CDL.TRY_GAP or 4) + (CDL.TRY_ROW_H or 18)
+        headerRow:SetHeight(math.max(ROW_HEIGHT + TEXT_GAP_LINE, DETAIL_ICON_SIZE + TEXT_GAP_LINE, toyRightColH))
         local iconBorder = Factory:CreateContainer(headerRow, DETAIL_ICON_SIZE, DETAIL_ICON_SIZE, true)
         iconBorder:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 0, 0)
         if ApplyVisuals then
@@ -4434,43 +4453,46 @@ local function DrawToysContent(contentFrame)
         collectionsState._toyDetailName = nameFs
         collectionsState._toyDetailHeaderRow = headerRow
 
-        -- Sağ üst: + Add / Added (PlanCardFactory row, toy için)
-        local toyAddContainer = CreateFrame("Frame", nil, headerRow)
-        toyAddContainer:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", 0, 0)
-        toyAddContainer:SetSize(80, 28)
-        toyAddContainer:Hide()
+        local toyAddCol = (Factory and Factory.CreateCollectionsDetailRightColumn) and Factory:CreateCollectionsDetailRightColumn(headerRow, { withTryRow = true })
+        local toyAddContainer = toyAddCol and toyAddCol.root
+        local toyActionSlot = toyAddCol and toyAddCol.actionSlot
+        if toyAddContainer then
+            toyAddContainer:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", 0, 0)
+            toyAddContainer:Hide()
+        end
         collectionsState._toyDetailAddContainer = toyAddContainer
-        if PlanCardFactory then
-            collectionsState._toyDetailAddBtn = PlanCardFactory.CreateAddButton(toyAddContainer, {
+        if PlanCardFactory and toyActionSlot then
+            collectionsState._toyDetailAddBtn = PlanCardFactory.CreateAddButton(toyActionSlot, {
                 buttonType = "row",
-                anchorPoint = "RIGHT",
+                anchorPoint = "TOPRIGHT",
                 x = 0,
                 y = 0,
             })
             if collectionsState._toyDetailAddBtn then
                 collectionsState._toyDetailAddBtn:ClearAllPoints()
-                collectionsState._toyDetailAddBtn:SetPoint("TOPRIGHT", toyAddContainer, "TOPRIGHT", 0, 0)
+                collectionsState._toyDetailAddBtn:SetPoint("TOPRIGHT", toyActionSlot, "TOPRIGHT", 0, 0)
             end
-            collectionsState._toyDetailAddedIndicator = PlanCardFactory.CreateAddedIndicator(toyAddContainer, {
+            collectionsState._toyDetailAddedIndicator = PlanCardFactory.CreateAddedIndicator(toyActionSlot, {
                 buttonType = "row",
                 label = (ns.L and ns.L["ADDED"]) or "Added",
                 fontCategory = "body",
-                anchorPoint = "RIGHT",
+                anchorPoint = "TOPRIGHT",
                 x = 0,
                 y = 0,
             })
             if collectionsState._toyDetailAddedIndicator then
                 collectionsState._toyDetailAddedIndicator:ClearAllPoints()
-                collectionsState._toyDetailAddedIndicator:SetPoint("TOPRIGHT", toyAddContainer, "TOPRIGHT", 0, 0)
+                collectionsState._toyDetailAddedIndicator:SetPoint("TOPRIGHT", toyActionSlot, "TOPRIGHT", 0, 0)
                 collectionsState._toyDetailAddedIndicator:Hide()
             end
         end
-        -- İsim Add butonunun solunda kalsın
         if nameFs and toyAddContainer then
             nameFs:ClearAllPoints()
             nameFs:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", DETAIL_HEADER_GAP, 0)
-            nameFs:SetPoint("TOPRIGHT", toyAddContainer, "TOPLEFT", -8, 0)
+            nameFs:SetPoint("TOPRIGHT", toyAddContainer, "TOPLEFT", -DETAIL_HEADER_GAP, 0)
         end
+        collectionsState._toyDetailWowheadBtn = toyAddCol and toyAddCol.wowheadBtn
+        collectionsState._toyDetailTryCountRow = toyAddCol and toyAddCol.tryCountRow
 
         local collectedBadge = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
         collectedBadge:SetPoint("TOPLEFT", headerRow, "BOTTOMLEFT", 0, -TEXT_GAP_LINE)
@@ -4488,21 +4510,6 @@ local function DrawToysContent(contentFrame)
         sourceLabel:SetWordWrap(true)
         sourceLabel:SetText("")
         collectionsState._toyDetailSourceLabel = sourceLabel
-
-        local toyWhBtn = CreateFrame("Button", nil, scrollChild)
-        toyWhBtn:SetSize(20, 20)
-        toyWhBtn:SetPoint("BOTTOMRIGHT", collectionsState.toyDetailContainer, "BOTTOMRIGHT", -CONTENT_INSET, CONTENT_INSET)
-        toyWhBtn:SetNormalAtlas("socialqueuing-icon-eye")
-        toyWhBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-        toyWhBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
-            GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
-            GameTooltip:Show()
-        end)
-        toyWhBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        toyWhBtn:Hide()
-        collectionsState._toyDetailWowheadBtn = toyWhBtn
     else
         collectionsState.toyDetailContainer:SetParent(rightCol)
         collectionsState.toyDetailContainer:SetSize(detailWidth, detailH)
@@ -4609,6 +4616,14 @@ local function DrawToysContent(contentFrame)
             local gB = (COLORS.gold and COLORS.gold[3]) or 0
             local goldHex = string.format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
             srcLabel:SetText(goldHex .. sourceTitle .. ":|r |cffffffff" .. srcText .. "|r")
+        end
+        local toyTryRow = collectionsState._toyDetailTryCountRow
+        if toyTryRow and toyTryRow.WnUpdateTryCount then
+            if itemID then
+                toyTryRow:WnUpdateTryCount("toy", itemID, displayName)
+            else
+                toyTryRow:Hide()
+            end
         end
         if collectionsState._toyDetailWowheadBtn then
             if itemID and itemID > 0 then

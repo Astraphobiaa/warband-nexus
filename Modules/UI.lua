@@ -426,10 +426,11 @@ end
 
 local function UpdateTabVisibility(f)
     if not f or not f.tabButtons or not f.tabButtons.chars then return end
+    -- Order matches main nav: Characters first, then inventory → progression → collections (see CreateMainWindow tabDefs)
     local tabDefs = {
-        { key = "chars" }, { key = "items" }, { key = "storage" }, { key = "pve" },
-        { key = "reputations" }, { key = "currency" }, { key = "professions" },
-        { key = "gear" }, { key = "collections" }, { key = "plans" }, { key = "stats" },
+        { key = "chars" }, { key = "storage" }, { key = "items" }, { key = "gear" },
+        { key = "currency" }, { key = "reputations" }, { key = "pve" }, { key = "professions" },
+        { key = "collections" }, { key = "plans" }, { key = "stats" },
     }
     local TAB_GAP = 5
     local prevBtn = nil
@@ -1037,16 +1038,16 @@ function WarbandNexus:CreateMainWindow()
         return btn
     end
     
-    -- Tab definitions with locale keys
+    -- Tab definitions with locale keys (Characters fixed first; rest: storage → items → gear → … → stats)
     local tabDefs = {
         { key = "chars",       text = (ns.L and ns.L["TAB_CHARACTERS"]) or "Characters" },
-        { key = "items",       text = (ns.L and ns.L["TAB_ITEMS"]) or "Items" },
         { key = "storage",     text = (ns.L and ns.L["TAB_STORAGE"]) or "Storage" },
-        { key = "pve",         text = (ns.L and ns.L["TAB_PVE"]) or "PvE" },
-        { key = "reputations", text = (ns.L and ns.L["TAB_REPUTATIONS"]) or "Reputations" },
+        { key = "items",       text = (ns.L and ns.L["TAB_ITEMS"]) or "Items" },
+        { key = "gear",        text = (ns.L and ns.L["TAB_GEAR"]) or "Gear" },
         { key = "currency",    text = (ns.L and ns.L["TAB_CURRENCIES"]) or "Currencies" },
+        { key = "reputations", text = (ns.L and ns.L["TAB_REPUTATIONS"]) or "Reputations" },
+        { key = "pve",         text = (ns.L and ns.L["TAB_PVE"]) or "PvE" },
         { key = "professions", text = (ns.L and ns.L["TAB_PROFESSIONS"]) or "Professions" },
-        { key = "gear", text = (ns.L and ns.L["TAB_GEAR"]) or "Gear" },
         { key = "collections", text = (ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections" },
         { key = "plans",       text = (ns.L and ns.L["TAB_PLANS"]) or "To-Do" },
         { key = "stats",       text = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics" },
@@ -1281,9 +1282,11 @@ function WarbandNexus:CreateMainWindow()
     -- NOTE: All RegisterMessage calls use UIEvents as the 'self' key to avoid
     -- overwriting other modules' handlers for the same AceEvent message.
     -- AceEvent allows only ONE handler per (event, self) pair.
+    -- Must bypass POPULATE_COOLDOWN: after login/alt switch, ITEMS_UPDATED etc. can set lastEventPopulateTime
+    -- and this refresh would be dropped — leaving Character tab layout stale or visually broken.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function()
         if f and f:IsShown() and (f.currentTab == "chars" or f.currentTab == "gear" or f.currentTab == "stats") then
-            SchedulePopulateContent()
+            SchedulePopulateContent(true)
         end
     end)
     
@@ -1320,11 +1323,7 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
-    WarbandNexus.RegisterMessage(UIEvents, "WARBAND_REPUTATIONS_UPDATED", function()
-        if f and f:IsShown() and f.currentTab == "reputations" then
-            SchedulePopulateContent()
-        end
-    end)
+    -- WN_REPUTATION_* refresh: ReputationUI.lua registers DrawReputationTab (avoid double PopulateContent here)
     
     WarbandNexus.RegisterMessage(UIEvents, "WN_PLANS_UPDATED", function()
         if f and f:IsShown() and f.currentTab == "plans" then
@@ -1442,11 +1441,6 @@ end
 function WarbandNexus:PopulateContent()
     if not mainFrame then return end
 
-    -- Chars tab debounce: avoid 2–3x redraw when tab switch + WN_CHARACTER_UPDATED fire in quick succession
-    if mainFrame.currentTab == "chars" and mainFrame._lastCharsDrawTime and (GetTime() - mainFrame._lastCharsDrawTime) < 0.25 then
-        return
-    end
-
     -- Detect tab switch vs same-tab refresh
     local isTabSwitch = (mainFrame._prevPopulatedTab ~= mainFrame.currentTab)
     mainFrame._prevPopulatedTab = mainFrame.currentTab
@@ -1550,6 +1544,11 @@ function WarbandNexus:PopulateContent()
         pve = true,
         reputations = true,
         currency = true,
+        professions = true,
+        gear = true,
+        collections = true,
+        plans = true,
+        stats = true,
     }
 
     if not isTracked and trackedOnlyTabs[mainFrame.currentTab] then
@@ -1558,7 +1557,6 @@ function WarbandNexus:PopulateContent()
     elseif mainFrame.currentTab == "chars" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawCharacterList(scrollChild)
-        mainFrame._lastCharsDrawTime = GetTime()
     elseif mainFrame.currentTab == "currency" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawCurrencyTab(scrollChild)
@@ -1602,6 +1600,18 @@ function WarbandNexus:PopulateContent()
     -- Otherwise, WoW scroll frame won't work properly when content < viewport
     local CONTENT_BOTTOM_PADDING = 8
     scrollChild:SetHeight(math.max(height + CONTENT_BOTTOM_PADDING, mainFrame.scroll:GetHeight()))
+
+    -- After content height changes, clamp vertical scroll (avoids empty band when range shrinks or layout jumps)
+    do
+        local sc = mainFrame.scroll
+        if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+            local maxV = sc:GetVerticalScrollRange() or 0
+            local cur = sc:GetVerticalScroll() or 0
+            if cur > maxV then
+                sc:SetVerticalScroll(maxV)
+            end
+        end
+    end
     
     -- Update scroll bar visibility (hide if content fits)
     if ns.UI.Factory.UpdateScrollBarVisibility then
@@ -2129,6 +2139,11 @@ do
                         if pollTicker then
                             pollTicker:Cancel()
                             pollTicker = nil
+                        end
+                        -- Avoid leaving the sync bar visible forever if LoadingTracker never completes (e.g. rare init errors)
+                        if loadingOverlay and loadingOverlay:IsShown() then
+                            if loadingOverlay.spinGroup then loadingOverlay.spinGroup:Stop() end
+                            loadingOverlay:Hide()
                         end
                         return
                     end

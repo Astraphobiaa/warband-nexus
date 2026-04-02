@@ -12,6 +12,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local Constants = ns.Constants
 
 -- Unique AceEvent handler identity for EventManager
 local EventManagerEvents = {}
@@ -177,6 +178,9 @@ end
 ]]
 function WarbandNexus:OnItemLevelChanged()
     Throttle("ITEM_LEVEL_UPDATE", 0.3, function()
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
         local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
         if not key then return end
         if self.db.global.characters and self.db.global.characters[key] then
@@ -220,21 +224,22 @@ end
     Delegates to DataService and fires event for UI updates
 ]]
 function WarbandNexus:OnMoneyChanged()
-    -- GUARD: Only process if character is tracked
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        return
-    end
-    
-    -- Store last known gold in char-specific DB
-    self.db.char.lastKnownGold = GetMoney()
-    
-    -- Update character gold via DataService
+    local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+
+    -- Gold column on Characters tab: UpdateCharacterGold works for untracked too (DataService).
     if self.UpdateCharacterGold then
         self:UpdateCharacterGold()
     end
-    
-    -- Fire event for UI refresh (instead of direct RefreshUI call)
-    -- Use short delay to debounce rapid money changes (loot, vendor)
+
+    if not tracked then
+        return
+    end
+
+    -- Tracked-only: session char gold + currency-tab style refresh coalescing
+    if self.db and self.db.char then
+        self.db.char.lastKnownGold = GetMoney()
+    end
+
     if not self.moneyRefreshPending then
         self.moneyRefreshPending = true
         C_Timer.After(0.05, function()
@@ -285,12 +290,13 @@ end
 ]]
 function WarbandNexus:CHALLENGE_MODE_COMPLETED(mapChallengeModeID, level, time, onTime, keystoneUpgradeLevels)
     local charKey = ns.Utilities:GetCharacterKey()
-    
-    -- Route to PvECacheService directly (Phase 3: bypasses legacy DataService wrappers)
-    if self.UpdatePvEData then
-        self:UpdatePvEData()
+
+    if ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
+        if self.UpdatePvEData then
+            self:UpdatePvEData()
+        end
+        self:SendMessage(Constants.EVENTS.PVE_UPDATED, charKey)
     end
-    self:SendMessage("WN_PVE_UPDATED", charKey)
 end
 
 --[[
@@ -316,7 +322,11 @@ function WarbandNexus:OnKeystoneChanged()
     C_Timer.After(0.5, function()
         if not WarbandNexus then return end
         WarbandNexus.keystoneCheckPending = false
-        
+
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+
         local charKey = ns.Utilities:GetCharacterKey()
         
         -- Scan and update keystone data (lightweight check)
@@ -342,14 +352,9 @@ function WarbandNexus:OnKeystoneChanged()
                     WarbandNexus.db.global.characters[charKey].mythicKey = keystoneData
                     WarbandNexus.db.global.characters[charKey].lastSeen = time()
                     
-                    -- Fire event for UI update (only PvE tab needs refresh)
+                    -- Same channel as CHALLENGE_MODE_COMPLETED / PvECache (UI.lua + PlansManager listen)
                     if WarbandNexus.SendMessage then
-                        WarbandNexus:SendMessage("WARBAND_PVE_UPDATED")
-                    end
-                    
-                    -- Invalidate cache to refresh UI
-                    if WarbandNexus.InvalidateCharacterCache then
-                        WarbandNexus:InvalidateCharacterCache()
+                        WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED, charKey)
                     end
                 else
                     -- Keystone unchanged (verbose logging removed)

@@ -617,6 +617,22 @@ end
 -- DELVES DATA
 -- ============================================================================
 
+---True if any configured Bountiful weekly quest is flagged complete (live API).
+---Used by PvE UI for all character rows — these weeklies are account/warband scoped in practice.
+---@return boolean
+function WarbandNexus:IsBountifulDelveWeeklyDone()
+    local ids = Constants.PVE_BOUNTIFUL_WEEKLY_QUEST_IDS
+    if not ids or #ids == 0 then return false end
+    if not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then return false end
+    for i = 1, #ids do
+        local qid = ids[i]
+        if qid and C_QuestLog.IsQuestFlaggedCompleted(qid) then
+            return true
+        end
+    end
+    return false
+end
+
 ---Update Delves companion data (account-wide) and per-character delve progress.
 ---Uses C_DelvesUI APIs (Midnight 12.0+) for companion info and season tracking.
 function WarbandNexus:UpdateDelvesData(charKey)
@@ -672,10 +688,10 @@ function WarbandNexus:UpdateDelvesData(charKey)
         if not delves.characters then delves.characters = {} end
         if not delves.characters[charKey] then delves.characters[charKey] = {} end
         
-        -- Bountiful Delves weekly (quest 81514)
-        delves.characters[charKey].bountifulComplete = C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted(81514) or false
-        -- Cracked Keystone weekly (quest 92600)
-        delves.characters[charKey].crackedKeystoneComplete = C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted(92600) or false
+        -- Bountiful weekly: 92600 (T11 Bountiful / Cracked Keystone) + 81514 (legacy broader weekly) — see Constants
+        delves.characters[charKey].bountifulComplete = self.IsBountifulDelveWeeklyDone and self:IsBountifulDelveWeeklyDone() or false
+        local crackedID = Constants.PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID or 92600
+        delves.characters[charKey].crackedKeystoneComplete = C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted(crackedID) or false
         delves.characters[charKey].lastUpdate = time()
     end
 end
@@ -707,9 +723,12 @@ function WarbandNexus:UpdatePvEData()
     lastUpdateTime = currentTime
     pendingUpdate = false
     
-    -- Get current character key
+    -- Get current character key (canonical = DB bucket for this character)
     local charKey = ns.Utilities:GetCharacterKey()
-    
+    if ns.Utilities.GetCanonicalCharacterKey then
+        charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+    end
+
     -- Update all PvE data (API > DB)
     self:UpdateMythicPlusAffixes()
     self:UpdateCharacterKeystone(charKey)
@@ -763,6 +782,9 @@ function WarbandNexus:GetPvEData(charKey)
     local dbCache = self.db and self.db.global and self.db.global.pveCache or {}
     
     if charKey then
+        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+        end
         local bestRuns = dbCache.mythicPlus and dbCache.mythicPlus.bestRuns and dbCache.mythicPlus.bestRuns[charKey] or {}
         local dungeonScoresData = dbCache.mythicPlus and dbCache.mythicPlus.dungeonScores and dbCache.mythicPlus.dungeonScores[charKey]
         

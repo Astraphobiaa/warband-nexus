@@ -45,174 +45,12 @@ local CardLayoutManager = ns.UI_CardLayoutManager
 ns.PlansLoadingState = ns.PlansLoadingState or {
     -- Structure: { mount = { isLoading, loader }, pet = { isLoading, loader }, toy = { isLoading, loader } }
 }
+
+-- Cached achievement category tree (only changes on reload; GetCategoryList/GetCategoryInfo are static)
+local cachedCategoryTree = nil
 local PlanCardFactory = ns.UI_PlanCardFactory
 local FormatNumber = ns.UI_FormatNumber
 local FormatTextNumbers = ns.UI_FormatTextNumbers
-
--- Custom themed Try Count popup (addon-styled, replaces StaticPopup)
-local tryCountPopup = nil
-local function ShowTryCountPopup(planData, collectibleID)
-    local COLORS = ns.UI_COLORS or {accent = {0.40, 0.20, 0.58}, accentDark = {0.28, 0.14, 0.41}, bg = {0.06, 0.06, 0.08}, border = {0.20, 0.20, 0.25}}
-    local ApplyVisuals = ns.UI_ApplyVisuals
-    local FontManager = ns.FontManager
-    
-    -- Reuse or create frame
-    if not tryCountPopup then
-        local f = CreateFrame("Frame", "WNTryCountPopup", UIParent, "BackdropTemplate")
-        f:SetSize(300, 160)
-        f:SetPoint("CENTER")
-        f:EnableMouse(true)
-        f:SetMovable(true)
-
-        -- WindowManager: standardized strata/level + ESC + combat hide
-        if ns.WindowManager then
-            ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.POPUP)
-            ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP)
-            ns.WindowManager:InstallESCHandler(f)
-            ns.WindowManager:InstallDragHandler(f, f)
-        else
-            f:SetFrameStrata("FULLSCREEN_DIALOG")
-            f:SetFrameLevel(200)
-            f:RegisterForDrag("LeftButton")
-            f:SetScript("OnDragStart", f.StartMoving)
-            f:SetScript("OnDragStop", f.StopMovingOrSizing)
-        end
-        
-        -- Background
-        if ApplyVisuals then
-            ApplyVisuals(f, {0.04, 0.04, 0.06, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})
-        end
-        
-        -- Header bar
-        local header = CreateFrame("Frame", nil, f, "BackdropTemplate")
-        header:SetHeight(32)
-        header:SetPoint("TOPLEFT", 2, -2)
-        header:SetPoint("TOPRIGHT", -2, -2)
-        if ApplyVisuals then
-            ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-        end
-        
-        -- Header title
-        local headerTitle = FontManager:CreateFontString(header, "title", "OVERLAY")
-        headerTitle:SetPoint("CENTER")
-        headerTitle:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count")
-        headerTitle:SetTextColor(1, 1, 1)
-        f.headerTitle = headerTitle
-        
-        -- Plan name label
-        local nameLabel = FontManager:CreateFontString(f, "body", "OVERLAY")
-        nameLabel:SetPoint("TOP", header, "BOTTOM", 0, -12)
-        nameLabel:SetJustifyH("CENTER")
-        nameLabel:SetTextColor(0.9, 0.9, 0.9)
-        f.nameLabel = nameLabel
-        
-        -- Edit box container
-        local editBoxBg = CreateFrame("Frame", nil, f, "BackdropTemplate")
-        editBoxBg:SetSize(120, 28)
-        editBoxBg:SetPoint("TOP", nameLabel, "BOTTOM", 0, -10)
-        if ApplyVisuals then
-            ApplyVisuals(editBoxBg, {0.02, 0.02, 0.03, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
-        end
-        
-        -- Edit box
-        local editBox = CreateFrame("EditBox", nil, editBoxBg)
-        editBox:SetPoint("TOPLEFT", 8, -4)
-        editBox:SetPoint("BOTTOMRIGHT", -8, 4)
-        editBox:SetAutoFocus(false)
-        editBox:SetNumeric(true)
-        editBox:SetMaxLetters(6)
-        local fontFace = FontManager:GetFontFace()
-        local fontSize = FontManager:GetFontSize("body")
-        editBox:SetFont(fontFace, fontSize, "")
-        editBox:SetTextColor(1, 1, 1)
-        editBox:SetJustifyH("CENTER")
-        f.editBox = editBox
-        
-        -- Buttons row
-        local btnWidth, btnHeight = 90, 26
-        
-        -- Save button
-        local saveBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
-        saveBtn:SetSize(btnWidth, btnHeight)
-        saveBtn:SetPoint("TOPRIGHT", editBoxBg, "BOTTOM", -4, -10)
-        if ApplyVisuals then
-            ApplyVisuals(saveBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-        end
-        local saveBtnText = FontManager:CreateFontString(saveBtn, "body", "OVERLAY")
-        saveBtnText:SetPoint("CENTER")
-        saveBtnText:SetText((ns.L and ns.L["SAVE"]) or "Save")
-        saveBtnText:SetTextColor(1, 1, 1)
-        saveBtn:SetScript("OnEnter", function(self)
-            if ApplyVisuals then ApplyVisuals(self, {0.12, 0.12, 0.14, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1}) end
-        end)
-        saveBtn:SetScript("OnLeave", function(self)
-            if ApplyVisuals then ApplyVisuals(self, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}) end
-        end)
-        f.saveBtn = saveBtn
-        
-        -- Cancel button
-        local cancelBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
-        cancelBtn:SetSize(btnWidth, btnHeight)
-        cancelBtn:SetPoint("TOPLEFT", editBoxBg, "BOTTOM", 4, -10)
-        if ApplyVisuals then
-            ApplyVisuals(cancelBtn, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
-        end
-        local cancelBtnText = FontManager:CreateFontString(cancelBtn, "body", "OVERLAY")
-        cancelBtnText:SetPoint("CENTER")
-        cancelBtnText:SetText(CANCEL or "Cancel")
-        cancelBtnText:SetTextColor(0.8, 0.8, 0.8)
-        cancelBtn:SetScript("OnEnter", function(self)
-            if ApplyVisuals then ApplyVisuals(self, {0.12, 0.12, 0.14, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8}) end
-        end)
-        cancelBtn:SetScript("OnLeave", function(self)
-            if ApplyVisuals then ApplyVisuals(self, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6}) end
-        end)
-        cancelBtn:SetScript("OnClick", function() f:Hide() end)
-        
-        -- Enter key saves
-        editBox:SetScript("OnEnterPressed", function()
-            f.saveBtn:Click()
-        end)
-        
-        -- Escape key cancels
-        editBox:SetScript("OnEscapePressed", function()
-            f:Hide()
-        end)
-        
-        f:SetScript("OnKeyDown", function(self, key)
-            if key == "ESCAPE" then
-                if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
-                self:Hide()
-            else
-                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
-            end
-        end)
-        
-        tryCountPopup = f
-    end
-    
-    -- Populate data
-    local popup = tryCountPopup
-    local planName = planData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-    popup.nameLabel:SetText(planName)
-    
-    local currentCount = WarbandNexus and WarbandNexus.GetTryCount and WarbandNexus:GetTryCount(planData.type, collectibleID) or 0
-    popup.editBox:SetText(tostring(currentCount))
-    
-    -- Wire save action
-    popup.saveBtn:SetScript("OnClick", function()
-        local count = tonumber(popup.editBox:GetText())
-        if count and count >= 0 and WarbandNexus and WarbandNexus.SetTryCount then
-            WarbandNexus:SetTryCount(planData.type, collectibleID, count)
-            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
-        end
-        popup:Hide()
-    end)
-    
-    popup:Show()
-    popup.editBox:SetFocus()
-    popup.editBox:HighlightText()
-end
 
 -- Import shared UI layout constants
 local function GetLayout() return ns.UI_LAYOUT or {} end
@@ -230,7 +68,7 @@ local PLAN_TYPES = ns.PLAN_TYPES
 
 -- Category definitions – My Plans always first, rest alphabetical
 local CATEGORIES = {
-    { key = "active", name = (ns.L and ns.L["CATEGORY_MY_PLANS"]) or "My Plans", icon = "Interface\\Icons\\INV_Misc_Map_01" },
+    { key = "active", name = (ns.L and ns.L["CATEGORY_MY_PLANS"]) or "To-Do List", icon = "Interface\\Icons\\INV_Misc_Map_01" },
     { key = "achievement", name = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", icon = "Interface\\Icons\\Achievement_General" },
     { key = "daily_tasks", name = (ns.L and ns.L["CATEGORY_DAILY_TASKS"]) or "Weekly Progress", icon = "Interface\\Icons\\INV_Misc_Note_06" },
     { key = "illusion", name = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions", iconAtlas = "UpgradeItem-32x32" },
@@ -698,7 +536,8 @@ function WarbandNexus:DrawPlansTab(parent)
             WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(_, data)
                 if not self:IsStillOnTab("plans") then return end
                 local scanCategory = data and data.category
-                if scanCategory ~= currentCategory and currentCategory ~= "active" then return end
+                -- "all" means the full EnsureCollectionData pipeline finished (mount/pet/toy/achievement/title/illusion)
+                if scanCategory ~= "all" and scanCategory ~= currentCategory and currentCategory ~= "active" then return end
                 
                 C_Timer.After(0.1, function()
                     if self:IsStillOnTab("plans") then
@@ -1750,15 +1589,22 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     ns.TooltipService:Hide()
                 end)
 
-                -- Adjust nameText right anchor to avoid overlap with action buttons
+                -- Name row: keep left anchor; right edge clears Wowhead (factory) + action row
                 if card.nameText then
-                    local nameRightOffset = alertBtnX - actionSize - 2
                     local pt1, rel1, relPt1, x1, y1 = card.nameText:GetPoint(1)
                     card.nameText:ClearAllPoints()
                     if pt1 and rel1 then
                         card.nameText:SetPoint(pt1, rel1, relPt1, x1, y1)
                     end
-                    card.nameText:SetPoint("RIGHT", card, "RIGHT", nameRightOffset, 0)
+                    if card.wowheadBtn then
+                        local nameGap = (ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP) or 6
+                        card.nameText:SetPoint("RIGHT", card.wowheadBtn, "LEFT", -nameGap, 0)
+                    else
+                        local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
+                        local whW = (ns.PLAN_CARD_WOWHEAD_SIZE) or 18
+                        local nameGap = (ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP) or 6
+                        card.nameText:SetPoint("RIGHT", card, "RIGHT", -(whInset + whW + nameGap), 0)
+                    end
                 end
             end
 
@@ -1767,32 +1613,38 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             local hasTryCount = tryCountTypes[plan.type]
             if hasTryCount then
                 local id = plan.mountID or plan.speciesID or plan.itemID or plan.illusionID or plan.sourceID
-                if not id or (WarbandNexus.IsDropSourceCollectible and not WarbandNexus:IsDropSourceCollectible(plan.type, id)) or (WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(plan.type, id)) then
+                if not id or not WarbandNexus.ShouldShowTryCountInUI or not WarbandNexus:ShouldShowTryCountInUI(plan.type, id) then
                     hasTryCount = false
                 end
             end
             local hasResetCycle = plan.type == "custom"
 
-            if hasTryCount or hasResetCycle then
-                card:SetScript("OnMouseDown", function(_, button)
-                    if button == "RightButton" and not card.clickedOnRemoveBtn then
-                        local contextPlan = plan
-                        
-                        MenuUtil.CreateContextMenu(card, function(_, rootDescription)
-                            if hasTryCount then
-                                rootDescription:CreateButton(ns.L and ns.L["SET_TRY_COUNT"] or "Set Try Count", function()
-                                    if contextPlan then
-                                        local id = contextPlan.mountID or contextPlan.speciesID or contextPlan.itemID or contextPlan.illusionID or contextPlan.sourceID
-                                        if id then
-                                            ShowTryCountPopup(contextPlan, id)
-                                        end
-                                    end
-                                end)
-                            end
-                            if hasResetCycle then
+            -- Try count: open editor directly (MenuUtil often shows no UI on Midnight).
+            if hasTryCount then
+                do
+                    local cp = plan
+                    local tid = cp.mountID or cp.speciesID or cp.itemID or cp.illusionID or cp.sourceID
+                    card:SetScript("OnMouseDown", function(_, button)
+                        if button ~= "RightButton" or card.clickedOnRemoveBtn then return end
+                        if tid and ns.UI_ShowTryCountPopup then
+                            ns.UI_ShowTryCountPopup(cp.type, tid, cp.name)
+                        end
+                        card.clickedOnRemoveBtn = nil
+                    end)
+                end
+            end
+            -- Custom plans: reset cycle still uses context menu when MenuUtil exists
+            if hasResetCycle then
+                do
+                    local cp = plan
+                    card:SetScript("OnMouseDown", function(_, button)
+                        if button ~= "RightButton" or card.clickedOnRemoveBtn then return end
+                        if MenuUtil and MenuUtil.CreateContextMenu then
+                            local contextPlan = cp
+                            MenuUtil.CreateContextMenu(card, function(_, rootDescription)
                                 local rc = contextPlan.resetCycle
                                 local resetSubmenu = rootDescription:CreateButton((ns.L and ns.L["SET_RESET_CYCLE"]) or "Set Reset Cycle")
-                                
+
                                 resetSubmenu:CreateRadio(
                                     (ns.L and ns.L["DAILY_RESET"]) or "Daily Reset",
                                     function() return rc and rc.enabled and rc.resetType == "daily" end,
@@ -1805,7 +1657,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                         end
                                     end
                                 )
-                                
+
                                 resetSubmenu:CreateRadio(
                                     (ns.L and ns.L["WEEKLY_RESET"]) or "Weekly Reset",
                                     function() return rc and rc.enabled and rc.resetType == "weekly" end,
@@ -1818,7 +1670,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                         end
                                     end
                                 )
-                                
+
                                 resetSubmenu:CreateRadio(
                                     (ns.L and ns.L["NONE_DISABLE"]) or "None (Disable)",
                                     function() return not rc or not rc.enabled end,
@@ -1829,12 +1681,11 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                         end
                                     end
                                 )
-                                
-                                -- Extend Duration (only if active reset cycle)
+
                                 if rc and rc.enabled and rc.totalCycles then
                                     local extUnit = rc.resetType == "daily" and ((ns.L and ns.L["DAYS_LABEL"]) or "days") or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
                                     local extendSubmenu = rootDescription:CreateButton((ns.L and ns.L["EXTEND_DURATION"]) or "Extend Duration")
-                                    
+
                                     for _, amount in ipairs({1, 3, 7, 14}) do
                                         extendSubmenu:CreateButton(string.format("+%d %s", amount, extUnit), function()
                                             if contextPlan and contextPlan.resetCycle then
@@ -1845,11 +1696,11 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                         end)
                                     end
                                 end
-                            end
-                        end)
-                    end
-                    card.clickedOnRemoveBtn = nil
-                end)
+                            end)
+                        end
+                        card.clickedOnRemoveBtn = nil
+                    end)
+                end
             end
             
             -- CRITICAL: Show the regular plan card!
@@ -2233,47 +2084,51 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         return height
     end
     
-    -- Get ALL achievement categories from WoW API (Blizzard order)
-    local allCategoryIDs = GetCategoryList() or {}
-    
-    -- Build category data structure
-    local categoryData = {} -- [categoryID] = { name, parentID, children = {}, achievements = {}, order = index }
-    local rootCategories = {} -- Ordered list of root categories
-    
-    -- Initialize all categories from API with their order
-    for index, categoryID in ipairs(allCategoryIDs) do
-        local categoryName, parentCategoryID = GetCategoryInfo(categoryID)
-        categoryData[categoryID] = {
-            id = categoryID,
-            name = categoryName or ((ns.L and ns.L["UNKNOWN_CATEGORY"]) or "Unknown Category"),
-            parentID = parentCategoryID,
-            children = {},
-            achievements = {},
-            order = index -- Preserve Blizzard order
-        }
-    end
-    
-    -- Build parent-child relationships (preserve order from API)
-    for _, categoryID in ipairs(allCategoryIDs) do
-        local data = categoryData[categoryID]
-        if data then
-            if data.parentID and data.parentID > 0 then
-                -- This is a child category
-                if categoryData[data.parentID] then
-                    table.insert(categoryData[data.parentID].children, categoryID)
+    -- Build and cache category tree structure (static; only changes on reload)
+    if not cachedCategoryTree then
+        local allCategoryIDs = GetCategoryList() or {}
+        local catData = {}
+        local roots = {}
+        for index, categoryID in ipairs(allCategoryIDs) do
+            local categoryName, parentCategoryID = GetCategoryInfo(categoryID)
+            catData[categoryID] = {
+                id = categoryID,
+                name = categoryName or ((ns.L and ns.L["UNKNOWN_CATEGORY"]) or "Unknown Category"),
+                parentID = parentCategoryID,
+                children = {},
+                order = index,
+            }
+        end
+        for _, categoryID in ipairs(allCategoryIDs) do
+            local data = catData[categoryID]
+            if data then
+                if data.parentID and data.parentID > 0 then
+                    if catData[data.parentID] then
+                        table.insert(catData[data.parentID].children, categoryID)
+                    end
+                else
+                    table.insert(roots, categoryID)
                 end
-            else
-                -- This is a root category
-                table.insert(rootCategories, categoryID)
             end
         end
+        cachedCategoryTree = { categoryData = catData, rootCategories = roots }
     end
-    
+
+    -- Clone category tree per-draw (need fresh .achievements arrays each time)
+    local categoryData = {}
+    for catID, src in pairs(cachedCategoryTree.categoryData) do
+        categoryData[catID] = {
+            id = src.id, name = src.name, parentID = src.parentID,
+            children = src.children, order = src.order,
+            achievements = {},
+        }
+    end
+    local rootCategories = cachedCategoryTree.rootCategories
+
     -- Assign achievements to their categories
     for _, achievement in ipairs(results) do
         local categoryID = achievement.categoryID
         if categoryData[categoryID] then
-            -- Update isPlanned flag for each achievement
             achievement.isPlanned = self:IsAchievementPlanned(achievement.id)
             table.insert(categoryData[categoryID].achievements, achievement)
         end
@@ -3308,6 +3163,27 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 tryText:SetJustifyH("RIGHT")
                 tryText:SetWordWrap(false)
             end
+        end
+
+        -- Right-click: set try count (same rules as My Plans), including Mounts/Pets/Toys/Illusions browser cards
+        if browserTryTypes[category] and item.id then
+            local tryId = item.id
+            local tryName = item.name
+            local tryCat = category
+            local prevMouseDown = card:GetScript("OnMouseDown")
+            card:SetScript("OnMouseDown", function(self, button)
+                if button == "RightButton" then
+                    if WarbandNexus and WarbandNexus.ShouldShowTryCountInUI
+                        and WarbandNexus:ShouldShowTryCountInUI(tryCat, tryId)
+                        and ns.UI_ShowTryCountPopup then
+                        ns.UI_ShowTryCountPopup(tryCat, tryId, tryName)
+                    end
+                    return
+                end
+                if prevMouseDown then
+                    prevMouseDown(self, button)
+                end
+            end)
         end
         
         -- CRITICAL: Show the card!

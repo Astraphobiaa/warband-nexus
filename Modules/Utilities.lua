@@ -15,12 +15,21 @@ ns.Utilities = Utilities
 
 --- Get character key (Name-Realm format, normalized: no spaces).
 --- Single source of truth for character identification in DB and services.
+--- When realm is omitted, prefers GetNormalizedRealmName() — same as DataService / SaveCurrentCharacterData.
+--- Using only GetRealmName() here caused /reload to resolve a different key than SavedVariables on some realms.
 ---@param name string|nil Player name (defaults to current player)
 ---@param realm string|nil Realm name (defaults to current realm)
 ---@return string Character key in "Name-Realm" format (e.g. "Superluminal-TwistingNether")
 function Utilities:GetCharacterKey(name, realm)
     name = name or UnitName("player")
-    realm = realm or GetRealmName()
+    if not realm then
+        local norm = GetNormalizedRealmName and GetNormalizedRealmName()
+        if type(norm) == "string" and norm ~= "" and not (issecretvalue and issecretvalue(norm)) then
+            realm = norm
+        else
+            realm = GetRealmName and GetRealmName() or ""
+        end
+    end
     
     -- CRITICAL: Normalize key to prevent duplicates
     -- Remove spaces for consistent matching (e.g. "Twisting Nether" -> "TwistingNether")
@@ -473,6 +482,51 @@ function Utilities:IsAtlasName(texturePath)
     if not texturePath or type(texturePath) == "number" then return false end
     if type(texturePath) ~= "string" then return false end
     return not texturePath:find("\\") and not texturePath:find("/")
+end
+
+--============================================================================
+-- CURRENCY DISPLAY (season progress — Dawncrests, Coffer Key Shards)
+--============================================================================
+
+local CC_CAP_OPEN = "|cff80ff80"
+local CC_CAPPED   = "|cffff5959"
+local CC_WHITE    = "|cffffffff"
+local CC_MUTED    = "|cff888888"
+local EM_DASH_CUR = "\226\128\148"
+
+--- Season-split (Dawncrests, Coffer Key Shards): row is always Current (on-hand quantity) / Season Max.
+--- Cap color follows season progress: totalEarned >= seasonMax when totalEarned is known.
+--- Weekly-only cap (no seasonMax): Current / weekly cap with qty vs maxQuantity.
+---@param cd table|nil WarbandNexus:GetCurrencyData result
+---@return string
+function Utilities.FormatCurrencySeasonProgressLine(cd)
+    local fmtNum = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
+    if not cd then
+        return CC_MUTED .. "0|r"
+    end
+    local qty = tonumber(cd.quantity) or 0
+    local maxQ = tonumber(cd.maxQuantity) or 0
+    local te = cd.totalEarned
+    local sm = tonumber(cd.seasonMax) or 0
+    if sm > 0 then
+        local teNum = tonumber(te)
+        local numColor
+        if teNum ~= nil then
+            numColor = (teNum >= sm) and CC_CAPPED or CC_CAP_OPEN
+        else
+            numColor = CC_WHITE
+        end
+        return numColor .. fmtNum(qty) .. "|r " .. CC_MUTED .. "/ " .. fmtNum(sm) .. "|r"
+    end
+    if maxQ > 0 then
+        local isCapped = qty >= maxQ
+        local numColor = isCapped and CC_CAPPED or CC_CAP_OPEN
+        return numColor .. fmtNum(qty) .. "|r " .. CC_MUTED .. "/ " .. fmtNum(maxQ) .. "|r"
+    end
+    if qty > 0 then
+        return CC_WHITE .. fmtNum(qty) .. "|r"
+    end
+    return CC_MUTED .. EM_DASH_CUR .. "|r"
 end
 
 --============================================================================

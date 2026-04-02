@@ -820,25 +820,11 @@ local function RefreshTrackerContentImmediate()
                     rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
                 end
                 
-                -- Try count: only for drop-source collectibles (rare, container, fishing, etc.), not vendor/achievement/guaranteed.
+                -- Try count (factory row; same popup as Collections / Plans)
                 local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
                 local idKey = tryCountTypes[plan.type]
                 local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
-                if collectibleID and WarbandNexus and WarbandNexus.GetTryCount then
-                    local isDrop = WarbandNexus.IsDropSourceCollectible and WarbandNexus:IsDropSourceCollectible(plan.type, collectibleID)
-                    local isGuaranteed = WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(plan.type, collectibleID)
-                    if isDrop and not isGuaranteed then
-                        local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
-                        if count == nil then count = 0 end
-                        local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-                        local tryText = FontManager:CreateFontString(card, "small", "OVERLAY")
-                        tryText:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -ACTION_MARGIN, ACTION_MARGIN)
-                        tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
-                        tryText:SetJustifyH("RIGHT")
-                        tryText:SetWordWrap(false)
-                    end
-                end
-                
+
                 -- Reset timer for custom plans with reset cycle
                 if plan.type == "custom" and plan.resetCycle and plan.resetCycle.enabled then
                     local resetLabel = FontManager:CreateFontString(card, "small", "OVERLAY")
@@ -888,6 +874,15 @@ local function RefreshTrackerContentImmediate()
                 descText:SetNonSpaceWrap(false)
                 descText:SetMaxLines(1)
                 descText:SetText(GetPlanDescriptionFormatted(plan))
+
+                if collectibleID and Factory and Factory.CreateTryCountClickable and WarbandNexus and WarbandNexus.ShouldShowTryCountInUI
+                    and WarbandNexus:ShouldShowTryCountInUI(plan.type, collectibleID) then
+                    local disp = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name
+                    local tryRow = Factory:CreateTryCountClickable(card, { height = 18, frameLevelOffset = 15, showTooltip = true })
+                    tryRow:SetSize(130, 18)
+                    tryRow:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -ACTION_MARGIN, ACTION_MARGIN)
+                    tryRow:WnUpdateTryCount(plan.type, collectibleID, disp)
+                end
 
                 -- Hover: highlight border + custom tooltip
                 card:EnableMouse(true)
@@ -1499,7 +1494,12 @@ function WarbandNexus:TogglePlansTrackerWindow()
     local frame = GetTrackerFrame()
     if frame and frame:IsShown() then
         frame:Hide()
-    else
-        self:ShowPlansTrackerWindow()
+        return
     end
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        local L = ns.L or {}
+        self:Print("|cffff8800" .. (L["TRACKING_TAB_LOCKED_TITLE"] or "Character is not tracked") .. ". " .. (L["OPEN_CHARACTERS_TAB"] or "Open Characters") .. ".|r")
+        return
+    end
+    self:ShowPlansTrackerWindow()
 end

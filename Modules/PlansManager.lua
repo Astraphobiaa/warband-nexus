@@ -8,6 +8,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local Constants = ns.Constants
 
 -- Unique AceEvent handler identity for PlansManager
 local PlansManagerEvents = {}
@@ -131,7 +132,7 @@ function WarbandNexus:InitializePlanTracking()
     -- Weekly vault progress — listen to PvECacheService message (single event owner)
     -- WEEKLY_REWARDS_UPDATE / CHALLENGE_MODE_COMPLETED / UPDATE_INSTANCE_INFO: owned by PvECacheService
     -- NOTE: Uses PlansManagerEvents as 'self' key to avoid overwriting PvEUI's handler.
-    WarbandNexus.RegisterMessage(PlansManagerEvents, "WN_PVE_UPDATED", function(event)
+    WarbandNexus.RegisterMessage(PlansManagerEvents, Constants.EVENTS.PVE_UPDATED, function(event)
         if WarbandNexus.OnPvEUpdateCheckPlans then
             WarbandNexus:OnPvEUpdateCheckPlans()
         end

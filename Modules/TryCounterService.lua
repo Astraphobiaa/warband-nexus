@@ -126,6 +126,25 @@ local function TryChat(message)
     end
 end
 
+---Build "Obtained [Item] after X tries!" chat message with try count included.
+---@param baseKey string Locale key for the base message (e.g. "TRYCOUNTER_OBTAINED" or "TRYCOUNTER_OBTAINED_RESET")
+---@param baseFallback string English fallback for the base message
+---@param itemLink string Formatted item link
+---@param preResetCount number|nil Failed attempts before the successful one (total = preResetCount + 1)
+---@return string
+local function BuildObtainedChat(baseKey, baseFallback, itemLink, preResetCount)
+    local base = format((ns.L and ns.L[baseKey]) or baseFallback, itemLink)
+    if preResetCount == nil then return "|cff9370DB[WN-Counter]|r " .. base end
+    local totalTries = preResetCount + 1
+    local trySuffix
+    if totalTries <= 1 then
+        trySuffix = (ns.L and ns.L["TRYCOUNTER_FIRST_TRY"]) or "on the first try!"
+    else
+        trySuffix = format((ns.L and ns.L["TRYCOUNTER_AFTER_TRIES"]) or "after %d tries", totalTries)
+    end
+    return "|cff9370DB[WN-Counter]|r " .. base .. " |cffffff00" .. trySuffix .. "|r"
+end
+
 -- =====================================================================
 -- RAW EVENT FRAME
 -- COMBAT_LOG_EVENT_UNFILTERED removed: Blizzard marks it HasRestrictions,
@@ -670,6 +689,31 @@ local function IndexDrop(drop, npcDifficulty, hasStatistics)
     elseif hasStatistics then
         dropDifficultyIndex[itemKey] = "All Difficulties"
     end
+
+    -- DB rows are often type=item (quest item, container) while UI/plans use native mountID/speciesID.
+    -- Without mirroring, IsDropSourceCollectible("mount", mountID) stays false (e.g. Stonevault Mechsuit).
+    local function indexReflectCollectible(ref)
+        if not ref or not ref.type then return end
+        if ref.itemID then
+            dropSourceIndex[ref.type .. "\0" .. tostring(ref.itemID)] = true
+        end
+        if ref.type == "mount" and ref.mountID then
+            dropSourceIndex["mount\0" .. tostring(ref.mountID)] = true
+        end
+        if ref.type == "pet" and ref.speciesID then
+            dropSourceIndex["pet\0" .. tostring(ref.speciesID)] = true
+        end
+        -- Do not call ResolveCollectibleID here: it is defined later in this file; Lua would treat it as a
+        -- global (nil) inside IndexDrop. Mount/pet journal IDs from DB fields above + IndexQuestStarterMounts cover Mechasuit-style rows.
+    end
+    if drop.tryCountReflectsTo then
+        indexReflectCollectible(drop.tryCountReflectsTo)
+    end
+    if drop.questStarters then
+        for qi = 1, #drop.questStarters do
+            indexReflectCollectible(drop.questStarters[qi])
+        end
+    end
 end
 
 ---Index all drops from a flat array
@@ -796,6 +840,91 @@ local function BuildReverseIndices()
     -- Hardcoded overrides (e.g. known edge cases)
     chatLootItemToNpc[235910] = 234621  -- Mint Condition Gallagio Anniversary Coin → Gallagio Garbage
 
+    -- Mount list UI / plans use journal mountID; IndexDrop keys are mount\0<itemID> (teach item).
+    -- Mirror journal ID onto the same flags so IsDropSourceCollectible(plan.type, mountID) works (e.g. Zul'Aman rare mounts).
+    if ns.EnsureBlizzardCollectionsLoaded then
+        ns.EnsureBlizzardCollectionsLoaded()
+    end
+    local function MirrorOneMountJournalIndexKeys(drop)
+        if not drop or drop.type ~= "mount" or not drop.itemID then return end
+        local itemKey = "mount\0" .. tostring(drop.itemID)
+        if not dropSourceIndex[itemKey] then return end
+        local journalID = drop.mountID
+        if not journalID and C_MountJournal and C_MountJournal.GetMountFromItem then
+            journalID = C_MountJournal.GetMountFromItem(drop.itemID)
+            if issecretvalue and journalID and issecretvalue(journalID) then journalID = nil end
+        end
+        journalID = journalID and tonumber(journalID) or nil
+        if not journalID or journalID == tonumber(drop.itemID) then return end
+        local jKey = "mount\0" .. tostring(journalID)
+        dropSourceIndex[jKey] = true
+        if guaranteedIndex[itemKey] then guaranteedIndex[jKey] = true end
+        if repeatableIndex[itemKey] then repeatableIndex[jKey] = true end
+        local diff = dropDifficultyIndex[itemKey]
+        if diff then dropDifficultyIndex[jKey] = diff end
+    end
+    local function MirrorMountJournalKeysInArray(drops)
+        if not drops then return end
+        for i = 1, #drops do
+            MirrorOneMountJournalIndexKeys(drops[i])
+        end
+    end
+    for _, drops in pairs(npcDropDB) do MirrorMountJournalKeysInArray(drops) end
+    for _, drops in pairs(objectDropDB) do MirrorMountJournalKeysInArray(drops) end
+    for _, drops in pairs(fishingDropDB) do MirrorMountJournalKeysInArray(drops) end
+    for _, zData in pairs(zoneDropDB) do
+        local drops = zData.drops or zData
+        MirrorMountJournalKeysInArray(drops)
+    end
+    for _, containerData in pairs(containerDropDB) do
+        local list = containerData.drops or containerData
+        if type(list) == "table" then
+            local arr = list.drops or list
+            if type(arr) == "table" then MirrorMountJournalKeysInArray(arr) end
+        end
+    end
+
+    -- Pet journal uses speciesID; DB rows use pet\0<itemID>. Mirror species key for IsDropSourceCollectible / UI.
+    local function MirrorOnePetSpeciesIndexKeys(drop)
+        if not drop or drop.type ~= "pet" or not drop.itemID then return end
+        local itemKey = "pet\0" .. tostring(drop.itemID)
+        if not dropSourceIndex[itemKey] then return end
+        local speciesID = drop.speciesID
+        if not speciesID and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+            local _, _, _, _, _, _, _, _, _, _, _, _, sid = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+            speciesID = sid
+            if issecretvalue and speciesID and issecretvalue(speciesID) then speciesID = nil end
+        end
+        speciesID = speciesID and tonumber(speciesID) or nil
+        if not speciesID or speciesID == tonumber(drop.itemID) then return end
+        local sKey = "pet\0" .. tostring(speciesID)
+        dropSourceIndex[sKey] = true
+        if guaranteedIndex[itemKey] then guaranteedIndex[sKey] = true end
+        if repeatableIndex[itemKey] then repeatableIndex[sKey] = true end
+        local diff = dropDifficultyIndex[itemKey]
+        if diff then dropDifficultyIndex[sKey] = diff end
+    end
+    local function MirrorPetSpeciesKeysInArray(drops)
+        if not drops then return end
+        for i = 1, #drops do
+            MirrorOnePetSpeciesIndexKeys(drops[i])
+        end
+    end
+    for _, drops in pairs(npcDropDB) do MirrorPetSpeciesKeysInArray(drops) end
+    for _, drops in pairs(objectDropDB) do MirrorPetSpeciesKeysInArray(drops) end
+    for _, drops in pairs(fishingDropDB) do MirrorPetSpeciesKeysInArray(drops) end
+    for _, zData in pairs(zoneDropDB) do
+        local drops = zData.drops or zData
+        MirrorPetSpeciesKeysInArray(drops)
+    end
+    for _, containerData in pairs(containerDropDB) do
+        local list = containerData.drops or containerData
+        if type(list) == "table" then
+            local arr = list.drops or list
+            if type(arr) == "table" then MirrorPetSpeciesKeysInArray(arr) end
+        end
+    end
+
     reverseIndicesBuilt = true
 end
 
@@ -820,6 +949,9 @@ local function EnsureDB()
     end
     if not WarbandNexus.db.global.tryCounts.obtained then
         WarbandNexus.db.global.tryCounts.obtained = {}
+    end
+    if WarbandNexus.db.global.tryCounts.rarityMountsOneTimeSeedComplete == nil then
+        WarbandNexus.db.global.tryCounts.rarityMountsOneTimeSeedComplete = false
     end
     return true
 end
@@ -1197,6 +1329,20 @@ end
 ---@return boolean
 function WarbandNexus:IsDropSourceCollectible(collectibleType, id)
     return IndexLookup(dropSourceIndex, dropSourceCache, collectibleType, id)
+end
+
+---Whether try-count controls should appear in UI (Collections header, toy detail, plan cards, tracker).
+---Rule: show when count > 0, or when the collectible is a non-guaranteed drop source.
+---@param collectibleType string mount|pet|toy|illusion
+---@param id number mountID, speciesID, itemID (toy), or illusion source id
+---@return boolean
+function WarbandNexus:ShouldShowTryCountInUI(collectibleType, id)
+    if not id or not self.GetTryCount then return false end
+    local count = self:GetTryCount(collectibleType, id) or 0
+    if count > 0 then return true end
+    if not self.IsDropSourceCollectible or not self:IsDropSourceCollectible(collectibleType, id) then return false end
+    if self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(collectibleType, id) then return false end
+    return true
 end
 
 -- Session cache for difficulty lookups
@@ -2492,6 +2638,14 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
         return
     end
 
+    -- Loot window guard: if a loot session is actively open, the primary path
+    -- (LOOT_OPENED → ProcessNPCLoot/ProcessFishingLoot) already handled counting.
+    -- CHAT_MSG_LOOT fires per-item during manual loot; suppress NPC/encounter/fishing
+    -- paths (2-4) to prevent double-counting when debounce has expired.
+    -- Path 1 (repeatable resets) still runs because the primary path may not cover
+    -- repeatable items obtained from non-tracked sources.
+    local lootWindowActive = lootSession.opened
+
     -- Path 1: Repeatable item obtained → reset + notification
     local repDrop = repeatableItemDrops[itemID]
     if repDrop then
@@ -2502,7 +2656,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
             lastTryCountSourceKey = "item_" .. tostring(itemID)
             lastTryCountSourceTime = now
             local itemLink = GetDropItemLink(repDrop)
-            TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
+            TryChat(BuildObtainedChat("TRYCOUNTER_OBTAINED_RESET", "Obtained %s! Try counter reset.", itemLink, preResetCount))
             local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
             local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(repDrop.itemID)
             if self.SendMessage then
@@ -2510,9 +2664,16 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     type = "item", id = repDrop.itemID,
                     name = itemName or repDrop.name or "Unknown", icon = itemIcon,
                     preResetTryCount = preResetCount,
+                    fromTryCounter = true,
                 })
             end
         end
+        return
+    end
+
+    -- Paths 2-4: suppress when loot window is active (primary path already counted).
+    if lootWindowActive then
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip", "CHAT loot window active (item=%s)", tostring(itemID)) end
         return
     end
 
@@ -2565,7 +2726,9 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                             C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                         end
                         local itemLink = GetDropItemLink(foundDrop)
-                        TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
+                        local chatKey = foundDrop.repeatable and "TRYCOUNTER_OBTAINED_RESET" or "TRYCOUNTER_OBTAINED"
+                        local chatFallback = foundDrop.repeatable and "Obtained %s! Try counter reset." or "Obtained %s!"
+                        TryChat(BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
                         if self.SendMessage then
                             local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                             local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(foundDrop.itemID)
@@ -2573,6 +2736,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                                 type = tcType, id = (foundDrop.type == "item") and foundDrop.itemID or tryKey,
                                 name = itemName or foundDrop.name or "Unknown", icon = itemIcon,
                                 preResetTryCount = preResetCount,
+                                fromTryCounter = true,
                             })
                         end
                     end
@@ -2643,7 +2807,9 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                                     C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                                 end
                                 local itemLink = GetDropItemLink(foundDrop)
-                                TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
+                                local chatKey = foundDrop.repeatable and "TRYCOUNTER_OBTAINED_RESET" or "TRYCOUNTER_OBTAINED"
+                                local chatFallback = foundDrop.repeatable and "Obtained %s! Try counter reset." or "Obtained %s!"
+                                TryChat(BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
                                 if self.SendMessage then
                                     local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                                     local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(foundDrop.itemID)
@@ -2651,6 +2817,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                                         type = tcType, id = (foundDrop.type == "item") and foundDrop.itemID or tryKey,
                                         name = itemName or foundDrop.name or "Unknown", icon = itemIcon,
                                         preResetTryCount = preResetCount,
+                                        fromTryCounter = true,
                                     })
                                 end
                             end
@@ -2691,7 +2858,9 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                         lastTryCountSourceKey = "item_" .. tostring(itemID)
                         lastTryCountSourceTime = now
                         local itemLink = GetDropItemLink(caughtDrop)
-                        TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CAUGHT_RESET"]) or "Caught %s! Try counter reset.", itemLink))
+                        local chatKey = caughtDrop.repeatable and "TRYCOUNTER_CAUGHT_RESET" or "TRYCOUNTER_CAUGHT"
+                        local chatFallback = caughtDrop.repeatable and "Caught %s! Try counter reset." or "Caught %s!"
+                        TryChat(BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
                         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "reset", "CHAT fish caught item=%s", tostring(itemID)) end
                         local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                         local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(caughtDrop.itemID)
@@ -2700,6 +2869,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                                 type = tcType, id = tryKey,
                                 name = itemName or caughtDrop.name or "Unknown", icon = itemIcon,
                                 preResetTryCount = preResetCount,
+                                fromTryCounter = true,
                             })
                         end
                     end
@@ -2771,6 +2941,7 @@ local function CollectFishingDropsForZone()
     if inInstance then return {}, true end
     local mapID = GetSafeMapID()
     local drops = {}
+    local seen = {}  -- dedup: same drop registered at child + parent map would double-count
     -- IMPORTANT:
     -- Do not auto-merge fishingDropDB[0] (global pool) into every map.
     -- Global entries (e.g. Sea Turtle) would make every zone look like a fishing
@@ -2779,7 +2950,16 @@ local function CollectFishingDropsForZone()
     while currentMapID and currentMapID > 0 do
         if fishingDropDB[currentMapID] then
             local mapDrops = fishingDropDB[currentMapID]
-            for i = 1, #mapDrops do drops[#drops + 1] = mapDrops[i] end
+            for i = 1, #mapDrops do
+                local d = mapDrops[i]
+                if d and d.itemID then
+                    local key = (d.type or "item") .. "\0" .. tostring(d.itemID)
+                    if not seen[key] then
+                        seen[key] = true
+                        drops[#drops + 1] = d
+                    end
+                end
+            end
         end
         local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(currentMapID)
         local nextID = mapInfo and mapInfo.parentMapID
@@ -3481,7 +3661,7 @@ function WarbandNexus:ProcessNPCLoot()
                     C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                 end
                 local itemLink = GetDropItemLink(drop)
-                TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
+                TryChat(BuildObtainedChat("TRYCOUNTER_OBTAINED_RESET", "Obtained %s! Try counter reset.", itemLink, preResetCount))
                 if drop.type == "item" and WarbandNexus.SendMessage then
                     local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                     local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID)
@@ -3491,6 +3671,7 @@ function WarbandNexus:ProcessNPCLoot()
                         name = itemName or drop.name or "Unknown",
                         icon = itemIcon,
                         preResetTryCount = preResetCount,
+                        fromTryCounter = true,
                     })
                 end
             end
@@ -3511,7 +3692,7 @@ function WarbandNexus:ProcessNPCLoot()
                     C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                 end
                 local itemLink = GetDropItemLink(drop)
-                TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED"]) or "Obtained %s!", itemLink))
+                TryChat(BuildObtainedChat("TRYCOUNTER_OBTAINED", "Obtained %s!", itemLink, currentCount))
                 if WarbandNexus.SendMessage then
                     local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                     local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID)
@@ -3521,6 +3702,7 @@ function WarbandNexus:ProcessNPCLoot()
                         name = itemName or drop.name or "Unknown",
                         icon = itemIcon,
                         preResetTryCount = currentCount,
+                        fromTryCounter = true,
                     })
                 end
             end
@@ -3635,7 +3817,7 @@ function WarbandNexus:ProcessFishingLoot()
                     C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                 end
                 local itemLink = GetDropItemLink(drop)
-                TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CAUGHT_RESET"]) or "Caught %s! Try counter reset.", itemLink))
+                TryChat(BuildObtainedChat("TRYCOUNTER_CAUGHT_RESET", "Caught %s! Try counter reset.", itemLink, preResetCount))
                 -- Fire notification (BAM moment)
                 local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                 local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(drop.itemID)
@@ -3646,6 +3828,7 @@ function WarbandNexus:ProcessFishingLoot()
                         name = itemName or drop.name or "Unknown",
                         icon = itemIcon,
                         preResetTryCount = preResetCount,
+                        fromTryCounter = true,
                     })
                 end
             end
@@ -3669,7 +3852,7 @@ function WarbandNexus:ProcessFishingLoot()
                 lastTryCountSourceKey = "item_" .. tostring(drop.itemID)
                 lastTryCountSourceTime = GetTime()
                 local itemLink = GetDropItemLink(drop)
-                TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CAUGHT_RESET"]) or "Caught %s! Try counter reset.", itemLink))
+                TryChat(BuildObtainedChat("TRYCOUNTER_CAUGHT", "Caught %s!", itemLink, preResetCount))
                 -- Fire notification (BAM moment)
                 local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                 local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(drop.itemID)
@@ -3680,6 +3863,7 @@ function WarbandNexus:ProcessFishingLoot()
                         name = itemName or drop.name or "Unknown",
                         icon = itemIcon,
                         preResetTryCount = preResetCount,
+                        fromTryCounter = true,
                     })
                 end
             end
@@ -3753,7 +3937,9 @@ function WarbandNexus:ProcessContainerLoot()
                         C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                     end
                     local itemLink = GetDropItemLink(drop)
-                    TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CONTAINER_RESET"]) or "Obtained %s from container! Try counter reset.", itemLink))
+                    local chatKey = drop.repeatable and "TRYCOUNTER_CONTAINER_RESET" or "TRYCOUNTER_CONTAINER"
+                    local chatFallback = drop.repeatable and "Obtained %s from container! Try counter reset." or "Obtained %s from container!"
+                    TryChat(BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
                     -- Fire notification for all types (BAM moment)
                     if WarbandNexus.SendMessage then
                         local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
@@ -3764,6 +3950,7 @@ function WarbandNexus:ProcessContainerLoot()
                             name = itemName or drop.name or "Unknown",
                             icon = itemIcon,
                             preResetTryCount = preResetCount,
+                            fromTryCounter = true,
                         })
                     end
                 end
@@ -4055,13 +4242,14 @@ local function SeedFromStatistics()
     if not EnsureDB() then return end
     local GetStat = GetStatistic
     if not GetStat then return end
+
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+
     local P = ns.Profiler
     if P then P:StartAsync("SeedFromStatistics") end
     local LT = ns.LoadingTracker
     if LT then LT:Register("trycounts", (ns.L and ns.L["TRYCOUNTER_TRY_COUNTS"]) or "Try Counts") end
-
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not charKey then return end
     local snapshots = WarbandNexus.db.global.statisticSnapshots
     if not snapshots then
         WarbandNexus.db.global.statisticSnapshots = {}
@@ -4580,6 +4768,15 @@ function WarbandNexus:InitializeTryCounter()
     -- Delayed 10s (absolute ~T+11.5s) — gives pre-resolve (+5s) ~5s to complete.
     C_Timer.After(10, SeedFromStatistics)
 
+    -- Rarity: merge attempt counts if that addon is present (no slash command; silent if absent).
+    -- Two passes: early + late load order (Rarity is not an OptionalDep).
+    C_Timer.After(2, function()
+        WarbandNexus:ImportTryCountsFromRarity()
+    end)
+    C_Timer.After(12, function()
+        WarbandNexus:ImportTryCountsFromRarity()
+    end)
+
     -- Sync lockout state with server quest flags (clean stale + pre-populate).
     -- Delayed 2s to ensure quest log data is available after login/reload.
     -- Also refreshes discovery snapshot so auto-discovery has a clean baseline.
@@ -4934,6 +5131,161 @@ function WarbandNexus:CheckTargetDrops()
 end
 
 -- =====================================================================
+-- RARITY IMPORT (optional cross-addon merge)
+-- Per Rarity team: only `groups.mounts` attempt counts (not pets/toys/custom).
+-- Rarity stores `attempts` + `itemId` per entry; WN keys match in-game try counter: mount journal ID from
+-- C_MountJournal.GetMountFromItem(itemId), else itemId (same as GetTryCountKey for mount drops).
+-- =====================================================================
+
+local function RarityResolveMountTryKey(itemId)
+    if C_MountJournal and C_MountJournal.GetMountFromItem then
+        local m = C_MountJournal.GetMountFromItem(itemId)
+        if m and not (issecretvalue and issecretvalue(m)) then
+            local n = tonumber(m)
+            if n and n > 0 then
+                return n
+            end
+        end
+    end
+    return itemId
+end
+
+--- One-time Rarity **Mounts** seed: for each tracked mount, WN stored count becomes **WN + Rarity attempts**
+--- (uses max of WN@mountKey vs WN@itemId as the WN baseline when both keys exist, then adds Rarity once).
+--- Runs only once per account (SavedVariables flag); later reloads ignore Rarity so dual-addon play does not
+--- double-apply. Silent no-op if Rarity missing or seed already done.
+---@return number updated Number of mount keys written
+---@return number scanned Rarity mount rows with attempts > 0
+function WarbandNexus:ImportTryCountsFromRarity()
+    if not EnsureDB() then
+        return 0, 0
+    end
+    local tc = WarbandNexus.db.global.tryCounts
+    if tc.rarityMountsOneTimeSeedComplete then
+        return 0, 0
+    end
+
+    local R = _G.Rarity
+    if not R or type(R) ~= "table" or not R.db or not R.db.profile or type(R.db.profile.groups) ~= "table" then
+        return 0, 0
+    end
+    if ns.EnsureBlizzardCollectionsLoaded then
+        ns.EnsureBlizzardCollectionsLoaded()
+    end
+
+    local mounts = R.db.profile.groups.mounts
+    if type(mounts) ~= "table" then
+        return 0, 0
+    end
+
+    local updated = 0
+    local scanned = 0
+
+    local function applyOneMountSeed(itemId, rarityAttempts)
+        if not itemId or itemId < 1 or not rarityAttempts or rarityAttempts < 1 then
+            return
+        end
+        local mountKey = RarityResolveMountTryKey(itemId)
+        local wnA = self:GetTryCount("mount", mountKey) or 0
+        local wnB = (mountKey ~= itemId) and (self:GetTryCount("mount", itemId) or 0) or 0
+        local base = wnA
+        if wnB > base then
+            base = wnB
+        end
+        local total = base + rarityAttempts
+        self:SetTryCount("mount", mountKey, total)
+        if mountKey ~= itemId then
+            self:SetTryCount("mount", itemId, total)
+        end
+        updated = updated + 1
+    end
+
+    for key, entry in pairs(mounts) do
+        if type(entry) == "table" and type(key) == "string" and key ~= "name" then
+            if entry.enabled ~= false then
+                local itemId = tonumber(entry.itemId) or tonumber(entry.itemID)
+                local attempts = tonumber(entry.attempts) or 0
+                if itemId and itemId > 0 and attempts > 0 then
+                    scanned = scanned + 1
+                    applyOneMountSeed(itemId, attempts)
+                end
+            end
+        end
+    end
+
+    -- Only lock out future imports when we actually merged at least one Rarity attempt row.
+    -- (Rarity present but all attempts 0 → keep retrying on later logins until data exists or user ignores.)
+    if scanned > 0 then
+        tc.rarityMountsOneTimeSeedComplete = true
+    end
+
+    if updated > 0 and self.SendMessage then
+        self:SendMessage("WN_PLANS_UPDATED", { action = "rarity_import" })
+    end
+
+    return updated, scanned
+end
+
+--- Debug: clear one-time Rarity mount seed flag so the next import pass runs again (testing only).
+function WarbandNexus:DebugResetRarityMountsSeedFlag()
+    if not self.db or not self.db.profile or not self.db.profile.debugMode then
+        self:Print("|cffff6600[WN]|r Enable debug mode first (/wn debug).")
+        return
+    end
+    if not EnsureDB() then
+        return
+    end
+    WarbandNexus.db.global.tryCounts.rarityMountsOneTimeSeedComplete = false
+    self:Print("|cff00ff00[WN]|r Rarity seed flag cleared — re-import on next load if Rarity is open.")
+end
+
+--- Debug: print Rarity mount rows → resolved WN mount key(s) and current try counts (requires Rarity + debugMode).
+function WarbandNexus:DebugRarityMountsImportPreview()
+    if not self.db or not self.db.profile or not self.db.profile.debugMode then
+        self:Print("|cffff6600[WN]|r Enable debug mode first (/wn debug).")
+        return
+    end
+    local R = _G.Rarity
+    if not R or not R.db or not R.db.profile or type(R.db.profile.groups) ~= "table" then
+        self:Print("|cffff6600[WN]|r Rarity not loaded.")
+        return
+    end
+    if ns.EnsureBlizzardCollectionsLoaded then
+        ns.EnsureBlizzardCollectionsLoaded()
+    end
+    local mounts = R.db.profile.groups.mounts
+    if type(mounts) ~= "table" then
+        self:Print("|cffff6600[WN]|r No Rarity groups.mounts.")
+        return
+    end
+    local seedDone = WarbandNexus.db.global.tryCounts and WarbandNexus.db.global.tryCounts.rarityMountsOneTimeSeedComplete
+    self:Print("|cff9370DB[WN]|r Rarity preview | seed done: " .. tostring(seedDone == true) .. " | itemID → mountKey | R | WN")
+    local n = 0
+    for key, entry in pairs(mounts) do
+        if type(entry) == "table" and type(key) == "string" and key ~= "name" and entry.enabled ~= false then
+            local itemId = tonumber(entry.itemId) or tonumber(entry.itemID)
+            local attempts = tonumber(entry.attempts) or 0
+            if itemId and itemId > 0 and attempts > 0 then
+                n = n + 1
+                if n <= 40 then
+                    local mk = RarityResolveMountTryKey(itemId)
+                    local wMk = self:GetTryCount("mount", mk)
+                    local wItem = (mk ~= itemId) and self:GetTryCount("mount", itemId) or wMk
+                    self:Print(format(
+                        "  |cffffd100%s|r | item=%d key=%d | R=%d | WN(key)=%d | WN(item)=%d",
+                        key, itemId, mk, attempts, wMk, wItem
+                    ))
+                end
+            end
+        end
+    end
+    if n > 40 then
+        self:Print(format("|cff888888... +%d rows (cap 40)|r", n - 40))
+    end
+    self:Print(format("|cff9370DB[WN]|r Rarity mounts with attempts: %d", n))
+end
+
+-- =====================================================================
 -- NAMESPACE EXPORT
 -- =====================================================================
 
@@ -4945,6 +5297,7 @@ ns.TryCounterService = {
     IsGuaranteedCollectible = function(_, ct, id) return WarbandNexus:IsGuaranteedCollectible(ct, id) end,
     IsRepeatableCollectible = function(_, ct, id) return WarbandNexus:IsRepeatableCollectible(ct, id) end,
     IsDropSourceCollectible = function(_, ct, id) return WarbandNexus:IsDropSourceCollectible(ct, id) end,
+    ShouldShowTryCountInUI = function(_, ct, id) return WarbandNexus:ShouldShowTryCountInUI(ct, id) end,
     -- CRUD API for Track Item DB
     AddCustomDrop = function(_, st, sid, drop, stats) return WarbandNexus:AddCustomDrop(st, sid, drop, stats) end,
     RemoveCustomDrop = function(_, st, sid, iid) return WarbandNexus:RemoveCustomDrop(st, sid, iid) end,
@@ -4954,4 +5307,5 @@ ns.TryCounterService = {
     GetRepeatableOverride = function(_, ct, iid) return WarbandNexus:GetRepeatableOverride(ct, iid) end,
     LookupItem = function(_, iid, cb) return WarbandNexus:LookupItem(iid, cb) end,
     RebuildTrackDB = function() return WarbandNexus:RebuildTrackDB() end,
+    ImportTryCountsFromRarity = function() return WarbandNexus:ImportTryCountsFromRarity() end,
 }

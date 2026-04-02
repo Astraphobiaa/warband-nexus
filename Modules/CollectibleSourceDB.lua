@@ -139,7 +139,7 @@ local _netherWarpedEgg = {
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
 
 ns.CollectibleSourceDB = {
-    version = "12.0.25",
+    version = "12.0.26",
     lastUpdated = "2026-03-25",
     sourceSchemaVersion = 1,
     sourceTypes = {
@@ -1295,13 +1295,15 @@ ns.CollectibleSourceDB = {
         -- Midnight 12.0 â€” only bosses that drop mounts (2 dungeons M/M+, 1 raid M)
         -- Source: warcraftmounts.com Patch 12.0.1; encounter IDs: wago.tools DungeonEncounter DB2
         -- difficultyIDs: 23 = Mythic dungeon, 8 = Mythic Keystone (M+), 16 = Mythic raid (all map to "Mythic")
+        -- Spectral / Lucent Hawkstrider: BoP, account-wide mount (learn once). Same cadence as other M dungeon mounts.
+        -- Not BoE farm copies — try count must not "reset on obtain" (repeatable = false). Sources: wowhead item pages, warcraftmounts.com.
         [231636] = { -- Restless Heart (Windrunner Spire) â€” Spectral Hawkstrider â€” encounterID 3059
-            { type = "mount", itemID = 262914, name = "Spectral Hawkstrider" },
+            { type = "mount", itemID = 262914, name = "Spectral Hawkstrider", repeatable = false },
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+); same encounter, no separate M+ entry
         },
         [231865] = { -- Degentrius (Magisters' Terrace) â€” Lucent Hawkstrider â€” encounterID 3074 (npc=231865 wowhead)
-            { type = "mount", itemID = 260231, name = "Lucent Hawkstrider" },
+            { type = "mount", itemID = 260231, name = "Lucent Hawkstrider", repeatable = false },
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+)
         },

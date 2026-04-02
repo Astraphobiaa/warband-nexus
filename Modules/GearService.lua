@@ -785,6 +785,7 @@ end
 --- Debounces rapid swaps and scans only gear slots (1-17).
 ---@param slotID number
 function WarbandNexus:OnGearEquipmentChanged(slotID)
+    if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(self) then return end
     if slotID and (slotID < 1 or slotID > 17) then return end
     if gearScanTimer then
         gearScanTimer:Cancel()
@@ -969,7 +970,7 @@ local function GetAffordableCountAndNextCrestNeed(upInfo, currencyAmounts)
     return totalAffordable, effectiveCrestNeed
 end
 
---- Debug: print upgrade info and affordability per slot (current character only). Use /wn gearupgradedebug
+--- Internal diagnostic: upgrade info per slot (current character). No slash — dev: /run WarbandNexus:GearUpgradeDebugReport()
 --- Uses same currency source as Gear tab (FromDB, normalized). Crest need = 20 or 0 (gold-only/maxed).
 function WarbandNexus:GearUpgradeDebugReport()
     local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
@@ -1021,8 +1022,7 @@ function WarbandNexus:GearUpgradeDebugReport()
     end
 end
 
---- Debug: print storage-upgrade summary for all tracked characters.
---- Usage: /wn gearstoragedebug
+--- Internal diagnostic: storage-upgrade summary for all tracked characters. No slash — dev: /run WarbandNexus:GearStorageUpgradeDebugReportAll()
 function WarbandNexus:GearStorageUpgradeDebugReportAll()
     local chars = self.db and self.db.global and self.db.global.characters
     if not chars then
@@ -1494,7 +1494,35 @@ local UPGRADE_CURRENCY_NAMES = {
     [3347] = "Myth Dawncrest",
 }
 
---- Crest + gold for Gear tab.
+local UPGRADE_CURRENCY_ID_SET = {}
+for i = 1, #UPGRADE_CURRENCY_IDS do
+    UPGRADE_CURRENCY_ID_SET[UPGRADE_CURRENCY_IDS[i]] = true
+end
+
+--- Match CurrencyCacheService: weekly display cap + season max from API (Dawncrest IDs + Coffer Key Shards by name).
+local function IsGearSeasonSplitCurrency(currencyID, info)
+    if UPGRADE_CURRENCY_ID_SET[currencyID] then return true end
+    if not info or not info.name then return false end
+    local nm = info.name
+    if issecretvalue and issecretvalue(nm) then return false end
+    local n = string.lower(tostring(nm))
+    return n:find("coffer", 1, true) ~= nil and n:find("shard", 1, true) ~= nil
+end
+
+--- Effective maxQuantity for Gear panel fallback (weekly cap when season-split, else API caps).
+local function DisplayMaxQuantityFromCurrencyInfo(currencyID, info)
+    if not info then return nil end
+    local maxQ = info.maxQuantity or 0
+    local maxWeekly = info.maxWeeklyQuantity or 0
+    if IsGearSeasonSplitCurrency(currencyID, info) and maxWeekly > 0 then
+        return maxWeekly
+    end
+    if maxQ > 0 then return maxQ end
+    if maxWeekly > 0 then return maxWeekly end
+    return nil
+end
+
+--- Dawncrests + Coffer Key Shards (name-resolved ID) + gold for Gear tab.
 --- Current char: live C_CurrencyInfo API (same source as Currency tab scan).
 --- Offline char: DB fallback via GetCurrenciesForUI.
 ---@param charKey string Character key from UI (dropdown).
@@ -1508,24 +1536,44 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
     local function norm(k) return (k and k:gsub("%s+", "")) or "" end
     local isCurrentChar = (norm(canonicalKey) == norm(currentKey) or norm(charKey) == norm(currentKey))
 
+    local upgradeIds = {}
     for i = 1, #UPGRADE_CURRENCY_IDS do
-        local currencyID = UPGRADE_CURRENCY_IDS[i]
+        upgradeIds[#upgradeIds + 1] = UPGRADE_CURRENCY_IDS[i]
+    end
+    do
+        local allCur = self.GetCurrenciesForUI and self:GetCurrenciesForUI() or {}
+        for cid, entry in pairs(allCur) do
+            local lowerName = entry and entry.name and string.lower(tostring(entry.name)) or ""
+            if lowerName ~= "" and lowerName:find("coffer", 1, true) and lowerName:find("shard", 1, true) then
+                upgradeIds[#upgradeIds + 1] = cid
+                break
+            end
+        end
+    end
+
+    for i = 1, #upgradeIds do
+        local currencyID = upgradeIds[i]
         local amount = 0
         local cName = UPGRADE_CURRENCY_NAMES[currencyID]
         local cIcon = nil
         local maxQuantity = nil  -- Weekly/total cap from API; nil = use fallback in UI
 
-        if isCurrentChar and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-            -- LIVE API: exact same normalization as FetchCurrencyFromAPI in CurrencyCacheService
-            local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
-            if ok and info then
-                if info.name and info.name ~= "" then cName = info.name end
-                if info.iconFileID then cIcon = info.iconFileID end
-                amount = info.quantity or 0
-                -- Cap for display (x / max): maxQuantity or maxWeeklyQuantity; same logic as CurrencyCacheService
-                local maxQ = info.maxQuantity or 0
-                local maxWeekly = info.maxWeeklyQuantity or 0
-                maxQuantity = (maxQ > 0) and maxQ or ((maxWeekly > 0) and maxWeekly or nil)
+        if isCurrentChar then
+            -- Prefer GetCurrencyData: same normalization as Currency tab (Dawncrests + Coffer Key Shards).
+            local cd = self.GetCurrencyData and self:GetCurrencyData(currencyID, canonicalKey)
+            if cd and cd.quantity ~= nil then
+                amount = cd.quantity
+                if cd.name and cd.name ~= "" then cName = cd.name end
+                if cd.icon or cd.iconFileID then cIcon = cd.icon or cd.iconFileID end
+                maxQuantity = cd.maxQuantity
+            elseif C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+                local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+                if ok and info then
+                    if info.name and info.name ~= "" then cName = info.name end
+                    if info.iconFileID then cIcon = info.iconFileID end
+                    amount = info.quantity or 0
+                    maxQuantity = DisplayMaxQuantityFromCurrencyInfo(currencyID, info)
+                end
             end
         else
             -- OFFLINE: read from DB via GetCurrenciesForUI (aggregated per-char data)
@@ -1557,9 +1605,7 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
         if not maxQuantity and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
             local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
             if ok and info then
-                local maxQ = info.maxQuantity or 0
-                local maxWeekly = info.maxWeeklyQuantity or 0
-                maxQuantity = (maxQ > 0) and maxQ or ((maxWeekly > 0) and maxWeekly or nil)
+                maxQuantity = DisplayMaxQuantityFromCurrencyInfo(currencyID, info)
             end
         end
 

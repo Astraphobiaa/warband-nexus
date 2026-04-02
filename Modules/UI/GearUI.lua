@@ -1088,9 +1088,12 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         nameText:SetShadowOffset(1, -1)
         nameText:SetShadowColor(0, 0, 0, 0.8)
 
-        -- Amount / cap (right aligned); cap from C_CurrencyInfo API (maxWeeklyQuantity/maxQuantity)
-        local amt = cur.amount or 0
-        local cap = (type(cur.maxQuantity) == "number" and cur.maxQuantity > 0) and cur.maxQuantity or 200
+        -- Amount / cap: GetCurrencyData (same source as PvE + Currency tab) — season earned/max or weekly qty/cap + green/red
+        local cd = WarbandNexus.GetCurrencyData and WarbandNexus:GetCurrencyData(cur.currencyID, charKey) or nil
+        if not cd then
+            local mq = (type(cur.maxQuantity) == "number" and cur.maxQuantity > 0) and cur.maxQuantity or 0
+            cd = { quantity = cur.amount or 0, maxQuantity = mq, totalEarned = nil, seasonMax = nil }
+        end
         local amountText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
         amountText:SetPoint("RIGHT", leftPanel, "RIGHT", -curPad, 0)
         amountText:SetPoint("TOP", ico, "TOP", 0, 0)
@@ -1098,12 +1101,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         amountText:SetJustifyH("RIGHT")
         amountText:SetShadowOffset(1, -1)
         amountText:SetShadowColor(0, 0, 0, 0.8)
-        local capStr = (FormatNumber and FormatNumber(cap) or tostring(cap))
-        if amt > 0 then
-            amountText:SetText("|cffffffff" .. (FormatNumber and FormatNumber(amt) or tostring(amt)) .. "|r |cff666666/ " .. capStr .. "|r")
-        else
-            amountText:SetText("|cff555555" .. "0" .. "|r |cff444444/ " .. capStr .. "|r")
-        end
+        amountText:SetText((ns.UI_FormatSeasonProgressCurrencyLine and ns.UI_FormatSeasonProgressCurrencyLine(cd)) or "")
 
         curY = curY - CREST_ROW_H
     end

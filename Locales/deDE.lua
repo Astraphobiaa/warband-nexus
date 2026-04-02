@@ -212,7 +212,7 @@ L["STORAGE_PERSONAL_HEADER"] = "Persönliche Bank"
 
 -- Plans Tab
 L["PLANS_SEARCH_PLACEHOLDER"] = SEARCH .. "..."
-L["PLANS_MY_PLANS"] = "Meine Pläne"
+L["PLANS_MY_PLANS"] = "To-Do-Liste"
 L["PLANS_COLLECTIONS"] = "Aufgabenliste"
 L["PLANS_ADD_CUSTOM"] = "Eigenen Plan hinzufügen"
 L["PLANS_NO_RESULTS"] = "Keine Ergebnisse gefunden."
@@ -236,7 +236,7 @@ L["ACHIEVEMENT_SERIES"] = "Achievement-Serie"
 L["CHILDREN_ACHIEVEMENTS"] = "Nachfolger-Achievements"
 L["LOADING_ACHIEVEMENTS"] = "Achievements werden geladen..."
 L["PARENT_ACHIEVEMENT"] = "Vorgänger-Achievement"
-L["CATEGORY_MY_PLANS"] = "Meine Pläne"
+L["CATEGORY_MY_PLANS"] = "To-Do-Liste"
 L["CATEGORY_DAILY_TASKS"] = "Wöchentlicher Fortschritt"
 L["CATEGORY_ILLUSIONS"] = "Illusionen"
 
@@ -515,7 +515,7 @@ L["VAULT_SLOT3_HINT"] = "Dritte Auswahl (maximale Optionen)"
 -- Delves Section (PvE Tab)
 L["DELVES"] = "Tiefen"
 L["COMPANION"] = "Begleiter"
-L["BOUNTIFUL_DELVE"] = "Ergiebig"
+L["BOUNTIFUL_DELVE"] = "Truhenjäger-Beute"
 L["CRACKED_KEYSTONE"] = "Gesprungener Schlüsselstein"
 L["SEASON"] = "Saison"
 
@@ -1084,10 +1084,8 @@ L["WELCOME_MSG_FORMAT"] = "Willkommen bei Warband Nexus v%s"
 L["WELCOME_TYPE_CMD"] = "Bitte tippe"
 L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 
--- =============================================
--- Changelog (What's New)
--- =============================================
-L["CHANGELOG_V250"] = "NEUE FUNKTIONEN:\n- To-Do-Tab: Pläne-Bereich umbenannt in To-Do mit neuem Branding\n- Wöchentlicher Reset-Timer: Live-Countdown oben in der Aufgabenansicht\n- Charakterübersicht: Zusammenfassungskarte mit Quest- & Tresorfortschritt\n- Wowhead-Links: Rechtsklick auf Sammlerstücke, Pläne und Questgegenstände für URLs\n- Hergestellte Ausrüstung: Tier-basierte Umschmiedeinfo statt irreführender X/6-Notation\n- Erinnerungssystem: Täglicher Login, wöchentlicher Reset und Countdown-Auslöser\n\nGEAR-TAB:\n- Hergestellte Items zeigen Tier-Name + Ilvl (z.B. 'Mythos 285') statt 'Mythos 5/6'\n- Max-Ilvl hergestellte Items zeigen keinen falschen Upgrade-Pfeil mehr\n- Tooltip zeigt Umschmiedekosten, empfohlenen Tier und benötigte Wappen\n\nBERUFSWISSEN:\n- Kräuterkunde und Bergbau: Wöchentliche Sammelquest-Verfolgung hinzugefügt\n- Fehlende Verzauberungskunst-Wochenquest-Variante ergänzt\n- Alle Abhandlungs-, Unikat-, Schatz- und Sammel-IDs verifiziert\n\nLEISTUNG:\n- Gedrosselte Größenänderung — keine Frame-Drops mehr beim Fenster-Resize\n- Gepoolte Gear-Tab-Frames — ~60 weniger Frame-Erstellungen pro Aktualisierung\n- Frame-Leak bei Planbeschreibungs-Erweiterung behoben\n\nFEHLERBEHEBUNGEN:\n- Erinnerungsdialog überschreibt Zonen-Benachrichtigungen nicht mehr\n- Tooltip-Taint-Schutzlücke bei Berufsausrüstungs-Erkennung behoben\n- Hergestellte Ausrüstung: Tier-Name-Auflösung korrigiert\n- Hergestellte Ausrüstung: 289 Max-Ilvl auf korrekte 285 korrigiert\n\nVielen Dank für eure Unterstützung!\nUm Probleme zu melden oder Feedback zu geben, hinterlasst einen Kommentar auf CurseForge - Warband Nexus."
+-- What's New (nur aktuelle Version)
+L["CHANGELOG_V255"] = "v2.5.5\nVerbesserungen:\n- Tabs neu sortiert — Lager, Ausrüstung und Währungen schneller zu finden\n- Ausrüstung: Aufwertungs-Crests farbig; Anzeige Bestand vs. Saisonlimit\n- To-Do: To-Do-Liste; Versuche-Zähler; Rechtsklick auch in der Mount-Liste\n- To-Do-Karten: Buttons ohne Überlappung\n- Kürzere Hilfe und Update-Hinweise\n\nFehlerbehebungen:\n- Sync-Leiste beim Login klemmt nicht mehr (Kampf oder fehlgeschlagener Schritt)\n- Sync-Leiste blendet nach langer Wartezeit automatisch aus\n\nCurseForge: Warband Nexus"
 
 -- =============================================
 -- Confirm / Tracking Dialog
@@ -1492,7 +1490,11 @@ L["STANDING_EXALTED"] = "Ehrfürchtig"
 L["TRYCOUNTER_ATTEMPTS_FOR"] = "%d Versuche für %s"
 L["TRYCOUNTER_OBTAINED_RESET"] = "%s erhalten! Versuchszähler zurückgesetzt."
 L["TRYCOUNTER_CAUGHT_RESET"] = "%s eingefangen! Versuchszähler zurückgesetzt."
+L["TRYCOUNTER_CAUGHT"] = "%s gefangen!"
 L["TRYCOUNTER_CONTAINER_RESET"] = "%s aus Behälter erhalten! Versuchszähler zurückgesetzt."
+L["TRYCOUNTER_CONTAINER"] = "%s aus Container erhalten!"
+L["TRYCOUNTER_AFTER_TRIES"] = "nach %d Versuchen"
+L["TRYCOUNTER_FIRST_TRY"] = "beim ersten Versuch!"
 L["TRYCOUNTER_LOCKOUT_SKIP"] = "Übersprungen: Tägliche/wöchentliche Sperre für diesen NSC aktiv."
 L["TRYCOUNTER_INSTANCE_DROPS"] = "Sammelbare Beute in dieser Instanz:"
 L["TRYCOUNTER_COLLECTED_TAG"] = "(Gesammelt)"

@@ -15,6 +15,7 @@
 ============================================================================]]
 
 local addonName, ns = ...
+local Constants = ns.Constants
 local DebugService = {}
 ns.DebugService = DebugService
 
@@ -59,9 +60,12 @@ function DebugService:TestCommand(addon, input)
     DebugPrint("|cff9370DB[WN DebugService]|r TestCommand triggered: " .. tostring(input))
     
     local cmd, subcmd = addon:GetArgs(input, 2)
+    if cmd then cmd = cmd:lower() end
+    if subcmd then subcmd = subcmd:lower() end
     
     if not cmd or cmd == "" then
         addon:Print("|cff00ccffWarband Nexus Test Commands|r")
+        addon:Print("  |cff00ccff/wntest|r or |cff00ccff/wn test|r — same commands below")
         addon:Print("  |cff00ccff/wntest overflow|r - Check font overflow status")
         addon:Print("  |cff00ccff/wntest rep|r - Force reputation scan")
         addon:Print("  |cff00ccff/wntest rep ui|r - Force reputation UI refresh")
@@ -101,17 +105,17 @@ function DebugService:TestCommand(addon, input)
             end
         elseif subcmd == "ui" then
             -- Force UI refresh
-            if addon.UI and addon.UI.RefreshUI then
-                addon:Print("|cff00ccffForcing reputation UI refresh...|r")
-                addon.UI:RefreshUI()
+            if addon.RefreshUI then
+                addon:Print("|cff00ccffForcing full UI refresh...|r")
+                addon:RefreshUI()
                 addon:Print("|cff00ff00UI refreshed!|r")
             else
-                addon:Print("|cffff0000UI not available or not on reputation tab!|r")
+                addon:Print("|cffff0000RefreshUI not available!|r")
             end
         elseif subcmd == "event" then
             -- Simulate reputation change event
             addon:Print("|cff00ccffSimulating UPDATE_FACTION event...|r")
-            addon:SendMessage("WARBAND_REPUTATIONS_UPDATED")
+            addon:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
             addon:Print("|cff00ff00Event sent!|r")
         else
             addon:Print("|cffff0000Unknown rep subcommand:|r " .. subcmd)

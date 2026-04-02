@@ -573,19 +573,66 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
 
     -- Progress details (Current / Max / Season / Remaining) for key currencies.
     do
-        local charKey = data.charKey or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+        local explicitCharKey = data.charKey
+        local charKey = explicitCharKey or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
         local currencyData = nil
         if WarbandNexus and WarbandNexus.GetCurrencyData and charKey then
             currencyData = WarbandNexus:GetCurrencyData(currencyID, charKey)
         end
 
-        local qty = (currencyData and currencyData.quantity) or info.quantity or 0
-        local maxQty = (currencyData and currencyData.maxQuantity) or info.maxQuantity or 0
-        local totalEarned = currencyData and currencyData.totalEarned or nil
-        local seasonMax = currencyData and currencyData.seasonMax or nil
-        local hasSeason = (type(seasonMax) == "number" and seasonMax > 0 and type(totalEarned) == "number")
+        -- C_CurrencyInfo quantities / totalEarned are for the logged-in character only.
+        -- When the tooltip is for another row (explicit charKey), never merge those API values.
+        local canonRow = nil
+        local canonCur = nil
+        if ns.Utilities then
+            if explicitCharKey and ns.Utilities.GetCanonicalCharacterKey then
+                canonRow = ns.Utilities:GetCanonicalCharacterKey(explicitCharKey) or explicitCharKey
+            elseif explicitCharKey then
+                canonRow = explicitCharKey
+            end
+            if ns.Utilities.GetCharacterKey then
+                canonCur = ns.Utilities:GetCharacterKey()
+            end
+            if canonCur and ns.Utilities.GetCanonicalCharacterKey then
+                canonCur = ns.Utilities:GetCanonicalCharacterKey(canonCur) or canonCur
+            end
+        end
+        local function normKey(k)
+            return (k and k:gsub("%s+", "")) or ""
+        end
+        local useLiveCurrencyNumbers = (not explicitCharKey)
+            or (canonRow and canonCur and normKey(canonRow) == normKey(canonCur))
 
-        if hasSeason or (type(maxQty) == "number" and maxQty > 0) then
+        local qty
+        if currencyData and currencyData.quantity ~= nil then
+            qty = currencyData.quantity
+        elseif useLiveCurrencyNumbers then
+            qty = info.quantity or 0
+        else
+            qty = 0
+        end
+        local maxQty = (currencyData and currencyData.maxQuantity) or info.maxQuantity or 0
+        local totalEarned = currencyData and currencyData.totalEarned
+        if totalEarned == nil and useLiveCurrencyNumbers then
+            if WarbandNexus and WarbandNexus.GetCurrencyProgressEarnedFromAPI then
+                totalEarned = WarbandNexus:GetCurrencyProgressEarnedFromAPI(currencyID)
+            end
+            if totalEarned == nil and info.totalEarned ~= nil then
+                if not (issecretvalue and issecretvalue(info.totalEarned)) then
+                    totalEarned = tonumber(info.totalEarned)
+                end
+            end
+        end
+        local seasonMax = currencyData and currencyData.seasonMax
+        if (seasonMax == nil or type(seasonMax) ~= "number" or seasonMax <= 0)
+            and type(info.maxQuantity) == "number" and info.maxQuantity > 0
+            and info.useTotalEarnedForMaxQty then
+            seasonMax = info.maxQuantity
+        end
+        local hasSeasonProgress = (type(seasonMax) == "number" and seasonMax > 0)
+        local teNum = (totalEarned ~= nil and type(totalEarned) == "number") and totalEarned or nil
+
+        if hasSeasonProgress or (type(maxQty) == "number" and maxQty > 0) then
             local fmtNumber = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
             local currentLabel = (ns.L and ns.L["CURRENT_ENTRIES_LABEL"]) or "Current:"
             local seasonLabel = (ns.L and ns.L["SEASON"]) or "Season"
@@ -593,21 +640,26 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             local remainingSuffix = (ns.L and ns.L["VAULT_REMAINING_SUFFIX"]) or "remaining"
             frame:AddSpacer(6)
 
-            local cap = hasSeason and seasonMax or maxQty
-            local earned = hasSeason and totalEarned or qty
-            local rem = math.max((cap or 0) - (earned or 0), 0)
-
-            if hasSeason then
+            if hasSeasonProgress then
+                local teForSeason = (teNum ~= nil) and teNum or 0
+                local remSeason = math.max((seasonMax or 0) - teForSeason, 0)
                 frame:AddLine(string.format("%s %s", currentLabel, fmtNumber(qty)), 1, 1, 1, false)
-                frame:AddLine(string.format("%s: %s / %s", seasonLabel, fmtNumber(totalEarned or 0), fmtNumber(seasonMax or 0)), 1, 1, 1, false)
+                frame:AddLine(string.format("%s: %s / %s", seasonLabel, fmtNumber(teForSeason), fmtNumber(seasonMax or 0)), 1, 1, 1, false)
+                if remSeason > 0 then
+                    frame:AddLine(string.format("%s %s", fmtNumber(remSeason), remainingSuffix), 0.5, 1, 0.5, false)
+                else
+                    frame:AddLine(cappedText, 1, 0.35, 0.35, false)
+                end
             else
-                frame:AddLine(string.format("%s / %s", fmtNumber(qty), fmtNumber(cap)), 1, 1, 1, false)
-            end
-
-            if rem > 0 then
-                frame:AddLine(string.format("%s %s", fmtNumber(rem), remainingSuffix), 0.5, 1, 0.5, false)
-            else
-                frame:AddLine(cappedText, 1, 0.35, 0.35, false)
+                -- No season cap: single Current / max line + remaining (weekly-style cap only)
+                local cap = maxQty
+                local rem = math.max((cap or 0) - (qty or 0), 0)
+                frame:AddLine(string.format("%s / %s", fmtNumber(qty), fmtNumber(cap or 0)), 1, 1, 1, false)
+                if rem > 0 then
+                    frame:AddLine(string.format("%s %s", fmtNumber(rem), remainingSuffix), 0.5, 1, 0.5, false)
+                else
+                    frame:AddLine(cappedText, 1, 0.35, 0.35, false)
+                end
             end
         end
     end
@@ -920,12 +972,14 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         end
 
         -- Check repeatable and guaranteed flags
+        -- If the DB sets repeatable explicitly (true/false), honor it — do not override with global index
+        -- (avoids wrong "Repeatable" UI when another source or stale index disagrees).
         local isRepeatable = drop.repeatable
         local isGuaranteed = drop.guaranteed
         if not isGuaranteed and WarbandNexus and WarbandNexus.IsGuaranteedCollectible then
             isGuaranteed = WarbandNexus:IsGuaranteedCollectible(drop.type, collectibleID or drop.itemID)
         end
-        if not isRepeatable and WarbandNexus and WarbandNexus.IsRepeatableCollectible then
+        if isRepeatable == nil and WarbandNexus and WarbandNexus.IsRepeatableCollectible then
             isRepeatable = WarbandNexus:IsRepeatableCollectible(drop.type, collectibleID or drop.itemID)
         end
 

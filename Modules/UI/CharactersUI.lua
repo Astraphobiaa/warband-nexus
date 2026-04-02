@@ -45,7 +45,6 @@ local CreateIcon = ns.UI_CreateIcon -- Factory for icons
 local FormatNumber = ns.UI_FormatNumber
 -- Pooling constants
 local AcquireCharacterRow = ns.UI_AcquireCharacterRow
-local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
 
@@ -140,9 +139,9 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Hide empty state card (will be shown again if needed)
     HideEmptyStateCard(parent, "characters")
-    
-    -- PERFORMANCE: Release pooled frames
-    if ReleaseAllPooledChildren then ReleaseAllPooledChildren(parent) end
+
+    -- Pooled character rows: released in UI.lua PopulateContent (ReleaseAllPooledChildren) before
+    -- this runs — do not call again here (double-release duplicated pool entries / shared frames).
     
     local currentPlayerKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if self.db.global.characters and currentPlayerKey and self.db.global.characters[currentPlayerKey] then
@@ -1682,7 +1681,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
 
     
-    return yOffset + 46 + GetLayout().betweenRows  -- Updated from 38 to 46 (20% increase)
+    local betweenRows = GetLayout().betweenRows or 0
+    return yOffset + 46 + betweenRows  -- Row 46px + spacing (betweenRows from UI_LAYOUT)
 end
 
 

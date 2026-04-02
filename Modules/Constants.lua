@@ -42,7 +42,7 @@ local Constants = {
     -- Main addon version (must match ## Version in WarbandNexus.toc)
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "2.5.0",
+    ADDON_VERSION = "2.5.5",
     
     --==========================================================================
     -- EXPANSION TARGETING
@@ -103,7 +103,7 @@ local Constants = {
         MONEY_UPDATED = "WN_MONEY_UPDATED",
         PVE_UPDATED = "WN_PVE_UPDATED",
         CURRENCIES_UPDATED = "WN_CURRENCIES_UPDATED",
-        REPUTATIONS_UPDATED = "WN_REPUTATIONS_UPDATED",
+        REPUTATION_UPDATED = "WN_REPUTATION_UPDATED",
 
         -- Collections
         COLLECTIBLE_OBTAINED = "WN_COLLECTIBLE_OBTAINED",
@@ -192,6 +192,19 @@ local Constants = {
         [3312] = { name = "Radiant Shard", category = "crest" },           -- Carved Crest equivalent
         [3089] = { name = "Coffer Key", category = "delves" },             -- Delve Coffer Keys
     },
+
+    -- PvE tab — Bountiful column uses IsQuestFlaggedCompleted (account-wide for these weeklies).
+    -- 92600 = Cracked Keystone (Tier 11 Bountiful Delve), Midnight weekly track.
+    -- 81514 = Bountiful Delves (broader Tier 8+), TWW-era ID; kept so either completion shows the checkmark.
+    PVE_BOUNTIFUL_WEEKLY_QUEST_IDS = {
+        92600,
+        81514,
+    },
+    PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID = 92600,
+
+    -- PvE "Bountiful" column: icon from Trovehunter's Bounty item (C_Item.GetItemIconByID); ALT for ID drift between patches.
+    TROVEHUNTERS_BOUNTY_ITEM_ID = 252415,
+    TROVEHUNTERS_BOUNTY_ITEM_ID_ALT = 265714,
     
     --==========================================================================
     -- REPUTATION STANDARDS (for validation)

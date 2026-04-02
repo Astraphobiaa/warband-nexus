@@ -171,7 +171,6 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     -- Name text (use larger font for all cards)
     local nameText = FontManager:CreateFontString(card, "title", "OVERLAY")
     nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
-    nameText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
     local P = ns.PLAN_UI_COLORS or {}
     local nameColor = (progress and progress.collected) and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
     
@@ -188,7 +187,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     card.nameText = nameText
     card.planNameText = nameText  -- Store reference for overflow checking
     
-    -- Wowhead link button (bottom-right of card)
+    -- Wowhead link button (top-right of name row; name truncates to its left)
     local wowheadEntityType, wowheadID
     if plan.type == "mount" then
         wowheadEntityType = "mount"
@@ -208,9 +207,11 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         wowheadEntityType, wowheadID = "title", plan.titleID
     end
     if wowheadEntityType and wowheadID and wowheadID > 0 then
+        local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
         local whBtn = CreateFrame("Button", nil, card)
         whBtn:SetSize(18, 18)
-        whBtn:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -8, 6)
+        whBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -whInset, -10)
+        card.wowheadBtn = whBtn
         whBtn:SetNormalAtlas("socialqueuing-icon-eye")
         whBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
         whBtn:SetFrameLevel(card:GetFrameLevel() + 5)
@@ -227,6 +228,13 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
                 ns.UI.Factory:ShowWowheadCopyURL(capturedType, capturedID, self)
             end
         end)
+        local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
+        nameText:SetPoint("RIGHT", whBtn, "LEFT", -nameGap, 0)
+    else
+        local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
+        local whW = ns.PLAN_CARD_WOWHEAD_SIZE or 18
+        local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
+        nameText:SetPoint("RIGHT", card, "RIGHT", -(whInset + whW + nameGap), 0)
     end
 
     -- Show icon and card after full setup (prevents flickering)
@@ -720,24 +728,32 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         lastTextElement = placeholderText
     end
 
-    -- Try count badge: only for drop-source collectibles (rare, container, fishing, etc.), not vendor/achievement/guaranteed.
+    local Factory = ns.UI.Factory
     local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
     local idKey = tryCountTypes[plan.type]
     local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
-    if collectibleID and WarbandNexus and WarbandNexus.GetTryCount then
-        local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
-        if count == nil then count = 0 end
-        local isDrop = WarbandNexus.IsDropSourceCollectible and WarbandNexus:IsDropSourceCollectible(plan.type, collectibleID)
-        local isGuaranteed = WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(plan.type, collectibleID)
-        if (isDrop and not isGuaranteed) or count > 0 then
-            local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-            local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
-            tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -56, -10)
-            tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
-            tryText:SetJustifyH("RIGHT")
-            tryText:SetWordWrap(false)
-            card.tryCountText = tryText
+    if collectibleID and Factory and Factory.CreateTryCountClickable and WarbandNexus then
+        local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name
+        local row = card.tryCountClickable
+        if not row then
+            row = Factory:CreateTryCountClickable(card, { height = 18, frameLevelOffset = 5, fontCategory = "body" })
+            row:SetSize(120, 18)
+            card.tryCountClickable = row
         end
+        do
+            local gap = 8
+            local whW = ns.PLAN_CARD_WOWHEAD_SIZE or 18
+            if card.wowheadBtn then
+                row:SetPoint("TOPRIGHT", card.wowheadBtn, "TOPLEFT", -gap, 0)
+            else
+                local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
+                row:SetPoint("TOPRIGHT", card, "TOPRIGHT", -(whInset + whW + gap), -10)
+            end
+        end
+        card.tryCountText = row.text
+        row:WnUpdateTryCount(plan.type, collectibleID, resolvedName)
+    elseif card.tryCountClickable then
+        card.tryCountClickable:Hide()
     end
 
     return lastTextElement

@@ -367,6 +367,8 @@ local defaults = {
             pet = {},
             toy = {},
             illusion = {},
+            -- One-time Rarity mount seed (sum); after true, Rarity is never read again for counts
+            rarityMountsOneTimeSeedComplete = false,
         },
         
         -- ========== TRACK ITEM DB (User overlays on CollectibleSourceDB) ==========
@@ -643,6 +645,8 @@ function WarbandNexus:OnInitialize()
     -- Setup slash commands
     self:RegisterChatCommand("wn", "SlashCommand")
     self:RegisterChatCommand("warbandnexus", "SlashCommand")
+    -- Dev/test utilities (DebugService:TestCommand — rep ui, rep event, overflow, etc.)
+    self:RegisterChatCommand("wntest", "WntestSlashCommand")
     
     -- Register PLAYER_LOGOUT event for SessionCache compression
     self:RegisterEvent("PLAYER_LOGOUT", "OnPlayerLogout")
@@ -1051,6 +1055,15 @@ function WarbandNexus:SlashCommand(input)
     ns.CommandService:HandleSlashCommand(self, input)
 end
 
+--- Standalone slash: /wntest <args> (same as /wn test <args>)
+function WarbandNexus:WntestSlashCommand(input)
+    if ns.DebugService and ns.DebugService.TestCommand then
+        ns.DebugService:TestCommand(self, input or "")
+    else
+        self:Print("|cffff0000[WN] DebugService not loaded.|r")
+    end
+end
+
 function WarbandNexus:PrintCharacterList()
     ns.DebugService:PrintCharacterList(self)
 end
@@ -1234,23 +1247,24 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
         
         if charData then
-            local currentGuildName = IsInGuild() and GetGuildInfo("player") or nil
             local storedGuildName = charData.guildName
             
-            -- Guild change detected
-            if currentGuildName ~= storedGuildName then
-                ns.DebugPrint("|cff9370DB[WN Core]|r Guild change detected: " .. tostring(storedGuildName) .. " -> " .. tostring(currentGuildName))
-                
-                -- Update character's guild name
-                charData.guildName = currentGuildName
-                
-                -- If left guild (or was kicked), no cleanup needed - guild bank data is global
-                -- If joined new guild, data will be scanned when guild bank opens
-                
-                if currentGuildName then
-                    self:Print("|cff00ff00" .. string.format((ns.L and ns.L["GUILD_JOINED_FORMAT"]) or "Guild updated: %s", currentGuildName) .. "|r")
-                elseif storedGuildName then
+            if not IsInGuild() then
+                if storedGuildName then
+                    charData.guildName = nil
                     self:Print("|cffffcc00" .. ((ns.L and ns.L["GUILD_LEFT"]) or "You are no longer in a guild. Guild Bank tab disabled.") .. "|r")
+                end
+            else
+                local rawGuild = GetGuildInfo("player")
+                if rawGuild and issecretvalue and issecretvalue(rawGuild) then
+                    -- Midnight: cannot compare or format guild name safely — skip this login
+                elseif rawGuild then
+                    local currentGuildName = rawGuild
+                    if currentGuildName ~= storedGuildName then
+                        ns.DebugPrint("|cff9370DB[WN Core]|r Guild change detected: " .. tostring(storedGuildName) .. " -> " .. tostring(currentGuildName))
+                        charData.guildName = currentGuildName
+                        self:Print("|cff00ff00" .. string.format((ns.L and ns.L["GUILD_JOINED_FORMAT"]) or "Guild updated: %s", currentGuildName) .. "|r")
+                    end
                 end
             end
         end
@@ -1562,8 +1576,13 @@ function WarbandNexus:OnPetListChanged()
         return -- Skip if UI not visible or wrong tab
     end
     
-    -- Get current pet count
-    local _, currentPetCount = C_PetJournal.GetNumPets()
+    -- Get current pet count (second return); guard Midnight secret values before compare
+    local _, currentPetCountRaw = C_PetJournal.GetNumPets()
+    if currentPetCountRaw == nil or (issecretvalue and issecretvalue(currentPetCountRaw)) then
+        return
+    end
+    local currentPetCount = tonumber(currentPetCountRaw)
+    if not currentPetCount then return end
     
     -- Initialize cache if needed
     if not self.lastPetCount then

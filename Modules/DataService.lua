@@ -117,6 +117,7 @@ end
 --- @param timePlayedThisLevel number Seconds played at current level
 function WarbandNexus:OnTimePlayedReceived(event, totalTimePlayed, timePlayedThisLevel)
     if not totalTimePlayed or totalTimePlayed <= 0 then return end
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
     if not self.db or not self.db.global or not self.db.global.characters then return end
 
     local charKey = ns.Utilities:GetCharacterKey()
@@ -846,8 +847,7 @@ end
 
 --[[
     Save minimal character data for UNTRACKED characters
-    Only collects: name, realm, class, race, faction, level, ilvl, gold
-    NO items, reputation, currency, pve, professions, etc.
+    Identity + gold/level only for the Characters tab row. No ilvl/spec/stats/rested/professions/PvE/etc.
     @return boolean - Success status
 ]]
 function WarbandNexus:SaveMinimalCharacterData()
@@ -879,32 +879,6 @@ function WarbandNexus:SaveMinimalCharacterData()
         gender = 2
     end
     
-    -- Get item level
-    local _, avgItemLevelEquipped = GetAverageItemLevel()
-    if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then avgItemLevelEquipped = nil end
-    local itemLevel = avgItemLevelEquipped or 0
-    
-    -- Spec (for offline main stat in Gear tab)
-    local specID, specName, specIcon = nil, nil, nil
-    if GetSpecialization and GetSpecializationInfo then
-        local idx = GetSpecialization()
-        if idx then specID, specName, _, specIcon = GetSpecializationInfo(idx) end
-    end
-    
-    -- Hero Talent (Midnight 12.0+)
-    local heroSpecID, heroSpecName = nil, nil
-    if C_ClassTalents and C_ClassTalents.GetActiveHeroTalentSpec then
-        heroSpecID = C_ClassTalents.GetActiveHeroTalentSpec()
-        if heroSpecID and not (issecretvalue and issecretvalue(heroSpecID)) then
-            if C_ClassTalents.GetHeroTalentSpecInfo then
-                local heroInfo = C_ClassTalents.GetHeroTalentSpecInfo(heroSpecID)
-                if heroInfo then heroSpecName = heroInfo.name end
-            end
-        else
-            heroSpecID = nil
-        end
-    end
-    
     -- Validate critical data
     if not classFile or not level or level == 0 then
         return false
@@ -927,34 +901,10 @@ function WarbandNexus:SaveMinimalCharacterData()
     -- If we overwrite trackingConfirmed here, the popup will never appear.
     local existingEntry = self.db.global.characters[key]
     local preserveTracked = existingEntry and existingEntry.isTracked
+    -- Never coerce nil → false: false is treated like "unconfirmed" by old popups and breaks (not false)==true.
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
-    local preserveTimePlayed = existingEntry and existingEntry.timePlayed
-    local preserveMythicKey = existingEntry and existingEntry.mythicKey  -- Preserve keystone data for CharactersUI display
 
-    -- Preserve profession service data (collected separately by ProfessionService)
-    local preserveProfessions          = existingEntry and existingEntry.professions  -- CRITICAL FIX: Don't lose profession data on untracked save
-    local preserveConcentration       = existingEntry and existingEntry.concentration
-    local preserveRecipes             = existingEntry and existingEntry.recipes
-    local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
-    local         preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
-    local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
-    local preserveProfessionCooldowns = existingEntry and existingEntry.professionCooldowns
-    local preserveProfessionEquipment = existingEntry and existingEntry.professionEquipment
-    local preserveCooldownRecipeIDs   = existingEntry and existingEntry.cooldownRecipeIDs
-    local preserveCraftingOrders      = existingEntry and existingEntry.craftingOrders
-    local preserveProfessionData      = existingEntry and existingEntry.professionData
-    local preserveRested              = existingEntry and existingEntry.rested
-    local restedData                  = CollectRestedData() or preserveRested
-    -- Preserve maxXP when API returned nil so we don't overwrite good DB value with nil/0
-    if restedData and (restedData.maxXP == nil or restedData.maxXP == 0) and preserveRested and type(preserveRested.maxXP) == "number" and preserveRested.maxXP > 0 then
-        restedData.maxXP = preserveRested.maxXP
-        if not restedData.restedCapXP or restedData.restedCapXP == 0 then
-            local capMul = GetRestedCapMultiplier(raceFile)
-            restedData.restedCapXP = math.floor(preserveRested.maxXP * capMul)
-        end
-    end
-
-    -- Store MINIMAL data only
+    -- Store MINIMAL data only (untracked: strip profession/gear/PvE-style fields; do not call extra collectors)
     self.db.global.characters[key] = {
         name = name,
         realm = realm,
@@ -970,32 +920,31 @@ function WarbandNexus:SaveMinimalCharacterData()
         race = race,
         raceFile = raceFile,
         gender = gender,
-        itemLevel = itemLevel,
-        isTracked = preserveTracked or false,  -- Preserve existing tracking choice
-        trackingConfirmed = preserveConfirmed or false,  -- ONLY true if user actually made a choice
+        itemLevel = 0,
+        isTracked = preserveTracked or false,
+        trackingConfirmed = preserveConfirmed,
         lastSeen = time(),
-        mythicKey = preserveMythicKey,  -- Preserve keystone data for CharactersUI display
-        timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)
-        -- Preserve profession service data (CRITICAL: include professions to prevent data loss)
-        professions          = preserveProfessions,  -- Profession names, icons, skill levels
-        concentration        = preserveConcentration,
-        recipes              = preserveRecipes,
-        professionExpansions = preserveProfExpansions,
-        discoveredSkillLines = preserveDiscoveredSkillLines,
-        knowledgeData        = preserveKnowledgeData,
-        professionCooldowns  = preserveProfessionCooldowns,
-        professionEquipment  = preserveProfessionEquipment,
-        cooldownRecipeIDs    = preserveCooldownRecipeIDs,
-        craftingOrders       = preserveCraftingOrders,
-        professionData       = preserveProfessionData,
-        rested               = restedData,
-        guid                 = UnitGUID("player"),
-        stats                = CollectPlayerStats(),  -- For Gear tab offline Character Stats
-        specID               = specID,
-        specName             = specName,
-        specIcon             = specIcon,
-        heroSpecID           = heroSpecID,
-        heroSpecName         = heroSpecName,
+        mythicKey = nil,
+        timePlayed = nil,
+        professions = nil,
+        concentration = nil,
+        recipes = nil,
+        professionExpansions = nil,
+        discoveredSkillLines = nil,
+        knowledgeData = nil,
+        professionCooldowns = nil,
+        professionEquipment = nil,
+        cooldownRecipeIDs = nil,
+        craftingOrders = nil,
+        professionData = nil,
+        rested = nil,
+        guid = UnitGUID("player"),
+        stats = nil,
+        specID = nil,
+        specName = nil,
+        specIcon = nil,
+        heroSpecID = nil,
+        heroSpecName = nil,
     }
     -- Fire event for UI refresh
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
@@ -1239,6 +1188,7 @@ end
     Update only profession data (lightweight — names, icons, skill levels)
 ]]
 function WarbandNexus:UpdateProfessionData()
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
     local success, err = pcall(function()
         local key = ns.Utilities:GetCharacterKey()
         if not self.db.global.characters or not self.db.global.characters[key] then return end
@@ -1626,9 +1576,10 @@ function WarbandNexus:UpdatePvELoadingState(state)
         ns.PvELoadingState[k] = v
     end
     
-    -- Fire event for UI update
+    -- Fire event for UI update (keystone + loading overlay; listeners use WN_PVE_UPDATED)
     if self.SendMessage then
-        self:SendMessage("WARBAND_PVE_UPDATED")
+        local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        self:SendMessage(Constants.EVENTS.PVE_UPDATED, charKey)
     end
 end
 
@@ -3474,25 +3425,34 @@ function WarbandNexus:GetCollectionStats()
         toys = 0,
         achievements = 0,
     }
+
+    local function SafeUInt(v)
+        if v == nil then return 0 end
+        if issecretvalue and issecretvalue(v) then return 0 end
+        local n = tonumber(v)
+        if not n or n < 0 or n ~= math.floor(n) then return 0 end
+        return n
+    end
     
-    -- Mounts
+    -- Mounts (collected count)
     if C_MountJournal and C_MountJournal.GetNumMounts then
-        stats.mounts = C_MountJournal.GetNumMounts() or 0
+        stats.mounts = SafeUInt(C_MountJournal.GetNumMounts())
     end
     
-    -- Pets
+    -- Pets: second return is collected count (first is journal slot count for GetPetInfoByIndex)
     if C_PetJournal and C_PetJournal.GetNumPets then
-        stats.pets = C_PetJournal.GetNumPets() or 0
+        local _, numCollected = C_PetJournal.GetNumPets()
+        stats.pets = SafeUInt(numCollected)
     end
     
-    -- Toys
+    -- Toys (journal size / displayed count — lightweight summary)
     if C_ToyBox and C_ToyBox.GetNumToys then
-        stats.toys = C_ToyBox.GetNumToys() or 0
+        stats.toys = SafeUInt(C_ToyBox.GetNumToys())
     end
     
     -- Achievement Points
     if GetTotalAchievementPoints then
-        stats.achievements = GetTotalAchievementPoints() or 0
+        stats.achievements = SafeUInt(GetTotalAchievementPoints())
     end
     
     return stats

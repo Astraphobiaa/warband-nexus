@@ -333,6 +333,20 @@ local CARD_BUTTON_LAYOUT = {
 ns.UI_BUTTON_SIZES = BUTTON_SIZES
 ns.UI_CARD_BUTTON_LAYOUT = CARD_BUTTON_LAYOUT
 
+-- My Plans cards: distance from card's right edge to Wowhead button's right edge.
+-- Matches TOPRIGHT action row: delete + alert (+ complete for custom) from PlansUI.
+function ns.GetPlanCardWowheadRightInset(planType)
+    local CBL = ns.UI_CARD_BUTTON_LAYOUT or { ACTION_SIZE = 20, ACTION_MARGIN = 8, ACTION_GAP = 4 }
+    local sz, m, g = CBL.ACTION_SIZE, CBL.ACTION_MARGIN, CBL.ACTION_GAP
+    if planType == "custom" then
+        return m + (sz + g) * 2 + sz + g
+    end
+    return m + (sz + g) + sz + g
+end
+
+ns.PLAN_CARD_WOWHEAD_SIZE = 18
+ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP = 6
+
 -- Refresh COLORS table from database (in-place, zero allocation)
 local function RefreshColors()
     -- Update theme-derived colors in-place
@@ -3301,6 +3315,327 @@ ns.UI_HideTooltip = function()
     if WarbandNexus and WarbandNexus.Tooltip then
         WarbandNexus.Tooltip:Hide()
     end
+end
+
+--============================================================================
+-- TRY COUNT ROW (Factory — same click path as popup everywhere)
+--============================================================================
+
+---@class WnTryCountClickableOptions
+---@field height number|nil default 18
+---@field fontCategory string|nil default "small"
+---@field justifyH string|nil "LEFT" or "RIGHT" (default RIGHT)
+---@field frameLevelOffset number|nil added to parent frame level (default 10)
+---@field showTooltip boolean|nil default true
+
+---Creates a full-width (caller anchors) or fixed-size try-count button; left/right mouse opens WNTryCount popup.
+---@param parent Frame
+---@param options WnTryCountClickableOptions|nil
+---@return Frame row with .text (FontString) and :WnUpdateTryCount(type, id, displayName)
+function ns.UI.Factory:CreateTryCountClickable(parent, options)
+    options = options or {}
+    local height = options.height or 18
+    local fontCategory = options.fontCategory or "small"
+    local justify = options.justifyH or "RIGHT"
+    local showTooltip = options.showTooltip ~= false
+    local levelOff = options.frameLevelOffset or 10
+
+    local row = CreateFrame("Button", nil, parent)
+    row:SetHeight(height)
+    row:EnableMouse(true)
+    if parent and parent.GetFrameStrata then
+        row:SetFrameStrata(parent:GetFrameStrata())
+        row:SetFrameLevel((parent:GetFrameLevel() or 0) + levelOff)
+    end
+    if row.RegisterForClicks then
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    end
+
+    local fs = FontManager:CreateFontString(row, fontCategory, "OVERLAY")
+    if justify == "LEFT" then
+        fs:SetPoint("LEFT", row, "LEFT", 0, 0)
+    else
+        fs:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    end
+    fs:SetJustifyH(justify)
+    fs:SetWordWrap(false)
+    fs:EnableMouse(false)
+    row.text = fs
+
+    row._wnTryType = nil
+    row._wnTryID = nil
+    row._wnTryName = nil
+
+    if showTooltip then
+        row:SetScript("OnEnter", function(self)
+            if not self:IsShown() then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count", 1, 1, 1)
+            GameTooltip:AddLine((ns.L and ns.L["TRY_COUNT_CLICK_HINT"]) or "Click to edit attempt count.", 0.7, 0.7, 0.7, true)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+
+    row:SetScript("OnClick", nil)
+    row:SetScript("OnMouseUp", function(self, btn)
+        if btn ~= "LeftButton" and btn ~= "RightButton" then return end
+        local t, id, name = self._wnTryType, self._wnTryID, self._wnTryName
+        if not t or not id or not ns.UI_ShowTryCountPopup then return end
+        ns.UI_ShowTryCountPopup(t, id, name)
+    end)
+
+    function row:WnUpdateTryCount(collectibleType, collectibleID, displayName)
+        self._wnTryType = collectibleType
+        self._wnTryID = collectibleID
+        self._wnTryName = displayName
+        if not collectibleType or not collectibleID or not WarbandNexus or not WarbandNexus.ShouldShowTryCountInUI then
+            self:Hide()
+            return
+        end
+        if not WarbandNexus:ShouldShowTryCountInUI(collectibleType, collectibleID) then
+            self:Hide()
+            return
+        end
+        local count = (WarbandNexus.GetTryCount and WarbandNexus:GetTryCount(collectibleType, collectibleID)) or 0
+        local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
+        self.text:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
+        self:Show()
+    end
+
+    row:Hide()
+    return row
+end
+
+-- Collections detail header: action slot (+ try row) + Wowhead (eye always flush right) — same geometry for Mounts / Pets / Toy Box.
+ns.CollectionsDetailHeaderLayout = {
+    WOWHEAD_SIZE = 18,
+    ACTION_SLOT_W = 74,
+    ACTION_SLOT_H = 28,
+    TRY_GAP = 4,
+    TRY_ROW_H = 18,
+    WOWHEAD_GAP = 10,
+}
+
+---Right column: [action slot][Wowhead] with optional try row aligned to the action slot only (not full column width).
+---@param parent Frame
+---@param opts { withTryRow: boolean|nil } withTryRow defaults true
+---@return { root: Frame, actionSlot: Frame, wowheadBtn: Button, tryCountRow: Frame|nil }
+function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
+    opts = opts or {}
+    local withTryRow = opts.withTryRow ~= false
+    local L = ns.CollectionsDetailHeaderLayout
+    local w = L.WOWHEAD_SIZE + L.WOWHEAD_GAP + L.ACTION_SLOT_W
+    local h = L.ACTION_SLOT_H
+    if withTryRow then
+        h = h + L.TRY_GAP + L.TRY_ROW_H
+    end
+
+    local root = CreateFrame("Frame", nil, parent)
+    root:SetSize(w, h)
+
+    local actionSlot = CreateFrame("Frame", nil, root)
+    actionSlot:SetSize(L.ACTION_SLOT_W, L.ACTION_SLOT_H)
+    actionSlot:SetPoint("TOPRIGHT", root, "TOPRIGHT", -(L.WOWHEAD_SIZE + L.WOWHEAD_GAP), 0)
+
+    local wowheadBtn = CreateFrame("Button", nil, root)
+    wowheadBtn:SetSize(L.WOWHEAD_SIZE, L.WOWHEAD_SIZE)
+    local vOff = math.max(0, (L.ACTION_SLOT_H - L.WOWHEAD_SIZE) / 2)
+    wowheadBtn:SetPoint("TOPRIGHT", root, "TOPRIGHT", 0, -vOff)
+    wowheadBtn:SetNormalAtlas("socialqueuing-icon-eye")
+    wowheadBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    wowheadBtn:SetFrameLevel((root:GetFrameLevel() or 0) + 8)
+    wowheadBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
+        GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
+        GameTooltip:Show()
+    end)
+    wowheadBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    wowheadBtn:Hide()
+
+    local tryCountRow = nil
+    if withTryRow then
+        tryCountRow = self:CreateTryCountClickable(root, {
+            height = L.TRY_ROW_H,
+            frameLevelOffset = 10,
+            justifyH = "RIGHT",
+        })
+        if tryCountRow then
+            tryCountRow:SetPoint("TOPLEFT", actionSlot, "BOTTOMLEFT", 0, -L.TRY_GAP)
+            tryCountRow:SetPoint("TOPRIGHT", actionSlot, "BOTTOMRIGHT", 0, -L.TRY_GAP)
+        end
+    end
+
+    return {
+        root = root,
+        actionSlot = actionSlot,
+        wowheadBtn = wowheadBtn,
+        tryCountRow = tryCountRow,
+    }
+end
+
+--============================================================================
+-- TRY COUNT POPUP (Plans / Collections / Tracker)
+--============================================================================
+
+local tryCountPopupFrame = nil
+
+---@param collectibleType string mount|pet|toy|illusion
+---@param collectibleID number
+---@param displayName string|nil shown under header
+function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
+    if not collectibleType or not collectibleID then return end
+    local COLORS = ns.UI_COLORS or { accent = { 0.40, 0.20, 0.58 }, accentDark = { 0.28, 0.14, 0.41 }, bg = { 0.06, 0.06, 0.08 }, border = { 0.20, 0.20, 0.25 } }
+
+    if not tryCountPopupFrame then
+        local f = CreateFrame("Frame", "WNTryCountPopup", UIParent, "BackdropTemplate")
+        f:SetSize(300, 160)
+        f:SetPoint("CENTER")
+        f:EnableMouse(true)
+        f:SetMovable(true)
+
+        if ns.WindowManager then
+            ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.POPUP)
+            ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP)
+            ns.WindowManager:InstallESCHandler(f)
+            ns.WindowManager:InstallDragHandler(f, f)
+        else
+            f:SetFrameStrata("FULLSCREEN_DIALOG")
+            f:SetFrameLevel(200)
+            f:RegisterForDrag("LeftButton")
+            f:SetScript("OnDragStart", f.StartMoving)
+            f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        end
+
+        ApplyVisuals(f, { 0.04, 0.04, 0.06, 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9 })
+
+        local header = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        header:SetHeight(32)
+        header:SetPoint("TOPLEFT", 2, -2)
+        header:SetPoint("TOPRIGHT", -2, -2)
+        ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+
+        local headerTitle = FontManager:CreateFontString(header, "title", "OVERLAY")
+        headerTitle:SetPoint("CENTER")
+        headerTitle:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count")
+        headerTitle:SetTextColor(1, 1, 1)
+        f.headerTitle = headerTitle
+
+        local nameLabel = FontManager:CreateFontString(f, "body", "OVERLAY")
+        nameLabel:SetPoint("TOP", header, "BOTTOM", 0, -12)
+        nameLabel:SetJustifyH("CENTER")
+        nameLabel:SetTextColor(0.9, 0.9, 0.9)
+        f.nameLabel = nameLabel
+
+        local editBoxBg = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        editBoxBg:SetSize(120, 28)
+        editBoxBg:SetPoint("TOP", nameLabel, "BOTTOM", 0, -10)
+        ApplyVisuals(editBoxBg, { 0.02, 0.02, 0.03, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
+
+        local editBox = CreateFrame("EditBox", nil, editBoxBg)
+        editBox:SetPoint("TOPLEFT", 8, -4)
+        editBox:SetPoint("BOTTOMRIGHT", -8, 4)
+        editBox:SetAutoFocus(false)
+        editBox:SetNumeric(true)
+        editBox:SetMaxLetters(6)
+        editBox:SetFont(FontManager:GetFontFace(), FontManager:GetFontSize("body"), "")
+        editBox:SetTextColor(1, 1, 1)
+        editBox:SetJustifyH("CENTER")
+        f.editBox = editBox
+
+        local btnWidth, btnHeight = 90, 26
+
+        local saveBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        saveBtn:SetSize(btnWidth, btnHeight)
+        saveBtn:SetPoint("TOPRIGHT", editBoxBg, "BOTTOM", -4, -10)
+        ApplyVisuals(saveBtn, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+        local saveBtnText = FontManager:CreateFontString(saveBtn, "body", "OVERLAY")
+        saveBtnText:SetPoint("CENTER")
+        saveBtnText:SetText((ns.L and ns.L["SAVE"]) or "Save")
+        saveBtnText:SetTextColor(1, 1, 1)
+        saveBtn:SetScript("OnEnter", function(self)
+            ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
+        end)
+        saveBtn:SetScript("OnLeave", function(self)
+            ApplyVisuals(self, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+        end)
+        f.saveBtn = saveBtn
+
+        local cancelBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        cancelBtn:SetSize(btnWidth, btnHeight)
+        cancelBtn:SetPoint("TOPLEFT", editBoxBg, "BOTTOM", 4, -10)
+        ApplyVisuals(cancelBtn, { 0.08, 0.08, 0.10, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+        local cancelBtnText = FontManager:CreateFontString(cancelBtn, "body", "OVERLAY")
+        cancelBtnText:SetPoint("CENTER")
+        cancelBtnText:SetText(_G.CANCEL or "Cancel")
+        cancelBtnText:SetTextColor(0.8, 0.8, 0.8)
+        cancelBtn:SetScript("OnEnter", function(self)
+            ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8 })
+        end)
+        cancelBtn:SetScript("OnLeave", function(self)
+            ApplyVisuals(self, { 0.08, 0.08, 0.10, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+        end)
+        cancelBtn:SetScript("OnClick", function() f:Hide() end)
+
+        editBox:SetScript("OnEnterPressed", function()
+            f.saveBtn:Click()
+        end)
+        editBox:SetScript("OnEscapePressed", function()
+            f:Hide()
+        end)
+
+        f:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
+                self:Hide()
+            else
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+            end
+        end)
+
+        tryCountPopupFrame = f
+    end
+
+    local popup = tryCountPopupFrame
+    popup.nameLabel:SetText(displayName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
+
+    local currentCount = 0
+    if WarbandNexus and WarbandNexus.GetTryCount then
+        currentCount = WarbandNexus:GetTryCount(collectibleType, collectibleID) or 0
+    end
+    popup.editBox:SetText(tostring(currentCount))
+
+    popup._wnTryType = collectibleType
+    popup._wnTryID = collectibleID
+
+    popup.saveBtn:SetScript("OnClick", function()
+        local count = tonumber(popup.editBox:GetText())
+        if count and count >= 0 and WarbandNexus and WarbandNexus.SetTryCount and popup._wnTryType and popup._wnTryID then
+            WarbandNexus:SetTryCount(popup._wnTryType, popup._wnTryID, count)
+            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            if WarbandNexus and WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "try_count_set" })
+            end
+        end
+        popup:Hide()
+    end)
+
+    popup:Show()
+    if popup.Raise then popup:Raise() end
+    if not InCombatLockdown() and popup.editBox then
+        local txt = tostring(currentCount)
+        popup.editBox:SetFocus()
+        local len = string.len(txt)
+        popup.editBox:SetCursorPosition(len)
+    end
+end
+
+--- Opens the try-count editor immediately (never use MenuUtil here: on Midnight the context menu often
+--- registers success but shows nothing, which prevented the popup from ever opening.)
+function ns.UI_OpenTryCountFromContext(_anchorFrame, collectibleType, collectibleID, displayName)
+    if not collectibleType or not collectibleID or not ns.UI_ShowTryCountPopup then return end
+    ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
 end
 
 -- Export PixelScale functions (used by FontManager for resolution normalization)

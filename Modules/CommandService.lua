@@ -47,26 +47,31 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Open settings"))
         addon:Print("  |cff00ccff/wn minimap|r — " .. ((ns.L and ns.L["CMD_MINIMAP"]) or "Toggle minimap button"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
-        addon:Print("  |cff00ccff/wn trycounterdebug|r — Toggle try counter loot debug (no rep/currency spam)")
-        addon:Print("  |cff00ccff/wn stonevaultdebug|r — Stonevault Mechsuit try count diagnostic")
-        addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
-        addon:Print("  |cff00ccff/wn toydebug <itemID>|r — Toy tooltip/source debug (prints to chat)")
-        addon:Print("  |cff00ccff/wn firstcraft|r — " .. ((ns.L and ns.L["CMD_FIRSTCRAFT"]) or "List first-craft bonus recipes per expansion (open profession first)"))
-        addon:Print("  |cff00ccff/wn profverify|r — Print profession Knowledge/Recipes/First Craft/Equipment (open profession K first to verify)")
-        addon:Print("  |cff00ccff/wn chartest|r — Print current character's race/class API data (for icon debugging)")
-        addon:Print("  |cff00ccff/wn gearupgradedebug|r — Print upgrade costs (API) and affordability per slot (current char)")
-        addon:Print("  |cff00ccff/wn gearstoragedebug|r — Scan storage upgrades for all tracked characters/slots")
-        addon:Print("  |cff00ccff/wn markobtained <itemID>|r — Mark a drop as obtained (stops try counter)")
-        addon:Print("  |cff00ccff/wn clearobtained <itemID>|r — Clear obtained marker (resumes tracking)")
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
+            -- Literal English: avoids AceLocale returning missing keys as "CMD_*" in non-enUS clients
+            addon:Print("|cff888888— Debug mode ON — advanced / diagnostic:|r")
+            addon:Print("  |cff00ccff/wn trycounterdebug|r — Toggle try counter loot debug (verbose chat)")
+            addon:Print("  |cff00ccff/wn markobtained <itemID>|r — Mark drop obtained (stops try counter)")
+            addon:Print("  |cff00ccff/wn clearobtained <itemID>|r — Clear obtained marker (resume try counter)")
+            addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
+            addon:Print("  |cff00ccff/wn toydebug <itemID>|r — Toy tooltip/source dump (chat)")
+            addon:Print("  |cff00ccff/wn firstcraft|r — " .. ((ns.L and ns.L["CMD_FIRSTCRAFT"]) or "First-craft recipes (open profession first)"))
+            addon:Print("  |cff00ccff/wn profverify|r — Profession Knowledge/Recipes/Equipment dump")
             addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
-            addon:Print("  |cff00ccff/wn trydebug|r — Try counter state and source resolution simulation")
-            addon:Print("  |cff00ccff/wn bountydebug|r — Print Special Assignment bounty API results for Midnight maps")
-            addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Check try count for a collectible")
-            addon:Print("  |cff00ccff/wn check|r — Check what drops from your current target/mouseover")
-            addon:Print("  |cff00ccff/wn testevents [type] [id]|r — Test notification events (e.g. reputation valeera)")
-            addon:Print("  |cff00ccff/wn testloot [type] [id]|r — Test notification popups (criteria, vaultprogress, achievement, etc.; use help for list)")
+            addon:Print("  |cff00ccff/wn trydebug|r — Try counter state / source simulation")
+            addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Try count for item|mount|pet|toy")
+            addon:Print("  |cff00ccff/wn raritymountpreview|r — Rarity vs WN try counts (needs Rarity)")
+            addon:Print("  |cff00ccff/wn rarityseedreset|r — Reset one-time Rarity import flag")
+            addon:Print("  |cff00ccff/wn check|r — Drops from target/mouseover")
+            addon:Print("  |cff00ccff/wn test ...|r — Same as |cff00ccff/wntest ...|r (rep ui, rep event, overflow, …)")
+            addon:Print("  |cff00ccff/wn testevents [type] [id]|r — Test notification events")
+            addon:Print("  |cff00ccff/wn testloot [type] [id]|r — Test notification popups")
+            addon:Print("  |cff00ccff/wn cleanup|r — Remove stale characters (90+ days inactive)")
+            addon:Print("  |cff00ccff/wn track|r — enable | disable | status")
+            addon:Print("  |cff00ccff/wn recover|r — Emergency recovery")
+        else
+            addon:Print("|cff888888For try counter tools, changelog, and diagnostics: |cff00ccff/wn debug|r|cff888888 then |cff00ccff/wn help|r.|r")
         end
         return
     end
@@ -102,6 +107,23 @@ function CommandService:HandleSlashCommand(addon, input)
         CommandService:HandleDebugToggle(addon)
         return
 
+    elseif cmd == "test" then
+        -- Same as /wntest — routes to DebugService:TestCommand (rep ui, rep event, overflow, …)
+        local _, nextPos = addon:GetArgs(input, 1)
+        local rest = ""
+        if type(nextPos) == "number" and nextPos < 1e9 then
+            local tail = string.sub(input, nextPos)
+            if tail and tail ~= "" then
+                rest = string.gsub(tail, "^%s+", "") or ""
+            end
+        end
+        if ns.DebugService and ns.DebugService.TestCommand then
+            ns.DebugService:TestCommand(addon, rest)
+        else
+            addon:Print("|cffff0000[WN] DebugService not available.|r")
+        end
+        return
+
     elseif cmd == "trycounterdebug" or cmd == "lootdebug" then
         if not addon.db or not addon.db.profile then
             addon:Print("|cffff6600[WN] Could not toggle: profile not ready.|r")
@@ -112,69 +134,6 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("|cff00ff00[WN] Try counter loot debug ENABLED. Open any loot (dumpster, chest, corpse) — you should see [WN-TryCounter] lines in chat.|r")
         else
             addon:Print("|cffff8800[WN] Try counter loot debug DISABLED.|r")
-        end
-        return
-        
-    elseif cmd == "profiler" or cmd == "prof" or cmd == "perf" then
-        if ns.Profiler then
-            local _, subCmd, arg3 = addon:GetArgs(input, 3)
-            ns.Profiler:HandleCommand(addon, subCmd, arg3)
-        else
-            addon:Print("|cffff6600" .. ((ns.L and ns.L["PROFILER_NOT_LOADED"]) or "Profiler module not loaded.") .. "|r")
-        end
-        return
-
-    elseif cmd == "stonevaultdebug" or cmd == "svdebug" then
-        -- Stonevault Mechsuit: try count = statistic + local (Quest Starter = Mount Item = Mount)
-        local db = addon.db and addon.db.global and addon.db.global.tryCounts
-        local tc = db and db.mount or {}
-        local ti = db and db.item or {}
-        local ok, statVal = pcall(GetStatistic, 20500)
-        if not ok then statVal = nil end
-        addon:Print("|cff9370DB[Stonevault]|r statistic(20500)=" .. tostring(statVal) .. " | local item[226683]=" .. tostring(ti[226683]) .. " mount[2119]=" .. tostring(tc[2119]) .. " mount[221765]=" .. tostring(tc[221765]))
-        addon:Print("|cff9370DB[Stonevault]|r GetTryCount = statistic + local => " .. tostring(addon:GetTryCount("mount", 2119)))
-        return
-
-    elseif cmd == "toydebug" or cmd == "toyinfo" then
-        -- Always available: dump toy tooltip lines to chat (no debug mode required)
-        CommandService:ToyDebugReport(addon, input)
-        return
-
-    elseif cmd == "firstcraft" or cmd == "fc" then
-        -- Profession: list first-craft bonus recipes per content (expansion). Requires profession window open.
-        if ns.ProfessionService and addon.PrintFirstCraftRecipesByContent then
-            addon:PrintFirstCraftRecipesByContent()
-        else
-            addon:Print("|cffff6600[WN]|r " .. (ns.L and ns.L["PROF_FIRSTCRAFT_NO_DATA"] or "Professions module not available."))
-        end
-        return
-
-    elseif cmd == "profverify" or cmd == "pv" then
-        -- Profession: print Knowledge, Recipes, First Craft, Equipment for current char (open profession window first for live data).
-        if addon.PrintProfessionVerify then
-            addon:PrintProfessionVerify()
-        else
-            addon:Print("|cffff6600[WN]|r Profession verify not available.")
-        end
-        return
-
-    elseif cmd == "chartest" or cmd == "charapi" then
-        -- Character API test: print current character's race/class data as returned by the game API
-        CommandService:CharacterAPITest(addon)
-        return
-
-    elseif cmd == "gearupgradedebug" or cmd == "geardebug" then
-        if addon.GearUpgradeDebugReport then
-            addon:GearUpgradeDebugReport()
-        else
-            addon:Print("|cffff6600[WN]|r Gear module not loaded.")
-        end
-        return
-    elseif cmd == "gearstoragedebug" or cmd == "storagegeardebug" or cmd == "storagedebug" then
-        if addon.GearStorageUpgradeDebugReportAll then
-            addon:GearStorageUpgradeDebugReportAll()
-        else
-            addon:Print("|cffff6600[WN]|r Gear module not loaded.")
         end
         return
 
@@ -232,6 +191,35 @@ function CommandService:HandleSlashCommand(addon, input)
             else
                 addon:Print("|cff00ff00" .. string.format((ns.L and ns.L["CLEANUP_REMOVED_FORMAT"]) or "Removed %d inactive character(s).", removed) .. "|r")
             end
+        end
+        return
+
+    elseif cmd == "profiler" or cmd == "prof" or cmd == "perf" then
+        if ns.Profiler then
+            local _, subCmd, arg3 = addon:GetArgs(input, 3)
+            ns.Profiler:HandleCommand(addon, subCmd, arg3)
+        else
+            addon:Print("|cffff6600" .. ((ns.L and ns.L["PROFILER_NOT_LOADED"]) or "Profiler module not loaded.") .. "|r")
+        end
+        return
+
+    elseif cmd == "toydebug" or cmd == "toyinfo" then
+        CommandService:ToyDebugReport(addon, input)
+        return
+
+    elseif cmd == "firstcraft" or cmd == "fc" then
+        if ns.ProfessionService and addon.PrintFirstCraftRecipesByContent then
+            addon:PrintFirstCraftRecipesByContent()
+        else
+            addon:Print("|cffff6600[WN]|r " .. (ns.L and ns.L["PROF_FIRSTCRAFT_NO_DATA"] or "Professions module not available."))
+        end
+        return
+
+    elseif cmd == "profverify" or cmd == "pv" then
+        if addon.PrintProfessionVerify then
+            addon:PrintProfessionVerify()
+        else
+            addon:Print("|cffff6600[WN]|r Profession verify not available.")
         end
         return
         
@@ -292,8 +280,20 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "bountydebug" then
-        CommandService:BountyDebugReport(addon)
+    elseif cmd == "raritymountpreview" or cmd == "raritypreview" then
+        if addon.DebugRarityMountsImportPreview then
+            addon:DebugRarityMountsImportPreview()
+        else
+            addon:Print("|cffff6600Try counter module not loaded.|r")
+        end
+        return
+
+    elseif cmd == "rarityseedreset" then
+        if addon.DebugResetRarityMountsSeedFlag then
+            addon:DebugResetRarityMountsSeedFlag()
+        else
+            addon:Print("|cffff6600Try counter module not loaded.|r")
+        end
         return
 
     elseif cmd == "trycount" or cmd == "tc" then
@@ -350,61 +350,6 @@ function CommandService:HandleSlashCommand(addon, input)
         
     else
         addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_DEBUG_CMD"]) or "Unknown debug command:") .. "|r " .. cmd)
-    end
-end
-
---============================================================================
--- BOUNTY / SPECIAL ASSIGNMENT DEBUG
---============================================================================
-
---- Print GetBountySetInfoForMapID and GetBountiesForMapID for Midnight maps.
---- Usage: /wn bountydebug (requires debug mode)
----@param addon table WarbandNexus addon instance
-function CommandService:BountyDebugReport(addon)
-    local MIDNIGHT_MAPS = {
-        [2393] = "Silvermoon",
-        [2395] = "Eversong Woods",
-        [2424] = "Isle of Quel'Danas",
-        [2413] = "Harandar",
-        [2437] = "Zul'Aman",
-        [2405] = "Voidstorm",
-    }
-    addon:Print("|cff9370DB[WN BountyDebug]|r Special Assignment API for Midnight maps:")
-    for mapID, zoneName in pairs(MIDNIGHT_MAPS) do
-        addon:Print("  |cff00ccff" .. zoneName .. "|r (mapID=" .. mapID .. "):")
-        if C_QuestLog and C_QuestLog.GetBountySetInfoForMapID then
-            local ok, d1, lockQuestID, bountySetID, isActivity = pcall(C_QuestLog.GetBountySetInfoForMapID, mapID)
-            if ok then
-                addon:Print("    GetBountySetInfoForMapID: lockQuestID=" .. tostring(lockQuestID) .. " bountySetID=" .. tostring(bountySetID))
-            else
-                addon:Print("    GetBountySetInfoForMapID: |cffff0000error|r " .. tostring(d1))
-            end
-        end
-        if C_QuestLog and C_QuestLog.GetBountiesForMapID then
-            local ok, bounties = pcall(C_QuestLog.GetBountiesForMapID, mapID)
-            if ok and type(bounties) == "table" then
-                addon:Print("    GetBountiesForMapID: " .. #bounties .. " bounty(ies)")
-                for i = 1, #bounties do
-                    local b = bounties[i]
-                    if b and b.questID then
-                        local title = "?"
-                        if C_QuestLog and C_QuestLog.GetTitleForQuestID then
-                            local t = C_QuestLog.GetTitleForQuestID(b.questID)
-                            if t and (not issecretvalue or not issecretvalue(t)) then title = t end
-                        end
-                        addon:Print("      questID=" .. b.questID .. " title=" .. tostring(title))
-                    end
-                end
-            else
-                addon:Print("    GetBountiesForMapID: " .. (ok and "0 bounties" or "error " .. tostring(bounties)))
-            end
-        end
-        if C_Map and C_Map.GetMapInfo then
-            local info = C_Map.GetMapInfo(mapID)
-            if info and info.parentMapID and info.parentMapID > 0 then
-                addon:Print("    parentMapID=" .. info.parentMapID)
-            end
-        end
     end
 end
 
@@ -570,39 +515,6 @@ function CommandService:ToyDebugReport(addon, input, skipRetry)
     if ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetSourceStringForToy then
         local dbSrc = ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
         addon:Print("|cff9370DB[GetSourceStringForToy]|r " .. (dbSrc and ("|cffffffff" .. safeStr(dbSrc) .. "|r") or "|cff888888nil (not in DB)|r"))
-    end
-end
-
---============================================================================
--- CHARACTER API TEST
---============================================================================
-
---- Print current character's race/class data as returned by the game API (for debugging race icon etc.)
----@param addon table WarbandNexus addon instance
-function CommandService:CharacterAPITest(addon)
-    local issecretvalue = _G.issecretvalue
-    local function safeStr(val)
-        if val == nil then return "nil" end
-        if issecretvalue and issecretvalue(val) then return "(secret)" end
-        return tostring(val)
-    end
-
-    addon:Print("|cff00ccff[WN] Character API (player)|r")
-    addon:Print("  |cffaaaaaaUnitRace|r:")
-    local raceLoc, raceFile = UnitRace("player")
-    addon:Print("    localized = " .. safeStr(raceLoc) .. "  |  raceFile (English) = " .. safeStr(raceFile))
-    addon:Print("  |cffaaaaaaUnitSex|r: " .. tostring(UnitSex("player")) .. " (1=unknown, 2=male, 3=female)")
-    addon:Print("  |cffaaaaaaUnitClass|r:")
-    local classLoc, classFile, classID = UnitClass("player")
-    addon:Print("    className = " .. safeStr(classLoc) .. "  |  classFile = " .. safeStr(classFile) .. "  |  classID = " .. tostring(classID))
-    if C_PlayerInfo and C_PlayerInfo.GetRaceInfo then
-        addon:Print("  |cffaaaaaaC_PlayerInfo.GetRaceInfo()|r:")
-        local raceInfo = C_PlayerInfo.GetRaceInfo()
-        if raceInfo then
-            addon:Print("    raceName = " .. safeStr(raceInfo.raceName) .. "  |  clientFileString = " .. safeStr(raceInfo.clientFileString) .. "  |  raceID = " .. safeStr(raceInfo.raceID))
-        else
-            addon:Print("    (nil)")
-        end
     end
 end
 

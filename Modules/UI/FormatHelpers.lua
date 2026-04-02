@@ -162,6 +162,51 @@ local function FormatMoney(copper, iconSize, showZero)
 end
 
 --============================================================================
+-- SEASON / CAPPED CURRENCY LINE (Dawncrest, Coffer Key Shards, etc.)
+-- Matches Gear tab: bag qty colored by earn room; "/ seasonMax" muted.
+--============================================================================
+
+local CC_CAP_OPEN = "|cff80ff80"
+local CC_CAPPED   = "|cffff5959"
+local CC_WHITE    = "|cffffffff"
+local CC_MUTED    = "|cff888888"
+local EM_DASH_U   = "\226\128\148"
+
+---@param cd table|nil GetCurrencyData result (quantity, maxQuantity, totalEarned, seasonMax)
+---@return string Colored amount text for FontString:SetText
+local function FormatSeasonProgressCurrencyLine(cd)
+    if ns.Utilities and ns.Utilities.FormatCurrencySeasonProgressLine then
+        return ns.Utilities.FormatCurrencySeasonProgressLine(cd)
+    end
+    if not cd then
+        return CC_MUTED .. "0|r"
+    end
+    local qty = tonumber(cd.quantity) or 0
+    local maxQ = tonumber(cd.maxQuantity) or 0
+    local te = cd.totalEarned
+    local sm = tonumber(cd.seasonMax) or 0
+    if sm > 0 then
+        local teNum = tonumber(te)
+        local numColor
+        if teNum ~= nil then
+            numColor = (teNum >= sm) and CC_CAPPED or CC_CAP_OPEN
+        else
+            numColor = CC_WHITE
+        end
+        return numColor .. FormatNumber(qty) .. "|r " .. CC_MUTED .. "/ " .. FormatNumber(sm) .. "|r"
+    end
+    if maxQ > 0 then
+        local isCapped = qty >= maxQ
+        local numColor = isCapped and CC_CAPPED or CC_CAP_OPEN
+        return numColor .. FormatNumber(qty) .. "|r " .. CC_MUTED .. "/ " .. FormatNumber(maxQ) .. "|r"
+    end
+    if qty > 0 then
+        return CC_WHITE .. FormatNumber(qty) .. "|r"
+    end
+    return CC_MUTED .. EM_DASH_U .. "|r"
+end
+
+--============================================================================
 -- NAMESPACE EXPORTS
 --============================================================================
 
@@ -181,5 +226,6 @@ ns.UI_FormatNumber = FormatNumber
 ns.UI_FormatTextNumbers = FormatTextNumbers
 ns.UI_FormatGold = FormatGold
 ns.UI_FormatMoney = FormatMoney
+ns.UI_FormatSeasonProgressCurrencyLine = FormatSeasonProgressCurrencyLine
 
 -- Module loaded - verbose logging removed

@@ -134,22 +134,12 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         row.bg = row:CreateTexture(nil, "BACKGROUND")
         row.bg:SetAllPoints()
     end
-    local keyCurrencies = ns.Constants and ns.Constants.MIDNIGHT_KEY_CURRENCIES
-    local isKeyCurrency = keyCurrencies and keyCurrencies[currencyID]
-    if isKeyCurrency then
-        bgColor = {0.12, 0.10, 0.02, 1}
-    end
     row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
     row.bgColor = bgColor
 
-    if not row.keyBadge then
-        row.keyBadge = row:CreateTexture(nil, "OVERLAY")
-        row.keyBadge:SetSize(12, 12)
-        row.keyBadge:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-        row.keyBadge:SetTexture("Interface\\COMMON\\ReputationStar")
-        row.keyBadge:SetVertexColor(1, 0.82, 0)
+    if row.keyBadge then
+        row.keyBadge:Hide()
     end
-    row.keyBadge:SetShown(isKeyCurrency ~= nil)
 
     local hasQuantity = (currency.quantity or 0) > 0
     
@@ -202,10 +192,27 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         end
     end
     
-    -- Amount (always show max if available - NO hideMax)
-    local maxQuantity = currency.maxQuantity or 0
-    row.amountText:SetText(FormatCurrencyAmount(currency.quantity or 0, maxQuantity))
-    if hasQuantity then
+    -- Amount: Gear-style season/cap line when live DB+API data exists (Dawncrests, Coffer Key Shards, …)
+    local amountLine
+    local usedSeasonProgressLine = false
+    local curKey = currency.viewCharKey
+    if (not curKey) and ns.Utilities and ns.Utilities.GetCharacterKey then
+        curKey = ns.Utilities:GetCharacterKey()
+    end
+    if curKey and WarbandNexus.GetCurrencyData and ns.UI_FormatSeasonProgressCurrencyLine then
+        local cd = WarbandNexus:GetCurrencyData(currencyID, curKey)
+        if cd then
+            amountLine = ns.UI_FormatSeasonProgressCurrencyLine(cd)
+            usedSeasonProgressLine = true
+        end
+    end
+    if not amountLine then
+        local maxQuantity = currency.maxQuantity or 0
+        amountLine = FormatCurrencyAmount(currency.quantity or 0, maxQuantity)
+    end
+    row.amountText:SetText(amountLine)
+    -- Season/cap lines embed |cff colors; do not dim with SetTextColor or capped red (e.g. 0 / 600) washes out.
+    if usedSeasonProgressLine or hasQuantity then
         row.amountText:SetTextColor(1, 1, 1, 1)
     else
         row.amountText:SetTextColor(1, 1, 1, zeroAlpha)
@@ -225,9 +232,14 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         end
         
         -- Use new tooltip system
+        local tipKey = currency.viewCharKey
+        if (not tipKey) and ns.Utilities and ns.Utilities.GetCharacterKey then
+            tipKey = ns.Utilities:GetCharacterKey()
+        end
         ShowTooltip(self, {
             type = "currency",
             currencyID = currencyID,
+            charKey = tipKey,
             anchor = "ANCHOR_LEFT"
         })
     end)
@@ -714,6 +726,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                     local displayData = {}
                                     for k, v in pairs(curr.data) do displayData[k] = v end
                                     displayData.quantity = curr.quantity
+                                    displayData.viewCharKey = currentCharKey
 
                                     flatList[#flatList + 1] = {
                                         type = "row",
@@ -827,6 +840,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                         bestRealm)
                                     displayData.characterName = format("|cff666666(|r%s|cff666666)|r", charName)
                                     displayData.quantity = curr.quantity
+                                    displayData.viewCharKey = curr.bestCharacterKey
 
                                     flatList[#flatList + 1] = {
                                         type = "row",

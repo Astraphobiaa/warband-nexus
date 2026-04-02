@@ -1,59 +1,15 @@
-═══════════════════════════════════════════════════════════════════════════
-  WARBAND NEXUS - Version 2.5.0 (28.03.2026)
-═══════════════════════════════════════════════════════════════════════════
+Warband Nexus 2.5.5
 
-NEW FEATURES
-────────────
-• To-Do Tab: Plans section renamed to To-Do with refreshed branding
-• Weekly Reset Timer: Live countdown at the top of Weekly Progress view
-• Character Overview: Cross-character summary card showing quest & vault progress
-• Wowhead Links: Right-click collectibles, plans, and quest items to copy Wowhead URLs
-• Crafted Gear Overhaul: Gear tab now displays crafted items with tier-based recraft info
-• Reminder System: Set reminders for plans with daily login, weekly reset, and countdown triggers
+Improvements
+- Coffer Key Shards use the same season/weekly caps and on-screen math as Dawncrests (cache, roster columns, gear amounts); season earned is saved even at 0 so colors and tooltips stay correct offline.
+- Main window tabs are in a clearer order (storage, items, gear, currencies, then the rest).
+- Gear tab: upgrade crests use green/red; the fraction shows what you hold vs season cap (not misleading totals).
+- To-Do: first sub-tab is “To-Do List”; try-count popup is easier to use; right-click works on Mounts browse cards too.
+- To-Do cards: tighter layout so Wowhead and delete do not overlap.
+- Help and in-game “What’s New” text are shorter and easier to read.
 
-GEAR TAB
-────────
-• Crafted items show tier name + ilvl (e.g. "Myth 285") instead of misleading "Myth 5/6"
-• Crafted items at max ilvl (285) no longer show a false upgrade arrow
-• Tooltip displays recraft cost, recommended tier, and crests needed for next tier
-• Corrected crafted gear ilvl caps: Myth=285, Hero=272 (distinct from dropped gear)
-• Crafted detection via tooltip quality line ("Radiance Crafted" etc.)
-• Runtime crafted detection fallback for offline character data
+Bug fixes
+- Login sync progress no longer gets stuck when you are in combat at the wrong moment or when a cache step errors.
+- The top sync bar hides automatically after a long wait if it would otherwise stay on screen.
 
-PROFESSION KNOWLEDGE
-────────────────────
-• Added Herbalism weekly gathering tracking (6 quest IDs)
-• Added Mining weekly gathering tracking (6 quest IDs)
-• Added missing Enchanting weekly quest variant
-• Verified all treatise, unique, treasure, and gathering IDs for all 11 professions
-
-PERFORMANCE
-───────────
-• Throttled OnSizeChanged: resize no longer fires redundant layout updates every frame
-• Singleton paperdoll chrome: model border, ilvl overlay, and name band reused across refreshes
-• Character selector button pooled: no longer recreated on every tab draw
-• Dropdown entry buttons pooled: no more unbounded frame accumulation
-• PlanCardFactory frame leak fixed: description expand reuses a single update frame
-
-BUG FIXES
-─────────
-• Fixed reminder dialog clearing zone-based alerts when saving other settings
-• Fixed tooltip taint protection gap for profession gear slot detection
-• Fixed crafted gear tier name resolving to wrong tier (Adventurer instead of Myth)
-• Fixed crafted gear showing 289 max ilvl instead of correct 285 cap
-
-IMPROVEMENTS
-────────────
-• Collections: Wowhead link integration for mounts, pets, toys, and transmog
-• Plans: Wowhead link for quest-based plan items
-• PvE: Streamlined currency tooltip (removed duplicate season/cap info)
-• Tooltip: Enhanced issecretvalue safety across all tooltip branches
-• Weekly Progress: "Daily Tasks" renamed to "Weekly Progress" across all views
-• Per-category mini progress bars (Weekly, World, Daily, Assignments, Events)
-• Vault Tracking: Condensed M+/Raid/World progress per character in overview
-• Collapsible Sections: Character Overview card supports expand/collapse
-
-LOCALIZATION
-────────────
-• Full changelog translated to all 11 locales
-• New locale keys for gear recraft, reminders, Wowhead integration, and weekly progress
+Details: CurseForge — Warband Nexus

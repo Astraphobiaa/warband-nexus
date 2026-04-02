@@ -177,70 +177,88 @@ function InitializationService:InitializeCoreInfrastructure(addon)
         end, "CoreEventSetup")
     end)
     
-    -- Character Tracking Confirmation: Check for new characters (0.5s)
+    -- Character Tracking Confirmation: Check for new characters (0.5s + retry)
+    -- After /reload, GetNormalizedRealmName() can be empty briefly; deciding then used GetRealmName-only
+    -- keys and missed db.global.characters[...] (trackingConfirmed), so the dialog reappeared.
     C_Timer.After(0.5, function()
-        if not addon or not addon.db or not addon.db.global then return end
-        
-        local charKey = ns.Utilities:GetCharacterKey()
-        local charData = addon.db.global.characters and addon.db.global.characters[charKey]
-        
-        -- Debug: Show character tracking status
-        if charData then
-            DebugPrint(string.format("[Init] Character exists: %s, isTracked=%s, trackingConfirmed=%s", 
-                charKey, 
-                tostring(charData.isTracked), 
-                tostring(charData.trackingConfirmed)))
-        else
-            DebugPrint(string.format("[Init] Character NOT in DB: %s", charKey))
-        end
-        
-        -- Only show popup if:
-        -- 1. Character doesn't exist in DB, OR
-        -- 2. Character exists but trackingConfirmed flag is not set (legacy characters)
-        local shouldShowPopup = not charData or not charData.trackingConfirmed
-        
-        if shouldShowPopup then
-            DebugPrint("[Init] Character needs tracking confirmation - showing popup")
-            
-            -- CRITICAL: DON'T set trackingConfirmed here!
-            -- The flag will be set by ConfirmCharacterTracking() when user makes a choice
-            -- This prevents the popup from appearing again
-            
-            -- Create stub entry with isTracked = false (prevents auto-save until user confirms)
-            if not addon.db.global.characters then
-                addon.db.global.characters = {}
+        local attempts = 0
+        local maxAttempts = 20 -- up to ~2s extra polling (0.1s steps)
+
+        local function evaluateTrackingPopup()
+            if not addon or not addon.db or not addon.db.global then return end
+
+            local norm = GetNormalizedRealmName and GetNormalizedRealmName()
+            local realmReady = type(norm) == "string" and norm ~= "" and not (issecretvalue and issecretvalue(norm))
+
+            if not realmReady and attempts < maxAttempts then
+                attempts = attempts + 1
+                C_Timer.After(0.1, evaluateTrackingPopup)
+                return
             end
-            if not addon.db.global.characters[charKey] then
-                addon.db.global.characters[charKey] = {}
+
+            local charKey = ns.Utilities:GetCharacterKey()
+            local charData = addon.db.global.characters and addon.db.global.characters[charKey]
+
+            -- Debug: Show character tracking status
+            if charData then
+                DebugPrint(string.format("[Init] Character exists: %s, isTracked=%s, trackingConfirmed=%s",
+                    charKey,
+                    tostring(charData.isTracked),
+                    tostring(charData.trackingConfirmed)))
+            else
+                DebugPrint(string.format("[Init] Character NOT in DB: %s", charKey))
             end
-            local stub = addon.db.global.characters[charKey]
-            if not stub.name or not stub.realm then
-                stub.name = UnitName("player")
-                stub.realm = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName()
-            end
-            if stub.isTracked == nil then
-                stub.isTracked = false
-            end
-            stub.lastSeen = time()
-            
-            C_Timer.After(2, function()
-                SafeInit(function()
-                    if ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
-                        ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
-                    end
-                end, "CharacterTrackingPopup")
-            end)
-        else
-            DebugPrint("[Init] Character tracking already confirmed, skipping popup")
-            
-            -- Returning user (already tracked): show What's New on first login after update
-            -- Trigger with 1.5s delay to ensure DB and UI are ready
-            C_Timer.After(1.5, function()
-                if addon and addon.CheckNotificationsOnLogin then
-                    addon:CheckNotificationsOnLogin()
+
+            -- Only show popup if user has never completed the dialog (trackingConfirmed ~= true).
+            -- NOTE: Do not use "not trackingConfirmed" alone: SaveMinimalCharacterData used to persist
+            -- false for unconfirmed chars, and (not false) is true in Lua → infinite popup every login.
+            local shouldShowPopup = not charData or charData.trackingConfirmed ~= true
+
+            if shouldShowPopup then
+                DebugPrint("[Init] Character needs tracking confirmation - showing popup")
+
+                -- CRITICAL: DON'T set trackingConfirmed here!
+                -- The flag will be set by ConfirmCharacterTracking() when user makes a choice
+                -- This prevents the popup from appearing again
+
+                -- Create stub entry with isTracked = false (prevents auto-save until user confirms)
+                if not addon.db.global.characters then
+                    addon.db.global.characters = {}
                 end
-            end)
+                if not addon.db.global.characters[charKey] then
+                    addon.db.global.characters[charKey] = {}
+                end
+                local stub = addon.db.global.characters[charKey]
+                if not stub.name or not stub.realm then
+                    stub.name = UnitName("player")
+                    stub.realm = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName()
+                end
+                if stub.isTracked == nil then
+                    stub.isTracked = false
+                end
+                stub.lastSeen = time()
+
+                C_Timer.After(2, function()
+                    SafeInit(function()
+                        if ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
+                            ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
+                        end
+                    end, "CharacterTrackingPopup")
+                end)
+            else
+                DebugPrint("[Init] Character tracking already confirmed, skipping popup")
+
+                -- Returning user (already tracked): show What's New on first login after update
+                -- Trigger with 1.5s delay to ensure DB and UI are ready
+                C_Timer.After(1.5, function()
+                    if addon and addon.CheckNotificationsOnLogin then
+                        addon:CheckNotificationsOnLogin()
+                    end
+                end)
+            end
         end
+
+        evaluateTrackingPopup()
     end)
 end
 
@@ -341,14 +359,18 @@ function InitializationService:InitializeDataServices(addon)
     -- P4: Items cache (tracked characters only)
     -- C_MythicPlus priming handled by RegisterPvECacheEvents (T+2s → +3s = T+5s).
     -- NOTE: OnUIInteract() removed — VaultScanner is the sole owner (PLAYER_ENTERING_WORLD, T+1s).
+    -- P4 completes LoadingTracker "caches" — must run even if InitializeItemsCache errors or was deferred from combat.
     if isTrackedEarly then
         C_Timer.After(3, function()
             SafeInit(function()
-                local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
-                if isTracked then
-                    if addon and addon.InitializeItemsCache then
+                local ok, err = pcall(function()
+                    local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
+                    if isTracked and addon and addon.InitializeItemsCache then
                         addon:InitializeItemsCache()
                     end
+                end)
+                if not ok then
+                    DebugPrint(string.format("|cffff4444[Init]|r P4 ItemsCache failed: %s", tostring(err)))
                 end
                 local LT = ns.LoadingTracker
                 if LT then LT:Complete("caches") end

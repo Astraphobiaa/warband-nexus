@@ -22,6 +22,10 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+local function IsCurrentCharacterTracked()
+    return ns.CharacterService and WarbandNexus and ns.CharacterService:IsCharacterTracked(WarbandNexus)
+end
+
 -- ============================================================================
 -- STATE
 -- ============================================================================
@@ -847,6 +851,7 @@ end
 ]]
 function WarbandNexus:OnEquipmentChanged(slot)
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     if slot and slot >= 20 and slot <= 30 then
         C_Timer.After(0.2, function()
             if not WarbandNexus then return end
@@ -862,8 +867,9 @@ end
 ]]
 function WarbandNexus:CollectEquipmentOnLogin()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     C_Timer.After(2, function()
-        if not WarbandNexus then return end
+        if not WarbandNexus or not IsCurrentCharacterTracked() then return end
         pcall(CollectEquipmentDataForCurrentProfession)
         pcall(CollectEquipmentByDetection)
     end)
@@ -1839,6 +1845,7 @@ end
 function WarbandNexus:OnTradeSkillShow()
     -- Guard: skip data collection when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     
     -- Install hooks (once, deferred until frame exists)
     InstallRecipeHook()
@@ -1910,6 +1917,7 @@ local tradeSkillListUpdatePending = false
 function WarbandNexus:OnTradeSkillListUpdate()
     -- Guard: skip when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     
     -- Only process if profession frame is open
     if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady or not C_TradeSkillUI.IsTradeSkillReady() then
@@ -1921,7 +1929,7 @@ function WarbandNexus:OnTradeSkillListUpdate()
     
     C_Timer.After(0.5, function()
         tradeSkillListUpdatePending = false
-        if not WarbandNexus then return end
+        if not WarbandNexus or not IsCurrentCharacterTracked() then return end
         -- Re-collect all tab-specific data when the expansion tab changes.
         -- Each data type is keyed by skillLineID so switching tabs writes to the correct bucket.
         pcall(CollectConcentrationData)
@@ -1942,8 +1950,9 @@ end
 ]]
 function WarbandNexus:OnNewRecipeLearned()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     C_Timer.After(0.3, function()
-        if not WarbandNexus then return end
+        if not WarbandNexus or not IsCurrentCharacterTracked() then return end
         pcall(CollectRecipeSummaryData)
         pcall(CollectMidnightKnowledgeProgressData)
     end)
@@ -1951,6 +1960,7 @@ end
 
 function WarbandNexus:OnProfessionQuestProgressChanged()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not charKey then return end
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
@@ -1967,6 +1977,7 @@ end
 function WarbandNexus:OnProfessionChanged()
     -- Guard: skip when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not charKey then return end
@@ -2456,6 +2467,7 @@ end
 ]]
 function WarbandNexus:CollectConcentrationOnLogin()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     if not self.db or not self.db.global then return end
 
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
@@ -2580,6 +2592,7 @@ end
 ]]
 function WarbandNexus:CollectExpansionProfessionsOnLogin()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     pcall(CollectAllExpansionProfessions, false)
 end
 
@@ -2594,6 +2607,7 @@ end
 ]]
 function WarbandNexus:CollectKnowledgeOnLogin()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     if not self.db or not self.db.global then return end
     if not C_ProfSpecs or not C_Traits then return end
 
@@ -2687,6 +2701,7 @@ local concentrationCurrencyMap = {}
 function WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
     -- Guard: skip when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     if not currencyID or currencyID == 0 then return end
     
     -- Rebuild map if empty (first call or after reload)
@@ -2722,6 +2737,7 @@ end
 
 function WarbandNexus:OnProfessionProgressCurrencyChanged(currencyID)
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     if not currencyID or not MIDNIGHT_CATCHUP_CURRENCY[currencyID] then return end
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not charKey then return end
@@ -2742,6 +2758,7 @@ local knowledgeRefreshPending = false
 function WarbandNexus:OnKnowledgeChanged()
     -- Guard: skip when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
     if knowledgeRefreshPending then return end  -- Debounce
     knowledgeRefreshPending = true
     

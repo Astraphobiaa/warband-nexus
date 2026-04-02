@@ -40,6 +40,13 @@ local CharacterRowPool = {}
 local ReputationRowPool = {}
 local ProfessionRowPool = {}
 
+-- True while row is queued in its pool table (not yet acquired). Prevents double-insert when
+-- ReleaseAllPooledChildren runs twice on the same parent (e.g. PopulateContent + DrawCharacterList),
+-- which used to duplicate pool entries and hand the same frame to two layout slots.
+local function MarkRowOutOfPool(row)
+    if row then row._wnInFramePool = nil end
+end
+
 --============================================================================
 -- CHARACTER ROW POOLING
 --============================================================================
@@ -49,7 +56,10 @@ local ProfessionRowPool = {}
 ---@return Frame row Pooled or new character row
 local function AcquireCharacterRow(parent)
     local row = table.remove(CharacterRowPool)
-    
+    if row then
+        MarkRowOutOfPool(row)
+    end
+
     if not row then
         row = CreateFrame("Button", nil, parent)
         row.isPooled = true
@@ -75,7 +85,8 @@ end
 ---@param row Frame Row to release
 local function ReleaseCharacterRow(row)
     if not row or not row.isPooled then return end
-    
+    if row._wnInFramePool then return end
+
     row:Hide()
     row:ClearAllPoints()
     
@@ -91,7 +102,8 @@ local function ReleaseCharacterRow(row)
     end
     
     -- Note: Child elements (favButton, etc.) are kept and reused
-    
+
+    row._wnInFramePool = true
     table.insert(CharacterRowPool, row)
 end
 
@@ -108,7 +120,10 @@ end
 ---@return Frame row Pooled or new reputation row
 local function AcquireReputationRow(parent, width, rowHeight)
     local row = table.remove(ReputationRowPool)
-    
+    if row then
+        MarkRowOutOfPool(row)
+    end
+
     if not row then
         row = CreateFrame("Button", nil, parent)
         row:EnableMouse(true)
@@ -153,7 +168,8 @@ end
 ---@param row Frame Row to release
 local function ReleaseReputationRow(row)
     if not row or not row.isPooled then return end
-    
+    if row._wnInFramePool then return end
+
     row:Hide()
     row:ClearAllPoints()
     
@@ -187,7 +203,8 @@ local function ReleaseReputationRow(row)
     if row.nameText then row.nameText:SetText("") end
     if row.badgeText then row.badgeText:SetText("") end
     if row.progressText then row.progressText:SetText("") end
-    
+
+    row._wnInFramePool = true
     table.insert(ReputationRowPool, row)
 end
 
@@ -200,6 +217,9 @@ end
 ---@return Frame row Pooled or new profession row
 local function AcquireProfessionRow(parent)
     local row = table.remove(ProfessionRowPool)
+    if row then
+        MarkRowOutOfPool(row)
+    end
     if not row then
         row = CreateFrame("Button", nil, parent)
         row.isPooled = true
@@ -220,6 +240,7 @@ end
 ---@param row Frame Row to release
 local function ReleaseProfessionRow(row)
     if not row or not row.isPooled then return end
+    if row._wnInFramePool then return end
     row:Hide()
     row:ClearAllPoints()
     if row.HasScript and row:HasScript("OnClick") then row:SetScript("OnClick", nil) end
@@ -241,6 +262,7 @@ local function ReleaseProfessionRow(row)
         end
     end
 
+    row._wnInFramePool = true
     table.insert(ProfessionRowPool, row)
 end
 
@@ -255,7 +277,10 @@ end
 ---@return Frame row Pooled or new currency row
 local function AcquireCurrencyRow(parent, width, rowHeight)
     local row = table.remove(CurrencyRowPool)
-    
+    if row then
+        MarkRowOutOfPool(row)
+    end
+
     if not row then
         -- Create new button with all children
         row = CreateFrame("Button", nil, parent)
@@ -312,7 +337,8 @@ end
 ---@param row Frame Row to release
 local function ReleaseCurrencyRow(row)
     if not row or not row.isPooled then return end
-    
+    if row._wnInFramePool then return end
+
     row:Hide()
     row:ClearAllPoints()
     
@@ -351,7 +377,8 @@ local function ReleaseCurrencyRow(row)
     end
     
     -- Reset background removed (no backdrop)
-    
+
+    row._wnInFramePool = true
     table.insert(CurrencyRowPool, row)
 end
 
@@ -366,7 +393,10 @@ end
 ---@return Frame row Pooled or new item row
 local function AcquireItemRow(parent, width, rowHeight)
     local row = table.remove(ItemRowPool)
-    
+    if row then
+        MarkRowOutOfPool(row)
+    end
+
     if not row then
         -- Create new button with all children
         row = CreateFrame("Button", nil, parent)
@@ -434,7 +464,8 @@ end
 ---@param row Frame Row to release
 local function ReleaseItemRow(row)
     if not row or not row.isPooled then return end
-    
+    if row._wnInFramePool then return end
+
     row:Hide()
     row:ClearAllPoints()
     row:SetScript("OnEnter", nil)
@@ -445,7 +476,8 @@ local function ReleaseItemRow(row)
     if row.nameText then row.nameText:SetText("") end
     if row.qtyText then row.qtyText:SetText("") end
     if row.locationText then row.locationText:SetText("") end
-    
+
+    row._wnInFramePool = true
     table.insert(ItemRowPool, row)
 end
 
@@ -460,7 +492,10 @@ end
 ---@return Frame row Pooled or new storage row
 local function AcquireStorageRow(parent, width, rowHeight)
     local row = table.remove(StorageRowPool)
-    
+    if row then
+        MarkRowOutOfPool(row)
+    end
+
     if not row then
         -- Create new button with all children (Button for hover effects)
         row = CreateFrame("Button", nil, parent)
@@ -524,7 +559,8 @@ end
 ---@param row Frame Row to release
 local function ReleaseStorageRow(row)
     if not row or not row.isPooled then return end
-    
+    if row._wnInFramePool then return end
+
     row:Hide()
     row:ClearAllPoints()
     
@@ -544,7 +580,8 @@ local function ReleaseStorageRow(row)
     if row.nameText then row.nameText:SetText("") end
     if row.qtyText then row.qtyText:SetText("") end
     if row.locationText then row.locationText:SetText("") end
-    
+
+    row._wnInFramePool = true
     table.insert(StorageRowPool, row)
 end
 

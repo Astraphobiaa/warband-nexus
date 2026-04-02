@@ -49,6 +49,9 @@ desktop.ini
 # Release distribution folder (built copy - not source code)
 WarbandNexus/
 
+# scripts\build-curseforge.ps1 output
+build/
+
 # CurseForge packager metadata (tracked for packager, but changes ignored)
 # .pkgmeta
 

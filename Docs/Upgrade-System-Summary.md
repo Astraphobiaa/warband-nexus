@@ -77,7 +77,7 @@ Bu belge, kodun gerçekte nasıl çalıştığını adım adım tanımlar (GearS
 
 ---
 
-## 8. Debug Komutu — /wn gearupgradedebug
+## 8. İç teşhis — `WarbandNexus:GearUpgradeDebugReport()` (slash yok; ör. `/run WarbandNexus:GearUpgradeDebugReport()`)
 
 - **GearUpgradeDebugReport**: Mevcut karakter için:
   - Upgrade bilgisi: **GetPersistedUpgradeInfo(currentKey)** (DB/ilvl, API yok).

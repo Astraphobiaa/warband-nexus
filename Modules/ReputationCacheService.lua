@@ -98,7 +98,7 @@ local function ScheduleUIRefresh(immediate)
         -- Fire immediately (for resetrep, cache clear, etc.)
         if WarbandNexus.SendMessage then
             WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
-            WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
+            WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
         end
         return
     end
@@ -115,7 +115,7 @@ local function ScheduleUIRefresh(immediate)
     ReputationCache.uiRefreshTimer = C_Timer.NewTimer(0.5, function()
         if ReputationCache.pendingUIRefresh and WarbandNexus.SendMessage then
             WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
-            WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
+            WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
             ReputationCache.pendingUIRefresh = false
         end
     end)
@@ -1799,7 +1799,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                 
                 if WarbandNexus.SendMessage then
                     WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
-                    WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
+                    WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
                 end
                 
                 -- Diff BEFORE rebuilding snapshot

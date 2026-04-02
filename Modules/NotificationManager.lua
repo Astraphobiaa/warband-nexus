@@ -14,35 +14,11 @@ local NotificationEvents = {}
 local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
--- Changelog for current version (loaded from locale when called)
-local FALLBACK_CHANGELOG = "NEW FEATURES:\n" ..
-    "- To-Do Tab: Plans section renamed to To-Do with refreshed branding\n" ..
-    "- Weekly Reset Timer: Live countdown at the top of Weekly Progress view\n" ..
-    "- Character Overview: Cross-character summary card with quest & vault progress\n" ..
-    "- Wowhead Links: Right-click collectibles, plans, and quest items to copy URLs\n" ..
-    "- Crafted Gear Overhaul: Tier-based recraft info replaces misleading X/6 notation\n" ..
-    "- Reminder System: Daily login, weekly reset, and countdown triggers for plans\n" ..
-    "\n" ..
-    "GEAR TAB:\n" ..
-    "- Crafted items show tier name + ilvl (e.g. 'Myth 285') instead of 'Myth 5/6'\n" ..
-    "- Max ilvl crafted items no longer show a false upgrade arrow\n" ..
-    "- Tooltip displays recraft cost, recommended tier, and crests needed\n" ..
-    "\n" ..
-    "PERFORMANCE:\n" ..
-    "- Throttled resize updates — no more frame drops during window resize\n" ..
-    "- Pooled gear tab frames — reduced frame creation by ~60 per refresh\n" ..
-    "- Fixed frame leak in plan description expand\n" ..
-    "\n" ..
-    "BUG FIXES:\n" ..
-    "- Fixed reminder dialog clearing zone alerts when saving other settings\n" ..
-    "- Fixed tooltip taint protection gap for profession gear detection\n" ..
-    "- Fixed crafted tier name resolving to wrong tier\n" ..
-    "\n" ..
-    "Thank you for your continued support!\n" ..
-    "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+-- Changelog for current version only (locale key CHANGELOG_V<version>; no legacy chain)
+local FALLBACK_CHANGELOG = "v2.5.5\nImprovements:\n- Main tabs reordered — inventory, gear, and currencies are easier to find\n- Gear tab: upgrade crests use green/red; amounts show what you hold vs season cap\n- To-Do: My Plans is now To-Do List; try-count popup is easier to edit; works on Mounts cards too\n- To-Do cards: buttons and links no longer overlap\n- Shorter help text and simpler update notes\n\nBug fixes:\n- Login sync bar no longer gets stuck when you are in combat or if a step fails\n- If the sync bar ever stays too long, it now hides automatically as a fallback\n\nCurseForge: Warband Nexus"
 
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V250"]) or FALLBACK_CHANGELOG
+    local changelogText = (ns.L and ns.L["CHANGELOG_V255"]) or FALLBACK_CHANGELOG
     if not changelogText or changelogText == "" then
         changelogText = FALLBACK_CHANGELOG
     end
@@ -54,8 +30,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.5.0",
-    date = "2026-03-20",
+    version = "2.5.5",
+    date = "2026-04-01",
     changes = BuildChangelog()
 }
 
@@ -2258,9 +2234,12 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     end
     self:Notify(data.type, displayName, data.icon, overrides)
 
-    -- Screen flash — BAM moment for items obtained through farming (try count > 0)
+    -- Screen flash + auto screenshot — BAM moment for items obtained through farming (try count > 0)
     if hasTryCount then
         self:PlayScreenFlash(0.6)
+        C_Timer.After(0.3, function()
+            Screenshot()
+        end)
     end
 end
 

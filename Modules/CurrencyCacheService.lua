@@ -88,6 +88,130 @@ local visibleCurrencyIDs = {}             -- [currencyID] = true
 -- Dawncrest currency IDs (both old 3391/3342 and current 3383/3341) for cap/normalization checks.
 local DAWNCREST_IDS = { [3383]=true, [3341]=true, [3343]=true, [3345]=true, [3347]=true, [3391]=true, [3342]=true }
 
+-- Midnight S1 Coffer Key Shards (Wowhead currency id); name-based match can miss in some locales.
+local COFFER_KEY_SHARD_CURRENCY_IDS = { [3310] = true }
+
+---Season-style progress: weekly display cap + season max + totalEarned (same rules as Dawncrests).
+---Coffer Key Shards use dynamic IDs — detect by localized name.
+---@param currencyID number
+---@param info table|nil C_CurrencyInfo.GetCurrencyInfo result
+---@return boolean
+local function IsSeasonProgressSplitCurrency(currencyID, info)
+    if DAWNCREST_IDS[currencyID] then return true end
+    if COFFER_KEY_SHARD_CURRENCY_IDS[currencyID] then return true end
+    if not info or not info.name then return false end
+    local nm = info.name
+    if issecretvalue and issecretvalue(nm) then return false end
+    local n = string.lower(tostring(nm))
+    return n:find("coffer", 1, true) ~= nil and n:find("shard", 1, true) ~= nil
+end
+
+--- Season denominator for "Current / Season Max" + cap coloring (totalEarned vs cap).
+--- Prefer maxQuantity when set (Blizzard's season cap for Dawncrests/shards). Some currencies
+--- expose only maxWeeklyQuantity for the same cap — if we leave seasonMax nil, UI falls back to
+--- weekly branch and treats bag qty 0 as "not capped" → wrong green for capped Coffer Key Shards.
+---@param currencyID number
+---@param info table C_CurrencyInfo.GetCurrencyInfo result
+---@return number|nil
+local function SeasonMaxFromSplitCurrencyInfo(currencyID, info)
+    if not info or not IsSeasonProgressSplitCurrency(currencyID, info) then return nil end
+    local maxQ = tonumber(info.maxQuantity) or 0
+    local maxWeekly = tonumber(info.maxWeeklyQuantity) or 0
+    if maxQ > 0 then
+        return maxQ
+    end
+    if maxWeekly > 0 then
+        return maxWeekly
+    end
+    return nil
+end
+
+--- Safe tonumber for C_CurrencyInfo fields (Midnight may return secret values).
+---@param v any
+---@return number|nil
+local function SafeCurrencyNumber(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    return tonumber(v)
+end
+
+--- Name-based Coffer Key Shard (dynamic currency ID per patch).
+---@param currencyID number
+---@param info table|nil
+---@return boolean
+local function IsCofferKeyShardCurrency(currencyID, info)
+    if COFFER_KEY_SHARD_CURRENCY_IDS[currencyID] then return true end
+    if not info or not info.name then return false end
+    local nm = info.name
+    if issecretvalue and issecretvalue(nm) then return false end
+    local n = string.lower(tostring(nm))
+    return n:find("coffer", 1, true) ~= nil and n:find("shard", 1, true) ~= nil
+end
+
+--- Legacy global (if present): earned-this-week may differ from structured API on some builds.
+---@param currencyID number
+---@return number|nil
+local function LegacyEarnedThisWeekFromGlobal(currencyID)
+    local gf = rawget(_G, "GetCurrencyInfo")
+    if type(gf) ~= "function" then return nil end
+    -- Legacy order (pre-9.0): name, quantity, texture, earnedThisWeek, weeklyMax, totalMax, ...
+    local ok, _n, _q, _tex, earnedThisWeek = pcall(gf, currencyID)
+    if not ok then return nil end
+    return SafeCurrencyNumber(earnedThisWeek)
+end
+
+--- Progress for Season line + cap color.
+--- Coffer Key Shards: Blizzard "Weekly Maximum" uses quantityEarnedThisWeek; totalEarned may be 0, wrong, or secret
+--- while useTotalEarnedForMaxQty is true — must not stop at totalEarned only.
+---@param currencyID number
+---@param info table C_CurrencyInfo.GetCurrencyInfo result
+---@return number|nil
+local function ProgressEarnedFromCurrencyInfo(currencyID, info)
+    if not info then return nil end
+    local te = SafeCurrencyNumber(info.totalEarned)
+    local qew = SafeCurrencyNumber(info.quantityEarnedThisWeek)
+    local tracked = SafeCurrencyNumber(info.trackedQuantity)
+    local useTotal = info.useTotalEarnedForMaxQty == true
+
+    if IsCofferKeyShardCurrency(currencyID, info) then
+        -- Do NOT max() across fields: totalEarned can be cumulative (e.g. 1800) while UI cap is weekly/season (600) → bogus "1800/600".
+        -- Prefer this-week progress, then clamp any fallback to the smallest known cap (weekly, else maxQuantity).
+        local maxW = SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
+        local maxQ = SafeCurrencyNumber(info.maxQuantity) or 0
+        local cap = (maxW > 0) and maxW or maxQ
+        local function clampToCap(v)
+            if v == nil or cap <= 0 then return v end
+            if v > cap then return cap end
+            return v
+        end
+        -- Positive signals first (skip stale zeros when another field has the cap)
+        if qew ~= nil and qew > 0 then return clampToCap(qew) end
+        if tracked ~= nil and tracked > 0 then return clampToCap(tracked) end
+        if te ~= nil and te > 0 then return clampToCap(te) end
+        if qew ~= nil then return clampToCap(qew) end
+        if tracked ~= nil then return clampToCap(tracked) end
+        if te ~= nil then return clampToCap(te) end
+        local leg = LegacyEarnedThisWeekFromGlobal(currencyID)
+        if leg ~= nil then return clampToCap(leg) end
+        return nil
+    end
+
+    if useTotal and te ~= nil then
+        return te
+    end
+    if info.canEarnPerWeek and qew ~= nil then
+        return qew
+    end
+    local maxW = SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
+    if maxW > 0 and qew ~= nil then
+        return qew
+    end
+    if tracked ~= nil then
+        return tracked
+    end
+    return te
+end
+
 ---When quantity > maxQuantity we treat as (cap + current) and use quantity - cap.
 ---@param rawQuantity number|nil
 ---@param maxQuantity number|nil
@@ -150,10 +274,10 @@ local function ResolveCurrencyMetadata(currencyID)
     
     local maxQ = info.maxQuantity or 0
     local maxWeekly = info.maxWeeklyQuantity or 0
-    -- Dawncrests: maxQuantity = season cap (e.g. 500), maxWeeklyQuantity = weekly cap (e.g. 100).
+    -- Dawncrests / Coffer Key Shards: maxQuantity = season cap, maxWeeklyQuantity = weekly cap.
     -- For display we want the weekly cap; for NormalizeQuantity we need the season cap.
     local effectiveMax
-    if DAWNCREST_IDS[currencyID] and maxWeekly > 0 then
+    if IsSeasonProgressSplitCurrency(currencyID, info) and maxWeekly > 0 then
         effectiveMax = maxWeekly
     elseif maxQ > 0 then
         effectiveMax = maxQ
@@ -166,7 +290,7 @@ local function ResolveCurrencyMetadata(currencyID)
         icon = info.iconFileID,
         iconFileID = info.iconFileID,
         maxQuantity = effectiveMax,
-        seasonMax = (DAWNCREST_IDS[currencyID] and maxQ > 0) and maxQ or nil,
+        seasonMax = SeasonMaxFromSplitCurrencyInfo(currencyID, info),
         maxWeeklyQuantity = maxWeekly,
         useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty or false,
         isAccountWide = info.isAccountWide or false,
@@ -344,16 +468,21 @@ local function FetchCurrencyFromAPI(currencyID)
     local maxWeekly = info.maxWeeklyQuantity or 0
     -- Normalization needs the LARGER cap (season cap) to strip the embedded cap from raw quantity.
     local normCap = (maxQ > 0) and maxQ or maxWeekly
-    if normCap == 0 and DAWNCREST_IDS[currencyID] then
+    if normCap == 0 and IsSeasonProgressSplitCurrency(currencyID, info) then
         normCap = 200
     end
     local normalizedQuantity = NormalizeQuantity(info.quantity, normCap, info.useTotalEarnedForMaxQty)
-    -- Display cap: weekly cap for Dawncrests (what matters for progress), season cap otherwise.
+    -- Display cap: weekly cap for Dawncrests / coffer shards (progress), season cap otherwise.
     local displayCap
-    if DAWNCREST_IDS[currencyID] and maxWeekly > 0 then
+    if IsSeasonProgressSplitCurrency(currencyID, info) and maxWeekly > 0 then
         displayCap = maxWeekly
     else
         displayCap = normCap
+    end
+    local sm = SeasonMaxFromSplitCurrencyInfo(currencyID, info)
+    local progress = ProgressEarnedFromCurrencyInfo(currencyID, info)
+    if type(progress) == "number" and type(sm) == "number" and sm > 0 and progress > sm then
+        progress = sm
     end
     return {
         currencyID = currencyID,
@@ -363,8 +492,8 @@ local function FetchCurrencyFromAPI(currencyID)
         isAccountWide = info.isAccountWide or false,
         isAccountTransferable = info.isAccountTransferable or false,
         maxQuantity = displayCap,
-        seasonMax = (DAWNCREST_IDS[currencyID] and maxQ > 0) and maxQ or nil,
-        totalEarned = info.totalEarned,
+        seasonMax = sm,
+        totalEarned = progress,
         useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty or false,
     }
 end
@@ -385,7 +514,10 @@ local function UpdateSingleCurrency(currencyID)
     
     local charKey = ns.Utilities:GetCharacterKey()
     if not charKey then return false end
-    
+    if ns.Utilities.GetCanonicalCharacterKey then
+        charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+    end
+
     -- Initialize character entry if needed
     if not db.currencies[charKey] then
         db.currencies[charKey] = {}
@@ -402,26 +534,32 @@ local function UpdateSingleCurrency(currencyID)
         return false
     end
     
-    -- OPTIMIZATION: Skip if quantity hasn't changed (avoids unnecessary DB write + log spam)
     local newQuantity = currencyData.quantity or 0
-    if newQuantity == oldQuantity then
-        return false  -- No change, nothing to update
-    end
-    
-    -- Store ONLY quantity in SV (lean format)
-    db.currencies[charKey][currencyID] = newQuantity
+    local te = currencyData.totalEarned
+    local splitCur = IsSeasonProgressSplitCurrency(currencyID, { name = currencyData.name })
+    if not db.totalEarned then db.totalEarned = {} end
+    if not db.totalEarned[charKey] then db.totalEarned[charKey] = {} end
+    local oldTe = db.totalEarned[charKey][currencyID]
+    local teChanged = splitCur and te ~= nil and type(te) == "number" and te ~= oldTe
+    local qtyChanged = (newQuantity ~= oldQuantity)
 
-    -- Persist totalEarned for capped currencies (Dawncrests) so offline chars show correct Remaining
-    if currencyData.totalEarned and currencyData.totalEarned > 0 then
-        if not db.totalEarned then db.totalEarned = {} end
-        if not db.totalEarned[charKey] then db.totalEarned[charKey] = {} end
-        db.totalEarned[charKey][currencyID] = currencyData.totalEarned
+    -- Weekly progress (totalEarned) can change without bag quantity changing — must not early-out.
+    if not qtyChanged and not teChanged then
+        return false
     end
-    
+
+    if qtyChanged then
+        db.currencies[charKey][currencyID] = newQuantity
+    end
+
+    if splitCur and te ~= nil and type(te) == "number" then
+        db.totalEarned[charKey][currencyID] = te
+    end
+
     -- Update scan timestamp
     CurrencyCache.lastUpdate = time()
     db.lastScan = CurrencyCache.lastUpdate
-    
+
     -- Check for gain and fire lean notification event
     if newQuantity > oldQuantity then
         local gainAmount = newQuantity - oldQuantity
@@ -828,8 +966,9 @@ function CurrencyCache:UpdateAll(currencyDataArray)
         local data = currencyDataArray[i]
         if data.currencyID then
             db.currencies[currentCharKey][data.currencyID] = data.quantity or 0
-            if data.totalEarned and data.totalEarned > 0 then
-                db.totalEarned[currentCharKey][data.currencyID] = data.totalEarned
+            local teFull = data.totalEarned
+            if teFull ~= nil and type(teFull) == "number" and IsSeasonProgressSplitCurrency(data.currencyID, { name = data.name }) then
+                db.totalEarned[currentCharKey][data.currencyID] = teFull
             end
             currencyCount = currencyCount + 1
         end
@@ -944,9 +1083,16 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     end
     
     if not charKey then return nil end
+
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+    end
     
     local quantity = nil
     local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+    if currentKey and ns.Utilities.GetCanonicalCharacterKey then
+        currentKey = ns.Utilities:GetCanonicalCharacterKey(currentKey) or currentKey
+    end
     local function norm(k) return (k and k:gsub("%s+", "")) or "" end
     local isCurrentChar = (currentKey and norm(charKey) == norm(currentKey))
 
@@ -965,7 +1111,7 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
                 db.currencies[charKey] = {}
             end
             db.currencies[charKey][currencyID] = quantity
-            if liveTotalEarned and liveTotalEarned > 0 then
+            if liveTotalEarned ~= nil and type(liveTotalEarned) == "number" and IsSeasonProgressSplitCurrency(currencyID, { name = liveData.name }) then
                 if not db.totalEarned then db.totalEarned = {} end
                 if not db.totalEarned[charKey] then db.totalEarned[charKey] = {} end
                 db.totalEarned[charKey][currencyID] = liveTotalEarned
@@ -1022,6 +1168,14 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
         totalEarned = db.totalEarned[charKey][currencyID]
     end
 
+    -- Same rule as Dawncrests: follow API useTotalEarnedForMaxQty (do not force shards — caused wrong "current" vs crest columns).
+    local useEarned = (liveUseTotalEarned == true) or (metadata.useTotalEarnedForMaxQty == true)
+
+    local seasonMaxOut = liveSeasonMax or metadata.seasonMax
+    if type(totalEarned) == "number" and type(seasonMaxOut) == "number" and seasonMaxOut > 0 and totalEarned > seasonMaxOut then
+        totalEarned = seasonMaxOut
+    end
+
     -- Combine: SV quantity + RAM metadata
     return {
         currencyID = currencyID,
@@ -1030,14 +1184,29 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
         icon = metadata.icon,
         iconFileID = metadata.iconFileID,
         maxQuantity = metadata.maxQuantity,
-        seasonMax = liveSeasonMax or metadata.seasonMax,
+        seasonMax = seasonMaxOut,
         totalEarned = totalEarned,
-        useTotalEarnedForMaxQty = liveUseTotalEarned or metadata.useTotalEarnedForMaxQty,
+        useTotalEarnedForMaxQty = useEarned,
         isAccountWide = metadata.isAccountWide,
         isAccountTransferable = metadata.isAccountTransferable,
         description = metadata.description,
         quality = metadata.quality,
     }
+end
+
+--- Live API: blended season/weekly progress (matches FetchCurrencyFromAPI totalEarned semantics).
+---@param currencyID number
+---@return number|nil
+function WarbandNexus:GetCurrencyProgressEarnedFromAPI(currencyID)
+    if not currencyID or not C_CurrencyInfo then return nil end
+    local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+    if not info then return nil end
+    local progress = ProgressEarnedFromCurrencyInfo(currencyID, info)
+    local sm = SeasonMaxFromSplitCurrencyInfo(currencyID, info)
+    if type(progress) == "number" and type(sm) == "number" and sm > 0 and progress > sm then
+        return sm
+    end
+    return progress
 end
 
 ---Get all cached currency data for a character (lean format from SV).
@@ -1150,7 +1319,15 @@ function WarbandNexus:GetCurrenciesForUI()
         }
         entry.chars = {}
         local total, maxQty = 0, 0
-        local dawncrestCap = DAWNCREST_IDS[currencyID] and 200 or nil
+        local splitNormCap = nil
+        if metadata and IsSeasonProgressSplitCurrency(currencyID, metadata) then
+            local sm = tonumber(metadata.seasonMax) or 0
+            local mw = tonumber(metadata.maxWeeklyQuantity) or 0
+            splitNormCap = (sm > 0) and sm or ((mw > 0) and mw or nil)
+            if not splitNormCap or splitNormCap == 0 then
+                splitNormCap = 200
+            end
+        end
         for i = 1, #trackedCharacters do
             local tracked = trackedCharacters[i]
             local rawKey = tracked.rawKey
@@ -1173,8 +1350,8 @@ function WarbandNexus:GetCurrenciesForUI()
                 elseif type(stored) == "table" then qty = stored.quantity or 0 end
             end
 
-            if dawncrestCap and qty > dawncrestCap then
-                qty = qty - dawncrestCap
+            if splitNormCap and qty > splitNormCap then
+                qty = qty - splitNormCap
                 if qty < 0 then qty = 0 end
             end
             entry.chars[canonicalKey or rawKey] = qty
