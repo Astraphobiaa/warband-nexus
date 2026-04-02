@@ -32,11 +32,13 @@ WindowManager.PRIORITY = {
 }
 
 -- Recommended strata/level per priority tier
--- WoW strata order: FULLSCREEN_DIALOG > DIALOG > HIGH > MEDIUM > LOW > BACKGROUND
--- FLOATING must be same strata as MAIN (DIALOG) but higher level to appear on top.
+-- WoW strata order: FULLSCREEN_DIALOG > FULLSCREEN > DIALOG > HIGH > MEDIUM > LOW > BACKGROUND
+-- MAIN uses MEDIUM so default Blizzard panels (same strata) and HIGH-strata windows (bags, bank)
+-- can stack above the addon when focused — avoids trapping the UI under a DIALOG-layer main frame.
+-- FLOATING sits in HIGH so it stays above MAIN without needing FULLSCREEN_DIALOG.
 WindowManager.STRATA = {
-    [10] = { strata = "DIALOG",            level = 100 },
-    [20] = { strata = "DIALOG",            level = 200 },
+    [10] = { strata = "MEDIUM",             level = 50 },
+    [20] = { strata = "HIGH",               level = 120 },
     [30] = { strata = "FULLSCREEN_DIALOG", level = 300 },
 }
 

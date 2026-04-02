@@ -570,8 +570,16 @@ function WarbandNexus:CreateMainWindow()
         StopCustomDrag(self)
         SaveWindowGeometry(self)
     end)
-    f:SetFrameStrata("DIALOG")  -- DIALOG is above HIGH, ensures we're above BankFrame
-    f:SetFrameLevel(100)         -- Extra high level for safety
+    -- MEDIUM: plays nice with Blizzard UI and other addons (DIALOG was always on top of HIGH/MEDIUM).
+    if ns.WindowManager and ns.WindowManager.ApplyStrata then
+        ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.MAIN)
+    else
+        f:SetFrameStrata("MEDIUM")
+        f:SetFrameLevel(50)
+    end
+    if f.SetToplevel then
+        f:SetToplevel(true)
+    end
     f:SetClampedToScreen(true)
     
     -- Apply user-configured UI scale (scales entire addon window + children)

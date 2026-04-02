@@ -928,8 +928,8 @@ local function CreateInfoFrame()
         ns.WindowManager:Register(frame, ns.WindowManager.PRIORITY.FLOATING)
         ns.WindowManager:InstallESCHandler(frame)
     else
-        frame:SetFrameStrata("DIALOG")
-        frame:SetFrameLevel(200)
+        frame:SetFrameStrata("HIGH")
+        frame:SetFrameLevel(120)
     end
 
     if ApplyVisuals then
