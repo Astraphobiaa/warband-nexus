@@ -1091,11 +1091,65 @@ L["WELCOME_TYPE_CMD"] = "Bitte tippe"
 L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 
 -- What's New (nur aktuelle Version)
-L["CHANGELOG_V256"] = "v2.5.6\nVerbesserungen:\n- Lesbarere Realm-Darstellung in Ausrüstung, Wochenplänen, Plans-Tracker, Tracking-Dialog (Schlüssel weiter mit Blizzards normalisiertem Text)\n- Sammlungen: erweiterte BfA-Blutgreifer-NPC-Liste; klarere Hinweise Truhe vs Boss und Multi-Leiche-Try-Count\n- SplitCharacterKey + Aufteilung nur am ersten Bindestrich bei Name-Realm\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py für Mount-DB-Audits\n\nFehlerbehebungen:\n- Versuchszähler: Chat-Beute + geteilte Droptabellen (z. B. Gezähmter Blutgreifer) — CHAT-Updates gehen nicht mehr verloren\n- Bindestrich-Realms (z. B. Azjol-Nerub): kanonische Schlüssel, GetAllCharacters-Reparatur, Statistik/Minimap; einmalige Realm-Feld-Migration\n- Mount-IDs: Verdant Skitterfly (192764), roter Qirajikristall (21321)\n- Tracking-Dialog: GetRealmName gegen Geheimwerte abgesichert\n\nLokalisierung:\n- TRY_COUNT Klick-/Rechtsklick-Hinweise in allen Sprachen\n\nRepo: überflüssige Dev-Dateien entfernt; Import aus externem Tracker in CONTRIBUTING\n\nCurseForge: Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\nVerbesserungen:\n- Lesbarere Realm-Darstellung in Ausrüstung, Wochenplänen, Plans-Tracker, Tracking-Dialog (Schlüssel weiter mit Blizzards normalisiertem Text)\n- Sammlungen: erweiterte BfA-Blutgreifer-NPC-Liste; klarere Hinweise Truhe vs Boss und Multi-Leiche-Try-Count\n- SplitCharacterKey + Aufteilung nur am ersten Bindestrich bei Name-Realm\n- Mount-DB-Audits: Community-DB/Mounts-Lua + Wowhead/WoWDB\n\nFehlerbehebungen:\n- Versuchszähler: Chat-Beute + geteilte Droptabellen (z. B. Gezähmter Blutgreifer) — CHAT-Updates gehen nicht mehr verloren\n- Bindestrich-Realms (z. B. Azjol-Nerub): kanonische Schlüssel, GetAllCharacters-Reparatur, Statistik/Minimap; einmalige Realm-Feld-Migration\n- Mount-IDs: Verdant Skitterfly (192764), roter Qirajikristall (21321)\n- Tracking-Dialog: GetRealmName gegen Geheimwerte abgesichert\n\nLokalisierung:\n- TRY_COUNT Klick-/Rechtsklick-Hinweise in allen Sprachen\n\nRepo: Git enthält nur Addon-Quellen (Core, Modules, Locales, toc, CHANGES)\n\nCurseForge: Warband Nexus"
 
 L["CHANGELOG_V257"] = "v2.5.7b\nVerbesserungen:\n- Charaktere: Standardreihenfolge (Online zuerst, dann Stufe, Name); Standard für neue Profile; unbekannte Sortierschlüssel → erste Menüoption\n- Charaktere: eingeloggter Charakter oben in Favoriten/Charaktere/Nicht verfolgt; manuelle Reihenfolge konsistent\n- Versuchszähler: Instanzschwierigkeit über GetInstanceInfo + Eintritts-Cache (falsches ENCOUNTER_END „Normal“ bei Mythisch, z. B. Mechagon HK-8)\n- Versuchszähler: eine Schwierigkeitsprüfung für Beute, verzögertes ENC und CHAT; CHAT nutzt denselben encounter_-Schlüssel wie Beute\n- Versuchszähler: encounter_-Schlüssel auch bei 0 trackbaren Drops (kein Doppelzählen mit verzögertem ENC/CHAT)\n- Versuchszähler: zusammengelegtes Open-World-Loot zählt Leichen über NPC-Vorlagen mit gleichem Mount-Item (BfA Blutgreifer)\n- Ausrüstung: Charakterauswahl Breite/Ausrichtung\n\nFehlerbehebungen:\n- Versuchszähler: Zähler stieg trotz Schwierigkeit-Hinweis (Beute vs. verzögert/CHAT)\n\nLokalisierung: SORT_MODE_DEFAULT\n\nCurseForge: Warband Nexus"
 
 L["CHANGELOG_V258"] = "v2.5.8\nFehlerbehebungen:\n- Versuchszähler: CHAT_MSG_LOOT verursacht auf dem Angel-Zuordnungspfad keinen Fehler mehr (Vorwärtsdeklaration von CurrentUnitsHaveMobLootContext; zuvor nil als globale Variable).\n\nCurseForge: Warband Nexus"
+
+L["CHANGELOG_V259"] = [=[v2.5.9 (03.04.2026)
+
+Verbesserungen
+- Sammlungen / Versuchszähler: Schlacht um Dazar'alor — Glacial Tidestrom nur mythisch bei Lady Jaina (nicht LFR). G.M.O.D.: LFR bei Jaina; Normal/Heroisch/Mythisch bei Hochtüftler Mekkatorque (Hotfix 2019). LFR wird im Zähler explizit erkannt; Statistik-Neuberechnung nutzt pro-Drop-statisticIds; Login-Seed und Beute-Miss verarbeiten Drops mit eigenen Stat-Spalten; Mekkatorque-G.M.O.D. ohne Jaina-LFR-Kills (13379).
+- CollectibleSourceDB: legacyEncounters (nur Mount-Bosse) an Midnight-DungeonEncounter-IDs angepasst.
+- Repository: Git enthält nur Addon-Quellen (Core, Modules, Locales, toc, CHANGES, LICENSE, README); Dev-Doku und Audit-Skripte entfernt.
+
+--- 2.5.8 ---
+Fehlerbehebungen
+- Versuchszähler: CHAT_MSG_LOOT auf dem Angel-Pfad ohne Fehler (CurrentUnitsHaveMobLootContext vordeklariert; war nil global).
+
+--- 2.5.7 / 2.5.7b ---
+Hotfix
+- Ausrüstung: Charakterauswahl und Dropdown-Layout.
+- Info/Über-Dialog: Credits und Mitwirkende.
+
+Verbesserungen
+- Charaktere: neue Sortierung Standardreihenfolge (eingeloggter Charakter zuerst, dann Stufe hoch nach niedrig, dann Name A–Z). Neue Profile: characterSort.key = default. Unbekannte Sortierschlüssel → erste Menüoption. Eingeloggter Charakter oben in Favoriten, verfolgt und Nicht verfolgt (auch manuell); manueller Start umfasst alle Charaktere der Sektion, Online zuerst; characterOrder erhält untracked; Umsortieren hält Online oben.
+- Einstellungen: WindowManager (POPUP, gemeinsamer ESC mit Hauptfenster) statt fester FULLSCREEN_DIALOG-Stufe. RefreshSettingsKeyboard aktiviert Tastatur nach Show. Schrift-Neuaufbau meldet Settings-Frame beim WindowManager ab.
+- WindowManager: nach Kampf beim Wiederherstellen EnableKeyboard(true) zusätzlich zu SetPropagateKeyboardInput(true).
+- Versuchszähler: Instanzschwierigkeit bevorzugt Snapshot beim Betreten (PLAYER_ENTERING_WORLD, Instanz-ID), dann live GetInstanceInfo, vor ENCOUNTER_END und APIs — behebt Mythisch als Normal (z. B. Mechagon HK-8). ResolveLiveInstanceDifficultyID für M+ und APIs bei Difficulty 0; ResolveEffectiveEncounterDifficultyID bündelt die Schwierigkeit.
+- Versuchszähler: FilterDropsByDifficulty konsistent für Beute, verzögertes ENC und CHAT_MSG_LOOT; CHAT nutzt denselben encounter-Dedup-Schlüssel wie das Beutfenster.
+- Versuchszähler: bei 0 trackbaren Drops nach Regeln trotzdem Dedup-Schlüssel setzen (kein Doppelzähler über ENC/CHAT).
+- Versuchszähler: zusammengelegtes Open-World-Loot mit Item-ID-Leichen-Multiplikator (z. B. Nazmir Blutgreifer).
+- Versuchszähler: doppeltes LOOT_READY löscht die Sitzung nicht; Debug-Spuren zu LOOT_READY/CLOSED werden entprellt.
+- Versuchszähler: [WN-Drops] Header TRYCOUNTER_INSTANCE_DROPS_HEADER; bei DB-Schwierigkeitsgate Label in Klammern nach Item-Link — grün/rot/bernstein je nach aktueller Instanz.
+
+Fehlerbehebungen
+- Versuchszähler: Zähler stieg trotz Schwierigkeits-Hinweis (Beute vs. verzögert/CHAT).
+
+Lokalisierung
+- SORT_MODE_DEFAULT; TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED und verwandte Zeichenketten.
+
+--- 2.5.6 ---
+Verbesserungen
+- Lesbarere Realm-Abstände in Ausrüstung, Wochenplänen, Plans-Tracker, Tracking-Dialog.
+- Sammlungen: erweiterte BfA-Blutgreifer-NPCs; Hinweise Truhe vs. Boss und Multi-Leiche.
+- SplitCharacterKey + erster Bindestrich bei Name-Realm.
+- Mount-DB: Community DB/Mounts Lua + Wowhead/WoWDB.
+
+Fehlerbehebungen
+- Versuchszähler: Chat-Beute + geteilte Tabellen verlieren keine CHAT-Updates.
+- Bindestrich-Realms: kanonische Schlüssel, GetAllCharacters, Stats/Minimap; einmalige Migration.
+- Mount-IDs: Verdant Skitterfly (192764), roter Qiraji-Kristall (21321).
+- Tracking-Dialog: GetRealmName gegen Geheimwerte.
+
+Lokalisierung
+- TRY_COUNT Klick-/Rechtsklick-Hinweise.
+
+Was als Nächstes
+- Weitere Midnight-Sammlungs- und Encounter-ID-Prüfungen; Versuchszähler und Benachrichtigungen nach Live-Feedback.
+
+CurseForge: Warband Nexus]=]
 
 -- =============================================
 -- Confirm / Tracking Dialog

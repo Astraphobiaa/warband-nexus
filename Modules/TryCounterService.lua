@@ -728,9 +728,21 @@ local function IndexDrop(drop, npcDifficulty, hasStatistics)
     -- dropDifficulty: item-level > NPC-level > "All Difficulties" (if NPC has statisticIds)
     local difficulty = drop.dropDifficulty or npcDifficulty
     if difficulty then
-        dropDifficultyIndex[itemKey] = difficulty
+        local existing = dropDifficultyIndex[itemKey]
+        if existing == false then
+            -- already marked: conflicting requirements for same item key
+        elseif existing == nil or existing == difficulty then
+            dropDifficultyIndex[itemKey] = difficulty
+        else
+            dropDifficultyIndex[itemKey] = false -- multiple gates; GetDropDifficulty returns nil
+        end
     elseif hasStatistics then
-        dropDifficultyIndex[itemKey] = "All Difficulties"
+        local existing = dropDifficultyIndex[itemKey]
+        if existing == nil then
+            dropDifficultyIndex[itemKey] = "All Difficulties"
+        elseif existing ~= false and existing ~= "All Difficulties" then
+            dropDifficultyIndex[itemKey] = false
+        end
     end
 
     -- DB rows are often type=item (quest item, container) while UI/plans use native mountID/speciesID.
@@ -1550,11 +1562,14 @@ local function DoesDifficultyMatch(difficultyID, requiredDifficulty)
     elseif requiredDifficulty == "25H" then
         return label == "25H"
     elseif requiredDifficulty == "Normal" then
+        -- Flex Normal / Heroic / Mythic raid & legacy sizes — excludes LFR/TW-LFR.
         return label == "Normal" or label == "Heroic" or label == "Mythic" or label == "10N" or label == "25N"
     elseif requiredDifficulty == "10N" then
         return label == "10N"
     elseif requiredDifficulty == "25N" then
         return label == "25N"
+    elseif requiredDifficulty == "LFR" then
+        return label == "LFR"
     end
     return false
 end
@@ -1923,6 +1938,42 @@ local function ReseedStatisticsForDrops(drops, statIds)
     end
 end
 
+---True if NPC drop entry has statisticIds at NPC level or on any drop row (per-difficulty stats).
+---@param npcData table
+---@return boolean
+local function NpcEntryHasStatisticIds(npcData)
+    if not npcData or type(npcData) ~= "table" then return false end
+    if npcData.statisticIds and #npcData.statisticIds > 0 then return true end
+    for i = 1, #npcData do
+        local d = npcData[i]
+        if type(d) == "table" and d.statisticIds and #d.statisticIds > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+---@param drop table
+---@param npcStatIds table|nil
+---@return table|nil
+local function ResolveReseedStatIdsForDrop(drop, npcStatIds)
+    if drop and drop.statisticIds and #drop.statisticIds > 0 then
+        return drop.statisticIds
+    end
+    return npcStatIds
+end
+
+---@param drops table
+---@param npcStatIds table|nil
+---@return boolean
+local function DropsHaveStatBackedReseed(drops, npcStatIds)
+    for i = 1, #drops do
+        local sids = ResolveReseedStatIdsForDrop(drops[i], npcStatIds)
+        if sids and #sids > 0 then return true end
+    end
+    return false
+end
+
 ---Increment try count and print chat message for unfound drops.
 ---TRY COUNT RULE: Guaranteed drops excluded. NPC corpse/CHAT use tryCounterNpcEligible;
 ---containers/objects/fishing/zone rare pools unchanged.
@@ -1949,9 +2000,15 @@ local function ProcessMissedDrops(drops, statIds, options)
         end
     end
 
-    if statIds and #statIds > 0 and not allRepeatableMisses then
+    if DropsHaveStatBackedReseed(drops, statIds) and not allRepeatableMisses then
         C_Timer.After(2, function()
-            ReseedStatisticsForDrops(drops, statIds)
+            for i = 1, #drops do
+                local drop = drops[i]
+                local sids = ResolveReseedStatIdsForDrop(drop, statIds)
+                if sids and #sids > 0 then
+                    ReseedStatisticsForDrops({ drop }, sids)
+                end
+            end
         end)
         return
     end
@@ -2427,8 +2484,8 @@ end
 -- so they know which bosses drop mounts/pets/toys before engaging.
 -- Uses Encounter Journal API (after Blizzard_EncounterJournal load):
 --   EJ_GetInstanceForMap(uiMapID) or EJ_GetCurrentInstance() → journalInstanceID
---   EJ_GetEncounterInfoByIndex(idx) → iterates encounters in that instance
---     7th return (dungeonEncounterID) matches our encounterDB keys
+--   EJ_GetEncounterInfoByIndex(idx, jid) plus EJ_GetEncounterInfo(journalEncounterID) per row
+--     TryCounterResolveDungeonEncounterFromEJIndex uses EJ_GetEncounterInfo(journalID) for dungeonEncounterID.
 -- =====================================================================
 
 -- Track the last instance we notified for (avoid spam on /reload inside same instance)
@@ -2448,6 +2505,59 @@ end
 local function TryCounterEJ_HasCoreAPIs()
     return EJ_SelectInstance and EJ_GetEncounterInfoByIndex
         and (EJ_GetCurrentInstance or EJ_GetInstanceForMap)
+end
+
+---@param encIndex number 1-based EJ boss index within the instance
+---@param journalInstanceID number JournalInstance.ID (pass through to ByIndex for stable rows)
+---@return string|nil encName
+---@return number|nil dungeonEncounterID keys encounterDB / ENCOUNTER_END
+local function TryCounterResolveDungeonEncounterFromEJIndex(encIndex, journalInstanceID)
+    local encName, _, journalEncID, _, _, _, dungeonEncID
+    local okEJ, a, b, c, d, e, f, g = pcall(function()
+        if journalInstanceID and type(journalInstanceID) == "number" and journalInstanceID > 0 then
+            return EJ_GetEncounterInfoByIndex(encIndex, journalInstanceID)
+        end
+        return EJ_GetEncounterInfoByIndex(encIndex)
+    end)
+    if okEJ and a then
+        encName, _, journalEncID, _, _, _, dungeonEncID = a, b, c, d, e, f, g
+    end
+    if EJ_GetEncounterInfo and journalEncID and type(journalEncID) == "number" and journalEncID > 0 then
+        -- Returns: name, desc, journalEncounterID, rootSectionID, link, journalInstanceID, dungeonEncounterID, instanceID
+        local okInfo, _, _, _, _, _, dex = pcall(EJ_GetEncounterInfo, journalEncID)
+        if okInfo and dex and type(dex) == "number" and dex > 0 then
+            if not (issecretvalue and issecretvalue(dex)) then
+                dungeonEncID = dex
+            end
+        end
+    end
+    return encName, dungeonEncID
+end
+
+--- Instance-entry chat / debug: mount collectibles only (direct mount or item→mount chain).
+local function ResolveTryCounterMountAnnounceDrop(drop)
+    if not drop or not drop.type then return nil end
+    if drop.type == "mount" then return drop end
+    if drop.type == "pet" or drop.type == "toy" then return nil end
+    if drop.type == "item" then
+        local r = drop.tryCountReflectsTo
+        if r and r.type == "mount" then return r end
+        local qs = drop.questStarters
+        if type(qs) == "table" then
+            for i = 1, #qs do
+                local q = qs[i]
+                if q and q.type == "mount" then return q end
+            end
+        end
+        local yl = drop.yields
+        if type(yl) == "table" then
+            for i = 1, #yl do
+                local y = yl[i]
+                if y and y.type == "mount" then return y end
+            end
+        end
+    end
+    return nil
 end
 
 ---Journal instance ID for the player's current position. Prefer EJ_GetInstanceForMap(uiMapID) — EJ_GetCurrentInstance was superseded in 8.0.1.
@@ -2639,7 +2749,7 @@ function WarbandNexus:TryCounterDebugInstanceProbe()
         local idx = 1
         local hadDbBoss = false
         while true do
-            local encName, _, _, _, _, _, dungeonEncID = EJ_GetEncounterInfoByIndex(idx)
+            local encName, dungeonEncID = TryCounterResolveDungeonEncounterFromEJIndex(idx, jid)
             local isSecret = issecretvalue and encName and issecretvalue(encName)
             if not isSecret and not encName then break end
             if not isSecret and dungeonEncID then
@@ -2657,8 +2767,11 @@ function WarbandNexus:TryCounterDebugInstanceProbe()
                             local trackable, diffSkip = FilterDropsByDifficulty(npcDrops, effDiff)
                             for ti = 1, #trackable do
                                 local d = trackable[ti]
-                                parts[#parts + 1] = format("npc %s → %s \"%s\" (item %s)",
-                                    tostring(npcID), tostring(d.type), tostring(d.name or "?"), tostring(d.itemID))
+                                local ann = ResolveTryCounterMountAnnounceDrop(d)
+                                if ann then
+                                    parts[#parts + 1] = format("npc %s → mount \"%s\" (item %s)",
+                                        tostring(npcID), tostring(ann.name or "?"), tostring(ann.itemID))
+                                end
                             end
                             if #trackable == 0 and diffSkip then
                                 parts[#parts + 1] = format("npc %s → (0 trackable: needs %s)",
@@ -2695,8 +2808,7 @@ TryCounterShowInstanceDrops = function(journalInstanceID)
         local dropsToShow = {} -- { { bossName, drops = { {type, itemID, name}, ... } }, ... }
         local idx = 1
         while true do
-            -- Returns: name, desc, journalEncounterID, rootSectionID, link, journalInstanceID, dungeonEncounterID, instanceID
-            local encName, _, _, _, _, _, dungeonEncID = EJ_GetEncounterInfoByIndex(idx)
+            local encName, dungeonEncID = TryCounterResolveDungeonEncounterFromEJIndex(idx, journalInstanceID)
             -- Guard: issecretvalue check MUST run before `not encName` to avoid
             -- ADDON_ACTION_FORBIDDEN when comparing a secret value with nil.
             local isSecret = issecretvalue and encName and issecretvalue(encName)
@@ -2718,12 +2830,16 @@ TryCounterShowInstanceDrops = function(journalInstanceID)
                             local npcDiff = npcDrops.dropDifficulty
                             for j = 1, #npcDrops do
                                 local drop = npcDrops[j]
-                                if not seenItems[drop.itemID] then
-                                    seenItems[drop.itemID] = true
-                                    encounterDrops[#encounterDrops + 1] = drop
-                                    local reqDiff = drop.dropDifficulty or npcDiff
-                                    if reqDiff and reqDiff ~= "All Difficulties" then
-                                        dropDiffMap[drop.itemID] = reqDiff
+                                local ann = ResolveTryCounterMountAnnounceDrop(drop)
+                                if ann and ann.itemID then
+                                    local iid = ann.itemID
+                                    if not seenItems[iid] then
+                                        seenItems[iid] = true
+                                        encounterDrops[#encounterDrops + 1] = ann
+                                        local reqDiff = drop.dropDifficulty or npcDiff
+                                        if reqDiff and reqDiff ~= "All Difficulties" then
+                                            dropDiffMap[iid] = reqDiff
+                                        end
                                     end
                                 end
                             end
@@ -4371,7 +4487,7 @@ function WarbandNexus:ProcessNPCLoot()
     -- keep mult=1 there to avoid implying per-corpse stats (attemptTimes unused on that branch).
     local farmCorpseMult = 1
     do
-        local statBacked = drops and drops.statisticIds and #drops.statisticIds > 0
+        local statBacked = drops and NpcEntryHasStatisticIds(drops)
         if matchedNpcID and not matchedEncounterID and not lastMatchedObjectID and not statBacked then
             local tableMult = CountCorpsesSharingDropTable(allSourceGUIDs, drops)
             local npcMult = CountUniqueLootSourcesForNpcID(allSourceGUIDs, matchedNpcID)
@@ -4396,7 +4512,7 @@ function WarbandNexus:ProcessNPCLoot()
     -- Fingerprint dedup: same npc + same multiset of loot source GUIDs = one miss-increment wave.
     local mergeFp = nil
     local openWorldFarm = matchedNpcID and not matchedEncounterID and not lastMatchedObjectID
-    local statNoStats = not (drops and drops.statisticIds and #drops.statisticIds > 0)
+    local statNoStats = not (drops and NpcEntryHasStatisticIds(drops))
     if openWorldFarm and statNoStats and #dropsToIncrement > 0 and #allSourceGUIDs > 0 then
         mergeFp = tostring(matchedNpcID) .. "\1" .. BuildSortedSourceFingerprint(allSourceGUIDs)
         local tMerge = mergedLootTryCountedAt[mergeFp]
@@ -4932,11 +5048,19 @@ local function SeedFromStatistics()
     end
     local charSnapshot = snapshots[charKey]
 
-    -- Collect all NPC entries with statisticIds into a flat list for batched processing
+    -- One queue row per drop with statisticIds (NPC-level or per-drop): e.g. Jaina seeds Mythic
+    -- Tidestorm vs LFR G.M.O.D. from different Statistics columns.
     local npcQueue = {}
-    for npcID, npcData in pairs(npcDropDB) do
-        if npcData.statisticIds then
-            npcQueue[#npcQueue + 1] = { npcID = npcID, data = npcData }
+    for _, npcData in pairs(npcDropDB) do
+        local npcStatIds = npcData.statisticIds
+        for i = 1, #npcData do
+            local drop = npcData[i]
+            if type(drop) == "table" and drop.type and drop.itemID and not drop.guaranteed then
+                local sids = ResolveReseedStatIdsForDrop(drop, npcStatIds)
+                if sids and #sids > 0 then
+                    npcQueue[#npcQueue + 1] = { drop = drop, statIds = sids }
+                end
+            end
         end
     end
 
@@ -4950,8 +5074,8 @@ local function SeedFromStatistics()
 
         while queueIdx <= #npcQueue do
             local entry = npcQueue[queueIdx]
-            local npcData = entry.data
-            local statIds = npcData.statisticIds
+            local statIds = entry.statIds
+            local rootDrop = entry.drop
 
             local thisCharTotal = 0
             for i = 1, #statIds do
@@ -4985,8 +5109,8 @@ local function SeedFromStatistics()
                         if globalTotal > currentCount then
                             WarbandNexus:SetTryCount(tcType, tryKey, globalTotal)
                             if drop.type == "item" and drop.questStarters then
-                                for i = 1, #drop.questStarters do
-                                    local qs = drop.questStarters[i]
+                                for j = 1, #drop.questStarters do
+                                    local qs = drop.questStarters[j]
                                     if qs and qs.type == "mount" and qs.itemID then
                                         local k1 = ResolveCollectibleID(qs)
                                         local k2 = qs.itemID
@@ -5005,17 +5129,14 @@ local function SeedFromStatistics()
                     end
                 end
                 if drop and drop.questStarters then
-                    for i = 1, #drop.questStarters do
-                        local qs = drop.questStarters[i]
+                    for j = 1, #drop.questStarters do
+                        local qs = drop.questStarters[j]
                         ProcessBatchDrop(qs)
                     end
                 end
             end
 
-            for i = 1, #npcData do
-                local drop = npcData[i]
-                ProcessBatchDrop(drop)
-            end
+            ProcessBatchDrop(rootDrop)
 
             queueIdx = queueIdx + 1
 
@@ -5402,10 +5523,10 @@ function WarbandNexus:InitializeTryCounter()
         local RESOLVE_BUDGET_MS = 3
         local resolveQueue = {}
         for _, npcData in pairs(npcDropDB) do
-            if npcData.statisticIds then
+            if NpcEntryHasStatisticIds(npcData) then
                 for j = 1, #npcData do
                     local drop = npcData[j]
-                    if drop.itemID and not resolvedIDs[drop.itemID] then
+                    if type(drop) == "table" and drop.itemID and not resolvedIDs[drop.itemID] then
                         resolveQueue[#resolveQueue + 1] = drop
                     end
                 end

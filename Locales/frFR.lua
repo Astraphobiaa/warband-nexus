@@ -628,11 +628,65 @@ L["AVAILABLE_COMMANDS"] = "Commandes disponibles :"
 L["AVAILABLE_LABEL"] = "Disponible :"
 L["BANK_IS_ACTIVE"] = "La banque est active"
 L["BANK_NOT_OPEN_MSG"] = "La banque n'est pas ouverte"
-L["CHANGELOG_V256"] = "v2.5.6\nAméliorations :\n- Affichage des royaumes plus lisible (équipement, plans hebdo, tracker Plans, dialogue de suivi) ; clés sauvegardées toujours au texte normalisé Blizzard\n- Collections : liste NPC élargie (Sanguivore apprivoisé, BfA) ; notes coffre vs boss et butins multi-cadavres pour les essais\n- SplitCharacterKey + coupure au premier tiret pour Chaîne-Royaume\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py pour audits de la DB montures\n\nCorrections :\n- Compteur d’essais : butin chat + tables partagées — plus de perte des mises à jour CHAT (ex. Sanguivore)\n- Royaumes avec tirets (Azjol-Nerub) : clés canoniques, réparation GetAllCharacters, stats/minimap ; migration unique du champ royaume\n- IDs montures : voltigeur verdoyant (192764), cristal qiraji rouge (21321)\n- Dialogue suivi : garde sur GetRealmName (valeurs secrètes)\n\nLocalisation :\n- Astuces clic / clic droit TRY_COUNT dans toutes les langues\n\nDépôt : fichiers dev inutiles retirés ; import montures (voir CONTRIBUTING) documenté dans CONTRIBUTING\n\nCurseForge : Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\nAméliorations :\n- Affichage des royaumes plus lisible (équipement, plans hebdo, tracker Plans, dialogue de suivi) ; clés sauvegardées toujours au texte normalisé Blizzard\n- Collections : liste NPC élargie (Sanguivore apprivoisé, BfA) ; notes coffre vs boss et butins multi-cadavres pour les essais\n- SplitCharacterKey + coupure au premier tiret pour Chaîne-Royaume\n- Audits montures : DB communautaire Mounts Lua + Wowhead/WoWDB\n\nCorrections :\n- Compteur d’essais : butin chat + tables partagées — plus de perte des mises à jour CHAT (ex. Sanguivore)\n- Royaumes avec tirets (Azjol-Nerub) : clés canoniques, réparation GetAllCharacters, stats/minimap ; migration unique du champ royaume\n- IDs montures : voltigeur verdoyant (192764), cristal qiraji rouge (21321)\n- Dialogue suivi : garde sur GetRealmName (valeurs secrètes)\n\nLocalisation :\n- Astuces clic / clic droit TRY_COUNT dans toutes les langues\n\nDépôt : Git ne contient que les sources de l’addon (Core, Modules, Locales, toc, CHANGES)\n\nCurseForge : Warband Nexus"
 
 L["CHANGELOG_V257"] = "v2.5.7b\nAméliorations :\n- Personnages : ordre par défaut (perso connecté d’abord, puis niveau, nom) ; défaut des nouveaux profils ; clé de tri inconnue → première option du menu\n- Personnages : perso connecté en tête dans Favoris / Personnages / Non suivis ; ordre manuel cohérent\n- Compteur d’essais : difficulté d’instance via GetInstanceInfo + instantané à l’entrée (corrige Normal erroné en mythique, ex. Mechagon HK-8)\n- Compteur : un filtre difficulté pour butin, ENC retardé et CHAT ; clé dedup encounter_ identique à la fenêtre de butin\n- Compteur : clé encounter_ si 0 pistes pour éviter double comptage (ENC retardé / CHAT)\n- Compteur : butin fusionné monde ouvert compte les cadavres partageant le même objet de monture (BfA Sanguivore)\n- Équipement : largeur du sélecteur de personnage\n\nCorrections :\n- Compteur : incrément malgré message d’exclusion de difficulté\n\nLocalisation : SORT_MODE_DEFAULT\n\nCurseForge : Warband Nexus"
 
 L["CHANGELOG_V258"] = "v2.5.8\nCorrections :\n- Compteur d'essais : CHAT_MSG_LOOT ne génère plus d'erreur sur le chemin d'attribution pêche (déclaration anticipée de CurrentUnitsHaveMobLootContext ; était une globale nil).\n\nCurseForge : Warband Nexus"
+
+L["CHANGELOG_V259"] = [=[v2.5.9 (03.04.2026)
+
+Améliorations
+- Collections / compteur d'essais : bataille de Dazar'alor — Glacial Tidestorm uniquement mythique sur dame Jaina (pas LFR). G.M.O.D. : LFR sur Jaina ; normal/héroïque/mythique sur le haut tinkertoy Mekkatorque (correctif 2019). Prise en charge LFR explicite ; reseed statistiques avec statisticIds par ligne de butin ; Mekkatorque sans somme LFR Jaina (13379).
+- CollectibleSourceDB : legacyEncounters (boss à monture) réalignés sur les IDs DungeonEncounter Midnight.
+- Dépôt Git : uniquement les sources de l'addon (Core, Modules, Locales, toc, CHANGES, LICENSE, README) ; docs et scripts d'audit retirés.
+
+--- 2.5.8 ---
+Corrections
+- Compteur d'essais : CHAT_MSG_LOOT, chemin pêche — CurrentUnitsHaveMobLootContext prédéclaré (global nil).
+
+--- 2.5.7 / 2.5.7b ---
+Correctif
+- Onglet Équipement : sélecteur de personnage et menu déroulant.
+- Boîte À propos : crédits et contributeurs.
+
+Améliorations
+- Personnages : tri Ordre par défaut (perso connecté, puis niveau décroissant, puis nom A–Z). Nouveaux profils : characterSort.key = default. Clés de tri invalides → première option du menu. Perso connecté en tête dans Favoris, suivis et non suivis (y compris ordre manuel) ; graine manuelle inclut toute la section, en ligne d'abord ; characterOrder avec liste non suivie ; réordonnancement garde le perso en ligne en tête.
+- Paramètres : WindowManager (POPUP, ESC partagé avec la fenêtre principale) au lieu d'un strata FULLSCREEN_DIALOG fixe. RefreshSettingsKeyboard réactive le clavier après affichage. Reconstruction des polices : désenregistrement du cadre paramètres dans WindowManager.
+- WindowManager : après combat, EnableKeyboard(true) en plus de SetPropagateKeyboardInput(true).
+- Compteur : difficulté d'instance = instantané à l'entrée (PLAYER_ENTERING_WORLD, ID d'instance), puis GetInstanceInfo, avant ENCOUNTER_END et APIs — corrige mythique lu comme normal (ex. Mechagon HK-8). ResolveLiveInstanceDifficultyID pour M+ et APIs si difficulté 0 ; ResolveEffectiveEncounterDifficultyID centralise le filtrage.
+- Compteur : FilterDropsByDifficulty appliqué à la butine, à l'ENC retardé et à CHAT_MSG_LOOT ; même clé dedup encounter_ que la fenêtre de butin.
+- Compteur : si zéro piste après règles, enregistrer quand même la clé dedup (pas de double via ENC/CHAT).
+- Compteur : butin monde ouvert fusionné avec multiplicateur de cadavres par ID d'objet (ex. Sanguivore de Nazmir).
+- Compteur : double LOOT_READY ne vide plus la session ; traces debug LOOT_READY/CLOSED dédupliquées.
+- Compteur : [WN-Drops] en-tête TRYCOUNTER_INSTANCE_DROPS_HEADER ; difficulté requise entre parenthèses après le lien d'objet — vert / rouge / ambre selon l'instance.
+
+Corrections
+- Compteur : incrément après message d'exclusion de difficulté (butin vs ENC retardé / CHAT).
+
+Localisation
+- SORT_MODE_DEFAULT ; TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED et chaînes liées.
+
+--- 2.5.6 ---
+Améliorations
+- Espacement des royaumes plus lisible (équipement, plans, tracker, suivi).
+- Collections : plus de PNJ pour le Sanguivore apprivoisé (BfA) ; notes coffre vs boss et multi-cadavres.
+- SplitCharacterKey + premier tiret Nom-Royaume.
+- Montures : DB communautaire Mounts Lua + Wowhead/WoWDB.
+
+Corrections
+- Compteur : butin chat + tables partagées — mises à jour CHAT conservées.
+- Royaumes à tirets : clés canoniques, GetAllCharacters, stats/minimap ; migration ponctuelle.
+- IDs montures : Verdant Skitterfly (192764), cristal qiraji rouge (21321).
+- Dialogue suivi : GetRealmName protégé (valeurs secrètes).
+
+Localisation
+- Astuces TRY_COUNT clic / clic droit.
+
+Prochainement
+- Poursuite des vérifications Midnight (collections, IDs de rencontre) ; affinage compteur et notifications selon le jeu réel.
+
+CurseForge : Warband Nexus]=]
 
 L["CHARACTERS_COLON"] = "Personnages :"
 L["CHARACTER_CURRENCIES"] = "Devises du personnage :"

@@ -54,6 +54,9 @@ WarbandNexus/
 # scripts\build-curseforge.ps1 output
 build/
 
+# Dev/audit tooling (addon distribution is repo root Lua + Locales + toc only)
+scripts/
+
 # CurseForge packager metadata (tracked for packager, but changes ignored)
 # .pkgmeta
 

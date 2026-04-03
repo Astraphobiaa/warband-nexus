@@ -1012,11 +1012,66 @@ L["WELCOME_TYPE_CMD"] = "Please type"
 L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
 
 -- What's New (current release only; older entries are not kept in-repo)
-L["CHANGELOG_V256"] = "v2.5.6\nImprovements:\n- Readable realm spacing in Gear, weekly plans, Plans tracker, tracking dialog (saved keys still use Blizzard normalized realm text)\n- Collectibles: wider BfA Bloodfeaster NPC list; clearer notes for chest vs boss and multi-corpse try counting\n- SplitCharacterKey + first-hyphen-only parsing for Name-Realm strings\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py for mount DB audits\n\nBug fixes:\n- Try Counter: chat loot + shared drop tables (e.g. Tamed Bloodfeaster) no longer lose CHAT try updates\n- Hyphenated realms (Azjol-Nerub): canonical keys, GetAllCharacters repair, stats/minimap labels; one-time realm-field migration\n- Mount item IDs: Verdant Skitterfly (192764), Red Qiraji crystal (21321)\n- Tracking dialog: GetRealmName guarded for secret values\n\nLocalization:\n- TRY_COUNT click / right-click hints in all locales\n\nRepo: redundant dev scratch files removed; legacy mount import notes in CONTRIBUTING\n\nCurseForge: Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\nImprovements:\n- Readable realm spacing in Gear, weekly plans, Plans tracker, tracking dialog (saved keys still use Blizzard normalized realm text)\n- Collectibles: wider BfA Bloodfeaster NPC list; clearer notes for chest vs boss and multi-corpse try counting\n- SplitCharacterKey + first-hyphen-only parsing for Name-Realm strings\n- Mount DB audits: community DB/Mounts Lua + Wowhead/WoWDB\n\nBug fixes:\n- Try Counter: chat loot + shared drop tables (e.g. Tamed Bloodfeaster) no longer lose CHAT try updates\n- Hyphenated realms (Azjol-Nerub): canonical keys, GetAllCharacters repair, stats/minimap labels; one-time realm-field migration\n- Mount item IDs: Verdant Skitterfly (192764), Red Qiraji crystal (21321)\n- Tracking dialog: GetRealmName guarded for secret values\n\nLocalization:\n- TRY_COUNT click / right-click hints in all locales\n\nRepo: Git tracks addon sources only (Core, Modules, Locales, toc, CHANGES)\n\nCurseForge: Warband Nexus"
 
 L["CHANGELOG_V257"] = "v2.5.7b\nHotfix:\n- Gear tab character selector and dropdown layout.\n- About dialog credits and contributors.\n\nImprovements:\n- Characters: Default Order sort (online first, then level, name); new profiles default; sort menu maps unknown keys to first option\n- Characters: logged-in character always first in Favorites / Characters / Untracked; manual custom order seeds untracked; reorder keeps online at top\n- Settings: WindowManager POPUP strata and ESC stack with main window; keyboard re-enabled after Show; font rebuild unregisters frame\n- WindowManager: combat restore re-enables EnableKeyboard as well as keyboard propagation\n- Try Counter: instance difficulty from entry snapshot + GetInstanceInfo (fixes Mythic misread as Normal, e.g. Mechagon HK-8)\n- Try Counter: one difficulty filter for loot, delayed ENC, CHAT; matching encounter dedup keys\n- Try Counter: dedup key recorded when zero trackable drops after rules\n- Try Counter: merged open-world corpse multiplier for shared mount item across NPC templates\n- Try Counter: LOOT_READY double-fire keeps loot session; deduped debug trace spam\n- Try Counter: [WN-Drops] one line per drop — Collectible Detected : Boss - item - (difficulty) - tries; gated difficulty green/red/amber; em dash when any difficulty\n\nBug fixes:\n- Try Counter: counter could rise after a difficulty skip (loot vs delayed/CHAT)\n\nLocalization:\n- SORT_MODE_DEFAULT; TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED and related strings\n\nCurseForge: Warband Nexus"
 
 L["CHANGELOG_V258"] = "v2.5.8\nBug fixes:\n- Try Counter: CHAT_MSG_LOOT no longer errors on the fishing attribution path (CurrentUnitsHaveMobLootContext forward declaration; was a nil global).\n\nCurseForge: Warband Nexus"
+
+-- Combined What's New (2.5.6 through 2.5.9); fallback if CHANGELOG_V258 missing (2.5.8 uses V258)
+L["CHANGELOG_V259"] = [=[v2.5.9 (2026-04-03)
+
+Improvements
+- Collectibles / Try Counter: Battle of Dazar'alor — Glacial Tidestorm remains Mythic-only from Lady Jaina (not LFR). G.M.O.D.: Raid Finder from Jaina; Normal/Heroic/Mythic from High Tinker Mekkatorque (2019 hotfix). Try Counter now matches LFR explicitly; statistics reseed uses per-drop statisticIds when one NPC has different difficulties per mount; login seeding and missed-loot reseed iterate drops with their own stat columns; Mekkatorque G.M.O.D. reseed no longer sums Jaina LFR kills (13379).
+- CollectibleSourceDB: legacyEncounters (mount-only bosses) realigned to Midnight retail DungeonEncounter IDs.
+- Repository: Git tracks addon sources only (Core, Modules, Locales, toc, CHANGES, LICENSE, README); dev documentation and audit scripts removed from the tree.
+
+--- 2.5.8 ---
+Bug fixes
+- Try Counter: CHAT_MSG_LOOT no longer errors on the fishing attribution path (CurrentUnitsHaveMobLootContext forward declaration; was a nil global).
+
+--- 2.5.7 / 2.5.7b ---
+Hotfix
+- Gear tab: character selector and dropdown layout.
+- About / Info dialog: credits and contributors.
+
+Improvements
+- Characters tab: new Default Order sort (logged-in character first, then level high to low, then name A–Z). Core defaults set characterSort.key to default for new profiles. Sort dropdown maps unknown or invalid saved keys to the first menu option (per tab). Logged-in character stays at the top of Favorites, tracked, and Untracked for all sort modes including manual; manual custom-order seed includes every character in the section with the online character first; characterOrder gains an untracked list; reorder keeps the online character pinned to the top.
+- Settings window: uses WindowManager (POPUP priority, shared ESC handler with the main window) instead of a fixed FULLSCREEN_DIALOG strata/frame level. RefreshSettingsKeyboard re-enables keyboard when showing an existing frame after Hide/Show. Font-related rebuilds unregister the settings frame from WindowManager before closing it.
+- WindowManager: after combat, when restoring visible frames, call EnableKeyboard(true) in addition to SetPropagateKeyboardInput(true) so ESC/focus behavior is reliable.
+- Try Counter: instance difficulty prefers a snapshot taken on instance entry (PLAYER_ENTERING_WORLD) keyed by instance ID, then live GetInstanceInfo, before ENCOUNTER_END and dungeon/raid APIs — fixes Mythic runs misread as Normal (e.g. Operation: Mechagon, HK-8). ResolveLiveInstanceDifficultyID handles M+ and APIs when GetInstanceInfo difficulty is 0; ResolveEffectiveEncounterDifficultyID centralizes effective difficulty for gating.
+- Try Counter: FilterDropsByDifficulty (and shared collectible-collected checks) used consistently for loot processing, delayed ENCOUNTER_END handling, and CHAT_MSG_LOOT. CHAT path uses the same encounter dedup key as the loot window.
+- Try Counter: when a boss loot pass yields zero trackable drops (difficulty gate or all collected), still record the encounter dedup key so delayed ENC/CHAT cannot increment the same kill again.
+- Try Counter: merged open-world loot uses an item-ID-based corpse multiplier so mixed NPC templates that share the same mount drop (e.g. Nazmir Bloodfeaster) count every corpse, not only the first matched NPC id.
+- Try Counter: LOOT_READY may fire twice while the window is open — second READY no longer clears an active loot session; debug trace lines for LOOT_READY/LOOT_CLOSED are deduped within a short window to reduce chat spam.
+- Try Counter: [WN-Drops] instance reminder uses TRYCOUNTER_INSTANCE_DROPS_HEADER; when the DB gates a drop by difficulty, the required label is shown in parentheses after the item link — green if the current instance qualifies, red if not, amber if current difficulty cannot be verified (long prose wrong-diff messages removed from chat).
+
+Bug fixes
+- Try Counter: attempt counter could increase even after a skipped difficulty message (loot path vs delayed ENC / CHAT duplicate attribution).
+
+Localization
+- SORT_MODE_DEFAULT; TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED and related strings.
+
+--- 2.5.6 ---
+Improvements
+- Readable realm spacing in Gear, weekly plans, Plans tracker, tracking dialog (saved keys still use Blizzard normalized realm text).
+- Collectibles: wider BfA Tamed Bloodfeaster NPC list; clearer notes for chest vs boss and multi-corpse try counting.
+- SplitCharacterKey + first-hyphen-only parsing for Name-Realm strings.
+- Mount DB cross-checks: community DB/Mounts Lua + Wowhead/WoWDB.
+
+Bug fixes
+- Try Counter: chat loot + shared drop tables (e.g. Tamed Bloodfeaster) no longer lose CHAT try updates.
+- Hyphenated realms (Azjol-Nerub): canonical keys, GetAllCharacters repair, stats/minimap labels; one-time realm-field migration.
+- Mount item IDs: Verdant Skitterfly (192764), Red Qiraji crystal (21321).
+- Tracking dialog: GetRealmName guarded for secret values.
+
+Localization
+- TRY_COUNT click / right-click hints in all locales.
+
+What's next
+- Further Midnight collectible and encounter-ID checks; Try Counter and notifications tuned from live raid and dungeon behavior.
+
+CurseForge: Warband Nexus]=]
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"

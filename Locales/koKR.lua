@@ -794,11 +794,65 @@ L["COPIED_LABEL"] = "복사됨!"
 L["WELCOME_MSG_FORMAT"] = "Warband Nexus v%s에 오신 것을 환영합니다"
 L["WELCOME_TYPE_CMD"] = "다음을 입력하세요"
 L["WELCOME_OPEN_INTERFACE"] = "인터페이스를 열려면."
-L["CHANGELOG_V256"] = "v2.5.6\n개선:\n- 장비·주간 계획·계획 추적기·추적 확인 대화창에서 서버명 가독성 향상; 저장 키는 블리자드 정규화 문자열 유지\n- 수집품: 길니알 피식충 고삐(BfA) NPC 목록 확대; 상자 vs 우두머리·다중 시체 루팅 시도 횟수 주석\n- SplitCharacterKey + 이름-서버 문자열은 첫 하이픈만 구분\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py 외부 마운트 DB 감사용\n\n수정:\n- 시도 횟수: 채팅 루팅 + 공유 전리품표 — CHAT 갱신 유실 방지(피식충 등)\n- 하이픈 서버(Azjol-Nerub): 정규 키, GetAllCharacters 복구, 통계/미니맵; 서버 필드 1회 마이그레이션\n- 탈것 ID: Verdant Skitterfly(192764), 붉은 퀴라지 수정결정체(21321)\n- 추적 대화: GetRealmName 비밀 값 가드\n\n번역:\n- 모든 언어 TRY_COUNT 클릭/우클릭 힌트\n\n저장소: 불필요 dev 파일 정리; external mount DB 가져오기는 CONTRIBUTING\n\nCurseForge: Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\n개선:\n- 장비·주간 계획·계획 추적기·추적 확인 대화창에서 서버명 가독성 향상; 저장 키는 블리자드 정규화 문자열 유지\n- 수집품: 길니알 피식충 고삐(BfA) NPC 목록 확대; 상자 vs 우두머리·다중 시체 루팅 시도 횟수 주석\n- SplitCharacterKey + 이름-서버 문자열은 첫 하이픈만 구분\n- 마운트 DB 감사: 커뮤니티 DB/Mounts Lua + Wowhead/WoWDB\n\n수정:\n- 시도 횟수: 채팅 루팅 + 공유 전리품표 — CHAT 갱신 유실 방지(피식충 등)\n- 하이픈 서버(Azjol-Nerub): 정규 키, GetAllCharacters 복구, 통계/미니맵; 서버 필드 1회 마이그레이션\n- 탈것 ID: Verdant Skitterfly(192764), 붉은 퀴라지 수정결정체(21321)\n- 추적 대화: GetRealmName 비밀 값 가드\n\n번역:\n- 모든 언어 TRY_COUNT 클릭/우클릭 힌트\n\n저장소: Git에는 애드온 소스만 포함 (Core, Modules, Locales, toc, CHANGES)\n\nCurseForge: Warband Nexus"
 
 L["CHANGELOG_V257"] = "v2.5.7b\n개선:\n- 캐릭터: 기본 정렬(접속 캐릭터 먼저, 레벨, 이름); 신규 프로필 기본값; 알 수 없는 정렬 키 → 메뉴 첫 항목\n- 캐릭터: 즐겨찾기/캐릭터/미추적에서 접속 캐릭터 항상 상단; 수동 순서 일관성\n- 시도 횟수: 인스턴스 난이도 GetInstanceInfo + 입장 시 스냅샷(신화에서 일반으로 잘못 표시되는 경우 수정, 예: 메카곤 HK-8)\n- 시도 횟수: 전리품·지연 ENC·CHAT에 동일 난이도 필터; 전리품 창과 같은 encounter_ 중복 방지 키\n- 시도 횟수: 추적 가능 0개일 때 encounter_ 키로 이중 집계 방지\n- 시도 횟수: 야외 합쳐진 전리품에서 동일 탈것 아이템 NPC 시체 수 집계(BfA 피식충)\n- 장비: 캐릭터 선택기 너비\n\n수정:\n- 시도 횟수: 난이도 건너뛴 뒤에도 카운터 증가(전리품 vs 지연/CHAT)\n\n번역: SORT_MODE_DEFAULT\n\nCurseForge: Warband Nexus"
 
 L["CHANGELOG_V258"] = "v2.5.8\n수정:\n- 시도 횟수: CHAT_MSG_LOOT가 낚시 귀속 경로에서 더 이상 오류를 내지 않음(CurrentUnitsHaveMobLootContext 전방 선언, 이전에는 nil 전역).\n\nCurseForge: Warband Nexus"
+
+L["CHANGELOG_V259"] = [=[v2.5.9 (2026-04-03)
+
+개선
+- 수집품 / 시도 횟수: 다자르알로 전투 — Glacial Tidestorm은 레이디 제이나 신화만 (LFR 아님). G.M.O.D.: LFR은 제이나; 일반/영웅/신화는 메카토크 (2019 핫픽스). LFR 명시; 드롭 행별 statisticIds로 통계 재시드; 메카토크에 제이나 LFR(13379) 미합산.
+- CollectibleSourceDB: 탈것 보스 legacyEncounters를 Midnight DungeonEncounter ID에 맞춤.
+- Git 저장소: 애드온 소스만 (Core, Modules, Locales, toc, CHANGES, LICENSE, README); 문서·감사 스크립트 제거.
+
+--- 2.5.8 ---
+수정
+- 시도 횟수: 낚시 CHAT_MSG_LOOT — CurrentUnitsHaveMobLootContext 전방 선언 (이전 nil 전역).
+
+--- 2.5.7 / 2.5.7b ---
+핫픽스
+- 장비 탭: 캐릭터 선택 및 드롭다운.
+- 정보 / 소개: 감사 및 기여자.
+
+개선
+- 캐릭터: 기본 정렬 (접속 캐릭터 → 레벨 높음→낮음 → 이름 A–Z). 신규 프로필: characterSort.key = default. 잘못된 키 → 메뉴 첫 항목. 즐겨찾기·추적·미추적에서 접속 캐릭터 상단(수동 정렬 포함); 수동 시드는 섹션 전체, 온라인 먼저; characterOrder에 미추적 목록; 재정렬 시 온라인 고정 상단.
+- 설정: WindowManager(POPUP, 메인과 ESC 공유)로 고정 FULLSCREEN_DIALOG 대체. RefreshSettingsKeyboard로 Show 후 키보드 재활성. 글꼴 재빌드 시 설정 창 WindowManager 등록 해제.
+- WindowManager: 전투 후 복원 시 SetPropagateKeyboardInput(true) 외 EnableKeyboard(true).
+- 시도 횟수: 인스 난이도는 입장 스냅샷(PLAYER_ENTERING_WORLD, 인스 ID) 우선, 이어 GetInstanceInfo, ENCOUNTER_END·API 전 — 신화가 일반으로 읽히던 문제 수정(예: 메카곤 HK-8). difficulty 0일 때 M+/API용 ResolveLiveInstanceDifficultyID; ResolveEffectiveEncounterDifficultyID로 필터 일원화.
+- 시도 횟수: FilterDropsByDifficulty를 루트·지연 ENC·CHAT_MSG_LOOT에 일관 적용; 루트 창과 동일 encounter_ 중복 키.
+- 시도 횟수: 규칙 후 추적 드롭 0이어도 dedup 기록(지연 ENC/CHAT 중복 방지).
+- 시도 횟수: 야외 통합 루트는 아이템 ID 기반 시체 배수(예: 나즈미르 혈식충).
+- 시도 횟수: LOOT_READY 이중 발동 시 세션 비우지 않음; 디버그 추적 중복 억제.
+- 시도 횟수: [WN-Drops] TRYCOUNTER_INSTANCE_DROPS_HEADER; 링크 뒤 괄호에 필요 난이도 — 녹/적/호박.
+
+수정
+- 시도 횟수: '난이도 건너뜀' 메시지 후에도 횟수 증가(루트 vs 지연 ENC/CHAT).
+
+현지화
+- SORT_MODE_DEFAULT; TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED 등.
+
+--- 2.5.6 ---
+개선
+- 장비·계획·추적·트래커에서 서버 표시 가독성.
+- 수집품: BfA 혈식충 NPC 추가; 상자 vs 보스 메모·다중 시체.
+- SplitCharacterKey + 이름-서버 첫 하이픈.
+- 탈것: 커뮤니티 Lua DB + Wowhead/WoWDB.
+
+수정
+- 시도 횟수: 채팅 루트 + 공유 테이블 — CHAT 갱신 유지.
+- 하이픈 서버: 정규 키, GetAllCharacters, stats/미니맵; 일회 마이그레이션.
+- 탈것 ID: Verdant Skitterfly(192764), 붉은 퀴라지 수정(21321).
+- 대화: GetRealmName 보호.
+
+현지화
+- TRY_COUNT 클릭/우클릭 힌트.
+
+다음
+- 수집품·인카운터 ID에 대한 Midnight 검증 강화; 공대 피드백으로 시도 횟수·알림 다듬기.
+
+CurseForge: Warband Nexus]=]
 
 L["CONFIRM_ACTION"] = "작업 확인"
 L["CONFIRM"] = "확인"

@@ -794,11 +794,65 @@ L["COPIED_LABEL"] = "Copiato!"
 L["WELCOME_MSG_FORMAT"] = "Benvenuto in Warband Nexus v%s"
 L["WELCOME_TYPE_CMD"] = "Digita"
 L["WELCOME_OPEN_INTERFACE"] = "per aprire l'interfaccia."
-L["CHANGELOG_V256"] = "v2.5.6\nMiglioramenti:\n- Reame più leggibile in equipaggiamento, piani settimanali, tracker piani, dialogo tracciamento; le chiavi salvate restano nel testo normalizzato Blizzard\n- Collezionabili: elenco NPC ampliato (Redini del Divoratore di sangue domato, BfA); note forziere vs boss e bottino multi-cadavere per i tentativi\n- SplitCharacterKey + divisione solo al primo trattino per Nome-Reame\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py per audit DB montature\n\nCorrezioni:\n- Contatore tentativi: bottino chat + tabelle condivise — non si perdono più aggiornamenti CHAT (es. Divoratore di sangue)\n- Reami con trattini (Azjol-Nerub): chiavi canoniche, riparazione GetAllCharacters, statistiche/minimappa; migrazione una tantum campo reame\n- ID cavalcature: Verdant Skitterfly (192764), cristallo qiraji rosso (21321)\n- Dialogo tracciamento: GetRealmName protetto per valori segreti\n\nLocalizzazione:\n- Suggerimenti TRY_COUNT clic / tasto destro in tutte le lingue\n\nRepo: file dev ridondanti rimossi; import montures (voir CONTRIBUTING) in CONTRIBUTING\n\nCurseForge: Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\nMiglioramenti:\n- Reame più leggibile in equipaggiamento, piani settimanali, tracker piani, dialogo tracciamento; le chiavi salvate restano nel testo normalizzato Blizzard\n- Collezionabili: elenco NPC ampliato (Redini del Divoratore di sangue domato, BfA); note forziere vs boss e bottino multi-cadavere per i tentativi\n- SplitCharacterKey + divisione solo al primo trattino per Nome-Reame\n- Audit montature: DB Lua Mounts community + Wowhead/WoWDB\n\nCorrezioni:\n- Contatore tentativi: bottino chat + tabelle condivise — non si perdono più aggiornamenti CHAT (es. Divoratore di sangue)\n- Reami con trattini (Azjol-Nerub): chiavi canoniche, riparazione GetAllCharacters, statistiche/minimappa; migrazione una tantum campo reame\n- ID cavalcature: Verdant Skitterfly (192764), cristallo qiraji rosso (21321)\n- Dialogo tracciamento: GetRealmName protetto per valori segreti\n\nLocalizzazione:\n- Suggerimenti TRY_COUNT clic / tasto destro in tutte le lingue\n\nRepo: Git contiene solo le sorgenti dell’addon (Core, Modules, Locales, toc, CHANGES)\n\nCurseForge: Warband Nexus"
 
 L["CHANGELOG_V257"] = "v2.5.7b\nMiglioramenti:\n- Personaggi: ordine predefinito (personaggio online prima, poi livello, nome); nuovi profili; chiavi di ordinamento sconosciute → prima voce del menu\n- Personaggi: personaggio connesso sempre in cima in Preferiti/Personaggi/Non tracciati; ordine manuale coerente\n- Contatore tentativi: difficoltà istanza con GetInstanceInfo + snapshot all’ingresso (corregge Normal errato in mitico, es. Mechagon HK-8)\n- Contatore: un filtro difficoltà per bottino, ENC ritardato e CHAT; stessa chiave dedup encounter_ del bottino\n- Contatore: chiave encounter_ con 0 tracciabili per evitare doppi conteggi\n- Contatore: bottino open-world fuso conta cadaveri con lo stesso oggetto cavalcatura (BfA Divoratore di sangue)\n- Equipaggiamento: larghezza selettore personaggio\n\nCorrezioni:\n- Contatore: incremento dopo messaggio di esclusione difficoltà\n\nLocalizzazione: SORT_MODE_DEFAULT\n\nCurseForge: Warband Nexus"
 
 L["CHANGELOG_V258"] = "v2.5.8\nCorrezioni:\n- Contatore tentativi: CHAT_MSG_LOOT non genera più errori nel percorso di attribuzione pesca (dichiarazione anticipata di CurrentUnitsHaveMobLootContext; prima globale nil).\n\nCurseForge: Warband Nexus"
+
+L["CHANGELOG_V259"] = [=[v2.5.9 (03.04.2026)
+
+Miglioramenti
+- Collezionabili / contatore tentativi: battaglia di Dazar'alor — Glacial Tidestorm solo mitico da Lady Jaina (non LFR). G.M.O.D.: LFR da Jaina; normale/eroico/mitico da Mekkatorque (hotfix 2019). Supporto LFR esplicito; reseed statistiche con statisticIds per riga bottino; Mekkatorque senza somma LFR Jaina (13379).
+- CollectibleSourceDB: legacyEncounters (boss mount) allineati agli ID DungeonEncounter Midnight.
+- Repository Git: solo sorgenti addon (Core, Modules, Locales, toc, CHANGES, LICENSE, README); documentazione e script di audit rimossi.
+
+--- 2.5.8 ---
+Correzioni
+- Contatore: CHAT_MSG_LOOT percorso pesca — CurrentUnitsHaveMobLootContext dichiarato in anticipo (prima nil globale).
+
+--- 2.5.7 / 2.5.7b ---
+Hotfix
+- Scheda equipaggiamento: selettore personaggio e menu a tendina.
+- Finestra Info: crediti e contributori.
+
+Miglioramenti
+- Personaggi: nuovo ordinamento predefinito (personaggio connesso, poi livello decrescente, poi nome A–Z). Nuovi profili: characterSort.key = default. Chiavi sconosciute → prima voce menu. Connesso in cima in Preferiti, tracciati e non tracciati (anche ordine manuale); seed manuale include tutta la sezione, online per primo; characterOrder con lista non tracciati; riordino mantiene online in cima.
+- Impostazioni: WindowManager (POPUP, ESC condiviso) al posto di strata FULLSCREEN_DIALOG fissa. RefreshSettingsKeyboard riabilita tastiera dopo Show. Ricostruzione font: unregister frame impostazioni da WindowManager.
+- WindowManager: dopo il combattimento EnableKeyboard(true) oltre a SetPropagateKeyboardInput(true).
+- Contatore: difficoltà istanza preferisce snapshot all'ingresso (PLAYER_ENTERING_WORLD, ID istanza), poi GetInstanceInfo, prima di ENCOUNTER_END e API — corregge mitico letto come normale (es. Mechagon HK-8). ResolveLiveInstanceDifficultyID per M+ e API con difficoltà 0; ResolveEffectiveEncounterDifficultyID unifica il gate.
+- Contatore: FilterDropsByDifficulty coerente per bottino, ENC ritardato e CHAT_MSG_LOOT; stessa chiave dedup encounter_ della finestra bottino.
+- Contatore: con 0 drop tracciabili dopo le regole, registrare comunque la chiave dedup (niente doppi ENC/CHAT).
+- Contatore: bottino open-world unito con moltiplicatore cadaveri per ID oggetto (es. Divoratore di sangue Nazmir).
+- Contatore: doppio LOOT_READY non azzera la sessione; trace debug deduplicate.
+- Contatore: [WN-Drops] intestazione TRYCOUNTER_INSTANCE_DROPS_HEADER; difficoltà richiesta tra parentesi dopo il link — verde/rosso/ambra.
+
+Correzioni
+- Contatore: incremento dopo messaggio esclusione difficoltà (bottino vs ENC/CHAT).
+
+Localizzazione
+- SORT_MODE_DEFAULT; TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED e stringhe correlate.
+
+--- 2.5.6 ---
+Miglioramenti
+- Reame più leggibile in equipaggiamento, piani, tracker, tracciamento.
+- Collezionabili: più NPC Bloodfeaster BfA; note forziere vs boss e multi-cadavere.
+- SplitCharacterKey + primo trattino Nome-Reame.
+- Mount: DB Lua community + Wowhead/WoWDB.
+
+Correzioni
+- Contatore: chat bottino + tabelle condivise — aggiornamenti CHAT ok.
+- Reami con trattino: chiavi canoniche, GetAllCharacters, stats/minimap; migrazione una tantum.
+- ID cavalcature: Verdant Skitterfly (192764), cristallo qiraji rosso (21321).
+- Dialogo tracciamento: GetRealmName protetto.
+
+Localizzazione
+- Suggerimenti TRY_COUNT clic / tasto destro.
+
+Prossimi passi
+- Ulteriori verifiche Midnight su collezioni e ID incontri; rifinitura contatore e notifiche dal feedback in raid.
+
+CurseForge: Warband Nexus]=]
 
 L["CONFIRM_ACTION"] = "Conferma azione"
 L["CONFIRM"] = "Conferma"

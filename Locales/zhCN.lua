@@ -787,11 +787,65 @@ L["COPIED_LABEL"] = "已复制！"
 L["WELCOME_MSG_FORMAT"] = "欢迎使用 Warband Nexus v%s"
 L["WELCOME_TYPE_CMD"] = "请输入"
 L["WELCOME_OPEN_INTERFACE"] = "以打开界面。"
-L["CHANGELOG_V256"] = "v2.5.6\n改进：\n- 装备、周计划、计划追踪与跟踪确认界面更易读服务器名；存档键仍用暴雪规范化字符串\n- 收藏品：扩展 BfA「驯服的血虱缰绳」NPC；补充宝箱与首领、多尸体拾取与尝试计数的说明\n- SplitCharacterKey +「角色名-服务器」仅在第一个连字符处拆分\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py 用于对照外部坐骑数据库审计\n\n修复：\n- 尝试计数：聊天拾取 + 共享掉落表不再丢失 CHAT 更新（如血虱）\n- 含连字符服务器（Azjol-Nerub）：规范键、GetAllCharacters 修复、统计/小地图；一次性 realm 字段迁移\n- 坐骑物品 ID：Verdant Skitterfly（192764）、红色其拉共鸣水晶（21321）\n- 跟踪对话框：GetRealmName 对秘密值防护\n\n本地化：\n- 各语言 TRY_COUNT 左键/右键提示\n\n仓库：清理多余开发文件；外部导入说明见 CONTRIBUTING\n\nCurseForge：Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\n改进：\n- 装备、周计划、计划追踪与跟踪确认界面更易读服务器名；存档键仍用暴雪规范化字符串\n- 收藏品：扩展 BfA「驯服的血虱缰绳」NPC；补充宝箱与首领、多尸体拾取与尝试计数的说明\n- SplitCharacterKey +「角色名-服务器」仅在第一个连字符处拆分\n- 坐骑数据库审计：社区 DB/Mounts Lua + Wowhead/WoWDB\n\n修复：\n- 尝试计数：聊天拾取 + 共享掉落表不再丢失 CHAT 更新（如血虱）\n- 含连字符服务器（Azjol-Nerub）：规范键、GetAllCharacters 修复、统计/小地图；一次性 realm 字段迁移\n- 坐骑物品 ID：Verdant Skitterfly（192764）、红色其拉共鸣水晶（21321）\n- 跟踪对话框：GetRealmName 对秘密值防护\n\n本地化：\n- 各语言 TRY_COUNT 左键/右键提示\n\n仓库：Git 仅跟踪插件源码（Core、Modules、Locales、toc、CHANGES）\n\nCurseForge：Warband Nexus"
 
 L["CHANGELOG_V257"] = "v2.5.7b\n改进：\n- 角色：默认排序（当前在线角色优先，等级、名称）；新档案默认；未知排序键映射为菜单首项\n- 角色：收藏/角色/未追踪中在线角色置顶；手动顺序一致\n- 尝试计数：副本难度使用 GetInstanceInfo + 进本快照（修正史诗误判普通，如麦卡贡 HK-8）\n- 尝试计数：拾取、延迟 ENC、CHAT 共用难度过滤；CHAT 与拾取窗口使用相同 encounter_ 去重键\n- 尝试计数：零可追踪时仍写入 encounter_ 键，避免延迟 ENC/CHAT 重复计数\n- 尝试计数：开放世界合并拾取按相同坐骑物品统计多模板 NPC 尸体（BfA 血虱）\n- 装备：角色选择器宽度\n\n修复：\n- 尝试计数：已因难度跳过仍增加次数\n\n本地化：SORT_MODE_DEFAULT\n\nCurseForge：Warband Nexus"
 
 L["CHANGELOG_V258"] = "v2.5.8\n修复：\n- 尝试计数：CHAT_MSG_LOOT 在钓鱼归因路径上不再报错（CurrentUnitsHaveMobLootContext 前向声明；此前为 nil 全局）。\n\nCurseForge：Warband Nexus"
+
+L["CHANGELOG_V259"] = [=[v2.5.9（2026-04-03）
+
+改进
+- 收藏 / 尝试计数：达萨罗之战 — Glacial Tidestorm 仅吉安娜史诗（非随机团）。G.M.O.D.：随机团吉安娜；普通/英雄/史诗大工匠（2019 热修）。显式随机团；按掉落行 statisticIds 重播统计；大工匠不计吉安娜随机团（13379）。
+- CollectibleSourceDB：坐骑首领 legacyEncounters 对齐 Midnight DungeonEncounter ID。
+- Git 仓库：仅插件源码（Core、Modules、Locales、toc、CHANGES、LICENSE、README）；文档与审计脚本已移除。
+
+--- 2.5.8 ---
+修复
+- 尝试计数：钓鱼 CHAT_MSG_LOOT — CurrentUnitsHaveMobLootContext 前置声明（此前 nil 全局）。
+
+--- 2.5.7 / 2.5.7b ---
+热修
+- 装备页：角色选择与下拉菜单。
+- 关于 / 信息：致谢与贡献者。
+
+改进
+- 角色：默认排序（当前角色 → 等级高→低 → 名 A–Z）。新档案 characterSort.key = default。无效键映射菜单首项。收藏、追踪、未追踪中在线角色置顶（含手动排序）；手动种子含整区、在线优先；characterOrder 含未追踪列表；重排保持在线置顶。
+- 设置：WindowManager（POPUP、与主窗共享 ESC）替代固定 FULLSCREEN_DIALOG。RefreshSettingsKeyboard 在 Show 后恢复键盘。字体重建时从 WindowManager 注销设置窗。
+- WindowManager：战后恢复除 SetPropagateKeyboardInput(true) 外调用 EnableKeyboard(true)。
+- 尝试计数：副本难度优先进本快照（PLAYER_ENTERING_WORLD、副本 ID），再 GetInstanceInfo，早于 ENCOUNTER_END 与 API — 修正史诗读成普通（如麦卡贡 HK-8）。difficulty 0 时 M+/API 用 ResolveLiveInstanceDifficultyID；ResolveEffectiveEncounterDifficultyID 统一过滤。
+- 尝试计数：FilterDropsByDifficulty 用于拾取、延迟 ENC、CHAT_MSG_LOOT；与拾取窗相同 encounter_ 去重键。
+- 尝试计数：规则后无可追踪掉落仍记录去重键（避免延迟 ENC/CHAT 重复）。
+- 尝试计数：野外合并拾取按物品 ID 尸体倍率（如纳兹米尔血饕餮）。
+- 尝试计数：LOOT_READY 连发不清空会话；调试追踪短时去重。
+- 尝试计数：[WN-Drops] TRYCOUNTER_INSTANCE_DROPS_HEADER；链接后括号显示所需难度 — 绿/红/琥珀。
+
+修复
+- 尝试计数：已提示跳过难度后计数仍涨（拾取 vs 延迟 ENC/CHAT）。
+
+本地化
+- SORT_MODE_DEFAULT；TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED 等。
+
+--- 2.5.6 ---
+改进
+- 装备、计划、追踪、跟踪器中服务器更易读。
+- 收藏：更多 BfA 血饕餮 NPC；宝箱 vs 首领备注与多尸体。
+- SplitCharacterKey + 名-服首个连字符。
+- 坐骑：社区 Lua DB + Wowhead/WoWDB。
+
+修复
+- 尝试计数：聊天拾取 + 共享表 — 保留 CHAT 更新。
+- 连字符服务器：规范键、GetAllCharacters、stats/小地图；一次性迁移。
+- 坐骑 ID：Verdant Skitterfly（192764）、红色其拉水晶（21321）。
+- 对话框：GetRealmName 保护。
+
+本地化
+- TRY_COUNT 左键/右键提示。
+
+后续
+- 加强收藏与遭遇 ID 的 Midnight 校验；据团本反馈打磨尝试计数与通知。
+
+CurseForge：Warband Nexus]=]
 
 L["CONFIRM_ACTION"] = "确认操作"
 L["CONFIRM"] = "确认"

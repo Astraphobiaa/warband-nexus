@@ -787,11 +787,65 @@ L["COPIED_LABEL"] = "已複製！"
 L["WELCOME_MSG_FORMAT"] = "歡迎使用 Warband Nexus v%s"
 L["WELCOME_TYPE_CMD"] = "請輸入"
 L["WELCOME_OPEN_INTERFACE"] = "以開啟介面。"
-L["CHANGELOG_V256"] = "v2.5.6\n改進：\n- 裝備、週計畫、計畫追蹤與追蹤確認介面更易讀伺服器名；存檔鍵仍用暴雪正規化字串\n- 收藏品：擴充 BfA「馴服的血獸韁繩」NPC；補充寶箱與首領、多屍體拾取與嘗試計數說明\n- SplitCharacterKey +「角色名-伺服器」僅在第一個連字號拆分\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py 對照外部坐騎資料庫稽核用\n\n修正：\n- 嘗試計數：聊天拾取 + 共享掉落表不再遺失 CHAT 更新（如血獸）\n- 含連字號伺服器（Azjol-Nerub）：正規鍵、GetAllCharacters 修復、統計/小地圖；一次性 realm 欄位遷移\n- 坐騎物品 ID：Verdant Skitterfly（192764）、紅色其拉共鳴水晶（21321）\n- 追蹤對話框：GetRealmName 對秘密值防護\n\n本地化：\n- 各語言 TRY_COUNT 左鍵/右鍵提示\n\n儲存庫：清理多餘開發檔；外部匯入說明見 CONTRIBUTING\n\nCurseForge：Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\n改進：\n- 裝備、週計畫、計畫追蹤與追蹤確認介面更易讀伺服器名；存檔鍵仍用暴雪正規化字串\n- 收藏品：擴充 BfA「馴服的血獸韁繩」NPC；補充寶箱與首領、多屍體拾取與嘗試計數說明\n- SplitCharacterKey +「角色名-伺服器」僅在第一個連字號拆分\n- 坐騎資料庫稽核：社群 DB/Mounts Lua + Wowhead/WoWDB\n\n修正：\n- 嘗試計數：聊天拾取 + 共享掉落表不再遺失 CHAT 更新（如血獸）\n- 含連字號伺服器（Azjol-Nerub）：正規鍵、GetAllCharacters 修復、統計/小地圖；一次性 realm 欄位遷移\n- 坐騎物品 ID：Verdant Skitterfly（192764）、紅色其拉共鳴水晶（21321）\n- 追蹤對話框：GetRealmName 對秘密值防護\n\n本地化：\n- 各語言 TRY_COUNT 左鍵/右鍵提示\n\n儲存庫：Git 僅追蹤插件原始碼（Core、Modules、Locales、toc、CHANGES）\n\nCurseForge：Warband Nexus"
 
 L["CHANGELOG_V257"] = "v2.5.7b\n改進：\n- 角色：預設排序（線上角色優先、等級、名稱）；新設定檔預設；未知排序鍵對應選單第一項\n- 角色：我的最愛/角色/未追蹤中線上角色置頂；手動排序一致\n- 嘗試計數：副本難度使用 GetInstanceInfo + 進本快照（修正史詩誤判普通，如麥卡貢 HK-8）\n- 嘗試計數：拾取、延遲 ENC、CHAT 共用難度過濾；與拾取視窗相同 encounter_ 去重鍵\n- 嘗試計數：零可追蹤時仍寫入 encounter_ 鍵，避免延遲 ENC/CHAT 重複計數\n- 嘗試計數：開放世界合併拾取依相同坐騎物品統計多模板 NPC 屍體（BfA 血獸）\n- 裝備：角色選擇器寬度\n\n修正：\n- 嘗試計數：已因難度跳過仍增加次數\n\n本地化：SORT_MODE_DEFAULT\n\nCurseForge：Warband Nexus"
 
 L["CHANGELOG_V258"] = "v2.5.8\n修正：\n- 嘗試計數：CHAT_MSG_LOOT 在釣魚歸因路徑上不再報錯（CurrentUnitsHaveMobLootContext 前向宣告；先前為 nil 全域）。\n\nCurseForge：Warband Nexus"
+
+L["CHANGELOG_V259"] = [=[v2.5.9（2026-04-03）
+
+改進
+- 收藏 / 嘗試計數：達薩羅之戰 — Glacial Tidestorm 僅珍娜史詩（非隨機團）。G.M.O.D.：隨機團珍娜；普通/英雄/史詩大工匠（2019 熱修）。明確隨機團；依掉落列 statisticIds 重播統計；大工匠不含珍娜隨機團（13379）。
+- CollectibleSourceDB：坐騎首領 legacyEncounters 對齊 Midnight DungeonEncounter ID。
+- Git 儲存庫：僅插件原始碼（Core、Modules、Locales、toc、CHANGES、LICENSE、README）；文件與稽核腳本已移除。
+
+--- 2.5.8 ---
+修正
+- 嘗試計數：釣魚 CHAT_MSG_LOOT — CurrentUnitsHaveMobLootContext 前置宣告（先前 nil 全域）。
+
+--- 2.5.7 / 2.5.7b ---
+熱修
+- 裝備分頁：角色選擇與下拉選單。
+- 關於 / 資訊：致謝與貢獻者。
+
+改進
+- 角色：預設排序（目前角色 → 等級高→低 → 名 A–Z）。新設定檔 characterSort.key = default。無效鍵對應選單第一項。我的最愛、追蹤、未追蹤中線上角色置頂（含手動排序）；手動種子含整區、線上優先；characterOrder 含未追蹤清單；重排保持線上置頂。
+- 設定：WindowManager（POPUP、與主視窗共用 ESC）取代固定 FULLSCREEN_DIALOG。RefreshSettingsKeyboard 在 Show 後恢復鍵盤。字型重建時從 WindowManager 註銷設定視窗。
+- WindowManager：戰後恢復除 SetPropagateKeyboardInput(true) 外呼叫 EnableKeyboard(true)。
+- 嘗試計數：副本難度優先進本快照（PLAYER_ENTERING_WORLD、副本 ID），再 GetInstanceInfo，早於 ENCOUNTER_END 與 API — 修正史詩讀成普通（如機械岡 HK-8）。difficulty 0 時 M+/API 用 ResolveLiveInstanceDifficultyID；ResolveEffectiveEncounterDifficultyID 統一過濾。
+- 嘗試計數：FilterDropsByDifficulty 用於拾取、延遲 ENC、CHAT_MSG_LOOT；與拾取視窗相同 encounter_ 去重鍵。
+- 嘗試計數：規則後無可追蹤掉落仍記錄去重鍵（避免延遲 ENC/CHAT 重複）。
+- 嘗試計數：野外合併拾取依物品 ID 屍體倍率（如納茲米爾血饕餮）。
+- 嘗試計數：LOOT_READY 連發不清空工作階段；偵錯追蹤短時去重。
+- 嘗試計數：[WN-Drops] TRYCOUNTER_INSTANCE_DROPS_HEADER；連結後括號顯示所需難度 — 綠/紅/琥珀。
+
+修正
+- 嘗試計數：已提示略過難度後計數仍增（拾取 vs 延遲 ENC/CHAT）。
+
+本地化
+- SORT_MODE_DEFAULT；TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED 等。
+
+--- 2.5.6 ---
+改進
+- 裝備、計畫、追蹤、追蹤器中伺服器更易讀。
+- 收藏：更多 BfA 血饕餮 NPC；寶箱 vs 首領備註與多屍體。
+- SplitCharacterKey + 名-伺服器首個連字號。
+- 坐騎：社群 Lua DB + Wowhead/WoWDB。
+
+修正
+- 嘗試計數：聊天拾取 + 共用表 — 保留 CHAT 更新。
+- 連字號伺服器：規範鍵、GetAllCharacters、stats/小地圖；一次性遷移。
+- 坐騎 ID：Verdant Skitterfly（192764）、紅色其拉水晶（21321）。
+- 對話框：GetRealmName 保護。
+
+本地化
+- TRY_COUNT 左鍵/右鍵提示。
+
+後續
+- 加強收藏與遭遇 ID 的 Midnight 校驗；依團本回饋打磨嘗試計數與通知。
+
+CurseForge：Warband Nexus]=]
 
 L["CONFIRM_ACTION"] = "確認操作"
 L["CONFIRM"] = "確認"

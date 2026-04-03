@@ -786,11 +786,65 @@ L["COPIED_LABEL"] = "Copied!"
 L["WELCOME_MSG_FORMAT"] = "Welcome to Banda de guerra Nexus v%s"
 L["WELCOME_TYPE_CMD"] = "Please type"
 L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
-L["CHANGELOG_V256"] = "v2.5.6\nMejoras:\n- Reino más legible en equipo, planes semanales, tracker de planes y diálogo de seguimiento; las claves guardadas siguen con el texto normalizado de Blizzard\n- Coleccionables: más PNJ para Riendas del devorador sangriento domesticado (BfA); notas cofre vs jefe y botín multi-cadáver para intentos\n- SplitCharacterKey + primer guion solo en cadenas Nombre-Reino\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py para auditorías de la DB de monturas\n\nCorrecciones:\n- Contador de intentos: botín por chat + tablas compartidas — ya no se pierden actualizaciones CHAT (p. ej. devorador sangriento)\n- Reinos con guiones (Azjol-Nerub): claves canónicas, reparación en GetAllCharacters, estadísticas/minimapa; migración única del campo reino\n- IDs de montura: Verdant Skitterfly (192764), cristal qiraji rojo (21321)\n- Diálogo de seguimiento: GetRealmName protegido ante valores secretos\n\nLocalización:\n- Pistas TRY_COUNT de clic y clic derecho en todos los idiomas\n\nRepo: archivos de desarrollo redundantes eliminados; importación legada documentada en CONTRIBUTING\n\nCurseForge: Warband Nexus"
+L["CHANGELOG_V256"] = "v2.5.6\nMejoras:\n- Reino más legible en equipo, planes semanales, tracker de planes y diálogo de seguimiento; las claves guardadas siguen con el texto normalizado de Blizzard\n- Coleccionables: más PNJ para Riendas del devorador sangriento domesticado (BfA); notas cofre vs jefe y botín multi-cadáver para intentos\n- SplitCharacterKey + primer guion solo en cadenas Nombre-Reino\n- Auditorías de monturas: DB Lua Mounts comunitaria + Wowhead/WoWDB\n\nCorrecciones:\n- Contador de intentos: botín por chat + tablas compartidas — ya no se pierden actualizaciones CHAT (p. ej. devorador sangriento)\n- Reinos con guiones (Azjol-Nerub): claves canónicas, reparación en GetAllCharacters, estadísticas/minimapa; migración única del campo reino\n- IDs de montura: Verdant Skitterfly (192764), cristal qiraji rojo (21321)\n- Diálogo de seguimiento: GetRealmName protegido ante valores secretos\n\nLocalización:\n- Pistas TRY_COUNT de clic y clic derecho en todos los idiomas\n\nRepo: Git solo contiene fuentes del addon (Core, Modules, Locales, toc, CHANGES)\n\nCurseForge: Warband Nexus"
 
 L["CHANGELOG_V257"] = "v2.5.7b\nMejoras:\n- Personajes: orden predeterminado (personaje en línea primero, luego nivel, nombre); perfiles nuevos por defecto; claves de orden desconocidas → primera opción del menú\n- Personajes: personaje conectado siempre arriba en Favoritos/Personajes/No rastreados; orden manual coherente\n- Contador de intentos: dificultad de mazmorra/banda con GetInstanceInfo + instantánea al entrar (corrige Normal erróneo en mítico, p. ej. Mechagon HK-8)\n- Contador: un filtro de dificultad para botín, ENC retrasado y CHAT; misma clave dedup encounter_ que la ventana de botín\n- Contador: clave encounter_ si 0 rastreables para evitar doble conteo\n- Contador: botín fusionado en mundo abierto cuenta cadáveres con el mismo objeto de montura (BfA devorador sangriento)\n- Equipo: ancho del selector de personaje\n\nCorrecciones:\n- Contador: el número subía tras omitir por dificultad (botín vs ENC/CHAT)\n\nLocalización: SORT_MODE_DEFAULT\n\nCurseForge: Warband Nexus"
 
 L["CHANGELOG_V258"] = "v2.5.8\nCorrecciones:\n- Contador de intentos: CHAT_MSG_LOOT ya no falla en la ruta de atribución de pesca (declaración anticipada de CurrentUnitsHaveMobLootContext; antes global nil).\n\nCurseForge: Warband Nexus"
+
+L["CHANGELOG_V259"] = [=[v2.5.9 (03.04.2026)
+
+Mejoras
+- Coleccionables / contador: batalla de Dazar'alor — Glacial Tidestorm solo mítico con Lady Jaina (no LFR). G.M.O.D.: LFR con Jaina; normal/héroico/mítico con Mekkatorque (hotfix 2019). LFR explícito; reseed de estadísticas con statisticIds por fila de botín; Mekkatorque sin sumar LFR de Jaina (13379).
+- CollectibleSourceDB: legacyEncounters (jefes con montura) alineados a IDs DungeonEncounter Midnight.
+- Repositorio Git: solo fuentes del addon (Core, Modules, Locales, toc, CHANGES, LICENSE, README); documentación y scripts de auditoría eliminados.
+
+--- 2.5.8 ---
+Correcciones
+- Contador: CHAT_MSG_LOOT en pesca — CurrentUnitsHaveMobLootContext predeclarado (antes nil global).
+
+--- 2.5.7 / 2.5.7b ---
+Hotfix
+- Pestaña Equipo: selector de personaje y menú desplegable.
+- Acerca de / Info: créditos y colaboradores.
+
+Mejoras
+- Personajes: nuevo orden predeterminado (personaje conectado, luego nivel alto→bajo, luego nombre A–Z). Nuevos perfiles: characterSort.key = default. Claves inválidas → primera opción del menú. Conectado arriba en Favoritos, rastreados y no rastreados (también orden manual); semilla manual incluye toda la sección, online primero; characterOrder con lista no rastreada; reordenar mantiene online arriba.
+- Ajustes: WindowManager (POPUP, ESC compartido con ventana principal) en lugar de strata FULLSCREEN_DIALOG fija. RefreshSettingsKeyboard reactiva teclado tras Show. Rebuild de fuentes: unregister del marco de ajustes en WindowManager.
+- WindowManager: tras combate, EnableKeyboard(true) además de SetPropagateKeyboardInput(true).
+- Contador: dificultad de instancia prefiere instantánea al entrar (PLAYER_ENTERING_WORLD, ID de instancia), luego GetInstanceInfo, antes de ENCOUNTER_END y APIs — corrige mítico leído como normal (p. ej. Mechagon HK-8). ResolveLiveInstanceDifficultyID para M+ y APIs con dificultad 0; ResolveEffectiveEncounterDifficultyID centraliza el filtro.
+- Contador: FilterDropsByDifficulty coherente para botín, ENC retrasado y CHAT_MSG_LOOT; misma clave dedup encounter_ que la ventana de botín.
+- Contador: con 0 botines rastreables tras reglas, registrar igual la clave dedup (sin duplicar ENC/CHAT).
+- Contador: botín mundo abierto fusionado con multiplicador de cadáveres por ID de objeto (p. ej. devorador sangriento Nazmir).
+- Contador: LOOT_READY doble no vacía la sesión; trazas debug deduplicadas.
+- Contador: [WN-Drops] cabecera TRYCOUNTER_INSTANCE_DROPS_HEADER; dificultad requerida entre paréntesis tras el enlace — verde/rojo/ámbar.
+
+Correcciones
+- Contador: el número subía tras mensaje de dificultad omitida (botín vs ENC/CHAT).
+
+Localización
+- SORT_MODE_DEFAULT; TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED y cadenas relacionadas.
+
+--- 2.5.6 ---
+Mejoras
+- Reino más legible en equipo, planes, rastreador y seguimiento.
+- Coleccionables: más PNJ devorador sangriento BfA; notas cofre vs jefe y multi-cadáver.
+- SplitCharacterKey + primer guion Nombre-Reino.
+- Monturas: DB Lua comunitaria + Wowhead/WoWDB.
+
+Correcciones
+- Contador: botín por chat + tablas compartidas — actualizaciones CHAT conservadas.
+- Reinos con guiones: claves canónicas, GetAllCharacters, stats/minimap; migración única.
+- IDs de montura: Verdant Skitterfly (192764), cristal qiraji rojo (21321).
+- Diálogo: GetRealmName protegido.
+
+Localización
+- Pistas TRY_COUNT clic / clic derecho.
+
+Próximos pasos
+- Más comprobaciones Midnight en colecciones e IDs de encuentro; afinar contador y notificaciones con feedback de banda.
+
+CurseForge: Warband Nexus]=]
 
 L["CONFIRM_ACTION"] = "Confirmar Action"
 L["CONFIRM"] = "Confirmar"

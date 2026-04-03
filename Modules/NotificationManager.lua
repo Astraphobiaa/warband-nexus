@@ -15,10 +15,10 @@ local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version only (locale key CHANGELOG_V<version>; no legacy chain)
-local FALLBACK_CHANGELOG = "v2.5.8\nBug fixes:\n- Try Counter: CHAT_MSG_LOOT no longer errors on the fishing attribution path (CurrentUnitsHaveMobLootContext forward declaration; was a nil global).\n\nCurseForge: Warband Nexus"
+local FALLBACK_CHANGELOG = "v2.5.8\nBug fixes:\n- See full changelog in Locales (CHANGELOG_V258).\n\nCurseForge: Warband Nexus"
 
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V258"]) or FALLBACK_CHANGELOG
+    local changelogText = (ns.L and ns.L["CHANGELOG_V258"]) or (ns.L and ns.L["CHANGELOG_V259"]) or FALLBACK_CHANGELOG
     if not changelogText or changelogText == "" then
         changelogText = FALLBACK_CHANGELOG
     end

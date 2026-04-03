@@ -28,7 +28,7 @@
     are built at load from sources only. Do not add data to any legacy table.
 
     Mount NPC audits: cross-check open-source DB/Mounts/*.lua trees (community collector addons;
-    Classic through Midnight) plus Wowhead/WoWDB “Dropped by”. See CONTRIBUTING.md.
+    Classic through Midnight), wago.tools DB2 CSV exports where needed, plus Wowhead/WoWDB “Dropped by”.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -144,7 +144,7 @@ local _netherWarpedEgg = {
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
 
 ns.CollectibleSourceDB = {
-    version = "12.0.28",
+    version = "12.0.31",
     lastUpdated = "2026-04-03",
     sourceSchemaVersion = 1,
     sourceTypes = {
@@ -893,15 +893,23 @@ ns.CollectibleSourceDB = {
         },
 
         -- Raid Bosses [Verified]
-        [165396] = { -- Lady Jaina Proudmoore (Battle of Dazar'alor Mythic)
-            { type = "mount", itemID = 166705, name = "Glacial Tidestorm" },
-            statisticIds = { 13382 },  -- Jaina kills (Mythic)
-            dropDifficulty = "Mythic",
-            -- NOTE: Mythic-only, 100% drop during BfA, rare after Shadowlands
+        -- Jaina: Glacial Tidestorm is Mythic-only (never LFR). G.M.O.D. was moved to Jaina for LFR only (Feb 2019 hotfix).
+        [165396] = { -- Lady Jaina Proudmoore (Battle of Dazar'alor)
+            { type = "mount", itemID = 166705, name = "Glacial Tidestorm",
+              dropDifficulty = "Mythic",
+              statisticIds = { 13382 },  -- Jaina kills (Mythic BoD)
+            },
+            { type = "mount", itemID = 166518, name = "G.M.O.D.",
+              dropDifficulty = "LFR",
+              statisticIds = { 13379 },  -- Lady Jaina kills (LFR BoD); 13379 is NOT Mekkatorque LFR (that's 13371)
+            },
         },
+        -- G.M.O.D. on Normal/Heroic/Mythic drops from Mekkatorque; LFR source is Jaina row above.
         [144796] = { -- Mekkatorque (Battle of Dazar'alor)
-            { type = "mount", itemID = 166518, name = "G.M.O.D." },
-            statisticIds = { 13372, 13373, 13374, 13379 },  -- Mekkatorque kills (N, H, M, LFR)
+            { type = "mount", itemID = 166518, name = "G.M.O.D.",
+              dropDifficulty = "Normal", -- N/H/M raid (excludes LFR — see DoesDifficultyMatch "Normal")
+            },
+            statisticIds = { 13372, 13373, 13374 },  -- Mekkatorque N/H/M; omit 13371/13379 (LFR is Jaina for G.M.O.D.)
         },
         [158041] = { -- N'Zoth the Corruptor (Ny'alotha Mythic)
             { type = "mount", itemID = 174872, name = "Ny'alotha Allseer" },
@@ -1269,7 +1277,7 @@ ns.CollectibleSourceDB = {
 
         -- ========================================
         -- MIDNIGHT 12.0
-        -- NPC IDs cross-referenced with Docs/Midnight-Rare-NPC-IDs.md
+        -- Midnight zone rare NPC IDs verified against in-game / wago DB2 at data entry
         -- ========================================
 
         -- Harandar Zone Rares (Rootstalker Grimlynx / Vibrant Petalwing)
@@ -1779,76 +1787,54 @@ ns.CollectibleSourceDB = {
         [2541] = { drops = _voidstormRareMounts, raresOnly = true },     -- Arcantina
     },
 
+    -- DungeonEncounter.ID → NPC(s). Mount drops only (legacyNpcs). Midnight retail.
     legacyEncounters = {
-        -- TBC
-        [652] = { 16152 },   -- Attumen the Huntsman (Karazhan)
-        [733] = { 19622 },   -- Kael'thas Sunstrider (The Eye)
-
-        -- WotLK
-        [1126] = { 31125 },  -- Archavon the Stone Watcher (Vault of Archavon)
-        [1127] = { 33993 },  -- Emalon the Storm Watcher (Vault of Archavon)
-        [1128] = { 35013 },  -- Koralon the Flame Watcher (Vault of Archavon)
-        [1129] = { 38433 },  -- Toravon the Ice Watcher (Vault of Archavon)
-        [1143] = { 33288 },  -- Yogg-Saron (Ulduar)
-        [1103] = { 36597 },  -- The Lich King (ICC)
-        [1094] = { 28859 },  -- Malygos (Eye of Eternity)
-        [742] = { 28860 },   -- Sartharion (Obsidian Sanctum)
-        [1084] = { 10184 },  -- Onyxia (Onyxia's Lair)
-
-        -- Cataclysm
-        [1082] = { 52409 },  -- Ragnaros (Firelands)
-        [1205] = { 55294 },  -- Ultraxion (Dragon Soul)
-        [1206] = { 56173 },  -- Madness of Deathwing (Dragon Soul)
-
-        -- MoP
-        [1395] = { 60410 },  -- Elegon (Mogu'shan Vaults)
-        [1578] = { 68476 },  -- Horridon (Throne of Thunder)
-        [1573] = { 69712 },  -- Ji-Kun (Throne of Thunder)
-        [1623] = { 71865 },  -- Garrosh Hellscream (Siege of Orgrimmar)
-
-        -- WoD
-        [1704] = { 77325 },  -- Blackhand (Blackrock Foundry)
-        [1799] = { 91331 },  -- Archimonde (Hellfire Citadel)
-
-        -- Legion
-        [1866] = { 105503 }, -- Gul'dan (The Nighthold)
-        [2032] = { 115767 }, -- Mistress Sassz'ine (Tomb of Sargeras)
-        [2074] = { 126915, 126916 }, -- Felhounds of Sargeras (Antorus)
-        [2092] = { 130352 }, -- Argus the Unmaker (Antorus)
-
-        -- BfA
-        [2291] = { 155157, 150190 }, -- HK-8 Aerial Oppression Unit (Operation: Mechagon)
-        [2096] = { 126983 }, -- Harlan Sweete (Freehold)
-        [2123] = { 133007 }, -- Unbound Abomination (The Underrot)
-        [2143] = { 136160 }, -- King Dazar (Kings' Rest)
-        [2281] = { 165396 }, -- Lady Jaina Proudmoore (BoD)
-        [2271] = { 144796 }, -- Mekkatorque (BoD)
-        [2375] = { 158041 }, -- N'Zoth (Ny'alotha)
-
-        -- Shadowlands
-        [2286] = { 162693 }, -- The Necrotic Wake (Nalthor the Rimebinder)
-        [2441] = { 180863 }, -- Tazavesh (So'leah)
-        [2439] = { 178738 }, -- The Nine (Sanctum of Domination)
-        [2435] = { 175732 }, -- Sylvanas Windrunner (SoD)
-        [2464] = { 180990 }, -- The Jailer (Sepulcher)
-
-        -- Dragonflight
-        [2605] = { 189492 }, -- Raszageth the Storm-Eater (Vault of the Incarnates)
-        [2685] = { 201791 }, -- Scalecommander Sarkareth (Aberrus, the Shadowed Crucible)
-        [2708] = { 204931 }, -- Fyrakk (Amirdrassil)
-
-        -- TWW
-        [2652] = { 210798 }, -- Darkflame Cleft (The Darkness)
-        [2653] = { 213119 }, -- The Stonevault (Void Speaker Eirich)
-        [2922] = { 218370 }, -- Queen Ansurek (Nerub-ar Palace)
-        [2611] = { 241526 }, -- Chrome King Gallywix (Liberation of Undermine)
-
-        -- Midnight 12.0 â€” only encounters that drop mounts (wago.tools DungeonEncounter DB2)
-        -- difficultyIDs per encounter: dungeons 23 (Mythic) + 8 (Mythic Keystone / M+); raid 16 (Mythic).
-        -- Mythic+ uses the SAME encounterID as Mythic dungeon; no separate M+ encounter entry needed.
-        [3059] = { 231636 },   -- Restless Heart (Windrunner Spire) â€” difficultyIDs 23, 8 â€” Spectral Hawkstrider
-        [3074] = { 231865 },   -- Degentrius (Magisters' Terrace) â€” difficultyIDs 23, 8 â€” Lucent Hawkstrider
-        [3183] = { 214650 },   -- Midnight Falls / L'ura (March on Quel'Danas) â€” difficultyID 16 â€” Ashes of Belo'ren
+        [652] = { 16152 },
+        [733] = { 19622 },
+        [1126] = { 31125 },
+        [1127] = { 33993 },
+        [1128] = { 35013 },
+        [1129] = { 38433 },
+        [1094] = { 28859 },
+        [1090] = { 28860 },
+        [1084] = { 10184 },
+        [1143] = { 33288 },
+        [1106] = { 36597 },
+        [1203] = { 52409 },
+        [1297] = { 55294 },
+        [1299] = { 56173 },
+        [1500] = { 60410 },
+        [1575] = { 68476 },
+        [1573] = { 69712 },
+        [1623] = { 71865 },
+        [1704] = { 77325 },
+        [1799] = { 91331 },
+        [1866] = { 105503, 104154, 111022 },
+        [2037] = { 115767 },
+        [2074] = { 126915, 126916 },
+        [2092] = { 130352 },
+        [2291] = { 155157, 150190 },
+        [2096] = { 126983 },
+        [2123] = { 133007 },
+        [2143] = { 136160 },
+        [2276] = { 144796 },
+        [2281] = { 165396 },
+        [2344] = { 158041 },
+        [2390] = { 162693 },
+        [2442] = { 180863 },
+        [2429] = { 178738 },
+        [2435] = { 175732 },
+        [2537] = { 180990 },
+        [2607] = { 189492 },
+        [2685] = { 201791 },
+        [2677] = { 204931 },
+        [2788] = { 210798 },
+        [2883] = { 213119 },
+        [2922] = { 218370 },
+        [3016] = { 241526 },
+        [3059] = { 231636 },
+        [3074] = { 231865 },
+        [3183] = { 214650 },
     },
 
     legacyEncounterNames = {
