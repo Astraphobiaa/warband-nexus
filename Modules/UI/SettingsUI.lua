@@ -43,6 +43,13 @@ local IGNORED_KEYS = {
     LALT = true, RALT = true, UNKNOWN = true,
 }
 
+---Re-enable keyboard after Hide/Show cycles (WoW does not always restore focus).
+local function RefreshSettingsKeyboard(frame)
+    if not frame or InCombatLockdown() then return end
+    if frame.EnableKeyboard then frame:EnableKeyboard(true) end
+    if frame.SetPropagateKeyboardInput then frame:SetPropagateKeyboardInput(true) end
+end
+
 local function GetToggleBindingDisplayText()
     local key = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
                 and WarbandNexus.db.profile.toggleKeybind
@@ -2209,6 +2216,9 @@ local function BuildSettings(parent, containerWidth)
                 -- Rebuild settings window if open (after font fully applied)
                 C_Timer.After(0.1, function()
                     if settingsFrame and settingsFrame:IsShown() then
+                        if ns.WindowManager then
+                            ns.WindowManager:Unregister(settingsFrame)
+                        end
                         settingsFrame:Hide()
                         settingsFrame = nil
                         if WarbandNexus and WarbandNexus.ShowSettings then
@@ -2297,6 +2307,9 @@ local function BuildSettings(parent, containerWidth)
                 -- Rebuild settings window if open (after font change)
                 C_Timer.After(0.1, function()
                     if settingsFrame and settingsFrame:IsShown() then
+                        if ns.WindowManager then
+                            ns.WindowManager:Unregister(settingsFrame)
+                        end
                         settingsFrame:Hide()
                         settingsFrame = nil
                         WarbandNexus:ShowSettings()
@@ -2950,6 +2963,7 @@ function WarbandNexus:ShowSettings()
     
     -- Prevent duplicates: if already shown, bring to front
     if settingsFrame and settingsFrame:IsShown() then
+        RefreshSettingsKeyboard(settingsFrame)
         settingsFrame:Raise()
         return
     end
@@ -2957,6 +2971,7 @@ function WarbandNexus:ShowSettings()
     -- Reuse existing hidden frame to prevent orphaned frame leaks.
     -- Previous code created a new frame every time, leaving old hidden frames in memory.
     if settingsFrame then
+        RefreshSettingsKeyboard(settingsFrame)
         settingsFrame:Show()
         settingsFrame:Raise()
         return
@@ -2973,8 +2988,6 @@ function WarbandNexus:ShowSettings()
     f:SetMovable(true)
     f:SetResizable(true)
     f:EnableMouse(true)
-    f:SetFrameStrata("FULLSCREEN_DIALOG")
-    f:SetFrameLevel(200)
     f:SetClampedToScreen(true)
     f:SetResizeBounds(600, 500, 1000, 800)
     
@@ -2999,19 +3012,27 @@ function WarbandNexus:ShowSettings()
         end
     end)
     
-    -- ESC-to-close (combat-safe: SetPropagateKeyboardInput is protected in 12.0)
-    if not InCombatLockdown() then
-        f:EnableKeyboard(true)
-        f:SetPropagateKeyboardInput(true)
-    end
-    f:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
-            self:Hide()
-        else
-            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+    -- ESC: same hierarchy as main window (POPUP closes before MAIN).
+    if ns.WindowManager then
+        ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.POPUP)
+        ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP)
+        ns.WindowManager:InstallESCHandler(f)
+    else
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetFrameLevel(200)
+        if not InCombatLockdown() then
+            f:EnableKeyboard(true)
+            f:SetPropagateKeyboardInput(true)
         end
-    end)
+        f:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
+                self:Hide()
+            else
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+            end
+        end)
+    end
     
     -- Header (Factory container)
     local header = ns.UI.Factory:CreateContainer(f, 1, 40, false)

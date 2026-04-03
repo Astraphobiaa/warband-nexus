@@ -200,6 +200,7 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Sort Dropdown on the Title Card (Header)
     if ns.UI_CreateCharacterSortDropdown then
         local sortOptions = {
+            {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},
             {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
             {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
             {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
@@ -418,6 +419,7 @@ function WarbandNexus:DrawCharacterList(parent)
     yOffset = yOffset + 100
     
     local sortOptions = {
+        {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},
         {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
         {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
         {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
@@ -426,7 +428,10 @@ function WarbandNexus:DrawCharacterList(parent)
     }
     
     if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
-    local currentSortKey = self.db.profile.characterSort.key or "manual"
+    local sk = self.db.profile.characterSort.key
+    local currentSortKey = (type(sk) == "string" and sk ~= "" and
+        (sk == "default" or sk == "manual" or sk == "name" or sk == "level" or sk == "ilvl" or sk == "gold"))
+        and sk or "default"
     
     -- ===== SORT CHARACTERS: FAVORITES -> REGULAR =====
     local trackedFavorites = {}
@@ -458,9 +463,24 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Sort function (with custom order support)
     local function sortCharacters(list, orderKey)
-        local sortMode = self.db.profile.characterSort and self.db.profile.characterSort.key
-        
-        if sortMode and sortMode ~= "manual" then
+        local sortMode = currentSortKey
+
+        if sortMode ~= "manual" then
+            if sortMode == "default" then
+                -- Standard: logged-in character first, then level (high to low), then name (A-Z, case-insensitive).
+                table.sort(list, function(a, b)
+                    local aOn = currentPlayerKey and (GetCharKey(a) == currentPlayerKey)
+                    local bOn = currentPlayerKey and (GetCharKey(b) == currentPlayerKey)
+                    if aOn ~= bOn then
+                        return aOn
+                    end
+                    if (a.level or 0) ~= (b.level or 0) then
+                        return (a.level or 0) > (b.level or 0)
+                    end
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                end)
+                return list
+            end
             table.sort(list, function(a, b)
                 if sortMode == "name" then
                     return (a.name or ""):lower() < (b.name or ""):lower()
@@ -550,6 +570,23 @@ function WarbandNexus:DrawCharacterList(parent)
     trackedFavorites = sortCharacters(trackedFavorites, "favorites")
     trackedRegular = sortCharacters(trackedRegular, "regular")
     untracked = sortCharacters(untracked, "untracked")
+
+    -- Logged-in character always first within each section (any sort mode / manual custom order).
+    local function pinOnlineCharacterFirst(list)
+        if not currentPlayerKey or not list or #list == 0 then return end
+        for i = 1, #list do
+            if GetCharKey(list[i]) == currentPlayerKey then
+                if i > 1 then
+                    local c = table.remove(list, i)
+                    table.insert(list, 1, c)
+                end
+                break
+            end
+        end
+    end
+    pinOnlineCharacterFirst(trackedFavorites)
+    pinOnlineCharacterFirst(trackedRegular)
+    pinOnlineCharacterFirst(untracked)
     
     -- Guild column width: max guild name width across all visible characters (centered text)
     do
@@ -1704,7 +1741,8 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     if not self.db.profile.characterOrder then
         self.db.profile.characterOrder = {
             favorites = {},
-            regular = {}
+            regular = {},
+            untracked = {},
         }
     end
     
@@ -1714,21 +1752,43 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     
     local customOrder = self.db.profile.characterOrder[listKey]
     
-    -- If no custom order exists, create one from ALL characters in this category
+    -- If no custom order exists, seed from GetAllCharacters order for this category (online char first).
     if #customOrder == 0 then
-        -- Get all characters and rebuild the list for this category
         local allChars = self:GetAllCharacters()
-        local currentPlayerKey = ns.Utilities:GetCharacterKey()
-        
+        local keysInCategory = {}
         for _, c in ipairs(allChars) do
             local key = GetCharKey(c)
-            -- Skip current player
-            if key ~= currentPlayerKey then
+            if key then
+                local isTracked = c.isTracked ~= false
                 local isFav = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, key)
-                -- Add to appropriate list
-                if (listKey == "favorites" and isFav) or (listKey == "regular" and not isFav) then
-                    table.insert(customOrder, key)
+                local inCategory = false
+                if listKey == "favorites" then
+                    inCategory = isTracked and isFav
+                elseif listKey == "regular" then
+                    inCategory = isTracked and not isFav
+                elseif listKey == "untracked" then
+                    inCategory = not isTracked
                 end
+                if inCategory then
+                    keysInCategory[#keysInCategory + 1] = key
+                end
+            end
+        end
+        local seen = {}
+        if currentPlayerKey then
+            for i = 1, #keysInCategory do
+                if keysInCategory[i] == currentPlayerKey then
+                    customOrder[1] = currentPlayerKey
+                    seen[currentPlayerKey] = true
+                    break
+                end
+            end
+        end
+        for i = 1, #keysInCategory do
+            local k = keysInCategory[i]
+            if not seen[k] then
+                customOrder[#customOrder + 1] = k
+                seen[k] = true
             end
         end
     end
@@ -1757,6 +1817,19 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     
     -- Swap in custom order
     customOrder[currentIndex], customOrder[newIndex] = customOrder[newIndex], customOrder[currentIndex]
+
+    -- Logged-in character stays at top of this section after any reorder (matches DrawCharacterList).
+    if currentPlayerKey then
+        for i = 1, #customOrder do
+            if customOrder[i] == currentPlayerKey then
+                if i > 1 then
+                    local c = table.remove(customOrder, i)
+                    table.insert(customOrder, 1, c)
+                end
+                break
+            end
+        end
+    end
     
     -- Save and refresh
     self.db.profile.characterOrder[listKey] = customOrder

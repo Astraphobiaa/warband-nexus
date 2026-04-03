@@ -89,7 +89,6 @@ local _miscMechanica = {
 -- =====================================================================
 -- MIDNIGHT 12.0 "Zone Rare" mounts - shared drop tables
 -- Any rare in the zone can drop these mounts (daily lockout per rare)
--- Source: WoWHead - https://www.wowhead.com/news/45-new-mounts-to-collect-with-the-launch-of-midnight-380520
 -- =====================================================================
 
 -- Quel'Thalas (Eversong Woods / Ghostlands) - 2 mounts from any zone rare

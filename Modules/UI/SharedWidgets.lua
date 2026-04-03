@@ -2583,7 +2583,23 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         end
         activeSortDropdownMenu = menu
 
-        local currentKey = dbSortTable.key or "manual"
+        -- Nil/unknown keys: highlight first menu option (per-tab default differs, e.g. Characters = default order).
+        local rawKey = dbSortTable and dbSortTable.key
+        local currentKey = nil
+        if type(rawKey) == "string" and rawKey ~= "" then
+            for j = 1, itemCount do
+                if sortOptions[j].key == rawKey then
+                    currentKey = rawKey
+                    break
+                end
+            end
+        end
+        if not currentKey and sortOptions[1] and sortOptions[1].key then
+            currentKey = sortOptions[1].key
+        end
+        if not currentKey then
+            currentKey = "manual"
+        end
         local btnContentWidth = menuWidth - sideMargin * 2
 
         for i = 1, itemCount do

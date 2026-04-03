@@ -42,7 +42,7 @@ local Constants = {
     -- Main addon version (must match ## Version in WarbandNexus.toc)
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "2.5.6",
+    ADDON_VERSION = "2.5.8",
     
     --==========================================================================
     -- EXPANSION TARGETING

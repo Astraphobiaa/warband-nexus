@@ -962,8 +962,8 @@ L["INFO_TAB_PLANS"] = "To-Do"
 L["INFO_TAB_GEAR"] = "Gear"
 L["INFO_TAB_COLLECTIONS"] = "Collections"
 L["INFO_TAB_STATISTICS"] = "Statistics"
-L["SPECIAL_THANKS"] = "Special Thanks"
 L["INFO_CREDITS_SECTION_TITLE"] = "Credits & thanks"
+L["INFO_CREDITS_LORE_SUBTITLE"] = "Lore & storytelling"
 L["INFO_FEATURES_SECTION_TITLE"] = "Features overview"
 L["HEADER_INFO_TOOLTIP"] = "Addon guide & credits"
 L["HEADER_INFO_TOOLTIP_HINT"] = "Contributors and feature help — credits are at the top."
@@ -1013,6 +1013,10 @@ L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
 
 -- What's New (current release only; older entries are not kept in-repo)
 L["CHANGELOG_V256"] = "v2.5.6\nImprovements:\n- Readable realm spacing in Gear, weekly plans, Plans tracker, tracking dialog (saved keys still use Blizzard normalized realm text)\n- Collectibles: wider BfA Bloodfeaster NPC list; clearer notes for chest vs boss and multi-corpse try counting\n- SplitCharacterKey + first-hyphen-only parsing for Name-Realm strings\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py for mount DB audits\n\nBug fixes:\n- Try Counter: chat loot + shared drop tables (e.g. Tamed Bloodfeaster) no longer lose CHAT try updates\n- Hyphenated realms (Azjol-Nerub): canonical keys, GetAllCharacters repair, stats/minimap labels; one-time realm-field migration\n- Mount item IDs: Verdant Skitterfly (192764), Red Qiraji crystal (21321)\n- Tracking dialog: GetRealmName guarded for secret values\n\nLocalization:\n- TRY_COUNT click / right-click hints in all locales\n\nRepo: redundant dev scratch files removed; legacy mount import notes in CONTRIBUTING\n\nCurseForge: Warband Nexus"
+
+L["CHANGELOG_V257"] = "v2.5.7b\nHotfix:\n- Gear tab character selector and dropdown layout.\n- About dialog credits and contributors.\n\nImprovements:\n- Characters: Default Order sort (online first, then level, name); new profiles default; sort menu maps unknown keys to first option\n- Characters: logged-in character always first in Favorites / Characters / Untracked; manual custom order seeds untracked; reorder keeps online at top\n- Settings: WindowManager POPUP strata and ESC stack with main window; keyboard re-enabled after Show; font rebuild unregisters frame\n- WindowManager: combat restore re-enables EnableKeyboard as well as keyboard propagation\n- Try Counter: instance difficulty from entry snapshot + GetInstanceInfo (fixes Mythic misread as Normal, e.g. Mechagon HK-8)\n- Try Counter: one difficulty filter for loot, delayed ENC, CHAT; matching encounter dedup keys\n- Try Counter: dedup key recorded when zero trackable drops after rules\n- Try Counter: merged open-world corpse multiplier for shared mount item across NPC templates\n- Try Counter: LOOT_READY double-fire keeps loot session; deduped debug trace spam\n- Try Counter: [WN-Drops] one line per drop — Collectible Detected : Boss - item - (difficulty) - tries; gated difficulty green/red/amber; em dash when any difficulty\n\nBug fixes:\n- Try Counter: counter could rise after a difficulty skip (loot vs delayed/CHAT)\n\nLocalization:\n- SORT_MODE_DEFAULT; TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED and related strings\n\nCurseForge: Warband Nexus"
+
+L["CHANGELOG_V258"] = "v2.5.8\nBug fixes:\n- Try Counter: CHAT_MSG_LOOT no longer errors on the fishing attribution path (CurrentUnitsHaveMobLootContext forward declaration; was a nil global).\n\nCurseForge: Warband Nexus"
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"
@@ -1420,6 +1424,9 @@ L["TRYCOUNTER_AFTER_TRIES"] = "after %d tries"
 L["TRYCOUNTER_FIRST_TRY"] = "on the first try!"
 L["TRYCOUNTER_LOCKOUT_SKIP"] = "Skipped: daily/weekly lockout active for this NPC."
 L["TRYCOUNTER_INSTANCE_DROPS"] = "Collectible drops in this instance:"
+L["TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED"] = "Collectible Detected : "
+L["TRYCOUNTER_INSTANCE_WRONG_DIFF"] = "Wrong difficulty: needs %s (you are on %s)."
+L["TRYCOUNTER_INSTANCE_REQUIRES_UNVERIFIED"] = "Requires %s (current difficulty unknown)."
 L["TRYCOUNTER_COLLECTED_TAG"] = "(Collected)"
 L["TRYCOUNTER_ATTEMPTS_SUFFIX"] = " attempts"
 L["TRYCOUNTER_TYPE_MOUNT"] = "Mount"
@@ -1532,6 +1539,7 @@ L["CONFIG_COMMANDS_HEADER"] = "Slash Commands"
 
 -- Sorting
 L["SORT_BY_LABEL"] = "Sort By:"
+L["SORT_MODE_DEFAULT"] = "Default Order"
 L["SORT_MODE_MANUAL"] = "Manual (Custom Order)"
 L["SORT_MODE_NAME"] = "Name (A-Z)"
 L["SORT_MODE_LEVEL"] = "Level (Highest)"

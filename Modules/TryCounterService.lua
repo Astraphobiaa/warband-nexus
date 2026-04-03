@@ -11,7 +11,8 @@
     DB: db.global.tryCounts[type][id] = count
     
     EVENT FLOW (warcraft.wiki.gg verified):
-      LOOT_READY  → ALWAYS fires. Loot APIs valid. Capture ALL data here.
+      LOOT_READY  → ALWAYS fires (often twice per open). Loot APIs valid. Capture ALL data here.
+                   Second READY while the window is open must not clear lootSession.opened.
       LOOT_OPENED → MAY NOT FIRE (fast auto-loot / addons skip it).
                     When it fires: best-quality path (isFromItem + fresh reads).
       LOOT_CLOSED → ALWAYS fires. Processes from LOOT_READY data when OPENED missed.
@@ -118,6 +119,8 @@ local SafeGetTargetGUID
 local SafeGetMouseoverGUID
 local SafeGuardGUID
 local TryDiscoverLockoutQuest
+local TryCounterShowInstanceDrops -- C_Timer.After in OnTryCounterInstanceEntry runs before `local function` line would be in scope
+local CurrentUnitsHaveMobLootContext -- OnTryCounterChatMsgLoot (fishing path) runs before `local function` line would be in scope
 -- Forward declarations for state variables used in OnEvent closure (declared after it)
 local npcDropDB
 local tryCounterNpcEligible
@@ -126,6 +129,7 @@ local isBlockingInteractionOpen
 local lastLootSourceGUID
 local lastLootSourceTime
 local discoveryPendingNpcID
+local IsCollectibleCollected
 
 ---Send try counter / drops message to all chat panels that have Loot, Currency, or Reputation
 ---enabled (via ChatMessageService), so messages appear on every such tab and when switching panels.
@@ -180,6 +184,10 @@ local DEBUG_TRACE_EVENTS = {
     CHAT_MSG_MONEY = true,
     ITEM_LOCK_CHANGED = true,
 }
+
+-- MUST be declared before tryCounterFrame:SetScript("OnEvent") — otherwise the closure resolves globals (nil).
+local DEBUG_TRACE_DEDUP_LOOT_MS = 0.22
+local lastDebugTraceLootTime = { LOOT_READY = 0, LOOT_CLOSED = 0 }
 
 local TRYCOUNTER_EVENTS = {
     "LOOT_READY",
@@ -247,7 +255,15 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
     local addon = WarbandNexus
     -- Event trace: helps diagnose "no log" scenarios (e.g. no LOOT_OPENED, only currency chat event).
     if addon and addon.db and addon.db.profile and addon.db.profile.debugTryCounterLoot and DEBUG_TRACE_EVENTS[event] then
-        addon:Print("|cff9370DB[TC]|r |cff666688" .. event .. "|r")
+        local nowTrace = GetTime()
+        local dedupKey = (event == "LOOT_READY" or event == "LOOT_CLOSED") and event or nil
+        if dedupKey and lastDebugTraceLootTime[dedupKey]
+            and (nowTrace - lastDebugTraceLootTime[dedupKey]) < DEBUG_TRACE_DEDUP_LOOT_MS then
+            -- Same event twice in one tick/window — expected from the client; omit duplicate trace line.
+        else
+            if dedupKey then lastDebugTraceLootTime[dedupKey] = nowTrace end
+            addon:Print("|cff9370DB[TC]|r |cff666688" .. event .. "|r")
+        end
     end
     -- Early-session bootstrap: first fishing cast/loot can happen before scheduled init
     -- (InitializationService runs TryCounter at T+1.5s). Preserve context and force init on first loot events.
@@ -403,6 +419,8 @@ local lockoutQuestsDB = {}  -- [npcID] = questID or { questID1, questID2, ... }
 local recentKills = {}       -- [guid] = { npcID = n, name = s, time = t }
 local processedGUIDs = {}    -- [guid] = timestamp
 local mergedLootTryCountedAt = {}  -- [fingerprint] = GetTime() — open-world merged loot, one wave per GUID set
+--- PLAYER_ENTERING_WORLD: GetInstanceInfo difficulty for current instanceID (ENCOUNTER_END can mismatch).
+local tryCounterInstanceDiffCache = { instanceID = nil, difficultyID = nil }
 local fishingCtx = {
     active = false,            -- set on fishing cast, cleared when fishing loot processed (or 30s timer)
     castTime = 0,              -- timestamp of last fishing cast
@@ -452,6 +470,10 @@ local lootReady = {
     wasFishing = false,    -- snapshot of fishingCtx.active at LOOT_READY time
 }
 local LOOT_READY_STATE_TTL = 5  -- seconds; treat lootReady data as valid for this long
+
+local lastLootReadyFlowDebugSig = nil
+local lastLootReadyFlowDebugTime = 0
+local lastChatLootWindowActiveDebugTime = 0
 
 local lastGatherCastName = nil
 local lastGatherCastTime = 0
@@ -1472,6 +1494,40 @@ local DIFFICULTY_ID_TO_LABELS = {
     [232] = "Normal",   -- Event dungeon (alternate)
 }
 
+---Resolve difficultyID when GetInstanceInfo() returns 0 (seen in Midnight / some dungeons).
+---M+ → 8; else GetDungeonDifficultyID / GetRaidDifficultyID.
+---@param instanceType string|nil "party"|"raid"|...
+---@param giDifficulty number|nil GetInstanceInfo() 3rd return
+---@return number|nil
+local function ResolveLiveInstanceDifficultyID(instanceType, giDifficulty)
+    local d = giDifficulty
+    if d and issecretvalue and issecretvalue(d) then d = nil end
+    if type(d) == "number" and d > 0 then return d end
+
+    local it = instanceType
+    if it and issecretvalue and issecretvalue(it) then it = nil end
+
+    if it == "party" then
+        local CCM = C_ChallengeMode
+        if CCM and CCM.GetActiveKeystoneInfo then
+            local level = select(1, CCM.GetActiveKeystoneInfo())
+            if level and not (issecretvalue and issecretvalue(level)) and type(level) == "number" and level > 0 then
+                return 8 -- Mythic Keystone
+            end
+        end
+        local dd = GetDungeonDifficultyID and GetDungeonDifficultyID()
+        if dd and not (issecretvalue and issecretvalue(dd)) and type(dd) == "number" and dd > 0 then
+            return dd
+        end
+    elseif it == "raid" then
+        local rd = GetRaidDifficultyID and GetRaidDifficultyID()
+        if rd and not (issecretvalue and issecretvalue(rd)) and type(rd) == "number" and rd > 0 then
+            return rd
+        end
+    end
+    return nil
+end
+
 ---Check if a difficultyID satisfies a dropDifficulty requirement.
 ---Midnight 12.0: guards against secret values to avoid ADDON_ACTION_FORBIDDEN.
 ---@param difficultyID number WoW difficultyID from ENCOUNTER_END or difficulty API
@@ -1501,6 +1557,72 @@ local function DoesDifficultyMatch(difficultyID, requiredDifficulty)
         return label == "25N"
     end
     return false
+end
+
+---Effective difficulty for loot gating while inside an instance.
+---Order: (1) cache from instance entry + matching instanceID, (2) live GetInstanceInfo,
+---(3) ENCOUNTER_END snapshot, (4) GetDungeon/GetRaidDifficultyID.
+---@param inInstance boolean|nil
+---@param recentKillDiff number|nil difficulty from recentKills (ENCOUNTER_END snapshot)
+---@return number|nil
+local function ResolveEffectiveEncounterDifficultyID(inInstance, recentKillDiff)
+    if inInstance then
+        local _, typ, liveDiff, _, _, _, _, iid = GetInstanceInfo()
+        local safeIid = iid
+        if safeIid and issecretvalue and issecretvalue(safeIid) then safeIid = nil end
+        local safeLive = liveDiff
+        if safeLive and issecretvalue and issecretvalue(safeLive) then safeLive = nil end
+        local resolvedLive = ResolveLiveInstanceDifficultyID(typ, safeLive)
+        if tryCounterInstanceDiffCache.instanceID and safeIid
+            and tryCounterInstanceDiffCache.instanceID == safeIid
+            and tryCounterInstanceDiffCache.difficultyID
+            and tryCounterInstanceDiffCache.difficultyID > 0 then
+            return tryCounterInstanceDiffCache.difficultyID
+        end
+        if resolvedLive then
+            return resolvedLive
+        end
+    end
+    if recentKillDiff and not (issecretvalue and issecretvalue(recentKillDiff)) then
+        return recentKillDiff
+    end
+    if inInstance then
+        local raw = GetRaidDifficultyID and GetRaidDifficultyID()
+            or GetDungeonDifficultyID and GetDungeonDifficultyID()
+            or nil
+        if raw and not (issecretvalue and issecretvalue(raw)) then
+            return raw
+        end
+    end
+    return nil
+end
+
+---Trackable drops for NPC/encounter tables after difficulty gating (same rules as ProcessNPCLoot).
+---@param drops table npcDropDB entry
+---@param encounterDiffID number|nil
+---@return table
+---@return table|nil first skipped drop info { drop, required } for user messaging
+local function FilterDropsByDifficulty(drops, encounterDiffID)
+    local trackable = {}
+    local diffSkipped = nil
+    if not drops then return trackable, diffSkipped end
+    local npcDropDifficulty = drops.dropDifficulty
+    for i = 1, #drops do
+        local drop = drops[i]
+        local reqDiff = drop.dropDifficulty or npcDropDifficulty
+        local diffOk = true
+        if reqDiff and encounterDiffID then
+            diffOk = DoesDifficultyMatch(encounterDiffID, reqDiff)
+        end
+        if diffOk then
+            if drop.repeatable or not IsCollectibleCollected(drop) then
+                trackable[#trackable + 1] = drop
+            end
+        elseif not diffSkipped then
+            diffSkipped = { drop = drop, required = reqDiff }
+        end
+    end
+    return trackable, diffSkipped
 end
 
 ---Get the drop difficulty label for a collectible (type, id).
@@ -1552,7 +1674,7 @@ end
 ---Uses native collectibleID for accurate checks, with itemID-based fallbacks
 ---@param drop table { type, itemID, name }
 ---@return boolean
-local function IsCollectibleCollected(drop)
+IsCollectibleCollected = function(drop)
     if not drop then return false end
 
     local collectibleID = ResolveCollectibleID(drop)
@@ -2263,10 +2385,10 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
                     local drops = npcDropDB[killData.npcID]
                     if drops then
                         matchedNpcID = killData.npcID
-                        for i = 1, #drops do
-                            local d = drops[i]
-                            if d.repeatable or not IsCollectibleCollected(d) then trackable[#trackable + 1] = d end
-                        end
+                        local inInst = IsInInstance()
+                        if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+                        local encDiff = ResolveEffectiveEncounterDifficultyID(inInst, killData.difficultyID)
+                        trackable = FilterDropsByDifficulty(drops, encDiff)
                         break
                     end
                 end
@@ -2303,15 +2425,47 @@ end
 -- INSTANCE ENTRY NOTIFICATION (Midnight: tooltip can't show drops inside)
 -- When a player enters a dungeon or raid, print collectible drops to chat
 -- so they know which bosses drop mounts/pets/toys before engaging.
--- Uses Encounter Journal API:
---   EJ_GetCurrentInstance() → journalInstanceID for player's location
+-- Uses Encounter Journal API (after Blizzard_EncounterJournal load):
+--   EJ_GetInstanceForMap(uiMapID) or EJ_GetCurrentInstance() → journalInstanceID
 --   EJ_GetEncounterInfoByIndex(idx) → iterates encounters in that instance
 --     7th return (dungeonEncounterID) matches our encounterDB keys
 -- =====================================================================
 
 -- Track the last instance we notified for (avoid spam on /reload inside same instance)
 local lastNotifiedInstanceID = nil   -- from GetInstanceInfo(), used to avoid re-scheduling
-local lastShownJournalInstanceID = nil -- from EJ_GetCurrentInstance(), used to avoid re-printing on reload
+local lastShownJournalInstanceID = nil -- from journal instance ID (EJ_GetInstanceForMap / EJ_GetCurrentInstance)
+
+local function TryCounterLoadEncounterJournal()
+    if InCombatLockdown() then return end
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "Blizzard_EncounterJournal")
+    elseif LoadAddOn then
+        pcall(LoadAddOn, "Blizzard_EncounterJournal")
+    end
+end
+
+---True if we can select a journal instance and iterate encounters (after Blizzard_EncounterJournal load).
+local function TryCounterEJ_HasCoreAPIs()
+    return EJ_SelectInstance and EJ_GetEncounterInfoByIndex
+        and (EJ_GetCurrentInstance or EJ_GetInstanceForMap)
+end
+
+---Journal instance ID for the player's current position. Prefer EJ_GetInstanceForMap(uiMapID) — EJ_GetCurrentInstance was superseded in 8.0.1.
+---@return number|nil
+local function TryCounterGetJournalInstanceID()
+    local jid
+    if EJ_GetCurrentInstance then
+        jid = EJ_GetCurrentInstance()
+    end
+    if (not jid or jid == 0) and EJ_GetInstanceForMap and C_Map and C_Map.GetBestMapForUnit then
+        local mapID = C_Map.GetBestMapForUnit("player")
+        if mapID and not (issecretvalue and issecretvalue(mapID)) then
+            jid = EJ_GetInstanceForMap(mapID)
+        end
+    end
+    if jid == 0 then jid = nil end
+    return jid
+end
 
 ---PLAYER_ENTERING_WORLD handler (detect instance entry and print collectible drops)
 function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadingUi)
@@ -2324,6 +2478,8 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
     if issecretvalue and instanceType and issecretvalue(instanceType) then instanceType = nil end
     if not inInstance then
+        tryCounterInstanceDiffCache.instanceID = nil
+        tryCounterInstanceDiffCache.difficultyID = nil
         lastNotifiedInstanceID = nil
         lastShownJournalInstanceID = nil
         for guid, data in pairs(recentKills) do
@@ -2332,6 +2488,28 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
             end
         end
         return
+    end
+
+    -- Try counter: snapshot instance difficulty at entry (stable vs wrong ENCOUNTER_END args).
+    tryCounterInstanceDiffCache.instanceID = nil
+    tryCounterInstanceDiffCache.difficultyID = nil
+    if instanceType == "party" or instanceType == "raid" then
+        local _, _, diffID, _, _, _, _, instanceID = GetInstanceInfo()
+        local sid = instanceID
+        if sid and issecretvalue and issecretvalue(sid) then sid = nil end
+        local gi = diffID
+        if gi and issecretvalue and issecretvalue(gi) then gi = nil end
+        local resolved = ResolveLiveInstanceDifficultyID(instanceType, gi)
+        if sid then
+            tryCounterInstanceDiffCache.instanceID = sid
+            tryCounterInstanceDiffCache.difficultyID = resolved
+                or (type(gi) == "number" and gi > 0 and gi)
+                or nil
+        end
+    end
+
+    if IsTryCounterLootDebugEnabled(self) then
+        self:TryCounterDebugInstanceProbe()
     end
 
     -- Clear fishing context on instance entry (prevents false fishing counts in Delves)
@@ -2356,17 +2534,10 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
         local WN = WarbandNexus
         if not WN or not WN.Print then return end
 
-        -- Ensure Encounter Journal addon is loaded (required for EJ_* APIs)
-        if not InCombatLockdown() then
-            if C_AddOns and C_AddOns.LoadAddOn then
-                pcall(C_AddOns.LoadAddOn, "Blizzard_EncounterJournal")
-            elseif LoadAddOn then
-                pcall(LoadAddOn, "Blizzard_EncounterJournal")
-            end
-        end
+        TryCounterLoadEncounterJournal()
 
-        if not EJ_GetCurrentInstance or not EJ_SelectInstance or not EJ_GetEncounterInfoByIndex then return end
-        local journalInstanceID = EJ_GetCurrentInstance()
+        if not TryCounterEJ_HasCoreAPIs() then return end
+        local journalInstanceID = TryCounterGetJournalInstanceID()
         -- EJ can return 0 for some instances (e.g. Mechagon, Timewalking) until fully ready; retry once after 2s
         if not journalInstanceID or journalInstanceID == 0 then
             C_Timer.After(2, function()
@@ -2374,7 +2545,8 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
                 local inInst = IsInInstance()
                 if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
                 if not inInst then return end
-                local jid = EJ_GetCurrentInstance()
+                TryCounterLoadEncounterJournal()
+                local jid = TryCounterGetJournalInstanceID()
                 if jid and jid ~= 0 and jid ~= lastShownJournalInstanceID then
                     lastShownJournalInstanceID = jid
                     TryCounterShowInstanceDrops(jid)
@@ -2388,7 +2560,133 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     end)
 end
 
-local function TryCounterShowInstanceDrops(journalInstanceID)
+---When debugTryCounterLoot is on: immediate GetInstanceInfo + cache snapshot; deferred EJ walk vs encounterDB/npcDropDB with FilterDropsByDifficulty (same as loot path).
+function WarbandNexus:TryCounterDebugInstanceProbe()
+    if not IsTryCounterLootDebugEnabled(self) then return end
+    local inInst = IsInInstance()
+    if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+    if not inInst then return end
+
+    local name, instType, diffID, _, _, _, _, mapInstID = GetInstanceInfo()
+    if name and issecretvalue and issecretvalue(name) then name = nil end
+    if instType and issecretvalue and issecretvalue(instType) then instType = nil end
+    if diffID and issecretvalue and issecretvalue(diffID) then diffID = nil end
+    if mapInstID and issecretvalue and issecretvalue(mapInstID) then mapInstID = nil end
+
+    local uiMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+    if uiMapID and issecretvalue and issecretvalue(uiMapID) then uiMapID = nil end
+    local ddApi = GetDungeonDifficultyID and GetDungeonDifficultyID()
+    if ddApi and issecretvalue and issecretvalue(ddApi) then ddApi = nil end
+    local rdApi = GetRaidDifficultyID and GetRaidDifficultyID()
+    if rdApi and issecretvalue and issecretvalue(rdApi) then rdApi = nil end
+
+    local encDiff = ResolveEffectiveEncounterDifficultyID(true, nil)
+    local diffLabel = (encDiff and DIFFICULTY_ID_TO_LABELS[encDiff]) or "?"
+    TryCounterLootDebug(self, "flow",
+        "ENTER name=%s type=%s mapInstanceID=%s uiMapID=%s liveDiffID=%s | resolvedDiffID=%s (%s) | cache instanceID=%s diffID=%s | API dungeonDiff=%s raidDiff=%s",
+        tostring(name or "?"),
+        tostring(instType or "?"),
+        tostring(mapInstID or "?"),
+        tostring(uiMapID or "nil"),
+        tostring(diffID or "nil"),
+        tostring(encDiff or "nil"),
+        tostring(diffLabel),
+        tostring(tryCounterInstanceDiffCache.instanceID or "nil"),
+        tostring(tryCounterInstanceDiffCache.difficultyID or "nil"),
+        tostring(ddApi or "nil"),
+        tostring(rdApi or "nil"))
+
+    if instType ~= "party" and instType ~= "raid" then
+        TryCounterLootDebug(self, "skip", "EJ/DB boss probe skipped (need party or raid instance type)")
+        return
+    end
+
+    local WN = self
+    C_Timer.After(0.75, function()
+        if not WN or not IsTryCounterLootDebugEnabled(WN) then return end
+        local inI = IsInInstance()
+        if issecretvalue and inI and issecretvalue(inI) then inI = nil end
+        if not inI then return end
+
+        TryCounterLoadEncounterJournal()
+        if not TryCounterEJ_HasCoreAPIs() then
+            TryCounterLootDebug(WN, "miss",
+                "DB probe: EJ APIs missing (EJ_SelectInstance=%s EJ_GetEncounterInfoByIndex=%s EJ_GetCurrentInstance=%s EJ_GetInstanceForMap=%s) — need Blizzard_EncounterJournal",
+                tostring(not not EJ_SelectInstance),
+                tostring(not not EJ_GetEncounterInfoByIndex),
+                tostring(not not EJ_GetCurrentInstance),
+                tostring(not not EJ_GetInstanceForMap))
+            return
+        end
+
+        local jid = TryCounterGetJournalInstanceID()
+        if not jid or jid == 0 then
+            local um = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+            if um and issecretvalue and issecretvalue(um) then um = nil end
+            TryCounterLootDebug(WN, "miss", "DB probe: journalID unresolved (TryCounterGetJournalInstanceID=%s uiMapID=%s)",
+                tostring(jid), tostring(um))
+            return
+        end
+
+        EJ_SelectInstance(jid)
+        local effDiff = ResolveEffectiveEncounterDifficultyID(true, nil)
+        local effLabel = (effDiff and DIFFICULTY_ID_TO_LABELS[effDiff]) or "?"
+        local um2 = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+        if um2 and issecretvalue and issecretvalue(um2) then um2 = nil end
+        TryCounterLootDebug(WN, "flow", "DB probe: uiMapID=%s → journalInstanceID=%s | effectiveDiffID=%s (%s) — WN DB (dungeonEncID → npcID → drops):",
+            tostring(um2 or "nil"), tostring(jid), tostring(effDiff or "nil"), tostring(effLabel))
+
+        local idx = 1
+        local hadDbBoss = false
+        while true do
+            local encName, _, _, _, _, _, dungeonEncID = EJ_GetEncounterInfoByIndex(idx)
+            local isSecret = issecretvalue and encName and issecretvalue(encName)
+            if not isSecret and not encName then break end
+            if not isSecret and dungeonEncID then
+                isSecret = issecretvalue and issecretvalue(dungeonEncID)
+            end
+            if not isSecret and dungeonEncID then
+                local npcIDs = encounterDB[dungeonEncID]
+                if npcIDs then
+                    hadDbBoss = true
+                    local parts = {}
+                    for ni = 1, #npcIDs do
+                        local npcID = npcIDs[ni]
+                        local npcDrops = npcDropDB[npcID]
+                        if npcDrops then
+                            local trackable, diffSkip = FilterDropsByDifficulty(npcDrops, effDiff)
+                            for ti = 1, #trackable do
+                                local d = trackable[ti]
+                                parts[#parts + 1] = format("npc %s → %s \"%s\" (item %s)",
+                                    tostring(npcID), tostring(d.type), tostring(d.name or "?"), tostring(d.itemID))
+                            end
+                            if #trackable == 0 and diffSkip then
+                                parts[#parts + 1] = format("npc %s → (0 trackable: needs %s)",
+                                    tostring(npcID), tostring(diffSkip.required))
+                            elseif #trackable == 0 then
+                                parts[#parts + 1] = format("npc %s → (0 trackable: gated or collected)", tostring(npcID))
+                            end
+                        end
+                    end
+                    if #parts > 0 then
+                        TryCounterLootDebug(WN, "flow", "  • %s [enc=%s]: %s",
+                            tostring(encName), tostring(dungeonEncID), table.concat(parts, " | "))
+                    else
+                        TryCounterLootDebug(WN, "skip", "  • %s [enc=%s]: npcIDs in encounterDB but no npcDropDB rows (%s)",
+                            tostring(encName), tostring(dungeonEncID), table.concat(npcIDs, ","))
+                    end
+                end
+            end
+            idx = idx + 1
+        end
+
+        if not hadDbBoss then
+            TryCounterLootDebug(WN, "miss", "DB probe: no EJ encounters in this instance map to encounterDB (journal=%s)", tostring(jid))
+        end
+    end)
+end
+
+TryCounterShowInstanceDrops = function(journalInstanceID)
     local WN = WarbandNexus
     if not WN or not WN.Print then return end
     EJ_SelectInstance(journalInstanceID)
@@ -2461,7 +2759,10 @@ local function TryCounterShowInstanceDrops(journalInstanceID)
         C_Timer.After(1, function()
             if not WN then return end
 
-            TryChat("|cff9370DB[WN-Drops]|r " .. ((ns.L and ns.L["TRYCOUNTER_INSTANCE_DROPS"]) or "Collectible drops in this instance:"))
+            local encDiff = ResolveEffectiveEncounterDifficultyID(true, nil)
+
+            local Ltc = ns.L
+            local detectPrefix = (Ltc and Ltc["TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED"]) or "Collectible Detected : "
 
             for i = 1, #dropsToShow do
                 local entry = dropsToShow[i]
@@ -2531,12 +2832,22 @@ local function TryCounterShowInstanceDrops(journalInstanceID)
                         end
                     end
 
-                    local diffTag = ""
+                    -- Third segment: (req) colored green/red/amber; gray em dash when DB has no difficulty gate.
+                    local diffSegment
                     local reqDiff = entry.diffMap and entry.diffMap[drop.itemID]
                     if reqDiff then
-                        diffTag = " |cffff8800(" .. reqDiff .. ")|r"
+                        if encDiff and not (issecretvalue and issecretvalue(encDiff)) then
+                            local color = DoesDifficultyMatch(encDiff, reqDiff) and "|cff00ff00" or "|cffff6666"
+                            diffSegment = "(" .. color .. reqDiff .. "|r)"
+                        else
+                            diffSegment = "(|cffffaa00" .. reqDiff .. "|r)"
+                        end
+                    else
+                        diffSegment = "|cff888888—|r"
                     end
-                    TryChat("  " .. entry.bossName .. ": " .. itemLink .. diffTag .. " " .. status)
+
+                    TryChat("|cff9370DB[WN-Drops]|r " .. detectPrefix .. entry.bossName .. " - " .. itemLink .. " - "
+                        .. diffSegment .. " - " .. status)
                 end
             end
         end)
@@ -2647,7 +2958,11 @@ end
 ---We capture ALL state here (slot data + unit GUIDs) so LOOT_CLOSED can process reliably.
 ---@param autoloot boolean
 function WarbandNexus:OnTryCounterLootReady(autoloot)
-    ResetLootSession()
+    -- A second LOOT_READY while the frame is open must not clear lootSession.opened; otherwise
+    -- LOOT_CLOSED treats the session as "OPENED missed" and runs the closed route again (duplicate flow logs / work).
+    if not lootSession.opened then
+        ResetLootSession()
+    end
     lootReady.numLoot = (GetNumLootItems and GetNumLootItems()) or 0
     lootReady.sourceGUIDs = GetAllLootSourceGUIDs and GetAllLootSourceGUIDs() or {}
     wipe(lootReady.slotData)
@@ -2663,9 +2978,15 @@ function WarbandNexus:OnTryCounterLootReady(autoloot)
     lootReady.time = GetTime()
     lootReady.wasFishing = fishingCtx.active and (lootReady.time - fishingCtx.castTime) <= FISHING_CAST_CONTEXT_TTL
     if IsTryCounterLootDebugEnabled(self) then
-        TryCounterLootDebug(self, "flow", "READY loot=%d src=%d auto=%s fish=%s mo=%s tg=%s npc=%s",
-            lootReady.numLoot, #lootReady.sourceGUIDs, tostring(not not autoloot), tostring(lootReady.wasFishing),
-            lootReady.mouseoverGUID and "Y" or "-", lootReady.targetGUID and "Y" or "-", lootReady.npcGUID and "Y" or "-")
+        local sig = string.format("%d|%d|%s", lootReady.numLoot, #lootReady.sourceGUIDs, tostring(not not autoloot))
+        local tDbg = GetTime()
+        if sig ~= lastLootReadyFlowDebugSig or (tDbg - lastLootReadyFlowDebugTime) >= DEBUG_TRACE_DEDUP_LOOT_MS then
+            lastLootReadyFlowDebugSig = sig
+            lastLootReadyFlowDebugTime = tDbg
+            TryCounterLootDebug(self, "flow", "READY loot=%d src=%d auto=%s fish=%s mo=%s tg=%s npc=%s",
+                lootReady.numLoot, #lootReady.sourceGUIDs, tostring(not not autoloot), tostring(lootReady.wasFishing),
+                lootReady.mouseoverGUID and "Y" or "-", lootReady.targetGUID and "Y" or "-", lootReady.npcGUID and "Y" or "-")
+        end
     end
 end
 
@@ -2680,14 +3001,19 @@ function WarbandNexus:OnTryCounterLootClosed()
     -- snapshot (guaranteed valid) rather than fresh reads (may be nil by now).
     if not lootSession.opened and IsAutoTryCounterEnabled() then
         local now = GetTime()
-        local incomingPrimary = lootReady.sourceGUIDs and lootReady.sourceGUIDs[1] or lootReady.npcGUID
-        local debounced = incomingPrimary and lastTryCountLootSourceGUID == incomingPrimary
-            and (now - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE
-        if not debounced then
-            PromoteLootReadyToSession()
-            RouteLootSession(self, "closed")
-        elseif IsTryCounterLootDebugEnabled(self) then
-            TryCounterLootDebug(self, "skip", "CLOSED debounce (%s)", tostring(lastTryCountSourceKey))
+        -- After a normal OPENED session, first LOOT_CLOSED clears lootReady; a second client LOOT_CLOSED
+        -- would otherwise promote an empty snapshot and spam "closed -> … loot=0" (no work to do).
+        local readySnapshotValid = lootReady.time > 0 and (now - lootReady.time) <= LOOT_READY_STATE_TTL
+        if readySnapshotValid then
+            local incomingPrimary = lootReady.sourceGUIDs and lootReady.sourceGUIDs[1] or lootReady.npcGUID
+            local debounced = incomingPrimary and lastTryCountLootSourceGUID == incomingPrimary
+                and (now - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE
+            if not debounced then
+                PromoteLootReadyToSession()
+                RouteLootSession(self, "closed")
+            elseif IsTryCounterLootDebugEnabled(self) then
+                TryCounterLootDebug(self, "skip", "CLOSED debounce (%s)", tostring(lastTryCountSourceKey))
+            end
         end
     end
 
@@ -2787,7 +3113,14 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
 
     -- Paths 2-4: suppress when loot window is active (primary path already counted).
     if lootWindowActive then
-        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip", "CHAT loot window active (item=%s)", tostring(itemID)) end
+        -- CHAT_MSG_LOOT fires once per item; rate-limit this skip line to avoid chat flood.
+        if IsTryCounterLootDebugEnabled(self) then
+            local tChat = GetTime()
+            if tChat - lastChatLootWindowActiveDebugTime >= 1.5 then
+                lastChatLootWindowActiveDebugTime = tChat
+                TryCounterLootDebug(self, "skip", "CHAT loot window active (item=%s; further lines suppressed ~1.5s)", tostring(itemID))
+            end
+        end
         return
     end
 
@@ -2800,13 +3133,13 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     if npcID then
         local drops = npcDropDB[npcID]
         if drops then
-            local trackable = {}
-            for i = 1, #drops do
-                local d = drops[i]
-                if d.repeatable or not IsCollectibleCollected(d) then trackable[#trackable + 1] = d end
-            end
+            local inInst = IsInInstance()
+            if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+            local encDiff = ResolveEffectiveEncounterDifficultyID(inInst, nil)
+            local trackable = FilterDropsByDifficulty(drops, encDiff)
             if #trackable > 0 then
-                lastTryCountSourceKey = "npc_" .. tostring(npcID)
+                local encForKey = GetEncounterIDForNpcID(npcID)
+                lastTryCountSourceKey = encForKey and ("encounter_" .. tostring(encForKey)) or ("npc_" .. tostring(npcID))
                 lastTryCountSourceTime = now
 
                 -- Separate found item from missed items: the looted itemID may be one of our tracked drops.
@@ -2883,13 +3216,13 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     if itemMatches then break end
                 end
                 if itemMatches then
-                    local trackable = {}
-                    for i = 1, #drops do
-                        local d = drops[i]
-                        if d.repeatable or not IsCollectibleCollected(d) then trackable[#trackable + 1] = d end
-                    end
+                    local inInst = IsInInstance()
+                    if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+                    local encDiff = ResolveEffectiveEncounterDifficultyID(inInst, killData.difficultyID)
+                    local trackable = FilterDropsByDifficulty(drops, encDiff)
                     if #trackable > 0 then
-                        lastTryCountSourceKey = "encounter_" .. tostring(killData.npcID)
+                        local encForKey = GetEncounterIDForNpcID(killData.npcID)
+                        lastTryCountSourceKey = encForKey and ("encounter_" .. tostring(encForKey)) or ("npc_" .. tostring(killData.npcID))
                         lastTryCountSourceTime = now
 
                         -- Separate found item from missed: the looted itemID is one of our tracked drops.
@@ -3169,7 +3502,7 @@ local function LootSessionHasMobLootContext()
 end
 
 ---Fresh read at call site (e.g. LOOT_CLOSED before session is promoted).
-local function CurrentUnitsHaveMobLootContext()
+CurrentUnitsHaveMobLootContext = function()
     local mo = SafeGetMouseoverGUID and SafeGetMouseoverGUID()
     local tg = SafeGetTargetGUID and SafeGetTargetGUID()
     local npc = SafeGetUnitGUID and SafeGetUnitGUID("npc")
@@ -3724,6 +4057,19 @@ end
 -- ProcessNPCLoot — orchestrator: P1→P2→P3→P4, first match wins, exact IDs only.
 -- =====================================================================
 
+---DungeonEncounterID for CHAT/loot dedup (must match BuildTryCountSourceKey encounter_*).
+---@param npcID number|nil
+---@return number|nil
+local function GetEncounterIDForNpcID(npcID)
+    if not npcID or not encounterDB then return nil end
+    for encID, npcList in pairs(encounterDB) do
+        for j = 1, #npcList do
+            if npcList[j] == npcID then return encID end
+        end
+    end
+    return nil
+end
+
 ---Try-counter source key for dedup. Open-world NPCs append loot GUID so each corpse counts;
 ---encounters use encounter id only (double paths, same kill).
 ---@param matchedEncounterID number|nil
@@ -3838,29 +4184,25 @@ function WarbandNexus:ProcessNPCLoot()
         processedGUIDs[ctx.targetGUID] = now
     end
 
-    -- Resolve encounter difficulty from recentKills BEFORE cleanup deletes them.
-    local encounterDiffID = nil
+    -- Resolve encounter difficulty BEFORE cleanup deletes recentKills.
+    local recentKillDiff = nil
     if dedupGUID then
         local killEntry = recentKills[dedupGUID]
-        if killEntry and killEntry.difficultyID then encounterDiffID = killEntry.difficultyID end
+        if killEntry and killEntry.difficultyID then recentKillDiff = killEntry.difficultyID end
     end
-    if not encounterDiffID and matchedNpcID then
+    if not recentKillDiff and matchedNpcID then
         for _, killData in pairs(recentKills) do
             if killData.isEncounter and killData.npcID == matchedNpcID and killData.difficultyID then
-                encounterDiffID = killData.difficultyID
+                recentKillDiff = killData.difficultyID
                 break
             end
         end
     end
-    if not encounterDiffID and matchedNpcID then
-        if inInstance then
-            local rawDiff = GetRaidDifficultyID and GetRaidDifficultyID()
-                or GetDungeonDifficultyID and GetDungeonDifficultyID()
-                or nil
-            if rawDiff and not (issecretvalue and issecretvalue(rawDiff)) then
-                encounterDiffID = rawDiff
-            end
-        end
+    local encounterDiffID = ResolveEffectiveEncounterDifficultyID(inInstance, recentKillDiff)
+    if IsTryCounterLootDebugEnabled(self) and recentKillDiff and encounterDiffID
+        and recentKillDiff ~= encounterDiffID then
+        TryCounterLootDebug(self, "flow", "diff prefer instance=%s over ENC=%s",
+            tostring(encounterDiffID), tostring(recentKillDiff))
     end
 
     -- Look up encounter ID for this NPC (reused for cleanup, dedup, and key setting).
@@ -3898,28 +4240,8 @@ function WarbandNexus:ProcessNPCLoot()
         end
     end
 
-    -- NPC-level dropDifficulty (e.g. Fyrakk entire entry is "Mythic")
-    local npcDropDifficulty = drops.dropDifficulty
-
-    -- Filter drops: repeatable drops always tracked, non-repeatable only if uncollected.
-    -- Skip drops whose difficulty requirement doesn't match the kill difficulty.
-    local trackable = {}
-    local diffSkipped = nil
-    for i = 1, #drops do
-        local drop = drops[i]
-        local reqDiff = drop.dropDifficulty or npcDropDifficulty
-        local diffOk = true
-        if reqDiff and encounterDiffID then
-            diffOk = DoesDifficultyMatch(encounterDiffID, reqDiff)
-        end
-        if diffOk then
-            if drop.repeatable or not IsCollectibleCollected(drop) then
-                trackable[#trackable + 1] = drop
-            end
-        elseif not diffSkipped then
-            diffSkipped = { drop = drop, required = reqDiff }
-        end
-    end
+    -- Filter drops: repeatable + uncollected, difficulty-gated (shared with CHAT / ENC delayed).
+    local trackable, diffSkipped = FilterDropsByDifficulty(drops, encounterDiffID)
     if #trackable == 0 then
         if IsTryCounterLootDebugEnabled(self) then
             TryCounterLootDebug(self, "skip", "NPC trackable=0 (collected/diff)")
@@ -3932,6 +4254,11 @@ function WarbandNexus:ProcessNPCLoot()
                 ((ns.L and ns.L["TRYCOUNTER_DIFFICULTY_SKIP"]) or "Skipped: %s requires %s difficulty (current: %s)"),
                 itemLink, diffSkipped.required, currentLabel
             ))
+        end
+        -- Dedup: same encounter key as successful loot path so ENC delayed / CHAT cannot +1 this kill.
+        if matchedEncounterID then
+            lastTryCountSourceKey = "encounter_" .. tostring(matchedEncounterID)
+            lastTryCountSourceTime = GetTime()
         end
         return
     end

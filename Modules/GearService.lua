@@ -124,6 +124,9 @@ local ARMOR_SLOT_IDS = {
     [1] = true, [3] = true, [5] = true, [6] = true, [7] = true, [8] = true, [9] = true, [10] = true, [15] = true,
 }
 
+-- Global specialization ID → primary stat for gear filtering (Midnight 12.x).
+-- Storage-upgrade matching: ResolveExpectedPrimaryStatFromCharacter → expected STR/AGI/INT,
+-- then compare to C_Item.GetItemStats / GetItemStats primary flags on the item link.
 local SPEC_MAIN_STAT = {
     [62] = "INT", [63] = "INT", [64] = "INT",
     [65] = "INT", [66] = "STR", [70] = "STR",
@@ -225,6 +228,30 @@ function WarbandNexus:GetCurrentCharacterMainStat()
     return (specID and SPEC_MAIN_STAT[specID]) or nil
 end
 
+--- Expected primary stat for the *selected* character in Gear storage scan.
+--- Uses SPEC_MAIN_STAT: live specialization when the selected row is the logged-in player (accurate respec),
+--- otherwise saved charData.specID (with index→global ID resolution) or first spec for the class.
+---@param charData table|nil db.global.characters[key]
+---@param selectedIsLoggedInPlayer boolean
+---@return string|nil "STR"|"AGI"|"INT"
+---@return string source debug label
+local function ResolveExpectedPrimaryStatFromCharacter(charData, selectedIsLoggedInPlayer)
+    if selectedIsLoggedInPlayer and GetSpecialization and GetSpecializationInfo then
+        local specIndex = GetSpecialization()
+        if specIndex then
+            local specID = GetSpecializationInfo(specIndex)
+            if specID and SPEC_MAIN_STAT[specID] then
+                return SPEC_MAIN_STAT[specID], "live(specID=" .. tostring(specID) .. ")"
+            end
+        end
+    end
+    local fromDb = GetCharacterMainStat(charData)
+    if fromDb then
+        return fromDb, "db(specID=" .. tostring(charData and charData.specID) .. ")"
+    end
+    return nil, "none"
+end
+
 --- Resolve item stat table (prefer C_Item API; fallback to legacy GetItemStats).
 local function GetItemStatTableForLink(itemLink)
     if not itemLink then return nil end
@@ -280,13 +307,19 @@ local function SlotExpectsPrimaryStatForFilter(slotID)
     return ARMOR_SLOT_IDS[slotID] == true
 end
 
-local function IsMainStatCompatible(itemLink, mainStat, slotID)
+--- Match item primary stats (from GetItemStats) to expectedMainStat (from SPEC_MAIN_STAT + ResolveExpectedPrimaryStatFromCharacter).
+---@param expectedMainStat string|nil "STR"|"AGI"|"INT"
+---@param selectedIsLoggedInPlayer boolean|nil when false, trinket rows allow candidates if API table is client-skewed
+local function MatchGetItemStatsPrimariesToExpected(itemLink, expectedMainStat, slotID, selectedIsLoggedInPlayer)
+    if selectedIsLoggedInPlayer == nil then
+        selectedIsLoggedInPlayer = true
+    end
     if not itemLink then return true end
     local isTrinket = (slotID == 13 or slotID == 14)
 
     local statTable = GetItemStatTableForLink(itemLink)
     if not statTable then
-        if mainStat and SlotExpectsPrimaryStatForFilter(slotID) and not isTrinket then
+        if expectedMainStat and SlotExpectsPrimaryStatForFilter(slotID) and not isTrinket then
             return false
         end
         return true
@@ -294,15 +327,24 @@ local function IsMainStatCompatible(itemLink, mainStat, slotID)
 
     local hasStr, hasAgi, hasInt = TableHasPrimaryStats(statTable)
 
+    -- Item reports all three primaries → usable by every spec (tri-stat trinkets, etc.).
+    if hasStr and hasAgi and hasInt then
+        return true
+    end
+
+    -- GetItemStats reflects the logged-in character; for a *different* selected alt, primaries may be omitted.
+    -- Trinkets: do not hard-reject (avoids hiding valid tri-stat / multi-stat trinkets when previewing alts).
+    if isTrinket and not selectedIsLoggedInPlayer then
+        return true
+    end
+
     if not hasStr and not hasAgi and not hasInt then
         return true
     end
 
-    if mainStat then
-        if mainStat == "STR" then return hasStr end
-        if mainStat == "AGI" then return hasAgi end
-        if mainStat == "INT" then return hasInt end
-    end
+    if expectedMainStat == "STR" then return hasStr end
+    if expectedMainStat == "AGI" then return hasAgi end
+    if expectedMainStat == "INT" then return hasInt end
 
     if isTrinket then
         return false
@@ -1251,36 +1293,15 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         end
     end
 
-    -- Main stat: always prefer live spec for current player
-    local mainStat = nil
-    local mainStatSource = "none"
-    do
-        local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey) and ns.Utilities:GetCharacterKey() or nil
-        local selCanon = getCanonicalKey(selectedCharKey) or selectedCharKey
-        local curCanon = (currentKey and getCanonicalKey(currentKey)) or currentKey
-        local isCurrentPlayer = (selCanon and curCanon and selCanon == curCanon)
+    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey) and ns.Utilities:GetCharacterKey() or nil
+    local selCanon = getCanonicalKey(selectedCharKey) or selectedCharKey
+    local curCanon = (currentKey and getCanonicalKey(currentKey)) or currentKey
+    local selectedIsLoggedInPlayer = (selCanon and curCanon and selCanon == curCanon)
 
-        if isCurrentPlayer and GetSpecialization and GetSpecializationInfo then
-            local specIndex = GetSpecialization()
-            if specIndex then
-                local specID = GetSpecializationInfo(specIndex)
-                if specID and SPEC_MAIN_STAT[specID] then
-                    mainStat = SPEC_MAIN_STAT[specID]
-                    mainStatSource = "live(specID=" .. tostring(specID) .. ")"
-                end
-            end
-        end
-
-        if not mainStat then
-            mainStat = GetCharacterMainStat(charData)
-            if mainStat then
-                mainStatSource = "db(specID=" .. tostring(charData and charData.specID) .. ")"
-            end
-        end
-    end
+    local mainStat, mainStatSource = ResolveExpectedPrimaryStatFromCharacter(charData, selectedIsLoggedInPlayer)
 
     dbg("=== Scan for: " .. tostring(selectedCharKey) .. " ===")
-    dbg("  classFile=" .. tostring(charData and charData.classFile) .. " specID(db)=" .. tostring(charData and charData.specID) .. " mainStat=" .. tostring(mainStat) .. " (" .. mainStatSource .. ")")
+    dbg("  classFile=" .. tostring(charData and charData.classFile) .. " specID(db)=" .. tostring(charData and charData.specID) .. " mainStat=" .. tostring(mainStat) .. " (" .. mainStatSource .. ") selectedIsLoggedIn=" .. tostring(selectedIsLoggedInPlayer))
 
     local addedCount = 0
 
@@ -1348,7 +1369,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             local slotID = targetSlots[i]
             local isArmorOK = IsArmorCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc)
             local isWeaponOK = IsWeaponCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc, mainStat)
-            local isStatOK = IsMainStatCompatible(link, mainStat, slotID)
+            local isStatOK = MatchGetItemStatsPrimariesToExpected(link, mainStat, slotID, selectedIsLoggedInPlayer)
 
             if not isArmorOK or not isWeaponOK then
                 -- skip silently
@@ -1491,7 +1512,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                                         local sid = targetSlots[i]
                                         if not IsArmorCompatible(charData, sid, itemClassID, itemSubclassID, equipLoc) then ok = false break end
                                         if not IsWeaponCompatible(charData, sid, itemClassID, itemSubclassID, equipLoc, mainStat) then ok = false break end
-                                        if not IsMainStatCompatible(slotData.itemLink, mainStat, sid) then ok = false break end
+                                        if not MatchGetItemStatsPrimariesToExpected(slotData.itemLink, mainStat, sid, selectedIsLoggedInPlayer) then ok = false break end
                                     end
                                     if ok then
                                         AddCandidate(slotID, {

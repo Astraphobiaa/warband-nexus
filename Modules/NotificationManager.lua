@@ -15,10 +15,10 @@ local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version only (locale key CHANGELOG_V<version>; no legacy chain)
-local FALLBACK_CHANGELOG = "v2.5.6\nImprovements:\n- Readable realm spacing in Gear, weekly plans, Plans tracker, tracking dialog (saved keys still use Blizzard normalized realm text)\n- Collectibles: wider BfA Bloodfeaster NPC list; clearer notes for chest vs boss and multi-corpse try counting\n- SplitCharacterKey + first-hyphen-only parsing for Name-Realm strings\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py for mount NPC audits\n\nBug fixes:\n- Try Counter: chat loot + shared drop tables (e.g. Tamed Bloodfeaster) no longer lose CHAT try updates\n- Hyphenated realms (Azjol-Nerub): canonical keys, GetAllCharacters repair, stats/minimap labels; one-time realm-field migration\n- Mount item IDs: Verdant Skitterfly (192764), Red Qiraji crystal (21321)\n- Tracking dialog: GetRealmName guarded for secret values\n\nLocalization:\n- TRY_COUNT click / right-click hints in all locales\n\nRepo: redundant dev scratch files removed; see CONTRIBUTING for drop-source workflow\n\nCurseForge: Warband Nexus"
+local FALLBACK_CHANGELOG = "v2.5.8\nBug fixes:\n- Try Counter: CHAT_MSG_LOOT no longer errors on the fishing attribution path (CurrentUnitsHaveMobLootContext forward declaration; was a nil global).\n\nCurseForge: Warband Nexus"
 
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V256"]) or FALLBACK_CHANGELOG
+    local changelogText = (ns.L and ns.L["CHANGELOG_V258"]) or FALLBACK_CHANGELOG
     if not changelogText or changelogText == "" then
         changelogText = FALLBACK_CHANGELOG
     end
@@ -30,8 +30,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.5.6",
-    date = "2026-04-02",
+    version = "2.5.8",
+    date = "2026-04-03",
     changes = BuildChangelog()
 }
 

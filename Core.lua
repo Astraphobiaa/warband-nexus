@@ -191,8 +191,8 @@ local defaults = {
         
         -- Character list sorting preferences
         characterSort = {
-            key = nil,        -- nil = no sorting (default order), "name", "level", "gold", "lastSeen"
-            ascending = true, -- true = ascending, false = descending
+            key = "default",  -- "default" = online first, then level desc, name; "manual" = custom order; plus name/level/ilvl/gold
+            ascending = true, -- reserved / future use
         },
 
         -- Profession tab: which expansion to show (strict filter; only that expansion's data)

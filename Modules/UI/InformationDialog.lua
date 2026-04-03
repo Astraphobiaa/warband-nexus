@@ -189,34 +189,45 @@ function WarbandNexus:ShowInfoDialog()
     -- Credits up front so supporters / contributors are visible without scrolling past the full feature list
     AddText((ns.L and ns.L["INFO_CREDITS_SECTION_TITLE"]) or "Credits & thanks", "title", {1, 0.84, 0}, 10, true)
 
-    AddText((ns.L and ns.L["SPECIAL_THANKS"]) or "Special Thanks", "title", {1, 0.84, 0}, 8, true)
+    -- Distinct from section title: highlights the lore line without repeating "thanks"
+    AddText((ns.L and ns.L["INFO_CREDITS_LORE_SUBTITLE"]) or "Lore & storytelling", "subtitle", {0.85, 0.85, 0.9}, 6, true)
     AddText("Egzolinas the Loremaster!", "body", {0.96, 0.55, 0.73}, 14, true)  -- Paladin color (F58CBA)
 
     AddText((ns.L and ns.L["CONTRIBUTORS_TITLE"]) or "Contributors", "title", {0.4, 0.8, 1}, 6, true)
 
-    -- Class-colored where requested; otherwise Blizzard gold (GOLD_FONT_COLOR-style ~ |cffffd100)
+    -- Class-colored names first; Blizzard gold (|cffffd100) on the line below for non-class styling
     local CLASS_COLORS = ns.Constants.CLASS_COLORS
     local colorEnd = "|r"
     local blizzGold = "|cffffd100"
 
-    local contribText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
-    contribText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
-    contribText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
-    contribText:SetJustifyH("CENTER")
-    contribText:SetWordWrap(true)
-    contribText:SetText(
+    local contribClassLine = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
+    contribClassLine:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
+    contribClassLine:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
+    contribClassLine:SetJustifyH("CENTER")
+    contribClassLine:SetWordWrap(true)
+    contribClassLine:SetText(
         CLASS_COLORS.MAGE .. "Vidotrieth" .. colorEnd .. "  " ..
         CLASS_COLORS.DEMONHUNTER .. "Ragepull" .. colorEnd .. "  " ..
         CLASS_COLORS.WARRIOR .. "Mysticsong" .. colorEnd .. "  " ..
-        CLASS_COLORS.HUNTER .. "Aztech" .. colorEnd .. "  " ..
-        CLASS_COLORS.WARLOCK .. "DivaDelirium" .. colorEnd .. "  " ..
+        CLASS_COLORS.HUNTER .. "Aztech" .. colorEnd
+    )
+    yOffset = yOffset + contribClassLine:GetStringHeight() + 6
+    lastElement = contribClassLine
+
+    local contribGoldLine = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
+    contribGoldLine:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
+    contribGoldLine:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
+    contribGoldLine:SetJustifyH("CENTER")
+    contribGoldLine:SetWordWrap(true)
+    contribGoldLine:SetText(
+        blizzGold .. "DivaDelirium" .. colorEnd .. "  " ..
         blizzGold .. "Jack the Dipper" .. colorEnd .. "  " ..
         blizzGold .. "Koralia91" .. colorEnd .. "  " ..
         blizzGold .. "Nexus-Hub" .. colorEnd .. "  " ..
         blizzGold .. "huchang47" .. colorEnd
     )
-    yOffset = yOffset + contribText:GetStringHeight() + 20
-    lastElement = contribText
+    yOffset = yOffset + contribGoldLine:GetStringHeight() + 20
+    lastElement = contribGoldLine
 
     AddText((ns.L and ns.L["INFO_FEATURES_SECTION_TITLE"]) or "Features overview", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 14, true)
     

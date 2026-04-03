@@ -1046,8 +1046,8 @@ L["INFO_TAB_COLLECTIONS"] = "Sammlungen"
 L["INFO_TAB_STATISTICS"] = "Statistiken"
 L["GEAR_DESC"] = "Ausgerüstete Items, Upgrade-Optionen, Lager-Empfehlungen (BoE/Warbound) und Upgrade-Kandidaten über Charaktere."
 L["COLLECTIONS_DESC"] = "Übersicht Reittiere, Haustiere, Spielzeuge, Transmog. Sammlungsfortschritt und fehlende Items finden."
-L["SPECIAL_THANKS"] = "Besonderer Dank"
 L["INFO_CREDITS_SECTION_TITLE"] = "Danksagungen"
+L["INFO_CREDITS_LORE_SUBTITLE"] = "Geschichten & Lore"
 L["INFO_FEATURES_SECTION_TITLE"] = "Funktionsübersicht"
 L["HEADER_INFO_TOOLTIP"] = "Anleitung & Danksagungen"
 L["HEADER_INFO_TOOLTIP_HINT"] = "Funktionen und Mitwirkende — Danksagungen stehen oben."
@@ -1092,6 +1092,10 @@ L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 
 -- What's New (nur aktuelle Version)
 L["CHANGELOG_V256"] = "v2.5.6\nVerbesserungen:\n- Lesbarere Realm-Darstellung in Ausrüstung, Wochenplänen, Plans-Tracker, Tracking-Dialog (Schlüssel weiter mit Blizzards normalisiertem Text)\n- Sammlungen: erweiterte BfA-Blutgreifer-NPC-Liste; klarere Hinweise Truhe vs Boss und Multi-Leiche-Try-Count\n- SplitCharacterKey + Aufteilung nur am ersten Bindestrich bei Name-Realm\n- CONTRIBUTING + scripts/extract_external_db_npcs.py / audit_external_npcs_vs_wn.py für Mount-DB-Audits\n\nFehlerbehebungen:\n- Versuchszähler: Chat-Beute + geteilte Droptabellen (z. B. Gezähmter Blutgreifer) — CHAT-Updates gehen nicht mehr verloren\n- Bindestrich-Realms (z. B. Azjol-Nerub): kanonische Schlüssel, GetAllCharacters-Reparatur, Statistik/Minimap; einmalige Realm-Feld-Migration\n- Mount-IDs: Verdant Skitterfly (192764), roter Qirajikristall (21321)\n- Tracking-Dialog: GetRealmName gegen Geheimwerte abgesichert\n\nLokalisierung:\n- TRY_COUNT Klick-/Rechtsklick-Hinweise in allen Sprachen\n\nRepo: überflüssige Dev-Dateien entfernt; Import aus externem Tracker in CONTRIBUTING\n\nCurseForge: Warband Nexus"
+
+L["CHANGELOG_V257"] = "v2.5.7b\nVerbesserungen:\n- Charaktere: Standardreihenfolge (Online zuerst, dann Stufe, Name); Standard für neue Profile; unbekannte Sortierschlüssel → erste Menüoption\n- Charaktere: eingeloggter Charakter oben in Favoriten/Charaktere/Nicht verfolgt; manuelle Reihenfolge konsistent\n- Versuchszähler: Instanzschwierigkeit über GetInstanceInfo + Eintritts-Cache (falsches ENCOUNTER_END „Normal“ bei Mythisch, z. B. Mechagon HK-8)\n- Versuchszähler: eine Schwierigkeitsprüfung für Beute, verzögertes ENC und CHAT; CHAT nutzt denselben encounter_-Schlüssel wie Beute\n- Versuchszähler: encounter_-Schlüssel auch bei 0 trackbaren Drops (kein Doppelzählen mit verzögertem ENC/CHAT)\n- Versuchszähler: zusammengelegtes Open-World-Loot zählt Leichen über NPC-Vorlagen mit gleichem Mount-Item (BfA Blutgreifer)\n- Ausrüstung: Charakterauswahl Breite/Ausrichtung\n\nFehlerbehebungen:\n- Versuchszähler: Zähler stieg trotz Schwierigkeit-Hinweis (Beute vs. verzögert/CHAT)\n\nLokalisierung: SORT_MODE_DEFAULT\n\nCurseForge: Warband Nexus"
+
+L["CHANGELOG_V258"] = "v2.5.8\nFehlerbehebungen:\n- Versuchszähler: CHAT_MSG_LOOT verursacht auf dem Angel-Zuordnungspfad keinen Fehler mehr (Vorwärtsdeklaration von CurrentUnitsHaveMobLootContext; zuvor nil als globale Variable).\n\nCurseForge: Warband Nexus"
 
 -- =============================================
 -- Confirm / Tracking Dialog
@@ -1503,6 +1507,9 @@ L["TRYCOUNTER_AFTER_TRIES"] = "nach %d Versuchen"
 L["TRYCOUNTER_FIRST_TRY"] = "beim ersten Versuch!"
 L["TRYCOUNTER_LOCKOUT_SKIP"] = "Übersprungen: Tägliche/wöchentliche Sperre für diesen NSC aktiv."
 L["TRYCOUNTER_INSTANCE_DROPS"] = "Sammelbare Beute in dieser Instanz:"
+L["TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED"] = "Sammlerstück erkannt : "
+L["TRYCOUNTER_INSTANCE_WRONG_DIFF"] = "Falsche Schwierigkeit: benötigt %s (du bist auf %s)."
+L["TRYCOUNTER_INSTANCE_REQUIRES_UNVERIFIED"] = "Benötigt %s (aktuelle Schwierigkeit unbekannt)."
 L["TRYCOUNTER_COLLECTED_TAG"] = "(Gesammelt)"
 L["TRYCOUNTER_ATTEMPTS_SUFFIX"] = " Versuche"
 L["TRYCOUNTER_TYPE_MOUNT"] = "Reittier"
@@ -1613,6 +1620,7 @@ L["CONFIG_COMMANDS_HEADER"] = "Slash-Befehle"
 -- Sorting
 -- =============================================
 L["SORT_BY_LABEL"] = "Sortieren nach:"
+L["SORT_MODE_DEFAULT"] = "Standardreihenfolge"
 L["SORT_MODE_MANUAL"] = "Manuell (Eigene Reihenfolge)"
 L["SORT_MODE_NAME"] = "Name (A-Z)"
 L["SORT_MODE_LEVEL"] = "Stufe (Höchste)"

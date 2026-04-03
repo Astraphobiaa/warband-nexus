@@ -1,21 +1,45 @@
-Warband Nexus 2.5.6
+═══════════════════════════════════════════════════════════════════════════
 
-Improvements
-- Realm display: Blizzard’s normalized realm strings (e.g. TwistingNether) are shown with friendlier spacing in more UI — Gear character selector, weekly plan headers, Plans tracker cards, and the tracking confirmation dialog. Storage and character keys still use the API/normalized form for consistency.
-- Collectible source database: expanded NPC list for Reins of a Tamed Bloodfeaster (BfA Nazmir) and clearer file comments for raid chest vs boss rows, intentional duplicate mount entries, and multi-corpse / AoE loot behavior for try counting.
-- Character tooling: `Utilities:SplitCharacterKey` and safer parsing anywhere `Name-Realm` is derived from a string (first hyphen only, full realm suffix preserved).
-- Contributor workflow: CONTRIBUTING.md updates (collectible audits, external mount DB file layout); optional `scripts/extract_external_db_npcs.py` and `scripts/audit_external_npcs_vs_wn.py` for NPC / mount-source checks (clone the reference addon repo locally; path is gitignored).
+  WARBAND NEXUS - Version 2.5.8 (03.04.2026)
+
+═══════════════════════════════════════════════════════════════════════════
+
+Release
+- Version 2.5.8 (WarbandNexus.toc, Modules/Constants.lua, in-game changelog metadata).
 
 Bug fixes
-- Try Counter: merging chat-loot NPC mappings no longer clears a mount’s CHAT path when several NPCs share the same drop table — fixes missing attempts for mounts such as Tamed Bloodfeaster when loot is reported via chat with multiple possible sources.
-- Hyphenated realm names (e.g. Azjol-Nerub): `GetCanonicalCharacterKey`, `GetAllCharacters` key repair, Statistics UI, and minimap label parsing no longer treat the wrong hyphen as the name/realm boundary. One-time migration `_realmSuffixRepairV1` repairs truncated `realm` fields from older saves before key normalization runs.
-- Collectible DB item IDs: Verdant Skitterfly (192764, was 192055 on Expedition Scout’s Pack); Red Qiraji Resonating Crystal (21321, was incorrectly 21221).
-- Character tracking dialog: safer `GetRealmName` handling with secret-value guard where applicable.
+- Try Counter: `OnTryCounterChatMsgLoot` fishing path no longer calls a nil global — `CurrentUnitsHaveMobLootContext` is forward-declared and assigned like other late-defined locals (fixes “attempt to call global 'CurrentUnitsHaveMobLootContext'”).
 
-Localization
-- All supported locales include `TRY_COUNT_CLICK_HINT` and `TRY_COUNT_RIGHT_CLICK_HINT` (try-count editor tooltips).
+In-game What's New
+- `CHANGELOG_V258` in all locales; NotificationManager fallback keyed to 2.5.8.
 
-Repository / packaging
-- Removed redundant one-off scripts and scratch files; one-time legacy mount try-import behavior is documented in CONTRIBUTING instead of a separate package readme.
+═══════════════════════════════════════════════════════════════════════════
+
+  WARBAND NEXUS - Version 2.5.7b (03.04.2026)
+
+═══════════════════════════════════════════════════════════════════════════
+
+Release
+- Version 2.5.7b (WarbandNexus.toc, Modules/Constants.lua, in-game changelog metadata).
+
+Hotfix (since 2.5.7)
+- Gear tab: character selector and dropdown sizing; scrollbar-inclusive text budget; name/realm visibility; header card height.
+- About / Info dialog: contributor lines (class colors vs Blizzard gold); `INFO_CREDITS_LORE_SUBTITLE` replaces redundant “Special Thanks” under Credits.
+
+Improvements
+- Characters tab: new "Default Order" sort (logged-in character first, then level high→low, then name A–Z). Core defaults set `characterSort.key` to `"default"` for new profiles. Sort dropdown maps unknown or invalid saved keys to the first menu option (per tab). Logged-in character stays at the top of Favorites, tracked, and Untracked for all sort modes including manual; manual custom-order seed includes every character in the section with the online character first; `characterOrder` gains an `untracked` list; reorder keeps the online character pinned to the top.
+- Settings window: uses WindowManager (POPUP priority, shared ESC handler with the main window) instead of a fixed FULLSCREEN_DIALOG strata/frame level. `RefreshSettingsKeyboard` re-enables keyboard when showing an existing frame after Hide/Show. Font-related rebuilds unregister the settings frame from WindowManager before closing it.
+- WindowManager: after combat, when restoring visible frames, call `EnableKeyboard(true)` in addition to `SetPropagateKeyboardInput(true)` so ESC/focus behavior is reliable.
+- Try Counter: instance difficulty prefers a snapshot taken on instance entry (`PLAYER_ENTERING_WORLD`) keyed by instance ID, then live `GetInstanceInfo`, before ENCOUNTER_END and dungeon/raid APIs — fixes Mythic runs misread as Normal (e.g. Operation: Mechagon, HK-8). `ResolveLiveInstanceDifficultyID` handles M+ and APIs when `GetInstanceInfo` difficulty is 0; `ResolveEffectiveEncounterDifficultyID` centralizes effective difficulty for gating.
+- Try Counter: `FilterDropsByDifficulty` (and shared collectible-collected checks) used consistently for loot processing, delayed ENCOUNTER_END handling, and CHAT_MSG_LOOT. CHAT path uses the same `encounter_<journalEncounterID>` dedup key as the loot window.
+- Try Counter: when a boss loot pass yields zero trackable drops (difficulty gate or all collected), still record the encounter dedup key so delayed ENC/CHAT cannot increment the same kill again.
+- Try Counter: merged open-world loot uses an item-ID-based corpse multiplier so mixed NPC templates that share the same mount drop (e.g. Nazmir Bloodfeaster) count every corpse, not only the first matched NPC id.
+- Try Counter: LOOT_READY may fire twice while the window is open — second READY no longer clears an active loot session; debug trace lines for LOOT_READY/LOOT_CLOSED are deduped within a short window to reduce chat spam.
+- Try Counter: [WN-Drops] one chat line per tracked drop: `Collectible Detected :` + boss — item link — difficulty segment — try count / collected. Gated difficulty is `(label)` in green, red, or amber; unrestricted drops use a gray em dash (`—`) as the third segment.
+- In-game What's New: `CHANGELOG_V257` (enUS hotfix blurb + 2.5.7 body) and NotificationManager fallback updated for 2.5.7b.
+
+Bug fixes
+- Try Counter: attempt counter could increase even after a "skipped difficulty" message (loot path vs delayed ENC / CHAT duplicate attribution).
+
 
 Details: CurseForge — Warband Nexus

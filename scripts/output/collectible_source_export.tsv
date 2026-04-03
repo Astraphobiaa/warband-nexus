@@ -1,0 +1,570 @@
+category	source_type	source_id	encounter_id	quest_id	map_id	container_id	object_id	drop_type	item_id	item_name	table_drop_difficulty	statistic_ids	guaranteed	repeatable	rares_only	hostile_only	notes
+sources_typed	lockout_quest	246332		91280													sources[]
+sources_typed	lockout_quest	246633		91315													sources[]
+sources_typed	lockout_quest	240129		92392													sources[]
+sources_typed	lockout_quest	250582		92366													sources[]
+sources_typed	lockout_quest	250719		92391													sources[]
+sources_typed	lockout_quest	250683		92389													sources[]
+sources_typed	lockout_quest	250754		92393													sources[]
+sources_typed	lockout_quest	250876		92409													sources[]
+sources_typed	lockout_quest	250841		92404													sources[]
+sources_typed	lockout_quest	250780		92395													sources[]
+sources_typed	lockout_quest	250826		92403													sources[]
+sources_typed	lockout_quest	250806		92399													sources[]
+sources_typed	lockout_quest	255302		93550													sources[]
+sources_typed	lockout_quest	255329		93555													sources[]
+sources_typed	lockout_quest	255348		93561													sources[]
+sources_typed	lockout_quest	242023		89569													sources[]
+sources_typed	lockout_quest	242024		89570													sources[]
+sources_typed	lockout_quest	242025		89571													sources[]
+sources_typed	lockout_quest	242026		89572													sources[]
+sources_typed	lockout_quest	242027		89573													sources[]
+sources_typed	lockout_quest	242028		89575													sources[]
+sources_typed	lockout_quest	242031		89578													sources[]
+sources_typed	lockout_quest	242032		89579													sources[]
+sources_typed	lockout_quest	242033		89580													sources[]
+sources_typed	lockout_quest	242034		89581													sources[]
+sources_typed	lockout_quest	242035		89583													sources[]
+sources_typed	lockout_quest	245691		91072													sources[]
+sources_typed	lockout_quest	245692		91073													sources[]
+sources_typed	lockout_quest	245975		91174													sources[]
+sources_typed	lockout_quest	247976		91634													sources[]
+sources_typed	lockout_quest	248741		91832													sources[]
+sources_typed	lockout_quest	249844		92137													sources[]
+sources_typed	lockout_quest	249849		92142													sources[]
+sources_typed	lockout_quest	249902		92148													sources[]
+sources_typed	lockout_quest	249962		92154													sources[]
+sources_typed	lockout_quest	249997		92161													sources[]
+sources_typed	lockout_quest	250086		92168													sources[]
+sources_typed	lockout_quest	250180		92170													sources[]
+sources_typed	lockout_quest	250226		92172													sources[]
+sources_typed	lockout_quest	250231		92176													sources[]
+sources_typed	lockout_quest	250246		92183													sources[]
+sources_typed	lockout_quest	250317		92190													sources[]
+sources_typed	lockout_quest	250321		92191													sources[]
+sources_typed	lockout_quest	250347		92193													sources[]
+sources_typed	lockout_quest	250358		92194													sources[]
+sources_typed	lockout_quest	238498		91050													sources[]
+sources_typed	lockout_quest	241443		91048													sources[]
+sources_typed	lockout_quest	244272		90805													sources[]
+sources_typed	lockout_quest	245044		91051													sources[]
+sources_typed	lockout_quest	245182		91047													sources[]
+sources_typed	lockout_quest	256770		93884													sources[]
+sources_typed	lockout_quest	256808		93895													sources[]
+sources_typed	lockout_quest	256821		93896													sources[]
+sources_typed	lockout_quest	256922		93966													sources[]
+sources_typed	lockout_quest	256923		93946													sources[]
+sources_typed	lockout_quest	256924		93944													sources[]
+sources_typed	lockout_quest	256925		93947													sources[]
+sources_typed	lockout_quest	256926		93934													sources[]
+sources_typed	lockout_quest	257027		93953													sources[]
+sources_typed	lockout_quest	248791		94459													sources[]
+sources_typed	lockout_quest	248459		94458													sources[]
+sources_typed	lockout_quest	248700		94462													sources[]
+sources_typed	lockout_quest	248068		94460													sources[]
+sources_typed	lockout_quest	248823		94463													sources[]
+sources_typed	lockout_quest	257199		94461													sources[]
+sources_typed	lockout_quest	257231		94461													sources[]
+sources_typed	lockout_quest	252465		95011													sources[]
+sources_typed	lockout_quest	239864		95010													sources[]
+sources_typed	lockout_quest	244762		92560													sources[]
+sources_typed	lockout_quest	244424		92123													sources[]
+sources_typed	lockout_quest	249776		92034													sources[]
+sources_typed	lockout_quest	248864		92636													sources[]
+sources_typed	fishing				2393,2395,2424,2413,2576,2437,2536,2405,2541												drops=_netherWarpedEgg
+npc	instance_boss_or_npc	10440						mount	13335	Deathcharger's Reins		1097					
+npc	instance_boss_or_npc	15246						mount	21218	Yellow Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15246						mount	21219	Blue Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15246						mount	21220	Green Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15246						mount	21321	Red Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15317						mount	21218	Yellow Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15317						mount	21219	Blue Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15317						mount	21220	Green Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15317						mount	21321	Red Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15247						mount	21218	Yellow Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15247						mount	21219	Blue Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15247						mount	21220	Green Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15247						mount	21321	Red Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15311						mount	21218	Yellow Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15311						mount	21219	Blue Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15311						mount	21220	Green Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15311						mount	21321	Red Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15249						mount	21218	Yellow Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15249						mount	21219	Blue Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15249						mount	21220	Green Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15249						mount	21321	Red Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15310						mount	21218	Yellow Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15310						mount	21219	Blue Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15310						mount	21220	Green Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	15310						mount	21321	Red Qiraji Resonating Crystal							
+npc	instance_boss_or_npc	16152						mount	30480	Fiery Warhorse's Reins							
+npc	instance_boss_or_npc	19622						mount	32458	Ashes of Al'ar		1088					
+npc	instance_boss_or_npc	24664						mount	35513	Swift White Hawkstrider							
+npc	instance_boss_or_npc	23035						mount	32768	Reins of the Raven Lord							
+npc	instance_boss_or_npc	32491						mount	44168	Reins of the Time-Lost Proto-Drake			true				
+npc	instance_boss_or_npc	26693						mount	44151	Reins of the Blue Proto-Drake							
+npc	instance_boss_or_npc	174062						mount	44151	Reins of the Blue Proto-Drake							
+npc	instance_boss_or_npc	28859						mount	43953	Reins of the Blue Drake		1391;1394					
+npc	instance_boss_or_npc	28859						mount	43952	Reins of the Azure Drake		1391;1394					
+npc	instance_boss_or_npc	28860						mount	43986	Reins of the Black Drake		1392;1393					
+npc	instance_boss_or_npc	28860						mount	43954	Reins of the Twilight Drake		1392;1393					
+npc	instance_boss_or_npc	33288						mount	45693	Mimiron's Head	25-man	2869;2883					
+npc	instance_boss_or_npc	10184						mount	49636	Reins of the Onyxian Drake		1098					
+npc	instance_boss_or_npc	36597						mount	50818	Invincible's Reins	25H	4688					
+npc	instance_boss_or_npc	32273						mount	43951	Reins of the Bronze Drake			true				
+npc	instance_boss_or_npc	31125						mount	43959	Reins of the Grand Black War Mammoth		1753;1754					
+npc	instance_boss_or_npc	31125						mount	44083	Reins of the Grand Black War Mammoth		1753;1754					
+npc	instance_boss_or_npc	33993						mount	43959	Reins of the Grand Black War Mammoth		3236;2870					
+npc	instance_boss_or_npc	33993						mount	44083	Reins of the Grand Black War Mammoth		3236;2870					
+npc	instance_boss_or_npc	35013						mount	43959	Reins of the Grand Black War Mammoth		4074;4075					
+npc	instance_boss_or_npc	35013						mount	44083	Reins of the Grand Black War Mammoth		4074;4075					
+npc	instance_boss_or_npc	38433						mount	43959	Reins of the Grand Black War Mammoth		4657;4658					
+npc	instance_boss_or_npc	38433						mount	44083	Reins of the Grand Black War Mammoth		4657;4658					
+npc	instance_boss_or_npc	50062						mount	63042	Reins of the Phosphorescent Stone Drake			true				
+npc	instance_boss_or_npc	50005						mount	67151	Reins of Poseidus			true				
+npc	instance_boss_or_npc	43873						mount	63040	Reins of the Drake of the North Wind							
+npc	instance_boss_or_npc	43214						mount	63043	Reins of the Vitreous Stone Drake							
+npc	instance_boss_or_npc	46753						mount	63041	Reins of the Drake of the South Wind		5576;5577					
+npc	instance_boss_or_npc	52151						mount	68823	Armored Razzashi Raptor							
+npc	instance_boss_or_npc	52059						mount	68824	Swift Zulian Panther							
+npc	instance_boss_or_npc	55294						mount	78919	Experiment 12-B		6161;6162					
+npc	instance_boss_or_npc	52530						mount	71665	Flametalon of Alysrazor		5970;5971					
+npc	instance_boss_or_npc	52409						mount	69224	Smoldering Egg of Millagazor		5976;5977					
+npc	instance_boss_or_npc	56173						mount	77067	Reins of the Blazing Drake	Heroic	6167;6168					
+npc	instance_boss_or_npc	56173						mount	77069	Life-Binder's Handmaiden	Heroic	6167;6168					
+npc	instance_boss_or_npc	60491						mount	87771	Reins of the Heavenly Onyx Cloud Serpent		6989					
+npc	instance_boss_or_npc	62346						mount	89783	Son of Galleon's Saddle		6990					
+npc	instance_boss_or_npc	69099						mount	95057	Reins of the Thundering Cobalt Cloud Serpent		8146					
+npc	instance_boss_or_npc	69161						mount	94228	Reins of the Cobalt Primordial Direhorn		8147					
+npc	instance_boss_or_npc	73167						mount	104269	Reins of the Thundering Onyx Cloud Serpent							
+npc	instance_boss_or_npc	69841						mount	94230	Reins of the Amber Primordial Direhorn							
+npc	instance_boss_or_npc	69842						mount	94231	Reins of the Jade Primordial Direhorn							
+npc	instance_boss_or_npc	69769						mount	94229	Reins of the Slate Primordial Direhorn							
+npc	instance_boss_or_npc	60410						mount	87777	Reins of the Astral Cloud Serpent		6797;6798;7924;7923					
+npc	instance_boss_or_npc	68476						mount	93666	Spawn of Horridon		8151;8149;8152;8150					
+npc	instance_boss_or_npc	69712						mount	95059	Clutch of Ji-Kun		8171;8169;8172;8170					
+npc	instance_boss_or_npc	71865						mount	104253	Kor'kron Juggernaut	Mythic	8638;8637					
+npc	instance_boss_or_npc	81001						mount	116794	Garn Nighthowl			true				
+npc	instance_boss_or_npc	50990						mount	116659	Bloodhoof Bull			true				
+npc	instance_boss_or_npc	50981						mount	116661	Mottled Meadowstomper			true				
+npc	instance_boss_or_npc	50992						mount	116674	Great Greytusk			true				
+npc	instance_boss_or_npc	51015						mount	116767	Sapphire Riverbeast			true				
+npc	instance_boss_or_npc	50985						mount	116792	Sunhide Gronnling			true				
+npc	instance_boss_or_npc	50883						mount	116773	Swift Breezestrider			true				
+npc	instance_boss_or_npc	87493						mount	116771	Solar Spirehawk		9279					
+npc	instance_boss_or_npc	83746						mount	116771	Solar Spirehawk		9279					
+npc	instance_boss_or_npc	95044						mount	116669	Armored Razorback							
+npc	instance_boss_or_npc	95044						mount	116658	Tundra Icehoof							
+npc	instance_boss_or_npc	95044						mount	116780	Warsong Direfang							
+npc	instance_boss_or_npc	95054						mount	116669	Armored Razorback							
+npc	instance_boss_or_npc	95054						mount	116658	Tundra Icehoof							
+npc	instance_boss_or_npc	95054						mount	116780	Warsong Direfang							
+npc	instance_boss_or_npc	95053						mount	116669	Armored Razorback							
+npc	instance_boss_or_npc	95053						mount	116658	Tundra Icehoof							
+npc	instance_boss_or_npc	95053						mount	116780	Warsong Direfang							
+npc	instance_boss_or_npc	95056						mount	116669	Armored Razorback							
+npc	instance_boss_or_npc	95056						mount	116658	Tundra Icehoof							
+npc	instance_boss_or_npc	95056						mount	116780	Warsong Direfang							
+npc	instance_boss_or_npc	77325						mount	116660	Ironhoof Destroyer	Mythic	9365					
+npc	instance_boss_or_npc	91331						mount	123890	Felsteel Annihilator	Mythic	10252					
+npc	instance_boss_or_npc	114895						mount	142552	Smoldering Ember Wyrm							
+npc	instance_boss_or_npc	114262						mount	142236	Midnight's Eternal Reins							
+npc	instance_boss_or_npc	126867						mount	152844	Lambent Mana Ray							
+npc	instance_boss_or_npc	126852						mount	152814	Maddened Chaosrunner							
+npc	instance_boss_or_npc	126912						mount	152904	Acid Belcher							
+npc	instance_boss_or_npc	122958						mount	152905	Crimson Slavermaw							
+npc	instance_boss_or_npc	127288						mount	152790	Vile Fiend							
+npc	instance_boss_or_npc	126040						mount	152903	Biletooth Gnasher							
+npc	instance_boss_or_npc	126199						mount	152903	Biletooth Gnasher							
+npc	instance_boss_or_npc	105503						mount	137574	Living Infernal Core	Mythic	10979;10980;10978					
+npc	instance_boss_or_npc	105503						mount	137575	Fiendish Hellfire Core	Mythic	10979;10980;10978					
+npc	instance_boss_or_npc	104154						mount	137574	Living Infernal Core	Mythic	10979;10980;10978					
+npc	instance_boss_or_npc	104154						mount	137575	Fiendish Hellfire Core	Mythic	10979;10980;10978					
+npc	instance_boss_or_npc	111022						mount	137574	Living Infernal Core	Mythic	10979;10980;10978					
+npc	instance_boss_or_npc	111022						mount	137575	Fiendish Hellfire Core	Mythic	10979;10980;10978					
+npc	instance_boss_or_npc	115767						mount	143643	Abyss Worm		11893;11894;11895;11896					
+npc	instance_boss_or_npc	126915						mount	152816	Antoran Charhound		12118;11957;11958;11959					
+npc	instance_boss_or_npc	126916						mount	152816	Antoran Charhound		12118;11957;11958;11959					
+npc	instance_boss_or_npc	130352						mount	152789	Shackled Ur'zul	Mythic	11986					
+npc	instance_boss_or_npc	111573						mount	138201	Fathom Dweller							
+npc	instance_boss_or_npc	111573						pet	140261	Hungering Claw							
+npc	instance_boss_or_npc	100230						toy	129149	Skin of the Soulflayer							
+npc	instance_boss_or_npc	148790						mount	166433	Frightened Kodo			true				
+npc	instance_boss_or_npc	160708						mount	174653	Mail Muncher							
+npc	instance_boss_or_npc	142692						mount	163706	Witherbark Direwing							
+npc	instance_boss_or_npc	142423						mount	163646	Lil' Donkey							
+npc	instance_boss_or_npc	142437						mount	163645	Skullripper							
+npc	instance_boss_or_npc	142709						mount	163644	Swift Albino Raptor							
+npc	instance_boss_or_npc	142741						mount	163579	Highland Mustang							
+npc	instance_boss_or_npc	142739						mount	163578	Broken Highland Mustang							
+npc	instance_boss_or_npc	148787						mount	166432	Ashenvale Chimaera							
+npc	instance_boss_or_npc	149652						mount	166438	Caged Bear							
+npc	instance_boss_or_npc	149660						mount	166428	Blackpaw							
+npc	instance_boss_or_npc	149655						mount	166437	Captured Kaldorei Nightsaber							
+npc	instance_boss_or_npc	149663						mount	166435	Kaldorei Nightsaber							
+npc	instance_boss_or_npc	148037						mount	166803	Umber Nightsaber							
+npc	instance_boss_or_npc	147701						mount	166434	Captured Umber Nightsaber							
+npc	instance_boss_or_npc	152182						mount	168370	Rusted Keys to the Junkheap Drifter							
+npc	instance_boss_or_npc	154342						mount	168823	Rusty Mechanocrawler							
+npc	instance_boss_or_npc	151934						mount	168823	Rusty Mechanocrawler							
+npc	instance_boss_or_npc	152290						mount	169163	Silent Glider							
+npc	instance_boss_or_npc	157466						mount	174840	Xinlao							
+npc	instance_boss_or_npc	157153						mount	173887	Clutch of Ha-Li							
+npc	instance_boss_or_npc	157160						mount	174841	Ren's Stalwart Hound							
+npc	instance_boss_or_npc	157134						mount	174641	Reins of the Drake of the Four Winds							
+npc	instance_boss_or_npc	162147						mount	174769	Malevolent Drone							
+npc	instance_boss_or_npc	157146						mount	174753	Waste Marauder							
+npc	instance_boss_or_npc	138794						mount	174842	Slightly Damp Pile of Fur							
+npc	instance_boss_or_npc	126983						mount	159842	Sharkbait's Favorite Crackers	Mythic	12752					
+npc	instance_boss_or_npc	133007						mount	160829	Underrot Crawg Harness	Mythic	12745					
+npc	instance_boss_or_npc	136160						mount	159921	Mummified Raptor Skull	Mythic	12763					
+npc	instance_boss_or_npc	155157						mount	168826	Mechagon Peacekeeper	Mythic						
+npc	instance_boss_or_npc	150190						mount	168826	Mechagon Peacekeeper	Mythic						
+npc	instance_boss_or_npc	165396						mount	166705	Glacial Tidestorm	Mythic	13382					
+npc	instance_boss_or_npc	144796						mount	166518	G.M.O.D.		13372;13373;13374;13379					
+npc	instance_boss_or_npc	158041						mount	174872	Ny'alotha Allseer	Mythic	14138					
+npc	instance_boss_or_npc	166521						mount	180582	Endmire Flyer Tether							
+npc	instance_boss_or_npc	165290						mount	180461	Horrid Dredwing							
+npc	instance_boss_or_npc	166679						mount	180581	Hopecrusher Gargon							
+npc	instance_boss_or_npc	160821						mount	180583	Impressionable Gorger Spawn							
+npc	instance_boss_or_npc	162741						mount	182080	Predatory Plagueroc							
+npc	instance_boss_or_npc	162586						mount	182075	Bonehoof Tauralus							
+npc	instance_boss_or_npc	157309						mount	182079	Slime-Covered Reins of the Hulking Deathroc							
+npc	instance_boss_or_npc	162690						mount	182084	Gorespine							
+npc	instance_boss_or_npc	162819						mount	182085	Blisterback Bloodtusk							
+npc	instance_boss_or_npc	162818						mount	182085	Blisterback Bloodtusk							
+npc	instance_boss_or_npc	168147						mount	181815	Armored Bonehoof Tauralus							
+npc	instance_boss_or_npc	168148						mount	181815	Armored Bonehoof Tauralus							
+npc	instance_boss_or_npc	162873						mount	184062	Gnawed Reins of the Battle-Bound Warhound							
+npc	instance_boss_or_npc	162880						mount	184062	Gnawed Reins of the Battle-Bound Warhound							
+npc	instance_boss_or_npc	162875						mount	184062	Gnawed Reins of the Battle-Bound Warhound							
+npc	instance_boss_or_npc	162853						mount	184062	Gnawed Reins of the Battle-Bound Warhound							
+npc	instance_boss_or_npc	162874						mount	184062	Gnawed Reins of the Battle-Bound Warhound							
+npc	instance_boss_or_npc	162872						mount	184062	Gnawed Reins of the Battle-Bound Warhound							
+npc	instance_boss_or_npc	168647						mount	180730	Wild Glimmerfur Prowler							
+npc	instance_boss_or_npc	164107						mount	180725	Arboreal Gulper			true				
+npc	instance_boss_or_npc	164112						mount	182650	Unusual Ally							
+npc	instance_boss_or_npc	170548						mount	180773	Sundancer							
+npc	instance_boss_or_npc	179460						mount	186659	Fallen Charger's Reins							
+npc	instance_boss_or_npc	174861						mount	184167	Mawsworn Soulhunter							
+npc	instance_boss_or_npc	179472						mount	187183	Rampaging Mauler							
+npc	instance_boss_or_npc	180160						mount	186652	Garnet Razorwing							
+npc	instance_boss_or_npc	179684						mount	186645	Crimson Shardhide							
+npc	instance_boss_or_npc	180042						mount	186489	Bound Shadehound							
+npc	instance_boss_or_npc	180032						mount	187282	Rampaging Worldcracker							
+npc	instance_boss_or_npc	179985						mount	187283	Stygian Stonecrusher							
+npc	instance_boss_or_npc	182120						mount	190765	Iska's Mawrat Leash							
+npc	instance_boss_or_npc	180978						mount	187676	Deepstar Polyp							
+npc	instance_boss_or_npc	162693						mount	181819	Marrowfang's Reins	Mythic	14404					
+npc	instance_boss_or_npc	180863						mount	186638	Cartel Master's Gearglider	Mythic	15168					
+npc	instance_boss_or_npc	178738						mount	186656	Sanctum Gloomcharger's Reins		15145;15144;15147;15146					
+npc	instance_boss_or_npc	175732						mount	186642	Vengeance's Reins	Mythic	15176					
+npc	instance_boss_or_npc	180990						mount	190768	Fractal Cypher of the Zereth Overseer	Mythic	15467					
+npc	instance_boss_or_npc	195353						mount	201440	Reins of the Liberated Slyvern							
+npc	instance_boss_or_npc	203625						mount	205203	Cobalt Shalewing							
+npc	instance_boss_or_npc	201181						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200960						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200584						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200904						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200956						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	201013						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200610						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200721						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200911						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200600						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200717						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200978						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200885						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200681						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200579						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	200537						mount	192772	Ancient Salamanther							
+npc	instance_boss_or_npc	208029						mount	212645	Clayscale Hornstrider							
+npc	instance_boss_or_npc	189492						mount	201790	Renewed Proto-Drake: Embodiment of the Storm-Eater	Mythic						
+npc	instance_boss_or_npc	204931						mount	210061	Reins of Anu'relos, Flame's Guidance	Mythic	19386					
+npc	instance_boss_or_npc	201791						mount	205876	Highland Drake: Embodiment of the Hellforged	Mythic						
+npc	instance_boss_or_npc	198933						mount	208216	Reins of the Quantum Courser	Mythic						
+npc	instance_boss_or_npc	207802						mount	223315	Beledar's Spawn							
+npc	instance_boss_or_npc	220285						mount	223501	Regurgitated Mole Reins							
+npc	instance_boss_or_npc	216046						item	225952	Vial of Tka'ktath's Blood							
+npc	instance_boss_or_npc	216046						mount	224150	Siesbarg							
+npc	instance_boss_or_npc	210798						mount	225548	Wick's Lead	Mythic	20484					
+npc	instance_boss_or_npc	213119						item	226683	Malfunctioning Mechsuit	Mythic	20500					
+npc	instance_boss_or_npc	213119						mount	221765	Stonevault Mechsuit	Mythic	20500					
+npc	instance_boss_or_npc	234621						mount	229953	Salvaged Goblin Gazillionaire's Flying Machine							
+npc	instance_boss_or_npc	231310						mount	229955	Darkfuse Spy-Eye							
+npc	instance_boss_or_npc	234845						mount	246160	Sthaarbs's Last Lunch							
+npc	instance_boss_or_npc	232195						mount	246067	Pearlescent Krolusk							
+npc	instance_boss_or_npc	218370						mount	224147	Reins of the Sureki Skyrazor		40295;40296;40297;40298					
+npc	instance_boss_or_npc	241526						mount	236960	Prototype A.S.M.R.		41330;41329;41328;41327					
+npc	instance_boss_or_npc	242086						mount	256424	Echo of Aln'sharan							
+npc	instance_boss_or_npc	231636						mount	262914	Spectral Hawkstrider	Mythic						
+npc	instance_boss_or_npc	231865						mount	260231	Lucent Hawkstrider	Mythic						
+npc	instance_boss_or_npc	214650						mount	246590	Ashes of Belo'ren	Mythic		true				
+rare	world_rare	180978						mount	187676	Deepstar Polyp							
+object	object	193081						mount	43952	Reins of the Azure Drake							
+object	object	193081						mount	43953	Reins of the Blue Drake							
+object	object	210220						mount	77067	Reins of the Blazing Drake							
+object	object	210220						mount	77069	Life-Binder's Handmaiden							
+object	object	207123						mount	69230	Amani Battle Bear			true				
+object	object	214424						mount	87777	Reins of the Astral Cloud Serpent							
+object	object	376587						mount	192764	Verdant Skitterfly							
+object	object	368304						mount	186642	Vengeance's Reins							
+fishing	fishing	0						mount	46109	Sea Turtle							
+fishing	fishing	125						pet	43698	Giant Sewer Rat							
+fishing	fishing	885						mount	152912	Pond Nettle							
+fishing	fishing	830						mount	152912	Pond Nettle							
+fishing	fishing	882						mount	152912	Pond Nettle							
+fishing	fishing	896						mount	163131	Great Sea Ray				true			
+fishing	fishing	895						mount	163131	Great Sea Ray				true			
+fishing	fishing	942						mount	163131	Great Sea Ray				true			
+fishing	fishing	862						mount	163131	Great Sea Ray				true			
+fishing	fishing	863						mount	163131	Great Sea Ray				true			
+fishing	fishing	864						mount	163131	Great Sea Ray				true			
+fishing	fishing	1462						mount	163131	Great Sea Ray				true			
+fishing	fishing	1970						item	187662	Strange Goop				true			
+container	container					39883		mount	44707	Reins of the Green Proto-Drake							
+container	container					44751		mount	43962	Reins of the White Polar Bear							
+container	container					69903		mount	43962	Reins of the White Polar Bear							
+container	container					116980		mount	116779	Garn Steelmaw							
+container	container					116980		mount	116673	Giant Coldsnout							
+container	container					116980		mount	116663	Shadowhide Pearltusk							
+container	container					116980		mount	116786	Smoky Direwolf							
+container	container					122163		mount	116779	Garn Steelmaw							
+container	container					122163		mount	116673	Giant Coldsnout							
+container	container					122163		mount	116663	Shadowhide Pearltusk							
+container	container					122163		mount	116786	Smoky Direwolf							
+container	container					152102		mount	147806	Cloudwing Hippogryph							
+container	container					152104		mount	147807	Highmountain Elderhorn							
+container	container					152103		mount	147804	Wild Dreamrunner							
+container	container					152105		mount	143764	Leywoven Flying Carpet							
+container	container					152106		mount	147805	Valarjar Stormwing							
+container	container					152923		mount	153044	Avenging Felcrusher							
+container	container					152923		mount	153043	Blessed Felcrusher							
+container	container					152923		mount	153042	Glorious Felcrusher							
+container	container					153191		mount	152840	Scintillating Mana Ray							
+container	container					153191		mount	152841	Felglow Mana Ray							
+container	container					153191		mount	152843	Darkspore Mana Ray							
+container	container					153191		mount	152842	Vibrant Mana Ray							
+container	container					169940		mount	169198	Royal Snapdragon							
+container	container					169939		mount	169198	Royal Snapdragon							
+container	container					186650		mount	186649	Fierce Razorwing							
+container	container					186650		mount	186644	Beryl Shardhide							
+container	container					187029		mount	186657	Soulbound Gloomcharger's Reins							
+container	container					187028		mount	186641	Tamed Mauler Harness							
+container	container					185992		mount	186103	Undying Darkhound's Harness							
+container	container					185991		mount	186000	Legsplitter War Harness							
+container	container					185990		mount	185996	Harvester's Dredwing Saddle							
+container	container					180646		mount	182081	Reins of the Colossal Slaughterclaw							
+container	container					180649		mount	183800	Amber Ardenmoth							
+container	container					184158		mount	184160	Bulbous Necroray							
+container	container					184158		mount	184162	Pestilent Necroray							
+container	container					184158		mount	184161	Infested Necroray							
+container	container					200468		mount	192791	Plainswalker Bearer							
+container	container					228741		mount	223318	Dauntless Imperial Lynx							
+container	container					232465		mount	233064	Bronze Goblin Waveshredder							
+container	container					233557		mount	229949	Personalized Goblin S.C.R.A.Per							
+container	container					237132		mount	229957	Bilgewater Bombardier							
+container	container					237135		mount	229937	Blackwater Bonecrusher							
+container	container					237133		mount	229951	Venture Co-ordinator							
+container	container					237134		mount	229943	Steamwheedle Supplier							
+container	container					245611		mount	242734	Curious Slateback							
+container	container					239546		mount	239563	Void-Scarred Lynx							
+container	container					267299		mount	257176	Duskbrute Harrower							
+container	container					267300		mount	257180	Reins of the Contained Stormarion Defender							
+container	container					267300		pet	257178	Kai							
+container	container					268485		mount	257180	Reins of the Contained Stormarion Defender							
+container	container					268485		pet	257178	Kai							
+container	container					260979		mount	257180	Reins of the Contained Stormarion Defender							
+container	container					260979		pet	257178	Kai							
+container	container					54537		mount	50250	Big Love Rocket							
+container	container					54537		mount	235658	Spring Butterfly							
+container	container					54537		mount	210976	X-45 Heartbreaker							
+container	container					54537		mount	235823	Love Witch's Sweeper							
+container	container					209024		mount	37012	The Horseman's Reins							
+container	container					209024		mount	247721	The Headless Horseman's Ghoulish Charger							
+container	container					54516		mount	37012	The Horseman's Reins							
+container	container					54516		mount	247721	The Headless Horseman's Ghoulish Charger							
+container	container					117393		mount	37828	Great Brewfest Kodo							
+container	container					117393		mount	33977	Swift Brewfest Ram							
+container	container					117393		mount	248761	Brewfest Barrel Bomber							
+container	container					54535		mount	37828	Great Brewfest Kodo							
+container	container					54535		mount	33977	Swift Brewfest Ram							
+container	container					54535		mount	248761	Brewfest Barrel Bomber							
+zone	zone_drop				2248			item	224025	Crackling Shard				true		true	
+zone	zone_drop				2248			mount	223270	Alunira						true	
+zone	zone_drop				2393			mount	257156	Cerulean Hawkstrider					true		
+zone	zone_drop				2393			mount	257147	Cobalt Dragonhawk					true		
+zone	zone_drop				2395			mount	257156	Cerulean Hawkstrider					true		
+zone	zone_drop				2395			mount	257147	Cobalt Dragonhawk					true		
+zone	zone_drop				2424			mount	257156	Cerulean Hawkstrider					true		
+zone	zone_drop				2424			mount	257147	Cobalt Dragonhawk					true		
+zone	zone_drop				2413			mount	246735	Rootstalker Grimlynx					true		
+zone	zone_drop				2413			mount	252012	Vibrant Petalwing					true		
+zone	zone_drop				2576			mount	246735	Rootstalker Grimlynx					true		
+zone	zone_drop				2576			mount	252012	Vibrant Petalwing					true		
+zone	zone_drop				2437			mount	257152	Amani Sharptalon					true		
+zone	zone_drop				2437			mount	257200	Escaped Witherbark Pango					true		
+zone	zone_drop				2536			mount	257152	Amani Sharptalon					true		
+zone	zone_drop				2536			mount	257200	Escaped Witherbark Pango					true		
+zone	zone_drop				2405			mount	257085	Augmented Stormray					true		
+zone	zone_drop				2405			mount	260635	Sanguine Harrower					true		
+zone	zone_drop				2541			mount	257085	Augmented Stormray					true		
+zone	zone_drop				2541			mount	260635	Sanguine Harrower					true		
+encounter_map	encounter	16152	652														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	19622	733														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	31125	1126														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	33993	1127														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	35013	1128														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	38433	1129														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	33288	1143														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	36597	1103														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	28859	1094														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	28860	742														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	10184	1084														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	52409	1082														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	55294	1205														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	56173	1206														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	60410	1395														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	68476	1578														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	69712	1573														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	71865	1623														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	77325	1704														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	91331	1799														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	105503	1866														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	115767	2032														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	126915	2074														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	126916	2074														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	130352	2092														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	155157	2291														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	150190	2291														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	126983	2096														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	133007	2123														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	136160	2143														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	165396	2281														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	144796	2271														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	158041	2375														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	162693	2286														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	180863	2441														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	178738	2439														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	175732	2435														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	180990	2464														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	189492	2605														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	201791	2685														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	204931	2708														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	210798	2652														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	213119	2653														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	218370	2922														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	241526	2611														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	231636	3059														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	231865	3074														dungeonEncounterID -> npcID; drops on npc row
+encounter_map	encounter	214650	3183														dungeonEncounterID -> npcID; drops on npc row
+encounter_name_map	encounter_name	231636															Restless Heart
+encounter_name_map	encounter_name	231865															Degentrius
+encounter_name_map	encounter_name	214650															Midnight Falls
+lockout_quest	lockout_quest	60491		32099													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	62346		32098													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	69099		32518													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	69161		32519													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	73167		33311													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	83746		37464													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	87493		37464													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	95044		39288													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	95053		39287													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	95054		39290													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	95056		39289													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	111573		43798													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	122958		49183													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	126040		48809													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	126199		48810													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	126852		48695													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	126867		48705													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	126912		48721													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	127288		48821													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	142741		53085													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	142739		53088													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	149652		54883													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	149660		54890													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	149655		54886													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	149663		54892													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	148037		54431													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	147701		54277													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	152182		55811													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	154342		55512													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	151934		55512													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	152290		56298													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	157466		57363													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	157153		57344													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	157160		57345													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	157134		57259													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162147		58696													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	157146		57273													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	138794		53000													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	164107		59145													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	164112		59157													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	168647		61632													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	170548		60862													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	166521		59869													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	165290		59612													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	166679		59900													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	160821		58259													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162741		58872													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162586		58783													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	157309		61720													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162690		58851													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162819		58889													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162818		58889													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	168147		58784													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	168148		58784													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162873		62786													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162880		62786													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162875		62786													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162853		62786													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162874		62786													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	162872		62786													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	174861		63433													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	179460		64164													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	179472		64246													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	180160		64455													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	179684		64233													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	179985		64313													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	180032		64338													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	180042		64349													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	180978		65548													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	203625		75333													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200537		73095													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200579		73100													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200584		73111													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200600		73117													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200610		73118													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200681		74341													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200717		74342													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200721		73154													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200885		73222													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200904		73229													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200911		73225													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200956		74349													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200960		73367													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	200978		73385													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	201013		73409													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	201181		74283													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	207802		81763													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	220285		81633													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	216046		82289													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	231310		85010													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230746		84877													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230793		84884													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230800		84895													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230828		84907													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230840		84911													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230931		84917													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230934		84918													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230940		84919													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230946		84920													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230951		84921													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230979		84922													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	230995		84926													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	231012		84927													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	231017		84928													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	231288		85004													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	232195		90593													npcID -> questID daily/weekly lockout
+lockout_quest	lockout_quest	234845		91293													npcID -> questID daily/weekly lockout

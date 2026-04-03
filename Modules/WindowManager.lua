@@ -178,9 +178,14 @@ combatFrame:SetScript("OnEvent", function(_, event)
             local entry = registry[i]
             if entry.wasVisibleBeforeCombat and entry.frame then
                 entry.frame:Show()
-                -- Re-enable keyboard input after combat restore
-                if not InCombatLockdown() and entry.frame.SetPropagateKeyboardInput then
-                    entry.frame:SetPropagateKeyboardInput(true)
+                -- Re-enable keyboard after combat restore (EnableKeyboard is not sticky across Hide/Show)
+                if not InCombatLockdown() then
+                    if entry.frame.EnableKeyboard then
+                        entry.frame:EnableKeyboard(true)
+                    end
+                    if entry.frame.SetPropagateKeyboardInput then
+                        entry.frame:SetPropagateKeyboardInput(true)
+                    end
                 end
                 entry.wasVisibleBeforeCombat = false
             end

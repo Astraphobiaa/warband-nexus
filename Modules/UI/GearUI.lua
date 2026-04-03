@@ -52,8 +52,10 @@ local UI_LAYOUT      = ns.UI_LAYOUT or {}
 local SIDE_MARGIN    = UI_LAYOUT.SIDE_MARGIN or 16
 local TOP_MARGIN     = UI_LAYOUT.TOP_MARGIN or 12
 local HEADER_H       = UI_LAYOUT.HEADER_HEIGHT or 32
--- Character strip + dropdown share this outer width (OnClick syncs menu:SetWidth(btn:GetWidth())).
-local GEAR_CHAR_SELECTOR_WIDTH = 220
+-- Character strip + dropdown share the same outer width (menu includes scrollbar column inside this width).
+local GEAR_CHAR_SELECTOR_WIDTH = 292
+local GEAR_CHAR_SELECTOR_HEIGHT = 42
+local GEAR_CHAR_DROPDOWN_ENTRY_H = 34
 
 -- Paper doll: sol panel | orta panel | sağ panel | alt panel (fixed widths); %10 büyütme
 local PAPERDOLL_SCALE = 1.10
@@ -333,6 +335,43 @@ local function GetClassHex(classFile)
     return "ffffff"
 end
 
+-- classID for GetSpecializationInfoForClassID when DB row has no classID (legacy).
+local CLASS_FILE_TO_CLASS_ID = {
+    WARRIOR = 1, PALADIN = 2, HUNTER = 3, ROGUE = 4, PRIEST = 5, DEATHKNIGHT = 6,
+    SHAMAN = 7, MAGE = 8, WARLOCK = 9, MONK = 10, DRUID = 11, DEMONHUNTER = 12, EVOKER = 13,
+}
+
+--- Tooltip spec: prefer saved specID; else first spec for class (offline / stale DB still get correct primary stat).
+local function GetGearTabTooltipSpecID(charData)
+    if not charData then return nil end
+    local sid = tonumber(charData.specID)
+    if sid and sid > 0 then return sid end
+    local cid = tonumber(charData.classID)
+    if not cid or cid < 1 then
+        local cf = charData.classFile
+        if type(cf) == "string" and cf ~= "" then
+            local uc = strupper or string.upper
+            cid = CLASS_FILE_TO_CLASS_ID[uc(cf)]
+        end
+    end
+    if cid and cid > 0 and GetSpecializationInfoForClassID then
+        local specID = select(1, GetSpecializationInfoForClassID(cid, 1))
+        specID = tonumber(specID)
+        if specID and specID > 0 then return specID end
+    end
+    return nil
+end
+
+--- { level, specID } for TooltipService when showing Gear tab items for this character.
+local function BuildGearTabItemTooltipContext(charData)
+    if not charData then return nil end
+    local lvl = tonumber(charData.level)
+    if not lvl or lvl < 1 then return nil end
+    local specID = GetGearTabTooltipSpecID(charData)
+    if not specID or specID < 1 then return nil end
+    return { level = lvl, specID = specID }
+end
+
 -- ============================================================================
 -- SLOT ICON BUTTON
 -- ============================================================================
@@ -350,8 +389,9 @@ end
 ---@param centerTextOnIcon boolean|nil if true, center slot name + track text relative to slot icon (weapon row)
 ---@param upgradeInfo table|nil optional; when set, tooltip shows next upgrade tier and cost for this slot
 ---@param currencyAmounts table|nil optional; map currencyID -> amount (for "you have X" in tooltip if needed)
+---@param itemTooltipContext table|nil optional { level, specID } — rewrite item link for C_TooltipInfo primary-stat lines (Gear tab / viewed character)
 ---@return Frame btn
-local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts)
+local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext)
     -- Slot her zaman aynı boyutta; ikon görünmese bile boşluk rezerve (empty texture)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(SLOT_SIZE, SLOT_SIZE)
@@ -574,6 +614,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                     itemLink = slotData.itemLink,
                     additionalLines = additionalLines,
                     anchor = "ANCHOR_RIGHT",
+                    itemTooltipContext = itemTooltipContext,
                 })
             elseif ns.TooltipService then
                 ns.TooltipService:Show(self, {
@@ -582,6 +623,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                     itemLink = slotData.itemLink,
                     additionalLines = additionalLines,
                     anchor = "ANCHOR_RIGHT",
+                    itemTooltipContext = itemTooltipContext,
                 })
             end
         else
@@ -734,6 +776,7 @@ end
 --- baseX: paperdoll bloğunun sol kenarı (kart içinde crest panelinden sonra ortalanmış alan).
 local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar, baseX)
     baseX = baseX or CARD_PAD
+    local itemTooltipContext = BuildGearTabItemTooltipContext(charData)
     -- Sol panel: fixed width; slot sağda (yazı - ikon - slot)
     local leftX = baseX + LEFT_PANEL_W - SLOT_SIZE
     local leftColRight = baseX + LEFT_PANEL_W
@@ -760,14 +803,14 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local leftSlots = { 1, 2, 3, 15, 5, 9 }
     for i, slotID in ipairs(leftSlots) do
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        CreateSlotButton(card, slotID, GetSlotData(slotID), leftX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), leftX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext)
     end
 
     -- Right column: 6 armor + 2 trinkets — slot | ikon | yazı
     local rightSlots = { 10, 6, 7, 8, 11, 12, 13, 14 }
     for i, slotID in ipairs(rightSlots) do
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        CreateSlotButton(card, slotID, GetSlotData(slotID), rightX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), rightX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext)
     end
 
     -- Alt panel: slot üstte, altında ikon + yazı (yazılar aşağı); silahlar birbirine yakın
@@ -782,7 +825,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         local quality = (slots[slotID] and slots[slotID].quality) or 0
         local wx = (i == 1) and weaponStartX or (weaponStartX + SLOT_SIZE + WEAPON_GAP)
         local weaponSide = (i == 1) and "bottom_left" or "bottom_right"  -- Main Hand solunda, Off Hand sağında
-        CreateSlotButton(card, slotID, GetSlotData(slotID), wx, bottomY, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), wx, bottomY, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext)
     end
 
     -- Orta panel: model frame alt ucu trinket satırının altına denk gelecek şekilde uzatıldı
@@ -1371,8 +1414,9 @@ local function BuildStorageRecommendationRows(findings, gearData)
     return rows
 end
 
-local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storageFindings)
+local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storageFindings, charData)
     local rows = BuildStorageRecommendationRows(storageFindings, gearData)
+    local itemTooltipContext = BuildGearTabItemTooltipContext(charData)
     local title = (ns.L and ns.L["GEAR_STORAGE_TITLE"]) or "Storage Upgrade Recommendations"
     local rowH = 26
     local titleToContentGap = 16
@@ -1515,6 +1559,7 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
                     itemID = row.itemID,
                     itemLink = row.itemLink,
                     anchor = "ANCHOR_LEFT",
+                    itemTooltipContext = itemTooltipContext,
                 })
             elseif ns.TooltipService then
                 ns.TooltipService:Show(self, {
@@ -1522,6 +1567,7 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
                     itemID = row.itemID,
                     itemLink = row.itemLink,
                     anchor = "ANCHOR_LEFT",
+                    itemTooltipContext = itemTooltipContext,
                 })
             end
         end)
@@ -1563,13 +1609,17 @@ local function MeasureGearCharNameColumnWidth(chars, measureFs)
     return maxW
 end
 
---- Name column width: wide enough for longest name, capped so realm column keeps space.
+--- Name column width: wide enough for longest name, capped so realm keeps a readable minimum width.
 local function ComputeGearCharNameColW(chars, measureFs, textBudget)
     if textBudget < 56 then
         return math.max(36, math.floor(textBudget * 0.38))
     end
     local raw = MeasureGearCharNameColumnWidth(chars, measureFs) + 6
-    local cap = math.floor(textBudget * 0.52)
+    local minRealm = 102
+    local sepReserve = 22
+    local capByRealm = textBudget - minRealm - sepReserve
+    local capByRatio = math.floor(textBudget * 0.48)
+    local cap = math.min(capByRatio, math.max(52, capByRealm))
     return math.min(math.max(raw, 48), cap)
 end
 
@@ -1639,7 +1689,6 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
 
     local COLORS = ns.UI_COLORS
     local accent = COLORS.accent
-    local PAD    = 8
     local layout = ns.UI_LAYOUT or {}
     local SCROLL_COL_EST = layout.SCROLLBAR_COLUMN_WIDTH or 22
     local MENU_EDGE_EST = 4
@@ -1647,7 +1696,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     local btn = gearCharSelectorBtn
     if not btn then
         btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
-        btn:SetHeight(36)
+        btn:SetHeight(GEAR_CHAR_SELECTOR_HEIGHT)
         btn:SetBackdrop({
             bgFile   = "Interface\\Buttons\\WHITE8X8",
             edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -1674,8 +1723,10 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
 
     btn:SetParent(parent)
     btn:ClearAllPoints()
+    btn:SetHeight(GEAR_CHAR_SELECTOR_HEIGHT)
     btn:SetWidth(GEAR_CHAR_SELECTOR_WIDTH)
-    btn:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SIDE_MARGIN - PAD, 8)
+    -- Same horizontal inset as card side margin so the strip lines up with the header card edges.
+    btn:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SIDE_MARGIN, 10)
     btn:SetBackdropColor(0.08, 0.08, 0.11, 0.9)
     btn:SetBackdropBorderColor(accent[1]*0.6, accent[2]*0.6, accent[3]*0.6, 0.8)
 
@@ -1707,20 +1758,25 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         end
     end
 
-    -- Shared text budget: header strip and scroll rows use the same name column width.
+    -- Shared text budget: selector row and list rows use the same inner width as the scroll child
+    -- (outer width minus left/right menu edges, scrollbar column, gap, and entry horizontal padding).
     local function RefreshSelectorColumns(charList)
         local list = charList or GetTrackedCharacters()
         if #list == 0 or not btn._measureFs then return end
         local btnW = math.max(1, btn:GetWidth())
-        local btnBudget = btnW - 6 - 20 - 22
-        local scrollBudget = btnW - 2 * MENU_EDGE_EST - SCROLL_COL_EST - 2 - 8
-        local textBudget = math.max(48, math.min(btnBudget, scrollBudget))
+        local scrollFrameW = btnW - 2 * MENU_EDGE_EST - SCROLL_COL_EST - 2
+        local entryHPad = 12
+        local rowTextBudget = math.max(56, scrollFrameW - entryHPad)
+        local selectorLeftPad = 8
+        local selectorArrowReserve = 22
+        local selectorTextBudget = math.max(56, btnW - selectorLeftPad - selectorArrowReserve)
+        local textBudget = math.max(56, math.min(rowTextBudget, selectorTextBudget))
         local nameColW = ComputeGearCharNameColW(list, btn._measureFs, textBudget)
-        LayoutGearCharNameRealmColumns(btn, nameColW, 6, 20)
+        LayoutGearCharNameRealmColumns(btn, nameColW, selectorLeftPad, selectorArrowReserve)
         for i = 1, #gearCharDropdownEntryPool do
             local eb = gearCharDropdownEntryPool[i]
             if eb and eb._nameLabel then
-                LayoutGearCharNameRealmColumns(eb, nameColW, 4, 4)
+                LayoutGearCharNameRealmColumns(eb, nameColW, 6, 6)
             end
         end
     end
@@ -1811,10 +1867,10 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             gearCharDropdownBg = bg
         end
 
-        local ENTRY_H = 28
+        local ENTRY_H = GEAR_CHAR_DROPDOWN_ENTRY_H
         local contentH = #list * ENTRY_H + 8
         local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 800
-        local maxMenuH = math.max(ENTRY_H + 8, math.floor(screenH * 0.42))
+        local maxMenuH = math.max(ENTRY_H + 8, math.floor(screenH * 0.52))
         local menuH = math.min(contentH, maxMenuH)
         menu:SetHeight(menuH)
         menu:ClearAllPoints()
@@ -1867,8 +1923,8 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
 
             entryBtn:SetParent(entryParent)
             entryBtn:ClearAllPoints()
-            entryBtn:SetPoint("TOPLEFT",  4, entryY)
-            entryBtn:SetPoint("TOPRIGHT", -4, entryY)
+            entryBtn:SetPoint("TOPLEFT",  6, entryY)
+            entryBtn:SetPoint("TOPRIGHT", -6, entryY)
 
             if entryBtn.SetClippingChildren then
                 entryBtn:SetClippingChildren(true)
@@ -2008,7 +2064,7 @@ function WarbandNexus:DrawGearTab(parent)
     end
 
     -- ── Header Card (in fixedHeader - non-scrolling) ─────
-    local headerCard = CreateCard(headerParent, 70)
+    local headerCard = CreateCard(headerParent, 78)
     headerCard:SetPoint("TOPLEFT",  SIDE_MARGIN, -headerYOffset)
     headerCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
 
@@ -2018,7 +2074,7 @@ function WarbandNexus:DrawGearTab(parent)
     local hexAcc  = format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
     local titleTextContent = "|cff" .. hexAcc .. ((ns.L and ns.L["GEAR_TAB_TITLE"]) or "Gear Management") .. "|r"
     local subtitleTextContent = (ns.L and ns.L["GEAR_TAB_DESC"]) or "Equipped gear, upgrade analysis, and crest tracking"
-    local gearHeaderRightReserve = GEAR_CHAR_SELECTOR_WIDTH + SIDE_MARGIN + 8 + 12
+    local gearHeaderRightReserve = GEAR_CHAR_SELECTOR_WIDTH + SIDE_MARGIN + 4
 
     local textContainer = ns.UI and ns.UI.Factory and ns.UI.Factory:CreateContainer(headerCard, 200, 40)
     if textContainer then
@@ -2057,7 +2113,8 @@ function WarbandNexus:DrawGearTab(parent)
         end)
     end
 
-    headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
+    -- Taller header card (selector row) than the default 70px tab header; keep fixedHeader from clipping.
+    headerYOffset = headerYOffset + (GetLayout().afterHeader or 75) + 8
 
     if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
 
@@ -2086,7 +2143,7 @@ function WarbandNexus:DrawGearTab(parent)
     yOffset = DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, canonicalKey, currencyAmounts, canonicalKey == currentKey, currencies)
 
     local storageFindings = (self.FindGearStorageUpgrades and self:FindGearStorageUpgrades(canonicalKey)) or {}
-    yOffset = DrawStorageRecommendationsCard(parent, yOffset, gearData, storageFindings)
+    yOffset = DrawStorageRecommendationsCard(parent, yOffset, gearData, storageFindings, charData)
 
     yOffset = yOffset - 12
     return math.abs(yOffset) + TOP_MARGIN

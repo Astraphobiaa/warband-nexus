@@ -166,6 +166,156 @@ function TooltipService:Hide()
 end
 
 -- ============================================================================
+-- ITEM LINK TOOLTIP CONTEXT (linkLevel + specializationID in payload)
+-- Blizzard uses fields 9–10 of the item payload for primary-stat / set-bonus
+-- display. Links from another character (e.g. bank alt) keep that character's
+-- spec; rewrite so Gear tab tooltips match the viewed character.
+-- See https://warcraft.wiki.gg/wiki/ItemLink (linkLevel, specializationID).
+-- ============================================================================
+
+---@param itemLink string|nil
+---@param itemID number|nil
+---@param linkLevel number
+---@param specializationID number
+---@return string|nil
+local function ApplyItemLinkTooltipContext(itemLink, itemID, linkLevel, specializationID)
+    if not linkLevel or linkLevel < 1 or not specializationID or specializationID < 1 then
+        return itemLink
+    end
+    if (not itemLink or itemLink == "") and itemID then
+        if C_Item and C_Item.GetItemInfo then
+            itemLink = select(2, C_Item.GetItemInfo(itemID))
+        elseif GetItemInfo then
+            itemLink = select(2, GetItemInfo(itemID))
+        end
+    end
+    if not itemLink or itemLink == "" then return itemLink end
+    if issecretvalue and issecretvalue(itemLink) then return itemLink end
+
+    local hs, he = itemLink:find("|Hitem:", 1, true)
+    if not hs or not he then return itemLink end
+    local hName = itemLink:find("|h", he + 1, true)
+    if not hName then return itemLink end
+
+    local head = itemLink:sub(1, he)
+    local payload = itemLink:sub(he + 1, hName - 1)
+    local tail = itemLink:sub(hName)
+
+    local parts = {}
+    local pos = 1
+    local plen = #payload
+    while pos <= plen do
+        local col = payload:find(":", pos, true)
+        if not col then
+            parts[#parts + 1] = payload:sub(pos)
+            break
+        end
+        parts[#parts + 1] = payload:sub(pos, col - 1)
+        pos = col + 1
+    end
+    while #parts < 10 do
+        parts[#parts + 1] = ""
+    end
+    parts[9] = tostring(linkLevel)
+    parts[10] = tostring(specializationID)
+    return head .. table.concat(parts, ":") .. tail
+end
+
+---Strip |cn / |cHEX+ / |r so SetTextColor applies (embedded colors override FontString color).
+---@param text string|nil
+---@return string
+local function StripTooltipTextForStatMatch(text)
+    if not text or type(text) ~= "string" then return "" end
+    if issecretvalue and issecretvalue(text) then return "" end
+    local s = text:gsub("|cn[^|]*|", "")
+    -- Variable-length |c + hex (6–10+ digits seen across clients); repeat until stable.
+    local prev
+    repeat
+        prev = s
+        s = s:gsub("|c[0-9A-Fa-f]+", "", 1)
+    until s == prev
+    return (s:gsub("|r", ""))
+end
+
+-- Blizzard GetSpecializationInfo primaryStat: 1=Str, 2=Agi, 4=Int — map specID -> kind for Gear tooltips.
+-- Extend when new SpecializationIDs ship.
+local SPEC_ID_PRIMARY_KIND = {
+    [250] = "strength", [251] = "strength", [252] = "strength", [1455] = "strength",
+    [577] = "agility", [581] = "agility", [1480] = "agility", [1456] = "agility",
+    [102] = "intellect", [103] = "agility", [104] = "agility", [105] = "intellect", [1447] = "intellect",
+    [1467] = "intellect", [1468] = "intellect", [1473] = "intellect", [1465] = "intellect",
+    [253] = "agility", [254] = "agility", [255] = "agility", [1448] = "agility",
+    [62] = "intellect", [63] = "intellect", [64] = "intellect", [1449] = "intellect",
+    [268] = "agility", [270] = "intellect", [269] = "agility", [1450] = "agility",
+    [65] = "intellect", [66] = "strength", [70] = "strength", [1451] = "strength",
+    [256] = "intellect", [257] = "intellect", [258] = "intellect", [1452] = "intellect",
+    [259] = "agility", [260] = "agility", [261] = "agility", [1453] = "agility",
+    [262] = "intellect", [263] = "agility", [264] = "intellect", [1444] = "intellect",
+    [265] = "intellect", [266] = "intellect", [267] = "intellect", [1454] = "intellect",
+    [71] = "strength", [72] = "strength", [73] = "strength", [1446] = "strength",
+}
+
+---@param leftText string|nil
+---@param rightText string|nil
+---@return string
+local function GetCombinedPlainLeftRight(leftText, rightText)
+    local l = StripTooltipTextForStatMatch(leftText or "")
+    local r = StripTooltipTextForStatMatch(rightText or "")
+    l = (l:match("^%s*(.-)%s*$") or "")
+    r = (r:match("^%s*(.-)%s*$") or "")
+    if l ~= "" and r ~= "" then return l .. " " .. r end
+    if l ~= "" then return l end
+    return r
+end
+
+---Which primary stat this "+N …" line is (not Stamina / secondaries).
+---@param plain string
+---@return string|nil "strength"|"agility"|"intellect"
+local function DetectPrimaryStatLineKindFromPlain(plain)
+    if not plain or plain == "" or not plain:find("^%s*%+?%d+") then return nil end
+    local L = ns.L
+    local packs = {
+        { "intellect", { SPELL_STAT4_NAME, ITEM_MOD_INTELLECT_SHORT, L and L["STAT_INTELLECT"] } },
+        { "strength", { SPELL_STAT1_NAME, ITEM_MOD_STRENGTH_SHORT, L and L["STAT_STRENGTH"] } },
+        { "agility", { SPELL_STAT2_NAME, ITEM_MOD_AGILITY_SHORT, L and L["STAT_AGILITY"] } },
+    }
+    for p = 1, #packs do
+        local kind = packs[p][1]
+        local names = packs[p][2]
+        for i = 1, #names do
+            local n = names[i]
+            if type(n) == "string" and n ~= "" and plain:find(n, 1, true) then return kind end
+        end
+    end
+    return nil
+end
+
+---Only the selected spec's main stat is white; other Str/Agi/Int on the same item stay dimmed.
+---@param line table TooltipDataLine (mutated)
+---@param ctx table itemTooltipContext { specID, level }
+local function ApplyGearTabPrimaryStatLineHighlight(line, ctx)
+    if not line or not ctx then return end
+    local specID = tonumber(ctx.specID)
+    if not specID or specID < 1 then return end
+    local want = SPEC_ID_PRIMARY_KIND[specID]
+    if not want then return end
+
+    local plain = GetCombinedPlainLeftRight(line.leftText, line.rightText)
+    local lineKind = DetectPrimaryStatLineKindFromPlain(plain)
+    if not lineKind then return end
+
+    line.leftText = StripTooltipTextForStatMatch(line.leftText or "")
+    line.rightText = StripTooltipTextForStatMatch(line.rightText or "")
+    if lineKind == want then
+        line.leftColor = { r = 1, g = 1, b = 1 }
+        line.rightColor = { r = 1, g = 1, b = 1 }
+    else
+        line.leftColor = { r = 0.65, g = 0.65, b = 0.65 }
+        line.rightColor = { r = 0.65, g = 0.65, b = 0.65 }
+    end
+end
+
+-- ============================================================================
 -- RENDERING METHODS
 -- ============================================================================
 
@@ -236,6 +386,31 @@ function TooltipService:RenderItemTooltip(frame, data)
     local itemID = data.itemID
     local itemLink = data.itemLink
     if not itemID and not itemLink then return end
+
+    local ctx = data.itemTooltipContext
+    if ctx and ctx.level and ctx.specID and ctx.level >= 1 and ctx.specID >= 1 then
+        -- Gear tab: preview for the *selected* character (not the logged-in one). Spec ID in the
+        -- link drives which primary stat is "yours". linkLevel must be >= item min level or the
+        -- client still greys primary stats (e.g. Lv90 weapon while selected char is 80 — we lift
+        -- linkLevel to minLevel so the addon tooltip shows main stats as active for that spec).
+        local minLv = 0
+        local srcLink = data.itemLink
+        local srcID = data.itemID
+        if srcLink and type(srcLink) == "string" and not (issecretvalue and issecretvalue(srcLink)) then
+            minLv = select(5, C_Item.GetItemInfo(srcLink)) or 0
+        elseif srcID and C_Item and C_Item.GetItemInfo then
+            minLv = select(5, C_Item.GetItemInfo(srcID)) or 0
+        elseif srcID and GetItemInfo then
+            minLv = select(5, GetItemInfo(srcID)) or 0
+        end
+        if minLv and issecretvalue and issecretvalue(minLv) then
+            minLv = 0
+        else
+            minLv = tonumber(minLv) or 0
+        end
+        local effLevel = math.max(ctx.level, minLv, 1)
+        itemLink = ApplyItemLinkTooltipContext(itemLink, itemID, effLevel, ctx.specID) or itemLink
+    end
     
     -- Get basic info for icon and fallback
     local itemName, _, itemQuality, _, _, _, _, _, _, itemTexture
@@ -290,6 +465,9 @@ function TooltipService:RenderItemTooltip(frame, data)
         -- All remaining lines = item data (binding, type, ilvl, stats, effects, etc.)
         for i = 2, #tooltipData.lines do
             local line = tooltipData.lines[i]
+            if data.itemTooltipContext then
+                ApplyGearTabPrimaryStatLineHighlight(line, data.itemTooltipContext)
+            end
             local leftText = line.leftText
             local rightText = line.rightText
             
