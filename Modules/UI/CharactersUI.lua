@@ -381,7 +381,8 @@ function WarbandNexus:DrawCharacterList(parent)
     divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4)
 
     -- Right half: WoW Token (icon + label + price with token count)
-    local tokenPrice = C_WowTokenPublic and C_WowTokenPublic.GetCurrentMarketPrice and C_WowTokenPublic.GetCurrentMarketPrice()
+    -- GetCurrentMarketPrice updates asynchronously after UpdateMarketPrice(); TOKEN_MARKET_PRICE_UPDATED refreshes the tab (Core.lua).
+    local tokenPrice = C_WowTokenPublic and C_WowTokenPublic.GetCurrentMarketPrice and select(1, C_WowTokenPublic.GetCurrentMarketPrice())
 
     local tkIcon = totalGoldCard:CreateTexture(nil, "ARTWORK")
     tkIcon:SetSize(28, 28)
@@ -410,6 +411,19 @@ function WarbandNexus:DrawCharacterList(parent)
         tkValue:SetText(FormatMoney(tokenPrice, 12) .. "  |cff66c0ff(" .. affordableCount .. " Tokens)|r")
     else
         tkValue:SetText("|cff888888N/A|r")
+        -- One-shot retry if price not ready yet (event-driven path is primary).
+        if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then
+            C_Timer.After(1.25, function()
+                local addon = _G.WarbandNexus
+                if not addon or not addon.UI or not addon.UI.mainFrame then return end
+                local mf = addon.UI.mainFrame
+                if not mf:IsShown() or mf.currentTab ~= "chars" then return end
+                local p = select(1, C_WowTokenPublic.GetCurrentMarketPrice and C_WowTokenPublic.GetCurrentMarketPrice() or 0)
+                if p and p > 0 and addon.RefreshUI then
+                    addon:RefreshUI()
+                end
+            end)
+        end
     end
 
     charGoldCard:Show()

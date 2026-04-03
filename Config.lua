@@ -127,6 +127,17 @@ local options = {
                 WarbandNexus.db.profile.showTooltipItemCount = value
             end,
         },
+        requestPlayedTimeOnLogin = {
+            order = 16,
+            type = "toggle",
+            name = function() return (ns.L and ns.L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"]) or "Request played time on login" end,
+            desc = function() return (ns.L and ns.L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"]) or "When enabled, the addon requests /played data in the background to update \"Most played\" statistics. Chat output from that request is suppressed. When disabled, no login request is made (manual /played still works)." end,
+            width = "full",
+            get = function() return WarbandNexus.db.profile.requestPlayedTimeOnLogin ~= false end,
+            set = function(_, value)
+                WarbandNexus.db.profile.requestPlayedTimeOnLogin = value
+            end,
+        },
         
         -- ===== MODULE MANAGEMENT =====
         moduleManagementHeader = {

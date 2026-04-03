@@ -879,6 +879,13 @@ local function BuildSettings(parent, containerWidth)
             set = function(value) WarbandNexus.db.profile.showTooltipItemCount = value end,
         },
         {
+            key = "requestPlayedTimeOnLogin",
+            label = (ns.L and ns.L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"]) or "Request played time on login",
+            tooltip = (ns.L and ns.L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"]) or "When enabled, the addon requests /played data in the background to update statistics. Chat output from that request is suppressed. When disabled, no automatic request on login.",
+            get = function() return WarbandNexus.db.profile.requestPlayedTimeOnLogin ~= false end,
+            set = function(value) WarbandNexus.db.profile.requestPlayedTimeOnLogin = value end,
+        },
+        {
             key = "showWeeklyPlanner",
             label = (ns.L and ns.L["SHOW_WEEKLY_PLANNER"]) or "Weekly Planner (Characters)",
             tooltip = (ns.L and ns.L["SHOW_WEEKLY_PLANNER_TOOLTIP"]) or "Show or hide the Weekly Planner section inside the Characters tab",

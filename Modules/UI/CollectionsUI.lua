@@ -1604,7 +1604,10 @@ local ZOOM_STEP = 0.1
 local ROTATE_SENSITIVITY = 0.02
 -- Tüm modeller aynı boyut/pozisyon: modeli REFERENCE_RADIUS'a scale ediyoruz, tek sabit kamera mesafesi.
 local REFERENCE_RADIUS = 1.0
-local FIXED_CAM_DISTANCE = 2.8
+-- Biraz daha uzak kamera: perspektifte bounding sphere dışına taşan uzuvları kırpma çizgisine yaklaştırmaz.
+local FIXED_CAM_DISTANCE = 3.15
+-- Viewport içinde 1–2 px: kenara yapışık görüntüyü yumuşatır (clip rect içinde).
+local MODEL_VIEWPORT_INSET = 2
 local MODEL_SCALE_MIN = 0.15
 local MODEL_SCALE_MAX = 6.0
 local ZOOM_MULTIPLIER_MIN = 0.5
@@ -1674,11 +1677,26 @@ local function CreateModelViewer(parent, width, height)
     panel:SetSize(width, height)
     ApplyDetailAccentVisuals(panel)
 
-    local model = CreateFrame("PlayerModel", nil, panel)
+    -- PlayerModel often draws outside its rect; clip to a dedicated viewport below the header/text block.
+    local modelViewport = CreateFrame("Frame", nil, panel)
+    modelViewport:SetFrameLevel(panel:GetFrameLevel() + 1)
+    if modelViewport.SetClipsChildren then
+        modelViewport:SetClipsChildren(true)
+    end
+    panel.modelViewport = modelViewport
+
+    local model = CreateFrame("PlayerModel", nil, modelViewport)
     model:SetModelDrawLayer("ARTWORK")
-    model:SetFrameLevel(panel:GetFrameLevel())
+    model:SetFrameLevel(modelViewport:GetFrameLevel())
     model:EnableMouse(true)
     model:EnableMouseWheel(true)
+
+    local function ApplyModelToViewportInsets()
+        local inset = MODEL_VIEWPORT_INSET
+        model:ClearAllPoints()
+        model:SetPoint("TOPLEFT", modelViewport, "TOPLEFT", inset, -inset)
+        model:SetPoint("BOTTOMRIGHT", modelViewport, "BOTTOMRIGHT", -inset, inset)
+    end
 
     -- Model area starts directly below the text block (panel.descText); re-run after text set or resize.
     local MODEL_FALLBACK_TOP_RATIO = 0.42
@@ -1686,7 +1704,7 @@ local function CreateModelViewer(parent, width, height)
         local w = panel:GetWidth()
         local h = panel:GetHeight()
         if not w or not h or w < 1 or h < 1 then return end
-        model:ClearAllPoints()
+        modelViewport:ClearAllPoints()
         local descBottom = nil
         if panel.descText and panel.descText.GetBottom then
             descBottom = panel.descText:GetBottom()
@@ -1695,21 +1713,22 @@ local function CreateModelViewer(parent, width, height)
         if descBottom and panelTop and panel:IsVisible() then
             local offsetY = descBottom - panelTop
             if offsetY < -20 then
-                model:SetPoint("TOPLEFT", panel, "TOPLEFT", CONTENT_INSET, offsetY - TEXT_GAP)
-                model:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -CONTENT_INSET, offsetY - TEXT_GAP)
-                model:SetPoint("BOTTOM", panel, "BOTTOM", 0, CONTENT_INSET)
+                modelViewport:SetPoint("TOPLEFT", panel, "TOPLEFT", CONTENT_INSET, offsetY - TEXT_GAP)
+                modelViewport:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -CONTENT_INSET, offsetY - TEXT_GAP)
+                modelViewport:SetPoint("BOTTOM", panel, "BOTTOM", 0, CONTENT_INSET)
             else
-                model:SetPoint("TOP", panel, "TOP", 0, -h * MODEL_FALLBACK_TOP_RATIO - TEXT_GAP)
-                model:SetPoint("BOTTOM", panel, "BOTTOM", 0, CONTENT_INSET)
-                model:SetPoint("LEFT", panel, "LEFT", CONTENT_INSET, 0)
-                model:SetPoint("RIGHT", panel, "RIGHT", -CONTENT_INSET, 0)
+                modelViewport:SetPoint("TOP", panel, "TOP", 0, -h * MODEL_FALLBACK_TOP_RATIO - TEXT_GAP)
+                modelViewport:SetPoint("BOTTOM", panel, "BOTTOM", 0, CONTENT_INSET)
+                modelViewport:SetPoint("LEFT", panel, "LEFT", CONTENT_INSET, 0)
+                modelViewport:SetPoint("RIGHT", panel, "RIGHT", -CONTENT_INSET, 0)
             end
         else
-            model:SetPoint("TOP", panel, "TOP", 0, -h * MODEL_FALLBACK_TOP_RATIO - TEXT_GAP)
-            model:SetPoint("BOTTOM", panel, "BOTTOM", 0, CONTENT_INSET)
-            model:SetPoint("LEFT", panel, "LEFT", CONTENT_INSET, 0)
-            model:SetPoint("RIGHT", panel, "RIGHT", -CONTENT_INSET, 0)
+            modelViewport:SetPoint("TOP", panel, "TOP", 0, -h * MODEL_FALLBACK_TOP_RATIO - TEXT_GAP)
+            modelViewport:SetPoint("BOTTOM", panel, "BOTTOM", 0, CONTENT_INSET)
+            modelViewport:SetPoint("LEFT", panel, "LEFT", CONTENT_INSET, 0)
+            modelViewport:SetPoint("RIGHT", panel, "RIGHT", -CONTENT_INSET, 0)
         end
+        ApplyModelToViewportInsets()
     end
     panel.UpdateModelFrameSize = UpdateModelFrameSize
     panel:SetScript("OnSizeChanged", function()

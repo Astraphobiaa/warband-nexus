@@ -5,7 +5,7 @@
 ## Version: 2.5.8
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
-## OptionalDeps: Ace3, LibSharedMedia-3.0
+## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity
 ## X-Category: Bags & Inventory
 ## X-Website: https://github.com/warbandnexus
 ## X-Curse-Project-ID: 

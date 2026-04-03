@@ -11,23 +11,38 @@ license-output: LICENSE
 ignore:
   - .cursor
   - .vscode
+  - .claude
+  - .tmp
   - .git
   - .gitignore
+  - .gitattributes
   - .pkgmeta
   - README.md
   - CHANGES.txt
+  - VERSION_CURSEFORGE.md
+  - VERSION_DISCORD.md
+  - _enc_w.html
   - TOS_COMPLIANCE.md
   - OPTIMIZATION_SUMMARY.md
   - DEAD_CODE_AUDIT.md
   - EVENTS_AUDIT.md
   - Screenshots
+  - scripts
+  - build
   - libs/README.md
   - libs/README.textile
   - libs/changelog.txt
+  - libs/CHANGES.txt
   - libs/LICENSE.txt
   - libs/Changelog-libdatabroker-1-1-v1.1.4.txt
   - libs/Ace3.toc
   - libs/LibDBIcon-1.0.toc
+  - libs/embeds.xml
+  - libs/Bindings.xml
+  - libs/Ace3.lua
+  - libs/LibDeflate/.xml
+  - libs/AceComm-3.0
+  - libs/AceTab-3.0
 
 externals:
   libs/Ace3:

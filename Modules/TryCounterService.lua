@@ -119,7 +119,7 @@ local SafeGetTargetGUID
 local SafeGetMouseoverGUID
 local SafeGuardGUID
 local TryDiscoverLockoutQuest
-local TryCounterShowInstanceDrops -- C_Timer.After in OnTryCounterInstanceEntry runs before `local function` line would be in scope
+local TryCounterShowInstanceDrops -- assigned later; optional manual / debug use (no longer auto-called on instance entry)
 local CurrentUnitsHaveMobLootContext -- OnTryCounterChatMsgLoot (fishing path) runs before `local function` line would be in scope
 -- Forward declarations for state variables used in OnEvent closure (declared after it)
 local npcDropDB
@@ -414,6 +414,10 @@ local zoneDropDB = {}
 local encounterDB = {}
 local encounterNameToNpcs = {}  -- [encounterName (enUS)] = { npcID1, ... } — Midnight: fallback when encounterID is secret
 local lockoutQuestsDB = {}  -- [npcID] = questID or { questID1, questID2, ... }
+-- Merged Statistics API columns per (collectibleType, tryKey): union LFR+N+H+M across DB rows & NPCs (e.g. G.M.O.D.).
+local mergedStatSeedByTypeKey = {} -- [type .. "\0" .. key] = { tcType, tryKey, statIds, drops }
+local mergedStatSeedGroupList = {} -- stable iteration order for SeedFromStatistics
+local statSeedTryKeyPending = {}   -- drops with stat IDs but tryKey nil at seed time (API cold)
 
 -- Runtime state
 local recentKills = {}       -- [guid] = { npcID = n, name = s, time = t }
@@ -421,6 +425,16 @@ local processedGUIDs = {}    -- [guid] = timestamp
 local mergedLootTryCountedAt = {}  -- [fingerprint] = GetTime() — open-world merged loot, one wave per GUID set
 --- PLAYER_ENTERING_WORLD: GetInstanceInfo difficulty for current instanceID (ENCOUNTER_END can mismatch).
 local tryCounterInstanceDiffCache = { instanceID = nil, difficultyID = nil }
+--- Last character key we scheduled Statistics+Rarity sync for (avoids duplicate timers on same char).
+local lastSyncScheduleCharKey = nil
+--- Bumped when a new per-character sync is scheduled; stale C_Timer callbacks no-op.
+local perCharStatSyncSerial = 0
+--- Dedupe gray "Skipped" chat when LOOT_OPENED + LOOT_CLOSED both run ProcessNPCLoot.
+local lastDifficultySkipChatKey = nil
+local lastDifficultySkipChatTime = 0
+local lastLockoutSkipChatKey = nil
+local lastLockoutSkipChatTime = 0
+local SKIP_CHAT_DEDUP_SEC = 15
 local fishingCtx = {
     active = false,            -- set on fishing cast, cleared when fishing loot processed (or 30s timer)
     castTime = 0,              -- timestamp of last fishing cast
@@ -1568,6 +1582,9 @@ local function DoesDifficultyMatch(difficultyID, requiredDifficulty)
         return label == "10N"
     elseif requiredDifficulty == "25N" then
         return label == "25N"
+    elseif requiredDifficulty == "25-man" then
+        -- Legacy 25-player only (exclude 10-player and LFR); e.g. Ulduar Mimiron's Head.
+        return label == "25N" or label == "25H"
     elseif requiredDifficulty == "LFR" then
         return label == "LFR"
     end
@@ -1833,111 +1850,6 @@ local function GetDropItemLink(drop)
     return "|cffa335ee[" .. (drop.name or "Unknown") .. "]|r"
 end
 
----Re-read WoW Statistics for specific drops and update try counts.
----Used for instance bosses with statisticIds — authoritative source of kill counts.
----Delayed slightly to allow WoW's statistic API to update after a kill.
----@param drops table Array of drop entries to re-seed
----@param statIds table Array of WoW statistic IDs for the source NPC
-local function ReseedStatisticsForDrops(drops, statIds)
-    if not drops or #drops == 0 or not statIds or #statIds == 0 then return end
-    if not EnsureDB() then return end
-    local GetStat = GetStatistic
-    if not GetStat then return end
-
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not charKey then return end
-
-    -- Ensure snapshot storage
-    local snapshots = WarbandNexus.db.global.statisticSnapshots
-    if not snapshots then
-        WarbandNexus.db.global.statisticSnapshots = {}
-        snapshots = WarbandNexus.db.global.statisticSnapshots
-    end
-    if not snapshots[charKey] then
-        snapshots[charKey] = {}
-    end
-    local charSnapshot = snapshots[charKey]
-
-    -- Sum all statisticIds for this boss on THIS character
-    local thisCharTotal = 0
-    for i = 1, #statIds do
-        local sid = statIds[i]
-        local val = GetStat(sid)
-        local num
-        if val and not (issecretvalue and issecretvalue(val)) then
-            local s = string.gsub(tostring(val), "[^%d]", "")
-            if s ~= "" then
-                num = tonumber(s)
-            end
-        end
-        if num and num > 0 then
-            thisCharTotal = thisCharTotal + num
-        end
-    end
-
-    local function ProcessSeedDrop(drop)
-        if drop and not drop.guaranteed then
-            -- During gameplay APIs are warm, so ResolveCollectibleID should work.
-            -- Use GetTryCountKey as fallback to guarantee tracking even if API fails.
-            local tryKey = ResolveCollectibleID(drop) or GetTryCountKey(drop)
-            if tryKey then
-                -- Store this character's contribution
-                charSnapshot[tryKey] = thisCharTotal
-
-                -- Sum across ALL characters
-                local globalTotal = 0
-                for _, snap in pairs(snapshots) do
-                    local charVal = snap[tryKey]
-                    if charVal and charVal > 0 then
-                        globalTotal = globalTotal + charVal
-                    end
-                end
-
-                -- Always set to globalTotal (authoritative source)
-                WarbandNexus:SetTryCount(drop.type, tryKey, globalTotal)
-
-                -- Quest-item mounts (Mechagon/Stonevault): mirror to mount so plan card shows same count
-                if drop.type == "item" and drop.questStarters then
-                    for i = 1, #drop.questStarters do
-                        local qs = drop.questStarters[i]
-                        if qs.type == "mount" and qs.itemID then
-                            local mountKey1 = ResolveCollectibleID(qs)
-                            local mountKey2 = qs.itemID
-                            WarbandNexus:SetTryCount("mount", mountKey1 or mountKey2, globalTotal)
-                            if mountKey1 and mountKey1 ~= mountKey2 then
-                                WarbandNexus:SetTryCount("mount", mountKey2, globalTotal)
-                            end
-                            -- So GetTryCount("mount", mountID or itemID) can fall back to item count
-                            questStarterMountToSourceItemID[mountKey1 or mountKey2] = drop.itemID
-                            if mountKey1 and mountKey1 ~= mountKey2 then
-                                questStarterMountToSourceItemID[mountKey2] = drop.itemID
-                            end
-                        end
-                    end
-                end
-
-                local itemLink = GetDropItemLink(drop)
-                TryChat(format("|cff9370DB[WN-Counter]|r |cff00ccff(Statistics)|r " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), globalTotal, itemLink))
-            end
-        end
-        if drop and drop.questStarters then
-            for i = 1, #drop.questStarters do
-                local qs = drop.questStarters[i]
-                ProcessSeedDrop(qs)
-            end
-        end
-    end
-
-    for i = 1, #drops do
-        ProcessSeedDrop(drops[i])
-    end
-
-    -- Notify UI to refresh try counts on cards
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_reseeded" })
-    end
-end
-
 ---True if NPC drop entry has statisticIds at NPC level or on any drop row (per-difficulty stats).
 ---@param npcData table
 ---@return boolean
@@ -1963,6 +1875,210 @@ local function ResolveReseedStatIdsForDrop(drop, npcStatIds)
     return npcStatIds
 end
 
+---Sum GetStatistic values for a list of statistic IDs (LFR+N+H+M columns, deduped upstream).
+---@param statIds table|nil
+---@return number
+local function SumStatisticTotalsFromIds(statIds)
+    if not statIds or #statIds == 0 then return 0 end
+    local GetStat = GetStatistic
+    if not GetStat then return 0 end
+    local total = 0
+    for i = 1, #statIds do
+        local sid = statIds[i]
+        local val = GetStat(sid)
+        local num
+        if val and not (issecretvalue and issecretvalue(val)) then
+            local s = string.gsub(tostring(val), "[^%d]", "")
+            if s ~= "" then
+                num = tonumber(s)
+            end
+        end
+        if num and num > 0 then
+            total = total + num
+        end
+    end
+    return total
+end
+
+---Rebuild merge index: one bucket per (tcType, tryKey) with union of all statisticIds from every
+---npcDropDB row that maps to that collectible (e.g. G.M.O.D.: Jaina LFR + Mekkatorque N/H/M).
+local function RebuildMergedStatisticSeedIndex()
+    wipe(mergedStatSeedByTypeKey)
+    wipe(mergedStatSeedGroupList)
+    wipe(statSeedTryKeyPending)
+    if not npcDropDB then return end
+    for _, npcData in pairs(npcDropDB) do
+        local npcStatIds = npcData.statisticIds
+        for idx = 1, #npcData do
+            local drop = npcData[idx]
+            if type(drop) == "table" and drop.type and drop.itemID and not drop.guaranteed then
+                local sids = ResolveReseedStatIdsForDrop(drop, npcStatIds)
+                if sids and #sids > 0 then
+                    local tcType, tryKey = GetTryCountTypeAndKey(drop)
+                    if tcType and tryKey then
+                        local mk = tcType .. "\0" .. tostring(tryKey)
+                        local bucket = mergedStatSeedByTypeKey[mk]
+                        if not bucket then
+                            bucket = {
+                                tcType = tcType,
+                                tryKey = tryKey,
+                                idSet = {},
+                                drops = {},
+                            }
+                            mergedStatSeedByTypeKey[mk] = bucket
+                            mergedStatSeedGroupList[#mergedStatSeedGroupList + 1] = bucket
+                        end
+                        for j = 1, #sids do
+                            bucket.idSet[sids[j]] = true
+                        end
+                        bucket.drops[#bucket.drops + 1] = drop
+                    else
+                        statSeedTryKeyPending[#statSeedTryKeyPending + 1] = {
+                            drop = drop,
+                            npcStatIds = npcStatIds,
+                        }
+                    end
+                end
+            end
+        end
+    end
+    for b = 1, #mergedStatSeedGroupList do
+        local bucket = mergedStatSeedGroupList[b]
+        local arr = {}
+        for sid in pairs(bucket.idSet) do
+            arr[#arr + 1] = sid
+        end
+        table.sort(arr)
+        bucket.statIds = arr
+        bucket.idSet = nil
+    end
+end
+
+---Prefer merged cross-difficulty / cross-NPC stat ID set; else per-drop + npc fallback (ProcessMissedDrops).
+---@param drop table
+---@param resolvedDropStatIds table|nil
+---@return table|nil statIds
+local function ResolveMergedStatisticIdsForDrop(drop, resolvedDropStatIds)
+    local tcType, tryKey = GetTryCountTypeAndKey(drop)
+    if tcType and tryKey then
+        local mk = tcType .. "\0" .. tostring(tryKey)
+        local bucket = mergedStatSeedByTypeKey[mk]
+        if bucket and bucket.statIds and #bucket.statIds > 0 then
+            return bucket.statIds
+        end
+    end
+    if resolvedDropStatIds and #resolvedDropStatIds > 0 then
+        return resolvedDropStatIds
+    end
+    return nil
+end
+
+--- Remove statisticSnapshots rows with no matching db.global.characters entry (deleted alts).
+--- Prevents inflated global totals when summing snapshots across characters.
+local function PruneStatisticSnapshotsOrphanKeys()
+    if not EnsureDB() then return end
+    local db = WarbandNexus.db.global
+    local snaps = db.statisticSnapshots
+    local chars = db.characters
+    if not snaps or not chars or type(snaps) ~= "table" or type(chars) ~= "table" then return end
+    local nChar = 0
+    for _ in pairs(chars) do
+        nChar = nChar + 1
+    end
+    if nChar == 0 then return end
+    local removed = 0
+    for ck in pairs(snaps) do
+        if not chars[ck] then
+            snaps[ck] = nil
+            removed = removed + 1
+        end
+    end
+    if removed > 0 then
+        WarbandNexus:Debug("TryCounter: Pruned %d orphan statisticSnapshots (no characters entry)", removed)
+    end
+end
+
+---Re-read WoW Statistics for specific drops and update try counts.
+---Uses merged stat columns per collectible (all difficulties / all NPC sources). Never decreases stored count.
+---@param drops table Array of drop entries to re-seed
+---@param resolvedDropStatIds table|nil From ResolveReseedStatIdsForDrop(drop, npc.statisticIds) for this row
+local function ReseedStatisticsForDrops(drops, resolvedDropStatIds)
+    if not drops or #drops == 0 then return end
+    if not EnsureDB() then return end
+    if not GetStatistic then return end
+
+    RebuildMergedStatisticSeedIndex()
+
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+
+    local snapshots = WarbandNexus.db.global.statisticSnapshots
+    if not snapshots then
+        WarbandNexus.db.global.statisticSnapshots = {}
+        snapshots = WarbandNexus.db.global.statisticSnapshots
+    end
+    if not snapshots[charKey] then
+        snapshots[charKey] = {}
+    end
+    local charSnapshot = snapshots[charKey]
+
+    local function ProcessSeedDrop(drop, statListOverride)
+        if drop and not drop.guaranteed then
+            local statList = statListOverride or ResolveMergedStatisticIdsForDrop(drop, resolvedDropStatIds)
+            if not statList or #statList == 0 then return end
+            local thisCharTotal = SumStatisticTotalsFromIds(statList)
+            local tcType, tryKey = GetTryCountTypeAndKey(drop)
+            if tryKey and tcType then
+                charSnapshot[tryKey] = thisCharTotal
+                local globalTotal = 0
+                for _, snap in pairs(snapshots) do
+                    local charVal = snap[tryKey]
+                    if charVal and charVal > 0 then
+                        globalTotal = globalTotal + charVal
+                    end
+                end
+                local currentCount = WarbandNexus:GetTryCount(tcType, tryKey) or 0
+                local newCount = globalTotal > currentCount and globalTotal or currentCount
+                WarbandNexus:SetTryCount(tcType, tryKey, newCount)
+
+                if drop.type == "item" and drop.questStarters then
+                    for i = 1, #drop.questStarters do
+                        local qs = drop.questStarters[i]
+                        if qs.type == "mount" and qs.itemID then
+                            local mountKey1 = ResolveCollectibleID(qs)
+                            local mountKey2 = qs.itemID
+                            local mk = mountKey1 or mountKey2
+                            WarbandNexus:SetTryCount("mount", mk, math.max(newCount, WarbandNexus:GetTryCount("mount", mk) or 0))
+                            if mountKey1 and mountKey1 ~= mountKey2 then
+                                WarbandNexus:SetTryCount("mount", mountKey2, math.max(newCount, WarbandNexus:GetTryCount("mount", mountKey2) or 0))
+                            end
+                            questStarterMountToSourceItemID[mk] = drop.itemID
+                            if mountKey1 and mountKey1 ~= mountKey2 then
+                                questStarterMountToSourceItemID[mountKey2] = drop.itemID
+                            end
+                        end
+                    end
+                end
+
+            end
+        end
+        if drop and drop.questStarters then
+            for i = 1, #drop.questStarters do
+                local qs = drop.questStarters[i]
+                ProcessSeedDrop(qs, nil)
+            end
+        end
+    end
+
+    for i = 1, #drops do
+        ProcessSeedDrop(drops[i], nil)
+    end
+
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_reseeded" })
+    end
+end
+
 ---@param drops table
 ---@param npcStatIds table|nil
 ---@return boolean
@@ -1984,11 +2100,10 @@ end
 ---repeatable (farm) — then manual +attemptTimes (stats are not per-corpse tries).
 ---@param drops table Array of drop entries that were NOT found in loot
 ---@param statIds table|nil Optional statisticIds from the NPC source
----@param options table|nil Optional { deferFishingMessage = true, attemptTimes = number }
+---@param options table|nil Optional { attemptTimes = number }
 local function ProcessMissedDrops(drops, statIds, options)
     if not drops or #drops == 0 then return end
     if not EnsureDB() then return end
-    local deferFishing = options and options.deferFishingMessage
     local attemptTimes = options and tonumber(options.attemptTimes) or 1
     if attemptTimes < 1 then attemptTimes = 1 end
 
@@ -2039,30 +2154,13 @@ local function ProcessMissedDrops(drops, statIds, options)
             if drop and not drop.guaranteed then
                 local tcType, tryKey = GetTryCountTypeAndKey(drop)
                 if tryKey then
-                    local itemLink = GetDropItemLink(drop)
-                    local chatFmt = "|cff9370DB[WN-Counter]|r " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s")
-                    local function ScheduleTryChatLine(newCount, stepIndex, totalSteps)
-                        local msg = format(chatFmt, newCount, itemLink)
-                        if deferFishing then
-                            C_Timer.After(0.05 * (stepIndex - 1), function()
-                                TryChat(msg)
-                            end)
-                        elseif totalSteps > 1 then
-                            C_Timer.After(0.02 * (stepIndex - 1), function()
-                                TryChat(msg)
-                            end)
-                        else
-                            TryChat(msg)
-                        end
-                    end
-                    -- One DB +1 and one chat line per corpse (AoE); avoids a single bulk message.
+                    -- Increments only (no per-attempt chat — use UI / plans; milestones still print via Obtained paths).
                     for step = 1, mult do
                         local newCount = WN:AddTryCountDelta(tcType, tryKey, 1)
                         MirrorQuestStarterMountsToCount(drop, newCount)
                         if IsTryCounterLootDebugEnabled(WN) and mult > 1 then
                             TryCounterLootDebug(WN, "count", "try +1 step %d/%d (total %d)", step, mult, newCount)
                         end
-                        ScheduleTryChatLine(newCount, step, mult)
                     end
                 end
             end
@@ -2479,18 +2577,9 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
 end
 
 -- =====================================================================
--- INSTANCE ENTRY NOTIFICATION (Midnight: tooltip can't show drops inside)
--- When a player enters a dungeon or raid, print collectible drops to chat
--- so they know which bosses drop mounts/pets/toys before engaging.
--- Uses Encounter Journal API (after Blizzard_EncounterJournal load):
---   EJ_GetInstanceForMap(uiMapID) or EJ_GetCurrentInstance() → journalInstanceID
---   EJ_GetEncounterInfoByIndex(idx, jid) plus EJ_GetEncounterInfo(journalEncounterID) per row
---     TryCounterResolveDungeonEncounterFromEJIndex uses EJ_GetEncounterInfo(journalID) for dungeonEncounterID.
+-- INSTANCE ENTRY (Encounter Journal helpers kept for debug / TryCounterShowInstanceDrops if invoked manually)
+-- Automatic chat dump on zone-in was removed — it spammed chat; use the addon UI or /wn check.
 -- =====================================================================
-
--- Track the last instance we notified for (avoid spam on /reload inside same instance)
-local lastNotifiedInstanceID = nil   -- from GetInstanceInfo(), used to avoid re-scheduling
-local lastShownJournalInstanceID = nil -- from journal instance ID (EJ_GetInstanceForMap / EJ_GetCurrentInstance)
 
 local function TryCounterLoadEncounterJournal()
     if InCombatLockdown() then return end
@@ -2577,8 +2666,19 @@ local function TryCounterGetJournalInstanceID()
     return jid
 end
 
----PLAYER_ENTERING_WORLD handler (detect instance entry and print collectible drops)
+---PLAYER_ENTERING_WORLD handler (instance difficulty cache, fishing reset, statistics sync)
 function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadingUi)
+    -- Statistics + Rarity: re-sync when character changes or UI reload (not every zone hop).
+    if tryCounterReady then
+        local k = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        if k then
+            if k ~= lastSyncScheduleCharKey or isReloadingUi then
+                lastSyncScheduleCharKey = k
+                SchedulePerCharacterStatisticsAndRaritySync()
+            end
+        end
+    end
+
     if not IsAutoTryCounterEnabled() then return end
 
     -- Refresh safe map cache on zone transitions (login, reload, instance entry/exit)
@@ -2590,8 +2690,6 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     if not inInstance then
         tryCounterInstanceDiffCache.instanceID = nil
         tryCounterInstanceDiffCache.difficultyID = nil
-        lastNotifiedInstanceID = nil
-        lastShownJournalInstanceID = nil
         for guid, data in pairs(recentKills) do
             if data.isEncounter then
                 recentKills[guid] = nil
@@ -2626,48 +2724,6 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     fishingCtx.active = false
     fishingCtx.castTime = 0
     if fishingCtx.resetTimer then fishingCtx.resetTimer:Cancel() fishingCtx.resetTimer = nil end
-
-    -- Only notify for dungeons and raids (not arenas, pvp, scenarios)
-    if instanceType ~= "party" and instanceType ~= "raid" then return end
-
-    -- Get instance ID to avoid re-notifying on /reload inside same instance.
-    -- instanceID (8th return) can be 0 in some dungeons/Timewalking; only skip when we've already notified for this ID.
-    local _, _, _, _, _, _, _, instanceID = GetInstanceInfo()
-    if instanceID and instanceID ~= 0 and instanceID == lastNotifiedInstanceID then return end
-    if instanceID and instanceID ~= 0 then
-        lastNotifiedInstanceID = instanceID
-    end
-
-    -- Delay to let the instance fully load and avoid combat lockdown issues.
-    -- T+4s: deferred past DataServices (T+0.5..3s) to avoid competing for frame time.
-    C_Timer.After(4, function()
-        local WN = WarbandNexus
-        if not WN or not WN.Print then return end
-
-        TryCounterLoadEncounterJournal()
-
-        if not TryCounterEJ_HasCoreAPIs() then return end
-        local journalInstanceID = TryCounterGetJournalInstanceID()
-        -- EJ can return 0 for some instances (e.g. Mechagon, Timewalking) until fully ready; retry once after 2s
-        if not journalInstanceID or journalInstanceID == 0 then
-            C_Timer.After(2, function()
-                if not WN or not WN.Print then return end
-                local inInst = IsInInstance()
-                if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
-                if not inInst then return end
-                TryCounterLoadEncounterJournal()
-                local jid = TryCounterGetJournalInstanceID()
-                if jid and jid ~= 0 and jid ~= lastShownJournalInstanceID then
-                    lastShownJournalInstanceID = jid
-                    TryCounterShowInstanceDrops(jid)
-                end
-            end)
-            return
-        end
-        if journalInstanceID == lastShownJournalInstanceID then return end
-        lastShownJournalInstanceID = journalInstanceID
-        TryCounterShowInstanceDrops(journalInstanceID)
-    end)
 end
 
 ---When debugTryCounterLoot is on: immediate GetInstanceInfo + cache snapshot; deferred EJ walk vs encounterDB/npcDropDB with FilterDropsByDifficulty (same as loot path).
@@ -4365,11 +4421,19 @@ function WarbandNexus:ProcessNPCLoot()
         if diffSkipped then
             local itemLink = GetDropItemLink(diffSkipped.drop)
             local currentLabel = DIFFICULTY_ID_TO_LABELS[encounterDiffID] or tostring(encounterDiffID or "?")
-            TryChat(format(
-                "|cff9370DB[WN-Counter]|r |cff888888" ..
-                ((ns.L and ns.L["TRYCOUNTER_DIFFICULTY_SKIP"]) or "Skipped: %s requires %s difficulty (current: %s)"),
-                itemLink, diffSkipped.required, currentLabel
-            ))
+            local skipDedupKey = (matchedEncounterID and ("diffskip_enc_" .. tostring(matchedEncounterID)))
+                or (matchedNpcID and ("diffskip_npc_" .. tostring(matchedNpcID)))
+                or ("diffskip_item_" .. tostring(diffSkipped.drop and diffSkipped.drop.itemID or 0))
+            local tSkip = GetTime()
+            if skipDedupKey ~= lastDifficultySkipChatKey or (tSkip - lastDifficultySkipChatTime) >= SKIP_CHAT_DEDUP_SEC then
+                lastDifficultySkipChatKey = skipDedupKey
+                lastDifficultySkipChatTime = tSkip
+                TryChat(format(
+                    "|cff9370DB[WN-Counter]|r |cff888888" ..
+                    ((ns.L and ns.L["TRYCOUNTER_DIFFICULTY_SKIP"]) or "Skipped: %s requires %s difficulty (current: %s)"),
+                    itemLink, diffSkipped.required, currentLabel
+                ))
+            end
         end
         -- Dedup: same encounter key as successful loot path so ENC delayed / CHAT cannot +1 this kill.
         if matchedEncounterID then
@@ -4470,7 +4534,15 @@ function WarbandNexus:ProcessNPCLoot()
     -- Skip increment if lockout duplicate (GUID + encounter cleanup above still ran).
     if isLockoutSkip then
         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip", "lockout active") end
-        TryChat("|cff9370DB[WN-Counter]|r |cff888888" .. ((ns.L and ns.L["TRYCOUNTER_LOCKOUT_SKIP"]) or "Skipped: daily/weekly lockout active for this NPC."))
+        local lockDedupKey = (matchedEncounterID and ("lockskip_enc_" .. tostring(matchedEncounterID)))
+            or (matchedNpcID and ("lockskip_npc_" .. tostring(matchedNpcID)))
+            or "lockskip_generic"
+        local tLock = GetTime()
+        if lockDedupKey ~= lastLockoutSkipChatKey or (tLock - lastLockoutSkipChatTime) >= SKIP_CHAT_DEDUP_SEC then
+            lastLockoutSkipChatKey = lockDedupKey
+            lastLockoutSkipChatTime = tLock
+            TryChat("|cff9370DB[WN-Counter]|r |cff888888" .. ((ns.L and ns.L["TRYCOUNTER_LOCKOUT_SKIP"]) or "Skipped: daily/weekly lockout active for this NPC."))
+        end
         return
     end
 
@@ -4673,7 +4745,7 @@ function WarbandNexus:ProcessFishingLoot()
         lastTryCountSourceKey = "fishing_open"
         lastTryCountSourceTime = GetTime()
     end
-    ProcessMissedDrops(missed, nil, { deferFishingMessage = true })
+        ProcessMissedDrops(missed, nil)
 end
 
 ---Process loot from container items (Paragon caches, Wriggling Pinnacle Cache, etc.)
@@ -5026,10 +5098,26 @@ end
 --- Called once on login with a delay to let APIs warm up.
 local SEED_BUDGET_MS = 3  -- max milliseconds per batch frame
 
+--- Rarity's AceDB often isn't readable on the same frame as WN login; re-run max-merge after Statistics seed.
+--- `perCharStatSyncSerial` matches SchedulePerCharacterStatisticsAndRaritySync so alt-swaps cancel stale timers.
+local function ScheduleDeferredRarityMountMaxSync(delaySec)
+    local syncSerial = perCharStatSyncSerial
+    delaySec = tonumber(delaySec) or 2
+    C_Timer.After(delaySec, function()
+        if syncSerial ~= perCharStatSyncSerial then return end
+        if not tryCounterReady or not EnsureDB() then return end
+        if WarbandNexus.SyncRarityMountAttemptsMax then
+            WarbandNexus:SyncRarityMountAttemptsMax()
+        end
+    end)
+end
+
 local function SeedFromStatistics()
     if not EnsureDB() then return end
-    local GetStat = GetStatistic
-    if not GetStat then return end
+    if not GetStatistic then return end
+
+    PruneStatisticSnapshotsOrphanKeys()
+    RebuildMergedStatisticSeedIndex()
 
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not charKey then return end
@@ -5048,19 +5136,21 @@ local function SeedFromStatistics()
     end
     local charSnapshot = snapshots[charKey]
 
-    -- One queue row per drop with statisticIds (NPC-level or per-drop): e.g. Jaina seeds Mythic
-    -- Tidestorm vs LFR G.M.O.D. from different Statistics columns.
-    local npcQueue = {}
-    for _, npcData in pairs(npcDropDB) do
-        local npcStatIds = npcData.statisticIds
-        for i = 1, #npcData do
-            local drop = npcData[i]
-            if type(drop) == "table" and drop.type and drop.itemID and not drop.guaranteed then
-                local sids = ResolveReseedStatIdsForDrop(drop, npcStatIds)
-                if sids and #sids > 0 then
-                    npcQueue[#npcQueue + 1] = { drop = drop, statIds = sids }
-                end
-            end
+    -- Merged buckets: one seed per (type, tryKey) with union of all difficulty/NPC statistic columns.
+    -- Plus pending rows where tryKey was nil (journal cold) — same per-drop stat list as before.
+    local seedQueue = {}
+    for i = 1, #mergedStatSeedGroupList do
+        seedQueue[#seedQueue + 1] = { bucket = mergedStatSeedGroupList[i] }
+    end
+    for p = 1, #statSeedTryKeyPending do
+        local pend = statSeedTryKeyPending[p]
+        local sids = ResolveReseedStatIdsForDrop(pend.drop, pend.npcStatIds)
+        if sids and #sids > 0 then
+            seedQueue[#seedQueue + 1] = {
+                drop = pend.drop,
+                statIds = sids,
+                npcStatIds = pend.npcStatIds,
+            }
         end
     end
 
@@ -5072,28 +5162,10 @@ local function SeedFromStatistics()
         if not EnsureDB() then return end
         local batchStart = debugprofilestop()
 
-        while queueIdx <= #npcQueue do
-            local entry = npcQueue[queueIdx]
-            local statIds = entry.statIds
-            local rootDrop = entry.drop
+        while queueIdx <= #seedQueue do
+            local entry = seedQueue[queueIdx]
 
-            local thisCharTotal = 0
-            for i = 1, #statIds do
-                local sid = statIds[i]
-                local val = GetStat(sid)
-                local num
-                if val and not (issecretvalue and issecretvalue(val)) then
-                    local s = string.gsub(tostring(val), "[^%d]", "")
-                    if s ~= "" then
-                        num = tonumber(s)
-                    end
-                end
-                if num and num > 0 then
-                    thisCharTotal = thisCharTotal + num
-                end
-            end
-
-            local function ProcessBatchDrop(drop)
+            local function ProcessBatchDrop(drop, thisCharTotal, npcStatIdsForUnresolved)
                 if not drop.guaranteed then
                     local tcType, tryKey = GetTryCountTypeAndKey(drop)
                     if tryKey then
@@ -5124,19 +5196,28 @@ local function SeedFromStatistics()
                     else
                         unresolvedDrops[#unresolvedDrops + 1] = {
                             drop = drop,
-                            thisCharTotal = thisCharTotal,
+                            npcStatIds = npcStatIdsForUnresolved,
                         }
                     end
                 end
                 if drop and drop.questStarters then
                     for j = 1, #drop.questStarters do
                         local qs = drop.questStarters[j]
-                        ProcessBatchDrop(qs)
+                        ProcessBatchDrop(qs, thisCharTotal, npcStatIdsForUnresolved)
                     end
                 end
             end
 
-            ProcessBatchDrop(rootDrop)
+            if entry.bucket then
+                local b = entry.bucket
+                local thisCharTotal = SumStatisticTotalsFromIds(b.statIds)
+                for di = 1, #b.drops do
+                    ProcessBatchDrop(b.drops[di], thisCharTotal, nil)
+                end
+            else
+                local thisCharTotal = SumStatisticTotalsFromIds(entry.statIds)
+                ProcessBatchDrop(entry.drop, thisCharTotal, entry.npcStatIds)
+            end
 
             queueIdx = queueIdx + 1
 
@@ -5146,7 +5227,6 @@ local function SeedFromStatistics()
             end
         end
 
-        -- All NPCs processed — finalize
         if P then P:StopAsync("SeedFromStatistics") end
         if LT then LT:Complete("trycounts") end
         if seeded > 0 then
@@ -5156,11 +5236,15 @@ local function SeedFromStatistics()
             end
         end
 
-        -- Retry unresolved drops after 10s
+        -- Rarity may load after this batch; two passes catch late `groups.mounts` availability (max never lowers WN).
+        ScheduleDeferredRarityMountMaxSync(2)
+        ScheduleDeferredRarityMountMaxSync(10)
+
         if #unresolvedDrops > 0 then
             WarbandNexus:Debug("TryCounter: %d drops unresolved, retrying in 10s...", #unresolvedDrops)
             C_Timer.After(10, function()
                 if not EnsureDB() then return end
+                RebuildMergedStatisticSeedIndex()
                 local retrySeeded = 0
                 local stillUnresolved = {}
                 for i = 1, #unresolvedDrops do
@@ -5168,7 +5252,9 @@ local function SeedFromStatistics()
                     local drop = uEntry.drop
                     local tcType, tryKey = GetTryCountTypeAndKey(drop)
                     if tryKey then
-                        charSnapshot[tryKey] = uEntry.thisCharTotal
+                        local statList = ResolveMergedStatisticIdsForDrop(drop, ResolveReseedStatIdsForDrop(drop, uEntry.npcStatIds))
+                        local t = SumStatisticTotalsFromIds(statList)
+                        charSnapshot[tryKey] = t
                         local globalTotal = 0
                         for _, snap in pairs(snapshots) do
                             local charVal = snap[tryKey]
@@ -5191,20 +5277,24 @@ local function SeedFromStatistics()
                         WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
                     end
                 end
+                ScheduleDeferredRarityMountMaxSync(2)
 
                 if #stillUnresolved > 0 then
                     WarbandNexus:Debug("TryCounter: %d still unresolved, final retry in 30s...", #stillUnresolved)
                     C_Timer.After(30, function()
                         if not EnsureDB() then return end
+                        RebuildMergedStatisticSeedIndex()
                         local finalSeeded = 0
                         local snaps = WarbandNexus.db.global.statisticSnapshots
-                        for i = 1, #stillUnresolved do
-                            local fEntry = stillUnresolved[i]
+                        for j = 1, #stillUnresolved do
+                            local fEntry = stillUnresolved[j]
                             local drop = fEntry.drop
                             local tcType, finalKey = GetTryCountTypeAndKey(drop)
                             if finalKey and snaps then
+                                local statList = ResolveMergedStatisticIdsForDrop(drop, ResolveReseedStatIdsForDrop(drop, fEntry.npcStatIds))
+                                local t = SumStatisticTotalsFromIds(statList)
                                 if snaps[charKey] then
-                                    snaps[charKey][finalKey] = fEntry.thisCharTotal
+                                    snaps[charKey][finalKey] = t
                                 end
                                 local total = 0
                                 for _, snap in pairs(snaps) do
@@ -5224,6 +5314,7 @@ local function SeedFromStatistics()
                                 WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
                             end
                         end
+                        ScheduleDeferredRarityMountMaxSync(2)
                     end)
                 end
             end)
@@ -5231,6 +5322,25 @@ local function SeedFromStatistics()
     end
 
     ProcessBatch()
+end
+
+--- Schedule Statistics seed + Rarity max-merge for the current character (10s login delay; Rarity pass deferred so addon DB is up).
+--- Serial token cancels superseded timers when the user swaps alts quickly or PEW fires twice.
+local function SchedulePerCharacterStatisticsAndRaritySync()
+    perCharStatSyncSerial = perCharStatSyncSerial + 1
+    local serial = perCharStatSyncSerial
+    C_Timer.After(10, function()
+        if serial ~= perCharStatSyncSerial then return end
+        if not tryCounterReady or not EnsureDB() then return end
+        RebuildMergedStatisticSeedIndex()
+        SeedFromStatistics()
+    end)
+    C_Timer.After(18, function()
+        if serial ~= perCharStatSyncSerial then return end
+        if WarbandNexus.SyncRarityMountAttemptsMax then
+            WarbandNexus:SyncRarityMountAttemptsMax()
+        end
+    end)
 end
 
 -- =====================================================================
@@ -5462,6 +5572,7 @@ function WarbandNexus:RebuildTrackDB()
 
     -- Rebuild O(1) lookup indices
     BuildReverseIndices()
+    RebuildMergedStatisticSeedIndex()
 end
 
 -- =====================================================================
@@ -5509,6 +5620,7 @@ function WarbandNexus:InitializeTryCounter()
     -- Build reverse lookup indices for O(1) Is*Collectible() queries.
     -- Must run AFTER DB references are loaded and trackDB is merged.
     BuildReverseIndices()
+    RebuildMergedStatisticSeedIndex()
 
     -- Merge previously discovered lockout quests from SavedVariables
     MergeDiscoveredLockoutQuests()
@@ -5555,20 +5667,13 @@ function WarbandNexus:InitializeTryCounter()
         ResolveBatch()
     end)
 
-    -- Seed try counts from WoW Statistics API.
-    -- Mount/Pet journal APIs may not resolve itemID→mountID/speciesID immediately.
-    -- Only increases counts - never decreases. Safe to run every login.
-    -- Delayed 10s (absolute ~T+11.5s) — gives pre-resolve (+5s) ~5s to complete.
-    C_Timer.After(10, SeedFromStatistics)
-
-    -- Optional: merge mount attempt totals from a third-party collector addon (global + SavedVariables shape).
-    -- Two delayed passes (early + late load order); silent if absent.
-    C_Timer.After(2, function()
-        WarbandNexus:ImportLegacyMountTrackerAttempts()
-    end)
-    C_Timer.After(12, function()
-        WarbandNexus:ImportLegacyMountTrackerAttempts()
-    end)
+    -- Per-character Statistics seed + Rarity max overlay (PLAYER_ENTERING_WORLD also schedules on alt/reload).
+    -- Delayed 10s/11s — after pre-resolve (+5s) warms mount/pet IDs.
+    SchedulePerCharacterStatisticsAndRaritySync()
+    local kSched = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if kSched then
+        lastSyncScheduleCharKey = kSched
+    end
 
     -- Sync lockout state with server quest flags (clean stale + pre-populate).
     -- Delayed 2s to ensure quest log data is available after login/reload.
@@ -5608,6 +5713,45 @@ function WarbandNexus:InitializeTryCounter()
     end)
 
     tryCounterInitializing = false
+end
+
+---Debug: list merged Statistics-ID buckets for mounts (cross-difficulty / cross-NPC merge). Requires profile.debugMode.
+function WarbandNexus:TryCounterAuditMountStatisticBuckets()
+    if not self.db or not self.db.profile or not self.db.profile.debugMode then
+        if self.Print then
+            self:Print("|cffff6600[WN]|r Enable debug first: |cff00ccff/wn debug|r")
+        end
+        return
+    end
+    if not tryCounterReady then
+        if self.Print then
+            self:Print("|cffff6600[WN]|r Try counter not ready yet.")
+        end
+        return
+    end
+    RebuildMergedStatisticSeedIndex()
+    local n = 0
+    local multi = 0
+    for i = 1, #mergedStatSeedGroupList do
+        local b = mergedStatSeedGroupList[i]
+        if b.tcType == "mount" then
+            n = n + 1
+            local sidc = b.statIds and #b.statIds or 0
+            if sidc > 1 then
+                multi = multi + 1
+            end
+            local name = (b.drops[1] and b.drops[1].name) or "?"
+            if self.Print then
+                self:Print(format(
+                    "  |cffffd100mount|r key=%s |cff888888statIds=%d drops=%d|r %s",
+                    tostring(b.tryKey), sidc, b.drops and #b.drops or 0, name
+                ))
+            end
+        end
+    end
+    if self.Print then
+        self:Print(format("|cff9370DB[WN]|r Mount statistic buckets: |cffffffff%d|r (multi-column merge: |cffffffff%d|r)", n, multi))
+    end
 end
 
 -- =====================================================================
@@ -5957,16 +6101,142 @@ local function ResolveMountTryKeyFromItemId(itemId)
     return itemId
 end
 
---- One-time mount attempt merge: WN count becomes WN + external attempts (max baseline at mountKey vs itemId).
---- Runs once per account (`legacyMountTrackerSeedComplete`); silent if tracker missing or seed done.
+--- Apply one Rarity-style row: max(WN mount keys, external attempts). Caller should load collections if needed.
+---@return boolean changed
+local function ApplyRarityMountAttemptsMaxToWN(self, itemId, extAttempts)
+    if not itemId or itemId < 1 or not extAttempts or extAttempts < 1 then
+        return false
+    end
+    local mountKey = ResolveMountTryKeyFromItemId(itemId)
+    local wnA = self:GetTryCount("mount", mountKey) or 0
+    local wnB = (mountKey ~= itemId) and (self:GetTryCount("mount", itemId) or 0) or 0
+    local base = wnA
+    if wnB > base then
+        base = wnB
+    end
+    local total = base
+    if extAttempts > total then
+        total = extAttempts
+    end
+    if total > base then
+        self:SetTryCount("mount", mountKey, total)
+        if mountKey ~= itemId then
+            self:SetTryCount("mount", itemId, total)
+        end
+        return true
+    end
+    return false
+end
+
+--- Persist Rarity itemID → attempts in SavedVariables so users can disable Rarity and still restore via /wn rarityrestore.
+local function MergeRarityProfileMountsIntoWnBackup(mounts)
+    if not EnsureDB() or type(mounts) ~= "table" then
+        return
+    end
+    local tc = WarbandNexus.db.global.tryCounts
+    if not tc.rarityImportBackup then
+        tc.rarityImportBackup = {}
+    end
+    local b = tc.rarityImportBackup
+    for key, entry in pairs(mounts) do
+        if type(entry) == "table" and type(key) == "string" and key ~= "name" and entry.enabled ~= false then
+            local itemId = tonumber(entry.itemId) or tonumber(entry.itemID)
+            local attempts = tonumber(entry.attempts) or 0
+            if itemId and itemId > 0 and attempts > 0 then
+                b[itemId] = math.max(b[itemId] or 0, attempts)
+            end
+        end
+    end
+    tc.rarityImportBackupAt = time()
+end
+
+--- Re-apply stored backup (no Rarity addon required). Safe to run after Rarity is removed.
 ---@return number updated
 ---@return number scanned
-function WarbandNexus:ImportLegacyMountTrackerAttempts()
+function WarbandNexus:RestoreRarityImportBackup()
     if not EnsureDB() then
         return 0, 0
     end
-    local tc = WarbandNexus.db.global.tryCounts
-    if tc.legacyMountTrackerSeedComplete then
+    local b = WarbandNexus.db.global.tryCounts.rarityImportBackup
+    if type(b) ~= "table" then
+        return 0, 0
+    end
+    if ns.EnsureBlizzardCollectionsLoaded then
+        ns.EnsureBlizzardCollectionsLoaded()
+    end
+    local updated = 0
+    local scanned = 0
+    for itemIdRaw, attRaw in pairs(b) do
+        local itemId = tonumber(itemIdRaw)
+        local attempts = tonumber(attRaw)
+        if itemId and itemId > 0 and attempts and attempts > 0 then
+            scanned = scanned + 1
+            if ApplyRarityMountAttemptsMaxToWN(self, itemId, attempts) then
+                updated = updated + 1
+            end
+        end
+    end
+    if updated > 0 and self.SendMessage then
+        self:SendMessage("WN_PLANS_UPDATED", { action = "legacy_mount_tracker_import" })
+    end
+    return updated, scanned
+end
+
+--- One-time handoff: try to load Rarity, merge several times (late AceDB init), refresh backup each successful read.
+function WarbandNexus:ImportRarityMountHandoff()
+    if not EnsureDB() then
+        return
+    end
+    if InCombatLockdown() then
+        self:Print("|cffff6600[WN]|r Exit combat, then run |cff00ccff/wn rarityimport|r again.")
+        return
+    end
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "Rarity")
+    elseif LoadAddOn then
+        pcall(LoadAddOn, "Rarity")
+    end
+
+    local delays = { 0.2, 1.0, 3.0, 8.0 }
+    local pass = 0
+    for i = 1, #delays do
+        C_Timer.After(delays[i], function()
+            if not EnsureDB() then
+                return
+            end
+            WarbandNexus:SyncRarityMountAttemptsMax()
+            pass = pass + 1
+            if pass == #delays then
+                -- Re-apply saved backup so mount journal / keys are consistent even if earlier passes were cold.
+                WarbandNexus:RestoreRarityImportBackup()
+                local bn = 0
+                local bk = WarbandNexus.db.global.tryCounts.rarityImportBackup
+                if type(bk) == "table" then
+                    for _ in pairs(bk) do
+                        bn = bn + 1
+                    end
+                end
+                if bn > 0 then
+                    self:Print(string.format(
+                        "|cff00ff00[WN]|r Rarity handoff complete. |cffffffff%d|r mount itemID(s) copied into WN backup + try counts (max). You can disable Rarity. If a count looks wrong: |cff00ccff/wn rarityrestore|r.|r",
+                        bn
+                    ))
+                else
+                    self:Print("|cffff6600[WN]|r No Rarity mount data found. Enable the |cffffcc00Rarity|r addon in Esc → AddOns, |cff00ccff/reload|r, then |cff00ccff/wn rarityimport|r.|r")
+                end
+            end
+        end)
+    end
+    self:Print("|cff9370DB[WN]|r Rarity import running (multiple passes). Wait ~8s for the summary line.|r")
+end
+
+--- Merge Rarity (or same-shape tracker) mount attempts using **max**, not sum — same boss kills as Statistics/Rarity must not double-count.
+--- Runs on every schedule pass (login / alt / reload) so profile stays aligned with WN try counts.
+--- On every successful read, merges into db.global.tryCounts.rarityImportBackup for offline restore.
+---@return number updated rows touched
+---@return number scanned rows with attempts > 0
+function WarbandNexus:SyncRarityMountAttemptsMax()
+    if not EnsureDB() then
         return 0, 0
     end
 
@@ -5986,25 +6256,6 @@ function WarbandNexus:ImportLegacyMountTrackerAttempts()
     local updated = 0
     local scanned = 0
 
-    local function applyOneMountSeed(itemId, extAttempts)
-        if not itemId or itemId < 1 or not extAttempts or extAttempts < 1 then
-            return
-        end
-        local mountKey = ResolveMountTryKeyFromItemId(itemId)
-        local wnA = self:GetTryCount("mount", mountKey) or 0
-        local wnB = (mountKey ~= itemId) and (self:GetTryCount("mount", itemId) or 0) or 0
-        local base = wnA
-        if wnB > base then
-            base = wnB
-        end
-        local total = base + extAttempts
-        self:SetTryCount("mount", mountKey, total)
-        if mountKey ~= itemId then
-            self:SetTryCount("mount", itemId, total)
-        end
-        updated = updated + 1
-    end
-
     for key, entry in pairs(mounts) do
         if type(entry) == "table" and type(key) == "string" and key ~= "name" then
             if entry.enabled ~= false then
@@ -6012,13 +6263,17 @@ function WarbandNexus:ImportLegacyMountTrackerAttempts()
                 local attempts = tonumber(entry.attempts) or 0
                 if itemId and itemId > 0 and attempts > 0 then
                     scanned = scanned + 1
-                    applyOneMountSeed(itemId, attempts)
+                    if ApplyRarityMountAttemptsMaxToWN(self, itemId, attempts) then
+                        updated = updated + 1
+                    end
                 end
             end
         end
     end
 
     if scanned > 0 then
+        MergeRarityProfileMountsIntoWnBackup(mounts)
+        local tc = WarbandNexus.db.global.tryCounts
         tc.legacyMountTrackerSeedComplete = true
     end
 
@@ -6027,6 +6282,11 @@ function WarbandNexus:ImportLegacyMountTrackerAttempts()
     end
 
     return updated, scanned
+end
+
+---@deprecated Use SyncRarityMountAttemptsMax; kept for slash/API compatibility.
+function WarbandNexus:ImportLegacyMountTrackerAttempts()
+    return self:SyncRarityMountAttemptsMax()
 end
 
 function WarbandNexus:DebugResetLegacyMountTrackerSeed()
@@ -6038,7 +6298,7 @@ function WarbandNexus:DebugResetLegacyMountTrackerSeed()
         return
     end
     WarbandNexus.db.global.tryCounts.legacyMountTrackerSeedComplete = false
-    self:Print("|cff00ff00[WN]|r Legacy mount-tracker seed cleared — re-import on next load if that addon is enabled.")
+    self:Print("|cff00ff00[WN]|r Seed flag cleared (informational). Rarity merge does not use this flag — use |cff00ccff/wn raritysync|r with Rarity enabled, or wait for post-login sync.")
 end
 
 function WarbandNexus:DebugLegacyMountTrackerImportPreview()
@@ -6090,6 +6350,11 @@ end
 -- NAMESPACE EXPORT
 -- =====================================================================
 
+--- Called from DatabaseCleanup (delayed) to drop snapshot rows for removed characters.
+function WarbandNexus:PruneOrphanStatisticSnapshots()
+    PruneStatisticSnapshotsOrphanKeys()
+end
+
 ns.TryCounterService = {
     GetTryCount = function(_, ct, id) return WarbandNexus:GetTryCount(ct, id) end,
     SetTryCount = function(_, ct, id, c) return WarbandNexus:SetTryCount(ct, id, c) end,
@@ -6109,4 +6374,8 @@ ns.TryCounterService = {
     LookupItem = function(_, iid, cb) return WarbandNexus:LookupItem(iid, cb) end,
     RebuildTrackDB = function() return WarbandNexus:RebuildTrackDB() end,
     ImportLegacyMountTrackerAttempts = function() return WarbandNexus:ImportLegacyMountTrackerAttempts() end,
+    SyncRarityMountAttemptsMax = function() return WarbandNexus:SyncRarityMountAttemptsMax() end,
+    ImportRarityMountHandoff = function() return WarbandNexus:ImportRarityMountHandoff() end,
+    RestoreRarityImportBackup = function() return WarbandNexus:RestoreRarityImportBackup() end,
+    TryCounterAuditMountStatisticBuckets = function() return WarbandNexus:TryCounterAuditMountStatisticBuckets() end,
 }

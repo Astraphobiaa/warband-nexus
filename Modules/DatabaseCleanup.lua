@@ -131,6 +131,12 @@ function WarbandNexus:CleanupDatabase()
         self.db.global.warbandBank.items = nil
         cleaned.deprecatedStorage = cleaned.deprecatedStorage + 1
     end
+
+    -- Step 6: Try Counter — remove statistic snapshot rows for characters no longer in db (deleted alts).
+    -- TryCounterService registers this method after DatabaseCleanup loads; Core delays cleanup 10s so it exists.
+    if self.PruneOrphanStatisticSnapshots then
+        self:PruneOrphanStatisticSnapshots()
+    end
     
     -- Mark cleanup as done for this session
     if not self.db.profile.lastCleanupSession then

@@ -166,6 +166,10 @@ local defaults = {
         
         -- Gold settings
         goldReserve = 0,           -- Minimum gold to keep when depositing
+
+        -- When true (default), request /played data on login to store per-character time played (Statistics tab).
+        -- Disabling avoids the internal RequestTimePlayed() call (no chat spam risk from our request).
+        requestPlayedTimeOnLogin = true,
         
         -- Tab filtering (true = ignored)
         ignoredTabs = {
@@ -347,10 +351,10 @@ local defaults = {
             throttleSeconds = 300,
         },
         
-        -- Window size persistence
+        -- Window size persistence (wider default so wide tabs e.g. Professions need less horizontal scroll)
         window = {
-            width = 700,
-            height = 550,
+            width = 920,
+            height = 600,
         },
         -- Plans Tracker popup position (floating window)
         plansTracker = {
@@ -367,8 +371,10 @@ local defaults = {
             pet = {},
             toy = {},
             illusion = {},
-            -- One-time merge of third-party mount attempt totals; after true, import is skipped
+            -- True after a successful Rarity-style mount scan (informational). Scheduled max-merge
+            -- still runs each login while Rarity is loaded; MigrationService can clear this on revision bump.
             legacyMountTrackerSeedComplete = false,
+            -- rarityImportBackup: optional [itemID]=attempts (created by Rarity merge / rarityimport; see TryCounterService)
         },
         
         -- ========== TRACK ITEM DB (User overlays on CollectibleSourceDB) ==========
@@ -412,6 +418,75 @@ local defaults = {
 
 -- MOVED: CheckAddonVersion() → MigrationService.lua
 -- MOVED: ForceRefreshAllCaches() → DatabaseOptimizer.lua
+
+-- -----------------------------------------------------------------------------
+-- Played time: suppress only addon-initiated /played *system chat* (localized)
+-- -----------------------------------------------------------------------------
+local playedTimeChatPrefixes
+
+local function BuildPlayedTimeChatPrefixes()
+    local prefixes = {}
+    local seen = {}
+    local function add(s)
+        if not s or s == "" or seen[s] then return end
+        seen[s] = true
+        prefixes[#prefixes + 1] = s
+    end
+    local function addFromFormatKey(key)
+        local g = _G[key]
+        if type(g) ~= "string" or g == "" then return end
+        local plain = g:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        local beforeFmt = plain:match("^([^%%]+)")
+        if beforeFmt and beforeFmt ~= "" then
+            add(beforeFmt)
+        end
+    end
+    addFromFormatKey("TIME_PLAYED_TOTAL")
+    addFromFormatKey("TIME_PLAYED_LEVEL")
+    add("Total time played")
+    add("Time played this level")
+    return prefixes
+end
+
+local function IsPlayedTimeSystemChatMessage(msg)
+    if not msg or type(msg) ~= "string" then return false end
+    if issecretvalue and issecretvalue(msg) then return false end
+    if not playedTimeChatPrefixes then
+        playedTimeChatPrefixes = BuildPlayedTimeChatPrefixes()
+    end
+    local stripped = msg:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    for i = 1, #playedTimeChatPrefixes do
+        local p = playedTimeChatPrefixes[i]
+        if stripped:find(p, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+---Install CHAT_MSG_SYSTEM filter once (no per-frame AddMessage RawHook — preserves other chat addons).
+function WarbandNexus:InstallPlayedTimeChatFilter()
+    if self._playedTimeChatFilterInstalled then return end
+    self._playedTimeChatFilterInstalled = true
+    if not ChatFrame_AddMessageEventFilter then return end
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, msg, ...)
+        if not WarbandNexus:ShouldSuppressPlayedMessage() then
+            return false, msg, ...
+        end
+        if not IsPlayedTimeSystemChatMessage(msg) then
+            return false, msg, ...
+        end
+        return true
+    end)
+end
+
+---C_WowTokenPublic: price arrives asynchronously after UpdateMarketPrice().
+function WarbandNexus:OnTokenMarketPriceUpdated()
+    local mf = self.UI and self.UI.mainFrame
+    if mf and mf:IsShown() and mf.currentTab == "chars" and self.RefreshUI then
+        self:RefreshUI()
+    end
+end
 
 --[[
     Initialize the addon
@@ -632,15 +707,12 @@ function WarbandNexus:OnInitialize()
     -- Initialize configuration (defined in Config.lua)
     self:InitializeConfig()
     
-    -- Hook ChatFrame_DisplayTimePlayed using AceHook (never called, legacy WoW function)
-    -- Kept for compatibility but the real suppression happens in AddMessage hook below
-    if ChatFrame_DisplayTimePlayed and type(ChatFrame_DisplayTimePlayed) == "function" then
-        if not self:IsHooked("ChatFrame_DisplayTimePlayed") then
-            self:RawHook("ChatFrame_DisplayTimePlayed", function(...)
-                -- Suppress by doing nothing
-            end, true)
-        end
-    end
+    -- Played-time chat suppression: use CHAT_MSG_SYSTEM filter only (no RawHook on ChatFrame_AddMessage —
+    -- that breaks other addons that wrap chat output, e.g. Chattynator). Do not replace ChatFrame_DisplayTimePlayed.
+    self:InstallPlayedTimeChatFilter()
+    
+    -- WoW Token: GetCurrentMarketPrice() updates asynchronously after UpdateMarketPrice(); refresh Characters tab when price arrives.
+    self:RegisterEvent("TOKEN_MARKET_PRICE_UPDATED", "OnTokenMarketPriceUpdated")
     
     -- Setup slash commands
     self:RegisterChatCommand("wn", "SlashCommand")
@@ -653,34 +725,6 @@ function WarbandNexus:OnInitialize()
     
     -- Register TIME_PLAYED_MSG for played time tracking
     self:RegisterEvent("TIME_PLAYED_MSG", "OnTimePlayedReceived")
-    
-    -- Hook all chat frame AddMessage methods to suppress /played messages selectively
-    -- This intercepts the actual chat output and allows us to distinguish between
-    -- addon-initiated requests (suppress) and manual /played commands (allow)
-    local function hookChatFrameAddMessage(chatFrame)
-        if not chatFrame or not chatFrame.AddMessage then return end
-        if self:IsHooked(chatFrame, "AddMessage") then return end
-        self:RawHook(chatFrame, "AddMessage", function(frame, msg, ...)
-            -- Do not touch secret string values (Blizzard can pass these in secure context)
-            if msg and issecretvalue and issecretvalue(msg) then
-                self.hooks[chatFrame].AddMessage(frame, msg, ...)
-                return
-            end
-            -- Check if this is a played time message
-            if msg and type(msg) == "string" and (msg:find("Total time played") or msg:find("Time played this level")) then
-                -- Suppress if addon-initiated, allow through if user typed /played manually
-                if self:ShouldSuppressPlayedMessage() then
-                    return
-                end
-            end
-            -- Call original for all other messages
-            self.hooks[chatFrame].AddMessage(frame, msg, ...)
-        end, true)
-    end
-
-    for i = 1, NUM_CHAT_WINDOWS do
-        hookChatFrameAddMessage(_G["ChatFrame" .. i])
-    end
     
     -- Initialize minimap button (LibDBIcon) via InitializationService
     if ns.InitializationService then
@@ -833,11 +877,6 @@ function WarbandNexus:OnEnable()
         end)
         return
     end
-    
-    -- Print welcome message
-    local version = ns.Constants and ns.Constants.ADDON_VERSION or "Unknown"
-    _G.print(string.format("|cff9370DB" .. ((ns.L and ns.L["WELCOME_MSG_FORMAT"]) or "Welcome to Warband Nexus v%s") .. "|r", version))
-    _G.print("|cff9370DB" .. ((ns.L and ns.L["WELCOME_TYPE_CMD"]) or "Please type") .. " |r|cff00ccff/wn|r |cff9370DB" .. ((ns.L and ns.L["WELCOME_OPEN_INTERFACE"]) or "to open the interface.") .. "|r")
     
     -- FontManager is now loaded via .toc (no loadfile needed - it's forbidden in WoW)
     
@@ -1298,7 +1337,9 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             -- Character-specific: skip for untracked characters
             local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
             if tracked then
-                if self and self.RequestPlayedTime then self:RequestPlayedTime() end
+                if self.db and self.db.profile and self.db.profile.requestPlayedTimeOnLogin ~= false then
+                    if self.RequestPlayedTime then self:RequestPlayedTime() end
+                end
                 local P = ns.Profiler
                 if P then P:Start("CollectConcentration") end
                 if self and self.CollectConcentrationOnLogin then self:CollectConcentrationOnLogin() end

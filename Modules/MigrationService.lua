@@ -77,6 +77,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateRealmSuffixRepairFromCharKey(db)
     self:MigrateCharacterKeyNormalize(db)
     self:MigrateRestedDataReset(db)
+    self:MigrateRarityMountSyncReseed(db)
     return false
 end
 
@@ -251,6 +252,31 @@ function MigrationService:MigrateRestedDataReset(db)
     db.global.restedDataResetV2 = true
     db.global.restedDataResetV3 = true
     db.global.restedDataRemovedV4 = true
+end
+
+--[[
+    One-time per revision: clear informational legacyMountTrackerSeedComplete (preview / bookkeeping).
+    SyncRarityMountAttemptsMax does NOT read this flag — merge already runs on a timer after login
+    and after Statistics seed. Bump RARITY_MOUNT_SYNC_RESEED_REVISION after policy changes if you
+    want users to see "seed done: false" once; for a manual re-merge use /wn raritysync.
+]]
+local RARITY_MOUNT_SYNC_RESEED_REVISION = 1
+
+function MigrationService:MigrateRarityMountSyncReseed(db)
+    if not db or not db.global then
+        return
+    end
+    local doneRev = db.global._rarityMountSyncReseedRevision or 0
+    if doneRev >= RARITY_MOUNT_SYNC_RESEED_REVISION then
+        return
+    end
+    local tc = db.global.tryCounts
+    if tc and type(tc) == "table" then
+        tc.legacyMountTrackerSeedComplete = false
+    end
+    db.global._rarityMountSyncReseedRevision = RARITY_MOUNT_SYNC_RESEED_REVISION
+    DebugPrint("|cff9370DB[WN Migration]|r Rarity mount max-sync reseed (revision "
+        .. tostring(RARITY_MOUNT_SYNC_RESEED_REVISION) .. "): legacyMountTrackerSeedComplete cleared")
 end
 
 ---Migrate reputation cache to v2.1.0 (per-character storage)

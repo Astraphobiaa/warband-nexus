@@ -48,6 +48,9 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn minimap|r — " .. ((ns.L and ns.L["CMD_MINIMAP"]) or "Toggle minimap button"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
+        addon:Print("  |cff00ccff/wn rarityimport|r — Copy Rarity mount attempts into WN + saved backup (use before disabling Rarity)")
+        addon:Print("  |cff00ccff/wn rarityrestore|r — Re-apply WN backup (no Rarity needed)")
+        addon:Print("  |cff00ccff/wn raritysync|r — One immediate max-merge while Rarity is loaded")
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
             -- Literal English: avoids AceLocale returning missing keys as "CMD_*" in non-enUS clients
             addon:Print("|cff888888— Debug mode ON — advanced / diagnostic:|r")
@@ -61,8 +64,9 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
             addon:Print("  |cff00ccff/wn trydebug|r — Try counter state / source simulation")
             addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Try count for item|mount|pet|toy")
-            addon:Print("  |cff00ccff/wn legacymountpreview|r — Compare external mount tracker vs WN try counts")
-            addon:Print("  |cff00ccff/wn legacyseedreset|r — Reset one-time legacy mount-tracker import flag")
+            addon:Print("  |cff00ccff/wn legacymountpreview|r — Compare Rarity vs WN try counts (|cff00ccff/wn raritysync|r to merge now)")
+            addon:Print("  |cff00ccff/wn legacyseedreset|r — Clear informational seed flag (does not block Rarity merge)")
+            addon:Print("  |cff00ccff/wn trycounteraudit|r — List mount Statistics merge buckets (IDs per mount)")
             addon:Print("  |cff00ccff/wn check|r — Drops from target/mouseover")
             addon:Print("  |cff00ccff/wn test ...|r — Same as |cff00ccff/wntest ...|r (rep ui, rep event, overflow, …)")
             addon:Print("  |cff00ccff/wn testevents [type] [id]|r — Test notification events")
@@ -71,7 +75,7 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("  |cff00ccff/wn track|r — enable | disable | status")
             addon:Print("  |cff00ccff/wn recover|r — Emergency recovery")
         else
-            addon:Print("|cff888888For try counter tools, changelog, and diagnostics: |cff00ccff/wn debug|r|cff888888 then |cff00ccff/wn help|r.|r")
+            addon:Print("|cff888888More try-counter tools with |cff00ccff/wn debug|r|cff888888 then |cff00ccff/wn help|r.|r")
         end
         return
     end
@@ -169,6 +173,42 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("|cff00ff00[WN]|r Cleared obtained marker for " .. (itemName and ("|cffffd100" .. itemName .. "|r") or ("itemID " .. itemID)) .. ". Try counter will resume tracking.")
         else
             addon:Print("|cffff6600[WN]|r TryCounter module not loaded.")
+        end
+        return
+
+    elseif cmd == "rarityimport" or cmd == "rarityhandoff" then
+        if addon.ImportRarityMountHandoff then
+            addon:ImportRarityMountHandoff()
+        else
+            addon:Print("|cffff6600[WN]|r Try counter module not loaded.")
+        end
+        return
+
+    elseif cmd == "rarityrestore" or cmd == "rarityrestorebackup" then
+        if addon.RestoreRarityImportBackup then
+            local updated, scanned = addon:RestoreRarityImportBackup()
+            updated = tonumber(updated) or 0
+            scanned = tonumber(scanned) or 0
+            addon:Print(string.format(
+                "|cff00ff00[WN]|r Restored from WN backup: %d row(s) raised, %d backup row(s) applied (max vs WN).|r",
+                updated, scanned
+            ))
+        else
+            addon:Print("|cffff6600[WN]|r Try counter module not loaded.")
+        end
+        return
+
+    elseif cmd == "raritysync" or cmd == "raritymerge" then
+        if addon.SyncRarityMountAttemptsMax then
+            local updated, scanned = addon:SyncRarityMountAttemptsMax()
+            updated = tonumber(updated) or 0
+            scanned = tonumber(scanned) or 0
+            addon:Print(string.format(
+                "|cff00ff00[WN]|r Rarity max-merge: %d mount row(s) raised vs stored WN, %d row(s) read with attempts > 0 (enable Rarity if 0).|r",
+                updated, scanned
+            ))
+        else
+            addon:Print("|cffff6600[WN]|r Try counter module not loaded.")
         end
         return
     end
@@ -291,6 +331,14 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "legacyseedreset" then
         if addon.DebugResetLegacyMountTrackerSeed then
             addon:DebugResetLegacyMountTrackerSeed()
+        else
+            addon:Print("|cffff6600Try counter module not loaded.|r")
+        end
+        return
+
+    elseif cmd == "trycounteraudit" or cmd == "tcaudit" then
+        if addon.TryCounterAuditMountStatisticBuckets then
+            addon:TryCounterAuditMountStatisticBuckets()
         else
             addon:Print("|cffff6600Try counter module not loaded.|r")
         end

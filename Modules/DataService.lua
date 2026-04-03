@@ -89,7 +89,7 @@ end
 --[[
     Track cumulative /played time per character using RequestTimePlayed() API.
     TIME_PLAYED_MSG fires asynchronously with (totalTimePlayed, timePlayedThisLevel).
-    Chat message is suppressed via AddMessage hook in Core.lua.
+    Chat output from our request is suppressed via CHAT_MSG_SYSTEM filter in Core.lua (no AddMessage RawHook).
     
     Hook Strategy:
     - Suppresses ONLY addon-initiated requests (internal tracking)

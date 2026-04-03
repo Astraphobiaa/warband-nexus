@@ -10,7 +10,7 @@
         CENTER-aligned: SKILL, CONCENTRATION, KNOWLEDGE
 
     Column grid (per profession line):
-        [FavIcon] [ClassIcon] [Name/Realm]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] [Open]
+        [Open] [FavIcon] [ClassIcon] [Name/Realm]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] …
 
     Skill column has a hover tooltip showing all expansion skill breakdowns.
     Icon sizes (favIcon, classIcon) match CharactersUI (33px column, visual 65%).
@@ -164,11 +164,12 @@ local COLUMNS = {
 }
 
 local COLUMN_ORDER = {
+    "open",
     "favIcon", "classIcon", "name",
     "profIcon", "profName", "equipment", "skill", "conc", "recharge", "knowledge",
     "recipes", "firstCraft", "uniques", "treatise", "weeklyQuest", "treasure", "gathering", "catchUp", "moxie",
     "cooldowns",
-    "open", "info",
+    "info",
 }
 
 local LEFT_PAD = 10
@@ -351,6 +352,7 @@ end
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
 -- sortable = true means clicking the header toggles ascending/descending sort
 local HEADER_DEFS = {
+    { col = "open",        label = "PROF_OPEN_RECIPE",       text = "Open",          align = "CENTER", sortable = false },
     { col = "name",        label = "TABLE_HEADER_CHARACTER", text = "Character",     align = "LEFT",   sortable = true },
     { col = "profName",    label = "GROUP_PROFESSION",       text = "Profession",    align = "LEFT",   sortable = true },
     { col = "equipment",   label = "EQUIPMENT",              text = "Equipment",     align = "CENTER", sortable = false },
@@ -947,6 +949,8 @@ end
 function WarbandNexus:DrawProfessionsTab(parent)
     local width = parent:GetWidth() - 20
     cachedRowWidth = width
+    local gridNeedW = ns.ComputeProfessionsGridWidth and ns.ComputeProfessionsGridWidth() or 0
+    local showWideHint = gridNeedW > (width - 16)
 
     RegisterProfessionEvents(parent)
     HideEmptyStateCard(parent, "professions")
@@ -970,7 +974,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local totalProfChars = #trackedFavorites + #trackedRegular + #untrackedChars
 
     -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
-    local titleCard = CreateCard(headerParent, 70)
+    local titleCardH = showWideHint and 88 or 70
+    local titleCard = CreateCard(headerParent, titleCardH)
     titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
     titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     if ApplyVisuals then
@@ -989,7 +994,13 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
     local subtitleText = FontManager:CreateFontString(titleTextContainer, "subtitle", "OVERLAY")
     subtitleText:SetTextColor(1, 1, 1)
-    subtitleText:SetText(format((ns.L and ns.L["PROFESSIONS_TRACKED_FORMAT"]) or "%s characters with professions", FormatNumber(totalProfChars)))
+    local subLine = format((ns.L and ns.L["PROFESSIONS_TRACKED_FORMAT"]) or "%s characters with professions", FormatNumber(totalProfChars))
+    if showWideHint then
+        subLine = subLine .. "\n|cffaaaaaa"
+            .. ((ns.L and ns.L["PROFESSIONS_WIDE_TABLE_HINT"])
+                or "Tip: use the bar below or Shift+mouse wheel to see all columns.") .. "|r"
+    end
+    subtitleText:SetText(subLine)
     subtitleText:SetJustifyH("LEFT")
 
     titleText:SetPoint("BOTTOM", titleTextContainer, "CENTER", 0, 0)
@@ -1178,7 +1189,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     
     titleCard:Show()
-    headerYOffset = headerYOffset + 75
+    headerYOffset = headerYOffset + (showWideHint and 93 or 75)
 
     -- Set fixedHeader height (title card only; column headers go in columnHeaderClip)
     if fixedHeader then fixedHeader:SetHeight(headerYOffset) end

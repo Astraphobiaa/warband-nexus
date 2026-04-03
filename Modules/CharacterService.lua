@@ -226,7 +226,9 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         -- These were gated on tracking in Core.lua/EventManager.lua
         C_Timer.After(2, function()
             local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance.RequestPlayedTime then
+            if addonInstance and addonInstance.db and addonInstance.db.profile
+                and addonInstance.db.profile.requestPlayedTimeOnLogin ~= false
+                and addonInstance.RequestPlayedTime then
                 addonInstance:RequestPlayedTime()
             end
             if addonInstance and addonInstance.StartRechargeTimer then

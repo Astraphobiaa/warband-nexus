@@ -23,6 +23,10 @@
       - guaranteed: optional; 100% drop, no try count
       - repeatable: optional; resets try count on obtain
       - yields: optional; for "item" that leads to mount/pet (e.g. egg -> mount)
+      - statisticIds: on the NPC array and/or per drop row — list every WoW Statistics column that counts
+        kills/attempts for that source (LFR, Normal, Heroic, Mythic, legacy 10/25, etc.). Same mount from
+        multiple bosses or difficulties must each contribute IDs; TryCounter merges rows that share the same
+        mount/pet try key into one summed seed. dropDifficulty gates loot/encounter UI only, not which stats are merged.
 
     npcs, rares, objects, fishing, containers, zones, encounters, encounterNames, lockoutQuests
     are built at load from sources only. Do not add data to any legacy table.
@@ -899,6 +903,7 @@ ns.CollectibleSourceDB = {
               dropDifficulty = "Mythic",
               statisticIds = { 13382 },  -- Jaina kills (Mythic BoD)
             },
+            -- LFR G.M.O.D.: personal loot on Jaina (boss loot window / post-kill roll), not a separate bonus chest.
             { type = "mount", itemID = 166518, name = "G.M.O.D.",
               dropDifficulty = "LFR",
               statisticIds = { 13379 },  -- Lady Jaina kills (LFR BoD); 13379 is NOT Mekkatorque LFR (that's 13371)

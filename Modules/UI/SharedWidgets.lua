@@ -290,7 +290,10 @@ local UI_SPACING = {
     -- Standard scroll bar: Button (top) | Bar | Button (bottom); same everywhere
     SCROLL_BAR_BUTTON_SIZE = 16,
     SCROLL_BAR_WIDTH = 16,
-    SCROLLBAR_COLUMN_WIDTH = 22,  -- Width of the column that holds scrollbar (list + detail)
+    -- Slightly wider column so vertical + horizontal scroll controls are easier to notice
+    SCROLLBAR_COLUMN_WIDTH = 26,
+    -- Horizontal strip under the main viewport (slider + arrows); thicker = easier to spot
+    HORIZONTAL_SCROLL_BAR_HEIGHT = 20,
     SCROLL_BASE_STEP = 28,
     SCROLL_SPEED_DEFAULT = 1.0,
 }
@@ -4740,7 +4743,7 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
 
     local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
     local btnSize = layout.SCROLL_BAR_BUTTON_SIZE or 16
-    local barHeight = layout.SCROLL_BAR_WIDTH or 16
+    local barHeight = layout.HORIZONTAL_SCROLL_BAR_HEIGHT or layout.SCROLL_BAR_WIDTH or 16
 
     local function GetScrollStep()
         local addon = _G.WarbandNexus or ns.WarbandNexus
@@ -4796,10 +4799,11 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     hBar._borderAlpha = 0.6
     table.insert(ns.BORDER_REGISTRY, hBar)
 
-    -- Thumb: same thickness as vertical (14px); width 60
+    -- Thumb width 60; height scales with bar (easier to grab when strip is taller)
+    local thumbH = math.max(10, math.min(18, barHeight - 4))
     hBar.ThumbTexture = hBar:CreateTexture(nil, "ARTWORK")
     hBar.ThumbTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
-    hBar.ThumbTexture:SetSize(60, 14)
+    hBar.ThumbTexture:SetSize(60, thumbH)
     hBar:SetThumbTexture(hBar.ThumbTexture)
     hBar._thumbTexture = hBar.ThumbTexture
 
