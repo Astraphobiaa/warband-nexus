@@ -1097,6 +1097,27 @@ What's next
 
 CurseForge: Warband Nexus]=]
 
+-- What's New / changelog body for ADDON_VERSION 2.5.9b (key CHANGELOG_V259b)
+L["CHANGELOG_V259b"] = [=[v2.5.9b (2026-04-04)
+
+Improvements
+- Tooltips: Collectible drop hints on NPC unit tooltips only show for hostile or attackable targets (fixes wrong mount lines on friendly delve objects and similar). Safe checks for UnitCanAttack, UnitIsDead, and UnitReaction (Midnight secret-value rules).
+- Packaging: Maintainer ZIP builds use build_addon.py (Python 3.8+); archive entry names use forward slashes so Linux, macOS, and CurseForge Linux extract into Interface/AddOns/WarbandNexus correctly.
+
+Bug fixes
+- Try Counter: Clearer separation of fishing vs. profession gathering and game-object-only loot; fewer false increments (e.g. herb gathering vs. mount farming). Loot session timing and CHAT_MSG_LOOT handling tightened.
+
+Plans UI
+- To-Do List and Weekly Progress: Show Planned / Show Completed behavior aligned with browse tabs; clearer empty states for achievements and collection browsers.
+
+Chat
+- Try Counter lines can follow Loot tabs, a dedicated WN_TRYCOUNTER channel, or all standard tabs; button adds the channel to the selected chat tab. Optional login welcome line; settings to hide played-time spam and request /played quietly for stats.
+
+Localization
+- Filled previously missing keys in all supported locales.
+
+CurseForge: Warband Nexus]=]
+
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"
 L["CONFIRM"] = "Confirm"

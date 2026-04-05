@@ -1630,3 +1630,51 @@ L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
+
+-- v2.5.9b (CHANGELOG_V259b)
+L["CHANGELOG_V259b"] = [=[v2.5.9b (2026-04-04)
+
+개선
+- 툴팁: NPC 유닛 툴팁의 수집품 드롭 안내는 적대적이거나 공격 가능한 대상에게만 표시됩니다(우호적인 델브 돌 등에서 잘못된 탈것 줄이 뜨는 문제 수정). UnitCanAttack, UnitIsDead, UnitReaction에 대한 안전 검사(미드나이트 비밀 값 규칙).
+- 패키징: 릴리스 ZIP은 build_addon.py(Python 3.8+)로 생성하며, 아카이브 경로는 Linux·macOS·CurseForge Linux용으로 /를 사용합니다.
+
+수정
+- 시도 횟수: 낚시·전문 채집·오브젝트 전용 전리품 구분을 명확히; 오탐 감소. 전리품 세션과 CHAT_MSG_LOOT 처리 다듬음.
+
+계획 UI
+- 할 일 목록·주간 진행: 계획됨/완료됨 표시가 탐색 탭과 맞춰짐; 업적·목록의 빈 상태 메시지 개선.
+
+채팅
+- 시도 횟수: 전리품과 동일 탭, 전용 WN_TRYCOUNTER 채널, 또는 모든 탭; 선택한 탭에 채널 추가 버튼. 선택적 로그인 환영 한 줄; 플레이 시간 스팸 숨김·/played 조용히 요청 설정.
+
+번역
+- 지원 언어 전체에서 누락된 키를 채웠습니다.
+
+CurseForge: Warband Nexus]=]
+L["SHOW_COMPLETED_HELP"] = "할 일 목록·주간 진행: 체크 해제 = 진행 중인 계획만; 체크 = 완료된 계획만. 탐색 탭: 체크 해제 = 미수집(계획됨 켜면 목록만); 체크 = 목록에 있는 수집 완료 항목(계획됨은 여전히 제한)."
+L["SHOW_PLANNED_HELP"] = "탐색 탭만(할 일·주간 진행에서는 숨김): 체크 시 해당 목록에 넣은 항목만. 완료됨 끄면 아직 필요한 것; 켜면 이미 끝난 것; 둘 다 켜면 해당 분류의 모든 계획; 둘 다 끄면 전체 미수집 탐색."
+L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "표시할 업적 없음"
+L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "이 목록에서 할 일에 업적을 추가하거나 계획됨/완료됨을 바꾸세요. 스캔되면 채워집니다. 비어 있으면 /reload를 시도하세요."
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"] = "표시할 내용 없음"
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"] = "현재 필터에 맞는 계획 항목이 없습니다. 할 일에 추가하거나 계획됨/완료됨을 조정하세요."
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"] = "완료된 할 일 항목 없음"
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_DESC"] = "이 분류의 할 일에 아직 수집·완료된 것이 없습니다. 완료됨을 끄면 진행 중인 항목을 볼 수 있습니다."
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_TITLE"] = "진행 중인 할 일 항목 없음"
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "이 분류의 할 일에 아직 미수집인 것이 없습니다. 완료됨을 켜면 끝난 항목을 보거나 목표를 추가하세요."
+L["TRYCOUNTER_CHAT_ROUTE_LABEL"] = "시도 횟수 채팅 출력"
+L["TRYCOUNTER_CHAT_ROUTE_DESC"] = "시도 줄을 출력할 위치. 기본은 전리품과 같은 탭. «Warband Nexus»는 WN_TRYCOUNTER 그룹 사용(탭 설정에서 선택). «모든 탭»은 번호가 있는 모든 채팅 창으로 보냅니다."
+L["TRYCOUNTER_CHAT_ROUTE_LOOT"] = "1) 전리품과 동일(기본)"
+L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"] = "2) Warband Nexus(별도 필터)"
+L["TRYCOUNTER_CHAT_ROUTE_ALL_TABS"] = "3) 모든 표준 채팅 탭"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_BTN"] = "선택한 채팅 탭에 시도 횟수 추가"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "원하는 채팅 탭을 클릭한 뒤 이 버튼을 누르세요. «Warband Nexus» 모드에 적합합니다. 해당 탭에 WN_TRYCOUNTER를 추가합니다."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r 선택한 채팅 탭에서 시도 횟수를 켰습니다."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r 채팅 탭을 바꿀 수 없습니다(채팅 없음 또는 API 차단)."
+L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00새 소식:|r 채팅 위에 팝업이 뜰 수 있으며, |cffffff00/wn changelog|r 를 입력해도 됩니다."
+L["CONFIG_SHOW_LOGIN_CHAT"] = "채팅에 로그인 메시지"
+L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "알림이 켜져 있을 때 짧은 환영 한 줄을 출력합니다. 시스템 메시지 그룹과 보이는 채팅 탭을 사용합니다(Chattynator 등). 새 소식 창은 별도(전체 화면 팝업)입니다."
+L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "채팅에서 플레이 시간 숨기기"
+L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "총 플레이 시간·이 레벨 플레이 시간 시스템 메시지를 걸러 냅니다. 끄면 다시 표시됩니다(/played 포함)."
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "로그인 시 플레이 시간 요청"
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "켜면 «가장 많이 플레이» 등을 위해 백그라운드로 /played를 요청하고 채팅 출력은 숨깁니다. 끄면 로그인 시 자동 요청 없음(수동 /played는 가능)."
+L["PROFESSIONS_WIDE_TABLE_HINT"] = "팁: 아래 바나 Shift+마우스 휠로 모든 열을 확인하세요."

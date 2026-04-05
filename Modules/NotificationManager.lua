@@ -14,11 +14,21 @@ local NotificationEvents = {}
 local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
--- Changelog for current version only (locale key CHANGELOG_V<version>; no legacy chain)
-local FALLBACK_CHANGELOG = "v2.5.8\nBug fixes:\n- See full changelog in Locales (CHANGELOG_V258).\n\nCurseForge: Warband Nexus"
+-- Changelog for current version only: locale key CHANGELOG_V + version without dots (e.g. 2.5.9b -> CHANGELOG_V259b)
+local FALLBACK_CHANGELOG = "v" .. tostring(CURRENT_VERSION) .. "\n- See Locales for CHANGELOG_V key matching this version.\n\nCurseForge: Warband Nexus"
+
+local function VersionToChangelogKey(version)
+    if not version or type(version) ~= "string" then return nil end
+    local compact = version:gsub("%.", "")
+    return "CHANGELOG_V" .. compact
+end
 
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V258"]) or (ns.L and ns.L["CHANGELOG_V259"]) or FALLBACK_CHANGELOG
+    local key = VersionToChangelogKey(CURRENT_VERSION)
+    local changelogText = key and ns.L and ns.L[key]
+    if not changelogText or changelogText == "" then
+        changelogText = (ns.L and ns.L["CHANGELOG_V259"]) or (ns.L and ns.L["CHANGELOG_V258"]) or FALLBACK_CHANGELOG
+    end
     if not changelogText or changelogText == "" then
         changelogText = FALLBACK_CHANGELOG
     end
@@ -30,8 +40,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.5.8",
-    date = "2026-04-03",
+    version = CURRENT_VERSION,
+    date = (Constants and Constants.ADDON_RELEASE_DATE) or "",
     changes = BuildChangelog()
 }
 

@@ -1949,3 +1949,51 @@ L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
+
+-- v2.5.9b (CHANGELOG_V259b)
+L["CHANGELOG_V259b"] = [=[v2.5.9b (04.04.2026)
+
+Verbesserungen
+- Tooltips: Sammel-Drop-Hinweise bei NPC-Tooltips nur für feindliche oder angreifbare Ziele (freundliche Delve-Objekte usw. zeigen keine falschen Mount-Zeilen mehr). Sichere Prüfungen für UnitCanAttack, UnitIsDead und UnitReaction (Midnight-Geheimwerte).
+- Paketierung: Release-ZIP mit build_addon.py (Python 3.8+); Archivpfade mit / für Linux, macOS und CurseForge Linux.
+
+Fehlerbehebungen
+- Versuchszähler: klarere Trennung Angeln vs. Berufssammeln und reine Spielobjekt-Beute; weniger Fehlzählungen. Beute-Sitzung und CHAT_MSG_LOOT verfeinert.
+
+Plans-UI
+- To-Do & Wochenfortschritt: Geplant / Abgeschlossene abgestimmt; klarere Leerzustände für Erfolge und Browser.
+
+Chat
+- Versuchszähler: Ausgabe wie Beute, eigener WN_TRYCOUNTER-Kanal oder alle Tabs; Schaltfläche zum Hinzufügen zum gewählten Chat-Tab. Optional Login-Zeile; Einstellungen für Spielzeit-Spam und stillen /played-Abruf.
+
+Lokalisierung
+- Fehlende Schlüssel in allen unterstützten Sprachen ergänzt.
+
+CurseForge: Warband Nexus]=]
+L["SHOW_COMPLETED_HELP"] = "To-Do-Liste und Wöchentlicher Fortschritt: aus = laufende Pläne; an = nur abgeschlossene. Durchsuchen (Reittiere usw.): aus = ungesammelt (nur To-Do wenn Geplant an); an = gesammelte auf der To-Do (Geplant filtert weiter)."
+L["SHOW_PLANNED_HELP"] = "Nur Durchsuchen-Register (ausgeblendet in To-Do & Wochenfortschritt): an = nur Einträge auf deiner To-Do. Mit Abgeschlossene aus: noch benötigt; mit Abgeschlossene an: erledigt; beides an: alle geplanten; beides aus: volle ungesammelte Liste."
+L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Keine Erfolge anzuzeigen"
+L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "Füge Erfolge von dieser Liste zur To-Do hinzu oder ändere Geplant / Abgeschlossene. Die Liste füllt sich beim Scannen; bei Bedarf /reload."
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"] = "Nichts anzuzeigen"
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"] = "Keine geplanten Einträge in dieser Kategorie entsprechen den Filtern. Zur To-Do hinzufügen oder Geplant / Abgeschlossene anpassen."
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"] = "Keine abgeschlossenen To-Do-Einträge"
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_DESC"] = "In dieser Kategorie ist noch nichts auf der To-Do gesammelt oder abgeschlossen. Abgeschlossene aus, um laufende zu sehen."
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_TITLE"] = "Keine laufenden To-Do-Einträge"
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "In dieser Kategorie ist auf der To-Do nichts mehr ungesammelt. Abgeschlossene aktivieren oder Ziele hinzufügen."
+L["TRYCOUNTER_CHAT_ROUTE_LABEL"] = "Versuchszähler-Chat-Ausgabe"
+L["TRYCOUNTER_CHAT_ROUTE_DESC"] = "Wo Versuchszähler-Zeilen erscheinen. Standard = gleiche Tabs wie Beute. „Warband Nexus“ nutzt die Gruppe WN_TRYCOUNTER (in Chat-Tab-Einstellungen wählbar). „Alle Tabs“ sendet in jedes nummerierte Chatfenster."
+L["TRYCOUNTER_CHAT_ROUTE_LOOT"] = "1) Wie Beute (Standard)"
+L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"] = "2) Warband Nexus (eigener Filter)"
+L["TRYCOUNTER_CHAT_ROUTE_ALL_TABS"] = "3) Alle Standard-Chat-Tabs"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_BTN"] = "Versuchszähler zum gewählten Chat-Tab hinzufügen"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "Chat-Tab anklicken, dann hier klicken. Ideal für „Warband Nexus (eigener Filter)“. Fügt die Gruppe WN_TRYCOUNTER zu diesem Tab hinzu."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r Versuchszähler im gewählten Chat-Tab aktiviert."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r Chat-Tab konnte nicht aktualisiert werden (kein Chat oder API blockiert)."
+L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00Neuigkeiten:|r Es kann ein Popup über dem Chat erscheinen, oder tippe |cffffff00/wn changelog|r."
+L["CONFIG_SHOW_LOGIN_CHAT"] = "Login-Nachricht im Chat"
+L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "Kurze Willkommenszeile bei aktivierten Benachrichtigungen. Nutzt die System-Nachrichtengruppe und einen sichtbaren Chat-Tab (z. B. für Chattynator). Das „Was ist neu“-Fenster ist separat (Vollbild-Popup)."
+L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Spielzeit im Chat ausblenden"
+L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspielzeit und Spielzeit auf dieser Stufe aus. Aus = wieder anzeigen (auch bei /played)."
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Spielzeit beim Login abfragen"
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Wenn aktiv, fragt das Addon /played im Hintergrund ab („Meist gespielt“ usw.); Chat-Ausgabe wird unterdrückt. Wenn aus, kein automatischer Abruf beim Login (manuelles /played funktioniert)."
+L["PROFESSIONS_WIDE_TABLE_HINT"] = "Tipp: Leiste unten oder Umschalt+Mausrad, um alle Spalten zu sehen."

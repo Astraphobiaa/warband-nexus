@@ -120,6 +120,15 @@
 2. Click Install
 3. Launch WoW
 
+### **Maintainers: release ZIP (any OS)**
+From the repository root, with [Python 3.8+](https://www.python.org/) installed:
+
+```bash
+python3 build_addon.py
+```
+
+On Windows you can use `py build_addon.py` instead. This writes `build/WarbandNexus/` and `build/WarbandNexus-<version>.zip` with POSIX `/` paths in the archive (required for Linux clients). The script fails if any ZIP entry contains a backslash.
+
 ## 🎮 Usage
 
 ### **Opening the Interface**

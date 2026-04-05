@@ -1169,7 +1169,7 @@ L["CONFIG_NOTIFY_TOYS_DESC"] = "Mostrar notifications when you learn a new toy."
 L["CONFIG_NOTIFY_ACHIEVEMENTS"] = "Logro Notificacións"
 L["CONFIG_NOTIFY_ACHIEVEMENTS_DESC"] = "Mostrar notifications when you earn an achievement."
 L["CONFIG_SHOW_UPDATE_NOTES"] = "Mostrar Update Notes Again"
-L["CONFIG_SHOW_UPDATE_NOTES_DESC"] = "Display the What's New window on next login."
+L["CONFIG_SHOW_UPDATE_NOTES_DESC"] = "Mostra a janela Novidades no próximo login."
 L["CONFIG_UPDATE_NOTES_SHOWN"] = "Update notification will show on next login."
 L["CONFIG_RESET_PLANS"] = "Restablecer Completard Planes"
 L["CONFIG_RESET_PLANS_CONFIRM"] = "This will remove all completed plans. Continue?"
@@ -1622,3 +1622,51 @@ L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
+
+-- v2.5.9b (CHANGELOG_V259b)
+L["CHANGELOG_V259b"] = [=[v2.5.9b (04/04/2026)
+
+Melhorias
+- Tooltips: linhas de saque de colecionáveis em tooltips de PNJ só aparecem para alvos hostis ou atacáveis (corrige montarias incorretas em pedras de mergulho amigáveis, etc.). Verificações seguras para UnitCanAttack, UnitIsDead e UnitReaction (regras Midnight para valores secretos).
+- Empacotamento: o ZIP de release é gerado com build_addon.py (Python 3.8+); caminhos no arquivo usam / para Linux, macOS e CurseForge Linux.
+
+Correções
+- Contador de tentativas: separação mais clara entre pesca, coleta de profissão e saque só de objetos; menos contagens falsas. Sessão de saque e CHAT_MSG_LOOT refinados.
+
+UI de planos
+- Lista de tarefas e progresso semanal: Mostrar planejados / Mostrar concluídos alinhados às abas de navegação; estados vazios mais claros para conquistas e listas.
+
+Chat
+- Contador de tentativas: mesmas abas do saque, canal dedicado WN_TRYCOUNTER ou todas as abas; botão para adicionar o canal à aba selecionada. Linha de boas-vindas opcional; opções para ocultar spam de tempo jogado e pedir /played discretamente.
+
+Localização
+- Chaves faltando adicionadas em todos os idiomas suportados.
+
+CurseForge: Warband Nexus]=]
+L["SHOW_COMPLETED_HELP"] = "Lista de tarefas e progresso semanal: desmarcado = planos em andamento; marcado = apenas concluídos. Abas navegar: desmarcado = não coletados (só na lista se Mostrar planejados); marcado = entradas coletadas na lista (planejados ainda filtra)."
+L["SHOW_PLANNED_HELP"] = "Somente abas navegar (ocultas na lista e no progresso semanal): marcado = só itens na sua lista. Com Mostrar concluídos desmarcado: ainda falta obter; marcado: já terminou; ambos marcados: todos planejados; ambos desmarcados: navegação completa dos não coletados."
+L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Nenhuma conquista para exibir"
+L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "Adicione conquistas desta lista à sua lista de tarefas ou altere Mostrar planejados / Mostrar concluídos. A lista enche ao escanear; tente /reload se estiver vazia."
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"] = "Nada para mostrar"
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"] = "Nenhum item planejado corresponde aos filtros. Adicione à lista ou ajuste Mostrar planejados / Mostrar concluídos."
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"] = "Nenhum item concluído na lista"
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_DESC"] = "Nada na sua lista nesta categoria foi coletado ou concluído. Desative Mostrar concluídos para ver os em andamento."
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_TITLE"] = "Nenhum item em andamento na lista"
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "Nada na sua lista nesta categoria ainda falta coletar. Ative Mostrar concluídos para ver os finalizados ou adicione metas."
+L["TRYCOUNTER_CHAT_ROUTE_LABEL"] = "Saída no chat do contador de tentativas"
+L["TRYCOUNTER_CHAT_ROUTE_DESC"] = "Onde imprimir as linhas. Padrão = mesmas abas de Saque. «Warband Nexus» usa o grupo WN_TRYCOUNTER (configurável por aba). «Todas as abas» envia a cada janela de chat numerada."
+L["TRYCOUNTER_CHAT_ROUTE_LOOT"] = "1) Igual ao Saque (padrão)"
+L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"] = "2) Warband Nexus (filtro separado)"
+L["TRYCOUNTER_CHAT_ROUTE_ALL_TABS"] = "3) Todas as abas de chat padrão"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_BTN"] = "Adicionar contador à aba de chat selecionada"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "Clique na aba desejada e depois aqui. Ideal para «Warband Nexus». Adiciona WN_TRYCOUNTER a essa aba."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r Contador ativado na aba selecionada."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r Não foi possível atualizar a aba (sem chat ou API bloqueada)."
+L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00Novidades:|r um popup pode aparecer acima do chat, ou digite |cffffff00/wn changelog|r."
+L["CONFIG_SHOW_LOGIN_CHAT"] = "Mensagem de login no chat"
+L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "Imprime uma linha curta de boas-vindas com notificações ativas. Usa o grupo Sistema e uma aba visível (ex. Chattynator). A janela Novidades é separada (tela cheia)."
+L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Ocultar tempo jogado no chat"
+L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra mensagens de tempo total jogado e tempo neste nível. Desative para exibir de novo (incluindo com /played)."
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Solicitar tempo jogado ao entrar"
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Se ativo, solicita /played em segundo plano para «Mais jogado» etc.; a saída no chat é suprimida. Se inativo, sem pedido automático no login (/played manual funciona)."
+L["PROFESSIONS_WIDE_TABLE_HINT"] = "Dica: use a barra abaixo ou Shift + rolagem para ver todas as colunas."

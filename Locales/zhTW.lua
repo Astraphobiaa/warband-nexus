@@ -1622,3 +1622,51 @@ L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
+
+-- v2.5.9b (CHANGELOG_V259b)
+L["CHANGELOG_V259b"] = [=[v2.5.9b（2026-04-04）
+
+改進
+- 提示：NPC 單位提示上的收藏掉落資訊僅在目標為敵對或可攻擊時顯示（修正友善 delve 石等出現錯誤坐騎行的問題）。針對 UnitCanAttack、UnitIsDead、UnitReaction 的安全檢查（Midnight 秘密值規則）。
+- 打包：發行 ZIP 由 build_addon.py（Python 3.8+）建立；封存路徑使用 /，供 Linux、macOS 與 CurseForge Linux 正確解壓。
+
+修正
+- 嘗試計數：更清楚區分釣魚、專業採集與純物件拾取；減少誤算。拾取階段與 CHAT_MSG_LOOT 處理更精準。
+
+計畫介面
+- 待辦與週進度：「顯示已計畫／顯示已完成」與瀏覽分頁行為一致；成就與清單的空狀態說明更清楚。
+
+聊天
+- 嘗試計數：可跟隨戰利品分頁、獨立 WN_TRYCOUNTER 頻道或全部分頁；按鈕將頻道加入所選聊天分頁。可選登入歡迎一行；可隱藏遊戲時間洗版、靜默請求 /played。
+
+本地化
+- 補齊各語言先前缺少的鍵。
+
+CurseForge：Warband Nexus]=]
+L["SHOW_COMPLETED_HELP"] = "待辦與週進度：未勾選＝進行中的計畫；勾選＝僅已完成。瀏覽分頁：未勾選＝未收藏（開啟「顯示已計畫」時僅清單內）；勾選＝清單上已收藏項目（「顯示已計畫」仍會限制）。"
+L["SHOW_PLANNED_HELP"] = "僅瀏覽分頁（在待辦與週進度中隱藏）：勾選＝僅顯示你加入待辦的目標。「顯示已完成」關＝仍缺；開＝已完成；兩項都開＝該分類全部已計畫；都關＝完整未收藏瀏覽。"
+L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "沒有可顯示的成就"
+L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "從此清單將成就加入待辦，或更改「顯示已計畫／顯示已完成」。清單會隨掃描填入；若為空可嘗試 /reload。"
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"] = "沒有可顯示的內容"
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"] = "目前篩選下沒有符合的已計畫項目。請加入待辦或調整「顯示已計畫／顯示已完成」。"
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"] = "沒有已完成的待辦項目"
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_DESC"] = "此分類的待辦尚無已收藏或已完成項目。關閉「顯示已完成」可查看進行中項目。"
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_TITLE"] = "沒有進行中的待辦項目"
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "此分類待辦中已沒有未收藏項目。開啟「顯示已完成」查看已完成項目，或從本分頁新增目標。"
+L["TRYCOUNTER_CHAT_ROUTE_LABEL"] = "嘗試計數聊天輸出"
+L["TRYCOUNTER_CHAT_ROUTE_DESC"] = "嘗試計數訊息輸出位置。預設與「拾取」相同分頁。「Warband Nexus」使用 WN_TRYCOUNTER 群組（可在聊天分頁設定中選擇）。「所有分頁」傳送到每個編號聊天視窗。"
+L["TRYCOUNTER_CHAT_ROUTE_LOOT"] = "1）與拾取相同（預設）"
+L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"] = "2）Warband Nexus（獨立過濾）"
+L["TRYCOUNTER_CHAT_ROUTE_ALL_TABS"] = "3）所有標準聊天分頁"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_BTN"] = "將嘗試計數加入所選聊天分頁"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "先點擊目標聊天分頁，再按此處。適合「Warband Nexus」模式。會為該分頁加入 WN_TRYCOUNTER。"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r 已在所選聊天分頁啟用嘗試計數。"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r 無法更新聊天分頁（無聊天框或 API 被阻擋）。"
+L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00更新內容：|r 可能會在聊天上方彈出視窗，或輸入 |cffffff00/wn changelog|r。"
+L["CONFIG_SHOW_LOGIN_CHAT"] = "在聊天顯示登入訊息"
+L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "開啟通知時印出一行簡短歡迎。使用「系統」訊息群組與可見聊天分頁（如 Chattynator）。更新說明視窗為獨立全螢幕彈窗。"
+L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隱藏遊戲時間"
+L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "過濾「總遊戲時間」與「本等級遊戲時間」等系統訊息。關閉本項可再次顯示（含 /played）。"
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "登入時請求遊戲時間"
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "開啟時於背景請求 /played 以更新「遊玩最多」等統計並隱藏聊天輸出。關閉則登入時不自動請求（仍可手動 /played）。"
+L["PROFESSIONS_WIDE_TABLE_HINT"] = "提示：使用下方捲軸或 Shift+滾輪檢視所有欄位。"

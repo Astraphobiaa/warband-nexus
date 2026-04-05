@@ -1630,3 +1630,51 @@ L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
+
+-- v2.5.9b (CHANGELOG_V259b)
+L["CHANGELOG_V259b"] = [=[v2.5.9b (04/04/2026)
+
+Miglioramenti
+- Tooltip: le righe bottino collezionabili sui tooltip PNG compaiono solo per bersagli ostili o attaccabili (corregge mount errati su pietre delle esplorazioni e simili). Controlli sicuri su UnitCanAttack, UnitIsDead e UnitReaction (regole Midnight sui valori segreti).
+- Pacchetto: lo ZIP di release usa build_addon.py (Python 3.8+); i percorsi nell'archivio usano / per Linux, macOS e CurseForge Linux.
+
+Correzioni
+- Contatore tentativi: distinzione più netta tra pesca, raccolta professioni e bottino solo da oggetti; meno conteggi falsi. Sessione bottino e CHAT_MSG_LOOT affinate.
+
+UI Piani
+- Lista cose da fare e progresso settimanale: Mostra pianificati / Mostra completati allineati alle schede sfoglia; stati vuoti più chiari per achievement e liste.
+
+Chat
+- Contatore tentativi: stesse schede del bottino, canale dedicato WN_TRYCOUNTER o tutte le schede; pulsante per aggiungere il canale alla scheda selezionata. Messaggio di benvenuto opzionale; impostazioni per nascondere lo spam del tempo di gioco e richiedere /played in silenzio.
+
+Localizzazione
+- Chiavi mancanti aggiunte in tutte le lingue supportate.
+
+CurseForge: Warband Nexus]=]
+L["SHOW_COMPLETED_HELP"] = "Lista cose da fare e progresso settimanale: deselezionato = piani in corso; selezionato = solo completati. Schede sfoglia: deselezionato = non raccolti (solo in lista se Mostra pianificati); selezionato = voci raccolte in lista (pianificati filtra ancora)."
+L["SHOW_PLANNED_HELP"] = "Solo schede sfoglia (nascoste in lista e progresso settimanale): selezionato = solo voci nella tua lista. Con Mostra completati off: ancora da ottenere; on: già finiti; entrambi on: tutti i pianificati; entrambi off: sfoglia completa dei non raccolti."
+L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Nessun achievement da mostrare"
+L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "Aggiungi achievement da questa lista alla To-Do o cambia Mostra pianificati / Mostra completati. La lista si riempie alla scansione; prova /reload se è vuota."
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"] = "Niente da mostrare"
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"] = "Nessuna voce pianificata corrisponde ai filtri. Aggiungi alla To-Do o regola Mostra pianificati / Mostra completati."
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"] = "Nessuna voce To-Do completata"
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_DESC"] = "Niente nella To-Do di questa categoria è ancora raccolto o completato. Disattiva Mostra completati per vedere quelli in corso."
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_TITLE"] = "Nessuna voce To-Do in corso"
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "Niente nella To-Do di questa categoria è ancora da raccogliere. Attiva Mostra completati per i finiti, o aggiungi obiettivi."
+L["TRYCOUNTER_CHAT_ROUTE_LABEL"] = "Output chat contatore tentativi"
+L["TRYCOUNTER_CHAT_ROUTE_DESC"] = "Dove stampare le righe. Predefinito = stesse schede del bottino. «Warband Nexus» usa il gruppo WN_TRYCOUNTER (impostabile per scheda). «Tutte le schede» invia a ogni finestra chat numerata."
+L["TRYCOUNTER_CHAT_ROUTE_LOOT"] = "1) Come bottino (predefinito)"
+L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"] = "2) Warband Nexus (filtro separato)"
+L["TRYCOUNTER_CHAT_ROUTE_ALL_TABS"] = "3) Tutte le schede chat standard"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_BTN"] = "Aggiungi contatore alla scheda chat selezionata"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "Clicca la scheda desiderata, poi qui. Ideale per «Warband Nexus». Aggiunge WN_TRYCOUNTER a quella scheda."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r Contatore attivato sulla scheda selezionata."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r Impossibile aggiornare la scheda (nessun chat o API bloccata)."
+L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00Novità:|r può apparire un popup sopra la chat, oppure digita |cffffff00/wn changelog|r."
+L["CONFIG_SHOW_LOGIN_CHAT"] = "Messaggio di accesso in chat"
+L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "Stampa una breve riga di benvenuto con le notifiche attive. Usa il gruppo Sistema e una scheda visibile (es. Chattynator). La finestra Novità è separata (schermo intero)."
+L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Nascondi tempo di gioco in chat"
+L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e tempo su questo livello. Disattiva per mostrarli di nuovo (anche con /played)."
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Richiedi tempo di gioco al login"
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Se attivo, richiede /played in background per «Più giocato» ecc.; l'output in chat è soppresso. Se disattivo, nessuna richiesta automatica al login (/played manuale ok)."
+L["PROFESSIONS_WIDE_TABLE_HINT"] = "Suggerimento: barra in basso o Maiusc + rotella per vedere tutte le colonne."

@@ -26,8 +26,11 @@ ignore:
   - OPTIMIZATION_SUMMARY.md
   - DEAD_CODE_AUDIT.md
   - EVENTS_AUDIT.md
+  - STEP_FIX_LOG.md
   - Screenshots
   - scripts
+  - tests
+  - build_addon.py
   - build
   - libs/README.md
   - libs/README.textile

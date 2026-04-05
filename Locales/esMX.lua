@@ -1169,7 +1169,7 @@ L["CONFIG_NOTIFY_TOYS_DESC"] = "Mostrar notifications when you learn a new toy."
 L["CONFIG_NOTIFY_ACHIEVEMENTS"] = "Logro Notificacións"
 L["CONFIG_NOTIFY_ACHIEVEMENTS_DESC"] = "Mostrar notifications when you earn an achievement."
 L["CONFIG_SHOW_UPDATE_NOTES"] = "Mostrar Update Notes Again"
-L["CONFIG_SHOW_UPDATE_NOTES_DESC"] = "Display the What's New window on next login."
+L["CONFIG_SHOW_UPDATE_NOTES_DESC"] = "Muestra la ventana Novedades la próxima vez que entres al juego."
 L["CONFIG_UPDATE_NOTES_SHOWN"] = "Update notification will show on next login."
 L["CONFIG_RESET_PLANS"] = "Restablecer Completard Planes"
 L["CONFIG_RESET_PLANS_CONFIRM"] = "This will remove all completed plans. Continue?"
@@ -1622,3 +1622,51 @@ L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
+
+-- v2.5.9b (CHANGELOG_V259b)
+L["CHANGELOG_V259b"] = [=[v2.5.9b (04/04/2026)
+
+Mejoras
+- Tooltips: las líneas de botín de coleccionables en tooltips de PNJ solo se muestran si el objetivo es hostil o atacable (corrige monturas erróneas en piedras de calado u objetos amistosos). Comprobaciones seguras para UnitCanAttack, UnitIsDead y UnitReaction (valores secretos Midnight).
+- Empaquetado: el ZIP de publicación se genera con build_addon.py (Python 3.8+); las rutas del archivo usan / para Linux, macOS y el cliente Linux de CurseForge.
+
+Correcciones
+- Contador de intentos: mejor separación entre pesca, recolección de profesión y botín solo de objetos; menos conteos falsos. Sesión de botín y CHAT_MSG_LOOT afinados.
+
+Interfaz de planes
+- Lista de tareas y progreso semanal: Mostrar planificados / Mostrar completados alineados con las pestañas de exploración; estados vacíos más claros para logros y listas.
+
+Chat
+- Contador de intentos: misma pestaña que el botín, canal dedicado WN_TRYCOUNTER o todas las pestañas; botón para añadir el canal a la pestaña seleccionada. Mensaje de bienvenida opcional; opciones para ocultar spam de tiempo jugado y solicitar /played en silencio.
+
+Localización
+- Claves faltantes añadidas en todos los idiomas compatibles.
+
+CurseForge: Warband Nexus]=]
+L["SHOW_COMPLETED_HELP"] = "Lista de tareas y progreso semanal: sin marcar = planes en curso; marcado = solo completados. Pestañas explorar: sin marcar = no coleccionados (solo en tu lista si Mostrar planificados); marcado = entradas coleccionadas en la lista (planificados sigue filtrando)."
+L["SHOW_PLANNED_HELP"] = "Solo pestañas explorar (ocultas en lista y progreso semanal): marcado = solo objetivos en tu lista. Con Mostrar completados desmarcado: aún por obtener; marcado: ya terminados; ambos marcados: todos los planificados; ambos desmarcados: exploración completa de no coleccionados."
+L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "No hay logros para mostrar"
+L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "Añade logros de esta lista a tu lista de tareas, o cambia Mostrar planificados / Mostrar completados. La lista se llena al escanear; prueba /reload si no ves nada."
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"] = "Nada que mostrar"
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"] = "Ningún elemento planificado coincide con los filtros. Añade a la lista o ajusta Mostrar planificados / Mostrar completados."
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"] = "No hay elementos completados en la lista"
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_DESC"] = "Nada en tu lista de esta categoría está coleccionado o completado. Desactiva Mostrar completados para ver lo en progreso."
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_TITLE"] = "No hay elementos en progreso en la lista"
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "Nada en tu lista de esta categoría sigue sin coleccionar. Activa Mostrar completados para ver terminados, o añade objetivos."
+L["TRYCOUNTER_CHAT_ROUTE_LABEL"] = "Salida de chat del contador de intentos"
+L["TRYCOUNTER_CHAT_ROUTE_DESC"] = "Dónde se imprimen las líneas. Por defecto = mismas pestañas que Botín. «Warband Nexus» usa el grupo WN_TRYCOUNTER (configurable por pestaña). «Todas las pestañas» envía a cada ventana de chat."
+L["TRYCOUNTER_CHAT_ROUTE_LOOT"] = "1) Igual que Botín (predeterminado)"
+L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"] = "2) Warband Nexus (filtro aparte)"
+L["TRYCOUNTER_CHAT_ROUTE_ALL_TABS"] = "3) Todas las pestañas de chat estándar"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_BTN"] = "Añadir contador a la pestaña de chat seleccionada"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "Haz clic en la pestaña deseada y luego aquí. Ideal para modo «Warband Nexus». Añade WN_TRYCOUNTER a esa pestaña."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r Contador activado en la pestaña seleccionada."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r No se pudo actualizar la pestaña (sin chat o API bloqueada)."
+L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00Novedades:|r puede aparecer una ventana sobre el chat, o escribe |cffffff00/wn changelog|r."
+L["CONFIG_SHOW_LOGIN_CHAT"] = "Mensaje de inicio de sesión en el chat"
+L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "Muestra una línea de bienvenida corta con notificaciones activadas. Usa el grupo Sistema y una pestaña visible (p. ej. Chattynator). La ventana de novedades es aparte (pantalla completa)."
+L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Ocultar tiempo jugado en el chat"
+L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total jugado y tiempo en este nivel. Desactiva para mostrarlos de nuevo (también con /played)."
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Solicitar tiempo jugado al iniciar sesión"
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Si está activo, solicita /played en segundo plano para «Más jugado», etc.; se suprime el texto en el chat. Si está desactivado, no hay solicitud automática al entrar (/played manual sigue funcionando)."
+L["PROFESSIONS_WIDE_TABLE_HINT"] = "Consejo: usa la barra inferior o Mayús + rueda para ver todas las columnas."

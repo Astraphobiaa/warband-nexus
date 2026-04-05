@@ -1,45 +1,19 @@
 ═══════════════════════════════════════════════════════════════════════════
 
-  WARBAND NEXUS - Version 2.5.8 (03.04.2026)
+  WARBAND NEXUS - Version 2.5.9b (2026-04-04)
 
 ═══════════════════════════════════════════════════════════════════════════
 
 Release
-- Version 2.5.8 (WarbandNexus.toc, Modules/Constants.lua, in-game changelog metadata).
-
-Bug fixes
-- Try Counter: `OnTryCounterChatMsgLoot` fishing path no longer calls a nil global — `CurrentUnitsHaveMobLootContext` is forward-declared and assigned like other late-defined locals (fixes “attempt to call global 'CurrentUnitsHaveMobLootContext'”).
-
-In-game What's New
-- `CHANGELOG_V258` in all locales; NotificationManager fallback keyed to 2.5.8.
-
-═══════════════════════════════════════════════════════════════════════════
-
-  WARBAND NEXUS - Version 2.5.7b (03.04.2026)
-
-═══════════════════════════════════════════════════════════════════════════
-
-Release
-- Version 2.5.7b (WarbandNexus.toc, Modules/Constants.lua, in-game changelog metadata).
-
-Hotfix (since 2.5.7)
-- Gear tab: character selector and dropdown sizing; scrollbar-inclusive text budget; name/realm visibility; header card height.
-- About / Info dialog: contributor lines (class colors vs Blizzard gold); `INFO_CREDITS_LORE_SUBTITLE` replaces redundant “Special Thanks” under Credits.
+- Version 2.5.9b (WarbandNexus.toc, Modules/Constants.lua, ADDON_RELEASE_DATE for What's New title).
 
 Improvements
-- Characters tab: new "Default Order" sort (logged-in character first, then level high→low, then name A–Z). Core defaults set `characterSort.key` to `"default"` for new profiles. Sort dropdown maps unknown or invalid saved keys to the first menu option (per tab). Logged-in character stays at the top of Favorites, tracked, and Untracked for all sort modes including manual; manual custom-order seed includes every character in the section with the online character first; `characterOrder` gains an `untracked` list; reorder keeps the online character pinned to the top.
-- Settings window: uses WindowManager (POPUP priority, shared ESC handler with the main window) instead of a fixed FULLSCREEN_DIALOG strata/frame level. `RefreshSettingsKeyboard` re-enables keyboard when showing an existing frame after Hide/Show. Font-related rebuilds unregister the settings frame from WindowManager before closing it.
-- WindowManager: after combat, when restoring visible frames, call `EnableKeyboard(true)` in addition to `SetPropagateKeyboardInput(true)` so ESC/focus behavior is reliable.
-- Try Counter: instance difficulty prefers a snapshot taken on instance entry (`PLAYER_ENTERING_WORLD`) keyed by instance ID, then live `GetInstanceInfo`, before ENCOUNTER_END and dungeon/raid APIs — fixes Mythic runs misread as Normal (e.g. Operation: Mechagon, HK-8). `ResolveLiveInstanceDifficultyID` handles M+ and APIs when `GetInstanceInfo` difficulty is 0; `ResolveEffectiveEncounterDifficultyID` centralizes effective difficulty for gating.
-- Try Counter: `FilterDropsByDifficulty` (and shared collectible-collected checks) used consistently for loot processing, delayed ENCOUNTER_END handling, and CHAT_MSG_LOOT. CHAT path uses the same `encounter_<journalEncounterID>` dedup key as the loot window.
-- Try Counter: when a boss loot pass yields zero trackable drops (difficulty gate or all collected), still record the encounter dedup key so delayed ENC/CHAT cannot increment the same kill again.
-- Try Counter: merged open-world loot uses an item-ID-based corpse multiplier so mixed NPC templates that share the same mount drop (e.g. Nazmir Bloodfeaster) count every corpse, not only the first matched NPC id.
-- Try Counter: LOOT_READY may fire twice while the window is open — second READY no longer clears an active loot session; debug trace lines for LOOT_READY/LOOT_CLOSED are deduped within a short window to reduce chat spam.
-- Try Counter: [WN-Drops] one chat line per tracked drop: `Collectible Detected :` + boss — item link — difficulty segment — try count / collected. Gated difficulty is `(label)` in green, red, or amber; unrestricted drops use a gray em dash (`—`) as the third segment.
-- In-game What's New: `CHANGELOG_V257` (enUS hotfix blurb + 2.5.7 body) and NotificationManager fallback updated for 2.5.7b.
+- Tooltips (CollectibleSourceDB): NPC unit-tooltip collectible drop lines only show for hostile or attackable targets (friendly delve stones / object-style unit tooltips no longer list unrelated mounts). Uses IsMouseoverAttackable with Midnight-safe guards on UnitCanAttack, UnitIsDead, and UnitReaction (issecretvalue before comparisons).
+- Release packaging: `build_addon.py` (Python 3.8+, stdlib only) stages `build/WarbandNexus/` and writes `WarbandNexus-<version>.zip` with POSIX `/` entry names; post-build check rejects backslashes (Linux / macOS / CurseForge Linux install into AddOns/WarbandNexus correctly). Replaces Windows-only `Compress-Archive` / removed `scripts/build-curseforge.ps1`.
+- Plans UI: To-Do List & Weekly Progress — Show Planned / Show Completed behavior aligned with browse tabs; achievement tab and browse empty-state titles/descriptions (PLANS_*_EMPTY_* keys).
+- Chat — Try Counter: optional routing (same tabs as Loot, dedicated WN_TRYCOUNTER group, or all standard tabs); button to add WN_TRYCOUNTER to the selected chat tab; optional login welcome line; settings for played-time chat noise and background /played for stats (CONFIG_* keys).
+- What's New / changelog: locale key is derived from version string with dots stripped (e.g. 2.5.9b → `CHANGELOG_V259b`); fallback chain to older keys if missing; `ns.CHANGELOG.version` and `.date` follow Constants.
 
 Bug fixes
-- Try Counter: attempt counter could increase even after a "skipped difficulty" message (loot path vs delayed ENC / CHAT duplicate attribution).
-
-
-Details: CurseForge — Warband Nexus
+- Try Counter: clearer separation of fishing vs. profession gathering and game-object-only loot; reduced false try increments (e.g. gathering vs. mount farming); loot session timing and CHAT_MSG_LOOT handling tightened.
+- Try Counter: fishing attribution path no longer calls a nil global — `CurrentUnitsHaveMobLootContext` is forward-declared (fixes “attempt to call global 'CurrentUnitsHaveMobLootContext'”).

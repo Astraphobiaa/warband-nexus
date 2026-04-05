@@ -1696,3 +1696,51 @@ L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
+
+-- v2.5.9b (CHANGELOG_V259b)
+L["CHANGELOG_V259b"] = [=[v2.5.9b (04/04/2026)
+
+Améliorations
+- Infobulles : les lignes de butin de collection sur les infobulles d'unités PNJ ne s'affichent que pour les cibles hostiles ou attaquables (corrige les montures erronées sur les pierres de fouille amicales, etc.). Vérifications sûres pour UnitCanAttack, UnitIsDead et UnitReaction (règles Midnight sur les valeurs secrètes).
+- Paquetage : l'archive de publication est créée avec build_addon.py (Python 3.8+) ; les chemins utilisent / pour Linux, macOS et le client Linux CurseForge.
+
+Corrections
+- Compteur d'essais : meilleure distinction pêche / récolte de métier et butin uniquement sur objets ; moins de faux comptages. Session de butin et CHAT_MSG_LOOT affinés.
+
+Interface Plans
+- Liste des tâches et progression hebdo : Afficher planifiés / Afficher terminés alignés avec les onglets de navigation ; états vides plus clairs pour les succès et les listes.
+
+Chat
+- Compteur d'essais : même filtrage que le butin, canal dédié WN_TRYCOUNTER ou tous les onglets ; bouton pour ajouter le canal à l'onglet sélectionné. Ligne d'accueil optionnelle ; options pour masquer le spam de temps de jeu et demander /played discrètement.
+
+Localisation
+- Clés manquantes ajoutées dans toutes les langues prises en charge.
+
+CurseForge : Warband Nexus]=]
+L["SHOW_COMPLETED_HELP"] = "Liste des tâches et progression hebdo : décoché = plans en cours ; coché = uniquement terminés. Onglets Parcourir : décoché = non collectés (filtrés par To-Do si Afficher planifiés) ; coché = entrées collectées sur la To-Do (planifiés limite toujours la liste)."
+L["SHOW_PLANNED_HELP"] = "Onglets Parcourir uniquement (masqués sur la liste To-Do et la progression hebdo) : coché = seulement ce que vous avez mis sur la To-Do. Avec Afficher terminés décoché : encore à obtenir ; coché : déjà finis ; les deux cochés : toute la catégorie planifiée ; les deux décochés : parcours complet des non collectés."
+L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Aucun succès à afficher"
+L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "Ajoutez des succès depuis cette liste à votre To-Do, ou changez Afficher planifiés / Afficher terminés. La liste se remplit au scan ; essayez /reload si rien n'apparaît."
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"] = "Rien à afficher"
+L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"] = "Aucune entrée planifiée ne correspond aux filtres. Ajoutez des objectifs à la To-Do ou modifiez Afficher planifiés / Afficher terminés."
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"] = "Aucune entrée To-Do terminée"
+L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_DESC"] = "Rien sur votre To-Do dans cette catégorie n'est encore collecté ou terminé. Décochez Afficher terminés pour voir ce qui est en cours."
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_TITLE"] = "Aucune entrée To-Do en cours"
+L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "Rien sur votre To-Do dans cette catégorie n'est encore à collecter. Cochez Afficher terminés pour les entrées finies, ou ajoutez des objectifs."
+L["TRYCOUNTER_CHAT_ROUTE_LABEL"] = "Sortie chat du compteur d'essais"
+L["TRYCOUNTER_CHAT_ROUTE_DESC"] = "Où imprimer les lignes du compteur. Par défaut = mêmes onglets que Butin. « Warband Nexus » utilise le groupe WN_TRYCOUNTER (réglable par onglet). « Tous les onglets » envoie à chaque fenêtre de chat numérotée."
+L["TRYCOUNTER_CHAT_ROUTE_LOOT"] = "1) Comme Butin (défaut)"
+L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"] = "2) Warband Nexus (filtre séparé)"
+L["TRYCOUNTER_CHAT_ROUTE_ALL_TABS"] = "3) Tous les onglets de chat standards"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_BTN"] = "Ajouter le compteur à l'onglet de chat sélectionné"
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "Cliquez l'onglet souhaité, puis ce bouton. Idéal pour le mode « Warband Nexus ». Ajoute WN_TRYCOUNTER à cet onglet."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r Compteur d'essais activé sur l'onglet sélectionné."
+L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r Impossible de mettre à l'onglet à jour (pas de chat ou API bloquée)."
+L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00Nouveautés :|r une fenêtre peut apparaître au-dessus du chat, ou tapez |cffffff00/wn changelog|r."
+L["CONFIG_SHOW_LOGIN_CHAT"] = "Message de connexion dans le chat"
+L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "Affiche une courte ligne de bienvenue lorsque les notifications sont activées. Utilise le groupe Système et un onglet visible (ex. Chattynator). La fenêtre Nouveautés est séparée (plein écran)."
+L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Masquer le temps de jeu dans le chat"
+L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps de jeu total et de temps sur ce niveau. Désactiver pour les réafficher (y compris avec /played)."
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Demander le temps de jeu à la connexion"
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Si activé, demande /played en arrière-plan pour « Le plus joué » etc. ; la sortie chat est supprimée. Si désactivé, pas de demande auto à la connexion (/played manuel fonctionne)."
+L["PROFESSIONS_WIDE_TABLE_HINT"] = "Astuce : barre du bas ou Maj + molette pour voir toutes les colonnes."
