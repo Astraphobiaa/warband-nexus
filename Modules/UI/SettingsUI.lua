@@ -1439,6 +1439,27 @@ local function BuildSettings(parent, containerWidth)
             set = function(value) WarbandNexus.db.profile.notifications.showUpdateNotes = value end,
         },
         {
+            key = "loginChat",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["CONFIG_SHOW_LOGIN_CHAT"]) or "Login message in chat",
+            tooltip = (ns.L and ns.L["CONFIG_SHOW_LOGIN_CHAT_DESC"]) or "Print a short welcome line when notifications are on. Visible in custom chat (e.g. Chattynator); the What's New window is separate.",
+            get = function() return WarbandNexus.db.profile.notifications.showLoginChat ~= false end,
+            set = function(value) WarbandNexus.db.profile.notifications.showLoginChat = value end,
+        },
+        {
+            key = "hidePlayedTime",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["CONFIG_HIDE_PLAYED_TIME_CHAT"]) or "Hide Time Played in chat",
+            tooltip = (ns.L and ns.L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"]) or "Remove Total time played / Time played this level from chat (system messages). Disable this if you want those lines or /played output.",
+            get = function() return WarbandNexus.db.profile.notifications.hidePlayedTimeInChat ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.notifications.hidePlayedTimeInChat = value
+                if WarbandNexus.UpdateChatFilter then
+                    WarbandNexus:UpdateChatFilter()
+                end
+            end,
+        },
+        {
             key = "loot",
             parentKey = "enabled",
             label = (ns.L and ns.L["LOOT_ALERTS"]) or "New Collectible Popup",
@@ -1568,6 +1589,58 @@ local function BuildSettings(parent, containerWidth)
     }
     
     local notifGridYOffset, notifWidgets = CreateCheckboxGrid(notifSection.content, notifOptions, 0, effectiveWidth - 30)
+
+    -- Try counter: where chat lines go (Loot vs own group vs all tabs)
+    notifGridYOffset = notifGridYOffset - 8
+    notifGridYOffset = CreateDropdownWidget(notifSection.content, {
+        name = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LABEL"]) or "Try counter chat output",
+        desc = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DESC"])
+            or "Default uses the same tabs as Loot messages. “Warband Nexus” is a separate filter you can enable per tab (often listed in the chat tab settings). “All tabs” prints to every standard chat window.",
+        values = {
+            loot = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LOOT"]) or "1) Same tabs as Loot (default)",
+            dedicated = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"]) or "2) Warband Nexus (separate filter)",
+            all_tabs = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_ALL_TABS"]) or "3) All standard chat tabs",
+        },
+        get = function()
+            return WarbandNexus.db.profile.notifications.tryCounterChatRoute or "loot"
+        end,
+        set = function(_, value)
+            WarbandNexus.db.profile.notifications.tryCounterChatRoute = value
+            if ns.ChatOutput and ns.ChatOutput.OnTryCounterChatRouteChanged then
+                ns.ChatOutput.OnTryCounterChatRouteChanged(value)
+            end
+        end,
+    }, notifGridYOffset)
+
+    notifGridYOffset = notifGridYOffset - 8
+    local addTcChatBtn = ns.UI.Factory:CreateButton(notifSection.content)
+    addTcChatBtn:SetSize(math.min(effectiveWidth - 30, 320), 30)
+    addTcChatBtn:SetPoint("TOPLEFT", 0, notifGridYOffset)
+    local addTcChatBtnText = addTcChatBtn:GetFontString() or FontManager:CreateFontString(addTcChatBtn, "body", "OVERLAY")
+    addTcChatBtnText:SetPoint("CENTER")
+    addTcChatBtnText:SetText((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_BTN"]) or "Add try counter to selected chat tab")
+    addTcChatBtn:SetFontString(addTcChatBtnText)
+    if ApplyVisuals then
+        ApplyVisuals(addTcChatBtn, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    end
+    addTcChatBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"])
+            or "Select the chat tab you want, then click. Use with “Warband Nexus (separate filter)” mode so try lines are not tied to Loot.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    addTcChatBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    addTcChatBtn:SetScript("OnClick", function()
+        if ns.ChatOutput and ns.ChatOutput.AddTryCounterGroupToSelectedChatFrame then
+            local ok, err = ns.ChatOutput.AddTryCounterGroupToSelectedChatFrame()
+            if ok and WarbandNexus.Print then
+                WarbandNexus:Print((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"]) or "|cff9966ff[Warband Nexus]|r Try counter enabled on the selected chat tab.")
+            elseif WarbandNexus.Print then
+                WarbandNexus:Print((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"]) or "|cffff6600[Warband Nexus]|r Could not update the chat tab (no chat frame or API blocked).")
+            end
+        end
+    end)
+    notifGridYOffset = notifGridYOffset - 40
     
     -- Track external dependents (sliders, buttons) that should disable when notifications are OFF
     local notifExternalDependents = {}

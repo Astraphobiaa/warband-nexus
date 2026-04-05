@@ -11,12 +11,7 @@ local FontManager = ns.FontManager  -- Centralized font management
 local PlansUIEvents = {}
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 
 -- Services
 local SearchStateManager = ns.SearchStateManager
@@ -83,8 +78,68 @@ local CATEGORIES = {
 local currentCategory = "active"
 local currentDailyContentFilter = "midnight"
 local searchText = ""
-local showCompleted = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowCompleted or false
-local showPlanned = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowPlanned or false
+-- Checkbox mirrors (synced from DB each DrawPlansTab; file load can run before AceDB exists)
+local showCompleted = false
+local showPlanned = false
+
+--- Normalize profile booleans (CheckButton uses 1/nil; AceDB may store true/false).
+local function ProfileBool(profile, key, default)
+    if not profile then return default end
+    local v = profile[key]
+    if v == true or v == 1 then return true end
+    if v == false or v == nil or v == 0 then return false end
+    return default
+end
+
+local function NormalizeCheckButtonChecked(button)
+    if not button then return false end
+    local v = button:GetChecked()
+    return v == true or v == 1
+end
+
+--- Browse subtabs only: merge collected + uncollected using isPlanned and the two checkboxes.
+--- To-Do List / Weekly Progress do not use this — they filter plans in DrawActivePlans (Show Completed only).
+local function MergePlansBrowseResults(collectedList, uncollectedList, showPlanned, showCompleted)
+    if showCompleted and showPlanned then
+        local seen, out = {}, {}
+        for i = 1, #(uncollectedList or {}) do
+            local item = uncollectedList[i]
+            local id = item and item.id
+            if item and item.isPlanned and id and not seen[id] then
+                seen[id] = true
+                out[#out + 1] = item
+            end
+        end
+        for i = 1, #(collectedList or {}) do
+            local item = collectedList[i]
+            local id = item and item.id
+            if item and item.isPlanned and id and not seen[id] then
+                seen[id] = true
+                out[#out + 1] = item
+            end
+        end
+        return out
+    elseif showCompleted and not showPlanned then
+        local out = {}
+        for i = 1, #(collectedList or {}) do
+            local item = collectedList[i]
+            if item and item.isPlanned then
+                out[#out + 1] = item
+            end
+        end
+        return out
+    elseif showPlanned and not showCompleted then
+        local out = {}
+        for i = 1, #(uncollectedList or {}) do
+            local item = uncollectedList[i]
+            if item and item.isPlanned then
+                out[#out + 1] = item
+            end
+        end
+        return out
+    end
+    return uncollectedList or {}
+end
 
 -- Throttle state for scan progress UI refreshes
 local lastUIRefresh = 0
@@ -267,18 +322,8 @@ function WarbandNexus:DrawPlansTab(parent)
     -- Use factory pattern for standardized header layout
     local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
     
-    -- Count active (non-completed) plans only, excluding daily_quests
-    local allPlans = self:GetActivePlans() or {}
-    local activePlanCount = 0
-    for _, plan in ipairs(allPlans) do
-        if plan.type ~= "daily_quests" then
-            local progress = self:GetResolvedPlanProgress(plan)
-            local isComplete = (progress and progress.collected) or (plan.completed == true)
-            if not isComplete then
-                activePlanCount = activePlanCount + 1
-            end
-        end
-    end
+    -- Count active (non-completed) plans only, excluding daily_quests (no merged plan table)
+    local activePlanCount = self:GetActiveNonDailyIncompleteCount()
     
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -316,6 +361,12 @@ function WarbandNexus:DrawPlansTab(parent)
     
     -- Only show buttons and "Show Completed" checkbox if module is enabled
     if moduleEnabled then
+        local prof = self.db and self.db.profile
+        if prof then
+            showCompleted = ProfileBool(prof, "plansShowCompleted", false)
+            showPlanned = ProfileBool(prof, "plansShowPlanned", false)
+        end
+
         -- Add Custom button (using shared widget)
         local addCustomBtn = CreateThemedButton(titleCard, (ns.L and ns.L["ADD_CUSTOM"]) or "Add Custom", 100)
         addCustomBtn:SetPoint("RIGHT", -15, 0)
@@ -407,7 +458,7 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         checkbox:SetScript("OnClick", function(self)
             if originalOnClick then originalOnClick(self) end
-            showCompleted = self:GetChecked()
+            showCompleted = NormalizeCheckButtonChecked(self)
             -- Save to DB
             if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
                 WarbandNexus.db.profile.plansShowCompleted = showCompleted
@@ -428,6 +479,10 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         checkbox:SetScript("OnEnter", function(self)
             if originalOnEnter then originalOnEnter(self) end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText((ns.L and ns.L["SHOW_COMPLETED"]) or "Show Completed", 1, 1, 1)
+            GameTooltip:AddLine((ns.L and ns.L["SHOW_COMPLETED_HELP"]) or "To-Do List and Weekly Progress: unchecked = plans still in progress; checked = completed plans only. Browse tabs: unchecked = uncollected browse (optionally only To-Do items if Show Planned is on); checked = include collected To-Do entries.", 0.75, 0.75, 0.75, true)
+            GameTooltip:Show()
         end)
         
         local originalOnLeave = nil
@@ -439,52 +494,59 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         checkbox:SetScript("OnLeave", function(self)
             if originalOnLeave then originalOnLeave(self) end
+            GameTooltip:Hide()
         end)
         
-        -- === "Show Planned" checkbox (left of "Show Completed" label) ===
-        local plannedCheckbox = CreateThemedCheckbox(titleCard, showPlanned)
-        if plannedCheckbox then
-            plannedCheckbox:SetPoint("RIGHT", checkboxLabel, "LEFT", -16, 0)
-            
-            local plannedLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
-            plannedLabel:SetPoint("RIGHT", plannedCheckbox, "LEFT", -8, 0)
-            plannedLabel:SetText((ns.L and ns.L["SHOW_PLANNED"]) or "Show Planned")
-            plannedLabel:SetTextColor(0.9, 0.9, 0.9)
-            
-            local origPlannedOnClick = nil
-            if plannedCheckbox.GetScript then
-                local ok2, res2 = pcall(function() return plannedCheckbox:GetScript("OnClick") end)
-                if ok2 then origPlannedOnClick = res2 end
-            end
-            plannedCheckbox:SetScript("OnClick", function(self)
-                if origPlannedOnClick then origPlannedOnClick(self) end
-                showPlanned = self:GetChecked()
-                if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
-                    WarbandNexus.db.profile.plansShowPlanned = showPlanned
+        -- "Show Planned" applies to browse subtabs only (Mounts, Pets, …), not To-Do List / Weekly Progress.
+        if currentCategory ~= "active" and currentCategory ~= "daily_tasks" then
+            local plannedCheckbox = CreateThemedCheckbox(titleCard, showPlanned)
+            if plannedCheckbox then
+                plannedCheckbox:SetPoint("RIGHT", checkboxLabel, "LEFT", -16, 0)
+                
+                local plannedLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
+                plannedLabel:SetPoint("RIGHT", plannedCheckbox, "LEFT", -8, 0)
+                plannedLabel:SetText((ns.L and ns.L["SHOW_PLANNED"]) or "Show Planned")
+                plannedLabel:SetTextColor(0.9, 0.9, 0.9)
+                
+                local origPlannedOnClick = nil
+                if plannedCheckbox.GetScript then
+                    local ok2, res2 = pcall(function() return plannedCheckbox:GetScript("OnClick") end)
+                    if ok2 then origPlannedOnClick = res2 end
                 end
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
+                plannedCheckbox:SetScript("OnClick", function(self)
+                    if origPlannedOnClick then origPlannedOnClick(self) end
+                    showPlanned = NormalizeCheckButtonChecked(self)
+                    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
+                        WarbandNexus.db.profile.plansShowPlanned = showPlanned
+                    end
+                    if WarbandNexus.RefreshUI then
+                        WarbandNexus:RefreshUI()
+                    end
+                end)
+                
+                local origPlannedEnter = nil
+                if plannedCheckbox.GetScript then
+                    local ok3, res3 = pcall(function() return plannedCheckbox:GetScript("OnEnter") end)
+                    if ok3 then origPlannedEnter = res3 end
                 end
-            end)
-            
-            -- Preserve hover effects from shared widget
-            local origPlannedEnter = nil
-            if plannedCheckbox.GetScript then
-                local ok3, res3 = pcall(function() return plannedCheckbox:GetScript("OnEnter") end)
-                if ok3 then origPlannedEnter = res3 end
+                plannedCheckbox:SetScript("OnEnter", function(self)
+                    if origPlannedEnter then origPlannedEnter(self) end
+                    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                    GameTooltip:SetText((ns.L and ns.L["SHOW_PLANNED"]) or "Show Planned", 1, 1, 1)
+                    GameTooltip:AddLine((ns.L and ns.L["SHOW_PLANNED_HELP"]) or "Browse tabs only: limit the list to items on your To-Do. Pair with Show Completed for still-needed vs already-finished planned items. Hidden on To-Do List and Weekly Progress.", 0.75, 0.75, 0.75, true)
+                    GameTooltip:Show()
+                end)
+                
+                local origPlannedLeave = nil
+                if plannedCheckbox.GetScript then
+                    local ok4, res4 = pcall(function() return plannedCheckbox:GetScript("OnLeave") end)
+                    if ok4 then origPlannedLeave = res4 end
+                end
+                plannedCheckbox:SetScript("OnLeave", function(self)
+                    if origPlannedLeave then origPlannedLeave(self) end
+                    GameTooltip:Hide()
+                end)
             end
-            plannedCheckbox:SetScript("OnEnter", function(self)
-                if origPlannedEnter then origPlannedEnter(self) end
-            end)
-            
-            local origPlannedLeave = nil
-            if plannedCheckbox.GetScript then
-                local ok4, res4 = pcall(function() return plannedCheckbox:GetScript("OnLeave") end)
-                if ok4 then origPlannedLeave = res4 end
-            end
-            plannedCheckbox:SetScript("OnLeave", function(self)
-                if origPlannedLeave then origPlannedLeave(self) end
-            end)
         end
     end
     
@@ -1282,23 +1344,31 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 end
 
 function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
-    local plans = self:GetActivePlans()
-    
-    -- Filter by category first
+    local plans
     if category == "daily_tasks" then
-        local dailyPlans = {}
-        for _, plan in ipairs(plans) do
-            if plan.type == "daily_quests" then
-                dailyPlans[#dailyPlans + 1] = plan
+        plans = {}
+        if self.db and self.db.global then
+            if self.db.global.plans then
+                local p = self.db.global.plans
+                for i = 1, #p do
+                    local plan = p[i]
+                    if plan.type == "daily_quests" then
+                        plans[#plans + 1] = plan
+                    end
+                end
+            end
+            if self.db.global.customPlans then
+                local c = self.db.global.customPlans
+                for i = 1, #c do
+                    local plan = c[i]
+                    if plan.type == "daily_quests" then
+                        plans[#plans + 1] = plan
+                    end
+                end
             end
         end
-        plans = dailyPlans
-    elseif category == "active" then
-        local activePlans = {}
-        for _, plan in ipairs(plans) do
-            activePlans[#activePlans + 1] = plan
-        end
-        plans = activePlans
+    else
+        plans = self:GetActivePlans()
     end
     
     -- Apply search filter (My Plans global search, skip for daily_tasks)
@@ -1307,7 +1377,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         if activeSearch and activeSearch ~= "" then
             local query = activeSearch:lower()
             local searchFiltered = {}
-            for _, plan in ipairs(plans) do
+            for i = 1, #plans do
+                local plan = plans[i]
                 local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ""
                 local name = resolvedName:lower()
                 local source = (plan.resolvedSource or plan.source or ""):lower()
@@ -1320,8 +1391,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         end
     end
 
-    -- Sort plans: Weekly vault first, daily quests second, then others
-    local typePriority = { weekly_vault = 1, daily_quests = 2 }
+    -- Sort plans: Weekly Progress (daily quests) first, then Great Vault, then others
+    local typePriority = { daily_quests = 1, weekly_vault = 2 }
     table.sort(plans, function(a, b)
         local pa = typePriority[a.type] or 99
         local pb = typePriority[b.type] or 99
@@ -1331,43 +1402,17 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         return aID < bID
     end)
 
-    -- Filter plans based on showCompleted flag (read from DB each time so toggle always applies)
-    local showCompletedNow = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowCompleted or false
+    -- To-Do List & Weekly Progress: list is already only saved plans. Show Planned is ignored here (browse only).
+    -- Show Completed off = in-progress plans only; on = completed plans only.
+    local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    local showCompletedNow = ProfileBool(profile, "plansShowCompleted", false)
     local filteredPlans = {}
-    for _, plan in ipairs(plans) do
-        local isComplete = false
-        
-        if plan.type == "weekly_vault" then
-            isComplete = plan.fullyCompleted == true
-        elseif plan.type == "daily_quests" then
-            local totalQuests = 0
-            local completedQuests = 0
-            for cat, questList in pairs(plan.quests or {}) do
-                if plan.questTypes and plan.questTypes[cat] then
-                    for _, quest in ipairs(questList) do
-                        if not quest.isSubQuest then
-                            totalQuests = totalQuests + 1
-                            if quest.isComplete then
-                                completedQuests = completedQuests + 1
-                            end
-                        end
-                    end
-                end
-            end
-            isComplete = (totalQuests > 0 and completedQuests == totalQuests)
-        else
-            local progress = self:GetResolvedPlanProgress(plan)
-            isComplete = (progress and progress.collected) or (plan.completed == true)
-        end
-        
-        if showCompletedNow then
-            if isComplete then
-                filteredPlans[#filteredPlans + 1] = plan
-            end
-        else
-            if not isComplete then
-                filteredPlans[#filteredPlans + 1] = plan
-            end
+    for i = 1, #plans do
+        local plan = plans[i]
+        local isComplete = self:IsActivePlanComplete(plan)
+        local include = (showCompletedNow and isComplete) or ((not showCompletedNow) and (not isComplete))
+        if include then
+            filteredPlans[#filteredPlans + 1] = plan
         end
     end
     plans = filteredPlans
@@ -1509,8 +1554,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         end
         
         if card then
-            -- Remove button (X icon on top right) - Hide for completed plans
-            if not (progress and progress.collected) then
+            -- Row actions on every visible card (To-Do / Weekly: Show Completed filter only).
+            do
                 local CBL = ns.UI_CARD_BUTTON_LAYOUT or {ACTION_SIZE = 20, ACTION_MARGIN = 8, ACTION_GAP = 4}
                 local actionSize = CBL.ACTION_SIZE
                 local actionMargin = CBL.ACTION_MARGIN
@@ -2372,6 +2417,55 @@ end
 -- Phase 4.4: Performance limit for browse results rendering
 local MAX_BROWSE_RESULTS = 100
 
+local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, searchText, showPlanned, showCompleted)
+    local L = ns.L
+    local labelCat = category or "item"
+    local st = searchText or ""
+    local hasSearch = st ~= ""
+    local titleR, titleG, titleB = 1, 1, 1
+    local titleStr
+    local descStr
+    if hasSearch then
+        titleStr = (L and L["NO_RESULTS"]) or "No results"
+        descStr = (L and L["TRY_ADJUSTING_SEARCH"]) or "Try adjusting your search or filters."
+    elseif showCompleted and showPlanned then
+        titleR, titleG, titleB = 1, 0.8, 0
+        titleStr = (L and L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"]) or "Nothing to show"
+        descStr = (L and L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"])
+            or "No planned items in this category match these filters. Add entries to your To-Do or adjust Show Planned / Show Completed."
+    elseif showCompleted and not showPlanned then
+        titleR, titleG, titleB = 0.3, 1, 0.3
+        titleStr = (L and L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"]) or "No completed To-Do items"
+        descStr = (L and L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_DESC"])
+            or "Nothing on your To-Do List in this category is collected or completed yet. Turn off Show Completed to see entries still in progress."
+    elseif showPlanned and not showCompleted then
+        titleR, titleG, titleB = 1, 0.8, 0
+        titleStr = (L and L["PLANS_BROWSE_EMPTY_IN_PROGRESS_TITLE"]) or "No in-progress To-Do items"
+        descStr = (L and L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"])
+            or "Nothing on your To-Do List in this category is still uncollected. Turn on Show Completed to see finished ones, or add goals from this tab."
+    else
+        titleR, titleG, titleB = 0.3, 1, 0.3
+        titleStr = (L and L["ALL_COLLECTED_CATEGORY"] and string.format(L["ALL_COLLECTED_CATEGORY"], labelCat))
+            or ("All " .. labelCat .. "s collected!")
+        descStr = (L and L["COLLECTED_EVERYTHING"]) or "You've collected everything in this category!"
+    end
+    local noResultsCard = CreateCard(parent, 80)
+    noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
+    noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
+    noResultsText:SetPoint("CENTER", 0, 10)
+    noResultsText:SetTextColor(titleR, titleG, titleB)
+    noResultsText:SetText(titleStr)
+    local noResultsDesc = FontManager:CreateFontString(noResultsCard, "body", "OVERLAY")
+    noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
+    noResultsDesc:SetTextColor(1, 1, 1)
+    noResultsDesc:SetText(descStr)
+    noResultsDesc:SetWidth(width - 40)
+    noResultsDesc:SetJustifyH("CENTER")
+    noResultsCard:Show()
+    return yOffset + 100
+end
+
 function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searchText)
     
     -- CRITICAL: Clear all old children from parent to prevent overlap
@@ -2384,6 +2478,10 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             end
         end
     end
+
+    local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    local showCompletedBrowse = ProfileBool(profile, "plansShowCompleted", false)
+    local showPlannedBrowse = ProfileBool(profile, "plansShowPlanned", false)
     
     -- Initialize category state if needed
     if not ns.PlansLoadingState[category] then
@@ -2430,17 +2528,26 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
     end
     
-    -- Get results based on category (GetUncollected* may trigger scan and set loading state)
-    local results = {}
+    -- Fetch lists: neither checkbox = uncollected only; Show Completed = use collected list (filtered to planned);
+    -- Show Planned without Completed = uncollected + planned; both = union of planned from both lists.
+    local needUncollected = (not showCompletedBrowse) or (showPlannedBrowse and showCompletedBrowse)
+    local needCollected = showCompletedBrowse
+
+    local resultsUncollected = {}
+    local resultsCollected = {}
+
     if category == "mount" then
-        results = WarbandNexus:GetUncollectedMounts(searchText, 50)
-        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " mounts")
+        if needUncollected then resultsUncollected = self:GetUncollectedMounts(searchText, 50) end
+        if needCollected then resultsCollected = self.GetCollectedMounts and self:GetCollectedMounts(searchText, 50) or {} end
+        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: mount unc=" .. #resultsUncollected .. " col=" .. #resultsCollected)
     elseif category == "pet" then
-        results = WarbandNexus:GetUncollectedPets(searchText, 50)
-        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " pets")
+        if needUncollected then resultsUncollected = self:GetUncollectedPets(searchText, 50) end
+        if needCollected then resultsCollected = self.GetCollectedPets and self:GetCollectedPets(searchText, 50) or {} end
+        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: pet unc=" .. #resultsUncollected .. " col=" .. #resultsCollected)
     elseif category == "toy" then
-        results = WarbandNexus:GetUncollectedToys(searchText, 50)
-        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " toys")
+        if needUncollected then resultsUncollected = self:GetUncollectedToys(searchText, 50) end
+        if needCollected then resultsCollected = self.GetCollectedToys and self:GetCollectedToys(searchText, 50) or {} end
+        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: toy unc=" .. #resultsUncollected .. " col=" .. #resultsCollected)
     end
 
     -- Re-check loading: Core init (EnsureCollectionData) veya store boşken tetiklenen scan
@@ -2474,15 +2581,14 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- Transmog browser with sub-categories
         return self:DrawTransmogBrowser(parent, yOffset, width)
     elseif category == "illusion" then
-        results = WarbandNexus:GetUncollectedIllusions(searchText, 50)
+        if needUncollected then resultsUncollected = self:GetUncollectedIllusions(searchText, 50) end
+        if needCollected then resultsCollected = self.GetCollectedIllusions and self:GetCollectedIllusions(searchText, 50) or {} end
     elseif category == "title" then
-        results = WarbandNexus:GetUncollectedTitles(searchText, 50)
+        if needUncollected then resultsUncollected = self:GetUncollectedTitles(searchText, 50) end
+        if needCollected then resultsCollected = self.GetCollectedTitles and self:GetCollectedTitles(searchText, 50) or {} end
     elseif category == "achievement" then
-        if showCompleted then
-            results = WarbandNexus.GetCompletedAchievements and WarbandNexus:GetCompletedAchievements(searchText, 99999) or {}
-        else
-            results = WarbandNexus:GetUncollectedAchievements(searchText, 99999)
-        end
+        if needUncollected then resultsUncollected = self:GetUncollectedAchievements(searchText, 99999) end
+        if needCollected then resultsCollected = self.GetCompletedAchievements and self:GetCompletedAchievements(searchText, 99999) or {} end
 
         -- Re-check loading: GetUncollected/CompletedAchievements may have triggered scan (store empty)
         if categoryState.isLoading then
@@ -2498,26 +2604,17 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     string.format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName))
             end
         end
-        
-        -- Update isPlanned flags for achievements
-        for _, item in ipairs(results) do
+
+        for i = 1, #resultsUncollected do
+            local item = resultsUncollected[i]
             item.isPlanned = self:IsAchievementPlanned(item.id)
         end
-        
-        -- Filter to only planned achievements when showPlanned is active
-        if showPlanned then
-            local plannedOnly = {}
-            for _, item in ipairs(results) do
-                if item.isPlanned then
-                    table.insert(plannedOnly, item)
-                end
-            end
-            results = plannedOnly
+        for i = 1, #resultsCollected do
+            local item = resultsCollected[i]
+            item.isPlanned = self:IsAchievementPlanned(item.id)
         end
-        
-        -- Use table-based view for achievements (pass searchText)
-        local achievementHeight = self:DrawAchievementsTable(parent, results, yOffset, width, searchText)
-        -- Set container height to actual content height
+        local achResults = MergePlansBrowseResults(resultsCollected, resultsUncollected, showPlannedBrowse, showCompletedBrowse)
+        local achievementHeight = self:DrawAchievementsTable(parent, achResults, yOffset, width, searchText)
         if parent and parent.SetHeight then
             parent:SetHeight(math.max(achievementHeight, 1))
         end
@@ -2562,153 +2659,65 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
     end
     
-    -- IMPORTANT: Refresh isPlanned flags for all results (plan cache was updated)
-    for _, item in ipairs(results) do
-        if category == "mount" then
-            -- Mount: id field contains mountID
+    -- isPlanned + merge matrix (mount, pet, toy, illusion, title)
+    if category == "mount" then
+        for i = 1, #resultsUncollected do
+            local item = resultsUncollected[i]
             item.isPlanned = self:IsMountPlanned(item.id)
-        elseif category == "pet" then
-            -- Pet: id field contains speciesID
+        end
+        for i = 1, #resultsCollected do
+            local item = resultsCollected[i]
+            item.isPlanned = self:IsMountPlanned(item.id)
+        end
+    elseif category == "pet" then
+        for i = 1, #resultsUncollected do
+            local item = resultsUncollected[i]
             item.isPlanned = self:IsPetPlanned(item.id)
-        elseif category == "toy" then
-            -- Toy: id field contains itemID
+        end
+        for i = 1, #resultsCollected do
+            local item = resultsCollected[i]
+            item.isPlanned = self:IsPetPlanned(item.id)
+        end
+    elseif category == "toy" then
+        for i = 1, #resultsUncollected do
+            local item = resultsUncollected[i]
             item.isPlanned = self:IsItemPlanned(PLAN_TYPES.TOY, item.id)
-        elseif category == "achievement" then
-            -- Achievement: id field contains achievementID
-            item.isPlanned = self:IsAchievementPlanned(item.id)
-        elseif category == "illusion" then
-            -- Illusion: id field contains sourceID
+        end
+        for i = 1, #resultsCollected do
+            local item = resultsCollected[i]
+            item.isPlanned = self:IsItemPlanned(PLAN_TYPES.TOY, item.id)
+        end
+    elseif category == "illusion" then
+        for i = 1, #resultsUncollected do
+            local item = resultsUncollected[i]
             item.isPlanned = self:IsIllusionPlanned(item.id)
-        elseif category == "title" then
-            -- Title: id field contains titleID
+        end
+        for i = 1, #resultsCollected do
+            local item = resultsCollected[i]
+            item.isPlanned = self:IsIllusionPlanned(item.id)
+        end
+    elseif category == "title" then
+        for i = 1, #resultsUncollected do
+            local item = resultsUncollected[i]
+            item.isPlanned = self:IsTitlePlanned(item.id)
+        end
+        for i = 1, #resultsCollected do
+            local item = resultsCollected[i]
             item.isPlanned = self:IsTitlePlanned(item.id)
         end
     end
-    
-    -- Show "No results" message if empty
+
+    local results = MergePlansBrowseResults(resultsCollected, resultsUncollected, showPlannedBrowse, showCompletedBrowse)
+
     if #results == 0 then
-        DebugPrint("|cffffcc00[WN PlansUI WARNING]|r No results to display for category: " .. category)
-        
-        local noResultsCard = CreateCard(parent, 80)
-        noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
-        noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
-        
-        local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
-        noResultsText:SetPoint("CENTER", 0, 10)
-        noResultsText:SetTextColor(1, 1, 1)  -- White
-        noResultsText:SetText((ns.L and ns.L["NO_FOUND_FORMAT"] and string.format(ns.L["NO_FOUND_FORMAT"], category)) or ("No " .. category .. "s found"))
-        
-        local noResultsDesc = FontManager:CreateFontString(noResultsCard, "body", "OVERLAY")
-        noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
-        noResultsDesc:SetTextColor(1, 1, 1)  -- White
-        noResultsDesc:SetText((ns.L and ns.L["TRY_ADJUSTING_SEARCH"]) or "Try adjusting your search or filters.")
-        
-        noResultsCard:Show()
-        
-        return yOffset + 100
+        DebugPrint("|cffffcc00[WN PlansUI WARNING]|r No browse results for category: " .. tostring(category))
+        return DrawPlansBrowseEmptyCard(parent, yOffset, width, category, searchText, showPlannedBrowse, showCompletedBrowse)
     end
-    
-    -- Sort results: Affordable first, then buyable, then others
-    -- Sort alphabetically by name
+
     table.sort(results, function(a, b)
         return (a.name or "") < (b.name or "")
     end)
-    
-    -- Filter based on showCompleted flag (read from DB so toggle applies)
-    local showCompletedBrowse = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowCompleted or false
-    if showCompletedBrowse then
-        -- Show ONLY collected items
-        local collectedResults = {}
-        for _, item in ipairs(results) do
-            if item.isCollected then
-                table.insert(collectedResults, item)
-            end
-        end
-        results = collectedResults
-        
-        -- If no collected items, show message
-        if #results == 0 then
-            local noResultsCard = CreateCard(parent, 80)
-            noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
-            noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
-            
-            local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
-            noResultsText:SetPoint("CENTER", 0, 10)
-            noResultsText:SetTextColor(0.3, 1, 0.3)
-            noResultsText:SetText((ns.L and ns.L["NO_COLLECTED_YET"] and string.format(ns.L["NO_COLLECTED_YET"], category)) or ("No collected " .. category .. "s yet"))
-            
-            local noResultsDesc = FontManager:CreateFontString(noResultsCard, "body", "OVERLAY")
-            noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
-            noResultsDesc:SetTextColor(1, 1, 1)  -- White
-            noResultsDesc:SetText((ns.L and ns.L["START_COLLECTING"]) or "Start collecting to see them here!")
-            
-            noResultsCard:Show()
-            
-            return yOffset + 100
-        end
-    else
-        -- Show ONLY uncollected items when Show Completed is off (default)
-        local uncollectedResults = {}
-        for _, item in ipairs(results) do
-            if not item.isCollected then
-                table.insert(uncollectedResults, item)
-            end
-        end
-        results = uncollectedResults
-        
-        -- If no uncollected items, show message
-        if #results == 0 then
-            local noResultsCard = CreateCard(parent, 80)
-            noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
-            noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
-            
-            local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
-            noResultsText:SetPoint("CENTER", 0, 10)
-            noResultsText:SetTextColor(0.3, 1, 0.3)
-            noResultsText:SetText((ns.L and ns.L["ALL_COLLECTED_CATEGORY"] and string.format(ns.L["ALL_COLLECTED_CATEGORY"], category)) or ("All " .. category .. "s collected!"))
-            
-            local noResultsDesc = FontManager:CreateFontString(noResultsCard, "body", "OVERLAY")
-            noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
-            noResultsDesc:SetTextColor(1, 1, 1)  -- White
-            noResultsDesc:SetText((ns.L and ns.L["COLLECTED_EVERYTHING"]) or "You've collected everything in this category!")
-            
-            noResultsCard:Show()
-            
-            return yOffset + 100
-        end
-    end
-    
-    -- Filter based on showPlanned flag (applied after showCompleted filter)
-    if showPlanned then
-        local plannedResults = {}
-        for _, item in ipairs(results) do
-            if item.isPlanned then
-                table.insert(plannedResults, item)
-            end
-        end
-        results = plannedResults
-        
-        if #results == 0 then
-            local noResultsCard = CreateCard(parent, 80)
-            noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
-            noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
-            
-            local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
-            noResultsText:SetPoint("CENTER", 0, 10)
-            noResultsText:SetTextColor(1, 0.8, 0)
-            noResultsText:SetText((ns.L and ns.L["NO_PLANNED_ITEMS"] and string.format(ns.L["NO_PLANNED_ITEMS"], category)) or ("No planned " .. category .. "s yet"))
-            
-            local noResultsDesc = FontManager:CreateFontString(noResultsCard, "body", "OVERLAY")
-            noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
-            noResultsDesc:SetTextColor(1, 1, 1)
-            noResultsDesc:SetText((ns.L and ns.L["ADD_ITEMS_TO_PLANS"]) or "Add items to your plans to see them here!")
-            
-            noResultsCard:Show()
-            
-            return yOffset + 100
-        end
-    end
-    
+
     -- Phase 4.4: Limit browse results rendering for performance
     local totalResults = #results
     local resultsToRender = math.min(totalResults, MAX_BROWSE_RESULTS)
@@ -3205,16 +3214,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     if col > 0 then
         yOffset = yOffset + cardHeight + cardSpacing
     end
-    
-    if #results == 0 then
-        -- Create unique search ID for this category
-        local searchId = "plans_" .. (category or "unknown"):lower()
-        local height = SearchResultsRenderer:RenderEmptyState(self, parent, searchText, searchId)
-        SearchStateManager:UpdateResults(searchId, 0)
-        return height
-    end
-    
-    -- Update SearchStateManager with result count
+
     local searchId = "plans_" .. (category or "unknown"):lower()
     SearchStateManager:UpdateResults(searchId, #results)
     

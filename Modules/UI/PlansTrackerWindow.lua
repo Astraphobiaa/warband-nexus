@@ -6,7 +6,7 @@
     Achievements: expandable requirements + Blizzard Track button.
     
     Data flow: DB (db.global.plans) → GetActivePlans() [pure read] → UI render
-    Progress: GetResolvedPlanProgress() [DB reads, pre-resolved at login]
+    Completion filter: IsActivePlanComplete() [live CheckPlanProgress + vault/daily rules]
 ]]
 
 local ADDON_NAME, ns = ...
@@ -38,13 +38,16 @@ local PADDING = UI_SPACING.TOP_MARGIN
 local SCROLLBAR_GAP = 22       -- 16px scrollbar + 6px gap (matches main addon UI.lua pattern)
 local HEADER_HEIGHT = UI_SPACING.HEADER_HEIGHT
 local CATEGORY_BAR_HEIGHT = 34
-local CARD_HEIGHT = 42         -- Icon + Name + Description (2-line card)
-local CARD_MARGIN = 2          -- Tracker-specific card margin (intentionally smaller than standard)
+local CARD_HEIGHT = 48         -- Minimum collapsed achievement header (ExpandableRow); standard cards use dynamic height
+local CARD_MARGIN = 8          -- Vertical gap between cards / rows (no overlap)
+local MIN_GRID_CARD_H = 54     -- Minimum height for standard grid cards (icon + wrapped text)
 local ICON_SIZE = 28
-local MIN_WIDTH = 280
-local MIN_HEIGHT = 220
+local MIN_WIDTH = 300
+local MIN_HEIGHT = 240
 local MAX_WIDTH = 600
 local MAX_HEIGHT = 800
+-- Strip at bottom for resize grip (scrollbar/content never draws under it)
+local TRACKER_RESIZE_STRIP = 20
 
 -- Fallback icons by plan type (ensures every card type has a visible icon)
 local PLAN_TYPE_FALLBACK_ICONS = {
@@ -88,16 +91,25 @@ local function GetCardColors()
         c = { accent = { 0.5, 0.4, 0.7 } }
     end
     return {
-        border = { c.accent[1] * 0.7, c.accent[2] * 0.7, c.accent[3] * 0.7, 0.6 },
-        bg = { 0.06, 0.06, 0.08, 1 },
-        hoverBorder = { c.accent[1], c.accent[2], c.accent[3], 0.85 },
-        hoverBg = { 0.09, 0.09, 0.12, 1 },
+        border = { c.accent[1] * 0.55, c.accent[2] * 0.55, c.accent[3] * 0.55, 0.55 },
+        bg = { 0.074, 0.076, 0.095, 0.98 },
+        hoverBorder = { c.accent[1], c.accent[2], c.accent[3], 0.88 },
+        hoverBg = { 0.10, 0.102, 0.125, 1 },
     }
+end
+
+--- Optional 2px accent rail on the left edge of tracker cards
+local function AddTrackerCardAccent(card)
+    if not card or not COLORS or not COLORS.accent then return end
+    local strip = card:CreateTexture(nil, "BORDER", nil, 1)
+    strip:SetWidth(2)
+    strip:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -1)
+    strip:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 0, 1)
+    strip:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45)
 end
 
 -- ── Refresh debounce ──
 local pendingRefresh = false
-local progressCache = {} -- [planKey] = { collected = bool, ... } ; cleared each refresh cycle
 
 -- ══════════════════════════════════════════
 -- DB helpers
@@ -225,7 +237,8 @@ local function GetPlanDescription(plan)
         parts[#parts + 1] = typeLabel
     end
     local text = table.concat(parts, " · ")
-    if #text > 90 then text = text:sub(1, 87) .. "..." end
+    -- Card UI uses word wrap; keep a generous cap for performance only
+    if #text > 240 then text = text:sub(1, 237) .. "..." end
     return text
 end
 
@@ -373,17 +386,6 @@ local function HidePlanTooltip()
     end
 end
 
---- Cached progress check - uses pre-resolved DB data
-local function CheckPlanProgressCached(plan)
-    local key = (plan.type or "") .. ":" .. (plan.id or plan.achievementID or plan.name or "")
-    if progressCache[key] ~= nil then
-        return progressCache[key]
-    end
-    local result = WarbandNexus:GetResolvedPlanProgress(plan)
-    progressCache[key] = result or false
-    return result
-end
-
 -- ══════════════════════════════════════════
 -- RefreshTrackerContent (debounced) – forward declaration
 -- ══════════════════════════════════════════
@@ -398,48 +400,30 @@ local function RefreshTrackerContentImmediate()
     scrollChild:SetWidth(contentWidth)
     local width = contentWidth
 
-    -- Clear progress cache for this cycle
-    wipe(progressCache)
-
     local plans = WarbandNexus:GetActivePlans() or {}
 
-    -- Same filter as My Plans: plansShowCompleted profile + completion state
-    local showCompletedNow = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowCompleted or false
+    -- Tracker: never list completed plans (only active / in-progress goals).
     local filtered = {}
     for i = 1, #plans do
         local plan = plans[i]
         if currentCategoryKey == nil or plan.type == currentCategoryKey then
-            local isComplete = false
-            if plan.type == "weekly_vault" then
-                isComplete = plan.fullyCompleted == true
-            elseif plan.type == "daily_quests" then
-                local totalQuests, completedQuests = 0, 0
-                for category, questList in pairs(plan.quests or {}) do
-                    if plan.questTypes and plan.questTypes[category] then
-                        for q = 1, #questList do
-                            totalQuests = totalQuests + 1
-                            if questList[q].isComplete then completedQuests = completedQuests + 1 end
-                        end
-                    end
-                end
-                isComplete = (totalQuests > 0 and completedQuests == totalQuests)
-            else
-                local progress = CheckPlanProgressCached(plan)
-                isComplete = (progress and progress.collected) or (plan.completed == true)
+            local isDone = false
+            if WarbandNexus.IsActivePlanComplete then
+                isDone = WarbandNexus:IsActivePlanComplete(plan)
             end
-            if showCompletedNow then
-                if isComplete then filtered[#filtered + 1] = plan end
-            else
-                if not isComplete then filtered[#filtered + 1] = plan end
+            if not isDone then
+                filtered[#filtered + 1] = plan
             end
         end
     end
     
-    -- Sort: weekly vault first, then by type, then by ID
+    -- Sort: Weekly Progress (daily_quests) first, then Great Vault, then other types, then by ID
+    local typePriority = { daily_quests = 1, weekly_vault = 2 }
     table.sort(filtered, function(a, b)
-        if a.type == "weekly_vault" and b.type ~= "weekly_vault" then return true end
-        if a.type ~= "weekly_vault" and b.type == "weekly_vault" then return false end
-        if a.type ~= b.type then return (a.type or "") < (b.type or "") end
+        local pa = typePriority[a.type] or 50
+        local pb = typePriority[b.type] or 50
+        if pa ~= pb then return pa < pb end
+        if (a.type or "") ~= (b.type or "") then return (a.type or "") < (b.type or "") end
         local aID = tonumber(a.id) or 0
         local bID = tonumber(b.id) or 0
         return aID < bID
@@ -459,13 +443,9 @@ local function RefreshTrackerContentImmediate()
     end
 
     local yOffset = 0
-
-    -- Grid layout: 2 columns when wide enough, 1 column when narrow
-    local cardSpacing = 4
-    local numCols = (width >= 400) and 2 or 1
-    local colWidth = (width - cardSpacing * (numCols - 1)) / numCols
-    local gridCol = 0  -- current column index (0-based)
-    local rowMaxHeight = 0  -- tallest card in current row
+    -- Single-column list: full width, predictable vertical rhythm (no 2×2 grid)
+    local LIST_GAP = 8
+    local colWidth = width
 
     if #filtered == 0 then
         -- Wrap empty state in a frame so it gets cleaned up by children cleanup
@@ -500,13 +480,8 @@ local function RefreshTrackerContentImmediate()
                     criteria = requirementsText,
                     criteriaColumns = 2,  -- Tracker uses 2 columns (compact layout)
                 }
-                -- Achievements always span full width — flush grid row first
-                if gridCol > 0 then
-                    yOffset = yOffset + rowMaxHeight + CARD_MARGIN
-                    gridCol = 0
-                    rowMaxHeight = 0
-                end
-                local row = CreateExpandableRow(scrollChild, width, CARD_HEIGHT - 4, rowData, isExpanded, function(expanded)
+                local achHeaderH = math.min(58, math.max(42, math.floor(width * 0.085)))
+                local row = CreateExpandableRow(scrollChild, width, achHeaderH, rowData, isExpanded, function(expanded)
                     expandedAchievements[plan.achievementID] = expanded
                     RefreshTrackerContentImmediate()
                 end)
@@ -514,6 +489,7 @@ local function RefreshTrackerContentImmediate()
                 if ApplyVisuals then
                     ApplyVisuals(row.headerFrame, GetCardColors().bg, GetCardColors().border)
                 end
+                AddTrackerCardAccent(row.headerFrame)
                 -- Add accent border to achievement icon (Factory creates it noBorder)
                 if row.iconFrame and ApplyVisuals then
                     ApplyVisuals(row.iconFrame, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
@@ -574,23 +550,18 @@ local function RefreshTrackerContentImmediate()
                     HidePlanTooltip()
                 end)
 
-                yOffset = yOffset + row:GetHeight() + CARD_MARGIN
+                yOffset = yOffset + row:GetHeight() + LIST_GAP
             elseif plan.type == "weekly_vault" then
                 -- ── Weekly Vault: expandable full-width card ──
-                -- Flush grid row first
-                if gridCol > 0 then
-                    yOffset = yOffset + rowMaxHeight + CARD_MARGIN
-                    gridCol = 0
-                    rowMaxHeight = 0
-                end
-                
                 local isExpanded = expandedVaults[plan.id]
-                local VAULT_HEADER_HEIGHT = CARD_HEIGHT
+                -- Room for 2-line character name + "Weekly Vault" subtitle without clipping
+                local VAULT_HEADER_HEIGHT = math.max(CARD_HEIGHT, 56)
                 local VAULT_ROW_HEIGHT = 22
-                local VAULT_PADDING = 6
+                local VAULT_PADDING = 8
+                local NUM_VAULT_PROGRESS_ROWS = 4
                 
-                -- Calculate expanded height
-                local expandedHeight = VAULT_HEADER_HEIGHT + VAULT_PADDING + (VAULT_ROW_HEIGHT * 3) + VAULT_PADDING + 2
+                -- Expanded: header + one row per vault track (raid / dungeon / world / SA)
+                local expandedHeight = VAULT_HEADER_HEIGHT + VAULT_PADDING + (VAULT_ROW_HEIGHT * NUM_VAULT_PROGRESS_ROWS) + VAULT_PADDING + 4
                 local cardHeight = isExpanded and expandedHeight or VAULT_HEADER_HEIGHT
                 
                 local vaultCard = Factory:CreateContainer(scrollChild, width, cardHeight)
@@ -598,6 +569,7 @@ local function RefreshTrackerContentImmediate()
                 if ApplyVisuals then
                     ApplyVisuals(vaultCard, GetCardColors().bg, GetCardColors().border)
                 end
+                AddTrackerCardAccent(vaultCard)
                 
                 -- Header area (clickable to expand/collapse)
                 local headerFrame = CreateFrame("Frame", nil, vaultCard)
@@ -623,8 +595,10 @@ local function RefreshTrackerContentImmediate()
                 nameText:SetPoint("TOPLEFT", iconFrame, "TOPRIGHT", 6, -2)
                 nameText:SetPoint("RIGHT", headerFrame, "RIGHT", -70, 0)
                 nameText:SetJustifyH("LEFT")
-                nameText:SetWordWrap(false)
-                nameText:SetMaxLines(1)
+                nameText:SetJustifyV("TOP")
+                nameText:SetWordWrap(true)
+                nameText:SetMaxLines(2)
+                nameText:SetNonSpaceWrap(false)
                 local charDisplay = plan.characterName or ""
                 if plan.characterRealm and plan.characterRealm ~= "" then
                     local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(plan.characterRealm)) or plan.characterRealm
@@ -742,17 +716,35 @@ local function RefreshTrackerContentImmediate()
                 end
                 
                 vaultCard:Show()
-                yOffset = yOffset + cardHeight + CARD_MARGIN
+                yOffset = yOffset + cardHeight + LIST_GAP
+            elseif plan.type == "daily_quests" then
+                -- ── Weekly / daily quest plan: same rich card as main To-Do tab ──
+                local dqH = 170
+                local dqCard = CreateFrame("Frame", nil, scrollChild)
+                dqCard:SetSize(width, dqH)
+                dqCard:SetPoint("TOPLEFT", 0, -yOffset)
+                if not dqCard.SetBackdrop then
+                    Mixin(dqCard, BackdropTemplateMixin)
+                end
+                if ApplyVisuals then
+                    ApplyVisuals(dqCard, GetCardColors().bg, GetCardColors().border)
+                end
+                local PCF = ns.UI_PlanCardFactory
+                if PCF and PCF.CreateDailyQuestCard then
+                    PCF:CreateDailyQuestCard(dqCard, plan)
+                end
+                AddTrackerCardAccent(dqCard)
+                dqCard:Show()
+                yOffset = yOffset + dqH + LIST_GAP
             else
-                -- ── Standard card: grid layout, bordered ──
-                local xPos = gridCol * (colWidth + cardSpacing)
-                local card = Factory:CreateContainer(scrollChild, colWidth, CARD_HEIGHT)
-                card:SetPoint("TOPLEFT", xPos, -yOffset)
+                -- ── Standard row: full-width list item ──
+                local card = Factory:CreateContainer(scrollChild, colWidth, MIN_GRID_CARD_H)
+                card:SetPoint("TOPLEFT", 0, -yOffset)
                 if ApplyVisuals then
                     ApplyVisuals(card, GetCardColors().bg, GetCardColors().border)
                 end
+                AddTrackerCardAccent(card)
 
-                -- Icon: resolve from WoW API first, then fallback chain
                 local iconTexture = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.iconAtlas or plan.icon or PLAN_TYPE_FALLBACK_ICONS[plan.type]
                 local iconIsAtlas = false
                 if type(iconTexture) == "number" then
@@ -768,81 +760,116 @@ local function RefreshTrackerContentImmediate()
                     iconTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
                     iconIsAtlas = false
                 end
-                local iconFrame = CreateIcon(card, iconTexture, ICON_SIZE, iconIsAtlas, nil, false)
-                iconFrame:SetPoint("LEFT", PADDING, 0)
-                iconFrame:SetFrameLevel(card:GetFrameLevel() + 5)
-                iconFrame:Show()
-                card:Show()
-                
-                -- Action buttons: Delete (X) and Complete (checkmark) at top-right
-                local ACTION_SIZE = 14
-                local ACTION_MARGIN = 4
-                local ACTION_GAP = 2
+
+                local ACTION_SIZE = 16
+                local ACTION_MARGIN = 6
+                local ACTION_GAP = 4
                 local rightOffset = ACTION_MARGIN
-                
-                -- Delete button (X icon, rightmost)
-                local deleteBtn = CreateFrame("Button", nil, card)
-                deleteBtn:SetSize(ACTION_SIZE, ACTION_SIZE)
-                deleteBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -rightOffset, -ACTION_MARGIN)
-                deleteBtn:SetFrameLevel(card:GetFrameLevel() + 10)
-                deleteBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-                deleteBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
-                deleteBtn:SetScript("OnClick", function()
-                    if plan.id then
-                        -- RemovePlan searches both db.global.plans and db.global.customPlans
-                        WarbandNexus:RemovePlan(plan.id)
-                        RefreshTrackerContent()
-                    end
-                end)
-                deleteBtn:SetScript("OnEnter", function(self)
-                    ns.TooltipService:Show(self, { type = "custom", title = "Delete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
-                end)
-                deleteBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
-                rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
-                
-                -- Complete button (checkmark, only for custom plans)
-                if plan.type == "custom" then
-                    local completeBtn = CreateFrame("Button", nil, card)
-                    completeBtn:SetSize(ACTION_SIZE, ACTION_SIZE)
-                    completeBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -rightOffset, -ACTION_MARGIN)
-                    completeBtn:SetFrameLevel(card:GetFrameLevel() + 10)
-                    completeBtn:SetNormalTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-                    completeBtn:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-                    completeBtn:GetHighlightTexture():SetAlpha(0.5)
-                    completeBtn:SetScript("OnClick", function()
-                        if WarbandNexus.CompleteCustomPlan then
-                            WarbandNexus:CompleteCustomPlan(plan.id)
+                local showRowActions = true
+
+                if showRowActions then
+                    local deleteBtn = CreateFrame("Button", nil, card)
+                    deleteBtn:SetSize(ACTION_SIZE, ACTION_SIZE)
+                    deleteBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -rightOffset, -ACTION_MARGIN)
+                    deleteBtn:SetFrameLevel(card:GetFrameLevel() + 10)
+                    deleteBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+                    deleteBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+                    deleteBtn:SetScript("OnClick", function()
+                        if plan.id then
+                            WarbandNexus:RemovePlan(plan.id)
+                            RefreshTrackerContent()
                         end
                     end)
-                    completeBtn:SetScript("OnEnter", function(self)
-                        ns.TooltipService:Show(self, { type = "custom", title = "Complete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                    deleteBtn:SetScript("OnEnter", function(self)
+                        ns.TooltipService:Show(self, { type = "custom", title = "Delete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
                     end)
-                    completeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
+                    deleteBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
                     rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
+
+                    if plan.type == "custom" then
+                        local completeBtn = CreateFrame("Button", nil, card)
+                        completeBtn:SetSize(ACTION_SIZE, ACTION_SIZE)
+                        completeBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -rightOffset, -ACTION_MARGIN)
+                        completeBtn:SetFrameLevel(card:GetFrameLevel() + 10)
+                        completeBtn:SetNormalTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                        completeBtn:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                        completeBtn:GetHighlightTexture():SetAlpha(0.5)
+                        completeBtn:SetScript("OnClick", function()
+                            if WarbandNexus.CompleteCustomPlan then
+                                WarbandNexus:CompleteCustomPlan(plan.id)
+                            end
+                        end)
+                        completeBtn:SetScript("OnEnter", function(self)
+                            ns.TooltipService:Show(self, { type = "custom", title = "Complete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                        end)
+                        completeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
+                        rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
+                    end
                 end
-                
-                -- Try count (factory row; same popup as Collections / Plans)
+
                 local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
                 local idKey = tryCountTypes[plan.type]
                 local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
+                local showTryRow = collectibleID and Factory and Factory.CreateTryCountClickable and WarbandNexus and WarbandNexus.ShouldShowTryCountInUI
+                    and WarbandNexus:ShouldShowTryCountInUI(plan.type, collectibleID)
 
-                -- Reset timer for custom plans with reset cycle
+                local topPad = 10
+                local iconTextGap = 8
+                local textX = PADDING + ICON_SIZE + iconTextGap
+                local textW = colWidth - textX - rightOffset - PADDING
+                if textW < 48 then textW = math.max(40, colWidth - textX - PADDING - 8) end
+
+                local TRY_ROW_W = 78
+                local tryNameGap = 6
+                local nameRowW = showTryRow and math.max(48, textW - TRY_ROW_W - tryNameGap) or textW
+
+                local iconFrame = CreateIcon(card, iconTexture, ICON_SIZE, iconIsAtlas, nil, false)
+                iconFrame:SetPoint("TOPLEFT", card, "TOPLEFT", PADDING, -topPad)
+                iconFrame:SetFrameLevel(card:GetFrameLevel() + 5)
+                iconFrame:Show()
+
+                local unknownName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+                local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or unknownName
+
+                local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
+                nameText:SetWidth(nameRowW)
+                nameText:SetPoint("TOPLEFT", card, "TOPLEFT", textX, -topPad)
+                nameText:SetJustifyH("LEFT")
+                nameText:SetJustifyV("TOP")
+                nameText:SetWordWrap(true)
+                nameText:SetMaxLines(2)
+                nameText:SetNonSpaceWrap(false)
+                nameText:SetText("|cffffffff" .. FormatTextNumbers(resolvedName) .. "|r")
+
+                local descText = FontManager:CreateFontString(card, "small", "OVERLAY")
+                descText:SetWidth(textW)
+                descText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -5)
+                descText:SetJustifyH("LEFT")
+                descText:SetJustifyV("TOP")
+                descText:SetWordWrap(true)
+                descText:SetMaxLines(2)
+                descText:SetNonSpaceWrap(false)
+                descText:SetText(GetPlanDescriptionFormatted(plan))
+
+                local lastBlockBottom = descText
+                local extraFooterH = 0
+
                 if plan.type == "custom" and plan.resetCycle and plan.resetCycle.enabled then
                     local resetLabel = FontManager:CreateFontString(card, "small", "OVERLAY")
-                    resetLabel:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -ACTION_MARGIN, ACTION_MARGIN)
-                    resetLabel:SetJustifyH("RIGHT")
-                    resetLabel:SetWordWrap(false)
-                    
+                    resetLabel:SetWidth(textW)
+                    resetLabel:SetPoint("TOPLEFT", descText, "BOTTOMLEFT", 0, -4)
+                    resetLabel:SetJustifyH("LEFT")
+                    resetLabel:SetJustifyV("TOP")
+                    resetLabel:SetWordWrap(true)
+                    resetLabel:SetMaxLines(2)
+
                     local seconds = 0
                     if plan.resetCycle.resetType == "weekly" and WarbandNexus.GetWeeklyResetTime then
                         seconds = WarbandNexus:GetWeeklyResetTime() - GetServerTime()
                     elseif C_DateAndTime and C_DateAndTime.GetSecondsUntilDailyReset then
                         seconds = C_DateAndTime.GetSecondsUntilDailyReset()
                     end
-                    
                     local timeStr = ns.Utilities:FormatTimeCompact(seconds)
-                    
-                    -- Cycle progress
                     local cycleStr = ""
                     if plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
                         local remaining = plan.resetCycle.remainingCycles or 0
@@ -850,42 +877,27 @@ local function RefreshTrackerContentImmediate()
                         local elapsed = total - remaining
                         cycleStr = string.format(" %d / %d", elapsed, total)
                     end
-                    
                     resetLabel:SetText("|cff66cc66" .. timeStr .. cycleStr .. "|r")
+                    lastBlockBottom = resetLabel
+                    extraFooterH = extraFooterH + resetLabel:GetStringHeight() + 4
                 end
 
-                -- Name (right of icon, top) — limit right side to avoid overlapping action buttons
-                local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
-                nameText:SetPoint("TOPLEFT", iconFrame, "TOPRIGHT", 6, -3)
-                nameText:SetPoint("RIGHT", card, "RIGHT", -(rightOffset + 2), 0)
-                nameText:SetJustifyH("LEFT")
-                nameText:SetWordWrap(false)
-                nameText:SetNonSpaceWrap(false)
-                nameText:SetMaxLines(1)
-                local unknownName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-                local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or unknownName
-                nameText:SetText("|cffffffff" .. FormatTextNumbers(resolvedName) .. "|r")
-
-                -- Description (below name)
-                local descText = FontManager:CreateFontString(card, "small", "OVERLAY")
-                descText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -1)
-                descText:SetPoint("RIGHT", card, "RIGHT", -PADDING, 0)
-                descText:SetJustifyH("LEFT")
-                descText:SetWordWrap(false)
-                descText:SetNonSpaceWrap(false)
-                descText:SetMaxLines(1)
-                descText:SetText(GetPlanDescriptionFormatted(plan))
-
-                if collectibleID and Factory and Factory.CreateTryCountClickable and WarbandNexus and WarbandNexus.ShouldShowTryCountInUI
-                    and WarbandNexus:ShouldShowTryCountInUI(plan.type, collectibleID) then
-                    local disp = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name
+                if showTryRow then
+                    local disp = resolvedName
                     local tryRow = Factory:CreateTryCountClickable(card, { height = 18, frameLevelOffset = 15, showTooltip = true })
-                    tryRow:SetSize(130, 18)
-                    tryRow:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -ACTION_MARGIN, ACTION_MARGIN)
+                    tryRow:SetSize(TRY_ROW_W, 18)
+                    -- Same row as name, to the right of the mount/item title
+                    tryRow:SetPoint("TOPLEFT", nameText, "TOPRIGHT", tryNameGap, 0)
                     tryRow:WnUpdateTryCount(plan.type, collectibleID, disp)
                 end
 
-                -- Hover: highlight border + custom tooltip
+                local nh = nameText:GetStringHeight()
+                local dh = descText:GetStringHeight()
+                local contentH = topPad + math.max(nh, showTryRow and 18 or 0) + 5 + dh + extraFooterH + 10
+                local cardH = math.max(MIN_GRID_CARD_H, math.max(ICON_SIZE + topPad + 8, contentH))
+                card:SetHeight(cardH)
+
+                card:Show()
                 card:EnableMouse(true)
                 card:SetScript("OnEnter", function()
                     if ApplyVisuals then
@@ -900,32 +912,21 @@ local function RefreshTrackerContentImmediate()
                     HidePlanTooltip()
                 end)
 
-                -- Grid column tracking
-                rowMaxHeight = math.max(rowMaxHeight, CARD_HEIGHT)
-                gridCol = gridCol + 1
-                if gridCol >= numCols then
-                    yOffset = yOffset + rowMaxHeight + CARD_MARGIN
-                    gridCol = 0
-                    rowMaxHeight = 0
-                end
+                yOffset = yOffset + cardH + LIST_GAP
             end
-        end
-        -- Flush final incomplete grid row
-        if gridCol > 0 then
-            yOffset = yOffset + rowMaxHeight + CARD_MARGIN
         end
     end
 
     -- Update count label
     local frame = GetTrackerFrame()
     if frame and frame.categoryBar and frame.categoryBar.countLabel then
-        local total = WarbandNexus:GetActivePlans() or {}
+        local totalCount = WarbandNexus:GetActivePlanTotalCount()
         local plansFormat = (ns.L and ns.L["PLANS_COUNT_FORMAT"]) or "%d plans"
         -- Extract suffix from format string (e.g., "%d plans" -> " plans")
         local suffix = plansFormat:gsub("%%d%s*", "")
         local countLabel = frame.categoryBar and frame.categoryBar.countLabel
         if countLabel then
-            countLabel:SetText("|cff888888" .. #filtered .. "/" .. #total .. suffix .. "|r")
+            countLabel:SetText("|cff888888" .. #filtered .. "/" .. totalCount .. suffix .. "|r")
         end
     end
 
@@ -1219,6 +1220,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
             { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
     end
+    header:SetFrameLevel(frame:GetFrameLevel() + 10)
 
     -- Header icon
     local hIcon = header:CreateTexture(nil, "ARTWORK")
@@ -1243,6 +1245,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     closeTex:SetPoint("CENTER")
     closeTex:SetAtlas("uitools-icon-close")
     closeTex:SetVertexColor(0.9, 0.3, 0.3)
+    closeBtn:SetFrameLevel(header:GetFrameLevel() + 5)
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
     closeBtn:SetScript("OnEnter", function()
         closeTex:SetVertexColor(1, 0.15, 0.15)
@@ -1260,6 +1263,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- ── Collapse/Expand toggle button ──
     local collapseBtn = Factory:CreateButton(header, 22, 22, true)
     collapseBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
+    collapseBtn:SetFrameLevel(header:GetFrameLevel() + 5)
     if ApplyVisuals then
         ApplyVisuals(collapseBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
     end
@@ -1278,6 +1282,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
             if frame.categoryBar then frame.categoryBar:Hide() end
             frame:SetResizable(false)
             frame:SetHeight(HEADER_HEIGHT)
+            -- Grip would sit inside the title bar and cover collapse/close — hide when collapsed
+            if frame.resizeGrip then frame.resizeGrip:Hide() end
         else
             collapseTex:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
             frame.contentArea:Show()
@@ -1287,6 +1293,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
             local savedH = tdb and tdb.height or 420
             if savedH < MIN_HEIGHT then savedH = 420 end
             frame:SetHeight(savedH)
+            if frame.resizeGrip then frame.resizeGrip:Show() end
             RefreshTrackerContent()
         end
     end
@@ -1323,7 +1330,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local scrollTopOffset = HEADER_HEIGHT + CATEGORY_BAR_HEIGHT + PADDING
     local contentArea = CreateFrame("Frame", nil, frame)
     contentArea:SetPoint("TOPLEFT", 0, -scrollTopOffset)
-    contentArea:SetPoint("BOTTOMRIGHT", 0, 0)
+    contentArea:SetPoint("BOTTOMRIGHT", 0, TRACKER_RESIZE_STRIP)
     frame.contentArea = contentArea
 
     -- ── Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer) ──
@@ -1354,15 +1361,17 @@ function WarbandNexus:CreatePlansTrackerWindow()
         self:SetVerticalScroll(newScroll)
     end)
 
-    -- ── Resize grip (bottom-right) ──
+    -- ── Resize grip (bottom-right): above scroll/scrollbar, never under title bar when collapsed ──
     local resizer = CreateFrame("Button", nil, frame)
-    resizer:SetSize(16, 16)
-    resizer:SetPoint("BOTTOMRIGHT", -2, 2)
+    resizer:SetSize(18, 18)
+    resizer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -3, 3)
+    resizer:SetFrameStrata(frame:GetFrameStrata())
+    resizer:SetFrameLevel(frame:GetFrameLevel() + 40)
     resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     resizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     resizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
     resizer:SetScript("OnMouseDown", function()
-        if not InCombatLockdown() then
+        if not InCombatLockdown() and frame:IsResizable() then
             frame:StartSizing("BOTTOMRIGHT")
         end
     end)
@@ -1375,6 +1384,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end
         RefreshTrackerContent()
     end)
+    frame.resizeGrip = resizer
 
     -- Resize: only update layout when user releases (no continuous render during drag)
     frame:SetScript("OnSizeChanged", function(self, newW, newH)

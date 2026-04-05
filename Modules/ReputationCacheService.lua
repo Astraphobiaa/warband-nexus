@@ -1077,24 +1077,7 @@ function ReputationCache:RegisterEventListeners()
         DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Queued: " .. parsedName .. " +" .. gainAmount .. " (waiting for DB update)")
     end
     
-    -- ============================================================
-    -- SUPPRESS Blizzard's default reputation chat message.
-    -- ChatFilter.lua handles message group removal (ChatFrame_RemoveMessageGroup).
-    -- This filter serves as a secondary safety net for any chat frame that
-    -- still has COMBAT_FACTION_CHANGE enabled.
-    -- ============================================================
-    ChatFrame_AddMessageEventFilter("CHAT_MSG_COMBAT_FACTION_CHANGE", function(self, event, message, ...)
-        -- Respect user setting: if addon notifications OFF, let Blizzard messages through
-        -- Must check BOTH master toggle AND specific toggle
-        local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
-        if not notifs or not notifs.enabled or not notifs.showReputationGains then
-            return false
-        end
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return false
-        end
-        return true
-    end)
+    -- Blizzard rep chat suppression: ChatIntegrationService.lua (single CHAT_MSG_COMBAT_FACTION_CHANGE hook).
     
     -- ============================================================
     -- DB-FIRST ARCHITECTURE (v5.0.0)

@@ -70,11 +70,7 @@ local function RegisterItemsEvents(parent)
     parent.itemsUpdateHandler = true
     
     -- Debug print helper
-    local function DebugPrint(...)
-        if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-            _G.print(...)
-        end
-    end
+    local DebugPrint = ns.DebugPrint
     
     -- Debounced DrawItemList: coalesces rapid WN_ITEMS_UPDATED + WN_ITEM_METADATA_READY
     -- into a single redraw (e.g., bank open fires both within milliseconds)

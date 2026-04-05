@@ -1731,12 +1731,17 @@ function TooltipService:InitializeGameTooltipHook()
             -- Helper: Check if mouseover unit is attackable (for hostileOnly zones)
             local function IsMouseoverAttackable()
                 local ok, canAttack = pcall(UnitCanAttack, "player", "mouseover")
-                if ok and canAttack == true then return true end
+                if ok and canAttack and not (issecretvalue and issecretvalue(canAttack)) and canAttack == true then
+                    return true
+                end
                 -- Dead units are no longer attackable; check if it's a lootable corpse
                 local okDead, isDead = pcall(UnitIsDead, "mouseover")
-                if okDead and isDead == true then
+                if okDead and isDead and not (issecretvalue and issecretvalue(isDead)) and isDead == true then
                     local okReact, reaction = pcall(UnitReaction, "mouseover", "player")
-                    if okReact and type(reaction) == "number" and reaction <= 4 then return true end
+                    if okReact and reaction and not (issecretvalue and issecretvalue(reaction))
+                        and type(reaction) == "number" and reaction <= 4 then
+                        return true
+                    end
                 end
                 return false
             end
@@ -1872,6 +1877,13 @@ function TooltipService:InitializeGameTooltipHook()
                 if (not drops or #drops == 0) and not zoneDrops then return end
             end
 
+            -- Per-NPC collectible drops: only on hostile/attackable units. Friendly delve objects and
+            -- NPCs that use a Creature unit tooltip must not show unrelated mount/pet lines from DB.
+            if drops and #drops > 0 and not IsMouseoverAttackable() then
+                drops = nil
+            end
+            if (not drops or #drops == 0) and (not zoneDrops or #zoneDrops == 0) then return end
+
             -- Merge zone drops with NPC drops (if any)
             local finalDrops = drops
             if zoneDrops and #zoneDrops > 0 then
@@ -1918,22 +1930,18 @@ function TooltipService:InitializeGameTooltipHook()
 
         -- ENCOUNTER_END feed: Injects localized encounter name into tooltip caches.
         -- Called from TryCounterService when a boss is killed in an instance.
-        -- ENCOUNTER_END event args are NOT secret values (they're event payload, not API returns),
-        -- so encounterName is always the correct localized string.
-        -- This is the CRITICAL fallback for Midnight instances where:
-        --   1. UnitGUID is secret (can't do GUID-based NPC lookup)
-        --   2. EJ API might be restricted (can't build localizedNpcNameIndex)
-        -- When encounterID is secret (Midnight), caller may pass npcIDsOverride (array of npcIDs)
-        -- so tooltip cache is still populated by name. After the first kill, the localized
-        -- boss name is cached → subsequent tooltip hovers work.
+        -- Midnight 12.0+: treat encounterName / encounterID as potentially secret — no ==, no table keys
+        -- until cleared (wow-taint-security). npcIDsOverride allows ID-secret kills to still cache by name
+        -- when the name is non-secret.
         self._feedEncounterKill = function(encounterName, encounterID, npcIDsOverride)
-            if not encounterName or encounterName == "" then return end
+            if not encounterName or (issecretvalue and issecretvalue(encounterName)) then return end
+            if type(encounterName) ~= "string" or encounterName == "" then return end
             local sourceDB = ns.CollectibleSourceDB
             if not sourceDB then return end
 
             local encNpcIDs = npcIDsOverride
             if not encNpcIDs or type(encNpcIDs) ~= "table" or #encNpcIDs == 0 then
-                if encounterID ~= nil then
+                if encounterID ~= nil and (not issecretvalue or not issecretvalue(encounterID)) then
                     encNpcIDs = sourceDB.encounters and sourceDB.encounters[encounterID]
                 end
             end

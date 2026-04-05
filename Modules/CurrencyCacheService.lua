@@ -1437,6 +1437,22 @@ function CurrencyCache:Clear(clearDB)
     end
 end
 
+---Debounced full scan when CHAT_MSG_CURRENCY fires (invoked from ChatIntegrationService).
+function CurrencyCache:OnCurrencyChatSignal()
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+        return
+    end
+    if self._currencyChatScanTimer then
+        return
+    end
+    self._currencyChatScanTimer = C_Timer.NewTimer(0.5, function()
+        self._currencyChatScanTimer = nil
+        if CurrencyCache.PerformFullScan then
+            CurrencyCache:PerformFullScan()
+        end
+    end)
+end
+
 -- ============================================================================
 -- EVENT REGISTRATION
 -- ============================================================================
@@ -1454,31 +1470,9 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     
     CurrencyCache.eventsRegistered = true
     
-    -- PRIMARY: Listen for currency changes via chat message (backup path)
-    -- Non-cancelling debounce: only schedule a full scan if one isn't already pending.
-    -- TAINT-SAFE: Filter returns false only (allow message); no Blizzard frame/state modified.
-    local chatScanTimer = nil
-    local currencyChatFilter = function(self, event, message, ...)
-        -- GUARD: Only process if character is tracked
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return false
-        end
-        
-        -- Non-cancelling: only start timer if not already running
-        if not chatScanTimer then
-            chatScanTimer = C_Timer.NewTimer(0.5, function()
-                chatScanTimer = nil
-                CurrencyCache:PerformFullScan()
-            end)
-        end
-        
-        -- Return false to allow Blizzard message through
-        return false
-    end
+    -- CHAT_MSG_CURRENCY filter + debounced scan: ChatIntegrationService.lua (single hook owner).
     
-    ChatFrame_AddMessageEventFilter("CHAT_MSG_CURRENCY", currencyChatFilter)
-    
-    -- SECONDARY: Register WoW events (may not fire in TWW)
+    -- Register WoW events (may not fire in TWW)
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", function(event, currencyType, quantity)
         OnCurrencyUpdate(currencyType, quantity)
     end)

@@ -77,6 +77,42 @@ end
 
 local notificationQueue = {}
 
+-- TryCounter + CollectionService can both send WN_COLLECTIBLE_OBTAINED within a short window:
+--   • bag scan right after loot (item hits bags while Try Counter already toasted), or
+--   • NEW_MOUNT journal event after loot (name differs: item vs mount journal).
+-- Bag duplicate is suppressed at source (TryCounterService + CollectionService); this is a second line of defense.
+-- Dedupe popup only; dispatch consumers (TryCounter migration, Plans) still run first in handler order.
+local lastCollectibleLootToastShownAt = {}
+local COLLECTIBLE_LOOT_TOAST_DEDUP_SEC = 12
+
+---@param data table|nil
+---@return string|nil
+local function BuildCollectibleLootToastDedupeKey(data)
+    if not data or not data.type or data.id == nil then return nil end
+    local t = data.type
+    local id = data.id
+    if t == "mount" then
+        if C_MountJournal and C_MountJournal.GetMountFromItem and type(id) == "number" then
+            local mid = C_MountJournal.GetMountFromItem(id)
+            if mid and (not issecretvalue or not issecretvalue(mid)) and type(mid) == "number" and mid > 0 then
+                id = mid
+            end
+        end
+        return "mount\0" .. tostring(id)
+    end
+    if t == "pet" and C_PetJournal and C_PetJournal.GetPetInfoByItemID and type(id) == "number" then
+        local speciesID = select(13, C_PetJournal.GetPetInfoByItemID(id))
+        if speciesID and (not issecretvalue or not issecretvalue(speciesID)) and type(speciesID) == "number" and speciesID > 0 then
+            id = speciesID
+        end
+        return "pet\0" .. tostring(id)
+    end
+    if t == "toy" or t == "illusion" or t == "item" then
+        return t .. "\0" .. tostring(id)
+    end
+    return nil
+end
+
 ---Add a notification to the queue
 ---@param notification table Notification data
 local function QueueNotification(notification)
@@ -1620,6 +1656,13 @@ function WarbandNexus:CheckNotificationsOnLogin()
     
     -- Mark as checked (idempotent - only one trigger path wins)
     self._notificationsChecked = true
+
+    -- Chat line: locale WELCOME_* was unused before; popup alone is invisible in chat-only UIs (e.g. Chattynator).
+    C_Timer.After(2, function()
+        if WarbandNexus and WarbandNexus.PrintSessionLoginChat then
+            WarbandNexus:PrintSessionLoginChat()
+        end
+    end)
     
     -- 1. Check for new version (What's New)
     if notifs.showUpdateNotes and self:IsNewVersion() then
@@ -2161,6 +2204,20 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         end
         return
     end
+
+    -- TryCounter fires on loot; CollectionService fires on NEW_MOUNT / journal — same mount, two toasts.
+    -- Normalize mount itemID → mountID so both payloads share one dedupe key.
+    local lootToastDedupeKey = BuildCollectibleLootToastDedupeKey(data)
+    if lootToastDedupeKey then
+        local nowDedupe = GetTime()
+        local prevToast = lastCollectibleLootToastShownAt[lootToastDedupeKey]
+        if prevToast and (nowDedupe - prevToast) < COLLECTIBLE_LOOT_TOAST_DEDUP_SEC then
+            if self.db and self.db.profile and self.db.profile.debugMode then
+                self:Print("|cff888888[Notification Debug]|r Skipped duplicate collectible loot toast: " .. lootToastDedupeKey)
+            end
+            return
+        end
+    end
     
     -- Achievement notifications: only show ours when we're hiding Blizzard's
     -- If hideBlizzardAchievementAlert is false (unchecked), Blizzard shows its own popup,
@@ -2197,13 +2254,11 @@ function WarbandNexus:OnCollectibleObtained(event, data)
             local count = isDropSource and (failedCount + 1) or failedCount
             if count > 0 then
                 hasTryCount = true
+                -- Subtitle only: item name is already the title line (avoid "grind + N attempts" redundancy).
                 if count == 1 then
-                    tryMessage = (ns.L and ns.L["NOTIFICATION_FIRST_TRY"]) or "You got it on your first try!"
-                elseif count > 100 then
-                    local fmt = (ns.L and ns.L["NOTIFICATION_GRIND_TRIES"]) or "What a grind! %d attempts!"
-                    tryMessage = string.format(fmt, count)
+                    tryMessage = (ns.L and ns.L["NOTIFICATION_TRY_SUBTITLE_FIRST"]) or "First attempt!"
                 else
-                    local fmt = (ns.L and ns.L["NOTIFICATION_GOT_IT_AFTER"]) or "You got it after %d tries!"
+                    local fmt = (ns.L and ns.L["NOTIFICATION_TRY_SUBTITLE"]) or "%d attempts"
                     tryMessage = string.format(fmt, count)
                 end
             end
@@ -2233,6 +2288,9 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         overrides.autoDismiss = 7
     end
     self:Notify(data.type, displayName, data.icon, overrides)
+    if lootToastDedupeKey then
+        lastCollectibleLootToastShownAt[lootToastDedupeKey] = GetTime()
+    end
 
     -- Screen flash + auto screenshot — BAM moment for items obtained through farming (try count > 0)
     if hasTryCount then

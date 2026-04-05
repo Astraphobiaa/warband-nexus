@@ -178,6 +178,11 @@ function WarbandNexus:SetProfessionModuleEnabled(enabled)
         if self.StopRechargeTimer then
             self:StopRechargeTimer()
         end
+    elseif enabled and ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
+        -- Re-enable mid-session: login-time C_Timer.After does not run again
+        if self.StartRechargeTimer then
+            self:StartRechargeTimer()
+        end
     end
     
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call

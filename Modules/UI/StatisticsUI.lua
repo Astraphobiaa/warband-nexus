@@ -9,12 +9,7 @@ local ADDON_NAME, ns = ...
 local StatisticsUIEvents = {}
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
@@ -327,10 +322,10 @@ function WarbandNexus:DrawStatistics(parent)
     bpValue:SetText("|cffff69b4" .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numJournalEntries) .. "|r")
     bpValue:SetJustifyH("LEFT")
     
-    -- Right column: Unique Pets (label above icon center, value below)
-    -- Anchor both to a fixed X so label and value are vertically aligned
+    -- Right column: Unique Pets — start after Battle Pets *value* (not only the label), or counts merge visually.
     local upLabel = FontManager:CreateFontString(petCard, "subtitle", "OVERLAY")
-    upLabel:SetPoint("BOTTOMLEFT", bpLabel, "BOTTOMRIGHT", 35, 0)
+    upLabel:SetPoint("TOP", bpLabel, "TOP", 0, 0)
+    upLabel:SetPoint("LEFT", bpValue, "RIGHT", 20, 0)
     upLabel:SetText((ns.L and ns.L["UNIQUE_PETS"]) or "UNIQUE PETS")
     upLabel:SetTextColor(1, 1, 1)
     upLabel:SetJustifyH("LEFT")

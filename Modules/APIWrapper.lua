@@ -51,13 +51,6 @@ function WarbandNexus:API_FormatMoney(amount)
     return str
 end
 
--- ============================================================================
--- INITIALIZATION
--- ============================================================================
-
-function WarbandNexus:InitializeAPIWrapper()
-    -- No-op: kept for backwards compatibility with InitializationService
-end
 
 -- ============================================================================
 -- SCREEN & UI SCALE UTILITIES

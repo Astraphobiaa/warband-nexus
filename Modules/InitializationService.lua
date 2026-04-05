@@ -13,12 +13,7 @@ local ADDON_NAME, ns = ...
 
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 
 ---@class InitializationService
 local InitializationService = {}
@@ -159,10 +154,6 @@ end
     Essential systems that other modules depend on
 ]]
 function InitializationService:InitializeCoreInfrastructure(addon)
-    -- API Wrapper: Must load first (other modules may use it)
-    if addon.InitializeAPIWrapper then
-        addon:InitializeAPIWrapper()
-    end
     
     -- T+0.5s: Batch lightweight event registrations (<2ms total)
     -- LootNotifications + EventManager — both are just event hookups
@@ -426,15 +417,6 @@ function InitializationService:InitializeBackgroundServices(addon)
             addon:InitializeErrorHandler()
         end
     end)
-    
-    --[[
-        [DEPRECATED] CollectionScanner removed - now using CollectionService
-        CollectionService auto-initializes via Core.lua and loads cache from DB
-        No manual initialization needed - cache is persistent and loaded on addon load
-    ]]
-    
-    -- [REMOVED] Legacy CollectionScanner:Initialize() call (7 lines removed)
-    -- CollectionService is now initialized automatically in Core.lua:OnInitialize
     
     -- Reminder Service: Time & zone-based plan reminders (4s)
     C_Timer.After(4, function()

@@ -590,7 +590,11 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     dialog:SetScript("OnShow", refreshCurrentTab)
 
     WarbandNexus.UnregisterMessage(dialog, "WN_CHARACTER_BANK_MONEY_LOG_UPDATED")
-    WarbandNexus.RegisterMessage(dialog, "WN_CHARACTER_BANK_MONEY_LOG_UPDATED", refreshCurrentTab)
+    WarbandNexus.RegisterMessage(dialog, "WN_CHARACTER_BANK_MONEY_LOG_UPDATED", function()
+        if dialog:IsShown() then
+            refreshCurrentTab()
+        end
+    end)
     local oldOnHide = dialog:GetScript("OnHide")
     dialog:SetScript("OnHide", function()
         if oldOnHide then oldOnHide() end

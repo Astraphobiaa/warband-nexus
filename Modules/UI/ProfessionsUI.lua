@@ -508,7 +508,8 @@ local function RegisterProfessionEvents(parent)
     local Constants = ns.Constants
 
     local function Refresh()
-        if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "professions" then
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if mf and mf:IsShown() and mf.currentTab == "professions" then
             WarbandNexus:RefreshUI()
         end
     end

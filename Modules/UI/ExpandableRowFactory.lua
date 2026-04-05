@@ -10,12 +10,7 @@ local ADDON_NAME, ns = ...
 
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 -- Import dependencies from SharedWidgets (with safety checks)
 local UI_SPACING = ns.UI_SPACING  -- Standardized spacing constants
 local COLORS = ns.UI_COLORS  -- Use COLORS table instead of GetColors function
@@ -309,9 +304,9 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                 row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
             end
             
-            -- Show details and resize row
+            -- Show details and resize row (header may be taller than rowHeight when title wraps)
             row.detailsFrame:Show()
-            local totalHeight = rowHeight + row.detailsFrame:GetHeight()
+            local totalHeight = headerFrame:GetHeight() + row.detailsFrame:GetHeight()
             row:SetHeight(totalHeight)
         else
             -- Use atlas for down arrow (expand)
@@ -326,7 +321,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             if row.detailsFrame then
                 row.detailsFrame:Hide()
             end
-            row:SetHeight(rowHeight)
+            row:SetHeight(headerFrame:GetHeight())
         end
         
         -- Callback
@@ -388,21 +383,44 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     -- Score (for achievements) or Type badge - WoW-like compact
     if data.score then
         local scoreText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
-        scoreText:SetPoint("LEFT", 68, 0)
+        scoreText:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", 68, -6)
         scoreText:SetWidth(60)
         scoreText:SetJustifyH("LEFT")
+        scoreText:SetJustifyV("TOP")
+        scoreText:SetWordWrap(false)
         scoreText:SetText("|cffffd700" .. data.score .. ((ns.L and ns.L["POINTS_SHORT"]) or " pts") .. "|r")
         row.scoreText = scoreText
     end
     
-    -- Title - WoW-like normal font
+    -- Title: allow 2 lines so long achievement names do not overlap the Track button area
     local titleText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
-    titleText:SetPoint("LEFT", data.score and 134 or 68, 0)
-    titleText:SetPoint("RIGHT", -90, 0)
+    local titleLeft = data.score and 134 or 68
+    titleText:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", titleLeft, -6)
+    titleText:SetPoint("RIGHT", headerFrame, "RIGHT", -90, 0)
     titleText:SetJustifyH("LEFT")
+    titleText:SetJustifyV("TOP")
+    titleText:SetWordWrap(true)
+    titleText:SetMaxLines(2)
+    titleText:SetNonSpaceWrap(false)
     titleText:SetText("|cffffffff" .. (data.title or (ns.L["UNKNOWN"] or "Unknown")) .. "|r")
-    titleText:SetWordWrap(false)
     row.titleText = titleText
+    
+    local function SyncHeaderToTitle()
+        local th = titleText:GetStringHeight()
+        local minHeader = rowHeight
+        if data.score and row.scoreText then
+            minHeader = math.max(minHeader, row.scoreText:GetStringHeight() + 12)
+        end
+        local newH = math.max(minHeader, th + 12)
+        headerFrame:SetHeight(newH)
+        if row.detailsFrame and row.detailsFrame:IsShown() then
+            row:SetHeight(headerFrame:GetHeight() + row.detailsFrame:GetHeight())
+        else
+            row:SetHeight(headerFrame:GetHeight())
+        end
+    end
+    row.SyncHeaderToTitle = SyncHeaderToTitle
+    SyncHeaderToTitle()
     
     -- Expanded details container (created on demand)
     row.detailsFrame = nil
@@ -424,7 +442,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
         row.detailsFrame:Show()
         
-        local totalHeight = rowHeight + row.detailsFrame:GetHeight()
+        local totalHeight = headerFrame:GetHeight() + row.detailsFrame:GetHeight()
         row:SetHeight(totalHeight)
     end
     

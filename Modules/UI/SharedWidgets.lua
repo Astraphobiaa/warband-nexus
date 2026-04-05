@@ -9,12 +9,7 @@ local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 
 --============================================================================
 -- PIXEL PERFECT HELPERS
@@ -292,8 +287,8 @@ local UI_SPACING = {
     SCROLL_BAR_WIDTH = 16,
     -- Slightly wider column so vertical + horizontal scroll controls are easier to notice
     SCROLLBAR_COLUMN_WIDTH = 26,
-    -- Horizontal strip under the main viewport (slider + arrows); thicker = easier to spot
-    HORIZONTAL_SCROLL_BAR_HEIGHT = 20,
+    -- Must match SCROLL_BAR_BUTTON_SIZE so track + thumb are not taller than arrow buttons
+    HORIZONTAL_SCROLL_BAR_HEIGHT = 16,
     SCROLL_BASE_STEP = 28,
     SCROLL_SPEED_DEFAULT = 1.0,
 }
@@ -2700,13 +2695,14 @@ ns.UI_CreateCharacterSortDropdown = CreateCharacterSortDropdown
 -- DRAW EMPTY STATE (Shared by Items and Storage tabs)
 --============================================================================
 
-local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
+local function DrawEmptyState(addon, parent, startY, isSearch, searchText, tabContext)
     -- Validate parent frame
     if not parent or not parent.CreateTexture then
         return startY or 0
     end
     
     local yOffset = startY + 50
+    tabContext = tabContext or ""
     
     -- Reuse existing container or create new one
     local container = parent.emptyStateContainer
@@ -2729,41 +2725,51 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
         container.desc:SetTextColor(1, 1, 1)
     end
     
+    local L = ns.L
+    local defaultIcon = "Interface\\Icons\\INV_Misc_Bag_10_Blue"
+    local iconTex = defaultIcon
+    local titleText
+    local emptyMessage
+    
+    if isSearch then
+        iconTex = "Interface\\Icons\\INV_Misc_Spyglass_02"
+        titleText = "|cff666666" .. ((L and L["NO_RESULTS"]) or "No results") .. "|r"
+        local displayText = searchText or ""
+        if displayText and displayText ~= "" then
+            emptyMessage = string.format((L and L["NO_ITEMS_MATCH"]) or "No items match '%s'", displayText)
+        else
+            emptyMessage = (L and L["NO_ITEMS_MATCH_GENERIC"]) or "No items match your search"
+        end
+    elseif tabContext == "plans_achievement" then
+        iconTex = "Interface\\Icons\\Achievement_General"
+        titleText = "|cff666666" .. ((L and L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"]) or "No achievements to display") .. "|r"
+        emptyMessage = (L and L["PLANS_ACHIEVEMENTS_EMPTY_HINT"]) or "Add achievements to your To-Do from this list, or change Show Planned / Show Completed. Achievements scan in the background; try /reload if the list stays empty."
+    else
+        iconTex = defaultIcon
+        titleText = "|cff666666" .. ((L and L["NO_ITEMS_CACHED_TITLE"]) or "No items cached") .. "|r"
+        local currentSubTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal"
+        if currentSubTab == "warband" then
+            emptyMessage = (L and L["ITEMS_WARBAND_BANK_HINT"]) or "Open Warband Bank to scan items (auto-scanned on first visit)"
+        else
+            emptyMessage = (L and L["ITEMS_SCAN_HINT"]) or "Items are scanned automatically. Try /reload if nothing appears."
+        end
+    end
+    
     -- Update icon position and texture
     container.icon:ClearAllPoints()
     container.icon:SetPoint("TOP", 0, -yOffset)
-    container.icon:SetTexture(isSearch and "Interface\\Icons\\INV_Misc_Spyglass_02" or "Interface\\Icons\\INV_Misc_Bag_10_Blue")
+    container.icon:SetTexture(iconTex)
     yOffset = yOffset + 60
     
     -- Update title position and text
     container.title:ClearAllPoints()
     container.title:SetPoint("TOP", 0, -yOffset)
-    container.title:SetText(isSearch and ("|cff666666" .. ((ns.L and ns.L["NO_RESULTS"]) or "No results") .. "|r") or ("|cff666666" .. ((ns.L and ns.L["NO_ITEMS_CACHED_TITLE"]) or "No items cached") .. "|r"))
+    container.title:SetText(titleText)
     yOffset = yOffset + 30
     
     -- Update description position and text
     container.desc:ClearAllPoints()
     container.desc:SetPoint("TOP", 0, -yOffset)
-    local displayText = searchText or ""
-    
-    -- Smart message based on context
-    local emptyMessage
-    if isSearch then
-        -- Use custom message if provided, otherwise generic
-        if displayText and displayText ~= "" then
-            emptyMessage = string.format((ns.L and ns.L["NO_ITEMS_MATCH"]) or "No items match '%s'", displayText)
-        else
-            emptyMessage = (ns.L and ns.L["NO_ITEMS_MATCH_GENERIC"]) or "No items match your search"
-        end
-    else
-        -- Check which tab we're on (look at global state)
-        local currentSubTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal"
-        if currentSubTab == "warband" then
-            emptyMessage = (ns.L and ns.L["ITEMS_WARBAND_BANK_HINT"]) or "Open Warband Bank to scan items (auto-scanned on first visit)"
-        else
-            emptyMessage = (ns.L and ns.L["ITEMS_SCAN_HINT"]) or "Items are scanned automatically. Try /reload if nothing appears."
-        end
-    end
     container.desc:SetText(emptyMessage)
     
     -- Show container
@@ -4743,7 +4749,8 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
 
     local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
     local btnSize = layout.SCROLL_BAR_BUTTON_SIZE or 16
-    local barHeight = layout.HORIZONTAL_SCROLL_BAR_HEIGHT or layout.SCROLL_BAR_WIDTH or 16
+    -- Single height for track + arrows (layout HORIZONTAL_SCROLL_BAR_HEIGHT should match btnSize)
+    local barHeight = btnSize
 
     local function GetScrollStep()
         local addon = _G.WarbandNexus or ns.WarbandNexus
@@ -4799,8 +4806,8 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     hBar._borderAlpha = 0.6
     table.insert(ns.BORDER_REGISTRY, hBar)
 
-    -- Thumb width 60; height scales with bar (easier to grab when strip is taller)
-    local thumbH = math.max(10, math.min(18, barHeight - 4))
+    -- Thumb width 60; height inside track (bar and buttons share barHeight)
+    local thumbH = math.max(6, math.min(16, barHeight - 4))
     hBar.ThumbTexture = hBar:CreateTexture(nil, "ARTWORK")
     hBar.ThumbTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
     hBar.ThumbTexture:SetSize(60, thumbH)
@@ -4972,15 +4979,14 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
             self.ScrollLeftBtn:SetParent(container)
             self.ScrollLeftBtn:SetFrameLevel(level + 3)
             self.ScrollLeftBtn:ClearAllPoints()
-            self.ScrollLeftBtn:SetPoint("LEFT", container, "LEFT", 0, 0)
-            self.ScrollLeftBtn:SetPoint("CENTER", container, "CENTER", 0, 0)
+            -- One anchor: center of button on mid-left of strip (avoid LEFT+CENTER conflict with bar height)
+            self.ScrollLeftBtn:SetPoint("CENTER", container, "LEFT", btnSize / 2, 0)
         end
         if self.ScrollRightBtn then
             self.ScrollRightBtn:SetParent(container)
             self.ScrollRightBtn:SetFrameLevel(level + 3)
             self.ScrollRightBtn:ClearAllPoints()
-            self.ScrollRightBtn:SetPoint("RIGHT", container, "RIGHT", 0, 0)
-            self.ScrollRightBtn:SetPoint("CENTER", container, "CENTER", 0, 0)
+            self.ScrollRightBtn:SetPoint("CENTER", container, "RIGHT", -btnSize / 2, 0)
         end
     end
 

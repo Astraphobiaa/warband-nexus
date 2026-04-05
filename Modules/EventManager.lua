@@ -18,11 +18,7 @@ local Constants = ns.Constants
 local EventManagerEvents = {}
 
 -- Debug print helper (only prints if debug mode enabled)
-local function DebugPrint(...)
-    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 
 -- ============================================================================
 -- EVENT CONFIGURATION
@@ -251,38 +247,8 @@ function WarbandNexus:OnMoneyChanged()
     end
 end
 
---[[
-    Called when currency changes
-    Delegates to DataService and fires event for UI updates
-]]
-function WarbandNexus:OnCurrencyChanged()
-    -- GUARD: Only process if character is tracked
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        return
-    end
-    
-    -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
-        return
-    end
-    
-    -- Update currency data via DataService
-    if self.UpdateCurrencyData then
-        self:UpdateCurrencyData()
-    end
-    
-    -- Fire event for UI refresh (instead of direct RefreshUI call)
-    -- Use short delay to batch multiple currency events
-    if not self.currencyRefreshPending then
-        self.currencyRefreshPending = true
-        C_Timer.After(0.1, function()
-            if WarbandNexus then
-                WarbandNexus.currencyRefreshPending = false
-                WarbandNexus:SendMessage("WN_CURRENCY_UPDATED")
-            end
-        end)
-    end
-end
+
+
 
 --[[
     Called when M+ dungeon run completes

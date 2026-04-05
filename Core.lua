@@ -98,10 +98,6 @@ ns.INVENTORY_BAGS = INVENTORY_BAGS
 ns.WARBAND_TAB_COUNT = WARBAND_TAB_COUNT
 ns.ITEM_CATEGORIES = ITEM_CATEGORIES
 
--- Performance: Local function references
-local format = string.format
-local floor = math.floor
-local date = date
 local time = time
 
 --[[
@@ -163,6 +159,9 @@ local defaults = {
         showItemCount = true,
         showTooltipItemCount = true,
         recipeCompanionEnabled = true,
+        -- To-Do browse filters (Mounts, Pets, Achievements, …)
+        plansShowCompleted = false,
+        plansShowPlanned = false,
         
         -- Gold settings
         goldReserve = 0,           -- Minimum gold to keep when depositing
@@ -232,6 +231,8 @@ local defaults = {
         -- Notification settings
         notifications = {
             enabled = true,                    -- Master toggle
+            showLoginChat = true,              -- Welcome + version hint in chat (SYSTEM group / visible tab)
+            hidePlayedTimeInChat = true,       -- ChatFrameUtil + Chattynator.FilterTimePlayed + CHAT_MSG_SYSTEM backup
             showUpdateNotes = true,            -- Show changelog on new version
             showVaultReminder = true,          -- Show vault reminder
             showLootNotifications = true,      -- Show mount/pet/toy loot notifications
@@ -258,6 +259,8 @@ local defaults = {
             popupGrowth = "AUTO",              -- Growth direction: "AUTO" (smart), "DOWN", "UP"
             screenFlashEffect = true,          -- Screen flash effect on collectible obtained
             autoTryCounter = true,             -- Automatic try counter for NPC/boss/fishing/container drops
+            -- Try counter chat routing: loot | dedicated (WN_TRYCOUNTER group) | all_tabs
+            tryCounterChatRoute = "loot",
             lastSeenVersion = "0.0.0",         -- Last addon version seen
             lastVaultCheck = 0,                -- Last time vault was checked
             dismissedNotifications = {},       -- Array of dismissed notification IDs
@@ -416,69 +419,7 @@ local defaults = {
     → Modules/MinimapButton.lua: InitializeDataBroker (now InitializeMinimapButton)
 ============================================================================]]
 
--- MOVED: CheckAddonVersion() → MigrationService.lua
--- MOVED: ForceRefreshAllCaches() → DatabaseOptimizer.lua
 
--- -----------------------------------------------------------------------------
--- Played time: suppress only addon-initiated /played *system chat* (localized)
--- -----------------------------------------------------------------------------
-local playedTimeChatPrefixes
-
-local function BuildPlayedTimeChatPrefixes()
-    local prefixes = {}
-    local seen = {}
-    local function add(s)
-        if not s or s == "" or seen[s] then return end
-        seen[s] = true
-        prefixes[#prefixes + 1] = s
-    end
-    local function addFromFormatKey(key)
-        local g = _G[key]
-        if type(g) ~= "string" or g == "" then return end
-        local plain = g:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-        local beforeFmt = plain:match("^([^%%]+)")
-        if beforeFmt and beforeFmt ~= "" then
-            add(beforeFmt)
-        end
-    end
-    addFromFormatKey("TIME_PLAYED_TOTAL")
-    addFromFormatKey("TIME_PLAYED_LEVEL")
-    add("Total time played")
-    add("Time played this level")
-    return prefixes
-end
-
-local function IsPlayedTimeSystemChatMessage(msg)
-    if not msg or type(msg) ~= "string" then return false end
-    if issecretvalue and issecretvalue(msg) then return false end
-    if not playedTimeChatPrefixes then
-        playedTimeChatPrefixes = BuildPlayedTimeChatPrefixes()
-    end
-    local stripped = msg:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-    for i = 1, #playedTimeChatPrefixes do
-        local p = playedTimeChatPrefixes[i]
-        if stripped:find(p, 1, true) then
-            return true
-        end
-    end
-    return false
-end
-
----Install CHAT_MSG_SYSTEM filter once (no per-frame AddMessage RawHook — preserves other chat addons).
-function WarbandNexus:InstallPlayedTimeChatFilter()
-    if self._playedTimeChatFilterInstalled then return end
-    self._playedTimeChatFilterInstalled = true
-    if not ChatFrame_AddMessageEventFilter then return end
-    ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, msg, ...)
-        if not WarbandNexus:ShouldSuppressPlayedMessage() then
-            return false, msg, ...
-        end
-        if not IsPlayedTimeSystemChatMessage(msg) then
-            return false, msg, ...
-        end
-        return true
-    end)
-end
 
 ---C_WowTokenPublic: price arrives asynchronously after UpdateMarketPrice().
 function WarbandNexus:OnTokenMarketPriceUpdated()
@@ -559,10 +500,6 @@ function WarbandNexus:OnInitialize()
         if not self.db.global.trackDB.disabled then self.db.global.trackDB.disabled = {} end
         if not self.db.global.statisticSnapshots then self.db.global.statisticSnapshots = {} end
     end
-    
-    -- [DEPRECATED] CollectionScanner removed - now using CollectionService
-    -- CollectionService auto-initializes and loads cache from DB
-    -- See: InitializationService:InitializeDataServices()
     
     -- =========================================================================
     -- TAINT SUPPRESSION: ADDON_ACTION_FORBIDDEN popup prevention
@@ -707,9 +644,10 @@ function WarbandNexus:OnInitialize()
     -- Initialize configuration (defined in Config.lua)
     self:InitializeConfig()
     
-    -- Played-time chat suppression: use CHAT_MSG_SYSTEM filter only (no RawHook on ChatFrame_AddMessage —
-    -- that breaks other addons that wrap chat output, e.g. Chattynator). Do not replace ChatFrame_DisplayTimePlayed.
-    self:InstallPlayedTimeChatFilter()
+    -- Chat: filters + output routing (CHAT_MSG_SYSTEM played-time echo, rep/currency suppression). See ChatIntegrationService.lua.
+    if self.InitializeChatIntegration then
+        self:InitializeChatIntegration()
+    end
     
     -- WoW Token: GetCurrentMarketPrice() updates asynchronously after UpdateMarketPrice(); refresh Characters tab when price arrives.
     self:RegisterEvent("TOKEN_MARKET_PRICE_UPDATED", "OnTokenMarketPriceUpdated")
@@ -903,13 +841,6 @@ function WarbandNexus:OnEnable()
     
     -- Register PLAYER_ENTERING_WORLD event for notifications and PvE data collection
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
-    
-    -- Initialize Chat Filter (suppress Blizzard rep/currency messages if addon notifications enabled)
-    C_Timer.After(0.5, function()
-        if self and self.InitializeChatFilter then
-            self:InitializeChatFilter()
-        end
-    end)
     
     -- Initialize Chat Message Service (reputation/currency gain notifications)
     C_Timer.After(0.6, function()
@@ -1149,10 +1080,7 @@ end
     See Modules/ItemsCacheService.lua OnBankOpened() / OnBankClosed()
 ============================================================================]]
 
--- GetBagFingerprint: REMOVED — Dead code, never called.
--- ItemsCacheService uses hash-based change detection (GenerateItemHash) instead.
 
--- OnInventoryBagsChanged: MOVED to ItemsCacheService (single owner for BAG_UPDATE_DELAYED)
 
 --[[============================================================================
     GUILD BANK HANDLERS (Updated for 10.0+ compatibility)
@@ -1262,11 +1190,7 @@ function WarbandNexus:IsMainWindowShown()
     return false
 end
 
--- MOVED: OnMoneyChanged() → EventManager.lua
--- MOVED: OnCurrencyChanged() → EventManager.lua
--- Note: These are now in EventManager where they belong with other event handlers
--- MOVED: CHALLENGE_MODE_COMPLETED() → EventManager.lua
--- MOVED: MYTHIC_PLUS_NEW_WEEKLY_RECORD() → EventManager.lua
+
 
 --[[
     Called when an addon is loaded
@@ -1523,8 +1447,7 @@ function WarbandNexus:OnCombatEnd()
         wipe(hidden)
     end
     
-    -- pendingBagUpdateAfterCombat: REMOVED — never set anywhere in the codebase.
-    -- ItemsCacheService handles all bag events independently (including post-combat).
+
 end
 
 --[[
@@ -1549,7 +1472,7 @@ function WarbandNexus:OnPvEDataChanged()
     end
 end
 
--- MOVED: OnKeystoneChanged() → EventManager.lua
+
 
 --[[
     Event handler for collection changes (mounts, pets, toys)
@@ -1574,21 +1497,7 @@ function WarbandNexus:OnCollectionChanged(event)
     
     local charKey = ns.Utilities:GetCharacterKey()
     
-    -- DISABLED: Bag scan now handles all notifications
-    -- Event handlers disabled to prevent duplicates (see CollectionService.lua)
-    -- if event == "NEW_MOUNT_ADDED" then
-    --     if self.OnNewMount then
-    --         self:OnNewMount(event)
-    --     end
-    -- elseif event == "NEW_PET_ADDED" then
-    --     if self.OnNewPet then
-    --         self:OnNewPet(event)
-    --     end
-    -- elseif event == "NEW_TOY_ADDED" then
-    --     if self.OnNewToy then
-    --         self:OnNewToy(event)
-    --     end
-    -- end
+
     
     if self.db.global.characters and self.db.global.characters[charKey] then
         -- Update timestamp
@@ -1663,10 +1572,7 @@ function WarbandNexus:OnPetListChanged()
     end)
 end
 
--- OnBagUpdate: REMOVED — Dead code. ItemsCacheService defines WarbandNexus:OnBagUpdate()
--- which loads AFTER Core.lua and overwrites this method. All BAG_UPDATE handling is now
--- owned by ItemsCacheService (hash-based change detection + throttled incremental updates).
--- See Modules/ItemsCacheService.lua: OnBagUpdate(), ThrottledBagUpdate(), UpdateSingleBag().
+
 
 --[[
     Utility Functions
@@ -1730,12 +1636,14 @@ function WarbandNexus:RegisterTabTimer(tabKey, timerHandle)
     table.insert(activeTabTimers[tabKey], timerHandle)
 end
 
----Check if we're still on the expected tab (for async callbacks)
+---Check if we're still on the expected tab (for async callbacks).
+---Also requires the main window to be shown — currentTab can remain stale while hidden.
 ---@param expectedTab string Expected tab identifier
----@return boolean stillOnTab True if still on the same tab
+---@return boolean stillOnTab True if window shown and tab matches
 function WarbandNexus:IsStillOnTab(expectedTab)
     if not self.UI or not self.UI.mainFrame then return false end
-    return self.UI.mainFrame.currentTab == expectedTab
+    local mf = self.UI.mainFrame
+    return mf:IsShown() and mf.currentTab == expectedTab
 end
 
 --[[============================================================================

@@ -15,12 +15,7 @@ local FontManager = ns.FontManager  -- Centralized font management
 local CurrencyUIEvents = {}
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 
 -- Services
 local SearchStateManager = ns.SearchStateManager
@@ -961,32 +956,35 @@ function WarbandNexus:DrawCurrencyTab(parent)
     -- Register event listeners (only once per parent) - REPUTATION STYLE
     if not parent.currencyUpdateHandler then
         parent.currencyUpdateHandler = true
+
+        -- Shared scroll child stays visible across tabs; use main frame tab + shown (same idea as StorageUI).
+        local function IsCurrencyTabActive()
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            return mf and mf:IsShown() and mf.currentTab == "currency"
+        end
         
         -- NOTE: Uses CurrencyUIEvents as 'self' key to avoid overwriting other modules' handlers.
-        -- Loading started - always refresh (tab switch will render if visible)
+        -- Loading / cache: redraw only when Currency tab is active; tab switch runs DrawCurrencyTab via PopulateContent.
         WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_LOADING_STARTED", function()
-            if parent then
+            if parent and IsCurrencyTabActive() then
                 WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
-        -- Cache ready - always refresh
         WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_CACHE_READY", function()
-            if parent then
+            if parent and IsCurrencyTabActive() then
                 WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
-        -- Cache cleared - always refresh
         WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_CACHE_CLEARED", function()
-            if parent then
+            if parent and IsCurrencyTabActive() then
                 WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
-        -- Real-time update event - only refresh if visible
         WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_UPDATED", function()
-            if parent and parent:IsVisible() then
+            if parent and IsCurrencyTabActive() then
                 WarbandNexus:DrawCurrencyTab(parent)
             end
         end)

@@ -6,12 +6,11 @@
 local ADDON_NAME, ns = ...
 
 --- Print debug message (only if debug mode enabled)
----@param message string Message to print
-local function DebugPrint(message)
-    -- Check if debug mode is enabled
-    local addon = WarbandNexus or _G[ADDON_NAME]
+---@param ... any Messages to print
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
     if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        print(message)
+        _G.print(...)
     end
 end
 

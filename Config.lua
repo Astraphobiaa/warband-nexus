@@ -470,6 +470,30 @@ local options = {
                 end
             end,
         },
+        showLoginChat = {
+            order = 72.5,
+            type = "toggle",
+            name = function() return (ns.L and ns.L["CONFIG_SHOW_LOGIN_CHAT"]) or "Login message in chat" end,
+            desc = function() return (ns.L and ns.L["CONFIG_SHOW_LOGIN_CHAT_DESC"]) or "Print a short welcome line when notifications are enabled. Uses the System message group and a visible chat tab so custom chat addons (Chattynator, etc.) can show it." end,
+            width = 1.5,
+            disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
+            get = function() return WarbandNexus.db.profile.notifications.showLoginChat ~= false end,
+            set = function(_, value) WarbandNexus.db.profile.notifications.showLoginChat = value end,
+        },
+        hidePlayedTimeInChat = {
+            order = 72.6,
+            type = "toggle",
+            name = function() return (ns.L and ns.L["CONFIG_HIDE_PLAYED_TIME_CHAT"]) or "Hide Time Played in chat" end,
+            desc = function() return (ns.L and ns.L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"]) or "Filter CHAT_MSG_SYSTEM lines for Total time played / Time played this level (all sources). Turn off to allow them (e.g. if you want /played output in chat)." end,
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.notifications.hidePlayedTimeInChat ~= false end,
+            set = function(_, value)
+                WarbandNexus.db.profile.notifications.hidePlayedTimeInChat = value
+                if WarbandNexus.UpdateChatFilter then
+                    WarbandNexus:UpdateChatFilter()
+                end
+            end,
+        },
         showUpdateNotes = {
             order = 73,
             type = "toggle",

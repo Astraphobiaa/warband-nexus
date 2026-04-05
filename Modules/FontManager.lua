@@ -19,12 +19,7 @@ local ADDON_NAME, ns = ...
 local LSM = (LibStub and LibStub("LibSharedMedia-3.0", true)) or nil
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 local FontManager = {}
 
 --============================================================================

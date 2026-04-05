@@ -13,11 +13,7 @@ local CommandService = {}
 ns.CommandService = CommandService
 
 -- Debug print helper (only shows when debug mode is enabled)
-local function DebugPrint(...)
-    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 
 --============================================================================
 -- MAIN SLASH COMMAND HANDLER

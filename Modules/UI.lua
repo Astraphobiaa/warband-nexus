@@ -15,12 +15,7 @@ local L = ns.L
 local UIEvents = {}
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 
 -- Lazy-load FontManager (prevent race conditions)
 local function GetFontManager()
@@ -354,10 +349,11 @@ function WarbandNexus:ShowMainWindow()
     local lastTab = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.lastTab
     mainFrame.currentTab = lastTab or "chars"
     mainFrame.isMainTabSwitch = true  -- First open = main tab switch
-    
+
+    -- Show before PopulateContent: while hidden, scroll:GetWidth() is often 0 → blank/black To-Do (and other tabs).
+    mainFrame:Show()
     self:PopulateContent()
     mainFrame.isMainTabSwitch = false  -- Reset flag
-    mainFrame:Show()
     -- Ensure frame is always anchored TOPLEFT when visible so drag never "teleports"
     -- (StartMoving uses current anchor; CENTER would make the window jump to cursor-as-center).
     NormalizeFramePosition(mainFrame)
@@ -877,43 +873,70 @@ function WarbandNexus:CreateMainWindow()
         discordCopyBox:HighlightText()
     end)
 
-    -- Tracking status: framed badge [text] [icon] directly left of Discord
-    local trackingStatusFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
-    trackingStatusFrame:SetSize(92, 36)
-    trackingStatusFrame:SetPoint("RIGHT", discordBtn, "LEFT", -6, 0)
-    if ApplyVisuals and ns.UI_COLORS then
-        local COLORS = ns.UI_COLORS
-        ApplyVisuals(trackingStatusFrame, {0.12, 0.12, 0.15, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    -- Tracking status: compact chip (accent rail + icon + single-line label), left of Discord
+    -- Match header accentDark family — avoid flat black (0.06…) which clashes with the title bar
+    local trackingChip = CreateFrame("Frame", nil, header, "BackdropTemplate")
+    trackingChip:SetHeight(30)
+    trackingChip:SetPoint("RIGHT", discordBtn, "LEFT", -8, 0)
+    local COL_TRACK = ns.UI_COLORS
+    local baseDark = (COL_TRACK and COL_TRACK.accentDark) or {0.28, 0.14, 0.41}
+    local chipLift = 0.06
+    local chipBg = {
+        math.min(1, baseDark[1] + chipLift),
+        math.min(1, baseDark[2] + chipLift),
+        math.min(1, baseDark[3] + chipLift),
+        0.88,
+    }
+    if ApplyVisuals and COL_TRACK then
+        ApplyVisuals(trackingChip, chipBg, {COL_TRACK.accent[1], COL_TRACK.accent[2], COL_TRACK.accent[3], 0.24})
     end
 
-    local trackingStatusBtn = CreateFrame("Button", nil, trackingStatusFrame)
-    trackingStatusBtn:SetAllPoints(trackingStatusFrame)
+    local trackingAccent = trackingChip:CreateTexture(nil, "ARTWORK", nil, 1)
+    trackingAccent:SetWidth(3)
+    trackingAccent:SetPoint("TOPLEFT", trackingChip, "TOPLEFT", 0, -1)
+    trackingAccent:SetPoint("BOTTOMLEFT", trackingChip, "BOTTOMLEFT", 0, 1)
+    trackingAccent:SetColorTexture(0.22, 0.9, 0.42, 1)
+    f.trackingStatusAccent = trackingAccent
+
+    local trackingStatusBtn = CreateFrame("Button", nil, trackingChip)
+    trackingStatusBtn:SetAllPoints(trackingChip)
     trackingStatusBtn:EnableMouse(true)
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
         ns.UI.Factory:ApplyHighlight(trackingStatusBtn)
     end
     f.statusBadge = trackingStatusBtn
+    f.trackingChip = trackingChip
 
-    local trackingIcon = trackingStatusBtn:CreateTexture(nil, "ARTWORK")
-    trackingIcon:SetSize(16, 16)
-    trackingIcon:SetPoint("RIGHT", trackingStatusFrame, "RIGHT", -6, 0)
+    local iconBack = CreateFrame("Frame", nil, trackingChip, "BackdropTemplate")
+    iconBack:SetSize(20, 20)
+    iconBack:SetPoint("LEFT", trackingAccent, "RIGHT", 6, 0)
+    iconBack:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+    iconBack:SetBackdropColor(
+        math.min(1, baseDark[1] + chipLift * 0.35),
+        math.min(1, baseDark[2] + chipLift * 0.35),
+        math.min(1, baseDark[3] + chipLift * 0.35),
+        0.5
+    )
+
+    local trackingIcon = iconBack:CreateTexture(nil, "ARTWORK")
+    trackingIcon:SetSize(14, 14)
+    trackingIcon:SetPoint("CENTER", iconBack, "CENTER", 0, 0)
     local ok = pcall(trackingIcon.SetAtlas, trackingIcon, "common-icon-checkmark", false)
     if not ok then
         trackingIcon:SetTexture("Interface\\Icons\\Ability_Hunter_BeastTaming")
     end
-    trackingIcon:SetVertexColor(0.3, 1, 0.4)
+    trackingIcon:SetVertexColor(0.35, 1, 0.45)
     f.statusIcon = trackingIcon
 
-    local statusText = FontManager:CreateFontString(trackingStatusBtn, "small", "OVERLAY")
-    statusText:SetPoint("RIGHT", trackingIcon, "LEFT", -4, 0)
-    statusText:SetPoint("LEFT", trackingStatusFrame, "LEFT", 6, 0)
-    statusText:SetPoint("TOP", trackingStatusFrame, "TOP", 0, -4)
-    statusText:SetPoint("BOTTOM", trackingStatusFrame, "BOTTOM", 0, 4)
-    statusText:SetJustifyH("CENTER")
+    local statusText = FontManager:CreateFontString(trackingStatusBtn, "body", "OVERLAY")
+    statusText:SetPoint("LEFT", iconBack, "RIGHT", 8, 0)
+    statusText:SetPoint("RIGHT", trackingChip, "RIGHT", -8, 0)
+    statusText:SetJustifyH("LEFT")
     statusText:SetJustifyV("MIDDLE")
-    statusText:SetWordWrap(true)
+    statusText:SetWordWrap(false)
     statusText:SetNonSpaceWrap(false)
     f.statusText = statusText
+    trackingChip:SetWidth(112)
 
     -- Window Manager: register main window + ESC hierarchy + combat hide/restore
     if ns.WindowManager then
@@ -1755,7 +1778,22 @@ function WarbandNexus:UpdateStatus()
 
     local icon = mainFrame.statusIcon
     local badge = mainFrame.statusBadge
+    local accent = mainFrame.trackingStatusAccent
+    local chip = mainFrame.trackingChip
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+
+    local function BadgeOneLine(s)
+        if not s or s == "" then return s end
+        return (s:gsub("\n+", " "))
+    end
+
+    local function SizeTrackingChip()
+        if not chip or not mainFrame.statusText then return end
+        local tw = mainFrame.statusText:GetStringWidth() or 0
+        -- 3px rail + 6 + 20 icon tile + 8 gap + text + right pad
+        local w = 3 + 6 + 20 + 8 + tw + 10
+        chip:SetWidth(math.max(96, math.min(280, w)))
+    end
 
     local function SetClickAndTooltip(tooltipText, tooltipHint)
         if badge then
@@ -1779,28 +1817,36 @@ function WarbandNexus:UpdateStatus()
 
     if mainFrame.statusText then
         if isOpen then
-            mainFrame.statusText:SetText((ns.L and ns.L["TRACKING_BADGE_BANK"]) or "Bank is\nActive")
-            mainFrame.statusText:SetTextColor(0.3, 1, 0.4)
+            mainFrame.statusText:SetText(BadgeOneLine((ns.L and ns.L["TRACKING_BADGE_BANK"]) or "Bank is Active"))
+            mainFrame.statusText:SetTextColor(0.75, 0.95, 0.82)
         elseif isTracked then
-            mainFrame.statusText:SetText((ns.L and ns.L["TRACKING_BADGE_TRACKING"]) or "Tracking")
-            mainFrame.statusText:SetTextColor(0.3, 1, 0.4)
+            mainFrame.statusText:SetText(BadgeOneLine((ns.L and ns.L["TRACKING_BADGE_TRACKING"]) or "Tracking"))
+            mainFrame.statusText:SetTextColor(0.82, 0.98, 0.88)
         else
-            mainFrame.statusText:SetText((ns.L and ns.L["TRACKING_BADGE_UNTRACKED"]) or "Not\nTracking")
-            mainFrame.statusText:SetTextColor(1, 0.5, 0.3)
+            mainFrame.statusText:SetText(BadgeOneLine((ns.L and ns.L["TRACKING_BADGE_UNTRACKED"]) or "Not Tracking"))
+            mainFrame.statusText:SetTextColor(1, 0.72, 0.58)
+        end
+    end
+
+    if accent then
+        if isOpen or isTracked then
+            accent:SetColorTexture(0.18, 0.88, 0.48, 1)
+        else
+            accent:SetColorTexture(0.95, 0.42, 0.22, 1)
         end
     end
 
     if isOpen then
         if icon then
             pcall(icon.SetAtlas, icon, "common-icon-checkmark", false)
-            icon:SetVertexColor(0.3, 1, 0.4)
+            icon:SetVertexColor(0.45, 1, 0.55)
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["BANK_IS_ACTIVE"]) or "Bank is Active", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to change tracking.")
     elseif isTracked then
         if icon then
             pcall(icon.SetAtlas, icon, "common-icon-checkmark", false)
-            icon:SetVertexColor(0.3, 1, 0.4)
+            icon:SetVertexColor(0.45, 1, 0.55)
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["TRACKING_ACTIVE_DESC"]) or "Data collection and updates are active.", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to change tracking.")
@@ -1810,11 +1856,13 @@ function WarbandNexus:UpdateStatus()
             if not ok then
                 icon:SetTexture("Interface\\Icons\\Spell_Shadow_Teleport")
             end
-            icon:SetVertexColor(1, 0.4, 0.3)
+            icon:SetVertexColor(1, 0.55, 0.42)
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["TRACKING_NOT_ENABLED_TOOLTIP"]) or "Character tracking is disabled.", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to enable tracking.")
     end
+
+    SizeTrackingChip()
 end
 
 function WarbandNexus:UpdateFooter()
@@ -2001,6 +2049,8 @@ do
     local completedShown = false
     local pollStartTime = 0
     local MAX_POLL_LIFETIME = 180 -- 3 minutes: covers late-confirm edge cases
+    local wipe = table.wipe
+    local overlayLabelParts = {}
 
     local function CreateLoadingOverlay()
         if loadingOverlay then return loadingOverlay end
@@ -2125,16 +2175,16 @@ do
             bar.progressFill:SetWidth(math.max(1, barWidth * (done / total)))
         end
 
-        -- Pending labels
+        -- Pending labels (GetPendingLabels returns ephemeral reused table — copy only what we display)
         local pending = LT:GetPendingLabels()
         local labelStr = ""
         if #pending > 0 then
             local shown = math.min(#pending, 2)
-            local parts = {}
+            wipe(overlayLabelParts)
             for i = 1, shown do
-                parts[i] = pending[i]
+                overlayLabelParts[i] = pending[i]
             end
-            labelStr = table.concat(parts, ", ")
+            labelStr = table.concat(overlayLabelParts, ", ", 1, shown)
             if #pending > shown then
                 labelStr = labelStr .. " +" .. (#pending - shown)
             end

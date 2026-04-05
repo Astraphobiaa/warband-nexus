@@ -4016,6 +4016,211 @@ function WarbandNexus:GetUncollectedToys(searchText, limit)
     return {}
 end
 
+--- Collected mounts for Plans "Show Completed" (GetUncollectedMounts only returns uncollected).
+function WarbandNexus:GetCollectedMounts(searchText, limit)
+    searchText = (searchText or ""):lower()
+    local cacheKey = "c_mount:" .. searchText .. ":" .. tostring(limit or "nil")
+    local cached = uncollectedResultsCache[cacheKey]
+    if cached and (GetTime() - cached.t) < RESULTS_CACHE_TTL then return cached.r end
+
+    local store = collectionStore.mount
+    if not store or next(store) == nil then
+        if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+            C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+        end
+        return {}
+    end
+
+    local results = {}
+    local count = 0
+    for mountID, d in pairs(store) do
+        if d then
+            local meta = self:ResolveCollectionMetadata("mount", mountID)
+            if meta and meta.isCollected then
+                if not d.shouldHideOnChar then
+                    local name = meta.name or ("ID:" .. tostring(mountID))
+                    if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                        local row = {}
+                        for k, v in pairs(meta) do
+                            row[k] = v
+                        end
+                        row.id = mountID
+                        row.isCollected = true
+                        row.collected = true
+                        results[#results + 1] = row
+                        count = count + 1
+                        if limit and count >= limit then break end
+                    end
+                end
+            end
+        end
+    end
+    uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
+    return results
+end
+
+function WarbandNexus:GetCollectedPets(searchText, limit)
+    searchText = (searchText or ""):lower()
+    local cacheKey = "c_pet:" .. searchText .. ":" .. tostring(limit or "nil")
+    local cached = uncollectedResultsCache[cacheKey]
+    if cached and (GetTime() - cached.t) < RESULTS_CACHE_TTL then return cached.r end
+
+    local store = collectionStore.pet
+    if not store or next(store) == nil then
+        if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+            C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+        end
+        return {}
+    end
+
+    local results = {}
+    local count = 0
+    for petID, d in pairs(store) do
+        if d and d.collected == true then
+            local name = d.name or ("ID:" .. tostring(petID))
+            if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                local meta
+                if d.icon or d.source then
+                    meta = { id = petID, name = d.name, icon = d.icon, source = d.source, description = d.description, creatureDisplayID = d.creatureDisplayID, isCollected = true, collected = true }
+                else
+                    meta = self:ResolveCollectionMetadata("pet", petID)
+                    if meta then
+                        meta.id = petID
+                        meta.isCollected = true
+                        meta.collected = true
+                    end
+                end
+                if meta then
+                    results[#results + 1] = meta
+                    count = count + 1
+                    if limit and count >= limit then break end
+                end
+            end
+        end
+    end
+    uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
+    return results
+end
+
+function WarbandNexus:GetCollectedToys(searchText, limit)
+    searchText = (searchText or ""):lower()
+    local cacheKey = "c_toy:" .. searchText .. ":" .. tostring(limit or "nil")
+    local cached = uncollectedResultsCache[cacheKey]
+    if cached and (GetTime() - cached.t) < RESULTS_CACHE_TTL then return cached.r end
+
+    local store = collectionStore.toy
+    if not store or next(store) == nil then
+        if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+            C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+        end
+        return {}
+    end
+
+    local results = {}
+    local count = 0
+    for toyID, d in pairs(store) do
+        if d and d.collected == true then
+            local name = d.name or ("ID:" .. tostring(toyID))
+            if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                local meta
+                local sourceOk = self:IsReliableToySource(d.source)
+                if (d.icon or d.source) and sourceOk then
+                    meta = { id = toyID, name = d.name, icon = d.icon, source = d.source, description = d.description, isCollected = true, collected = true }
+                else
+                    meta = self:ResolveCollectionMetadata("toy", toyID)
+                    if meta then
+                        meta.id = toyID
+                        meta.isCollected = true
+                        meta.collected = true
+                    end
+                end
+                if meta then
+                    results[#results + 1] = meta
+                    count = count + 1
+                    if limit and count >= limit then break end
+                end
+            end
+        end
+    end
+    uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
+    return results
+end
+
+function WarbandNexus:GetCollectedIllusions(searchText, limit)
+    searchText = (searchText or ""):lower()
+    local cacheKey = "c_illusion:" .. searchText .. ":" .. tostring(limit or "nil")
+    local cached = uncollectedResultsCache[cacheKey]
+    if cached and (GetTime() - cached.t) < RESULTS_CACHE_TTL then return cached.r end
+
+    local store = collectionStore.illusion
+    if not store or next(store) == nil then
+        if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+            C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+        end
+        return {}
+    end
+
+    local results = {}
+    local count = 0
+    for illusionID, d in pairs(store) do
+        if d and d.collected == true then
+            local name = d.name or ("ID:" .. tostring(illusionID))
+            if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                local base = (d.icon or d.source) and d or self:ResolveCollectionMetadata("illusion", illusionID)
+                local meta = base and { id = illusionID, name = base.name or name, icon = base.icon, source = base.source, isCollected = true, collected = true }
+                if meta then
+                    results[#results + 1] = meta
+                    count = count + 1
+                    if limit and count >= limit then break end
+                end
+            end
+        end
+    end
+    uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
+    return results
+end
+
+function WarbandNexus:GetCollectedTitles(searchText, limit)
+    searchText = (searchText or ""):lower()
+    local cacheKey = "c_title:" .. searchText .. ":" .. tostring(limit or "nil")
+    local cached = uncollectedResultsCache[cacheKey]
+    if cached and (GetTime() - cached.t) < RESULTS_CACHE_TTL then return cached.r end
+
+    local store = collectionStore.title
+    if not store or next(store) == nil then
+        if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+            C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+        end
+        return {}
+    end
+
+    local results = {}
+    local count = 0
+    for titleID, d in pairs(store) do
+        if d and d.collected == true then
+            local name = d.name or d.rewardText or ("ID:" .. tostring(titleID))
+            if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                local base = (d.icon or d.rewardText) and d or self:ResolveCollectionMetadata("title", titleID)
+                local meta = base and {
+                    id = titleID,
+                    name = base.name or base.rewardText or name,
+                    icon = base.icon,
+                    rewardText = base.rewardText,
+                    isCollected = true,
+                    collected = true,
+                }
+                if meta then
+                    results[#results + 1] = meta
+                    count = count + 1
+                    if limit and count >= limit then break end
+                end
+            end
+        end
+    end
+    uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
+    return results
+end
+
 
 ---Async achievement scanner (background scanning with coroutine)
 ---Scans all achievements and populates achievement cache
@@ -4714,8 +4919,23 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
     DebugPrint("|cff00ccff[WN BAG SCAN]|r Found " .. #newCollectibles .. " new collectible(s)")
         for i = 1, #newCollectibles do
             local collectible = newCollectibles[i]
+            -- Loot → Try Counter fires WN_COLLECTIBLE_OBTAINED first; bag scan runs same tick — skip duplicate toast only.
+            local suppressForTryCounter = (collectible.type == "mount" or collectible.type == "pet" or collectible.type == "toy")
+                and WarbandNexus.ShouldSuppressBagCollectibleToastAsTryCounterDuplicate
+                and WarbandNexus:ShouldSuppressBagCollectibleToastAsTryCounterDuplicate(
+                    collectible.type, collectible.collectibleID, collectible.itemID)
+
+            if suppressForTryCounter then
+                DebugPrint("|cff888888[WN BAG SCAN]|r SKIP toast: Try Counter already celebrated this " .. tostring(collectible.type))
+                MarkAsDetectedInBag(collectible.type, collectible.collectibleID)
+                MarkAsNotified(collectible.type, collectible.collectibleID)
+                MarkAsShownByName(collectible.itemName)
+                if collectible.type == "pet" and collectible.itemID == collectible.collectibleID then
+                    RingBufferAdd(recentNotifications, "petname:" .. collectible.itemName, BAG_PET_NAME_COOLDOWN)
+                end
+                MarkAsPermanentlyNotified(collectible.type, collectible.collectibleID)
             -- LAYER 1: Quick name-based debounce (1-2s) - Prevents rapid-fire duplicates
-            if not WasRecentlyShownByName(collectible.itemName) then
+            elseif not WasRecentlyShownByName(collectible.itemName) then
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW " .. string.upper(collectible.type) .. " IN BAG: " .. collectible.itemName)
                 
                 -- LAYER 2: Mark as bag-detected (PERMANENT - survives reload)

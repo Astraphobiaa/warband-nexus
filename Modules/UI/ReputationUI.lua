@@ -2357,25 +2357,29 @@ function WarbandNexus:DrawReputationTab(parent)
     -- Register event listener for reputation updates (only once per parent)
     if not parent.reputationUpdateHandler then
         parent.reputationUpdateHandler = true
+
+        local function IsReputationTabActive()
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            return mf and mf:IsShown() and mf.currentTab == "reputations"
+        end
         
-        -- Loading started - only refresh if visible
+        -- Loading started - only refresh if Reputations tab is active (not parent:IsVisible — shared scroll child)
         WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_LOADING_STARTED", function()
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil
             
-            if parent and parent:IsVisible() then
+            if parent and IsReputationTabActive() then
                 self:DrawReputationTab(parent)
             end
         end)
         
-        -- v2.0.0: Cache cleared - always refresh
+        -- v2.0.0: Cache cleared - loading UI only when tab active
         WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_CACHE_CLEARED", function()
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil
-            -- Show loading UI if tab is currently visible
-            if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
+            if IsReputationTabActive() then
                 if parent._loadingPanel then
                     parent._loadingPanel:ShowLoading(
                         (ns.L and ns.L["REP_CLEARING_CACHE"]) or "Clearing cache and reloading...",
@@ -2395,29 +2399,28 @@ function WarbandNexus:DrawReputationTab(parent)
             end
         end)
         
-    -- v2.0.0: Cache ready (hide loading, show content) - only refresh if visible
-    WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_CACHE_READY", function()
-        -- Phase 2.4: Invalidate search cache
-        cachedFilteredResults = {}
-        cachedSearchText = nil
+        -- v2.0.0: Cache ready (hide loading, show content) - full redraw only when tab active
+        WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_CACHE_READY", function()
+            -- Phase 2.4: Invalidate search cache
+            cachedFilteredResults = {}
+            cachedSearchText = nil
+            
+            if parent._loadingPanel then
+                parent._loadingPanel:HideLoading()
+            end
+            
+            if parent and IsReputationTabActive() then
+                self:DrawReputationTab(parent)
+            end
+        end)
         
-        if parent._loadingPanel then
-            parent._loadingPanel:HideLoading()
-        end
-        
-        -- Only refresh if visible
-        if parent and parent:IsVisible() then
-            self:DrawReputationTab(parent)
-        end
-    end)
-        
-        -- Real-time update event (single faction changed) - only refresh if visible
+        -- Real-time update event (single faction changed)
         WarbandNexus.RegisterMessage(ReputationUIEvents, Constants.EVENTS.REPUTATION_UPDATED, function(event, factionID)
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil
             
-            if parent and parent:IsVisible() then
+            if parent and IsReputationTabActive() then
                 self:DrawReputationTab(parent)
             end
         end)

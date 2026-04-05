@@ -261,247 +261,772 @@ ns.CollectibleSourceDB = {
         { sourceType = "lockout_quest", npcID = 244424, questID = 92123 },  -- Cragpine (Zul'Aman)
         { sourceType = "lockout_quest", npcID = 249776, questID = 92034 },  -- Thorm'belan (Harandar)
         { sourceType = "lockout_quest", npcID = 248864, questID = 92636 },  -- Predaxas (Voidstorm)
-    },
 
-    -- DEPRECATED: do not add here. Data is merged into npcs/rares/... at load for backward compatibility.
-    -- New entries go in sources[] only. These tables will be removed once fully migrated to sources.
-    legacyNpcs = {
+        -- =====================================================================
+        -- World Rares
+        -- =====================================================================
+        { sourceType = "world_rare", npcID = 180978,
+          -- Hirukon (Zereth Mortis, summoned via Aurelid Lure from Strange Goop)
+          drops = { { type = "mount", itemID = 187676, name = "Deepstar Polyp" } },
+        },
+
+        -- =====================================================================
+        -- Game Objects (chests / post-boss caches)
+        -- INTENTIONAL DUPLICATE mount itemIDs vs npcs: many raids put loot on a
+        -- GameObject chest while the boss NPC row drives statistics/encounter context.
+        -- =====================================================================
+        -- WotLK
+        { sourceType = "object", objectID = 193081,  -- Alexstrasza's Gift (Eye of Eternity - post-Malygos chest)
+          drops = {
+              { type = "mount", itemID = 43952, name = "Reins of the Azure Drake" },
+              { type = "mount", itemID = 43953, name = "Reins of the Blue Drake" },
+          },
+        },
+        -- Cataclysm
+        { sourceType = "object", objectID = 210220,  -- Elementium Fragment (Dragon Soul - post-Deathwing chest)
+          drops = {
+              { type = "mount", itemID = 77067, name = "Reins of the Blazing Drake" },
+              { type = "mount", itemID = 77069, name = "Life-Binder's Handmaiden" },
+          },
+        },
+        { sourceType = "object", objectID = 207123,  -- Kasha's Bag (Zul'Aman - timed event chest)
+          drops = { { type = "mount", itemID = 69230, name = "Amani Battle Bear", guaranteed = true } },
+        },
+        -- MoP
+        { sourceType = "object", objectID = 214424,  -- Cache of Pure Energy (Mogu'shan Vaults - post-Elegon chest)
+          drops = { { type = "mount", itemID = 87777, name = "Reins of the Astral Cloud Serpent" } },
+        },
+        -- Shadowlands
+        { sourceType = "object", objectID = 368304,  -- Sylvanas's Chest (Sanctum of Domination Mythic)
+          drops = { { type = "mount", itemID = 186642, name = "Vengeance's Reins" } },
+        },
+        -- Dragonflight
+        { sourceType = "object", objectID = 376587,  -- Expedition Scout's Pack (Dragon Isles - rare event)
+          drops = { { type = "mount", itemID = 192764, name = "Verdant Skitterfly" } },
+        },
+        -- TWW 11.1 - Undermine
+        { sourceType = "object", objectID = 469857,  -- Overflowing Dumpster (Undermine) — dumpster diving
+          drops = { _miscMechanica[1] },
+        },
+
+        -- =====================================================================
+        -- Fishing
+        -- =====================================================================
+        -- Global (any expansion zone fishing pool)
+        { sourceType = "fishing", mapID = 0,
+          drops = { { type = "mount", itemID = 46109, name = "Sea Turtle" } },
+        },
+        -- Dalaran Underbelly (WotLK/Legion)
+        { sourceType = "fishing", mapID = 125,
+          drops = { { type = "pet", itemID = 43698, name = "Giant Sewer Rat" } },
+        },
+        -- Argus zones (Legion 7.3) - Pond Nettle (BoE but one-time learn)
+        { sourceType = "fishing", mapIDs = { 885, 830, 882 },  -- Antoran Wastes, Krokuun, Mac'Aree
+          drops = { { type = "mount", itemID = 152912, name = "Pond Nettle" } },
+        },
+        -- BfA zones - Great Sea Ray (BoE, repeatable)
+        { sourceType = "fishing",
+          mapIDs = { 896, 895, 942, 862, 863, 864, 1462 },  -- Drustvar, Tiragarde Sound, Stormsong Valley, Zuldazar, Nazmir, Vol'dun, Mechagon Island
+          drops = { { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true } },
+        },
+        -- Zereth Mortis (Shadowlands 9.2) - Strange Goop (BoE, extremely rare ~0.04%)
+        -- Fishing material for Deepstar Aurelid mount via Hirukon summon chain.
+        { sourceType = "fishing", mapID = 1970,
+          drops = { { type = "item", itemID = 187662, name = "Strange Goop", repeatable = true } },
+        },
+
+        -- =====================================================================
+        -- Containers
+        -- =====================================================================
+        -- WotLK
+        { sourceType = "container", containerItemID = 39883,  -- Mysterious Egg (The Oracles, Sholazar Basin)
+          drops = { { type = "mount", itemID = 44707, name = "Reins of the Green Proto-Drake" } },
+        },
+        { sourceType = "container", containerItemID = 44751,  -- Hyldnir Spoils (Storm Peaks daily)
+          drops = { { type = "mount", itemID = 43962, name = "Reins of the White Polar Bear" } },
+        },
+        { sourceType = "container", containerItemID = 69903,  -- Hyldnir Spoils (alternate ID)
+          drops = { { type = "mount", itemID = 43962, name = "Reins of the White Polar Bear" } },
+        },
+        -- WoD Garrison Invasion Bags
+        { sourceType = "container", containerItemID = 116980,  -- Gold Strongbox (Garrison Invasion Gold)
+          drops = {
+              { type = "mount", itemID = 116779, name = "Garn Steelmaw" },
+              { type = "mount", itemID = 116673, name = "Giant Coldsnout" },
+              { type = "mount", itemID = 116663, name = "Shadowhide Pearltusk" },
+              { type = "mount", itemID = 116786, name = "Smoky Direwolf" },
+          },
+        },
+        { sourceType = "container", containerItemID = 122163,  -- Platinum Strongbox (Garrison Invasion Platinum)
+          drops = {
+              { type = "mount", itemID = 116779, name = "Garn Steelmaw" },
+              { type = "mount", itemID = 116673, name = "Giant Coldsnout" },
+              { type = "mount", itemID = 116663, name = "Shadowhide Pearltusk" },
+              { type = "mount", itemID = 116786, name = "Smoky Direwolf" },
+          },
+        },
+        -- Legion Paragon Caches (Broken Isles)
+        { sourceType = "container", containerItemID = 152102,  -- Court of Farondis Paragon Cache (Azsuna)
+          drops = { { type = "mount", itemID = 147806, name = "Cloudwing Hippogryph" } },
+        },
+        { sourceType = "container", containerItemID = 152104,  -- Highmountain Tribe Paragon Cache
+          drops = { { type = "mount", itemID = 147807, name = "Highmountain Elderhorn" } },
+        },
+        { sourceType = "container", containerItemID = 152103,  -- Dreamweavers Paragon Cache (Val'sharah)
+          drops = { { type = "mount", itemID = 147804, name = "Wild Dreamrunner" } },
+        },
+        { sourceType = "container", containerItemID = 152105,  -- Nightfallen Paragon Cache (Suramar)
+          drops = { { type = "mount", itemID = 143764, name = "Leywoven Flying Carpet" } },
+        },
+        { sourceType = "container", containerItemID = 152106,  -- Valarjar Paragon Cache (Stormheim)
+          drops = { { type = "mount", itemID = 147805, name = "Valarjar Stormwing" } },
+        },
+        -- Legion Paragon Caches (Argus)
+        { sourceType = "container", containerItemID = 152923,  -- Army of the Light Supply Cache
+          drops = {
+              { type = "mount", itemID = 153044, name = "Avenging Felcrusher" },
+              { type = "mount", itemID = 153043, name = "Blessed Felcrusher" },
+              { type = "mount", itemID = 153042, name = "Glorious Felcrusher" },
+          },
+        },
+        -- Legion Cracked Fel-Spotted Egg (Argus panthara rares)
+        { sourceType = "container", containerItemID = 153191,  -- Cracked Fel-Spotted Egg
+          drops = {
+              { type = "mount", itemID = 152840, name = "Scintillating Mana Ray" },
+              { type = "mount", itemID = 152841, name = "Felglow Mana Ray" },
+              { type = "mount", itemID = 152843, name = "Darkspore Mana Ray" },
+              { type = "mount", itemID = 152842, name = "Vibrant Mana Ray" },
+          },
+        },
+        -- BfA Containers
+        { sourceType = "container", containerItemID = 169940,  -- Nazjatar Royal Snapdragon container
+          drops = { { type = "mount", itemID = 169198, name = "Royal Snapdragon" } },
+        },
+        { sourceType = "container", containerItemID = 169939,  -- Nazjatar Royal Snapdragon container (alt)
+          drops = { { type = "mount", itemID = 169198, name = "Royal Snapdragon" } },
+        },
+        -- Shadowlands Containers
+        { sourceType = "container", containerItemID = 186650,  -- Maw supply container (9.1)
+          drops = {
+              { type = "mount", itemID = 186649, name = "Fierce Razorwing" },
+              { type = "mount", itemID = 186644, name = "Beryl Shardhide" },
+          },
+        },
+        { sourceType = "container", containerItemID = 187029,  -- Death's Advance supply container
+          drops = { { type = "mount", itemID = 186657, name = "Soulbound Gloomcharger's Reins" } },
+        },
+        { sourceType = "container", containerItemID = 187028,  -- Korthia supply container
+          drops = { { type = "mount", itemID = 186641, name = "Tamed Mauler Harness" } },
+        },
+        { sourceType = "container", containerItemID = 185992,  -- Assault supply container
+          drops = { { type = "mount", itemID = 186103, name = "Undying Darkhound's Harness" } },
+        },
+        { sourceType = "container", containerItemID = 185991,  -- Assault supply container (alt)
+          drops = { { type = "mount", itemID = 186000, name = "Legsplitter War Harness" } },
+        },
+        { sourceType = "container", containerItemID = 185990,  -- Assault supply container (Revendreth)
+          drops = { { type = "mount", itemID = 185996, name = "Harvester's Dredwing Saddle" } },
+        },
+        { sourceType = "container", containerItemID = 180646,  -- Maldraxxus Slime container
+          drops = { { type = "mount", itemID = 182081, name = "Reins of the Colossal Slaughterclaw" } },
+        },
+        { sourceType = "container", containerItemID = 180649,  -- Ardenweald Ardenmoth container
+          drops = { { type = "mount", itemID = 183800, name = "Amber Ardenmoth" } },
+        },
+        { sourceType = "container", containerItemID = 184158,  -- Necroray container (Maldraxxus)
+          drops = {
+              { type = "mount", itemID = 184160, name = "Bulbous Necroray" },
+              { type = "mount", itemID = 184162, name = "Pestilent Necroray" },
+              { type = "mount", itemID = 184161, name = "Infested Necroray" },
+          },
+        },
+        -- Dragonflight Containers
+        { sourceType = "container", containerItemID = 200468,  -- Plainswalker Bearer container
+          drops = { { type = "mount", itemID = 192791, name = "Plainswalker Bearer" } },
+        },
+        -- TWW Containers
+        { sourceType = "container", containerItemID = 228741,  -- Dauntless Imperial Lynx bag (Hallowfall)
+          drops = { { type = "mount", itemID = 223318, name = "Dauntless Imperial Lynx" } },
+        },
+        { sourceType = "container", containerItemID = 232465,  -- Bronze Goblin Waveshredder container (Undermine)
+          drops = { { type = "mount", itemID = 233064, name = "Bronze Goblin Waveshredder" } },
+        },
+        { sourceType = "container", containerItemID = 233557,  -- Personalized Goblin S.C.R.A.Per container (Undermine)
+          drops = { { type = "mount", itemID = 229949, name = "Personalized Goblin S.C.R.A.Per" } },
+        },
+        { sourceType = "container", containerItemID = 237132,  -- Bilgewater Bombardier container (Undermine)
+          drops = { { type = "mount", itemID = 229957, name = "Bilgewater Bombardier" } },
+        },
+        { sourceType = "container", containerItemID = 237135,  -- Blackwater Bonecrusher container (Undermine)
+          drops = { { type = "mount", itemID = 229937, name = "Blackwater Bonecrusher" } },
+        },
+        { sourceType = "container", containerItemID = 237133,  -- Venture Co-ordinator container (Undermine)
+          drops = { { type = "mount", itemID = 229951, name = "Venture Co-ordinator" } },
+        },
+        { sourceType = "container", containerItemID = 237134,  -- Steamwheedle Supplier container (Undermine)
+          drops = { { type = "mount", itemID = 229943, name = "Steamwheedle Supplier" } },
+        },
+        { sourceType = "container", containerItemID = 245611,  -- Curious Slateback container (Karesh)
+          drops = { { type = "mount", itemID = 242734, name = "Curious Slateback" } },
+        },
+        { sourceType = "container", containerItemID = 239546,  -- Void-Scarred Lynx container (Hallowfall 11.1.5)
+          drops = { { type = "mount", itemID = 239563, name = "Void-Scarred Lynx" } },
+        },
+        -- Midnight 12.0 Paragon / Event Caches
+        { sourceType = "container", containerItemID = 267299,  -- Slayer's Duellum Trove (Voidstorm paragon cache)
+          drops = { { type = "mount", itemID = 257176, name = "Duskbrute Harrower" } },
+        },
+        { sourceType = "container", containerItemID = 267300,  -- Victorious Stormarion Pinnacle Cache
+          drops = {
+              { type = "mount", itemID = 257180, name = "Reins of the Contained Stormarion Defender" },
+              { type = "pet",   itemID = 257178, name = "Kai" },
+          },
+        },
+        { sourceType = "container", containerItemID = 268485,  -- Victorious Stormarion Pinnacle Cache (Midnight Preseason)
+          drops = {
+              { type = "mount", itemID = 257180, name = "Reins of the Contained Stormarion Defender" },
+              { type = "pet",   itemID = 257178, name = "Kai" },
+          },
+        },
+        { sourceType = "container", containerItemID = 260979,  -- Victorious Stormarion Cache (blue/uncommon weekly)
+          drops = {
+              { type = "mount", itemID = 257180, name = "Reins of the Contained Stormarion Defender" },
+              { type = "pet",   itemID = 257178, name = "Kai" },
+          },
+        },
+        -- Holiday Containers
+        -- IMPORTANT: Holiday boss mounts drop from these container items, NOT from boss corpse loot.
+        -- Players receive the container once per day via LFG, open from bags → ProcessContainerLoot.
+        { sourceType = "container", containerItemID = 54537,  -- Heart-Shaped Box (Love is in the Air)
+          drops = {
+              { type = "mount", itemID = 50250,  name = "Big Love Rocket" },
+              { type = "mount", itemID = 235658, name = "Spring Butterfly" },
+              { type = "mount", itemID = 210976, name = "X-45 Heartbreaker" },
+              { type = "mount", itemID = 235823, name = "Love Witch's Sweeper" },
+          },
+        },
+        { sourceType = "container", containerItemID = 209024,  -- Loot-Filled Pumpkin (Hallow's End - modern retail)
+          drops = {
+              { type = "mount", itemID = 37012,  name = "The Horseman's Reins" },
+              { type = "mount", itemID = 247721, name = "The Headless Horseman's Ghoulish Charger" },
+          },
+        },
+        { sourceType = "container", containerItemID = 54516,  -- Loot-Filled Pumpkin (Hallow's End - legacy item ID)
+          drops = {
+              { type = "mount", itemID = 37012,  name = "The Horseman's Reins" },
+              { type = "mount", itemID = 247721, name = "The Headless Horseman's Ghoulish Charger" },
+          },
+        },
+        { sourceType = "container", containerItemID = 117393,  -- Keg-Shaped Treasure Chest (Brewfest - modern retail)
+          drops = {
+              { type = "mount", itemID = 37828,  name = "Great Brewfest Kodo" },
+              { type = "mount", itemID = 33977,  name = "Swift Brewfest Ram" },
+              { type = "mount", itemID = 248761, name = "Brewfest Barrel Bomber" },
+          },
+        },
+        { sourceType = "container", containerItemID = 54535,  -- Keg-Shaped Treasure Chest (Brewfest - legacy item ID)
+          drops = {
+              { type = "mount", itemID = 37828,  name = "Great Brewfest Kodo" },
+              { type = "mount", itemID = 33977,  name = "Swift Brewfest Ram" },
+              { type = "mount", itemID = 248761, name = "Brewfest Barrel Bomber" },
+          },
+        },
+
+        -- =====================================================================
+        -- Zone Drops
+        -- =====================================================================
+        -- TWW: Isle of Dorn — Crackling Shard (any killable mob in zone, <1% for normals)
+        -- 17 rares with ≥1% are also in npcs section for specific tracking.
+        -- hostileOnly=true: tooltip only shows on attackable units (excludes friendly NPCs/vendors)
+        { sourceType = "zone_drop", mapID = 2248, hostileOnly = true,
+          drops = _cracklingShard,  -- Isle of Dorn (uiMapID)
+        },
+        -- MIDNIGHT 12.0 - Zone Rare Mounts (any RARE in zone, daily lockout per rare)
+        -- raresOnly=true means tooltip only shows on rare/elite units
+        -- Quel'Thalas region (Cerulean Hawkstrider, Cobalt Dragonhawk)
+        { sourceType = "zone_drop", mapIDs = { 2393, 2395, 2424 }, raresOnly = true,
+          drops = _quelThalasRareMounts,  -- Silvermoon, Eversong Woods, Isle of Quel'Danas
+        },
+        -- Harandar (Rootstalker Grimlynx, Vibrant Petalwing)
+        { sourceType = "zone_drop", mapIDs = { 2413, 2576 }, raresOnly = true,
+          drops = _harandarRareMounts,  -- Harandar, The Den
+        },
+        -- Zul'Aman (Amani Sharptalon, Escaped Witherbark Pango)
+        { sourceType = "zone_drop", mapIDs = { 2437, 2536 }, raresOnly = true,
+          drops = _zulAmanRareMounts,  -- Zul'Aman, Atal'Aman
+        },
+        -- Voidstorm (Augmented Stormray, Sanguine Harrower)
+        { sourceType = "zone_drop", mapIDs = { 2405, 2541 }, raresOnly = true,
+          drops = _voidstormRareMounts,  -- Voidstorm, Arcantina
+        },
+
+        -- =====================================================================
+        -- NPCs / Instance Bosses / World Rares
+        -- =====================================================================
 
         -- ========================================
         -- CLASSIC
         -- ========================================
-
-        [10440] = { -- Baron Rivendare (Stratholme)
-            { type = "mount", itemID = 13335, name = "Deathcharger's Reins" },
-            statisticIds = { 1097 },  -- Rivendare kills (Stratholme)
+        { sourceType = "instance_boss", npcID = 10440,  -- Baron Rivendare (Stratholme)
+          drops = { { type = "mount", itemID = 13335, name = "Deathcharger's Reins" } },
+          statisticIds = { 1097 },
         },
-
-        -- AQ40 Trash Mobs (Temple of Ahn'Qiraj)
-        [15246] = { -- Qiraji Mindslayer (AQ40)
-            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+        -- AQ40 Trash Mobs
+        { sourceType = "npc", npcID = 15246,  -- Qiraji Mindslayer (AQ40)
+          drops = {
+              { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+          },
         },
-        [15317] = { -- Qiraji Champion (AQ40)
-            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+        { sourceType = "npc", npcID = 15317,  -- Qiraji Champion (AQ40)
+          drops = {
+              { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+          },
         },
-        [15247] = { -- Vekniss Stinger (AQ40)
-            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+        { sourceType = "npc", npcID = 15247,  -- Vekniss Stinger (AQ40)
+          drops = {
+              { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+          },
         },
-        [15311] = { -- Anubisath Sentinel (AQ40)
-            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+        { sourceType = "npc", npcID = 15311,  -- Anubisath Sentinel (AQ40)
+          drops = {
+              { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+          },
         },
-        [15249] = { -- Vekniss Wasp (AQ40)
-            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+        { sourceType = "npc", npcID = 15249,  -- Vekniss Wasp (AQ40)
+          drops = {
+              { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+          },
         },
-        [15310] = { -- Vekniss Hive Crawler (AQ40)
-            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
-            { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+        { sourceType = "npc", npcID = 15310,  -- Vekniss Hive Crawler (AQ40)
+          drops = {
+              { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+              { type = "mount", itemID = 21321, name = "Red Qiraji Resonating Crystal" },
+          },
         },
 
         -- ========================================
         -- THE BURNING CRUSADE
         -- ========================================
-
-        [16152] = { -- Attumen the Huntsman (Karazhan)
-            { type = "mount", itemID = 30480, name = "Fiery Warhorse's Reins" },
+        { sourceType = "instance_boss", npcID = 16152,  -- Attumen the Huntsman (Karazhan)
+          drops = { { type = "mount", itemID = 30480, name = "Fiery Warhorse's Reins" } },
         },
-        [19622] = { -- Kael'thas Sunstrider (Tempest Keep: The Eye)
-            { type = "mount", itemID = 32458, name = "Ashes of Al'ar" },
-            statisticIds = { 1088 },  -- Kael'thas Sunstrider kills (The Eye)
+        { sourceType = "instance_boss", npcID = 19622,  -- Kael'thas Sunstrider (Tempest Keep: The Eye)
+          drops = { { type = "mount", itemID = 32458, name = "Ashes of Al'ar" } },
+          statisticIds = { 1088 },
         },
-        [24664] = { -- Kael'thas Sunstrider (Magister's Terrace)
-            { type = "mount", itemID = 35513, name = "Swift White Hawkstrider" },
+        { sourceType = "instance_boss", npcID = 24664,  -- Kael'thas Sunstrider (Magister's Terrace)
+          drops = { { type = "mount", itemID = 35513, name = "Swift White Hawkstrider" } },
         },
-        [23035] = { -- Anzu (Sethekk Halls Heroic)
-            { type = "mount", itemID = 32768, name = "Reins of the Raven Lord" },
+        { sourceType = "instance_boss", npcID = 23035,  -- Anzu (Sethekk Halls Heroic)
+          drops = { { type = "mount", itemID = 32768, name = "Reins of the Raven Lord" } },
         },
 
         -- ========================================
         -- WRATH OF THE LICH KING
         -- ========================================
-
-        [32491] = { -- Time-Lost Proto-Drake (Storm Peaks)
-            { type = "mount", itemID = 44168, name = "Reins of the Time-Lost Proto-Drake", guaranteed = true },
+        { sourceType = "world_rare", npcID = 32491,  -- Time-Lost Proto-Drake (Storm Peaks)
+          drops = { { type = "mount", itemID = 44168, name = "Reins of the Time-Lost Proto-Drake", guaranteed = true } },
         },
-        [26693] = { -- Skadi the Ruthless (Utgarde Pinnacle Heroic)
-            { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" },
+        { sourceType = "instance_boss", npcID = 26693,  -- Skadi the Ruthless (Utgarde Pinnacle Heroic)
+          drops = { { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" } },
         },
-        [174062] = { -- Skadi the Ruthless (Utgarde Pinnacle - Timewalking) [Verified]
-            { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" },
+        { sourceType = "instance_boss", npcID = 174062,  -- Skadi the Ruthless (Utgarde Pinnacle - Timewalking)
+          drops = { { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" } },
         },
-        [28859] = { -- Malygos (Eye of Eternity)
-            { type = "mount", itemID = 43953, name = "Reins of the Blue Drake" },
-            { type = "mount", itemID = 43952, name = "Reins of the Azure Drake" },
-            statisticIds = { 1391, 1394 },  -- Malygos kills (10 & 25)
+        { sourceType = "instance_boss", npcID = 28859,  -- Malygos (Eye of Eternity)
+          drops = {
+              { type = "mount", itemID = 43953, name = "Reins of the Blue Drake" },
+              { type = "mount", itemID = 43952, name = "Reins of the Azure Drake" },
+          },
+          statisticIds = { 1391, 1394 },
         },
-        [28860] = { -- Sartharion (Obsidian Sanctum 3D)
-            { type = "mount", itemID = 43986, name = "Reins of the Black Drake" },
-            { type = "mount", itemID = 43954, name = "Reins of the Twilight Drake" },
-            statisticIds = { 1392, 1393 },  -- Sartharion kills (10 & 25)
+        { sourceType = "instance_boss", npcID = 28860,  -- Sartharion (Obsidian Sanctum 3D)
+          drops = {
+              { type = "mount", itemID = 43986, name = "Reins of the Black Drake" },
+              { type = "mount", itemID = 43954, name = "Reins of the Twilight Drake" },
+          },
+          statisticIds = { 1392, 1393 },
         },
-        [33288] = { -- Yogg-Saron (Ulduar 0-Light 25-man)
-            { type = "mount", itemID = 45693, name = "Mimiron's Head" },
-            statisticIds = { 2869, 2883 },  -- Yogg-Saron kills (10 & 25)
-            dropDifficulty = "25-man",
-            -- NOTE: Requires defeating Yogg-Saron with 0 keepers (Alone in the Darkness)
-            -- Only drops from 25-player mode, not 10-player
+        { sourceType = "instance_boss", npcID = 33288,  -- Yogg-Saron (Ulduar 0-Light 25-man)
+          drops = { { type = "mount", itemID = 45693, name = "Mimiron's Head" } },
+          statisticIds = { 2869, 2883 },
+          dropDifficulty = "25-man",
         },
-        [10184] = { -- Onyxia (Onyxia's Lair)
-            { type = "mount", itemID = 49636, name = "Reins of the Onyxian Drake" },
-            statisticIds = { 1098 },  -- Onyxia kills
+        { sourceType = "instance_boss", npcID = 10184,  -- Onyxia (Onyxia's Lair)
+          drops = { { type = "mount", itemID = 49636, name = "Reins of the Onyxian Drake" } },
+          statisticIds = { 1098 },
         },
-        [36597] = { -- The Lich King (ICC 25H)
-            { type = "mount", itemID = 50818, name = "Invincible's Reins" },
-            statisticIds = { 4688 },  -- Lich King 25H kills
-            dropDifficulty = "25H",
-            -- NOTE: 25-player Heroic only, <1% drop rate
+        { sourceType = "instance_boss", npcID = 36597,  -- The Lich King (ICC 25H)
+          drops = { { type = "mount", itemID = 50818, name = "Invincible's Reins" } },
+          statisticIds = { 4688 },
+          dropDifficulty = "25H",
         },
-        [32273] = { -- Infinite Corruptor (Culling of Stratholme Heroic)
-            { type = "mount", itemID = 43951, name = "Reins of the Bronze Drake", guaranteed = true },
+        { sourceType = "instance_boss", npcID = 32273,  -- Infinite Corruptor (Culling of Stratholme Heroic)
+          drops = { { type = "mount", itemID = 43951, name = "Reins of the Bronze Drake", guaranteed = true } },
         },
         -- Vault of Archavon bosses (faction-specific item IDs)
-        [31125] = { -- Archavon the Stone Watcher
-            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
-            { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
-            statisticIds = { 1753, 1754 },  -- Archavon kills (10 & 25)
+        { sourceType = "instance_boss", npcID = 31125,  -- Archavon the Stone Watcher
+          drops = {
+              { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" },  -- Alliance
+              { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" },  -- Horde
+          },
+          statisticIds = { 1753, 1754 },
         },
-        [33993] = { -- Emalon the Storm Watcher
-            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
-            { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
-            statisticIds = { 3236, 2870 },  -- Emalon kills (10 & 25)
+        { sourceType = "instance_boss", npcID = 33993,  -- Emalon the Storm Watcher
+          drops = {
+              { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" },
+              { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" },
+          },
+          statisticIds = { 3236, 2870 },
         },
-        [35013] = { -- Koralon the Flame Watcher
-            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
-            { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
-            statisticIds = { 4074, 4075 },  -- Koralon kills (10 & 25)
+        { sourceType = "instance_boss", npcID = 35013,  -- Koralon the Flame Watcher
+          drops = {
+              { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" },
+              { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" },
+          },
+          statisticIds = { 4074, 4075 },
         },
-        [38433] = { -- Toravon the Ice Watcher
-            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
-            { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
-            statisticIds = { 4657, 4658 },  -- Toravon kills (10 & 25)
+        { sourceType = "instance_boss", npcID = 38433,  -- Toravon the Ice Watcher
+          drops = {
+              { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" },
+              { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" },
+          },
+          statisticIds = { 4657, 4658 },
         },
 
         -- ========================================
         -- CATACLYSM
         -- ========================================
-
         -- World Rares (guaranteed drops)
-        [50062] = { -- Aeonaxx (Deepholm)
-            { type = "mount", itemID = 63042, name = "Reins of the Phosphorescent Stone Drake", guaranteed = true },
+        { sourceType = "world_rare", npcID = 50062,  -- Aeonaxx (Deepholm)
+          drops = { { type = "mount", itemID = 63042, name = "Reins of the Phosphorescent Stone Drake", guaranteed = true } },
         },
-        [50005] = { -- Poseidus (Vashj'ir)
-            { type = "mount", itemID = 67151, name = "Reins of Poseidus", guaranteed = true },
+        { sourceType = "world_rare", npcID = 50005,  -- Poseidus (Vashj'ir)
+          drops = { { type = "mount", itemID = 67151, name = "Reins of Poseidus", guaranteed = true } },
         },
-
-        [43873] = { -- Altairus (Vortex Pinnacle)
-            { type = "mount", itemID = 63040, name = "Reins of the Drake of the North Wind" },
+        { sourceType = "instance_boss", npcID = 43873,  -- Altairus (Vortex Pinnacle)
+          drops = { { type = "mount", itemID = 63040, name = "Reins of the Drake of the North Wind" } },
         },
-        [43214] = { -- Slabhide (The Stonecore) - ALL DIFFICULTIES
-            { type = "mount", itemID = 63043, name = "Reins of the Vitreous Stone Drake" },
-            -- NOTE: Drops on both Normal and Heroic (no Mythic in Cataclysm)
+        { sourceType = "instance_boss", npcID = 43214,  -- Slabhide (The Stonecore) - ALL DIFFICULTIES
+          drops = { { type = "mount", itemID = 63043, name = "Reins of the Vitreous Stone Drake" } },
         },
-        [46753] = { -- Al'Akir (Throne of the Four Winds)
-            { type = "mount", itemID = 63041, name = "Reins of the Drake of the South Wind" },
-            statisticIds = { 5576, 5577 },  -- Al'Akir kills (10 & 25)
+        { sourceType = "instance_boss", npcID = 46753,  -- Al'Akir (Throne of the Four Winds)
+          drops = { { type = "mount", itemID = 63041, name = "Reins of the Drake of the South Wind" } },
+          statisticIds = { 5576, 5577 },
         },
-        [52151] = { -- Bloodlord Mandokir (Zul'Gurub)
-            { type = "mount", itemID = 68823, name = "Armored Razzashi Raptor" },
+        { sourceType = "instance_boss", npcID = 52151,  -- Bloodlord Mandokir (Zul'Gurub)
+          drops = { { type = "mount", itemID = 68823, name = "Armored Razzashi Raptor" } },
         },
-        [52059] = { -- High Priestess Kilnara (Zul'Gurub) [Verified]
-            { type = "mount", itemID = 68824, name = "Swift Zulian Panther" },
+        { sourceType = "instance_boss", npcID = 52059,  -- High Priestess Kilnara (Zul'Gurub)
+          drops = { { type = "mount", itemID = 68824, name = "Swift Zulian Panther" } },
         },
-        [55294] = { -- Ultraxion (Dragon Soul) - ALL DIFFICULTIES
-            { type = "mount", itemID = 78919, name = "Experiment 12-B" },
-            statisticIds = { 6161, 6162 },  -- Ultraxion kills (10 & 25)
-            -- NOTE: Drops on 10/25 Normal and Heroic, ~1% drop rate
+        { sourceType = "instance_boss", npcID = 55294,  -- Ultraxion (Dragon Soul) - ALL DIFFICULTIES
+          drops = { { type = "mount", itemID = 78919, name = "Experiment 12-B" } },
+          statisticIds = { 6161, 6162 },
         },
-        [52530] = { -- Alysrazor (Firelands)
-            { type = "mount", itemID = 71665, name = "Flametalon of Alysrazor" },
-            statisticIds = { 5970, 5971 },  -- Alysrazor kills (10 & 25)
+        { sourceType = "instance_boss", npcID = 52530,  -- Alysrazor (Firelands)
+          drops = { { type = "mount", itemID = 71665, name = "Flametalon of Alysrazor" } },
+          statisticIds = { 5970, 5971 },
         },
-        [52409] = { -- Ragnaros (Firelands) - ALL DIFFICULTIES
-            { type = "mount", itemID = 69224, name = "Smoldering Egg of Millagazor" },
-            statisticIds = { 5976, 5977 },  -- Ragnaros kills (10 & 25)
-            -- NOTE: Drops on both Normal and Heroic (10/25), ~1-2% drop rate
+        { sourceType = "instance_boss", npcID = 52409,  -- Ragnaros (Firelands) - ALL DIFFICULTIES
+          drops = { { type = "mount", itemID = 69224, name = "Smoldering Egg of Millagazor" } },
+          statisticIds = { 5976, 5977 },
         },
-        -- Madness of Deathwing (Dragon Soul) - 2 mount drops
-        [56173] = { -- Madness of Deathwing (Dragon Soul)
-            { type = "mount", itemID = 77067, name = "Reins of the Blazing Drake" },
-            { type = "mount", itemID = 77069, name = "Life-Binder's Handmaiden", dropDifficulty = "Heroic" },
-            statisticIds = { 6167, 6168 },  -- Madness of Deathwing kills (10 & 25)
+        { sourceType = "instance_boss", npcID = 56173,  -- Madness of Deathwing (Dragon Soul)
+          drops = {
+              { type = "mount", itemID = 77067, name = "Reins of the Blazing Drake" },
+              { type = "mount", itemID = 77069, name = "Life-Binder's Handmaiden", dropDifficulty = "Heroic" },
+          },
+          statisticIds = { 6167, 6168 },
         },
 
         -- ========================================
         -- MISTS OF PANDARIA
         -- ========================================
-
         -- World Bosses
-        [60491] = { -- Sha of Anger (Kun-Lai Summit)
-            { type = "mount", itemID = 87771, name = "Reins of the Heavenly Onyx Cloud Serpent" },
-            statisticIds = { 6989 },  -- Sha of Anger kills
+        { sourceType = "world_rare", npcID = 60491,  -- Sha of Anger (Kun-Lai Summit)
+          drops = { { type = "mount", itemID = 87771, name = "Reins of the Heavenly Onyx Cloud Serpent" } },
+          statisticIds = { 6989 },
         },
-        [62346] = { -- Galleon (Valley of the Four Winds)
-            { type = "mount", itemID = 89783, name = "Son of Galleon's Saddle" },
-            statisticIds = { 6990 },  -- Galleon kills
+        { sourceType = "world_rare", npcID = 62346,  -- Galleon (Valley of the Four Winds)
+          drops = { { type = "mount", itemID = 89783, name = "Son of Galleon's Saddle" } },
+          statisticIds = { 6990 },
         },
-        [69099] = { -- Nalak (Isle of Thunder)
-            { type = "mount", itemID = 95057, name = "Reins of the Thundering Cobalt Cloud Serpent" },
-            statisticIds = { 8146 },  -- Nalak kills
+        { sourceType = "world_rare", npcID = 69099,  -- Nalak (Isle of Thunder)
+          drops = { { type = "mount", itemID = 95057, name = "Reins of the Thundering Cobalt Cloud Serpent" } },
+          statisticIds = { 8146 },
         },
-        [69161] = { -- Oondasta (Isle of Giants)
-            { type = "mount", itemID = 94228, name = "Reins of the Cobalt Primordial Direhorn" },
-            statisticIds = { 8147 },  -- Oondasta kills
+        { sourceType = "world_rare", npcID = 69161,  -- Oondasta (Isle of Giants)
+          drops = { { type = "mount", itemID = 94228, name = "Reins of the Cobalt Primordial Direhorn" } },
+          statisticIds = { 8147 },
         },
-        [73167] = { -- Huolon (Timeless Isle)
-            { type = "mount", itemID = 104269, name = "Reins of the Thundering Onyx Cloud Serpent" },
+        { sourceType = "world_rare", npcID = 73167,  -- Huolon (Timeless Isle)
+          drops = { { type = "mount", itemID = 104269, name = "Reins of the Thundering Onyx Cloud Serpent" } },
         },
-
         -- Zandalari Warbringers (3 colors from 3 NPC variants)
-        [69841] = { -- Zandalari Warbringer (Amber)
-            { type = "mount", itemID = 94230, name = "Reins of the Amber Primordial Direhorn" },
+        { sourceType = "world_rare", npcID = 69841,  -- Zandalari Warbringer (Amber)
+          drops = { { type = "mount", itemID = 94230, name = "Reins of the Amber Primordial Direhorn" } },
         },
-        [69842] = { -- Zandalari Warbringer (Jade)
-            { type = "mount", itemID = 94231, name = "Reins of the Jade Primordial Direhorn" },
+        { sourceType = "world_rare", npcID = 69842,  -- Zandalari Warbringer (Jade)
+          drops = { { type = "mount", itemID = 94231, name = "Reins of the Jade Primordial Direhorn" } },
         },
-        [69769] = { -- Zandalari Warbringer (Slate)
-            { type = "mount", itemID = 94229, name = "Reins of the Slate Primordial Direhorn" },
+        { sourceType = "world_rare", npcID = 69769,  -- Zandalari Warbringer (Slate)
+          drops = { { type = "mount", itemID = 94229, name = "Reins of the Slate Primordial Direhorn" } },
+        },
+        -- Raid Bosses
+        { sourceType = "instance_boss", npcID = 60410,  -- Elegon (Mogu'shan Vaults)
+          drops = { { type = "mount", itemID = 87777, name = "Reins of the Astral Cloud Serpent" } },
+          statisticIds = { 6797, 6798, 7924, 7923 },
+        },
+        { sourceType = "instance_boss", npcID = 68476,  -- Horridon (Throne of Thunder)
+          drops = { { type = "mount", itemID = 93666, name = "Spawn of Horridon" } },
+          statisticIds = { 8151, 8149, 8152, 8150 },
+        },
+        { sourceType = "instance_boss", npcID = 69712,  -- Ji-Kun (Throne of Thunder)
+          drops = { { type = "mount", itemID = 95059, name = "Clutch of Ji-Kun" } },
+          statisticIds = { 8171, 8169, 8172, 8170 },
+        },
+        { sourceType = "instance_boss", npcID = 71865,  -- Garrosh Hellscream (Siege of Orgrimmar Mythic)
+          drops = { { type = "mount", itemID = 104253, name = "Kor'kron Juggernaut" } },
+          statisticIds = { 8638, 8637 },
+          dropDifficulty = "Mythic",
         },
 
-        -- Raid Bosses
-        [60410] = { -- Elegon (Mogu'shan Vaults)
-            { type = "mount", itemID = 87777, name = "Reins of the Astral Cloud Serpent" },
-            statisticIds = { 6797, 6798, 7924, 7923 },  -- Elegon kills (10N, 25N, 10H, 25H)
-        },
-        [68476] = { -- Horridon (Throne of Thunder)
-            { type = "mount", itemID = 93666, name = "Spawn of Horridon" },
-            statisticIds = { 8151, 8149, 8152, 8150 },  -- Horridon kills (10N, 25N, 10H, 25H)
-        },
-        [69712] = { -- Ji-Kun (Throne of Thunder)
-            { type = "mount", itemID = 95059, name = "Clutch of Ji-Kun" },
-            statisticIds = { 8171, 8169, 8172, 8170 },  -- Ji-Kun kills (10N, 25N, 10H, 25H)
-        },
-        [71865] = { -- Garrosh Hellscream (Siege of Orgrimmar Mythic)
-            { type = "mount", itemID = 104253, name = "Kor'kron Juggernaut" },
-            statisticIds = { 8638, 8637 },  -- Garrosh kills (N/H & Mythic)
-            dropDifficulty = "Mythic",
-            -- NOTE: Mythic-only mechanical scorpion mount (item 104253, not 112751)
-        },
+        -- =====================================================================
+        -- Encounter ID → NPC(s) mappings (DungeonEncounter.ID)
+        -- =====================================================================
+        { sourceType = "encounter", encounterID = 652,  npcIDs = { 16152 } },              -- Attumen the Huntsman
+        { sourceType = "encounter", encounterID = 733,  npcIDs = { 19622 } },              -- Kael'thas (The Eye)
+        { sourceType = "encounter", encounterID = 1126, npcIDs = { 31125 } },              -- Archavon
+        { sourceType = "encounter", encounterID = 1127, npcIDs = { 33993 } },              -- Emalon
+        { sourceType = "encounter", encounterID = 1128, npcIDs = { 35013 } },              -- Koralon
+        { sourceType = "encounter", encounterID = 1129, npcIDs = { 38433 } },              -- Toravon
+        { sourceType = "encounter", encounterID = 1094, npcIDs = { 28859 } },              -- Malygos
+        { sourceType = "encounter", encounterID = 1090, npcIDs = { 28860 } },              -- Sartharion
+        { sourceType = "encounter", encounterID = 1084, npcIDs = { 10184 } },              -- Onyxia
+        { sourceType = "encounter", encounterID = 1143, npcIDs = { 33288 } },              -- Yogg-Saron
+        { sourceType = "encounter", encounterID = 1106, npcIDs = { 36597 } },              -- The Lich King
+        { sourceType = "encounter", encounterID = 1203, npcIDs = { 52409 } },              -- Ragnaros
+        { sourceType = "encounter", encounterID = 1297, npcIDs = { 55294 } },              -- Ultraxion
+        { sourceType = "encounter", encounterID = 1299, npcIDs = { 56173 } },              -- Madness of Deathwing
+        { sourceType = "encounter", encounterID = 1500, npcIDs = { 60410 } },              -- Elegon
+        { sourceType = "encounter", encounterID = 1575, npcIDs = { 68476 } },              -- Horridon
+        { sourceType = "encounter", encounterID = 1573, npcIDs = { 69712 } },              -- Ji-Kun
+        { sourceType = "encounter", encounterID = 1623, npcIDs = { 71865 } },              -- Garrosh Hellscream
+        { sourceType = "encounter", encounterID = 1704, npcIDs = { 77325 } },              -- Blackhand
+        { sourceType = "encounter", encounterID = 1799, npcIDs = { 91331 } },              -- Archimonde
+        { sourceType = "encounter", encounterID = 1866, npcIDs = { 105503, 104154, 111022 } }, -- Gul'dan
+        { sourceType = "encounter", encounterID = 2037, npcIDs = { 115767 } },             -- Mistress Sassz'ine
+        { sourceType = "encounter", encounterID = 2074, npcIDs = { 126915, 126916 } },     -- Felhounds of Sargeras
+        { sourceType = "encounter", encounterID = 2092, npcIDs = { 130352 } },             -- Argus the Unmaker
+        { sourceType = "encounter", encounterID = 2291, npcIDs = { 155157, 150190 } },     -- HK-8 Aerial Oppression Unit
+        { sourceType = "encounter", encounterID = 2096, npcIDs = { 126983 } },             -- Harlan Sweete
+        { sourceType = "encounter", encounterID = 2123, npcIDs = { 133007 } },             -- Unbound Abomination
+        { sourceType = "encounter", encounterID = 2143, npcIDs = { 136160 } },             -- King Dazar
+        { sourceType = "encounter", encounterID = 2276, npcIDs = { 144796 } },             -- Mekkatorque
+        { sourceType = "encounter", encounterID = 2281, npcIDs = { 165396 } },             -- Lady Jaina Proudmoore
+        { sourceType = "encounter", encounterID = 2344, npcIDs = { 158041 } },             -- N'Zoth the Corruptor
+        { sourceType = "encounter", encounterID = 2390, npcIDs = { 162693 } },             -- Nalthor the Rimebinder
+        { sourceType = "encounter", encounterID = 2442, npcIDs = { 180863 } },             -- So'leah
+        { sourceType = "encounter", encounterID = 2429, npcIDs = { 178738 } },             -- The Nine
+        { sourceType = "encounter", encounterID = 2435, npcIDs = { 175732 } },             -- Sylvanas Windrunner
+        { sourceType = "encounter", encounterID = 2537, npcIDs = { 180990 } },             -- The Jailer
+        { sourceType = "encounter", encounterID = 2607, npcIDs = { 189492 } },             -- Raszageth
+        { sourceType = "encounter", encounterID = 2685, npcIDs = { 201791 } },             -- Scalecommander Sarkareth
+        { sourceType = "encounter", encounterID = 2677, npcIDs = { 204931 } },             -- Fyrakk
+        { sourceType = "encounter", encounterID = 2788, npcIDs = { 210798 } },             -- The Darkness (Darkflame Cleft)
+        { sourceType = "encounter", encounterID = 2883, npcIDs = { 213119 } },             -- Void Speaker Eirich
+        { sourceType = "encounter", encounterID = 2922, npcIDs = { 218370 } },             -- Queen Ansurek
+        { sourceType = "encounter", encounterID = 3016, npcIDs = { 241526 } },             -- Chrome King Gallywix
+        { sourceType = "encounter", encounterID = 3059, npcIDs = { 231636 } },             -- Restless Heart (Windrunner Spire)
+        { sourceType = "encounter", encounterID = 3074, npcIDs = { 231865 } },             -- Degentrius (Magisters' Terrace)
+        { sourceType = "encounter", encounterID = 3183, npcIDs = { 214650 } },             -- Midnight Falls (March on Quel'Danas)
+
+        -- =====================================================================
+        -- Encounter Name → NPC(s) mappings (GUID fallback for Midnight)
+        -- =====================================================================
+        { sourceType = "encounter_name", encounterName = "Restless Heart", npcIDs = { 231636 } },  -- Windrunner Spire
+        { sourceType = "encounter_name", encounterName = "Degentrius",     npcIDs = { 231865 } },  -- Magisters' Terrace
+        { sourceType = "encounter_name", encounterName = "Midnight Falls", npcIDs = { 214650 } },  -- March on Quel'Danas
+
+        -- =====================================================================
+        -- Lockout Quests (older content: MoP through TWW 11.2)
+        -- Midnight 12.0 lockout quests are listed earlier in this sources[] block.
+        -- =====================================================================
+        -- MoP: World Bosses (weekly lockout via bonus roll quest)
+        { sourceType = "lockout_quest", npcID = 60491, questID = 32099 },  -- Sha of Anger (Kun-Lai Summit)
+        { sourceType = "lockout_quest", npcID = 62346, questID = 32098 },  -- Galleon (Valley of the Four Winds)
+        { sourceType = "lockout_quest", npcID = 69099, questID = 32518 },  -- Nalak (Isle of Thunder)
+        { sourceType = "lockout_quest", npcID = 69161, questID = 32519 },  -- Oondasta (Isle of Giants)
+        -- MoP: Timeless Isle (daily lockout)
+        { sourceType = "lockout_quest", npcID = 73167, questID = 33311 },  -- Huolon
+
+        -- WoD: World Boss (weekly lockout)
+        { sourceType = "lockout_quest", npcID = 83746, questID = 37464 },  -- Rukhmar (Spires of Arak)
+        { sourceType = "lockout_quest", npcID = 87493, questID = 37464 },  -- Rukhmar (alt NPC ID)
+        -- WoD: Tanaan Jungle Champions (daily lockout)
+        { sourceType = "lockout_quest", npcID = 95044, questID = 39288 },  -- Terrorfist
+        { sourceType = "lockout_quest", npcID = 95053, questID = 39287 },  -- Deathtalon
+        { sourceType = "lockout_quest", npcID = 95054, questID = 39290 },  -- Vengeance
+        { sourceType = "lockout_quest", npcID = 95056, questID = 39289 },  -- Doomroller
+
+        -- Legion: World Bosses (biweekly lockout)
+        { sourceType = "lockout_quest", npcID = 111573, questID = 43798 },  -- Kosumoth the Hungering — TODO: verify questID in-game
+        -- Legion: Argus rares (daily lockout)
+        { sourceType = "lockout_quest", npcID = 122958, questID = 49183 },  -- Blistermaw (Antoran Wastes)
+        { sourceType = "lockout_quest", npcID = 126040, questID = 48809 },  -- Puscilla (Antoran Wastes)
+        { sourceType = "lockout_quest", npcID = 126199, questID = 48810 },  -- Vrax'thul (Antoran Wastes)
+        { sourceType = "lockout_quest", npcID = 126852, questID = 48695 },  -- Wrangler Kravos (Mac'Aree)
+        { sourceType = "lockout_quest", npcID = 126867, questID = 48705 },  -- Venomtail Skyfin (Mac'Aree)
+        { sourceType = "lockout_quest", npcID = 126912, questID = 48721 },  -- Skreeg the Devourer (Mac'Aree)
+        { sourceType = "lockout_quest", npcID = 127288, questID = 48821 },  -- Houndmaster Kerrax (Antoran Wastes)
+
+        -- BfA: Warfront Arathi Highlands (cycle-based lockout)
+        { sourceType = "lockout_quest", npcID = 142692, questIDs = { 53091, 53517 } },  -- Nimar the Slayer
+        { sourceType = "lockout_quest", npcID = 142423, questIDs = { 53014, 53518 } },  -- Overseer Krix
+        { sourceType = "lockout_quest", npcID = 142437, questIDs = { 53022, 53526 } },  -- Skullripper
+        { sourceType = "lockout_quest", npcID = 142709, questIDs = { 53083, 53504 } },  -- Beastrider Kama
+        { sourceType = "lockout_quest", npcID = 142741, questID = 53085 },              -- Doomrider Helgrim (Alliance)
+        { sourceType = "lockout_quest", npcID = 142739, questID = 53088 },              -- Knight-Captain Aldrin (Horde)
+        -- BfA: Warfront Darkshore (cycle-based lockout)
+        { sourceType = "lockout_quest", npcID = 148787, questIDs = { 54695, 54696 } },  -- Alash'anir
+        { sourceType = "lockout_quest", npcID = 149652, questID = 54883 },              -- Agathe Wyrmwood (Alliance)
+        { sourceType = "lockout_quest", npcID = 149660, questID = 54890 },              -- Blackpaw (Horde)
+        { sourceType = "lockout_quest", npcID = 149655, questID = 54886 },              -- Croz Bloodrage (Alliance)
+        { sourceType = "lockout_quest", npcID = 149663, questID = 54892 },              -- Shadowclaw (Horde)
+        { sourceType = "lockout_quest", npcID = 148037, questID = 54431 },              -- Athil Dewfire (Horde)
+        { sourceType = "lockout_quest", npcID = 147701, questID = 54277 },              -- Moxo the Beheader (Alliance)
+        -- BfA 8.2: Mechagon / Nazjatar (daily lockout)
+        { sourceType = "lockout_quest", npcID = 152182, questID = 55811 },  -- Rustfeather
+        { sourceType = "lockout_quest", npcID = 154342, questID = 55512 },  -- Arachnoid Harvester (alt timeline)
+        { sourceType = "lockout_quest", npcID = 151934, questID = 55512 },  -- Arachnoid Harvester (standard)
+        { sourceType = "lockout_quest", npcID = 152290, questID = 56298 },  -- Soundless
+        -- BfA 8.3: Vale of Eternal Blossoms assault rares (daily lockout)
+        { sourceType = "lockout_quest", npcID = 157466, questID = 57363 },  -- Anh-De the Loyal
+        { sourceType = "lockout_quest", npcID = 157153, questID = 57344 },  -- Ha-Li
+        { sourceType = "lockout_quest", npcID = 157160, questID = 57345 },  -- Houndlord Ren
+        -- BfA 8.3: Uldum assault rares (daily lockout)
+        { sourceType = "lockout_quest", npcID = 157134, questID = 57259 },  -- Ishak of the Four Winds
+        { sourceType = "lockout_quest", npcID = 162147, questID = 58696 },  -- Corpse Eater
+        { sourceType = "lockout_quest", npcID = 157146, questID = 57273 },  -- Rotfeaster
+        -- BfA: World Boss (weekly lockout via world quest)
+        { sourceType = "lockout_quest", npcID = 138794, questID = 53000 },  -- Dunegorger Kraulok
+
+        -- Shadowlands: Ardenweald rares (daily lockout)
+        { sourceType = "lockout_quest", npcID = 164107, questID = 59145 },  -- Gormtamer Tizo
+        { sourceType = "lockout_quest", npcID = 164112, questID = 59157 },  -- Humon'gozz
+        { sourceType = "lockout_quest", npcID = 168647, questID = 61632 },  -- Valfir the Unrelenting
+        -- Shadowlands: Bastion (daily lockout)
+        { sourceType = "lockout_quest", npcID = 170548, questID = 60862 },  -- Sundancer
+        -- Shadowlands: Revendreth rares (daily lockout)
+        { sourceType = "lockout_quest", npcID = 166521, questID = 59869 },  -- Famu the Infinite
+        { sourceType = "lockout_quest", npcID = 165290, questID = 59612 },  -- Harika the Horrid
+        { sourceType = "lockout_quest", npcID = 166679, questID = 59900 },  -- Hopecrusher
+        { sourceType = "lockout_quest", npcID = 160821, questID = 58259 },  -- Worldedge Gorger
+        -- Shadowlands: Maldraxxus rares (daily lockout)
+        { sourceType = "lockout_quest", npcID = 162741, questID = 58872 },  -- Gieger
+        { sourceType = "lockout_quest", npcID = 162586, questID = 58783 },  -- Tahonta
+        { sourceType = "lockout_quest", npcID = 157309, questID = 61720 },  -- Violet Mistake
+        { sourceType = "lockout_quest", npcID = 162690, questID = 58851 },  -- Nerissa Heartless
+        { sourceType = "lockout_quest", npcID = 162819, questID = 58889 },  -- Warbringer Mal'Korak
+        { sourceType = "lockout_quest", npcID = 162818, questID = 58889 },  -- Warbringer Mal'Korak (alt)
+        { sourceType = "lockout_quest", npcID = 168147, questID = 58784 },  -- Sabriel the Bonecleaver
+        { sourceType = "lockout_quest", npcID = 168148, questID = 58784 },  -- Sabriel the Bonecleaver (alt)
+        -- Theater of Pain combatants (shared daily lockout)
+        { sourceType = "lockout_quest", npcID = 162873, questID = 62786 },
+        { sourceType = "lockout_quest", npcID = 162880, questID = 62786 },
+        { sourceType = "lockout_quest", npcID = 162875, questID = 62786 },
+        { sourceType = "lockout_quest", npcID = 162853, questID = 62786 },
+        { sourceType = "lockout_quest", npcID = 162874, questID = 62786 },
+        { sourceType = "lockout_quest", npcID = 162872, questID = 62786 },
+        -- Shadowlands: Maw rares (daily lockout)
+        { sourceType = "lockout_quest", npcID = 174861, questID = 63433 },  -- Gorged Shadehound
+        { sourceType = "lockout_quest", npcID = 179460, questID = 64164 },  -- Fallen Charger
+        -- Shadowlands: Korthia rares (daily lockout)
+        { sourceType = "lockout_quest", npcID = 179472, questID = 64246 },  -- Konthrogz the Obliterator
+        { sourceType = "lockout_quest", npcID = 180160, questID = 64455 },  -- Reliwik the Defiant
+        { sourceType = "lockout_quest", npcID = 179684, questID = 64233 },  -- Malbog
+        { sourceType = "lockout_quest", npcID = 179985, questID = 64313 },  -- Stygian Stonecrusher
+        { sourceType = "lockout_quest", npcID = 180032, questID = 64338 },  -- Wild Worldcracker
+        { sourceType = "lockout_quest", npcID = 180042, questID = 64349 },  -- Fleshwing
+        -- Shadowlands: Zereth Mortis (daily lockout)
+        { sourceType = "lockout_quest", npcID = 180978, questID = 65548 },  -- Hirukon
+
+        -- Dragonflight: Zaralek Cavern (daily lockout)
+        { sourceType = "lockout_quest", npcID = 203625, questID = 75333 },  -- Karokta
+        -- Dragonflight: Forbidden Reach rares (daily lockout, shared Ancient Salamanther mount)
+        { sourceType = "lockout_quest", npcID = 200537, questID = 73095 },  -- Gahz'raxes
+        { sourceType = "lockout_quest", npcID = 200579, questID = 73100 },  -- Ishyra
+        { sourceType = "lockout_quest", npcID = 200584, questID = 73111 },  -- Vraken the Hunter
+        { sourceType = "lockout_quest", npcID = 200600, questID = 73117 },  -- Reisa the Drowned
+        { sourceType = "lockout_quest", npcID = 200610, questID = 73118 },  -- Duzalgor
+        { sourceType = "lockout_quest", npcID = 200681, questID = 74341 },  -- Bonesifter Marwak
+        { sourceType = "lockout_quest", npcID = 200717, questID = 74342 },  -- Galakhad
+        { sourceType = "lockout_quest", npcID = 200721, questID = 73154 },  -- Grugoth the Hullcrusher
+        { sourceType = "lockout_quest", npcID = 200885, questID = 73222 },  -- Lady Shaz'ra
+        { sourceType = "lockout_quest", npcID = 200904, questID = 73229 },  -- Veltrax
+        { sourceType = "lockout_quest", npcID = 200911, questID = 73225 },  -- Volcanakk
+        { sourceType = "lockout_quest", npcID = 200956, questID = 74349 },  -- Ookbeard
+        { sourceType = "lockout_quest", npcID = 200960, questID = 73367 },  -- Warden Entrix
+        { sourceType = "lockout_quest", npcID = 200978, questID = 73385 },  -- Pyrachniss
+        { sourceType = "lockout_quest", npcID = 201013, questID = 73409 },  -- Wyrmslayer Angvardi
+        { sourceType = "lockout_quest", npcID = 201181, questID = 74283 },  -- Mad-Eye Carrey
+
+        -- TWW: Hallowfall / Ringing Deeps (daily lockout)
+        { sourceType = "lockout_quest", npcID = 207802, questID = 81763 },  -- Beledar's Spawn
+        { sourceType = "lockout_quest", npcID = 220285, questID = 81633 },  -- Regurgitated Mole Reins rare
+        -- TWW: Azj-Kahet (daily lockout)
+        { sourceType = "lockout_quest", npcID = 216046, questID = 82289 },  -- Tka'ktath
+        -- TWW 11.1: Undermine — Darkfuse Precipitant (weekly loot lockout)
+        { sourceType = "lockout_quest", npcID = 231310, questID = 85010 },  -- Darkfuse Precipitant
+        -- TWW 11.1: Undermine — weekly elite rares
+        { sourceType = "lockout_quest", npcID = 230746, questID = 84877 },  -- Ephemeral Agent Lathyd
+        { sourceType = "lockout_quest", npcID = 230793, questID = 84884 },  -- The Junk-Wall
+        { sourceType = "lockout_quest", npcID = 230800, questID = 84895 },  -- Slugger the Smart
+        { sourceType = "lockout_quest", npcID = 230828, questID = 84907 },  -- Chief Foreman Gutso
+        { sourceType = "lockout_quest", npcID = 230840, questID = 84911 },  -- Flyboy Snooty
+        -- TWW 11.1: Undermine — daily rares
+        { sourceType = "lockout_quest", npcID = 230931, questID = 84917 },  -- Scrapbeak
+        { sourceType = "lockout_quest", npcID = 230934, questID = 84918 },  -- Ratspit
+        { sourceType = "lockout_quest", npcID = 230940, questID = 84919 },  -- Tally Doublespeak
+        { sourceType = "lockout_quest", npcID = 230946, questID = 84920 },  -- V.V. Goosworth
+        { sourceType = "lockout_quest", npcID = 230951, questID = 84921 },  -- Thwack
+        { sourceType = "lockout_quest", npcID = 230979, questID = 84922 },  -- S.A.L.
+        { sourceType = "lockout_quest", npcID = 230995, questID = 84926 },  -- Nitro
+        { sourceType = "lockout_quest", npcID = 231012, questID = 84927 },  -- Candy Stickemup
+        { sourceType = "lockout_quest", npcID = 231017, questID = 84928 },  -- Grimewick
+        { sourceType = "lockout_quest", npcID = 231288, questID = 85004 },  -- Swigs Farsight
+        -- TWW 11.2: Karesh (daily lockout)
+        { sourceType = "lockout_quest", npcID = 232195, questID = 90593 },  -- Pearlescent Krolusk
+        { sourceType = "lockout_quest", npcID = 234845, questID = 91293 },  -- Sthaarbs
+    },
+
+    -- DEPRECATED: do not add here. Add only to sources[]. This table will be removed once fully migrated.
+    legacyNpcs = {
+        -- Classic/TBC/WotLK migrated to sources[].
+
+        -- ========================================
+        -- CATACLYSM
+        -- ========================================
+
+        -- Cataclysm + MoP migrated to sources[].
 
         -- ========================================
         -- WARLORDS OF DRAENOR
@@ -1387,663 +1912,19 @@ ns.CollectibleSourceDB = {
         -- All holiday boss mounts are tracked in the containers table below.
     },
 
-    -- =================================================================
-    -- GAME OBJECTS (Chests, Caches, Clickable Objects)
-    -- Key: [objectID] = { { type, itemID, name }, ... }
-    --
-    -- INTENTIONAL DUPLICATE mount itemIDs vs legacyNpcs: many raids put loot on a
-    -- GameObject chest (e.g. Alexstrasza's Gift) while the boss NPC row still drives
-    -- statistics / encounter context. Try counter matches corpse OR chest GUID.
-    legacyObjects = {
-        -- WotLK
-        [193081] = { -- Alexstrasza's Gift (Eye of Eternity - post-Malygos chest)
-            { type = "mount", itemID = 43952, name = "Reins of the Azure Drake" },
-            { type = "mount", itemID = 43953, name = "Reins of the Blue Drake" },
-        },
+    legacyObjects = {},  -- migrated to sources[]
 
-        -- Cataclysm
-        [210220] = { -- Elementium Fragment (Dragon Soul - post-Deathwing chest)
-            { type = "mount", itemID = 77067, name = "Reins of the Blazing Drake" },
-            { type = "mount", itemID = 77069, name = "Life-Binder's Handmaiden" },
-        },
-        [207123] = { -- Kasha's Bag (Zul'Aman - timed event chest)
-            { type = "mount", itemID = 69230, name = "Amani Battle Bear", guaranteed = true },
-        },
+    legacyFishing = {},  -- migrated to sources[]
 
-        -- MoP
-        [214424] = { -- Cache of Pure Energy (Mogu'shan Vaults - post-Elegon chest)
-            { type = "mount", itemID = 87777, name = "Reins of the Astral Cloud Serpent" },
-        },
+    legacyRares = {},  -- migrated to sources[]
 
-        -- Dragonflight
-        [376587] = { -- Expedition Scout's Pack (Dragon Isles - rare event)
-            { type = "mount", itemID = 192764, name = "Verdant Skitterfly" },
-        },
+    legacyContainers = {},  -- migrated to sources[]
 
-        -- Shadowlands
-        [368304] = { -- Sylvanas's Chest (Sanctum of Domination Mythic)
-            { type = "mount", itemID = 186642, name = "Vengeance's Reins" },
-        },
+    legacyZones = {},  -- migrated to sources[]
 
-        -- TWW 11.1 - Undermine
-        [469857] = { -- Overflowing Dumpster (Undermine) — dumpster diving
-            _miscMechanica[1],
-        },
-    },
-
-    legacyFishing = {
-        -- Global fishing drops (any expansion zone fishing pool)
-        [0] = {
-            { type = "mount", itemID = 46109, name = "Sea Turtle" },
-        },
-
-        -- Dalaran Underbelly (WotLK/Legion)
-        [125] = {
-            { type = "pet", itemID = 43698, name = "Giant Sewer Rat" },
-        },
-
-        -- Argus zones (Legion 7.3) - Pond Nettle (BoE but one-time learn)
-        [885] = { -- Antoran Wastes
-            { type = "mount", itemID = 152912, name = "Pond Nettle" },
-        },
-        [830] = { -- Krokuun
-            { type = "mount", itemID = 152912, name = "Pond Nettle" },
-        },
-        [882] = { -- Mac'Aree
-            { type = "mount", itemID = 152912, name = "Pond Nettle" },
-        },
-
-        -- BfA zones - Great Sea Ray [Verified] (BoE, repeatable)
-        [896] = { -- Drustvar
-            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
-        },
-        [895] = { -- Tiragarde Sound
-            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
-        },
-        [942] = { -- Stormsong Valley
-            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
-        },
-        [862] = { -- Zuldazar
-            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
-        },
-        [863] = { -- Nazmir
-            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
-        },
-        [864] = { -- Vol'dun
-            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
-        },
-        [1462] = { -- Mechagon Island
-            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
-        },
-
-        -- Zereth Mortis (Shadowlands 9.2) - Strange Goop (BoE, repeatable)
-        -- Fishing material for Deepstar Aurelid mount via Hirukon summon chain.
-        -- Extremely low drop rate (~0.04%), BoE - can be sold on AH repeatedly.
-        [1970] = { -- Zereth Mortis (Fishing)
-            { type = "item", itemID = 187662, name = "Strange Goop", repeatable = true },
-        },
-
-        -- Midnight Nether-Warped Egg -> Nether-Warped Drake is in sources.
-        -- They are materialized into this legacy `fishing` table at load time.
-    },
-
-    legacyRares = {
-        -- Shadowlands: Zereth Mortis
-        [180978] = { -- Hirukon (Zereth Mortis, summoned via Aurelid Lure from Strange Goop)
-            { type = "mount", itemID = 187676, name = "Deepstar Polyp" },  -- Deepstar Aurelid mount
-        },
-    },
-
-    legacyContainers = {
-        -- WotLK Containers
-        [39883] = { -- Mysterious Egg (The Oracles, Sholazar Basin)
-            drops = {
-                { type = "mount", itemID = 44707, name = "Reins of the Green Proto-Drake" },
-            },
-        },
-        [44751] = { -- Hyldnir Spoils (Storm Peaks daily)
-            drops = {
-                { type = "mount", itemID = 43962, name = "Reins of the White Polar Bear" },
-            },
-        },
-        [69903] = { -- Hyldnir Spoils (alternate ID)
-            drops = {
-                { type = "mount", itemID = 43962, name = "Reins of the White Polar Bear" },
-            },
-        },
-
-        -- WoD Garrison Invasion Bags
-        [116980] = { -- Gold Strongbox (Garrison Invasion Gold)
-            drops = {
-                { type = "mount", itemID = 116779, name = "Garn Steelmaw" },
-                { type = "mount", itemID = 116673, name = "Giant Coldsnout" },
-                { type = "mount", itemID = 116663, name = "Shadowhide Pearltusk" },
-                { type = "mount", itemID = 116786, name = "Smoky Direwolf" },
-            },
-        },
-        [122163] = { -- Platinum Strongbox (Garrison Invasion Platinum)
-            drops = {
-                { type = "mount", itemID = 116779, name = "Garn Steelmaw" },
-                { type = "mount", itemID = 116673, name = "Giant Coldsnout" },
-                { type = "mount", itemID = 116663, name = "Shadowhide Pearltusk" },
-                { type = "mount", itemID = 116786, name = "Smoky Direwolf" },
-            },
-        },
-
-        -- Legion Paragon Caches (Broken Isles)
-        [152102] = { -- Court of Farondis Paragon Cache (Azsuna)
-            drops = {
-                { type = "mount", itemID = 147806, name = "Cloudwing Hippogryph" },
-            },
-        },
-        [152104] = { -- Highmountain Tribe Paragon Cache
-            drops = {
-                { type = "mount", itemID = 147807, name = "Highmountain Elderhorn" },
-            },
-        },
-        [152103] = { -- Dreamweavers Paragon Cache (Val'sharah)
-            drops = {
-                { type = "mount", itemID = 147804, name = "Wild Dreamrunner" },
-            },
-        },
-        [152105] = { -- Nightfallen Paragon Cache (Suramar)
-            drops = {
-                { type = "mount", itemID = 143764, name = "Leywoven Flying Carpet" },
-            },
-        },
-        [152106] = { -- Valarjar Paragon Cache (Stormheim)
-            drops = {
-                { type = "mount", itemID = 147805, name = "Valarjar Stormwing" },
-            },
-        },
-
-        -- Legion Paragon Caches (Argus)
-        [152923] = { -- Army of the Light Supply Cache
-            drops = {
-                { type = "mount", itemID = 153044, name = "Avenging Felcrusher" },
-                { type = "mount", itemID = 153043, name = "Blessed Felcrusher" },
-                { type = "mount", itemID = 153042, name = "Glorious Felcrusher" },
-            },
-        },
-
-        -- Legion Cracked Fel-Spotted Egg (Argus panthara rares)
-        [153191] = { -- Cracked Fel-Spotted Egg
-            drops = {
-                { type = "mount", itemID = 152840, name = "Scintillating Mana Ray" },
-                { type = "mount", itemID = 152841, name = "Felglow Mana Ray" },
-                { type = "mount", itemID = 152843, name = "Darkspore Mana Ray" },
-                { type = "mount", itemID = 152842, name = "Vibrant Mana Ray" },
-            },
-        },
-
-        -- BfA Containers
-        [169940] = { -- Nazjatar Royal Snapdragon container
-            drops = {
-                { type = "mount", itemID = 169198, name = "Royal Snapdragon" },
-            },
-        },
-        [169939] = { -- Nazjatar Royal Snapdragon container (alt)
-            drops = {
-                { type = "mount", itemID = 169198, name = "Royal Snapdragon" },
-            },
-        },
-
-        -- Shadowlands Containers
-        [186650] = { -- Maw supply container (9.1)
-            drops = {
-                { type = "mount", itemID = 186649, name = "Fierce Razorwing" },
-                { type = "mount", itemID = 186644, name = "Beryl Shardhide" },
-            },
-        },
-        [187029] = { -- Death's Advance supply container
-            drops = {
-                { type = "mount", itemID = 186657, name = "Soulbound Gloomcharger's Reins" },
-            },
-        },
-        [187028] = { -- Korthia supply container
-            drops = {
-                { type = "mount", itemID = 186641, name = "Tamed Mauler Harness" },
-            },
-        },
-        [185992] = { -- Assault supply container
-            drops = {
-                { type = "mount", itemID = 186103, name = "Undying Darkhound's Harness" },
-            },
-        },
-        [185991] = { -- Assault supply container (alt)
-            drops = {
-                { type = "mount", itemID = 186000, name = "Legsplitter War Harness" },
-            },
-        },
-        [185990] = { -- Assault supply container (Revendreth)
-            drops = {
-                { type = "mount", itemID = 185996, name = "Harvester's Dredwing Saddle" },
-            },
-        },
-        [180646] = { -- Maldraxxus Slime container
-            drops = {
-                { type = "mount", itemID = 182081, name = "Reins of the Colossal Slaughterclaw" },
-            },
-        },
-        [180649] = { -- Ardenweald Ardenmoth container
-            drops = {
-                { type = "mount", itemID = 183800, name = "Amber Ardenmoth" },
-            },
-        },
-        [184158] = { -- Necroray container (Maldraxxus)
-            drops = {
-                { type = "mount", itemID = 184160, name = "Bulbous Necroray" },
-                { type = "mount", itemID = 184162, name = "Pestilent Necroray" },
-                { type = "mount", itemID = 184161, name = "Infested Necroray" },
-            },
-        },
-
-        -- Dragonflight Containers
-        [200468] = { -- Plainswalker Bearer container
-            drops = {
-                { type = "mount", itemID = 192791, name = "Plainswalker Bearer" },
-            },
-        },
-
-        -- TWW Containers
-        [228741] = { -- Dauntless Imperial Lynx bag (Hallowfall) [Verified]
-            drops = {
-                { type = "mount", itemID = 223318, name = "Dauntless Imperial Lynx" },
-            },
-        },
-        [232465] = { -- Bronze Goblin Waveshredder container (Undermine)
-            drops = {
-                { type = "mount", itemID = 233064, name = "Bronze Goblin Waveshredder" },
-            },
-        },
-        [233557] = { -- Personalized Goblin S.C.R.A.Per container (Undermine)
-            drops = {
-                { type = "mount", itemID = 229949, name = "Personalized Goblin S.C.R.A.Per" },
-            },
-        },
-        [237132] = { -- Bilgewater Bombardier container (Undermine)
-            drops = {
-                { type = "mount", itemID = 229957, name = "Bilgewater Bombardier" },
-            },
-        },
-        [237135] = { -- Blackwater Bonecrusher container (Undermine)
-            drops = {
-                { type = "mount", itemID = 229937, name = "Blackwater Bonecrusher" },
-            },
-        },
-        [237133] = { -- Venture Co-ordinator container (Undermine)
-            drops = {
-                { type = "mount", itemID = 229951, name = "Venture Co-ordinator" },
-            },
-        },
-        [237134] = { -- Steamwheedle Supplier container (Undermine)
-            drops = {
-                { type = "mount", itemID = 229943, name = "Steamwheedle Supplier" },
-            },
-        },
-        [245611] = { -- Curious Slateback container (Karesh)
-            drops = {
-                { type = "mount", itemID = 242734, name = "Curious Slateback" },
-            },
-        },
-        [239546] = { -- Void-Scarred Lynx container (Hallowfall 11.1.5)
-            drops = {
-                { type = "mount", itemID = 239563, name = "Void-Scarred Lynx" },
-            },
-        },
-
-        -- Midnight 12.0 Paragon / Event Caches
-        [267299] = { -- Slayer's Duellum Trove (Voidstorm paragon cache)
-            drops = {
-                { type = "mount", itemID = 257176, name = "Duskbrute Harrower" },
-            },
-        },
-        -- Stormarion Assault (Voidstorm) weekly â€” Victorious Stormarion Pinnacle Cache
-        -- If container/mount not detected, verify container item ID in-game (cache in bags) and update key/drops.
-        [267300] = { -- Victorious Stormarion Pinnacle Cache
-            drops = {
-                { type = "mount", itemID = 257180, name = "Reins of the Contained Stormarion Defender" },
-                { type = "pet", itemID = 257178, name = "Kai" },
-            },
-        },
-        [268485] = { -- Victorious Stormarion Pinnacle Cache - Midnight Preseason (same loot table)
-            drops = {
-                { type = "mount", itemID = 257180, name = "Reins of the Contained Stormarion Defender" },
-                { type = "pet", itemID = 257178, name = "Kai" },
-            },
-        },
-        [260979] = { -- Victorious Stormarion Cache (blue/uncommon weekly cache; same collectible pool as pinnacle)
-            drops = {
-                { type = "mount", itemID = 257180, name = "Reins of the Contained Stormarion Defender" },
-                { type = "pet", itemID = 257178, name = "Kai" },
-            },
-        },
-
-        -- Holiday Containers
-        -- IMPORTANT: Holiday boss mounts drop from these container items, NOT from
-        -- boss corpse loot. Players receive the container once per day via LFG,
-        -- open it from bags â†’ LOOT_OPENED fires with isFromItem=true â†’ ProcessContainerLoot.
-        -- Multiple item IDs cover different WoW versions (Blizzard changes these per expansion).
-
-        [54537] = { -- Heart-Shaped Box (Love is in the Air)
-            drops = {
-                { type = "mount", itemID = 50250, name = "Big Love Rocket" },
-                { type = "mount", itemID = 235658, name = "Spring Butterfly" },
-                { type = "mount", itemID = 210976, name = "X-45 Heartbreaker" },
-                { type = "mount", itemID = 235823, name = "Love Witch's Sweeper" },
-            },
-        },
-
-        [209024] = { -- Loot-Filled Pumpkin (Hallow's End - modern retail)
-            drops = {
-                { type = "mount", itemID = 37012, name = "The Horseman's Reins" },
-                { type = "mount", itemID = 247721, name = "The Headless Horseman's Ghoulish Charger" },
-            },
-        },
-        [54516] = { -- Loot-Filled Pumpkin (Hallow's End - legacy item ID)
-            drops = {
-                { type = "mount", itemID = 37012, name = "The Horseman's Reins" },
-                { type = "mount", itemID = 247721, name = "The Headless Horseman's Ghoulish Charger" },
-            },
-        },
-
-        [117393] = { -- Keg-Shaped Treasure Chest (Brewfest - modern retail)
-            drops = {
-                { type = "mount", itemID = 37828, name = "Great Brewfest Kodo" },
-                { type = "mount", itemID = 33977, name = "Swift Brewfest Ram" },
-                { type = "mount", itemID = 248761, name = "Brewfest Barrel Bomber" },
-            },
-        },
-        [54535] = { -- Keg-Shaped Treasure Chest (Brewfest - legacy item ID)
-            drops = {
-                { type = "mount", itemID = 37828, name = "Great Brewfest Kodo" },
-                { type = "mount", itemID = 33977, name = "Swift Brewfest Ram" },
-                { type = "mount", itemID = 248761, name = "Brewfest Barrel Bomber" },
-            },
-        },
-    },
-
-    legacyZones = {
-        -- TWW: Isle of Dorn — Crackling Shard (any killable mob in zone, <1% for normals)
-        -- 17 rares with ≥1% are also in npcs section for specific tracking.
-        -- hostileOnly=true: tooltip only shows on attackable units (excludes friendly NPCs/vendors)
-        [2248] = { drops = _cracklingShard, hostileOnly = true }, -- Isle of Dorn (uiMapID)
-
-        -- ========================================
-        -- MIDNIGHT 12.0 - Zone Rare Mounts
-        -- Any RARE in zone can drop these mounts (daily lockout per rare)
-        -- raresOnly=true means tooltip only shows on rare/elite units
-        -- Zone IDs: Silvermoon 2393, Isle of Quel'Danas 2424, Eversong 2395, Harandar 2413,
-        --   The Den 2576, Zul'Aman 2437, Atal'Aman 2536, Arcantina 2541, Voidstorm 2405
-        -- Zone IDs verified via in-game C_Map data
-        -- ========================================
-        -- Quel'Thalas region (Cerulean Hawkstrider, Cobalt Dragonhawk)
-        [2393] = { drops = _quelThalasRareMounts, raresOnly = true },   -- Silvermoon
-        [2395] = { drops = _quelThalasRareMounts, raresOnly = true },   -- Eversong Woods
-        [2424] = { drops = _quelThalasRareMounts, raresOnly = true },   -- Isle of Quel'Danas
-        -- Harandar (Rootstalker Grimlynx, Vibrant Petalwing)
-        [2413] = { drops = _harandarRareMounts, raresOnly = true },     -- Harandar
-        [2576] = { drops = _harandarRareMounts, raresOnly = true },     -- The Den
-        -- Zul'Aman (Amani Sharptalon, Escaped Witherbark Pango)
-        [2437] = { drops = _zulAmanRareMounts, raresOnly = true },      -- Zul'Aman
-        [2536] = { drops = _zulAmanRareMounts, raresOnly = true },      -- Atal'Aman
-        -- Voidstorm (Augmented Stormray, Sanguine Harrower)
-        [2405] = { drops = _voidstormRareMounts, raresOnly = true },    -- Voidstorm
-        [2541] = { drops = _voidstormRareMounts, raresOnly = true },     -- Arcantina
-    },
-
-    -- DungeonEncounter.ID → NPC(s). Mount drops only (legacyNpcs). Midnight retail.
-    legacyEncounters = {
-        [652] = { 16152 },
-        [733] = { 19622 },
-        [1126] = { 31125 },
-        [1127] = { 33993 },
-        [1128] = { 35013 },
-        [1129] = { 38433 },
-        [1094] = { 28859 },
-        [1090] = { 28860 },
-        [1084] = { 10184 },
-        [1143] = { 33288 },
-        [1106] = { 36597 },
-        [1203] = { 52409 },
-        [1297] = { 55294 },
-        [1299] = { 56173 },
-        [1500] = { 60410 },
-        [1575] = { 68476 },
-        [1573] = { 69712 },
-        [1623] = { 71865 },
-        [1704] = { 77325 },
-        [1799] = { 91331 },
-        [1866] = { 105503, 104154, 111022 },
-        [2037] = { 115767 },
-        [2074] = { 126915, 126916 },
-        [2092] = { 130352 },
-        [2291] = { 155157, 150190 },
-        [2096] = { 126983 },
-        [2123] = { 133007 },
-        [2143] = { 136160 },
-        [2276] = { 144796 },
-        [2281] = { 165396 },
-        [2344] = { 158041 },
-        [2390] = { 162693 },
-        [2442] = { 180863 },
-        [2429] = { 178738 },
-        [2435] = { 175732 },
-        [2537] = { 180990 },
-        [2607] = { 189492 },
-        [2685] = { 201791 },
-        [2677] = { 204931 },
-        [2788] = { 210798 },
-        [2883] = { 213119 },
-        [2922] = { 218370 },
-        [3016] = { 241526 },
-        [3059] = { 231636 },
-        [3074] = { 231865 },
-        [3183] = { 214650 },
-    },
-
-    legacyEncounterNames = {
-        ["Restless Heart"] = { 231636 },       -- Windrunner Spire
-        ["Degentrius"] = { 231865 },           -- Magisters' Terrace
-        ["Midnight Falls"] = { 214650 },       -- March on Quel'Danas
-    },
-
-    legacyLockoutQuests = {
-        -- ========================================
-        -- MISTS OF PANDARIA
-        -- ========================================
-
-        -- MoP: World Bosses (weekly lockout via bonus roll quest)
-        [60491] = 32099,  -- Sha of Anger (Kun-Lai Summit)
-        [62346] = 32098,  -- Galleon (Valley of the Four Winds)
-        [69099] = 32518,  -- Nalak (Isle of Thunder)
-        [69161] = 32519,  -- Oondasta (Isle of Giants)
-
-        -- MoP: Timeless Isle (daily lockout)
-        [73167] = 33311,  -- Huolon
-
-        -- ========================================
-        -- WARLORDS OF DRAENOR
-        -- ========================================
-
-        -- WoD: World Boss (weekly lockout)
-        [83746] = 37464,  -- Rukhmar (Spires of Arak)
-        [87493] = 37464,  -- Rukhmar (alt NPC ID)
-
-        -- WoD: Tanaan Jungle Champions (daily lockout)
-        [95044] = 39288,  -- Terrorfist
-        [95053] = 39287,  -- Deathtalon
-        [95054] = 39290,  -- Vengeance
-        [95056] = 39289,  -- Doomroller
-
-        -- ========================================
-        -- LEGION
-        -- ========================================
-
-        -- Legion: World Bosses (biweekly lockout)
-        [111573] = 43798,  -- Kosumoth the Hungering (Eye of Azshara) — TODO: verify questID in-game
-
-        -- Legion: Argus rares (daily lockout)
-        [122958] = 49183,  -- Blistermaw (Antoran Wastes)
-        [126040] = 48809,  -- Puscilla (Antoran Wastes)
-        [126199] = 48810,  -- Vrax'thul (Antoran Wastes)
-        [126852] = 48695,  -- Wrangler Kravos (Mac'Aree)
-        [126867] = 48705,  -- Venomtail Skyfin (Mac'Aree)
-        [126912] = 48721,  -- Skreeg the Devourer (Mac'Aree)
-        [127288] = 48821,  -- Houndmaster Kerrax (Antoran Wastes)
-
-        -- ========================================
-        -- BATTLE FOR AZEROTH
-        -- ========================================
-
-        -- BfA: Warfront Arathi Highlands (cycle-based lockout)
-        [142692] = { 53091, 53517 },  -- Nimar the Slayer
-        [142423] = { 53014, 53518 },  -- Overseer Krix
-        [142437] = { 53022, 53526 },  -- Skullripper
-        [142709] = { 53083, 53504 },  -- Beastrider Kama
-        [142741] = 53085,             -- Doomrider Helgrim (Alliance)
-        [142739] = 53088,             -- Knight-Captain Aldrin (Horde)
-
-        -- BfA: Warfront Darkshore (cycle-based lockout)
-        [148787] = { 54695, 54696 },  -- Alash'anir
-        [149652] = 54883,             -- Agathe Wyrmwood (Alliance)
-        [149660] = 54890,             -- Blackpaw (Horde)
-        [149655] = 54886,             -- Croz Bloodrage (Alliance)
-        [149663] = 54892,             -- Shadowclaw (Horde)
-        [148037] = 54431,             -- Athil Dewfire (Horde)
-        [147701] = 54277,             -- Moxo the Beheader (Alliance)
-
-        -- BfA 8.2: Mechagon / Nazjatar (daily lockout)
-        [152182] = 55811,  -- Rustfeather
-        [154342] = 55512,  -- Arachnoid Harvester (alt timeline)
-        [151934] = 55512,  -- Arachnoid Harvester (standard)
-        [152290] = 56298,  -- Soundless
-
-        -- BfA 8.3: Vale of Eternal Blossoms assault rares (daily lockout)
-        [157466] = 57363,  -- Anh-De the Loyal
-        [157153] = 57344,  -- Ha-Li
-        [157160] = 57345,  -- Houndlord Ren
-
-        -- BfA 8.3: Uldum assault rares (daily lockout)
-        [157134] = 57259,  -- Ishak of the Four Winds
-        [162147] = 58696,  -- Corpse Eater
-        [157146] = 57273,  -- Rotfeaster
-
-        -- BfA: World Boss (weekly lockout via world quest)
-        [138794] = 53000,  -- Dunegorger Kraulok
-
-        -- ========================================
-        -- SHADOWLANDS
-        -- ========================================
-
-        -- Shadowlands: Ardenweald rares (daily lockout)
-        [164107] = 59145,  -- Gormtamer Tizo
-        [164112] = 59157,  -- Humon'gozz
-        [168647] = 61632,  -- Valfir the Unrelenting
-
-        -- Shadowlands: Bastion (daily lockout)
-        [170548] = 60862,  -- Sundancer
-
-        -- Shadowlands: Revendreth rares (daily lockout)
-        [166521] = 59869,  -- Famu the Infinite
-        [165290] = 59612,  -- Harika the Horrid
-        [166679] = 59900,  -- Hopecrusher
-        [160821] = 58259,  -- Worldedge Gorger
-
-        -- Shadowlands: Maldraxxus rares (daily lockout)
-        [162741] = 58872,  -- Gieger
-        [162586] = 58783,  -- Tahonta
-        [157309] = 61720,  -- Violet Mistake
-        [162690] = 58851,  -- Nerissa Heartless
-        [162819] = 58889,  -- Warbringer Mal'Korak
-        [162818] = 58889,  -- Warbringer Mal'Korak (alt)
-        [168147] = 58784,  -- Sabriel the Bonecleaver
-        [168148] = 58784,  -- Sabriel the Bonecleaver (alt)
-        -- Theater of Pain combatants (shared daily lockout)
-        [162873] = 62786,  -- Theater of Pain combatant
-        [162880] = 62786,  -- Theater of Pain combatant
-        [162875] = 62786,  -- Theater of Pain combatant
-        [162853] = 62786,  -- Theater of Pain combatant
-        [162874] = 62786,  -- Theater of Pain combatant
-        [162872] = 62786,  -- Theater of Pain combatant
-
-        -- Shadowlands: Maw rares (daily lockout)
-        [174861] = 63433,  -- Gorged Shadehound
-        [179460] = 64164,  -- Fallen Charger
-
-        -- Shadowlands: Korthia rares (daily lockout)
-        [179472] = 64246,  -- Konthrogz the Obliterator
-        [180160] = 64455,  -- Reliwik the Defiant
-        [179684] = 64233,  -- Malbog
-        [179985] = 64313,  -- Stygian Stonecrusher
-        [180032] = 64338,  -- Wild Worldcracker
-        [180042] = 64349,  -- Fleshwing
-
-        -- Shadowlands: Zereth Mortis (daily lockout)
-        [180978] = 65548,  -- Hirukon
-
-        -- ========================================
-        -- DRAGONFLIGHT
-        -- ========================================
-
-        -- Dragonflight: Zaralek Cavern (daily lockout)
-        [203625] = 75333,  -- Karokta
-
-        -- Dragonflight: Forbidden Reach rares (daily lockout, shared Ancient Salamanther mount)
-        [200537] = 73095,  -- Gahz'raxes
-        [200579] = 73100,  -- Ishyra
-        [200584] = 73111,  -- Vraken the Hunter
-        [200600] = 73117,  -- Reisa the Drowned
-        [200610] = 73118,  -- Duzalgor
-        [200681] = 74341,  -- Bonesifter Marwak
-        [200717] = 74342,  -- Galakhad
-        [200721] = 73154,  -- Grugoth the Hullcrusher
-        [200885] = 73222,  -- Lady Shaz'ra
-        [200904] = 73229,  -- Veltrax
-        [200911] = 73225,  -- Volcanakk
-        [200956] = 74349,  -- Ookbeard
-        [200960] = 73367,  -- Warden Entrix
-        [200978] = 73385,  -- Pyrachniss
-        [201013] = 73409,  -- Wyrmslayer Angvardi
-        [201181] = 74283,  -- Mad-Eye Carrey
-
-        -- ========================================
-        -- THE WAR WITHIN
-        -- ========================================
-
-        -- TWW: Hallowfall / Ringing Deeps (daily lockout)
-        [207802] = 81763,  -- Beledar's Spawn
-        [220285] = 81633,  -- Regurgitated Mole Reins rare
-
-        -- TWW: Azj-Kahet (daily lockout)
-        [216046] = 82289,  -- Tka'ktath
-
-        -- TWW 11.1: Undermine — Darkfuse Precipitant (weekly loot lockout)
-        [231310] = 85010,  -- Darkfuse Precipitant
-
-        -- TWW 11.1: Undermine — weekly elite rares
-        [230746] = 84877,  -- Ephemeral Agent Lathyd
-        [230793] = 84884,  -- The Junk-Wall
-        [230800] = 84895,  -- Slugger the Smart
-        [230828] = 84907,  -- Chief Foreman Gutso
-        [230840] = 84911,  -- Flyboy Snooty
-
-        -- TWW 11.1: Undermine — daily rares
-        [230931] = 84917,  -- Scrapbeak
-        [230934] = 84918,  -- Ratspit
-        [230940] = 84919,  -- Tally Doublespeak
-        [230946] = 84920,  -- V.V. Goosworth
-        [230951] = 84921,  -- Thwack
-        [230979] = 84922,  -- S.A.L.
-        [230995] = 84926,  -- Nitro
-        [231012] = 84927,  -- Candy Stickemup
-        [231017] = 84928,  -- Grimewick
-        [231288] = 85004,  -- Swigs Farsight
-
-        -- TWW 11.2: Karesh (daily lockout)
-        [232195] = 90593,  -- Pearlescent Krolusk
-        [234845] = 91293,  -- Sthaarbs
-    },
+    legacyEncounters = {},       -- migrated to sources[]
+    legacyEncounterNames = {},   -- migrated to sources[]
+    legacyLockoutQuests = {},    -- migrated to sources[]
 
     -- Display name (EN) â†’ npcID for lockout NPCs; used to gray "Drop: Name" in Plans when no loot this period.
     lockoutNpcNames = {
@@ -2335,6 +2216,7 @@ local function ApplyTypedSources(db)
                             end
                             MergeDropArray(zoneEntry.drops, drops)
                             if source.raresOnly then zoneEntry.raresOnly = true end
+                            if source.hostileOnly then zoneEntry.hostileOnly = true end
                             db.zones[mapID] = zoneEntry
                         end
                     end)
@@ -2367,70 +2249,19 @@ ApplyTypedSources(ns.CollectibleSourceDB)
 
 -- Merge deprecated legacy* tables into runtime npcs/rares/... so existing data still works.
 -- Do not add to legacy*; add only to sources. Legacy tables will be removed once migrated.
-local function MergeLegacyIntoRuntime(db)
-    if not db then return end
-    local function mergeNpc(destKey, src)
-        if type(src) ~= "table" then return end
-        for npcID, data in pairs(src) do
-            if type(data) == "table" then
-                local target = db[destKey][npcID] or {}
-                MergeDropArray(target, data, data.statisticIds, data.dropDifficulty)
-                db[destKey][npcID] = target
-            end
-        end
-    end
-    mergeNpc("npcs", db.legacyNpcs)
-    mergeNpc("rares", db.legacyRares)
-    if db.legacyObjects then
-        for objectID, data in pairs(db.legacyObjects) do
-            if type(data) == "table" and not db.objects[objectID] then
-                db.objects[objectID] = CopyDropArray(data)
-            end
-        end
-    end
-    if db.legacyFishing then
-        for mapID, data in pairs(db.legacyFishing) do
-            if type(data) == "table" and not db.fishing[mapID] then
-                db.fishing[mapID] = CopyDropArray(data)
-            end
-        end
-    end
-    if db.legacyContainers then
-        for cid, data in pairs(db.legacyContainers) do
-            if type(data) == "table" then
-                local drops = data.drops or data
-                if not db.containers[cid] then db.containers[cid] = { drops = CopyDropArray(drops) } end
-            end
-        end
-    end
-    if db.legacyZones then
-        for mapID, data in pairs(db.legacyZones) do
-            if type(data) == "table" then
-                local zd = db.zones[mapID] or { drops = {} }
-                MergeDropArray(zd.drops, data.drops or data)
-                if data.raresOnly then zd.raresOnly = true end
-                if data.hostileOnly then zd.hostileOnly = true end
-                db.zones[mapID] = zd
-            end
-        end
-    end
-    if db.legacyEncounters then
-        for eid, npcIDs in pairs(db.legacyEncounters) do
-            if not db.encounters[eid] then db.encounters[eid] = npcIDs end
-        end
-    end
-    if db.legacyEncounterNames then
-        for name, npcIDs in pairs(db.legacyEncounterNames) do
-            if not db.encounterNames[name] then db.encounterNames[name] = npcIDs end
-        end
-    end
-    if db.legacyLockoutQuests then
-        for npcID, q in pairs(db.legacyLockoutQuests) do
-            if not db.lockoutQuests[npcID] then db.lockoutQuests[npcID] = q end
+-- Merge remaining legacyNpcs into runtime db.npcs.
+-- Will be removed once legacyNpcs is fully migrated to sources[].
+local function MergeLegacyNpcs(db)
+    if not db or type(db.legacyNpcs) ~= "table" then return end
+    for npcID, data in pairs(db.legacyNpcs) do
+        if type(data) == "table" then
+            local target = db.npcs[npcID] or {}
+            MergeDropArray(target, data, data.statisticIds, data.dropDifficulty)
+            db.npcs[npcID] = target
         end
     end
 end
-MergeLegacyIntoRuntime(ns.CollectibleSourceDB)
+MergeLegacyNpcs(ns.CollectibleSourceDB)
 
 -- =================================================================
 -- TOY SOURCE LOOKUP (for Plans + Collections)

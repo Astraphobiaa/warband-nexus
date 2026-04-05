@@ -36,12 +36,7 @@ local LibSerialize = LibStub("AceSerializer-3.0")
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 
 -- Rested XP accumulation constants (Blizzard behavior in resting areas).
 -- Pandaren "Inner Peace" racial doubles both the cap and accumulation rate.
@@ -89,27 +84,15 @@ end
 --[[
     Track cumulative /played time per character using RequestTimePlayed() API.
     TIME_PLAYED_MSG fires asynchronously with (totalTimePlayed, timePlayedThisLevel).
-    Chat output from our request is suppressed via CHAT_MSG_SYSTEM filter in Core.lua (no AddMessage RawHook).
-    
-    Hook Strategy:
-    - Suppresses ONLY addon-initiated requests (internal tracking)
-    - Manual /played commands still display to user
-    - Uses counter to handle BOTH messages (total time + level time)
+    Chat lines: ChatFrameUtil.DisplayTimePlayed wrap (Mainline), legacy globals,
+    CHAT_MSG_SYSTEM backup, and Chattynator.API.FilterTimePlayed when Chattynator
+    is loaded (its Messages frame has its own TIME_PLAYED_MSG listener).
+    See notifications.hidePlayedTimeInChat (default: hide).
 ]]
 
--- Timestamp until which played time messages should be suppressed
-local suppressPlayedUntilTime = 0
-
---- Request played time from server (suppresses chat output for internal tracking)
+--- Request played time from server (for internal DB; chat lines controlled by profile filter).
 function WarbandNexus:RequestPlayedTime()
-    -- Suppress any played time messages for the next 5 seconds
-    suppressPlayedUntilTime = GetTime() + 5
     RequestTimePlayed()
-end
-
---- Check if played time messages should currently be suppressed (called from hook)
-function WarbandNexus:ShouldSuppressPlayedMessage()
-    return GetTime() < suppressPlayedUntilTime
 end
 
 --- Handle TIME_PLAYED_MSG event

@@ -11,12 +11,7 @@ local FontManager = ns.FontManager  -- Centralized font management
 local CharactersUIEvents = {}
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 
 -- Tooltip API
 local ShowTooltip = ns.UI_ShowTooltip
@@ -98,7 +93,8 @@ local function RegisterCharacterEvents(parent)
     -- WN_CHARACTER_TRACKING_CHANGED: keep — UI.lua does NOT handle this event.
     local Constants = ns.Constants
     WarbandNexus.RegisterMessage(CharactersUIEvents, "WN_CHARACTER_TRACKING_CHANGED", function(event, data)
-        if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "chars" then
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if mf and mf:IsShown() and mf.currentTab == "chars" then
             DebugPrint("|cff9370DB[WN CharactersUI]|r Tracking status changed, refreshing UI...")
             WarbandNexus:RefreshUI()
         end
@@ -266,9 +262,14 @@ function WarbandNexus:DrawCharacterList(parent)
     local cardSpacing = 10
     local totalSpacing = cardSpacing * 2  -- 2 gaps between 3 cards
     local threeCardWidth = (width - leftMargin - rightMargin - totalSpacing) / 3
+    local card3Width = width - leftMargin - rightMargin - 2 * threeCardWidth - 2 * cardSpacing
+    -- Side-by-side Total Gold + Token needs ~460px+ on the third card; below that, stack vertically
+    local GOLD_TOKEN_MIN_SPLIT_WIDTH = 460
+    local stackGoldToken = card3Width < GOLD_TOKEN_MIN_SPLIT_WIDTH
+    local goldRowHeight = stackGoldToken and 108 or 90
     
     -- Characters Gold Card (Left)
-    local charGoldCard = CreateCard(parent, 90)
+    local charGoldCard = CreateCard(parent, goldRowHeight)
     charGoldCard:SetWidth(threeCardWidth)
     charGoldCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
     
@@ -319,7 +320,7 @@ function WarbandNexus:DrawCharacterList(parent)
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
     -- Warband Gold Card (Middle)
-    local wbGoldCard = CreateCard(parent, 90)
+    local wbGoldCard = CreateCard(parent, goldRowHeight)
     wbGoldCard:SetWidth(threeCardWidth)
     wbGoldCard:SetPoint("LEFT", charGoldCard, "RIGHT", cardSpacing, 0)
     
@@ -343,7 +344,7 @@ function WarbandNexus:DrawCharacterList(parent)
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
     -- Total Gold + Token Card (Right — wider card spanning remaining space)
-    local totalGoldCard = CreateCard(parent, 90)
+    local totalGoldCard = CreateCard(parent, goldRowHeight)
     totalGoldCard:SetPoint("LEFT", wbGoldCard, "RIGHT", cardSpacing, 0)
     totalGoldCard:SetPoint("RIGHT", -rightMargin, 0)
 
@@ -352,14 +353,16 @@ function WarbandNexus:DrawCharacterList(parent)
         ApplyVisuals(totalGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
 
-    -- Left half: Total Gold (icon + label + value)
+    -- Vertical divider (hidden when Total Gold + Token are stacked)
+    local divider = totalGoldCard:CreateTexture(nil, "ARTWORK")
+    divider:SetSize(1, 50)
+    divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4)
+
+    -- Left block: Total Gold (icon + label + value)
     local tgIcon = CreateIcon(totalGoldCard, "BonusLoot-Chest", 36, true, nil, true)
-    tgIcon:SetPoint("CENTER", totalGoldCard, "LEFT", 15 + 18, 0)
     tgIcon:Show()
 
     local tgTextContainer = CreateFrame("Frame", nil, totalGoldCard)
-    tgTextContainer:SetSize(150, 40)
-    tgTextContainer:SetPoint("LEFT", tgIcon, "RIGHT", 12, 0)
 
     local tgLabel = FontManager:CreateFontString(tgTextContainer, "subtitle", "OVERLAY")
     tgLabel:SetText((ns.L and ns.L["HEADER_TOTAL_GOLD"]) or "TOTAL GOLD")
@@ -373,26 +376,18 @@ function WarbandNexus:DrawCharacterList(parent)
     tgValue:SetJustifyH("LEFT")
     tgValue:SetPoint("TOP", tgTextContainer, "CENTER", 0, -4)
     tgValue:SetPoint("LEFT", tgTextContainer, "LEFT", 0, 0)
+    tgValue:SetNonSpaceWrap(false)
 
-    -- Vertical divider
-    local divider = totalGoldCard:CreateTexture(nil, "ARTWORK")
-    divider:SetSize(1, 50)
-    divider:SetPoint("CENTER", totalGoldCard, "CENTER", 0, 0)
-    divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4)
-
-    -- Right half: WoW Token (icon + label + price with token count)
+    -- Right block: WoW Token (icon + label + price with token count)
     -- GetCurrentMarketPrice updates asynchronously after UpdateMarketPrice(); TOKEN_MARKET_PRICE_UPDATED refreshes the tab (Core.lua).
     local tokenPrice = C_WowTokenPublic and C_WowTokenPublic.GetCurrentMarketPrice and select(1, C_WowTokenPublic.GetCurrentMarketPrice())
 
     local tkIcon = totalGoldCard:CreateTexture(nil, "ARTWORK")
     tkIcon:SetSize(28, 28)
     tkIcon:SetTexture("Interface\\Icons\\WoW_Token01")
-    tkIcon:SetPoint("LEFT", divider, "RIGHT", 14, 0)
     tkIcon:Show()
 
     local tkTextContainer = CreateFrame("Frame", nil, totalGoldCard)
-    tkTextContainer:SetSize(150, 40)
-    tkTextContainer:SetPoint("LEFT", tkIcon, "RIGHT", 10, 0)
 
     local tkLabel = FontManager:CreateFontString(tkTextContainer, "subtitle", "OVERLAY")
     tkLabel:SetText((ns.L and ns.L["WOW_TOKEN_LABEL"]) or "WOW TOKEN")
@@ -405,6 +400,47 @@ function WarbandNexus:DrawCharacterList(parent)
     tkValue:SetJustifyH("LEFT")
     tkValue:SetPoint("TOP", tkTextContainer, "CENTER", 0, -4)
     tkValue:SetPoint("LEFT", tkTextContainer, "LEFT", 0, 0)
+    tkValue:SetNonSpaceWrap(false)
+
+    if stackGoldToken then
+        divider:Hide()
+        tgIcon:SetPoint("TOPLEFT", totalGoldCard, "TOPLEFT", 12, -12)
+        tgTextContainer:ClearAllPoints()
+        tgTextContainer:SetPoint("TOP", totalGoldCard, "TOP", 0, -10)
+        tgTextContainer:SetPoint("LEFT", tgIcon, "RIGHT", 10, 0)
+        tgTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
+        tgTextContainer:SetHeight(40)
+
+        local midRule = totalGoldCard:CreateTexture(nil, "ARTWORK")
+        midRule:SetHeight(1)
+        midRule:SetPoint("LEFT", totalGoldCard, "LEFT", 10, 0)
+        midRule:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
+        midRule:SetPoint("TOP", totalGoldCard, "TOP", 0, -52)
+        midRule:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35)
+
+        tkIcon:SetPoint("TOPLEFT", totalGoldCard, "TOPLEFT", 14, -58)
+        tkTextContainer:ClearAllPoints()
+        tkTextContainer:SetPoint("TOP", totalGoldCard, "TOP", 0, -56)
+        tkTextContainer:SetPoint("LEFT", tkIcon, "RIGHT", 10, 0)
+        tkTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
+        tkTextContainer:SetHeight(40)
+    else
+        divider:Show()
+        divider:SetPoint("CENTER", totalGoldCard, "CENTER", 0, 0)
+        tgIcon:SetPoint("CENTER", totalGoldCard, "LEFT", 15 + 18, 0)
+        tgTextContainer:ClearAllPoints()
+        tgTextContainer:SetPoint("LEFT", tgIcon, "RIGHT", 12, 0)
+        tgTextContainer:SetPoint("RIGHT", divider, "LEFT", -8, 0)
+        tgTextContainer:SetPoint("TOP", tgIcon, "TOP", 0, 0)
+        tgTextContainer:SetPoint("BOTTOM", tgIcon, "BOTTOM", 0, 0)
+
+        tkIcon:SetPoint("LEFT", divider, "RIGHT", 14, 0)
+        tkTextContainer:ClearAllPoints()
+        tkTextContainer:SetPoint("LEFT", tkIcon, "RIGHT", 10, 0)
+        tkTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -12, 0)
+        tkTextContainer:SetPoint("TOP", tkIcon, "TOP", 0, 0)
+        tkTextContainer:SetPoint("BOTTOM", tkIcon, "BOTTOM", 0, 0)
+    end
 
     if tokenPrice and tokenPrice > 0 then
         local affordableCount = math.floor(totalWithWarband / tokenPrice)
@@ -430,7 +466,7 @@ function WarbandNexus:DrawCharacterList(parent)
     wbGoldCard:Show()
     totalGoldCard:Show()
 
-    yOffset = yOffset + 100
+    yOffset = yOffset + (stackGoldToken and 118 or 100)
     
     local sortOptions = {
         {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},

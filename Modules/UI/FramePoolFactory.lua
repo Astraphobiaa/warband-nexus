@@ -19,12 +19,7 @@ local ADDON_NAME, ns = ...
 
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 -- Import dependencies
 local UI_LAYOUT = ns.UI_LAYOUT
 local FontManager = ns.FontManager

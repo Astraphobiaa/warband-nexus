@@ -742,6 +742,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         end
         do
             local gap = 8
+            local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
             local whW = ns.PLAN_CARD_WOWHEAD_SIZE or 18
             if card.wowheadBtn then
                 row:SetPoint("TOPRIGHT", card.wowheadBtn, "TOPLEFT", -gap, 0)
@@ -749,11 +750,25 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
                 row:SetPoint("TOPRIGHT", card, "TOPRIGHT", -(whInset + whW + gap), -10)
             end
+            -- Try sits on the name row, immediately to the right of the title (before Wowhead)
+            if card.nameText then
+                card.nameText:SetPoint("RIGHT", row, "LEFT", -nameGap, 0)
+            end
         end
         card.tryCountText = row.text
         row:WnUpdateTryCount(plan.type, collectibleID, resolvedName)
     elseif card.tryCountClickable then
         card.tryCountClickable:Hide()
+        if card.nameText then
+            local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
+            if card.wowheadBtn then
+                card.nameText:SetPoint("RIGHT", card.wowheadBtn, "LEFT", -nameGap, 0)
+            else
+                local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
+                local whW = ns.PLAN_CARD_WOWHEAD_SIZE or 18
+                card.nameText:SetPoint("RIGHT", card, "RIGHT", -(whInset + whW + nameGap), 0)
+            end
+        end
     end
 
     return lastTextElement

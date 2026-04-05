@@ -73,9 +73,115 @@ function WarbandNexus:RefreshPlanCache()
     self.planCache.titleIDs = {}
     self.planCache.itemIDs = {}
     
+    local wvIdx = self._weeklyVaultPlansByCharKey
+    if not wvIdx then
+        wvIdx = {}
+        self._weeklyVaultPlansByCharKey = wvIdx
+    else
+        for k in pairs(wvIdx) do
+            wvIdx[k] = nil
+        end
+    end
+
+    local wvList = self._weeklyVaultPlansList
+    if not wvList then
+        wvList = {}
+        self._weeklyVaultPlansList = wvList
+    else
+        for i = #wvList, 1, -1 do
+            wvList[i] = nil
+        end
+    end
+
+    local byId = self._plansById
+    if not byId then
+        byId = {}
+        self._plansById = byId
+    else
+        for k in pairs(byId) do
+            byId[k] = nil
+        end
+    end
+
+    local inc = self._incompleteTodoPlansList
+    if not inc then
+        inc = {}
+        self._incompleteTodoPlansList = inc
+    else
+        for i = #inc, 1, -1 do
+            inc[i] = nil
+        end
+    end
+
+    local pc = self._plansByCollectibleKey
+    if not pc then
+        pc = {
+            mount = {},
+            pet = {},
+            toy = {},
+            achievement = {},
+            illusion = {},
+            title = {},
+        }
+        self._plansByCollectibleKey = pc
+    else
+        for _, sub in pairs(pc) do
+            for k in pairs(sub) do
+                sub[k] = nil
+            end
+        end
+    end
+
+    local function pushCollectiblePlan(ptype, entityId, plan)
+        if not entityId or entityId == 0 then return end
+        local sub = pc[ptype]
+        if not sub then return end
+        local arr = sub[entityId]
+        if not arr then
+            arr = {}
+            sub[entityId] = arr
+        end
+        arr[#arr + 1] = plan
+    end
+
     -- Rebuild from db.global.plans
     if self.db and self.db.global and self.db.global.plans then
         for _, plan in ipairs(self.db.global.plans) do
+            if plan.id then
+                byId[plan.id] = plan
+            end
+            if plan.type == PLAN_TYPES.MOUNT and plan.mountID then
+                pushCollectiblePlan("mount", plan.mountID, plan)
+            elseif plan.type == PLAN_TYPES.PET and plan.speciesID then
+                pushCollectiblePlan("pet", plan.speciesID, plan)
+            elseif plan.type == PLAN_TYPES.TOY and plan.itemID then
+                pushCollectiblePlan("toy", plan.itemID, plan)
+            elseif plan.type == PLAN_TYPES.ACHIEVEMENT and plan.achievementID then
+                pushCollectiblePlan("achievement", plan.achievementID, plan)
+            elseif plan.type == PLAN_TYPES.ILLUSION then
+                if plan.illusionID then
+                    pushCollectiblePlan("illusion", plan.illusionID, plan)
+                end
+                if plan.sourceID then
+                    pushCollectiblePlan("illusion", plan.sourceID, plan)
+                end
+            elseif plan.type == PLAN_TYPES.TITLE and plan.titleID then
+                pushCollectiblePlan("title", plan.titleID, plan)
+            end
+            if plan.type == PLAN_TYPES.WEEKLY_VAULT then
+                wvList[#wvList + 1] = plan
+                if ns.Utilities and ns.Utilities.GetCharacterKey then
+                    local pk = ns.Utilities:GetCharacterKey(plan.characterName, plan.characterRealm)
+                    if pk and pk ~= "" then
+                        local arr = wvIdx[pk]
+                        if not arr then
+                            arr = {}
+                            wvIdx[pk] = arr
+                        end
+                        arr[#arr + 1] = plan
+                    end
+                end
+            end
             if plan.mountID then
                 self.planCache.mountIDs[plan.mountID] = true
             end
@@ -100,12 +206,18 @@ function WarbandNexus:RefreshPlanCache()
             if plan.titleID then
                 self.planCache.titleIDs[plan.titleID] = true
             end
+            if not plan.completed and not plan.completionNotified then
+                inc[#inc + 1] = plan
+            end
         end
     end
     
     -- Also check custom plans
     if self.db and self.db.global and self.db.global.customPlans then
         for _, plan in ipairs(self.db.global.customPlans) do
+            if plan.id then
+                byId[plan.id] = plan
+            end
             if plan.itemID then
                 self.planCache.itemIDs[plan.itemID] = true
             end
@@ -258,11 +370,17 @@ end
     Checks if any plans were completed
 ]]
 function WarbandNexus:OnPlanCollectionUpdated(event, ...)
-    -- Debounce multiple events
+    -- Immediate match on payload (WN_COLLECTIBLE_OBTAINED uses id=, not mountID=/speciesID=).
+    -- Deferred CheckPlansForCompletion can miss mounts when GetMountInfoByID(..., isCollected) is secret right after learn.
+    local data = ...
+    if data and type(data) == "table" and data.type then
+        self:TryCompletePlanFromCollectibleObtained(data)
+    end
+
+    -- Debounce full scan for plans not tied to this event (and late API consistency)
     if self.planCheckTimer then
         self.planCheckTimer:Cancel()
     end
-    
     self.planCheckTimer = C_Timer.After(0.5, function()
         self:CheckPlansForCompletion()
     end)
@@ -277,6 +395,30 @@ function WarbandNexus:OnDailyQuestProgressUpdated()
 end
 
 --[[
+    Rebuild list of plans that still need completion checks (not completed, not notified).
+    Keeps _incompleteTodoPlansList in sync after RefreshPlanCache or mid-session completions.
+]]
+function WarbandNexus:RebuildIncompleteTodoPlansList()
+    local list = self._incompleteTodoPlansList
+    if not list then
+        list = {}
+        self._incompleteTodoPlansList = list
+    else
+        for i = #list, 1, -1 do
+            list[i] = nil
+        end
+    end
+    if not self.db or not self.db.global or not self.db.global.plans then return end
+    local plans = self.db.global.plans
+    for i = 1, #plans do
+        local plan = plans[i]
+        if plan and not plan.completed and not plan.completionNotified then
+            list[#list + 1] = plan
+        end
+    end
+end
+
+--[[
     Check all active plans for completion
     Shows notifications for newly completed plans
 ]]
@@ -284,83 +426,154 @@ function WarbandNexus:CheckPlansForCompletion()
     if not self.db or not self.db.global or not self.db.global.plans then
         return
     end
-    
-    for _, plan in ipairs(self.db.global.plans) do
-        -- Skip if already completed OR already notified
-        -- This prevents showing notifications for old completed plans on login
-        if not plan.completed and not plan.completionNotified then
-            local progress = self:CheckPlanProgress(plan)
-            
-            -- If plan is now collected, show notification
-            if progress and progress.collected then
-                -- For types without their own real-time detection (title),
-                -- fire WN_COLLECTIBLE_OBTAINED so they get a toast like mounts/pets/toys
-                if plan.type == "title" then
-                    self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
-                        type = "title",
-                        id = plan.titleID,
-                        name = self:GetPlanDisplayName(plan),
-                        icon = self:GetPlanDisplayIcon(plan)
-                    })
-                end
-                
-                self:ShowPlanCompletedNotification(plan)
-                plan.completed = true -- Mark as completed
-                plan.completionNotified = true -- Mark as notified
-                plan.resolvedCollected = true -- So My Plans filter and header count hide it when Show Completed is off
-                
-                -- Fire event for UI update
-                self:SendMessage("WN_PLANS_UPDATED", {
-                    action = "progress_changed",
-                    planID = plan.id,
-                    planType = plan.type,
-                })
-            end
+
+    local list = self._incompleteTodoPlansList
+    local useList = list and #list > 0
+
+    local anyCompleted = false
+    local function processPlan(plan)
+        if not plan or plan.completed or plan.completionNotified then return end
+        local progress = self:CheckPlanProgress(plan)
+        if not (progress and progress.collected) then return end
+        if plan.type == "title" then
+            self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                type = "title",
+                id = plan.titleID,
+                name = self:GetPlanDisplayName(plan),
+                icon = self:GetPlanDisplayIcon(plan)
+            })
         end
+        self:ShowPlanCompletedNotification(plan)
+        plan.completed = true
+        plan.completionNotified = true
+        plan.resolvedCollected = true
+        self:SendMessage("WN_PLANS_UPDATED", {
+            action = "progress_changed",
+            planID = plan.id,
+            planType = plan.type,
+        })
+        anyCompleted = true
+    end
+
+    if useList then
+        for i = 1, #list do
+            processPlan(list[i])
+        end
+    else
+        for _, plan in ipairs(self.db.global.plans) do
+            processPlan(plan)
+        end
+    end
+
+    if anyCompleted then
+        self:RebuildIncompleteTodoPlansList()
     end
 end
 
 --[[
-    Check if a collected item completes an active plan
-    Called by CollectionService when a mount/pet/toy is collected
-    @param data table {type, name, id} from CollectionService
-    @return table|nil - The completed plan or nil
+    When WN_COLLECTIBLE_OBTAINED fires, complete matching To-Do plan immediately (chat + toast).
+    Payload uses type + id; plan rows use mountID, speciesID, itemID, etc.
+    @param data table e.g. { type = "mount", id = mountID, name, icon }
+    @return table|nil completed plan
 ]]
-function WarbandNexus:CheckItemForPlanCompletion(data)
-    if not self.db or not self.db.global or not self.db.global.plans then
+function WarbandNexus:TryCompletePlanFromCollectibleObtained(data)
+    if not data or type(data) ~= "table" or not data.type then return nil end
+    if not self.db or not self.db.global or not self.db.global.plans then return nil end
+
+    local function applyCollectibleCompletion(plan)
+        self:ShowPlanCompletedNotification(plan)
+        plan.completed = true
+        plan.completionNotified = true
+        plan.resolvedCollected = true
+        self:SendMessage("WN_PLANS_UPDATED", {
+            action = "progress_changed",
+            planID = plan.id,
+            planType = plan.type,
+        })
+        self:RebuildIncompleteTodoPlansList()
+        return plan
+    end
+
+    local dType = data.type
+    local idMount = data.mountID or data.id
+    local idPet = data.speciesID or data.id
+    local idToy = data.itemID or data.id
+    local idAch = data.achievementID or data.id
+    local idIll = data.illusionID or data.id
+    local idTitle = data.titleID or data.id
+
+    local function tryBucket(sub, lookupId)
+        if not sub or not lookupId then return nil end
+        local arr = sub[lookupId]
+        if not arr then return nil end
+        for i = 1, #arr do
+            local plan = arr[i]
+            if plan and not plan.completed and not plan.completionNotified and plan.type == dType then
+                return applyCollectibleCompletion(plan)
+            end
+        end
         return nil
     end
-    
-    -- Use global plans (shared across characters)
+
+    local pc = self._plansByCollectibleKey
+    if pc then
+        if dType == "illusion" then
+            local done = tryBucket(pc.illusion, idIll)
+            if done then return done end
+            if data.sourceID and data.sourceID ~= idIll then
+                done = tryBucket(pc.illusion, data.sourceID)
+                if done then return done end
+            end
+        else
+            local sub = pc[dType]
+            local lookupId = (dType == "mount" and idMount)
+                or (dType == "pet" and idPet)
+                or (dType == "toy" and idToy)
+                or (dType == "achievement" and idAch)
+                or (dType == "title" and idTitle)
+            local done = tryBucket(sub, lookupId)
+            if done then return done end
+        end
+    end
+
+    -- Fallback: full scan (unknown dType key, cold _plansByCollectibleKey, or edge match)
     for _, plan in ipairs(self.db.global.plans) do
-        if not plan.completed and not plan.completionNotified then
-            -- Check if plan matches the collected item (prefer ID matching, fall back to name)
-            if plan.type == data.type then
-                local matched = false
-                if plan.type == "mount" and plan.mountID and data.mountID then
-                    matched = (plan.mountID == data.mountID)
-                elseif plan.type == "pet" and plan.speciesID and data.speciesID then
-                    matched = (plan.speciesID == data.speciesID)
-                elseif plan.type == "toy" and plan.itemID and data.itemID then
-                    matched = (plan.itemID == data.itemID)
-                elseif plan.type == "achievement" and plan.achievementID and data.achievementID then
-                    matched = (plan.achievementID == data.achievementID)
-                elseif plan.type == "illusion" and plan.illusionID and data.illusionID then
-                    matched = (plan.illusionID == data.illusionID)
-                elseif plan.type == "title" and plan.titleID and data.titleID then
-                    matched = (plan.titleID == data.titleID)
-                elseif plan.name and data.name then
+        if not plan.completed and not plan.completionNotified and plan.type == dType then
+            local matched = false
+            if plan.type == "mount" and plan.mountID and idMount then
+                matched = (plan.mountID == idMount)
+            elseif plan.type == "pet" and plan.speciesID and idPet then
+                matched = (plan.speciesID == idPet)
+            elseif plan.type == "toy" and plan.itemID and idToy then
+                matched = (plan.itemID == idToy)
+            elseif plan.type == "achievement" and plan.achievementID and idAch then
+                matched = (plan.achievementID == idAch)
+            elseif plan.type == "illusion" and plan.illusionID and idIll then
+                matched = (plan.illusionID == idIll)
+            elseif plan.type == "illusion" and plan.sourceID and (data.sourceID or idIll) then
+                matched = (plan.sourceID == data.sourceID) or (plan.sourceID == idIll)
+            elseif plan.type == "title" and plan.titleID and idTitle then
+                matched = (plan.titleID == idTitle)
+            elseif plan.name and data.name and type(data.name) == "string" and type(plan.name) == "string" then
+                if not (issecretvalue and issecretvalue(data.name)) then
                     matched = (plan.name == data.name)
                 end
-                if matched then
-                    plan.completed = true
-                    plan.completionNotified = true
-                    return plan
-                end
+            end
+            if matched then
+                return applyCollectibleCompletion(plan)
             end
         end
     end
     return nil
+end
+
+--[[
+    Check if a collected item completes an active plan
+    @param data table from WN_COLLECTIBLE_OBTAINED or equivalent
+    @return table|nil - The completed plan or nil
+]]
+function WarbandNexus:CheckItemForPlanCompletion(data)
+    return self:TryCompletePlanFromCollectibleObtained(data)
 end
 
 --[[
@@ -1024,54 +1237,57 @@ end
     Reset all weekly vault plans (called on weekly reset)
 ]]
 function WarbandNexus:ResetWeeklyPlans()
-    if not self.db.global.plans then
+    if not self.db or not self.db.global or not self.db.global.plans then
         return
     end
-    
-    local resetCount = 0
-    
-    for _, plan in ipairs(self.db.global.plans) do
-        if plan.type == "weekly_vault" then
-            -- Reset all slots
-            for _, slot in ipairs(plan.slots.dungeon) do
-                slot.completed = false
-                slot.manualOverride = false
-            end
-            for _, slot in ipairs(plan.slots.raid) do
-                slot.completed = false
-                slot.manualOverride = false
-            end
-            for _, slot in ipairs(plan.slots.world) do
-                slot.completed = false
-                slot.manualOverride = false
-            end
-            if plan.slots.specialAssignment then
-                for _, slot in ipairs(plan.slots.specialAssignment) do
-                    slot.completed = false
-                    slot.manualOverride = false
-                end
-            end
 
-            -- Reset progress
-            plan.progress.dungeonCount = 0
-            plan.progress.raidBossCount = 0
-            plan.progress.worldActivityCount = 0
-            plan.progress.specialAssignmentCount = 0
-            plan.progress.specialAssignmentTotal = 2
-            
-            -- Reset completion flags so notification can show again next week
-            plan.completed = false
-            plan.completionNotified = false
-            
-            -- Update last reset time
-            plan.lastReset = time()
-            
-            resetCount = resetCount + 1
+    local resetCount = 0
+
+    local function resetOneVaultPlan(plan)
+        if not plan or plan.type ~= PLAN_TYPES.WEEKLY_VAULT then return end
+        for _, slot in ipairs(plan.slots.dungeon) do
+            slot.completed = false
+            slot.manualOverride = false
+        end
+        for _, slot in ipairs(plan.slots.raid) do
+            slot.completed = false
+            slot.manualOverride = false
+        end
+        for _, slot in ipairs(plan.slots.world) do
+            slot.completed = false
+            slot.manualOverride = false
+        end
+        if plan.slots.specialAssignment then
+            for _, slot in ipairs(plan.slots.specialAssignment) do
+                slot.completed = false
+                slot.manualOverride = false
+            end
+        end
+        plan.progress.dungeonCount = 0
+        plan.progress.raidBossCount = 0
+        plan.progress.worldActivityCount = 0
+        plan.progress.specialAssignmentCount = 0
+        plan.progress.specialAssignmentTotal = 2
+        plan.completed = false
+        plan.completionNotified = false
+        plan.lastReset = time()
+        resetCount = resetCount + 1
+    end
+
+    local list = self._weeklyVaultPlansList
+    if list and #list > 0 then
+        for i = 1, #list do
+            resetOneVaultPlan(list[i])
+        end
+    else
+        for _, plan in ipairs(self.db.global.plans) do
+            resetOneVaultPlan(plan)
         end
     end
-    
+
     if resetCount > 0 then
         self:Print("|cff00ff00" .. string.format((ns.L and ns.L["VAULT_PLANS_RESET"]) or "Weekly Great Vault plans have been reset! (%d plan%s)", resetCount, (resetCount > 1 and "s" or "")) .. "|r")
+        self:RefreshPlanCache()
     end
 end
 
@@ -1132,7 +1348,6 @@ function WarbandNexus:GetWeeklyResetTime()
     return time(resetDate)
 end
 
--- MOVED: FormatTimeUntilReset() → Utilities.lua
 function WarbandNexus:FormatTimeUntilReset(resetTime)
     return ns.Utilities:FormatTimeUntilReset(resetTime)
 end
@@ -1144,18 +1359,34 @@ end
     @return table|nil - Existing plan if found, nil otherwise
 ]]
 function WarbandNexus:HasActiveWeeklyPlan(characterName, characterRealm)
-    if not self.db.global.plans then
+    if not self.db or not self.db.global or not self.db.global.plans then
         return nil
     end
-    
+
+    local getKey = ns.Utilities and ns.Utilities.GetCharacterKey
+    if getKey then
+        local pk = getKey(characterName, characterRealm)
+        local vlist = pk and self._weeklyVaultPlansByCharKey and self._weeklyVaultPlansByCharKey[pk]
+        if vlist then
+            for i = 1, #vlist do
+                local plan = vlist[i]
+                if plan and plan.type == PLAN_TYPES.WEEKLY_VAULT
+                    and plan.characterName == characterName
+                    and plan.characterRealm == characterRealm then
+                    return plan
+                end
+            end
+        end
+    end
+
     for _, plan in ipairs(self.db.global.plans) do
-        if plan.type == "weekly_vault" and 
-           plan.characterName == characterName and 
-           plan.characterRealm == characterRealm then
+        if plan.type == "weekly_vault" and
+            plan.characterName == characterName and
+            plan.characterRealm == characterRealm then
             return plan
         end
     end
-    
+
     return nil
 end
 
@@ -1164,30 +1395,42 @@ end
     NOTE: Named OnPvEUpdateCheckPlans to avoid collision with PvECacheService:OnVaultDataReceived
 ]]
 function WarbandNexus:OnPvEUpdateCheckPlans()
-    if not self.db.global.plans then
+    if not self.db or not self.db.global or not self.db.global.plans then
         return
     end
-    
-    -- Get current character info
+
     local currentName = UnitName("player")
     local currentRealm = GetRealmName()
-    
-    -- Debug: Log event
+
     self:Debug("PvE Update - checking vault plans for: " .. currentName .. "-" .. currentRealm)
-    
-    -- Update weekly plans for current character
+
+    local currentKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local vaultList = currentKey and self._weeklyVaultPlansByCharKey and self._weeklyVaultPlansByCharKey[currentKey]
+
+    if vaultList then
+        for i = 1, #vaultList do
+            local plan = vaultList[i]
+            if plan and plan.type == PLAN_TYPES.WEEKLY_VAULT
+                and plan.characterName == currentName
+                and plan.characterRealm == currentRealm then
+                self:Debug("Updating weekly plan progress...")
+                self:UpdateWeeklyPlanProgress(plan)
+            end
+        end
+        return
+    end
+
     for _, plan in ipairs(self.db.global.plans) do
-        if plan.type == "weekly_vault" and 
-           plan.characterName == currentName and 
-           plan.characterRealm == currentRealm then
+        if plan.type == "weekly_vault" and
+            plan.characterName == currentName and
+            plan.characterRealm == currentRealm then
             self:Debug("Updating weekly plan progress...")
             self:UpdateWeeklyPlanProgress(plan)
         end
     end
 end
 
--- OnPlayerEnteringWorld: MOVED to Core.lua (single owner — prevents method collision)
--- Plans weekly/recurring reset checks are called from Core.lua's handler
+
 
 ---Check if a Blizzard daily reset has occurred since the given timestamp.
 ---Uses C_DateAndTime.GetSecondsUntilDailyReset to derive the last reset moment.
@@ -1260,20 +1503,29 @@ end
 ]]
 function WarbandNexus:CheckWeeklyReset()
     local resetTime = self:GetWeeklyResetTime()
-    local currentTime = time()
-    
-    -- Check each weekly plan to see if it needs reset
-    if not self.db.global.plans then
+
+    if not self.db or not self.db.global or not self.db.global.plans then
         return
     end
-    
+
+    local threshold = resetTime - 7 * 24 * 60 * 60
+    local list = self._weeklyVaultPlansList
+    if list and #list > 0 then
+        for i = 1, #list do
+            local plan = list[i]
+            if plan and plan.type == PLAN_TYPES.WEEKLY_VAULT and plan.lastReset < threshold then
+                self:ResetWeeklyPlans()
+                return
+            end
+        end
+        return
+    end
+
     for _, plan in ipairs(self.db.global.plans) do
         if plan.type == "weekly_vault" then
-            -- Check if last reset was before the most recent Tuesday reset
-            if plan.lastReset < (resetTime - 7 * 24 * 60 * 60) then
-                -- Plan needs reset
+            if plan.lastReset < threshold then
                 self:ResetWeeklyPlans()
-                return -- Only reset once
+                return
             end
         end
     end
@@ -1550,27 +1802,73 @@ function WarbandNexus:GetActivePlans(planType)
 end
 
 --[[
+    Total plan rows in db.global.plans + db.global.customPlans (no merged table allocation).
+]]
+function WarbandNexus:GetActivePlanTotalCount()
+    if not self.db or not self.db.global then return 0 end
+    local n = 0
+    if self.db.global.plans then
+        n = n + #self.db.global.plans
+    end
+    if self.db.global.customPlans then
+        n = n + #self.db.global.customPlans
+    end
+    return n
+end
+
+--[[
+    Header / summary: incomplete non–daily_quests plans (same rules as Plans tab title count).
+]]
+function WarbandNexus:GetActiveNonDailyIncompleteCount()
+    if not self.db or not self.db.global then return 0 end
+    local n = 0
+    local function tally(list)
+        if not list then return end
+        for i = 1, #list do
+            local plan = list[i]
+            if plan and plan.type ~= "daily_quests" then
+                if not self:IsActivePlanComplete(plan) then
+                    n = n + 1
+                end
+            end
+        end
+    end
+    tally(self.db.global.plans)
+    tally(self.db.global.customPlans)
+    return n
+end
+
+--[[
     Get a specific plan by ID
     @param planID number - Plan ID
     @return table|nil - Plan data or nil
 ]]
 function WarbandNexus:GetPlanByID(planID)
-    if self.db.global.plans then
-        for _, plan in ipairs(self.db.global.plans) do
-            if plan.id == planID then
-                return plan
+    if not planID then return nil end
+
+    local byId = self._plansById
+    if byId then
+        local p = byId[planID]
+        if p then return p end
+    end
+
+    if self.db and self.db.global then
+        if self.db.global.plans then
+            for _, plan in ipairs(self.db.global.plans) do
+                if plan.id == planID then
+                    return plan
+                end
+            end
+        end
+        if self.db.global.customPlans then
+            for _, plan in ipairs(self.db.global.customPlans) do
+                if plan.id == planID then
+                    return plan
+                end
             end
         end
     end
-    
-    if self.db.global.customPlans then
-        for _, plan in ipairs(self.db.global.customPlans) do
-            if plan.id == planID then
-                return plan
-            end
-        end
-    end
-    
+
     return nil
 end
 
@@ -1853,34 +2151,7 @@ local function StripAllEscapes(text)
 end
 
 -- ============================================================================
--- DEAD CODE REMOVED (v2.0 Cleanup)
--- ============================================================================
---[[
-    The following currency parsing functions were never used:
-    - FindCurrencyByName()
-    - GetPlayerCurrencyAmount()
-    - IdentifyCurrencyFromVendorZone()
-    - ExtractCurrencyFromTexture()
-    - COMMON_CURRENCIES table
-    - VENDOR_CURRENCY_MAP table
-    - CURRENCY_TEXTURE_MAP table
-    
-    These were likely planned for a vendor/currency tracking feature
-    that was never implemented. Removed ~300 lines of dead code.
-]]
 
---[[
-    DEPRECATED COLLECTION GETTERS (REMOVED - USE CollectionService INSTEAD)
-    ============================================================================
-    
-    The following functions have been REMOVED to prevent override conflicts:
-    - GetUncollectedMounts   → Implemented in CollectionService.lua
-    - GetUncollectedPets     → Implemented in CollectionService.lua
-    - GetUncollectedToys     → Implemented in CollectionService.lua
-    
-    These functions were OVERRIDING CollectionService due to .toc load order.
-    PlansUI now correctly uses CollectionService implementations.
-]]
 
 -- ============================================================================
 -- RECIPE MATERIAL CHECKER
@@ -2041,7 +2312,7 @@ function WarbandNexus:CheckPlanProgress(plan)
             local name, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(plan.mountID)
             -- Midnight 12.0: isCollected may be a secret value; do not use as boolean directly
             if issecretvalue and isCollected and issecretvalue(isCollected) then
-                progress.collected = false
+                progress.collected = (plan.resolvedCollected == true) or (plan.completed == true)
             else
                 progress.collected = isCollected == true
             end
@@ -2077,10 +2348,14 @@ function WarbandNexus:CheckPlanProgress(plan)
         end
         
     elseif plan.type == PLAN_TYPES.ACHIEVEMENT then
-        -- Check if achievement is completed
+        -- Check if achievement is completed (4th return); guard secret values (Midnight)
         if plan.achievementID then
             local _, _, _, completed = GetAchievementInfo(plan.achievementID)
-            progress.collected = completed or false
+            if issecretvalue and completed ~= nil and issecretvalue(completed) then
+                progress.collected = (plan.resolvedCollected == true) or (plan.completed == true)
+            else
+                progress.collected = completed == true
+            end
         end
         
     elseif plan.type == PLAN_TYPES.ILLUSION then
@@ -2117,6 +2392,42 @@ function WarbandNexus:CheckPlanProgress(plan)
     end
     
     return progress
+end
+
+--[[
+    Whether an active To-Do plan counts as "done" for filtering (Show Completed on/off)
+    and header counts. Uses live CheckPlanProgress where applicable so UI matches the game
+    even if resolvedCollected lagged after login.
+]]
+function WarbandNexus:IsActivePlanComplete(plan)
+    if not plan then return false end
+    if plan.type == PLAN_TYPES.WEEKLY_VAULT or plan.type == "weekly_vault" then
+        return plan.fullyCompleted == true
+    end
+    if plan.type == "daily_quests" then
+        local totalQuests, completedQuests = 0, 0
+        for cat, questList in pairs(plan.quests or {}) do
+            if plan.questTypes and plan.questTypes[cat] then
+                for _, quest in ipairs(questList) do
+                    if quest and not quest.isSubQuest then
+                        totalQuests = totalQuests + 1
+                        if quest.isComplete then
+                            completedQuests = completedQuests + 1
+                        end
+                    end
+                end
+            end
+        end
+        return totalQuests > 0 and completedQuests == totalQuests
+    end
+    local prog = self:CheckPlanProgress(plan)
+    if prog and prog.collected then
+        return true
+    end
+    if plan.completed == true then
+        return true
+    end
+    return false
 end
 
 -- ============================================================================

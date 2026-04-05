@@ -12,12 +12,7 @@
 local ADDON_NAME, ns = ...
 
 -- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
 
 -- Import shared UI components
@@ -55,7 +50,8 @@ function SearchResultsRenderer:PrepareContainer(container)
     -- Clear remaining children EXCEPT emptyStateContainer
     local bin = ns.UI_RecycleBin
     local children = {container:GetChildren()}
-    for _, child in ipairs(children) do
+    for i = 1, #children do
+        local child = children[i]
         if child ~= container.emptyStateContainer then
             child:Hide()
             if bin then child:SetParent(bin) else child:SetParent(nil) end
@@ -80,9 +76,9 @@ function SearchResultsRenderer:RenderEmptyState(addon, container, searchText, ta
     
     local isSearch = searchText and searchText ~= ""
     
-    -- Use shared DrawEmptyState function
+    -- Use shared DrawEmptyState function (tabContext: e.g. plans_achievement, items, storage)
     if DrawEmptyState then
-        return DrawEmptyState(addon, container, 0, isSearch, searchText)
+        return DrawEmptyState(addon, container, 0, isSearch, searchText, tabContext)
     else
         DebugPrint("[SearchResultsRenderer] ERROR: DrawEmptyState not found in namespace")
         return 0

@@ -6,6 +6,7 @@
 ]]
 
 local addonName, ns = ...
+local twipe = table.wipe
 
 local Tracker = {}
 ns.LoadingTracker = Tracker
@@ -15,6 +16,8 @@ local orderedKeys = {}
 local totalOps = 0
 local completedOps = 0
 local allComplete = false
+-- Reused list for GetPendingLabels(); do not cache the return value across calls.
+local pendingLabelsScratch = {}
 
 function Tracker:Register(id, label)
     if operations[id] then return end
@@ -52,12 +55,17 @@ function Tracker:IsComplete()
     return allComplete or totalOps == 0
 end
 
+---@return table labels Ephemeral array; same table on every call (next call overwrites).
 function Tracker:GetPendingLabels()
-    local pending = {}
-    for _, id in ipairs(orderedKeys) do
-        if not operations[id].complete then
-            pending[#pending + 1] = operations[id].label
+    twipe(pendingLabelsScratch)
+    local n = 0
+    for i = 1, #orderedKeys do
+        local id = orderedKeys[i]
+        local op = operations[id]
+        if op and not op.complete then
+            n = n + 1
+            pendingLabelsScratch[n] = op.label
         end
     end
-    return pending
+    return pendingLabelsScratch
 end

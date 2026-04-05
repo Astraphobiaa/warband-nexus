@@ -7,6 +7,93 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- AceEvent identity: WN_PLANS_UPDATED → refresh daily-plan presence cache (one handler)
+local DailyQuestManagerEvents = {}
+
+--- Rebuild `_hasDailyQuestPlanCache` and `_dailyQuestPlansByCharKey` in one pass over `db.global.plans`
+local function SyncDailyQuestPlanIndexes()
+    WarbandNexus._hasDailyQuestPlanCache = false
+    local idx = WarbandNexus._dailyQuestPlansByCharKey
+    if not idx then
+        idx = {}
+        WarbandNexus._dailyQuestPlansByCharKey = idx
+    else
+        for k in pairs(idx) do
+            idx[k] = nil
+        end
+    end
+
+    local db = WarbandNexus.db
+    if not db or not db.global or not db.global.plans then return end
+    local plans = db.global.plans
+    local getKey = ns.Utilities and ns.Utilities.GetCharacterKey
+    if not getKey then return end
+
+    for i = 1, #plans do
+        local p = plans[i]
+        if p and p.type == "daily_quests" then
+            WarbandNexus._hasDailyQuestPlanCache = true
+            local pk = getKey(p.characterName, p.characterRealm)
+            if pk and pk ~= "" then
+                local arr = idx[pk]
+                if not arr then
+                    arr = {}
+                    idx[pk] = arr
+                end
+                arr[#arr + 1] = p
+            end
+        end
+    end
+end
+
+local function GetDailyQuestPlansForCharKey(charKey)
+    if not charKey or charKey == "" then return nil end
+    local idx = WarbandNexus._dailyQuestPlansByCharKey
+    if not idx then return nil end
+    return idx[charKey]
+end
+
+--- Resolve daily_quests plan for name+realm; index first, linear fallback (same-frame create before debounced rebuild)
+local function FindDailyPlanForCharacter(characterName, characterRealm)
+    local db = WarbandNexus.db
+    if not db or not db.global or not db.global.plans then return nil end
+    local plans = db.global.plans
+    local getKey = ns.Utilities and ns.Utilities.GetCharacterKey
+    if not getKey then return nil end
+    local pk = getKey(characterName, characterRealm)
+    local list = GetDailyQuestPlansForCharKey(pk)
+    if list then
+        for i = 1, #list do
+            local plan = list[i]
+            if plan and plan.type == "daily_quests"
+                and plan.characterName == characterName
+                and plan.characterRealm == characterRealm then
+                return plan
+            end
+        end
+    end
+    for i = 1, #plans do
+        local plan = plans[i]
+        if plan and plan.type == "daily_quests"
+            and plan.characterName == characterName
+            and plan.characterRealm == characterRealm then
+            return plan
+        end
+    end
+    return nil
+end
+
+-- UpdateDailyPlanProgress fires WN_PLANS_UPDATED per plan; coalesce index rebuild to one pass per frame burst
+local dailyQuestIndexRebuildScheduled = false
+local function RequestDailyQuestIndexRebuild()
+    if dailyQuestIndexRebuildScheduled then return end
+    dailyQuestIndexRebuildScheduled = true
+    C_Timer.After(0, function()
+        dailyQuestIndexRebuildScheduled = false
+        SyncDailyQuestPlanIndexes()
+    end)
+end
+
 -- ============================================================================
 -- MIDNIGHT ZONE DATA
 -- ============================================================================
@@ -824,29 +911,11 @@ function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes)
 end
 
 function WarbandNexus:HasActiveDailyPlan(characterName, characterRealm)
-    if not self.db.global.plans then return false end
-    for i = 1, #self.db.global.plans do
-        local plan = self.db.global.plans[i]
-        if plan.type == "daily_quests"
-            and plan.characterName == characterName
-            and plan.characterRealm == characterRealm then
-            return true
-        end
-    end
-    return false
+    return FindDailyPlanForCharacter(characterName, characterRealm) ~= nil
 end
 
 function WarbandNexus:GetDailyPlan(characterName, characterRealm)
-    if not self.db.global.plans then return nil end
-    for i = 1, #self.db.global.plans do
-        local plan = self.db.global.plans[i]
-        if plan.type == "daily_quests"
-            and plan.characterName == characterName
-            and plan.characterRealm == characterRealm then
-            return plan
-        end
-    end
-    return nil
+    return FindDailyPlanForCharacter(characterName, characterRealm)
 end
 
 function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
@@ -933,20 +1002,28 @@ function WarbandNexus:InitializeDailyQuestManager()
     self:RegisterEvent("QUEST_LOG_UPDATE", "OnDailyQuestUpdate")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnDailyQuestLogin")
 
+    SyncDailyQuestPlanIndexes()
+    WarbandNexus.RegisterMessage(DailyQuestManagerEvents, "WN_PLANS_UPDATED", function()
+        RequestDailyQuestIndexRebuild()
+    end)
+
     -- Periodic check for weekly reset: when reset occurs, refresh daily plans
     -- (expired weeklies are removed; new week's quests appear)
     if C_Timer and C_Timer.NewTicker then
         self.dailyQuestWeeklyCheckTime = time()
         C_Timer.NewTicker(60, function()
-            if not self.HasWeeklyResetOccurredSince then return end
+            if not self.db or not self.db.global then return end
+            if ns.Utilities and ns.Utilities.IsModuleEnabled and not ns.Utilities:IsModuleEnabled("plans") then return end
             if not self.db.global.plans then return end
+            if not WarbandNexus._hasDailyQuestPlanCache then return end
+            if not self.HasWeeklyResetOccurredSince then return end
             if self:HasWeeklyResetOccurredSince(self.dailyQuestWeeklyCheckTime or 0) then
                 self.dailyQuestWeeklyCheckTime = time()
                 local currentKey = ns.Utilities:GetCharacterKey()
-                for _, plan in ipairs(self.db.global.plans) do
-                    local planKey = ns.Utilities:GetCharacterKey(plan.characterName, plan.characterRealm)
-                    if plan.type == "daily_quests" and planKey == currentKey then
-                        self:UpdateDailyPlanProgress(plan, true)
+                local dailyList = GetDailyQuestPlansForCharKey(currentKey)
+                if dailyList then
+                    for i = 1, #dailyList do
+                        self:UpdateDailyPlanProgress(dailyList[i], true)
                     end
                 end
                 if self.SendMessage then
@@ -958,13 +1035,14 @@ function WarbandNexus:InitializeDailyQuestManager()
 end
 
 function WarbandNexus:OnDailyQuestLogin()
-    if not self.db.global.plans then return end
+    SyncDailyQuestPlanIndexes()
+    if not self.db or not self.db.global or not self.db.global.plans then return end
     C_Timer.After(3, function()
         local currentKey = ns.Utilities:GetCharacterKey()
-        for _, plan in ipairs(self.db.global.plans) do
-            local planKey = ns.Utilities:GetCharacterKey(plan.characterName, plan.characterRealm)
-            if plan.type == "daily_quests" and planKey == currentKey then
-                self:UpdateDailyPlanProgress(plan, true)
+        local dailyList = GetDailyQuestPlansForCharKey(currentKey)
+        if dailyList then
+            for i = 1, #dailyList do
+                self:UpdateDailyPlanProgress(dailyList[i], true)
             end
         end
     end)
@@ -972,7 +1050,7 @@ end
 
 function WarbandNexus:OnDailyQuestCompleted(event, questID)
     ns.DebugPrint("|cff9370DB[DailyQuest]|r QUEST_TURNED_IN questID=" .. tostring(questID))
-    if not self.db.global.plans then return end
+    if not self.db or not self.db.global or not self.db.global.plans then return end
 
     -- Cancel any pending QUEST_LOG_UPDATE rescan and block new ones briefly.
     -- QUEST_LOG_UPDATE fires almost simultaneously with QUEST_TURNED_IN but the
@@ -984,10 +1062,11 @@ function WarbandNexus:OnDailyQuestCompleted(event, questID)
     self.questTurnInGuard = GetTime()
 
     local currentKey = ns.Utilities:GetCharacterKey()
+    local dailyList = GetDailyQuestPlansForCharKey(currentKey)
 
-    for _, plan in ipairs(self.db.global.plans) do
-        local planKey = ns.Utilities:GetCharacterKey(plan.characterName, plan.characterRealm)
-        if plan.type == "daily_quests" and planKey == currentKey then
+    if dailyList then
+        for pi = 1, #dailyList do
+            local plan = dailyList[pi]
             local completedCategory, completedTitle
 
             -- Immediately mark the quest complete in current plan data
@@ -1029,7 +1108,7 @@ end
 
 function WarbandNexus:OnDailyQuestUpdate()
     ns.DebugPrint("|cff9370DB[DailyQuest]|r QUEST_LOG_UPDATE triggered")
-    if not self.db.global.plans then return end
+    if not self.db or not self.db.global or not self.db.global.plans then return end
 
     -- Skip if a quest was just turned in (prevents race where flags aren't set yet)
     if self.questTurnInGuard and (GetTime() - self.questTurnInGuard) < 2 then return end
@@ -1039,11 +1118,10 @@ function WarbandNexus:OnDailyQuestUpdate()
     self.questUpdateTimer = C_Timer.After(1, function()
         self.questUpdateTimer = nil
         local currentKey = ns.Utilities:GetCharacterKey()
-
-        for _, plan in ipairs(self.db.global.plans) do
-            local planKey = ns.Utilities:GetCharacterKey(plan.characterName, plan.characterRealm)
-            if plan.type == "daily_quests" and planKey == currentKey then
-                self:UpdateDailyPlanProgress(plan, true)
+        local dailyList = GetDailyQuestPlansForCharKey(currentKey)
+        if dailyList then
+            for i = 1, #dailyList do
+                self:UpdateDailyPlanProgress(dailyList[i], true)
             end
         end
 

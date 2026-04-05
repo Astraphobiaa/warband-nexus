@@ -79,14 +79,13 @@ end
 
 --============================================================================
 -- EVENTS
+-- Uses WN_MONEY_UPDATED message (fired by EventManager.OnMoneyChanged)
+-- instead of registering PLAYER_MONEY/ACCOUNT_MONEY directly.
+-- Core.lua owns both events via AceEvent and routes them to OnMoneyChanged,
+-- which fires WN_MONEY_UPDATED after processing.
 --============================================================================
 
-function WarbandNexus:PLAYER_MONEY()
-    if not WarbandNexus.bankIsOpen then return end
-    PerformGoldManagement()
-end
-
-function WarbandNexus:ACCOUNT_MONEY()
+function WarbandNexus:WN_MONEY_UPDATED()
     if not WarbandNexus.bankIsOpen then return end
     PerformGoldManagement()
 end
@@ -103,8 +102,7 @@ end
 --============================================================================
 
 function WarbandNexus:InitializeGoldManagementService()
-    self:RegisterEvent("PLAYER_MONEY")
-    self:RegisterEvent("ACCOUNT_MONEY")
+    self:RegisterMessage("WN_MONEY_UPDATED")
     self:RegisterMessage("WN_GOLD_MANAGEMENT_CHANGED")
 end
 

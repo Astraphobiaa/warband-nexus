@@ -62,7 +62,7 @@ Modules\CurrencyCacheService.lua
 Modules\PvECacheService.lua
 Modules\ItemsCacheService.lua
 Modules\NotificationManager.lua
-Modules\ChatFilter.lua
+Modules\ChatIntegrationService.lua
 Modules\ChatMessageService.lua
 
 # Modules (Features)

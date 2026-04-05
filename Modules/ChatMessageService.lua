@@ -7,9 +7,8 @@
     - DB-first: Reputation events carry full display data from PROCESSED DB (after FullScan).
     - Currency events carry {currencyID, gainAmount}; display data from DB.
     - FIFO message queue: ensures smooth output flow (0.15s per message), no overlap or loss.
-    - Per-panel routing: messages are sent to all chat frames that have the relevant
-      Blizzard message group enabled (via ChatFrame_ContainsMessageGroup /
-      chatFrame.messageTypeList), preserving the user's per-panel chat configuration.
+    - Per-panel routing: ns.ChatOutput only (no raw DEFAULT_CHAT_FRAME:AddMessage) so
+      Chattynator’s DEFAULT hook sees Interface/AddOns/WarbandNexus/ on the stack.
     
     Color Scheme:
     - [WN-Currency] prefix: WN brand purple (#9370DB)
@@ -41,13 +40,10 @@ local COLOR_REP_PROGRESS = "ffff00"
 
 local QUEUE_INTERVAL = 0.15
 
--- Blizzard message group names for per-panel routing via ChatFrame_ContainsMessageGroup
--- LOOT = try counter (mount try, found/obtained/caught/reset) only
--- CURRENCY = currency gain messages only
--- COMBAT_FACTION_CHANGE = reputation messages only
-local ROUTE_GROUP_LOOT       = "LOOT"
-local ROUTE_GROUP_CURRENCY   = "CURRENCY"
-local ROUTE_GROUP_REPUTATION = "COMBAT_FACTION_CHANGE"
+local ChatOutput = ns.ChatOutput
+local ROUTE_GROUP_LOOT       = ChatOutput and ChatOutput.MESSAGE_GROUPS.LOOT or "LOOT"
+local ROUTE_GROUP_CURRENCY   = ChatOutput and ChatOutput.MESSAGE_GROUPS.CURRENCY or "CURRENCY"
+local ROUTE_GROUP_REPUTATION = ChatOutput and ChatOutput.MESSAGE_GROUPS.REPUTATION or "COMBAT_FACTION_CHANGE"
 
 -- ============================================================================
 -- HELPER FUNCTIONS
@@ -90,104 +86,6 @@ local function GetQualityHex(quality)
 end
 
 -- ============================================================================
--- PER-PANEL MESSAGE ROUTING
--- ============================================================================
-
----Check if a chat frame has a Blizzard message group enabled.
----Uses ChatFrame_ContainsMessageGroup (checks frame.messageTypeList),
----which correctly reflects the user's per-panel chat settings regardless
----of which tab is currently active or visible.
----@param frame table ChatFrame
----@param group string Message group name (e.g., "CURRENCY", "COMBAT_FACTION_CHANGE")
----@return boolean
-local function FrameHasMessageGroup(frame, group)
-    if not frame then return false end
-    if ChatFrame_ContainsMessageGroup then
-        return ChatFrame_ContainsMessageGroup(frame, group) == true
-    end
-    if frame.messageTypeList then
-        for i = 1, #frame.messageTypeList do
-            if frame.messageTypeList[i] == group then
-                return true
-            end
-        end
-    end
-    return false
-end
-
----Check if a chat frame has any of the given message groups enabled.
----@param frame table ChatFrame
----@param groups table Array of message group names
----@return boolean
-local function FrameHasAnyMessageGroup(frame, groups)
-    if not frame or not groups then return false end
-    for j = 1, #groups do
-        if FrameHasMessageGroup(frame, groups[j]) then
-            return true
-        end
-    end
-    return false
-end
-
----Send a message to all chat frames that have the specified message group
----enabled. Falls back to DEFAULT_CHAT_FRAME if no frames matched
----(e.g., user disabled the category on all panels).
----@param message string Formatted message to display
----@param group string Message group name (e.g., "CURRENCY", "COMBAT_FACTION_CHANGE")
-local function SendToFramesWithGroup(message, group)
-    local sent = false
-    local numWindows = NUM_CHAT_WINDOWS or 10
-    for i = 1, numWindows do
-        local frame = _G["ChatFrame" .. i]
-        if frame and frame.AddMessage and FrameHasMessageGroup(frame, group) then
-            frame:AddMessage(message)
-            sent = true
-        end
-    end
-    if not sent then
-        local default = DEFAULT_CHAT_FRAME
-        if default and default.AddMessage then
-            default:AddMessage(message)
-        end
-    end
-end
-
----Send a message to all chat frames that have ANY of the given message groups
----enabled (e.g. Loot, Currency, Reputation). Used for try counter messages so
----they appear on every tab that shows loot/rep/currency; switching tabs shows the same messages.
----@param message string Formatted message to display
----@param groups table Array of message group names (e.g. {"LOOT", "CURRENCY", "COMBAT_FACTION_CHANGE"})
-local function SendToFramesWithAnyGroup(message, groups)
-    if not groups or #groups == 0 then
-        local default = DEFAULT_CHAT_FRAME
-        if default and default.AddMessage then default:AddMessage(message) end
-        return
-    end
-    local sent = false
-    local numWindows = NUM_CHAT_WINDOWS or 10
-    for i = 1, numWindows do
-        local frame = _G["ChatFrame" .. i]
-        if frame and frame.AddMessage and FrameHasAnyMessageGroup(frame, groups) then
-            frame:AddMessage(message)
-            sent = true
-        end
-    end
-    if not sent then
-        local default = DEFAULT_CHAT_FRAME
-        if default and default.AddMessage then
-            default:AddMessage(message)
-        end
-    end
-end
-
----Public API for other modules: send try counter messages (mount try, found/obtained/
----caught/reset, instance drops, skip messages) only to chat frames that have LOOT enabled.
----Reputation and Currency use their own groups (COMBAT_FACTION_CHANGE, CURRENCY).
-ns.SendToChatFramesLootRepCurrency = function(message)
-    SendToFramesWithGroup(message, ROUTE_GROUP_LOOT)
-end
-
--- ============================================================================
 -- MESSAGE QUEUE (FIFO — prevents overlap, ensures smooth flow)
 -- ============================================================================
 
@@ -203,7 +101,11 @@ local function QueueMessage(message, group)
     if not isProcessing then
         isProcessing = true
         local first = table.remove(messageQueue, 1)
-        if first then SendToFramesWithGroup(first.text, first.group) end
+        if first then
+            if ChatOutput and ChatOutput.SendToFramesWithGroup then
+                ChatOutput.SendToFramesWithGroup(first.text, first.group)
+            end
+        end
         
         if #messageQueue > 0 then
             local function ProcessNext()
@@ -212,7 +114,11 @@ local function QueueMessage(message, group)
                     return
                 end
                 local entry = table.remove(messageQueue, 1)
-                if entry then SendToFramesWithGroup(entry.text, entry.group) end
+                if entry then
+                    if ChatOutput and ChatOutput.SendToFramesWithGroup then
+                        ChatOutput.SendToFramesWithGroup(entry.text, entry.group)
+                    end
+                end
                 
                 if #messageQueue > 0 then
                     C_Timer.After(QUEUE_INTERVAL, ProcessNext)
