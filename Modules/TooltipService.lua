@@ -1149,6 +1149,34 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
             end
         end
 
+        -- DB may tag teachable collectibles as generic "item"; align collected with journal/toy APIs
+        if drop.type == "item" and not collected and drop.itemID then
+            if PlayerHasToy then
+                local okToy, hasToy = pcall(PlayerHasToy, drop.itemID)
+                if okToy and hasToy == true and not (issecretvalue and issecretvalue(hasToy)) then
+                    collected = true
+                end
+            end
+            if not collected and C_MountJournal and C_MountJournal.GetMountFromItem then
+                local okMid, mid = pcall(C_MountJournal.GetMountFromItem, drop.itemID)
+                if okMid and mid and mid > 0 and not (issecretvalue and issecretvalue(mid)) then
+                    local ok2, _, _, _, _, _, _, _, _, _, _, isColl = pcall(C_MountJournal.GetMountInfoByID, mid)
+                    if ok2 and isColl == true and not (issecretvalue and issecretvalue(isColl)) then
+                        collected = true
+                    end
+                end
+            end
+            if not collected and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                local ok1, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, drop.itemID)
+                if ok1 and specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
+                    local ok2, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, specID)
+                    if ok2 and numCollected and not (issecretvalue and issecretvalue(numCollected)) and numCollected > 0 then
+                        collected = true
+                    end
+                end
+            end
+        end
+
         -- Check repeatable and guaranteed flags
         -- If the DB sets repeatable explicitly (true/false), honor it — do not override with global index
         -- (avoids wrong "Repeatable" UI when another source or stale index disagrees).
@@ -1228,7 +1256,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 isPlanned = WarbandNexus:IsItemPlanned(drop.type, drop.itemID)
             end
         end
-        if isPlanned then
+        if isPlanned and not collected then
             local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
             displayLink = displayLink .. " |cffffcc00(" .. plannedWord .. ")|r"
         end
@@ -1246,10 +1274,10 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 local yieldCollected = false
                 if yield.type == "mount" and yield.itemID then
                     if C_MountJournal and C_MountJournal.GetMountFromItem then
-                        local mountID = C_MountJournal.GetMountFromItem(yield.itemID)
-                        if mountID and not (issecretvalue and issecretvalue(mountID)) then
-                            local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-                            if not (issecretvalue and isCollected and issecretvalue(isCollected)) then
+                        local okMid, mountID = pcall(C_MountJournal.GetMountFromItem, yield.itemID)
+                        if okMid and mountID and not (issecretvalue and issecretvalue(mountID)) then
+                            local okInfo, _, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, mountID)
+                            if okInfo and not (issecretvalue and isCollected and issecretvalue(isCollected)) then
                                 yieldCollected = isCollected == true
                             end
                         end
@@ -1302,7 +1330,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                     or yield.type == "toy" and "Toy"
                     or ""
                 local yieldSuffix = ""
-                if yieldPlanned then
+                if yieldPlanned and not yieldCollected then
                     local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
                     yieldSuffix = " |cffffcc00(" .. plannedWord .. ")|r"
                 end
@@ -1496,6 +1524,36 @@ function TooltipService:InitializeGameTooltipHook()
         local itemID = data and data.id
         if not itemID then return end
 
+        -- True if this item grants a toy/mount/pet the player already owns (hide "(Planned)" when complete)
+        local function ItemTooltipCollectibleOwned(id)
+            if not id then return false end
+            if PlayerHasToy then
+                local okToy, hasToy = pcall(PlayerHasToy, id)
+                if okToy and hasToy == true and not (issecretvalue and issecretvalue(hasToy)) then
+                    return true
+                end
+            end
+            if C_MountJournal and C_MountJournal.GetMountFromItem then
+                local ok1, mountID = pcall(C_MountJournal.GetMountFromItem, id)
+                if ok1 and mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
+                    local ok2, _, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, mountID)
+                    if ok2 and isCollected == true and not (issecretvalue and issecretvalue(isCollected)) then
+                        return true
+                    end
+                end
+            end
+            if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                local ok1, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, id)
+                if ok1 and specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
+                    local ok2, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, specID)
+                    if ok2 and numCollected and not (issecretvalue and issecretvalue(numCollected)) and numCollected > 0 then
+                        return true
+                    end
+                end
+            end
+            return false
+        end
+
         local planned = false
 
         -- Check direct itemID (covers toys, generic items, any plan with itemID)
@@ -1521,7 +1579,7 @@ function TooltipService:InitializeGameTooltipHook()
             end
         end
 
-        if planned then
+        if planned and not ItemTooltipCollectibleOwned(itemID) then
             local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
             tooltip:AddLine("|cffffcc00(" .. plannedWord .. ")|r")
             tooltip:Show()

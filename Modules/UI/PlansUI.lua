@@ -2416,6 +2416,9 @@ end
 
 -- Phase 4.4: Performance limit for browse results rendering
 local MAX_BROWSE_RESULTS = 100
+-- Collected fetch for Plans browse: Show Completed filters collected rows by isPlanned. A low cap (e.g. 50)
+-- leaves tabs empty when the user's planned-completed entries are not among the first N collected (Achievements already used 99999).
+local COLLECTED_BROWSE_FETCH_LIMIT = 99999
 
 local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, searchText, showPlanned, showCompleted)
     local L = ns.L
@@ -2538,15 +2541,15 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
 
     if category == "mount" then
         if needUncollected then resultsUncollected = self:GetUncollectedMounts(searchText, 50) end
-        if needCollected then resultsCollected = self.GetCollectedMounts and self:GetCollectedMounts(searchText, 50) or {} end
+        if needCollected then resultsCollected = self.GetCollectedMounts and self:GetCollectedMounts(searchText, COLLECTED_BROWSE_FETCH_LIMIT) or {} end
         DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: mount unc=" .. #resultsUncollected .. " col=" .. #resultsCollected)
     elseif category == "pet" then
         if needUncollected then resultsUncollected = self:GetUncollectedPets(searchText, 50) end
-        if needCollected then resultsCollected = self.GetCollectedPets and self:GetCollectedPets(searchText, 50) or {} end
+        if needCollected then resultsCollected = self.GetCollectedPets and self:GetCollectedPets(searchText, COLLECTED_BROWSE_FETCH_LIMIT) or {} end
         DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: pet unc=" .. #resultsUncollected .. " col=" .. #resultsCollected)
     elseif category == "toy" then
         if needUncollected then resultsUncollected = self:GetUncollectedToys(searchText, 50) end
-        if needCollected then resultsCollected = self.GetCollectedToys and self:GetCollectedToys(searchText, 50) or {} end
+        if needCollected then resultsCollected = self.GetCollectedToys and self:GetCollectedToys(searchText, COLLECTED_BROWSE_FETCH_LIMIT) or {} end
         DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: toy unc=" .. #resultsUncollected .. " col=" .. #resultsCollected)
     end
 
@@ -2582,10 +2585,10 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         return self:DrawTransmogBrowser(parent, yOffset, width)
     elseif category == "illusion" then
         if needUncollected then resultsUncollected = self:GetUncollectedIllusions(searchText, 50) end
-        if needCollected then resultsCollected = self.GetCollectedIllusions and self:GetCollectedIllusions(searchText, 50) or {} end
+        if needCollected then resultsCollected = self.GetCollectedIllusions and self:GetCollectedIllusions(searchText, COLLECTED_BROWSE_FETCH_LIMIT) or {} end
     elseif category == "title" then
         if needUncollected then resultsUncollected = self:GetUncollectedTitles(searchText, 50) end
-        if needCollected then resultsCollected = self.GetCollectedTitles and self:GetCollectedTitles(searchText, 50) or {} end
+        if needCollected then resultsCollected = self.GetCollectedTitles and self:GetCollectedTitles(searchText, COLLECTED_BROWSE_FETCH_LIMIT) or {} end
     elseif category == "achievement" then
         if needUncollected then resultsUncollected = self:GetUncollectedAchievements(searchText, 99999) end
         if needCollected then resultsCollected = self.GetCompletedAchievements and self:GetCompletedAchievements(searchText, 99999) or {} end
