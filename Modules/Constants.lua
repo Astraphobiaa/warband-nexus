@@ -42,7 +42,7 @@ local Constants = {
     -- Main addon version (must match ## Version in WarbandNexus.toc)
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "2.5.9b",
+    ADDON_VERSION = "2.5.10",
     -- Shown next to version in the What's New / changelog popup title
     ADDON_RELEASE_DATE = "2026-04-04",
     
@@ -196,9 +196,11 @@ local Constants = {
     },
 
     -- PvE tab — Bountiful column uses IsQuestFlaggedCompleted (account-wide for these weeklies).
+    -- 86371 = Trovehunter's Bounty weekly gate (Midnight); Blizzard tracks loot/claim via this flag.
     -- 92600 = Cracked Keystone (Tier 11 Bountiful Delve), Midnight weekly track.
     -- 81514 = Bountiful Delves (broader Tier 8+), TWW-era ID; kept so either completion shows the checkmark.
     PVE_BOUNTIFUL_WEEKLY_QUEST_IDS = {
+        86371,
         92600,
         81514,
     },

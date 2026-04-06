@@ -1118,6 +1118,14 @@ Localization
 
 CurseForge: Warband Nexus]=]
 
+-- What's New / changelog body for ADDON_VERSION 2.5.10 (key CHANGELOG_V2510)
+L["CHANGELOG_V2510"] = [=[v2.5.10 (2026-04-04)
+
+Bug fixes
+- Tooltips: yellow "(Planned)" only when the mount, pet, or toy is still missing. NPC/container drop lines, yield sub-lines, and item tooltips use journal and toy ownership checks (Midnight-safe pcall and secret-value rules). Drops listed as generic type "item" in the database now resolve collection the same way so completed items no longer keep the Planned tag next to the checkmark.
+
+CurseForge: Warband Nexus]=]
+
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"
 L["CONFIRM"] = "Confirm"

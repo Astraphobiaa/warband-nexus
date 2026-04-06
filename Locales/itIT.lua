@@ -1651,6 +1651,14 @@ Localizzazione
 - Chiavi mancanti aggiunte in tutte le lingue supportate.
 
 CurseForge: Warband Nexus]=]
+
+-- v2.5.10 (CHANGELOG_V2510)
+L["CHANGELOG_V2510"] = [=[v2.5.10 (04/04/2026)
+
+Correzioni
+- Tooltip: il testo giallo "(Pianificato)" compare solo se mancano ancora cavalcatura, mascotte o giocattolo. Righe bottino PNG/contenitore, sotto-righe yield e tooltip oggetto usano diario e giocattoli (pcall e regole Midnight per valori segreti). Le voci generiche "item" nel database allineano lo stato di collezione allo stesso modo.
+
+CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Lista cose da fare e progresso settimanale: deselezionato = piani in corso; selezionato = solo completati. Schede sfoglia: deselezionato = non raccolti (solo in lista se Mostra pianificati); selezionato = voci raccolte in lista (pianificati filtra ancora)."
 L["SHOW_PLANNED_HELP"] = "Solo schede sfoglia (nascoste in lista e progresso settimanale): selezionato = solo voci nella tua lista. Con Mostra completati off: ancora da ottenere; on: già finiti; entrambi on: tutti i pianificati; entrambi off: sfoglia completa dei non raccolti."
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Nessun achievement da mostrare"

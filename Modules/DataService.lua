@@ -1952,41 +1952,17 @@ function WarbandNexus:CollectPvEData()
     
     -- ===== MYTHIC+ DATA =====
     if C_MythicPlus then
-        -- Current keystone - scan player's bags for keystone item
-        local keystoneMapID, keystoneLevel, keystoneName
-        for bagID = 0, NUM_BAG_SLOTS do
-            local numSlots = C_Container.GetContainerNumSlots(bagID)
-            if numSlots then
-                for slotID = 1, numSlots do
-                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-                    if itemInfo and itemInfo.itemID then
-                        -- Keystone items have ID 180653 (Mythic Keystone base)
-                        -- But actual keystones have different IDs per dungeon
-                        local itemName, _, _, _, _, itemType, itemSubType = C_Item.GetItemInfo(itemInfo.itemID)
-                        if itemName and itemName:find("Keystone") then
-                            -- Get keystone level from item link
-                            local itemLink = itemInfo.hyperlink
-                            if itemLink then
-                                -- Extract level from link (format: [Keystone: Dungeon Name +15])
-                                keystoneLevel = itemLink:match("%+(%d+)")
-                                if keystoneLevel then
-                                    keystoneLevel = tonumber(keystoneLevel)
-                                    keystoneName = itemName:match("Keystone:%s*(.+)") or itemName
-                                    keystoneMapID = itemInfo.itemID
-                                end
-                            end
-                        end
-                    end
-                end
+        -- Current keystone: C_MythicPlus (challenge map ID) — NOT bag itemID (legacy bug broke PvE cache).
+        if self.ScanMythicKeystone then
+            local ks = self:ScanMythicKeystone()
+            if ks and ks.level and ks.level > 0 and ks.mapID then
+                pve.mythicPlus.keystone = {
+                    mapID = ks.mapID,
+                    name = ks.dungeonName or "Unknown Dungeon",
+                    level = ks.level,
+                    lastUpdate = ks.scanTime or time(),
+                }
             end
-        end
-        
-        if keystoneMapID and keystoneLevel then
-            pve.mythicPlus.keystone = {
-                mapID = keystoneMapID,
-                name = keystoneName,
-                level = keystoneLevel,
-            }
         end
         
         -- Run history this week
@@ -3577,42 +3553,50 @@ end
 function WarbandNexus:HasWeeklyResetOccurred(lastScanTime)
     if not lastScanTime then return true end
     
+    local weekSecs = 7 * 24 * 60 * 60
+    
+    -- Prefer Blizzard API (no os.* — WoW sandbox has no standard os library)
+    if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+        local secsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
+        if secsUntil ~= nil and secsUntil >= 0 then
+            local now = GetServerTime()
+            local nextReset = now + secsUntil
+            local lastResetTime = nextReset - weekSecs
+            return lastScanTime < lastResetTime
+        end
+    end
+    
+    -- Same helper as PlansManager:GetWeeklyResetTime fallback (uses global time(table), not os.time)
+    if self.GetWeeklyResetTime then
+        local nextReset = self:GetWeeklyResetTime()
+        if nextReset and nextReset > 0 then
+            return lastScanTime < (nextReset - weekSecs)
+        end
+    end
+    
     local now = time()
-    
-    -- Get region (EU or US)
     local region = GetCurrentRegion() -- 1=US, 2=KR, 3=EU, 4=TW, 5=CN
-    
-    -- Reset day: Tuesday (wday = 3, where 1=Sunday)
     local resetDay = 3
     local resetHour = (region == 3) and 7 or 15  -- EU: 07:00 UTC, US: 15:00 UTC
     
-    -- Calculate last Tuesday reset time
     local function getLastResetTime(timestamp)
         local d = date("*t", timestamp)
         local daysSinceReset = (d.wday - resetDay + 7) % 7
-        
-        -- Go back to last Tuesday
-        local resetTime = os.time({
+        local resetTs = time({
             year = d.year,
             month = d.month,
             day = d.day - daysSinceReset,
             hour = resetHour,
             min = 0,
-            sec = 0
+            sec = 0,
         })
-        
-        -- If we're before reset hour on Tuesday, go back one more week
         if d.wday == resetDay and d.hour < resetHour then
-            resetTime = resetTime - (7 * 24 * 60 * 60)
+            resetTs = resetTs - weekSecs
         end
-        
-        return resetTime
+        return resetTs
     end
     
-    local lastResetTime = getLastResetTime(now)
-    
-    -- If last scan was before the most recent reset, reset has occurred
-    return lastScanTime < lastResetTime
+    return lastScanTime < getLastResetTime(now)
 end
 
 --[[

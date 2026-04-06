@@ -1,8 +1,18 @@
 ═══════════════════════════════════════════════════════════════════════════
 
-  WARBAND NEXUS - Version 2.5.9b (2026-04-04)
+  WARBAND NEXUS - Version 2.5.10 (2026-04-04)
 
 ═══════════════════════════════════════════════════════════════════════════
+
+Release
+- Version 2.5.10 (WarbandNexus.toc, Modules/Constants.lua, ADDON_RELEASE_DATE; What's New locale key CHANGELOG_V2510).
+
+Bug fixes
+- Tooltips (TooltipService): yellow "(Planned)" only when the mount, pet, or toy is still not owned. Applies to CollectibleSourceDB drop lines, yield sub-lines, and item tooltip post-hook; uses journal / PlayerHasToy checks with Midnight-safe pcall and issecretvalue rules. Database drops tagged as generic type "item" now align "collected" with toy/mount/pet APIs so completed items no longer show Planned beside the green checkmark.
+
+───────────────────────────────────────────────────────────────────────────
+  Included from v2.5.9b (2026-04-04) — same train, merged for this package
+───────────────────────────────────────────────────────────────────────────
 
 Release
 - Version 2.5.9b (WarbandNexus.toc, Modules/Constants.lua, ADDON_RELEASE_DATE for What's New title).
@@ -16,4 +26,9 @@ Improvements
 
 Bug fixes
 - Try Counter: clearer separation of fishing vs. profession gathering and game-object-only loot; reduced false try increments (e.g. gathering vs. mount farming); loot session timing and CHAT_MSG_LOOT handling tightened.
-- Try Counter: fishing attribution path no longer calls a nil global — `CurrentUnitsHaveMobLootContext` is forward-declared (fixes “attempt to call global 'CurrentUnitsHaveMobLootContext'”).
+- Try Counter: fishing attribution path no longer calls a nil global — `CurrentUnitsHaveMobLootContext` is forward-declared (fixes "attempt to call global 'CurrentUnitsHaveMobLootContext'").
+
+Localization
+- Filled previously missing keys in all supported locales.
+
+CurseForge: Warband Nexus

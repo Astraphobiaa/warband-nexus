@@ -1717,6 +1717,14 @@ Localisation
 - Clés manquantes ajoutées dans toutes les langues prises en charge.
 
 CurseForge : Warband Nexus]=]
+
+-- v2.5.10 (CHANGELOG_V2510)
+L["CHANGELOG_V2510"] = [=[v2.5.10 (04/04/2026)
+
+Corrections
+- Infobulles : le texte jaune « (Planifié) » n'apparaît que si la monture, la mascotte ou le jouet manque encore. Lignes de butin PNJ/conteneur, sous-lignes de yield et infobulles d'objet utilisent le journal et les jouets (pcall et règles Midnight sur les valeurs secrètes). Les entrées « item » génériques en base se synchronisent de la même façon pour ne plus afficher Planifié une fois obtenu.
+
+CurseForge : Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Liste des tâches et progression hebdo : décoché = plans en cours ; coché = uniquement terminés. Onglets Parcourir : décoché = non collectés (filtrés par To-Do si Afficher planifiés) ; coché = entrées collectées sur la To-Do (planifiés limite toujours la liste)."
 L["SHOW_PLANNED_HELP"] = "Onglets Parcourir uniquement (masqués sur la liste To-Do et la progression hebdo) : coché = seulement ce que vous avez mis sur la To-Do. Avec Afficher terminés décoché : encore à obtenir ; coché : déjà finis ; les deux cochés : toute la catégorie planifiée ; les deux décochés : parcours complet des non collectés."
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Aucun succès à afficher"

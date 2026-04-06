@@ -141,7 +141,7 @@ function WarbandNexus:UpdateCharacterKeystone(charKey)
     local keystoneInfo = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
     local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
     
-    if keystoneInfo and keystoneLevel then
+    if keystoneInfo and keystoneLevel and keystoneLevel > 0 then
         if not self.db.global.pveCache.mythicPlus.keystones then
             self.db.global.pveCache.mythicPlus.keystones = {}
         end
@@ -152,9 +152,12 @@ function WarbandNexus:UpdateCharacterKeystone(charKey)
             lastUpdate = time(),
         }
     else
-        -- Clear keystone if none owned
-        if self.db.global.pveCache.mythicPlus.keystones then
-            self.db.global.pveCache.mythicPlus.keystones[charKey] = nil
+        -- Only clear when API reports "no key" (level 0). Nil map+level often means APIs not ready yet —
+        -- do not wipe a good cached key (fixes login / affix race losing alt keys).
+        if keystoneLevel == 0 then
+            if self.db.global.pveCache.mythicPlus.keystones then
+                self.db.global.pveCache.mythicPlus.keystones[charKey] = nil
+            end
         end
     end
 end
@@ -939,10 +942,29 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
     if legacyData.mythicPlus then
         local mp = legacyData.mythicPlus
         
-        -- Keystone
-        if mp.keystone then
-            pc.mythicPlus.keystones = pc.mythicPlus.keystones or {}
-            pc.mythicPlus.keystones[charKey] = mp.keystone
+        -- Keystone: challenge mapID + level (reject legacy CollectPvEData bag scans that stored itemID as mapID).
+        if mp.keystone and mp.keystone.level and mp.keystone.level > 0 and mp.keystone.mapID then
+            local mid = mp.keystone.mapID
+            if type(mid) == "number" and mid > 0 then
+                local accept = false
+                if C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
+                    local mapName = C_ChallengeMode.GetMapUIInfo(mid)
+                    if mapName and not (issecretvalue and issecretvalue(mapName)) and mapName ~= "" then
+                        accept = true
+                    end
+                end
+                if not accept and mid < 100000 then
+                    accept = true
+                end
+                if accept then
+                    pc.mythicPlus.keystones = pc.mythicPlus.keystones or {}
+                    pc.mythicPlus.keystones[charKey] = {
+                        mapID = mid,
+                        level = mp.keystone.level,
+                        lastUpdate = mp.keystone.lastUpdate or time(),
+                    }
+                end
+            end
         end
         
         -- Overall score → dungeonScores
@@ -1153,12 +1175,19 @@ function WarbandNexus:RegisterPvECacheEvents()
     self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] MYTHIC_PLUS_CURRENT_AFFIX_UPDATE triggered (weekly reset)")
         
-        -- WEEKLY RESET: Clear keystone and affix data (currency stays in CurrencyCacheService)
+        -- Affix refresh: clear affix IDs. Prune keystones that pre-date the current weekly reset only —
+        -- never wipe every character (that event fires outside rollover too; mass-clear hid all alts' keys).
         if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache then
-            -- Clear all character keystones
             if WarbandNexus.db.global.pveCache.mythicPlus then
-                WarbandNexus.db.global.pveCache.mythicPlus.keystones = {}
                 WarbandNexus.db.global.pveCache.mythicPlus.currentAffixes = {}
+                local ks = WarbandNexus.db.global.pveCache.mythicPlus.keystones
+                if ks and WarbandNexus.HasWeeklyResetOccurred then
+                    for k, v in pairs(ks) do
+                        if type(v) == "table" and v.lastUpdate and WarbandNexus:HasWeeklyResetOccurred(v.lastUpdate) then
+                            ks[k] = nil
+                        end
+                    end
+                end
             end
             
             WarbandNexus:SavePvECache()
@@ -1217,6 +1246,9 @@ end
 function WarbandNexus:OnVaultDataReceived()
     -- Get current character key
     local charKey = ns.Utilities:GetCharacterKey()
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+    end
     
     -- DO NOT call ProcessGreatVaultActivities here!
     -- VaultScanner handles vault activities via SyncVaultDataFromScanner (richer data).

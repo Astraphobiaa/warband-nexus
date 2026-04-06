@@ -14,7 +14,7 @@ local NotificationEvents = {}
 local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
--- Changelog for current version only: locale key CHANGELOG_V + version without dots (e.g. 2.5.9b -> CHANGELOG_V259b)
+-- Changelog for current version only: locale key CHANGELOG_V + version without dots (e.g. 2.5.10 -> CHANGELOG_V2510)
 local FALLBACK_CHANGELOG = "v" .. tostring(CURRENT_VERSION) .. "\n- See Locales for CHANGELOG_V key matching this version.\n\nCurseForge: Warband Nexus"
 
 local function VersionToChangelogKey(version)

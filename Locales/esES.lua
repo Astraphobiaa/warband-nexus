@@ -1641,6 +1641,14 @@ Localización
 - Claves faltantes añadidas en todos los idiomas compatibles.
 
 CurseForge: Warband Nexus]=]
+
+-- v2.5.10 (CHANGELOG_V2510)
+L["CHANGELOG_V2510"] = [=[v2.5.10 (04/04/2026)
+
+Correcciones
+- Tooltips: el texto amarillo "(Planificado)" solo aparece si aún no tienes la montura, mascota o juguete. Líneas de botín en PNJ/contenedor, sublíneas de yield y tooltips de objeto usan el diario y juguetes (pcall y reglas Midnight para valores secretos). Las entradas genéricas "item" en la base alinean el estado de colección igual.
+
+CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Lista de tareas y progreso semanal: sin marcar = planes en curso; marcado = solo completados. Pestañas explorar: sin marcar = no coleccionados (solo en tu lista si Mostrar planificados); marcado = entradas coleccionadas en la lista (planificados sigue filtrando)."
 L["SHOW_PLANNED_HELP"] = "Solo pestañas explorar (ocultas en lista y progreso semanal): marcado = solo objetivos en tu lista. Con Mostrar completados desmarcado: aún por obtener; marcado: ya terminados; ambos marcados: todos los planificados; ambos desmarcados: exploración completa de no coleccionados."
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "No hay logros para mostrar"

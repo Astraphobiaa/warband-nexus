@@ -1471,13 +1471,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             colValues[n + 3] = { text = FormatVaultSlots(raidUnlocked, raidTotal), color = {1, 1, 1} }
             colValues[n + 4] = { text = FormatVaultSlots(dungeonUnlocked, dungeonTotal), color = {1, 1, 1} }
             colValues[n + 5] = { text = FormatVaultSlots(worldUnlocked, worldTotal), color = {1, 1, 1} }
-            -- Current character: live quest API. Other rows: last value saved when that character was played.
-            local bountifulDone = false
-            if charKey == currentPlayerKey then
-                bountifulDone = WarbandNexus.IsBountifulDelveWeeklyDone and WarbandNexus:IsBountifulDelveWeeklyDone() or false
-            else
-                bountifulDone = (pve.delves and pve.delves.character and pve.delves.character.bountifulComplete) or false
-            end
+            -- Bountiful / Trovehunter tracking is warband-scoped; always use live quest flags (same for every row).
+            local bountifulDone = WarbandNexus.IsBountifulDelveWeeklyDone and WarbandNexus:IsBountifulDelveWeeklyDone() or false
             colValues[n + 6] = { text = bountifulDone and READY_ICON or NOT_READY_ICON, color = {1, 1, 1} }
 
             for ci = #PVE_COLUMNS, 1, -1 do

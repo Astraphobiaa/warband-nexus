@@ -294,6 +294,9 @@ function WarbandNexus:OnKeystoneChanged()
         end
 
         local charKey = ns.Utilities:GetCharacterKey()
+        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+        end
         
         -- Scan and update keystone data (lightweight check)
         if WarbandNexus.ScanMythicKeystone then
@@ -317,6 +320,23 @@ function WarbandNexus:OnKeystoneChanged()
                 if keystoneChanged then
                     WarbandNexus.db.global.characters[charKey].mythicKey = keystoneData
                     WarbandNexus.db.global.characters[charKey].lastSeen = time()
+                    
+                    -- Mirror into PvE cache so PvE tab matches Characters tab (same API snapshot)
+                    if WarbandNexus.db.global.pveCache and WarbandNexus.db.global.pveCache.mythicPlus then
+                        WarbandNexus.db.global.pveCache.mythicPlus.keystones = WarbandNexus.db.global.pveCache.mythicPlus.keystones or {}
+                        if keystoneData and keystoneData.level and keystoneData.level > 0 and keystoneData.mapID then
+                            WarbandNexus.db.global.pveCache.mythicPlus.keystones[charKey] = {
+                                mapID = keystoneData.mapID,
+                                level = keystoneData.level,
+                                lastUpdate = keystoneData.scanTime or time(),
+                            }
+                        elseif keystoneData == nil and WarbandNexus.db.global.pveCache.mythicPlus.keystones then
+                            WarbandNexus.db.global.pveCache.mythicPlus.keystones[charKey] = nil
+                        end
+                        if WarbandNexus.SavePvECache then
+                            WarbandNexus:SavePvECache()
+                        end
+                    end
                     
                     -- Same channel as CHALLENGE_MODE_COMPLETED / PvECache (UI.lua + PlansManager listen)
                     if WarbandNexus.SendMessage then

@@ -1970,6 +1970,14 @@ Lokalisierung
 - Fehlende Schlüssel in allen unterstützten Sprachen ergänzt.
 
 CurseForge: Warband Nexus]=]
+
+-- v2.5.10 (CHANGELOG_V2510)
+L["CHANGELOG_V2510"] = [=[v2.5.10 (04.04.2026)
+
+Fehlerbehebungen
+- Tooltips: Gelbes „(Geplant)“ erscheint nur, wenn Reittier, Haustier oder Spielzeug noch fehlt. NPC-/Container-Zeilen, Unterzeilen bei Yields und Item-Tooltips nutzen Journal- und Spielzeug-Prüfungen (Midnight-sicher mit pcall und Geheimwert-Regeln). Als generischer Typ „item“ erfasste Drops gleichen den Sammlungsstatus ebenfalls ab, damit abgeschlossene Einträge nicht mehr „Geplant“ neben dem Häkchen zeigen.
+
+CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "To-Do-Liste und Wöchentlicher Fortschritt: aus = laufende Pläne; an = nur abgeschlossene. Durchsuchen (Reittiere usw.): aus = ungesammelt (nur To-Do wenn Geplant an); an = gesammelte auf der To-Do (Geplant filtert weiter)."
 L["SHOW_PLANNED_HELP"] = "Nur Durchsuchen-Register (ausgeblendet in To-Do & Wochenfortschritt): an = nur Einträge auf deiner To-Do. Mit Abgeschlossene aus: noch benötigt; mit Abgeschlossene an: erledigt; beides an: alle geplanten; beides aus: volle ungesammelte Liste."
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Keine Erfolge anzuzeigen"
