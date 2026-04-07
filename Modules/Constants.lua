@@ -42,9 +42,9 @@ local Constants = {
     -- Main addon version (must match ## Version in WarbandNexus.toc)
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "2.5.10",
+    ADDON_VERSION = "2.5.11",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-04-04",
+    ADDON_RELEASE_DATE = "2026-04-07",
     
     --==========================================================================
     -- EXPANSION TARGETING
@@ -195,14 +195,13 @@ local Constants = {
         [3089] = { name = "Coffer Key", category = "delves" },             -- Delve Coffer Keys
     },
 
-    -- PvE tab — Bountiful column uses IsQuestFlaggedCompleted (account-wide for these weeklies).
-    -- 86371 = Trovehunter's Bounty weekly gate (Midnight); Blizzard tracks loot/claim via this flag.
-    -- 92600 = Cracked Keystone (Tier 11 Bountiful Delve), Midnight weekly track.
-    -- 81514 = Bountiful Delves (broader Tier 8+), TWW-era ID; kept so either completion shows the checkmark.
+    -- PvE tab — Trovehunter's Bounty column uses IsQuestFlaggedCompleted on a hidden tracking quest (per-char snapshot in cache).
+    -- 86371 = weekly Trovehunter's Bounty loot/claim flag (TWW/Midnight). Confirmed in community tooling, e.g.
+    --   github.com/BejayGE/BountifulDelvesHunter-Midnight (delverBountyQ = IsQuestFlaggedCompleted(86371)).
+    -- Do NOT OR in 92600 (Cracked Keystone) or 81514 (Bountiful Delves weekly) here — those are different quests and would
+    -- show "bounty done" when only the keystone / coffer weekly was completed.
     PVE_BOUNTIFUL_WEEKLY_QUEST_IDS = {
         86371,
-        92600,
-        81514,
     },
     PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID = 92600,
 

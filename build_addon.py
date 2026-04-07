@@ -51,6 +51,7 @@ ROOT_FILES_SKIP = frozenset({
     ".gitattributes",
     ".pkgmeta",
     "README.md",
+    "CHANGELOG.md",
     "CHANGES.txt",
     "VERSION_CURSEFORGE.md",
     "VERSION_DISCORD.md",

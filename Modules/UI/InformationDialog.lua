@@ -189,8 +189,8 @@ function WarbandNexus:ShowInfoDialog()
     -- Credits up front so supporters / contributors are visible without scrolling past the full feature list
     AddText((ns.L and ns.L["INFO_CREDITS_SECTION_TITLE"]) or "Credits & thanks", "title", {1, 0.84, 0}, 10, true)
 
-    -- Distinct from section title: highlights the lore line without repeating "thanks"
-    AddText((ns.L and ns.L["INFO_CREDITS_LORE_SUBTITLE"]) or "Lore & storytelling", "subtitle", {0.85, 0.85, 0.9}, 6, true)
+    -- Same visual tier as Contributors (title + cyan)
+    AddText((ns.L and ns.L["INFO_CREDITS_LORE_SUBTITLE"]) or "Special Thanks", "title", {0.4, 0.8, 1}, 6, true)
     AddText("Egzolinas the Loremaster!", "body", {0.96, 0.55, 0.73}, 14, true)  -- Paladin color (F58CBA)
 
     AddText((ns.L and ns.L["CONTRIBUTORS_TITLE"]) or "Contributors", "title", {0.4, 0.8, 1}, 6, true)

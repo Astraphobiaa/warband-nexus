@@ -1047,7 +1047,7 @@ L["INFO_TAB_STATISTICS"] = "Statistiken"
 L["GEAR_DESC"] = "Ausgerüstete Items, Upgrade-Optionen, Lager-Empfehlungen (BoE/Warbound) und Upgrade-Kandidaten über Charaktere."
 L["COLLECTIONS_DESC"] = "Übersicht Reittiere, Haustiere, Spielzeuge, Transmog. Sammlungsfortschritt und fehlende Items finden."
 L["INFO_CREDITS_SECTION_TITLE"] = "Danksagungen"
-L["INFO_CREDITS_LORE_SUBTITLE"] = "Geschichten & Lore"
+L["INFO_CREDITS_LORE_SUBTITLE"] = "Besonderer Dank"
 L["INFO_FEATURES_SECTION_TITLE"] = "Funktionsübersicht"
 L["HEADER_INFO_TOOLTIP"] = "Anleitung & Danksagungen"
 L["HEADER_INFO_TOOLTIP_HINT"] = "Funktionen und Mitwirkende — Danksagungen stehen oben."
@@ -1976,6 +1976,31 @@ L["CHANGELOG_V2510"] = [=[v2.5.10 (04.04.2026)
 
 Fehlerbehebungen
 - Tooltips: Gelbes „(Geplant)“ erscheint nur, wenn Reittier, Haustier oder Spielzeug noch fehlt. NPC-/Container-Zeilen, Unterzeilen bei Yields und Item-Tooltips nutzen Journal- und Spielzeug-Prüfungen (Midnight-sicher mit pcall und Geheimwert-Regeln). Als generischer Typ „item“ erfasste Drops gleichen den Sammlungsstatus ebenfalls ab, damit abgeschlossene Einträge nicht mehr „Geplant“ neben dem Häkchen zeigen.
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.11 (CHANGELOG_V2511) — English notes; see enUS for detail
+L["CHANGELOG_V2511"] = [=[v2.5.11 (2026-04-07)
+
+PvE
+- Trovehunter's Bounty / Bountiful column: per-character cache for each header row; live quest API only for the current character when no snapshot exists (alts show "—" until logged in).
+- Midnight-safe weekly quest checks (pcall + secret guards) in PvE cache.
+- Trovehunter weekly flag uses hidden quest 86371 only (removed OR with Cracked Keystone 92600 / Bountiful Delves 81514 so the column is not falsely "done").
+- Bountiful cell tooltip; PVE_BOUNTY_NEED_LOGIN when an alt has no saved status yet.
+
+Collections
+- Achievements tab: full category enumeration via GetCategoryNumAchievements(categoryID, true) — fixes the list showing only the last earned achievement.
+- One-time full achievement re-scan after this update (global wnAchievementIncludeAllScanV1).
+
+Try Counter & data
+- Mount/pet collected handling, missed-drop filtering, C_Timer.After callback fix; Lucent Hawkstrider mount ID in CollectibleSourceDB.
+
+Plans / UI
+- To-Do / tracker: try-count popup can be left-click only (no right-click popup on cards).
+- Information dialog: Special Thanks block (Contributors-style).
+
+Localization
+- Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "To-Do-Liste und Wöchentlicher Fortschritt: aus = laufende Pläne; an = nur abgeschlossene. Durchsuchen (Reittiere usw.): aus = ungesammelt (nur To-Do wenn Geplant an); an = gesammelte auf der To-Do (Geplant filtert weiter)."

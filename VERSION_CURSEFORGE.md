@@ -1,29 +1,31 @@
-# Warband Nexus v2.4.3 — Changelog
+# CurseForge / Wago — **Warband Nexus v2.5.11** (2026-04-07)
 
-**Release Date:** March 13, 2026
+## Summary for project description / changelog field
 
-## New Features
+**v2.5.11** — PvE Trovehunter's Bounty column is per-character with Midnight-safe quest checks; weekly flag uses quest **86371** only. Collections **Achievements** tab enumerates all achievements correctly (`GetCategoryNumAchievements(..., true)`) with a one-time full re-scan. Try Counter mount/timer fixes, Lucent Hawkstrider mount ID, To-Do try popup left-click only, Information **Special Thanks** credits, locale updates.
 
-- **Guild & Rested XP Track** — Track guild membership and rested experience across characters
-- **Money Logs & Gold Automation (Items UI)** — Per-character gold logs, deposit/withdraw history, gold target automation
-- **New Tab: Gears** — Equipped gear, upgrade options, storage recommendations (BoE/Warbound), cross-character upgrade candidates with item level tracking
-- **New Tab: Collections** — Mounts, pets, toys, transmog overview and collection progress
+## Full notes
 
-## Improvements
+### PvE
+- Trovehunter's Bounty / Bountiful: per-character cache per header row; live API fallback only for current character; em dash + hint for alts without snapshot.
+- `SafeIsQuestFlaggedCompleted` in PvE cache (pcall + secret guards).
+- `PVE_BOUNTIFUL_WEEKLY_QUEST_IDS` = `{ 86371 }` only (removed OR with 92600 / 81514).
 
-- **Midnight Updates for PvE** — Full compatibility with Midnight 12.0.x APIs, encounter/difficulty handling, issecretvalue guards
-- **Midnight Updates for Reputations** — Reputation cache and API updates for Midnight
-- **Midnight Updates for Currencies** — Currency cache and metadata for Midnight
-- **Profession Improvements & Bug Fixes** — Recipe Companion enhancements, profession window handling
-- **Plans Revision** — Source display fixes (e.g. Nether-Warped Drake), Mythic color consistency
-- **Settings Revision** — Settings UI updates and module management
-- **Recipe Companion Update** — Reagent sourcing and quality tier improvements
-- **Performance Improvements** — Frame budgets, batch sizes, async optimizations
-- **Notification & Try Counter System Stability** — issecretvalue guards, deduplication fixes
-- **Midnight Misc. Update** — API compatibility, debug output only when debug mode enabled
-- **Localization** — Changelog and What's New translated to all 11 supported locales
-- **Welcome Screen** — Tab descriptions updated with Gears and Collections
+### Collections
+- Achievement scan and UI: `GetCategoryNumAchievements(categoryID, true)` in `CollectionService` (async scan + title iterator paths).
+- Migration: `wnAchievementIncludeAllScanV1` + achievement scan cooldown cleared once so `EnsureCollectionData` queues a full re-scan.
+
+### Try Counter & data
+- Collected mount/pet handling, missed-drop filtering, `C_Timer.After` callback fix.
+- CollectibleSourceDB: Lucent Hawkstrider mount ID.
+
+### UI
+- SharedWidgets / PlanCardFactory / PlansUI / PlansTrackerWindow: try-count `popupOnRightClick = false` for To-Do cards.
+- InformationDialog: Special Thanks (Contributors-style).
+
+### Localization
+- Credits subtitle (Special Thanks) across locales; `PVE_BOUNTY_NEED_LOGIN` (enUS); `CHANGELOG_V2511` (What's New).
 
 ---
 
-Thank you for your continued support! To report issues or share feedback, leave a comment on CurseForge - Warband Nexus.
+Package: `WarbandNexus-2.5.11.zip` from `python build_addon.py` at repo root.

@@ -756,7 +756,7 @@ L["INFO_TAB_CURRENCY"] = "Valute"
 L["INFO_TAB_PLANS"] = "To-Do"
 L["INFO_TAB_STATISTICS"] = "Statistiche"
 L["INFO_CREDITS_SECTION_TITLE"] = "Crediti e ringraziamenti"
-L["INFO_CREDITS_LORE_SUBTITLE"] = "Storie e narrativa"
+L["INFO_CREDITS_LORE_SUBTITLE"] = "Ringraziamenti speciali"
 L["INFO_FEATURES_SECTION_TITLE"] = "Panoramica funzioni"
 L["HEADER_INFO_TOOLTIP"] = "Guida addon e crediti"
 L["HEADER_INFO_TOOLTIP_HINT"] = "Funzioni e collaboratori — i crediti sono in alto."
@@ -1657,6 +1657,31 @@ L["CHANGELOG_V2510"] = [=[v2.5.10 (04/04/2026)
 
 Correzioni
 - Tooltip: il testo giallo "(Pianificato)" compare solo se mancano ancora cavalcatura, mascotte o giocattolo. Righe bottino PNG/contenitore, sotto-righe yield e tooltip oggetto usano diario e giocattoli (pcall e regole Midnight per valori segreti). Le voci generiche "item" nel database allineano lo stato di collezione allo stesso modo.
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.11 (CHANGELOG_V2511) — English notes; see enUS for detail
+L["CHANGELOG_V2511"] = [=[v2.5.11 (2026-04-07)
+
+PvE
+- Trovehunter's Bounty / Bountiful column: per-character cache for each header row; live quest API only for the current character when no snapshot exists (alts show "—" until logged in).
+- Midnight-safe weekly quest checks (pcall + secret guards) in PvE cache.
+- Trovehunter weekly flag uses hidden quest 86371 only (removed OR with Cracked Keystone 92600 / Bountiful Delves 81514 so the column is not falsely "done").
+- Bountiful cell tooltip; PVE_BOUNTY_NEED_LOGIN when an alt has no saved status yet.
+
+Collections
+- Achievements tab: full category enumeration via GetCategoryNumAchievements(categoryID, true) — fixes the list showing only the last earned achievement.
+- One-time full achievement re-scan after this update (global wnAchievementIncludeAllScanV1).
+
+Try Counter & data
+- Mount/pet collected handling, missed-drop filtering, C_Timer.After callback fix; Lucent Hawkstrider mount ID in CollectibleSourceDB.
+
+Plans / UI
+- To-Do / tracker: try-count popup can be left-click only (no right-click popup on cards).
+- Information dialog: Special Thanks block (Contributors-style).
+
+Localization
+- Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Lista cose da fare e progresso settimanale: deselezionato = piani in corso; selezionato = solo completati. Schede sfoglia: deselezionato = non raccolti (solo in lista se Mostra pianificati); selezionato = voci raccolte in lista (pianificati filtra ancora)."

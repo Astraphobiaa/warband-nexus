@@ -736,7 +736,13 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name
         local row = card.tryCountClickable
         if not row then
-            row = Factory:CreateTryCountClickable(card, { height = 18, frameLevelOffset = 5, fontCategory = "body" })
+            local tryOpts = { height = 18, frameLevelOffset = 5, fontCategory = "body" }
+            if card._wnTryCountClickableOptions then
+                for k, v in pairs(card._wnTryCountClickableOptions) do
+                    tryOpts[k] = v
+                end
+            end
+            row = Factory:CreateTryCountClickable(card, tryOpts)
             row:SetSize(120, 18)
             card.tryCountClickable = row
         end
@@ -896,9 +902,10 @@ end
     @param col number - Column index (0-based)
     @param cardHeight number - Base card height
     @param cardWidth number - Card width (optional)
+    @param cardUIOptions table|nil e.g. { tryCountClickableOptions = { popupOnRightClick = false } } for To-Do List
     @return Frame - Created card frame
 ]]
-function PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, cardHeight, cardWidth)
+function PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, cardHeight, cardWidth, cardUIOptions)
     if not plan or not plan.type then
         return nil
     end
@@ -913,6 +920,12 @@ function PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, 
     
     if not card then
         return nil
+    end
+
+    if cardUIOptions and cardUIOptions.tryCountClickableOptions then
+        card._wnTryCountClickableOptions = cardUIOptions.tryCountClickableOptions
+    else
+        card._wnTryCountClickableOptions = nil
     end
     
     -- Create type-specific content

@@ -3393,8 +3393,10 @@ end
 ---@field justifyH string|nil "LEFT" or "RIGHT" (default RIGHT)
 ---@field frameLevelOffset number|nil added to parent frame level (default 10)
 ---@field showTooltip boolean|nil default true
+---@field popupOnLeftClick boolean|nil default true
+---@field popupOnRightClick boolean|nil default true — To-Do list / tracker: set false so only left-click opens editor
 
----Creates a full-width (caller anchors) or fixed-size try-count button; left/right mouse opens WNTryCount popup.
+---Creates a full-width (caller anchors) or fixed-size try-count button; mouse opens WNTryCount popup per options.
 ---@param parent Frame
 ---@param options WnTryCountClickableOptions|nil
 ---@return Frame row with .text (FontString) and :WnUpdateTryCount(type, id, displayName)
@@ -3405,6 +3407,8 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
     local justify = options.justifyH or "RIGHT"
     local showTooltip = options.showTooltip ~= false
     local levelOff = options.frameLevelOffset or 10
+    local popupOnLeft = options.popupOnLeftClick ~= false
+    local popupOnRight = options.popupOnRightClick ~= false
 
     local row = CreateFrame("Button", nil, parent)
     row:SetHeight(height)
@@ -3437,7 +3441,17 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
             if not self:IsShown() then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count", 1, 1, 1)
-            GameTooltip:AddLine((ns.L and ns.L["TRY_COUNT_CLICK_HINT"]) or "Click to edit attempt count.", 0.7, 0.7, 0.7, true)
+            local hint
+            if popupOnLeft and popupOnRight then
+                hint = (ns.L and ns.L["TRY_COUNT_CLICK_HINT"]) or "Click to edit attempt count."
+            elseif popupOnLeft then
+                hint = "Left-click to edit attempt count."
+            elseif popupOnRight then
+                hint = "Right-click to edit attempt count."
+            else
+                hint = (ns.L and ns.L["TRY_COUNT_CLICK_HINT"]) or "Click to edit attempt count."
+            end
+            GameTooltip:AddLine(hint, 0.7, 0.7, 0.7, true)
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3445,6 +3459,8 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
 
     row:SetScript("OnClick", nil)
     row:SetScript("OnMouseUp", function(self, btn)
+        if btn == "LeftButton" and not popupOnLeft then return end
+        if btn == "RightButton" and not popupOnRight then return end
         if btn ~= "LeftButton" and btn ~= "RightButton" then return end
         local t, id, name = self._wnTryType, self._wnTryID, self._wnTryName
         if not t or not id or not ns.UI_ShowTryCountPopup then return end

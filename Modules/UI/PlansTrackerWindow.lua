@@ -884,7 +884,12 @@ local function RefreshTrackerContentImmediate()
 
                 if showTryRow then
                     local disp = resolvedName
-                    local tryRow = Factory:CreateTryCountClickable(card, { height = 18, frameLevelOffset = 15, showTooltip = true })
+                    local tryRow = Factory:CreateTryCountClickable(card, {
+                        height = 18,
+                        frameLevelOffset = 15,
+                        showTooltip = true,
+                        popupOnRightClick = false,
+                    })
                     tryRow:SetSize(TRY_ROW_W, 18)
                     -- Same row as name, to the right of the mount/item title
                     tryRow:SetPoint("TOPLEFT", nameText, "TOPRIGHT", tryNameGap, 0)

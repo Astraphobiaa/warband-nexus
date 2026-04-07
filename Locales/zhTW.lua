@@ -749,7 +749,7 @@ L["INFO_TAB_CURRENCY"] = "貨幣"
 L["INFO_TAB_PLANS"] = "To-Do"
 L["INFO_TAB_STATISTICS"] = "統計"
 L["INFO_CREDITS_SECTION_TITLE"] = "致謝與名單"
-L["INFO_CREDITS_LORE_SUBTITLE"] = "劇情與故事"
+L["INFO_CREDITS_LORE_SUBTITLE"] = "特別鳴謝"
 L["INFO_FEATURES_SECTION_TITLE"] = "功能概覽"
 L["HEADER_INFO_TOOLTIP"] = "插件說明與致謝"
 L["HEADER_INFO_TOOLTIP_HINT"] = "功能與貢獻者 — 名單在頂端。"
@@ -1651,6 +1651,31 @@ L["CHANGELOG_V2510"] = [=[v2.5.10（2026-04-04）
 - 提示：黃色「（已計畫）」僅在尚未取得坐騎、寵物或玩具時顯示。NPC／容器掉落行、產出子行與物品提示會以收藏與玩具 API 判斷（pcall 與 Midnight 秘密值規則）。資料庫標為通用「item」的掉落也會同步收藏狀態，已取得時不再顯示已計畫。
 
 CurseForge：Warband Nexus]=]
+
+-- v2.5.11 (CHANGELOG_V2511) — English notes; see enUS for detail
+L["CHANGELOG_V2511"] = [=[v2.5.11 (2026-04-07)
+
+PvE
+- Trovehunter's Bounty / Bountiful column: per-character cache for each header row; live quest API only for the current character when no snapshot exists (alts show "—" until logged in).
+- Midnight-safe weekly quest checks (pcall + secret guards) in PvE cache.
+- Trovehunter weekly flag uses hidden quest 86371 only (removed OR with Cracked Keystone 92600 / Bountiful Delves 81514 so the column is not falsely "done").
+- Bountiful cell tooltip; PVE_BOUNTY_NEED_LOGIN when an alt has no saved status yet.
+
+Collections
+- Achievements tab: full category enumeration via GetCategoryNumAchievements(categoryID, true) — fixes the list showing only the last earned achievement.
+- One-time full achievement re-scan after this update (global wnAchievementIncludeAllScanV1).
+
+Try Counter & data
+- Mount/pet collected handling, missed-drop filtering, C_Timer.After callback fix; Lucent Hawkstrider mount ID in CollectibleSourceDB.
+
+Plans / UI
+- To-Do / tracker: try-count popup can be left-click only (no right-click popup on cards).
+- Information dialog: Special Thanks block (Contributors-style).
+
+Localization
+- Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
+
+CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "待辦與週進度：未勾選＝進行中的計畫；勾選＝僅已完成。瀏覽分頁：未勾選＝未收藏（開啟「顯示已計畫」時僅清單內）；勾選＝清單上已收藏項目（「顯示已計畫」仍會限制）。"
 L["SHOW_PLANNED_HELP"] = "僅瀏覽分頁（在待辦與週進度中隱藏）：勾選＝僅顯示你加入待辦的目標。「顯示已完成」關＝仍缺；開＝已完成；兩項都開＝該分類全部已計畫；都關＝完整未收藏瀏覽。"
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "沒有可顯示的成就"

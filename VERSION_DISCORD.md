@@ -1,36 +1,24 @@
-# Warband Nexus v2.4.2 — Release Notes
+# Discord announcement — **Warband Nexus v2.5.11** (2026-04-07)
 
-**Release Date:** March 13, 2026
-
-## New Features
-
-**Guild & Rested XP Track**
-• Track guild membership and rested experience across all your characters.
-
-**Money Logs & Gold Automation — Items UI**
-• Per-character gold logs with deposit/withdraw history
-• Gold target automation in the Items tab
-
-**New Tab: Gears**
-• View equipped gear with item level tracking
-• Upgrade opportunities and storage recommendations (BoE/Warbound)
-• Cross-character upgrade candidates
-
-**New Tab: Collections**
-• Overview of mounts, pets, toys, transmog, and other collectibles
-• Track collection progress and find missing items
-
-## Improvements
-
-• **Midnight 12.0.x** — PvE, Reputations, and Currencies fully updated for the latest expansion
-• **Professions** — Recipe Companion enhancements and bug fixes
-• **Plans** — Source display fixes (e.g. Nether-Warped Drake), Mythic color consistency
-• **Settings** — UI updates and module management
-• **Performance** — Frame budgets, batch sizes, and async optimizations
-• **Notifications & Try Counter** — Stability improvements, issecretvalue guards
-• **Localization** — What's New and changelog translated to all 11 supported locales
-• **Welcome Screen** — Updated tab descriptions including Gears and Collections
+Copy-paste below.
 
 ---
 
-Thank you for using Warband Nexus! Report bugs or share suggestions on CurseForge.
+**Warband Nexus v2.5.11** is out.
+
+**PvE**
+• Trovehunter's Bounty column: each character row uses its own saved data (not always the logged-in character).
+• Safer weekly quest checks for Midnight.
+• Trovehunter tracking uses the correct hidden quest **86371** only (no more false green check from other weeklies).
+
+**Collections**
+• **Achievements** tab: fixed list only showing your last earned achievement — full scan uses Blizzard's "include all" category count. One automatic re-scan on first load after update.
+
+**Try Counter & more**
+• Mount/pet handling, timer callback fix, Lucent Hawkstrider DB fix.
+• To-Do cards: try-count popup won't open on right-click (left-click only).
+• Credits: **Special Thanks** section styled like Contributors.
+
+Download: CurseForge / your usual source — `WarbandNexus-2.5.11.zip`. `/reload` after installing.
+
+---

@@ -489,6 +489,7 @@ L["VAULT_RAID_BASED_FORMAT"] = "Reward based on highest difficulty defeated (cur
 L["DELVES"] = "Delves"
 L["COMPANION"] = "Companion"
 L["BOUNTIFUL_DELVE"] = "Trovehunter's Bounty"
+L["PVE_BOUNTY_NEED_LOGIN"] = "No saved status for this character. Log in to refresh."
 L["CRACKED_KEYSTONE"] = "Cracked Keystone"
 L["SEASON"] = "Season"
 
@@ -982,7 +983,7 @@ L["INFO_TAB_GEAR"] = "Gear"
 L["INFO_TAB_COLLECTIONS"] = "Collections"
 L["INFO_TAB_STATISTICS"] = "Statistics"
 L["INFO_CREDITS_SECTION_TITLE"] = "Credits & thanks"
-L["INFO_CREDITS_LORE_SUBTITLE"] = "Lore & storytelling"
+L["INFO_CREDITS_LORE_SUBTITLE"] = "Special Thanks"
 L["INFO_FEATURES_SECTION_TITLE"] = "Features overview"
 L["HEADER_INFO_TOOLTIP"] = "Addon guide & credits"
 L["HEADER_INFO_TOOLTIP_HINT"] = "Contributors and feature help — credits are at the top."
@@ -1123,6 +1124,31 @@ L["CHANGELOG_V2510"] = [=[v2.5.10 (2026-04-04)
 
 Bug fixes
 - Tooltips: yellow "(Planned)" only when the mount, pet, or toy is still missing. NPC/container drop lines, yield sub-lines, and item tooltips use journal and toy ownership checks (Midnight-safe pcall and secret-value rules). Drops listed as generic type "item" in the database now resolve collection the same way so completed items no longer keep the Planned tag next to the checkmark.
+
+CurseForge: Warband Nexus]=]
+
+-- What's New / changelog body for ADDON_VERSION 2.5.11 (key CHANGELOG_V2511)
+L["CHANGELOG_V2511"] = [=[v2.5.11 (2026-04-07)
+
+PvE
+- Trovehunter's Bounty / Bountiful column: per-character cache for each header row; live quest API only for the current character when no snapshot exists (alts show "—" until logged in).
+- Midnight-safe weekly quest checks (pcall + secret guards) in PvE cache.
+- Trovehunter weekly flag uses hidden quest 86371 only (removed OR with Cracked Keystone 92600 / Bountiful Delves 81514 so the column is not falsely "done").
+- Bountiful cell tooltip; PVE_BOUNTY_NEED_LOGIN when an alt has no saved status yet.
+
+Collections
+- Achievements tab: full category enumeration via GetCategoryNumAchievements(categoryID, true) — fixes the list showing only the last earned achievement.
+- One-time full achievement re-scan after this update (global wnAchievementIncludeAllScanV1).
+
+Try Counter & data
+- Mount/pet collected handling, missed-drop filtering, C_Timer.After callback fix; Lucent Hawkstrider mount ID in CollectibleSourceDB.
+
+Plans / UI
+- To-Do / tracker: try-count popup can be left-click only (no right-click popup on cards).
+- Information dialog: Special Thanks block (Contributors-style).
+
+Localization
+- Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
 
 CurseForge: Warband Nexus]=]
 

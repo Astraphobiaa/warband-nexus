@@ -1,8 +1,25 @@
 ═══════════════════════════════════════════════════════════════════════════
 
-  WARBAND NEXUS - Version 2.5.10 (2026-04-04)
+  WARBAND NEXUS - Version 2.5.11 (2026-04-07)
 
 ═══════════════════════════════════════════════════════════════════════════
+
+Release
+- Version 2.5.11 (WarbandNexus.toc, Modules/Constants.lua ADDON_VERSION / ADDON_RELEASE_DATE; What's New locale key CHANGELOG_V2511).
+- Maintainer changelog: CHANGELOG.md (repo root); Discord / CurseForge paste templates: VERSION_DISCORD.md, VERSION_CURSEFORGE.md.
+
+PvE
+- Trovehunter's Bounty / Bountiful column: per-character PvE cache per row; safe quest completion API; weekly flag list is 86371 only (not OR with 92600/81514); tooltip + PVE_BOUNTY_NEED_LOGIN (enUS).
+
+Collections
+- Achievements: GetCategoryNumAchievements(..., true) for full enumeration; one-time wnAchievementIncludeAllScanV1 full re-scan.
+
+Try Counter / DB / UI
+- Mount learn checks, missed drops, C_Timer callback fix; Lucent Hawkstrider mount ID; To-Do try popup left-click only; Information Special Thanks block; locale credit lines.
+
+───────────────────────────────────────────────────────────────────────────
+  Included from v2.5.10 (2026-04-04)
+───────────────────────────────────────────────────────────────────────────
 
 Release
 - Version 2.5.10 (WarbandNexus.toc, Modules/Constants.lua, ADDON_RELEASE_DATE; What's New locale key CHANGELOG_V2510).

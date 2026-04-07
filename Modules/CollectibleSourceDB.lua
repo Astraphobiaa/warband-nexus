@@ -1891,7 +1891,8 @@ ns.CollectibleSourceDB = {
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+); same encounter, no separate M+ entry
         },
         [231865] = { -- Degentrius (Magisters' Terrace) â€” Lucent Hawkstrider â€” encounterID 3074 (npc=231865 wowhead)
-            { type = "mount", itemID = 260231, name = "Lucent Hawkstrider", repeatable = false },
+            -- mountID: journal id (avoids GetMountFromItem when secret in instances); spell fallback still applies
+            { type = "mount", itemID = 260231, name = "Lucent Hawkstrider", mountID = 2817, repeatable = false },
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+)
         },

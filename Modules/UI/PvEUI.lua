@@ -1471,9 +1471,29 @@ function WarbandNexus:DrawPvEProgress(parent)
             colValues[n + 3] = { text = FormatVaultSlots(raidUnlocked, raidTotal), color = {1, 1, 1} }
             colValues[n + 4] = { text = FormatVaultSlots(dungeonUnlocked, dungeonTotal), color = {1, 1, 1} }
             colValues[n + 5] = { text = FormatVaultSlots(worldUnlocked, worldTotal), color = {1, 1, 1} }
-            -- Bountiful / Trovehunter tracking is warband-scoped; always use live quest flags (same for every row).
-            local bountifulDone = WarbandNexus.IsBountifulDelveWeeklyDone and WarbandNexus:IsBountifulDelveWeeklyDone() or false
-            colValues[n + 6] = { text = bountifulDone and READY_ICON or NOT_READY_ICON, color = {1, 1, 1} }
+            -- Trovehunter's Bounty / bountiful weeklies: per-character snapshot from PvE cache (not live API on every row).
+            local delveChar = (pve.delves and pve.delves.character) or {}
+            local bountifulDone = delveChar.bountifulComplete
+            if bountifulDone == nil and isCurrentChar then
+                bountifulDone = WarbandNexus.IsBountifulDelveWeeklyDone and WarbandNexus:IsBountifulDelveWeeklyDone() or false
+            end
+            local bountifulTitle = (ns.L and ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty"
+            local bountifulUnknown = (bountifulDone == nil)
+            local bountifulTip = {
+                {
+                    text = bountifulUnknown and ((ns.L and ns.L["PVE_BOUNTY_NEED_LOGIN"]) or "No saved status for this character. Log in to refresh.")
+                        or (bountifulDone and ((ns.L and ns.L["VAULT_COMPLETED_ACTIVITIES"]) or "Completed")
+                            or ((ns.L and ns.L["ACHIEVEMENT_NOT_COMPLETED"]) or "Not Completed")),
+                    color = {1, 1, 1},
+                },
+            }
+            colValues[n + 6] = {
+                text = bountifulUnknown and EM_DASH or (bountifulDone and READY_ICON or NOT_READY_ICON),
+                color = bountifulUnknown and DIM_COLOR or {1, 1, 1},
+                tooltip = bountifulTip,
+                tooltipTitle = bountifulTitle,
+                tooltipIcon = GetTrovehunterBountyColumnIcon(),
+            }
 
             for ci = #PVE_COLUMNS, 1, -1 do
                 local col = PVE_COLUMNS[ci]

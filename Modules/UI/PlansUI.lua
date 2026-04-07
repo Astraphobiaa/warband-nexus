@@ -1543,7 +1543,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         -- Use factory to create card
         local card = nil
         if PlanCardFactory then
-            card = PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, cardHeight, listCardWidth)
+            card = PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, cardHeight, listCardWidth, {
+                tryCountClickableOptions = { popupOnRightClick = false },
+            })
         else
             -- Fallback to old method if factory not available
             card = CreateCard(parent, cardHeight)
@@ -1657,31 +1659,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 end
             end
 
-            -- Right-click context menu (try count only for drop-source; reset cycle for custom)
-            local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true }
-            local hasTryCount = tryCountTypes[plan.type]
-            if hasTryCount then
-                local id = plan.mountID or plan.speciesID or plan.itemID or plan.illusionID or plan.sourceID
-                if not id or not WarbandNexus.ShouldShowTryCountInUI or not WarbandNexus:ShouldShowTryCountInUI(plan.type, id) then
-                    hasTryCount = false
-                end
-            end
+            -- To-Do List: try count is edited from the try row only (left-click); no card-level right-click popup.
             local hasResetCycle = plan.type == "custom"
 
-            -- Try count: open editor directly (MenuUtil often shows no UI on Midnight).
-            if hasTryCount then
-                do
-                    local cp = plan
-                    local tid = cp.mountID or cp.speciesID or cp.itemID or cp.illusionID or cp.sourceID
-                    card:SetScript("OnMouseDown", function(_, button)
-                        if button ~= "RightButton" or card.clickedOnRemoveBtn then return end
-                        if tid and ns.UI_ShowTryCountPopup then
-                            ns.UI_ShowTryCountPopup(cp.type, tid, cp.name)
-                        end
-                        card.clickedOnRemoveBtn = nil
-                    end)
-                end
-            end
             -- Custom plans: reset cycle still uses context menu when MenuUtil exists
             if hasResetCycle then
                 do

@@ -1207,7 +1207,7 @@ L["SOURCE_TYPE_TRADING_POST"] = "Trading Post"
 L["SOURCE_TYPE_TREASURE"] = "Treasure"
 L["SPECIAL_ASSIGNMENT_CAT"] = "Mission spéciale"
 L["INFO_CREDITS_SECTION_TITLE"] = "Crédits et remerciements"
-L["INFO_CREDITS_LORE_SUBTITLE"] = "Récits et univers"
+L["INFO_CREDITS_LORE_SUBTITLE"] = "Remerciements spéciaux"
 L["INFO_FEATURES_SECTION_TITLE"] = "Aperçu des fonctionnalités"
 L["HEADER_INFO_TOOLTIP"] = "Guide de l'addon et crédits"
 L["HEADER_INFO_TOOLTIP_HINT"] = "Fonctions et contributeurs — les crédits sont en haut."
@@ -1725,6 +1725,31 @@ Corrections
 - Infobulles : le texte jaune « (Planifié) » n'apparaît que si la monture, la mascotte ou le jouet manque encore. Lignes de butin PNJ/conteneur, sous-lignes de yield et infobulles d'objet utilisent le journal et les jouets (pcall et règles Midnight sur les valeurs secrètes). Les entrées « item » génériques en base se synchronisent de la même façon pour ne plus afficher Planifié une fois obtenu.
 
 CurseForge : Warband Nexus]=]
+
+-- v2.5.11 (CHANGELOG_V2511) — English notes; see enUS for detail
+L["CHANGELOG_V2511"] = [=[v2.5.11 (2026-04-07)
+
+PvE
+- Trovehunter's Bounty / Bountiful column: per-character cache for each header row; live quest API only for the current character when no snapshot exists (alts show "—" until logged in).
+- Midnight-safe weekly quest checks (pcall + secret guards) in PvE cache.
+- Trovehunter weekly flag uses hidden quest 86371 only (removed OR with Cracked Keystone 92600 / Bountiful Delves 81514 so the column is not falsely "done").
+- Bountiful cell tooltip; PVE_BOUNTY_NEED_LOGIN when an alt has no saved status yet.
+
+Collections
+- Achievements tab: full category enumeration via GetCategoryNumAchievements(categoryID, true) — fixes the list showing only the last earned achievement.
+- One-time full achievement re-scan after this update (global wnAchievementIncludeAllScanV1).
+
+Try Counter & data
+- Mount/pet collected handling, missed-drop filtering, C_Timer.After callback fix; Lucent Hawkstrider mount ID in CollectibleSourceDB.
+
+Plans / UI
+- To-Do / tracker: try-count popup can be left-click only (no right-click popup on cards).
+- Information dialog: Special Thanks block (Contributors-style).
+
+Localization
+- Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
+
+CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Liste des tâches et progression hebdo : décoché = plans en cours ; coché = uniquement terminés. Onglets Parcourir : décoché = non collectés (filtrés par To-Do si Afficher planifiés) ; coché = entrées collectées sur la To-Do (planifiés limite toujours la liste)."
 L["SHOW_PLANNED_HELP"] = "Onglets Parcourir uniquement (masqués sur la liste To-Do et la progression hebdo) : coché = seulement ce que vous avez mis sur la To-Do. Avec Afficher terminés décoché : encore à obtenir ; coché : déjà finis ; les deux cochés : toute la catégorie planifiée ; les deux décochés : parcours complet des non collectés."
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Aucun succès à afficher"

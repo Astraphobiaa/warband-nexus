@@ -30,6 +30,18 @@ local function DebugPrint(...)
     _G.print(...)  -- Use global print to avoid recursion
 end
 
+---How many achievements to iterate in a category via GetAchievementInfo(categoryID, index).
+---Must use includeAll=true: without it, GetCategoryNumAchievements only counts the UI "visible" subset (often 0–1),
+---so full scans and Collections UI miss almost all earned achievements (only ACHIEVEMENT_EARNED increments would appear).
+local function GetCategoryAchievementListCount(categoryID)
+    if not categoryID or not GetCategoryNumAchievements then return 0 end
+    local ok, total = pcall(function()
+        return select(1, GetCategoryNumAchievements(categoryID, true))
+    end)
+    if ok and type(total) == "number" then return total end
+    return select(1, GetCategoryNumAchievements(categoryID)) or 0
+end
+
 -- ============================================================================
 -- CONSTANTS
 -- ============================================================================
@@ -408,6 +420,12 @@ function WarbandNexus:InitializeCollectionCache()
     collectionCache.lastScan = dbCache.lastScan or 0
     collectionCache.lastAchievementScan = dbCache.lastAchievementScan or 0
 
+    -- One-shot: old code used GetCategoryNumAchievements(cat) without includeAll — sparse achievement store + 5m scan cooldown
+    -- blocked EnsureCollectionData from ever re-queuing a full scan. Clear cooldown until wnAchievementIncludeAllScanV1 is set.
+    if self.db.global and not self.db.global.wnAchievementIncludeAllScanV1 then
+        collectionCache.lastAchievementScan = 0
+    end
+
     -- MERKEZİ KAYNAK: collectionStore yükle veya eski DB'den migrate et
     local dbStore = self.db.global.collectionStore
     if dbStore and dbStore.version == CACHE_VERSION then
@@ -731,6 +749,7 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     local hasAchievements = collectionStore.achievement and next(collectionStore.achievement) ~= nil
     local hasTitles = collectionStore.title and next(collectionStore.title) ~= nil
     local hasIllusions = collectionStore.illusion and next(collectionStore.illusion) ~= nil
+    local needAchievementIncludeAllRescan = self.db.global and not self.db.global.wnAchievementIncludeAllScanV1
 
     -- Sanity check: if toy store count is far below ToyBox total, force a rebuild
     if hasToys and C_ToyBox and C_ToyBox.GetNumToys then
@@ -750,7 +769,7 @@ function WarbandNexus:EnsureCollectionData(onComplete)
         end
     end
 
-    if versionOk and hasMounts and hasPets and hasToys and hasAchievements and hasTitles and hasIllusions then
+    if versionOk and hasMounts and hasPets and hasToys and hasAchievements and hasTitles and hasIllusions and not needAchievementIncludeAllRescan then
         if onComplete then onComplete() end
         return
     end
@@ -771,7 +790,7 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     if not hasMounts or not hasPets or not hasToys then
         queue[#queue + 1] = "build"  -- BuildFullCollectionData (mounts, pets, toys)
     end
-    if not hasAchievements then
+    if (not hasAchievements) or needAchievementIncludeAllRescan then
         queue[#queue + 1] = "achievement"
     end
     if not (collectionStore.title and next(collectionStore.title)) then
@@ -2783,7 +2802,7 @@ COLLECTION_CONFIGS = {
             for i = 1, #categoryList do
                 local categoryID = categoryList[i]
                 if categoryID then
-                    local numAchievements = GetCategoryNumAchievements(categoryID)
+                    local numAchievements = GetCategoryAchievementListCount(categoryID)
                     for achIndex = 1, numAchievements do
                         table.insert(allAchievements, {categoryID = categoryID, achIndex = achIndex})
                     end
@@ -2842,7 +2861,7 @@ COLLECTION_CONFIGS = {
             for i = 1, #categoryList do
                 local categoryID = categoryList[i]
                 if categoryID then
-                    local numAchievements = GetCategoryNumAchievements(categoryID)
+                    local numAchievements = GetCategoryAchievementListCount(categoryID)
                     for achIndex = 1, numAchievements do
                         table.insert(allTitles, {categoryID = categoryID, achIndex = achIndex})
                     end
@@ -4289,8 +4308,8 @@ function WarbandNexus:ScanAchievementsAsync()
         for i = 1, #categoryList do
             local categoryID = categoryList[i]
             if categoryID then
-                local numAchievements = GetCategoryNumAchievements(categoryID)
-                
+                local numAchievements = GetCategoryAchievementListCount(categoryID)
+
                 for achIndex = 1, numAchievements do
                     -- GetAchievementInfo with pcall protection
                     local success, id, name, points, completed, month, day, year, description, flags, icon = pcall(GetAchievementInfo, categoryID, achIndex)
@@ -4391,6 +4410,10 @@ function WarbandNexus:ScanAchievementsAsync()
         
         -- Save to DB
         self:SaveCollectionCache()
+
+        if self.db and self.db.global then
+            self.db.global.wnAchievementIncludeAllScanV1 = true
+        end
         
         local elapsed = (debugprofilestop() - startTime) / 1000  -- Convert ms to seconds
         

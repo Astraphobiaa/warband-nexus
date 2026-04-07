@@ -26,6 +26,18 @@ local Constants = ns.Constants
 local CACHE_VERSION = Constants.PVE_CACHE_VERSION
 local UPDATE_THROTTLE = Constants.THROTTLE.SHARED_RARE
 
+---Midnight-safe quest completion check (pcall + secret guard).
+---@param questID number
+---@return boolean
+local function SafeIsQuestFlaggedCompleted(questID)
+    if not questID or type(questID) ~= "number" then return false end
+    if not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then return false end
+    local ok, done = pcall(C_QuestLog.IsQuestFlaggedCompleted, questID)
+    if not ok or done == nil then return false end
+    if issecretvalue and issecretvalue(done) then return false end
+    return done == true
+end
+
 -- ============================================================================
 -- NO LOCAL CACHE - DIRECT DB ACCESS ONLY
 -- ============================================================================
@@ -615,16 +627,15 @@ end
 -- DELVES DATA
 -- ============================================================================
 
----True if any configured Bountiful weekly quest is flagged complete (live API).
----Used by PvE UI for all character rows — these weeklies are account/warband scoped in practice.
+---True if any configured Bountiful / Trovehunter weekly quest is flagged complete for the **current** client session.
+---Call only while the relevant character is logged in; PvE UI uses per-char cache from UpdateDelvesData for other rows.
 ---@return boolean
 function WarbandNexus:IsBountifulDelveWeeklyDone()
     local ids = Constants.PVE_BOUNTIFUL_WEEKLY_QUEST_IDS
     if not ids or #ids == 0 then return false end
-    if not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then return false end
     for i = 1, #ids do
         local qid = ids[i]
-        if qid and C_QuestLog.IsQuestFlaggedCompleted(qid) then
+        if qid and SafeIsQuestFlaggedCompleted(qid) then
             return true
         end
     end
@@ -686,10 +697,10 @@ function WarbandNexus:UpdateDelvesData(charKey)
         if not delves.characters then delves.characters = {} end
         if not delves.characters[charKey] then delves.characters[charKey] = {} end
         
-        -- Bountiful weekly: 92600 (T11 Bountiful / Cracked Keystone) + 81514 (legacy broader weekly) — see Constants
+        -- Bountiful / Trovehunter weeklies — snapshot for this character when they are logged in (quest API is session-local).
         delves.characters[charKey].bountifulComplete = self.IsBountifulDelveWeeklyDone and self:IsBountifulDelveWeeklyDone() or false
         local crackedID = Constants.PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID or 92600
-        delves.characters[charKey].crackedKeystoneComplete = C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted(crackedID) or false
+        delves.characters[charKey].crackedKeystoneComplete = SafeIsQuestFlaggedCompleted(crackedID)
         delves.characters[charKey].lastUpdate = time()
     end
 end

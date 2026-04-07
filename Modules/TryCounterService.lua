@@ -1857,6 +1857,42 @@ end
 -- COLLECTED CHECK (skip already-owned collectibles)
 -- =====================================================================
 
+---True if the summoning spell for this mount item is known (mount already learned).
+---Midnight 12.0+: GetMountFromItem / GetMountInfoByID may return secret values in instances;
+---spell + IsSpellKnown still reflects account-wide collection for most mounts.
+---@param itemID number
+---@return boolean
+function Fns.IsMountLearnedByItemSpell(itemID)
+    if not itemID or type(itemID) ~= "number" then return false end
+    local spellID
+    if C_Item and C_Item.GetItemSpell then
+        _, spellID = C_Item.GetItemSpell(itemID)
+    elseif _G.GetItemSpell then
+        _, spellID = _G.GetItemSpell(itemID)
+    end
+    if not spellID or type(spellID) ~= "number" then return false end
+    if issecretvalue and issecretvalue(spellID) then return false end
+    local isk = _G.IsSpellKnown and _G.IsSpellKnown(spellID)
+    if isk == true then return true end
+    local isp = _G.IsPlayerSpell and _G.IsPlayerSpell(spellID)
+    if isp == true then return true end
+    -- Some clients expose spell book checks without globals
+    if C_SpellBook and C_SpellBook.IsSpellInSpellBook then
+        local ok, inBook = pcall(function()
+            return C_SpellBook.IsSpellInSpellBook(spellID)
+        end)
+        if ok and inBook then return true end
+    end
+    return false
+end
+
+---Companion pets: same teach-spell pattern as mounts when journal returns secret/nil.
+---@param itemID number
+---@return boolean
+function Fns.IsPetLearnedByItemSpell(itemID)
+    return Fns.IsMountLearnedByItemSpell(itemID)
+end
+
 ---Check if a collectible is already collected
 ---Uses native collectibleID for accurate checks, with itemID-based fallbacks
 ---@param drop table { type, itemID, name }
@@ -1906,20 +1942,30 @@ Fns.IsCollectibleCollected = function(drop)
     elseif drop.type == "mount" then
         if collectibleID then
             local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(collectibleID)
-            -- Midnight 12.0: isCollected may be a secret value (can't do boolean test)
-            if issecretvalue and isCollected and issecretvalue(isCollected) then return false end
-            return isCollected == true
+            -- Midnight 12.0: isCollected may be a secret value — do not treat as "uncollected"
+            if issecretvalue and isCollected and issecretvalue(isCollected) then
+                return Fns.IsMountLearnedByItemSpell(drop.itemID)
+            end
+            if isCollected == true then return true end
+            -- Journal false/nil but mount already learned (API lag, wrong ID resolution, or instance quirks)
+            if Fns.IsMountLearnedByItemSpell(drop.itemID) then return true end
+            return false
         end
-        -- Fallback: Can't determine without mountID, assume not collected (keep counting)
+        -- No journal ID (GetMountFromItem secret/unloaded): spell-known still detects learned mounts
+        if Fns.IsMountLearnedByItemSpell(drop.itemID) then return true end
         return false
     elseif drop.type == "pet" then
         if collectibleID then
             local numCollected = C_PetJournal.GetNumCollectedInfo(collectibleID)
-            -- Midnight 12.0: numCollected may be secret (can't compare > 0)
-            if issecretvalue and numCollected and issecretvalue(numCollected) then return false end
-            return numCollected and numCollected > 0
+            -- Midnight 12.0: numCollected may be secret — use teach-spell fallback
+            if issecretvalue and numCollected and issecretvalue(numCollected) then
+                return Fns.IsPetLearnedByItemSpell(drop.itemID)
+            end
+            if numCollected and numCollected > 0 then return true end
+            if Fns.IsPetLearnedByItemSpell(drop.itemID) then return true end
+            return false
         end
-        -- Fallback: Can't determine without speciesID, assume not collected (keep counting)
+        if Fns.IsPetLearnedByItemSpell(drop.itemID) then return true end
         return false
     elseif drop.type == "toy" then
         -- Toys: itemID IS the collectibleID, always works
@@ -2246,42 +2292,46 @@ function Fns.ReseedStatisticsForDrops(drops, resolvedDropStatIds)
 
     local function ProcessSeedDrop(drop, statListOverride)
         if drop and not drop.guaranteed then
-            local statList = statListOverride or Fns.ResolveMergedStatisticIdsForDrop(drop, resolvedDropStatIds)
-            if not statList or #statList == 0 then return end
-            local thisCharTotal = Fns.SumStatisticTotalsFromIds(statList)
-            local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
-            if tryKey and tcType then
-                charSnapshot[tryKey] = thisCharTotal
-                local globalTotal = 0
-                for _, snap in pairs(snapshots) do
-                    local charVal = snap[tryKey]
-                    if charVal and charVal > 0 then
-                        globalTotal = globalTotal + charVal
-                    end
-                end
-                local currentCount = WarbandNexus:GetTryCount(tcType, tryKey) or 0
-                local newCount = globalTotal > currentCount and globalTotal or currentCount
-                WarbandNexus:SetTryCount(tcType, tryKey, newCount)
-
-                if drop.type == "item" and drop.questStarters then
-                    for i = 1, #drop.questStarters do
-                        local qs = drop.questStarters[i]
-                        if qs.type == "mount" and qs.itemID then
-                            local mountKey1 = Fns.ResolveCollectibleID(qs)
-                            local mountKey2 = qs.itemID
-                            local mk = mountKey1 or mountKey2
-                            WarbandNexus:SetTryCount("mount", mk, math.max(newCount, WarbandNexus:GetTryCount("mount", mk) or 0))
-                            if mountKey1 and mountKey1 ~= mountKey2 then
-                                WarbandNexus:SetTryCount("mount", mountKey2, math.max(newCount, WarbandNexus:GetTryCount("mount", mountKey2) or 0))
+            local skipStatSeed = (drop.type == "mount" or drop.type == "pet" or drop.type == "toy")
+                and Fns.IsCollectibleCollected(drop)
+            if not skipStatSeed then
+                local statList = statListOverride or Fns.ResolveMergedStatisticIdsForDrop(drop, resolvedDropStatIds)
+                if statList and #statList > 0 then
+                    local thisCharTotal = Fns.SumStatisticTotalsFromIds(statList)
+                    local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+                    if tryKey and tcType then
+                        charSnapshot[tryKey] = thisCharTotal
+                        local globalTotal = 0
+                        for _, snap in pairs(snapshots) do
+                            local charVal = snap[tryKey]
+                            if charVal and charVal > 0 then
+                                globalTotal = globalTotal + charVal
                             end
-                            questStarterMountToSourceItemID[mk] = drop.itemID
-                            if mountKey1 and mountKey1 ~= mountKey2 then
-                                questStarterMountToSourceItemID[mountKey2] = drop.itemID
+                        end
+                        local currentCount = WarbandNexus:GetTryCount(tcType, tryKey) or 0
+                        local newCount = globalTotal > currentCount and globalTotal or currentCount
+                        WarbandNexus:SetTryCount(tcType, tryKey, newCount)
+
+                        if drop.type == "item" and drop.questStarters then
+                            for i = 1, #drop.questStarters do
+                                local qs = drop.questStarters[i]
+                                if qs.type == "mount" and qs.itemID and not Fns.IsCollectibleCollected(qs) then
+                                    local mountKey1 = Fns.ResolveCollectibleID(qs)
+                                    local mountKey2 = qs.itemID
+                                    local mk = mountKey1 or mountKey2
+                                    WarbandNexus:SetTryCount("mount", mk, math.max(newCount, WarbandNexus:GetTryCount("mount", mk) or 0))
+                                    if mountKey1 and mountKey1 ~= mountKey2 then
+                                        WarbandNexus:SetTryCount("mount", mountKey2, math.max(newCount, WarbandNexus:GetTryCount("mount", mountKey2) or 0))
+                                    end
+                                    questStarterMountToSourceItemID[mk] = drop.itemID
+                                    if mountKey1 and mountKey1 ~= mountKey2 then
+                                        questStarterMountToSourceItemID[mountKey2] = drop.itemID
+                                    end
+                                end
                             end
                         end
                     end
                 end
-
             end
         end
         if drop and drop.questStarters then
@@ -2326,6 +2376,19 @@ end
 function Fns.ProcessMissedDrops(drops, statIds, options)
     if not drops or #drops == 0 then return end
     if not Fns.EnsureDB() then return end
+
+    -- Drop entries queued before deferred run may now resolve as collected (journal/spell).
+    -- Repeatable farm mounts stay eligible even when owned.
+    local filtered = {}
+    for i = 1, #drops do
+        local d = drops[i]
+        if d and (d.repeatable or not Fns.IsCollectibleCollected(d)) then
+            filtered[#filtered + 1] = d
+        end
+    end
+    if #filtered == 0 then return end
+    drops = filtered
+
     local attemptTimes = options and tonumber(options.attemptTimes) or 1
     if attemptTimes < 1 then attemptTimes = 1 end
 
@@ -2359,7 +2422,7 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
             if drop.type ~= "item" or not drop.questStarters or drop.tryCountReflectsTo then return end
             for qi = 1, #drop.questStarters do
                 local qs = drop.questStarters[qi]
-                if qs.type == "mount" and qs.itemID then
+                if qs.type == "mount" and qs.itemID and not Fns.IsCollectibleCollected(qs) then
                     local k1 = Fns.ResolveCollectibleID(qs)
                     local k2 = qs.itemID
                     WN:SetTryCount("mount", k1 or k2, newCount)
@@ -2375,6 +2438,11 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
         local function ProcessManualDrop(drop, mult, fromRecursion)
             mult = tonumber(mult) or attemptTimes
             if mult < 1 then mult = 1 end
+            -- Defense: deferred paths may run after learn; never increment for already-owned collectibles
+            if drop and (drop.type == "mount" or drop.type == "pet" or drop.type == "toy")
+                and Fns.IsCollectibleCollected(drop) then
+                return
+            end
             if drop and not drop.guaranteed then
                 local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
                 if tryKey then
@@ -4712,7 +4780,7 @@ function WarbandNexus:ProcessNPCLoot()
     if matchedNpcID and not lockoutQuestsDB[matchedNpcID] and (npcDropDB[matchedNpcID] or (ns.CollectibleSourceDB and ns.CollectibleSourceDB.rares and ns.CollectibleSourceDB.rares[matchedNpcID])) then
         discoveryPendingNpcID = matchedNpcID
         discoveryPendingTime = GetTime()
-        C_Timer.After(2, TryDiscoverLockoutQuest)
+        C_Timer.After(2, Fns.TryDiscoverLockoutQuest)
     end
 
     -- ===================================================================
