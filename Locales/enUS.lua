@@ -1946,6 +1946,7 @@ L["VAULT_SLOT_RAIDS"] = RAIDS or "Raids"
 L["VAULT_SLOT_SA"] = "Assignments"
 L["TRACK_ACTIVITIES"] = "Track Activities"
 L["VERSION"] = GAME_VERSION_LABEL or "Version"
+L["FIRSTCRAFT"] = PROFESSIONS_FIRST_CRAFT or "First Craft"
 
 -- Keybinding globals (must be global for WoW's keybinding UI)
 BINDING_HEADER_WARBANDNEXUS = "Warband Nexus"
