@@ -1703,3 +1703,4 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra mensagens de tempo total jogado
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Solicitar tempo jogado ao entrar"
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Se ativo, solicita /played em segundo plano para «Mais jogado» etc.; a saída no chat é suprimida. Se inativo, sem pedido automático no login (/played manual funciona)."
 L["PROFESSIONS_WIDE_TABLE_HINT"] = "Dica: use a barra abaixo ou Shift + rolagem para ver todas as colunas."
+L["FIRSTCRAFT"] = PROFESSIONS_FIRST_CRAFT or "First Craft"
