@@ -1,21 +1,31 @@
 ═══════════════════════════════════════════════════════════════════════════
 
-  WARBAND NEXUS — 2.5.12 (2026-04-12)
+  WARBAND NEXUS — 2.5.14 (2026-04-13)
 
 ═══════════════════════════════════════════════════════════════════════════
 
 This release
-- Collections: “Recent” is four equal cards (Achievements, Mounts, Pets, Toys) with clearer empty states and search.
-- Mount preview: closer to the in-game mount journal, better framing and zoom; optional mouse-wheel zoom.
-- Collections / To-Do: defaults are Recent and the To-Do list; last sub-tab choice returns in the same session until reload.
-- Detail headers: more consistent top-right layout (Wowhead, add, try count) across mount, pet, toy, and achievement views.
-- Fixes: collections tab crash on open; tooltip text in settings, gold, and plans; PvE / character matching so tracked alts show M+ and Great Vault data.
-- Coffer Key Shards: weekly progress and tooltips read more clearly.
-- Try counter: fewer wrong counts; chat / notification tweaks.
+- Settings: tooltips use wrapped GameTooltip text; title hover shows localized ESC hint.
+  Re-enabled keyboard on settings window show (ESC closes via WindowManager).
+- Locale: HIDE_TRY_COUNTER_CHAT (+ tooltip) and SETTINGS_ESC_HINT in all supported languages.
+- Settings: "Hide Attempts on Chat" toggle (default off). When enabled, all try counter
+  chat output ([WN-Counter], [WN-Drops], obtained/caught lines) is suppressed while counting
+  continues normally. Cascading disable: instance entry drop lines, chat route dropdown,
+  and "Add to chat tab" button are greyed out when chat is hidden.
+- Try counter debug logs: removed LOOT_CLOSED and CHAT_MSG_LOOT event trace lines.
+  All count debug lines now use structured per-drop format:
+  +N | Source: NPC | InDB: True | Repeatable: False | WhatIs: mount #12345 ItemName
+- Try counter: standardized instance encounter pipeline.
+  - Difficulty gating is now fail-closed: drops requiring a specific difficulty (Mythic, Heroic, 25H, etc.) are NOT counted when the current difficulty cannot be determined. Prevents false +1 on wrong difficulty.
+  - CHAT loot path now resolves encounter difficulty from recent kills (same as LOOT path).
+  - Encounter dedup keys normalized across all code paths (ENCOUNTER_END, LOOT, CHAT) to prevent double-counting.
+  - ENC delayed fallback uses deterministic most-recent-kill selection instead of undefined Lua pairs() order.
+  - Added 13 missing encounter ID mappings: Kael'thas (MGT), Anzu, Skadi, Altairus, Slabhide, Al'Akir, Mandokir, Kilnara, Alysrazor, Attumen (RTK), Nightbane (RTK).
 
 Earlier (short)
+- 2.5.12 — Collections "Recent" cards, mount preview, detail headers, try counter and PvE fixes.
 - 2.5.11 — PvE bounty column, achievement list scan, try counter and plans UI.
-- 2.5.10 — “Planned” label only when the item is still missing; tooltip fixes.
+- 2.5.10 — "Planned" label only when the item is still missing; tooltip fixes.
 - 2.5.9b — collectible hints on hostile targets; try counter chat routing; packaging and locales.
 
 Full technical history: CHANGELOG.md (repo root)

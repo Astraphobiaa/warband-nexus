@@ -261,6 +261,7 @@ local defaults = {
             autoTryCounter = true,             -- Automatic try counter for NPC/boss/fishing/container drops
             -- On instance entry: [WN-Drops] lines (boss, item link, difficulty color) vs one short hint
             tryCounterInstanceEntryDropLines = true,
+            hideTryCounterChat = false,        -- Suppress all try counter chat lines; counting still runs
             -- Try counter chat routing: loot | dedicated (WN_TRYCOUNTER group) | all_tabs
             tryCounterChatRoute = "loot",
             lastSeenVersion = "0.0.0",         -- Last addon version seen

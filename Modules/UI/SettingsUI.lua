@@ -50,6 +50,30 @@ local function RefreshSettingsKeyboard(frame)
     if frame.SetPropagateKeyboardInput then frame:SetPropagateKeyboardInput(true) end
 end
 
+---Long setting tooltips: use SetText wrap flag + minimum width so text breaks into lines.
+---@param owner Region
+---@param text string|nil
+local function Settings_ShowWrappedTooltip(owner, text)
+    if not owner or not text or type(text) ~= "string" then return end
+    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    GameTooltip:ClearLines()
+    local w = 340
+    if owner.GetParent then
+        local parent = owner:GetParent()
+        if parent and parent.GetWidth then
+            local pw = parent:GetWidth()
+            if pw and pw > 120 then
+                w = math.max(260, math.min(440, pw - 40))
+            end
+        end
+    end
+    if GameTooltip.SetMinimumWidth then
+        GameTooltip:SetMinimumWidth(w)
+    end
+    GameTooltip:SetText(text, 1, 1, 1, 1, true)
+    GameTooltip:Show()
+end
+
 local function GetToggleBindingDisplayText()
     local key = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
                 and WarbandNexus.db.profile.toggleKeybind
@@ -163,16 +187,12 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
         -- Tooltip on hover
         if option.tooltip then
             checkbox:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(option.tooltip, 1, 1, 1, 1)
-                GameTooltip:Show()
+                Settings_ShowWrappedTooltip(self, option.tooltip)
             end)
             checkbox:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
             label:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(option.tooltip, 1, 1, 1, 1)
-                GameTooltip:Show()
+                Settings_ShowWrappedTooltip(self, option.tooltip)
             end)
             label:SetScript("OnLeave", function() GameTooltip:Hide() end)
         end
@@ -345,9 +365,7 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
             buttonText:SetTextColor(1, 1, 1)
             
             if btnData.tooltip then
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(btnData.tooltip, 1, 1, 1, 1)
-                GameTooltip:Show()
+                Settings_ShowWrappedTooltip(self, btnData.tooltip)
             end
         end)
         
@@ -389,9 +407,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
     if option.desc then
         label:SetScript("OnEnter", function(self)
             local desc = type(option.desc) == "function" and option.desc() or option.desc
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(desc, 1, 1, 1, 1)
-            GameTooltip:Show()
+            Settings_ShowWrappedTooltip(self, desc)
         end)
         label:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
@@ -659,7 +675,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
     end)
     
     -- Label + gap + 32px control + margin before next row
-    return yOffset - 82
+    return yOffset - 82, dropdown, label
 end
 
 ---Create styled input (EditBox) widget
@@ -680,9 +696,7 @@ local function CreateInputWidget(parent, option, yOffset)
     if option.desc then
         label:SetScript("OnEnter", function(self)
             local desc = type(option.desc) == "function" and option.desc() or option.desc
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(desc, 1, 1, 1, 1)
-            GameTooltip:Show()
+            Settings_ShowWrappedTooltip(self, desc)
         end)
         label:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
@@ -817,9 +831,7 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
     if option.desc then
         slider:SetScript("OnEnter", function(self)
             local desc = type(option.desc) == "function" and option.desc() or option.desc
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(desc, 1, 1, 1, 1)
-            GameTooltip:Show()
+            Settings_ShowWrappedTooltip(self, desc)
         end)
         slider:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
@@ -977,10 +989,8 @@ local function BuildSettings(parent, containerWidth)
     langLabel:SetTextColor(1, 1, 1, 1)
     
     langLabel:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
         local langTooltip = (ns.L and ns.L["LANGUAGE_TOOLTIP"]) or "Addon uses your WoW game client's language automatically. To change, update your Battle.net settings."
-        GameTooltip:SetText(langTooltip, 1, 1, 1, 1)
-        GameTooltip:Show()
+        Settings_ShowWrappedTooltip(self, langTooltip)
     end)
     langLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
@@ -1068,9 +1078,8 @@ local function BuildSettings(parent, containerWidth)
     end)
 
     keybindBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["KEYBINDING_TOOLTIP"]) or "Click to set a keybinding for toggling Warband Nexus.\nPress ESC to cancel.", 1, 1, 1, 1)
-        GameTooltip:Show()
+        local t = (ns.L and ns.L["KEYBINDING_TOOLTIP"]) or "Click to set a keybinding for toggling Warband Nexus.\nPress ESC to cancel."
+        Settings_ShowWrappedTooltip(self, t)
     end)
     keybindBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
@@ -1095,9 +1104,7 @@ local function BuildSettings(parent, containerWidth)
     end)
     clearBtn:SetScript("OnEnter", function(self)
         clearIcon:SetVertexColor(1, 0.2, 0.2)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["KEYBINDING_CLEAR"]) or "Clear keybinding", 1, 1, 1, 1)
-        GameTooltip:Show()
+        Settings_ShowWrappedTooltip(self, (ns.L and ns.L["KEYBINDING_CLEAR"]) or "Clear keybinding")
     end)
     clearBtn:SetScript("OnLeave", function()
         clearIcon:SetVertexColor(0.9, 0.3, 0.3)
@@ -1598,6 +1605,15 @@ local function BuildSettings(parent, containerWidth)
             set = function(value) WarbandNexus.db.profile.notifications.autoTryCounter = value end,
         },
         {
+            key = "hideTryCounterChat",
+            parentKey = "autoTryCounter",
+            label = (ns.L and ns.L["HIDE_TRY_COUNTER_CHAT"]) or "Hide Attempts on Chat",
+            tooltip = (ns.L and ns.L["HIDE_TRY_COUNTER_CHAT_TOOLTIP"])
+                or "Suppress all try counter messages in chat ([WN-Counter], [WN-Drops], obtained/caught lines). Counting continues normally — only chat output is hidden.",
+            get = function() return WarbandNexus.db.profile.notifications.hideTryCounterChat == true end,
+            set = function(value) WarbandNexus.db.profile.notifications.hideTryCounterChat = value end,
+        },
+        {
             key = "tryCounterInstanceEntryDropLines",
             parentKey = "autoTryCounter",
             label = (ns.L and ns.L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"]) or "Instance entry: list drops in chat",
@@ -1624,7 +1640,8 @@ local function BuildSettings(parent, containerWidth)
 
     -- Try counter: where chat lines go (Loot vs own group vs all tabs)
     notifGridYOffset = notifGridYOffset - 8
-    notifGridYOffset = CreateDropdownWidget(notifSection.content, {
+    local tcChatRouteDropdown, tcChatRouteLabel
+    notifGridYOffset, tcChatRouteDropdown, tcChatRouteLabel = CreateDropdownWidget(notifSection.content, {
         name = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LABEL"]) or "Try counter chat output",
         desc = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DESC"])
             or "Default uses the same tabs as Loot messages. “Warband Nexus” is a separate filter you can enable per tab (often listed in the chat tab settings). “All tabs” prints to every standard chat window.",
@@ -1660,10 +1677,8 @@ local function BuildSettings(parent, containerWidth)
         ApplyVisuals(addTcChatBtn, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     addTcChatBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"])
-            or "Select the chat tab you want, then click. Use with “Warband Nexus (separate filter)” mode so try lines are not tied to Loot.", 1, 1, 1, 1)
-        GameTooltip:Show()
+        Settings_ShowWrappedTooltip(self, (ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"])
+            or "Select the chat tab you want, then click. Use with “Warband Nexus (separate filter)” mode so try lines are not tied to Loot.")
     end)
     addTcChatBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     addTcChatBtn:SetScript("OnClick", function()
@@ -1680,6 +1695,34 @@ local function BuildSettings(parent, containerWidth)
     
     -- Track external dependents (sliders, buttons) that should disable when notifications are OFF
     local notifExternalDependents = {}
+
+    -- Chat-dependent widgets: disabled when hideTryCounterChat is checked OR autoTryCounter is off
+    local tcChatDependents = { tcChatRouteDropdown, tcChatRouteLabel, addTcChatBtn }
+    local function ApplyHideTryCounterChatCascade()
+        local chatHidden = WarbandNexus.db and WarbandNexus.db.profile
+            and WarbandNexus.db.profile.notifications
+            and WarbandNexus.db.profile.notifications.hideTryCounterChat
+        local autoOff = not (WarbandNexus.db and WarbandNexus.db.profile
+            and WarbandNexus.db.profile.notifications
+            and WarbandNexus.db.profile.notifications.autoTryCounter)
+        local shouldDisable = chatHidden or autoOff
+        for _, w in ipairs(tcChatDependents) do
+            if w then
+                if shouldDisable then
+                    if w.Disable then w:Disable() end
+                    w:SetAlpha(0.35)
+                else
+                    if w.Enable then w:Enable() end
+                    w:SetAlpha(1.0)
+                end
+            end
+        end
+        local entryW = notifWidgets["tryCounterInstanceEntryDropLines"]
+        if entryW then
+            SetCheckboxDisabled(entryW.checkbox, entryW.label, shouldDisable)
+        end
+    end
+
     notifWidgets._onParentToggle = function(key, isEnabled)
         if key == "enabled" then
             for _, dep in ipairs(notifExternalDependents) do
@@ -1712,7 +1755,11 @@ local function BuildSettings(parent, containerWidth)
                 end
             end
         end
+        if key == "hideTryCounterChat" or key == "autoTryCounter" then
+            ApplyHideTryCounterChatCascade()
+        end
     end
+    ApplyHideTryCounterChatCascade()
     
     -- ---- Notification Duration ----
     notifGridYOffset = notifGridYOffset - 15
@@ -2202,9 +2249,7 @@ local function BuildSettings(parent, containerWidth)
         end
         btnText:SetTextColor(1, 1, 1)
         
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["COLOR_PICKER_TOOLTIP"]) or "Open WoW's native color picker wheel to choose a custom theme color", 1, 1, 1, 1)
-        GameTooltip:Show()
+        Settings_ShowWrappedTooltip(self, (ns.L and ns.L["COLOR_PICKER_TOOLTIP"]) or "Open WoW's native color picker wheel to choose a custom theme color")
     end)
     
     colorPickerBtn:SetScript("OnLeave", function(self)
@@ -2795,9 +2840,7 @@ local function BuildSettings(parent, containerWidth)
     itemIDLabel:SetText((ns.L and ns.L["ITEM_ID_INPUT"]) or "Item ID")
     itemIDLabel:SetTextColor(1, 1, 1, 1)
     itemIDLabel:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["ITEM_ID_INPUT_DESC"]) or "Enter the item ID to track.", 1, 1, 1, 1)
-        GameTooltip:Show()
+        Settings_ShowWrappedTooltip(self, (ns.L and ns.L["ITEM_ID_INPUT_DESC"]) or "Enter the item ID to track.")
     end)
     itemIDLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
     trackYOffset = trackYOffset - 22
@@ -2867,9 +2910,7 @@ local function BuildSettings(parent, containerWidth)
             ApplyVisuals(lookupBtn, {0.12, 0.12, 0.14, 1}, {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 1})
         end
         lookupBtnText:SetTextColor(1, 1, 1)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["LOOKUP_ITEM_DESC"]) or "Resolve item name and type from ID.", 1, 1, 1, 1)
-        GameTooltip:Show()
+        Settings_ShowWrappedTooltip(self, (ns.L and ns.L["LOOKUP_ITEM_DESC"]) or "Resolve item name and type from ID.")
     end)
     lookupBtn:SetScript("OnLeave", function()
         if ApplyVisuals then
@@ -3104,6 +3145,7 @@ function WarbandNexus:ShowSettings()
     f:SetMovable(true)
     f:SetResizable(true)
     f:EnableMouse(true)
+    if f.SetToplevel then f:SetToplevel(true) end
     f:SetClampedToScreen(true)
     f:SetResizeBounds(600, 500, 1000, 800)
     
@@ -3126,6 +3168,10 @@ function WarbandNexus:ShowSettings()
                 mainFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
             end
         end
+    end)
+
+    f:SetScript("OnShow", function(self)
+        RefreshSettingsKeyboard(self)
     end)
     
     -- ESC: same hierarchy as main window (POPUP closes before MAIN).
@@ -3187,9 +3233,15 @@ function WarbandNexus:ShowSettings()
     -- Title
     local title = FontManager:CreateFontString(header, "title", "OVERLAY")
     title:SetPoint("LEFT", icon, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
+    title:EnableMouse(true)
     title:SetText((ns.L and ns.L["WARBAND_NEXUS_SETTINGS"]) or "Warband Nexus Settings")
     title:SetTextColor(1, 1, 1)
-    
+    title:SetScript("OnEnter", function(self)
+        Settings_ShowWrappedTooltip(self, (ns.L and ns.L["SETTINGS_ESC_HINT"])
+            or "Press |cff999999ESC|r to close this window.")
+    end)
+    title:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     -- Close button (Factory)
     local closeBtn = ns.UI.Factory:CreateButton(header, 28, 28, true)
     if not closeBtn then return end

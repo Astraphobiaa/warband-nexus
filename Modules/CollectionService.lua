@@ -2302,12 +2302,6 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         end
     end
     
-    -- Log for known collectible classes to aid debugging
-    -- classID 0: Consumable (some vendor toys), classID 15: Misc (mounts/toys/pets), classID 17: Battle Pet
-    if classID == 0 or classID == 17 or (classID == 15 and (subclassID == 0 or subclassID == 2 or subclassID == 5)) then
-        DebugPrint("|cff00ccff[WN CollectionService]|r CheckNewCollectible: itemID=" .. itemID .. " classID=" .. tostring(classID) .. " subclassID=" .. tostring(subclassID) .. " name=" .. tostring(itemName))
-    end
-    
     -- ========================================
     -- MOUNT (classID 15, subclass 5)
     -- ========================================
@@ -4870,19 +4864,18 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
     
     -- NORMAL SCAN: Detect NEW items only
     local scanAll = (specificBagIDs == nil)
-    if scanAll then
-    DebugPrint("|cff00ccff[WN BAG SCAN]|r Scanning ALL bags for NEW items...")
-    else
-        local bagList = {}
-        for bagID in pairs(specificBagIDs) do bagList[#bagList + 1] = tostring(bagID) end
-    DebugPrint("|cff00ccff[WN BAG SCAN]|r Scanning bags [" .. table.concat(bagList, ",") .. "] for NEW items...")
-    end
     
     -- RETRY PENDING ITEMS: Items from previous scan where GetItemInfo returned nil
     for slotKey, pending in pairs(pendingRetryItems) do
         local collectibleInfo = WarbandNexus:CheckNewCollectible(pending.itemID, pending.hyperlink)
         if collectibleInfo then
-    DebugPrint("|cff00ff00[WN BAG SCAN]|r ✓ RETRY SUCCESS: " .. collectibleInfo.type .. " - " .. collectibleInfo.name)
+            local repStr = "n/a"
+            if WarbandNexus.IsRepeatableCollectible then
+                repStr = tostring(WarbandNexus:IsRepeatableCollectible(collectibleInfo.type, collectibleInfo.id))
+            end
+            DebugPrint(string.format(
+                "|cff00ff00[WN BAG SCAN]|r RETRY Source=Bag IsInCollectible=True Repeatable=%s WhatIs=%s id=%s name=%s",
+                repStr, collectibleInfo.type, tostring(collectibleInfo.id), collectibleInfo.name or "?"))
             table.insert(newCollectibles, {
                 type = collectibleInfo.type,
                 itemID = pending.itemID,
@@ -4896,7 +4889,7 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
             pending.retries = (pending.retries or 0) + 1
             if pending.retries >= 5 then
                 -- Give up after 5 retries (item is likely not a collectible)
-    DebugPrint("|cff888888[WN BAG SCAN]|r Retry limit reached for itemID " .. pending.itemID .. ", giving up")
+    
                 pendingRetryItems[slotKey] = nil
             end
         end
@@ -4925,7 +4918,7 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
                             if preClassID and preClassID ~= 0 and preClassID ~= 15 and preClassID ~= 17 then
                                 -- Not a collectible (weapon, armor, reagent, etc.) — skip
                             elseif not preClassID then
-    DebugPrint("|cffffcc00[WN BAG SCAN]|r Item data not loaded for itemID " .. itemID .. " - queuing for retry")
+    
                                 if not pendingRetryItems[slotKey] then
                                     pendingRetryItems[slotKey] = {
                                         itemID = itemID,
@@ -4934,11 +4927,17 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
                                     }
                                 end
                             else
-    DebugPrint("|cff00ccff[WN BAG SCAN]|r NEW ITEM detected at " .. slotKey .. " - itemID: " .. itemID)
                                 local collectibleInfo = WarbandNexus:CheckNewCollectible(itemID, itemInfo.hyperlink)
-                                
+                                local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+                                local plainName = GetItemInfoFn and select(1, GetItemInfoFn(itemID)) or nil
                                 if collectibleInfo then
-    DebugPrint("|cff00ff00[WN BAG SCAN]|r ✓ Collectible detected: " .. collectibleInfo.type .. " - " .. collectibleInfo.name)
+                                    local repStr = "n/a"
+                                    if WarbandNexus.IsRepeatableCollectible then
+                                        repStr = tostring(WarbandNexus:IsRepeatableCollectible(collectibleInfo.type, collectibleInfo.id))
+                                    end
+                                    DebugPrint(string.format(
+                                        "|cff00ff00[WN BAG SCAN]|r slot=%s Source=Bag IsInCollectible=True Repeatable=%s WhatIs=%s id=%s name=%s",
+                                        slotKey, repStr, collectibleInfo.type, tostring(collectibleInfo.id), collectibleInfo.name or "?"))
                                     
                                     table.insert(newCollectibles, {
                                         type = collectibleInfo.type,
@@ -4975,7 +4974,9 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
     for _ in pairs(currentBagContents) do itemCount = itemCount + 1 end
     local pendingCount = 0
     for _ in pairs(pendingRetryItems) do pendingCount = pendingCount + 1 end
-    DebugPrint("|cff00ccff[WN BAG SCAN]|r Scan complete. Tracking " .. itemCount .. " items, found " .. #newCollectibles .. " collectibles, " .. pendingCount .. " pending retry")
+    DebugPrint(string.format(
+        "|cff00ccff[WN BAG SCAN]|r Source=Bag ScanComplete newCollectibles=%d trackedItemSlots=%d pendingRetry=%d",
+        #newCollectibles, itemCount, pendingCount))
     
     -- If there are pending items, schedule a retry after a reasonable delay
     if pendingCount > 0 then
@@ -5001,11 +5002,9 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
     end
     lastCollectibleScanTime = now
     
-    DebugPrint("|cff00ccff[WN BAG SCAN]|r OnBagUpdateForCollectibles triggered")
     local newCollectibles = ScanBagsForNewCollectibles(specificBagIDs)
     
     if newCollectibles then
-    DebugPrint("|cff00ccff[WN BAG SCAN]|r Found " .. #newCollectibles .. " new collectible(s)")
         for i = 1, #newCollectibles do
             local collectible = newCollectibles[i]
             -- Loot → Try Counter fires WN_COLLECTIBLE_OBTAINED first; bag scan runs same tick — skip duplicate toast only.
@@ -5015,7 +5014,7 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
                     collectible.type, collectible.collectibleID, collectible.itemID)
 
             if suppressForTryCounter then
-                DebugPrint("|cff888888[WN BAG SCAN]|r SKIP toast: Try Counter already celebrated this " .. tostring(collectible.type))
+                
                 MarkAsDetectedInBag(collectible.type, collectible.collectibleID)
                 MarkAsNotified(collectible.type, collectible.collectibleID)
                 MarkAsShownByName(collectible.itemName)
@@ -5058,8 +5057,6 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
     DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. collectible.itemName)
             end
         end
-    else
-    DebugPrint("|cff888888[WN BAG SCAN]|r No new collectibles found")
     end
 end
 

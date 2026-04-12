@@ -50,6 +50,20 @@ ns.ChatOutput = ns.ChatOutput or {}
 local ChatOutput = ns.ChatOutput
 local strupper = string.upper
 
+---Retail often omits global GetNumChatWindows(); locals below must not call _G before this exists.
+---Prefer Constants (Midnight); else legacy global; else NUM_CHAT_WINDOWS (AceTab-style).
+local function GetNumChatWindows()
+    local C = Constants
+    if type(C) == "table" and C.ChatFrameConstants and C.ChatFrameConstants.MaxChatWindows then
+        return C.ChatFrameConstants.MaxChatWindows
+    end
+    local g = _G.GetNumChatWindows
+    if type(g) == "function" then
+        return g()
+    end
+    return NUM_CHAT_WINDOWS or 10
+end
+
 ---True if saved chat-window config lists a message group (GetChatWindowMessages return pack).
 ---@param winIndex number
 ---@param wanted string
@@ -253,15 +267,6 @@ end
 
 ---Chattynator: shim wraps API.AddMessageToWindowAndTab (upvalue addonTable on that fn) to post
 ---ADDON + tabTag=nil. If pcall fails, DeliverBlizzardChatFallback still prints to Blizzard frames.
-
-local function GetNumChatWindows()
-    -- Same fallback as AceTab-3.0 (Retail exposes global Constants).
-    local C = Constants
-    if type(C) == "table" and C.ChatFrameConstants and C.ChatFrameConstants.MaxChatWindows then
-        return C.ChatFrameConstants.MaxChatWindows
-    end
-    return NUM_CHAT_WINDOWS or 10
-end
 
 ---Last resort when Chattynator API fails (hidden Blizzard frames may still receive text).
 ---@param message string

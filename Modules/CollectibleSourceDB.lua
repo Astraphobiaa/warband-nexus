@@ -148,8 +148,8 @@ local _netherWarpedEgg = {
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
 
 ns.CollectibleSourceDB = {
-    version = "12.0.31",
-    lastUpdated = "2026-04-03",
+    version = "12.0.33",
+    lastUpdated = "2026-04-13",
     sourceSchemaVersion = 1,
     sourceTypes = {
         "instance_boss", -- npcID + drops
@@ -812,9 +812,15 @@ ns.CollectibleSourceDB = {
 
         -- =====================================================================
         -- Encounter ID → NPC(s) mappings (DungeonEncounter.ID)
+        -- Every instance_boss/legacyNpc that fires ENCOUNTER_END needs an entry here.
         -- =====================================================================
-        { sourceType = "encounter", encounterID = 652,  npcIDs = { 16152 } },              -- Attumen the Huntsman
+        -- The Burning Crusade
+        { sourceType = "encounter", encounterID = 652,  npcIDs = { 16152 } },              -- Attumen the Huntsman (Karazhan)
         { sourceType = "encounter", encounterID = 733,  npcIDs = { 19622 } },              -- Kael'thas (The Eye)
+        { sourceType = "encounter", encounterID = 1894, npcIDs = { 24664 } },              -- Kael'thas (Magisters' Terrace)
+        { sourceType = "encounter", encounterID = 1904, npcIDs = { 23035 } },              -- Anzu (Sethekk Halls)
+        -- Wrath of the Lich King
+        { sourceType = "encounter", encounterID = 2029, npcIDs = { 26693, 174062 } },      -- Skadi the Ruthless (Utgarde Pinnacle + TW)
         { sourceType = "encounter", encounterID = 1126, npcIDs = { 31125 } },              -- Archavon
         { sourceType = "encounter", encounterID = 1127, npcIDs = { 33993 } },              -- Emalon
         { sourceType = "encounter", encounterID = 1128, npcIDs = { 35013 } },              -- Koralon
@@ -824,20 +830,33 @@ ns.CollectibleSourceDB = {
         { sourceType = "encounter", encounterID = 1084, npcIDs = { 10184 } },              -- Onyxia
         { sourceType = "encounter", encounterID = 1143, npcIDs = { 33288 } },              -- Yogg-Saron
         { sourceType = "encounter", encounterID = 1106, npcIDs = { 36597 } },              -- The Lich King
-        { sourceType = "encounter", encounterID = 1203, npcIDs = { 52409 } },              -- Ragnaros
-        { sourceType = "encounter", encounterID = 1297, npcIDs = { 55294 } },              -- Ultraxion
-        { sourceType = "encounter", encounterID = 1299, npcIDs = { 56173 } },              -- Madness of Deathwing
+        -- Cataclysm
+        { sourceType = "encounter", encounterID = 1041, npcIDs = { 43873 } },              -- Altairus (Vortex Pinnacle)
+        { sourceType = "encounter", encounterID = 1059, npcIDs = { 43214 } },              -- Slabhide (The Stonecore)
+        { sourceType = "encounter", encounterID = 1034, npcIDs = { 46753 } },              -- Al'Akir (Throne of the Four Winds)
+        { sourceType = "encounter", encounterID = 1179, npcIDs = { 52151 } },              -- Bloodlord Mandokir (Zul'Gurub)
+        { sourceType = "encounter", encounterID = 1180, npcIDs = { 52059 } },              -- High Priestess Kilnara (Zul'Gurub)
+        { sourceType = "encounter", encounterID = 1206, npcIDs = { 52530 } },              -- Alysrazor (Firelands)
+        { sourceType = "encounter", encounterID = 1203, npcIDs = { 52409 } },              -- Ragnaros (Firelands)
+        { sourceType = "encounter", encounterID = 1297, npcIDs = { 55294 } },              -- Ultraxion (Dragon Soul)
+        { sourceType = "encounter", encounterID = 1299, npcIDs = { 56173 } },              -- Madness of Deathwing (Dragon Soul)
+        -- Mists of Pandaria
         { sourceType = "encounter", encounterID = 1500, npcIDs = { 60410 } },              -- Elegon
         { sourceType = "encounter", encounterID = 1575, npcIDs = { 68476 } },              -- Horridon
         { sourceType = "encounter", encounterID = 1573, npcIDs = { 69712 } },              -- Ji-Kun
         { sourceType = "encounter", encounterID = 1623, npcIDs = { 71865 } },              -- Garrosh Hellscream
         { sourceType = "encounter", encounterID = 1704, npcIDs = { 77325 } },              -- Blackhand
         { sourceType = "encounter", encounterID = 1799, npcIDs = { 91331 } },              -- Archimonde
+        -- Legion
+        { sourceType = "encounter", encounterID = 1960, npcIDs = { 114262 } },             -- Attumen (Return to Karazhan)
+        { sourceType = "encounter", encounterID = 2031, npcIDs = { 114895 } },             -- Nightbane (Return to Karazhan)
         { sourceType = "encounter", encounterID = 1866, npcIDs = { 105503, 104154, 111022 } }, -- Gul'dan
         { sourceType = "encounter", encounterID = 2037, npcIDs = { 115767 } },             -- Mistress Sassz'ine
         { sourceType = "encounter", encounterID = 2074, npcIDs = { 126915, 126916 } },     -- Felhounds of Sargeras
         { sourceType = "encounter", encounterID = 2092, npcIDs = { 130352 } },             -- Argus the Unmaker
+        -- Battle for Azeroth
         { sourceType = "encounter", encounterID = 2291, npcIDs = { 155157, 150190 } },     -- HK-8 Aerial Oppression Unit
+        { sourceType = "encounter", encounterID = 2673, npcIDs = { 198933 } },             -- Chrono-Lord Deios (Dawn of the Infinite)
         { sourceType = "encounter", encounterID = 2096, npcIDs = { 126983 } },             -- Harlan Sweete
         { sourceType = "encounter", encounterID = 2123, npcIDs = { 133007 } },             -- Unbound Abomination
         { sourceType = "encounter", encounterID = 2143, npcIDs = { 136160 } },             -- King Dazar
@@ -2005,6 +2024,7 @@ ns.CollectibleSourceDB = {
         ["Arachnoid Harvester"] = { 154342, 151934 },
         ["Lady Jaina Proudmoore"] = { 165396 },
         -- ENCOUNTER_END name fallback when encounterID is secret (non–enUS clients)
+        ["Leydi Jaina Proudmoore"] = { 165396 },
         ["Lady Jaina Prachtmeer"] = { 165396 },
         ["Dame Jaina Portvaillant"] = { 165396 },
         ["Lady Jaina Valororgullo"] = { 165396 },
@@ -2030,7 +2050,9 @@ ns.CollectibleSourceDB = {
         ["Fyrakk the Blazing"] = { 204931 },
         ["Scalecommander Sarkareth"] = { 201791 },
         -- TWW
-        ["Wick"] = { 210797 },
+        -- Wick's Lead drops from journal boss "The Darkness" (npc 210798); 210797 is a separate unit template.
+        ["Wick"] = { 210798 },
+        ["The Darkness"] = { 210798 },
         ["Void Speaker Eirich"] = { 213119 },
         ["Queen Ansurek"] = { 218370 },
         ["Chrome King Gallywix"] = { 241526 },
