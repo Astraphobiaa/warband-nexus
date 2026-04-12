@@ -1,0 +1,11 @@
+# Contributors
+
+Thank you to everyone who has helped improve Warband Nexus.
+
+## Community
+
+| Name | Contribution |
+|------|----------------|
+| **[Koralia91](https://github.com/Koralia91)** (Yoann Croughs) | French (`frFR`) locale: terminology and wording updates for Warband-related strings (pull request branch `Koralia91-patch-1`, commit *Update frFR.lua*). |
+
+If you contributed via a merged pull request and would like to be listed here, open an issue or add yourself in a follow-up PR.

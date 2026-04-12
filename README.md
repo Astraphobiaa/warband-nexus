@@ -310,6 +310,10 @@ file for full details.
 
 ## 🙏 Credits
 
+### **Contributors**
+
+Community improvements are credited in [CONTRIBUTORS.md](CONTRIBUTORS.md). Thank you to everyone who reports issues, suggests features, and submits pull requests.
+
 ### **Libraries Used**
 - [Ace3](https://www.wowace.com/projects/ace3) - Framework (AceAddon, AceEvent, AceDB, AceConfig, AceGUI)
 - [LibDataBroker-1.1](https://github.com/tekkub/libdatabroker-1-1) - Data broker interface
