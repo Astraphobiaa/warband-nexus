@@ -810,15 +810,41 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
         local hasSeasonProgress = (type(seasonMax) == "number" and seasonMax > 0)
         local teNum = (totalEarned ~= nil and type(totalEarned) == "number") and totalEarned or nil
 
-        if hasSeasonProgress or (type(maxQty) == "number" and maxQty > 0) then
+        local function SafeCurrencyTooltipNum(v)
+            if v == nil then return nil end
+            if issecretvalue and issecretvalue(v) then return nil end
+            return tonumber(v)
+        end
+        local isCofferShard = ns.Utilities and ns.Utilities.IsCofferKeyShardCurrency
+            and ns.Utilities:IsCofferKeyShardCurrency(currencyID, info.name)
+        local weeklyCapFromAPI = SafeCurrencyTooltipNum(info.maxWeeklyQuantity) or 0
+
+        if hasSeasonProgress or (type(maxQty) == "number" and maxQty > 0) or isCofferShard then
             local fmtNumber = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
             local currentLabel = (ns.L and ns.L["CURRENT_ENTRIES_LABEL"]) or "Current:"
             local seasonLabel = (ns.L and ns.L["SEASON"]) or "Season"
+            local weeklyLabel = (ns.L and ns.L["CURRENCY_LABEL_WEEKLY"]) or "Weekly"
             local cappedText = CAPPED or "Capped"
             local remainingSuffix = (ns.L and ns.L["VAULT_REMAINING_SUFFIX"]) or "remaining"
             frame:AddSpacer(6)
 
-            if hasSeasonProgress then
+            if isCofferShard then
+                local wCap = weeklyCapFromAPI
+                if wCap <= 0 and type(maxQty) == "number" and maxQty > 0 then
+                    wCap = maxQty
+                end
+                local teForWeek = (teNum ~= nil) and teNum or 0
+                local remWeek = math.max(wCap - teForWeek, 0)
+                frame:AddLine(string.format("%s %s", currentLabel, fmtNumber(qty)), 1, 1, 1, false)
+                if wCap > 0 then
+                    frame:AddLine(string.format("%s: %s / %s", weeklyLabel, fmtNumber(teForWeek), fmtNumber(wCap)), 1, 1, 1, false)
+                    if remWeek > 0 then
+                        frame:AddLine(string.format("%s %s", fmtNumber(remWeek), remainingSuffix), 0.5, 1, 0.5, false)
+                    else
+                        frame:AddLine(cappedText, 1, 0.35, 0.35, false)
+                    end
+                end
+            elseif hasSeasonProgress then
                 local teForSeason = (teNum ~= nil) and teNum or 0
                 local remSeason = math.max((seasonMax or 0) - teForSeason, 0)
                 frame:AddLine(string.format("%s %s", currentLabel, fmtNumber(qty)), 1, 1, 1, false)
@@ -1599,10 +1625,12 @@ function TooltipService:InitializeGameTooltipHook()
         -- GameObject IDs that WoW sometimes shows with Unit (Creature) tooltip. Do not inject
         -- collectible drops on these (they are objects, not NPCs that drop mounts/pets).
         local UNIT_TOOLTIP_OBJECT_IDS = {
+            [209780] = true,  -- Abandoned Restoration Stone (Midnight delve / world object as Unit tooltip)
             [209781] = true,  -- Empowered Restoration Stone (Midnight)
         }
         -- Unit names that are known GameObjects (name-fallback path). Do not show drops.
         local UNIT_TOOLTIP_OBJECT_NAMES = {
+            ["Abandoned Restoration Stone"] = true,
             ["Empowered Restoration Stone"] = true,
         }
 

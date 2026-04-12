@@ -180,6 +180,7 @@ L["SET_TRY_COUNT"] = "Установить счётчик"
 L["TRY_COUNT_RIGHT_CLICK_HINT"] = "ПКМ — изменить число попыток."
 L["TRY_COUNT_CLICK_HINT"] = "Клик — изменить число попыток."
 L["TRIES"] = "Попытки"
+L["COLLECTION_LIST_ATTEMPTS_FMT"] = "%d попыток"
 L["SET_RESET_CYCLE"] = "Установить цикл сброса"
 L["DAILY_RESET"] = "Ежедневный сброс"
 L["WEEKLY_RESET"] = "Еженедельный сброс"
@@ -376,13 +377,16 @@ L["VAULT_COMPLETE_PREFIX"] = "Выполните"
 L["VAULT_SLOT1_HINT"] = "Первый выбор из этого ряда"
 L["VAULT_SLOT2_HINT"] = "Второй выбор (больше вариантов!)"
 L["VAULT_SLOT3_HINT"] = "Третий выбор (максимум вариантов)"
+L["VAULT_CLICK_TO_OPEN"] = "Нажмите, чтобы открыть Великое хранилище"
 
 -- Delves Section (PvE Tab)
 L["DELVES"] = "Вылазки"
 L["COMPANION"] = "Спутник"
 L["BOUNTIFUL_DELVE"] = "Добыча охотника за сокровищами"
+L["PVE_BOUNTY_NEED_LOGIN"] = "Сохранённый статус для этого персонажа отсутствует. Войдите в игру, чтобы обновить."
 L["CRACKED_KEYSTONE"] = "Расколотый краеугольный камень"
 L["SEASON"] = "Сезон"
+L["CURRENCY_LABEL_WEEKLY"] = "Еженедельно"
 
 L["REP_TITLE"] = "Обзор репутации"
 L["REP_SUBTITLE"] = "Фракции и репутация по отряду"
@@ -1119,6 +1123,29 @@ L["TRYCOUNTER_TYPE_PET"] = "Питомец"
 L["TRYCOUNTER_TYPE_TOY"] = "Игрушка"
 L["TRYCOUNTER_TYPE_ITEM"] = "Предмет"
 L["TRYCOUNTER_TRY_COUNTS"] = "Счётчики попыток"
+L["TRYCOUNTER_INSTANCE_ENTRY_HINT"] = "В этом подземельи есть транспорт в счётчике попыток для вашей сложности. Введите |cffffffff/wn check|r, нацелившись на босса (или наведя курсор), для подробностей."
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"] = "При входе в подземелье: выводить добычу в чат"
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES_TOOLTIP"] = "При входе в подземелье или рейд со счётчиком коллекционных предметов выводить по одной строке |cff9370DB[WN-Drops]|r на предмет: ссылка — требуемая сложность (|cff00ff00зелёный|r подходит, |cffff6666красный|r не подходит, |cffffaa00янтарный|r неизвестно) — попытки или собрано. В больших подземельях не более 18 строк плюс |cff00ccff/wn check|r. Отключите для короткой подсказки."
+L["TRYCOUNTER_INSTANCE_DROPS_TRUNCATED"] = "… ещё |cffffccff%d|r — |cffffffff/wn check|r по боссу (цель или курсор)."
+L["TRYCOUNTER_PROBE_ENTER"] = "Вход: %s — сложность: %s"
+L["TRYCOUNTER_PROBE_DB_HEADER"] = "Транспорт в базе счётчика — ваша сложность: %s"
+L["TRYCOUNTER_PROBE_MOUNT_LINE"] = "%s > %s > %s > %s"
+L["TRYCOUNTER_PROBE_ENC_NO_MOUNTS"] = "%s: нет записей о транспорте в базе"
+L["TRYCOUNTER_PROBE_JOURNAL_MISS"] = "Не удалось определить журнал подземелий для этого экземпляра."
+L["TRYCOUNTER_PROBE_NO_MAPPED_BOSSES"] = "Ни один босс этого подземелья не сопоставлен с данными счётчика."
+L["TRYCOUNTER_PROBE_STATUS_COLLECTED"] = "Уже получено"
+L["TRYCOUNTER_PROBE_STATUS_OBTAINABLE"] = "Можно получить на текущей сложности"
+L["TRYCOUNTER_PROBE_STATUS_WRONG_DIFF"] = "Недоступно на текущей сложности"
+L["TRYCOUNTER_PROBE_STATUS_DIFF_UNKNOWN"] = "Сложность неизвестна"
+L["TRYCOUNTER_PROBE_REQ_ANY"] = "любая сложность"
+L["TRYCOUNTER_PROBE_REQ_MYTHIC"] = "только эпохальный"
+L["TRYCOUNTER_PROBE_REQ_LFR"] = "только LFR"
+L["TRYCOUNTER_PROBE_REQ_NORMAL_PLUS"] = "Рейд обычный или выше (не LFR)"
+L["TRYCOUNTER_PROBE_REQ_HEROIC"] = "Героический или выше (вкл. эпохальный и 25 гер.)"
+L["TRYCOUNTER_PROBE_REQ_25H"] = "только 25 игроков героический"
+L["TRYCOUNTER_PROBE_REQ_10N"] = "только 10 игроков обычный"
+L["TRYCOUNTER_PROBE_REQ_25N"] = "только 25 игроков обычный"
+L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25 игроков обычный или героический"
 L["LT_CHARACTER_DATA"] = "Данные персонажа"
 L["LT_CURRENCY_CACHES"] = "Валюты и кэши"
 L["LT_REPUTATIONS"] = "Репутации"
@@ -1391,6 +1418,37 @@ L["ZONE_DROP"] = "Дроп в локации"
 -- Full parity with enUS (remaining keys)
 L["ACHIEVEMENT_PROGRESS_TITLE"] = "Прогресс достижений"
 L["CMD_FIRSTCRAFT"] = "Список рецептов бонуса первой изготовки по дополнениям (сначала откройте окно профессии)"
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "Достижения"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "Просмотр по категориям; критерии и подробности справа."
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "Транспорт"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "Сгруппировано по источнику; предпросмотр справа."
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "Питомцы"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "Сгруппировано по источнику; модель справа."
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Ящик игрушек"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "Сгруппировано по источнику; подробности справа."
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Недавние получения"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "До 10 новейших записей в каждой категории, сначала самые новые."
+L["COLLECTIONS_SUBTAB_RECENT"] = "Недавние"
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "Пока нет записей о получениях. Новый транспорт, питомцы, игрушки и достижения появятся здесь."
+L["COLLECTIONS_RECENT_SECTION_HEAD_FMT"] = "%s — последние %d"
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "Пока нет."
+L["COLLECTIONS_RECENT_SECTION_ROW"] = "%s · %s"
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "Нет подходящих записей."
+L["COLLECTIONS_RECENT_HEADER"] = "Последние получения"
+L["COLLECTIONS_RECENT_EMPTY"] = "Полученные предметы появятся здесь с краткой меткой времени."
+L["COLLECTIONS_ACQUIRED_LABEL"] = "Записано"
+L["COLLECTIONS_ACQUIRED_LINE"] = "%s: %s"
+L["COLLECTIONS_RECENT_LINE"] = "%s · %s · %s"
+L["COLLECTIONS_RECENT_JUST_NOW"] = "Только что"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d мин. назад"
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d ч. назад"
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d дн. назад"
+L["COLLECTIONS_RECENT_SECTION_MOUNTS"] = "Недавний транспорт"
+L["COLLECTIONS_RECENT_SECTION_PETS"] = "Недавние питомцы"
+L["COLLECTIONS_RECENT_SECTION_TOYS"] = "Недавние игрушки"
+L["COLLECTIONS_RECENT_SECTION_ACHIEVEMENTS"] = "Недавние достижения"
+L["COLLECTIONS_RECENT_SECTION_EMPTY"] = "Пока нет недавних получений в этой категории."
+L["COLLECTIONS_RECENT_SECTION_LINE"] = "%s · %s"
 L["COLLECTIONS_COMING_SOON_DESC"] = "Обзор коллекций (транспорт, питомцы, игрушки, трансмог) будет доступен здесь."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Скоро"
 L["COLLECTIONS_SUBTITLE"] = "Обзор транспорта, питомцев, игрушек и трансмога"
@@ -1681,6 +1739,30 @@ Plans / UI
 
 Localization
 - Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.12 (CHANGELOG_V2512) — English notes; see enUS for detail
+L["CHANGELOG_V2512"] = [=[v2.5.12 (2026-04-12)
+
+UI
+- Notifications: Try counter chat output dropdown opens downward with extra spacing so the open list no longer overlaps the section label or nearby checkboxes. Route options keep a fixed order (Loot tabs → Warband Nexus filter → all standard tabs).
+
+Bug fixes
+- GameTooltip:SetText in Settings, Gold Management popup, and Plans UI uses valid color alpha for Midnight clients (fixes "bad argument #5 to 'SetText'").
+
+Try Counter
+- Instance entry [WN-Drops]: full drop lines vs the short hint now use the correct mount/trackable logic so difficulty messaging matches what can still drop.
+- Manual drops and Rarity sync: non-repeatable collectibles you already own no longer inflate or advance try counts.
+
+Tooltips & collections
+- Collectible/drop hints and related services tightened for Midnight secret-value rules; CollectibleSourceDB and tooltip wiring aligned with current APIs.
+
+Localization
+- Missing keys brought in line with enUS across locales; probe chat uses a shorter [WN-TC] line format.
+
+Дальнейшие планы
+- More Midnight API validation; Try Counter and notifications tuned from live raids and dungeons; further settings and tooltip polish.
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Список дел и недельный прогресс: снято = в процессе; включено = только завершённые. Вкладки обзора: снято = не получено (только из списка при «Показать запланированные»); включено = полученные из списка (запланированные всё ещё фильтруют)."

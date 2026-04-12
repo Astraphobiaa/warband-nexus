@@ -1,6 +1,31 @@
 # Changelog
 
-All notable changes to **Warband Nexus** are documented here. In-game What's New uses locale key `CHANGELOG_V` + version without dots (e.g. `CHANGELOG_V2511` for 2.5.11).
+All notable changes to **Warband Nexus** are documented here. In-game What's New uses locale key `CHANGELOG_V` + version without dots (e.g. `CHANGELOG_V2512` for 2.5.12).
+
+## [2.5.12] - 2026-04-12
+
+### UI
+
+- **Notifications settings**: Try counter chat output dropdown opens **downward** with reserved vertical space so the open menu no longer overlaps the label or checkbox grid. Options use a **fixed route order** (Loot → dedicated Warband Nexus group → all standard tabs) instead of locale-sorted text.
+
+### Bug fixes
+
+- **GameTooltip:SetText**: Settings, Gold Management popup, and Plans UI pass numeric alpha only (Midnight-safe; fixes `bad argument #5 to 'SetText'`).
+
+### Try Counter
+
+- **Instance entry [WN-Drops]**: Drop list vs short hint uses consistent trackable / mount logic for difficulty messaging.
+- **Manual drops / Rarity**: Non-repeatable collectibles already owned do not advance or inflate try counts from Rarity sync.
+
+### Tooltips & collections
+
+- Collectible/drop handling and DB alignment with Midnight `issecretvalue` patterns where touched in this release.
+
+### Localization
+
+- Locale key parity with enUS; shorter **[WN-TC]** probe format in chat.
+
+---
 
 ## [2.5.11] - 2026-04-07
 

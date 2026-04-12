@@ -2,10 +2,10 @@
 ## Title: Warband Nexus
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Author: WarbandNexus Team
-## Version: 2.5.11
+## Version: 2.5.12
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
-## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity
+## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity, Blizzard_Collections
 ## X-Category: Bags & Inventory
 ## X-Website: https://github.com/warbandnexus
 ## X-Curse-Project-ID: 

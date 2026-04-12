@@ -712,6 +712,10 @@ end
 ---Update all PvE data for current character (throttled)
 function WarbandNexus:UpdatePvEData()
     DebugPrint("|cff9370DB[PvECache]|r [PvE Action] UpdatePvEData triggered")
+    -- Align with CollectPvEData / UI: no writes when PvE module disabled
+    if ns.Utilities and ns.Utilities.IsModuleEnabled and not ns.Utilities:IsModuleEnabled("pve") then
+        return
+    end
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -1126,6 +1130,9 @@ function WarbandNexus:RegisterPvECacheEvents()
     C_Timer.After(5, function()
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
         local charKey = ns.Utilities:GetCharacterKey()
+        if ns.Utilities.GetCanonicalCharacterKey then
+            charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+        end
         if charKey then
             WarbandNexus:ProcessGreatVaultActivities(charKey)
             WarbandNexus:SavePvECache()
@@ -1293,8 +1300,11 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     end
     if not self.db.global.pveCache then return end
     
-    -- Get current character key (same pattern as other functions)
+    -- Must match PvEUI / GetPvEData: canonical key so vault rows align after character/realm normalization.
     local charKey = ns.Utilities:GetCharacterKey()
+    if ns.Utilities.GetCanonicalCharacterKey then
+        charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+    end
     if not charKey then return end
     
     if not self.db.global.pveCache.greatVault.activities then

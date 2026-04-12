@@ -14,7 +14,7 @@ local NotificationEvents = {}
 local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
--- Changelog for current version only: locale key CHANGELOG_V + version without dots (e.g. 2.5.11 -> CHANGELOG_V2511)
+-- Changelog for current version only: locale key CHANGELOG_V + version without dots (e.g. 2.5.12 -> CHANGELOG_V2512)
 local FALLBACK_CHANGELOG = "v" .. tostring(CURRENT_VERSION) .. "\n- See Locales for CHANGELOG_V key matching this version.\n\nCurseForge: Warband Nexus"
 
 local function VersionToChangelogKey(version)
@@ -484,10 +484,12 @@ end
 local queueProcessTimer = nil
 
 -- Alert positioning constants
-local ALERT_HEIGHT = 88       -- Full achievement popup height
-local ALERT_HEIGHT_COMPACT = 64  -- Criteria progress (compact) height
+local ALERT_HEIGHT = 88       -- Full toast height (fixed for all variants)
+local ALERT_HEIGHT_COMPACT = 88  -- Same as full: fixed stack geometry and no height jump between types
 local ALERT_GAP = 10          -- Pixel gap between stacked alerts
 local ALERT_SPACING = ALERT_HEIGHT + ALERT_GAP  -- Legacy: total slot spacing (98px)
+-- Fixed outer width for all toast variants (text wraps/clamps inside; avoids shrink-wrap layout jumps)
+local ALERT_WIDTH_FIXED = 400
 
 ---Get Blizzard's alert frame position so we can match it when "Use AlertFrame Position" is on.
 ---Tries AchievementAlertFrame1, CriteriaAlertFrame1, AlertFrameHolder, then any visible AlertFrame child.
@@ -579,7 +581,7 @@ local function GetGrowthDirection(point, x, y)
     end
 end
 
----Get height of an alert frame (full=88, compact=64) for stacking
+---Get height of an alert frame (full and compact both fixed) for stacking
 ---@param alert Frame
 ---@return number height in pixels
 local function GetAlertHeight(alert)
@@ -809,14 +811,12 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- Compact toast: icon left, content (backdrop + ornaments + text) right — same layout as full achievement
     if config.compact then
-        local MIN_COMPACT_WIDTH = 260
-        local COMPACT_HEIGHT = 64
+        local COMPACT_HEIGHT = ALERT_HEIGHT_COMPACT
         local ICON_SLOT_WIDTH_COMPACT = 62
-        local leftPad, rightPad, gap = 12, 12, 10
         local iconSizeCompact = 40
-        local minContentW = MIN_COMPACT_WIDTH - ICON_SLOT_WIDTH_COMPACT - 20  -- content frame padding
+        local contentFrameCompactW = ALERT_WIDTH_FIXED - ICON_SLOT_WIDTH_COMPACT
         local compactPopup = CreateFrame("Frame", nil, UIParent)
-        compactPopup:SetSize(MIN_COMPACT_WIDTH, COMPACT_HEIGHT)
+        compactPopup:SetSize(ALERT_WIDTH_FIXED, COMPACT_HEIGHT)
         compactPopup:SetFrameStrata("HIGH")
         compactPopup:SetFrameLevel(1000)
         compactPopup:SetClampedToScreen(true)
@@ -837,7 +837,7 @@ function WarbandNexus:ShowModalNotification(config)
         effectsFrameCompact:SetAllPoints(compactPopup)
         local contentEffectsFrameCompact = CreateFrame("Frame", nil, effectsFrameCompact)
         contentEffectsFrameCompact:SetPoint("LEFT", effectsFrameCompact, "LEFT", ICON_SLOT_WIDTH_COMPACT, 0)
-        contentEffectsFrameCompact:SetSize(MIN_COMPACT_WIDTH - ICON_SLOT_WIDTH_COMPACT, COMPACT_HEIGHT)
+        contentEffectsFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
         -- Layer 1: black background on top of effects
         local backdropFrameCompact = CreateFrame("Frame", nil, compactPopup, "BackdropTemplate")
         backdropFrameCompact:SetFrameLevel(1)
@@ -916,12 +916,15 @@ function WarbandNexus:ShowModalNotification(config)
         if criteriaTitle then
             progressLine = FontManager:CreateFontString(contentFrameCompact, "subtitle", "OVERLAY")
             progressLine:SetJustifyH("CENTER")
-            progressLine:SetWordWrap(false)
+            progressLine:SetWordWrap(true)
+            progressLine:SetMaxLines(2)
             progressLine:SetText(accentHex .. (criteriaTitle or "") .. "|r")
             progressLine:SetShadowOffset(1, -1)
             progressLine:SetShadowColor(0, 0, 0, 0.9)
             nameLine = FontManager:CreateFontString(contentFrameCompact, "body", "OVERLAY")
             nameLine:SetJustifyH("CENTER")
+            nameLine:SetWordWrap(true)
+            nameLine:SetMaxLines(2)
             nameLine:SetText("|cffffffff" .. (nameStr or "") .. "|r")
             nameLine:SetShadowOffset(1, -1)
             nameLine:SetShadowColor(0, 0, 0, 0.6)
@@ -938,25 +941,24 @@ function WarbandNexus:ShowModalNotification(config)
             nameLine:SetShadowOffset(1, -1)
             nameLine:SetShadowColor(0, 0, 0, 0.9)
         end
-        local progressW = progressLine:GetStringWidth()
-        local nameW = nameLine:GetStringWidth()
-        local contentW = math.max(progressW, nameW, minContentW)
-        local maxContentFrameW = 400 - ICON_SLOT_WIDTH_COMPACT
-        local contentFrameCompactW = math.min(maxContentFrameW, math.max(MIN_COMPACT_WIDTH - ICON_SLOT_WIDTH_COMPACT, contentW + 20))
         contentFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
         contentEffectsFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
-        compactPopup:SetSize(ICON_SLOT_WIDTH_COMPACT + contentFrameCompactW, COMPACT_HEIGHT)
-        
-        -- Center text in content frame; clamp so it stays inside padding
-        local textCenterX = contentFrameCompactW / 2
-        local textBlockLeftClamped = math.max(10, math.min(textCenterX - contentW / 2, contentFrameCompactW - 10 - contentW))
-        local line1Y, line2Y = -16, -34
-        progressLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textBlockLeftClamped, line1Y)
-        progressLine:SetWidth(contentW)
-        nameLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textBlockLeftClamped, line2Y)
-        nameLine:SetWidth(contentW)
+        compactPopup:SetSize(ALERT_WIDTH_FIXED, COMPACT_HEIGHT)
+
+        local textPad = 10
+        local textUseW = contentFrameCompactW - textPad * 2
+        -- Vertically balanced for ALERT_HEIGHT_COMPACT (88px): two-line block below top padding
+        local line1Y, line2Y = -20, -42
+        progressLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, line1Y)
+        progressLine:SetWidth(textUseW)
+        nameLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, line2Y)
+        nameLine:SetWidth(textUseW)
         nameLine:SetWordWrap(true)
         nameLine:SetMaxLines(2)
+        if not criteriaTitle then
+            progressLine:SetWordWrap(true)
+            progressLine:SetMaxLines(2)
+        end
         
         if config.playSound then
             PlaySound(config.soundID or 44295)
@@ -1020,27 +1022,8 @@ function WarbandNexus:ShowModalNotification(config)
         return
     end
     
-    -- Full achievement popup: compute width from text so box shrink-wraps (no big empty space on the right)
-    local iconRightFull = 14 + 42 + 12  -- 68px
-    local rightPadFull = 10
-    local MIN_FULL_POPUP_WIDTH = 260
-    local MAX_FULL_POPUP_WIDTH = 400
-    local contentWFull = 200
-    if FontManager and FontManager.CreateFontString then
-        local measureFrame = CreateFrame("Frame", nil, UIParent)
-        measureFrame:Hide()
-        local tLine = FontManager:CreateFontString(measureFrame, "title", "OVERLAY")
-        tLine:SetText(titleText or "")
-        local mLine = FontManager:CreateFontString(measureFrame, "body", "OVERLAY")
-        mLine:SetText(messageText or "")
-        local tw = tLine:GetStringWidth() or 0
-        local mw = mLine:GetStringWidth() or 0
-        contentWFull = math.ceil(math.max(tw, mw)) + 24
-        measureFrame = nil
-    end
-    -- Ensure popup is wide enough so centered text (width contentWFull) does not overlap icon: popupWidth/2 - contentWFull/2 >= iconRight
-    local minWidthForCenter = contentWFull + 2 * iconRightFull
-    local popupWidthFull = math.min(MAX_FULL_POPUP_WIDTH, math.max(MIN_FULL_POPUP_WIDTH, iconRightFull + contentWFull + rightPadFull, minWidthForCenter))
+    -- Full achievement popup: fixed width; long titles/subtitles wrap inside the text area
+    local popupWidthFull = ALERT_WIDTH_FIXED
     
     -- WoW Achievement-style: container = icon slot (left) + content frame (text + ornaments only). Animations stay behind icon.
     local ICON_SLOT_WIDTH = 62  -- 14 pad + 42 icon + 6 gap
@@ -1234,7 +1217,7 @@ function WarbandNexus:ShowModalNotification(config)
     local popupWidth = contentFrameWidth
     local popupHeight = 88
     local textCenterX = contentFrameWidth / 2
-    local textAreaWidth = math.min(contentWFull, contentFrameWidth - 20)
+    local textAreaWidth = math.max(40, contentFrameWidth - 20)
     
     -- Font metrics (adjusted for better centering)
     local smallFontHeight = 13  -- Small font actual height
@@ -1286,7 +1269,8 @@ function WarbandNexus:ShowModalNotification(config)
         title:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         title:SetWidth(textAreaWidth)
         title:SetJustifyH("CENTER")
-        title:SetWordWrap(false)
+        title:SetWordWrap(true)
+        title:SetMaxLines(2)
         title:SetShadowOffset(1, -1)
         title:SetShadowColor(0, 0, 0, 0.9)
         
@@ -2266,9 +2250,9 @@ function WarbandNexus:OnCollectibleObtained(event, data)
                 hasTryCount = true
                 -- Subtitle only: item name is already the title line (avoid "grind + N attempts" redundancy).
                 if count == 1 then
-                    tryMessage = (ns.L and ns.L["NOTIFICATION_TRY_SUBTITLE_FIRST"]) or "First attempt!"
+                    tryMessage = (ns.L and ns.L["NOTIFICATION_FIRST_TRY"]) or "You got it on your first try!"
                 else
-                    local fmt = (ns.L and ns.L["NOTIFICATION_TRY_SUBTITLE"]) or "%d attempts"
+                    local fmt = (ns.L and ns.L["NOTIFICATION_GOT_IT_AFTER"]) or "You got it after %d attempts!"
                     tryMessage = string.format(fmt, count)
                 end
             end
@@ -2281,13 +2265,26 @@ function WarbandNexus:OnCollectibleObtained(event, data)
             tryMessage or "nil"))
     end
     
-    -- Show notification (try message = the "BAM" subtitle for farmed drops)
-    local overrides = {
-        action = tryMessage,
-    }
+    -- Show notification (try message replaces default subtitle for farmed drops only)
+    local overrides = {}
+    if tryMessage then
+        overrides.action = tryMessage
+    end
     -- Attach achievement ID so click handler can open the achievement UI
     if data.type == "achievement" and data.id then
         overrides.achievementID = data.id
+        local pts = tonumber(data.achievementPoints)
+        if pts == nil or pts < 0 then
+            local ok, _, _, p = pcall(GetAchievementInfo, data.id)
+            if ok and type(p) == "number" and p >= 0 then
+                pts = p
+            else
+                pts = 0
+            end
+        end
+        local doneMsg = (ns.L and ns.L["ACHIEVEMENT_COMPLETED_MSG"]) or "Achievement completed!"
+        local ptsFmt = (ns.L and ns.L["ACHIEVEMENT_POINTS_FORMAT"]) or "%d pts"
+        overrides.action = string.format("%s  ·  %s", doneMsg, string.format(ptsFmt, pts))
     end
     -- So AddAlert hook fallback knows we showed ours (don't show Blizzard)
     if data.type == "achievement" then

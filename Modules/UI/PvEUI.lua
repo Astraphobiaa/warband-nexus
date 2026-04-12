@@ -69,7 +69,7 @@ local PVE_KEY_TO_VAULT_GAP = 14                  -- currency block ↔ first vau
 local PVE_VAULT_CLUSTER_GAP = 12                 -- Raid | Dungeon | World (readable groups)
 local PVE_COL_RIGHT_MARGIN = 8
 local PVE_DAWNCREST_COL_W = 128                  -- qty/max (R:rem)
-local PVE_COFFER_COL_W = 132
+local PVE_COFFER_COL_W = 148
 local PVE_KEY_COL_W = 88
 local PVE_VAULT_COL_W = 70                       -- triplet of marks per track
 
@@ -897,9 +897,25 @@ function WarbandNexus:DrawPvEProgress(parent)
             table.insert(characters, char)
         end
     end
+
+    local function GetRowCanonicalPvEKey(char)
+        if not char then return nil end
+        local raw = char._key
+        if (not raw or raw == "") and ns.Utilities and ns.Utilities.GetCharacterKey then
+            raw = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
+        end
+        if not raw or raw == "" then return nil end
+        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+        end
+        return raw
+    end
     
-    -- Get current player key
+    -- Canonical key must match PvECacheService writes and GetPvEData(charKey) lookups
     local currentPlayerKey = ns.Utilities:GetCharacterKey()
+    if ns.Utilities.GetCanonicalCharacterKey then
+        currentPlayerKey = ns.Utilities:GetCanonicalCharacterKey(currentPlayerKey) or currentPlayerKey
+    end
     
     -- Load sorting preferences from profile (persistent across sessions)
     if not parent.sortPrefsLoaded then
@@ -925,8 +941,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     local regular = {}
     
     for _, char in ipairs(characters) do
-        -- CRITICAL: Use GetCharacterKey() normalization to match PvECacheService DB keys (same as CurrencyUI/ReputationUI)
-        local charKey = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
+        -- CRITICAL: Same canonical key as PvECacheService + row loop below (vault/M+ are per-key in pveCache)
+        local charKey = GetRowCanonicalPvEKey(char)
         
         -- Separate current character
         if charKey == currentPlayerKey then
@@ -986,8 +1002,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             -- Create a map for quick lookup
             for _, char in ipairs(list) do
-                local key = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
-                charMap[key] = char
+                local key = GetRowCanonicalPvEKey(char)
+                if key then charMap[key] = char end
             end
             
             -- Add characters in custom order
@@ -1197,11 +1213,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====
     for i, char in ipairs(characters) do
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
-        -- CRITICAL: Match DB keys (currency + PvE cache) — same canonical form as scans / SavedVariables.
-        local charKey = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
-        if ns.Utilities.GetCanonicalCharacterKey then
-            charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
-        end
+        -- CRITICAL: Match DB keys (currency + PvE cache) — prefer characters table index via _key for canonical resolution.
+        local charKey = GetRowCanonicalPvEKey(char)
         local isFavorite = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey)
         
         -- Get PvE data from PvECacheService
@@ -1239,6 +1252,20 @@ function WarbandNexus:DrawPvEProgress(parent)
         charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
         if charHeader.SetClippingChildren then
             charHeader:SetClippingChildren(true)
+        end
+        -- Online character: tint header backdrop with theme accent
+        if isCurrentChar and charHeader.SetBackdropColor then
+            local ac = ns.UI_COLORS and ns.UI_COLORS.accent or {0.40, 0.20, 0.58}
+            charHeader:SetBackdropColor(ac[1] * 0.22, ac[2] * 0.22, ac[3] * 0.22, 1)
+            -- Left accent bar
+            if not charHeader.onlineAccent then
+                charHeader.onlineAccent = charHeader:CreateTexture(nil, "BORDER")
+                charHeader.onlineAccent:SetWidth(3)
+                charHeader.onlineAccent:SetPoint("TOPLEFT", charHeader, "TOPLEFT", 0, 0)
+                charHeader.onlineAccent:SetPoint("BOTTOMLEFT", charHeader, "BOTTOMLEFT", 0, 0)
+            end
+            charHeader.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], 1)
+            charHeader.onlineAccent:Show()
         end
         
         yOffset = yOffset + GetLayout().headerSpacing  -- Standardized header spacing
@@ -1365,16 +1392,33 @@ function WarbandNexus:DrawPvEProgress(parent)
                 return "\226\128\148"
             end
 
-            local function BuildCurrencyTooltip(qty, maxQty, totalEarned, seasonMax)
+            local function BuildCurrencyTooltip(currencyID, currencyName, qty, maxQty, totalEarned, seasonMax)
                 local lines = {}
                 local currentLabel = (ns.L and ns.L["CURRENT_ENTRIES_LABEL"]) or "Current:"
                 local seasonLabel = (ns.L and ns.L["SEASON"]) or "Season"
+                local weeklyLabel = (ns.L and ns.L["CURRENCY_LABEL_WEEKLY"]) or "Weekly"
                 local remainingSuffix = (ns.L and ns.L["VAULT_REMAINING_SUFFIX"]) or "remaining"
                 local cappedText = CAPPED or "Capped"
                 qty = qty or 0
                 maxQty = maxQty or 0
                 local sm = tonumber(seasonMax) or 0
                 local teN = tonumber(totalEarned)
+
+                if ns.Utilities and ns.Utilities.IsCofferKeyShardCurrency and ns.Utilities:IsCofferKeyShardCurrency(currencyID, currencyName) then
+                    local wCap = tonumber(maxQty) or 0
+                    local teForWeek = (teN ~= nil) and teN or 0
+                    table.insert(lines, { text = string.format("%s %s", currentLabel, FormatNumber(qty)), color = {1, 1, 1} })
+                    if wCap > 0 then
+                        local remWeek = math.max(wCap - teForWeek, 0)
+                        table.insert(lines, { text = string.format("%s: %s / %s", weeklyLabel, FormatNumber(teForWeek), FormatNumber(wCap)), color = {1, 1, 1} })
+                        if remWeek > 0 then
+                            table.insert(lines, { text = string.format("%s %s", FormatNumber(remWeek), remainingSuffix), color = {0.5, 1, 0.5} })
+                        else
+                            table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
+                        end
+                    end
+                    return lines
+                end
 
                 local hasSeasonProgress = sm > 0
                 if hasSeasonProgress then
@@ -1416,7 +1460,15 @@ function WarbandNexus:DrawPvEProgress(parent)
             local CAPPED_COLOR = {1, 0.35, 0.35}
             local EM_DASH = "\226\128\148"
 
-            local function GetCapStateColor(qty, maxQty, totalEarned, seasonMax)
+            local function GetCapStateColor(currencyID, currencyName, qty, maxQty, totalEarned, seasonMax)
+                if ns.Utilities and ns.Utilities.IsCofferKeyShardCurrency and ns.Utilities:IsCofferKeyShardCurrency(currencyID, currencyName) then
+                    local cap = tonumber(maxQty) or 0
+                    local teN = tonumber(totalEarned)
+                    if cap > 0 and teN ~= nil then
+                        return (teN >= cap) and CAPPED_COLOR or CAP_OPEN_COLOR
+                    end
+                    return NORMAL_COLOR
+                end
                 local sm = tonumber(seasonMax) or 0
                 if sm > 0 then
                     local teN = tonumber(totalEarned)
@@ -1445,8 +1497,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 colValues[i] = {
                     text = txt,
                     richText = FormatSeasonLine ~= nil,
-                    color = (not FormatSeasonLine) and ((txt == EM_DASH) and DIM_COLOR or GetCapStateColor(q, m, te, sm)) or nil,
-                    tooltip = BuildCurrencyTooltip(q, m, te, sm),
+                    color = (not FormatSeasonLine) and ((txt == EM_DASH) and DIM_COLOR or GetCapStateColor(PVE_DAWNCRESTS[i].id, cd and cd.name, q, m, te, sm)) or nil,
+                    tooltip = BuildCurrencyTooltip(PVE_DAWNCRESTS[i].id, cd and cd.name, q, m, te, sm),
                     tooltipTitle = tipTitle,
                     tooltipIcon = cd and cd.icon,
                     currencyID = PVE_DAWNCRESTS[i].id,
@@ -1458,8 +1510,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             colValues[n + 1] = {
                 text = shardTxt,
                 richText = FormatSeasonLine ~= nil,
-                color = (not FormatSeasonLine) and ((shardTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(shardQty, shardMax, shardTE, shardSM)) or nil,
-                tooltip = BuildCurrencyTooltip(shardQty, shardMax, shardTE, shardSM),
+                color = (not FormatSeasonLine) and ((shardTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(PVE_SHARDS_ID, shardData and shardData.name, shardQty, shardMax, shardTE, shardSM)) or nil,
+                tooltip = BuildCurrencyTooltip(PVE_SHARDS_ID, shardData and shardData.name, shardQty, shardMax, shardTE, shardSM),
                 tooltipTitle = (ns.L and ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards",
                 tooltipIcon = shardData and shardData.icon,
                 currencyID = PVE_SHARDS_ID,
@@ -1564,9 +1616,11 @@ function WarbandNexus:DrawPvEProgress(parent)
             -- Order: Overall Score (35%) → Keystone+Affixes (35%) → Vault (30%)
             local PixelSnap = ns.PixelSnap or function(v) return v end
             local totalWidth = PixelSnap(parent:GetWidth() - 20)
-            local card1Width = PixelSnap(totalWidth * 0.35)  -- Overall Score (M+ dungeons)
-            local card2Width = PixelSnap(totalWidth * 0.35)  -- Keystone + Affixes
-            local card3Width = PixelSnap(totalWidth - card1Width - card2Width)  -- Vault (remainder ~30%)
+            -- Vault card: 4 equal columns (Label + 3 slots), each needs room for "Dungeons" + icon
+            local card3Width = PixelSnap(math.max(360, totalWidth * 0.40))  -- Vault (min 360px)
+            local remaining  = totalWidth - card3Width
+            local card1Width = PixelSnap(remaining * 0.48)  -- Overall Score (M+ dungeons)
+            local card2Width = PixelSnap(remaining - card1Width)  -- Keystone + Affixes
             local cardSpacing = 5
             
             -- Card height will be calculated from vault card grid (with fallback)
@@ -2073,25 +2127,31 @@ function WarbandNexus:DrawPvEProgress(parent)
                 end
             end
             
-            -- 4x3 GRID LAYOUT - PERFECT EQUAL DIVISIONS (WITH BORDER PADDING)
-            
-            -- Border padding (2px on all sides for 1px border)
-            local borderPadding = 2
-            
-            -- Adjust dimensions to ensure perfect integer division
-            local numRows = 3
-            local numCols = 4
-            
-            -- Calculate perfect cell sizes (accounting for border)
-            local availableWidth = baseCardWidth - (borderPadding * 2)
+            -- VAULT GRID: 4 EQUAL COLUMNS (Label | Slot1 | Slot2 | Slot3)
+            -- Every column is exactly the same width — true symmetric grid
+            local VAULT_LEFT_PAD  = 4
+            local VAULT_RIGHT_PAD = 4
+            local VAULT_COL_GAP   = 5   -- gap between columns
+            local VAULT_ROW_VPAD  = 4   -- row vertical padding (tighter = taller buttons)
+            local borderPadding   = 2
+            local numRows         = 3
+            local numCols         = 4   -- label + 3 slots
+
+            cardWidth  = baseCardWidth
+            local availableWidth  = cardWidth - (borderPadding * 2)
             local availableHeight = baseCardHeight - (borderPadding * 2)
-            
-            local cellWidth = math.floor(availableWidth / numCols)
+
+            -- Compute one cell width, shared by ALL 4 columns
+            local gapsTotal = VAULT_LEFT_PAD + VAULT_RIGHT_PAD + VAULT_COL_GAP * (numCols - 1)
+            local VAULT_COL_W = math.floor((availableWidth - gapsTotal) / numCols)
+            -- Alias for slot/label (they're identical)
+            local VAULT_LABEL_W = VAULT_COL_W
+            local VAULT_SLOT_W  = VAULT_COL_W
+
             local cellHeight = math.floor(availableHeight / numRows)
-            
-            -- Recalculate exact card dimensions (add border padding back)
-            cardWidth = (cellWidth * numCols) + (borderPadding * 2)
-            cardHeight = (cellHeight * numRows) + (borderPadding * 2)
+            local btnH       = math.max(44, cellHeight - VAULT_ROW_VPAD * 2)
+
+            cardHeight = cellHeight * numRows + borderPadding * 2
             
             -- CRITICAL: Set card dimensions for proper border
             vaultCard:SetHeight(cardHeight)
@@ -2137,31 +2197,102 @@ function WarbandNexus:DrawPvEProgress(parent)
                     rowFrame.bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)  -- Solid dark background
                 end
                 
-                -- Type label (COLUMN 0 - Cell 0, left-aligned, vertically centered)
-                local label = FontManager:CreateFontString(rowFrame, "title", "OVERLAY")
-                label:SetPoint("LEFT", 5, 0)  -- 5px padding for readability
-                label:SetWidth(cellWidth - 10)
-                label:SetJustifyH("LEFT")
-                -- Map typeName to locale key (plural for row labels, matching Blizzard)
+                -- Track icon + label (left column, vertically centered)
+                local trackIcons = {
+                    Raid    = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+                    Dungeon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
+                    World   = "Interface\\Icons\\INV_Misc_Map_01",
+                }
+                local trackIcon = rowFrame:CreateTexture(nil, "ARTWORK")
+                trackIcon:SetSize(18, 18)
+                trackIcon:SetPoint("LEFT", rowFrame, "LEFT", VAULT_LEFT_PAD, 0)
+                trackIcon:SetTexture(trackIcons[typeName] or "Interface\\Icons\\INV_Misc_QuestionMark")
+                trackIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
                 local typeDisplayName = typeName
                 if typeName == "Raid" then
-                    typeDisplayName = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or RAIDS or "Raids"
+                    typeDisplayName = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids"
                 elseif typeName == "Dungeon" then
-                    typeDisplayName = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or DUNGEONS or "Dungeons"
+                    typeDisplayName = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeons"
                 elseif typeName == "World" then
                     typeDisplayName = (ns.L and ns.L["VAULT_WORLD"]) or "World"
                 end
-                label:SetText(string.format("|cffffffff%s|r", typeDisplayName))
-                
-                -- Create individual slot frames in COLUMNS 1, 2, 3
+                local label = FontManager:CreateFontString(rowFrame, "body", "OVERLAY")
+                label:SetPoint("LEFT", trackIcon, "RIGHT", 5, 0)
+                -- Icon (18) + icon-text gap (5) = 23 consumed; rest of the column is text
+                label:SetWidth(VAULT_LABEL_W - 23)
+                label:SetJustifyH("LEFT")
+                label:SetWordWrap(false)
+                label:SetText(string.format("|cffe8e8e8%s|r", typeDisplayName))
+
+                -- Row separator line (except for first row)
+                if rowIndex > 1 then
+                    local sep = rowFrame:CreateTexture(nil, "BORDER")
+                    sep:SetHeight(1)
+                    sep:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", VAULT_LEFT_PAD, 0)
+                    sep:SetPoint("TOPRIGHT", rowFrame, "TOPRIGHT", -VAULT_RIGHT_PAD, 0)
+                    sep:SetColorTexture(0.20, 0.20, 0.24, 0.6)
+                end
+
+                -- Slot thresholds
                 local thresholds = defaultThresholds[typeName] or {3, 3, 3}
-                
+
+                -- Vault toggle: click opens, click again closes
+                local function OpenGreatVault()
+                    if WeeklyRewardsFrame and WeeklyRewardsFrame:IsShown() then
+                        WeeklyRewardsFrame:Hide()
+                        return
+                    end
+                    if C_AddOns and C_AddOns.LoadAddOn then
+                        C_AddOns.LoadAddOn("Blizzard_WeeklyRewards")
+                    elseif _G.LoadAddOn then
+                        _G.LoadAddOn("Blizzard_WeeklyRewards")
+                    end
+                    if WeeklyRewardsFrame then
+                        WeeklyRewardsFrame:Show()
+                    end
+                end
+
+                -- Theme accent color for online-char slot border
+                local ac = ns.UI_COLORS and ns.UI_COLORS.accent or {0.40, 0.20, 0.58}
+
                 for slotIndex = 1, 3 do
-                    -- Create slot container frame (using Factory pattern)
-                    local slotFrame = ns.UI.Factory:CreateContainer(rowFrame)
-                    local xOffset = slotIndex * cellWidth  -- Column 1, 2, 3
-                    slotFrame:SetSize(cellWidth, cellHeight)
-                    slotFrame:SetPoint("LEFT", rowFrame, "LEFT", xOffset, 0)
+                    -- Slot col index = 1..3 (col 0 is label). Uniform column widths + gaps.
+                    local xOffset = VAULT_LEFT_PAD + slotIndex * (VAULT_COL_W + VAULT_COL_GAP)
+                    local yOffset = -(cellHeight - btnH) / 2  -- vertically centered
+
+                    local slotFrame = CreateFrame("Button", nil, rowFrame)
+                    slotFrame:SetSize(VAULT_SLOT_W, btnH)
+                    slotFrame:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", xOffset, yOffset)
+
+                    -- Slot base: very dark bg, no visible border yet (state sets it below)
+                    if not slotFrame.bg then
+                        slotFrame.bg = slotFrame:CreateTexture(nil, "BACKGROUND")
+                        slotFrame.bg:SetAllPoints()
+                    end
+                    slotFrame.bg:SetColorTexture(0.06, 0.06, 0.09, 0.95)
+
+                    -- Left-side accent stripe (3px, state-colored later)
+                    if not slotFrame.stripe then
+                        slotFrame.stripe = slotFrame:CreateTexture(nil, "BORDER")
+                        slotFrame.stripe:SetWidth(3)
+                        slotFrame.stripe:SetPoint("TOPLEFT", slotFrame, "TOPLEFT", 0, 0)
+                        slotFrame.stripe:SetPoint("BOTTOMLEFT", slotFrame, "BOTTOMLEFT", 0, 0)
+                    end
+
+                    -- Online char: accent border all around + hover highlight + click handler
+                    if isCurrentChar then
+                        ApplyVisuals(slotFrame,
+                            {ac[1] * 0.14, ac[2] * 0.14, ac[3] * 0.18, 1},
+                            {ac[1] * 0.70, ac[2] * 0.70, ac[3] * 0.70, 0.70})
+                        local hl = slotFrame:CreateTexture(nil, "HIGHLIGHT")
+                        hl:SetAllPoints()
+                        hl:SetColorTexture(ac[1], ac[2], ac[3], 0.14)
+                        slotFrame:RegisterForClicks("LeftButtonUp")
+                        slotFrame:SetScript("OnClick", OpenGreatVault)
+                        slotFrame:SetScript("OnMouseDown", function(self) self:SetAlpha(0.65) end)
+                        slotFrame:SetScript("OnMouseUp",   function(self) self:SetAlpha(1)    end)
+                    end
                     
                     -- Get activity data for this slot
                     local activity = activities and activities[slotIndex]
@@ -2172,34 +2303,39 @@ function WarbandNexus:DrawPvEProgress(parent)
                     
                     if activity and isComplete then
                         local isAtMax = IsVaultSlotAtMax(activity, dataKey)
-                        
-                        -- Tier text (line 1) - centered in cell
+                        -- State: completed — green left stripe
+                        slotFrame.stripe:SetColorTexture(0.20, 0.75, 0.20, 0.90)
+                        slotFrame.bg:SetColorTexture(0.04, 0.10, 0.04, 0.95)
+
                         local displayText = GetVaultActivityDisplayText(activity, dataKey)
+                        local rewardIlvl  = GetRewardItemLevel(activity)
+                        local hasArrow    = not isAtMax
+                        -- ALL slot text uses identical width + centered position (equal everywhere)
+                        local textW = VAULT_SLOT_W - 12
+
                         local tierText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                        tierText:SetPoint("CENTER", slotFrame, "CENTER", 0, 6)
-                        tierText:SetWidth(cellWidth - 6)
+                        tierText:SetPoint("CENTER", slotFrame, "CENTER", 0, 7)
+                        tierText:SetWidth(textW)
                         tierText:SetJustifyH("CENTER")
                         tierText:SetWordWrap(false)
-                        tierText:SetText(string.format("|cff00ff00%s|r", displayText))
-                        
-                        -- iLvl text (line 2) - centered below tier
-                        local rewardIlvl = GetRewardItemLevel(activity)
+                        tierText:SetText(string.format("|cff33dd33%s|r", displayText))
+
                         if rewardIlvl and rewardIlvl > 0 then
                             local ilvlText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                            ilvlText:SetPoint("TOP", tierText, "BOTTOM", 0, -1)
-                            ilvlText:SetWidth(cellWidth - 6)
+                            ilvlText:SetPoint("TOP", tierText, "BOTTOM", 0, -2)
+                            ilvlText:SetWidth(textW)
                             ilvlText:SetJustifyH("CENTER")
                             ilvlText:SetWordWrap(false)
                             local ilvlFormat = (ns.L and ns.L["ILVL_FORMAT"]) or "iLvl %d"
                             ilvlText:SetText(string.format("|cffffd700" .. ilvlFormat .. "|r", rewardIlvl))
                         end
-                        
-                        -- Upgrade arrow: left side, vertically centered to entire cell (both lines)
-                        if not isAtMax then
-                            local arrowTexture = slotFrame:CreateTexture(nil, "OVERLAY")
-                            arrowTexture:SetSize(16, 16)
-                            arrowTexture:SetPoint("LEFT", slotFrame, "LEFT", -2, 0)
-                            arrowTexture:SetAtlas("loottoast-arrow-green")
+
+                        -- Upgrade arrow: `loottoast-arrow-green` (Blizzard loot toast); sublayer 7 so slot text stays underneath
+                        if hasArrow and slotFrame.stripe then
+                            local arrowTexture = slotFrame:CreateTexture(nil, "OVERLAY", nil, 7)
+                            arrowTexture:SetSize(22, 22)
+                            arrowTexture:SetPoint("LEFT", slotFrame.stripe, "RIGHT", 2, 0)
+                            arrowTexture:SetAtlas("loottoast-arrow-green", false)
                         end
                         
                         -- Add tooltip for completed slots
@@ -2270,6 +2406,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     BuildWorldProgressLines(lines, worldTierProgress, threshold)
                                 end
 
+                                if isCurrentChar then
+                                    table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                                    table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
+                                end
                                 local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
                                 ShowTooltip(self, {
                                     type = "custom",
@@ -2279,7 +2419,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     anchor = "ANCHOR_TOP"
                                 })
                             end)
-                            
+
                             slotFrame:SetScript("OnLeave", function(self)
                                 if HideTooltip then
                                     HideTooltip()
@@ -2290,13 +2430,16 @@ function WarbandNexus:DrawPvEProgress(parent)
 
 
                     elseif activity and not isComplete then
-                        -- Incomplete: Show progress numbers (centered, body font to prevent overflow)
+                        -- State: in-progress — amber left stripe
+                        slotFrame.stripe:SetColorTexture(0.85, 0.60, 0.10, 0.85)
+                        slotFrame.bg:SetColorTexture(0.10, 0.08, 0.02, 0.95)
+
                         local progressText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                        progressText:SetPoint("CENTER", 0, 0)
-                        progressText:SetWidth(cellWidth - 6)  -- Fit within cell
+                        progressText:SetPoint("CENTER", slotFrame, "CENTER", 0, 0)
+                        progressText:SetWidth(VAULT_SLOT_W - 12)
                         progressText:SetJustifyH("CENTER")
                         progressText:SetWordWrap(false)
-                        progressText:SetText(string.format("|cffffcc00%s|r|cffffffff/|r|cffffcc00%s|r", 
+                        progressText:SetText(string.format("|cffffcc00%s|r|cff666666/|r|cff888888%s|r",
                             FormatNumber(progress), FormatNumber(threshold)))
                         
                         -- Add tooltip for incomplete slots
@@ -2381,6 +2524,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     BuildWorldProgressLines(lines, worldTierProgress, threshold)
                                 end
 
+                                if isCurrentChar then
+                                    table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                                    table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
+                                end
                                 local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
                                 ShowTooltip(self, {
                                     type = "custom",
@@ -2390,7 +2537,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     anchor = "ANCHOR_TOP"
                                 })
                             end)
-                            
+
                             slotFrame:SetScript("OnLeave", function(self)
                                 if HideTooltip then
                                     HideTooltip()
@@ -2399,14 +2546,16 @@ function WarbandNexus:DrawPvEProgress(parent)
                             BindForwardScrollWheel(slotFrame)
                         end
                     else
-                        -- No data: Show empty with threshold (centered, body font to prevent overflow)
+                        -- State: no data — dim left stripe
+                        slotFrame.stripe:SetColorTexture(0.22, 0.22, 0.28, 0.60)
+
                         local emptyText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                        emptyText:SetPoint("CENTER", 0, 0)
-                        emptyText:SetWidth(cellWidth - 6)  -- Fit within cell
+                        emptyText:SetPoint("CENTER", slotFrame, "CENTER", 0, 0)
+                        emptyText:SetWidth(VAULT_SLOT_W - 12)
                         emptyText:SetJustifyH("CENTER")
                         emptyText:SetWordWrap(false)
                         if threshold > 0 then
-                            emptyText:SetText(string.format("|cff888888%s|r|cff666666/|r|cff888888%s|r", FormatNumber(0), FormatNumber(threshold)))
+                            emptyText:SetText(string.format("|cff555555%s|r|cff444444/|r|cff555555%s|r", FormatNumber(0), FormatNumber(threshold)))
                             
                             -- Add tooltip for empty slots
                             if ShowTooltip then
@@ -2437,6 +2586,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                                         color = {1, 1, 1}
                                     })
 
+                                    if isCurrentChar then
+                                        table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                                        table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
+                                    end
                                     local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
                                     ShowTooltip(self, {
                                         type = "custom",
@@ -2446,7 +2599,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                         anchor = "ANCHOR_TOP"
                                     })
                                 end)
-                                
+
                                 slotFrame:SetScript("OnLeave", function(self)
                                     if HideTooltip then
                                         HideTooltip()

@@ -1442,6 +1442,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
 
     local charKey = GetCharKey(char)
     local isCurrent = (charKey == currentPlayerKey)
+    ns.UI.Factory:ApplyOnlineCharacterHighlight(row, isCurrent)
     local isFavorite = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey)
     local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
 

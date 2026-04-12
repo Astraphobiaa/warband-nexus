@@ -1137,7 +1137,14 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         local cd = WarbandNexus.GetCurrencyData and WarbandNexus:GetCurrencyData(cur.currencyID, charKey) or nil
         if not cd then
             local mq = (type(cur.maxQuantity) == "number" and cur.maxQuantity > 0) and cur.maxQuantity or 0
-            cd = { quantity = cur.amount or 0, maxQuantity = mq, totalEarned = nil, seasonMax = nil }
+            cd = {
+                currencyID = cur.currencyID,
+                name = cur.name,
+                quantity = cur.amount or 0,
+                maxQuantity = mq,
+                totalEarned = nil,
+                seasonMax = nil,
+            }
         end
         local amountText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
         amountText:SetPoint("RIGHT", leftPanel, "RIGHT", -curPad, 0)

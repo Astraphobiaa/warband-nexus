@@ -172,6 +172,7 @@ L["SET_TRY_COUNT"] = "设置尝试次数"
 L["TRY_COUNT_RIGHT_CLICK_HINT"] = "右键点击以编辑尝试次数。"
 L["TRY_COUNT_CLICK_HINT"] = "点击以编辑尝试次数。"
 L["TRIES"] = "次"
+L["COLLECTION_LIST_ATTEMPTS_FMT"] = "%d次尝试"
 L["SET_RESET_CYCLE"] = "设置重置周期"
 L["DAILY_RESET"] = "每日重置"
 L["WEEKLY_RESET"] = "每周重置"
@@ -368,13 +369,16 @@ L["VAULT_COMPLETE_PREFIX"] = "完成"
 L["VAULT_SLOT1_HINT"] = "此行的第一个选择"
 L["VAULT_SLOT2_HINT"] = "第二个选择（更多选项！）"
 L["VAULT_SLOT3_HINT"] = "第三个选择（最多选项）"
+L["VAULT_CLICK_TO_OPEN"] = "点击打开宏伟宝库"
 
 -- Delves Section (PvE Tab)
 L["DELVES"] = "地窟"
 L["COMPANION"] = "同伴"
 L["BOUNTIFUL_DELVE"] = "藏宝猎人的赏金"
+L["PVE_BOUNTY_NEED_LOGIN"] = "该角色没有保存的状态。请登录以刷新。"
 L["CRACKED_KEYSTONE"] = "破裂拱心石"
 L["SEASON"] = "赛季"
+L["CURRENCY_LABEL_WEEKLY"] = "每周"
 
 L["REP_TITLE"] = "声望概览"
 L["REP_SUBTITLE"] = "追踪你战团中的阵营和名望"
@@ -1110,6 +1114,29 @@ L["TRYCOUNTER_TYPE_PET"] = "宠物"
 L["TRYCOUNTER_TYPE_TOY"] = "玩具"
 L["TRYCOUNTER_TYPE_ITEM"] = "物品"
 L["TRYCOUNTER_TRY_COUNTS"] = "尝试次数"
+L["TRYCOUNTER_INSTANCE_ENTRY_HINT"] = "此副本有适用于你当前难度的尝试计数坐骑。对首领使用目标或鼠标指向后输入 |cffffffff/wn check|r 查看详情。"
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"] = "进入副本时：在聊天中列出掉落"
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES_TOOLTIP"] = "进入带有尝试计数收藏品的地下城或团队副本时，为每件物品输出一行 |cff9370DB[WN-Drops]|r：链接 — 所需难度（|cff00ff00绿色|r 符合，|cffff6666红色|r 不符，|cffffaa00琥珀色|r 未知）— 尝试次数或已收藏。大型副本最多 18 行外加 |cff00ccff/wn check|r。关闭则仅显示简短提示。"
+L["TRYCOUNTER_INSTANCE_DROPS_TRUNCATED"] = "… 还有 |cffffccff%d|r 条 — 对首领使用 |cffffffff/wn check|r（目标或鼠标指向）。"
+L["TRYCOUNTER_PROBE_ENTER"] = "进入：%s — 难度：%s"
+L["TRYCOUNTER_PROBE_DB_HEADER"] = "尝试计数数据库中的坐骑来源 — 你的难度：%s"
+L["TRYCOUNTER_PROBE_MOUNT_LINE"] = "%s > %s > %s > %s"
+L["TRYCOUNTER_PROBE_ENC_NO_MOUNTS"] = "%s：数据库中无坐骑条目"
+L["TRYCOUNTER_PROBE_JOURNAL_MISS"] = "无法解析此副本的地下城手册。"
+L["TRYCOUNTER_PROBE_NO_MAPPED_BOSSES"] = "此副本没有与尝试计数数据匹配的首领。"
+L["TRYCOUNTER_PROBE_STATUS_COLLECTED"] = "已收藏"
+L["TRYCOUNTER_PROBE_STATUS_OBTAINABLE"] = "当前难度可获得"
+L["TRYCOUNTER_PROBE_STATUS_WRONG_DIFF"] = "当前难度不可用"
+L["TRYCOUNTER_PROBE_STATUS_DIFF_UNKNOWN"] = "难度未知"
+L["TRYCOUNTER_PROBE_REQ_ANY"] = "任意难度"
+L["TRYCOUNTER_PROBE_REQ_MYTHIC"] = "仅史诗"
+L["TRYCOUNTER_PROBE_REQ_LFR"] = "仅随机团队"
+L["TRYCOUNTER_PROBE_REQ_NORMAL_PLUS"] = "团队普通及以上（不含随机团队）"
+L["TRYCOUNTER_PROBE_REQ_HEROIC"] = "英雄及以上（含史诗与25人英雄）"
+L["TRYCOUNTER_PROBE_REQ_25H"] = "仅25人英雄"
+L["TRYCOUNTER_PROBE_REQ_10N"] = "仅10人普通"
+L["TRYCOUNTER_PROBE_REQ_25N"] = "仅25人普通"
+L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25人普通或英雄"
 L["LT_CHARACTER_DATA"] = "角色数据"
 L["LT_CURRENCY_CACHES"] = "货币与缓存"
 L["LT_REPUTATIONS"] = "声望"
@@ -1381,6 +1408,37 @@ L["ZONE_DROP"] = "区域掉落"
 -- Full parity with enUS (remaining keys)
 L["ACHIEVEMENT_PROGRESS_TITLE"] = "成就进度"
 L["CMD_FIRSTCRAFT"] = "按资料片列出首次制作奖励配方（请先打开专业窗口）"
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "成就"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "按类别浏览；右侧显示标准和详情。"
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "坐骑"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "按来源分组；右侧预览。"
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "宠物"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "按来源分组；右侧模型预览。"
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "玩具箱"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "按来源分组；右侧详情。"
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "最近获得"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "每个类别最多10条最新记录，新的在前。"
+L["COLLECTIONS_SUBTAB_RECENT"] = "最近"
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "尚无获得记录。新获得的坐骑、宠物、玩具和成就会显示在这里。"
+L["COLLECTIONS_RECENT_SECTION_HEAD_FMT"] = "%s — 最近 %d 条"
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "暂无。"
+L["COLLECTIONS_RECENT_SECTION_ROW"] = "%s · %s"
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "没有匹配的条目。"
+L["COLLECTIONS_RECENT_HEADER"] = "最新获得"
+L["COLLECTIONS_RECENT_EMPTY"] = "你获得的物品会在此显示简短时间标记。"
+L["COLLECTIONS_ACQUIRED_LABEL"] = "已记录"
+L["COLLECTIONS_ACQUIRED_LINE"] = "%s：%s"
+L["COLLECTIONS_RECENT_LINE"] = "%s · %s · %s"
+L["COLLECTIONS_RECENT_JUST_NOW"] = "刚刚"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d 分钟前"
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d 小时前"
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d 天前"
+L["COLLECTIONS_RECENT_SECTION_MOUNTS"] = "最近坐骑"
+L["COLLECTIONS_RECENT_SECTION_PETS"] = "最近宠物"
+L["COLLECTIONS_RECENT_SECTION_TOYS"] = "最近玩具"
+L["COLLECTIONS_RECENT_SECTION_ACHIEVEMENTS"] = "最近成就"
+L["COLLECTIONS_RECENT_SECTION_EMPTY"] = "此类别尚无最近获得。"
+L["COLLECTIONS_RECENT_SECTION_LINE"] = "%s · %s"
 L["COLLECTIONS_COMING_SOON_DESC"] = "收藏概览（坐骑、宠物、玩具、幻化）将在此处提供。"
 L["COLLECTIONS_COMING_SOON_TITLE"] = "即将推出"
 L["COLLECTIONS_SUBTITLE"] = "坐骑、宠物、玩具与幻化概览"
@@ -1674,6 +1732,30 @@ Plans / UI
 
 Localization
 - Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.12 (CHANGELOG_V2512) — English notes; see enUS for detail
+L["CHANGELOG_V2512"] = [=[v2.5.12 (2026-04-12)
+
+UI
+- Notifications: Try counter chat output dropdown opens downward with extra spacing so the open list no longer overlaps the section label or nearby checkboxes. Route options keep a fixed order (Loot tabs → Warband Nexus filter → all standard tabs).
+
+Bug fixes
+- GameTooltip:SetText in Settings, Gold Management popup, and Plans UI uses valid color alpha for Midnight clients (fixes "bad argument #5 to 'SetText'").
+
+Try Counter
+- Instance entry [WN-Drops]: full drop lines vs the short hint now use the correct mount/trackable logic so difficulty messaging matches what can still drop.
+- Manual drops and Rarity sync: non-repeatable collectibles you already own no longer inflate or advance try counts.
+
+Tooltips & collections
+- Collectible/drop hints and related services tightened for Midnight secret-value rules; CollectibleSourceDB and tooltip wiring aligned with current APIs.
+
+Localization
+- Missing keys brought in line with enUS across locales; probe chat uses a shorter [WN-TC] line format.
+
+后续计划
+- More Midnight API validation; Try Counter and notifications tuned from live raids and dungeons; further settings and tooltip polish.
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "待办与周进度：未勾选=仍进行中的计划；勾选=仅已完成的计划。浏览标签：未勾选=未收藏（开启“显示已计划”时仅限列表内）；勾选=列表上已收藏的条目（“显示已计划”仍会限制列表）。"

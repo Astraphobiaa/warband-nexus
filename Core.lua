@@ -259,6 +259,8 @@ local defaults = {
             popupGrowth = "AUTO",              -- Growth direction: "AUTO" (smart), "DOWN", "UP"
             screenFlashEffect = true,          -- Screen flash effect on collectible obtained
             autoTryCounter = true,             -- Automatic try counter for NPC/boss/fishing/container drops
+            -- On instance entry: [WN-Drops] lines (boss, item link, difficulty color) vs one short hint
+            tryCounterInstanceEntryDropLines = true,
             -- Try counter chat routing: loot | dedicated (WN_TRYCOUNTER group) | all_tabs
             tryCounterChatRoute = "loot",
             lastSeenVersion = "0.0.0",         -- Last addon version seen
@@ -395,6 +397,11 @@ local defaults = {
         -- Key: charKey (e.g. "Charname-Realm"), Value: { [tryKey] = statTotal }
         statisticSnapshots = {},
         characterBankMoneyLogs = {}, -- account-wide: { { timestamp, type, amount, character, classFile }, ... }
+
+        -- Collections tab: newest-first ring buffer of recent WN_COLLECTIBLE_OBTAINED (mount/pet/toy/achievement/…)
+        collectionsRecentObtained = {}, -- { { t = time(), type = string, id = number, name = string }, ... }
+        -- Per-type last time the addon recorded an acquisition (detail panel "Recorded" line; same events as recent strip)
+        collectionsLastObtained = {}, -- { mount = { [id]=unix }, pet = {}, toy = {}, achievement = {}, ... }
     },
     char = {
         -- Personal bank cache (per-character)

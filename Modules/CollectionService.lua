@@ -2010,6 +2010,65 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     self._previousIllusionState = currentCollected
 end
 
+---Persist newest collectible acquisitions for the Collections tab "Recently obtained" strip.
+---@param data table WN_COLLECTIBLE_OBTAINED payload
+function WarbandNexus:AppendCollectionsRecentObtained(data)
+    if not data or type(data) ~= "table" or not data.type then return end
+    local allowed = {
+        mount = true, pet = true, toy = true, achievement = true, title = true, illusion = true, transmog = true,
+    }
+    if not allowed[data.type] then return end
+    if data.id == nil then return end
+    if not self.db or not self.db.global then return end
+    local list = self.db.global.collectionsRecentObtained
+    if type(list) ~= "table" then
+        list = {}
+        self.db.global.collectionsRecentObtained = list
+    end
+    local displayName = data.name
+    if (not displayName or displayName == "") and data.type == "achievement" then
+        displayName = (ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement"
+    end
+    if not displayName or displayName == "" then return end
+    local now = time()
+    local first = list[1]
+    if first and first.type == data.type and first.id == data.id and (now - (first.t or 0)) < 5 then
+        return
+    end
+    table.insert(list, 1, { t = now, type = data.type, id = data.id, name = displayName })
+    while #list > 15 do
+        table.remove(list)
+    end
+
+    local lastRoot = self.db.global.collectionsLastObtained
+    if type(lastRoot) ~= "table" then
+        lastRoot = {}
+        self.db.global.collectionsLastObtained = lastRoot
+    end
+    local bucket = lastRoot[data.type]
+    if type(bucket) ~= "table" then
+        bucket = {}
+        lastRoot[data.type] = bucket
+    end
+    bucket[data.id] = now
+end
+
+---Unix time when the addon last recorded this collectible as obtained (WN_COLLECTIBLE_OBTAINED), or nil.
+---@param collectibleType string mount|pet|toy|achievement|title|illusion|transmog
+---@param id number
+---@return number|nil
+function WarbandNexus:GetCollectionsAcquiredAt(collectibleType, id)
+    if not collectibleType or id == nil then return nil end
+    if not self.db or not self.db.global then return nil end
+    local root = self.db.global.collectionsLastObtained
+    if type(root) ~= "table" then return nil end
+    local b = root[collectibleType]
+    if type(b) ~= "table" then return nil end
+    local t = b[id]
+    if type(t) ~= "number" or t <= 0 then return nil end
+    return t
+end
+
 -- Dedicated listener key for CollectionService message handlers.
 -- AceEvent allows only ONE handler per (event, self) pair; using WarbandNexus as self
 -- would be overwritten by CollectionsUI handlers (or vice versa).
@@ -2054,7 +2113,10 @@ local function InvalidateCollectionCountsCache()
     wipe(uncollectedResultsCache)
 end
 WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTION_UPDATED, InvalidateCollectionCountsCache)
-WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTIBLE_OBTAINED, InvalidateCollectionCountsCache)
+WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTIBLE_OBTAINED, function(_, data)
+    WarbandNexus:AppendCollectionsRecentObtained(data)
+    InvalidateCollectionCountsCache()
+end)
 WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function() wipe(uncollectedResultsCache) end)
 
 ---Handle ACHIEVEMENT_EARNED event
@@ -2149,11 +2211,12 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     -- If AddAlert hook path also fires, short-term dedupe prevents duplicate handling.
     if not WasRecentlyNotified("achievement", achievementID) then
         MarkAsNotified("achievement", achievementID)
-        local ok, _, achName, _, _, _, _, _, _, _, achIcon = pcall(GetAchievementInfo, achievementID)
-        if not ok then achName = nil; achIcon = nil end
+        local ok, _aid, achName, achPoints, _c, _m, _d, _y, _desc, _flags, achIcon = pcall(GetAchievementInfo, achievementID)
+        if not ok then achName = nil; achIcon = nil; achPoints = nil end
         if issecretvalue then
             if achName and issecretvalue(achName) then achName = nil end
             if achIcon and issecretvalue(achIcon) then achIcon = nil end
+            if achPoints and issecretvalue(achPoints) then achPoints = nil end
         end
         local displayName = achName or ((ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement")
         local displayIcon = achIcon
@@ -2162,7 +2225,8 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
             type = "achievement",
             id = achievementID,
             name = displayName,
-            icon = displayIcon
+            icon = displayIcon,
+            achievementPoints = (type(achPoints) == "number" and achPoints > 0) and achPoints or nil,
         })
     end
 end
@@ -2174,11 +2238,12 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
     if issecretvalue and issecretvalue(achievementID) then return end
     if WasRecentlyNotified("achievement", achievementID) then return end
     MarkAsNotified("achievement", achievementID)
-    local ok, _, achName, _, _, _, _, _, _, _, achIcon = pcall(GetAchievementInfo, achievementID)
-    if not ok then achName = nil; achIcon = nil end
+    local ok, _aid, achName, achPoints, _c, _m, _d, _y, _desc, _flags, achIcon = pcall(GetAchievementInfo, achievementID)
+    if not ok then achName = nil; achIcon = nil; achPoints = nil end
     if issecretvalue then
         if achName and issecretvalue(achName) then achName = nil end
         if achIcon and issecretvalue(achIcon) then achIcon = nil end
+        if achPoints and issecretvalue(achPoints) then achPoints = nil end
     end
     local displayName = achName
     local displayIcon = achIcon
@@ -2191,7 +2256,8 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
         type = "achievement",
         id = achievementID,
         name = displayName,
-        icon = displayIcon
+        icon = displayIcon,
+        achievementPoints = (type(achPoints) == "number" and achPoints > 0) and achPoints or nil,
     })
 end
 

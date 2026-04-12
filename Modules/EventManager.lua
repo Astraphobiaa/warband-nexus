@@ -179,17 +179,26 @@ function WarbandNexus:OnItemLevelChanged()
         end
         local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
         if not key then return end
-        if self.db.global.characters and self.db.global.characters[key] then
+        local tableKey = key
+        if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+            local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
+            if resolved then tableKey = resolved end
+        end
+        if self.db.global.characters and self.db.global.characters[tableKey] then
             local _, avgItemLevelEquipped = GetAverageItemLevel()
             if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then return end
             
-            self.db.global.characters[key].itemLevel = avgItemLevelEquipped
-            self.db.global.characters[key].lastSeen = time()
+            self.db.global.characters[tableKey].itemLevel = avgItemLevelEquipped
+            self.db.global.characters[tableKey].lastSeen = time()
             
             -- Fire event for UI update (DB-First pattern)
             local Constants = ns.Constants
+            local msgKey = key
+            if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+                msgKey = ns.Utilities:GetCanonicalCharacterKey(key) or key
+            end
             self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
-                charKey = key,
+                charKey = msgKey,
                 dataType = "itemLevel"
             })
         end
@@ -297,13 +306,19 @@ function WarbandNexus:OnKeystoneChanged()
         if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
             charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
         end
+        -- SavedVariables may use a different string than canonical (ResolveCharactersTableKey)
+        local charTableKey = charKey
+        if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+            local resolved = ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)
+            if resolved then charTableKey = resolved end
+        end
         
         -- Scan and update keystone data (lightweight check)
         if WarbandNexus.ScanMythicKeystone then
             local keystoneData = WarbandNexus:ScanMythicKeystone()
             
-            if WarbandNexus.db and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey] then
-                local oldKeystone = WarbandNexus.db.global.characters[charKey].mythicKey
+            if WarbandNexus.db and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charTableKey] then
+                local oldKeystone = WarbandNexus.db.global.characters[charTableKey].mythicKey
                 
                 -- Only update if keystone actually changed
                 local keystoneChanged = false
@@ -318,8 +333,8 @@ function WarbandNexus:OnKeystoneChanged()
                 end
                 
                 if keystoneChanged then
-                    WarbandNexus.db.global.characters[charKey].mythicKey = keystoneData
-                    WarbandNexus.db.global.characters[charKey].lastSeen = time()
+                    WarbandNexus.db.global.characters[charTableKey].mythicKey = keystoneData
+                    WarbandNexus.db.global.characters[charTableKey].lastSeen = time()
                     
                     -- Mirror into PvE cache so PvE tab matches Characters tab (same API snapshot)
                     if WarbandNexus.db.global.pveCache and WarbandNexus.db.global.pveCache.mythicPlus then

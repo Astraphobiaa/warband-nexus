@@ -283,6 +283,7 @@ L["SET_TRY_COUNT"] = "Versuche festlegen"
 L["TRY_COUNT_RIGHT_CLICK_HINT"] = "Rechtsklicken, um die Versuchszahl zu bearbeiten."
 L["TRY_COUNT_CLICK_HINT"] = "Klicken, um die Versuchszahl zu bearbeiten."
 L["TRIES"] = "Versuche"
+L["COLLECTION_LIST_ATTEMPTS_FMT"] = "%d Versuche"
 
 -- Reset Cycle
 L["SET_RESET_CYCLE"] = "Reset-Zyklus festlegen"
@@ -498,6 +499,7 @@ L["VAULT_LOCKED"] = "Gesperrt"
 L["VAULT_IN_PROGRESS"] = "In Bearbeitung"
 L["VAULT_COMPLETED_ACTIVITIES"] = "Abgeschlossen"
 L["VAULT_CURRENT_TIER"] = "Aktuelle Stufe"
+L["VAULT_CLICK_TO_OPEN"] = "Zum Öffnen des Großen Gewölbes klicken"
 L["VAULT_REWARD"] = "Belohnung"
 L["VAULT_REWARD_ON_UNLOCK"] = "Belohnung bei Freischaltung"
 L["VAULT_UPGRADE_HINT"] = "Aufwertung"
@@ -518,8 +520,10 @@ L["VAULT_SLOT3_HINT"] = "Dritte Auswahl (maximale Optionen)"
 L["DELVES"] = "Tiefen"
 L["COMPANION"] = "Begleiter"
 L["BOUNTIFUL_DELVE"] = "Truhenjäger-Beute"
+L["PVE_BOUNTY_NEED_LOGIN"] = "Kein gespeicherter Status für diesen Charakter. Einloggen zum Aktualisieren."
 L["CRACKED_KEYSTONE"] = "Gesprungener Schlüsselstein"
 L["SEASON"] = "Saison"
+L["CURRENCY_LABEL_WEEKLY"] = "Wöchentlich"
 
 -- =============================================
 -- Reputation Tab
@@ -885,6 +889,9 @@ L["SCREEN_FLASH_EFFECT"] = "Bildschirmblitz bei seltener Beute"
 L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "Bildschirmblitz-Animation abspielen, wenn du ein Sammelstück nach mehreren Versuchen endlich erhältst"
 L["AUTO_TRY_COUNTER"] = "Auto-Track Drop-Versuche"
 L["AUTO_TRY_COUNTER_TOOLTIP"] = "Fehlgeschlagene Drop-Versuche automatisch zählen beim Plündern von NPCs, Seltenen, Bossen, Angeln oder Behältern. Zeigt Gesamtversuchszahl im Popup, wenn das Sammelstück endlich droppt."
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"] = "Instanz-Eintrag: Drops im Chat auflisten"
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES_TOOLTIP"] = "Beim Betreten einer Instanz mit Try-Counter: pro Item eine |cff9370DB[WN-Drops]|r-Zeile — Sammel-Link, benötigte Schwierigkeit (|cff00ff00grün|r passt, |cffff6666rot|r falsch, |cffffaa00bernstein|r unklar), Versuche oder „gesammelt“. Max. 18 Zeilen, danach |cff00ccff/wn check|r. Aus = nur kurzer Hinweis."
+L["TRYCOUNTER_INSTANCE_DROPS_TRUNCATED"] = "… |cffffccff%d|r weitere — |cffffffff/wn check|r am Boss (Ziel/Mouseover)."
 L["DURATION_LABEL"] = "Dauer"
 L["DAYS_LABEL"] = "Tage"
 L["WEEKS_LABEL"] = "Wochen"
@@ -1567,6 +1574,7 @@ L["TRYCOUNTER_AFTER_TRIES"] = "nach %d Versuchen"
 L["TRYCOUNTER_FIRST_TRY"] = "beim ersten Versuch!"
 L["TRYCOUNTER_LOCKOUT_SKIP"] = "Übersprungen: Tägliche/wöchentliche Sperre für diesen NSC aktiv."
 L["TRYCOUNTER_INSTANCE_DROPS"] = "Sammelbare Beute in dieser Instanz:"
+L["TRYCOUNTER_INSTANCE_ENTRY_HINT"] = "In dieser Instanz werden Reittiere im Versuchszähler für deine Schwierigkeit geführt. |cffffffff/wn check|r am Boss (Ziel/Mouseover) zeigt Details."
 L["TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED"] = "Sammlerstück erkannt : "
 L["TRYCOUNTER_INSTANCE_WRONG_DIFF"] = "Falsche Schwierigkeit: benötigt %s (du bist auf %s)."
 L["TRYCOUNTER_INSTANCE_REQUIRES_UNVERIFIED"] = "Benötigt %s (aktuelle Schwierigkeit unbekannt)."
@@ -1577,6 +1585,25 @@ L["TRYCOUNTER_TYPE_PET"] = "Haustier"
 L["TRYCOUNTER_TYPE_TOY"] = "Spielzeug"
 L["TRYCOUNTER_TYPE_ITEM"] = "Gegenstand"
 L["TRYCOUNTER_TRY_COUNTS"] = "Versuchszähler"
+L["TRYCOUNTER_PROBE_ENTER"] = "Betreten: %s — Schwierigkeit: %s"
+L["TRYCOUNTER_PROBE_DB_HEADER"] = "Mount-Quellen (Try-Counter-DB) — deine Schwierigkeit: %s"
+L["TRYCOUNTER_PROBE_MOUNT_LINE"] = "%s > %s > %s > %s"
+L["TRYCOUNTER_PROBE_ENC_NO_MOUNTS"] = "%s: Keine Mount-Einträge in der Datenbank"
+L["TRYCOUNTER_PROBE_JOURNAL_MISS"] = "Begegnungsjournal für diese Instanz konnte nicht ermittelt werden."
+L["TRYCOUNTER_PROBE_NO_MAPPED_BOSSES"] = "Keine Bosse dieser Instanz sind in den Try-Counter-Daten hinterlegt."
+L["TRYCOUNTER_PROBE_STATUS_COLLECTED"] = "Bereits gesammelt"
+L["TRYCOUNTER_PROBE_STATUS_OBTAINABLE"] = "Auf dieser Schwierigkeit erhältlich"
+L["TRYCOUNTER_PROBE_STATUS_WRONG_DIFF"] = "Auf der aktuellen Schwierigkeit nicht verfügbar"
+L["TRYCOUNTER_PROBE_STATUS_DIFF_UNKNOWN"] = "Schwierigkeit unbekannt"
+L["TRYCOUNTER_PROBE_REQ_ANY"] = "jede Schwierigkeit"
+L["TRYCOUNTER_PROBE_REQ_MYTHIC"] = "nur Mythisch"
+L["TRYCOUNTER_PROBE_REQ_LFR"] = "nur LFR"
+L["TRYCOUNTER_PROBE_REQ_NORMAL_PLUS"] = "Normal+ Raid (nicht LFR)"
+L["TRYCOUNTER_PROBE_REQ_HEROIC"] = "Heroisch+ (inkl. Mythisch & 25H)"
+L["TRYCOUNTER_PROBE_REQ_25H"] = "nur 25er Heroisch"
+L["TRYCOUNTER_PROBE_REQ_10N"] = "nur 10er Normal"
+L["TRYCOUNTER_PROBE_REQ_25N"] = "nur 25er Normal"
+L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25er Normal oder Heroisch"
 
 -- =============================================
 -- Loading Tracker Labels
@@ -1716,6 +1743,37 @@ L["CMD_FIRSTCRAFT"] = "Erstherstellungs-Bonus-Rezepte pro Erweiterung anzeigen (
 L["COLLECTIONS_COMING_SOON_DESC"] = "Sammlungsübersicht (Reittiere, Begleiter, Spielzeuge, Transmog) wird hier verfügbar sein."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Demnächst"
 L["COLLECTIONS_SUBTITLE"] = "Reittiere, Begleiter, Spielzeuge und Transmog-Übersicht"
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "Erfolge"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "Nach Kategorie; Kriterien und Details rechts."
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "Reittiere"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "Nach Quelle gruppiert; Vorschau rechts."
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "Begleiter"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "Nach Quelle gruppiert; Modellvorschau rechts."
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Spielzeugkiste"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "Nach Quelle gruppiert; Details rechts."
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Neueste Erwerbungen"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "Bis zu 10 neueste Einträge pro Kategorie, neueste zuerst."
+L["COLLECTIONS_SUBTAB_RECENT"] = "Neueste"
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "Noch keine Einträge. Neue Reittiere, Begleiter, Spielzeuge und Erfolge erscheinen hier."
+L["COLLECTIONS_RECENT_SECTION_HEAD_FMT"] = "%s — neueste %d"
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "Noch keine Einträge."
+L["COLLECTIONS_RECENT_SECTION_ROW"] = "%s · %s"
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "Keine Treffer."
+L["COLLECTIONS_RECENT_HEADER"] = "Neueste Erwerbungen"
+L["COLLECTIONS_RECENT_EMPTY"] = "Neue Einträge erscheinen hier mit einem kurzen Zeitstempel, sobald du etwas erhältst."
+L["COLLECTIONS_ACQUIRED_LABEL"] = "Erfasst"
+L["COLLECTIONS_ACQUIRED_LINE"] = "%s: %s"
+L["COLLECTIONS_RECENT_LINE"] = "%s · %s · %s"
+L["COLLECTIONS_RECENT_JUST_NOW"] = "Gerade eben"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "vor %d Min."
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "vor %d Std."
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "vor %d Tagen"
+L["COLLECTIONS_RECENT_SECTION_MOUNTS"] = "Neueste Reittiere"
+L["COLLECTIONS_RECENT_SECTION_PETS"] = "Neueste Begleiter"
+L["COLLECTIONS_RECENT_SECTION_TOYS"] = "Neueste Spielzeuge"
+L["COLLECTIONS_RECENT_SECTION_ACHIEVEMENTS"] = "Neueste Erfolge"
+L["COLLECTIONS_RECENT_SECTION_EMPTY"] = "Für diese Kategorie gibt es noch keine kürzlichen Erwerbungen."
+L["COLLECTIONS_RECENT_SECTION_LINE"] = "%s · %s"
 L["CONFIG_DEBUG_VERBOSE"] = "Debug ausführlich (Cache-/Scan-/Tooltip-Logs)"
 L["CONFIG_DEBUG_VERBOSE_DESC"] = "Bei aktiviertem Debug-Modus auch Währungs-/Ruf-Cache-, Taschen-Scan-, Tooltip- und Berufs-Logs anzeigen. Aus lassen, um Chat-Spam zu reduzieren."
 L["CRITERIA_POSITION_LABEL"] = "Kriterien-Fortschritt-Position"
@@ -1811,7 +1869,7 @@ L["PROF_INFO_UNLEARNED"] = "Ungelernt"
 L["PROF_INFO_NODES"] = "Knoten"
 L["PROF_INFO_RANKS"] = "Ränge"
 L["NOTIFICATION_FIRST_TRY"] = "Beim ersten Versuch bekommen!"
-L["NOTIFICATION_GRIND_TRIES"] = "Was für ein Grind! %d Versuche!"
+L["NOTIFICATION_GRIND_TRIES"] = "Hat gedauert — insgesamt %d Versuche."
 L["NOTIFICATION_GOT_IT_AFTER"] = "Nach %d Versuchen bekommen!"
 L["NOTIFICATION_TRY_SUBTITLE"] = "%d Versuche"
 L["NOTIFICATION_TRY_SUBTITLE_FIRST"] = "Erster Versuch!"
@@ -2001,6 +2059,30 @@ Plans / UI
 
 Localization
 - Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.12 (CHANGELOG_V2512) — English notes; see enUS for detail
+L["CHANGELOG_V2512"] = [=[v2.5.12 (2026-04-12)
+
+UI
+- Notifications: Try counter chat output dropdown opens downward with extra spacing so the open list no longer overlaps the section label or nearby checkboxes. Route options keep a fixed order (Loot tabs → Warband Nexus filter → all standard tabs).
+
+Bug fixes
+- GameTooltip:SetText in Settings, Gold Management popup, and Plans UI uses valid color alpha for Midnight clients (fixes "bad argument #5 to 'SetText'").
+
+Try Counter
+- Instance entry [WN-Drops]: full drop lines vs the short hint now use the correct mount/trackable logic so difficulty messaging matches what can still drop.
+- Manual drops and Rarity sync: non-repeatable collectibles you already own no longer inflate or advance try counts.
+
+Tooltips & collections
+- Collectible/drop hints and related services tightened for Midnight secret-value rules; CollectibleSourceDB and tooltip wiring aligned with current APIs.
+
+Localization
+- Missing keys brought in line with enUS across locales; probe chat uses a shorter [WN-TC] line format.
+
+Ausblick
+- More Midnight API validation; Try Counter and notifications tuned from live raids and dungeons; further settings and tooltip polish.
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "To-Do-Liste und Wöchentlicher Fortschritt: aus = laufende Pläne; an = nur abgeschlossene. Durchsuchen (Reittiere usw.): aus = ungesammelt (nur To-Do wenn Geplant an); an = gesammelte auf der To-Do (Geplant filtert weiter)."

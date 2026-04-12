@@ -294,7 +294,21 @@ function WarbandNexus:DrawPlansTab(parent)
     end
     -- Hide standardized empty state card
     HideEmptyStateCard(parent, "plans")
-    
+
+    -- Default: To-Do List ("active"). Same session: remember last category until /reload.
+    do
+        local validCat = {}
+        for i = 1, #CATEGORIES do
+            validCat[CATEGORIES[i].key] = true
+        end
+        local sc = ns._sessionPlansCategory
+        if sc and validCat[sc] then
+            currentCategory = sc
+        else
+            currentCategory = "active"
+        end
+    end
+
     local width = parent:GetWidth() - 20
 
     local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
@@ -435,7 +449,7 @@ function WarbandNexus:DrawPlansTab(parent)
         -- Tooltip for reset button
         resetBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText((ns.L and ns.L["REMOVE_COMPLETED_TOOLTIP"]) or "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!", 1, 1, 1, 1, true)
+            GameTooltip:SetText((ns.L and ns.L["REMOVE_COMPLETED_TOOLTIP"]) or "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!", 1, 1, 1, 1)
             GameTooltip:Show()
         end)
         resetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -739,6 +753,7 @@ function WarbandNexus:DrawPlansTab(parent)
         btn:SetScript("OnClick", function()
             if currentCategory == cat.key then return end
             currentCategory = cat.key
+            ns._sessionPlansCategory = cat.key
             searchText = ""
             
             -- Defer UI refresh to next frame to prevent button freeze

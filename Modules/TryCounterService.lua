@@ -32,7 +32,9 @@
     ProcessNPCLoot resolver chain (first match wins):
       P1: Per-slot source GUIDs → exact npcID/objectID match
       P2: Unit GUIDs (npc/mo/tg/lastLoot) → only if P1 found nothing
-      P3: Zone raresOnly pools → open world + rare-class unit only
+      P3: Zone hostileOnly-only pools (e.g. Crackling Shard / any mob). raresOnly zone mounts
+          are NOT matched here — those NPCs are listed in CollectibleSourceDB.npcs; try counts require
+          exact GUID→npcID match (P1/P2) so wrong mobs never increment.
       P4: Encounter recentKills → instance boss bookkeeping
     
     MULTI-CORPSE / AoE (zone farm mounts, e.g. Bloodfeaster / Pack Mule):
@@ -111,6 +113,17 @@ local issecretvalue = issecretvalue  -- nil pre-12.0, function in 12.0+
 local questStarterMountToSourceItemID = {}
 local questStarterSourceToStatisticIds = {}  -- sourceItemID -> { statId, ... } for "statistic + local" try count
 local questStarterMountList = {}
+-- Reverse of questStarterMountToSourceItemID: sourceItemID -> array of all mountKeys that map to it.
+-- Built in BuildReverseIndices; updated inline wherever questStarterMountToSourceItemID is written.
+-- Replaces the O(N) pairs() scan in GetTryCount with an O(1) array lookup.
+local sourceItemToAllMountKeys = {}
+-- Cache: mountID -> sourceItemID resolved via C_MountJournal.GetMountFromItem scan.
+-- Avoids repeating the expensive API-loop fallback in GetTryCount on every call.
+local mountJournalResolvedSourceCache = {}
+-- GUID parse cache: GUID string -> parsed NPC/object ID (or false = "not applicable").
+-- Avoids repeated { strsplit("-", guid) } table allocation on hot paths.
+local guidNpcIDCache = {}
+local guidObjectIDCache = {}
 
 -- Forward declarations for state variables used in OnEvent closure (declared after it)
 local npcDropDB
@@ -512,6 +525,15 @@ local processedGUIDs = {}    -- [guid] = timestamp
 local mergedLootTryCountedAt = {}  -- [fingerprint] = GetTime() — open-world merged loot, one wave per GUID set
 --- PLAYER_ENTERING_WORLD: GetInstanceInfo difficulty for current instanceID (ENCOUNTER_END can mismatch).
 local tryCounterInstanceDiffCache = { instanceID = nil, difficultyID = nil }
+--- One hint per instance+difficulty per login (replaces old multi-line chat dump).
+local tryCounterInstanceEntryAnnounced = {}
+--- GetInstanceInfo()[8] template InstanceID → JournalInstance.ID (EJ_GetInstanceInfo 10th return); false = scanned, no match.
+--- Pre-seed hot rows to skip EJ scan on zone-in (InstanceID is global, not locale-specific).
+local tryCounterJournalIDByTemplateInstID = {
+    [2097] = 1178, -- Operation: Mechagon (JournalInstance.ID)
+}
+--- Upper bound for JournalInstance.ID scan (covers retail dungeons/raids; adjust if Blizzard adds higher IDs).
+local JOURNAL_INSTANCE_TEMPLATE_SCAN_MAX = 2600
 --- Last character key we scheduled Statistics+Rarity sync for (avoids duplicate timers on same char).
 local lastSyncScheduleCharKey = nil
 --- Bumped when a new per-character sync is scheduled; stale C_Timer callbacks no-op.
@@ -1079,7 +1101,35 @@ function Fns.BuildReverseIndices()
         end
     end
 
+    -- Build sourceItemToAllMountKeys: sourceItemID -> { mountKey1, mountKey2, ... }
+    -- Enables O(1) lookup in GetTryCount instead of O(N) pairs() scan.
+    wipe(sourceItemToAllMountKeys)
+    wipe(mountJournalResolvedSourceCache)
+    for mountKey, srcID in pairs(questStarterMountToSourceItemID) do
+        local arr = sourceItemToAllMountKeys[srcID]
+        if not arr then
+            arr = {}
+            sourceItemToAllMountKeys[srcID] = arr
+        end
+        arr[#arr + 1] = mountKey
+    end
+
     reverseIndicesBuilt = true
+end
+
+-- Helper: keep sourceItemToAllMountKeys in sync when questStarterMountToSourceItemID is updated at runtime.
+local function RegisterQuestStarterMountKey(mountKey, srcItemID)
+    if not mountKey or not srcItemID then return end
+    questStarterMountToSourceItemID[mountKey] = srcItemID
+    local arr = sourceItemToAllMountKeys[srcItemID]
+    if not arr then
+        arr = {}
+        sourceItemToAllMountKeys[srcItemID] = arr
+    end
+    for i = 1, #arr do
+        if arr[i] == mountKey then return end
+    end
+    arr[#arr + 1] = mountKey
 end
 
 -- =====================================================================
@@ -1147,15 +1197,31 @@ function WarbandNexus:GetTryCount(collectibleType, id)
     -- Quest Starter = Mount Item = Mount: try count = statistic + local stored
     if collectibleType == "mount" then
         local sourceItemID = questStarterMountToSourceItemID[id] or (idNum and questStarterMountToSourceItemID[idNum])
-        if not sourceItemID and C_MountJournal and C_MountJournal.GetMountFromItem then
-            for mountKey, srcID in pairs(questStarterMountToSourceItemID) do
-                if type(mountKey) == "number" and type(srcID) == "number" then
-                    local resolved = C_MountJournal.GetMountFromItem(mountKey)
-                    if resolved and tonumber(resolved) == idNum then
-                        sourceItemID = srcID
-                        break
+        -- Fast reverse lookup: resolvedIDsReverse maps mountID -> itemID (teach item); that itemID
+        -- may itself be a questStarterMountToSourceItemID key.
+        if not sourceItemID and idNum then
+            local itemIDForMount = resolvedIDsReverse[idNum]
+            if itemIDForMount then
+                sourceItemID = questStarterMountToSourceItemID[itemIDForMount]
+            end
+        end
+        -- Last-resort: scan via C_MountJournal.GetMountFromItem (costly; result is cached to avoid repeat).
+        if not sourceItemID and idNum then
+            local cached = mountJournalResolvedSourceCache[idNum]
+            if cached ~= nil then
+                sourceItemID = cached or nil
+            elseif C_MountJournal and C_MountJournal.GetMountFromItem then
+                for mountKey, srcID in pairs(questStarterMountToSourceItemID) do
+                    if type(mountKey) == "number" and type(srcID) == "number" then
+                        local resolved = C_MountJournal.GetMountFromItem(mountKey)
+                        if resolved and not (issecretvalue and issecretvalue(resolved)) and tonumber(resolved) == idNum then
+                            sourceItemID = srcID
+                            mountJournalResolvedSourceCache[idNum] = srcID
+                            break
+                        end
                     end
                 end
+                if not sourceItemID then mountJournalResolvedSourceCache[idNum] = false end
             end
         end
         if sourceItemID then
@@ -1167,11 +1233,15 @@ function WarbandNexus:GetTryCount(collectibleType, id)
                 -- to find the highest stored count. Covers legacy data stored under different keys.
                 local m1 = type(mountCounts[id]) == "number" and mountCounts[id] or 0
                 if m1 > localStored then localStored = m1 end
-                -- Check all reverse-mapped keys for this source item (covers itemID/mountID variants)
-                for mappedKey, srcID in pairs(questStarterMountToSourceItemID) do
-                    if srcID == sourceItemID and mappedKey ~= id then
-                        local mv = type(mountCounts[mappedKey]) == "number" and mountCounts[mappedKey] or 0
-                        if mv > localStored then localStored = mv end
+                -- O(1) lookup via prebuilt reverse map (replaces O(N) pairs scan).
+                local allKeys = sourceItemToAllMountKeys[sourceItemID]
+                if allKeys then
+                    for i = 1, #allKeys do
+                        local mappedKey = allKeys[i]
+                        if mappedKey ~= id then
+                            local mv = type(mountCounts[mappedKey]) == "number" and mountCounts[mappedKey] or 0
+                            if mv > localStored then localStored = mv end
+                        end
                     end
                 end
             end
@@ -1368,31 +1438,37 @@ Fns.GetNPCIDFromGUID = function(guid)
     if not guid or type(guid) ~= "string" then return nil end
     -- Midnight 12.0: GUID may be a secret value during instanced combat
     if issecretvalue and issecretvalue(guid) then return nil end
+    local cached = guidNpcIDCache[guid]
+    if cached ~= nil then return cached or nil end
     local parts = { strsplit("-", guid) }
     local unitType = parts[1]
     if unitType ~= "Creature" and unitType ~= "Vehicle" then
+        guidNpcIDCache[guid] = false
         return nil
     end
     local n = #parts
-    if n < 3 then return nil end
+    if n < 3 then guidNpcIDCache[guid] = false; return nil end
     local last = parts[n]
     -- Final segment is usually hex spawn UID; entry id is the preceding numeric field.
     if last and last:match("^[0-9A-Fa-f]+$") and #last >= 10 then
         local pen = tonumber(parts[n - 1])
-        if pen and pen > 0 then return pen end
+        if pen and pen > 0 then guidNpcIDCache[guid] = pen; return pen end
     end
     if n >= 7 then
         local id6 = tonumber(parts[6])
-        if id6 and id6 > 0 then return id6 end
+        if id6 and id6 > 0 then guidNpcIDCache[guid] = id6; return id6 end
     end
     if n >= 6 then
         local id5 = tonumber(parts[5])
-        if id5 and id5 > 0 then return id5 end
+        if id5 and id5 > 0 then guidNpcIDCache[guid] = id5; return id5 end
     end
     local ut, npcID = guid:match("^(%a+)%-.-%-.-%-.-%-.-%-(%d+)")
     if ut == unitType and npcID then
-        return tonumber(npcID)
+        local result = tonumber(npcID)
+        guidNpcIDCache[guid] = result or false
+        return result
     end
+    guidNpcIDCache[guid] = false
     return nil
 end
 
@@ -1402,29 +1478,35 @@ end
 Fns.GetObjectIDFromGUID = function(guid)
     if not guid or type(guid) ~= "string" then return nil end
     if issecretvalue and issecretvalue(guid) then return nil end
+    local cached = guidObjectIDCache[guid]
+    if cached ~= nil then return cached or nil end
     local parts = { strsplit("-", guid) }
     if parts[1] ~= "GameObject" then
+        guidObjectIDCache[guid] = false
         return nil
     end
     local n = #parts
-    if n < 3 then return nil end
+    if n < 3 then guidObjectIDCache[guid] = false; return nil end
     local last = parts[n]
     if last and last:match("^[0-9A-Fa-f]+$") and #last >= 10 then
         local pen = tonumber(parts[n - 1])
-        if pen and pen > 0 then return pen end
+        if pen and pen > 0 then guidObjectIDCache[guid] = pen; return pen end
     end
     if n >= 7 then
         local id6 = tonumber(parts[6])
-        if id6 and id6 > 0 then return id6 end
+        if id6 and id6 > 0 then guidObjectIDCache[guid] = id6; return id6 end
     end
     if n >= 6 then
         local id5 = tonumber(parts[5])
-        if id5 and id5 > 0 then return id5 end
+        if id5 and id5 > 0 then guidObjectIDCache[guid] = id5; return id5 end
     end
     local ut, objectID = guid:match("^(%a+)%-.-%-.-%-.-%-.-%-(%d+)")
     if ut == "GameObject" and objectID then
-        return tonumber(objectID)
+        local result = tonumber(objectID)
+        guidObjectIDCache[guid] = result or false
+        return result
     end
+    guidObjectIDCache[guid] = false
     return nil
 end
 
@@ -1639,6 +1721,7 @@ local difficultyCache = {}
 -- Maps WoW difficultyID (from ENCOUNTER_END / GetRaidDifficultyID / GetDungeonDifficultyID)
 -- to our dropDifficulty label strings.  Complete as of Patch 12.0.1 (Feb 2026).
 -- https://warcraft.wiki.gg/wiki/DifficultyID
+-- Regression: tests/test_trycounter.lua mirrors this table plus ResolveDifficultyLabel, DoesDifficultyMatch, FilterDropsByDifficulty.
 local DIFFICULTY_ID_TO_LABELS = {
     -- Mythic tier
     [16]  = "Mythic",   -- Mythic raid
@@ -1674,6 +1757,33 @@ local DIFFICULTY_ID_TO_LABELS = {
     [19]  = "Normal",   -- Event dungeon
     [232] = "Normal",   -- Event dungeon (alternate)
 }
+
+---Map ENCOUNTER_END / GetInstanceInfo difficulty IDs to drop-gate labels.
+---Uses static table first; then GetDifficultyInfo so legacy LFR / TW / new IDs still match (e.g. BoD Jaina LFR + G.M.O.D.).
+---@param difficultyID number|nil
+---@return string|nil label for DoesDifficultyMatch ("LFR", "Mythic", ...)
+function Fns.ResolveDifficultyLabel(difficultyID)
+    if not difficultyID or type(difficultyID) ~= "number" then return nil end
+    if issecretvalue and issecretvalue(difficultyID) then return nil end
+    local mapped = DIFFICULTY_ID_TO_LABELS[difficultyID]
+    if mapped then return mapped end
+    if _G.GetDifficultyInfo then
+        local ok, _, _, isHeroic, isChallengeMode, _, displayMythic, _, isLFR = pcall(_G.GetDifficultyInfo, difficultyID)
+        if ok and isLFR then
+            return "LFR"
+        end
+        if ok and isChallengeMode then
+            return "Mythic"
+        end
+        if ok and displayMythic then
+            return "Mythic"
+        end
+        if ok and isHeroic then
+            return "Heroic"
+        end
+    end
+    return nil
+end
 
 ---Resolve difficultyID when GetInstanceInfo() returns 0 (seen in Midnight / some dungeons).
 ---M+ → 8; else GetDungeonDifficultyID / GetRaidDifficultyID.
@@ -1721,7 +1831,7 @@ function Fns.DoesDifficultyMatch(difficultyID, requiredDifficulty)
     if not difficultyID then return false end
     if issecretvalue and issecretvalue(difficultyID) then return false end
 
-    local label = DIFFICULTY_ID_TO_LABELS[difficultyID]
+    local label = Fns.ResolveDifficultyLabel(difficultyID)
     if not label then return false end
 
     if requiredDifficulty == "Mythic" then
@@ -1810,6 +1920,62 @@ function Fns.FilterDropsByDifficulty(drops, encounterDiffID)
         end
     end
     return trackable, diffSkipped
+end
+
+---Localized plain text for dropDifficulty gate (Try Counter debug probe only).
+---@param reqDiff string|nil
+---@return string
+function Fns.TryCounterProbeRequirementText(reqDiff)
+    local L = ns.L
+    if not reqDiff or reqDiff == "" or reqDiff == "All Difficulties" then
+        return (L and L["TRYCOUNTER_PROBE_REQ_ANY"]) or "any difficulty"
+    end
+    if reqDiff == "Mythic" then return (L and L["TRYCOUNTER_PROBE_REQ_MYTHIC"]) or "Mythic only" end
+    if reqDiff == "LFR" then return (L and L["TRYCOUNTER_PROBE_REQ_LFR"]) or "LFR only" end
+    if reqDiff == "Normal" then return (L and L["TRYCOUNTER_PROBE_REQ_NORMAL_PLUS"]) or "Normal+ raid (not LFR)" end
+    if reqDiff == "Heroic" then return (L and L["TRYCOUNTER_PROBE_REQ_HEROIC"]) or "Heroic+ (includes Mythic & 25H)" end
+    if reqDiff == "25H" then return (L and L["TRYCOUNTER_PROBE_REQ_25H"]) or "25-player Heroic only" end
+    if reqDiff == "10N" then return (L and L["TRYCOUNTER_PROBE_REQ_10N"]) or "10-player Normal only" end
+    if reqDiff == "25N" then return (L and L["TRYCOUNTER_PROBE_REQ_25N"]) or "25-player Normal only" end
+    if reqDiff == "25-man" then return (L and L["TRYCOUNTER_PROBE_REQ_25MAN"]) or "25-player Normal or Heroic" end
+    return tostring(reqDiff)
+end
+
+---Single mount line for TryCounterDebugInstanceProbe: boss > mount > drop difficulties > status.
+---@param WN table
+---@param encName string
+---@param ann table announce drop (mount item)
+---@param drop table original npc row
+---@param npcDropDifficulty string|nil
+---@param effDiff number|nil
+function Fns.TryCounterDebugEmitMountProbeLine(WN, encName, ann, drop, npcDropDifficulty, effDiff)
+    if not WN or not ann or not drop then return end
+    local L = ns.L
+    local reqDiff = drop.dropDifficulty or npcDropDifficulty
+    local reqText = Fns.TryCounterProbeRequirementText(reqDiff)
+    local diffUnknown = not effDiff or (issecretvalue and issecretvalue(effDiff))
+    local diffMatches = not diffUnknown
+        and (not reqDiff or reqDiff == "All Difficulties" or Fns.DoesDifficultyMatch(effDiff, reqDiff))
+    local collectedNonRepeat = (not drop.repeatable) and Fns.IsCollectibleCollected(drop)
+    local statusText
+    if collectedNonRepeat then
+        statusText = (L and L["TRYCOUNTER_PROBE_STATUS_COLLECTED"]) or "Already collected"
+    elseif diffUnknown then
+        statusText = (L and L["TRYCOUNTER_PROBE_STATUS_DIFF_UNKNOWN"]) or "Difficulty unknown"
+    elseif not diffMatches then
+        statusText = (L and L["TRYCOUNTER_PROBE_STATUS_WRONG_DIFF"]) or "Not available on current difficulty"
+    else
+        statusText = (L and L["TRYCOUNTER_PROBE_STATUS_OBTAINABLE"]) or "Obtainable on current difficulty"
+    end
+    local mountDisp = tostring(ann.name or "?")
+    local lineFmt = (L and L["TRYCOUNTER_PROBE_MOUNT_LINE"])
+        or "%s > %s > %s > %s"
+    local line = format(lineFmt,
+        tostring(encName or "?"),
+        mountDisp,
+        reqText,
+        statusText)
+    Fns.TryCounterLootDebug(WN, "flow", "%s", line)
 end
 
 ---Get the drop difficulty label for a collectible (type, id).
@@ -2323,9 +2489,9 @@ function Fns.ReseedStatisticsForDrops(drops, resolvedDropStatIds)
                                     if mountKey1 and mountKey1 ~= mountKey2 then
                                         WarbandNexus:SetTryCount("mount", mountKey2, math.max(newCount, WarbandNexus:GetTryCount("mount", mountKey2) or 0))
                                     end
-                                    questStarterMountToSourceItemID[mk] = drop.itemID
+                                    RegisterQuestStarterMountKey(mk, drop.itemID)
                                     if mountKey1 and mountKey1 ~= mountKey2 then
-                                        questStarterMountToSourceItemID[mountKey2] = drop.itemID
+                                        RegisterQuestStarterMountKey(mountKey2, drop.itemID)
                                     end
                                 end
                             end
@@ -2429,8 +2595,8 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
                     if k1 and k1 ~= k2 then
                         WN:SetTryCount("mount", k2, newCount)
                     end
-                    questStarterMountToSourceItemID[k1 or k2] = drop.itemID
-                    if k1 and k1 ~= k2 then questStarterMountToSourceItemID[k2] = drop.itemID end
+                    RegisterQuestStarterMountKey(k1 or k2, drop.itemID)
+                    if k1 and k1 ~= k2 then RegisterQuestStarterMountKey(k2, drop.itemID) end
                 end
             end
         end
@@ -2438,9 +2604,10 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
         local function ProcessManualDrop(drop, mult, fromRecursion)
             mult = tonumber(mult) or attemptTimes
             if mult < 1 then mult = 1 end
-            -- Defense: deferred paths may run after learn; never increment for already-owned collectibles
-            if drop and (drop.type == "mount" or drop.type == "pet" or drop.type == "toy")
-                and Fns.IsCollectibleCollected(drop) then
+            -- Defense: deferred paths may run after learn; never increment for already-owned collectibles.
+            -- Include item-type drops (yields / quest chains): IsCollectibleCollected is true when all goals are met.
+            -- Repeatable farm sources stay eligible even when owned (BoE / world farm mounts).
+            if drop and drop.repeatable ~= true and Fns.IsCollectibleCollected(drop) then
                 return
             end
             if drop and not drop.guaranteed then
@@ -2512,6 +2679,17 @@ function Fns.IsAutoTryCounterEnabled()
     if WarbandNexus.db.profile.modulesEnabled and WarbandNexus.db.profile.modulesEnabled.tryCounter == false then return false end
     if not WarbandNexus.db.profile.notifications then return false end
     return WarbandNexus.db.profile.notifications.autoTryCounter == true
+end
+
+---Instance entry: full [WN-Drops] lines (difficulty green/red/amber) vs single TRYCOUNTER_INSTANCE_ENTRY_HINT.
+---@return boolean
+function Fns.IsTryCounterInstanceEntryDropLinesEnabled()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.profile or not WarbandNexus.db.profile.notifications then
+        return true
+    end
+    local v = WarbandNexus.db.profile.notifications.tryCounterInstanceEntryDropLines
+    if v == false then return false end
+    return true
 end
 
 -- =====================================================================
@@ -2906,8 +3084,88 @@ end
 
 -- =====================================================================
 -- INSTANCE ENTRY (Encounter Journal helpers kept for debug / TryCounterShowInstanceDrops if invoked manually)
--- Automatic chat dump on zone-in was removed — it spammed chat; use the addon UI or /wn check.
+-- Full boss-by-boss chat dump on zone-in was removed (spam). On entry: optional [WN-Drops] lines if the
+-- instance has any Try Counter mount in DB (wrong difficulty shows red); else a one-line hint only when
+-- at least one drop is trackable on the current difficulty — see TryCounterAnnounceCollectibleMountsOnInstanceEntry.
 -- =====================================================================
+
+local function TryCounterAnnounceCollectibleMountsOnInstanceEntry(WN)
+    if not WN or not WN.Print or not Fns.IsAutoTryCounterEnabled() then return end
+    local inI = IsInInstance()
+    if issecretvalue and inI and issecretvalue(inI) then return end
+    if not inI then return end
+    local _, it = IsInInstance()
+    if issecretvalue and it and issecretvalue(it) then it = nil end
+    if it ~= "party" and it ~= "raid" then return end
+
+    Fns.TryCounterLoadEncounterJournal()
+    if not Fns.TryCounterEJ_HasCoreAPIs() then return end
+    local jid = Fns.TryCounterGetJournalInstanceID()
+    if not jid or jid == 0 then return end
+
+    local sid = tryCounterInstanceDiffCache.instanceID
+    local did = tryCounterInstanceDiffCache.difficultyID
+    local throttleKey = (sid and did) and (tostring(sid) .. ":" .. tostring(did)) or nil
+    if throttleKey and tryCounterInstanceEntryAnnounced[throttleKey] then return end
+
+    EJ_SelectInstance(jid)
+    local effDiff = Fns.ResolveEffectiveEncounterDifficultyID(true, nil)
+    local idx = 1
+    -- hasAnyMount: any Try Counter mount row in this instance (TryCounterShowInstanceDrops lists these with red/green).
+    -- hasTrackableOnDiff: at least one row that counts on *current* difficulty (uncollected or repeatable) — for the short hint only.
+    local hasAnyMount = false
+    local hasTrackableOnDiff = false
+    while true do
+        local encName, dungeonEncID = Fns.TryCounterResolveDungeonEncounterFromEJIndex(idx, jid)
+        local isSecret = issecretvalue and encName and issecretvalue(encName)
+        if not isSecret and not encName then break end
+        if not isSecret and dungeonEncID then
+            isSecret = issecretvalue and issecretvalue(dungeonEncID)
+        end
+        if not isSecret and dungeonEncID then
+            local npcIDs = encounterDB[dungeonEncID]
+            if npcIDs then
+                for ni = 1, #npcIDs do
+                    local npcID = npcIDs[ni]
+                    local npcDrops = npcDropDB[npcID]
+                    if npcDrops then
+                        for di = 1, #npcDrops do
+                            local drop = npcDrops[di]
+                            if type(drop) == "table" and Fns.ResolveTryCounterMountAnnounceDrop(drop) then
+                                hasAnyMount = true
+                            end
+                        end
+                        if not hasTrackableOnDiff then
+                            local trackable = Fns.FilterDropsByDifficulty(npcDrops, effDiff)
+                            for ti = 1, #trackable do
+                                if Fns.ResolveTryCounterMountAnnounceDrop(trackable[ti]) then
+                                    hasTrackableOnDiff = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        idx = idx + 1
+    end
+
+    local showDropLines = Fns.IsTryCounterInstanceEntryDropLinesEnabled() and hasAnyMount
+    local showHintOnly = (not showDropLines) and hasTrackableOnDiff
+    if showDropLines or showHintOnly then
+        if throttleKey then tryCounterInstanceEntryAnnounced[throttleKey] = true end
+        if showDropLines then
+            -- Same format as manual TryCounterShowInstanceDrops: item link + (reqDiff) green/red/amber vs current instance.
+            Fns.TryCounterShowInstanceDrops(jid, { maxLines = 18 })
+        else
+            local L = ns.L
+            local msg = (L and L["TRYCOUNTER_INSTANCE_ENTRY_HINT"])
+                or "Collectible mount(s) are tracked in this instance. Type |cffffffff/wn check|r for bosses and difficulty."
+            WN:Print("|cff00ccffWarband Nexus:|r " .. msg)
+        end
+    end
+end
 
 function Fns.TryCounterLoadEncounterJournal()
     if InCombatLockdown() then return end
@@ -2939,9 +3197,11 @@ function Fns.TryCounterResolveDungeonEncounterFromEJIndex(encIndex, journalInsta
     if okEJ and a then
         encName, _, journalEncID, _, _, _, dungeonEncID = a, b, c, d, e, f, g
     end
-    if EJ_GetEncounterInfo and journalEncID and type(journalEncID) == "number" and journalEncID > 0 then
+    -- Fallback only when ByIndex omitted dungeonEncounterID; pcall must use 6×_ so dex = 7th return (not journalInstanceID).
+    if (not dungeonEncID or type(dungeonEncID) ~= "number" or dungeonEncID <= 0)
+        and EJ_GetEncounterInfo and journalEncID and type(journalEncID) == "number" and journalEncID > 0 then
         -- Returns: name, desc, journalEncounterID, rootSectionID, link, journalInstanceID, dungeonEncounterID, instanceID
-        local okInfo, _, _, _, _, _, dex = pcall(EJ_GetEncounterInfo, journalEncID)
+        local okInfo, _, _, _, _, _, _, dex = pcall(EJ_GetEncounterInfo, journalEncID)
         if okInfo and dex and type(dex) == "number" and dex > 0 then
             if not (issecretvalue and issecretvalue(dex)) then
                 dungeonEncID = dex
@@ -2977,19 +3237,80 @@ function Fns.ResolveTryCounterMountAnnounceDrop(drop)
     return nil
 end
 
----Journal instance ID for the player's current position. Prefer EJ_GetInstanceForMap(uiMapID) — EJ_GetCurrentInstance was superseded in 8.0.1.
+---Resolve JournalInstance.ID when UiMap is not ready (common on instance load: GetBestMapForUnit nil briefly).
+---Uses EJ_GetInstanceInfo(jid): 10th return is template InstanceID (matches GetInstanceInfo 8th inside the same dungeon).
+---@param templateInstID number
+---@return number|nil
+function Fns.TryCounterFindJournalInstanceIDByTemplateInstanceID(templateInstID)
+    if not templateInstID or type(templateInstID) ~= "number" or templateInstID <= 0 then return nil end
+    if issecretvalue and issecretvalue(templateInstID) then return nil end
+    local cached = tryCounterJournalIDByTemplateInstID[templateInstID]
+    if cached == false then return nil end
+    if type(cached) == "number" and cached > 0 then return cached end
+    if not EJ_GetInstanceInfo then return nil end
+    Fns.TryCounterLoadEncounterJournal()
+    local sawNamedInstance = false
+    for jid = 1, JOURNAL_INSTANCE_TEMPLATE_SCAN_MAX do
+        local ok, ejName, _, _, _, _, _, _, _, _, mapTpl = pcall(EJ_GetInstanceInfo, jid)
+        if ok and ejName and not (issecretvalue and issecretvalue(ejName)) and type(ejName) == "string" and ejName ~= "" then
+            sawNamedInstance = true
+        end
+        if ok and mapTpl and not (issecretvalue and issecretvalue(mapTpl)) and type(mapTpl) == "number" and mapTpl == templateInstID then
+            tryCounterJournalIDByTemplateInstID[templateInstID] = jid
+            return jid
+        end
+    end
+    if sawNamedInstance then
+        tryCounterJournalIDByTemplateInstID[templateInstID] = false
+    end
+    return nil
+end
+
+---JournalInstance.ID for Try Counter EJ walks.
+---Blizzard pipeline: EJ_GetInstanceForMap(uiMapID) needs C_Map.GetBestMapForUnit (often nil for a tick after load).
+---Fallback: GetInstanceInfo instance template ID ↔ EJ_GetInstanceInfo(...).mapID (field 10).
+---Last resort: EJ_GetCurrentInstance (can be stale if the journal was left on another instance).
 ---@return number|nil
 function Fns.TryCounterGetJournalInstanceID()
     local jid
-    if EJ_GetCurrentInstance then
-        jid = EJ_GetCurrentInstance()
-    end
-    if (not jid or jid == 0) and EJ_GetInstanceForMap and C_Map and C_Map.GetBestMapForUnit then
+
+    if EJ_GetInstanceForMap and C_Map and C_Map.GetBestMapForUnit then
         local mapID = C_Map.GetBestMapForUnit("player")
         if mapID and not (issecretvalue and issecretvalue(mapID)) then
             jid = EJ_GetInstanceForMap(mapID)
         end
     end
+    if jid and jid ~= 0 then return jid end
+
+    local inInst = IsInInstance()
+    if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+    if inInst and EJ_GetInstanceInfo then
+        local _, _, _, _, _, _, _, templateInstID = GetInstanceInfo()
+        if templateInstID and not (issecretvalue and issecretvalue(templateInstID)) and type(templateInstID) == "number" and templateInstID > 0 then
+            jid = Fns.TryCounterFindJournalInstanceIDByTemplateInstanceID(templateInstID)
+            if jid and jid ~= 0 then return jid end
+        end
+        -- If UiMap was nil but GetSafeMapID still has a floor id, only accept it when EJ template matches GetInstanceInfo (avoids SW cache).
+        if EJ_GetInstanceForMap and type(Fns.GetSafeMapID) == "function" then
+            local safeUm = Fns.GetSafeMapID()
+            if safeUm and not (issecretvalue and issecretvalue(safeUm)) then
+                local j2 = EJ_GetInstanceForMap(safeUm)
+                if j2 and j2 ~= 0 and templateInstID and type(templateInstID) == "number" and templateInstID > 0 then
+                    local okJ, _, _, _, _, _, _, _, _, _, ejTpl = pcall(EJ_GetInstanceInfo, j2)
+                    if okJ and ejTpl and type(ejTpl) == "number" and ejTpl == templateInstID
+                        and not (issecretvalue and issecretvalue(ejTpl)) then
+                        return j2
+                    end
+                end
+            end
+        end
+    end
+
+    if EJ_GetCurrentInstance then
+        jid = EJ_GetCurrentInstance()
+        if jid and jid ~= 0 then return jid end
+    end
+
     if jid == 0 then jid = nil end
     return jid
 end
@@ -3021,6 +3342,9 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
         for guid, data in pairs(recentKills) do
             if data.isEncounter then
                 recentKills[guid] = nil
+                -- Purge cached GUID parses for encounter GUIDs no longer relevant.
+                guidNpcIDCache[guid] = nil
+                guidObjectIDCache[guid] = nil
             end
         end
         return
@@ -3048,6 +3372,12 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
         self:TryCounterDebugInstanceProbe()
     end
 
+    if instanceType == "party" or instanceType == "raid" then
+        C_Timer.After(2.5, function()
+            TryCounterAnnounceCollectibleMountsOnInstanceEntry(WarbandNexus)
+        end)
+    end
+
     -- Clear fishing context on instance entry (prevents false fishing counts in Delves)
     fishingCtx.active = false
     fishingCtx.castTime = 0
@@ -3061,34 +3391,17 @@ function WarbandNexus:TryCounterDebugInstanceProbe()
     if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
     if not inInst then return end
 
-    local name, instType, diffID, _, _, _, _, mapInstID = GetInstanceInfo()
+    local name, instType = GetInstanceInfo()
     if name and issecretvalue and issecretvalue(name) then name = nil end
     if instType and issecretvalue and issecretvalue(instType) then instType = nil end
-    if diffID and issecretvalue and issecretvalue(diffID) then diffID = nil end
-    if mapInstID and issecretvalue and issecretvalue(mapInstID) then mapInstID = nil end
-
-    local uiMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-    if uiMapID and issecretvalue and issecretvalue(uiMapID) then uiMapID = nil end
-    local ddApi = GetDungeonDifficultyID and GetDungeonDifficultyID()
-    if ddApi and issecretvalue and issecretvalue(ddApi) then ddApi = nil end
-    local rdApi = GetRaidDifficultyID and GetRaidDifficultyID()
-    if rdApi and issecretvalue and issecretvalue(rdApi) then rdApi = nil end
 
     local encDiff = Fns.ResolveEffectiveEncounterDifficultyID(true, nil)
-    local diffLabel = (encDiff and DIFFICULTY_ID_TO_LABELS[encDiff]) or "?"
-    Fns.TryCounterLootDebug(self, "flow",
-        "ENTER name=%s type=%s mapInstanceID=%s uiMapID=%s liveDiffID=%s | resolvedDiffID=%s (%s) | cache instanceID=%s diffID=%s | API dungeonDiff=%s raidDiff=%s",
+    local diffLabel = (encDiff and Fns.ResolveDifficultyLabel(encDiff)) or "?"
+    local enterFmt = (ns.L and ns.L["TRYCOUNTER_PROBE_ENTER"])
+        or "Entered: %s — difficulty: %s"
+    Fns.TryCounterLootDebug(self, "flow", enterFmt,
         tostring(name or "?"),
-        tostring(instType or "?"),
-        tostring(mapInstID or "?"),
-        tostring(uiMapID or "nil"),
-        tostring(diffID or "nil"),
-        tostring(encDiff or "nil"),
-        tostring(diffLabel),
-        tostring(tryCounterInstanceDiffCache.instanceID or "nil"),
-        tostring(tryCounterInstanceDiffCache.difficultyID or "nil"),
-        tostring(ddApi or "nil"),
-        tostring(rdApi or "nil"))
+        tostring(diffLabel))
 
     if instType ~= "party" and instType ~= "raid" then
         Fns.TryCounterLootDebug(self, "skip", "EJ/DB boss probe skipped (need party or raid instance type)")
@@ -3115,20 +3428,18 @@ function WarbandNexus:TryCounterDebugInstanceProbe()
 
         local jid = Fns.TryCounterGetJournalInstanceID()
         if not jid or jid == 0 then
-            local um = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-            if um and issecretvalue and issecretvalue(um) then um = nil end
-            Fns.TryCounterLootDebug(WN, "miss", "DB probe: journalID unresolved (TryCounterGetJournalInstanceID=%s uiMapID=%s)",
-                tostring(jid), tostring(um))
+            local missFmt = (ns.L and ns.L["TRYCOUNTER_PROBE_JOURNAL_MISS"])
+                or "Could not resolve encounter journal for this instance."
+            Fns.TryCounterLootDebug(WN, "miss", "%s", missFmt)
             return
         end
 
         EJ_SelectInstance(jid)
         local effDiff = Fns.ResolveEffectiveEncounterDifficultyID(true, nil)
-        local effLabel = (effDiff and DIFFICULTY_ID_TO_LABELS[effDiff]) or "?"
-        local um2 = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-        if um2 and issecretvalue and issecretvalue(um2) then um2 = nil end
-        Fns.TryCounterLootDebug(WN, "flow", "DB probe: uiMapID=%s → journalInstanceID=%s | effectiveDiffID=%s (%s) — WN DB (dungeonEncID → npcID → drops):",
-            tostring(um2 or "nil"), tostring(jid), tostring(effDiff or "nil"), tostring(effLabel))
+        local effLabel = (effDiff and Fns.ResolveDifficultyLabel(effDiff)) or "?"
+        local hdrFmt = (ns.L and ns.L["TRYCOUNTER_PROBE_DB_HEADER"])
+            or "Mount sources (Try Counter DB) — your difficulty: %s"
+        Fns.TryCounterLootDebug(WN, "flow", hdrFmt, tostring(effLabel or "?"))
 
         local idx = 1
         local hadDbBoss = false
@@ -3143,34 +3454,28 @@ function WarbandNexus:TryCounterDebugInstanceProbe()
                 local npcIDs = encounterDB[dungeonEncID]
                 if npcIDs then
                     hadDbBoss = true
-                    local parts = {}
+                    local printedMountLine = false
                     for ni = 1, #npcIDs do
                         local npcID = npcIDs[ni]
                         local npcDrops = npcDropDB[npcID]
                         if npcDrops then
-                            local trackable, diffSkip = Fns.FilterDropsByDifficulty(npcDrops, effDiff)
-                            for ti = 1, #trackable do
-                                local d = trackable[ti]
-                                local ann = Fns.ResolveTryCounterMountAnnounceDrop(d)
-                                if ann then
-                                    parts[#parts + 1] = format("npc %s → mount \"%s\" (item %s)",
-                                        tostring(npcID), tostring(ann.name or "?"), tostring(ann.itemID))
+                            local npcDiff = npcDrops.dropDifficulty
+                            for di = 1, #npcDrops do
+                                local drop = npcDrops[di]
+                                if type(drop) == "table" and drop.type then
+                                    local ann = Fns.ResolveTryCounterMountAnnounceDrop(drop)
+                                    if ann and ann.itemID then
+                                        printedMountLine = true
+                                        Fns.TryCounterDebugEmitMountProbeLine(WN, encName, ann, drop, npcDiff, effDiff)
+                                    end
                                 end
-                            end
-                            if #trackable == 0 and diffSkip then
-                                parts[#parts + 1] = format("npc %s → (0 trackable: needs %s)",
-                                    tostring(npcID), tostring(diffSkip.required))
-                            elseif #trackable == 0 then
-                                parts[#parts + 1] = format("npc %s → (0 trackable: gated or collected)", tostring(npcID))
                             end
                         end
                     end
-                    if #parts > 0 then
-                        Fns.TryCounterLootDebug(WN, "flow", "  • %s [enc=%s]: %s",
-                            tostring(encName), tostring(dungeonEncID), table.concat(parts, " | "))
-                    else
-                        Fns.TryCounterLootDebug(WN, "skip", "  • %s [enc=%s]: npcIDs in encounterDB but no npcDropDB rows (%s)",
-                            tostring(encName), tostring(dungeonEncID), table.concat(npcIDs, ","))
+                    if not printedMountLine then
+                        local noFmt = (ns.L and ns.L["TRYCOUNTER_PROBE_ENC_NO_MOUNTS"])
+                            or "%s: no mount entries in database"
+                        Fns.TryCounterLootDebug(WN, "skip", noFmt, tostring(encName))
                     end
                 end
             end
@@ -3178,14 +3483,22 @@ function WarbandNexus:TryCounterDebugInstanceProbe()
         end
 
         if not hadDbBoss then
-            Fns.TryCounterLootDebug(WN, "miss", "DB probe: no EJ encounters in this instance map to encounterDB (journal=%s)", tostring(jid))
+            local nomapFmt = (ns.L and ns.L["TRYCOUNTER_PROBE_NO_MAPPED_BOSSES"])
+                or "No bosses in this instance map to Try Counter data."
+            Fns.TryCounterLootDebug(WN, "miss", "%s", nomapFmt)
         end
     end)
 end
 
-Fns.TryCounterShowInstanceDrops = function(journalInstanceID)
+---Print one [WN-Drops] line per collectible: item link — difficulty (green/red/amber) — attempts or (Collected).
+---@param journalInstanceID number JournalInstance.ID
+---@param opts table|nil { maxLines = number|nil }
+Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
     local WN = WarbandNexus
     if not WN or not WN.Print then return end
+    opts = opts or {}
+    local maxLines = opts.maxLines
+    if type(maxLines) ~= "number" or maxLines < 1 then maxLines = nil end
     EJ_SelectInstance(journalInstanceID)
 
     -- Iterate all encounters in this instance and cross-reference with our encounterDB
@@ -3262,12 +3575,16 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID)
             local encDiff = Fns.ResolveEffectiveEncounterDifficultyID(true, nil)
 
             local Ltc = ns.L
-            local detectPrefix = (Ltc and Ltc["TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED"]) or "Collectible Detected : "
+            local printed = 0
+            local omitted = 0
 
             for i = 1, #dropsToShow do
                 local entry = dropsToShow[i]
                 for j = 1, #entry.drops do
                     local drop = entry.drops[j]
+                    if maxLines and printed >= maxLines then
+                        omitted = omitted + 1
+                    else
                     -- Get item hyperlink (quality-colored, bracketed)
                     local itemLink = Fns.GetDropItemLink(drop)
 
@@ -3319,16 +3636,11 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID)
                                 tryCount = WN:GetTryCount(drop.type, drop.itemID) or 0
                             end
                         end
+                        local attSuffix = (ns.L and ns.L["TRYCOUNTER_ATTEMPTS_SUFFIX"]) or " attempts"
                         if tryCount > 0 then
-                            status = "|cffffff00(" .. tryCount .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_SUFFIX"]) or " attempts") .. ")|r"
+                            status = "|cffffff00(" .. tryCount .. attSuffix .. ")|r"
                         else
-                            local typeLabels = {
-                                mount = (ns.L and ns.L["TRYCOUNTER_TYPE_MOUNT"]) or "Mount",
-                                pet = (ns.L and ns.L["TRYCOUNTER_TYPE_PET"]) or "Pet",
-                                toy = (ns.L and ns.L["TRYCOUNTER_TYPE_TOY"]) or "Toy",
-                                item = (ns.L and ns.L["TRYCOUNTER_TYPE_ITEM"]) or "Item",
-                            }
-                            status = "|cff888888(" .. (typeLabels[drop.type] or "") .. ")|r"
+                            status = "|cff888888(0" .. attSuffix .. ")|r"
                         end
                     end
 
@@ -3346,9 +3658,16 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID)
                         diffSegment = "|cff888888—|r"
                     end
 
-                    Fns.TryChat("|cff9370DB[WN-Drops]|r " .. detectPrefix .. entry.bossName .. " - " .. itemLink .. " - "
-                        .. diffSegment .. " - " .. status)
+                        Fns.TryChat("|cff9370DB[WN-Drops]|r " .. itemLink .. " - " .. diffSegment .. " - " .. status)
+                        printed = printed + 1
+                    end
                 end
+            end
+
+            if omitted > 0 then
+                local moreFmt = (Ltc and Ltc["TRYCOUNTER_INSTANCE_DROPS_TRUNCATED"])
+                    or "… |cffffccff%d|r more — |cffffffff/wn check|r a boss (target or mouseover)."
+                Fns.TryChat("|cff9370DB[WN-Drops]|r " .. format(moreFmt, omitted))
             end
         end)
 end
@@ -4596,9 +4915,11 @@ function Fns.ResolveFromUnits(ctx, numLoot, addon)
     if Fns.IsTryCounterLootDebugEnabled(addon) then Fns.TryCounterLootDebug(addon, "miss", "P2 no match") end
 end
 
----P3: Resolve from zone pools (rare-only or hostile-only zones).
----raresOnly: requires rare-class unit on mouseover/target/npc + open world.
----hostileOnly: any killable mob in zone (looting a corpse implies hostile).
+---P3: Resolve from zone pools that are truly zone-wide (hostileOnly, no raresOnly).
+---Midnight "zone rare mount" entries use raresOnly+hostileOnly for tooltips; they must NOT drive try
+---counts unless P1/P2 matched a corpse GUID to an npcID in npcDropDB (explicit rare list).
+---Previous bug: hostileOnly was checked before raresOnly, so any normal mob in Zul'Aman/Quel'Thalas/etc.
+---incremented Amani Sharptalon and other shared-pool mounts.
 function Fns.ResolveFromZone(ctx, inInstance, addon)
     if ctx.drops then return end
     if not next(zoneDropDB) then return end
@@ -4609,36 +4930,13 @@ function Fns.ResolveFromZone(ctx, inInstance, addon)
         return
     end
 
-    local rareLike
-    local function CheckRareLike()
-        if rareLike ~= nil then return rareLike end
-        rareLike = false
-        local rareUnitTokens = {"mouseover", "target", "npc"}
-        for i = 1, #rareUnitTokens do
-            local unit = rareUnitTokens[i]
-            local ok, cls = pcall(UnitClassification, unit)
-            if ok and cls and (not issecretvalue or not issecretvalue(cls)) then
-                if cls == "rare" or cls == "rareelite" or cls == "worldboss" then
-                    rareLike = true
-                    break
-                end
-            end
-        end
-        return rareLike
-    end
-
     local mapID = Fns.GetSafeMapID()
     while mapID and mapID > 0 do
         local zData = zoneDropDB[mapID]
         if type(zData) == "table" then
-            if zData.hostileOnly == true then
+            if zData.hostileOnly == true and zData.raresOnly ~= true then
                 ctx.drops = zData.drops or zData
-                if Fns.IsTryCounterLootDebugEnabled(addon) then Fns.TryCounterLootDebug(addon, "match", "P3 zone=%s (hostileOnly)", tostring(mapID)) end
-                return
-            end
-            if zData.raresOnly == true and CheckRareLike() then
-                ctx.drops = zData.drops or zData
-                if Fns.IsTryCounterLootDebugEnabled(addon) then Fns.TryCounterLootDebug(addon, "match", "P3 zone=%s (raresOnly)", tostring(mapID)) end
+                if Fns.IsTryCounterLootDebugEnabled(addon) then Fns.TryCounterLootDebug(addon, "match", "P3 zone=%s (hostileOnly wide)", tostring(mapID)) end
                 return
             end
         end
@@ -4740,7 +5038,7 @@ function WarbandNexus:ProcessNPCLoot()
         Fns.ResolveFromUnits(ctx, numLoot, self)
     end
 
-    -- P3: Zone raresOnly pools (Midnight zone rare mounts, open world only)
+    -- P3: Zone-wide hostileOnly pools only (see ResolveFromZone — no raresOnly anonymous pools)
     local inInstance = IsInInstance()
     if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
     if not ctx.drops then
@@ -5648,8 +5946,8 @@ function Fns.SeedFromStatistics()
                                     if qs and qs.type == "mount" and qs.itemID then
                                         local k1 = Fns.ResolveCollectibleID(qs)
                                         local k2 = qs.itemID
-                                        questStarterMountToSourceItemID[k1 or k2] = drop.itemID
-                                        if k1 and k1 ~= k2 then questStarterMountToSourceItemID[k2] = drop.itemID end
+                                        RegisterQuestStarterMountKey(k1 or k2, drop.itemID)
+                                        if k1 and k1 ~= k2 then RegisterQuestStarterMountKey(k2, drop.itemID) end
                                     end
                                 end
                             end
@@ -6162,12 +6460,17 @@ function WarbandNexus:InitializeTryCounter()
         for guid, time in pairs(processedGUIDs) do
             if now - time > PROCESSED_GUID_TTL then
                 processedGUIDs[guid] = nil
+                -- Evict from GUID parse caches so memory doesn't grow unbounded across long sessions.
+                guidNpcIDCache[guid] = nil
+                guidObjectIDCache[guid] = nil
             end
         end
         for guid, data in pairs(recentKills) do
             -- Encounter kills persist until instance exit (cleaned by OnTryCounterInstanceEntry)
             if not data.isEncounter and now - data.time > RECENT_KILL_TTL then
                 recentKills[guid] = nil
+                guidNpcIDCache[guid] = nil
+                guidObjectIDCache[guid] = nil
             end
         end
         for fp, ts in pairs(mergedLootTryCountedAt) do
@@ -6581,6 +6884,14 @@ function Fns.ApplyRarityMountAttemptsMaxToWN(self, itemId, extAttempts)
         return false
     end
     local mountKey = Fns.ResolveMountTryKeyFromItemId(itemId)
+    -- Non-repeatable mounts: after collection, WN count is the frozen "tries to obtain" value.
+    -- Do not raise it from Rarity/backup merge (avoids post-drop inflation when Rarity kept counting).
+    local probeDrop = { type = "mount", itemID = itemId }
+    if not self:IsRepeatableCollectible("mount", mountKey)
+        and not self:IsRepeatableCollectible("mount", itemId)
+        and Fns.IsCollectibleCollected(probeDrop) then
+        return false
+    end
     local wnA = self:GetTryCount("mount", mountKey) or 0
     local wnB = (mountKey ~= itemId) and (self:GetTryCount("mount", itemId) or 0) or 0
     local base = wnA

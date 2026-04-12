@@ -164,14 +164,14 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
         if option.tooltip then
             checkbox:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(option.tooltip, 1, 1, 1, 1, true)
+                GameTooltip:SetText(option.tooltip, 1, 1, 1, 1)
                 GameTooltip:Show()
             end)
             checkbox:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
             label:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(option.tooltip, 1, 1, 1, 1, true)
+                GameTooltip:SetText(option.tooltip, 1, 1, 1, 1)
                 GameTooltip:Show()
             end)
             label:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -346,7 +346,7 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
             
             if btnData.tooltip then
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(btnData.tooltip, 1, 1, 1, 1, true)
+                GameTooltip:SetText(btnData.tooltip, 1, 1, 1, 1)
                 GameTooltip:Show()
             end
         end)
@@ -390,7 +390,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
         label:SetScript("OnEnter", function(self)
             local desc = type(option.desc) == "function" and option.desc() or option.desc
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(desc, 1, 1, 1, 1, true)
+            GameTooltip:SetText(desc, 1, 1, 1, 1)
             GameTooltip:Show()
         end)
         label:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -466,28 +466,41 @@ local function CreateDropdownWidget(parent, option, yOffset)
             activeMenu = nil
         end
         
-        -- Count items
-        local itemCount = 0
-        for _ in pairs(values) do
-            itemCount = itemCount + 1
-        end
-        
-        local contentHeight = math.min(itemCount * 26, 300)
         local menuWidth = dropdown:GetWidth()
         
-        -- Sort options first (needed for sizing)
+        -- Build ordered option rows (valueOrder keeps logical order; else sort by display text)
         local sortedOptions = {}
-        for value, displayText in pairs(values) do
-            table.insert(sortedOptions, {value = value, text = displayText})
+        if option.valueOrder then
+            for i = 1, #option.valueOrder do
+                local key = option.valueOrder[i]
+                local displayText = values[key]
+                if displayText ~= nil then
+                    sortedOptions[#sortedOptions + 1] = { value = key, text = displayText }
+                end
+            end
+            for value, displayText in pairs(values) do
+                local seen
+                for j = 1, #sortedOptions do
+                    if sortedOptions[j].value == value then
+                        seen = true
+                        break
+                    end
+                end
+                if not seen then
+                    sortedOptions[#sortedOptions + 1] = { value = value, text = displayText }
+                end
+            end
+        else
+            for value, displayText in pairs(values) do
+                sortedOptions[#sortedOptions + 1] = { value = value, text = displayText }
+            end
+            table.sort(sortedOptions, function(a, b) return a.text < b.text end)
         end
-        table.sort(sortedOptions, function(a, b) return a.text < b.text end)
         
         local itemHeight = 28
         local menuPad = 6
         local scrollBarW = 22
         local contentHeight = math.min(#sortedOptions * itemHeight, 300)
-        local needsScroll = (#sortedOptions * itemHeight) > 300
-        local menuWidth = dropdown:GetWidth()
         
         -- Reuse existing menu if available (Factory container for standard compliance)
         local menu = dropdown._dropdownMenu
@@ -506,7 +519,12 @@ local function CreateDropdownWidget(parent, option, yOffset)
         
         -- Update menu size and position
         menu:SetSize(menuWidth, contentHeight + menuPad * 2)
-        menu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
+        if option.menuOpensUpward then
+            -- Avoid covering the next settings row (e.g. try-counter route → button below); tall menus are ~300px.
+            menu:SetPoint("BOTTOMLEFT", dropdown, "TOPLEFT", 0, 2)
+        else
+            menu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
+        end
         
         -- Clear existing children (scrollFrame and buttons)
         local bin = ns.UI_RecycleBin
@@ -640,7 +658,8 @@ local function CreateDropdownWidget(parent, option, yOffset)
         end)
     end)
     
-    return yOffset - 75
+    -- Label + gap + 32px control + margin before next row
+    return yOffset - 82
 end
 
 ---Create styled input (EditBox) widget
@@ -662,7 +681,7 @@ local function CreateInputWidget(parent, option, yOffset)
         label:SetScript("OnEnter", function(self)
             local desc = type(option.desc) == "function" and option.desc() or option.desc
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(desc, 1, 1, 1, 1, true)
+            GameTooltip:SetText(desc, 1, 1, 1, 1)
             GameTooltip:Show()
         end)
         label:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -799,7 +818,7 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
         slider:SetScript("OnEnter", function(self)
             local desc = type(option.desc) == "function" and option.desc() or option.desc
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(desc, 1, 1, 1, 1, true)
+            GameTooltip:SetText(desc, 1, 1, 1, 1)
             GameTooltip:Show()
         end)
         slider:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -960,7 +979,7 @@ local function BuildSettings(parent, containerWidth)
     langLabel:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         local langTooltip = (ns.L and ns.L["LANGUAGE_TOOLTIP"]) or "Addon uses your WoW game client's language automatically. To change, update your Battle.net settings."
-        GameTooltip:SetText(langTooltip, 1, 1, 1, 1, true)
+        GameTooltip:SetText(langTooltip, 1, 1, 1, 1)
         GameTooltip:Show()
     end)
     langLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1050,7 +1069,7 @@ local function BuildSettings(parent, containerWidth)
 
     keybindBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["KEYBINDING_TOOLTIP"]) or "Click to set a keybinding for toggling Warband Nexus.\nPress ESC to cancel.", 1, 1, 1, 1, true)
+        GameTooltip:SetText((ns.L and ns.L["KEYBINDING_TOOLTIP"]) or "Click to set a keybinding for toggling Warband Nexus.\nPress ESC to cancel.", 1, 1, 1, 1)
         GameTooltip:Show()
     end)
     keybindBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1077,7 +1096,7 @@ local function BuildSettings(parent, containerWidth)
     clearBtn:SetScript("OnEnter", function(self)
         clearIcon:SetVertexColor(1, 0.2, 0.2)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["KEYBINDING_CLEAR"]) or "Clear keybinding", 1, 1, 1, 1, true)
+        GameTooltip:SetText((ns.L and ns.L["KEYBINDING_CLEAR"]) or "Clear keybinding", 1, 1, 1, 1)
         GameTooltip:Show()
     end)
     clearBtn:SetScript("OnLeave", function()
@@ -1579,6 +1598,19 @@ local function BuildSettings(parent, containerWidth)
             set = function(value) WarbandNexus.db.profile.notifications.autoTryCounter = value end,
         },
         {
+            key = "tryCounterInstanceEntryDropLines",
+            parentKey = "autoTryCounter",
+            label = (ns.L and ns.L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"]) or "Instance entry: list drops in chat",
+            tooltip = (ns.L and ns.L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES_TOOLTIP"])
+                or "Print [WN-Drops] lines on dungeon/raid entry with difficulty colors vs your current instance, or turn off for a one-line hint only.",
+            get = function()
+                local v = WarbandNexus.db.profile.notifications.tryCounterInstanceEntryDropLines
+                if v == false then return false end
+                return true
+            end,
+            set = function(value) WarbandNexus.db.profile.notifications.tryCounterInstanceEntryDropLines = value end,
+        },
+        {
             key = "screenFlash",
             parentKey = "autoTryCounter",
             label = (ns.L and ns.L["SCREEN_FLASH_EFFECT"]) or "Flash on Rare Drop",
@@ -1596,6 +1628,9 @@ local function BuildSettings(parent, containerWidth)
         name = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LABEL"]) or "Try counter chat output",
         desc = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DESC"])
             or "Default uses the same tabs as Loot messages. “Warband Nexus” is a separate filter you can enable per tab (often listed in the chat tab settings). “All tabs” prints to every standard chat window.",
+        -- Open downward: upward menus covered the label and checkbox rows above this control.
+        menuOpensUpward = false,
+        valueOrder = { "loot", "dedicated", "all_tabs" },
         values = {
             loot = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LOOT"]) or "1) Same tabs as Loot (default)",
             dedicated = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"]) or "2) Warband Nexus (separate filter)",
@@ -1612,7 +1647,8 @@ local function BuildSettings(parent, containerWidth)
         end,
     }, notifGridYOffset)
 
-    notifGridYOffset = notifGridYOffset - 8
+    -- Extra gap so the open dropdown list (below the button) does not cover "Add try counter…"
+    notifGridYOffset = notifGridYOffset - (14 + 92)
     local addTcChatBtn = ns.UI.Factory:CreateButton(notifSection.content)
     addTcChatBtn:SetSize(math.min(effectiveWidth - 30, 320), 30)
     addTcChatBtn:SetPoint("TOPLEFT", 0, notifGridYOffset)
@@ -1626,7 +1662,7 @@ local function BuildSettings(parent, containerWidth)
     addTcChatBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"])
-            or "Select the chat tab you want, then click. Use with “Warband Nexus (separate filter)” mode so try lines are not tied to Loot.", 1, 1, 1, true)
+            or "Select the chat tab you want, then click. Use with “Warband Nexus (separate filter)” mode so try lines are not tied to Loot.", 1, 1, 1, 1)
         GameTooltip:Show()
     end)
     addTcChatBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2167,7 +2203,7 @@ local function BuildSettings(parent, containerWidth)
         btnText:SetTextColor(1, 1, 1)
         
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["COLOR_PICKER_TOOLTIP"]) or "Open WoW's native color picker wheel to choose a custom theme color", 1, 1, 1, 1, true)
+        GameTooltip:SetText((ns.L and ns.L["COLOR_PICKER_TOOLTIP"]) or "Open WoW's native color picker wheel to choose a custom theme color", 1, 1, 1, 1)
         GameTooltip:Show()
     end)
     
@@ -2760,7 +2796,7 @@ local function BuildSettings(parent, containerWidth)
     itemIDLabel:SetTextColor(1, 1, 1, 1)
     itemIDLabel:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["ITEM_ID_INPUT_DESC"]) or "Enter the item ID to track.", 1, 1, 1, 1, true)
+        GameTooltip:SetText((ns.L and ns.L["ITEM_ID_INPUT_DESC"]) or "Enter the item ID to track.", 1, 1, 1, 1)
         GameTooltip:Show()
     end)
     itemIDLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2832,7 +2868,7 @@ local function BuildSettings(parent, containerWidth)
         end
         lookupBtnText:SetTextColor(1, 1, 1)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["LOOKUP_ITEM_DESC"]) or "Resolve item name and type from ID.", 1, 1, 1, 1, true)
+        GameTooltip:SetText((ns.L and ns.L["LOOKUP_ITEM_DESC"]) or "Resolve item name and type from ID.", 1, 1, 1, 1)
         GameTooltip:Show()
     end)
     lookupBtn:SetScript("OnLeave", function()

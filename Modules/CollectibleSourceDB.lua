@@ -13,7 +13,7 @@
     Examples:
       Boss drop:    { sourceType = "instance_boss", npcID = 10440, drops = {...}, statisticIds = {1097} }
       Fishing:      { sourceType = "fishing", mapIDs = { 2405, 2395 }, drops = _someDrops }
-      Zone rare:    { sourceType = "zone_drop", mapID = 2395, raresOnly = true, drops = _quelThalasRareMounts }
+      Zone rare:    { sourceType = "zone_drop", mapID = 2395, raresOnly = true, hostileOnly = true, drops = _quelThalasRareMounts }
       Container:    { sourceType = "container", containerItemID = 39883, drops = {...} }
       Encounter:    { sourceType = "encounter", encounterID = 652, npcIDs = { 16152 } }
 
@@ -542,21 +542,22 @@ ns.CollectibleSourceDB = {
           drops = _cracklingShard,  -- Isle of Dorn (uiMapID)
         },
         -- MIDNIGHT 12.0 - Zone Rare Mounts (any RARE in zone, daily lockout per rare)
-        -- raresOnly=true means tooltip only shows on rare/elite units
+        -- raresOnly=true: tooltip only on rare/elite/worldboss classification
+        -- hostileOnly=true: also require UnitCanAttack (excludes Restoration Stones etc. that use Creature tooltip + rare vignette)
         -- Quel'Thalas region (Cerulean Hawkstrider, Cobalt Dragonhawk)
-        { sourceType = "zone_drop", mapIDs = { 2393, 2395, 2424 }, raresOnly = true,
+        { sourceType = "zone_drop", mapIDs = { 2393, 2395, 2424 }, raresOnly = true, hostileOnly = true,
           drops = _quelThalasRareMounts,  -- Silvermoon, Eversong Woods, Isle of Quel'Danas
         },
         -- Harandar (Rootstalker Grimlynx, Vibrant Petalwing)
-        { sourceType = "zone_drop", mapIDs = { 2413, 2576 }, raresOnly = true,
+        { sourceType = "zone_drop", mapIDs = { 2413, 2576 }, raresOnly = true, hostileOnly = true,
           drops = _harandarRareMounts,  -- Harandar, The Den
         },
         -- Zul'Aman (Amani Sharptalon, Escaped Witherbark Pango)
-        { sourceType = "zone_drop", mapIDs = { 2437, 2536 }, raresOnly = true,
+        { sourceType = "zone_drop", mapIDs = { 2437, 2536 }, raresOnly = true, hostileOnly = true,
           drops = _zulAmanRareMounts,  -- Zul'Aman, Atal'Aman
         },
         -- Voidstorm (Augmented Stormray, Sanguine Harrower)
-        { sourceType = "zone_drop", mapIDs = { 2405, 2541 }, raresOnly = true,
+        { sourceType = "zone_drop", mapIDs = { 2405, 2541 }, raresOnly = true, hostileOnly = true,
           drops = _voidstormRareMounts,  -- Voidstorm, Arcantina
         },
 
@@ -2003,6 +2004,16 @@ ns.CollectibleSourceDB = {
         ["HK-8 Aerial Oppression Unit"] = { 155157, 150190 },
         ["Arachnoid Harvester"] = { 154342, 151934 },
         ["Lady Jaina Proudmoore"] = { 165396 },
+        -- ENCOUNTER_END name fallback when encounterID is secret (non–enUS clients)
+        ["Lady Jaina Prachtmeer"] = { 165396 },
+        ["Dame Jaina Portvaillant"] = { 165396 },
+        ["Lady Jaina Valororgullo"] = { 165396 },
+        ["Lady Jaina Orgulhomar"] = { 165396 },
+        ["Lady Jaina Mareorgoglio"] = { 165396 },
+        ["Леди Джайна Праудмур"] = { 165396 },
+        ["吉安娜·普罗德摩尔女士"] = { 165396 },
+        ["珍娜·普羅德摩爾女士"] = { 165396 },
+        ["여군주 제이나 프라우드무어"] = { 165396 },
         ["High Tinker Mekkatorque"] = { 144796 },
         ["N'Zoth the Corruptor"] = { 158041 },
         -- Shadowlands

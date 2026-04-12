@@ -22,7 +22,13 @@
       "Bash(winget list:*)",
       "Bash(winget install:*)",
       "Bash(/c/Users/Mert/AppData/Local/Programs/Lua/bin/lua.exe -v)",
-      "Bash(/c/Users/Mert/AppData/Local/Programs/Lua/bin/lua.exe tests/test_trycounter.lua)"
+      "Bash(/c/Users/Mert/AppData/Local/Programs/Lua/bin/lua.exe tests/test_trycounter.lua)",
+      "Bash(git -C \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\" diff --stat HEAD)",
+      "Bash(git -C \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\" diff HEAD -- Locales/enUS.lua)",
+      "Bash(git -C \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\" diff HEAD -- Modules/CollectionService.lua)",
+      "Bash(git -C \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\" diff HEAD -- Modules/UI/CollectionsUI.lua)",
+      "Bash(git -C \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\" diff -- Modules/TryCounterService.lua)",
+      "Bash(grep -rn \"online\\\\|isOnline\\\\|currentChar\\\\|playerName\\\\|GetUnitName\" \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\\\\Modules\\\\UI\\\\\" --include=\"*.lua\" -i | grep -v \"^Binary\" | head -40)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Mert\\.claude\\projects\\c--Users-Mert-Documents-GitHub-warband-nexus"

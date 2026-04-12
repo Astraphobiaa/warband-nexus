@@ -179,6 +179,7 @@ L["SET_TRY_COUNT"] = "시도 횟수 설정"
 L["TRY_COUNT_RIGHT_CLICK_HINT"] = "우클릭: 시도 횟수 편집"
 L["TRY_COUNT_CLICK_HINT"] = "클릭: 시도 횟수 편집"
 L["TRIES"] = "시도"
+L["COLLECTION_LIST_ATTEMPTS_FMT"] = "%d회 시도"
 L["SET_RESET_CYCLE"] = "초기화 주기 설정"
 L["DAILY_RESET"] = "일일 초기화"
 L["WEEKLY_RESET"] = "주간 초기화"
@@ -375,13 +376,16 @@ L["VAULT_COMPLETE_PREFIX"] = "완료 필요"
 L["VAULT_SLOT1_HINT"] = "이 줄의 첫 번째 선택"
 L["VAULT_SLOT2_HINT"] = "두 번째 선택 (더 많은 옵션!)"
 L["VAULT_SLOT3_HINT"] = "세 번째 선택 (최대 옵션)"
+L["VAULT_CLICK_TO_OPEN"] = "클릭하여 대형 금고 열기"
 
 -- Delves Section (PvE Tab)
 L["DELVES"] = "구렁"
 L["COMPANION"] = "동행"
 L["BOUNTIFUL_DELVE"] = "보물 사냥꾼의 보상"
+L["PVE_BOUNTY_NEED_LOGIN"] = "이 캐릭터의 저장된 상태가 없습니다. 접속하여 새로고침하세요."
 L["CRACKED_KEYSTONE"] = "금간 쐐기돌"
 L["SEASON"] = "시즌"
+L["CURRENCY_LABEL_WEEKLY"] = "주간"
 
 L["REP_TITLE"] = "평판 개요"
 L["REP_SUBTITLE"] = "워밴드 전체 세력 및 명성 추적"
@@ -1117,6 +1121,29 @@ L["TRYCOUNTER_TYPE_PET"] = "애완동물"
 L["TRYCOUNTER_TYPE_TOY"] = "장난감"
 L["TRYCOUNTER_TYPE_ITEM"] = "아이템"
 L["TRYCOUNTER_TRY_COUNTS"] = "시도 횟수"
+L["TRYCOUNTER_INSTANCE_ENTRY_HINT"] = "이 인스턴스에는 현재 난이도에 맞는 시도 횟수 탈것이 있습니다. 자세히 보려면 보스를 대상으로 하거나 마우스를 올린 뒤 |cffffffff/wn check|r를 입력하세요."
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"] = "인스턴스 입장 시: 채팅에 드롭 목록 출력"
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES_TOOLTIP"] = "시도 횟수 수집품이 있는 던전이나 공격대에 들어가면 항목마다 |cff9370DB[WN-Drops]|r 한 줄씩 출력합니다: 링크 — 필요 난이도(|cff00ff00녹색|r 적합, |cffff6666빨간색|r 부적합, |cffffaa00황색|r 불명) — 시도 횟수 또는 수집 완료. 큰 인스턴스는 18줄과 |cff00ccff/wn check|r로 제한됩니다. 끄면 짧은 안내만 표시됩니다."
+L["TRYCOUNTER_INSTANCE_DROPS_TRUNCATED"] = "… |cffffccff%d|r개 더 — 보스에 |cffffffff/wn check|r (대상 또는 마우스)."
+L["TRYCOUNTER_PROBE_ENTER"] = "입장: %s — 난이도: %s"
+L["TRYCOUNTER_PROBE_DB_HEADER"] = "시도 횟수 DB의 탈것 출처 — 현재 난이도: %s"
+L["TRYCOUNTER_PROBE_MOUNT_LINE"] = "%s > %s > %s > %s"
+L["TRYCOUNTER_PROBE_ENC_NO_MOUNTS"] = "%s: DB에 탈것 항목 없음"
+L["TRYCOUNTER_PROBE_JOURNAL_MISS"] = "이 인스턴스의 던전 도감을 확인할 수 없습니다."
+L["TRYCOUNTER_PROBE_NO_MAPPED_BOSSES"] = "이 인스턴스의 우두머리가 시도 횟수 데이터와 일치하지 않습니다."
+L["TRYCOUNTER_PROBE_STATUS_COLLECTED"] = "이미 수집함"
+L["TRYCOUNTER_PROBE_STATUS_OBTAINABLE"] = "현재 난이도에서 획득 가능"
+L["TRYCOUNTER_PROBE_STATUS_WRONG_DIFF"] = "현재 난이도에서는 없음"
+L["TRYCOUNTER_PROBE_STATUS_DIFF_UNKNOWN"] = "난이도 불명"
+L["TRYCOUNTER_PROBE_REQ_ANY"] = "모든 난이도"
+L["TRYCOUNTER_PROBE_REQ_MYTHIC"] = "신화만"
+L["TRYCOUNTER_PROBE_REQ_LFR"] = "공찾만"
+L["TRYCOUNTER_PROBE_REQ_NORMAL_PLUS"] = "공격대 일반 이상 (공찾 제외)"
+L["TRYCOUNTER_PROBE_REQ_HEROIC"] = "영웅 이상 (신화·25인 영웅 포함)"
+L["TRYCOUNTER_PROBE_REQ_25H"] = "25인 영웅만"
+L["TRYCOUNTER_PROBE_REQ_10N"] = "10인 일반만"
+L["TRYCOUNTER_PROBE_REQ_25N"] = "25인 일반만"
+L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25인 일반 또는 영웅"
 L["LT_CHARACTER_DATA"] = "캐릭터 데이터"
 L["LT_CURRENCY_CACHES"] = "화폐 및 캐시"
 L["LT_REPUTATIONS"] = "평판"
@@ -1389,6 +1416,37 @@ L["ZONE_DROP"] = "지역 드롭"
 -- Full parity with enUS (remaining keys)
 L["ACHIEVEMENT_PROGRESS_TITLE"] = "업적 진행"
 L["CMD_FIRSTCRAFT"] = "확장판별 첫 제작 보너스 제작법 목록 (먼저 전문 기술 열기)"
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "업적"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "범주별 탐색; 오른쪽에 조건과 상세 정보."
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "탈것"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "출처별 그룹; 오른쪽에 미리보기."
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "애완동물"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "출처별 그룹; 오른쪽에 모델 미리보기."
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "장난감 상자"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "출처별 그룹; 오른쪽에 상세 정보."
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "최근 획득"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "범주당 최대 10개, 최신순."
+L["COLLECTIONS_SUBTAB_RECENT"] = "최근"
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "기록된 획득이 없습니다. 새 탈것, 애완동물, 장난감, 업적이 여기에 표시됩니다."
+L["COLLECTIONS_RECENT_SECTION_HEAD_FMT"] = "%s — 최근 %d개"
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "아직 없음."
+L["COLLECTIONS_RECENT_SECTION_ROW"] = "%s · %s"
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "일치하는 항목이 없습니다."
+L["COLLECTIONS_RECENT_HEADER"] = "최근 획득"
+L["COLLECTIONS_RECENT_EMPTY"] = "획득한 항목이 짧은 시각 정보와 함께 여기에 표시됩니다."
+L["COLLECTIONS_ACQUIRED_LABEL"] = "기록됨"
+L["COLLECTIONS_ACQUIRED_LINE"] = "%s: %s"
+L["COLLECTIONS_RECENT_LINE"] = "%s · %s · %s"
+L["COLLECTIONS_RECENT_JUST_NOW"] = "방금"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d분 전"
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d시간 전"
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d일 전"
+L["COLLECTIONS_RECENT_SECTION_MOUNTS"] = "최근 탈것"
+L["COLLECTIONS_RECENT_SECTION_PETS"] = "최근 애완동물"
+L["COLLECTIONS_RECENT_SECTION_TOYS"] = "최근 장난감"
+L["COLLECTIONS_RECENT_SECTION_ACHIEVEMENTS"] = "최근 업적"
+L["COLLECTIONS_RECENT_SECTION_EMPTY"] = "이 범주에 최근 획득이 없습니다."
+L["COLLECTIONS_RECENT_SECTION_LINE"] = "%s · %s"
 L["COLLECTIONS_COMING_SOON_DESC"] = "수집품 요약(탈것, 소환수, 장난감, 형상변환)이 여기에서 제공됩니다."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "출시 예정"
 L["COLLECTIONS_SUBTITLE"] = "탈것, 소환수, 장난감 및 형상변환 요약"
@@ -1682,6 +1740,30 @@ Plans / UI
 
 Localization
 - Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.12 (CHANGELOG_V2512) — English notes; see enUS for detail
+L["CHANGELOG_V2512"] = [=[v2.5.12 (2026-04-12)
+
+UI
+- Notifications: Try counter chat output dropdown opens downward with extra spacing so the open list no longer overlaps the section label or nearby checkboxes. Route options keep a fixed order (Loot tabs → Warband Nexus filter → all standard tabs).
+
+Bug fixes
+- GameTooltip:SetText in Settings, Gold Management popup, and Plans UI uses valid color alpha for Midnight clients (fixes "bad argument #5 to 'SetText'").
+
+Try Counter
+- Instance entry [WN-Drops]: full drop lines vs the short hint now use the correct mount/trackable logic so difficulty messaging matches what can still drop.
+- Manual drops and Rarity sync: non-repeatable collectibles you already own no longer inflate or advance try counts.
+
+Tooltips & collections
+- Collectible/drop hints and related services tightened for Midnight secret-value rules; CollectibleSourceDB and tooltip wiring aligned with current APIs.
+
+Localization
+- Missing keys brought in line with enUS across locales; probe chat uses a shorter [WN-TC] line format.
+
+향후 계획
+- More Midnight API validation; Try Counter and notifications tuned from live raids and dungeons; further settings and tooltip polish.
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "할 일 목록·주간 진행: 체크 해제 = 진행 중인 계획만; 체크 = 완료된 계획만. 탐색 탭: 체크 해제 = 미수집(계획됨 켜면 목록만); 체크 = 목록에 있는 수집 완료 항목(계획됨은 여전히 제한)."

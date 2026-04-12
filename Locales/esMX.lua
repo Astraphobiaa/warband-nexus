@@ -171,6 +171,7 @@ L["SET_TRY_COUNT"] = "Establecer intentos"
 L["TRY_COUNT_RIGHT_CLICK_HINT"] = "Clic derecho para editar el número de intentos."
 L["TRY_COUNT_CLICK_HINT"] = "Clic para editar el número de intentos."
 L["TRIES"] = "Intentos"
+L["COLLECTION_LIST_ATTEMPTS_FMT"] = "%d intentos"
 L["SET_RESET_CYCLE"] = "Establecer ciclo de reinicio"
 L["DAILY_RESET"] = "Reinicio diario"
 L["WEEKLY_RESET"] = "Reinicio semanal"
@@ -367,13 +368,16 @@ L["VAULT_COMPLETE_PREFIX"] = "Completar"
 L["VAULT_SLOT1_HINT"] = "Primera elección de esta fila"
 L["VAULT_SLOT2_HINT"] = "Segunda elección (¡más opciones!)"
 L["VAULT_SLOT3_HINT"] = "Tercera elección (opciones máximas)"
+L["VAULT_CLICK_TO_OPEN"] = "Clic para abrir la Gran Cámara"
 
 -- Delves Section (PvE Tab)
 L["DELVES"] = "Profundidades"
 L["COMPANION"] = "Compañero"
 L["BOUNTIFUL_DELVE"] = "Botín del cazatesoros"
+L["PVE_BOUNTY_NEED_LOGIN"] = "No hay estado guardado para este personaje. Inicia sesión para actualizar."
 L["CRACKED_KEYSTONE"] = "Piedra angular agrietada"
 L["SEASON"] = "Temporada"
+L["CURRENCY_LABEL_WEEKLY"] = "Semanal"
 
 L["REP_TITLE"] = "Reputación Resumen"
 L["REP_SUBTITLE"] = "Seguir factions and renown across your warband"
@@ -1109,6 +1113,29 @@ L["TRYCOUNTER_TYPE_PET"] = "Mascota"
 L["TRYCOUNTER_TYPE_TOY"] = "Juguete"
 L["TRYCOUNTER_TYPE_ITEM"] = "Objeto"
 L["TRYCOUNTER_TRY_COUNTS"] = "Try Cantidads"
+L["TRYCOUNTER_INSTANCE_ENTRY_HINT"] = "Esta instancia tiene monturas en el contador de intentos para tu dificultad. Escribe |cffffffff/wn check|r con un jefe como objetivo (o al pasar el cursor) para ver detalles."
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"] = "Al entrar en la instancia: listar botines en el chat"
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES_TOOLTIP"] = "Al entrar en una mazmorra o banda con coleccionables del contador, mostrar una línea |cff9370DB[WN-Drops]|r por objeto: enlace — dificultad requerida (|cff00ff00verde|r correcto, |cffff6666rojo|r incorrecto, |cffffaa00ámbar|r desconocido) — intentos o conseguido. Las instancias grandes limitan a 18 líneas más |cff00ccff/wn check|r. Desactívalo para solo el aviso breve."
+L["TRYCOUNTER_INSTANCE_DROPS_TRUNCATED"] = "… |cffffccff%d|r más — |cffffffff/wn check|r en un jefe (objetivo o cursor)."
+L["TRYCOUNTER_PROBE_ENTER"] = "Entrada: %s — dificultad: %s"
+L["TRYCOUNTER_PROBE_DB_HEADER"] = "Monturas en la base del contador — tu dificultad: %s"
+L["TRYCOUNTER_PROBE_MOUNT_LINE"] = "%s > %s > %s > %s"
+L["TRYCOUNTER_PROBE_ENC_NO_MOUNTS"] = "%s: sin entradas de montura en la base de datos"
+L["TRYCOUNTER_PROBE_JOURNAL_MISS"] = "No se pudo resolver el diario de encuentros para esta instancia."
+L["TRYCOUNTER_PROBE_NO_MAPPED_BOSSES"] = "Ningún jefe de esta instancia coincide con los datos del contador."
+L["TRYCOUNTER_PROBE_STATUS_COLLECTED"] = "Ya conseguido"
+L["TRYCOUNTER_PROBE_STATUS_OBTAINABLE"] = "Obtenible en la dificultad actual"
+L["TRYCOUNTER_PROBE_STATUS_WRONG_DIFF"] = "No disponible en la dificultad actual"
+L["TRYCOUNTER_PROBE_STATUS_DIFF_UNKNOWN"] = "Dificultad desconocida"
+L["TRYCOUNTER_PROBE_REQ_ANY"] = "cualquier dificultad"
+L["TRYCOUNTER_PROBE_REQ_MYTHIC"] = "solo mítico"
+L["TRYCOUNTER_PROBE_REQ_LFR"] = "solo LFR"
+L["TRYCOUNTER_PROBE_REQ_NORMAL_PLUS"] = "Banda normal o superior (no LFR)"
+L["TRYCOUNTER_PROBE_REQ_HEROIC"] = "Heroico o superior (incluye mítico y 25H)"
+L["TRYCOUNTER_PROBE_REQ_25H"] = "solo 25 jugadores heroico"
+L["TRYCOUNTER_PROBE_REQ_10N"] = "solo 10 jugadores normal"
+L["TRYCOUNTER_PROBE_REQ_25N"] = "solo 25 jugadores normal"
+L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25 jugadores normal o heroico"
 L["LT_CHARACTER_DATA"] = "Personaje Datos"
 L["LT_CURRENCY_CACHES"] = "Moneda & Cachés"
 L["LT_REPUTATIONS"] = "Reputacións"
@@ -1381,6 +1408,37 @@ L["ZONE_DROP"] = "Botín de zona"
 -- Full parity with enUS (remaining keys)
 L["ACHIEVEMENT_PROGRESS_TITLE"] = "Progreso de logros"
 L["CMD_FIRSTCRAFT"] = "Listar recetas de primera fabricación por expansión (abre primero la profesión)"
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "Logros"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "Navega por categoría; criterios y detalles a la derecha."
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "Monturas"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "Agrupadas por fuente; vista previa a la derecha."
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "Mascotas"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "Agrupadas por fuente; modelo a la derecha."
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Caja de juguetes"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "Agrupados por fuente; detalles a la derecha."
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Adquisiciones recientes"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "Hasta 10 entradas más nuevas por categoría, primero las más recientes."
+L["COLLECTIONS_SUBTAB_RECENT"] = "Reciente"
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "Aún no hay adquisiciones registradas. Las monturas, mascotas, juguetes y logros nuevos aparecerán aquí."
+L["COLLECTIONS_RECENT_SECTION_HEAD_FMT"] = "%s — últimos %d"
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "Ninguna aún."
+L["COLLECTIONS_RECENT_SECTION_ROW"] = "%s · %s"
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "No hay entradas que coincidan."
+L["COLLECTIONS_RECENT_HEADER"] = "Últimas adquisiciones"
+L["COLLECTIONS_RECENT_EMPTY"] = "Los objetos conseguidos aparecerán aquí con una marca de tiempo breve."
+L["COLLECTIONS_ACQUIRED_LABEL"] = "Registrado"
+L["COLLECTIONS_ACQUIRED_LINE"] = "%s: %s"
+L["COLLECTIONS_RECENT_LINE"] = "%s · %s · %s"
+L["COLLECTIONS_RECENT_JUST_NOW"] = "Ahora mismo"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "Hace %d min"
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "Hace %d h"
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "Hace %d días"
+L["COLLECTIONS_RECENT_SECTION_MOUNTS"] = "Monturas recientes"
+L["COLLECTIONS_RECENT_SECTION_PETS"] = "Mascotas recientes"
+L["COLLECTIONS_RECENT_SECTION_TOYS"] = "Juguetes recientes"
+L["COLLECTIONS_RECENT_SECTION_ACHIEVEMENTS"] = "Logros recientes"
+L["COLLECTIONS_RECENT_SECTION_EMPTY"] = "Aún no hay adquisiciones recientes en esta categoría."
+L["COLLECTIONS_RECENT_SECTION_LINE"] = "%s · %s"
 L["COLLECTIONS_COMING_SOON_DESC"] = "El resumen de colecciones (monturas, mascotas, juguetes, transmog) estará disponible aquí."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Próximamente"
 L["COLLECTIONS_SUBTITLE"] = "Resumen de monturas, mascotas, juguetes y transmog"
@@ -1674,6 +1732,30 @@ Plans / UI
 
 Localization
 - Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.12 (CHANGELOG_V2512) — English notes; see enUS for detail
+L["CHANGELOG_V2512"] = [=[v2.5.12 (2026-04-12)
+
+UI
+- Notifications: Try counter chat output dropdown opens downward with extra spacing so the open list no longer overlaps the section label or nearby checkboxes. Route options keep a fixed order (Loot tabs → Warband Nexus filter → all standard tabs).
+
+Bug fixes
+- GameTooltip:SetText in Settings, Gold Management popup, and Plans UI uses valid color alpha for Midnight clients (fixes "bad argument #5 to 'SetText'").
+
+Try Counter
+- Instance entry [WN-Drops]: full drop lines vs the short hint now use the correct mount/trackable logic so difficulty messaging matches what can still drop.
+- Manual drops and Rarity sync: non-repeatable collectibles you already own no longer inflate or advance try counts.
+
+Tooltips & collections
+- Collectible/drop hints and related services tightened for Midnight secret-value rules; CollectibleSourceDB and tooltip wiring aligned with current APIs.
+
+Localization
+- Missing keys brought in line with enUS across locales; probe chat uses a shorter [WN-TC] line format.
+
+Próximos pasos
+- More Midnight API validation; Try Counter and notifications tuned from live raids and dungeons; further settings and tooltip polish.
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Lista de tareas y progreso semanal: sin marcar = planes en curso; marcado = solo completados. Pestañas explorar: sin marcar = no coleccionados (solo en tu lista si Mostrar planificados); marcado = entradas coleccionadas en la lista (planificados sigue filtrando)."

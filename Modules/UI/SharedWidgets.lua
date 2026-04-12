@@ -1717,9 +1717,9 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local header = CreateFrame("Button", nil, parent)
     header:SetSize(math.max(1, parentW - 20 - indent), 32)
     
-    -- Apply pixel-perfect visuals with accent border
+    -- Same visuals as Collections Mounts/Pets/Achievements section headers
     local accentColor = COLORS.accent
-    ApplyVisuals(header, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    ApplyVisuals(header, {0.08, 0.08, 0.10, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     
     -- Expand/Collapse icon (atlas-based arrows) - STANDARDIZED SIZE
     local expandIcon = header:CreateTexture(nil, "ARTWORK")
@@ -3497,18 +3497,22 @@ ns.CollectionsDetailHeaderLayout = {
     TRY_GAP = 4,
     TRY_ROW_H = 18,
     WOWHEAD_GAP = 10,
+    -- Plan cards / other tabs: Wowhead eye inset from card top (aligns with Collections detail feel)
+    CARD_WOWHEAD_TOP_OFFSET = 10,
 }
 
 ---Right column: [action slot][Wowhead] with optional try row aligned to the action slot only (not full column width).
 ---@param parent Frame
----@param opts { withTryRow: boolean|nil } withTryRow defaults true
+---@param opts { withTryRow: boolean|nil, actionSlotWidth: number|nil, actionSlotHeight: number|nil } withTryRow defaults true; actionSlot* override default action cell size (e.g. Achievement: Add + Track).
 ---@return { root: Frame, actionSlot: Frame, wowheadBtn: Button, tryCountRow: Frame|nil }
 function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     opts = opts or {}
     local withTryRow = opts.withTryRow ~= false
     local L = ns.CollectionsDetailHeaderLayout
-    local w = L.WOWHEAD_SIZE + L.WOWHEAD_GAP + L.ACTION_SLOT_W
-    local h = L.ACTION_SLOT_H
+    local actionSlotW = opts.actionSlotWidth or L.ACTION_SLOT_W
+    local actionSlotH = opts.actionSlotHeight or L.ACTION_SLOT_H
+    local w = L.WOWHEAD_SIZE + L.WOWHEAD_GAP + actionSlotW
+    local h = actionSlotH
     if withTryRow then
         h = h + L.TRY_GAP + L.TRY_ROW_H
     end
@@ -3517,12 +3521,12 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     root:SetSize(w, h)
 
     local actionSlot = CreateFrame("Frame", nil, root)
-    actionSlot:SetSize(L.ACTION_SLOT_W, L.ACTION_SLOT_H)
+    actionSlot:SetSize(actionSlotW, actionSlotH)
     actionSlot:SetPoint("TOPRIGHT", root, "TOPRIGHT", -(L.WOWHEAD_SIZE + L.WOWHEAD_GAP), 0)
 
     local wowheadBtn = CreateFrame("Button", nil, root)
     wowheadBtn:SetSize(L.WOWHEAD_SIZE, L.WOWHEAD_SIZE)
-    local vOff = math.max(0, (L.ACTION_SLOT_H - L.WOWHEAD_SIZE) / 2)
+    local vOff = math.max(0, (actionSlotH - L.WOWHEAD_SIZE) / 2)
     wowheadBtn:SetPoint("TOPRIGHT", root, "TOPRIGHT", 0, -vOff)
     wowheadBtn:SetNormalAtlas("socialqueuing-icon-eye")
     wowheadBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
@@ -5343,6 +5347,35 @@ function ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     row.bgColor = bgColor
 end
 
+---Apply (or clear) the online-character highlight on a character row or header.
+---Uses the live theme accent color so it respects user customization.
+---@param frame Frame  The row/header frame to highlight.
+---@param isOnline boolean  True = this is the currently logged-in character.
+function ns.UI.Factory:ApplyOnlineCharacterHighlight(frame, isOnline)
+    if not frame then return end
+    local ac = COLORS and COLORS.accent or ns.UI_COLORS and ns.UI_COLORS.accent
+    if isOnline and ac then
+        -- Background: very dark tint of accent (≈15% brightness so text stays readable)
+        local r, g, b = ac[1] * 0.55, ac[2] * 0.55, ac[3] * 0.55
+        if not frame.bg then
+            frame.bg = frame:CreateTexture(nil, "BACKGROUND")
+            frame.bg:SetAllPoints()
+        end
+        frame.bg:SetColorTexture(r * 0.4, g * 0.4, b * 0.4, 1)
+        -- Left accent bar: full accent brightness
+        if not frame.onlineAccent then
+            frame.onlineAccent = frame:CreateTexture(nil, "BORDER")
+            frame.onlineAccent:SetWidth(3)
+            frame.onlineAccent:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+            frame.onlineAccent:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+        end
+        frame.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], 1)
+        frame.onlineAccent:Show()
+    else
+        if frame.onlineAccent then frame.onlineAccent:Hide() end
+    end
+end
+
 
 --- Create a data row with alternating background color.
 --- Standard pattern for creating new rows with proper positioning and alternating bg.
@@ -5477,6 +5510,13 @@ function ns.UI.Factory:CreateCollectionListRow(parent, height)
     label:SetWordWrap(false)
     row.label = label
 
+    local rightLabel = FontManager:CreateFontString(row, "small", "OVERLAY")
+    rightLabel:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
+    rightLabel:SetJustifyH("RIGHT")
+    rightLabel:SetWordWrap(false)
+    rightLabel:Hide()
+    row.rightLabel = rightLabel
+
     return row
 end
 
@@ -5491,8 +5531,11 @@ local COLLECTION_ROW_ICON_NOT_READY = "Interface\\RaidFrame\\ReadyCheck-NotReady
 ---@param isCollected boolean - True = check icon, false = cross icon
 ---@param isSelected boolean - Show selection highlight
 ---@param onClick function|nil - OnMouseDown script
-function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick)
+---@param rightAlignedText string|nil Optional right column (e.g. relative time); main label stops before it.
+function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick, rightAlignedText)
     if not row then return end
+    local pad = UI_SPACING.SIDE_MARGIN or 10
+    local gap = 4
     self:ApplyRowBackground(row, rowIndex or 1)
     if row.statusIcon then
         row.statusIcon:SetTexture(isCollected and COLLECTION_ROW_ICON_READY or COLLECTION_ROW_ICON_NOT_READY)
@@ -5502,6 +5545,27 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
         local iconTex = (iconPath and iconPath ~= "") and iconPath or "Interface\\Icons\\Achievement_General"
         row.icon:SetTexture(iconTex)
         row.icon:Show()
+    end
+    if row.label then
+        row.label:ClearAllPoints()
+        row.label:SetPoint("LEFT", row.icon, "RIGHT", gap, 0)
+        row.label:SetJustifyH("LEFT")
+        row.label:SetWordWrap(false)
+    end
+    if row.rightLabel and rightAlignedText and rightAlignedText ~= "" then
+        row.rightLabel:SetText(rightAlignedText)
+        row.rightLabel:Show()
+        if row.label then
+            row.label:SetPoint("RIGHT", row.rightLabel, "LEFT", -6, 0)
+        end
+    else
+        if row.rightLabel then
+            row.rightLabel:SetText("")
+            row.rightLabel:Hide()
+        end
+        if row.label then
+            row.label:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
+        end
     end
     if row.label then row.label:SetText(labelText or "") end
     row:SetScript("OnMouseDown", onClick)

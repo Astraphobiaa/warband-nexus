@@ -499,7 +499,7 @@ function Utilities:IsAtlasName(texturePath)
 end
 
 --============================================================================
--- CURRENCY DISPLAY (season progress — Dawncrests, Coffer Key Shards)
+-- CURRENCY DISPLAY (season progress — Dawncrests; weekly + bank — Coffer Key Shards)
 --============================================================================
 
 local CC_CAP_OPEN = "|cff80ff80"
@@ -508,8 +508,29 @@ local CC_WHITE    = "|cffffffff"
 local CC_MUTED    = "|cff888888"
 local EM_DASH_CUR = "\226\128\148"
 
---- Season-split (Dawncrests, Coffer Key Shards): row is always Current (on-hand quantity) / Season Max.
---- Cap color follows season progress: totalEarned >= seasonMax when totalEarned is known.
+-- Midnight / Wowhead id; name fallback for dynamic IDs per locale.
+local COFFER_KEY_SHARD_CURRENCY_IDS = { [3310] = true }
+
+--- Coffer Key Shards: weekly earn cap (Blizzard "Weekly Maximum"), not season totals.
+---@param currencyID number|nil
+---@param name string|nil
+---@return boolean
+function Utilities:IsCofferKeyShardCurrency(currencyID, name)
+    if currencyID and COFFER_KEY_SHARD_CURRENCY_IDS[currencyID] then
+        return true
+    end
+    if not name or name == "" then
+        return false
+    end
+    if issecretvalue and issecretvalue(name) then
+        return false
+    end
+    local n = string.lower(tostring(name))
+    return n:find("coffer", 1, true) ~= nil and n:find("shard", 1, true) ~= nil
+end
+
+--- Season-split Dawncrests: on-hand / season max; cap color from totalEarned vs seasonMax.
+--- Coffer Key Shards: weekly earned / weekly max (inventory in parentheses); cap color from weekly earn vs cap.
 --- Weekly-only cap (no seasonMax): Current / weekly cap with qty vs maxQuantity.
 ---@param cd table|nil WarbandNexus:GetCurrencyData result
 ---@return string
@@ -522,6 +543,25 @@ function Utilities.FormatCurrencySeasonProgressLine(cd)
     local maxQ = tonumber(cd.maxQuantity) or 0
     local te = cd.totalEarned
     local sm = tonumber(cd.seasonMax) or 0
+
+    if Utilities:IsCofferKeyShardCurrency(cd.currencyID, cd.name) then
+        local teNum = tonumber(te)
+        if maxQ > 0 then
+            local numColor
+            if teNum ~= nil then
+                numColor = (teNum >= maxQ) and CC_CAPPED or CC_CAP_OPEN
+            else
+                numColor = CC_WHITE
+            end
+            return numColor .. fmtNum(teNum or 0) .. "|r " .. CC_MUTED .. "/ " .. fmtNum(maxQ)
+                .. "|r " .. CC_MUTED .. "(" .. CC_WHITE .. fmtNum(qty) .. CC_MUTED .. ")|r"
+        end
+        if qty > 0 then
+            return CC_WHITE .. fmtNum(qty) .. "|r"
+        end
+        return CC_MUTED .. EM_DASH_CUR .. "|r"
+    end
+
     if sm > 0 then
         local teNum = tonumber(te)
         local numColor

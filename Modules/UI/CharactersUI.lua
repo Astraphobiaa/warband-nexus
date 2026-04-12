@@ -882,7 +882,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- Set alternating background colors (Factory pattern)
     ns.UI.Factory:ApplyRowBackground(row, index)
-    
+
+    -- Online character highlight (theme-aware)
+    ns.UI.Factory:ApplyOnlineCharacterHighlight(row, isCurrent)
+
     -- Class color
     local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
     

@@ -235,6 +235,7 @@ L["SET_TRY_COUNT"] = "Set Try Count"
 L["TRY_COUNT_RIGHT_CLICK_HINT"] = "Right-click to edit attempt count."
 L["TRY_COUNT_CLICK_HINT"] = "Click to edit attempt count."
 L["TRIES"] = "Tries"
+L["COLLECTION_LIST_ATTEMPTS_FMT"] = "%d Attempts"
 
 -- Reset Cycle
 L["SET_RESET_CYCLE"] = "Set Reset Cycle"
@@ -459,6 +460,7 @@ L["VAULT_LOCKED"] = "Locked"
 L["VAULT_IN_PROGRESS"] = "In Progress"
 L["VAULT_COMPLETED_ACTIVITIES"] = "Completed"
 L["VAULT_CURRENT_TIER"] = "Current Tier"
+L["VAULT_CLICK_TO_OPEN"] = "Click to open Great Vault"
 L["VAULT_REWARD"] = "Current Reward"
 L["VAULT_REWARD_ON_UNLOCK"] = "Reward on Unlock"
 L["VAULT_UPGRADE_HINT"] = "Upgrade"
@@ -492,6 +494,7 @@ L["BOUNTIFUL_DELVE"] = "Trovehunter's Bounty"
 L["PVE_BOUNTY_NEED_LOGIN"] = "No saved status for this character. Log in to refresh."
 L["CRACKED_KEYSTONE"] = "Cracked Keystone"
 L["SEASON"] = "Season"
+L["CURRENCY_LABEL_WEEKLY"] = "Weekly"
 
 -- Reputation Tab
 L["REP_TITLE"] = "Reputation Overview"
@@ -828,6 +831,9 @@ L["SCREEN_FLASH_EFFECT"] = "Flash on Rare Drop"
 L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "Play a screen flash animation when you finally obtain a collectible after multiple farming attempts"
 L["AUTO_TRY_COUNTER"] = "Auto-Track Drop Attempts"
 L["AUTO_TRY_COUNTER_TOOLTIP"] = "Automatically count failed drop attempts when looting NPCs, rares, bosses, fishing, or containers. With this on, each counted miss also prints a short line to chat (see Try counter chat output below for Loot vs separate filter vs all tabs). Attempt totals update in the UI; obtained / reset lines still print as before. Moving from Rarity: enable Rarity once, then |cff00ccff/wn rarityimport|r (copies data + backup), then you can disable Rarity; |cff00ccff/wn rarityrestore|r reapplies the saved backup if needed."
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"] = "Instance entry: list drops in chat"
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES_TOOLTIP"] = "When you enter a dungeon or raid that has Try Counter collectibles, print one |cff9370DB[WN-Drops]|r line per item: collectible link — required difficulty (|cff00ff00green|r ok, |cffff6666red|r wrong, |cffffaa00amber|r unknown) — attempt count or collected. Large instances cap at 18 lines plus |cff00ccff/wn check|r. Turn off for the short hint only."
+L["TRYCOUNTER_INSTANCE_DROPS_TRUNCATED"] = "… |cffffccff%d|r more — |cffffffff/wn check|r a boss (target or mouseover)."
 L["TRYCOUNTER_CHAT_ROUTE_LABEL"] = "Try counter chat output"
 L["TRYCOUNTER_CHAT_ROUTE_DESC"] = "Where try-counter lines are printed. Default matches tabs that show Loot. “Warband Nexus” uses the addon’s own message group (WN_TRYCOUNTER) so you can show try lines on different tabs than general loot; Blizzard’s chat settings may list it under that name when you right-click a tab → Settings. “All tabs” sends to every numbered chat window (ignores filters)."
 L["TRYCOUNTER_CHAT_ROUTE_LOOT"] = "1) Same tabs as Loot (default)"
@@ -1152,6 +1158,30 @@ Localization
 
 CurseForge: Warband Nexus]=]
 
+-- What's New / changelog body for ADDON_VERSION 2.5.12 (key CHANGELOG_V2512)
+L["CHANGELOG_V2512"] = [=[v2.5.12 (2026-04-12)
+
+UI
+- Notifications: Try counter chat output dropdown opens downward with extra spacing so the open list no longer overlaps the section label or nearby checkboxes. Route options keep a fixed order (Loot tabs → Warband Nexus filter → all standard tabs).
+
+Bug fixes
+- GameTooltip:SetText in Settings, Gold Management popup, and Plans UI uses valid color alpha for Midnight clients (fixes “bad argument #5 to 'SetText'”).
+
+Try Counter
+- Instance entry [WN-Drops]: full drop lines vs the short hint now use the correct mount/trackable logic so difficulty messaging matches what can still drop.
+- Manual drops and Rarity sync: non-repeatable collectibles you already own no longer inflate or advance try counts.
+
+Tooltips & collections
+- Collectible/drop hints and related services tightened for Midnight secret-value rules; CollectibleSourceDB and tooltip wiring aligned with current APIs.
+
+Localization
+- Missing keys brought in line with enUS across locales; probe chat uses a shorter [WN-TC] line format.
+
+What's next
+- More Midnight API validation; Try Counter and notifications tuned from live raids and dungeons; further settings and tooltip polish.
+
+CurseForge: Warband Nexus]=]
+
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"
 L["CONFIRM"] = "Confirm"
@@ -1298,6 +1328,37 @@ L["NO_REQUIREMENTS_INSTANT"] = "No requirements (instant completion)"
 L["TAB_PROFESSIONS"] = "Professions"
 L["TAB_COLLECTIONS"] = "Collections"
 L["COLLECTIONS_SUBTITLE"] = "Mounts, pets, toys, and transmog overview"
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "Achievements"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "Browse by category; criteria and details on the right."
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "Mounts"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "Grouped by source; preview on the right."
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "Pets"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "Grouped by source; model preview on the right."
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Toy Box"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "Grouped by source; details on the right."
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Recent acquisitions"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "Up to 10 newest entries per category, newest first."
+L["COLLECTIONS_SUBTAB_RECENT"] = "Recent"
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "No acquisitions logged yet. New mounts, pets, toys, and achievements you earn will appear here."
+L["COLLECTIONS_RECENT_SECTION_HEAD_FMT"] = "%s — latest %d"
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "None yet."
+L["COLLECTIONS_RECENT_SECTION_ROW"] = "%s · %s"
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "No matching entries."
+L["COLLECTIONS_RECENT_HEADER"] = "Latest acquisitions"
+L["COLLECTIONS_RECENT_EMPTY"] = "Items you earn will appear here with a short timestamp."
+L["COLLECTIONS_ACQUIRED_LABEL"] = "Recorded"
+L["COLLECTIONS_ACQUIRED_LINE"] = "%s: %s"
+L["COLLECTIONS_RECENT_LINE"] = "%s · %s · %s"
+L["COLLECTIONS_RECENT_JUST_NOW"] = "Just now"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d min ago"
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d hr ago"
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d days ago"
+L["COLLECTIONS_RECENT_SECTION_MOUNTS"] = "Recent mounts"
+L["COLLECTIONS_RECENT_SECTION_PETS"] = "Recent pets"
+L["COLLECTIONS_RECENT_SECTION_TOYS"] = "Recent toys"
+L["COLLECTIONS_RECENT_SECTION_ACHIEVEMENTS"] = "Recent achievements"
+L["COLLECTIONS_RECENT_SECTION_EMPTY"] = "No recent acquisitions for this category yet."
+L["COLLECTIONS_RECENT_SECTION_LINE"] = "%s · %s"
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Coming Soon"
 L["COLLECTIONS_COMING_SOON_DESC"] = "Collection overview (mounts, pets, toys, transmog) will be available here."
 L["SELECT_MOUNT_FROM_LIST"] = "Select a mount from the list"
@@ -1545,8 +1606,8 @@ L["STANDING_EXALTED"] = "Exalted"
 
 -- Notification (popup) — "BAM" moment when farmed drop obtained
 L["NOTIFICATION_FIRST_TRY"] = "You got it on your first try!"
-L["NOTIFICATION_GRIND_TRIES"] = "What a grind! %d attempts!"
-L["NOTIFICATION_GOT_IT_AFTER"] = "You got it after %d tries!"
+L["NOTIFICATION_GRIND_TRIES"] = "That took persistence — %d attempts in total."
+L["NOTIFICATION_GOT_IT_AFTER"] = "You got it after %d attempts!"
 L["NOTIFICATION_TRY_SUBTITLE"] = "%d attempts"
 L["NOTIFICATION_TRY_SUBTITLE_FIRST"] = "First attempt!"
 
@@ -1567,6 +1628,7 @@ L["TRYCOUNTER_AFTER_TRIES"] = "after %d tries"
 L["TRYCOUNTER_FIRST_TRY"] = "on the first try!"
 L["TRYCOUNTER_LOCKOUT_SKIP"] = "Skipped: daily/weekly lockout active for this NPC."
 L["TRYCOUNTER_INSTANCE_DROPS"] = "Collectible drops in this instance:"
+L["TRYCOUNTER_INSTANCE_ENTRY_HINT"] = "This instance has mount(s) on the Try Counter for your difficulty. Type |cffffffff/wn check|r while targeting a boss (or mouseover) for details."
 L["TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED"] = "Collectible Detected : "
 L["TRYCOUNTER_INSTANCE_WRONG_DIFF"] = "Wrong difficulty: needs %s (you are on %s)."
 L["TRYCOUNTER_INSTANCE_REQUIRES_UNVERIFIED"] = "Requires %s (current difficulty unknown)."
@@ -1577,6 +1639,25 @@ L["TRYCOUNTER_TYPE_PET"] = "Pet"
 L["TRYCOUNTER_TYPE_TOY"] = "Toy"
 L["TRYCOUNTER_TYPE_ITEM"] = "Item"
 L["TRYCOUNTER_TRY_COUNTS"] = "Try Counts"
+L["TRYCOUNTER_PROBE_ENTER"] = "Entered: %s — difficulty: %s"
+L["TRYCOUNTER_PROBE_DB_HEADER"] = "Mount sources (Try Counter DB) — your difficulty: %s"
+L["TRYCOUNTER_PROBE_MOUNT_LINE"] = "%s > %s > %s > %s"
+L["TRYCOUNTER_PROBE_ENC_NO_MOUNTS"] = "%s: no mount entries in database"
+L["TRYCOUNTER_PROBE_JOURNAL_MISS"] = "Could not resolve encounter journal for this instance."
+L["TRYCOUNTER_PROBE_NO_MAPPED_BOSSES"] = "No bosses in this instance map to Try Counter data."
+L["TRYCOUNTER_PROBE_STATUS_COLLECTED"] = "Already collected"
+L["TRYCOUNTER_PROBE_STATUS_OBTAINABLE"] = "Obtainable on current difficulty"
+L["TRYCOUNTER_PROBE_STATUS_WRONG_DIFF"] = "Not available on current difficulty"
+L["TRYCOUNTER_PROBE_STATUS_DIFF_UNKNOWN"] = "Difficulty unknown"
+L["TRYCOUNTER_PROBE_REQ_ANY"] = "any difficulty"
+L["TRYCOUNTER_PROBE_REQ_MYTHIC"] = "Mythic only"
+L["TRYCOUNTER_PROBE_REQ_LFR"] = "LFR only"
+L["TRYCOUNTER_PROBE_REQ_NORMAL_PLUS"] = "Normal+ raid (not LFR)"
+L["TRYCOUNTER_PROBE_REQ_HEROIC"] = "Heroic+ (includes Mythic & 25H)"
+L["TRYCOUNTER_PROBE_REQ_25H"] = "25-player Heroic only"
+L["TRYCOUNTER_PROBE_REQ_10N"] = "10-player Normal only"
+L["TRYCOUNTER_PROBE_REQ_25N"] = "25-player Normal only"
+L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25-player Normal or Heroic"
 
 -- Loading Tracker Labels
 L["LT_CHARACTER_DATA"] = "Character Data"

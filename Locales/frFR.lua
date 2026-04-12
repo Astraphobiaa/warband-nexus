@@ -255,6 +255,7 @@ L["SET_TRY_COUNT"] = "Définir les essais"
 L["TRY_COUNT_RIGHT_CLICK_HINT"] = "Clic droit pour modifier le nombre de tentatives."
 L["TRY_COUNT_CLICK_HINT"] = "Clic pour modifier le nombre de tentatives."
 L["TRIES"] = "Essais"
+L["COLLECTION_LIST_ATTEMPTS_FMT"] = "%d tentatives"
 L["SET_RESET_CYCLE"] = "Définir le cycle de réinitialisation"
 L["DAILY_RESET"] = "Réinitialisation quotidienne"
 L["WEEKLY_RESET"] = "Réinitialisation hebdomadaire"
@@ -467,13 +468,16 @@ L["VAULT_COMPLETE_PREFIX"] = "Compléter"
 L["VAULT_SLOT1_HINT"] = "Premier choix de cette ligne"
 L["VAULT_SLOT2_HINT"] = "Deuxième choix (plus d'options !)"
 L["VAULT_SLOT3_HINT"] = "Troisième choix (options max)"
+L["VAULT_CLICK_TO_OPEN"] = "Cliquer pour ouvrir le Grand coffre"
 
 -- Delves Section (PvE Tab)
 L["DELVES"] = "Profondeurs"
 L["COMPANION"] = "Compagnon"
 L["BOUNTIFUL_DELVE"] = "Butin du chasseur de trésors"
+L["PVE_BOUNTY_NEED_LOGIN"] = "Aucun état enregistré pour ce personnage. Connectez-vous pour actualiser."
 L["CRACKED_KEYSTONE"] = "Pierre angulaire fissurée"
 L["SEASON"] = "Saison"
+L["CURRENCY_LABEL_WEEKLY"] = "Hebdomadaire"
 
 -- Reputation Tab
 L["REP_TITLE"] = "Aperçu des réputations"
@@ -1289,6 +1293,29 @@ L["TRYCOUNTER_INSTANCE_REQUIRES_UNVERIFIED"] = "Nécessite %s (difficulté actue
 L["TRYCOUNTER_LOCKOUT_SKIP"] = "Ignoré : verrouillage quotidien/hebdomadaire actif pour ce PNJ."
 L["TRYCOUNTER_OBTAINED_RESET"] = "Obtenu %s ! Compteur réinitialisé."
 L["TRYCOUNTER_TRY_COUNTS"] = "Compteurs de tentatives"
+L["TRYCOUNTER_INSTANCE_ENTRY_HINT"] = "Cette instance comporte des montures suivies par le compteur pour votre difficulté. Tapez |cffffffff/wn check|r en ciblant un boss (ou au survol) pour les détails."
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"] = "Entrée en instance : lister les butins dans le chat"
+L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES_TOOLTIP"] = "En entrant dans un donjon ou un raid avec des objets de collection du compteur, afficher une ligne |cff9370DB[WN-Drops]|r par objet : lien — difficulté requise (|cff00ff00vert|r ok, |cffff6666rouge|r incorrect, |cffffaa00ambre|r inconnu) — tentatives ou collecté. Les grandes instances sont limitées à 18 lignes puis |cff00ccff/wn check|r. Désactiver pour n'afficher que le court rappel."
+L["TRYCOUNTER_INSTANCE_DROPS_TRUNCATED"] = "… |cffffccff%d|r de plus — |cffffffff/wn check|r un boss (cible ou survol)."
+L["TRYCOUNTER_PROBE_ENTER"] = "Entré : %s — difficulté : %s"
+L["TRYCOUNTER_PROBE_DB_HEADER"] = "Sources des montures (base du compteur) — votre difficulté : %s"
+L["TRYCOUNTER_PROBE_MOUNT_LINE"] = "%s > %s > %s > %s"
+L["TRYCOUNTER_PROBE_ENC_NO_MOUNTS"] = "%s : aucune entrée de monture en base"
+L["TRYCOUNTER_PROBE_JOURNAL_MISS"] = "Impossible de résoudre le journal des rencontres pour cette instance."
+L["TRYCOUNTER_PROBE_NO_MAPPED_BOSSES"] = "Aucun boss de cette instance ne correspond aux données du compteur."
+L["TRYCOUNTER_PROBE_STATUS_COLLECTED"] = "Déjà collecté"
+L["TRYCOUNTER_PROBE_STATUS_OBTAINABLE"] = "Obtenable sur la difficulté actuelle"
+L["TRYCOUNTER_PROBE_STATUS_WRONG_DIFF"] = "Indisponible sur la difficulté actuelle"
+L["TRYCOUNTER_PROBE_STATUS_DIFF_UNKNOWN"] = "Difficulté inconnue"
+L["TRYCOUNTER_PROBE_REQ_ANY"] = "toute difficulté"
+L["TRYCOUNTER_PROBE_REQ_MYTHIC"] = "Mythe uniquement"
+L["TRYCOUNTER_PROBE_REQ_LFR"] = "RdR uniquement"
+L["TRYCOUNTER_PROBE_REQ_NORMAL_PLUS"] = "Raid normal ou plus (pas RdR)"
+L["TRYCOUNTER_PROBE_REQ_HEROIC"] = "Héroïque ou plus (inclut mythique et 25H)"
+L["TRYCOUNTER_PROBE_REQ_25H"] = "25 joueurs héroïque uniquement"
+L["TRYCOUNTER_PROBE_REQ_10N"] = "10 joueurs normal uniquement"
+L["TRYCOUNTER_PROBE_REQ_25N"] = "25 joueurs normal uniquement"
+L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25 joueurs normal ou héroïque"
 L["TRYCOUNTER_TYPE_ITEM"] = "Objet"
 L["TRYCOUNTER_TYPE_MOUNT"] = "Monture"
 L["TRYCOUNTER_TYPE_PET"] = "Mascotte"
@@ -1458,6 +1485,37 @@ L["ZONE_DROP"] = "Butin de zone"
 -- Full parity with enUS (remaining keys)
 L["ACHIEVEMENT_PROGRESS_TITLE"] = "Progression des hauts faits"
 L["CMD_FIRSTCRAFT"] = "Lister les recettes à bonus de première fabrication par extension (ouvrir d'abord le métier)"
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "Hauts faits"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "Parcourir par catégorie ; critères et détails à droite."
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "Montures"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "Groupées par source ; aperçu à droite."
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "Mascottes"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "Groupées par source ; aperçu du modèle à droite."
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Coffre à jouets"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "Groupés par source ; détails à droite."
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Acquisitions récentes"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "Jusqu'à 10 entrées les plus récentes par catégorie, les plus récentes d'abord."
+L["COLLECTIONS_SUBTAB_RECENT"] = "Récent"
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "Aucune acquisition enregistrée. Les nouvelles montures, mascottes, jouets et hauts faits apparaîtront ici."
+L["COLLECTIONS_RECENT_SECTION_HEAD_FMT"] = "%s — %d derniers"
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "Aucune pour le moment."
+L["COLLECTIONS_RECENT_SECTION_ROW"] = "%s · %s"
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "Aucune entrée correspondante."
+L["COLLECTIONS_RECENT_HEADER"] = "Dernières acquisitions"
+L["COLLECTIONS_RECENT_EMPTY"] = "Les objets obtenus apparaîtront ici avec un horodatage court."
+L["COLLECTIONS_ACQUIRED_LABEL"] = "Enregistré"
+L["COLLECTIONS_ACQUIRED_LINE"] = "%s : %s"
+L["COLLECTIONS_RECENT_LINE"] = "%s · %s · %s"
+L["COLLECTIONS_RECENT_JUST_NOW"] = "À l'instant"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "Il y a %d min"
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "Il y a %d h"
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "Il y a %d j"
+L["COLLECTIONS_RECENT_SECTION_MOUNTS"] = "Montures récentes"
+L["COLLECTIONS_RECENT_SECTION_PETS"] = "Mascottes récentes"
+L["COLLECTIONS_RECENT_SECTION_TOYS"] = "Jouets récents"
+L["COLLECTIONS_RECENT_SECTION_ACHIEVEMENTS"] = "Hauts faits récents"
+L["COLLECTIONS_RECENT_SECTION_EMPTY"] = "Aucune acquisition récente pour cette catégorie."
+L["COLLECTIONS_RECENT_SECTION_LINE"] = "%s · %s"
 L["COLLECTIONS_COMING_SOON_DESC"] = "L'aperçu des collections (montures, mascottes, jouets, transmog) sera disponible ici."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Bientôt disponible"
 L["COLLECTIONS_SUBTITLE"] = "Aperçu des montures, mascottes, jouets et transmog"
@@ -1748,6 +1806,30 @@ Plans / UI
 
 Localization
 - Credits / Special Thanks strings updated across locales; PVE_BOUNTY_NEED_LOGIN (enUS).
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.12 (CHANGELOG_V2512) — English notes; see enUS for detail
+L["CHANGELOG_V2512"] = [=[v2.5.12 (2026-04-12)
+
+UI
+- Notifications: Try counter chat output dropdown opens downward with extra spacing so the open list no longer overlaps the section label or nearby checkboxes. Route options keep a fixed order (Loot tabs → Warband Nexus filter → all standard tabs).
+
+Bug fixes
+- GameTooltip:SetText in Settings, Gold Management popup, and Plans UI uses valid color alpha for Midnight clients (fixes "bad argument #5 to 'SetText'").
+
+Try Counter
+- Instance entry [WN-Drops]: full drop lines vs the short hint now use the correct mount/trackable logic so difficulty messaging matches what can still drop.
+- Manual drops and Rarity sync: non-repeatable collectibles you already own no longer inflate or advance try counts.
+
+Tooltips & collections
+- Collectible/drop hints and related services tightened for Midnight secret-value rules; CollectibleSourceDB and tooltip wiring aligned with current APIs.
+
+Localization
+- Missing keys brought in line with enUS across locales; probe chat uses a shorter [WN-TC] line format.
+
+À venir
+- More Midnight API validation; Try Counter and notifications tuned from live raids and dungeons; further settings and tooltip polish.
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Liste des tâches et progression hebdo : décoché = plans en cours ; coché = uniquement terminés. Onglets Parcourir : décoché = non collectés (filtrés par To-Do si Afficher planifiés) ; coché = entrées collectées sur la To-Do (planifiés limite toujours la liste)."

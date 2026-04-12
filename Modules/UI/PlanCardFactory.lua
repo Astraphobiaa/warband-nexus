@@ -207,10 +207,13 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         wowheadEntityType, wowheadID = "title", plan.titleID
     end
     if wowheadEntityType and wowheadID and wowheadID > 0 then
+        local CDL = ns.CollectionsDetailHeaderLayout or {}
+        local whW = CDL.WOWHEAD_SIZE or 18
+        local whTop = CDL.CARD_WOWHEAD_TOP_OFFSET or 10
         local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
         local whBtn = CreateFrame("Button", nil, card)
-        whBtn:SetSize(18, 18)
-        whBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -whInset, -10)
+        whBtn:SetSize(whW, whW)
+        whBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -whInset, -whTop)
         card.wowheadBtn = whBtn
         whBtn:SetNormalAtlas("socialqueuing-icon-eye")
         whBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
@@ -231,8 +234,9 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
         nameText:SetPoint("RIGHT", whBtn, "LEFT", -nameGap, 0)
     else
+        local CDL = ns.CollectionsDetailHeaderLayout or {}
         local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
-        local whW = ns.PLAN_CARD_WOWHEAD_SIZE or 18
+        local whW = CDL.WOWHEAD_SIZE or ns.PLAN_CARD_WOWHEAD_SIZE or 18
         local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
         nameText:SetPoint("RIGHT", card, "RIGHT", -(whInset + whW + nameGap), 0)
     end

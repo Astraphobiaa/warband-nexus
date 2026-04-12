@@ -1,24 +1,24 @@
-# Discord announcement — **Warband Nexus v2.5.11** (2026-04-07)
+# Discord announcement — **Warband Nexus v2.5.12** (2026-04-12)
 
 Copy-paste below.
 
 ---
 
-**Warband Nexus v2.5.11** is out.
+**Warband Nexus v2.5.12** is out.
 
-**PvE**
-• Trovehunter's Bounty column: each character row uses its own saved data (not always the logged-in character).
-• Safer weekly quest checks for Midnight.
-• Trovehunter tracking uses the correct hidden quest **86371** only (no more false green check from other weeklies).
+**UI**
+• Notifications: **Try counter chat output** menu opens downward with proper spacing — no more overlap with checkboxes or the label.
 
-**Collections**
-• **Achievements** tab: fixed list only showing your last earned achievement — full scan uses Blizzard's "include all" category count. One automatic re-scan on first load after update.
+**Bug fixes**
+• **GameTooltip:SetText** in Settings / Gold / Plans: valid alpha (fixes Midnight `SetText` errors).
 
-**Try Counter & more**
-• Mount/pet handling, timer callback fix, Lucent Hawkstrider DB fix.
-• To-Do cards: try-count popup won't open on right-click (left-click only).
-• Credits: **Special Thanks** section styled like Contributors.
+**Try Counter**
+• Instance entry **[WN-Drops]** lines vs hint use clearer mount/trackable logic.
+• **Rarity / manual drops**: already-owned non-repeatable collectibles no longer inflate try counts.
 
-Download: CurseForge / your usual source — `WarbandNexus-2.5.11.zip`. `/reload` after installing.
+**Also**
+• Tooltip/collection tweaks, locale key parity, shorter **[WN-TC]** probe lines in chat.
+
+Download: CurseForge / your usual source — `WarbandNexus-2.5.12.zip`. `/reload` after installing.
 
 ---

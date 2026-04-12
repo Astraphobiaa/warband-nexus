@@ -20,6 +20,7 @@ local GetTabIcon = ns.UI_GetTabIcon
 local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local CreateIcon = ns.UI_CreateIcon
 
 -- Single source for layout (matches CurrencyUI, PlansUI, SharedWidgets)
 local function GetLayout()
@@ -39,13 +40,55 @@ local CONTENT_INSET = LAYOUT.CONTENT_INSET or LAYOUT.CARD_GAP or 8
 local CONTAINER_INSET = LAYOUT.CONTAINER_INSET or 2
 local TEXT_GAP = AFTER_ELEMENT
 local SEARCH_ROW_HEIGHT = 32  -- Plans ile birebir aynı
--- Header kartı: sadece başlık; search bar sekmelerin altında. Plans ile aynı: header sonrası GetLayout().afterHeader (75)
-local COLLECTIONS_HEADER_CARD_HEIGHT = 70
-local AFTER_HEADER = LAYOUT.afterHeader or 75
+-- Title card: 70px + text block 200x40 + icon gap 12 — birebir CurrencyUI / ItemsUI.
+local COLLECTIONS_TITLE_CARD_HEIGHT = 70
+local RECENT_PER_SECTION = 10
+local RECENT_SECTION_ORDER = { "achievement", "mount", "pet", "toy" }
+local RECENT_CARD_ICON = 20
+local RECENT_CARD_HEADER_PAD = 8
 local SUBTAB_BAR_HEIGHT = LAYOUT.HEADER_HEIGHT or 32
-local HEADER_ICON_TEXT_GAP = 12
 local PROGRESS_ROW_HEIGHT = 28
 local BAR_INSET = 2  -- Bar 2px each side = total 4px inside border
+
+local function CollectionsRecentCategoryLabel(ctype)
+    local loc = ns.L
+    if ctype == "mount" then return (loc and loc["CATEGORY_MOUNTS"]) or "Mounts"
+    elseif ctype == "pet" then return (loc and loc["CATEGORY_PETS"]) or "Pets"
+    elseif ctype == "toy" then return (loc and loc["CATEGORY_TOYS"]) or "Toys"
+    elseif ctype == "achievement" then return (loc and loc["CATEGORY_ACHIEVEMENTS"]) or "Achievements"
+    elseif ctype == "title" then return (loc and loc["CATEGORY_TITLES"]) or "Titles"
+    elseif ctype == "illusion" then return (loc and loc["CATEGORY_ILLUSIONS"]) or "Illusions"
+    elseif ctype == "transmog" then return (loc and loc["CATEGORY_TRANSMOG"]) or "Transmog"
+    end
+    return tostring(ctype or "")
+end
+
+local function FormatCollectionsRecentRelativeTime(ts)
+    if not ts or type(ts) ~= "number" then return "" end
+    local now = time()
+    local sec = now - ts
+    if sec < 0 then sec = 0 end
+    local loc = ns.L
+    if sec < 60 then
+        return (loc and loc["COLLECTIONS_RECENT_JUST_NOW"]) or "Just now"
+    end
+    if sec < 3600 then
+        return string.format((loc and loc["COLLECTIONS_RECENT_MINUTES_AGO"]) or "%d min ago", math.floor(sec / 60))
+    end
+    if sec < 86400 then
+        return string.format((loc and loc["COLLECTIONS_RECENT_HOURS_AGO"]) or "%d hr ago", math.floor(sec / 3600))
+    end
+    return string.format((loc and loc["COLLECTIONS_RECENT_DAYS_AGO"]) or "%d days ago", math.floor(sec / 86400))
+end
+
+-- Detail panel: when the addon last logged this collectible (same source as the recent strip).
+local function FormatCollectionsAcquiredDetail(ts)
+    if not ts or type(ts) ~= "number" then return nil end
+    local loc = ns.L
+    local rel = FormatCollectionsRecentRelativeTime(ts)
+    local label = (loc and loc["COLLECTIONS_ACQUIRED_LABEL"]) or "Recorded"
+    return string.format((loc and loc["COLLECTIONS_ACQUIRED_LINE"]) or "%s: %s", label, rel)
+end
 
 -- ============================================================================
 -- MOUNT SOURCE CLASSIFICATION
@@ -213,8 +256,8 @@ end
 local function FormatMountPetToyListTrySuffix(collectibleType, id)
     if not id or not WarbandNexus or not WarbandNexus.ShouldShowTryCountInUI or not WarbandNexus:ShouldShowTryCountInUI(collectibleType, id) then return "" end
     local c = WarbandNexus:GetTryCount(collectibleType, id) or 0
-    local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-    return " |cff888888(" .. triesLabel .. " " .. tostring(c) .. ")|r"
+    local fmt = (ns.L and ns.L["COLLECTION_LIST_ATTEMPTS_FMT"]) or "%d Attempts"
+    return " |cff888888(" .. string.format(fmt, c) .. ")|r"
 end
 
 -- Para birimi ikonu (altın); Cost/Amount satırlarında fiyat yanında gösterilir.
@@ -557,9 +600,19 @@ local function CreateDetailEmptyOverlay(parent, typeKey)
     return overlay
 end
 
--- State for Collections tab (must be defined before PopulateMountList/UpdateMountListVisibleRange/DrawMountsContent)
+-- State for Collections tab (must be defined before PopulateMountList / ApplySessionCollectionsSubTab — Lua 5.1 local scope)
+local VALID_COLLECTIONS_SUBTABS = {
+    recent = true,
+    mounts = true,
+    pets = true,
+    toys = true,
+    achievements = true,
+}
+
+-- Must appear before ApplySessionCollectionsSubTab: Lua 5.1 local scope starts after this statement,
+-- so a function defined above would otherwise resolve `collectionsState` as a nil global.
 local collectionsState = {
-    currentSubTab = "achievements",
+    currentSubTab = "recent",
     mountListContainer = nil,
     mountListScrollFrame = nil,
     mountListScrollChild = nil,
@@ -594,7 +647,21 @@ local collectionsState = {
     collapsedHeadersToys = {},
     selectedToyID = nil,
     initialized = false,
+    recentTabPanel = nil,
+    recentScrollFrame = nil,
+    recentScrollChild = nil,
+    _recentEmptyFs = nil,
 }
+
+--- Per login/reload: nil → default Recent. After user picks a sub-tab, restored while the UI session lasts.
+local function ApplySessionCollectionsSubTab()
+    local s = ns._sessionCollectionsSubTab
+    if s and VALID_COLLECTIONS_SUBTABS[s] then
+        collectionsState.currentSubTab = s
+    else
+        collectionsState.currentSubTab = "recent"
+    end
+end
 
 local _populateMountListBusy = false
 local _mountScrollUpdateScheduled = false
@@ -1594,7 +1661,8 @@ local function PopulateAchievementList(scrollChild, listWidth, categoryData, roo
 end
 
 -- ============================================================================
--- MODEL VIEWER PANEL — Sabit, merkezde, Mount Journal gibi. Tek kural: hep ortada, sabit uzaklık.
+-- MODEL VIEWER PANEL — Mounts: Blizzard Mount Journal pipeline (ModelScene WrappedAndUnwrappedModelScene + TransitionToModelSceneID).
+-- Pets/fallback: Frame (clip) + PlayerModel + interaction layer. Layout: viewport below descText.
 -- ============================================================================
 
 local FIXED_CAM_SCALE = 1.8
@@ -1603,24 +1671,199 @@ local CAM_SCALE_MAX = 6
 local ZOOM_STEP = 0.1
 local ROTATE_SENSITIVITY = 0.02
 -- Tüm modeller aynı boyut/pozisyon: modeli REFERENCE_RADIUS'a scale ediyoruz, tek sabit kamera mesafesi.
-local REFERENCE_RADIUS = 1.0
--- Biraz daha uzak kamera: perspektifte bounding sphere dışına taşan uzuvları kırpma çizgisine yaklaştırmaz.
-local FIXED_CAM_DISTANCE = 3.15
+-- Slightly below 1.0 so normalized mounts sit a bit smaller in frame (Mount Journal leaves headroom).
+local REFERENCE_RADIUS = 0.86
+-- Base camera distance after radius normalize; multiplied by MODEL_VIEWER_CAMERA_FIT_PADDING so wings/tails
+-- that extend outside GetModelRadius() still fit (phoenix-type mounts were clipping the viewport).
+local FIXED_CAM_DISTANCE = 3.55
+-- Extra pull-back after normalize (Blizzard journal effectively uses scene-specific framing; we approximate).
+local MODEL_VIEWER_CAMERA_FIT_PADDING = 1.30
+-- Viewport üst boşluk (açıklama ile model alanı arası); Frame SetPoint ile descText anchor (Widget API).
+local MODEL_VIEWPORT_TOP_GAP = 10
 -- Viewport içinde 1–2 px: kenara yapışık görüntüyü yumuşatır (clip rect içinde).
 local MODEL_VIEWPORT_INSET = 2
+-- Mount Journal ModelScene kameraları yatay oryante; çok uzun dikey slot üstte boşluk + altta kırpma yapar.
+local MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH = 0.62
+-- WrappedAndUnwrappedModelScene: hafif zoom-out (API yoksa pcall sessizce başarısız olur).
+local MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT = 1.14
 local MODEL_SCALE_MIN = 0.15
 local MODEL_SCALE_MAX = 6.0
 local ZOOM_MULTIPLIER_MIN = 0.5
 local ZOOM_MULTIPLIER_MAX = 2.0
-local RADIUS_POLL_MAX_TIME = 1.0
-local RADIUS_POLL_INTERVAL = 0.05
+-- Pet models often sit low in the box vs mounts; small upward offset in model space after centering.
+local PET_MODEL_VERTICAL_OFFSET = 0.12
 
--- Model yüklendikten sonra geçerli yarıçap döner; bazen async yüklemede gecikme olur, pcall ile güvenli.
-local function GetModelRadiusSafe(m)
-    if not m or not m.GetModelRadius then return nil end
-    local ok, r = pcall(m.GetModelRadius, m)
-    if not ok or type(r) ~= "number" or r <= 0 then return nil end
-    return r
+-- Blizzard_Collections Mainline: MountJournal uses ModelScene:TransitionToModelSceneID + GetActorByTag("unwrapped"),
+-- not PlayerModel alone (Blizzard_MountCollection.lua — MountJournal_UpdateMountDisplay).
+
+local function Collections_LoadBlizzardCollections()
+    local name = "Blizzard_Collections"
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, name)
+        return
+    end
+    if LoadAddOn then
+        pcall(LoadAddOn, name)
+    end
+end
+
+local function Collections_SanitizeMountExtra(v, default)
+    if v == nil then return default end
+    if issecretvalue and issecretvalue(v) then return default end
+    return v
+end
+
+local function ApplyJournalModelSceneZoom(scene, zoomMultiplier)
+    if not scene then return end
+    local mul = MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT * (zoomMultiplier or 1.0)
+    if scene.SetCameraDistanceScale then
+        pcall(scene.SetCameraDistanceScale, scene, mul)
+    end
+    if scene.SetCamDistanceScale then
+        pcall(scene.SetCamDistanceScale, scene, mul)
+    end
+end
+
+--- Same pipeline as MountJournal_UpdateMountDisplay (ModelScene path). Returns true if scene was updated.
+local function ApplyMountJournalModelSceneDisplay(scene, mountID, creatureDisplayIDFromCache, forceSceneChange)
+    if not scene or not mountID or not C_MountJournal or not C_MountJournal.GetMountInfoExtraByID then
+        return false
+    end
+    local creatureDisplayID, _desc, _src, isSelfMount, _, modelSceneID, animID, spellVisualKitID, disablePlayerMountPreview =
+        C_MountJournal.GetMountInfoExtraByID(mountID)
+    creatureDisplayID = Collections_SanitizeMountExtra(creatureDisplayID, nil)
+    isSelfMount = Collections_SanitizeMountExtra(isSelfMount, false) == true
+    modelSceneID = Collections_SanitizeMountExtra(modelSceneID, nil)
+    animID = Collections_SanitizeMountExtra(animID, nil)
+    spellVisualKitID = Collections_SanitizeMountExtra(spellVisualKitID, nil)
+    disablePlayerMountPreview = Collections_SanitizeMountExtra(disablePlayerMountPreview, true) == true
+
+    if not creatureDisplayID or creatureDisplayID <= 0 then
+        creatureDisplayID = creatureDisplayIDFromCache
+    end
+    if (not creatureDisplayID or creatureDisplayID <= 0) and C_MountJournal.GetMountAllCreatureDisplayInfoByID then
+        local all = C_MountJournal.GetMountAllCreatureDisplayInfoByID(mountID)
+        if all and #all > 0 and all[1] and type(all[1].creatureDisplayID) == "number" then
+            creatureDisplayID = all[1].creatureDisplayID
+        end
+    end
+    if not creatureDisplayID or creatureDisplayID <= 0 then
+        return false
+    end
+
+    local needsFanfare = false
+    if C_MountJournal.NeedsFanfare then
+        local nf = C_MountJournal.NeedsFanfare(mountID)
+        if not (issecretvalue and nf and issecretvalue(nf)) then
+            needsFanfare = nf == true
+        end
+    end
+
+    local trans = _G.CAMERA_TRANSITION_TYPE_IMMEDIATE
+    local disc = _G.CAMERA_MODIFICATION_TYPE_DISCARD
+    if forceSceneChange and type(modelSceneID) == "number" and modelSceneID > 0 and trans and disc and scene.TransitionToModelSceneID then
+        pcall(scene.TransitionToModelSceneID, scene, modelSceneID, trans, disc, true)
+    end
+
+    if scene.PrepareForFanfare then
+        pcall(scene.PrepareForFanfare, scene, needsFanfare)
+    end
+
+    local mountActor = scene.GetActorByTag and scene:GetActorByTag("unwrapped")
+    if not mountActor then
+        return false
+    end
+
+    mountActor:Hide()
+    if mountActor.SetOnModelLoadedCallback then
+        mountActor:SetOnModelLoadedCallback(function()
+            mountActor:Show()
+        end)
+    else
+        mountActor:Show()
+    end
+    if mountActor.SetModelByCreatureDisplayID then
+        local okSet = pcall(mountActor.SetModelByCreatureDisplayID, mountActor, creatureDisplayID, true)
+        if not okSet then
+            return false
+        end
+    else
+        return false
+    end
+
+    local blend = Enum and Enum.ModelBlendOperation
+    if isSelfMount and blend then
+        if mountActor.SetAnimationBlendOperation then
+            pcall(mountActor.SetAnimationBlendOperation, mountActor, blend.None)
+        end
+        if mountActor.SetAnimation then
+            pcall(mountActor.SetAnimation, mountActor, 618)
+        end
+    else
+        if mountActor.SetAnimationBlendOperation and blend then
+            pcall(mountActor.SetAnimationBlendOperation, mountActor, blend.Anim)
+        end
+        if mountActor.SetAnimation then
+            pcall(mountActor.SetAnimation, mountActor, 0)
+        end
+    end
+
+    local showPlayer = false
+    if GetCVarBool then
+        local okCv, cv = pcall(GetCVarBool, "mountJournalShowPlayer")
+        if okCv then showPlayer = cv end
+    end
+    local disablePreview = disablePlayerMountPreview
+    if not disablePreview and not showPlayer then
+        disablePreview = true
+    end
+
+    local useNativeForm = false
+    if PlayerUtil and PlayerUtil.ShouldUseNativeFormInModelScene then
+        local okN, n = pcall(PlayerUtil.ShouldUseNativeFormInModelScene)
+        if okN then useNativeForm = n end
+    end
+
+    if scene.AttachPlayerToMount then
+        pcall(scene.AttachPlayerToMount, scene, mountActor, animID, isSelfMount, disablePreview, spellVisualKitID, useNativeForm)
+    end
+
+    scene:Show()
+    return true
+end
+
+-- Fallback when Journal ModelScene is unavailable: PlayerModel + cinematic scene ID (approximate).
+local function TryApplyMountJournalModelScene(pm, panel_)
+    if not pm or not panel_ or not panel_._lastMountID then return false end
+    local sid = panel_._mountUiModelSceneID
+    if type(sid) ~= "number" or sid <= 0 then return false end
+    if pm.ApplyUICinematicCamera then
+        local ok = pcall(pm.ApplyUICinematicCamera, pm, sid)
+        if ok then return true end
+    end
+    if pm.TransitionToModelSceneID then
+        local ok = pcall(pm.TransitionToModelSceneID, pm, sid)
+        if ok then return true end
+    end
+    return false
+end
+
+-- Largest sensible bounding radius for framing. GetModelRadius alone under-reports some flying mounts
+-- (wings above the sphere); GetBoundingRadius (when present) often closer to visible extent — use max().
+local function GetEffectiveModelBoundingRadius(m)
+    if not m then return nil end
+    local best = nil
+    if m.GetModelRadius then
+        local ok, r = pcall(m.GetModelRadius, m)
+        if ok and type(r) == "number" and r > 0 then best = r end
+    end
+    if m.GetBoundingRadius then
+        local ok, r = pcall(m.GetBoundingRadius, m)
+        if ok and type(r) == "number" and r > 0 then
+            best = best and math.max(best, r) or r
+        end
+    end
+    return best
 end
 
 -- Mount API helpers — CreateModelViewer closure'ları bunlara ihtiyaç duyduğu için burada tanımlı.
@@ -1677,57 +1920,107 @@ local function CreateModelViewer(parent, width, height)
     panel:SetSize(width, height)
     ApplyDetailAccentVisuals(panel)
 
-    -- PlayerModel often draws outside its rect; clip to a dedicated viewport below the header/text block.
-    local modelViewport = CreateFrame("Frame", nil, panel)
-    modelViewport:SetFrameLevel(panel:GetFrameLevel() + 1)
+    -- Slot: full width from desc bottom to panel bottom; viewport inside is height-capped and vertically centered.
+    local modelViewportSlot = CreateFrame("Frame", nil, panel)
+    modelViewportSlot:SetFrameLevel(panel:GetFrameLevel() + 1)
+    panel.modelViewportSlot = modelViewportSlot
+
+    -- Model stage: plain Frame with SetClipsChildren (ScriptRegion child tree); PlayerModel draws past bounds — clip here.
+    local modelViewport = CreateFrame("Frame", nil, modelViewportSlot)
+    modelViewport:SetFrameLevel(modelViewportSlot:GetFrameLevel() + 1)
     if modelViewport.SetClipsChildren then
         modelViewport:SetClipsChildren(true)
     end
     panel.modelViewport = modelViewport
 
+    -- Widget type Model / PlayerModel — see Widget API; mouse off on model, hits on interactionLayer (ScriptRegion).
     local model = CreateFrame("PlayerModel", nil, modelViewport)
     model:SetModelDrawLayer("ARTWORK")
     model:SetFrameLevel(modelViewport:GetFrameLevel())
-    model:EnableMouse(true)
-    model:EnableMouseWheel(true)
+    model:EnableMouse(false)
+    model:EnableMouseWheel(false)
 
     local function ApplyModelToViewportInsets()
         local inset = MODEL_VIEWPORT_INSET
         model:ClearAllPoints()
         model:SetPoint("TOPLEFT", modelViewport, "TOPLEFT", inset, -inset)
         model:SetPoint("BOTTOMRIGHT", modelViewport, "BOTTOMRIGHT", -inset, inset)
+        local js = panel._journalMountScene
+        if js then
+            js:ClearAllPoints()
+            js:SetPoint("TOPLEFT", modelViewport, "TOPLEFT", inset, -inset)
+            js:SetPoint("BOTTOMRIGHT", modelViewport, "BOTTOMRIGHT", -inset, inset)
+        end
     end
 
-    -- Model area starts directly below the text block (panel.descText); re-run after text set or resize.
-    local MODEL_FALLBACK_TOP_RATIO = 0.42
+    -- Journal-quality mount preview: same ModelScene template as Mount Journal (Blizzard_Collections).
+    local function TryInitJournalMountModelScene()
+        if panel._journalMountScene then return panel._journalMountScene end
+        if panel._journalMountSceneFailed then return nil end
+        Collections_LoadBlizzardCollections()
+        local ok, scene = pcall(CreateFrame, "ModelScene", nil, modelViewport, "WrappedAndUnwrappedModelScene")
+        if not ok or not scene then
+            panel._journalMountSceneFailed = true
+            return nil
+        end
+        panel._journalMountScene = scene
+        scene:SetFrameLevel(model:GetFrameLevel() + 2)
+        if scene.SetResetCallback then
+            scene:SetResetCallback(function()
+                if panel._lastMountID and panel._mountDisplayUsesJournalScene and panel._journalMountScene then
+                    ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
+                    ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+                end
+            end)
+        end
+        if scene.ControlFrame and scene.ControlFrame.SetModelScene then
+            pcall(scene.ControlFrame.SetModelScene, scene.ControlFrame, scene)
+        end
+        scene:Hide()
+        ApplyModelToViewportInsets()
+        return scene
+    end
+
+    -- Defined before interactionLayer exists; use panel._interactionLayer at call time (not local interactionLayer — scope).
+    local function ShowPlayerModelPath(show)
+        local il = panel._interactionLayer
+        if show then
+            model:Show()
+            if il then il:Show() end
+        else
+            model:Hide()
+            if il then il:Hide() end
+        end
+    end
+
+    -- Layout: slot from descText bottom (or fallback) to panel bottom; viewport height capped vs width and centered in slot.
+    local MODEL_FALLBACK_TOP_RATIO = 0.36
     local function UpdateModelFrameSize()
         local w = panel:GetWidth()
         local h = panel:GetHeight()
         if not w or not h or w < 1 or h < 1 then return end
-        modelViewport:ClearAllPoints()
-        local descBottom = nil
-        if panel.descText and panel.descText.GetBottom then
-            descBottom = panel.descText:GetBottom()
-        end
-        local panelTop = panel:GetTop()
-        if descBottom and panelTop and panel:IsVisible() then
-            local offsetY = descBottom - panelTop
-            if offsetY < -20 then
-                modelViewport:SetPoint("TOPLEFT", panel, "TOPLEFT", CONTENT_INSET, offsetY - TEXT_GAP)
-                modelViewport:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -CONTENT_INSET, offsetY - TEXT_GAP)
-                modelViewport:SetPoint("BOTTOM", panel, "BOTTOM", 0, CONTENT_INSET)
-            else
-                modelViewport:SetPoint("TOP", panel, "TOP", 0, -h * MODEL_FALLBACK_TOP_RATIO - TEXT_GAP)
-                modelViewport:SetPoint("BOTTOM", panel, "BOTTOM", 0, CONTENT_INSET)
-                modelViewport:SetPoint("LEFT", panel, "LEFT", CONTENT_INSET, 0)
-                modelViewport:SetPoint("RIGHT", panel, "RIGHT", -CONTENT_INSET, 0)
-            end
+        local slot = panel.modelViewportSlot
+        if not slot then return end
+        slot:ClearAllPoints()
+        if panel.descText and panel.descText:IsShown() then
+            slot:SetPoint("TOPLEFT", panel.descText, "BOTTOMLEFT", 0, -MODEL_VIEWPORT_TOP_GAP)
+            slot:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -CONTENT_INSET, CONTENT_INSET)
         else
-            modelViewport:SetPoint("TOP", panel, "TOP", 0, -h * MODEL_FALLBACK_TOP_RATIO - TEXT_GAP)
-            modelViewport:SetPoint("BOTTOM", panel, "BOTTOM", 0, CONTENT_INSET)
-            modelViewport:SetPoint("LEFT", panel, "LEFT", CONTENT_INSET, 0)
-            modelViewport:SetPoint("RIGHT", panel, "RIGHT", -CONTENT_INSET, 0)
+            slot:SetPoint("TOPLEFT", panel, "TOPLEFT", CONTENT_INSET, -h * MODEL_FALLBACK_TOP_RATIO)
+            slot:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -CONTENT_INSET, CONTENT_INSET)
         end
+        local sw = slot:GetWidth()
+        local sh = slot:GetHeight()
+        if not sw or sw < 1 then sw = math.max(1, w - 2 * CONTENT_INSET) end
+        if not sh or sh < 2 then sh = math.max(2, h * (1 - MODEL_FALLBACK_TOP_RATIO)) end
+        local maxH = sw * MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH
+        local vh = math.min(sh, maxH)
+        local vPad = (sh - vh) * 0.5
+        modelViewport:ClearAllPoints()
+        modelViewport:SetPoint("LEFT", slot, "LEFT", 0, 0)
+        modelViewport:SetPoint("RIGHT", slot, "RIGHT", 0, 0)
+        modelViewport:SetPoint("TOP", slot, "TOP", 0, -vPad)
+        modelViewport:SetPoint("BOTTOM", slot, "BOTTOM", 0, vPad)
         ApplyModelToViewportInsets()
     end
     panel.UpdateModelFrameSize = UpdateModelFrameSize
@@ -1737,24 +2030,63 @@ local function CreateModelViewer(parent, width, height)
             C_Timer.After(0, function() UpdateModelFrameSize() end)
         end
     end)
-    UpdateModelFrameSize()
 
     panel.modelRotation = 0
     panel.camScale = FIXED_CAM_SCALE
     panel.normalizedRadius = false
     panel.modelScale = 1.0
     panel.zoomMultiplier = 1.0
+    panel._dragButton = nil
 
-    -- Tek kural: merkez (0,0,0), UseModelCenterToTransform. Model boyutu SetModelScale ile normalize edildiyse sabit kamera mesafesi.
+    -- Transparent layer above PlayerModel: reliable hit-testing for wheel + drag (journal-style: right-drag rotate; left-drag also supported).
+    local interactionLayer = CreateFrame("Frame", nil, modelViewport)
+    interactionLayer:SetAllPoints()
+    interactionLayer:SetFrameLevel(model:GetFrameLevel() + 20)
+    interactionLayer:EnableMouse(true)
+    interactionLayer:EnableMouseWheel(true)
+    panel._interactionLayer = interactionLayer
+
+    -- Centered preview: UseModelCenterToTransform + optional pet vertical nudge; idle pose + zero pitch for consistency.
     local function ApplyTransform()
-        model:SetPosition(0, 0, 0)
+        if panel._mountDisplayUsesJournalScene and panel._journalMountScene then
+            ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+            return
+        end
+        if panel._usesJournalCamera and panel._lastMountID then
+            model:SetPosition(0, 0, 0)
+            if model.UseModelCenterToTransform then model:UseModelCenterToTransform(true) end
+            if model.SetPitch then pcall(model.SetPitch, model, 0) end
+            model:SetFacing(panel.modelRotation)
+            if model.SetPortraitZoom then model:SetPortraitZoom(0) end
+            if model.SetCamDistanceScale then
+                model:SetCamDistanceScale(FIXED_CAM_SCALE * panel.zoomMultiplier)
+            end
+            if model.SetViewTranslation then model:SetViewTranslation(0, 0) end
+            return
+        end
+        local yOff = 0
+        if panel._lastPetID and not panel._lastMountID then
+            yOff = PET_MODEL_VERTICAL_OFFSET
+        end
+        model:SetPosition(0, yOff, 0)
         if model.UseModelCenterToTransform then model:UseModelCenterToTransform(true) end
+        if model.SetPitch then pcall(model.SetPitch, model, 0) end
         model:SetFacing(panel.modelRotation)
         if model.SetPortraitZoom then model:SetPortraitZoom(0) end
         if panel.normalizedRadius then
             if model.SetModelScale then model:SetModelScale(panel.modelScale) end
             if model.SetCameraDistance then
-                local camDist = FIXED_CAM_DISTANCE * panel.zoomMultiplier * panel.modelScale
+                local vw, vh = modelViewport:GetWidth(), modelViewport:GetHeight()
+                local aspectPad = 1.0
+                if vw and vh and vh > 1 and (vw / vh) > 1.12 then
+                    -- Wide preview: tall mounts clip vertically more often — nudge camera back slightly.
+                    aspectPad = 1.09
+                end
+                local camDist = FIXED_CAM_DISTANCE
+                    * MODEL_VIEWER_CAMERA_FIT_PADDING
+                    * aspectPad
+                    * panel.zoomMultiplier
+                    * panel.modelScale
                 local ok = pcall(model.SetCameraDistance, model, math.max(0.1, camDist))
                 if not ok and model.SetCamDistanceScale then
                     model:SetCamDistanceScale(panel.camScale)
@@ -1766,36 +2098,115 @@ local function CreateModelViewer(parent, width, height)
         if model.SetViewTranslation then model:SetViewTranslation(0, 0) end
     end
 
-    -- Sol tık basılı tutunca: döndür
-    model:SetScript("OnMouseDown", function(_, button)
-        if button ~= "LeftButton" then return end
-        local x = GetCursorPosition()
-        local s = model:GetEffectiveScale()
-        if s and s > 0 then x = x / s end
-        panel._dragCursorX = x
-        panel._dragRotation = panel.modelRotation
+    local function ScheduleJournalSceneAfterMount(midLock)
+        if not midLock then return end
+        local function tryOnce()
+            if panel._lastMountID ~= midLock then return end
+            if TryApplyMountJournalModelScene(model, panel) then
+                panel._usesJournalCamera = true
+                panel.zoomMultiplier = 1.0
+                ApplyTransform()
+            end
+        end
+        C_Timer.After(0, tryOnce)
+        C_Timer.After(0.1, tryOnce)
+    end
+
+    -- Model script OnModelLoaded (Widget script handlers): radius APIs often valid here; complements deferred retries.
+    local function TryApplyBoundingRadiusNormalize(lockMountID, lockCreatureID)
+        if panel._usesJournalCamera then return false end
+        if lockMountID and panel._lastMountID ~= lockMountID then return false end
+        if lockCreatureID and lockCreatureID > 0 and panel._lastCreatureDisplayID ~= lockCreatureID then return false end
+        local r = GetEffectiveModelBoundingRadius(model)
+        if not r or r <= 0 or not model.SetModelScale or not model.SetCameraDistance then return false end
+        local scale = (REFERENCE_RADIUS / r) * 0.94
+        if scale < MODEL_SCALE_MIN then scale = MODEL_SCALE_MIN elseif scale > MODEL_SCALE_MAX then scale = MODEL_SCALE_MAX end
+        panel.normalizedRadius = true
+        panel.modelScale = scale
+        ApplyTransform()
+        return true
+    end
+
+    local FRAMING_RETRY_DELAYS = { 0, 0.06, 0.14, 0.30, 0.60 }
+    local function ScheduleBoundingRadiusRetries(lockMountID, lockCreatureID)
+        for i = 1, #FRAMING_RETRY_DELAYS do
+            local delay = FRAMING_RETRY_DELAYS[i]
+            C_Timer.After(delay, function()
+                TryApplyBoundingRadiusNormalize(lockMountID, lockCreatureID)
+            end)
+        end
+    end
+
+    model:SetScript("OnModelLoaded", function()
+        TryApplyBoundingRadiusNormalize(panel._lastMountID, panel._lastCreatureDisplayID)
+        ApplyTransform()
     end)
-    model:SetScript("OnMouseUp", function(_, button)
-        if button == "LeftButton" then panel._dragCursorX = nil end
-    end)
-    model:SetScript("OnUpdate", function()
-        if panel._dragCursorX == nil then return end
-        if not IsMouseButtonDown("LeftButton") then
+
+    local function InteractionEffectiveScale()
+        local s = interactionLayer:GetEffectiveScale()
+        if s and s > 0 then return s end
+        return model:GetEffectiveScale() or 1
+    end
+
+    local function interactionDragOnUpdate()
+        if panel._dragCursorX == nil or not panel._dragButton then
+            interactionLayer:SetScript("OnUpdate", nil)
+            return
+        end
+        if not IsMouseButtonDown(panel._dragButton) then
             panel._dragCursorX = nil
+            panel._dragButton = nil
+            interactionLayer:SetScript("OnUpdate", nil)
             return
         end
         local x = GetCursorPosition()
-        local s = model:GetEffectiveScale()
-        if s and s > 0 then x = x / s end
+        local s = InteractionEffectiveScale()
+        if s > 0 then x = x / s end
         local dx = x - panel._dragCursorX
         panel._dragCursorX = x
         panel.modelRotation = (panel._dragRotation or 0) - dx * ROTATE_SENSITIVITY
         panel._dragRotation = panel.modelRotation
         model:SetFacing(panel.modelRotation)
-        model:SetPosition(0, 0, 0)
+        ApplyTransform()
+    end
+
+    interactionLayer:SetScript("OnMouseDown", function(_, button)
+        if button ~= "LeftButton" and button ~= "RightButton" then return end
+        local x = GetCursorPosition()
+        local s = InteractionEffectiveScale()
+        if s > 0 then x = x / s end
+        panel._dragCursorX = x
+        panel._dragRotation = panel.modelRotation
+        panel._dragButton = button
+        interactionLayer:SetScript("OnUpdate", interactionDragOnUpdate)
     end)
-    -- Tekerlek: zoom (normalize modunda zoomMultiplier, yoksa camScale)
-    model:SetScript("OnMouseWheel", function(_, delta)
+    interactionLayer:SetScript("OnMouseUp", function(_, button)
+        if button == panel._dragButton then
+            panel._dragCursorX = nil
+            panel._dragButton = nil
+        end
+        interactionLayer:SetScript("OnUpdate", nil)
+    end)
+    interactionLayer:SetScript("OnHide", function()
+        panel._dragCursorX = nil
+        panel._dragButton = nil
+        interactionLayer:SetScript("OnUpdate", nil)
+    end)
+    interactionLayer:SetScript("OnMouseWheel", function(_, delta)
+        if panel._mountDisplayUsesJournalScene and panel._journalMountScene then
+            local m = panel.zoomMultiplier * (delta > 0 and 0.9 or 1.1)
+            if m < ZOOM_MULTIPLIER_MIN then m = ZOOM_MULTIPLIER_MIN elseif m > ZOOM_MULTIPLIER_MAX then m = ZOOM_MULTIPLIER_MAX end
+            panel.zoomMultiplier = m
+            ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+            return
+        end
+        if panel._usesJournalCamera then
+            local m = panel.zoomMultiplier * (delta > 0 and 0.9 or 1.1)
+            if m < ZOOM_MULTIPLIER_MIN then m = ZOOM_MULTIPLIER_MIN elseif m > ZOOM_MULTIPLIER_MAX then m = ZOOM_MULTIPLIER_MAX end
+            panel.zoomMultiplier = m
+            ApplyTransform()
+            return
+        end
         if panel.normalizedRadius then
             local m = panel.zoomMultiplier * (delta > 0 and 0.9 or 1.1)
             if m < ZOOM_MULTIPLIER_MIN then m = ZOOM_MULTIPLIER_MIN elseif m > ZOOM_MULTIPLIER_MAX then m = ZOOM_MULTIPLIER_MAX end
@@ -1816,12 +2227,14 @@ local function CreateModelViewer(parent, width, height)
     panel.textOverlay = textOverlay
 
     local DETAIL_HEADER_GAP = 10
+    local collectionsDetailIcon = math.floor((DETAIL_ICON_SIZE or 64) * 1.14)
     -- Detail icon with border (Factory CreateContainer + accent override)
-    local iconBorder = Factory:CreateContainer(textOverlay, DETAIL_ICON_SIZE, DETAIL_ICON_SIZE, true)
+    local iconBorder = Factory:CreateContainer(textOverlay, collectionsDetailIcon, collectionsDetailIcon, true)
     iconBorder:SetPoint("TOPLEFT", textOverlay, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)
     if ApplyVisuals then
         ApplyVisuals(iconBorder, {0.12, 0.12, 0.14, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.7})
     end
+    if iconBorder.EnableMouse then iconBorder:EnableMouse(false) end
     panel.detailIconBorder = iconBorder
     local iconTex = iconBorder:CreateTexture(nil, "OVERLAY")
     iconTex:SetAllPoints()
@@ -1874,6 +2287,12 @@ local function CreateModelViewer(parent, width, height)
     panel._tryCountRow = addCol and addCol.tryCountRow
 
     local nameText = FontManager:CreateFontString(textOverlay, "header", "OVERLAY")
+    do
+        local fp, fsz, flg = nameText:GetFont()
+        if type(fsz) == "number" and fp and flg then
+            pcall(nameText.SetFont, nameText, fp, fsz + 2, flg)
+        end
+    end
     nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", DETAIL_HEADER_GAP, 0)
     if addContainer then
         nameText:SetPoint("TOPRIGHT", addContainer, "TOPLEFT", -DETAIL_HEADER_GAP, 0)
@@ -1889,12 +2308,14 @@ local function CreateModelViewer(parent, width, height)
     headerRowBottom:SetPoint("TOPLEFT", iconBorder, "BOTTOMLEFT", 0, 0)
     headerRowBottom:SetPoint("TOPRIGHT", nameText, "BOTTOMRIGHT", 0, 0)
     headerRowBottom:SetHeight(1)
+    if headerRowBottom.EnableMouse then headerRowBottom:EnableMouse(false) end
     panel.headerRowBottom = headerRowBottom
 
     local sourceContainer = CreateFrame("Frame", nil, textOverlay)
     sourceContainer:SetPoint("TOPLEFT", headerRowBottom, "BOTTOMLEFT", 0, -TEXT_GAP)
     sourceContainer:SetPoint("TOPRIGHT", headerRowBottom, "BOTTOMRIGHT", 0, -TEXT_GAP)
     sourceContainer:SetHeight(1)
+    if sourceContainer.EnableMouse then sourceContainer:EnableMouse(false) end
     panel.sourceContainer = sourceContainer
     panel.sourceLines = {}
 
@@ -1916,6 +2337,13 @@ local function CreateModelViewer(parent, width, height)
     descText:SetTextColor(whiteR, whiteG, whiteB)
     panel.descText = descText
 
+    local obtainedAtLine = FontManager:CreateFontString(textOverlay, "small", "OVERLAY")
+    obtainedAtLine:SetJustifyH("LEFT")
+    obtainedAtLine:SetWordWrap(true)
+    obtainedAtLine:SetTextColor(0.68, 0.70, 0.74, 1)
+    obtainedAtLine:Hide()
+    panel.obtainedAtLine = obtainedAtLine
+
     local collectedBadge = FontManager:CreateFontString(textOverlay, "body", "OVERLAY")
     collectedBadge:SetPoint("BOTTOMLEFT", textOverlay, "BOTTOMLEFT", CONTENT_INSET, CONTENT_INSET)
     collectedBadge:SetPoint("RIGHT", textOverlay, "RIGHT", -CONTENT_INSET, 0)
@@ -1923,9 +2351,27 @@ local function CreateModelViewer(parent, width, height)
     collectedBadge:Hide()
     panel.collectedBadge = collectedBadge
 
+    -- descText exists: anchor model viewport below it (first layout; was previously deferred until SetMountInfo).
+    UpdateModelFrameSize()
+
     panel.model = model
 
     panel:SetScript("OnShow", function()
+        if panel._mountDisplayUsesJournalScene and panel._lastMountID and panel._journalMountScene then
+            ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
+            ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+            return
+        end
+        local mid = panel._lastMountID
+        if panel._useSetMountForRestore and mid and type(model.SetMount) == "function" then
+            model:ClearModel()
+            local ok = pcall(model.SetMount, model, mid)
+            if ok then
+                ApplyTransform()
+                ScheduleJournalSceneAfterMount(mid)
+                return
+            end
+        end
         local cid = panel._lastCreatureDisplayID
         if cid and cid > 0 and model.SetDisplayInfo then
             model:ClearModel()
@@ -1936,16 +2382,80 @@ local function CreateModelViewer(parent, width, height)
 
     function panel:SetMount(mountID, creatureDisplayIDFromCache)
         if not mountID then
+            if panel._journalMountScene then
+                panel._journalMountScene:Hide()
+            end
+            panel._mountDisplayUsesJournalScene = false
+            ShowPlayerModelPath(true)
             model:ClearModel()
             panel._lastMountID = nil
             panel._lastCreatureDisplayID = nil
+            panel._useSetMountForRestore = false
+            panel._mountUiModelSceneID = nil
+            panel._usesJournalCamera = false
             return
         end
+        local extraDisplayID, _, _, uiScene = SafeGetMountInfoExtra(mountID)
+        panel._mountUiModelSceneID = uiScene
+        panel._usesJournalCamera = false
+
         local creatureDisplayID = creatureDisplayIDFromCache
         if not creatureDisplayID or creatureDisplayID <= 0 then
-            creatureDisplayID = SafeGetMountInfoExtra(mountID)
+            creatureDisplayID = extraDisplayID
+        end
+
+        local journalScene = TryInitJournalMountModelScene()
+        if journalScene then
+            panel._lastPetID = nil
+            panel._lastMountID = mountID
+            panel._lastCreatureDisplayID = (creatureDisplayID and creatureDisplayID > 0) and creatureDisplayID or nil
+            panel._useSetMountForRestore = false
+            local okJournal = ApplyMountJournalModelSceneDisplay(journalScene, mountID, creatureDisplayIDFromCache, true)
+            if okJournal then
+                panel._mountDisplayUsesJournalScene = true
+                panel.zoomMultiplier = 1.0
+                ApplyJournalModelSceneZoom(journalScene, panel.zoomMultiplier)
+                if C_Timer and C_Timer.After then
+                    C_Timer.After(0, function()
+                        if panel._lastMountID ~= mountID or not panel._mountDisplayUsesJournalScene or not panel._journalMountScene then return end
+                        ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+                    end)
+                end
+                model:ClearModel()
+                ShowPlayerModelPath(false)
+                panel.normalizedRadius = false
+                return
+            end
+        end
+
+        panel._mountDisplayUsesJournalScene = false
+        if panel._journalMountScene then
+            panel._journalMountScene:Hide()
+        end
+        ShowPlayerModelPath(true)
+
+        local usedSetMount = false
+        if type(model.SetMount) == "function" then
+            model:ClearModel()
+            usedSetMount = pcall(model.SetMount, model, mountID) == true
+        end
+        if usedSetMount then
+            panel._useSetMountForRestore = true
+            panel._lastMountID = mountID
+            panel._lastCreatureDisplayID = (creatureDisplayID and creatureDisplayID > 0) and creatureDisplayID or nil
+            panel.modelRotation = 0
+            panel.camScale = FIXED_CAM_SCALE
+            panel.normalizedRadius = true
+            panel.modelScale = 1.0
+            panel.zoomMultiplier = 1.0
+            ApplyTransform()
+            if model.SetAnimation then pcall(model.SetAnimation, model, 0) end
+            ScheduleJournalSceneAfterMount(mountID)
+            ScheduleBoundingRadiusRetries(mountID, 0)
+            return
         end
         if creatureDisplayID and creatureDisplayID > 0 then
+            panel._useSetMountForRestore = false
             model:ClearModel()
             model:SetDisplayInfo(creatureDisplayID)
             panel._lastMountID = mountID
@@ -1957,43 +2467,48 @@ local function CreateModelViewer(parent, width, height)
             panel.modelScale = 1.0
             panel.zoomMultiplier = 1.0
             ApplyTransform()
-            -- Modeli REFERENCE_RADIUS'a scale et → tek sabit kamera; tüm mount'lar aynı boyut/pozisyon. GetModelRadius geç dönebilir, 1 sn boyunca aralıklı dene.
-            local function tryApplyRadiusNormalize()
-                if panel._lastCreatureDisplayID ~= creatureDisplayID then return end
-                local r = GetModelRadiusSafe(model)
-                if not r or r <= 0 or not model.SetModelScale or not model.SetCameraDistance then return end
-                local scale = REFERENCE_RADIUS / r
-                if scale < MODEL_SCALE_MIN then scale = MODEL_SCALE_MIN elseif scale > MODEL_SCALE_MAX then scale = MODEL_SCALE_MAX end
-                panel.normalizedRadius = true
-                panel.modelScale = scale
-                panel.zoomMultiplier = 1.0
-                ApplyTransform()
-            end
-            local t = 0
-            while t <= RADIUS_POLL_MAX_TIME do
-                C_Timer.After(t, tryApplyRadiusNormalize)
-                t = t + RADIUS_POLL_INTERVAL
-            end
+            if model.SetAnimation then pcall(model.SetAnimation, model, 0) end
+            ScheduleJournalSceneAfterMount(mountID)
+            ScheduleBoundingRadiusRetries(mountID, creatureDisplayID)
         else
             model:ClearModel()
             panel._lastMountID = nil
             panel._lastCreatureDisplayID = nil
+            panel._useSetMountForRestore = false
+            panel._mountUiModelSceneID = nil
+            panel._usesJournalCamera = false
             panel.normalizedRadius = false
         end
     end
 
     function panel:SetPet(speciesID, creatureDisplayIDFromCache)
         if not speciesID then
+            if panel._journalMountScene then
+                panel._journalMountScene:Hide()
+            end
+            panel._mountDisplayUsesJournalScene = false
+            ShowPlayerModelPath(true)
             model:ClearModel()
             panel._lastPetID = nil
             panel._lastCreatureDisplayID = nil
+            panel._useSetMountForRestore = false
+            panel._mountUiModelSceneID = nil
+            panel._usesJournalCamera = false
             return
         end
+        if panel._journalMountScene then
+            panel._journalMountScene:Hide()
+        end
+        panel._mountDisplayUsesJournalScene = false
+        ShowPlayerModelPath(true)
         local creatureDisplayID = creatureDisplayIDFromCache
         if not creatureDisplayID or creatureDisplayID <= 0 then
             creatureDisplayID = select(1, SafeGetPetInfoExtra(speciesID))
         end
         if creatureDisplayID and creatureDisplayID > 0 then
+            panel._useSetMountForRestore = false
+            panel._mountUiModelSceneID = nil
+            panel._usesJournalCamera = false
             model:ClearModel()
             model:SetDisplayInfo(creatureDisplayID)
             panel._lastPetID = speciesID
@@ -2004,22 +2519,8 @@ local function CreateModelViewer(parent, width, height)
             panel.modelScale = 1.0
             panel.zoomMultiplier = 1.0
             ApplyTransform()
-            local function tryApplyRadiusNormalize()
-                if panel._lastCreatureDisplayID ~= creatureDisplayID then return end
-                local r = GetModelRadiusSafe(model)
-                if not r or r <= 0 or not model.SetModelScale or not model.SetCameraDistance then return end
-                local scale = REFERENCE_RADIUS / r
-                if scale < MODEL_SCALE_MIN then scale = MODEL_SCALE_MIN elseif scale > MODEL_SCALE_MAX then scale = MODEL_SCALE_MAX end
-                panel.normalizedRadius = true
-                panel.modelScale = scale
-                panel.zoomMultiplier = 1.0
-                ApplyTransform()
-            end
-            local t = 0
-            while t <= RADIUS_POLL_MAX_TIME do
-                C_Timer.After(t, tryApplyRadiusNormalize)
-                t = t + RADIUS_POLL_INTERVAL
-            end
+            if model.SetAnimation then pcall(model.SetAnimation, model, 0) end
+            ScheduleBoundingRadiusRetries(nil, creatureDisplayID)
         else
             model:ClearModel()
             panel._lastPetID = nil
@@ -2054,6 +2555,7 @@ local function CreateModelViewer(parent, width, height)
             if panel._addContainer then panel._addContainer:Hide() end
             if panel._wowheadBtn then panel._wowheadBtn:Hide() end
             if panel._tryCountRow then panel._tryCountRow:Hide() end
+            if panel.obtainedAtLine then panel.obtainedAtLine:Hide() end
             return
         end
         if panel._addContainer and panel._addBtn and panel._addedIndicator then
@@ -2174,13 +2676,6 @@ local function CreateModelViewer(parent, width, height)
             panel.sourceLines[i]:SetText("")
             panel.sourceLines[i]:Hide()
         end
-        descText:ClearAllPoints()
-        descText:SetPoint("TOPLEFT", lastAnchor, lastPoint, 0, lastY)
-        descText:SetPoint("TOPRIGHT", lastAnchor, "BOTTOMRIGHT", 0, lastY)
-
-        description = (description or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        -- API'den gelen description olduğu gibi, beyaz
-        descText:SetText(description ~= "" and (whiteHex .. description .. "|r") or "")
         local isCollected = isCollectedFromCache
         if isCollected == nil and C_MountJournal and C_MountJournal.GetMountInfoByID then
             local _, _, _, _, _, _, _, _, _, _, collected = C_MountJournal.GetMountInfoByID(mountID)
@@ -2190,6 +2685,33 @@ local function CreateModelViewer(parent, width, height)
                 isCollected = collected == true
             end
         end
+
+        local anchorBeforeDesc, pointBeforeDesc, yBeforeDesc = lastAnchor, lastPoint, lastY
+        if panel.obtainedAtLine then
+            panel.obtainedAtLine:ClearAllPoints()
+            local obtText = (isCollected and WarbandNexus.GetCollectionsAcquiredAt)
+                and FormatCollectionsAcquiredDetail(WarbandNexus:GetCollectionsAcquiredAt("mount", mountID))
+                or nil
+            if obtText then
+                panel.obtainedAtLine:SetPoint("TOPLEFT", lastAnchor, lastPoint, 0, lastY)
+                panel.obtainedAtLine:SetPoint("TOPRIGHT", sourceContainer, "TOPRIGHT", 0, lastY)
+                panel.obtainedAtLine:SetText(obtText)
+                panel.obtainedAtLine:Show()
+                anchorBeforeDesc = panel.obtainedAtLine
+                pointBeforeDesc = "BOTTOMLEFT"
+                yBeforeDesc = -TEXT_GAP_LINE
+            else
+                panel.obtainedAtLine:Hide()
+            end
+        end
+
+        descText:ClearAllPoints()
+        descText:SetPoint("TOPLEFT", anchorBeforeDesc, pointBeforeDesc, 0, yBeforeDesc)
+        descText:SetPoint("TOPRIGHT", anchorBeforeDesc, "BOTTOMRIGHT", 0, yBeforeDesc)
+
+        description = (description or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        -- API'den gelen description olduğu gibi, beyaz
+        descText:SetText(description ~= "" and (whiteHex .. description .. "|r") or "")
 
         if panel._wowheadBtn then
             local spellID = nil
@@ -2241,6 +2763,7 @@ local function CreateModelViewer(parent, width, height)
             if panel._addContainer then panel._addContainer:Hide() end
             if panel._wowheadBtn then panel._wowheadBtn:Hide() end
             if panel._tryCountRow then panel._tryCountRow:Hide() end
+            if panel.obtainedAtLine then panel.obtainedAtLine:Hide() end
             return
         end
         if panel._addContainer and panel._addBtn and panel._addedIndicator then
@@ -2359,9 +2882,33 @@ local function CreateModelViewer(parent, width, height)
             panel.sourceLines[i]:SetText("")
             panel.sourceLines[i]:Hide()
         end
+        local petCollected = isCollectedFromCache
+        if petCollected == nil then
+            petCollected = SafeGetPetCollected(speciesID)
+        end
+
+        local anchorBeforeDescP, pointBeforeDescP, yBeforeDescP = lastAnchor, lastPoint, lastY
+        if panel.obtainedAtLine then
+            panel.obtainedAtLine:ClearAllPoints()
+            local obtText = (petCollected and WarbandNexus.GetCollectionsAcquiredAt)
+                and FormatCollectionsAcquiredDetail(WarbandNexus:GetCollectionsAcquiredAt("pet", speciesID))
+                or nil
+            if obtText then
+                panel.obtainedAtLine:SetPoint("TOPLEFT", lastAnchor, lastPoint, 0, lastY)
+                panel.obtainedAtLine:SetPoint("TOPRIGHT", sourceContainer, "TOPRIGHT", 0, lastY)
+                panel.obtainedAtLine:SetText(obtText)
+                panel.obtainedAtLine:Show()
+                anchorBeforeDescP = panel.obtainedAtLine
+                pointBeforeDescP = "BOTTOMLEFT"
+                yBeforeDescP = -TEXT_GAP_LINE
+            else
+                panel.obtainedAtLine:Hide()
+            end
+        end
+
         descText:ClearAllPoints()
-        descText:SetPoint("TOPLEFT", lastAnchor, lastPoint, 0, lastY)
-        descText:SetPoint("TOPRIGHT", lastAnchor, "BOTTOMRIGHT", 0, lastY)
+        descText:SetPoint("TOPLEFT", anchorBeforeDescP, pointBeforeDescP, 0, yBeforeDescP)
+        descText:SetPoint("TOPRIGHT", anchorBeforeDescP, "BOTTOMRIGHT", 0, yBeforeDescP)
         description = (description or ""):gsub("^%s+", ""):gsub("%s+$", "")
         descText:SetText(description ~= "" and (whiteHex .. description .. "|r") or "")
 
@@ -2585,10 +3132,12 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         end
 
         -- Header: same hierarchy as Mounts/Pets (CONTENT_INSET from edges, icon then name)
+        local CDH = ns.CollectionsDetailHeaderLayout or {}
+        local achRightColMinH = ACH_ROW_ADD_HEIGHT + (CDH.TRY_GAP or 4) + (CDH.TRY_ROW_H or 18)
         local headerRow = CreateFrame("Frame", nil, content)
         headerRow:SetPoint("TOPLEFT", content, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)
         headerRow:SetPoint("TOPRIGHT", content, "TOPRIGHT", -CONTENT_INSET, -CONTENT_INSET)
-        headerRow:SetHeight(math.max(ROW_HEIGHT + SECTION_GAP, DETAIL_ICON_SIZE + SECTION_GAP))
+        headerRow:SetHeight(math.max(ROW_HEIGHT + SECTION_GAP, DETAIL_ICON_SIZE + SECTION_GAP, achRightColMinH))
         local iconBorder = Factory:CreateContainer(headerRow, DETAIL_ICON_SIZE, DETAIL_ICON_SIZE, true)
         iconBorder:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 0, 0)
         if ApplyVisuals then
@@ -2602,35 +3151,29 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         local goldR = (COLORS.gold and COLORS.gold[1]) or 1
         local goldG = (COLORS.gold and COLORS.gold[2]) or 0.82
         local goldB = (COLORS.gold and COLORS.gold[3]) or 0
-        -- Sağ üst: Add + Track (solda), Wowhead en sağda (mount/pet/toy ile aynı)
-        local CDL = ns.CollectionsDetailHeaderLayout or {}
-        local whSz = CDL.WOWHEAD_SIZE or 18
-        local whGap = CDL.WOWHEAD_GAP or 10
-        local achControls = CreateFrame("Frame", nil, headerRow)
-        achControls:SetSize(ACH_ROW_ADD_WIDTH + ACH_ACTION_GAP + ACH_TRACK_WIDTH, ACH_ROW_ADD_HEIGHT)
-        local addContainer = CreateFrame("Frame", nil, headerRow)
-        addContainer:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", 0, 0)
-        addContainer:SetSize(whSz + whGap + achControls:GetWidth(), ACH_ROW_ADD_HEIGHT)
-        achControls:SetPoint("TOPRIGHT", addContainer, "TOPRIGHT", -(whSz + whGap), 0)
+        -- Sağ üst: mount/pet/toy ile aynı Factory sütunu (Wowhead en sağ, try satırı action genişliğinde; slot Add+Track için genişletildi)
+        local achActionW = ACH_ROW_ADD_WIDTH + ACH_ACTION_GAP + ACH_TRACK_WIDTH
+        local achAddCol = Factory:CreateCollectionsDetailRightColumn(headerRow, {
+            withTryRow = true,
+            actionSlotWidth = achActionW,
+            actionSlotHeight = ACH_ROW_ADD_HEIGHT,
+        })
+        achAddCol.root:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", 0, 0)
+        local achControls = CreateFrame("Frame", nil, achAddCol.actionSlot)
+        achControls:SetAllPoints(achAddCol.actionSlot)
 
-        local headerWowheadBtn = CreateFrame("Button", nil, addContainer)
-        headerWowheadBtn:SetSize(whSz, whSz)
-        headerWowheadBtn:SetPoint("TOPRIGHT", addContainer, "TOPRIGHT", 0, -math.max(0, (ACH_ROW_ADD_HEIGHT - whSz) / 2))
-        headerWowheadBtn:SetNormalAtlas("socialqueuing-icon-eye")
-        headerWowheadBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-        headerWowheadBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
-            GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
-            GameTooltip:Show()
-        end)
-        headerWowheadBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        local headerWowheadBtn = achAddCol.wowheadBtn
         local achIDForWh = achievement.id
         headerWowheadBtn:SetScript("OnClick", function(self)
             if achIDForWh and ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
                 ns.UI.Factory:ShowWowheadCopyURL("achievement", achIDForWh, self)
             end
         end)
+        if achievement.id then
+            headerWowheadBtn:Show()
+        else
+            headerWowheadBtn:Hide()
+        end
 
         -- Track: Add ile aynı köşesiz stil (border/background yok, sadece metin)
         local trackBtn = Factory:CreateButton(achControls, ACH_TRACK_WIDTH, ACH_TRACK_HEIGHT, true)
@@ -2735,9 +3278,13 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
 
         UpdateTrackButton()
 
+        if achAddCol.tryCountRow and achAddCol.tryCountRow.WnUpdateTryCount then
+            achAddCol.tryCountRow:WnUpdateTryCount("achievement", achievement.id, achievement.name)
+        end
+
         local headerName = FontManager:CreateFontString(headerRow, "header", "OVERLAY")
         headerName:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", DETAIL_HEADER_GAP, 0)
-        headerName:SetPoint("TOPRIGHT", addContainer, "TOPLEFT", -DETAIL_HEADER_GAP, 0)
+        headerName:SetPoint("TOPRIGHT", achAddCol.root, "TOPLEFT", -DETAIL_HEADER_GAP, 0)
         headerName:SetJustifyH("LEFT")
         headerName:SetWordWrap(true)
         headerName:SetTextColor(goldR, goldG, goldB)
@@ -2747,6 +3294,25 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         lastAnchor = headerRow
         lastPoint = "BOTTOMLEFT"
         lastY = -SECTION_GAP
+
+        if achievement.isCollected and WarbandNexus and WarbandNexus.GetCollectionsAcquiredAt then
+            local obtTs = WarbandNexus:GetCollectionsAcquiredAt("achievement", achievement.id)
+            local obtStr = obtTs and FormatCollectionsAcquiredDetail(obtTs) or nil
+            if obtStr then
+                local obtFs = FontManager:CreateFontString(content, "small", "OVERLAY")
+                obtFs:SetPoint("TOP", lastAnchor, "BOTTOM", 0, lastY)
+                obtFs:SetPoint("LEFT", content, "LEFT", CONTENT_COLUMN_LEFT, 0)
+                obtFs:SetPoint("RIGHT", content, "RIGHT", -CONTENT_INSET, 0)
+                obtFs:SetJustifyH("LEFT")
+                obtFs:SetWordWrap(true)
+                obtFs:SetTextColor(0.68, 0.70, 0.74, 1)
+                obtFs:SetText(obtStr)
+                addDetailElement(obtFs)
+                lastAnchor = obtFs
+                lastPoint = "BOTTOMLEFT"
+                lastY = -SECTION_GAP
+            end
+        end
 
         -- Description: tek satır "Description: metin" — sadece baş harf büyük, etiket sarı
         if achievement.description and achievement.description ~= "" then
@@ -2847,6 +3413,7 @@ end
 -- ============================================================================
 
 local SUB_TABS = {
+    { key = "recent", label = (ns.L and ns.L["COLLECTIONS_SUBTAB_RECENT"]) or "Recent", icon = "Interface\\Icons\\INV_Misc_Note_01" },
     { key = "achievements", label = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", icon = "Interface\\Icons\\Achievement_General" },
     { key = "mounts", label = (ns.L and ns.L["CATEGORY_MOUNTS"]) or MOUNTS or "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
     { key = "pets", label = (ns.L and ns.L["CATEGORY_PETS"]) or PETS or "Pets", icon = "Interface\\Icons\\INV_Box_PetCarrier_01" },
@@ -3546,6 +4113,60 @@ end
 
 local CONTENT_GAP = LAYOUT.CARD_GAP or 8
 
+-- Per–sub-tab title block inside contentFrame (below search); reduces inner list/detail height.
+local COLLECTIONS_SUBTAB_HEADER_H = 44
+local COLLECTIONS_SUBTAB_HEADER_GAP = 8
+
+local CONTENT_HEADER_LOCALE_KEYS = {
+    achievements = { title = "COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS", sub = "COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS" },
+    mounts = { title = "COLLECTIONS_CONTENT_TITLE_MOUNTS", sub = "COLLECTIONS_CONTENT_SUB_MOUNTS" },
+    pets = { title = "COLLECTIONS_CONTENT_TITLE_PETS", sub = "COLLECTIONS_CONTENT_SUB_PETS" },
+    toys = { title = "COLLECTIONS_CONTENT_TITLE_TOYS", sub = "COLLECTIONS_CONTENT_SUB_TOYS" },
+    recent = { title = "COLLECTIONS_CONTENT_TITLE_RECENT", sub = "COLLECTIONS_CONTENT_SUB_RECENT" },
+}
+
+local function ApplyCollectionsContentHeader(contentFrame, tabKey, chFull)
+    local loc = ns.L
+    local keys = CONTENT_HEADER_LOCALE_KEYS[tabKey]
+    local titlePlain = (keys and loc and loc[keys.title])
+        or (tabKey == "achievements" and ((loc and loc["CATEGORY_ACHIEVEMENTS"]) or "Achievements"))
+        or (tabKey == "mounts" and ((loc and loc["CATEGORY_MOUNTS"]) or "Mounts"))
+        or (tabKey == "pets" and ((loc and loc["CATEGORY_PETS"]) or "Pets"))
+        or (tabKey == "toys" and ((loc and loc["CATEGORY_TOYS"]) or "Toys"))
+        or (tabKey == "recent" and ((loc and loc["COLLECTIONS_SUBTAB_RECENT"]) or "Recent"))
+        or tostring(tabKey or "")
+    local subPlain = (keys and loc and loc[keys.sub]) or ""
+
+    local hdr = collectionsState._collectionsContentSubHeader
+    if not hdr then
+        hdr = CreateFrame("Frame", nil, contentFrame)
+        hdr._title = FontManager:CreateFontString(hdr, "header", "OVERLAY")
+        hdr._title:SetPoint("TOPLEFT", hdr, "TOPLEFT", 4, -4)
+        hdr._title:SetJustifyH("LEFT")
+        hdr._subtitle = FontManager:CreateFontString(hdr, "subtitle", "OVERLAY")
+        hdr._subtitle:SetPoint("TOPLEFT", hdr._title, "BOTTOMLEFT", 0, -2)
+        hdr._subtitle:SetJustifyH("LEFT")
+        hdr._subtitle:SetTextColor(1, 1, 1, 1)
+        collectionsState._collectionsContentSubHeader = hdr
+    end
+    hdr:SetParent(contentFrame)
+    hdr:ClearAllPoints()
+    hdr:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, 0)
+    hdr:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", 0, 0)
+    hdr:SetHeight(COLLECTIONS_SUBTAB_HEADER_H)
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    hdr._title:SetText("|cff" .. hexColor .. titlePlain .. "|r")
+    hdr._subtitle:SetText(subPlain)
+    hdr._subtitle:SetShown(subPlain ~= "")
+    hdr:SetFrameLevel((contentFrame:GetFrameLevel() or 0) + 3)
+    hdr:Show()
+
+    local headerBlockH = COLLECTIONS_SUBTAB_HEADER_H + COLLECTIONS_SUBTAB_HEADER_GAP
+    local innerCh = math.max(80, (chFull or 400) - headerBlockH)
+    return headerBlockH, innerCh
+end
+
 -- Result container: only one sub-tab's content is visible. Hide all result-area frames before drawing current tab.
 local function HideAllCollectionsResultFrames()
     if collectionsState.loadingPanel then collectionsState.loadingPanel:Hide() end
@@ -3568,6 +4189,289 @@ local function HideAllCollectionsResultFrames()
     if collectionsState.toyListScrollBarContainer then collectionsState.toyListScrollBarContainer:Hide() end
     if collectionsState.toyDetailContainer then collectionsState.toyDetailContainer:Hide() end
     if collectionsState.toyDetailScrollBarContainer then collectionsState.toyDetailScrollBarContainer:Hide() end
+    if collectionsState.recentTabPanel then collectionsState.recentTabPanel:Hide() end
+    if collectionsState.collectionRightColumn then collectionsState.collectionRightColumn:Hide() end
+    if collectionsState.collectionProgressFrame then collectionsState.collectionProgressFrame:Hide() end
+    if collectionsState._collectionsContentSubHeader then collectionsState._collectionsContentSubHeader:Hide() end
+end
+
+---Recent sub-tab: four equal cards (Achievements, Mounts, Pets, Toys), each listing recent obtains for that type only (newest-first in DB).
+local function RecentEntryNameMatches(e, qlower)
+    if not e or type(e.name) ~= "string" or e.name == "" then return false end
+    if not qlower then return true end
+    local nm = e.name
+    if issecretvalue and issecretvalue(nm) then return false end
+    return nm:lower():find(qlower, 1, true) ~= nil
+end
+
+local function RecentPickForType(db, typ, qlower, maxN)
+    local out = {}
+    if type(db) ~= "table" then return out end
+    for i = 1, #db do
+        local e = db[i]
+        if e and e.type == typ and RecentEntryNameMatches(e, qlower) then
+            out[#out + 1] = e
+            if #out >= maxN then break end
+        end
+    end
+    return out
+end
+
+local function ClearRecentScrollChildren(scrollChild)
+    if not scrollChild then return end
+    local ch = { scrollChild:GetChildren() }
+    for i = 1, #ch do
+        ch[i]:SetParent(nil)
+        ch[i]:Hide()
+    end
+end
+
+local function GetRecentSectionCategoryIcon(ctype)
+    if ctype == "achievement" then
+        return "UI-Achievement-Shield-NoPoints", true
+    elseif ctype == "mount" then
+        return DEFAULT_ICON_MOUNT, false
+    elseif ctype == "pet" then
+        return DEFAULT_ICON_PET, false
+    elseif ctype == "toy" then
+        return DEFAULT_ICON_TOY, false
+    end
+    return DEFAULT_ICON_ACHIEVEMENT, false
+end
+
+local function GetRecentEntryDisplayIcon(ctype, id)
+    if WarbandNexus and WarbandNexus.GetPlanDisplayIcon and id ~= nil then
+        local plan = { type = ctype }
+        if ctype == "achievement" then plan.achievementID = id
+        elseif ctype == "mount" then plan.mountID = id
+        elseif ctype == "pet" then plan.speciesID = id
+        elseif ctype == "toy" then plan.itemID = id
+        else return DEFAULT_ICON_ACHIEVEMENT
+        end
+        return WarbandNexus:GetPlanDisplayIcon(plan)
+    end
+    local path = select(1, GetRecentSectionCategoryIcon(ctype))
+    if ctype == "achievement" then return DEFAULT_ICON_ACHIEVEMENT end
+    return path or DEFAULT_ICON_ACHIEVEMENT
+end
+
+local function RecentRowNavigateToEntry(ctype, id)
+    if not ctype or id == nil then return end
+    if ctype == "achievement" then
+        collectionsState.currentSubTab = "achievements"
+        ns._sessionCollectionsSubTab = "achievements"
+        collectionsState.selectedAchievementID = id
+    elseif ctype == "mount" then
+        collectionsState.currentSubTab = "mounts"
+        ns._sessionCollectionsSubTab = "mounts"
+        collectionsState.selectedMountID = id
+    elseif ctype == "pet" then
+        collectionsState.currentSubTab = "pets"
+        ns._sessionCollectionsSubTab = "pets"
+        collectionsState.selectedPetID = id
+    elseif ctype == "toy" then
+        collectionsState.currentSubTab = "toys"
+        ns._sessionCollectionsSubTab = "toys"
+        collectionsState.selectedToyID = id
+    else
+        return
+    end
+    if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+end
+
+local function DrawRecentContent(contentFrame)
+    if not contentFrame then return end
+    HideAllCollectionsResultFrames()
+    local parent = contentFrame:GetParent()
+    local cw = contentFrame:GetWidth()
+    local ch = contentFrame:GetHeight()
+    if not cw or cw < 1 then
+        cw = (parent and parent:GetWidth() and (parent:GetWidth() - 20)) or 660
+    end
+    if not ch or ch < 1 then
+        ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
+    end
+
+    local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "recent", ch)
+
+    local panel = collectionsState.recentTabPanel
+    if not panel then
+        -- No outer bordered “detail” shell — matches Achievements list area (plain container + scroll).
+        panel = Factory:CreateContainer(contentFrame, cw, innerCh, false)
+        panel:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
+        panel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
+        local scrollFrame = Factory:CreateScrollFrame(panel, "UIPanelScrollFrameTemplate", true)
+        scrollFrame:SetAllPoints()
+        EnableStandardScrollWheel(scrollFrame)
+        local innerW = math.max(1, cw)
+        local scrollChild = CreateStandardScrollChild(scrollFrame, innerW, 1)
+        collectionsState.recentTabPanel = panel
+        collectionsState.recentScrollFrame = scrollFrame
+        collectionsState.recentScrollChild = scrollChild
+    end
+    panel:SetParent(contentFrame)
+    panel:ClearAllPoints()
+    panel:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
+    panel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
+    panel:Show()
+    if panel.SetSize then
+        panel:SetSize(cw, innerCh)
+    end
+
+    local scrollFrame = collectionsState.recentScrollFrame
+    local sch = collectionsState.recentScrollChild
+    if scrollFrame and sch then
+        scrollFrame:ClearAllPoints()
+        scrollFrame:SetAllPoints()
+        sch:SetWidth(math.max(1, cw))
+    end
+
+    if not sch then return end
+
+    local db = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.collectionsRecentObtained
+    local loc = ns.L
+    local qraw = collectionsState.searchText or ""
+    local qlower
+    if qraw ~= "" then
+        if not (issecretvalue and issecretvalue(qraw)) then
+            qlower = qraw:lower()
+        end
+    end
+
+    local emptyTxt = (loc and loc["COLLECTIONS_RECENT_TAB_EMPTY"]) or (loc and loc["COLLECTIONS_RECENT_EMPTY"]) or "Nothing recorded yet."
+    local searchEmptyTxt = (loc and loc["COLLECTIONS_RECENT_SEARCH_EMPTY"]) or "No matching entries."
+    local noneLine = (loc and loc["COLLECTIONS_RECENT_SECTION_NONE"]) or "No entries yet."
+    local inset = CONTENT_INSET or 8
+    local gap = CARD_GAP
+
+    if collectionsState._recentEmptyFs then
+        collectionsState._recentEmptyFs:Hide()
+        collectionsState._recentEmptyFs:SetParent(sch)
+    end
+
+    local function finishRecentScroll(totalY)
+        sch:SetHeight(math.max(totalY + inset, 1))
+        if scrollFrame and Factory.UpdateScrollBarVisibility then
+            Factory:UpdateScrollBarVisibility(scrollFrame)
+        end
+    end
+
+    local function showRecentPlainMessage(msg)
+        ClearRecentScrollChildren(sch)
+        local fs = collectionsState._recentEmptyFs
+        if not fs then
+            fs = FontManager:CreateFontString(sch, "body", "OVERLAY")
+            collectionsState._recentEmptyFs = fs
+        end
+        fs:SetParent(sch)
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", sch, "TOPLEFT", inset, -inset)
+        fs:SetPoint("TOPRIGHT", sch, "TOPRIGHT", -inset, -inset)
+        fs:SetJustifyH("LEFT")
+        fs:SetJustifyV("TOP")
+        fs:SetWordWrap(true)
+        fs:SetTextColor(0.72, 0.72, 0.75, 1)
+        fs:SetText(msg or "")
+        fs:Show()
+        finishRecentScroll(inset + 72)
+    end
+
+    if not db or #db == 0 then
+        showRecentPlainMessage(qlower and searchEmptyTxt or emptyTxt)
+        return
+    end
+
+    if qlower then
+        local anyMatch = false
+        for si = 1, #RECENT_SECTION_ORDER do
+            local typ = RECENT_SECTION_ORDER[si]
+            if #RecentPickForType(db, typ, qlower, RECENT_PER_SECTION) > 0 then
+                anyMatch = true
+                break
+            end
+        end
+        if not anyMatch then
+            showRecentPlainMessage(searchEmptyTxt)
+            return
+        end
+    end
+
+    ClearRecentScrollChildren(sch)
+
+    local innerW = math.max(1, (sch:GetWidth() or cw) - 2 * inset)
+    local cardW = (innerW - 3 * gap) / 4
+    local cardH = math.max(160, innerCh - 2 * inset)
+    local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 6
+    local listTopPad = headerBand + 4
+    local maxRows = math.max(1, math.floor((cardH - listTopPad - RECENT_CARD_HEADER_PAD) / (ROW_HEIGHT + 2)))
+    local pickLimit = math.min(RECENT_PER_SECTION, maxRows)
+
+    local rowVisualIndex = 0
+    for si = 1, #RECENT_SECTION_ORDER do
+        local typ = RECENT_SECTION_ORDER[si]
+        local picked = RecentPickForType(db, typ, qlower, pickLimit)
+        local cat = CollectionsRecentCategoryLabel(typ)
+        local iconTex, iconIsAtlas = GetRecentSectionCategoryIcon(typ)
+        local defaultEmptyIcon = (typ == "achievement" and DEFAULT_ICON_ACHIEVEMENT)
+            or (typ == "mount" and DEFAULT_ICON_MOUNT)
+            or (typ == "pet" and DEFAULT_ICON_PET)
+            or DEFAULT_ICON_TOY
+
+        local card = CreateCard(sch, cardH)
+        card:SetParent(sch)
+        card:SetWidth(cardW)
+        card:SetPoint("TOPLEFT", sch, "TOPLEFT", inset + (si - 1) * (cardW + gap), -inset)
+        card:Show()
+
+        local iconFr = CreateIcon(card, iconTex, RECENT_CARD_ICON, iconIsAtlas, nil, true)
+        if iconFr then
+            iconFr:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD, -RECENT_CARD_HEADER_PAD)
+            iconFr:Show()
+        end
+
+        local titleFs = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
+        titleFs:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 6, -RECENT_CARD_HEADER_PAD - 2)
+        titleFs:SetPoint("TOPRIGHT", card, "TOPRIGHT", -RECENT_CARD_HEADER_PAD, -RECENT_CARD_HEADER_PAD - 2)
+        titleFs:SetJustifyH("LEFT")
+        titleFs:SetText(cat)
+        titleFs:SetTextColor(1, 0.85, 0.45, 1)
+
+        local listWInner = math.max(1, cardW - RECENT_CARD_HEADER_PAD * 2)
+        local yList = listTopPad
+
+        local function addRow(iconPath, nameRich, rightTime, clickable, onClick)
+            rowVisualIndex = rowVisualIndex + 1
+            local row = Factory:CreateCollectionListRow(card, ROW_HEIGHT)
+            row:SetParent(card)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD, -yList)
+            row:SetWidth(listWInner)
+            Factory:ApplyCollectionListRowContent(row, rowVisualIndex, iconPath, nameRich, clickable, false, onClick, rightTime)
+            yList = yList + ROW_HEIGHT + 2
+        end
+
+        if qlower and #picked == 0 then
+            addRow(defaultEmptyIcon, "|cff888888" .. searchEmptyTxt .. "|r", nil, false, nil)
+        elseif #picked == 0 then
+            addRow(defaultEmptyIcon, "|cff888888" .. noneLine .. "|r", nil, false, nil)
+        else
+            for j = 1, #picked do
+                local e = picked[j]
+                local nm = e.name or ""
+                if issecretvalue and issecretvalue(nm) then
+                    nm = (loc and loc["HIDDEN_ACHIEVEMENT"]) or "—"
+                end
+                local rel = FormatCollectionsRecentRelativeTime(e.t)
+                local iconPath = GetRecentEntryDisplayIcon(typ, e.id)
+                local idCopy, typCopy = e.id, typ
+                addRow(iconPath, COLLECTED_COLOR .. nm .. "|r", "|cff888888" .. rel .. "|r", true, function()
+                    RecentRowNavigateToEntry(typCopy, idCopy)
+                end)
+            end
+        end
+    end
+
+    finishRecentScroll(inset + cardH + inset)
 end
 
 local function SetCollectionProgress(current, total)
@@ -3651,17 +4555,18 @@ local function DrawMountsContent(contentFrame)
     end
 
     -- Layout: LEFT = list, gap, scrollbar, gap, RIGHT = 3D viewer (equal SCROLLBAR_SIDE_GAP each side of scrollbar).
-    local listContentWidth = math.floor(cw * 0.55) - SCROLLBAR_GAP
+    local listContentWidth = math.floor(cw * 0.50) - SCROLLBAR_GAP
     local scrollBarColumnWidth = SCROLLBAR_GAP
     local listWidth = listContentWidth + (SCROLLBAR_SIDE_GAP * 2) + scrollBarColumnWidth
     local viewerWidth = math.max(1, cw - listWidth)
 
     HideAllCollectionsResultFrames()
+    local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "mounts", ch)
 
     -- LEFT CONTAINER: List only (scroll frame fills it; scrollbar ayrı sütunda)
     if not collectionsState.mountListContainer then
-        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, false)
-        listContainer:SetPoint("TOPLEFT", 0, 0)
+        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, innerCh, false)
+        listContainer:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
         listContainer:Show()
         collectionsState.mountListContainer = listContainer
 
@@ -3675,7 +4580,7 @@ local function DrawMountsContent(contentFrame)
         collectionsState.mountListScrollChild = scrollChild
 
         -- SCROLLBAR REZERVE: Liste ile 3D view arasında görünür (eşit boşluk).
-        local scrollBarContainer = EnsureListScrollBarContainer(nil, contentFrame, listContainer, scrollBarColumnWidth, ch, SCROLLBAR_SIDE_GAP)
+        local scrollBarContainer = EnsureListScrollBarContainer(nil, contentFrame, listContainer, scrollBarColumnWidth, innerCh, SCROLLBAR_SIDE_GAP)
         collectionsState.mountListScrollBarContainer = scrollBarContainer
 
         local scrollBar = scrollFrame.ScrollBar
@@ -3683,13 +4588,13 @@ local function DrawMountsContent(contentFrame)
             Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, CONTAINER_INSET)
         end
     else
-        collectionsState.mountListContainer:SetSize(listContentWidth, ch)
+        collectionsState.mountListContainer:SetSize(listContentWidth, innerCh)
         collectionsState.mountListScrollBarContainer = EnsureListScrollBarContainer(
             collectionsState.mountListScrollBarContainer,
             contentFrame,
             collectionsState.mountListContainer,
             scrollBarColumnWidth,
-            ch,
+            innerCh,
             SCROLLBAR_SIDE_GAP
         )
         local scrollBar = collectionsState.mountListScrollFrame and collectionsState.mountListScrollFrame.ScrollBar
@@ -3711,6 +4616,7 @@ local function DrawMountsContent(contentFrame)
     rightCol:ClearAllPoints()
     rightCol:SetPoint("TOPLEFT", collectionsState.mountListScrollBarContainer, "TOPRIGHT", SCROLLBAR_SIDE_GAP, 0)
     rightCol:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
+    rightCol:Show()
     EnsureCollectionProgressBar(rightCol)
     local pr = collectionsState.collectionProgressFrame
     local gap = CONTENT_GAP or 4
@@ -3722,7 +4628,7 @@ local function DrawMountsContent(contentFrame)
         pr:Show()
     end
     local detailTop = (pr and (pr:GetHeight() or PROGRESS_ROW_HEIGHT) + gap) or 0
-    local detailH = math.max(1, ch - detailTop)
+    local detailH = math.max(1, innerCh - detailTop)
 
     if not collectionsState.modelViewer then
         local viewerContainer = Factory:CreateContainer(rightCol, viewerWidth, detailH, true)
@@ -3990,17 +4896,18 @@ local function DrawPetsContent(contentFrame)
         ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
     end
 
-    local listContentWidth = math.floor(cw * 0.55) - SCROLLBAR_GAP
+    local listContentWidth = math.floor(cw * 0.50) - SCROLLBAR_GAP
     local scrollBarColumnWidth = SCROLLBAR_GAP
     local listWidth = listContentWidth + (SCROLLBAR_SIDE_GAP * 2) + scrollBarColumnWidth
     local viewerWidth = math.max(1, cw - listWidth)
 
     HideAllCollectionsResultFrames()
+    local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "pets", ch)
 
     -- LEFT CONTAINER: Pet list
     if not collectionsState.petListContainer then
-        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, false)
-        listContainer:SetPoint("TOPLEFT", 0, 0)
+        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, innerCh, false)
+        listContainer:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
         listContainer:Show()
         collectionsState.petListContainer = listContainer
 
@@ -4013,7 +4920,7 @@ local function DrawPetsContent(contentFrame)
         local scrollChild = CreateStandardScrollChild(scrollFrame, listContentWidth - (CONTAINER_INSET * 2))
         collectionsState.petListScrollChild = scrollChild
 
-        local scrollBarContainer = EnsureListScrollBarContainer(nil, contentFrame, listContainer, scrollBarColumnWidth, ch, SCROLLBAR_SIDE_GAP)
+        local scrollBarContainer = EnsureListScrollBarContainer(nil, contentFrame, listContainer, scrollBarColumnWidth, innerCh, SCROLLBAR_SIDE_GAP)
         collectionsState.petListScrollBarContainer = scrollBarContainer
 
         local scrollBar = scrollFrame.ScrollBar
@@ -4021,13 +4928,13 @@ local function DrawPetsContent(contentFrame)
             Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, CONTAINER_INSET)
         end
     else
-        collectionsState.petListContainer:SetSize(listContentWidth, ch)
+        collectionsState.petListContainer:SetSize(listContentWidth, innerCh)
         collectionsState.petListScrollBarContainer = EnsureListScrollBarContainer(
             collectionsState.petListScrollBarContainer,
             contentFrame,
             collectionsState.petListContainer,
             scrollBarColumnWidth,
-            ch,
+            innerCh,
             SCROLLBAR_SIDE_GAP
         )
         local scrollBar = collectionsState.petListScrollFrame and collectionsState.petListScrollFrame.ScrollBar
@@ -4047,6 +4954,7 @@ local function DrawPetsContent(contentFrame)
     rightCol:ClearAllPoints()
     rightCol:SetPoint("TOPLEFT", collectionsState.petListScrollBarContainer, "TOPRIGHT", SCROLLBAR_SIDE_GAP, 0)
     rightCol:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
+    rightCol:Show()
     EnsureCollectionProgressBar(rightCol)
     local pr = collectionsState.collectionProgressFrame
     local gap = CONTENT_GAP or 4
@@ -4058,7 +4966,7 @@ local function DrawPetsContent(contentFrame)
         pr:Show()
     end
     local detailTop = (pr and (pr:GetHeight() or PROGRESS_ROW_HEIGHT) + gap) or 0
-    local detailH = math.max(1, ch - detailTop)
+    local detailH = math.max(1, innerCh - detailTop)
 
     if not collectionsState.modelViewer then
         local viewerContainer = Factory:CreateContainer(rightCol, viewerWidth, detailH, true)
@@ -4335,11 +5243,12 @@ local function DrawToysContent(contentFrame)
     local detailWidth = math.max(1, cw - listWidth)
 
     HideAllCollectionsResultFrames()
+    local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "toys", ch)
 
     -- LEFT: Toy list container + scroll
     if not collectionsState.toyListContainer then
-        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, false)
-        listContainer:SetPoint("TOPLEFT", 0, 0)
+        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, innerCh, false)
+        listContainer:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
         listContainer:Show()
         collectionsState.toyListContainer = listContainer
 
@@ -4352,7 +5261,7 @@ local function DrawToysContent(contentFrame)
         local scrollChild = CreateStandardScrollChild(scrollFrame, listContentWidth - (CONTAINER_INSET * 2))
         collectionsState.toyListScrollChild = scrollChild
 
-        local scrollBarContainer = EnsureListScrollBarContainer(nil, contentFrame, listContainer, scrollBarColumnWidth, ch, SCROLLBAR_SIDE_GAP)
+        local scrollBarContainer = EnsureListScrollBarContainer(nil, contentFrame, listContainer, scrollBarColumnWidth, innerCh, SCROLLBAR_SIDE_GAP)
         collectionsState.toyListScrollBarContainer = scrollBarContainer
 
         local scrollBar = scrollFrame.ScrollBar
@@ -4360,13 +5269,13 @@ local function DrawToysContent(contentFrame)
             Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, CONTAINER_INSET)
         end
     else
-        collectionsState.toyListContainer:SetSize(listContentWidth, ch)
+        collectionsState.toyListContainer:SetSize(listContentWidth, innerCh)
         collectionsState.toyListScrollBarContainer = EnsureListScrollBarContainer(
             collectionsState.toyListScrollBarContainer,
             contentFrame,
             collectionsState.toyListContainer,
             scrollBarColumnWidth,
-            ch,
+            innerCh,
             SCROLLBAR_SIDE_GAP
         )
         local scrollBar = collectionsState.toyListScrollFrame and collectionsState.toyListScrollFrame.ScrollBar
@@ -4386,6 +5295,7 @@ local function DrawToysContent(contentFrame)
     rightCol:ClearAllPoints()
     rightCol:SetPoint("TOPLEFT", collectionsState.toyListScrollBarContainer, "TOPRIGHT", SCROLLBAR_SIDE_GAP, 0)
     rightCol:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
+    rightCol:Show()
     EnsureCollectionProgressBar(rightCol)
     local pr = collectionsState.collectionProgressFrame
     local gap = CONTENT_GAP or 4
@@ -4397,9 +5307,9 @@ local function DrawToysContent(contentFrame)
         pr:Show()
     end
     local detailTop = (pr and (pr:GetHeight() or PROGRESS_ROW_HEIGHT) + gap) or 0
-    local detailH = math.max(1, ch - detailTop)
+    local detailH = math.max(1, innerCh - detailTop)
 
-    -- RIGHT: Toy detail panel — anchored below progress so they never overlap
+    -- RIGHT: Toy detail panel — below progress
     local SECTION_BODY_INDENT = (ns.UI_LAYOUT and ns.UI_LAYOUT.BASE_INDENT) or 12
     local TEXT_GAP_LINE = TEXT_GAP or 8
     if not collectionsState.toyDetailContainer then
@@ -4529,6 +5439,13 @@ local function DrawToysContent(contentFrame)
         sourceLabel:SetWordWrap(true)
         sourceLabel:SetText("")
         collectionsState._toyDetailSourceLabel = sourceLabel
+
+        local toyObtainedLine = FontManager:CreateFontString(scrollChild, "small", "OVERLAY")
+        toyObtainedLine:SetJustifyH("LEFT")
+        toyObtainedLine:SetWordWrap(true)
+        toyObtainedLine:SetTextColor(0.68, 0.70, 0.74, 1)
+        toyObtainedLine:Hide()
+        collectionsState._toyDetailObtainedLine = toyObtainedLine
     else
         collectionsState.toyDetailContainer:SetParent(rightCol)
         collectionsState.toyDetailContainer:SetSize(detailWidth, detailH)
@@ -4636,6 +5553,25 @@ local function DrawToysContent(contentFrame)
             local goldHex = string.format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
             srcLabel:SetText(goldHex .. sourceTitle .. ":|r |cffffffff" .. srcText .. "|r")
         end
+        if collectionsState._toyDetailObtainedLine and collectionsState._toyDetailSourceLabel then
+            local ol = collectionsState._toyDetailObtainedLine
+            local srcLabel = collectionsState._toyDetailSourceLabel
+            ol:ClearAllPoints()
+            if isCollected and itemID and WarbandNexus and WarbandNexus.GetCollectionsAcquiredAt then
+                local ts = WarbandNexus:GetCollectionsAcquiredAt("toy", itemID)
+                local txt = ts and FormatCollectionsAcquiredDetail(ts) or nil
+                if txt then
+                    ol:SetPoint("TOPLEFT", srcLabel, "BOTTOMLEFT", 0, -TEXT_GAP_LINE)
+                    ol:SetPoint("TOPRIGHT", srcLabel, "BOTTOMRIGHT", 0, -TEXT_GAP_LINE)
+                    ol:SetText(txt)
+                    ol:Show()
+                else
+                    ol:Hide()
+                end
+            else
+                ol:Hide()
+            end
+        end
         local toyTryRow = collectionsState._toyDetailTryCountRow
         if toyTryRow and toyTryRow.WnUpdateTryCount then
             if itemID then
@@ -4660,7 +5596,10 @@ local function DrawToysContent(contentFrame)
             C_Timer.After(0, function()
                 local child = collectionsState._toyDetailScrollChild
                 if not child then return end
-                local lastEl = collectionsState._toyDetailSourceLabel or collectionsState._toyDetailCollectedBadge
+                local lastEl = collectionsState._toyDetailObtainedLine
+                if not lastEl or not lastEl:IsShown() then
+                    lastEl = collectionsState._toyDetailSourceLabel or collectionsState._toyDetailCollectedBadge
+                end
                 if lastEl and lastEl.GetBottom and child.GetTop then
                     local top = child:GetTop()
                     local bot = lastEl:GetBottom()
@@ -4814,12 +5753,13 @@ local function DrawAchievementsContent(contentFrame)
     local detailWidth = math.max(1, cw - listWidth)
 
     HideAllCollectionsResultFrames()
+    local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "achievements", ch)
 
     -- Achievements: list container | scrollbar column | detail (same pattern as Mounts/Pets/Toys)
     local achListContainer = collectionsState.achievementListContainer
     if not achListContainer then
-        achListContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, false)
-        achListContainer:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, 0)
+        achListContainer = Factory:CreateContainer(contentFrame, listContentWidth, innerCh, false)
+        achListContainer:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
         collectionsState.achievementListContainer = achListContainer
         local scrollFrame = Factory:CreateScrollFrame(achListContainer, "UIPanelScrollFrameTemplate", true)
         scrollFrame:SetPoint("TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
@@ -4829,11 +5769,11 @@ local function DrawAchievementsContent(contentFrame)
         local scrollChild = CreateStandardScrollChild(scrollFrame, listContentWidth - (CONTAINER_INSET * 2))
         collectionsState.achievementListScrollChild = scrollChild
         collectionsState.achievementListScrollBarContainer = EnsureListScrollBarContainer(
-            nil, contentFrame, achListContainer, scrollBarColumnWidth, ch, SCROLLBAR_SIDE_GAP
+            nil, contentFrame, achListContainer, scrollBarColumnWidth, innerCh, SCROLLBAR_SIDE_GAP
         )
     end
     achListContainer = collectionsState.achievementListContainer
-    achListContainer:SetSize(listContentWidth, ch)
+    achListContainer:SetSize(listContentWidth, innerCh)
     achListContainer:Show()
     -- Liste etrafında border yok
     collectionsState.achievementListScrollBarContainer = EnsureListScrollBarContainer(
@@ -4841,7 +5781,7 @@ local function DrawAchievementsContent(contentFrame)
         contentFrame,
         achListContainer,
         scrollBarColumnWidth,
-        ch,
+        innerCh,
         SCROLLBAR_SIDE_GAP
     )
     collectionsState.achievementListScrollBarContainer:Show()
@@ -4864,6 +5804,7 @@ local function DrawAchievementsContent(contentFrame)
     rightCol:ClearAllPoints()
     rightCol:SetPoint("TOPLEFT", collectionsState.achievementListScrollBarContainer, "TOPRIGHT", SCROLLBAR_SIDE_GAP, 0)
     rightCol:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
+    rightCol:Show()
     EnsureCollectionProgressBar(rightCol)
     local pr = collectionsState.collectionProgressFrame
     local gap = CONTENT_GAP or 4
@@ -4875,7 +5816,7 @@ local function DrawAchievementsContent(contentFrame)
         pr:Show()
     end
     local detailTop = (pr and (pr:GetHeight() or PROGRESS_ROW_HEIGHT) + gap) or 0
-    local detailH = math.max(1, ch - detailTop)
+    local detailH = math.max(1, innerCh - detailTop)
 
     if collectionsState.achievementDetailContainer then
         collectionsState.achievementDetailContainer:Show()
@@ -5028,6 +5969,8 @@ end
 -- ============================================================================
 
 function WarbandNexus:DrawCollectionsTab(parent)
+    ApplySessionCollectionsSubTab()
+
     local sideMargin = (LAYOUT.SIDE_MARGIN or 10)
     local width = (parent:GetWidth() or 680) - 20
 
@@ -5037,50 +5980,80 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
     HideEmptyStateCard(parent, "collections")
 
-    -- ===== CHROME CACHING: reuse header/search/filter/subtab frames across tab switches =====
-    local chrome = collectionsState._chrome
+    -- Sabit üst alan (başlık kartı, alt sekmeler, arama): sekme içi değişimde frame'leri yeniden kullan.
+    local hdrCache = collectionsState._fixedHeaderCache
 
-    if chrome and chrome.titleCard then
-        chrome.titleCard:SetParent(headerParent)
-        chrome.titleCard:ClearAllPoints()
-        chrome.titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        chrome.titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-        chrome.titleCard:Show()
+    if hdrCache and hdrCache.titleCard then
+        hdrCache.titleCard:SetParent(headerParent)
+        hdrCache.titleCard:ClearAllPoints()
+        hdrCache.titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+        hdrCache.titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+        hdrCache.titleCard:SetHeight(COLLECTIONS_TITLE_CARD_HEIGHT)
+        hdrCache.titleCard:Show()
 
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or AFTER_HEADER)
+        if hdrCache.recentObtainedPanel then
+            hdrCache.recentObtainedPanel:Hide()
+        end
 
-        chrome.subTabBar:SetParent(headerParent)
-        chrome.subTabBar:ClearAllPoints()
-        chrome.subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        chrome.subTabBar:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-        chrome.subTabBar:SetActiveTab(collectionsState.currentSubTab)
-        chrome.subTabBar:Show()
-        collectionsState.subTabBar = chrome.subTabBar
+        if hdrCache.collectionsTextContainer and hdrCache.collectionsHeaderIcon then
+            hdrCache.collectionsTextContainer:SetSize(200, 40)
+            hdrCache.collectionsTextContainer:ClearAllPoints()
+            if hdrCache.collectionsTitleText and hdrCache.collectionsSubtitleText then
+                hdrCache.collectionsTitleText:ClearAllPoints()
+                hdrCache.collectionsTitleText:SetPoint("BOTTOM", hdrCache.collectionsTextContainer, "CENTER", 0, 0)
+                hdrCache.collectionsTitleText:SetPoint("LEFT", hdrCache.collectionsTextContainer, "LEFT", 0, 0)
+                hdrCache.collectionsSubtitleText:ClearAllPoints()
+                hdrCache.collectionsSubtitleText:SetPoint("TOP", hdrCache.collectionsTextContainer, "CENTER", 0, -4)
+                hdrCache.collectionsSubtitleText:SetPoint("LEFT", hdrCache.collectionsTextContainer, "LEFT", 0, 0)
+            end
+            hdrCache.collectionsTextContainer:SetPoint("LEFT", hdrCache.collectionsHeaderIcon.border, "RIGHT", 12, 0)
+            hdrCache.collectionsTextContainer:SetPoint("CENTER", hdrCache.titleCard, "CENTER", 0, 0)
+            hdrCache.collectionsTextContainer:Show()
+            if hdrCache.collectionsTitleText then hdrCache.collectionsTitleText:Show() end
+            if hdrCache.collectionsSubtitleText then hdrCache.collectionsSubtitleText:Show() end
+        end
+        if hdrCache.collectionsHeaderIcon then
+            if hdrCache.collectionsHeaderIcon.border then hdrCache.collectionsHeaderIcon.border:Show() end
+            if hdrCache.collectionsHeaderIcon.icon then hdrCache.collectionsHeaderIcon.icon:Show() end
+        end
+
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
+
+        hdrCache.subTabBar:SetParent(headerParent)
+        hdrCache.subTabBar:ClearAllPoints()
+        hdrCache.subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+        hdrCache.subTabBar:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+        hdrCache.subTabBar:SetActiveTab(collectionsState.currentSubTab)
+        hdrCache.subTabBar:Show()
+        collectionsState.subTabBar = hdrCache.subTabBar
 
         headerYOffset = headerYOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
 
-        chrome.searchRow:SetParent(headerParent)
-        chrome.searchRow:ClearAllPoints()
-        chrome.searchRow:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        chrome.searchRow:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-        chrome.searchRow:Show()
+        hdrCache.searchRow:SetParent(headerParent)
+        hdrCache.searchRow:ClearAllPoints()
+        hdrCache.searchRow:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+        hdrCache.searchRow:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+        hdrCache.searchRow:Show()
 
-        chrome.filterRow:SetParent(chrome.searchRow)
-        chrome.filterRow:ClearAllPoints()
-        chrome.filterRow:SetPoint("TOPRIGHT", chrome.searchRow, "TOPRIGHT", 0, 0)
-        chrome.filterRow:Show()
+        hdrCache.filterRow:SetParent(hdrCache.searchRow)
+        hdrCache.filterRow:ClearAllPoints()
+        hdrCache.filterRow:SetPoint("TOPRIGHT", hdrCache.searchRow, "TOPRIGHT", 0, 0)
+        if collectionsState.currentSubTab == "recent" then
+            hdrCache.filterRow:Hide()
+        else
+            hdrCache.filterRow:Show()
+        end
 
         headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
     else
-        -- First-time creation of chrome elements
-        chrome = {}
-        collectionsState._chrome = chrome
+        hdrCache = {}
+        collectionsState._fixedHeaderCache = hdrCache
 
-        -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
-        local titleCard = CreateCard(headerParent, COLLECTIONS_HEADER_CARD_HEIGHT)
+        -- ===== HEADER CARD — CurrencyUI / ItemsUI ile aynı yerleşim =====
+        local titleCard = CreateCard(headerParent, COLLECTIONS_TITLE_CARD_HEIGHT)
         titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
         titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-        chrome.titleCard = titleCard
+        hdrCache.titleCard = titleCard
 
         local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("collections"))
         local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
@@ -5088,7 +6061,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections") .. "|r"
         local subtitleTextContent = (ns.L and ns.L["COLLECTIONS_SUBTITLE"]) or "Mounts, pets, toys, and transmog overview"
 
-        local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
+        local textContainer = Factory:CreateContainer(titleCard, 200, 40, false)
         local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
         titleText:SetText(titleTextContent)
         titleText:SetJustifyH("LEFT")
@@ -5098,13 +6071,18 @@ function WarbandNexus:DrawCollectionsTab(parent)
         subtitleText:SetJustifyH("LEFT")
         titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)
         titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-        subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -(CONTENT_INSET / 2))
+        subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)
         subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-        textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", HEADER_ICON_TEXT_GAP, 0)
+        textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
         textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
 
+        hdrCache.collectionsHeaderIcon = headerIcon
+        hdrCache.collectionsTextContainer = textContainer
+        hdrCache.collectionsTitleText = titleText
+        hdrCache.collectionsSubtitleText = subtitleText
+
         titleCard:Show()
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or AFTER_HEADER)
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
 
         -- ===== SUB-TAB BAR (in fixedHeader - non-scrolling) =====
         local subTabBar = CreateSubTabBar(headerParent, function(tabKey)
@@ -5115,6 +6093,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 return
             end
             collectionsState.currentSubTab = tabKey
+            ns._sessionCollectionsSubTab = tabKey
             if collectionsState.subTabBar then
                 collectionsState.subTabBar:SetActiveTab(tabKey)
             end
@@ -5126,7 +6105,9 @@ function WarbandNexus:DrawCollectionsTab(parent)
             C_Timer.After(0, function()
                 local cf = collectionsState.contentFrame
                 if not cf or not cf:GetParent() then return end
-                if collectionsState.currentSubTab == "mounts" then
+                if collectionsState.currentSubTab == "recent" then
+                    DrawRecentContent(cf)
+                elseif collectionsState.currentSubTab == "mounts" then
                     DrawMountsContent(cf)
                 elseif collectionsState.currentSubTab == "pets" then
                     DrawPetsContent(cf)
@@ -5136,11 +6117,15 @@ function WarbandNexus:DrawCollectionsTab(parent)
                     DrawAchievementsContent(cf)
                 end
             end)
+            local hc = collectionsState._fixedHeaderCache
+            if hc and hc.filterRow then
+                if collectionsState.currentSubTab == "recent" then hc.filterRow:Hide() else hc.filterRow:Show() end
+            end
         end)
         subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
         subTabBar:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         subTabBar:SetActiveTab(collectionsState.currentSubTab)
-        chrome.subTabBar = subTabBar
+        hdrCache.subTabBar = subTabBar
         collectionsState.subTabBar = subTabBar
 
         headerYOffset = headerYOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
@@ -5150,13 +6135,13 @@ function WarbandNexus:DrawCollectionsTab(parent)
         searchRow:SetHeight(SEARCH_ROW_HEIGHT)
         searchRow:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
         searchRow:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-        chrome.searchRow = searchRow
+        hdrCache.searchRow = searchRow
 
         local FILTER_BLOCK_WIDTH = 200
         local filterRow = CreateFrame("Frame", nil, searchRow)
         filterRow:SetSize(FILTER_BLOCK_WIDTH, SEARCH_ROW_HEIGHT)
         filterRow:SetPoint("TOPRIGHT", searchRow, "TOPRIGHT", 0, 0)
-        chrome.filterRow = filterRow
+        hdrCache.filterRow = filterRow
 
         local searchBar = Factory:CreateContainer(searchRow, nil, 32, false)
         searchBar:SetPoint("TOPLEFT", searchRow, "TOPLEFT", 0, 0)
@@ -5198,7 +6183,9 @@ function WarbandNexus:DrawCollectionsTab(parent)
             end
             if not userInput then return end
             if collectionsState.contentFrame then
-                if collectionsState.currentSubTab == "mounts" then
+                if collectionsState.currentSubTab == "recent" then
+                    DrawRecentContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "mounts" then
                     DrawMountsContent(collectionsState.contentFrame)
                 elseif collectionsState.currentSubTab == "pets" then
                     DrawPetsContent(collectionsState.contentFrame)
@@ -5215,7 +6202,8 @@ function WarbandNexus:DrawCollectionsTab(parent)
             collectionsState.searchText = ""
             if self.Instructions then self.Instructions:Show() end
             if collectionsState.contentFrame then
-                if collectionsState.currentSubTab == "mounts" then DrawMountsContent(collectionsState.contentFrame)
+                if collectionsState.currentSubTab == "recent" then DrawRecentContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "mounts" then DrawMountsContent(collectionsState.contentFrame)
                 elseif collectionsState.currentSubTab == "pets" then DrawPetsContent(collectionsState.contentFrame)
                 elseif collectionsState.currentSubTab == "toys" then DrawToysContent(collectionsState.contentFrame)
                 elseif collectionsState.currentSubTab == "achievements" then DrawAchievementsContent(collectionsState.contentFrame)
@@ -5242,7 +6230,9 @@ function WarbandNexus:DrawCollectionsTab(parent)
             collectionsState.showCollected = self:GetChecked()
             if self:GetChecked() then cbCollected.checkTexture:Show() else cbCollected.checkTexture:Hide() end
             if collectionsState.contentFrame then
-                if collectionsState.currentSubTab == "mounts" then
+                if collectionsState.currentSubTab == "recent" then
+                    DrawRecentContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "mounts" then
                     DrawMountsContent(collectionsState.contentFrame)
                 elseif collectionsState.currentSubTab == "pets" then
                     DrawPetsContent(collectionsState.contentFrame)
@@ -5265,7 +6255,9 @@ function WarbandNexus:DrawCollectionsTab(parent)
             collectionsState.showUncollected = self:GetChecked()
             if self:GetChecked() then cbUncollected.checkTexture:Show() else cbUncollected.checkTexture:Hide() end
             if collectionsState.contentFrame then
-                if collectionsState.currentSubTab == "mounts" then
+                if collectionsState.currentSubTab == "recent" then
+                    DrawRecentContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "mounts" then
                     DrawMountsContent(collectionsState.contentFrame)
                 elseif collectionsState.currentSubTab == "pets" then
                     DrawPetsContent(collectionsState.contentFrame)
@@ -5284,6 +6276,10 @@ function WarbandNexus:DrawCollectionsTab(parent)
             cbCollected.checkTexture:Show()
             cbUncollected:SetChecked(true)
             cbUncollected.checkTexture:Show()
+        end
+
+        if collectionsState.currentSubTab == "recent" then
+            filterRow:Hide()
         end
 
         headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
@@ -5345,10 +6341,16 @@ function WarbandNexus:DrawCollectionsTab(parent)
         collectionsState._achFlatList = nil
         collectionsState._achVisibleRowFrames = nil
         collectionsState._achListContentFrame = nil
+        collectionsState.recentTabPanel = nil
+        collectionsState.recentScrollFrame = nil
+        collectionsState.recentScrollChild = nil
+        collectionsState._recentEmptyFs = nil
     end
 
     -- Draw current sub-tab content
-    if collectionsState.currentSubTab == "mounts" then
+    if collectionsState.currentSubTab == "recent" then
+        DrawRecentContent(contentFrame)
+    elseif collectionsState.currentSubTab == "mounts" then
         DrawMountsContent(contentFrame)
     elseif collectionsState.currentSubTab == "pets" then
         DrawPetsContent(contentFrame)
@@ -5385,7 +6387,9 @@ function WarbandNexus:DrawCollectionsTab(parent)
         WarbandNexus.RegisterMessage(CUIListeners, eventName, function()
             local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
             if mf and mf:IsShown() and mf.currentTab == "collections" and collectionsState.contentFrame then
-                if collectionsState.currentSubTab == "mounts" then
+                if collectionsState.currentSubTab == "recent" then
+                    DrawRecentContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "mounts" then
                     DrawMountsContent(collectionsState.contentFrame)
                 elseif collectionsState.currentSubTab == "pets" then
                     DrawPetsContent(collectionsState.contentFrame)
@@ -5423,7 +6427,9 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
                 if not collectionsState.contentFrame then return end
-                if collectionsState.currentSubTab == "mounts" then
+                if collectionsState.currentSubTab == "recent" then
+                    DrawRecentContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "mounts" then
                     DrawMountsContent(collectionsState.contentFrame)
                 elseif collectionsState.currentSubTab == "pets" then
                     DrawPetsContent(collectionsState.contentFrame)

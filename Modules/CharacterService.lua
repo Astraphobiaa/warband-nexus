@@ -271,6 +271,30 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     DebugPrint("|cff00ff00[WN CharacterService]|r Tracking status updated")
 end
 
+---Find db.global.characters index for the logged-in player (raw vs canonical key mismatch breaks lookups).
+---@param addon table WarbandNexus
+---@return string|nil actualKey Key present in db.global.characters, or nil
+function CharacterService:ResolveCharactersTableKey(addon)
+    if not addon or not addon.db or not addon.db.global or not addon.db.global.characters then
+        return nil
+    end
+    local chars = addon.db.global.characters
+    local rawKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not rawKey or rawKey == "" then
+        return nil
+    end
+    if chars[rawKey] then
+        return rawKey
+    end
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local canon = ns.Utilities:GetCanonicalCharacterKey(rawKey)
+        if canon and canon ~= "" and canon ~= rawKey and chars[canon] then
+            return canon
+        end
+    end
+    return nil
+end
+
 ---Check if current character is tracked
 ---@param addon table The WarbandNexus addon instance
 ---@return boolean true if tracked, false if untracked or not found
@@ -280,13 +304,12 @@ function CharacterService:IsCharacterTracked(addon)
         return false
     end
     
-    local charKey = ns.Utilities:GetCharacterKey()
-    
     if not addon.db or not addon.db.global or not addon.db.global.characters then
         return false
     end
     
-    local charData = addon.db.global.characters[charKey]
+    local charKey = self:ResolveCharactersTableKey(addon)
+    local charData = charKey and addon.db.global.characters[charKey]
     
     -- Default to false for new characters (require explicit opt-in)
     if not charData then
