@@ -47,22 +47,22 @@ local currencyGearScanTimer = nil
 
 -- Left column, right column, bottom row — mirrors Blizzard paper doll order.
 local GEAR_SLOTS = {
-    { id = 1,  key = "head",      label = "Head",      col = "left"   },
-    { id = 2,  key = "neck",      label = "Neck",      col = "left"   },
-    { id = 3,  key = "shoulder",  label = "Shoulder",  col = "left"   },
-    { id = 15, key = "back",      label = "Back",      col = "left"   },
-    { id = 5,  key = "chest",     label = "Chest",     col = "left"   },
-    { id = 9,  key = "wrist",     label = "Wrist",     col = "left"   },
-    { id = 10, key = "hands",     label = "Hands",     col = "right"  },
-    { id = 6,  key = "waist",     label = "Waist",     col = "right"  },
-    { id = 7,  key = "legs",      label = "Legs",      col = "right"  },
-    { id = 8,  key = "feet",      label = "Feet",      col = "right"  },
+    { id = 1,  key = "head",      label = INVTYPE_HEAD,      col = "left"   },
+    { id = 2,  key = "neck",      label = INVTYPE_NECK,      col = "left"   },
+    { id = 3,  key = "shoulder",  label = INVTYPE_SHOULDER,  col = "left"   },
+    { id = 15, key = "back",      label = INVTYPE_CLOAK,      col = "left"   },
+    { id = 5,  key = "chest",     label = INVTYPE_CHEST,     col = "left"   },
+    { id = 9,  key = "wrist",     label = INVTYPE_WRIST,     col = "left"   },
+    { id = 10, key = "hands",     label = INVTYPE_HAND,     col = "right"  },
+    { id = 6,  key = "waist",     label = INVTYPE_WAIST,     col = "right"  },
+    { id = 7,  key = "legs",      label = INVTYPE_LEGS,      col = "right"  },
+    { id = 8,  key = "feet",      label = INVTYPE_FEET,      col = "right"  },
     { id = 11, key = "ring1",     label = "Ring",      col = "right"  },
     { id = 12, key = "ring2",     label = "Ring",      col = "right"  },
     { id = 13, key = "trinket1",  label = "Trinket",   col = "bottom" },
     { id = 14, key = "trinket2",  label = "Trinket",   col = "bottom" },
-    { id = 16, key = "mainhand",  label = "Main Hand", col = "bottom" },
-    { id = 17, key = "offhand",   label = "Off Hand",  col = "bottom" },
+    { id = 16, key = "mainhand",  label = INVTYPE_WEAPONMAINHAND, col = "bottom" },
+    { id = 17, key = "offhand",   label = INVTYPE_WEAPONOFFHAND,  col = "bottom" },
 }
 
 local ITEM_CLASS_WEAPON = LE_ITEM_CLASS_WEAPON or 2
