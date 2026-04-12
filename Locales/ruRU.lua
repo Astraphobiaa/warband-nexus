@@ -1710,3 +1710,4 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Скрывает системные с
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Запрашивать наигранное при входе"
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Если включено, запрашивает /played в фоне для «Самый играемый» и т. д.; вывод в чат подавляется. Если выключено — без авто-запроса при входе (ручной /played работает)."
 L["PROFESSIONS_WIDE_TABLE_HINT"] = "Подсказка: полоса внизу или Shift + колёсико, чтобы увидеть все столбцы."
+L["FIRSTCRAFT"] = PROFESSIONS_FIRST_CRAFT or "First Craft"
