@@ -2030,3 +2030,4 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Spielzeit beim Login abfragen"
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Wenn aktiv, fragt das Addon /played im Hintergrund ab („Meist gespielt“ usw.); Chat-Ausgabe wird unterdrückt. Wenn aus, kein automatischer Abruf beim Login (manuelles /played funktioniert)."
 L["PROFESSIONS_WIDE_TABLE_HINT"] = "Tipp: Leiste unten oder Umschalt+Mausrad, um alle Spalten zu sehen."
+L["FIRSTCRAFT"] = PROFESSIONS_FIRST_CRAFT or "First Craft"
