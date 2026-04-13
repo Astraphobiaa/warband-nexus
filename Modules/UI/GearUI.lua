@@ -127,22 +127,8 @@ local function GetSelectedCharKey()
     return ns.Utilities and ns.Utilities:GetCharacterKey()
 end
 
--- ============================================================================
--- EVENT REFRESH REGISTRATION
--- ============================================================================
-
-local _gearEventsRegistered = false
-
-local function RegisterGearEvents()
-    if _gearEventsRegistered then return end
-    _gearEventsRegistered = true
-
-    -- Event-driven refresh is handled centrally by UI.lua's SchedulePopulateContent.
-    -- No additional listeners needed here; UI.lua already routes
-    -- WN_GEAR_UPDATED, WN_ITEMS_UPDATED, WN_CHARACTER_UPDATED,
-    -- WN_CURRENCY_UPDATED, WARBAND_CURRENCIES_UPDATED to PopulateContent
-    -- when the gear tab is active.
-end
+-- Gear event refresh is centralized in UI.lua SchedulePopulateContent
+-- (WN_GEAR_UPDATED, WN_ITEMS_UPDATED, WN_CHARACTER_UPDATED, WN_CURRENCY_UPDATED).
 
 -- ============================================================================
 -- HELPERS
@@ -2020,8 +2006,6 @@ end
 -- ============================================================================
 
 function WarbandNexus:DrawGearTab(parent)
-    RegisterGearEvents()
-
     -- Lazy-load FontManager if needed
     if not FontManager then
         FontManager = ns.FontManager

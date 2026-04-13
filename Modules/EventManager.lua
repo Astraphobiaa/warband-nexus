@@ -259,29 +259,9 @@ end
 
 
 
---[[
-    Called when M+ dungeon run completes
-    Delegates to DataService and fires event for UI updates
-]]
-function WarbandNexus:CHALLENGE_MODE_COMPLETED(mapChallengeModeID, level, time, onTime, keystoneUpgradeLevels)
-    local charKey = ns.Utilities:GetCharacterKey()
-
-    if ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
-        if self.UpdatePvEData then
-            self:UpdatePvEData()
-        end
-        self:SendMessage(Constants.EVENTS.PVE_UPDATED, charKey)
-    end
-end
-
---[[
-    Called when new weekly M+ record is set
-    Delegates to PvE data update
-]]
-function WarbandNexus:MYTHIC_PLUS_NEW_WEEKLY_RECORD()
-    -- Same logic as CHALLENGE_MODE_COMPLETED
-    self:CHALLENGE_MODE_COMPLETED()
-end
+-- REMOVED: WarbandNexus:CHALLENGE_MODE_COMPLETED / MYTHIC_PLUS_NEW_WEEKLY_RECORD
+-- These were orphaned methods never registered as AceEvent handlers.
+-- PvECacheService owns the actual event registration and processing.
 
 --[[
     Called when keystone changes (picked up, upgraded, depleted)
@@ -365,35 +345,8 @@ function WarbandNexus:OnKeystoneChanged()
     end)
 end
 
---[[
-    Throttled PvE data change handler
-    Handles Great Vault, M+, and raid lockout updates
-    @param event string - Event name
-]]
-function WarbandNexus:OnPvEDataChangedThrottled(event)
-    -- Check if module is enabled
-    if not ns.Utilities:IsModuleEnabled("pve") then
-        return
-    end
-    
-    -- Request fresh data from Blizzard APIs
-    if C_MythicPlus then
-        C_MythicPlus.RequestMapInfo()
-        C_MythicPlus.RequestRewards()
-    end
-    if C_WeeklyRewards then
-        C_WeeklyRewards.OnUIInteract()
-    end
-    
-    -- Wait for API responses (300ms delay for data to populate)
-    C_Timer.After(0.3, function()
-        Throttle("PVE_DATA_UPDATE", EVENT_CONFIG.THROTTLE.PVE_DATA_CHANGED, function()
-            if self.UpdatePvEData then
-                self:UpdatePvEData()
-            end
-        end)
-    end)
-end
+-- REMOVED: WarbandNexus:OnPvEDataChangedThrottled
+-- Orphaned method — no call sites. PvECacheService handles PvE event throttling directly.
 
 -- ============================================================================
 -- INITIALIZATION
@@ -488,10 +441,17 @@ function WarbandNexus:InitializeEventManager()
             WarbandNexus:OnTradeSkillListUpdate()
         end
     end)
-    self:RegisterEvent("QUEST_TURNED_IN", function()
-        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
-        if WarbandNexus.OnProfessionQuestProgressChanged then
-            WarbandNexus:OnProfessionQuestProgressChanged()
+    self:RegisterEvent("QUEST_TURNED_IN", function(event, questID, ...)
+        -- Consolidated handler: DailyQuestManager + ProfessionService share this event.
+        -- AceEvent allows ONE handler per (event, self) — DailyQuestManager no longer registers
+        -- separately to avoid silent overwrite.
+        if WarbandNexus.OnDailyQuestCompleted then
+            WarbandNexus:OnDailyQuestCompleted(event, questID, ...)
+        end
+        if IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions") then
+            if WarbandNexus.OnProfessionQuestProgressChanged then
+                WarbandNexus:OnProfessionQuestProgressChanged()
+            end
         end
     end)
     

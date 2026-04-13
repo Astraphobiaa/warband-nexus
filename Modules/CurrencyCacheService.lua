@@ -1047,19 +1047,7 @@ local function OnCurrencyUpdate(currencyType, quantity)
     DrainCurrencyQueue()
 end
 
----Handle PLAYER_MONEY event (gold changes)
-local function OnMoneyUpdate()
-    -- GUARD: Only process if character is tracked
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-        return
-    end
-    
-    -- Gold is tracked separately, no need to update currency cache
-    -- Just fire event for UI updates
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WARBAND_GOLD_UPDATED")
-    end
-end
+-- REMOVED: OnMoneyUpdate — never registered; gold tracking is owned by EventManager:OnMoneyChanged.
 
 -- ============================================================================
 -- PUBLIC API (Direct DB Access)

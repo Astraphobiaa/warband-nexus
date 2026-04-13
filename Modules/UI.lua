@@ -41,7 +41,6 @@ local format = string.format
 -- Layout Constants (computed dynamically)
 local CONTENT_MIN_WIDTH = 1280   -- Minimum to fit Statistics 3-card row + character/gear layouts without overflow
 local CONTENT_MIN_HEIGHT = 650   -- Multi-level structures minimum
-local ROW_HEIGHT = 26
 
 -- Window geometry helpers
 local function GetWindowProfile()
@@ -228,26 +227,37 @@ local function ResetWindowGeometry(frame)
         profile.windowPosition = nil
     end
     
-    -- Refresh content at new size (gear/professions: keep minimum width so content does not squeeze)
-    if frame.scrollChild and frame.scroll then
-        local w = frame.scroll:GetWidth()
-        if frame.currentTab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
-            w = math.max(w, ns.MIN_GEAR_CARD_W)
-        end
-        if frame.currentTab == "professions" and ns.ComputeProfessionsGridWidth then
-            local profW = ns.ComputeProfessionsGridWidth()
-            if profW > 0 then w = math.max(w, profW) end
-        end
-        if frame.currentTab == "pve" and ns.ComputePvEMinScrollWidth then
-            local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
-            if pveW > 0 then w = math.max(w, pveW) end
-        end
-        frame.scrollChild:SetWidth(w)
-        if frame.columnHeaderInner and frame.columnHeaderClip and frame.columnHeaderClip:GetHeight() > 1 then
-            frame.columnHeaderInner:SetWidth(w)
-        end
-    end
+    UpdateScrollLayout(frame)
     WarbandNexus:PopulateContent()
+end
+
+-- Compute the correct scrollChild width for the current tab.
+-- Tabs with wide inline layouts (gear, professions, pve) enforce a minimum width
+-- so horizontal scrollbar kicks in instead of squeezing content.
+local function ComputeScrollChildWidth(frame)
+    if not frame or not frame.scroll then return 0 end
+    local w = frame.scroll:GetWidth()
+    local tab = frame.currentTab
+    if tab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
+        w = math.max(w, ns.MIN_GEAR_CARD_W)
+    elseif tab == "professions" and ns.ComputeProfessionsGridWidth then
+        local profW = ns.ComputeProfessionsGridWidth()
+        if profW > 0 then w = math.max(w, profW) end
+    elseif tab == "pve" and ns.ComputePvEMinScrollWidth then
+        local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
+        if pveW > 0 then w = math.max(w, pveW) end
+    end
+    return w
+end
+
+-- Update scrollChild and frozen column header widths in one call.
+local function UpdateScrollLayout(frame)
+    if not frame or not frame.scrollChild or not frame.scroll then return end
+    local w = ComputeScrollChildWidth(frame)
+    frame.scrollChild:SetWidth(w)
+    if frame.columnHeaderInner and frame.columnHeaderClip and frame.columnHeaderClip:GetHeight() > 1 then
+        frame.columnHeaderInner:SetWidth(w)
+    end
 end
 
 local mainFrame = nil
@@ -284,13 +294,13 @@ ns.UI_GetExpandAllActive = function() return WarbandNexus.itemsExpandAllActive e
 --============================================================================
 
 -- Clear all search state on main tab change
+local SEARCH_TAB_IDS = { "items", "gear", "currency", "storage", "reputation", "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement" }
+
 local function ClearAllSearchBoxes()
     local SSM = ns.SearchStateManager
     if SSM and SSM.ClearSearch then
-        -- Clear all known search IDs
-        local tabIds = { "items", "gear", "currency", "storage", "reputation", "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement" }
-        for _, id in ipairs(tabIds) do
-            SSM:ClearSearch(id)
+        for i = 1, #SEARCH_TAB_IDS do
+            SSM:ClearSearch(SEARCH_TAB_IDS[i])
         end
     end
     -- Clear My Plans active search
@@ -368,20 +378,23 @@ function WarbandNexus:ShowMainWindow()
         C_Timer.After(0.1, function()
             if mainFrame and mainFrame:IsShown() and mainFrame.tabButtons then
                 local fm = GetFontManager()
+                local anyFixed = false
                 for _, btn in pairs(mainFrame.tabButtons) do
                     if btn.label then
                         local font, size = btn.label:GetFont()
                         if not font or not size then
-                            -- Font was not applied yet: re-apply
                             if fm then fm:ApplyFont(btn.label, "body") end
+                            anyFixed = true
                         end
-                        -- Re-set text to force WoW to re-render the glyph
                         local text = btn.label:GetText()
                         if text then btn.label:SetText(text) end
                     end
                 end
-                -- Re-apply tab highlight state
-                self:PopulateContent()
+                -- Only rebuild content if fonts actually needed fixing
+                if anyFixed then
+                    UpdateTabButtonStates(mainFrame)
+                    self:PopulateContent()
+                end
             end
         end)
     end
@@ -412,6 +425,9 @@ local TAB_TO_MODULE = {
     plans = "plans",
 }
 
+-- Canonical tab order: single source of truth for visibility, creation, and navigation.
+local MAIN_TAB_ORDER = { "chars", "storage", "items", "gear", "currency", "reputations", "pve", "professions", "collections", "plans", "stats" }
+
 local function IsTabModuleEnabled(key)
     local moduleKey = TAB_TO_MODULE[key]
     if not moduleKey then return true end
@@ -422,16 +438,10 @@ end
 
 local function UpdateTabVisibility(f)
     if not f or not f.tabButtons or not f.tabButtons.chars then return end
-    -- Order matches main nav: Characters first, then inventory → progression → collections (see CreateMainWindow tabDefs)
-    local tabDefs = {
-        { key = "chars" }, { key = "storage" }, { key = "items" }, { key = "gear" },
-        { key = "currency" }, { key = "reputations" }, { key = "pve" }, { key = "professions" },
-        { key = "collections" }, { key = "plans" }, { key = "stats" },
-    }
     local TAB_GAP = 5
     local prevBtn = nil
-    for i = 1, #tabDefs do
-        local key = tabDefs[i].key
+    for i = 1, #MAIN_TAB_ORDER do
+        local key = MAIN_TAB_ORDER[i]
         local btn = f.tabButtons[key]
         if btn then
             local show = IsTabModuleEnabled(key)
@@ -620,24 +630,7 @@ function WarbandNexus:CreateMainWindow()
             self.BorderRight:SetWidth(pixelScale)
         end
 
-        if self.scrollChild and self.scroll then
-            local w = self.scroll:GetWidth()
-            if self.currentTab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
-                w = math.max(w, ns.MIN_GEAR_CARD_W)
-            end
-            if self.currentTab == "professions" and ns.ComputeProfessionsGridWidth then
-                local profW = ns.ComputeProfessionsGridWidth()
-                if profW > 0 then w = math.max(w, profW) end
-            end
-            if self.currentTab == "pve" and ns.ComputePvEMinScrollWidth then
-                local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
-                if pveW > 0 then w = math.max(w, pveW) end
-            end
-            self.scrollChild:SetWidth(w)
-            if self.columnHeaderInner and self.columnHeaderClip and self.columnHeaderClip:GetHeight() > 1 then
-                self.columnHeaderInner:SetWidth(w)
-            end
-        end
+        UpdateScrollLayout(self)
         if self.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
             ns.UI.Factory:UpdateHorizontalScrollBarVisibility(self.scroll)
         end
@@ -671,25 +664,7 @@ function WarbandNexus:CreateMainWindow()
             resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
             f:StopMovingOrSizing()
             SaveWindowGeometry(f)
-            -- Ensure scrollChild width is updated BEFORE PopulateContent
-            if f.scrollChild and f.scroll then
-                local w = f.scroll:GetWidth()
-                if f.currentTab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
-                    w = math.max(w, ns.MIN_GEAR_CARD_W)
-                end
-                if f.currentTab == "professions" and ns.ComputeProfessionsGridWidth then
-                    local profW = ns.ComputeProfessionsGridWidth()
-                    if profW > 0 then w = math.max(w, profW) end
-                end
-                if f.currentTab == "pve" and ns.ComputePvEMinScrollWidth then
-                    local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
-                    if pveW > 0 then w = math.max(w, pveW) end
-                end
-                f.scrollChild:SetWidth(w)
-                if f.columnHeaderInner and f.columnHeaderClip and f.columnHeaderClip:GetHeight() > 1 then
-                    f.columnHeaderInner:SetWidth(w)
-                end
-            end
+            UpdateScrollLayout(f)
             if f.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
                 ns.UI.Factory:UpdateHorizontalScrollBarVisibility(f.scroll)
             end
@@ -1078,31 +1053,32 @@ function WarbandNexus:CreateMainWindow()
         return btn
     end
     
-    -- Tab definitions with locale keys (Characters fixed first; rest: storage → items → gear → … → stats)
-    local tabDefs = {
-        { key = "chars",       text = (ns.L and ns.L["TAB_CHARACTERS"]) or "Characters" },
-        { key = "storage",     text = (ns.L and ns.L["TAB_STORAGE"]) or "Storage" },
-        { key = "items",       text = (ns.L and ns.L["TAB_ITEMS"]) or "Items" },
-        { key = "gear",        text = (ns.L and ns.L["TAB_GEAR"]) or "Gear" },
-        { key = "currency",    text = (ns.L and ns.L["TAB_CURRENCIES"]) or "Currencies" },
-        { key = "reputations", text = (ns.L and ns.L["TAB_REPUTATIONS"]) or "Reputations" },
-        { key = "pve",         text = (ns.L and ns.L["TAB_PVE"]) or "PvE" },
-        { key = "professions", text = (ns.L and ns.L["TAB_PROFESSIONS"]) or "Professions" },
-        { key = "collections", text = (ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections" },
-        { key = "plans",       text = (ns.L and ns.L["TAB_PLANS"]) or "To-Do" },
-        { key = "stats",       text = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics" },
+    -- Tab labels keyed by MAIN_TAB_ORDER (single source of truth)
+    local TAB_LABELS = {
+        chars       = (ns.L and ns.L["TAB_CHARACTERS"]) or "Characters",
+        storage     = (ns.L and ns.L["TAB_STORAGE"]) or "Storage",
+        items       = (ns.L and ns.L["TAB_ITEMS"]) or "Items",
+        gear        = (ns.L and ns.L["TAB_GEAR"]) or "Gear",
+        currency    = (ns.L and ns.L["TAB_CURRENCIES"]) or "Currencies",
+        reputations = (ns.L and ns.L["TAB_REPUTATIONS"]) or "Reputations",
+        pve         = (ns.L and ns.L["TAB_PVE"]) or "PvE",
+        professions = (ns.L and ns.L["TAB_PROFESSIONS"]) or "Professions",
+        collections = (ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections",
+        plans       = (ns.L and ns.L["TAB_PLANS"]) or "To-Do",
+        stats       = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics",
     }
     
     -- Create tabs: default 95px + 5px gap, expand only when needed
     local prevBtn = nil
-    for _, def in ipairs(tabDefs) do
-        local btn = CreateTabButton(nav, def.text, def.key)
+    for i = 1, #MAIN_TAB_ORDER do
+        local key = MAIN_TAB_ORDER[i]
+        local btn = CreateTabButton(nav, TAB_LABELS[key], key)
         if prevBtn then
             btn:SetPoint("LEFT", prevBtn, "RIGHT", TAB_GAP, 0)
         else
             btn:SetPoint("LEFT", nav, "LEFT", 10, 0)
         end
-        f.tabButtons[def.key] = btn
+        f.tabButtons[key] = btn
         prevBtn = btn
     end
     
@@ -1351,11 +1327,7 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
-    WarbandNexus.RegisterMessage(UIEvents, "WARBAND_CURRENCIES_UPDATED", function()
-        if f and f:IsShown() and (f.currentTab == "currency" or f.currentTab == "gear") then
-            SchedulePopulateContent()
-        end
-    end)
+    -- REMOVED: WARBAND_CURRENCIES_UPDATED — no SendMessage exists for this string; dead handler.
 
     WarbandNexus.RegisterMessage(UIEvents, "WN_CURRENCY_UPDATED", function()
         if f and f:IsShown() and (f.currentTab == "currency" or f.currentTab == "gear") then
@@ -1531,12 +1503,6 @@ function WarbandNexus:PopulateContent()
         columnHeaderInner:SetPoint("BOTTOMLEFT", columnHeaderClip, "BOTTOMLEFT", 0, 0)
     end
     
-    -- Get scroll frame width (already reduced by 24px for scroll bar)
-    local scrollWidth = mainFrame.scroll:GetWidth()
-    
-    -- Set scrollChild width to full scroll frame width (no extra padding needed)
-    scrollChild:SetWidth(scrollWidth)
-    
     -- CRITICAL FIX: Reset scrollChild height to prevent layout corruption across tabs
     scrollChild:SetHeight(1)  -- Reset to minimal height, will expand as content is added
     
@@ -1578,63 +1544,44 @@ function WarbandNexus:PopulateContent()
     -- Sync tab bar active state (idempotent; on tab click we already updated for instant feedback)
     UpdateTabButtonStates(mainFrame)
     
+    -- Set scrollChild width once (ComputeScrollChildWidth handles tab-specific minimums)
+    scrollChild:SetWidth(ComputeScrollChildWidth(mainFrame))
+
     -- Draw based on current tab
     local height
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
     local trackedOnlyTabs = {
-        items = true,
-        storage = true,
-        pve = true,
-        reputations = true,
-        currency = true,
-        professions = true,
-        gear = true,
-        collections = true,
-        plans = true,
-        stats = true,
+        items = true, storage = true, pve = true, reputations = true,
+        currency = true, professions = true, gear = true, collections = true,
+        plans = true, stats = true,
     }
 
-    if not isTracked and trackedOnlyTabs[mainFrame.currentTab] then
-        scrollChild:SetWidth(scrollWidth)
+    local tab = mainFrame.currentTab
+    if not isTracked and trackedOnlyTabs[tab] then
         height = self:DrawTrackingRequiredBanner(scrollChild)
-    elseif mainFrame.currentTab == "chars" then
-        scrollChild:SetWidth(scrollWidth)
+    elseif tab == "chars" then
         height = self:DrawCharacterList(scrollChild)
-    elseif mainFrame.currentTab == "currency" then
-        scrollChild:SetWidth(scrollWidth)
+    elseif tab == "currency" then
         height = self:DrawCurrencyTab(scrollChild)
-    elseif mainFrame.currentTab == "items" then
-        scrollChild:SetWidth(scrollWidth)
+    elseif tab == "items" then
         height = self:DrawItemList(scrollChild)
-    elseif mainFrame.currentTab == "storage" then
-        scrollChild:SetWidth(scrollWidth)
+    elseif tab == "storage" then
         height = self:DrawStorageTab(scrollChild)
-    elseif mainFrame.currentTab == "pve" then
-        local pveMinW = ns.ComputePvEMinScrollWidth and ns.ComputePvEMinScrollWidth(self) or 0
-        scrollChild:SetWidth(pveMinW > 0 and math.max(scrollWidth, pveMinW) or scrollWidth)
+    elseif tab == "pve" then
         height = self:DrawPvEProgress(scrollChild)
-    elseif mainFrame.currentTab == "reputations" then
-        scrollChild:SetWidth(scrollWidth)
+    elseif tab == "reputations" then
         height = self:DrawReputationTab(scrollChild)
-    elseif mainFrame.currentTab == "stats" then
-        scrollChild:SetWidth(scrollWidth)
+    elseif tab == "stats" then
         height = self:DrawStatistics(scrollChild)
-    elseif mainFrame.currentTab == "professions" then
-        local profMinW = ns.ComputeProfessionsGridWidth and ns.ComputeProfessionsGridWidth() or 0
-        scrollChild:SetWidth(profMinW > 0 and math.max(scrollWidth, profMinW) or scrollWidth)
+    elseif tab == "professions" then
         height = self:DrawProfessionsTab(scrollChild)
-    elseif mainFrame.currentTab == "gear" then
-        local gearMinW = (ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0) and ns.MIN_GEAR_CARD_W or 0
-        scrollChild:SetWidth(gearMinW > 0 and math.max(scrollWidth, gearMinW) or scrollWidth)
+    elseif tab == "gear" then
         height = self:DrawGearTab(scrollChild)
-    elseif mainFrame.currentTab == "collections" then
-        scrollChild:SetWidth(scrollWidth)
+    elseif tab == "collections" then
         height = self:DrawCollectionsTab(scrollChild)
-    elseif mainFrame.currentTab == "plans" then
-        scrollChild:SetWidth(scrollWidth)
+    elseif tab == "plans" then
         height = self:DrawPlansTab(scrollChild)
     else
-        scrollChild:SetWidth(scrollWidth)
         height = self:DrawCharacterList(scrollChild)
     end
     
@@ -1865,8 +1812,7 @@ function WarbandNexus:UpdateStatus()
     SizeTrackingChip()
 end
 
-function WarbandNexus:UpdateFooter()
-end
+-- REMOVED: UpdateFooter — empty stub with no callers.
 
 --============================================================================
 -- DRAW ITEM LIST
@@ -1875,16 +1821,7 @@ end
 -- DEFAULT: Personal Bank (priority over Warband)
 -- Uses shared state declared above; do not redeclare here (avoids shadowing).
 
--- Setter for currentItemsSubTab (called from Core.lua)
-function WarbandNexus:SetItemsSubTab(subTab)
-    if subTab == "warband" or subTab == "personal" or subTab == "guild" then
-        currentItemsSubTab = subTab
-    end
-end
-
-function WarbandNexus:GetItemsSubTab()
-    return currentItemsSubTab
-end
+-- REMOVED: WarbandNexus:SetItemsSubTab / GetItemsSubTab — unused; ns.UI_SetItemsSubTab / ns.UI_GetItemsSubTab are the live API.
 
 -- Track expanded state for each category (persists across refreshes)
 -- Uses shared state declared above; do not redeclare here (avoids shadowing).

@@ -983,11 +983,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
-        WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_UPDATED", function()
-            if parent and IsCurrencyTabActive() then
-                WarbandNexus:DrawCurrencyTab(parent)
-            end
-        end)
+        -- WN_CURRENCY_UPDATED: handled by UI.lua SchedulePopulateContent (debounced).
+        -- Registering here caused double rebuild (immediate + debounced 100ms later).
     end
     
     -- Add DB version badge (for debugging/monitoring)

@@ -289,8 +289,6 @@ local UI_SPACING = {
     SCROLLBAR_COLUMN_WIDTH = 26,
     -- Must match SCROLL_BAR_BUTTON_SIZE so track + thumb are not taller than arrow buttons
     HORIZONTAL_SCROLL_BAR_HEIGHT = 16,
-    SCROLL_BASE_STEP = 28,
-    SCROLL_SPEED_DEFAULT = 1.0,
 }
 
 -- Export to namespace (both names for compatibility)
@@ -2016,6 +2014,12 @@ local HEADER_ICON_YOFFSET = 0    -- Y position
 -- Export icon mapping for external use
 ns.UI_GetTabIcon = function(tabName)
     return TAB_HEADER_ICONS[tabName] or "shop-icon-housing-characters-up"
+end
+
+ns.UI_GetCharKey = function(char)
+    if char and char._key then return char._key end
+    if not ns.Utilities or not ns.Utilities.GetCharacterKey then return nil end
+    return ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")
 end
 
 -- Export size configuration
@@ -5278,10 +5282,10 @@ ns.UI_CreateLoadingStatePanel = UI_CreateLoadingStatePanel
 ---@param height number - Container height (optional)
 ---@param withBorder boolean - If true, apply border (default: false)
 ---@return Frame container
-function ns.UI.Factory:CreateContainer(parent, width, height, withBorder)
+function ns.UI.Factory:CreateContainer(parent, width, height, withBorder, globalName)
     if not parent then return nil end
     
-    local container = CreateFrame("Frame", nil, parent)
+    local container = CreateFrame("Frame", globalName, parent)
     container:SetSize(width or 100, height or 100)
     
     -- ONLY apply border if explicitly requested

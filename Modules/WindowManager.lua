@@ -86,13 +86,26 @@ end
     @return boolean - true if a window was closed, false if nothing to close
 ]]
 function WindowManager:CloseTopWindow()
+    -- Pick the topmost visible window: highest priority, then highest FrameLevel,
+    -- then latest registration index (typical "opened last" among equal strata).
     local best = nil
     local bestPriority = -1
+    local bestLevel = -1
+    local bestIndex = 0
     for i = 1, #registry do
         local entry = registry[i]
-        if entry.frame and entry.frame:IsShown() and entry.priority > bestPriority then
-            best = entry
-            bestPriority = entry.priority
+        local frame = entry.frame
+        if frame and frame:IsShown() then
+            local p = entry.priority
+            local lvl = frame:GetFrameLevel() or 0
+            if p > bestPriority
+                or (p == bestPriority and lvl > bestLevel)
+                or (p == bestPriority and lvl == bestLevel and i > bestIndex) then
+                best = entry
+                bestPriority = p
+                bestLevel = lvl
+                bestIndex = i
+            end
         end
     end
     if best then
@@ -125,9 +138,19 @@ function WindowManager:InstallESCHandler(frame)
         if key == "ESCAPE" then
             -- Consume ESC first, then close. If nothing closed, re-propagate.
             if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
-            if not ns.WindowManager:CloseTopWindow() then
-                -- Nothing to close — let ESC reach the Game Menu
-                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+            local closed = ns.WindowManager:CloseTopWindow()
+            if not InCombatLockdown() then
+                if closed then
+                    -- Leaving propagate false on the key receiver (e.g. main window) breaks
+                    -- further ESC / bindings. Restore next frame even if this frame hid itself.
+                    C_Timer.After(0, function()
+                        if self and self.SetPropagateKeyboardInput and not InCombatLockdown() then
+                            self:SetPropagateKeyboardInput(true)
+                        end
+                    end)
+                else
+                    self:SetPropagateKeyboardInput(true)
+                end
             end
         else
             if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end

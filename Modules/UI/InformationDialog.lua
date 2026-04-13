@@ -223,6 +223,7 @@ function WarbandNexus:ShowInfoDialog()
         blizzGold .. "DivaDelirium" .. colorEnd .. "  " ..
         blizzGold .. "Jack the Dipper" .. colorEnd .. "  " ..
         blizzGold .. "Koralia91" .. colorEnd .. "  " ..
+        blizzGold .. "nanjuekaien1" .. colorEnd .. "  " ..
         blizzGold .. "Nexus-Hub" .. colorEnd .. "  " ..
         blizzGold .. "huchang47" .. colorEnd
     )

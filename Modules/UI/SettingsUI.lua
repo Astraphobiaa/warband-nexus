@@ -3137,8 +3137,9 @@ function WarbandNexus:ShowSettings()
     -- Forward declarations for resize callbacks.
     local scrollFrame, scrollChild, lastWidth
     
-    -- Main frame (created once, reused across open/close cycles; Factory for standard compliance)
-    local f = ns.UI.Factory:CreateContainer(UIParent, 700, 650, false)
+    -- Main frame (created once, reused across open/close cycles; global name for UISpecialFrames ESC)
+    local SETTINGS_FRAME_NAME = "WarbandNexusSettingsPanel"
+    local f = ns.UI.Factory:CreateContainer(UIParent, 700, 650, false, SETTINGS_FRAME_NAME)
     if not f then return end
     f:SetSize(700, 650)
     f:SetPoint("CENTER")
@@ -3172,12 +3173,31 @@ function WarbandNexus:ShowSettings()
 
     f:SetScript("OnShow", function(self)
         RefreshSettingsKeyboard(self)
+        -- Next frame: keyboard focus can lag behind Show on some clients; re-apply once.
+        C_Timer.After(0, function()
+            if self and self:IsShown() then
+                RefreshSettingsKeyboard(self)
+            end
+        end)
     end)
+
+    -- Blizzard ESC chain (CloseSpecialWindows) — complements WindowManager when keyboard focus is elsewhere.
+    do
+        local list = _G.UISpecialFrames
+        if list and not tContains(list, SETTINGS_FRAME_NAME) then
+            table.insert(list, SETTINGS_FRAME_NAME)
+        end
+    end
     
     -- ESC: same hierarchy as main window (POPUP closes before MAIN).
     if ns.WindowManager then
         ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.POPUP)
-        ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP)
+        -- Above other POPUP-tier frames at default level so ESC hierarchy prefers this window.
+        f:SetFrameLevel((f:GetFrameLevel() or 300) + 25)
+        -- Explicit close keeps behavior obvious if hierarchy changes.
+        ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP, function()
+            f:Hide()
+        end)
         ns.WindowManager:InstallESCHandler(f)
     else
         f:SetFrameStrata("FULLSCREEN_DIALOG")

@@ -581,14 +581,8 @@ function WarbandNexus:DrawPlansTab(parent)
     if not self._plansEventRegistered then
         local Constants = ns.Constants
         
-        -- Plan CRUD events (API > DB > UI)
-        -- NOTE: Uses PlansUIEvents as 'self' key to avoid overwriting PlansTrackerWindow's handler.
-        -- String method references must be wrapped in closures since PlansUIEvents has no methods.
-        WarbandNexus.RegisterMessage(PlansUIEvents, "WN_PLANS_UPDATED", function(event, data)
-            if WarbandNexus.OnPlansUpdated then
-                WarbandNexus:OnPlansUpdated(event, data)
-            end
-        end)
+        -- WN_PLANS_UPDATED: handled by UI.lua SchedulePopulateContent (debounced).
+        -- Registering here caused double rebuild (immediate RefreshUI + debounced PopulateContent).
         
         -- Collection scan progress (throttled UI refresh for loading indicators)
         if Constants and Constants.EVENTS then
@@ -1770,14 +1764,7 @@ end
     Handle WN_PLANS_UPDATED event
     Only refreshes if Plans tab is visible (event-driven, no polling)
 ]]
-function WarbandNexus:OnPlansUpdated(event, data)
-    if not data or not data.action then return end
-    
-    -- Only refresh if Plans tab is currently visible
-    if self:IsStillOnTab("plans") then
-        self:RefreshUI()
-    end
-end
+-- REMOVED: OnPlansUpdated — UI.lua's SchedulePopulateContent handles WN_PLANS_UPDATED centrally.
 
 
 -- ============================================================================

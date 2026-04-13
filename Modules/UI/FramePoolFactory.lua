@@ -587,8 +587,9 @@ end
 ---Release all pooled children of a frame (and hide non-pooled ones)
 ---@param parent Frame Parent container to clean up
 local function ReleaseAllPooledChildren(parent)
-    local children = {parent:GetChildren()}  -- Reuse table, don't create new one each iteration
-    for i, child in pairs(children) do
+    local children = {parent:GetChildren()}
+    for i = 1, #children do
+        local child = children[i]
         if child.isPooled and child.rowType then
             -- Use rowType to determine which pool to release to
             if child.rowType == "item" then

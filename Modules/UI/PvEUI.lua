@@ -160,24 +160,7 @@ local function ToggleExpand(key, newState)
     WarbandNexus:RefreshUI()
 end
 
---============================================================================
--- EVENT-DRIVEN UI REFRESH
---============================================================================
-
----Register event listener for PvE updates
----@param parent Frame Parent frame for event registration
-local function RegisterPvEEvents(parent)
-    -- Register only once per parent
-    if parent.pveUpdateHandler then
-        return
-    end
-    parent.pveUpdateHandler = true
-    
-    -- WN_PVE_UPDATED: REMOVED — UI.lua's SchedulePopulateContent already handles
-    -- pve tab refresh via PopulateContent → DrawPvEProgress. Having both caused double rebuild.
-    
-    -- Event listener cleanup (silent)
-end
+-- PvE event refresh is centralized in UI.lua SchedulePopulateContent (WN_PVE_UPDATED).
 
 --============================================================================
 -- GREAT VAULT HELPER FUNCTIONS
@@ -628,9 +611,6 @@ function WarbandNexus:DrawPvEProgress(parent)
         end
         parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
     end
-    
-    -- Register event listener (only once)
-    RegisterPvEEvents(parent)
     
     -- Hide empty state card (will be shown again if needed)
     HideEmptyStateCard(parent, "pve")

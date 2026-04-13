@@ -43,12 +43,7 @@ local AcquireCharacterRow = ns.UI_AcquireCharacterRow
 
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
 
--- Canonical character key (Utilities only; no manual key construction).
-local function GetCharKey(char)
-    if char and char._key then return char._key end
-    if not ns.Utilities or not ns.Utilities.GetCharacterKey then return nil end
-    return ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")
-end
+local GetCharKey = ns.UI_GetCharKey
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local ROW_HEIGHT = GetLayout().rowHeight or 26
 local ROW_SPACING = GetLayout().rowSpacing or 28

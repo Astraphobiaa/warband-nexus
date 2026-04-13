@@ -107,7 +107,7 @@ local function RegisterItemsEvents(parent)
         end
     end)
     
-    DebugPrint("|cff9370DB[ItemsUI]|r Event listeners registered: WN_ITEMS_UPDATED, WN_ITEM_METADATA_READY")
+    DebugPrint("|cff9370DB[ItemsUI]|r Event listeners registered: WN_ITEM_METADATA_READY")
 end
 
 --============================================================================

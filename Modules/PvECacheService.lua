@@ -1251,10 +1251,7 @@ end
 -- EVENT HANDLERS (Called by registered events above)
 -- ============================================================================
 
----Handle MYTHIC_PLUS_CURRENT_AFFIX_UPDATE event
-function WarbandNexus:OnMythicPlusAffixUpdate()
-    self:UpdatePvEData()
-end
+-- REMOVED: OnMythicPlusAffixUpdate — never registered; PvECacheService handles affix updates inline.
 
 ---Handle WEEKLY_REWARDS_UPDATE event (vault data received from server)
 ---NOTE: Named OnVaultDataReceived to avoid collision with PlansManager:OnPvEUpdateCheckPlans

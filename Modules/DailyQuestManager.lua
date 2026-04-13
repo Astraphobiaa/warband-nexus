@@ -998,7 +998,7 @@ end
 -- ============================================================================
 
 function WarbandNexus:InitializeDailyQuestManager()
-    self:RegisterEvent("QUEST_TURNED_IN", "OnDailyQuestCompleted")
+    -- QUEST_TURNED_IN: dispatched by EventManager's consolidated handler (avoids AceEvent overwrite)
     self:RegisterEvent("QUEST_LOG_UPDATE", "OnDailyQuestUpdate")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnDailyQuestLogin")
 
