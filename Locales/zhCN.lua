@@ -1395,11 +1395,11 @@ L["PROF_FIRSTCRAFT_RECIPES"] = "个配方"
 
 -- Professions: Column Headers
 L["FIRST_CRAFT"] = "首次制作"
-L["UNIQUES"] = "独特"
+L["UNIQUES"] = "周常知识"
 L["TREATISE"] = "论文"
 L["GATHERING"] = "采集"
 L["CATCH_UP"] = "追赶"
-L["MOXIE"] = "干劲"
+L["MOXIE"] = "匠人"
 L["COOLDOWNS"] = "冷却"
 L["ACCESSORY_1"] = "配件 1"
 L["ACCESSORY_2"] = "配件 2"
