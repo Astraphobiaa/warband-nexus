@@ -3056,15 +3056,20 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 end
                 
                 -- === REWARD - BELOW progress WITH spacing (one line gap) ===
-                if item.rewardText and item.rewardText ~= "" then
+                local displayRewardText = item.rewardText
+                if (not displayRewardText or displayRewardText == "") and item.id and WarbandNexus.GetAchievementRewardInfo then
+                    local ri = WarbandNexus:GetAchievementRewardInfo(item.id)
+                    if ri then displayRewardText = ri.title or ri.itemName end
+                end
+                if displayRewardText and displayRewardText ~= "" then
                     local rewardText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     if lastElement then
-                        rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -14)  -- 14px spacing
+                        rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -14)
                     else
                         rewardText:SetPoint("TOPLEFT", 10, line3Y)
                     end
                     rewardText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
-                    rewardText:SetText("|cff88ff88" .. ((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r |cffffffff" .. item.rewardText .. "|r")
+                    rewardText:SetText("|cff88ff88" .. ((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r |cffffffff" .. displayRewardText .. "|r")
                     rewardText:SetJustifyH("LEFT")
                     rewardText:SetWordWrap(true)
                     rewardText:SetMaxLines(2)

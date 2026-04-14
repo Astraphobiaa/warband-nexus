@@ -1132,7 +1132,12 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     lastTextElement = progressLabel
     
     -- Reward
-    if plan.rewardText and plan.rewardText ~= "" then
+    local displayReward = plan.rewardText
+    if (not displayReward or displayReward == "") and plan.achievementID and WarbandNexus.GetAchievementRewardInfo then
+        local ri = WarbandNexus:GetAchievementRewardInfo(plan.achievementID)
+        if ri then displayReward = ri.title or ri.itemName end
+    end
+    if displayReward and displayReward ~= "" then
         local rewardText = FontManager:CreateFontString(card, "small", "OVERLAY")
         if lastTextElement then
             rewardText:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -6)
@@ -1140,7 +1145,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             rewardText:SetPoint("TOPLEFT", 10, currentY)
         end
         rewardText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-        rewardText:SetText("|cff88ff88" .. ((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r |cffffffff" .. plan.rewardText .. "|r")
+        rewardText:SetText("|cff88ff88" .. ((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r |cffffffff" .. displayReward .. "|r")
         rewardText:SetJustifyH("LEFT")
         rewardText:SetWordWrap(true)
         rewardText:SetMaxLines(2)

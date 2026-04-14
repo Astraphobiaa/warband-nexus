@@ -295,6 +295,19 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
         lines[#lines + 1] = { type = "spacer", height = 4 }
     end
 
+    -- Reward (for achievement plans)
+    if plan.type == "achievement" then
+        local rewardDisplay = plan.rewardText
+        if (not rewardDisplay or rewardDisplay == "") and plan.achievementID and WarbandNexus.GetAchievementRewardInfo then
+            local ri = WarbandNexus:GetAchievementRewardInfo(plan.achievementID)
+            if ri then rewardDisplay = ri.title or ri.itemName end
+        end
+        if rewardDisplay and rewardDisplay ~= "" then
+            local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
+            lines[#lines + 1] = { left = rewardLabel, right = rewardDisplay, leftColor = {0.53, 1, 0.53}, rightColor = {0, 1, 0} }
+        end
+    end
+
     -- Source
     if plan.source and plan.source ~= "" then
         local src = plan.source

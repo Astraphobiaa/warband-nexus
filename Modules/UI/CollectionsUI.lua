@@ -3125,6 +3125,7 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         lastAnchor = content
         lastPoint = "TOPLEFT"
         lastY = 0
+        panel._currentAchievement = achievement
 
         if not achievement or not achievement.id then
             child:SetHeight(1)
@@ -3259,6 +3260,9 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                     if not achievement.id or not WarbandNexus or not WarbandNexus.AddPlan then return end
                     local rewardInfo = WarbandNexus.GetAchievementRewardInfo and WarbandNexus:GetAchievementRewardInfo(achievement.id)
                     local rewardText = rewardInfo and (rewardInfo.title or rewardInfo.itemName) or nil
+                    if not rewardText or rewardText == "" then
+                        rewardText = achievement.rewardText or achievement.rewardTitle
+                    end
                     WarbandNexus:AddPlan({
                         type = "achievement",
                         achievementID = achievement.id,
@@ -3349,7 +3353,14 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         end
 
         local rewardInfo = WarbandNexus.GetAchievementRewardInfo and WarbandNexus:GetAchievementRewardInfo(achievement.id)
-        if rewardInfo and (rewardInfo.title or rewardInfo.itemName) then
+        local rewardDisplayText
+        if rewardInfo then
+            rewardDisplayText = rewardInfo.title or rewardInfo.itemName
+        end
+        if not rewardDisplayText or rewardDisplayText == "" then
+            rewardDisplayText = achievement.rewardText or achievement.rewardTitle
+        end
+        if rewardDisplayText and rewardDisplayText ~= "" then
             lastY = lastY - SECTION_HEADER_GAP
             addSection((ns.L and ns.L["REWARD_LABEL"]) or "Reward", function(anchor)
                 local rewardFs = FontManager:CreateFontString(content, "body", "OVERLAY")
@@ -3357,8 +3368,8 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                 rewardFs:SetPoint("TOPRIGHT", content, "TOPRIGHT", -CONTENT_INSET, 0)
                 rewardFs:SetJustifyH("LEFT")
                 rewardFs:SetWordWrap(true)
-                local txt = rewardInfo.title or rewardInfo.itemName or ""
-                rewardFs:SetText("|cff00ff00" .. txt .. "|r")
+                local rewardColor = (rewardInfo and rewardInfo.type == "title") and "|cffffcc00" or "|cff00ff00"
+                rewardFs:SetText(rewardColor .. rewardDisplayText .. "|r")
                 addDetailElement(rewardFs)
                 lastAnchor = rewardFs
                 lastPoint = "BOTTOMLEFT"
@@ -6463,6 +6474,20 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end)
+        end)
+
+        local metadataReadyName = (Constants and Constants.EVENTS and Constants.EVENTS.ITEM_METADATA_READY) or "WN_ITEM_METADATA_READY"
+        WarbandNexus.RegisterMessage(CUIListeners, metadataReadyName, function(_, achievementID)
+            if not achievementID then return end
+            local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+            if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
+            if collectionsState.currentSubTab ~= "achievements" then return end
+            if collectionsState.achievementDetailPanel and collectionsState.achievementDetailPanel.SetAchievement then
+                local currentAch = collectionsState.achievementDetailPanel._currentAchievement
+                if currentAch and currentAch.id == achievementID then
+                    collectionsState.achievementDetailPanel:SetAchievement(currentAch)
+                end
+            end
         end)
     end
 

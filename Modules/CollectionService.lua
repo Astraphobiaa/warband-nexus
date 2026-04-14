@@ -3831,11 +3831,24 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             }
         end
     elseif collectionType == "achievement" then
-        local ok, _, achName, points, _, _, _, _, description, _, achIcon = pcall(GetAchievementInfo, id)
+        local ok, _, achName, points, _, _, _, _, description, _, achIcon, achRewardText = pcall(GetAchievementInfo, id)
         if ok and achName then
             achIcon = validIcon(achIcon)
             local categoryID = GetAchievementCategory and GetAchievementCategory(id) or nil
-            meta = { name = achName, icon = achIcon or "Interface\\Icons\\Achievement_General", points = points or 0, description = description or "", source = description or "", categoryID = categoryID }
+            local rewardItemID, rewardTitle
+            local rewardOk, rItem, rTitle = pcall(GetAchievementReward, id)
+            if rewardOk then
+                if type(rItem) == "number" then rewardItemID = rItem end
+                if type(rTitle) == "string" and rTitle ~= "" then
+                    rewardTitle = rTitle
+                elseif type(rItem) == "string" and rItem ~= "" then
+                    rewardTitle = rItem
+                end
+            end
+            if not rewardTitle and achRewardText and achRewardText ~= "" then
+                rewardTitle = achRewardText
+            end
+            meta = { name = achName, icon = achIcon or "Interface\\Icons\\Achievement_General", points = points or 0, description = description or "", source = description or "", categoryID = categoryID, rewardItemID = rewardItemID, rewardTitle = rewardTitle, rewardText = rewardTitle }
         end
     elseif collectionType == "illusion" then
         if not C_TransmogCollection or not C_TransmogCollection.GetIllusionStrings then return nil end
@@ -4372,7 +4385,7 @@ function WarbandNexus:ScanAchievementsAsync()
 
                 for achIndex = 1, numAchievements do
                     -- GetAchievementInfo with pcall protection
-                    local success, id, name, points, completed, month, day, year, description, flags, icon = pcall(GetAchievementInfo, categoryID, achIndex)
+                    local success, id, name, points, completed, month, day, year, description, flags, icon, achRewardText = pcall(GetAchievementInfo, categoryID, achIndex)
                     
                     -- Update progress (throttled to reduce event spam)
                     scannedCount = scannedCount + 1
@@ -4418,6 +4431,9 @@ function WarbandNexus:ScanAchievementsAsync()
                             elseif type(item) == "string" and item ~= "" then
                                 rewardTitle = item
                             end
+                        end
+                        if not rewardTitle and achRewardText and achRewardText ~= "" then
+                            rewardTitle = achRewardText
                         end
 
                         local displayName = (name and name ~= "") and name or ("ID:" .. tostring(id))
@@ -4574,7 +4590,7 @@ function WarbandNexus:GetUncollectedAchievements(searchText, limit)
                 if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
                     local meta
                     if d.icon or d.points then
-                        meta = { id = achID, name = d.name, icon = d.icon, points = d.points, description = d.description, isCollected = false, categoryID = d.categoryID }
+                        meta = { id = achID, name = d.name, icon = d.icon, points = d.points, description = d.description, isCollected = false, categoryID = d.categoryID, rewardItemID = d.rewardItemID, rewardTitle = d.rewardTitle, rewardText = d.rewardTitle }
                     else
                         meta = self:ResolveCollectionMetadata("achievement", achID)
                         if meta then meta.id = achID; meta.isCollected = false end
@@ -4626,7 +4642,7 @@ function WarbandNexus:GetCompletedAchievements(searchText, limit)
             if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
                 local meta
                 if d.icon or d.points then
-                    meta = { id = achID, name = d.name, icon = d.icon, points = d.points, description = d.description, isCollected = true, categoryID = d.categoryID }
+                    meta = { id = achID, name = d.name, icon = d.icon, points = d.points, description = d.description, isCollected = true, categoryID = d.categoryID, rewardItemID = d.rewardItemID, rewardTitle = d.rewardTitle, rewardText = d.rewardTitle }
                 else
                     meta = self:ResolveCollectionMetadata("achievement", achID)
                     if meta then meta.id = achID; meta.isCollected = true end
@@ -4742,12 +4758,15 @@ end
 function WarbandNexus:GetAchievementRewardInfo(achievementID)
     if not achievementID then return nil end
     
-    -- Use legacy API for achievement rewards (reliable across all WoW versions)
     local rewardItemID, rewardTitle
-    local success, itemID, titleName = pcall(GetAchievementReward, achievementID)
+    local success, ret1, ret2 = pcall(GetAchievementReward, achievementID)
     if success then
-        rewardItemID = itemID
-        rewardTitle = titleName
+        if type(ret1) == "number" then rewardItemID = ret1 end
+        if type(ret2) == "string" and ret2 ~= "" then
+            rewardTitle = ret2
+        elseif type(ret1) == "string" and ret1 ~= "" then
+            rewardTitle = ret1
+        end
     end
     
     -- Title reward
@@ -4767,12 +4786,18 @@ function WarbandNexus:GetAchievementRewardInfo(achievementID)
         local GetItemInfoFn = C_Item and C_Item.GetItemInfo or GetItemInfo
         local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(rewardItemID)
         if not itemName then
-            -- Item not in cache, try to load it
             local item = Item:CreateFromItemID(rewardItemID)
             if item then
                 item:ContinueOnItemLoad(function()
-                    return WarbandNexus:GetAchievementRewardInfo(achievementID)
+                    if WarbandNexus.SendMessage then
+                        WarbandNexus:SendMessage("WN_ITEM_METADATA_READY", achievementID)
+                    end
                 end)
+            end
+            -- Return text-only fallback from GetAchievementInfo while item loads
+            local infoOk, _, _, _, _, _, _, _, _, _, _, achRewardText = pcall(GetAchievementInfo, achievementID)
+            if infoOk and achRewardText and achRewardText ~= "" then
+                return { type = "item", itemID = rewardItemID, itemName = achRewardText, icon = nil, achievementID = achievementID }
             end
             return nil
         end
@@ -4795,6 +4820,17 @@ function WarbandNexus:GetAchievementRewardInfo(achievementID)
             itemName = itemName,
             icon = itemIcon,
             achievementID = achievementID
+        }
+    end
+    
+    -- Final fallback: GetAchievementInfo's rewardText covers rewards
+    -- not exposed by GetAchievementReward (e.g. "Reward: Pathfinder's Overcoat")
+    local infoOk, _, _, _, _, _, _, _, _, _, _, fallbackRewardText = pcall(GetAchievementInfo, achievementID)
+    if infoOk and fallbackRewardText and fallbackRewardText ~= "" then
+        return {
+            type = "text",
+            title = fallbackRewardText,
+            achievementID = achievementID,
         }
     end
     

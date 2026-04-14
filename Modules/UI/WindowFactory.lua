@@ -525,12 +525,20 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
             popup._addLabel:SetText("|cffffcc00+ " .. (L["ADD_PLAN"] or "Add") .. "|r")
             popup._addBtn:SetScript("OnClick", function()
                 if WarbandNexus and WarbandNexus.AddPlan then
+                    local planRewardText
+                    if rewardText and rewardText ~= "" then
+                        planRewardText = rewardText
+                    elseif WarbandNexus.GetAchievementRewardInfo then
+                        local ri = WarbandNexus:GetAchievementRewardInfo(achievementID)
+                        if ri then planRewardText = ri.title or ri.itemName end
+                    end
                     WarbandNexus:AddPlan({
                         type = "achievement",
                         achievementID = achievementID,
                         name = name,
                         icon = icon,
                         points = points,
+                        rewardText = planRewardText,
                     })
                     popup:Hide()
                     if WarbandNexus.RefreshUI then
