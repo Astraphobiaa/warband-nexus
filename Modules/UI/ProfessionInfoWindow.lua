@@ -12,8 +12,15 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 local ProfessionInfoEvents = {} -- Unique AceEvent identity for this module
+
+local Utilities = ns.Utilities
+local issecretvalue = issecretvalue
+local function SafeLower(s)
+    return Utilities and Utilities.SafeLower and Utilities:SafeLower(s) or ""
+end
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local ApplyVisuals = ns.UI_ApplyVisuals
 local function GetFactory()
@@ -117,7 +124,8 @@ local function IsMidnightExpansion(name, skillLineID)
     if skillLineID and MIDNIGHT_SKILLLINE_IDS[skillLineID] then
         return true
     end
-    return name and type(name) == "string" and name:find("Midnight", 1, true)
+    return name and type(name) == "string" and not (issecretvalue and issecretvalue(name))
+        and name:find("Midnight", 1, true)
 end
 
 -- ============================================================================
@@ -148,6 +156,7 @@ end
 
 local function NormalizeProfessionKey(name)
     if not name or type(name) ~= "string" then return name end
+    if issecretvalue and issecretvalue(name) then return name end
     return name
         :gsub("^Midnight ", "")
         :gsub("^Khaz Algar ", "")
@@ -165,7 +174,9 @@ local function ResolveProfessionEquipment(charData, profName)
         for k, v in pairs(eqByProf) do
             if k ~= "_legacy" and type(v) == "table" and (v.tool or v.accessory1 or v.accessory2) then
                 local norm = NormalizeProfessionKey(k)
-                if norm == eqKey or (eqKey and type(k) == "string" and k:find(eqKey, 1, true)) then
+                local kSafe = type(k) == "string" and not (issecretvalue and issecretvalue(k))
+                local eqSafe = eqKey and not (issecretvalue and issecretvalue(eqKey))
+                if norm == eqKey or (eqSafe and kSafe and k:find(eqKey, 1, true)) then
                     eqData = v
                     break
                 end
@@ -548,7 +559,7 @@ local function AddTalentTree(scrollChild, yOffset, nodes)
         displayList = {}
         local sorted = {}
         for i = 1, #nodes do sorted[#sorted + 1] = nodes[i] end
-        table.sort(sorted, function(a, b) return (a.name or "") < (b.name or "") end)
+        table.sort(sorted, function(a, b) return SafeLower(a.name) < SafeLower(b.name) end)
         for i = 1, #sorted do
             displayList[i] = { node = sorted[i], depth = 0 }
         end
@@ -723,7 +734,9 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                     yOffset = yOffset + 4
                     for _, tab in ipairs(kd.specTabs) do
                         local stateTxt = tab.state or "?"
-                        local isUnlocked = (stateTxt == "1" or stateTxt:lower() == "unlocked")
+                        local stateLower = (type(stateTxt) == "string" and not (issecretvalue and issecretvalue(stateTxt)))
+                            and stateTxt:lower() or ""
+                        local isUnlocked = (stateTxt == "1" or stateLower == "unlocked")
                         local allocatedCount, totalRanks, spentRanks, totalNodes = 0, 0, 0, 0
                         if tab.nodes then
                             for ni = 1, #tab.nodes do
@@ -795,7 +808,7 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                     end
                     table.sort(sorted, function(a, b)
                         if a.learned ~= b.learned then return a.learned end
-                        return (a.name or "") < (b.name or "")
+                        return SafeLower(a.name) < SafeLower(b.name)
                     end)
 
                     for _, recipe in ipairs(sorted) do
@@ -1116,10 +1129,10 @@ local function RefreshVisibleProfessionInfo(updatedCharKey)
 end
 
 if WarbandNexus and WarbandNexus.RegisterMessage then
-    WarbandNexus.RegisterMessage(ProfessionInfoEvents, "WN_PROFESSION_EQUIPMENT_UPDATED", function(_, charKey)
+    WarbandNexus.RegisterMessage(ProfessionInfoEvents, E.PROFESSION_EQUIPMENT_UPDATED, function(_, charKey)
         RefreshVisibleProfessionInfo(charKey)
     end)
-    WarbandNexus.RegisterMessage(ProfessionInfoEvents, "WN_PROFESSION_DATA_UPDATED", function(_, charKey)
+    WarbandNexus.RegisterMessage(ProfessionInfoEvents, E.PROFESSION_DATA_UPDATED, function(_, charKey)
         RefreshVisibleProfessionInfo(charKey)
     end)
 end

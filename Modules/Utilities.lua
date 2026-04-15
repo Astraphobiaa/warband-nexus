@@ -35,14 +35,16 @@ end
 ---@return string Character key in "Name-Realm" format (e.g. "Superluminal-TwistingNether")
 function Utilities:GetCharacterKey(name, realm)
     name = name or UnitName("player")
+    if not name or (issecretvalue and issecretvalue(name)) then return nil end
     if not realm then
         local norm = GetNormalizedRealmName and GetNormalizedRealmName()
-        if type(norm) == "string" and norm ~= "" and not (issecretvalue and issecretvalue(norm)) then
+        if type(norm) == "string" and not (issecretvalue and issecretvalue(norm)) and norm ~= "" then
             realm = norm
         else
             realm = GetRealmName and GetRealmName() or ""
         end
     end
+    if not realm or (issecretvalue and issecretvalue(realm)) then return nil end
     
     -- CRITICAL: Normalize key to prevent duplicates
     -- Remove spaces for consistent matching (e.g. "Twisting Nether" -> "TwistingNether")
@@ -98,9 +100,9 @@ function Utilities:IsModuleEnabled(moduleName)
     if not db or not db.profile then return false end
     
     local modules = db.profile.modulesEnabled
-    if not modules then return false end
+    if not modules then return true end
     
-    return modules[moduleName] == true
+    return modules[moduleName] ~= false
 end
 
 --============================================================================
@@ -167,6 +169,15 @@ end
 function Utilities:IsSecretValue(val)
     if val == nil then return false end
     return issecretvalue and issecretvalue(val) or false
+end
+
+--- Lowercase for search/sort when the string is safe to touch (never call `:lower()` on secret values).
+---@param s string|nil
+---@return string
+function Utilities:SafeLower(s)
+    if not s or s == "" then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    return s:lower()
 end
 
 --============================================================================
@@ -332,7 +343,7 @@ function Utilities:GetPetNameFromTooltip(itemID)
     -- First return value is the pet name (string), speciesID is the 13th return.
     if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
         local petName = C_PetJournal.GetPetInfoByItemID(itemID)
-        if type(petName) == "string" and petName ~= "" then
+        if type(petName) == "string" and not (issecretvalue and issecretvalue(petName)) and petName ~= "" then
             return petName
         end
     end
@@ -354,7 +365,7 @@ function Utilities:GetPetNameFromTooltip(itemID)
     end
     
     -- Check if battlePetName field exists (TWW API)
-    if tooltipData.battlePetName and tooltipData.battlePetName ~= "" then
+    if tooltipData.battlePetName and not (issecretvalue and issecretvalue(tooltipData.battlePetName)) and tooltipData.battlePetName ~= "" then
         return tooltipData.battlePetName
     end
     
@@ -375,6 +386,12 @@ function Utilities:GetPetNameFromTooltip(itemID)
         local line = tooltipData.lines[i]
         if line and line.leftText then
             local text = line.leftText
+            if issecretvalue and issecretvalue(text) then
+                -- Midnight 12.0+: secure tooltip lines can be secret values.
+                -- Skip parsing to avoid ADDON_ACTION_FORBIDDEN from string ops.
+                text = nil
+            end
+            if text then
             
             -- Clean color codes and formatting
             local cleanText = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|h", ""):gsub("|H", "")
@@ -402,6 +419,7 @@ function Utilities:GetPetNameFromTooltip(itemID)
                 if not isBadLine then
                     return cleanText
                 end
+            end
             end
         end
     end

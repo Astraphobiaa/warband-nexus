@@ -7,6 +7,8 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+local issecretvalue = issecretvalue
+
 -- Import shared UI components
 local CreateCard = ns.UI_CreateCard
 local CreateIcon = ns.UI_CreateIcon
@@ -56,6 +58,7 @@ local TYPE_ICONS = {
 
 local function IsPlaceholderSourceText(sourceText)
     if type(sourceText) ~= "string" then return true end
+    if issecretvalue and issecretvalue(sourceText) then return true end
     local s = sourceText:gsub("^%s+", ""):gsub("%s+$", "")
     if s == "" then return true end
     local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
@@ -627,9 +630,12 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                     local mountID = plan.mountID
                     if mountID then
                         local diff = WarbandNexus:GetDropDifficulty("mount", mountID)
-                        if diff then
+                        local z = source.zone
+                        local zSafe = z and type(z) == "string" and not (issecretvalue and issecretvalue(z))
+                        local dSafe = diff and not (issecretvalue and issecretvalue(diff))
+                        if dSafe and zSafe then
                             -- Don't duplicate: zone may already contain "(Mythic)" from API
-                            if not source.zone:find("(" .. diff .. ")", 1, true) then
+                            if not z:find("(" .. diff .. ")", 1, true) then
                                 local bodyColor = (ns.PLAN_UI_COLORS or {}).body or "|cffffffff"
                                 zoneDiffLabel = " " .. bodyColor .. "(" .. diff .. ")|r"
                             end
@@ -679,13 +685,13 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     -- Fallback: If no structured sources found, show raw source text
     if #sources == 0 and not lastTextElement then
         local rawText = plan.source or ""
-        
-        -- Clean source text if function exists
-        if WarbandNexus and WarbandNexus.CleanSourceText then
+        if type(rawText) ~= "string" or (issecretvalue and issecretvalue(rawText)) then
+            rawText = ""
+        elseif WarbandNexus and WarbandNexus.CleanSourceText then
             local success, cleaned = pcall(function()
                 return WarbandNexus:CleanSourceText(rawText)
             end)
-            if success and cleaned then
+            if success and cleaned and type(cleaned) == "string" and not (issecretvalue and issecretvalue(cleaned)) then
                 rawText = cleaned
             end
         end
@@ -1010,7 +1016,9 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     
     -- Parse source for achievement-specific display
     local rawText = plan.source or ""
-    if WarbandNexus.CleanSourceText then
+    if type(rawText) ~= "string" or (issecretvalue and issecretvalue(rawText)) then
+        rawText = ""
+    elseif WarbandNexus.CleanSourceText then
         rawText = WarbandNexus:CleanSourceText(rawText)
     end
     
@@ -1019,21 +1027,24 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     -- ALWAYS prefer API description for achievements (ensures localization)
     if plan.achievementID then
         local success, _, _, _, _, _, _, _, achievementDescription = pcall(GetAchievementInfo, plan.achievementID)
-        if success and achievementDescription and achievementDescription ~= "" then
+        if success and achievementDescription and not (issecretvalue and issecretvalue(achievementDescription)) and achievementDescription ~= "" then
             description = achievementDescription
         end
     end
     
     -- Additional fallback: Check if plan has description field
     if (not description or description == "") and plan.description then
-        description = plan.description
+        local pd = plan.description
+        if type(pd) == "string" and not (issecretvalue and issecretvalue(pd)) then
+            description = pd
+        end
     end
     
     local currentY = -60
     local lastTextElement = nil
     
     -- Information (show truncated version when collapsed, full text when expanded)
-    if description and description ~= "" then
+    if description and not (issecretvalue and issecretvalue(description)) and description ~= "" then
         -- Clean up description (remove extra whitespace, newlines)
         description = description:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
         
@@ -1530,7 +1541,10 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     local infoHeight = 0
     if card.fullDescription and card.fullDescription ~= "" then
         local truncatedDescription = card.infoText and card.infoText:GetText() or ""
-        if truncatedDescription:find("%.%.%.") or #truncatedDescription < #card.fullDescription then
+        if truncatedDescription and issecretvalue and issecretvalue(truncatedDescription) then
+            truncatedDescription = ""
+        end
+        if truncatedDescription ~= "" and (truncatedDescription:find("%.%.%.") or #truncatedDescription < #card.fullDescription) then
             infoHeight = math.ceil(#card.fullDescription / 60) * 14 + 16  -- Approximate height
         end
     end
@@ -2482,7 +2496,8 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
     local yOffset = 0
     
     -- Parse multiple sources to get structured data (vendor, zone, cost, etc.)
-    if plan.source and WarbandNexus and WarbandNexus.ParseMultipleSources then
+    local planSourceSafe = plan.source and type(plan.source) == "string" and not (issecretvalue and issecretvalue(plan.source))
+    if planSourceSafe and WarbandNexus and WarbandNexus.ParseMultipleSources then
         local success, sources = pcall(function()
             return WarbandNexus:ParseMultipleSources(plan.source)
         end)
@@ -2546,8 +2561,11 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                         local mountID = plan.mountID
                         if mountID then
                             local diff = WarbandNexus:GetDropDifficulty("mount", mountID)
-                            if diff then
-                                if not source.zone:find("(" .. diff .. ")", 1, true) then
+                            local z = source.zone
+                            local zSafe = z and type(z) == "string" and not (issecretvalue and issecretvalue(z))
+                            local dSafe = diff and not (issecretvalue and issecretvalue(diff))
+                            if dSafe and zSafe then
+                                if not z:find("(" .. diff .. ")", 1, true) then
                                     local P = ns.PLAN_UI_COLORS or {}
                                     local bodyColor = P.body or "|cffffffff"
                                     zoneDiffLabel = " " .. bodyColor .. "(" .. diff .. ")|r"
@@ -2568,10 +2586,13 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                 -- Cost (if available)
                 if source.cost then
                     local costText = source.cost
+                    if type(costText) ~= "string" or (issecretvalue and issecretvalue(costText)) then
+                        costText = nil
+                    end
                     local currencyName = nil
                     
                     -- Try to identify currency from source text
-                    if plan.source then
+                    if costText and plan.source and type(plan.source) == "string" and not (issecretvalue and issecretvalue(plan.source)) then
                         for textureID in plan.source:gmatch("|T(%d+)[:|]") do
                             local texID = tonumber(textureID)
                             if texID then
@@ -2583,7 +2604,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                                 local currencyID = textureMap[texID]
                                 if currencyID and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
                                     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
-                                    if info and info.name then
+                                    if info and info.name and not (issecretvalue and issecretvalue(info.name)) then
                                         currencyName = info.name
                                         break
                                     end
@@ -2592,23 +2613,26 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                         end
                     end
                     
-                    if costText:match("[Gg]old") then
+                    if costText and costText:match("[Gg]old") then
                         currencyName = (ns.L and ns.L["GOLD_LABEL"]) or "Gold"
                     end
                     
-                    if currencyName and currencyName ~= "Gold" then
+                    if costText and currencyName and not (issecretvalue and issecretvalue(currencyName))
+                        and currencyName ~= "Gold" then
                         costText = costText:gsub("|T.-|t", ""):gsub("^%s+", ""):gsub("%s+$", "")
                         costText = costText .. " (" .. currencyName .. ")"
                     end
                     
-                    local costLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
-                    costLabel:SetPoint("TOPLEFT", 0, yOffset)
-                    costLabel:SetPoint("RIGHT", 0, 0)
-                    costLabel:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["COST_LABEL"]) or "Cost:") .. "|r |cffffffff" .. costText .. "|r")
-                    costLabel:SetJustifyH("LEFT")
-                    costLabel:SetWordWrap(true)
-                    costLabel:SetNonSpaceWrap(false)
-                    yOffset = yOffset - (costLabel:GetStringHeight() or 18) - 4
+                    if costText then
+                        local costLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
+                        costLabel:SetPoint("TOPLEFT", 0, yOffset)
+                        costLabel:SetPoint("RIGHT", 0, 0)
+                        costLabel:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["COST_LABEL"]) or "Cost:") .. "|r |cffffffff" .. costText .. "|r")
+                        costLabel:SetJustifyH("LEFT")
+                        costLabel:SetWordWrap(true)
+                        costLabel:SetNonSpaceWrap(false)
+                        yOffset = yOffset - (costLabel:GetStringHeight() or 18) - 4
+                    end
                 end
                 
                 -- Faction (if available)
@@ -2636,8 +2660,13 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
         else
             -- Fallback: Show raw source text if parsing fails
             local cleanSource = plan.source
-            if WarbandNexus.CleanSourceText then
+            if type(cleanSource) ~= "string" or (issecretvalue and issecretvalue(cleanSource)) then
+                cleanSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
+            elseif WarbandNexus.CleanSourceText then
                 cleanSource = WarbandNexus:CleanSourceText(cleanSource)
+                if type(cleanSource) ~= "string" or (issecretvalue and issecretvalue(cleanSource)) then
+                    cleanSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
+                end
             end
             local sourceText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
             sourceText:SetPoint("TOPLEFT", 0, yOffset)
@@ -2652,8 +2681,13 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
     elseif plan.source then
         -- No ParseMultipleSources available, show raw text
         local cleanSource = plan.source
-        if WarbandNexus.CleanSourceText then
+        if type(cleanSource) ~= "string" or (issecretvalue and issecretvalue(cleanSource)) then
+            cleanSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
+        elseif WarbandNexus.CleanSourceText then
             cleanSource = WarbandNexus:CleanSourceText(cleanSource)
+            if type(cleanSource) ~= "string" or (issecretvalue and issecretvalue(cleanSource)) then
+                cleanSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
+            end
         end
         local sourceText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
         sourceText:SetPoint("TOPLEFT", 0, yOffset)
@@ -3480,18 +3514,28 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
     
     -- Resolve empty source from API for browser items (mount/pet) so "Unknown source" is avoided.
     local rawText = item.source or ""
+    if type(rawText) ~= "string" or (issecretvalue and issecretvalue(rawText)) then
+        rawText = ""
+    end
     if IsPlaceholderSourceText(rawText) and item.id and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
         local planLike = { type = item.category or "mount", mountID = (item.category == "mount") and item.id or nil, speciesID = (item.category == "pet") and item.id or nil, itemID = (item.category == "toy") and item.id or nil, sourceID = (item.category == "illusion") and item.id or nil }
         if planLike.mountID or planLike.speciesID or planLike.itemID or planLike.sourceID then
             local resolved = WarbandNexus:GetPlanDisplaySource(planLike)
-            if resolved and resolved ~= "" then rawText = resolved end
+            if resolved and type(resolved) == "string" and not (issecretvalue and issecretvalue(resolved)) and resolved ~= "" then
+                rawText = resolved
+            end
         end
     end
-    if WarbandNexus.CleanSourceText then
+    if rawText ~= "" and WarbandNexus.CleanSourceText then
         rawText = WarbandNexus:CleanSourceText(rawText)
+        if type(rawText) ~= "string" or (issecretvalue and issecretvalue(rawText)) then
+            rawText = ""
+        end
     end
     -- Replace newlines with spaces and collapse whitespace
-    rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    if rawText ~= "" then
+        rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    end
     
     -- If no valid source text, show default message
     if rawText == "" or rawText == "Unknown" then
@@ -3505,7 +3549,7 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
     local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
     if sourceType and sourceDetail and sourceDetail ~= "" then
         local iconAtlas = "|A:Class:16:16|a "
-        local lowerType = string.lower(sourceType)
+        local lowerType = (not (issecretvalue and issecretvalue(sourceType))) and string.lower(sourceType) or ""
         if lowerType:match("quest") then
             iconAtlas = "|TInterface\\Icons\\INV_Misc_Map_01:16:16:0:0|t "
         elseif lowerType:match("profession") or lowerType:match("crafted") then

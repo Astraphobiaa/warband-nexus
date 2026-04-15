@@ -4,6 +4,7 @@
 ]]
 
 local ADDON_NAME, ns = ...
+local E = ns.Constants.EVENTS
 
 -- Unique AceEvent handler identity for StatisticsUI
 local StatisticsUIEvents = {}
@@ -12,6 +13,18 @@ local StatisticsUIEvents = {}
 local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
+
+local issecretvalue = issecretvalue
+
+--- Display name for stats rows: never :match on secret charKey or use secret stored name.
+local function GetStatCharDisplayName(charData, charKey)
+    local n = charData and charData.name
+    if n and not (issecretvalue and issecretvalue(n)) then return n end
+    if charKey and not (issecretvalue and issecretvalue(charKey)) then
+        return charKey:match("^([^-]+)") or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    end
+    return (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+end
 
 -- Forward declaration (defined in COLLECTION STATS CACHE section below)
 local InvalidateStatsCache
@@ -23,7 +36,7 @@ local InvalidateStatsCache
 function WarbandNexus:InitializeStatisticsUI()
     -- Register for collection update events
     -- NOTE: Uses StatisticsUIEvents as 'self' key to avoid overwriting other modules' handlers.
-    WarbandNexus.RegisterMessage(StatisticsUIEvents, "WN_COLLECTION_UPDATED", function(event, charKey)
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.COLLECTION_UPDATED, function(event, charKey)
         DebugPrint("|cff9370DB[WN StatisticsUI]|r Collection updated event received for " .. tostring(charKey))
         
         -- Invalidate stats cache so fresh counts are computed on next draw
@@ -44,7 +57,7 @@ function WarbandNexus:InitializeStatisticsUI()
     -- Collection stats are only invalidated by WN_COLLECTION_UPDATED (above).
     -- Invalidating here caused GetCachedCollectionStats to rebuild (1000+ API calls) on every
     -- character event, causing severe performance issues.
-    WarbandNexus.RegisterMessage(StatisticsUIEvents, "WN_CHARACTER_UPDATED", function(event, payload)
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.CHARACTER_UPDATED, function(event, payload)
         DebugPrint("|cff9370DB[WN StatisticsUI]|r Character updated event received")
         
         -- Only refresh if Statistics tab is currently active
@@ -62,7 +75,6 @@ end
 
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
-local FormatGold = ns.UI_FormatGold
 local FormatMoney = ns.UI_FormatMoney
 local FormatNumber = ns.UI_FormatNumber
 local CreateIcon = ns.UI_CreateIcon
@@ -83,8 +95,6 @@ local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 
 -- Performance: Local function references
 local format = string.format
-local date = date
-local floor = math.floor
 
 --============================================================================
 -- COLLECTION STATS CACHE
@@ -147,7 +157,7 @@ function WarbandNexus:DrawStatistics(parent)
     if not characters or not next(characters) then
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local _, height = CreateEmptyStateCard(parent, "statistics", headerYOffset)
-        return
+        return headerYOffset + (height or 120)
     end
 
     -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
@@ -390,7 +400,7 @@ function WarbandNexus:DrawStatistics(parent)
         if charData.isTracked then
             local copper = ns.Utilities:GetCharTotalCopper(charData)
             goldChars[#goldChars + 1] = {
-                name = charData.name or charKey:match("^([^-]+)") or "Unknown",
+                name = GetStatCharDisplayName(charData, charKey),
                 classFile = charData.classFile,
                 copper = copper,
             }
@@ -593,16 +603,21 @@ function WarbandNexus:DrawStatistics(parent)
 
     -- Steam-style format (e.g., "1,234.5 Hours")
     local function FormatPlayedSteam(seconds)
-        if not seconds or seconds <= 0 then return "0 Hours" end
+        local L = ns.L
+        local z = (L and L["STATS_PLAYED_STEAM_ZERO"]) or "0 Hours"
+        local fFloat = (L and L["STATS_PLAYED_STEAM_FLOAT"]) or "%.1f Hours"
+        local fThousand = (L and L["STATS_PLAYED_STEAM_THOUSAND"]) or "%d,%03d Hours"
+        local fInt = (L and L["STATS_PLAYED_STEAM_INT"]) or "%d Hours"
+        if not seconds or seconds <= 0 then return z end
         local hours = seconds / 3600
         if hours < 100 then
-            return string.format("%.1f Hours", hours)
+            return string.format(fFloat, hours)
         else
             local h = math.floor(hours + 0.5)
             if h >= 1000 then
-                return string.format("%d,%03d Hours", math.floor(h / 1000), h % 1000)
+                return string.format(fThousand, math.floor(h / 1000), h % 1000)
             else
-                return h .. " Hours"
+                return string.format(fInt, h)
             end
         end
     end
@@ -623,7 +638,7 @@ function WarbandNexus:DrawStatistics(parent)
         if charData.isTracked then
             local played = charData.timePlayed or 0
             playedChars[#playedChars + 1] = {
-                name = charData.name or charKey:match("^([^-]+)") or "Unknown",
+                name = GetStatCharDisplayName(charData, charKey),
                 classFile = charData.classFile,
                 timePlayed = played,
             }

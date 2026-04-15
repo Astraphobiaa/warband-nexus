@@ -41,6 +41,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local issecretvalue = issecretvalue
 
 -- ============================================================================
 -- CHAT OUTPUT (ns.ChatOutput)
@@ -474,7 +475,8 @@ end
 ---@param message string
 ---@param group string
 function ChatOutput.SendToFramesWithGroup(message, group)
-    if not message or not group then return end
+    if type(message) ~= "string" or type(group) ~= "string" or group == "" then return end
+    if issecretvalue and issecretvalue(message) then return end
     if ChatOutput.IsChattynatorPresent() then
         ChatOutput.DeliverWithChattynatorOrFallback(message)
         return
@@ -499,7 +501,8 @@ end
 ---@param message string
 ---@param groups table
 function ChatOutput.SendToFramesWithAnyGroup(message, groups)
-    if not message then return end
+    if type(message) ~= "string" then return end
+    if issecretvalue and issecretvalue(message) then return end
     if ChatOutput.IsChattynatorPresent() then
         ChatOutput.DeliverWithChattynatorOrFallback(message)
         return

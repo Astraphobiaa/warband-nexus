@@ -5,12 +5,20 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local Constants = ns.Constants
+local E = Constants.EVENTS
+local FRAME_BUDGET_MS = Constants.FRAME_BUDGET_MS or 8
+local issecretvalue = issecretvalue
 local L = ns.L
+local Utilities = ns.Utilities
+local DebugVerbosePrint = ns.DebugVerbosePrint or function() end
+local function CmpItemName(a, b)
+    return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.name) or "") < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.name) or "")
+end
 
 -- Local references for performance
 local wipe = wipe
 local pairs = pairs
-local ipairs = ipairs
 local tinsert = table.insert
 
 -- Minimal logging for operations (disabled)
@@ -18,9 +26,13 @@ local function LogOperation(operationName, status, trigger)
     -- Logging disabled
 end
 
--- Scan Guild Bank
+-- Supersede in-flight chunked scans (new ScanGuildBank or close invalidates via guildBankIsOpen check)
+local guildBankScanGeneration = 0
+local MAX_GUILDBANK_SLOTS_PER_TAB = 98
+
+-- Scan Guild Bank (frame-budgeted; returns true when a scan run is scheduled / validations pass)
 function WarbandNexus:ScanGuildBank()
-    ns.DebugPrint("|cff888888[Guild Bank Scanner]|r ScanGuildBank() called")
+    DebugVerbosePrint("|cff888888[Guild Bank Scanner]|r ScanGuildBank() called")
     
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Character not tracked")
@@ -40,12 +52,12 @@ function WarbandNexus:ScanGuildBank()
     end
     
     local guildName = GetGuildInfo("player")
-    if not guildName then
+    if not guildName or (issecretvalue and issecretvalue(guildName)) then
         ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Could not get guild name")
         return false
     end
     
-    ns.DebugPrint("|cff00ff00[Guild Bank Scanner]|r Starting scan for guild: " .. guildName)
+    DebugVerbosePrint("|cff00ff00[Guild Bank Scanner]|r Starting scan for guild: " .. guildName)
     
     -- Initialize guild bank structure in global DB (guild bank is shared across characters)
     if not self.db.global.guildBank then
@@ -53,110 +65,139 @@ function WarbandNexus:ScanGuildBank()
     end
     
     if not self.db.global.guildBank[guildName] then
+        local scanBy = UnitName("player")
+        if scanBy and issecretvalue and issecretvalue(scanBy) then scanBy = nil end
         self.db.global.guildBank[guildName] = { 
             tabs = {},
             lastScan = 0,
-            scannedBy = UnitName("player")
+            scannedBy = scanBy
         }
     end
     
     local guildData = self.db.global.guildBank[guildName]
     
-    -- Get number of tabs (player might not have access to all)
     local numTabs = GetNumGuildBankTabs()
     
     if not numTabs or numTabs == 0 then
         return false
     end
-    
+
+    guildBankScanGeneration = guildBankScanGeneration + 1
+    local myGen = guildBankScanGeneration
+
     local totalItems = 0
     local totalSlots = 0
     local usedSlots = 0
-    
-    -- Scan all tabs
-    for tabIndex = 1, numTabs do
-        -- Check if player has view permission for this tab
-        local name, icon, isViewable, canDeposit, numWithdrawals = GetGuildBankTabInfo(tabIndex)
-        
-        if isViewable then
-            if not guildData.tabs[tabIndex] then
-                guildData.tabs[tabIndex] = {
-                    name = name,
-                    icon = icon,
-                    items = {}
-                }
-            else
-                -- Update tab info and clear items
-                guildData.tabs[tabIndex].name = name
-                guildData.tabs[tabIndex].icon = icon
-                wipe(guildData.tabs[tabIndex].items)
+
+    local tabIndex = 1
+    local slotID = 0
+    local tabItemsBuilding = nil
+
+    local function finalizeSuccess()
+        guildData.lastScan = time()
+        do
+            local scanBy = UnitName("player")
+            guildData.scannedBy = (scanBy and not (issecretvalue and issecretvalue(scanBy))) and scanBy or nil
+        end
+        guildData.totalItems = totalItems
+        guildData.totalSlots = totalSlots
+        guildData.usedSlots = usedSlots
+        local guildGold = GetGuildBankMoney()
+        if guildGold then
+            guildData.cachedGold = guildGold
+            guildData.goldLastUpdated = time()
+        end
+        DebugVerbosePrint("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. totalItems .. " items in " .. usedSlots .. " slots")
+        LogOperation("Guild Bank Scan", "Finished", self.currentTrigger or "Manual")
+        self:SendMessage(E.ITEMS_UPDATED)
+    end
+
+    local function processChunk()
+        if myGen ~= guildBankScanGeneration then return end
+        if not self.guildBankIsOpen then return end
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
+
+        local budgetStart = debugprofilestop()
+
+        while (debugprofilestop() - budgetStart) < FRAME_BUDGET_MS do
+            if myGen ~= guildBankScanGeneration then return end
+            if not self.guildBankIsOpen then return end
+
+            if tabIndex > numTabs then
+                finalizeSuccess()
+                return
             end
-            
-            local tabData = guildData.tabs[tabIndex]
-            
-            -- Guild bank has 98 slots per tab (14 columns x 7 rows)
-            local MAX_GUILDBANK_SLOTS_PER_TAB = 98
-            totalSlots = totalSlots + MAX_GUILDBANK_SLOTS_PER_TAB
-            
-            for slotID = 1, MAX_GUILDBANK_SLOTS_PER_TAB do
-                local itemLink = GetGuildBankItemLink(tabIndex, slotID)
-                
-                if itemLink then
-                    local texture, itemCount, locked = GetGuildBankItemInfo(tabIndex, slotID)
-                    
-                    -- Extract itemID from link
-                    local itemID = tonumber(itemLink:match("item:(%d+)"))
-                    
-                    if itemID then
-                        usedSlots = usedSlots + 1
-                        totalItems = totalItems + (itemCount or 1)
-                        
-                        local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
-                              _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemID)
-                        
-                        -- Store item data (standardized field names matching Personal/Warband)
-                        tabData.items[slotID] = {
-                            itemID = itemID,
-                            itemLink = itemLink,
-                            name = itemName or ((ns.L and ns.L["UNKNOWN"]) or UNKNOWN or "Unknown"),  -- Changed: itemName -> name
-                            link = itemLink,  -- Added: for consistency
-                            stackCount = itemCount or 1,
-                            quality = itemQuality or 0,
-                            itemLevel = itemLevel or 0,
-                            itemType = itemType or "",
-                            itemSubType = itemSubType or "",
-                            iconFileID = texture or itemTexture,  -- Changed: icon -> iconFileID
-                            classID = classID or 0,
-                            subclassID = subclassID or 0
-                        }
+
+            if slotID == 0 then
+                local name, icon, isViewable = GetGuildBankTabInfo(tabIndex)
+                if not isViewable then
+                    tabIndex = tabIndex + 1
+                else
+                    totalSlots = totalSlots + MAX_GUILDBANK_SLOTS_PER_TAB
+                    if not guildData.tabs[tabIndex] then
+                        guildData.tabs[tabIndex] = { name = name, icon = icon, items = {} }
+                    else
+                        guildData.tabs[tabIndex].name = name
+                        guildData.tabs[tabIndex].icon = icon
+                    end
+                    tabItemsBuilding = {}
+                    slotID = 1
+                end
+            else
+                local tabData = guildData.tabs[tabIndex]
+                if not tabData or not tabItemsBuilding then
+                    tabIndex = tabIndex + 1
+                    slotID = 0
+                else
+                    local itemLink = GetGuildBankItemLink(tabIndex, slotID)
+                    if itemLink then
+                        local texture, itemCount, locked = GetGuildBankItemInfo(tabIndex, slotID)
+                        local itemID = nil
+                        if type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)) then
+                            itemID = tonumber(itemLink:match("item:(%d+)"))
+                        end
+                        if itemID then
+                            usedSlots = usedSlots + 1
+                            totalItems = totalItems + (itemCount or 1)
+                            local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
+                                  _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemID)
+                            tabItemsBuilding[slotID] = {
+                                itemID = itemID,
+                                itemLink = itemLink,
+                                name = itemName or ((ns.L and ns.L["UNKNOWN"]) or UNKNOWN or "Unknown"),
+                                link = itemLink,
+                                stackCount = itemCount or 1,
+                                quality = itemQuality or 0,
+                                itemLevel = itemLevel or 0,
+                                itemType = itemType or "",
+                                itemSubType = itemSubType or "",
+                                iconFileID = texture or itemTexture,
+                                classID = classID or 0,
+                                subclassID = subclassID or 0
+                            }
+                        end
+                    end
+                    slotID = slotID + 1
+                    if slotID > MAX_GUILDBANK_SLOTS_PER_TAB then
+                        tabData.items = tabItemsBuilding
+                        tabItemsBuilding = nil
+                        tabIndex = tabIndex + 1
+                        slotID = 0
                     end
                 end
             end
         end
+
+        C_Timer.After(0, processChunk)
     end
-    
-    -- Update metadata
-    guildData.lastScan = time()
-    guildData.scannedBy = UnitName("player")
-    guildData.totalItems = totalItems
-    guildData.totalSlots = totalSlots
-    guildData.usedSlots = usedSlots
-    
-    -- Cache guild bank gold (CRITICAL: Don't use live API in other characters)
-    local guildGold = GetGuildBankMoney()
-    if guildGold then
-        guildData.cachedGold = guildGold
-        guildData.goldLastUpdated = time()
-    end
-    
-    ns.DebugPrint("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. totalItems .. " items in " .. usedSlots .. " slots")
-    
-    LogOperation("Guild Bank Scan", "Finished", self.currentTrigger or "Manual")
-    
-    -- Event-driven UI update (UI listens to WN_ITEMS_UPDATED)
-    self:SendMessage("WN_ITEMS_UPDATED")
-    
+
+    C_Timer.After(0, processChunk)
     return true
+end
+
+---Abort in-flight chunked guild bank scan (window closed or superseded).
+function WarbandNexus:InvalidateGuildBankScan()
+    guildBankScanGeneration = guildBankScanGeneration + 1
 end
 
 --[[
@@ -173,8 +214,8 @@ function WarbandNexus:GetGuildBankItems(groupByCategory)
     local guildName = GetGuildInfo("player")
     
     -- Debug: Check guild status
-    if not guildName then
-        -- Not in a guild
+    if not guildName or (issecretvalue and issecretvalue(guildName)) then
+        -- Not in a guild (or name unavailable as plain string)
         return items
     end
     
@@ -212,7 +253,7 @@ function WarbandNexus:GetGuildBankItems(groupByCategory)
         if (a.quality or 0) ~= (b.quality or 0) then
             return (a.quality or 0) > (b.quality or 0)
         end
-        return (a.name or "") < (b.name or "")
+        return CmpItemName(a, b)
     end)
     
     if groupByCategory then
@@ -244,7 +285,8 @@ function WarbandNexus:GroupItemsByCategory(items)
         [19] = "Profession",
     }
     
-    for _, item in ipairs(items) do
+    for i = 1, #items do
+        local item = items[i]
         local classID = item.classID or 15  -- Default to Miscellaneous
         local categoryName = categoryNames[classID] or "Other"
         

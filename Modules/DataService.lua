@@ -26,6 +26,14 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
+local E = Constants.EVENTS
+
+-- Midnight 12.0+: currency list link / names may be secret in some contexts.
+local issecretvalue = issecretvalue
+local Utilities = ns.Utilities
+local function CmpCharName(a, b)
+    return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.name) or "") < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.name) or "")
+end
 
 -- Unique AceEvent handler identity for DataService
 -- Prevents overwriting other modules' handlers for the same message.
@@ -323,7 +331,9 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         charData.itemLevel = newItemLevel
         
     elseif dataType == "guild" then
-        charData.guildName = IsInGuild() and GetGuildInfo("player") or nil
+        local gn = IsInGuild() and GetGuildInfo("player") or nil
+        if gn and issecretvalue and issecretvalue(gn) then gn = nil end
+        charData.guildName = gn
 
     elseif dataType == "zone" then
         charData.zoneName = GetZoneText()
@@ -359,7 +369,7 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     
     -- PLAYER_MONEY: owned by Core.lua → EventManager (OnMoneyChanged)
     -- DataService listens to WN_MONEY_UPDATED message instead
-    self:RegisterMessage("WN_MONEY_UPDATED", function()
+    self:RegisterMessage(E.MONEY_UPDATED, function()
         self:UpdateCharacterCache("gold")
     end)
     
@@ -430,14 +440,14 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     -- Invalidate tooltip item count cache when bags/bank change
     -- Listen to internal messages (ItemsCacheService is the single owner of WoW events)
     -- NOTE: Uses DataServiceEvents as 'self' key to avoid overwriting other modules' handlers.
-    WarbandNexus.RegisterMessage(DataServiceEvents, "WN_BAGS_UPDATED", function()
+    WarbandNexus.RegisterMessage(DataServiceEvents, E.BAGS_UPDATED, function()
         if WarbandNexus.InvalidateItemCountCache then WarbandNexus:InvalidateItemCountCache() end
         if WarbandNexus.InvalidateItemSummary then
             local charKey = ns.Utilities:GetCharacterKey()
             WarbandNexus:InvalidateItemSummary(charKey)
         end
     end)
-    WarbandNexus.RegisterMessage(DataServiceEvents, "WN_ITEMS_UPDATED", function()
+    WarbandNexus.RegisterMessage(DataServiceEvents, E.ITEMS_UPDATED, function()
         if WarbandNexus.InvalidateItemCountCache then WarbandNexus:InvalidateItemCountCache() end
         if WarbandNexus.InvalidateItemSummary then
             local charKey = ns.Utilities:GetCharacterKey()
@@ -836,6 +846,8 @@ end
 function WarbandNexus:SaveMinimalCharacterData()
     local name = UnitName("player")
     local realm = GetNormalizedRealmName()
+    if name and issecretvalue and issecretvalue(name) then return false end
+    if realm and issecretvalue and issecretvalue(realm) then return false end
     
     if not name or name == "" or not realm or realm == "" then
         return false
@@ -852,6 +864,7 @@ function WarbandNexus:SaveMinimalCharacterData()
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")
     local guildName = IsInGuild() and GetGuildInfo("player") or nil
+    if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
     -- Get gender
     local gender = UnitSex("player")
     local raceInfo = C_PlayerInfo.GetRaceInfo and C_PlayerInfo.GetRaceInfo()
@@ -921,7 +934,7 @@ function WarbandNexus:SaveMinimalCharacterData()
         craftingOrders = nil,
         professionData = nil,
         rested = nil,
-        guid = UnitGUID("player"),
+        guid = (ns.Utilities and ns.Utilities.SafeGuid and ns.Utilities:SafeGuid("player")) or nil,
         stats = nil,
         specID = nil,
         specName = nil,
@@ -955,6 +968,8 @@ function WarbandNexus:SaveCurrentCharacterData()
     
     local name = UnitName("player")
     local realm = GetNormalizedRealmName()  -- CRITICAL: Get realm name
+    if name and issecretvalue and issecretvalue(name) then return false end
+    if realm and issecretvalue and issecretvalue(realm) then return false end
     
     -- Safety check
     if not name or name == "" or name == "Unknown" then
@@ -971,6 +986,7 @@ function WarbandNexus:SaveCurrentCharacterData()
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")
     local guildName = IsInGuild() and GetGuildInfo("player") or nil
+    if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
     
     -- CRITICAL: Store as single totalCopper (Lua number = 64-bit)
     -- Per documentation: GetMoney() returns copper directly
@@ -1138,7 +1154,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         craftingOrders       = preserveCraftingOrders,
         professionData       = preserveProfessionData,
         rested               = restedData,
-        guid                 = UnitGUID("player"),
+        guid                 = (ns.Utilities and ns.Utilities.SafeGuid and ns.Utilities:SafeGuid("player")) or nil,
         stats                = CollectPlayerStats(),  -- For Gear tab offline Character Stats
         specID               = specID,
         specName             = specName,
@@ -1298,7 +1314,7 @@ function WarbandNexus:GetAllCharacters()
         if (a.level or 0) ~= (b.level or 0) then
             return (a.level or 0) > (b.level or 0)
         end
-        return (a.name or "") < (b.name or "")
+        return CmpCharName(a, b)
     end)
     
     return characters
@@ -1536,7 +1552,7 @@ function WarbandNexus:GenerateWeeklyAlerts()
             if (a.priority or 99) ~= (b.priority or 99) then
                 return (a.priority or 99) < (b.priority or 99)
             end
-            return (a.character or "") < (b.character or "")
+            return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.character) or "") < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.character) or "")
         end)
     end
     
@@ -2323,7 +2339,13 @@ end
     @return table - Array of search results with location info
 ]]
 function WarbandNexus:PerformItemSearch(searchTerm)
-    if not searchTerm or searchTerm == "" then
+    if not searchTerm or type(searchTerm) ~= "string" then
+        return {}
+    end
+    if issecretvalue and issecretvalue(searchTerm) then
+        return {}
+    end
+    if searchTerm == "" then
         return {}
     end
     
@@ -2480,7 +2502,7 @@ function WarbandNexus:CollectCurrencyData()
                     
                     -- Method 1: From link (most reliable if it exists)
                     local currencyLink = C_CurrencyInfo.GetCurrencyListLink(i)
-                    if currencyLink then
+                    if currencyLink and not (issecretvalue and issecretvalue(currencyLink)) then
                         currencyID = tonumber(currencyLink:match("currency:(%d+)"))
                     end
                     
@@ -2502,9 +2524,11 @@ function WarbandNexus:CollectCurrencyData()
                             currencyCount = currencyCount + 1
                             
                             -- Hidden criteria
-                            local nameHidden = currencyInfo.name and 
-                                              (currencyInfo.name:find("%(Hidden%)") or 
-                                               currencyInfo.name:match("^%d+%.%d+%.%d+"))
+                            local cname = currencyInfo.name
+                            local nameHidden = false
+                            if cname and not (issecretvalue and issecretvalue(cname)) then
+                                nameHidden = cname:find("%(Hidden%)") ~= nil or cname:match("^%d+%.%d+%.%d+") ~= nil
+                            end
                             
                             local isReallyHidden = nameHidden or false
                             
@@ -3092,9 +3116,7 @@ function WarbandNexus:GetPvEDataV2(charKey)
         end
         
         -- Sort by name
-        table.sort(pve.mythicPlus.dungeons, function(a, b)
-            return (a.name or "") < (b.name or "")
-        end)
+        table.sort(pve.mythicPlus.dungeons, CmpCharName)
     end
     
     return pve
@@ -3103,12 +3125,6 @@ end
 -- ============================================================================
 -- V2: PERSONAL BANK STORAGE (Global with Compression)
 -- ============================================================================
-
--- Cache for decompressed data (in-memory only, per session)
-local decompressedCache = {
-    personalBanks = {},  -- [charKey] = decompressed data
-    warbandBank = nil,   -- single warband bank
-}
 
 --[[
     Update personal bank to global storage (v2)
@@ -3155,10 +3171,64 @@ function WarbandNexus:UpdatePersonalBankV2(charKey, bankData)
     
     self.db.global.personalBanksLastUpdate = time()
     
-    -- Invalidate decompressed cache for this character
-    if decompressedCache.personalBanks then
-        decompressedCache.personalBanks[charKey] = nil
+end
+
+local function ConvertItemsDataToLegacyBagIndexed(itemsData)
+    if not itemsData then
+        return nil
     end
+
+    local combined = {}
+
+    if itemsData.bags then
+        for i = 1, #itemsData.bags do
+            local item = itemsData.bags[i]
+            local bagID = item.bagID or 0
+            local slot = item.slot or 1
+            if not combined[bagID] then
+                combined[bagID] = {}
+            end
+            combined[bagID][slot] = item
+        end
+    end
+
+    if itemsData.bank then
+        for i = 1, #itemsData.bank do
+            local item = itemsData.bank[i]
+            local bagID = item.bagID or -1
+            local slot = item.slot or 1
+            if not combined[bagID] then
+                combined[bagID] = {}
+            end
+            combined[bagID][slot] = item
+        end
+    end
+
+    return combined
+end
+
+local function ConvertWarbandDataToLegacyBagIndexed(warbandData)
+    local result = {
+        items = {},
+        gold = 0, -- Legacy field (not tracked by ItemsCacheService)
+        lastScan = warbandData and warbandData.lastUpdate or 0,
+        totalSlots = 0, -- Legacy field
+        usedSlots = 0, -- Legacy field
+    }
+
+    if warbandData and warbandData.items then
+        for i = 1, #warbandData.items do
+            local item = warbandData.items[i]
+            local bagID = item.bagID or 13
+            local slot = item.slot or 1
+            if not result.items[bagID] then
+                result.items[bagID] = {}
+            end
+            result.items[bagID][slot] = item
+        end
+    end
+
+    return result
 end
 
 --[[
@@ -3172,88 +3242,11 @@ function WarbandNexus:GetPersonalBankV2(charKey)
     if self.GetItemsData then
         local itemsData = self:GetItemsData(charKey)
         if itemsData then
-            -- Return combined bags + bank for legacy compatibility
-            local combined = {}
-            
-            -- Add bags (convert array to bagID-indexed)
-            if itemsData.bags then
-                for i = 1, #itemsData.bags do
-                    local item = itemsData.bags[i]
-                    local bagID = item.bagID or 0
-                    local slot = item.slot or 1
-                    if not combined[bagID] then
-                        combined[bagID] = {}
-                    end
-                    combined[bagID][slot] = item
-                end
-            end
-            
-            -- Add bank (convert array to bagID-indexed)
-            if itemsData.bank then
-                for i = 1, #itemsData.bank do
-                    local item = itemsData.bank[i]
-                    local bagID = item.bagID or -1
-                    local slot = item.slot or 1
-                    if not combined[bagID] then
-                        combined[bagID] = {}
-                    end
-                    combined[bagID][slot] = item
-                end
-            end
-            
-            return combined
+            return ConvertItemsDataToLegacyBagIndexed(itemsData)
         end
     end
     
     return nil
-end
-
---[[
-    Get character's Personal Bank + Inventory Bags combined
-    DEPRECATED: Use ItemsCacheService:GetItemsData(charKey) instead
-    This function is kept for backward compatibility only
-    @param charKey string - Character key (Name-Realm)
-    @return table - Combined bank and bags data with unique keys
-]]
-function WarbandNexus:GetPersonalItemsV2(charKey)
-    -- DEPRECATED: Redirect to ItemsCacheService
-    if self.GetItemsData then
-        local itemsData = self:GetItemsData(charKey)
-        if itemsData then
-            -- Convert array format to bagID-indexed format for legacy compatibility
-            local combined = {}
-            
-            -- Add bags
-            if itemsData.bags then
-                for i = 1, #itemsData.bags do
-                    local item = itemsData.bags[i]
-                    local bagID = item.bagID or 0
-                    local slot = item.slot or 1
-                    if not combined[bagID] then
-                        combined[bagID] = {}
-                    end
-                    combined[bagID][slot] = item
-                end
-            end
-            
-            -- Add bank
-            if itemsData.bank then
-                for i = 1, #itemsData.bank do
-                    local item = itemsData.bank[i]
-                    local bagID = item.bagID or -1
-                    local slot = item.slot or 1
-                    if not combined[bagID] then
-                        combined[bagID] = {}
-                    end
-                    combined[bagID][slot] = item
-                end
-            end
-            
-            return combined
-        end
-    end
-    
-    return {}
 end
 
 -- ============================================================================
@@ -3310,11 +3303,6 @@ function WarbandNexus:UpdateWarbandBankV2(bankData)
     
     self.db.global.warbandBankLastUpdate = time()
     
-    -- CRITICAL: Invalidate decompressed cache for warband bank
-    -- Next GetWarbandBankV2() call will decompress fresh data
-    if decompressedCache then
-        decompressedCache.warbandBank = nil
-    end
 end
 
 --[[
@@ -3327,45 +3315,12 @@ function WarbandNexus:GetWarbandBankV2()
     if self.GetWarbandBankData then
         local warbandData = self:GetWarbandBankData()
         if warbandData then
-            -- Convert array format to bagID-indexed format for legacy compatibility
-            local result = {
-                items = {},
-                gold = 0, -- Legacy field (not tracked by ItemsCacheService)
-                lastScan = warbandData.lastUpdate or 0,
-                totalSlots = 0, -- Legacy field
-                usedSlots = 0, -- Legacy field
-            }
-            
-            if warbandData.items then
-                for i = 1, #warbandData.items do
-                    local item = warbandData.items[i]
-                    local bagID = item.bagID or 13
-                    local slot = item.slot or 1
-                    if not result.items[bagID] then
-                        result.items[bagID] = {}
-                    end
-                    result.items[bagID][slot] = item
-                end
-            end
-            
-            return result
+            return ConvertWarbandDataToLegacyBagIndexed(warbandData)
         end
     end
     
     -- Fallback
     return { items = {}, gold = 0, lastScan = 0, totalSlots = 0, usedSlots = 0 }
-end
-
---[[
-    Helper: Count table entries
-]]
-function WarbandNexus:TableCount(tbl)
-    if not tbl then return 0 end
-    local count = 0
-    for _ in pairs(tbl) do
-        count = count + 1
-    end
-    return count
 end
 
 -- ============================================================================
@@ -3885,9 +3840,12 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
                         local displayIcon = itemInfo.iconFileID or icon
                         
                         if classID == 17 and itemInfo.hyperlink then
-                            local petName = itemInfo.hyperlink:match("%[(.-)%]")
-                            if petName and petName ~= "" and petName ~= "Pet Cage" then
-                                displayName = petName
+                            local hp = itemInfo.hyperlink
+                            if type(hp) == "string" and not (issecretvalue and issecretvalue(hp)) then
+                                local petName = hp:match("%[(.-)%]")
+                                if petName and petName ~= "" and petName ~= "Pet Cage" then
+                                    displayName = petName
+                                end
                             end
                         end
                         
@@ -3922,7 +3880,7 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
     
     -- Fire event for UI refresh
     if self.SendMessage then
-        self:SendMessage("WN_BAGS_UPDATED")
+        self:SendMessage(E.BAGS_UPDATED)
     end
     
     return true
@@ -4045,6 +4003,9 @@ function WarbandNexus:GetDetailedItemCounts(itemID)
     
     local currentCharKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey() or nil
     local currentPlayerName = UnitName("player")
+    if currentPlayerName and issecretvalue and issecretvalue(currentPlayerName) then
+        currentPlayerName = nil
+    end
     for charKey, charData in pairs(self.db.global.characters or {}) do
         local bankCount = 0
         local bagCount = 0
@@ -4242,11 +4203,13 @@ function WarbandNexus:ScanWarbandBank(specificBagIDs)
                     local displayIcon = itemInfo.iconFileID or itemTexture
                     
                     if classID == 17 and itemInfo.hyperlink then
-                        local petName = itemInfo.hyperlink:match("%[(.-)%]")
-                        if petName and petName ~= "" and petName ~= "Pet Cage" then
-                            displayName = petName
-                            
-                            local speciesID = tonumber(itemInfo.hyperlink:match("|Hbattlepet:(%d+):"))
+                        local hp = itemInfo.hyperlink
+                        if type(hp) == "string" and not (issecretvalue and issecretvalue(hp)) then
+                            local petName = hp:match("%[(.-)%]")
+                            if petName and petName ~= "" and petName ~= "Pet Cage" then
+                                displayName = petName
+                            end
+                            local speciesID = tonumber(hp:match("|Hbattlepet:(%d+):"))
                             if speciesID and C_PetJournal then
                                 local _, petIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
                                 if petIcon then
@@ -4296,7 +4259,7 @@ function WarbandNexus:ScanWarbandBank(specificBagIDs)
     
     -- Fire event for UI refresh
     if self.SendMessage then
-        self:SendMessage("WN_BAGS_UPDATED")
+        self:SendMessage(E.BAGS_UPDATED)
     end
     
     return true
@@ -4399,11 +4362,13 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
                     local displayIcon = itemInfo.iconFileID or itemTexture
                     
                     if classID == 17 and itemInfo.hyperlink then
-                        local petName = itemInfo.hyperlink:match("%[(.-)%]")
-                        if petName and petName ~= "" and petName ~= "Pet Cage" then
-                            displayName = petName
-                            
-                            local speciesID = tonumber(itemInfo.hyperlink:match("|Hbattlepet:(%d+):"))
+                        local hp = itemInfo.hyperlink
+                        if type(hp) == "string" and not (issecretvalue and issecretvalue(hp)) then
+                            local petName = hp:match("%[(.-)%]")
+                            if petName and petName ~= "" and petName ~= "Pet Cage" then
+                                displayName = petName
+                            end
+                            local speciesID = tonumber(hp:match("|Hbattlepet:(%d+):"))
                             if speciesID and C_PetJournal then
                                 local _, petIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
                                 if petIcon then
@@ -4447,7 +4412,7 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
     
     -- Fire event for UI refresh
     if self.SendMessage then
-        self:SendMessage("WN_BAGS_UPDATED")
+        self:SendMessage(E.BAGS_UPDATED)
     end
     
     return true
@@ -4491,11 +4456,11 @@ function WarbandNexus:GetWarbandBankItems(groupByCategory)
         end
         -- Extract name for sorting (handle missing names)
         local aName = a.name
-        if not aName and a.link then
+        if not aName and a.link and type(a.link) == "string" and not (issecretvalue and issecretvalue(a.link)) then
             aName = a.link:match("%[(.-)%]")
         end
         local bName = b.name
-        if not bName and b.link then
+        if not bName and b.link and type(b.link) == "string" and not (issecretvalue and issecretvalue(b.link)) then
             bName = b.link:match("%[(.-)%]")
         end
         return (aName or "") < (bName or "")
@@ -4518,7 +4483,13 @@ function WarbandNexus:SearchWarbandItems(searchTerm)
     local allItems = self:GetWarbandBankItems()
     local results = {}
     
-    if not searchTerm or searchTerm == "" then
+    if not searchTerm or type(searchTerm) ~= "string" then
+        return allItems
+    end
+    if issecretvalue and issecretvalue(searchTerm) then
+        return allItems
+    end
+    if searchTerm == "" then
         return allItems
     end
     
@@ -4638,6 +4609,7 @@ function WarbandNexus:GetBankStatistics()
     
     -- ===== GUILD BANK (legacy format - scanned when guild bank is opened) =====
     local guildName = GetGuildInfo("player")
+    if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
     if guildName and self.db.global.guildBank and self.db.global.guildBank[guildName] then
         local guildData = self.db.global.guildBank[guildName]
         stats.guild.totalSlots = guildData.totalSlots or 0

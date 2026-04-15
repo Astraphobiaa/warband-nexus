@@ -9,6 +9,8 @@ local WarbandNexus = ns.WarbandNexus
 local FontManager  -- Will be set on first access
 local L = ns.L
 
+local issecretvalue = issecretvalue
+
 -- Unique AceEvent handler identity for UI.lua
 -- AceEvent uses events[eventname][self] = handler, so each module needs a unique
 -- 'self' table to prevent overwriting other modules' handlers for the same event.
@@ -387,7 +389,9 @@ function WarbandNexus:ShowMainWindow()
                             anyFixed = true
                         end
                         local text = btn.label:GetText()
-                        if text then btn.label:SetText(text) end
+                        if text and not (issecretvalue and issecretvalue(text)) then
+                            btn.label:SetText(text)
+                        end
                     end
                 end
                 -- Only rebuild content if fonts actually needed fixing
@@ -653,6 +657,9 @@ function WarbandNexus:CreateMainWindow()
     local isResizing = false
     resizeBtn:SetScript("OnMouseDown", function(self, button)
         if button == "LeftButton" then
+            if InCombatLockdown and InCombatLockdown() then
+                return
+            end
             isResizing = true
             resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
             f:StartSizing("BOTTOMRIGHT")
@@ -1026,7 +1033,7 @@ function WarbandNexus:CreateMainWindow()
             if WarbandNexus.CloseAllPlanDialogs then
                 WarbandNexus:CloseAllPlanDialogs()
             end
-            -- PERFORMANCE: Defer teardown and draw to next frame(s) so main thread stays responsive
+            -- PERFORMANCE: Single deferred pass (one frame) — pre-clear then PopulateContent (avoids double C_Timer chain)
             local targetTab = self.key
             C_Timer.After(0, function()
                 if f.currentTab ~= targetTab then return end -- User switched again; skip to avoid wasted work
@@ -1041,12 +1048,11 @@ function WarbandNexus:CreateMainWindow()
                             child:SetParent(recycleBin)
                         end
                     end
+                    f._contentPreCleared = true
                 end
-                C_Timer.After(0, function()
-                    if f.currentTab ~= targetTab then return end
-                    WarbandNexus:PopulateContent()
-                    f.isMainTabSwitch = false
-                end)
+                if f.currentTab ~= targetTab then return end
+                WarbandNexus:PopulateContent()
+                f.isMainTabSwitch = false
             end)
         end)
 
@@ -1273,7 +1279,9 @@ function WarbandNexus:CreateMainWindow()
     local Constants = ns.Constants
     
     local pendingPopulateTimer = nil
-    local POPULATE_DEBOUNCE = 0.1  -- 100ms coalesce window
+    local pendingPopulateSkipCooldown = false
+    local populateDebounceGen = 0  -- Invalidates deferred callbacks after hide or superseding schedule (esp. C_Timer.After fallback)
+    local POPULATE_DEBOUNCE = 0.1  -- 100ms coalesce window (resets on each new message = last event wins)
     local lastEventPopulateTime = 0
     local POPULATE_COOLDOWN = 0.8  -- Skip event-driven rebuild if one ran within 800ms
     -- This prevents duplicate rebuilds from WN_ITEMS_UPDATED (~0.5s) + WN_BAGS_UPDATED (~1.0s)
@@ -1282,17 +1290,49 @@ function WarbandNexus:CreateMainWindow()
     
     local function SchedulePopulateContent(skipCooldown)
         if not f or not f:IsShown() then return end
-        if pendingPopulateTimer then return end  -- already scheduled
-        pendingPopulateTimer = C_Timer.After(POPULATE_DEBOUNCE, function()
+        if skipCooldown then
+            pendingPopulateSkipCooldown = true
+        end
+        if pendingPopulateTimer and pendingPopulateTimer.Cancel then
+            pendingPopulateTimer:Cancel()
             pendingPopulateTimer = nil
+        end
+        populateDebounceGen = populateDebounceGen + 1
+        local myGen = populateDebounceGen
+        if C_Timer and C_Timer.NewTimer then
+            pendingPopulateTimer = C_Timer.NewTimer(POPULATE_DEBOUNCE, function()
+                pendingPopulateTimer = nil
+                if myGen ~= populateDebounceGen then return end
+                local useSkip = pendingPopulateSkipCooldown
+                pendingPopulateSkipCooldown = false
+                if not f or not f:IsShown() then return end
+                local now = GetTime()
+                if not useSkip and (now - lastEventPopulateTime) < POPULATE_COOLDOWN then
+                    return  -- Recent rebuild already handled this data change
+                end
+                lastEventPopulateTime = now
+                WarbandNexus:PopulateContent()
+            end)
+            return
+        end
+        local afterHandle = C_Timer.After(POPULATE_DEBOUNCE, function()
+            pendingPopulateTimer = nil
+            if myGen ~= populateDebounceGen then return end
+            local useSkip = pendingPopulateSkipCooldown
+            pendingPopulateSkipCooldown = false
             if not f or not f:IsShown() then return end
             local now = GetTime()
-            if not skipCooldown and (now - lastEventPopulateTime) < POPULATE_COOLDOWN then
+            if not useSkip and (now - lastEventPopulateTime) < POPULATE_COOLDOWN then
                 return  -- Recent rebuild already handled this data change
             end
             lastEventPopulateTime = now
             WarbandNexus:PopulateContent()
         end)
+        if type(afterHandle) == "table" and afterHandle.Cancel then
+            pendingPopulateTimer = afterHandle
+        else
+            pendingPopulateTimer = true
+        end
     end
     
     -- NOTE: All RegisterMessage calls use UIEvents as the 'self' key to avoid
@@ -1329,15 +1369,35 @@ function WarbandNexus:CreateMainWindow()
     
     -- REMOVED: WARBAND_CURRENCIES_UPDATED — no SendMessage exists for this string; dead handler.
 
-    WarbandNexus.RegisterMessage(UIEvents, "WN_CURRENCY_UPDATED", function()
-        if f and f:IsShown() and (f.currentTab == "currency" or f.currentTab == "gear") then
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_UPDATED, function()
+        if not f or not f:IsShown() then return end
+        if f.currentTab == "currency" or f.currentTab == "gear" then
             SchedulePopulateContent()
+        else
+            WarbandNexus:UpdateTabCountBadges("currency")
+        end
+    end)
+
+    -- Reputation tab content: ReputationUI.lua registers DrawReputationTab for many WN_REPUTATION_* events.
+    -- Tab badge count: refresh cheaply when cache updates without full PopulateContent if user is elsewhere.
+    -- ReputationUI.lua redraws the tab on these when active; only refresh the tab button badge when elsewhere.
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.REPUTATION_UPDATED, function()
+        if not f or not f:IsShown() then return end
+        if f.currentTab ~= "reputations" then
+            WarbandNexus:UpdateTabCountBadges("reputations")
+        end
+    end)
+
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.REPUTATION_CACHE_READY, function()
+        if not f or not f:IsShown() then return end
+        if f.currentTab ~= "reputations" then
+            WarbandNexus:UpdateTabCountBadges("reputations")
         end
     end)
     
     -- WN_REPUTATION_* refresh: ReputationUI.lua registers DrawReputationTab (avoid double PopulateContent here)
     
-    WarbandNexus.RegisterMessage(UIEvents, "WN_PLANS_UPDATED", function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PLANS_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "plans" then
             SchedulePopulateContent()
         end
@@ -1394,13 +1454,13 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
-    WarbandNexus.RegisterMessage(UIEvents, "WN_BAGS_UPDATED", function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.BAGS_UPDATED, function()
         if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage") then
             SchedulePopulateContent()
         end
     end)
     
-    WarbandNexus.RegisterMessage(UIEvents, "WN_MODULE_TOGGLED", function(_, moduleName)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName)
         if not f or not f.tabButtons then return end
         -- Map module name to tab key (currencies -> currency; others same)
         local tabKey = (moduleName == "currencies") and "currency" or moduleName
@@ -1415,7 +1475,7 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
 
-    WarbandNexus.RegisterMessage(UIEvents, "WN_FONT_CHANGED", function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.FONT_CHANGED, function()
         if f and f:IsShown() then
             SchedulePopulateContent()
         end
@@ -1425,6 +1485,14 @@ function WarbandNexus:CreateMainWindow()
     
     -- Master OnHide: cleanup when addon window closes
     f:SetScript("OnHide", function(self)
+        if pendingPopulateTimer then
+            if pendingPopulateTimer.Cancel then
+                pendingPopulateTimer:Cancel()
+            end
+        end
+        pendingPopulateTimer = nil
+        pendingPopulateSkipCooldown = false
+        populateDebounceGen = populateDebounceGen + 1
         StopCustomDrag(self)
         SaveWindowGeometry(self)
         if ns.HideGearCharacterDropdown then
@@ -1506,26 +1574,31 @@ function WarbandNexus:PopulateContent()
     -- CRITICAL FIX: Reset scrollChild height to prevent layout corruption across tabs
     scrollChild:SetHeight(1)  -- Reset to minimal height, will expand as content is added
     
-    -- Release all pooled children first (returns them to pools for reuse)
-    if ReleaseAllPooledChildren then
-        ReleaseAllPooledChildren(scrollChild)
-    end
+    local wasPreCleared = isTabSwitch and mainFrame._contentPreCleared
+    mainFrame._contentPreCleared = nil
 
-    -- Move old non-pooled tab content (headers, cards, etc.) to the recycleBin to prevent
-    -- overlap/stacking. Pooled frames are already released to their pools above — skip them.
-    -- Persistent frames (3D models, reused placeholders) are also skipped.
-    local children = {scrollChild:GetChildren()}
-    for i = 1, #children do
-        local child = children[i]
-        if child._virtualVisibleFrames then
-            child._virtualVisibleFrames = nil
+    if not wasPreCleared then
+        -- Release all pooled children first (returns them to pools for reuse)
+        if ReleaseAllPooledChildren then
+            ReleaseAllPooledChildren(scrollChild)
         end
-        if isTabSwitch then
-            child._hasRenderedOnce = nil
-        end
-        if not (child.isPooled and child.rowType) and not child.isPersistentRowElement then
-            child:Hide()
-            child:SetParent(recycleBin)
+
+        -- Move old non-pooled tab content (headers, cards, etc.) to the recycleBin to prevent
+        -- overlap/stacking. Pooled frames are already released to their pools above — skip them.
+        -- Persistent frames (3D models, reused placeholders) are also skipped.
+        local children = {scrollChild:GetChildren()}
+        for i = 1, #children do
+            local child = children[i]
+            if child._virtualVisibleFrames then
+                child._virtualVisibleFrames = nil
+            end
+            if isTabSwitch then
+                child._hasRenderedOnce = nil
+            end
+            if not (child.isPooled and child.rowType) and not child.isPersistentRowElement then
+                child:Hide()
+                child:SetParent(recycleBin)
+            end
         end
     end
 
@@ -1541,11 +1614,17 @@ function WarbandNexus:PopulateContent()
     -- Update status
     self:UpdateStatus()
     
-    -- Sync tab bar active state (idempotent; on tab click we already updated for instant feedback)
-    UpdateTabButtonStates(mainFrame)
+    -- Tab bar: skip redundant UpdateTabButtonStates on main tab switch (OnClick already updated visuals)
+    if not mainFrame.isMainTabSwitch then
+        UpdateTabButtonStates(mainFrame)
+    end
     
     -- Set scrollChild width once (ComputeScrollChildWidth handles tab-specific minimums)
     scrollChild:SetWidth(ComputeScrollChildWidth(mainFrame))
+
+    -- Mark that pooled rows were already released in PopulateContent.
+    -- Tab renderers can skip redundant ReleaseAllPooledChildren() calls in this pass.
+    scrollChild._preparedByPopulate = true
 
     -- Draw based on current tab
     local height
@@ -1584,6 +1663,7 @@ function WarbandNexus:PopulateContent()
     else
         height = self:DrawCharacterList(scrollChild)
     end
+    scrollChild._preparedByPopulate = nil
     
     -- Set scrollChild height based on content + bottom padding
     -- CRITICAL: Use math.max to ensure scrollChild is at least viewport size
@@ -1633,23 +1713,39 @@ end
 --============================================================================
 -- TAB COUNT BADGES
 --============================================================================
-function WarbandNexus:UpdateTabCountBadges()
+--- Update tab count badges next to nav labels.
+---@param whichTab? string|nil If "currency" or "reputations", only refresh that badge (lighter than full counts pass).
+function WarbandNexus:UpdateTabCountBadges(whichTab)
     if not mainFrame or not mainFrame.tabButtons then return end
-    local db = self.db and self.db.profile
-    local globalDB = self.db and self.db.global
 
     local counts = {}
+    local needCurrency = (whichTab == nil or whichTab == "currency")
+    local needReputations = (whichTab == nil or whichTab == "reputations")
 
-    -- Currencies: use cache service count
-    if ns.CurrencyCacheService and ns.CurrencyCacheService.GetAllCachedCurrencyIDs then
+    if needCurrency and ns.CurrencyCacheService and ns.CurrencyCacheService.GetAllCachedCurrencyIDs then
         local ids = ns.CurrencyCacheService:GetAllCachedCurrencyIDs()
         if ids then counts.currency = #ids end
     end
 
-    -- Reputations: use cache service count
-    if ns.ReputationCacheService and ns.ReputationCacheService.GetCachedFactionCount then
+    if needReputations and ns.ReputationCacheService and ns.ReputationCacheService.GetCachedFactionCount then
         local ok, n = pcall(ns.ReputationCacheService.GetCachedFactionCount, ns.ReputationCacheService)
         if ok and type(n) == "number" then counts.reputations = n end
+    end
+
+    if whichTab then
+        local btn = mainFrame.tabButtons[whichTab]
+        local cl = btn and btn.countLabel
+        if cl then
+            local c = counts[whichTab]
+            if c and c > 0 then
+                cl:SetText("(" .. c .. ")")
+                cl:Show()
+            else
+                cl:SetText("")
+                cl:Hide()
+            end
+        end
+        return
     end
 
     for key, btn in pairs(mainFrame.tabButtons) do
@@ -1731,6 +1827,7 @@ function WarbandNexus:UpdateStatus()
 
     local function BadgeOneLine(s)
         if not s or s == "" then return s end
+        if issecretvalue and issecretvalue(s) then return "" end
         return (s:gsub("\n+", " "))
     end
 
@@ -1965,7 +2062,7 @@ function WarbandNexus:OpenOptions()
         ns.ShowSettings()
     else
         -- No settings UI available (ShowSettings should always exist)
-        _G.print("|cff9370DB[Warband Nexus]|r " .. ((ns.L and ns.L["SETTINGS_UI_UNAVAILABLE"]) or "Settings UI not available. Try /wn to open the main window."))
+        self:Print("|cff9370DB[Warband Nexus]|r " .. ((ns.L and ns.L["SETTINGS_UI_UNAVAILABLE"]) or "Settings UI not available. Try /wn to open the main window."))
     end
 end
 

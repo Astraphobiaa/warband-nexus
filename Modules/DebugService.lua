@@ -16,8 +16,12 @@
 
 local addonName, ns = ...
 local Constants = ns.Constants
+local issecretvalue = issecretvalue
 local DebugService = {}
 ns.DebugService = DebugService
+local DebugPrint = ns.DebugPrint or function() end
+local IsDebugModeEnabled = ns.IsDebugModeEnabled or function() return false end
+local IsDebugVerboseEnabled = ns.IsDebugVerboseEnabled or function() return false end
 
 --============================================================================
 -- DEBUG LOGGING
@@ -38,11 +42,11 @@ local DEBUG_VERBOSE_PREFIXES = {
 ---@param addon table WarbandNexus addon instance
 ---@param message string Message to print
 function DebugService:Debug(addon, message)
-    if not (addon.db and addon.db.profile and addon.db.profile.debugMode) then return end
+    if not IsDebugModeEnabled() then return end
     local msg = tostring(message)
     for prefix in pairs(DEBUG_VERBOSE_PREFIXES) do
         if msg:find(prefix, 1, true) then
-            if not addon.db.profile.debugVerbose then return end
+            if not IsDebugVerboseEnabled() then return end
             break
         end
     end
@@ -276,6 +280,7 @@ function DebugService:PrintPvEData(addon)
     local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not key then return end
     local name = UnitName("player")
+    if name and issecretvalue and issecretvalue(name) then name = nil end
     addon:Print("=== PvE Data for " .. (name or "?") .. " ===")
     
     local pveData = addon:CollectPvEData()

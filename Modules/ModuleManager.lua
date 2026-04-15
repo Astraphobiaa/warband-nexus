@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 
 --[[
     Enable/disable reputation module
@@ -21,7 +22,7 @@ function WarbandNexus:SetReputationModuleEnabled(enabled)
     -- Module toggle only affects UI visibility, not event registration
     
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
-    self:SendMessage("WN_MODULE_TOGGLED", "reputations", enabled)
+    self:SendMessage(E.MODULE_TOGGLED, "reputations", enabled)
 end
 
 --[[
@@ -39,7 +40,7 @@ function WarbandNexus:SetCurrencyModuleEnabled(enabled)
     -- Module toggle only affects UI visibility, not event registration
     
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
-    self:SendMessage("WN_MODULE_TOGGLED", "currencies", enabled)
+    self:SendMessage(E.MODULE_TOGGLED, "currencies", enabled)
 end
 
 --[[
@@ -56,7 +57,7 @@ function WarbandNexus:SetStorageModuleEnabled(enabled)
     -- BAG_UPDATE is used by multiple modules
     
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
-    self:SendMessage("WN_MODULE_TOGGLED", "storage", enabled)
+    self:SendMessage(E.MODULE_TOGGLED, "storage", enabled)
 end
 
 --[[
@@ -72,7 +73,7 @@ function WarbandNexus:SetItemsModuleEnabled(enabled)
     -- Items module shares BAG_UPDATE with other modules
     
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
-    self:SendMessage("WN_MODULE_TOGGLED", "items", enabled)
+    self:SendMessage(E.MODULE_TOGGLED, "items", enabled)
 end
 
 --[[
@@ -111,7 +112,7 @@ function WarbandNexus:SetPvEModuleEnabled(enabled)
     end
     
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
-    self:SendMessage("WN_MODULE_TOGGLED", "pve", enabled)
+    self:SendMessage(E.MODULE_TOGGLED, "pve", enabled)
 end
 
 --[[
@@ -124,19 +125,8 @@ function WarbandNexus:SetPlansModuleEnabled(enabled)
     self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
     self.db.profile.modulesEnabled.plans = enabled
     
-    -- Also control CollectionScanner (dependent on Plans)
-    if enabled then
-        if self.CollectionScanner and self.CollectionScanner.Enable then
-            self.CollectionScanner:Enable()
-        end
-    else
-        if self.CollectionScanner and self.CollectionScanner.Disable then
-            self.CollectionScanner:Disable()
-        end
-    end
-    
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
-    self:SendMessage("WN_MODULE_TOGGLED", "plans", enabled)
+    self:SendMessage(E.MODULE_TOGGLED, "plans", enabled)
 end
 
 --[[
@@ -155,7 +145,7 @@ function WarbandNexus:SetTryCounterModuleEnabled(enabled)
     -- makes every event handler exit early with zero processing cost.
     
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
-    self:SendMessage("WN_MODULE_TOGGLED", "tryCounter", enabled)
+    self:SendMessage(E.MODULE_TOGGLED, "tryCounter", enabled)
 end
 
 --[[
@@ -186,5 +176,5 @@ function WarbandNexus:SetProfessionModuleEnabled(enabled)
     end
     
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
-    self:SendMessage("WN_MODULE_TOGGLED", "professions", enabled)
+    self:SendMessage(E.MODULE_TOGGLED, "professions", enabled)
 end

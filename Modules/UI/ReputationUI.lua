@@ -12,15 +12,22 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
+local E = Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
 local ReputationUIEvents = {} -- Unique AceEvent identity for this module
 
--- Debug helper
-local function DebugPrint(...)
-    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-        print("|cff00ff00[RepUI]|r", ...)
-    end
+local issecretvalue = issecretvalue
+
+local function SafeLower(s)
+    if not s or s == "" then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    return s:lower()
 end
+
+-- Debug helper
+local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00ff00[RepUI]|r"))
+    or ns.DebugPrint
+    or function() end
 
 -- Services
 local SearchStateManager = ns.SearchStateManager
@@ -138,11 +145,17 @@ end
 ---@param searchText string Search text (lowercase)
 ---@return boolean matches
 local function ReputationMatchesSearch(reputation, searchText)
-    if not searchText or searchText == "" then
+    if not searchText then
+        return true
+    end
+    if issecretvalue and issecretvalue(searchText) then
+        return true
+    end
+    if searchText == "" then
         return true
     end
     
-    local name = (reputation.name or ""):lower()
+    local name = SafeLower(reputation.name)
     
     return name:find(searchText, 1, true)
 end
@@ -1744,6 +1757,12 @@ function WarbandNexus:DrawReputationList(container, width)
     
     -- Helper function to get header icon
     local function GetHeaderIcon(headerName)
+        if not headerName or headerName == "" then
+            return "Interface\\Icons\\Achievement_Reputation_01"
+        end
+        if issecretvalue and issecretvalue(headerName) then
+            return "Interface\\Icons\\Achievement_Reputation_01"
+        end
         if headerName:find("Guild") then
             return "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"
         elseif headerName:find("Alliance") then
@@ -1911,8 +1930,10 @@ function WarbandNexus:DrawReputationList(container, width)
                 end
                 
                 -- Phase 2.4: Check cache for filtered results
-                local searchTextKey = reputationSearchText or ""
-                local isSearching = searchTextKey ~= ""  -- Scoped OUTSIDE cache check
+                local rawRepSearch = reputationSearchText or ""
+                local repSearchIsSecret = rawRepSearch and issecretvalue and issecretvalue(rawRepSearch)
+                local searchTextKey = repSearchIsSecret and "" or rawRepSearch
+                local isSearching = not repSearchIsSecret and rawRepSearch ~= ""  -- Scoped OUTSIDE cache check
                 local cacheKey = headerData.name .. "|AW|" .. searchTextKey
                 local cachedResult = cachedFilteredResults[cacheKey]
                 
@@ -1924,7 +1945,7 @@ function WarbandNexus:DrawReputationList(container, width)
                     -- Cache miss: apply search filter
                     filteredFactionList = {}
                     for _, item in ipairs(factionList) do
-                        local itemName = (item.faction.data.name or ""):lower()
+                        local itemName = SafeLower(item.faction.data.name)
                         local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
                         
                         local filteredSubs = nil
@@ -1932,7 +1953,7 @@ function WarbandNexus:DrawReputationList(container, width)
                         if isSearching and item.subfactions and not parentMatches then
                             filteredSubs = {}
                             for _, sub in ipairs(item.subfactions) do
-                                local subName = (sub.data.name or ""):lower()
+                                local subName = SafeLower(sub.data.name)
                                 if subName:find(reputationSearchText, 1, true) then
                                     table.insert(filteredSubs, sub)
                                     hasMatchingSub = true
@@ -2135,8 +2156,10 @@ function WarbandNexus:DrawReputationList(container, width)
                     end
                     
                     -- Phase 2.4: Check cache for filtered results
-                    local searchTextKey = reputationSearchText or ""
-                    local isSearching = searchTextKey ~= ""  -- Scoped OUTSIDE cache check
+                    local rawRepSearch2 = reputationSearchText or ""
+                    local repSearchIsSecret2 = rawRepSearch2 and issecretvalue and issecretvalue(rawRepSearch2)
+                    local searchTextKey = repSearchIsSecret2 and "" or rawRepSearch2
+                    local isSearching = not repSearchIsSecret2 and rawRepSearch2 ~= ""  -- Scoped OUTSIDE cache check
                     local cacheKey = headerData.name .. "|CB|" .. searchTextKey
                     local cachedResult = cachedFilteredResults[cacheKey]
                     
@@ -2148,7 +2171,7 @@ function WarbandNexus:DrawReputationList(container, width)
                         -- Cache miss: apply search filter
                         filteredFactionList = {}
                         for _, item in ipairs(factionList) do
-                            local itemName = (item.faction.data.name or ""):lower()
+                            local itemName = SafeLower(item.faction.data.name)
                             local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
                             
                             local filteredSubs = nil
@@ -2156,7 +2179,7 @@ function WarbandNexus:DrawReputationList(container, width)
                             if isSearching and item.subfactions and not parentMatches then
                                 filteredSubs = {}
                                 for _, sub in ipairs(item.subfactions) do
-                                    local subName = (sub.data.name or ""):lower()
+                                    local subName = SafeLower(sub.data.name)
                                     if subName:find(reputationSearchText, 1, true) then
                                         table.insert(filteredSubs, sub)
                                         hasMatchingSub = true
@@ -2364,7 +2387,7 @@ function WarbandNexus:DrawReputationTab(parent)
         end
         
         -- Loading started - only refresh if Reputations tab is active (not parent:IsVisible — shared scroll child)
-        WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_LOADING_STARTED", function()
+        WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_LOADING_STARTED, function()
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil
@@ -2375,7 +2398,7 @@ function WarbandNexus:DrawReputationTab(parent)
         end)
         
         -- v2.0.0: Cache cleared - loading UI only when tab active
-        WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_CACHE_CLEARED", function()
+        WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_CACHE_CLEARED, function()
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil
@@ -2400,7 +2423,7 @@ function WarbandNexus:DrawReputationTab(parent)
         end)
         
         -- v2.0.0: Cache ready (hide loading, show content) - full redraw only when tab active
-        WarbandNexus.RegisterMessage(ReputationUIEvents, "WN_REPUTATION_CACHE_READY", function()
+        WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_CACHE_READY, function()
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
             cachedSearchText = nil

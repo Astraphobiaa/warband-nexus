@@ -1,6 +1,52 @@
 # Changelog
 
-All notable changes to **Warband Nexus** are documented here. In-game What's New uses locale key `CHANGELOG_V` + version without dots (e.g. `CHANGELOG_V2512` for 2.5.12).
+All notable changes to **Warband Nexus** are documented here. In-game What's New uses locale key `CHANGELOG_V` + the numeric `x.y.z` only (e.g. `2.5.15-beta1` → `CHANGELOG_V2515`).
+
+## [2.5.15-beta1] - 2026-04-15
+
+_Pre-release (beta 1); not a final stable build._
+
+### Performance
+
+- **UI (`Modules/UI.lua`)**
+  - **`SchedulePopulateContent`**: Debounce timer resets on each schedule (coalesced “last event wins”); `pendingPopulateSkipCooldown` OR-merge when `skipCooldown` (profession events bypass cooldown safely).
+  - **`OnHide`**: Cancel populate timer; clear `pendingPopulateSkipCooldown`; `populateDebounceGen` invalidates any deferred callback (covers `C_Timer.After` fallback); store `After` return value when it exposes `:Cancel`.
+  - **Main tab switch**: Single `C_Timer.After(0)` — pre-clear scroll child (pool + recycle), `PopulateContent`, then `isMainTabSwitch = false` (no chained nested defers).
+  - **`PopulateContent`**: `UpdateTabButtonStates` only when not `isMainTabSwitch` (tab buttons already updated on click).
+  - **`WN_CURRENCY_UPDATED`**: `SchedulePopulateContent` on currency/gear tab only; else `UpdateTabCountBadges("currency")`.
+  - **`WN_REPUTATION_UPDATED` / `WN_REPUTATION_CACHE_READY`**: `UpdateTabCountBadges("reputations")` when not on reputations tab; no extra `PopulateContent` on that tab (ReputationUI owns redraw).
+- **CollectionService**
+  - **Post-scan debug**: Per-category cache key dump runs only when **debug verbose** is on (avoids `pairs` over all categories when verbose is off).
+  - **`ScheduleEnsureCollectionDataDeferred`**: One next-frame coalesced `EnsureCollectionData`; `ns.ScheduleEnsureCollectionDataDeferred` exported.
+  - **Empty-store getters**: All former `C_Timer.After(0, EnsureCollectionData)` paths use the scheduler.
+  - **`ScanCollection`**: Coroutine resume loop budgeted with `FRAME_BUDGET_MS` (replaces `NewTicker(0.1)`).
+  - **`BuildFullCollectionData`**: Batch slice uses `FRAME_BUDGET_MS` instead of a hardcoded 6 ms.
+- **Guild bank & items cache**
+  - **`GuildBankScanner`**: Frame-budget chunked scan; per-tab `tabItemsBuilding` then atomic assign; generation counter; `InvalidateGuildBankScan`; `Core:OnGuildBankClosed` invalidates in-flight work.
+  - **`GuildBankScanner`**: Scan trace / completion logs use **debug verbose**; `GroupItemsByCategory` uses numeric `for` (no `ipairs`).
+  - **`ItemsCacheService`**: `RunBudgetedBankOpenScan` — one bag per frame for inventory → bank → warband on bank open; `bankScanInProgress`; stop if bank closes during pipeline.
+  - **`ItemsCacheService`**: `BAG_UPDATE` / bank open-close trace lines are **debug verbose** (high-frequency events).
+- **Plans, Collections, Core**
+  - **`PlansUI`**: `regularCountBefore` precompute for 2-column layout (O(n) vs O(n²) inner loop per card).
+  - **`CollectionsUI`**: `AbortCollectionsChunkedBuilds` (mount/pet/toy draw gens).
+  - **`Core` `AbortTabOperations`**: `collections` tab triggers `AbortCollectionsChunkedBuilds` (alongside existing plans/reputation/currency aborts).
+- **Documentation**
+  - **`docs/QUEUE_REVISION_CHECKLIST.md`**: Midnight/taint, timers, lifecycle, `Constants.EVENTS`, smoke tests, before/after table.
+
+### Bug fixes
+
+- **`WarbandNexus.toc`**: `Config.lua` after `Modules/Constants.lua` (fixes `ns.Constants` nil in `Config.lua` and `InitializeConfig` missing at init).
+- **Main `OnHide`**: Populate timer cleared robustly after cancel.
+
+### Localization
+
+- **`GearUI`**: `LocalizeUpgradeTrackName` for paperdoll + tooltips (normal upgrades, crafted/recraft); maps to `PVE_CREST_*` including new **`PVE_CREST_EXPLORER`** (zhCN/zhTW 探索者; other locales keyed).
+- **`GearUI` (follow-up)**: Crafted-item tooltip strings use **`GEAR_CRAFTED_*`** keys (max ilvl, recast line, Dawncrest cost, next-tier crests); **`GEAR_TRACK_CRAFTED_FALLBACK`** for the word “Crafted”.
+- **`ProfessionService`**: `GetConcentrationTimeToFull` / `GetConcentrationTimeToFullDetailed` use **`PROF_CONCENTRATION_*`**.
+- **`StatisticsUI`**: Steam-style “most played” time format uses **`STATS_PLAYED_STEAM_*`** instead of hardcoded `"Hours"`.
+- **Locale parity**: **`GEAR_CRAFTED_*`**, **`STATS_PLAYED_STEAM_*`**, **`PROF_CONCENTRATION_*`** filled for de, fr, es, es-mx, it, pt, ru, ko, zhTW (in addition to enUS/zhCN coverage noted above).
+
+---
 
 ## [2.5.12] - 2026-04-12
 

@@ -5,10 +5,13 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateExternalWindow = ns.UI_CreateExternalWindow
+
+local issecretvalue = issecretvalue
 
 local ROW_INDENT = 10
 local SCROLL_BAR_W = 24
@@ -129,7 +132,8 @@ local function GetClassColorForEntry(entry, charKey)
         local key = entry.character or charKey
         if key then
             local charData = WarbandNexus.db.global.characters[key]
-            if not charData and key:find("-") then
+            local keySafe = type(key) == "string" and not (issecretvalue and issecretvalue(key))
+            if not charData and keySafe and key:find("-") then
                 local name, realm = key:match("^([^-]+)-(.*)$")
                 if name and realm then
                     key = ns.Utilities:GetCharacterKey(name, realm)
@@ -589,8 +593,8 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     dialog:SetScript("OnShow", refreshCurrentTab)
 
-    WarbandNexus.UnregisterMessage(dialog, "WN_CHARACTER_BANK_MONEY_LOG_UPDATED")
-    WarbandNexus.RegisterMessage(dialog, "WN_CHARACTER_BANK_MONEY_LOG_UPDATED", function()
+    WarbandNexus.UnregisterMessage(dialog, E.CHARACTER_BANK_MONEY_LOG_UPDATED)
+    WarbandNexus.RegisterMessage(dialog, E.CHARACTER_BANK_MONEY_LOG_UPDATED, function()
         if dialog:IsShown() then
             refreshCurrentTab()
         end
@@ -598,7 +602,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     local oldOnHide = dialog:GetScript("OnHide")
     dialog:SetScript("OnHide", function()
         if oldOnHide then oldOnHide() end
-        WarbandNexus.UnregisterMessage(dialog, "WN_CHARACTER_BANK_MONEY_LOG_UPDATED")
+        WarbandNexus.UnregisterMessage(dialog, E.CHARACTER_BANK_MONEY_LOG_UPDATED)
     end)
 
     switchTab(dialog._moneyLogTab or "all")

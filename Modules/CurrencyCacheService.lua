@@ -29,16 +29,18 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Midnight 12.0+: GUIDs from APIs may be secret — never compare or substring without guarding.
+local issecretvalue = issecretvalue
+
 -- Import dependencies
 local Constants = ns.Constants
+local E = Constants.EVENTS
 
 -- Debug print helper (suppressed unless debugMode + debugVerbose; suppressed when debugTryCounterLoot so loot debug is readable)
-local function DebugPrint(...)
-    if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode) then return end
-    if WarbandNexus.db.profile.debugTryCounterLoot then return end
-    if not WarbandNexus.db.profile.debugVerbose then return end
-    _G.print("|cff00ffff[CurrencyCache]|r", ...)
-end
+local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter(
+    "|cff00ffff[CurrencyCache]|r",
+    { verboseOnly = true, suppressWhenTryCounterLoot = true }
+)) or function() end
 
 -- ============================================================================
 -- STATE (Minimal - No RAM cache)
@@ -52,6 +54,7 @@ local CurrencyCache = {
     
     -- Queue: FIFO for currency updates (prevents lost events during rapid gains)
     updateQueue = {},       -- {currencyID1, currencyID2, ...}
+    updateQueueHead = 1,    -- O(1) dequeue head index
     isDraining = false,     -- Re-entrancy guard
     
     -- Throttle timers
@@ -400,7 +403,7 @@ function WarbandNexus:InitializeCurrencyCache()
         
         -- Fire loading started event
         if WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
+            WarbandNexus:SendMessage(E.CURRENCY_LOADING_STARTED)
         end
         
         -- Suppress event-driven FullScans until the init scan completes
@@ -420,7 +423,7 @@ function WarbandNexus:InitializeCurrencyCache()
         -- Fire ready event immediately (data exists and is fresh)
         C_Timer.After(0.1, function()
             if WarbandNexus.SendMessage then
-                WarbandNexus:SendMessage("WN_CURRENCY_CACHE_READY")
+                WarbandNexus:SendMessage(E.CURRENCY_CACHE_READY)
             end
         end)
     end
@@ -581,7 +584,7 @@ local function UpdateSingleCurrency(currencyID)
         
         -- Fire lean event — consumers read display data from DB
         if WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage("WN_CURRENCY_GAINED", {
+            WarbandNexus:SendMessage(E.CURRENCY_GAINED, {
                 currencyID = currencyID,
                 gainAmount = gainAmount,
             })
@@ -662,7 +665,7 @@ local function ScanHeaderNode(headerIndex, depth, currencyDataCollector)
             else
                 local currencyID = nil
                 local link = C_CurrencyInfo.GetCurrencyListLink(j)
-                if link then
+                if link and not (issecretvalue and issecretvalue(link)) then
                     currencyID = tonumber(link:match("currency:(%d+)"))
                 end
                 if not currencyID and cInfo.currencyID then
@@ -732,7 +735,7 @@ local function BuildHierarchyFromAPI()
             else
                 local currencyID = nil
                 local link = C_CurrencyInfo.GetCurrencyListLink(i)
-                if link then
+                if link and not (issecretvalue and issecretvalue(link)) then
                     currencyID = tonumber(link:match("currency:(%d+)"))
                 end
                 if currencyID and currencyID > 0 then
@@ -873,7 +876,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     ns.CurrencyLoadingState.currentStage = "Fetching currency data..."
 
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
+        WarbandNexus:SendMessage(E.CURRENCY_LOADING_STARTED)
     end
 
     -- Quick check: is the API ready?
@@ -883,7 +886,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
         ns._fullScanInProgress = false
         ns.CurrencyLoadingState.currentStage = "Waiting for API... (retrying)"
         if WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
+            WarbandNexus:SendMessage(E.CURRENCY_LOADING_STARTED)
         end
         C_Timer.After(5, function()
             if CurrencyCache then
@@ -926,8 +929,8 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     ns._fullScanInProgress = false
 
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_CURRENCY_CACHE_READY")
-        WarbandNexus:SendMessage("WN_CURRENCY_UPDATED")
+        WarbandNexus:SendMessage(E.CURRENCY_CACHE_READY)
+        WarbandNexus:SendMessage(E.CURRENCY_UPDATED)
     end
 end
 
@@ -1009,8 +1012,10 @@ local function DrainCurrencyQueue()
     if CurrencyCache.isDraining then return end
     CurrencyCache.isDraining = true
     
-    while #CurrencyCache.updateQueue > 0 do
-        local currencyID = table.remove(CurrencyCache.updateQueue, 1) -- FIFO pop
+    while CurrencyCache.updateQueueHead <= #CurrencyCache.updateQueue do
+        local currencyID = CurrencyCache.updateQueue[CurrencyCache.updateQueueHead]
+        CurrencyCache.updateQueue[CurrencyCache.updateQueueHead] = nil
+        CurrencyCache.updateQueueHead = CurrencyCache.updateQueueHead + 1
         
         if currencyID == 0 then
             -- Marker: full scan requested (no specific currency ID)
@@ -1018,11 +1023,14 @@ local function DrainCurrencyQueue()
         else
             if UpdateSingleCurrency(currencyID) then
                 if WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage("WN_CURRENCY_UPDATED", currencyID)
+                    WarbandNexus:SendMessage(E.CURRENCY_UPDATED, currencyID)
                 end
             end
         end
     end
+
+    CurrencyCache.updateQueue = {}
+    CurrencyCache.updateQueueHead = 1
     
     CurrencyCache.isDraining = false
 end
@@ -1316,22 +1324,34 @@ function WarbandNexus:GetCurrenciesForUI()
                 splitNormCap = 200
             end
         end
+
+        -- Resolve current character quantity once per currency to avoid repeated
+        -- API reads and writes through GetCurrencyData() in the inner loop.
+        local hasLiveCurrentQty, liveCurrentQty = false, 0
+        if currentCharKey and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+            local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+            if info and info.name and not (issecretvalue and issecretvalue(info.name)) then
+                local rawQty = SafeCurrencyNumber(info.quantity) or 0
+                local maxQ = SafeCurrencyNumber(info.maxQuantity)
+                liveCurrentQty = NormalizeQuantity(rawQty, maxQ or entry.maxQuantity, info.useTotalEarnedForMaxQty)
+                hasLiveCurrentQty = true
+            end
+        end
+
         for i = 1, #trackedCharacters do
             local tracked = trackedCharacters[i]
             local rawKey = tracked.rawKey
             local canonicalKey = tracked.canonicalKey
             local qty = 0
+            local usedLiveQty = false
 
-            -- Current character: always use live API so crests and other currencies show real amount.
-            -- DB may be stale or crests may not have been in the last scan hierarchy.
-            if currentCharKey and normKey(canonicalKey) == normKey(currentCharKey) then
-                local live = self.GetCurrencyData and self:GetCurrencyData(currencyID, canonicalKey)
-                if live and live.quantity ~= nil then
-                    qty = live.quantity
-                end
+            -- Current character: use one live snapshot resolved above.
+            if hasLiveCurrentQty and currentCharKey and normKey(canonicalKey) == normKey(currentCharKey) then
+                qty = liveCurrentQty
+                usedLiveQty = true
             end
 
-            if qty == 0 then
+            if not usedLiveQty then
                 local currencies = ResolveCharCurrencyBucket(db.currencies, rawKey, canonicalKey)
                 local stored = currencies and currencies[currencyID]
                 if type(stored) == "number" then qty = stored
@@ -1397,7 +1417,7 @@ function CurrencyCache:Clear(clearDB)
     
     -- Fire events
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_CURRENCY_CACHE_CLEARED")
+        WarbandNexus:SendMessage(E.CURRENCY_CACHE_CLEARED)
     end
     
     -- Automatically start rescan after clearing
@@ -1409,7 +1429,7 @@ function CurrencyCache:Clear(clearDB)
         
         -- Fire loading started event
         if WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
+            WarbandNexus:SendMessage(E.CURRENCY_LOADING_STARTED)
         end
         
         C_Timer.After(1, function()
@@ -1482,6 +1502,7 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     if C_CurrencyInfo and C_CurrencyInfo.RequestCurrencyFromAccountCharacter then
         hooksecurefunc(C_CurrencyInfo, "RequestCurrencyFromAccountCharacter", function(sourceCharacterGUID, currencyID, quantity)
             if not currencyID or not sourceCharacterGUID or not quantity then return end
+            if issecretvalue and issecretvalue(sourceCharacterGUID) then return end
             
             -- LOCAL PREDICTION: Immediately deduct from our local DB for the source character
             -- The API is heavily delayed/throttled for offline characters.
@@ -1490,7 +1511,21 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
             if db and db.currencies and wDB and wDB.characters then
                 for charKey, charData in pairs(wDB.characters) do
                     -- Match by GUID (or fallback to partial name match if GUID is missing)
-                    if charData.guid == sourceCharacterGUID or (not charData.guid and string.find(sourceCharacterGUID, charData.name)) then
+                    local guidMatch = false
+                    if charData.guid and sourceCharacterGUID then
+                        local cg = charData.guid
+                        if not ((issecretvalue and issecretvalue(cg)) or (issecretvalue and issecretvalue(sourceCharacterGUID))) then
+                            guidMatch = (cg == sourceCharacterGUID)
+                        end
+                    end
+                    local nameMatch = false
+                    if not charData.guid and charData.name and sourceCharacterGUID then
+                        local cn = charData.name
+                        if not (issecretvalue and issecretvalue(cn)) then
+                            nameMatch = string.find(sourceCharacterGUID, cn) ~= nil
+                        end
+                    end
+                    if guidMatch or nameMatch then
                         if db.currencies[charKey] and db.currencies[charKey][currencyID] then
                             local oldQty = db.currencies[charKey][currencyID]
                             local newQty = math.max(0, oldQty - quantity)
@@ -1504,7 +1539,7 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
                             ns.DebugPrint(string.format("[WN Hook] Deducted %d of currency %d from %s (%d -> %d)", quantity, currencyID, charKey, oldQty, newQty))
                             
                             if WarbandNexus.SendMessage then
-                                WarbandNexus:SendMessage("WN_CURRENCY_UPDATED")
+                                WarbandNexus:SendMessage(E.CURRENCY_UPDATED)
                             end
                         end
                         break
@@ -1649,29 +1684,51 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
         
         -- Now iterate over our TRACKED characters and update their DB entry
         local currentPlayerGUID = UnitGUID("player")
+        if issecretvalue and currentPlayerGUID and issecretvalue(currentPlayerGUID) then
+            currentPlayerGUID = nil
+        end
         local currentPlayerKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
         for charKey, charData in pairs(wDB.characters) do
             if charData.isTracked then
                 -- SKIP CURRENT LOGIN CHARACTER! Their data is always fresh locally and might not be in the API response.
-                local isCurrentPlayer = (charData.guid and charData.guid == currentPlayerGUID) or (charKey == currentPlayerKey)
+                local guidEqual = false
+                if charData.guid and currentPlayerGUID then
+                    local cg = charData.guid
+                    if not ((issecretvalue and issecretvalue(cg)) or (issecretvalue and issecretvalue(currentPlayerGUID))) then
+                        guidEqual = (cg == currentPlayerGUID)
+                    end
+                end
+                local isCurrentPlayer = guidEqual or (charKey == currentPlayerKey)
                 
                 if not isCurrentPlayer then
                     local newQuantity = 0
-                    local dbNameBase = strsplit("-", charData.name)
+                    local dbNameBase = nil
+                    if charData.name and not (issecretvalue and issecretvalue(charData.name)) then
+                        dbNameBase = strsplit("-", charData.name)
+                    end
                     
                     for k = 1, #apiChars do
                         local apiChar = apiChars[k]
                         local isMatch = false
                         -- Strategy 1: Match by GUID (100% accurate)
-                        if charData.guid and apiChar.guid and charData.guid == apiChar.guid then
+                        if charData.guid and apiChar.guid
+                            and not (issecretvalue and issecretvalue(charData.guid))
+                            and not (issecretvalue and issecretvalue(apiChar.guid))
+                            and charData.guid == apiChar.guid then
                             isMatch = true
                         else
                             -- Strategy 2: Match by exact API name or API base name
-                            local apiNameBase = strsplit("-", apiChar.name)
-                            if apiChar.name == charData.name or apiNameBase == dbNameBase then
+                            local apiNameBase = nil
+                            if apiChar.name and not (issecretvalue and issecretvalue(apiChar.name)) then
+                                apiNameBase = strsplit("-", apiChar.name)
+                            end
+                            local namesComparable = charData.name and apiChar.name
+                                and not (issecretvalue and issecretvalue(charData.name))
+                                and not (issecretvalue and issecretvalue(apiChar.name))
+                            if (namesComparable and apiChar.name == charData.name) or (dbNameBase and apiNameBase and apiNameBase == dbNameBase) then
                                 isMatch = true
                                 -- Opportunistically save GUID for future comparisons
-                                if apiChar.guid and not charData.guid then
+                                if apiChar.guid and not charData.guid and not (issecretvalue and issecretvalue(apiChar.guid)) then
                                     charData.guid = apiChar.guid
                                 end
                             end
@@ -1699,9 +1756,13 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
                             if not db.currencies[charKey] then db.currencies[charKey] = {} end
                             db.currencies[charKey][currencyID] = newQuantity
                             updatedAny = true
-                            ns.DebugPrint(string.format("|cff9370DB[CurrencyCache]|r Sync: Updated %s for %s (%d -> %d)", tostring(currencyID), charKey, oldQuantity, newQuantity))
+                            if ns.DebugVerbosePrint then
+                                ns.DebugVerbosePrint(string.format("|cff9370DB[CurrencyCache]|r Sync: Updated %s for %s (%d -> %d)", tostring(currencyID), charKey, oldQuantity, newQuantity))
+                            end
                         else
-                            ns.DebugPrint(string.format("|cff9370DB[CurrencyCache]|r Sync: Ignored stale API data for %s %s (%d -> %d)", charKey, tostring(currencyID), oldQuantity, newQuantity))
+                            if ns.DebugVerbosePrint then
+                                ns.DebugVerbosePrint(string.format("|cff9370DB[CurrencyCache]|r Sync: Ignored stale API data for %s %s (%d -> %d)", charKey, tostring(currencyID), oldQuantity, newQuantity))
+                            end
                         end
                     end
                 end
@@ -1710,7 +1771,7 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
     end
     
     if updatedAny and WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_CURRENCY_UPDATED")
+        WarbandNexus:SendMessage(E.CURRENCY_UPDATED)
     end
 end
 

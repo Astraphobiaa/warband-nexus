@@ -12,6 +12,9 @@
 
 local ADDON_NAME, ns = ...
 
+local issecretvalue = issecretvalue
+local E = ns.Constants.EVENTS
+
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
@@ -55,6 +58,13 @@ local function ValidateTabId(tabId)
     return true
 end
 
+--- Lowercase search query for storage; never call string methods on secret API values (Midnight 12.0+).
+local function NormalizeSearchQuery(searchText)
+    if not searchText or type(searchText) ~= "string" then return "" end
+    if issecretvalue and issecretvalue(searchText) then return "" end
+    return searchText:lower()
+end
+
 local function GetOrCreateState(tabId)
     if not searchStates[tabId] then
         searchStates[tabId] = {
@@ -73,7 +83,7 @@ local function FireStateChangedEvent(tabId)
     if not state then return end
     
     -- Fire event for UI consumption
-    AceEvent:SendMessage("WN_SEARCH_STATE_CHANGED", {
+    AceEvent:SendMessage(E.SEARCH_STATE_CHANGED, {
         tabId = tabId,
         searchText = state.query,
         resultCount = state.resultCount,
@@ -97,7 +107,7 @@ function SearchStateManager:SetSearchQuery(tabId, searchText)
     if not ValidateTabId(tabId) then return end
     
     local state = GetOrCreateState(tabId)
-    local normalizedQuery = (searchText or ""):lower()
+    local normalizedQuery = NormalizeSearchQuery(searchText)
     
     -- Cancel previous throttle timer
     if state.throttleTimer then
@@ -110,7 +120,7 @@ function SearchStateManager:SetSearchQuery(tabId, searchText)
     state.timestamp = GetTime()
     
     -- Fire immediate query update event (for search box display)
-    AceEvent:SendMessage("WN_SEARCH_QUERY_UPDATED", {
+    AceEvent:SendMessage(E.SEARCH_QUERY_UPDATED, {
         tabId = tabId,
         searchText = normalizedQuery
     })
@@ -193,7 +203,9 @@ function SearchStateManager:HasActiveSearch(tabId)
     if not ValidateTabId(tabId) then return false end
     
     local state = searchStates[tabId]
-    return state and state.query ~= ""
+    if not state or not state.query then return false end
+    if issecretvalue and issecretvalue(state.query) then return false end
+    return state.query ~= ""
 end
 
 --[[
@@ -205,7 +217,10 @@ function SearchStateManager:GetQuery(tabId)
     if not ValidateTabId(tabId) then return "" end
     
     local state = searchStates[tabId]
-    return state and state.query or ""
+    local q = state and state.query or ""
+    if q and issecretvalue and issecretvalue(q) then return "" end
+    if not q or q == "" then return "" end
+    return q
 end
 
 --[[

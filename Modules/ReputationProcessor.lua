@@ -50,11 +50,9 @@ ns.RENOWN_COLOR = {r = 1.0, g = 0.82, b = 0.0}   -- Gold (Renown & Friendship)
 ns.PARAGON_COLOR = {r = 0, g = 0.5, b = 1}         -- Blue (Paragon)
 
 -- Debug print helper
-local function DebugPrint(...)
-    if ns.WarbandNexus and ns.WarbandNexus.db and ns.WarbandNexus.db.profile and ns.WarbandNexus.db.profile.debugMode then
-        _G.print("|cffff00ff[RepProcessor]|r", ...)
-    end
-end
+local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cffff00ff[RepProcessor]|r"))
+    or ns.DebugPrint
+    or function() end
 
 -- ============================================================================
 -- REPUTATION PROCESSOR

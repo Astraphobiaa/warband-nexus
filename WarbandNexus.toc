@@ -1,8 +1,8 @@
-## Interface: 120000
+## Interface: 120001
 ## Title: Warband Nexus
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Author: WarbandNexus Team
-## Version: 2.5.12
+## Version: 2.5.15-beta1
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
 ## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity, Blizzard_Collections
@@ -29,10 +29,11 @@ Locales\zhTW.lua
 
 # Core
 Core.lua
-Config.lua
 
 # Modules (Core Services - Load First!)
+# Config.lua requires ns.Constants — must load after Modules\Constants.lua
 Modules\Constants.lua
+Config.lua
 Modules\DebugPrint.lua
 Modules\Profiler.lua
 Modules\LoadingTracker.lua
@@ -71,7 +72,6 @@ Modules\MinimapButton.lua
 Modules\TooltipService.lua
 Modules\GuildBankScanner.lua
 Modules\VaultScanner.lua
-Modules\PvEDataCollector.lua
 Modules\PlansManager.lua
 Modules\CollectibleSourceDB.lua
 Modules\TryCounterService.lua
@@ -83,7 +83,6 @@ Modules\GearService.lua
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua
 Modules\UI\FormatHelpers.lua
-Modules\UI\IconHelpers.lua
 Modules\UI\FramePoolFactory.lua
 Modules\UI\WindowFactory.lua
 Modules\UI\SearchBoxComponent.lua

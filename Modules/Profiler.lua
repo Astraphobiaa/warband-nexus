@@ -49,6 +49,8 @@ local Profiler = {
     activeTimers = {},  -- { [label] = startTimestamp }
     asyncTimers = {},   -- { [label] = { startTime, frameCount } }
     frameSpikes = {},   -- ring buffer of recent spikes { timestamp, frameMs }
+    _spikeNextSlot = 1, -- 1..maxSpikes; next write overwrites oldest when full
+    _spikeCount = 0,    -- 0..maxSpikes
     maxSpikes = 50,     -- max spikes to keep
     spikeThreshold = 33.33, -- ms (below 30fps)
     _frameStart = 0,
@@ -56,6 +58,18 @@ local Profiler = {
 }
 
 ns.Profiler = Profiler
+
+local function ProfilerPrint(...)
+    local addon = ns and ns.WarbandNexus
+    if addon and addon.Print then
+        addon:Print(...)
+    elseif _G and _G.print then
+        _G.print(...)
+    end
+end
+
+ns.ProfilerPrint = ProfilerPrint
+local print = ProfilerPrint
 
 -- ============================================================================
 -- COLOR CONSTANTS
@@ -210,6 +224,33 @@ end
 -- FRAME SPIKE DETECTION
 -- ============================================================================
 
+---@return number
+function Profiler:_SpikeCount()
+    return self._spikeCount or 0
+end
+
+---Oldest-to-newest spike entries (dense array for display).
+---@return table
+function Profiler:_GetSpikesChronological()
+    local out = {}
+    local buf = self.frameSpikes
+    local maxS = self.maxSpikes
+    local n = self._spikeCount or 0
+    if n == 0 or not buf then return out end
+    if n < maxS then
+        for i = 1, n do
+            out[#out + 1] = buf[i]
+        end
+    else
+        local nextSlot = self._spikeNextSlot or 1
+        for k = 0, maxS - 1 do
+            local idx = ((nextSlot - 1 + k) % maxS) + 1
+            out[#out + 1] = buf[idx]
+        end
+    end
+    return out
+end
+
 ---Enable or disable per-frame time tracking.
 ---@param enable boolean
 function Profiler:SetFrameTracking(enable)
@@ -229,12 +270,12 @@ function Profiler:SetFrameTracking(enable)
                     frameMs = frameMs,
                     date = date("%H:%M:%S"),
                 }
-                local spikes = self.frameSpikes
-                spikes[#spikes + 1] = spike
-                
-                -- Ring buffer trim
-                while #spikes > self.maxSpikes do
-                    table.remove(spikes, 1)
+                local maxS = self.maxSpikes
+                local idx = self._spikeNextSlot or 1
+                self.frameSpikes[idx] = spike
+                self._spikeNextSlot = (idx % maxS) + 1
+                if (self._spikeCount or 0) < maxS then
+                    self._spikeCount = (self._spikeCount or 0) + 1
                 end
                 
                 if self.liveOutput then
@@ -355,7 +396,7 @@ end
 
 ---Print recent frame spikes.
 function Profiler:PrintSpikes()
-    local spikes = self.frameSpikes
+    local spikes = self:_GetSpikesChronological()
     if #spikes == 0 then
         print(PREFIX .. C_DIM .. "No frame spikes recorded." .. C_R)
         if not self.frameTracking then
@@ -387,9 +428,14 @@ function Profiler:PrintSpikes()
     end
     
     print(C_DIM .. "  " .. string.rep("-", 40) .. C_R)
+    local worst = 0
+    for i = 1, #spikes do
+        local ms = spikes[i].frameMs
+        if ms > worst then worst = ms end
+    end
     print(string.format("  " .. C_DIM .. "Total spikes: %d  |  Worst: %.1fms" .. C_R,
         #spikes,
-        spikes[1] and math.max(unpack(self:_GetSpikeValues())) or 0))
+        worst))
     print(C_HEADER .. "══════════════════════════════════════════════════════════════════" .. C_R)
     print(" ")
 end
@@ -398,8 +444,9 @@ end
 ---@return table
 function Profiler:_GetSpikeValues()
     local vals = {}
-    for _, s in ipairs(self.frameSpikes) do
-        vals[#vals + 1] = s.frameMs
+    local spikes = self:_GetSpikesChronological()
+    for i = 1, #spikes do
+        vals[#vals + 1] = spikes[i].frameMs
     end
     if #vals == 0 then vals[1] = 0 end
     return vals
@@ -411,6 +458,8 @@ function Profiler:Reset()
     wipe(self.activeTimers)
     wipe(self.asyncTimers)
     wipe(self.frameSpikes)
+    self._spikeNextSlot = 1
+    self._spikeCount = 0
     print(PREFIX .. C_GOOD .. "All profiling data cleared." .. C_R)
 end
 
@@ -483,7 +532,7 @@ function Profiler:HandleCommand(addon, subCmd, arg3)
         local entryCount = 0
         for _ in pairs(self.entries) do entryCount = entryCount + 1 end
         print(PREFIX .. "Recorded operations: " .. C_VALUE .. entryCount .. C_R)
-        print(PREFIX .. "Recorded spikes: " .. C_VALUE .. #self.frameSpikes .. C_R)
+        print(PREFIX .. "Recorded spikes: " .. C_VALUE .. tostring(self:_SpikeCount()) .. C_R)
         
     elseif subCmd == "help" then
         print(" ")

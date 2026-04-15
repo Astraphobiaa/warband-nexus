@@ -21,6 +21,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 
 local function IsCurrentCharacterTracked()
     return ns.CharacterService and WarbandNexus and ns.CharacterService:IsCharacterTracked(WarbandNexus)
@@ -52,6 +53,9 @@ local function ResolveAPIString(value)
         end
         _resolverFS:SetText(value)
         local text = _resolverFS:GetText()
+        if text and issecretvalue and issecretvalue(text) then
+            return nil
+        end
         if text and type(text) == "string" and text ~= "" then
             return text
         end
@@ -85,14 +89,14 @@ local function ResolveSpellName(spellID)
     -- Method 3: Parse name from spell link (links are plain strings)
     if C_Spell and C_Spell.GetSpellLink then
         local ok, link = pcall(C_Spell.GetSpellLink, spellID)
-        if ok and link and type(link) == "string" then
+        if ok and link and type(link) == "string" and not (issecretvalue and issecretvalue(link)) then
             local parsed = link:match("%[(.-)%]")
             if parsed and parsed ~= "" then return parsed end
         end
     end
     if GetSpellLink then
         local ok, link = pcall(GetSpellLink, spellID)
-        if ok and link and type(link) == "string" then
+        if ok and link and type(link) == "string" and not (issecretvalue and issecretvalue(link)) then
             local parsed = link:match("%[(.-)%]")
             if parsed and parsed ~= "" then return parsed end
         end
@@ -320,7 +324,7 @@ local function CollectConcentrationData()
 
     -- Fire event for consumers (tooltip, UI)
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_CONCENTRATION_UPDATED", charKey)
+        WarbandNexus:SendMessage(E.CONCENTRATION_UPDATED, charKey)
     end
 end
 
@@ -681,7 +685,7 @@ local function CollectKnowledgeData()
 
     -- Fire event for consumers
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_KNOWLEDGE_UPDATED", charKey)
+        WarbandNexus:SendMessage(E.KNOWLEDGE_UPDATED, charKey)
     end
 end
 
@@ -743,7 +747,9 @@ local function CollectEquipmentFromSlots(slotIDs)
         if itemID then
             local itemLink = GetInventoryItemLink("player", slotID)
             local icon = GetInventoryItemTexture and GetInventoryItemTexture("player", slotID) or nil
-            local itemName = itemLink and itemLink:match("%[(.-)%]")
+            local itemName = (itemLink and type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)))
+                and itemLink:match("%[(.-)%]")
+                or nil
             equipment[key] = {
                 itemID = itemID, itemLink = itemLink, icon = icon,
                 name = itemName or ("Item " .. itemID),
@@ -808,7 +814,7 @@ local function CollectEquipmentDataForCurrentProfession()
     StoreEquipment(charData, profName, equipment)
 
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_PROFESSION_EQUIPMENT_UPDATED", charKey)
+        WarbandNexus:SendMessage(E.PROFESSION_EQUIPMENT_UPDATED, charKey)
     end
 end
 
@@ -841,7 +847,7 @@ local function CollectEquipmentByDetection()
     end
 
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_PROFESSION_EQUIPMENT_UPDATED", charKey)
+        WarbandNexus:SendMessage(E.PROFESSION_EQUIPMENT_UPDATED, charKey)
     end
 end
 
@@ -895,7 +901,7 @@ local function InstallRecipeHook()
     local ok, err = pcall(hooksecurefunc, ProfessionsFrame.CraftingPage.SchematicForm, "Init", function(self, recipeInfo)
         if not recipeInfo then return end
         if WarbandNexus and WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage("WN_RECIPE_SELECTED", recipeInfo)
+            WarbandNexus:SendMessage(E.RECIPE_SELECTED, recipeInfo)
         end
     end)
 
@@ -1412,7 +1418,7 @@ local function CollectMidnightKnowledgeProgressData()
     end
 
     if CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName) and WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_PROFESSION_DATA_UPDATED", charKey)
+        WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
     end
 end
 
@@ -1570,7 +1576,7 @@ local function CollectRecipeSummaryData()
     end
 
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_RECIPE_DATA_UPDATED", charKey)
+        WarbandNexus:SendMessage(E.RECIPE_DATA_UPDATED, charKey)
     end
 end
 
@@ -1731,7 +1737,7 @@ local function CollectCooldownData()
     end
 
     if found > 0 and WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_PROFESSION_COOLDOWNS_UPDATED", charKey)
+        WarbandNexus:SendMessage(E.PROFESSION_COOLDOWNS_UPDATED, charKey)
     end
 end
 
@@ -1827,7 +1833,7 @@ local function CollectCraftingOrdersData()
     end
 
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_CRAFTING_ORDERS_UPDATED", charKey)
+        WarbandNexus:SendMessage(E.CRAFTING_ORDERS_UPDATED, charKey)
     end
 end
 
@@ -1870,7 +1876,7 @@ function WarbandNexus:OnTradeSkillShow()
         if WarbandNexus and WarbandNexus.SendMessage then
             local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
             if charKey then
-                WarbandNexus:SendMessage("WN_PROFESSION_DATA_UPDATED", charKey)
+                WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
             end
         end
     end)
@@ -1882,14 +1888,14 @@ function WarbandNexus:OnTradeSkillShow()
         if WarbandNexus.SendMessage then
             local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
             if charKey then
-                WarbandNexus:SendMessage("WN_PROFESSION_DATA_UPDATED", charKey)
+                WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
             end
         end
     end)
 
     -- Notify companion window
     if self.SendMessage then
-        self:SendMessage("WN_PROFESSION_WINDOW_OPENED")
+        self:SendMessage(E.PROFESSION_WINDOW_OPENED)
     end
 end
 
@@ -1902,7 +1908,7 @@ function WarbandNexus:OnTradeSkillClose()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     
     if self.SendMessage then
-        self:SendMessage("WN_PROFESSION_WINDOW_CLOSED")
+        self:SendMessage(E.PROFESSION_WINDOW_CLOSED)
     end
 end
 
@@ -1966,7 +1972,7 @@ function WarbandNexus:OnProfessionQuestProgressChanged()
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
     if not charData then return end
     if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 and self.SendMessage then
-        self:SendMessage("WN_PROFESSION_DATA_UPDATED", charKey)
+        self:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
     end
 end
 
@@ -2214,8 +2220,11 @@ end
 function WarbandNexus:GetConcentrationTimeToFull(entry)
     if not entry or not entry.max or entry.max <= 0 then return "" end
 
+    local L = ns.L
     local estimated = self:GetEstimatedConcentration(entry)
-    if estimated >= entry.max then return "Full" end
+    if estimated >= entry.max then
+        return (L and L["PROF_CONCENTRATION_FULL"]) or "Full"
+    end
 
     local remainingDeficit = entry.max - estimated
     local secondsToFull = remainingDeficit / CONCENTRATION_PER_SECOND
@@ -2224,9 +2233,11 @@ function WarbandNexus:GetConcentrationTimeToFull(entry)
     local totalMinutes = math.floor(secondsToFull / 60)
 
     if totalHours >= 1 then
-        return string.format("%d Hours", totalHours)
+        local fmt = (L and L["PROF_CONCENTRATION_HOURS_REMAINING"]) or "%d Hours"
+        return string.format(fmt, totalHours)
     else
-        return string.format("%d Min", math.max(1, totalMinutes))
+        local fmt = (L and L["PROF_CONCENTRATION_MINUTES_REMAINING"]) or "%d Min"
+        return string.format(fmt, math.max(1, totalMinutes))
     end
 end
 
@@ -2240,8 +2251,11 @@ end
 function WarbandNexus:GetConcentrationTimeToFullDetailed(entry)
     if not entry or not entry.max or entry.max <= 0 then return "" end
 
+    local L = ns.L
     local estimated = self:GetEstimatedConcentration(entry)
-    if estimated >= entry.max then return "Full" end
+    if estimated >= entry.max then
+        return (L and L["PROF_CONCENTRATION_FULL"]) or "Full"
+    end
 
     local remainingDeficit = entry.max - estimated
     local secondsToFull = remainingDeficit / CONCENTRATION_PER_SECOND
@@ -2251,11 +2265,14 @@ function WarbandNexus:GetConcentrationTimeToFullDetailed(entry)
     local minutes = math.floor((secondsToFull % 3600) / 60)
 
     if days > 0 then
-        return string.format("%d Days %d Hours %d Min", days, hours, minutes)
+        local fmt = (L and L["PROF_CONCENTRATION_DAYS_HOURS_MIN"]) or "%d Days %d Hours %d Min"
+        return string.format(fmt, days, hours, minutes)
     elseif hours > 0 then
-        return string.format("%d Hours %d Min", hours, minutes)
+        local fmt = (L and L["PROF_CONCENTRATION_HOURS_MIN"]) or "%d Hours %d Min"
+        return string.format(fmt, hours, minutes)
     else
-        return string.format("%d Min", math.max(1, minutes))
+        local fmt = (L and L["PROF_CONCENTRATION_MINUTES_ONLY"]) or "%d Min"
+        return string.format(fmt, math.max(1, minutes))
     end
 end
 
@@ -2383,7 +2400,7 @@ function WarbandNexus:PrintProfessionVerify()
             if charData.knowledgeData then
                 for k, v in pairs(charData.knowledgeData) do
                     local expName = type(v) == "table" and v.expansionName
-                    if type(v) == "table" and v.professionName and expName and (not issecretvalue or not issecretvalue(expName)) and expName:find("Midnight", 1, true) then
+                    if type(v) == "table" and v.professionName and expName and not (issecretvalue and issecretvalue(expName)) and expName:find("Midnight", 1, true) then
                         local sp = v.spentPoints or 0
                         local mx = v.maxPoints or 0
                         self:Print("  Knowledge " .. tostring(v.professionName) .. ": " .. sp .. " / " .. (mx > 0 and mx or "--"))
@@ -2393,7 +2410,7 @@ function WarbandNexus:PrintProfessionVerify()
             if charData.recipes then
                 for sl, r in pairs(charData.recipes) do
                     local rExp = type(r) == "table" and r.expansionName
-                    if type(r) == "table" and r.professionName and rExp and (not issecretvalue or not issecretvalue(rExp)) and rExp:find("Midnight", 1, true) then
+                    if type(r) == "table" and r.professionName and rExp and not (issecretvalue and issecretvalue(rExp)) and rExp:find("Midnight", 1, true) then
                         self:Print("  Recipes " .. tostring(r.professionName) .. ": " .. tostring(r.knownCount or 0) .. " / " .. tostring(r.totalCount or 0) .. "  First craft: " .. tostring(r.firstCraftDoneCount or 0) .. " / " .. tostring(r.firstCraftTotalCount or 0))
                     end
                 end
@@ -2582,7 +2599,7 @@ function WarbandNexus:CollectConcentrationOnLogin()
     end
 
     if self.SendMessage then
-        self:SendMessage("WN_CONCENTRATION_UPDATED", charKey)
+        self:SendMessage(E.CONCENTRATION_UPDATED, charKey)
     end
 end
 
@@ -2654,7 +2671,7 @@ function WarbandNexus:CollectKnowledgeOnLogin()
     end
 
     if self.SendMessage then
-        self:SendMessage("WN_KNOWLEDGE_UPDATED", charKey)
+        self:SendMessage(E.KNOWLEDGE_UPDATED, charKey)
     end
 end
 
@@ -2730,7 +2747,7 @@ function WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
         
         -- Notify consumers (tooltip, UI)
         if self.SendMessage then
-            self:SendMessage("WN_CONCENTRATION_UPDATED", charKey)
+            self:SendMessage(E.CONCENTRATION_UPDATED, charKey)
         end
     end
 end
@@ -2744,7 +2761,7 @@ function WarbandNexus:OnProfessionProgressCurrencyChanged(currencyID)
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
     if not charData then return end
     if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 and self.SendMessage then
-        self:SendMessage("WN_PROFESSION_DATA_UPDATED", charKey)
+        self:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
     end
 end
 
@@ -2811,7 +2828,7 @@ function WarbandNexus:StartRechargeTimer()
         
         local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
         if charKey then
-            WarbandNexus:SendMessage("WN_CONCENTRATION_UPDATED", charKey)
+            WarbandNexus:SendMessage(E.CONCENTRATION_UPDATED, charKey)
         end
     end)
     

@@ -873,6 +873,12 @@ L["FOR_AVAILABLE_COMMANDS"] = "pour les commandes disponibles."
 L["FRIENDSHIP_LABEL"] = "Friendship"
 L["FROM_LABEL"] = "De :"
 L["FULL"] = "Full"
+L["PROF_CONCENTRATION_FULL"] = "Plein"
+L["PROF_CONCENTRATION_HOURS_REMAINING"] = "%d h"
+L["PROF_CONCENTRATION_MINUTES_REMAINING"] = "%d min"
+L["PROF_CONCENTRATION_DAYS_HOURS_MIN"] = "%d j %d h %d min"
+L["PROF_CONCENTRATION_HOURS_MIN"] = "%d h %d min"
+L["PROF_CONCENTRATION_MINUTES_ONLY"] = "%d min"
 L["GLOBAL_DB_VERSION"] = "Version de la base de données globale :"
 L["GOLD_MANAGEMENT_DEPOSITED"] = "Déposé %s dans la banque de bataillon"
 L["GOLD_MANAGEMENT_DESC"] = "Configurer la gestion automatique de l'or. Les dépôts et retraits sont effectués automatiquement à l'ouverture de la banque."
@@ -1532,6 +1538,10 @@ L["GEAR_UPGRADES_GOLD_ONLY_FORMAT"] = "%d amélioration(s) or uniquement (préc�
 L["GEAR_NEED_MORE_CRESTS_FORMAT"] = "%s %d/%d — plus d'écussons nécessaires"
 L["WOW_TOKEN_LABEL"] = "JETON WOW"
 L["FORMAT_BUTTON"] = "Format"
+L["STATS_PLAYED_STEAM_ZERO"] = "0 h"
+L["STATS_PLAYED_STEAM_FLOAT"] = "%.1f h"
+L["STATS_PLAYED_STEAM_THOUSAND"] = "%d,%03d h"
+L["STATS_PLAYED_STEAM_INT"] = "%d h"
 L["SHOW_ALL"] = "Tout afficher"
 L["DISCORD_TOOLTIP"] = "Warband Nexus Discord"
 L["SOURCE_OTHER"] = "Autre"
@@ -1589,6 +1599,7 @@ L["PVE_CREST_ADV"] = "Adventurer"
 L["PVE_CREST_CHAMP"] = "Champion"
 L["PVE_CREST_HERO"] = "Hero"
 L["PVE_CREST_MYTH"] = "Myth"
+L["PVE_CREST_EXPLORER"] = "Explorer"
 L["PVE_CREST_VET"] = "Veteran"
 
 -- Vault Tooltips
@@ -1616,6 +1627,11 @@ L["WARBAND_WEALTH"] = "Warband Wealth"
 L["GEAR_CRAFTED_CREST_COST"] = "Recraft cost: %d crests"
 L["GEAR_CRAFTED_NO_CRESTS"] = "No crests available for recraft"
 L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
+L["GEAR_TRACK_CRAFTED_FALLBACK"] = "Fabriqué"
+L["GEAR_CRAFTED_MAX_ILVL_LINE"] = "%s (niveau d'objet max %d)"
+L["GEAR_CRAFTED_RECAST_TO_LINE"] = "Refaire à %s (niveau d'objet %d)"
+L["GEAR_CRAFTED_COST_DAWNCREST"] = "Coût : %d %s Dawncrest"
+L["GEAR_CRAFTED_NEXT_TIER_CRESTS"] = "%s (niveau d'objet %d) : %d/%d écussons (%d de plus nécessaires)"
 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
@@ -1695,6 +1711,26 @@ Localization
 
 À venir
 - More Midnight API validation; Try Counter and notifications tuned from live raids and dungeons; further settings and tooltip polish.
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.15 (CHANGELOG_V2515) — English notes; see enUS for detail
+L["CHANGELOG_V2515"] = [=[v2.5.15 beta 1 (2026-04-15)
+
+Beta — pre-release; feedback welcome before stable.
+
+Performance
+- UI: SchedulePopulateContent debounces (last schedule wins); OnHide cancels populate timer; one defer per main tab switch; no redundant tab-button refresh while switching; currency/reputation messages only update badges when that tab is hidden.
+- CollectionService: coalesced EnsureCollectionData; ScanCollection uses a FRAME_BUDGET_MS coroutine; BuildFullCollectionData batch budget aligned.
+- Guild bank & ItemsCache: chunked scans; atomic tab results; invalidate on cancel/close.
+- Plans & Collections: PlansUI two-column grid precompute O(n); AbortCollectionsChunkedBuilds; Core abort ties collections to existing tab teardown.
+
+Bug fixes
+- TOC: Config.lua loads after Modules/Constants.lua (fixes ns.Constants nil during Config init).
+- Main frame OnHide: populate timer cleared after cancel.
+
+Localization
+- GearUI: upgrade track names + crafted recraft tooltip lines; PVE_CREST_EXPLORER; Profession concentration + Steam-style played time strings; locale parity for GEAR_CRAFTED_*, STATS_PLAYED_STEAM_*, PROF_CONCENTRATION_* (de, fr, es, es-mx, it, pt, ru, ko, zhTW; enUS/zhCN baseline).
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Liste des tâches et progression hebdo : décoché = plans en cours ; coché = uniquement terminés. Onglets Parcourir : décoché = non collectés (filtrés par To-Do si Afficher planifiés) ; coché = entrées collectées sur la To-Do (planifiés limite toujours la liste)."

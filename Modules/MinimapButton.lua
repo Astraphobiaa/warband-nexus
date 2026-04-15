@@ -12,6 +12,18 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+local issecretvalue = issecretvalue
+
+--- Tooltip line name: prefer DB name; never :match on secret charKey.
+local function GetMinimapTooltipCharName(charKey, charData)
+    local n = charData and charData.name
+    if n and not (issecretvalue and issecretvalue(n)) then return n end
+    if charKey and not (issecretvalue and issecretvalue(charKey)) then
+        return charKey:match("^([^-]+)") or charKey
+    end
+    return "?"
+end
+
 -- LibDBIcon reference
 local LDB = LibStub("LibDataBroker-1.1", true)
 local LDBI = LibStub("LibDBIcon-1.0", true)
@@ -74,7 +86,7 @@ function WarbandNexus:InitializeMinimapButton()
                     copper = ns.Utilities:GetCharTotalCopper(charData)
                 end
                 totalCopper = totalCopper + copper
-                local charName = charKey:match("^([^-]+)") or charKey
+                local charName = GetMinimapTooltipCharName(charKey, charData)
                 local charClass = charData.class or "WARRIOR"
                 table.insert(charGoldList, { name = charName, copper = copper, class = charClass })
             end

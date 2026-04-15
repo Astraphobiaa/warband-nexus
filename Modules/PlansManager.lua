@@ -9,6 +9,8 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
+local E = Constants.EVENTS
+local issecretvalue = issecretvalue
 
 -- Unique AceEvent handler identity for PlansManager
 local PlansManagerEvents = {}
@@ -253,7 +255,7 @@ function WarbandNexus:InitializePlanTracking()
     self:RegisterEvent("ENCOUNTER_END", "OnPvEUpdateCheckPlans")
     
     -- Daily quest updates
-    WarbandNexus.RegisterMessage(PlansManagerEvents, "WARBAND_QUEST_PROGRESS_UPDATED", function(event)
+    WarbandNexus.RegisterMessage(PlansManagerEvents, E.QUEST_PROGRESS_UPDATED, function(event)
         if WarbandNexus.OnDailyQuestProgressUpdated then
             WarbandNexus:OnDailyQuestProgressUpdated(event)
         end
@@ -310,7 +312,7 @@ function WarbandNexus:PreResolvePlansData()
         end
     end
     
-    self:SendMessage("WN_PLANS_UPDATED", { action = "pre_resolved" })
+    self:SendMessage(E.PLANS_UPDATED, { action = "pre_resolved" })
 end
 
 function WarbandNexus:_ResolveSinglePlan(plan, now)
@@ -381,7 +383,8 @@ function WarbandNexus:OnPlanCollectionUpdated(event, ...)
     if self.planCheckTimer then
         self.planCheckTimer:Cancel()
     end
-    self.planCheckTimer = C_Timer.After(0.5, function()
+    self.planCheckTimer = C_Timer.NewTimer(0.5, function()
+        self.planCheckTimer = nil
         self:CheckPlansForCompletion()
     end)
 end
@@ -436,7 +439,7 @@ function WarbandNexus:CheckPlansForCompletion()
         local progress = self:CheckPlanProgress(plan)
         if not (progress and progress.collected) then return end
         if plan.type == "title" then
-            self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+            self:SendMessage(E.COLLECTIBLE_OBTAINED, {
                 type = "title",
                 id = plan.titleID,
                 name = self:GetPlanDisplayName(plan),
@@ -447,7 +450,7 @@ function WarbandNexus:CheckPlansForCompletion()
         plan.completed = true
         plan.completionNotified = true
         plan.resolvedCollected = true
-        self:SendMessage("WN_PLANS_UPDATED", {
+        self:SendMessage(E.PLANS_UPDATED, {
             action = "progress_changed",
             planID = plan.id,
             planType = plan.type,
@@ -485,7 +488,7 @@ function WarbandNexus:TryCompletePlanFromCollectibleObtained(data)
         plan.completed = true
         plan.completionNotified = true
         plan.resolvedCollected = true
-        self:SendMessage("WN_PLANS_UPDATED", {
+        self:SendMessage(E.PLANS_UPDATED, {
             action = "progress_changed",
             planID = plan.id,
             planType = plan.type,
@@ -754,7 +757,7 @@ function WarbandNexus:ShowPlanCompletedNotification(plan)
     local displayIcon = self:GetPlanDisplayIcon(plan)
     
     -- Send plan completion event
-    self:SendMessage("WN_PLAN_COMPLETED", {
+    self:SendMessage(E.PLAN_COMPLETED, {
         planType = plan.type,
         name = displayName,
         icon = displayIcon
@@ -776,7 +779,9 @@ end
 function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
     -- Use current character if not specified
     characterName = characterName or UnitName("player")
-    characterRealm = characterRealm or GetRealmName()
+    characterRealm = characterRealm or (GetRealmName and GetRealmName())
+    if characterName and issecretvalue and issecretvalue(characterName) then characterName = nil end
+    if characterRealm and issecretvalue and issecretvalue(characterRealm) then characterRealm = nil end
     
     -- Check if API is available
     if not C_WeeklyRewards or not C_WeeklyRewards.GetActivities then
@@ -1171,7 +1176,7 @@ function WarbandNexus:ShowWeeklyCheckpointNotification(characterName, category, 
     self:Debug("Sending vault checkpoint notification: " .. category .. " - " .. characterName .. " - progress: " .. progress)
     
     -- Send vault checkpoint completion event
-    self:SendMessage("WN_VAULT_CHECKPOINT_COMPLETED", {
+    self:SendMessage(E.VAULT_CHECKPOINT_COMPLETED, {
         characterName = characterName,
         category = category,
         progress = progress
@@ -1197,7 +1202,7 @@ function WarbandNexus:ShowWeeklySlotNotification(characterName, category, slotIn
     self:Debug("Sending vault slot notification: " .. category .. " - " .. characterName)
     
     -- Send vault slot completion event
-    self:SendMessage("WN_VAULT_SLOT_COMPLETED", {
+    self:SendMessage(E.VAULT_SLOT_COMPLETED, {
         characterName = characterName,
         category = category,
         slotIndex = slotIndex,
@@ -1211,7 +1216,7 @@ end
 ]]
 function WarbandNexus:ShowWeeklyPlanCompletionNotification(characterName)
     -- Send vault plan completion event
-    self:SendMessage("WN_VAULT_PLAN_COMPLETED", {
+    self:SendMessage(E.VAULT_PLAN_COMPLETED, {
         characterName = characterName
     })
 end
@@ -1226,7 +1231,7 @@ function WarbandNexus:ShowDailyQuestNotification(characterName, category, questT
     self:Debug("Sending quest notification: " .. questTitle)
     
     -- Send quest completion event
-    self:SendMessage("WN_QUEST_COMPLETED", {
+    self:SendMessage(E.QUEST_COMPLETED, {
         characterName = characterName,
         category = category,
         questTitle = questTitle
@@ -1400,9 +1405,12 @@ function WarbandNexus:OnPvEUpdateCheckPlans()
     end
 
     local currentName = UnitName("player")
-    local currentRealm = GetRealmName()
+    local currentRealm = GetRealmName and GetRealmName()
+    if currentName and issecretvalue and issecretvalue(currentName) then currentName = nil end
+    if currentRealm and issecretvalue and issecretvalue(currentRealm) then currentRealm = nil end
 
-    self:Debug("PvE Update - checking vault plans for: " .. currentName .. "-" .. currentRealm)
+    self:Debug("PvE Update - checking vault plans for: "
+        .. (currentName or "?") .. "-" .. (currentRealm or "?"))
 
     local currentKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     local vaultList = currentKey and self._weeklyVaultPlansByCharKey and self._weeklyVaultPlansByCharKey[currentKey]
@@ -1494,7 +1502,7 @@ function WarbandNexus:CheckRecurringPlanResets()
     end
 
     if changed then
-        self:SendMessage("WN_PLANS_UPDATED", { action = "recurring_reset" })
+        self:SendMessage(E.PLANS_UPDATED, { action = "recurring_reset" })
     end
 end
 
@@ -1619,7 +1627,7 @@ function WarbandNexus:AddPlan(planData)
     self:RefreshPlanCache()
     
     -- Fire event for UI update (API > DB > UI)
-    self:SendMessage("WN_PLANS_UPDATED", {
+    self:SendMessage(E.PLANS_UPDATED, {
         action = "added",
         planID = planID,
         planType = planType,
@@ -1646,7 +1654,7 @@ function WarbandNexus:RemovePlan(planID)
                 local planType = list[i].type
                 table.remove(list, i)
                 self:RefreshPlanCache()
-                self:SendMessage("WN_PLANS_UPDATED", {
+                self:SendMessage(E.PLANS_UPDATED, {
                     action = "removed",
                     planID = id,
                     planType = planType,
@@ -1759,7 +1767,7 @@ function WarbandNexus:UpdatePlanSources()
     
     -- Notify UI only if sources actually changed
     if updated then
-        self:SendMessage("WN_PLANS_UPDATED", {
+        self:SendMessage(E.PLANS_UPDATED, {
             action = "sources_refreshed"
         })
     end
@@ -2001,9 +2009,7 @@ function WarbandNexus:ToggleAchievementTracking(achievementID)
     if not toggled then return false end
 
     local trackedNow = self:IsAchievementTracked(achievementID)
-    local eventName = (ns.Constants and ns.Constants.EVENTS and ns.Constants.EVENTS.ACHIEVEMENT_TRACKING_UPDATED)
-        or "WN_ACHIEVEMENT_TRACKING_UPDATED"
-    self:SendMessage(eventName, {
+    self:SendMessage(E.ACHIEVEMENT_TRACKING_UPDATED, {
         achievementID = achievementID,
         tracked = trackedNow,
         previousTracked = trackedBefore,

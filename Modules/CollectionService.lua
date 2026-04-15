@@ -22,13 +22,25 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local issecretvalue = issecretvalue
+local Utilities = ns.Utilities
+local function CmpItemName(a, b)
+    return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.name) or "") < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.name) or "")
+end
+
+--- Plans/collection browse search: never call :lower() on secret API strings (Midnight 12.0+).
+local function NormalizeCollectionSearchText(searchText)
+    if searchText == nil then return "" end
+    if type(searchText) ~= "string" then return "" end
+    if issecretvalue and issecretvalue(searchText) then return "" end
+    return searchText:lower()
+end
 
 -- Debug print helper (only prints if debug mode + debugVerbose enabled; reduces BAG SCAN spam)
-local function DebugPrint(...)
-    if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode) then return end
-    if not WarbandNexus.db.profile.debugVerbose then return end
-    _G.print(...)  -- Use global print to avoid recursion
-end
+local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter(
+    nil,
+    { verboseOnly = true, suppressWhenTryCounterLoot = true }
+)) or function() end
 
 ---How many achievements to iterate in a category via GetAchievementInfo(categoryID, index).
 ---Must use includeAll=true: without it, GetCategoryNumAchievements only counts the UI "visible" subset (often 0–1),
@@ -47,9 +59,24 @@ end
 -- ============================================================================
 
 local Constants = ns.Constants
+local E = Constants.EVENTS
 local FRAME_BUDGET_MS = Constants.FRAME_BUDGET_MS
 local BATCH_SIZE = Constants.BATCH_SIZE
 local CACHE_VERSION = Constants.COLLECTION_CACHE_VERSION
+
+---Coalesce burst triggers (e.g. many GetUncollected* calls) into a single next-frame EnsureCollectionData.
+local ensureCollectionDeferredPending = false
+local function ScheduleEnsureCollectionDataDeferred()
+    if ensureCollectionDeferredPending then return end
+    ensureCollectionDeferredPending = true
+    C_Timer.After(0, function()
+        ensureCollectionDeferredPending = false
+        if WarbandNexus.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+            WarbandNexus:EnsureCollectionData()
+        end
+    end)
+end
+ns.ScheduleEnsureCollectionDataDeferred = ScheduleEnsureCollectionDataDeferred
 
 -- ============================================================================
 -- COLLECTION CACHE (PERSISTENT IN DB)
@@ -647,7 +674,7 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
     ns.CollectionLoadingState.currentCategory = "mount"
 
     local _issecretvalue = issecretvalue
-    local BUDGET_MS = 6
+    local BUDGET_MS = FRAME_BUDGET_MS
     local configs = { "mount", "pet", "toy" }
     local configIdx = 1
     local itemIdx = 1
@@ -837,7 +864,7 @@ function WarbandNexus:EnsureCollectionData(onComplete)
             end)
         elseif step == "achievement" then
             ns.CollectionLoadingState.currentStage = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements"
-            local msgName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_COMPLETE) or "WN_COLLECTION_SCAN_COMPLETE"
+            local msgName = E.COLLECTION_SCAN_COMPLETE
             local handler
             handler = function(_, data)
                 if data and data.category == "achievement" then
@@ -1076,7 +1103,7 @@ function WarbandNexus:GetToysFlatList()
         if origFilterString then C_ToyBox.SetFilterString(origFilterString) end
         if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
     end)
-    table.sort(out, function(a, b) return (a.name or "") < (b.name or "") end)
+    table.sort(out, CmpItemName)
     return out
 end
 
@@ -1126,7 +1153,7 @@ function WarbandNexus:GetToysDataGroupedBySourceType()
                     sourceTypeName = group.name,
                 }
             end
-            table.sort(items, function(a, b) return (a.name or "") < (b.name or "") end)
+            table.sort(items, CmpItemName)
             result[sourceIndex] = { name = group.name, items = items }
         end
     end
@@ -1737,7 +1764,7 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
         MarkAsShownByName(name)
         MarkAsPermanentlyNotified("mount", mountID)
 
-        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+        self:SendMessage(E.COLLECTIBLE_OBTAINED, {
             type = "mount",
             id = mountID,
             name = name,
@@ -1844,7 +1871,7 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
         MarkAsShownByName(name)
         MarkAsPermanentlyNotified("pet", speciesID)
 
-        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+        self:SendMessage(E.COLLECTIBLE_OBTAINED, {
             type = "pet",
             id = speciesID,
             name = name,
@@ -1918,7 +1945,7 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
         MarkAsShownByName(name)
         MarkAsPermanentlyNotified("toy", itemID)
 
-        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+        self:SendMessage(E.COLLECTIBLE_OBTAINED, {
             type = "toy",
             id = itemID,
             name = name,
@@ -1995,7 +2022,7 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
             MarkAsPermanentlyNotified("illusion", visualID)
             
             -- Fire notification event
-            self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+            self:SendMessage(E.COLLECTIBLE_OBTAINED, {
                 type = "illusion",
                 id = visualID,
                 name = name,
@@ -2194,7 +2221,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
                     
                     -- Trigger UI refresh (no cache invalidation needed!)
                     if self.SendMessage then
-                        self:SendMessage("WN_COLLECTION_UPDATED", "achievement")
+                        self:SendMessage(E.COLLECTION_UPDATED, "achievement")
                     end
                     
                     break -- Only need to process one chained achievement
@@ -2221,7 +2248,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         local displayName = achName or ((ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement")
         local displayIcon = achIcon
         MarkAsPermanentlyNotified("achievement", achievementID)
-        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+        self:SendMessage(E.COLLECTIBLE_OBTAINED, {
             type = "achievement",
             id = achievementID,
             name = displayName,
@@ -2252,7 +2279,7 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
         displayIcon = nil
     end
     MarkAsPermanentlyNotified("achievement", achievementID)
-    self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+    self:SendMessage(E.COLLECTIBLE_OBTAINED, {
         type = "achievement",
         id = achievementID,
         name = displayName,
@@ -2423,7 +2450,7 @@ function WarbandNexus:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID,
     local speciesIcon = nil
     
     -- Method 1: Battle Pet Cage (classID 17) - extract speciesID from hyperlink
-    if classID == 17 and hyperlink then
+    if classID == 17 and hyperlink and type(hyperlink) == "string" and not (issecretvalue and issecretvalue(hyperlink)) then
         speciesID = tonumber(hyperlink:match("|Hbattlepet:(%d+):"))
         if speciesID then
             speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
@@ -2538,11 +2565,17 @@ function WarbandNexus:_DetectPetFromTooltip(itemID)
     for i = 1, #tooltipData.lines do
         local line = tooltipData.lines[i]
         if line and line.leftText then
+            local lineText = line.leftText
+            if issecretvalue and issecretvalue(lineText) then
+                lineText = nil
+            end
             -- Some items embed battlepet:speciesID in tooltip
-            local speciesID = tonumber(line.leftText:match("battlepet:(%d+)"))
-            if speciesID then
+            if lineText then
+                local speciesID = tonumber(lineText:match("battlepet:(%d+)"))
+                if speciesID then
     DebugPrint("|cff00ccff[WN CollectionService]|r Tooltip detection found speciesID: " .. speciesID .. " for itemID: " .. itemID)
-                return speciesID
+                    return speciesID
+                end
             end
         end
     end
@@ -3369,16 +3402,18 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         local elapsed = debugprofilestop() - startTime
         local uncollectedCount = 0
         for _ in pairs(results) do uncollectedCount = uncollectedCount + 1 end
-    DebugPrint(string.format("|cff00ff00[WN CollectionService]|r Scan complete: %s - %d total, %d uncollected, %.2fms",
+        DebugPrint(string.format("|cff00ff00[WN CollectionService]|r Scan complete: %s - %d total, %d uncollected, %.2fms",
             config.name, total, uncollectedCount, elapsed))
         
-        -- CRITICAL DEBUG: Verify cache write
-    DebugPrint("|cff00ccff[WN CollectionService DEBUG]|r Cache written to key: '" .. collectionType .. "'")
-    DebugPrint("|cff00ccff[WN CollectionService DEBUG]|r Cache now has keys:")
-        for key, value in pairs(collectionCache.uncollected) do
-            local itemCount = 0
-            for _ in pairs(value) do itemCount = itemCount + 1 end
-    DebugPrint("|cff00ccff[WN CollectionService]|r   - '" .. key .. "' = " .. itemCount .. " items")
+        -- Verbose-only: listing every cache key is O(categories); skip when debug verbose is off
+        if ns.IsDebugVerboseEnabled and ns.IsDebugVerboseEnabled() then
+            DebugPrint("|cff00ccff[WN CollectionService DEBUG]|r Cache written to key: '" .. collectionType .. "'")
+            DebugPrint("|cff00ccff[WN CollectionService DEBUG]|r Cache now has keys:")
+            for key, value in pairs(collectionCache.uncollected) do
+                local itemCount = 0
+                for _ in pairs(value) do itemCount = itemCount + 1 end
+                DebugPrint("|cff00ccff[WN CollectionService]|r   - '" .. key .. "' = " .. itemCount .. " items")
+            end
         end
         
         -- PERSIST TO DB (avoid re-scanning on reload)
@@ -3387,7 +3422,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         -- Clean up runtime caches (illusion, transmog, etc.)
         if collectionType == "illusion" and illusionRuntimeCache then
             illusionRuntimeCache = nil
-    DebugPrint("|cff9370DB[WN CollectionService]|r Cleared runtime cache for illusions")
+            DebugPrint("|cff9370DB[WN CollectionService]|r Cleared runtime cache for illusions")
         end
         
         -- Set loading state to false (scan complete)
@@ -3411,31 +3446,44 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         
     end)
     
-    -- Store coroutine
+    -- Store coroutine; resume with FRAME_BUDGET_MS (same pattern as ScanAchievementsAsync)
     activeCoroutines[collectionType] = co
-    
-    -- Start ticker to resume coroutine
-    local ticker
-    ticker = C_Timer.NewTicker(0.1, function()
-        if coroutine.status(co) == "dead" then
-            ticker:Cancel()
+
+    local function resetScanLoadingStateOnError()
+        if ns.PlansLoadingState and ns.PlansLoadingState[collectionType] then
+            ns.PlansLoadingState[collectionType].isLoading = false
+            ns.PlansLoadingState[collectionType].loadingProgress = 0
+            ns.PlansLoadingState[collectionType].currentStage = "Error"
+        end
+    end
+
+    local function resumeCoroutine()
+        local coRef = activeCoroutines[collectionType]
+        if not coRef then return end
+        if coroutine.status(coRef) == "dead" then
             activeCoroutines[collectionType] = nil
             return
         end
-        
-        local success, err = coroutine.resume(co)
-        if not success then
-            self:Debug("CollectionService: Scan error - " .. tostring(err))
-            ticker:Cancel()
-            activeCoroutines[collectionType] = nil
-            -- Reset loading state so UI doesn't stay stuck
-            if ns.PlansLoadingState and ns.PlansLoadingState[collectionType] then
-                ns.PlansLoadingState[collectionType].isLoading = false
-                ns.PlansLoadingState[collectionType].loadingProgress = 0
-                ns.PlansLoadingState[collectionType].currentStage = "Error"
+
+        local budget = FRAME_BUDGET_MS
+        local startTime = debugprofilestop()
+        while (debugprofilestop() - startTime) < budget do
+            local success, err = coroutine.resume(coRef)
+            if not success then
+                self:Debug("CollectionService: Scan error - " .. tostring(err))
+                activeCoroutines[collectionType] = nil
+                resetScanLoadingStateOnError()
+                return
+            end
+            if coroutine.status(coRef) == "dead" then
+                activeCoroutines[collectionType] = nil
+                return
             end
         end
-    end)
+        C_Timer.After(0, resumeCoroutine)
+    end
+
+    resumeCoroutine()
 end
 
 ---Get uncollected items from cache (for Browse UI). Raw id->name map (minimal format).
@@ -3921,7 +3969,7 @@ end
 ---@param limit number|nil Optional result limit
 ---@return table Array of uncollected mounts {id, name, icon, source, ...}
 function WarbandNexus:GetUncollectedMounts(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
 
     -- Results cache: avoid expensive store iteration on rapid redraws
     local cacheKey = "mount:" .. searchText .. ":" .. tostring(limit or "nil")
@@ -4006,14 +4054,14 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
 
     -- Store empty: trigger background data build so next draw has results
     if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-        C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+        ScheduleEnsureCollectionDataDeferred()
     end
     return {}
 end
 
 ---Get uncollected pets (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 function WarbandNexus:GetUncollectedPets(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
 
     local cacheKey = "pet:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
@@ -4052,7 +4100,7 @@ function WarbandNexus:GetUncollectedPets(searchText, limit)
     end
 
     if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-        C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+        ScheduleEnsureCollectionDataDeferred()
     end
     return {}
 end
@@ -4060,7 +4108,7 @@ end
 ---Get uncollected toys (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 ---When store has fallback source ("Toy Collection"/"Toy Box"), re-resolves from tooltip so Plans shows correct source.
 function WarbandNexus:GetUncollectedToys(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
 
     local cacheKey = "toy:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
@@ -4103,14 +4151,14 @@ function WarbandNexus:GetUncollectedToys(searchText, limit)
     end
 
     if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-        C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+        ScheduleEnsureCollectionDataDeferred()
     end
     return {}
 end
 
 --- Collected mounts for Plans "Show Completed" (GetUncollectedMounts only returns uncollected).
 function WarbandNexus:GetCollectedMounts(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
     local cacheKey = "c_mount:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
     if cached and (GetTime() - cached.t) < RESULTS_CACHE_TTL then return cached.r end
@@ -4118,7 +4166,7 @@ function WarbandNexus:GetCollectedMounts(searchText, limit)
     local store = collectionStore.mount
     if not store or next(store) == nil then
         if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-            C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+            ScheduleEnsureCollectionDataDeferred()
         end
         return {}
     end
@@ -4152,7 +4200,7 @@ function WarbandNexus:GetCollectedMounts(searchText, limit)
 end
 
 function WarbandNexus:GetCollectedPets(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
     local cacheKey = "c_pet:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
     if cached and (GetTime() - cached.t) < RESULTS_CACHE_TTL then return cached.r end
@@ -4160,7 +4208,7 @@ function WarbandNexus:GetCollectedPets(searchText, limit)
     local store = collectionStore.pet
     if not store or next(store) == nil then
         if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-            C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+            ScheduleEnsureCollectionDataDeferred()
         end
         return {}
     end
@@ -4195,7 +4243,7 @@ function WarbandNexus:GetCollectedPets(searchText, limit)
 end
 
 function WarbandNexus:GetCollectedToys(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
     local cacheKey = "c_toy:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
     if cached and (GetTime() - cached.t) < RESULTS_CACHE_TTL then return cached.r end
@@ -4203,7 +4251,7 @@ function WarbandNexus:GetCollectedToys(searchText, limit)
     local store = collectionStore.toy
     if not store or next(store) == nil then
         if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-            C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+            ScheduleEnsureCollectionDataDeferred()
         end
         return {}
     end
@@ -4239,7 +4287,7 @@ function WarbandNexus:GetCollectedToys(searchText, limit)
 end
 
 function WarbandNexus:GetCollectedIllusions(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
     local cacheKey = "c_illusion:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
     if cached and (GetTime() - cached.t) < RESULTS_CACHE_TTL then return cached.r end
@@ -4247,7 +4295,7 @@ function WarbandNexus:GetCollectedIllusions(searchText, limit)
     local store = collectionStore.illusion
     if not store or next(store) == nil then
         if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-            C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+            ScheduleEnsureCollectionDataDeferred()
         end
         return {}
     end
@@ -4273,7 +4321,7 @@ function WarbandNexus:GetCollectedIllusions(searchText, limit)
 end
 
 function WarbandNexus:GetCollectedTitles(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
     local cacheKey = "c_title:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
     if cached and (GetTime() - cached.t) < RESULTS_CACHE_TTL then return cached.r end
@@ -4281,7 +4329,7 @@ function WarbandNexus:GetCollectedTitles(searchText, limit)
     local store = collectionStore.title
     if not store or next(store) == nil then
         if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-            C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+            ScheduleEnsureCollectionDataDeferred()
         end
         return {}
     end
@@ -4572,7 +4620,7 @@ end
 
 ---Get uncollected achievements (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 function WarbandNexus:GetUncollectedAchievements(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
 
     local cacheKey = "ach_u:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
@@ -4618,7 +4666,7 @@ end
 
 ---Get completed achievements (UNIFIED: collectionStore-first). Collections sadece collected gösterir.
 function WarbandNexus:GetCompletedAchievements(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
 
     local cacheKey = "ach_c:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
@@ -4667,7 +4715,7 @@ end
 
 ---Get uncollected illusions (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 function WarbandNexus:GetUncollectedIllusions(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
 
     local cacheKey = "illusion:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
@@ -4701,7 +4749,7 @@ function WarbandNexus:GetUncollectedIllusions(searchText, limit)
     end
 
     if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-        C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+        ScheduleEnsureCollectionDataDeferred()
     end
     return {}
 end
@@ -4709,7 +4757,7 @@ end
 
 ---Get uncollected titles (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 function WarbandNexus:GetUncollectedTitles(searchText, limit)
-    searchText = (searchText or ""):lower()
+    searchText = NormalizeCollectionSearchText(searchText)
 
     local cacheKey = "title:" .. searchText .. ":" .. tostring(limit or "nil")
     local cached = uncollectedResultsCache[cacheKey]
@@ -4743,7 +4791,7 @@ function WarbandNexus:GetUncollectedTitles(searchText, limit)
     end
 
     if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-        C_Timer.After(0, function() WarbandNexus:EnsureCollectionData() end)
+        ScheduleEnsureCollectionDataDeferred()
     end
     return {}
 end
@@ -4790,7 +4838,7 @@ function WarbandNexus:GetAchievementRewardInfo(achievementID)
             if item then
                 item:ContinueOnItemLoad(function()
                     if WarbandNexus.SendMessage then
-                        WarbandNexus:SendMessage("WN_ITEM_METADATA_READY", achievementID)
+                        WarbandNexus:SendMessage(E.ITEM_METADATA_READY, achievementID)
                     end
                 end)
             end
@@ -5082,7 +5130,7 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
                 
                 -- Fire WN_COLLECTIBLE_OBTAINED event
                 if self.SendMessage then
-                    self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                    self:SendMessage(E.COLLECTIBLE_OBTAINED, {
                         type = collectible.type,
                         id = collectible.collectibleID,
                         name = collectible.itemName,

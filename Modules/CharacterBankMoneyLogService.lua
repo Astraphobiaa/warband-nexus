@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 
 local MAX_LOG_ENTRIES = 500
 local PROCESS_DELAY = 0.05
@@ -210,7 +211,7 @@ local function ProcessMoneyChange()
                 end
                 PushLogEntry(charKey, entry)
                 if WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage("WN_CHARACTER_BANK_MONEY_LOG_UPDATED", charKey)
+                    WarbandNexus:SendMessage(E.CHARACTER_BANK_MONEY_LOG_UPDATED, charKey)
                 end
             end
             SaveSnapshot(charMoney, warbandMoney)
@@ -239,7 +240,7 @@ local function ProcessMoneyChange()
     PushLogEntry(charKey, entry)
 
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_CHARACTER_BANK_MONEY_LOG_UPDATED", charKey)
+        WarbandNexus:SendMessage(E.CHARACTER_BANK_MONEY_LOG_UPDATED, charKey)
     end
 end
 
@@ -276,7 +277,7 @@ function WarbandNexus:LogMoneyTransactionImmediate(txType, amountCopper, expecte
     }
     PushLogEntry(charKey, entry)
     if self.SendMessage then
-        self:SendMessage("WN_CHARACTER_BANK_MONEY_LOG_UPDATED", charKey)
+        self:SendMessage(E.CHARACTER_BANK_MONEY_LOG_UPDATED, charKey)
     end
     WarbandNexus._moneyLogImmediateAt = GetTime()
     WarbandNexus._moneyLogImmediateAmount = amountCopper
@@ -342,7 +343,7 @@ function WarbandNexus:ClearCharacterBankMoneyLogs(charKey)
         logs[i] = nil
     end
     if self.SendMessage then
-        self:SendMessage("WN_CHARACTER_BANK_MONEY_LOG_UPDATED", nil)
+        self:SendMessage(E.CHARACTER_BANK_MONEY_LOG_UPDATED, nil)
     end
 end
 
@@ -374,7 +375,7 @@ function WarbandNexus:InitializeCharacterBankMoneyLogService()
                 if entry then
                     PushLogEntry(charKey, entry)
                     if WarbandNexus.SendMessage then
-                        WarbandNexus:SendMessage("WN_CHARACTER_BANK_MONEY_LOG_UPDATED", charKey)
+                        WarbandNexus:SendMessage(E.CHARACTER_BANK_MONEY_LOG_UPDATED, charKey)
                     end
                 else
                     -- Single-side fallback if both sides didn't update in time
@@ -403,7 +404,7 @@ function WarbandNexus:InitializeCharacterBankMoneyLogService()
                         }
                         PushLogEntry(charKey, e)
                         if WarbandNexus.SendMessage then
-                            WarbandNexus:SendMessage("WN_CHARACTER_BANK_MONEY_LOG_UPDATED", charKey)
+                            WarbandNexus:SendMessage(E.CHARACTER_BANK_MONEY_LOG_UPDATED, charKey)
                         end
                     end
                 end

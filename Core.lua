@@ -677,16 +677,6 @@ function WarbandNexus:OnInitialize()
         ns.InitializationService:InitializeMinimapButton(self)
     end
     
-    -- Initialize Gold Management Service
-    if self.InitializeGoldManagementService then
-        self:InitializeGoldManagementService()
-    end
-
-    -- Initialize Character Bank Money Log Service
-    if self.InitializeCharacterBankMoneyLogService then
-        self:InitializeCharacterBankMoneyLogService()
-    end
-    
     -- Create hidden button for keybind toggle (override binding target)
     if not _G["WarbandNexusToggleButton"] then
         local btn = CreateFrame("Button", "WarbandNexusToggleButton", UIParent)
@@ -866,10 +856,21 @@ function WarbandNexus:OnEnable()
         end
     end)
     
-    -- Initialize Reputation Cache (Direct DB architecture)
-    if ns.ReputationCache then
-        ns.ReputationCache:Initialize()
-    end
+    -- Initialize Reputation Cache (deferred slightly to avoid OnEnable burst)
+    C_Timer.After(1.2, function()
+        local SafeInit = ns.InitializationService and ns.InitializationService.SafeInit
+        if SafeInit then
+            SafeInit(function()
+                if ns.ReputationCache then
+                    ns.ReputationCache:Initialize()
+                end
+            end, "ReputationCacheInit")
+        else
+            if ns.ReputationCache then
+                ns.ReputationCache:Initialize()
+            end
+        end
+    end)
     
     -- Collection events: owned by EventManager (debounced) → CollectionService (handlers)
     -- ACHIEVEMENT_EARNED: owned by CollectionService (OnAchievementEarned)
@@ -1131,8 +1132,12 @@ function WarbandNexus:OnGuildBankUpdate()
         self:OnGuildBankOpened()
     else
         ns.DebugPrint("|cffffff00[Guild Bank]|r Slot change detected, scheduling re-scan in 2.5s...")
-        -- Throttle re-scan to batch rapid changes (2.5s window)
-        self:ScheduleTimer("ThrottledGuildBankScan", 2.5)
+        -- Debounce re-scan to batch rapid changes (2.5s window)
+        if self._guildBankRescanTimer then
+            self:CancelTimer(self._guildBankRescanTimer)
+            self._guildBankRescanTimer = nil
+        end
+        self._guildBankRescanTimer = self:ScheduleTimer("ThrottledGuildBankScan", 2.5)
     end
 end
 
@@ -1158,6 +1163,7 @@ end
 
 --- Throttled guild bank re-scan (called via ScheduleTimer)
 function WarbandNexus:ThrottledGuildBankScan()
+    self._guildBankRescanTimer = nil
     ns.DebugPrint("|cff888888[Guild Bank]|r ThrottledGuildBankScan called (guildBankIsOpen=" .. tostring(self.guildBankIsOpen) .. ")")
     
     -- Only scan if guild bank is still open
@@ -1182,28 +1188,15 @@ end
 -- Guild Bank Closed Handler
 function WarbandNexus:OnGuildBankClosed()
     self.guildBankIsOpen = false
+    if self.InvalidateGuildBankScan then
+        self:InvalidateGuildBankScan()
+    end
+    if self._guildBankRescanTimer then
+        self:CancelTimer(self._guildBankRescanTimer)
+        self._guildBankRescanTimer = nil
+    end
     ns.DebugPrint("|cff888888[Guild Bank]|r Window closed")
 end
-
--- Check if main window is visible
-function WarbandNexus:IsMainWindowShown()
-    local UI = self.UI
-    if UI and UI.mainFrame and UI.mainFrame:IsShown() then
-        return true
-    end
-    -- Fallback check
-    if WarbandNexusMainFrame and WarbandNexusMainFrame:IsShown() then
-        return true
-    end
-    return false
-end
-
-
-
---[[
-    Called when an addon is loaded
-    Check if it's a conflicting bank addon that user previously disabled
-]]
 
 --[[
     Called when player enters the world (login or reload)
@@ -1246,10 +1239,12 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     --   DataServices (T+0.5..3s): handled by InitializationService
     --   Core P0 (T+4s):   Lightweight resets + profession basics (batched, <3ms)
     --   Core P1 (T+5s):   Expansion professions (moderate)
-    --   Core P2 (T+5.5s): PvE data + Knowledge (batched, needs PvECache from T+2s)
+    --   Core P2 (T+5.5s): PvE data refresh (needs PvECache from T+2s)
+    --   Core P2.5 (T+7s): Profession knowledge warmup (deferred to reduce reload spikes)
     --   Core P3 (T+6.5s): Plan tracking (initial login only, low priority)
     if isInitialLogin or isReloadingUi then
         local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+        self._coreStartupPhasesPending = true
 
         -- Only register tracked-character loading operations if actually tracked.
         -- Account-wide ops (collections, try counts) always run regardless.
@@ -1297,7 +1292,7 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             if LT then LT:Complete("professions") end
         end)
         
-        -- Core P2 (T+5.5s): PvE data + Knowledge (tracked only)
+        -- Core P2 (T+5.5s): PvE data refresh (tracked only)
         C_Timer.After(5.5, function()
             local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
             if tracked then
@@ -1307,14 +1302,23 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
                     if self and self.UpdatePvEData then self:UpdatePvEData() end
                     if P then P:Stop("UpdatePvEData") end
                 end
+            end
+            local LT = ns.LoadingTracker
+            if LT then LT:Complete("pve") end
+        end)
 
+        -- Core P2.5 (T+7s): Profession knowledge warmup (tracked only, non-blocking for core readiness)
+        C_Timer.After(7, function()
+            local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+            if tracked then
                 local P = ns.Profiler
                 if P then P:Start("CollectKnowledge") end
                 if self and self.CollectKnowledgeOnLogin then self:CollectKnowledgeOnLogin() end
                 if P then P:Stop("CollectKnowledge") end
             end
-            local LT = ns.LoadingTracker
-            if LT then LT:Complete("pve") end
+            if self then
+                self._coreStartupPhasesPending = false
+            end
         end)
     end
     
@@ -1341,15 +1345,6 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
 
     -- NOTE: Character save is now handled by raw frame event handler in OnInitialize()
     -- This ensures early event capture before AceEvent is fully initialized
-end
-
---[[
-    Called when player levels up
-]]
-function WarbandNexus:OnPlayerLevelUp(event, level)
-    -- Force update on level up
-    self.characterSaved = false
-    self:SaveCharacter()
 end
 
 --[[
@@ -1457,70 +1452,6 @@ function WarbandNexus:OnCombatEnd()
     
 
 end
-
---[[
-    Called when PvE data changes (Great Vault, Lockouts, M+ completion)
-    Delegates to DataService for business logic
-]]
-function WarbandNexus:OnPvEDataChanged()
-    -- GUARD: Only process if character is tracked
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        return
-    end
-    
-    local charKey = ns.Utilities:GetCharacterKey()
-    
-    if not self.db.global.characters or not self.db.global.characters[charKey] then
-        return
-    end
-    
-    -- Route to PvECacheService directly (Phase 3: bypasses legacy DataService wrappers)
-    if self.UpdatePvEData then
-        self:UpdatePvEData()
-    end
-end
-
-
-
---[[
-    Event handler for collection changes (mounts, pets, toys)
-    Delegates to CollectionService and cache invalidation
-]]
-function WarbandNexus:OnCollectionChanged(event)
-    -- Minimal throttle only for TOYS_UPDATED (can fire frequently)
-    local needsThrottle = (event == "TOYS_UPDATED")
-    
-    if needsThrottle and self.collectionCheckPending then
-        return
-    end
-    
-    if needsThrottle then
-        self.collectionCheckPending = true
-        C_Timer.After(0.2, function()
-            if WarbandNexus then
-                WarbandNexus.collectionCheckPending = false
-            end
-        end)
-    end
-    
-    local charKey = ns.Utilities:GetCharacterKey()
-    
-
-    
-    if self.db.global.characters and self.db.global.characters[charKey] then
-        -- Update timestamp
-        self.db.global.characters[charKey].lastSeen = time()
-        
-        -- Invalidate collection cache (data changed)
-        if self.InvalidateCollectionCache then
-            self:InvalidateCollectionCache()
-        end
-        
-        -- Fire event for UI to refresh (instead of direct RefreshUI call)
-        self:SendMessage("WN_COLLECTION_UPDATED", charKey)
-    end
-end
-
 --[[
     Event handler for pet journal changes (cage/release)
     Smart tracking: Only update when pet count actually changes
@@ -1575,7 +1506,7 @@ function WarbandNexus:OnPetListChanged()
             end
             
             -- Fire event for UI refresh (instead of direct call)
-            WarbandNexus:SendMessage("WN_COLLECTION_UPDATED", charKey)
+            WarbandNexus:SendMessage(ns.Constants.EVENTS.COLLECTION_UPDATED, charKey)
         end
     end)
 end
@@ -1591,32 +1522,21 @@ end
     Prevents race conditions when user switches tabs rapidly
 ============================================================================]]
 
--- Track active timers per tab
-local activeTabTimers = {}  -- [tabKey] = {timer1, timer2, ...}
-
 ---Abort all async operations for a specific tab
 ---@param tabKey string Tab identifier (e.g., "plans", "storage")
 function WarbandNexus:AbortTabOperations(tabKey)
     if not tabKey then return end
-    
-    -- Cancel all active timers for this tab
-    if activeTabTimers[tabKey] then
-        local timerCount = #activeTabTimers[tabKey]
-        for _, timerHandle in ipairs(activeTabTimers[tabKey]) do
-            if timerHandle and timerHandle.Cancel then
-                pcall(function() timerHandle:Cancel() end)
-            end
-        end
-        activeTabTimers[tabKey] = {}
-        
-        -- Timer cancellations handled silently
-    end
-    
+
     -- Abort API operations based on tab type (silent - services will log if interrupted)
     if tabKey == "plans" then
         -- Abort CollectionService coroutines (Mounts, Pets, Toys, Achievements)
         if self.AbortCollectionScans then
             self:AbortCollectionScans()
+        end
+    elseif tabKey == "collections" then
+        -- Stop chunked mount/pet/toy list builds (RunChunked* + C_Timer.After chains)
+        if self.AbortCollectionsChunkedBuilds then
+            self:AbortCollectionsChunkedBuilds()
         end
     elseif tabKey == "reputations" then
         -- Abort ReputationCacheService operations
@@ -1629,19 +1549,6 @@ function WarbandNexus:AbortTabOperations(tabKey)
             self:AbortCurrencyOperations()
         end
     end
-end
-
----Register a timer for a specific tab (so it can be cancelled on tab switch)
----@param tabKey string Tab identifier
----@param timerHandle table Timer handle from C_Timer
-function WarbandNexus:RegisterTabTimer(tabKey, timerHandle)
-    if not tabKey or not timerHandle then return end
-    
-    if not activeTabTimers[tabKey] then
-        activeTabTimers[tabKey] = {}
-    end
-    
-    table.insert(activeTabTimers[tabKey], timerHandle)
 end
 
 ---Check if we're still on the expected tab (for async callbacks).

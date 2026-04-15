@@ -12,6 +12,8 @@ local addonName, ns = ...
 local CommandService = {}
 ns.CommandService = CommandService
 
+local issecretvalue = issecretvalue
+
 -- Debug print helper (only shows when debug mode is enabled)
 local DebugPrint = ns.DebugPrint
 
@@ -27,7 +29,13 @@ function CommandService:HandleSlashCommand(addon, input)
     DebugPrint("|cff9370DB[WN CommandService]|r HandleSlashCommand: " .. tostring(input))
     
     local cmd = addon:GetArgs(input, 1)
-    if cmd then cmd = cmd:lower() end
+    if cmd then
+        if issecretvalue and issecretvalue(cmd) then
+            cmd = nil
+        else
+            cmd = cmd:lower()
+        end
+    end
     
     -- No command — open addon window
     if not cmd or cmd == "" then
@@ -263,7 +271,7 @@ function CommandService:HandleSlashCommand(addon, input)
         if addon.ShowUpdateNotification and ns.CHANGELOG then
             local ok, err = pcall(function()
                 addon:ShowUpdateNotification({
-                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "2.5.12",
+                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "2.5.15-beta1",
                     date = ns.CHANGELOG.date or "",
                     changes = ns.CHANGELOG.changes or {"No changelog available"}
                 })
@@ -355,15 +363,20 @@ function CommandService:HandleSlashCommand(addon, input)
             return
         end
         
+        if issecretvalue and issecretvalue(collectibleType) then
+            addon:Print("|cffff6600Invalid type:|r Must be one of: item, mount, pet, toy")
+            return
+        end
         local validTypes = { item = true, mount = true, pet = true, toy = true }
-        if not validTypes[collectibleType:lower()] then
+        local ctLower = collectibleType:lower()
+        if not validTypes[ctLower] then
             addon:Print("|cffff6600Invalid type:|r Must be one of: item, mount, pet, toy")
             return
         end
         
-        local count = addon:GetTryCount(collectibleType:lower(), id)
+        local count = addon:GetTryCount(ctLower, id)
         addon:Print(string.format("|cff9370DB[Try Count]|r %s |cff00ccff%d|r = |cffffff00%d attempts|r", 
-            collectibleType:lower(), id, count))
+            ctLower, id, count))
         return
     
     elseif cmd == "check" or cmd == "loot" or cmd == "drops" then
@@ -492,7 +505,7 @@ function CommandService:ToyDebugReport(addon, input, skipRetry)
         for i = 1, #tooltipData.lines do
             local line = tooltipData.lines[i]
             local left = line and line.leftText
-            if left and type(left) == "string" and left ~= "" and (not _issecretvalue or not _issecretvalue(left)) and line.type == 2 then
+            if left and type(left) == "string" and not (_issecretvalue and _issecretvalue(left)) and left ~= "" and line.type == 2 then
                 pickedLine = i
                 pickReason = "first line with type=2"
                 break
@@ -503,12 +516,12 @@ function CommandService:ToyDebugReport(addon, input, skipRetry)
                 local line = tooltipData.lines[i]
                 local left = line and line.leftText
                 local right = line and line.rightText
-                if left and type(left) == "string" and (not _issecretvalue or not _issecretvalue(left)) and left:find(sourceLabelClean, 1, true) then
+                if left and type(left) == "string" and not (_issecretvalue and _issecretvalue(left)) and left:find(sourceLabelClean, 1, true) then
                     pickedLine = i
                     pickReason = "left contains Source label"
                     break
                 end
-                if right and type(right) == "string" and (not _issecretvalue or not _issecretvalue(right)) and right:find(sourceLabelClean, 1, true) then
+                if right and type(right) == "string" and not (_issecretvalue and _issecretvalue(right)) and right:find(sourceLabelClean, 1, true) then
                     pickedLine = i
                     pickReason = "right contains Source label"
                     break
@@ -525,8 +538,8 @@ function CommandService:ToyDebugReport(addon, input, skipRetry)
                 local line = tooltipData.lines[i]
                 local left = line and line.leftText
                 local right = line and line.rightText
-                local leftOk = left and type(left) == "string" and (not _issecretvalue or not _issecretvalue(left))
-                local rightOk = right and type(right) == "string" and (not _issecretvalue or not _issecretvalue(right))
+                local leftOk = left and type(left) == "string" and not (_issecretvalue and _issecretvalue(left))
+                local rightOk = right and type(right) == "string" and not (_issecretvalue and _issecretvalue(right))
                 for _, kw in ipairs(sourceKeywords) do
                     if (leftOk and left:find(kw, 1, true)) or (rightOk and right:find(kw, 1, true)) then
                         pickedLine = i

@@ -25,6 +25,18 @@
 
 local ADDON_NAME, ns = ...
 
+local issecretvalue = issecretvalue
+
+local function SafeLower(s)
+    if not s or s == "" then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    return s:lower()
+end
+
+local function CompareCharNameLower(a, b)
+    return SafeLower(a.name) < SafeLower(b.name)
+end
+
 -- Unique AceEvent handler identity for PvEUI
 local PvEUIEvents = {}
 local WarbandNexus = ns.WarbandNexus
@@ -767,7 +779,11 @@ function WarbandNexus:DrawPvEProgress(parent)
     if self.GetCurrenciesForUI then
         local allCurrencies = self:GetCurrenciesForUI()
         for currencyID, entry in pairs(allCurrencies) do
-            local lowerName = entry and entry.name and string.lower(entry.name) or ""
+            local rawName = entry and entry.name
+            local lowerName = ""
+            if rawName and not (issecretvalue and issecretvalue(rawName)) then
+                lowerName = string.lower(rawName)
+            end
             if lowerName ~= "" then
                 if not PVE_SHARDS_ID and lowerName:find("coffer") and lowerName:find("shard") then
                     PVE_SHARDS_ID = currencyID
@@ -941,18 +957,18 @@ function WarbandNexus:DrawPvEProgress(parent)
         if sortMode and sortMode ~= "manual" then
             table.sort(list, function(a, b)
                 if sortMode == "name" then
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 elseif sortMode == "level" then
                     if (a.level or 0) ~= (b.level or 0) then
                         return (a.level or 0) > (b.level or 0)
                     else
-                        return (a.name or ""):lower() < (b.name or ""):lower()
+                        return CompareCharNameLower(a, b)
                     end
                 elseif sortMode == "ilvl" then
                     if (a.itemLevel or 0) ~= (b.itemLevel or 0) then
                         return (a.itemLevel or 0) > (b.itemLevel or 0)
                     else
-                        return (a.name or ""):lower() < (b.name or ""):lower()
+                        return CompareCharNameLower(a, b)
                     end
                 elseif sortMode == "gold" then
                     local goldA = ns.Utilities:GetCharTotalCopper(a)
@@ -960,14 +976,14 @@ function WarbandNexus:DrawPvEProgress(parent)
                     if goldA ~= goldB then
                         return goldA > goldB
                     else
-                        return (a.name or ""):lower() < (b.name or ""):lower()
+                        return CompareCharNameLower(a, b)
                     end
                 end
                 -- Fallback
                 if (a.level or 0) ~= (b.level or 0) then
                     return (a.level or 0) > (b.level or 0)
                 else
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 end
             end)
             return list
@@ -1003,7 +1019,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 if (a.level or 0) ~= (b.level or 0) then
                     return (a.level or 0) > (b.level or 0)
                 else
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 end
             end)
             for _, char in ipairs(remaining) do
@@ -1017,7 +1033,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 if (a.level or 0) ~= (b.level or 0) then
                     return (a.level or 0) > (b.level or 0)
                 else
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 end
             end)
             return list

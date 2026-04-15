@@ -7,6 +7,7 @@
 
 local addonName, ns = ...
 local twipe = table.wipe
+local E = ns.Constants.EVENTS
 
 local Tracker = {}
 ns.LoadingTracker = Tracker
@@ -19,31 +20,35 @@ local allComplete = false
 -- Reused list for GetPendingLabels(); do not cache the return value across calls.
 local pendingLabelsScratch = {}
 
+-- Most consumers poll tracker state directly (UI sync bar).
+-- Keep addon-message broadcasts opt-in to avoid startup event spam.
+local function EmitLoadingMessage(eventName)
+    if ns.LOADING_TRACKER_EMIT_MESSAGES ~= true then
+        return
+    end
+    local addon = _G[addonName]
+    if addon and addon.SendMessage then
+        addon:SendMessage(eventName)
+    end
+end
+
 function Tracker:Register(id, label)
     if operations[id] then return end
     operations[id] = { label = label, complete = false }
     orderedKeys[#orderedKeys + 1] = id
     totalOps = totalOps + 1
     allComplete = false
-    local addon = _G[addonName]
-    if addon and addon.SendMessage then
-        addon:SendMessage("WN_LOADING_UPDATED")
-    end
+    EmitLoadingMessage(E.LOADING_UPDATED)
 end
 
 function Tracker:Complete(id)
     if not operations[id] or operations[id].complete then return end
     operations[id].complete = true
     completedOps = completedOps + 1
-    local addon = _G[addonName]
-    if addon and addon.SendMessage then
-        addon:SendMessage("WN_LOADING_UPDATED")
-    end
+    EmitLoadingMessage(E.LOADING_UPDATED)
     if completedOps >= totalOps and totalOps > 0 then
         allComplete = true
-        if addon and addon.SendMessage then
-            addon:SendMessage("WN_LOADING_COMPLETE")
-        end
+        EmitLoadingMessage(E.LOADING_COMPLETE)
     end
 end
 

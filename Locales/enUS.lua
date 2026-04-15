@@ -420,6 +420,7 @@ L["PVE_CREST_VET"] = "Veteran"
 L["PVE_CREST_CHAMP"] = "Champion"
 L["PVE_CREST_HERO"] = "Hero"
 L["PVE_CREST_MYTH"] = "Myth"
+L["PVE_CREST_EXPLORER"] = "Explorer"
 L["PVE_COL_COFFER_SHARDS"] = "Coffer Shards"
 L["PVE_COL_RESTORED_KEY"] = "Restored Key"
 L["PVE_COL_VAULT_SLOT1"] = "Vault Slot 1"
@@ -1185,6 +1186,26 @@ What's next
 
 CurseForge: Warband Nexus]=]
 
+-- What's New / changelog body for ADDON_VERSION 2.5.15-beta1 (key CHANGELOG_V2515)
+L["CHANGELOG_V2515"] = [=[v2.5.15 beta 1 (2026-04-15)
+
+Beta — pre-release; feedback welcome before stable.
+
+Performance
+- UI: SchedulePopulateContent debounces (last schedule wins); OnHide cancels populate timer; one defer per main tab switch; no redundant tab-button refresh while switching; currency/reputation messages only update badges when that tab is hidden.
+- CollectionService: coalesced EnsureCollectionData; ScanCollection uses a FRAME_BUDGET_MS coroutine; BuildFullCollectionData batch budget aligned.
+- Guild bank & ItemsCache: chunked scans; atomic tab results; invalidate on cancel/close.
+- Plans & Collections: PlansUI two-column grid precompute O(n); AbortCollectionsChunkedBuilds; Core abort ties collections to existing tab teardown.
+
+Bug fixes
+- TOC: Config.lua loads after Modules/Constants.lua (fixes ns.Constants nil during Config init).
+- Main frame OnHide: populate timer cleared after cancel.
+
+Localization
+- GearUI: upgrade track names + crafted recraft tooltip lines; PVE_CREST_EXPLORER; Profession concentration + Steam-style played time strings; locale parity for GEAR_CRAFTED_*, STATS_PLAYED_STEAM_*, PROF_CONCENTRATION_* (de, fr, es, es-mx, it, pt, ru, ko, zhTW; enUS/zhCN baseline).
+
+CurseForge: Warband Nexus]=]
+
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"
 L["CONFIRM"] = "Confirm"
@@ -1383,6 +1404,12 @@ L["UNSPENT_KNOWLEDGE_COUNT"] = "%d unspent knowledge point(s)"
 L["COLLECTIBLE"] = "Collectible"
 L["RECHARGE"] = "Recharge"
 L["FULL"] = "Full"
+L["PROF_CONCENTRATION_FULL"] = "Full"
+L["PROF_CONCENTRATION_HOURS_REMAINING"] = "%d Hours"
+L["PROF_CONCENTRATION_MINUTES_REMAINING"] = "%d Min"
+L["PROF_CONCENTRATION_DAYS_HOURS_MIN"] = "%d Days %d Hours %d Min"
+L["PROF_CONCENTRATION_HOURS_MIN"] = "%d Hours %d Min"
+L["PROF_CONCENTRATION_MINUTES_ONLY"] = "%d Min"
 L["PROF_OPEN_RECIPE"] = "Open"
 L["PROF_OPEN_RECIPE_TOOLTIP"] = "Open this profession's recipe list"
 L["PROF_ONLY_CURRENT_CHAR"] = "Only available for the current character"
@@ -1846,6 +1873,11 @@ L["GEAR_NEED_MORE_CRESTS_FORMAT"] = "%s %d/%d — need more crests"
 L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
 L["GEAR_CRAFTED_CREST_COST"] = "Recraft cost: %d crests"
 L["GEAR_CRAFTED_NO_CRESTS"] = "No crests available for recraft"
+L["GEAR_TRACK_CRAFTED_FALLBACK"] = "Crafted"
+L["GEAR_CRAFTED_MAX_ILVL_LINE"] = "%s (max ilvl %d)"
+L["GEAR_CRAFTED_RECAST_TO_LINE"] = "Recraft to %s (ilvl %d)"
+L["GEAR_CRAFTED_COST_DAWNCREST"] = "Cost: %d %s Dawncrest"
+L["GEAR_CRAFTED_NEXT_TIER_CRESTS"] = "%s (ilvl %d): %d/%d crests (%d more needed)"
 
 -- Characters UI
 L["WOW_TOKEN_LABEL"] = "WoW Token"
@@ -1855,6 +1887,10 @@ L["FILTER_LABEL"] = FILTER or "Filter"
 
 -- Statistics UI
 L["FORMAT_BUTTON"] = "Format"
+L["STATS_PLAYED_STEAM_ZERO"] = "0 Hours"
+L["STATS_PLAYED_STEAM_FLOAT"] = "%.1f Hours"
+L["STATS_PLAYED_STEAM_THOUSAND"] = "%d,%03d Hours"
+L["STATS_PLAYED_STEAM_INT"] = "%d Hours"
 
 -- Professions UI
 L["SHOW_ALL"] = "Show All"

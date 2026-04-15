@@ -17,6 +17,7 @@
 
 local ADDON_NAME, ns = ...
 
+local issecretvalue = issecretvalue
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
@@ -127,7 +128,11 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
         
         if text and text ~= "" then
             placeholderText:Hide()
-            newSearchText = text:lower()
+            if issecretvalue and issecretvalue(text) then
+                newSearchText = ""
+            else
+                newSearchText = text:lower()
+            end
         else
             placeholderText:Show()
             newSearchText = ""

@@ -5,7 +5,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
-
+local issecretvalue = issecretvalue
+local E = ns.Constants.EVENTS
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
@@ -36,15 +37,24 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     end
     local entry = addon.db.global.characters[charKey]
     if not entry.name or not entry.realm then
-        entry.name = UnitName("player")
-        entry.realm = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName()
+        local un = UnitName("player")
+        if un and type(un) == "string" and not (issecretvalue and issecretvalue(un)) then
+            entry.name = un
+        end
+        local realm = GetNormalizedRealmName and GetNormalizedRealmName()
+        if not realm or (issecretvalue and issecretvalue(realm)) then
+            realm = GetRealmName and GetRealmName()
+        end
+        if realm and not (issecretvalue and issecretvalue(realm)) then
+            entry.realm = realm
+        end
     end
     entry.isTracked = isTracked
     entry.lastSeen = time()
     entry.trackingConfirmed = true  -- User made a choice, don't ask again
     
     -- HYBRID: Broadcast event for modules to react (event-driven component)
-    addon:SendMessage("WN_CHARACTER_TRACKING_CHANGED", {
+    addon:SendMessage(E.CHARACTER_TRACKING_CHANGED, {
         charKey = charKey,
         isTracked = isTracked
     })
@@ -168,7 +178,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             local function doStep8()
                 local addonInstance = _G.WarbandNexus or addon
                 if addonInstance and addonInstance.SendMessage then
-                    local ev = (ns.Constants and ns.Constants.EVENTS and ns.Constants.EVENTS.CHARACTER_UPDATED) or "WN_CHARACTER_UPDATED"
+                    local ev = E.CHARACTER_UPDATED
                     addonInstance:SendMessage(ev, { charKey = charKey })
                 end
             end
@@ -180,6 +190,9 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         -- These functions are safe to call multiple times (idempotent overwrites).
         C_Timer.After(3, function()
             local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance._coreStartupPhasesPending then
+                return
+            end
             if addonInstance then
                 if addonInstance.CollectConcentrationOnLogin then
                     addonInstance:CollectConcentrationOnLogin()
@@ -191,6 +204,9 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         end)
         C_Timer.After(4, function()
             local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance._coreStartupPhasesPending then
+                return
+            end
             if addonInstance and addonInstance.CollectExpansionProfessionsOnLogin then
                 addonInstance:CollectExpansionProfessionsOnLogin()
             end
@@ -201,6 +217,9 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         -- STEP 10: PvE data + Knowledge collection
         C_Timer.After(4.5, function()
             local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance._coreStartupPhasesPending then
+                return
+            end
             if addonInstance then
                 if addonInstance.db and addonInstance.db.profile
                     and addonInstance.db.profile.modulesEnabled
@@ -221,6 +240,9 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         -- These were gated on tracking in Core.lua/EventManager.lua
         C_Timer.After(2, function()
             local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance._coreStartupPhasesPending then
+                return
+            end
             if addonInstance and addonInstance.db and addonInstance.db.profile
                 and addonInstance.db.profile.requestPlayedTimeOnLogin ~= false
                 and addonInstance.RequestPlayedTime then
@@ -252,7 +274,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             -- Notify UI to refresh (event-driven; UI listens for WN_CHARACTER_UPDATED)
             C_Timer.After(0.5, function()
                 if addonInstance and addonInstance.SendMessage then
-                    local ev = (ns.Constants and ns.Constants.EVENTS and ns.Constants.EVENTS.CHARACTER_UPDATED) or "WN_CHARACTER_UPDATED"
+                    local ev = E.CHARACTER_UPDATED
                     addonInstance:SendMessage(ev, { charKey = ns.Utilities and ns.Utilities:GetCharacterKey() })
                 end
             end)
@@ -378,14 +400,24 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     questionText:SetText((ns.L and ns.L["TRACK_CHARACTER_QUESTION"]) or "Do you want to track this character?")
     
     -- Character name with class color
-    local charName = charKey:match("^([^%-]+)") or charKey
-    local charRealmRaw = charKey:match("%-(.+)")
+    local charName = charKey
+    local charRealmRaw = nil
+    if charKey and not (issecretvalue and issecretvalue(charKey)) then
+        charName = charKey:match("^([^%-]+)") or charKey
+        charRealmRaw = charKey:match("%-(.+)")
+    end
     if not charRealmRaw and GetRealmName then
         charRealmRaw = GetRealmName() or ""
         if issecretvalue and charRealmRaw and issecretvalue(charRealmRaw) then charRealmRaw = "" end
     end
     charRealmRaw = charRealmRaw or ""
     local charRealm = (charRealmRaw ~= "" and ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(charRealmRaw)) or charRealmRaw
+    if charName and issecretvalue and issecretvalue(charName) then
+        charName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+    end
+    if charRealm and issecretvalue and issecretvalue(charRealm) then
+        charRealm = ""
+    end
     
     -- Get character data for class color
     local charData = addon.db and addon.db.global and addon.db.global.characters and addon.db.global.characters[charKey]

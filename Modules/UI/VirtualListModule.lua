@@ -204,20 +204,19 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
 
     mainFrame._virtualScrollUpdate = UpdateVisible
 
+    -- Staggered layout passes (0 / 0.1 / 0.25s) in one chain to avoid three independent timer registrations.
     C_Timer.After(0, function()
-        if mainFrame._virtualScrollUpdate == UpdateVisible then
+        if mainFrame._virtualScrollUpdate ~= UpdateVisible then return end
+        UpdateVisible()
+        C_Timer.After(0.1, function()
+            if mainFrame._virtualScrollUpdate ~= UpdateVisible then return end
             UpdateVisible()
-        end
-    end)
-    C_Timer.After(0.1, function()
-        if mainFrame._virtualScrollUpdate == UpdateVisible then
-            UpdateVisible()
-        end
-    end)
-    C_Timer.After(0.25, function()
-        if mainFrame._virtualScrollUpdate == UpdateVisible then
-            UpdateVisible()
-        end
+            C_Timer.After(0.15, function()
+                if mainFrame._virtualScrollUpdate == UpdateVisible then
+                    UpdateVisible()
+                end
+            end)
+        end)
     end)
 
     return totalHeight

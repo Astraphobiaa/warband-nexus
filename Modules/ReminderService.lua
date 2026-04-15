@@ -14,6 +14,8 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
+local issecretvalue = issecretvalue
 
 local ReminderEvents = {}
 
@@ -94,6 +96,8 @@ local function GetMapIDsFromPlanSource(plan)
 
     local sourceText = plan.resolvedSource or plan.source or ""
     local nameText   = plan.resolvedName   or plan.name   or ""
+    if issecretvalue and issecretvalue(sourceText) then sourceText = "" end
+    if issecretvalue and issecretvalue(nameText) then nameText = "" end
     local combined   = (sourceText .. " " .. nameText):lower()
 
     if combined:gsub("%s", "") == "" then return nil end
@@ -173,7 +177,7 @@ function WarbandNexus:SetPlanReminder(planID, settings)
         end
     end
     
-    self:SendMessage("WN_PLANS_UPDATED", { action = "reminder_changed", planID = planID })
+    self:SendMessage(E.PLANS_UPDATED, { action = "reminder_changed", planID = planID })
     return true
 end
 
@@ -182,7 +186,7 @@ function WarbandNexus:RemovePlanReminder(planID)
     if not plan or not plan.reminder then return false end
     
     plan.reminder.enabled = false
-    self:SendMessage("WN_PLANS_UPDATED", { action = "reminder_changed", planID = planID })
+    self:SendMessage(E.PLANS_UPDATED, { action = "reminder_changed", planID = planID })
     return true
 end
 
@@ -192,7 +196,7 @@ function WarbandNexus:TogglePlanReminder(planID)
     
     local r = EnsureReminderField(plan)
     r.enabled = not r.enabled
-    self:SendMessage("WN_PLANS_UPDATED", { action = "reminder_changed", planID = planID })
+    self:SendMessage(E.PLANS_UPDATED, { action = "reminder_changed", planID = planID })
     return r.enabled
 end
 
@@ -223,7 +227,7 @@ function WarbandNexus:DismissReminders(planID)
     local plan = self:GetPlanByID(planID)
     if not plan or not plan.reminder then return end
     plan.reminder.activeReminders = nil
-    self:SendMessage("WN_PLANS_UPDATED", { action = "reminder_dismissed", planID = planID })
+    self:SendMessage(E.PLANS_UPDATED, { action = "reminder_dismissed", planID = planID })
 end
 
 -- ============================================================================
@@ -244,7 +248,7 @@ local function ActivateReminder(plan, triggerLabel)
 
     plan.reminder.activeReminders[#plan.reminder.activeReminders + 1] = triggerLabel
 
-    WarbandNexus:SendMessage("WN_PLANS_UPDATED", {
+    WarbandNexus:SendMessage(E.PLANS_UPDATED, {
         action = "reminder_activated",
         planID = plan.id,
     })

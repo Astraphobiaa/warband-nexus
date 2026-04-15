@@ -35,14 +35,13 @@ local issecretvalue = issecretvalue
 local Scanner = ns.ReputationScanner
 local Processor = ns.ReputationProcessor
 local Constants = ns.Constants
+local E = Constants.EVENTS
 
 -- Debug print helper (suppressed when debugTryCounterLoot is on so loot debug is readable)
-local function DebugPrint(...)
-    if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode) then return end
-    if WarbandNexus.db.profile.debugTryCounterLoot then return end
-    if not WarbandNexus.db.profile.debugVerbose then return end
-    _G.print("|cff00ffff[ReputationCache]|r", ...)
-end
+local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter(
+    "|cff00ffff[ReputationCache]|r",
+    { verboseOnly = true, suppressWhenTryCounterLoot = true }
+)) or function() end
 
 -- ============================================================================
 -- STATE (Minimal - No RAM cache)
@@ -97,7 +96,7 @@ local function ScheduleUIRefresh(immediate)
     if immediate then
         -- Fire immediately (for resetrep, cache clear, etc.)
         if WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
+            WarbandNexus:SendMessage(E.REPUTATION_CACHE_READY)
             WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
         end
         return
@@ -114,7 +113,7 @@ local function ScheduleUIRefresh(immediate)
     -- Schedule new refresh (0.5 seconds after last update - for rapid rep gains)
     ReputationCache.uiRefreshTimer = C_Timer.NewTimer(0.5, function()
         if ReputationCache.pendingUIRefresh and WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
+            WarbandNexus:SendMessage(E.REPUTATION_CACHE_READY)
             WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
             ReputationCache.pendingUIRefresh = false
         end
@@ -501,39 +500,27 @@ function ReputationCache:Initialize()
     -- Get current character key
     local currentCharKey = ns.Utilities:GetCharacterKey()
     
-    -- Count existing data
-    local awCount = 0
-    local charCounts = {}
-    local currentCharCount = 0
-    
-    for _ in pairs(db.accountWide) do 
-        awCount = awCount + 1
-    end
-    
-    for charKey, charFactions in pairs(db.characters) do
-        local count = 0
-        for _ in pairs(charFactions) do 
-            count = count + 1
+    -- Fast presence checks (avoid full DB counting on every reload).
+    local hasAnyData = next(db.accountWide) ~= nil
+    local currentCharFactions = currentCharKey and db.characters[currentCharKey] or nil
+    local currentCharHasData = type(currentCharFactions) == "table" and next(currentCharFactions) ~= nil
+    if not hasAnyData then
+        for _, charFactions in pairs(db.characters) do
+            if type(charFactions) == "table" and next(charFactions) ~= nil then
+                hasAnyData = true
+                break
+            end
         end
-        charCounts[charKey] = count
-        if charKey == currentCharKey then
-            currentCharCount = count
-        end
-    end
-    
-    local totalCount = awCount
-    for _, count in pairs(charCounts) do
-        totalCount = totalCount + count
     end
     
     -- Determine if scan is needed
     local needsScan = false
     local scanReason = ""
     
-    if totalCount == 0 then
+    if not hasAnyData then
         needsScan = true
         scanReason = "No data in DB"
-    elseif currentCharCount == 0 then
+    elseif not currentCharHasData then
         needsScan = true
         scanReason = "Current character (" .. currentCharKey .. ") has no data"
     else
@@ -562,7 +549,7 @@ function ReputationCache:Initialize()
         
         -- Fire loading started event to trigger UI refresh
         if WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
+            WarbandNexus:SendMessage(E.REPUTATION_LOADING_STARTED)
         end
         
         -- Suppress event-driven FullScans until the init scan completes
@@ -589,7 +576,7 @@ function ReputationCache:Initialize()
         -- Fire ready event immediately (data exists and is fresh)
         C_Timer.After(0.1, function()
             if WarbandNexus.SendMessage then
-                WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
+                WarbandNexus:SendMessage(E.REPUTATION_CACHE_READY)
             end
         end)
     end
@@ -671,9 +658,11 @@ function ReputationCache:_ProcessSnapshotFaction(index)
     if not data or not data.factionID or data.factionID <= 0 then return end
     
     local fid = data.factionID
+    local safeName = data.name
+    if issecretvalue and safeName and issecretvalue(safeName) then safeName = nil end
     
-    if data.name and data.name ~= "" and not data.isHeader then
-        self._nameToID[data.name] = fid
+    if safeName and safeName ~= "" and not data.isHeader then
+        self._nameToID[safeName] = fid
     end
     
     self._snapshot[fid] = {
@@ -728,9 +717,11 @@ end
 function ReputationCache:_FinalizeSnapshot()
     if GetGuildInfo then
         local guildName = GetGuildInfo("player")
-        if guildName and guildName ~= "" and self._nameToID[guildName] then
+        if guildName and not (issecretvalue and issecretvalue(guildName)) and guildName ~= ""
+            and self._nameToID[guildName] then
             local guildLabel = GUILD
-            if guildLabel and guildLabel ~= "" and guildLabel ~= guildName then
+            if guildLabel and not (issecretvalue and issecretvalue(guildLabel)) and guildLabel ~= ""
+                and guildLabel ~= guildName then
                 self._nameToID[guildLabel] = self._nameToID[guildName]
             end
         end
@@ -1013,17 +1004,21 @@ function ReputationCache:RegisterEventListeners()
             local numFactions = C_Reputation.GetNumFactions() or 0
             for i = 1, numFactions do
                 local data = C_Reputation.GetFactionDataByIndex(i)
+                local safeName = data and data.name
+                if issecretvalue and safeName and issecretvalue(safeName) then safeName = nil end
                 -- Exclude headers (they share names with actual factions, e.g. "Guild")
-                if data and data.factionID and data.factionID > 0 and data.name and data.name ~= "" and not data.isHeader then
-                    ReputationCache._nameToID[data.name] = data.factionID
+                if data and data.factionID and data.factionID > 0 and safeName and safeName ~= "" and not data.isHeader then
+                    ReputationCache._nameToID[safeName] = data.factionID
                 end
             end
             -- Re-apply guild alias after rebuild
             if GetGuildInfo then
                 local guildName = GetGuildInfo("player")
-                if guildName and guildName ~= "" and ReputationCache._nameToID[guildName] then
+                if guildName and not (issecretvalue and issecretvalue(guildName)) and guildName ~= ""
+                    and ReputationCache._nameToID[guildName] then
                     local guildLabel = GUILD  -- Blizzard global: "Guild" (localized)
-                    if guildLabel and guildLabel ~= "" and guildLabel ~= guildName then
+                    if guildLabel and not (issecretvalue and issecretvalue(guildLabel)) and guildLabel ~= ""
+                        and guildLabel ~= guildName then
                         ReputationCache._nameToID[guildLabel] = ReputationCache._nameToID[guildName]
                     end
                 end
@@ -1192,6 +1187,9 @@ function ReputationCache:RegisterEventListeners()
             -- Resolve faction name for the pending key
             local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(majorFactionID)
             local factionName = (factionData and factionData.name) or ("Faction " .. majorFactionID)
+            if factionName and issecretvalue and issecretvalue(factionName) then
+                factionName = "Faction " .. majorFactionID
+            end
             
             -- Capture any buffered gain BEFORE clearing the buffer.
             -- CHAT_MSG typically fires in the same frame as MAJOR_FACTION,
@@ -1601,7 +1599,7 @@ function ReputationCache:Clear(clearDB)
     
     -- Fire events immediately (cache cleared)
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_REPUTATION_CACHE_CLEARED")
+        WarbandNexus:SendMessage(E.REPUTATION_CACHE_CLEARED)
     end
     ScheduleUIRefresh(true)
     
@@ -1614,7 +1612,7 @@ function ReputationCache:Clear(clearDB)
         
         -- Fire loading started event
         if WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
+            WarbandNexus:SendMessage(E.REPUTATION_LOADING_STARTED)
         end
         
         C_Timer.After(1, function()
@@ -1700,7 +1698,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_FETCHING"]) or "Fetching reputation data..."
     
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
+        WarbandNexus:SendMessage(E.REPUTATION_LOADING_STARTED)
     end
     
     -- Phase 1 (multi-frame): Fetch raw faction data with time-budgeted batching
@@ -1781,7 +1779,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                 ns._fullScanInProgress = false
                 
                 if WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
+                    WarbandNexus:SendMessage(E.REPUTATION_CACHE_READY)
                     WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
                 end
                 
@@ -1846,7 +1844,7 @@ function ReputationCache:ProcessPendingChatNotifications()
                 .. " " .. (dbData.standingName or "?")
                 .. (wasStandingUp and (" [STANDING UP! old=" .. tostring(entry.oldStandingName) .. " new=" .. tostring(dbData.standingName) .. "]") or ""))
             
-            WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+            WarbandNexus:SendMessage(E.REPUTATION_GAINED, {
                 factionID = factionID,
                 factionName = dbData.name or factionName,
                 gainAmount = gainAmount,

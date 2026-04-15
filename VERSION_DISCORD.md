@@ -1,24 +1,23 @@
-# Discord announcement — **Warband Nexus v2.5.12** (2026-04-12)
+# Discord announcement — **Warband Nexus v2.5.15 beta 1** (2026-04-15)
 
 Copy-paste below.
 
 ---
 
-**Warband Nexus v2.5.12** is out.
+**Warband Nexus v2.5.15 beta 1** is available (pre-release — feedback welcome before stable).
 
-**UI**
-• Notifications: **Try counter chat output** menu opens downward with proper spacing — no more overlap with checkboxes or the label.
+**Performance**
+• Main window: populate coalescing, tab-switch debounce, OnHide timer cleanup.
+• CollectionService: budgeted scans + deferred ensure.
+• Guild bank / bank open: chunked scans; collections/plans abort paths improved.
 
 **Bug fixes**
-• **GameTooltip:SetText** in Settings / Gold / Plans: valid alpha (fixes Midnight `SetText` errors).
+• TOC: `Config.lua` loads after `Constants.lua` (fixes init order).
+• Main frame OnHide: populate timer cleared reliably.
 
-**Try Counter**
-• Instance entry **[WN-Drops]** lines vs hint use clearer mount/trackable logic.
-• **Rarity / manual drops**: already-owned non-repeatable collectibles no longer inflate try counts.
+**Localization**
+• Gear crafted tooltips, concentration strings, Steam-style “most played” time; more locales filled in.
 
-**Also**
-• Tooltip/collection tweaks, locale key parity, shorter **[WN-TC]** probe lines in chat.
-
-Download: CurseForge / your usual source — `WarbandNexus-2.5.12.zip`. `/reload` after installing.
+Download: CurseForge / your usual source — `WarbandNexus-2.5.15-beta1.zip`. **`/reload`** after installing.
 
 ---

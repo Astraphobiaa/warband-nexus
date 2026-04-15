@@ -19,6 +19,16 @@
 ]]
 
 local ADDON_NAME, ns = ...
+local E = ns.Constants.EVENTS
+
+local Utilities = ns.Utilities
+local function SafeLower(s)
+    return Utilities and Utilities.SafeLower and Utilities:SafeLower(s) or ""
+end
+local function CompareCharNameLower(a, b)
+    return SafeLower(a.name) < SafeLower(b.name)
+end
+local issecretvalue = issecretvalue
 
 -- Unique AceEvent handler identity for ProfessionsUI
 local ProfessionsUIEvents = {}
@@ -70,6 +80,7 @@ local EXPANSION_ORDER = {
 -- e.g. "Midnight Tailoring" → "Midnight", "Khaz Algar Alchemy" → "Khaz Algar"
 local function ExtractExpansionKey(expName)
     if not expName or expName == "" then return nil end
+    if issecretvalue and issecretvalue(expName) then return nil end
     for _, known in ipairs(EXPANSION_ORDER) do
         if expName:find(known, 1, true) == 1 then return known end
     end
@@ -516,7 +527,7 @@ local function RegisterProfessionEvents(parent)
     -- Keep CHARACTER_UPDATED + CHARACTER_TRACKING_CHANGED: UI.lua does NOT handle
     -- professions tab for these events (it only handles chars tab for CHARACTER_UPDATED).
     WarbandNexus.RegisterMessage(ProfessionsUIEvents, Constants.EVENTS.CHARACTER_UPDATED, Refresh)
-    WarbandNexus.RegisterMessage(ProfessionsUIEvents, "WN_CHARACTER_TRACKING_CHANGED", Refresh)
+    WarbandNexus.RegisterMessage(ProfessionsUIEvents, E.CHARACTER_TRACKING_CHANGED, Refresh)
 end
 
 --============================================================================
@@ -527,7 +538,7 @@ local function SortCharacters(list, orderKey)
     if not WarbandNexus.db or not WarbandNexus.db.profile then
         table.sort(list, function(a, b)
             if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-            return (a.name or ""):lower() < (b.name or ""):lower()
+            return CompareCharNameLower(a, b)
         end)
         return list
     end
@@ -536,21 +547,21 @@ local function SortCharacters(list, orderKey)
     if sortMode and sortMode ~= "manual" then
         table.sort(list, function(a, b)
             if sortMode == "name" then
-                return (a.name or ""):lower() < (b.name or ""):lower()
+                return CompareCharNameLower(a, b)
             elseif sortMode == "level" then
                 if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-                return (a.name or ""):lower() < (b.name or ""):lower()
+                return CompareCharNameLower(a, b)
             elseif sortMode == "ilvl" then
                 if (a.itemLevel or 0) ~= (b.itemLevel or 0) then return (a.itemLevel or 0) > (b.itemLevel or 0) end
-                return (a.name or ""):lower() < (b.name or ""):lower()
+                return CompareCharNameLower(a, b)
             elseif sortMode == "gold" then
                 local goldA = ns.Utilities:GetCharTotalCopper(a)
                 local goldB = ns.Utilities:GetCharTotalCopper(b)
                 if goldA ~= goldB then return goldA > goldB end
-                return (a.name or ""):lower() < (b.name or ""):lower()
+                return CompareCharNameLower(a, b)
             end
             if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-            return (a.name or ""):lower() < (b.name or ""):lower()
+            return CompareCharNameLower(a, b)
         end)
         return list
     end
@@ -569,14 +580,14 @@ local function SortCharacters(list, orderKey)
         for _, c in pairs(charMap) do table.insert(remaining, c) end
         table.sort(remaining, function(a, b)
             if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-            return (a.name or ""):lower() < (b.name or ""):lower()
+            return CompareCharNameLower(a, b)
         end)
         for _, c in ipairs(remaining) do table.insert(ordered, c) end
         return ordered
     else
         table.sort(list, function(a, b)
             if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-            return (a.name or ""):lower() < (b.name or ""):lower()
+            return CompareCharNameLower(a, b)
         end)
         return list
     end
@@ -818,7 +829,11 @@ local function GetCharSortValue(char, col)
             local slID = GetSkillLineIDForFilter(char, profName)
 
             if col == "profName" then
-                val = profName:lower():byte() or 0
+                if issecretvalue and issecretvalue(profName) then
+                    val = 0
+                else
+                    val = profName:lower():byte() or 0
+                end
             elseif col == "skill" then
                 local cs, ms = GetCurrentExpansionSkill(char, profName)
                 cs = cs or 0; ms = ms or 0
@@ -913,8 +928,8 @@ local function GetColumnSortCharComparator()
 
     local function SafeCompare(a, b)
         if col == "name" then
-            local nameA = (a.name or ""):lower()
-            local nameB = (b.name or ""):lower()
+            local nameA = SafeLower(a.name)
+            local nameB = SafeLower(b.name)
             if nameA ~= nameB then
                 if isAsc then return nameA < nameB else return nameA > nameB end
             end
@@ -928,7 +943,7 @@ local function GetColumnSortCharComparator()
             if isAsc then return valA < valB else return valA > valB end
         end
         if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-        return (a.name or ""):lower() < (b.name or ""):lower()
+        return CompareCharNameLower(a, b)
     end
 
     return function(a, b)
@@ -1161,14 +1176,30 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
         -- Close dropdown when clicking elsewhere
         if not dropdown._closer then
-            local closer = CreateFrame("Frame", nil, dropdown)
-            closer:SetScript("OnUpdate", function()
-                if dropdown:IsShown() and not dropdown:IsMouseOver() and not btn:IsMouseOver() and IsMouseButtonDown("LeftButton") then
-                    dropdown:Hide()
+            local closer = CreateFrame("Frame", nil, UIParent)
+            closer:SetAllPoints(UIParent)
+            closer:SetFrameStrata("DIALOG")
+            closer:SetFrameLevel(math.max(1, (dropdown:GetFrameLevel() or 2) - 1))
+            closer:EnableMouse(true)
+            closer:Hide()
+            closer:SetScript("OnMouseDown", function()
+                if not dropdown:IsShown() then
+                    closer:Hide()
+                    return
                 end
+                if dropdown:IsMouseOver() or btn:IsMouseOver() then
+                    return
+                end
+                dropdown:Hide()
             end)
             dropdown._closer = closer
         end
+        dropdown._closer:Show()
+        dropdown:SetScript("OnHide", function()
+            if dropdown._closer then
+                dropdown._closer:Hide()
+            end
+        end)
     end)
 
     if ns.UI_CreateCharacterSortDropdown then
@@ -2053,13 +2084,14 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         if charKey then
             local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[charKey]
             local eqByProf = charData and charData.professionEquipment
-            if eqByProf then
+            if eqByProf and profName and not (issecretvalue and issecretvalue(profName)) then
                 local baseName = profName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
                 eqData = eqByProf[profName] or eqByProf[baseName]
                 if not eqData then
                     local normName = baseName:gsub("%s+", ""):lower()
                     for storedName, data in pairs(eqByProf) do
-                        if type(data) == "table" and storedName ~= "_legacy" then
+                        if type(data) == "table" and storedName ~= "_legacy" and type(storedName) == "string"
+                            and not (issecretvalue and issecretvalue(storedName)) then
                             local storedNorm = storedName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", ""):gsub("%s+", ""):lower()
                             if storedNorm == normName then
                                 eqData = data

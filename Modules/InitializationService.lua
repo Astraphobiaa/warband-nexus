@@ -105,7 +105,6 @@ local function SafeInit(fn, label)
         if not ok then
             local msg = string.format("|cffff4444[Init ERROR]|r %s failed: %s", label or "?", tostring(err))
             DebugPrint(msg)
-            if _G.print then _G.print("|cff9370DB[WN]|r " .. msg) end
         end
     else
         DebugPrint("|cffff9900[Init]|r Deferred (combat): " .. (label or "?"))
@@ -140,13 +139,7 @@ function InitializationService:InitializeAllModules(addon)
     -- STAGE 4: Background Services (3-5s)
     self:InitializeBackgroundServices(addon)
     
-    -- STAGE 5: Success Message (REMOVED - welcome message now in Core.lua OnEnable())
-    -- C_Timer.After(1, function()
-    --     if addon and addon.Print then
-    --         local L = ns.L or {}
-    --         addon:Print(L["ADDON_LOADED"] or "Warband Nexus loaded!")
-    --     end
-    -- end)
+    -- STAGE 5 message is handled in Core.lua:OnEnable().
 end
 
 --[[
@@ -179,7 +172,7 @@ function InitializationService:InitializeCoreInfrastructure(addon)
             if not addon or not addon.db or not addon.db.global then return end
 
             local norm = GetNormalizedRealmName and GetNormalizedRealmName()
-            local realmReady = type(norm) == "string" and norm ~= "" and not (issecretvalue and issecretvalue(norm))
+            local realmReady = type(norm) == "string" and not (issecretvalue and issecretvalue(norm)) and norm ~= ""
 
             if not realmReady and attempts < maxAttempts then
                 attempts = attempts + 1
@@ -221,8 +214,17 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                 end
                 local stub = addon.db.global.characters[charKey]
                 if not stub.name or not stub.realm then
-                    stub.name = UnitName("player")
-                    stub.realm = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName()
+                    local un = UnitName("player")
+                    if un and type(un) == "string" and not (issecretvalue and issecretvalue(un)) then
+                        stub.name = un
+                    end
+                    local realm = GetNormalizedRealmName and GetNormalizedRealmName()
+                    if not realm or (issecretvalue and issecretvalue(realm)) then
+                        realm = GetRealmName and GetRealmName()
+                    end
+                    if realm and not (issecretvalue and issecretvalue(realm)) then
+                        stub.realm = realm
+                    end
                 end
                 if stub.isTracked == nil then
                     stub.isTracked = false
@@ -265,9 +267,14 @@ function InitializationService:InitializeDataServices(addon)
     -- PRIORITY TIERS:
     --   P0 (T+0.5s): Lightweight DB/event registration (batched, <2ms total)
     --   P1 (T+1s):   Heavy async collection build (4ms/frame budget)
-    --   P2 (T+1.5s): Moderate index build (TryCounter)
-    --   P3 (T+2s):   Character + tracked-only caches (batched)
-    --   P4 (T+3s):   Items cache + vault (tracked only)
+    --   P2 (T+2s):   Character + tracked-only caches (batched)
+    --   P3 (T+3s):   Items cache + vault (tracked only)
+    --   P4 (T+6s):   Moderate index build (TryCounter, deferred for smoother reload)
+    --   P5 (T+8s):   Full collection warmup (non-critical, on-demand still works)
+
+    local modulesEnabled = addon and addon.db and addon.db.profile and addon.db.profile.modulesEnabled
+    local collectionFeaturesEnabled = (not modulesEnabled) or modulesEnabled.collections ~= false or modulesEnabled.plans ~= false
+    local tryCounterEnabled = (not modulesEnabled) or modulesEnabled.tryCounter ~= false
 
     -- P0: Lightweight inits — DB loads + event registration
     -- Combined: DailyQuestManager + CollectionCacheDB (<2ms total)
@@ -283,34 +290,41 @@ function InitializationService:InitializeDataServices(addon)
     end)
 
     -- P1: Heavy async — BuildCollectionCache (mounts/pets/toys, 4ms/frame batched)
-    -- No dependency on P0 CollectionCacheDB (uses different data: .owned vs .uncollected)
-    C_Timer.After(1, function()
-        SafeInit(function()
-            if addon and addon.BuildCollectionCache then
-                addon:BuildCollectionCache()
-            end
-        end, "P1:BuildCollectionCache")
-    end)
+    -- Run only when collection/plans features are enabled.
+    if collectionFeaturesEnabled then
+        C_Timer.After(1, function()
+            SafeInit(function()
+                if addon and addon.BuildCollectionCache then
+                    addon:BuildCollectionCache()
+                end
+            end, "P1:BuildCollectionCache")
+        end)
+    end
 
-    -- P1.5: Full collection data (mount/pet/toy id+name+metadata in DB for search & UI)
-    -- Runs when db.global.collectionData is empty or missing; populates on login
-    C_Timer.After(2, function()
-        SafeInit(function()
-            if addon and addon.EnsureFullCollectionData then
-                addon:EnsureFullCollectionData()
-            end
-        end, "P1.5:EnsureFullCollectionData")
-    end)
+    -- P5: Full collection data warmup (mount/pet/toy id+name+metadata in DB for search & UI)
+    -- Deferred to reduce /reload hitch. Collections/Plans paths still trigger on-demand EnsureCollectionData().
+    if collectionFeaturesEnabled then
+        C_Timer.After(8, function()
+            SafeInit(function()
+                if addon and addon.EnsureFullCollectionData
+                    and not (ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading) then
+                    addon:EnsureFullCollectionData()
+                end
+            end, "P5:EnsureFullCollectionData")
+        end)
+    end
 
-    -- P2: Moderate — TryCounter index build from CollectibleSourceDB
-    -- No dependency on collection cache
-    C_Timer.After(1.5, function()
-        SafeInit(function()
-            if addon and addon.InitializeTryCounter then
-                addon:InitializeTryCounter()
-            end
-        end, "P2:TryCounter")
-    end)
+    -- P4: Moderate — TryCounter index build from CollectibleSourceDB
+    -- Deferred further to keep /reload entry smoother; service remains functionally identical.
+    if tryCounterEnabled then
+        C_Timer.After(6, function()
+            SafeInit(function()
+                if addon and addon.InitializeTryCounter then
+                    addon:InitializeTryCounter()
+                end
+            end, "P4:TryCounter")
+        end)
+    end
 
     -- P3: Character data + tracked-only caches (batched)
     -- CharacterCache is lightweight; Currency/PvE caches are event registration + DB init.
@@ -395,8 +409,10 @@ function InitializationService:InitializeUIServices(addon)
                 addon.Tooltip:InitializeGameTooltipHook()
             end
         end, "TooltipHook")
+    end)
 
-        -- Pre-cache all CollectibleSourceDB item data so first tooltip hover is instant
+    -- T+10s: Tooltip item pre-cache (deferred to reduce /reload startup pressure)
+    C_Timer.After(10, function()
         SafeInit(function()
             if addon and addon.Tooltip and addon.Tooltip.PreCacheCollectibleItems then
                 addon.Tooltip:PreCacheCollectibleItems()
@@ -425,6 +441,18 @@ function InitializationService:InitializeBackgroundServices(addon)
                 addon:InitializeReminderService()
             end
         end, "ReminderService")
+    end)
+
+    -- Bank money services are non-critical at startup; defer their event hooks.
+    C_Timer.After(3, function()
+        SafeInit(function()
+            if addon and addon.InitializeGoldManagementService then
+                addon:InitializeGoldManagementService()
+            end
+            if addon and addon.InitializeCharacterBankMoneyLogService then
+                addon:InitializeCharacterBankMoneyLogService()
+            end
+        end, "BankMoneyServices")
     end)
     
     -- Database Optimizer: Auto-cleanup and optimization (5s)

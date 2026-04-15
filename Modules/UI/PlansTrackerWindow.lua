@@ -11,6 +11,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local PLAN_COLORS = ns.PLAN_UI_COLORS or {}
@@ -24,6 +25,7 @@ local FormatNumber = ns.UI_FormatNumber
 local FormatTextNumbers = ns.UI_FormatTextNumbers
 local PLAN_TYPES = ns.PLAN_TYPES
 local Factory = ns.UI.Factory
+local issecretvalue = issecretvalue
 
 -- Import UI spacing constants
 local UI_SPACING = ns.UI_SPACING or {
@@ -246,6 +248,9 @@ end
 local function GetPlanDescriptionFormatted(plan)
     local raw = GetPlanDescription(plan)
     if not raw or raw == "" then return (PLAN_COLORS.descDim or "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r" end
+    if issecretvalue and issecretvalue(raw) then
+        return (PLAN_COLORS.descDim or "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r"
+    end
     local srcLabel = PLAN_COLORS.sourceLabel or "|cff99ccff"
     local body = PLAN_COLORS.body or "|cffffffff"
     local dim = PLAN_COLORS.descDim or "|cff888888"
@@ -254,9 +259,9 @@ local function GetPlanDescriptionFormatted(plan)
         local sourceType, sourceDetail = raw:match("^([^:]+:%s*)(.*)$")
         if sourceDetail and sourceDetail ~= "" then
             local icon = ""
-            if sourceType and string.lower(sourceType):match("quest") then
+            if sourceType and not (issecretvalue and issecretvalue(sourceType)) and string.lower(sourceType):match("quest") then
                 icon = "|TInterface\\Icons\\INV_Misc_Map_01:12:12:0:0|t "
-            elseif sourceType and string.lower(sourceType):match("drop") then
+            elseif sourceType and not (issecretvalue and issecretvalue(sourceType)) and string.lower(sourceType):match("drop") then
                 icon = "|TInterface\\Icons\\INV_Misc_Bag_10_Blue:12:12:0:0|t "
             end
             return dim .. icon .. srcLabel .. sourceType .. "|r" .. body .. sourceDetail .. "|r"
@@ -1043,14 +1048,33 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         local contentHeight = math.min(itemCount * itemHeight, 300)
         local menuWidth = self:GetWidth()
 
-        -- Create menu (Factory container)
-        local menu = Factory:CreateContainer(UIParent, menuWidth, contentHeight + UI_SPACING.AFTER_ELEMENT)
-        menu:SetFrameStrata("FULLSCREEN_DIALOG")
-        menu:SetFrameLevel(300)
+        -- Reuse menu (prevents creating new frame trees on every open).
+        local menu = dropdown._dropdownMenu
+        if not menu then
+            menu = Factory:CreateContainer(UIParent, menuWidth, contentHeight + UI_SPACING.AFTER_ELEMENT)
+            menu:SetFrameStrata("FULLSCREEN_DIALOG")
+            menu:SetFrameLevel(300)
+            menu:SetClampedToScreen(true)
+            if ApplyVisuals then
+                ApplyVisuals(menu, { 0.08, 0.08, 0.10, 0.98 }, { COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 0.8 })
+            end
+            menu:SetScript("OnHide", function()
+                local catcher = dropdown._clickCatcher
+                if catcher then
+                    catcher:Hide()
+                end
+                activeDropdownMenu = nil
+            end)
+            dropdown._dropdownMenu = menu
+        end
+        menu:SetSize(menuWidth, contentHeight + UI_SPACING.AFTER_ELEMENT)
         menu:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
-        menu:SetClampedToScreen(true)
-        if ApplyVisuals then
-            ApplyVisuals(menu, { 0.08, 0.08, 0.10, 0.98 }, { COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 0.8 })
+
+        local children = { menu:GetChildren() }
+        for i = 1, #children do
+            local child = children[i]
+            child:Hide()
+            child:SetParent(nil)
         end
         activeDropdownMenu = menu
 
@@ -1128,7 +1152,9 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
             clickCatcher:SetFrameLevel(menu:GetFrameLevel() - 1)
             clickCatcher:EnableMouse(true)
             clickCatcher:SetScript("OnMouseDown", function()
-                menu:Hide()
+                if activeDropdownMenu then
+                    activeDropdownMenu:Hide()
+                end
                 activeDropdownMenu = nil
                 clickCatcher:Hide()
             end)
@@ -1138,16 +1164,6 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         -- Show click-catcher when menu is shown
         clickCatcher:Show()
         
-        -- Ensure click-catcher is hidden when menu is hidden
-        local originalOnHide = menu:GetScript("OnHide")
-        menu:SetScript("OnHide", function(menuSelf)
-            if clickCatcher then
-                clickCatcher:Hide()
-            end
-            if originalOnHide then
-                originalOnHide(menuSelf)
-            end
-        end)
     end)
 
     -- Hover on dropdown button
@@ -1460,7 +1476,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end
         -- Unregister message handler (uses PlansTrackerEvents as 'self' key)
         if frame._plansUpdatedHandler then
-            WarbandNexus.UnregisterMessage(PlansTrackerEvents, "WN_PLANS_UPDATED")
+            WarbandNexus.UnregisterMessage(PlansTrackerEvents, E.PLANS_UPDATED)
             frame._plansUpdatedHandler = nil
         end
         -- Clear expanded achievements
@@ -1474,11 +1490,11 @@ function WarbandNexus:CreatePlansTrackerWindow()
             RefreshTrackerContent()
         end
     end
-    WarbandNexus.RegisterMessage(PlansTrackerEvents, "WN_PLANS_UPDATED", OnPlansUpdated)
+    WarbandNexus.RegisterMessage(PlansTrackerEvents, E.PLANS_UPDATED, OnPlansUpdated)
     frame._plansUpdatedHandler = OnPlansUpdated
 
     -- ── Listen for font changes ──
-    WarbandNexus.RegisterMessage(PlansTrackerEvents, "WN_FONT_CHANGED", function()
+    WarbandNexus.RegisterMessage(PlansTrackerEvents, E.FONT_CHANGED, function()
         if frame and frame:IsShown() then
             RefreshTrackerContent()
         end

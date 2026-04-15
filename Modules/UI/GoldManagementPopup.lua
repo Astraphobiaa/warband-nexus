@@ -14,8 +14,11 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS
+
+local issecretvalue = issecretvalue
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateExternalWindow = ns.UI_CreateExternalWindow
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
@@ -97,7 +100,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
             -- Settings are already written to the correct DB table (profile or char)
             -- via direct reference; just notify the service
             if self.SendMessage then
-                self:SendMessage("WN_GOLD_MANAGEMENT_CHANGED")
+                self:SendMessage(E.GOLD_MANAGEMENT_CHANGED)
             end
         end
     })
@@ -123,7 +126,8 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local perCharCB = CreateThemedCheckbox(contentFrame, isPerChar)
     perCharCB:SetPoint("TOPLEFT", PADDING, -yOffset)
     
-    local charName = UnitName("player") or "?"
+    local un = UnitName("player")
+    local charName = (un and not (issecretvalue and issecretvalue(un))) and un or "?"
     local perCharLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     perCharLabel:SetPoint("LEFT", perCharCB, "RIGHT", 8, 0)
     perCharLabel:SetText(string.format(L["GOLD_MANAGEMENT_CHAR_ONLY"] or "Only For This Character (%s)", charName))
@@ -344,6 +348,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         if not userInput then return end
         
         local text = self:GetText()
+        if text and issecretvalue and issecretvalue(text) then return end
         local cursor = self:GetCursorPosition()
         
         -- Count pure digits before cursor position
@@ -477,7 +482,9 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     
     -- Hook input box to update summary on save
     inputBox:SetScript("OnEditFocusLost", function(self)
-        local value = GoldStringToCopper(self:GetText())
+        local raw = self:GetText()
+        if raw and issecretvalue and issecretvalue(raw) then return end
+        local value = GoldStringToCopper(raw)
         local maxCopper = MAX_GOLD * 10000
         if value > maxCopper then value = maxCopper end
         if value <= 0 then value = 10000 end

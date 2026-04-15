@@ -5,6 +5,10 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local Constants = ns.Constants
+local E = Constants.EVENTS
+
+local issecretvalue = issecretvalue
 
 local FontManager = ns.FontManager
 
@@ -1873,39 +1877,9 @@ local function GetRaceGenderAtlas(raceFile, gender)
     if not raceFile then
         return "shop-icon-housing-characters-up"
     end
-    
-    -- Map race file names to atlas names
-    local raceMap = {
-        ["BloodElf"] = "bloodelf",
-        ["DarkIronDwarf"] = "darkirondwarf",
-        ["Dracthyr"] = "dracthyrvisage",  -- Dracthyr uses visage form
-        ["Draenei"] = "draenei",
-        ["Dwarf"] = "dwarf",
-        ["Earthen"] = "earthen",
-        ["Haranir"] = "haranir",
-        ["Harronir"] = "haranir",  -- API returns raceFile "Harronir" (clientFileString)
-        ["Gnome"] = "gnome",
-        ["Goblin"] = "goblin",
-        ["HighmountainTauren"] = "highmountain",
-        ["Human"] = "human",
-        ["KulTiran"] = "kultiran",
-        ["LightforgedDraenei"] = "lightforged",
-        ["MagharOrc"] = "magharorc",
-        ["Mechagnome"] = "mechagnome",
-        ["Nightborne"] = "nightborne",
-        ["NightElf"] = "nightelf",
-        ["Orc"] = "orc",
-        ["Pandaren"] = "pandaren",
-        ["Tauren"] = "tauren",
-        ["Troll"] = "troll",
-        ["Scourge"] = "undead",  -- Undead is "Scourge" in API
-        ["Worgen"] = "worgen",
-        ["ZandalariTroll"] = "zandalari",
-        ["VoidElf"] = "voidelf",
-        ["Vulpera"] = "vulpera",
-    }
-    
-    local atlasRace = raceMap[raceFile]
+
+    local raceMap = Constants and Constants.RACE_FILE_TO_ATLAS_PREFIX
+    local atlasRace = raceMap and raceMap[raceFile]
     if not atlasRace then
         return "shop-icon-housing-characters-up"  -- Fallback
     end
@@ -2003,6 +1977,8 @@ local TAB_HEADER_ICONS = {
     pve = "Tormentors-Boss",
     statistics = "racing",
     collections = "PetJournalPortrait",
+    professions = "Vehicle-HammerGold",
+    gear = "QuestLegendary",
 }
 
 -- Centralized size configuration
@@ -2055,10 +2031,12 @@ local function CreateHeaderIcon(parent, atlasName, size, borderSize, point, x, y
     -- Apply border with theme color
     ApplyVisuals(container, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     
-    -- Inner icon (inset by 2px for border)
+    -- Inner icon (inset scales with UI scale for crisp borders)
+    local pixelScale = GetPixelScale and GetPixelScale() or 1.0
+    local iconInset = pixelScale * 2
     local icon = container:CreateTexture(nil, "ARTWORK", nil, 0)
-    icon:SetPoint("TOPLEFT", 2, -2)
-    icon:SetPoint("BOTTOMRIGHT", -2, 2)
+    icon:SetPoint("TOPLEFT", iconInset, -iconInset)
+    icon:SetPoint("BOTTOMRIGHT", -iconInset, iconInset)
     icon:SetAtlas(atlasName, false)
     -- Anti-flicker optimization
     icon:SetSnapToPixelGrid(false)
@@ -2136,6 +2114,9 @@ ns.UI_GetCharacterSpecificIcon = GetCharacterSpecificIcon
 ]]
 local function GetCurrencyHeaderIcon(headerName)
     if not headerName or headerName == "" then
+        return "Interface\\Icons\\INV_Misc_Coin_01"
+    end
+    if issecretvalue and issecretvalue(headerName) then
         return "Interface\\Icons\\INV_Misc_Coin_01"
     end
     -- Legacy (all old expansions)
@@ -2892,7 +2873,11 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
         
         if text and text ~= "" then
             placeholderText:Hide()
-            newSearchText = text:lower()
+            if issecretvalue and issecretvalue(text) then
+                newSearchText = ""
+            else
+                newSearchText = text:lower()
+            end
         else
             placeholderText:Show()
             newSearchText = ""
@@ -3138,19 +3123,8 @@ ns.UI_CreateSearchBox = CreateSearchBox
 ns.UI_RefreshColors = RefreshColors
 ns.UI_CalculateThemeColors = CalculateThemeColors
 
--- Frame pooling exports
-ns.UI_AcquireItemRow = AcquireItemRow
-ns.UI_ReleaseItemRow = ReleaseItemRow
-ns.UI_AcquireStorageRow = AcquireStorageRow
-ns.UI_ReleaseStorageRow = ReleaseStorageRow
-ns.UI_AcquireCurrencyRow = AcquireCurrencyRow
-ns.UI_ReleaseCurrencyRow = ReleaseCurrencyRow
-ns.UI_AcquireCharacterRow = AcquireCharacterRow
-ns.UI_ReleaseCharacterRow = ReleaseCharacterRow
-ns.UI_CharacterRowPool = CharacterRowPool  -- Export pool for overflow checking
-ns.UI_AcquireReputationRow = AcquireReputationRow
-ns.UI_ReleaseReputationRow = ReleaseReputationRow
-ns.UI_ReleaseAllPooledChildren = ReleaseAllPooledChildren
+-- Frame pooling exports are owned by FramePoolFactory.lua (loads after SharedWidgets).
+-- Keep a single authoritative export source to avoid load-order dependent overrides.
 
 -- Shared widget exports
 ns.UI_CreateThemedButton = CreateThemedButton
@@ -3368,7 +3342,7 @@ local function CreateExternalWindow(config)
     return dialog, contentFrame, header
 end
 
-ns.UI_CreateExternalWindow = CreateExternalWindow
+-- External window factory export is owned by WindowFactory.lua (loads after SharedWidgets).
 
 --============================================================================
 -- TOOLTIP API
@@ -3700,12 +3674,17 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
     popup._wnTryID = collectibleID
 
     popup.saveBtn:SetScript("OnClick", function()
-        local count = tonumber(popup.editBox:GetText())
+        local rawCount = popup.editBox:GetText()
+        if rawCount and issecretvalue and issecretvalue(rawCount) then
+            popup:Hide()
+            return
+        end
+        local count = tonumber(rawCount)
         if count and count >= 0 and WarbandNexus and WarbandNexus.SetTryCount and popup._wnTryType and popup._wnTryID then
             WarbandNexus:SetTryCount(popup._wnTryType, popup._wnTryID, count)
             if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             if WarbandNexus and WarbandNexus.SendMessage then
-                WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "try_count_set" })
+                WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "try_count_set" })
             end
         end
         popup:Hide()
@@ -3981,15 +3960,20 @@ local function CreateResetTimer(parent, anchorPoint, xOffset, yOffset, getSecond
     -- Initial update
     Update()
     
-    -- Auto-update every 60 seconds
-    container.timeSinceUpdate = 0
-    container:SetScript("OnUpdate", function(self, elapsed)
-        self.timeSinceUpdate = self.timeSinceUpdate + elapsed
-        if self.timeSinceUpdate >= 60 then
-            self.timeSinceUpdate = 0
-            Update()
+    -- Auto-update every 60 seconds with a ticker (avoid per-frame polling).
+    local function StartTicker()
+        if container._resetTicker then return end
+        container._resetTicker = C_Timer.NewTicker(60, Update)
+    end
+
+    container:SetScript("OnShow", StartTicker)
+    container:SetScript("OnHide", function(self)
+        if self._resetTicker then
+            self._resetTicker:Cancel()
+            self._resetTicker = nil
         end
     end)
+    StartTicker()
     
     return {
         icon = icon,
@@ -5095,11 +5079,16 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     spinnerFrame:Show()
     local spinner = spinnerFrame.texture
     
-    -- Animate rotation
+    -- Animate rotation on spinner only (avoid clobbering loadingCard OnUpdate); stop when hidden.
     local rotation = 0
-    loadingCard:SetScript("OnUpdate", function(self, elapsed)
+    spinnerFrame:SetScript("OnUpdate", function(_, elapsed)
         rotation = rotation + (elapsed * 270)
-        spinner:SetRotation(math.rad(rotation))
+        if spinner then
+            spinner:SetRotation(math.rad(rotation))
+        end
+    end)
+    loadingCard:HookScript("OnHide", function()
+        spinnerFrame:SetScript("OnUpdate", nil)
     end)
     
     -- Loading title
@@ -5176,7 +5165,7 @@ function UI_CreateInlineLoadingSpinner(parent, anchorFrame, anchorPoint, xOffset
     
     -- Animate rotation
     local rotation = 0
-    parent:SetScript("OnUpdate", function(self, elapsed)
+    spinnerFrame:SetScript("OnUpdate", function(_, elapsed)
         rotation = rotation + (elapsed * 270)
         if spinnerFrame and spinnerFrame.texture then
             spinnerFrame.texture:SetRotation(math.rad(rotation))

@@ -15,6 +15,9 @@
 
 local ADDON_NAME, ns = ...
 
+local issecretvalue = issecretvalue
+local E = ns.Constants.EVENTS
+
 -- LibSharedMedia-3.0 (optional): shared font/media handling; silent fail if missing
 local LSM = (LibStub and LibStub("LibSharedMedia-3.0", true)) or nil
 
@@ -535,8 +538,8 @@ function FontManager:ApplyFont(fontString, category)
         end
     end
     
-    -- Force re-render by re-setting existing text
-    if existingText and existingText ~= "" then
+    -- Force re-render by re-setting existing text (never pass secret values back into SetText)
+    if existingText and not (issecretvalue and issecretvalue(existingText)) and existingText ~= "" then
         fontString:SetText(existingText)
     end
 end
@@ -585,7 +588,7 @@ function FontManager:RefreshAllFonts()
             C_Timer.After(0.15, function()
                 if warmupFrame then warmupFrame:Hide() end
                 if ns.WarbandNexus and ns.WarbandNexus.SendMessage then
-                    ns.WarbandNexus:SendMessage("WN_FONT_CHANGED")
+                    ns.WarbandNexus:SendMessage(E.FONT_CHANGED)
                 end
             end)
         end)
@@ -594,7 +597,7 @@ function FontManager:RefreshAllFonts()
         ApplyToAllRegistered()
         C_Timer.After(0.2, function()
             if ns.WarbandNexus and ns.WarbandNexus.SendMessage then
-                ns.WarbandNexus:SendMessage("WN_FONT_CHANGED")
+                ns.WarbandNexus:SendMessage(E.FONT_CHANGED)
             end
         end)
     end
@@ -650,7 +653,7 @@ ns.GetFilteredFontOptions = GetFilteredFontOptions
 if LSM and LSM.RegisterCallback then
     LSM.RegisterCallback(FontManager, "LibSharedMedia_Registered", function(_, mediatype)
         if mediatype == "font" and ns.WarbandNexus and ns.WarbandNexus.SendMessage then
-            ns.WarbandNexus:SendMessage("WN_FONT_LIST_UPDATED")
+            ns.WarbandNexus:SendMessage(E.FONT_LIST_UPDATED)
         end
     end)
 end

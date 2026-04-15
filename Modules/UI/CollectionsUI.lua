@@ -9,6 +9,17 @@ local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 local Constants = ns.Constants
 
+local issecretvalue = issecretvalue
+local Utilities = ns.Utilities
+local function SafeLower(s)
+    if Utilities and Utilities.SafeLower then
+        return Utilities:SafeLower(s)
+    end
+    if not s or s == "" then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    return s:lower()
+end
+
 local CreateCard = ns.UI_CreateCard
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
@@ -663,6 +674,13 @@ local function ApplySessionCollectionsSubTab()
     end
 end
 
+---Bump draw generations so RunChunked* callbacks exit (tab switch / AbortTabOperations).
+function WarbandNexus:AbortCollectionsChunkedBuilds()
+    collectionsState._mountsDrawGen = (collectionsState._mountsDrawGen or 0) + 1
+    collectionsState._petDrawGen = (collectionsState._petDrawGen or 0) + 1
+    collectionsState._toysDrawGen = (collectionsState._toysDrawGen or 0) + 1
+end
+
 local _populateMountListBusy = false
 local _mountScrollUpdateScheduled = false
 local _petScrollUpdateScheduled = false
@@ -858,7 +876,7 @@ local function BuildGroupedAchievementData(searchText, showCollected, showUncoll
     end
 
     local allAchievements = (WarbandNexus.GetAllAchievementsData and WarbandNexus:GetAllAchievementsData()) or {}
-    local query = (searchText or ""):lower()
+    local query = SafeLower(searchText)
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
     local totalCount = 0
@@ -867,7 +885,7 @@ local function BuildGroupedAchievementData(searchText, showCollected, showUncoll
         local a = allAchievements[i]
         if not a or not a.id then
         elseif not ((showC and a.isCollected) or (showU and not a.isCollected)) then
-        elseif query ~= "" and (not a.name or not a.name:lower():find(query, 1, true)) then
+        elseif query ~= "" and (not a.name or not SafeLower(a.name):find(query, 1, true)) then
         else
             local categoryID = a.categoryID
             if not categoryID and GetAchievementCategory then
@@ -2582,7 +2600,6 @@ local function CreateModelViewer(parent, width, height)
                             icon = icon,
                             source = sourceTextRaw or (ns.L and ns.L["UNKNOWN"]) or "Unknown",
                         })
-                        if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
                     end
                 end)
             end
@@ -2623,6 +2640,7 @@ local function CreateModelViewer(parent, width, height)
         local amountKey = (L and L["PARSE_AMOUNT"]) or "Amount"
         local function isCostOrAmountLine(text)
             if not text or text == "" then return false end
+            if issecretvalue and issecretvalue(text) then return false end
             local t = text:gsub("^%s+", "")
             return t:sub(1, #costKey):lower() == costKey:lower() or t:sub(1, #amountKey):lower() == amountKey:lower()
         end
@@ -2790,7 +2808,6 @@ local function CreateModelViewer(parent, width, height)
                             icon = icon,
                             source = sourceTextRaw or (ns.L and ns.L["UNKNOWN"]) or "Unknown",
                         })
-                        if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
                     end
                 end)
             end
@@ -2830,6 +2847,7 @@ local function CreateModelViewer(parent, width, height)
         local amountKey = (L and L["PARSE_AMOUNT"]) or "Amount"
         local function isCostOrAmountLine(text)
             if not text or text == "" then return false end
+            if issecretvalue and issecretvalue(text) then return false end
             local t = text:gsub("^%s+", "")
             return t:sub(1, #costKey):lower() == costKey:lower() or t:sub(1, #amountKey):lower() == amountKey:lower()
         end
@@ -3619,7 +3637,7 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
     local useCache = #allMounts > 0
 
     -- Tab tıklandığında sadece DB/cache kullan; API çağrısı yapma (FPS ve performans).
-    local query = (searchText or ""):lower()
+    local query = SafeLower(searchText)
     local totalCount = 0
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
@@ -3639,7 +3657,7 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
                     -- Sadece DB/cache: isCollected cache'den (API çağrısı yok).
                     local isCollected = (d.isCollected == true) or (d.collected == true)
                     if (showC and isCollected) or (showU and not isCollected) then
-                        if query == "" or (name and name:lower():find(query, 1, true)) then
+                        if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                             local sourceText = d.source or ""
                             local catKey = classify(sourceText)
                             if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
@@ -3685,7 +3703,7 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
                 if not name then name = tostring(mountID) end
                 if MOUNT_NAME_BLACKLIST[name] then
                     -- skip (yetenek/placeholder)
-                elseif query == "" or name:lower():find(query, 1, true) then
+                elseif query == "" or SafeLower(name):find(query, 1, true) then
                     local sourceText = meta and meta.source or ""
                     local creatureDisplayID, description, src = SafeGetMountInfoExtra(mountID)
                     if sourceText == "" then sourceText = src or "" end
@@ -3718,7 +3736,7 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
 
     for _, items in pairs(grouped) do
         table.sort(items, function(a, b)
-            return (a.name or "") < (b.name or "")
+            return SafeLower(a.name) < SafeLower(b.name)
         end)
     end
 
@@ -3750,7 +3768,7 @@ local function RunChunkedMountBuild(allMounts, searchText, showCollected, showUn
         list[#list + 1] = entry
         nameIndex[catKey][entry.name] = #list
     end
-    local query = (searchText or ""):lower()
+    local query = SafeLower(searchText)
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
     local startIdx = 1
@@ -3767,7 +3785,7 @@ local function RunChunkedMountBuild(allMounts, searchText, showCollected, showUn
                 if not MOUNT_NAME_BLACKLIST[name] then
                     local isCollected = (d.isCollected == true) or (d.collected == true)
                     if (showC and isCollected) or (showU and not isCollected) then
-                        if query == "" or (name and name:lower():find(query, 1, true)) then
+                        if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                             local sourceText = d.source or ""
                             local catKey = classify(sourceText)
                             if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
@@ -3792,7 +3810,7 @@ local function RunChunkedMountBuild(allMounts, searchText, showCollected, showUn
         startIdx = limit + 1
         if startIdx > total then
             for _, items in pairs(grouped) do
-                table.sort(items, function(a, b) return (a.name or "") < (b.name or "") end)
+                table.sort(items, function(a, b) return SafeLower(a.name) < SafeLower(b.name) end)
             end
             onComplete(grouped)
         else
@@ -3827,7 +3845,7 @@ local function RunChunkedPetBuild(allPets, searchText, showCollected, showUncoll
         list[#list + 1] = entry
         nameIndex[catKey][entry.name] = #list
     end
-    local query = (searchText or ""):lower()
+    local query = SafeLower(searchText)
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
     local startIdx = 1
@@ -3843,7 +3861,7 @@ local function RunChunkedPetBuild(allPets, searchText, showCollected, showUncoll
                 local name = d.name or tostring(d.id)
                 local isCollected = (d.isCollected == true) or (d.collected == true)
                 if (showC and isCollected) or (showU and not isCollected) then
-                    if query == "" or (name and name:lower():find(query, 1, true)) then
+                    if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                         local sourceText = d.source or ""
                         local catKey = classify(sourceText)
                         if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
@@ -3867,7 +3885,7 @@ local function RunChunkedPetBuild(allPets, searchText, showCollected, showUncoll
         startIdx = limit + 1
         if startIdx > total then
             for _, items in pairs(grouped) do
-                table.sort(items, function(a, b) return (a.name or "") < (b.name or "") end)
+                table.sort(items, function(a, b) return SafeLower(a.name) < SafeLower(b.name) end)
             end
             onComplete(grouped)
         else
@@ -3919,7 +3937,7 @@ local function BuildGroupedPetData(searchText, showCollected, showUncollected, o
     local useCache = #allPets > 0
 
     -- Tab tıklandığında sadece DB/cache kullan; API çağrısı yapma.
-    local query = (searchText or ""):lower()
+    local query = SafeLower(searchText)
     local totalCount = 0
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
@@ -3932,7 +3950,7 @@ local function BuildGroupedPetData(searchText, showCollected, showUncollected, o
                 local name = d.name or tostring(d.id)
                 local isCollected = (d.isCollected == true) or (d.collected == true)
                 if (showC and isCollected) or (showU and not isCollected) then
-                    if query == "" or (name and name:lower():find(query, 1, true)) then
+                    if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                         local sourceText = d.source or ""
                         local catKey = classify(sourceText)
                         if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
@@ -3979,7 +3997,7 @@ local function BuildGroupedPetData(searchText, showCollected, showUncollected, o
                         if n and not (issecretvalue and issecretvalue(n)) then name = n end
                     end
                     if not name then name = tostring(speciesID) end
-                    if query == "" or name:lower():find(query, 1, true) then
+                    if query == "" or SafeLower(name):find(query, 1, true) then
                         local sourceText = meta and meta.source or ""
                         local creatureDisplayID, description, src = SafeGetPetInfoExtra(speciesID)
                         if sourceText == "" then sourceText = src or "" end
@@ -4012,7 +4030,7 @@ local function BuildGroupedPetData(searchText, showCollected, showUncollected, o
 
     for _, items in pairs(grouped) do
         table.sort(items, function(a, b)
-            return (a.name or "") < (b.name or "")
+            return SafeLower(a.name) < SafeLower(b.name)
         end)
     end
 
@@ -4023,7 +4041,7 @@ end
 local function GetFilteredToysGrouped(searchText, showCollected, showUncollected)
     local sourceGrouped = (WarbandNexus.GetToysDataGroupedBySourceType and WarbandNexus:GetToysDataGroupedBySourceType()) or {}
     local grouped = {}
-    local query = (searchText or ""):lower()
+    local query = SafeLower(searchText)
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
     for sourceIndex, group in pairs(sourceGrouped) do
@@ -4036,7 +4054,7 @@ local function GetFilteredToysGrouped(searchText, showCollected, showUncollected
                 local isCollected = (item.collected == true) or (item.isCollected == true)
                 if (showC and isCollected) or (showU and not isCollected) then
                     local name = item.name or tostring(item.id)
-                    if query == "" or (name:lower():find(query, 1, true)) then
+                    if query == "" or (SafeLower(name):find(query, 1, true)) then
                         grouped[catKey][#grouped[catKey] + 1] = item
                     end
                 end
@@ -4071,7 +4089,7 @@ local function BuildGroupedToyData(searchText, showCollected, showUncollected, o
     end
 
     local allToys = (optionalToys and #optionalToys > 0) and optionalToys or (WarbandNexus.GetAllToysData and WarbandNexus:GetAllToysData()) or {}
-    local query = (searchText or ""):lower()
+    local query = SafeLower(searchText)
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
     local function isReliableToySource(src)
@@ -4084,7 +4102,7 @@ local function BuildGroupedToyData(searchText, showCollected, showUncollected, o
             local name = d.name or tostring(d.id)
             local isCollected = (d.isCollected == true) or (d.collected == true)
             if (showC and isCollected) or (showU and not isCollected) then
-                if query == "" or (name and name:lower():find(query, 1, true)) then
+                if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                     local sourceText = d.source or ""
                     if not isReliableToySource(sourceText) then
                         local meta = WarbandNexus.ResolveCollectionMetadata and WarbandNexus:ResolveCollectionMetadata("toy", d.id)
@@ -4111,7 +4129,7 @@ local function BuildGroupedToyData(searchText, showCollected, showUncollected, o
     end
 
     for _, items in pairs(grouped) do
-        table.sort(items, function(a, b) return (a.name or "") < (b.name or "") end)
+        table.sort(items, function(a, b) return SafeLower(a.name) < SafeLower(b.name) end)
     end
     return grouped
 end
@@ -4212,7 +4230,7 @@ local function RecentEntryNameMatches(e, qlower)
     if not qlower then return true end
     local nm = e.name
     if issecretvalue and issecretvalue(nm) then return false end
-    return nm:lower():find(qlower, 1, true) ~= nil
+    return SafeLower(nm):find(qlower, 1, true) ~= nil
 end
 
 local function RecentPickForType(db, typ, qlower, maxN)
@@ -4343,10 +4361,8 @@ local function DrawRecentContent(contentFrame)
     local loc = ns.L
     local qraw = collectionsState.searchText or ""
     local qlower
-    if qraw ~= "" then
-        if not (issecretvalue and issecretvalue(qraw)) then
-            qlower = qraw:lower()
-        end
+    if qraw and not (issecretvalue and issecretvalue(qraw)) and qraw ~= "" then
+        qlower = qraw:lower()
     end
 
     local emptyTxt = (loc and loc["COLLECTIONS_RECENT_TAB_EMPTY"]) or (loc and loc["COLLECTIONS_RECENT_EMPTY"]) or "Nothing recorded yet."
@@ -5517,7 +5533,6 @@ local function DrawToysContent(contentFrame)
                                     icon = icon,
                                     source = sourceTypeName or (ns.L and ns.L["UNKNOWN"]) or "Unknown",
                                 })
-                                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
                             end
                         end)
                     end
@@ -6188,6 +6203,11 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
         searchBox:SetScript("OnTextChanged", function(self, userInput)
             local text = self:GetText() or ""
+            if text and issecretvalue and issecretvalue(text) then
+                collectionsState.searchText = ""
+                if self.Instructions then self.Instructions:Show() end
+                return
+            end
             collectionsState.searchText = text
             if self.Instructions then
                 if text ~= "" then self.Instructions:Hide() else self.Instructions:Show() end
@@ -6394,21 +6414,46 @@ function WarbandNexus:DrawCollectionsTab(parent)
             collectionsState._toyFlatList = nil
         end
 
+        local function InvalidateCollectionCachesForType(collectionType)
+            if collectionType == "mount" then
+                collectionsState._cachedMountsData = nil
+                collectionsState._lastGroupedMountData = nil
+                collectionsState._mountFlatList = nil
+            elseif collectionType == "pet" then
+                collectionsState._cachedPetsData = nil
+                collectionsState._lastGroupedPetData = nil
+                collectionsState._petFlatList = nil
+            elseif collectionType == "toy" then
+                collectionsState._cachedToysData = nil
+                collectionsState._lastGroupedToyData = nil
+                collectionsState._toyFlatList = nil
+            elseif collectionType == "achievement" then
+                -- Achievements use dedicated lists/detail state; keep mount/pet/toy caches intact.
+            else
+                InvalidateAllCollectionCaches()
+            end
+        end
+
+        local function RedrawActiveCollectionSubTab()
+            if not collectionsState.contentFrame then return end
+            if collectionsState.currentSubTab == "recent" then
+                DrawRecentContent(collectionsState.contentFrame)
+            elseif collectionsState.currentSubTab == "mounts" then
+                DrawMountsContent(collectionsState.contentFrame)
+            elseif collectionsState.currentSubTab == "pets" then
+                DrawPetsContent(collectionsState.contentFrame)
+            elseif collectionsState.currentSubTab == "toys" then
+                DrawToysContent(collectionsState.contentFrame)
+            elseif collectionsState.currentSubTab == "achievements" then
+                DrawAchievementsContent(collectionsState.contentFrame)
+            end
+        end
+
         local eventName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_PROGRESS) or "WN_COLLECTION_SCAN_PROGRESS"
         WarbandNexus.RegisterMessage(CUIListeners, eventName, function()
             local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
             if mf and mf:IsShown() and mf.currentTab == "collections" and collectionsState.contentFrame then
-                if collectionsState.currentSubTab == "recent" then
-                    DrawRecentContent(collectionsState.contentFrame)
-                elseif collectionsState.currentSubTab == "mounts" then
-                    DrawMountsContent(collectionsState.contentFrame)
-                elseif collectionsState.currentSubTab == "pets" then
-                    DrawPetsContent(collectionsState.contentFrame)
-                elseif collectionsState.currentSubTab == "toys" then
-                    DrawToysContent(collectionsState.contentFrame)
-                elseif collectionsState.currentSubTab == "achievements" then
-                    DrawAchievementsContent(collectionsState.contentFrame)
-                end
+                RedrawActiveCollectionSubTab()
             end
         end)
 
@@ -6417,18 +6462,18 @@ function WarbandNexus:DrawCollectionsTab(parent)
             InvalidateAllCollectionCaches()
             local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
             if mf and mf:IsShown() and mf.currentTab == "collections" then
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                RedrawActiveCollectionSubTab()
             end
         end)
 
         local updatedName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED) or "WN_COLLECTION_UPDATED"
         WarbandNexus.RegisterMessage(CUIListeners, updatedName, function(_, updatedType)
             if updatedType ~= "mount" and updatedType ~= "pet" and updatedType ~= "toy" and updatedType ~= "achievement" then return end
-            InvalidateAllCollectionCaches()
+            InvalidateCollectionCachesForType(updatedType)
             C_Timer.After(0.05, function()
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                RedrawActiveCollectionSubTab()
             end)
         end)
 
@@ -6437,18 +6482,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
             C_Timer.After(0.05, function()
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
-                if not collectionsState.contentFrame then return end
-                if collectionsState.currentSubTab == "recent" then
-                    DrawRecentContent(collectionsState.contentFrame)
-                elseif collectionsState.currentSubTab == "mounts" then
-                    DrawMountsContent(collectionsState.contentFrame)
-                elseif collectionsState.currentSubTab == "pets" then
-                    DrawPetsContent(collectionsState.contentFrame)
-                elseif collectionsState.currentSubTab == "toys" then
-                    DrawToysContent(collectionsState.contentFrame)
-                elseif collectionsState.currentSubTab == "achievements" then
-                    DrawAchievementsContent(collectionsState.contentFrame)
-                end
+                RedrawActiveCollectionSubTab()
             end)
         end)
 
@@ -6468,11 +6502,11 @@ function WarbandNexus:DrawCollectionsTab(parent)
         WarbandNexus.RegisterMessage(CUIListeners, obtainedName, function(_, data)
             if not data or not data.type then return end
             if data.type ~= "mount" and data.type ~= "pet" and data.type ~= "toy" and data.type ~= "achievement" then return end
-            InvalidateAllCollectionCaches()
+            InvalidateCollectionCachesForType(data.type)
             C_Timer.After(0.05, function()
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                RedrawActiveCollectionSubTab()
             end)
         end)
 

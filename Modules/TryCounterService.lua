@@ -61,6 +61,7 @@ local ADDON_NAME, ns = ...
 -- IIFE: Lua 5.1 / WoW cap ~200 locals per function; main chunk exceeded limit.
 ;(function()
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 -- Packed internal funcs: Lua 5.1 / WoW ~200 locals per function scope.
 local Fns = {}
 
@@ -328,12 +329,12 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
         addon:OnTryCounterSpellcastFailed(event, ...)
     elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
         local interactionType = ...
-        if interactionType and (not issecretvalue or not issecretvalue(interactionType)) and BLOCKING_INTERACTION_TYPES[interactionType] then
+        if interactionType and not (issecretvalue and issecretvalue(interactionType)) and BLOCKING_INTERACTION_TYPES[interactionType] then
             isBlockingInteractionOpen = true
         end
     elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
         local interactionType = ...
-        if interactionType and (not issecretvalue or not issecretvalue(interactionType)) and BLOCKING_INTERACTION_TYPES[interactionType] then
+        if interactionType and not (issecretvalue and issecretvalue(interactionType)) and BLOCKING_INTERACTION_TYPES[interactionType] then
             isBlockingInteractionOpen = false
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
@@ -614,6 +615,8 @@ local lastTryCountSourceTime = 0
 local lastTryCountLootSourceGUID = nil
 local lastEncounterEndTime = 0  -- set on ANY successful ENCOUNTER_END (even unmatched); suppresses zone fallback
 local CHAT_LOOT_DEBOUNCE = 2.0  -- seconds: avoid double-count if LOOT_OPENED and CHAT_MSG_LOOT both fire
+local journalMirrorBuildPending = false
+local lastLockoutSyncAt = 0
 
 function Fns.IsTryCounterLootDebugEnabled(addon)
     return addon and addon.db and addon.db.profile and addon.db.profile.debugTryCounterLoot
@@ -671,6 +674,7 @@ end
 ---@return number|nil
 function Fns.LootDebugParseItemIDFromLink(link)
     if not link or type(link) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(link) then return nil end
     local id = link:match("item:(%d+)")
     return id and tonumber(id) or nil
 end
@@ -688,7 +692,7 @@ function Fns.FormatLootSourceSummary(sourceGUIDs, wasFishing)
     local c, v, g, o = 0, 0, 0, 0
     for i = 1, n do
         local gguid = guids[i]
-        if type(gguid) == "string" then
+        if type(gguid) == "string" and not (issecretvalue and issecretvalue(gguid)) then
             local p = gguid:match("^(%a+)")
             if p == "Creature" then c = c + 1
             elseif p == "Vehicle" then v = v + 1
@@ -1185,89 +1189,10 @@ function Fns.BuildReverseIndices()
     -- Hardcoded overrides (e.g. known edge cases)
     chatLootItemToNpc[235910] = 234621  -- Mint Condition Gallagio Anniversary Coin → Gallagio Garbage
 
-    -- Mount list UI / plans use journal mountID; IndexDrop keys are mount\0<itemID> (teach item).
-    -- Mirror journal ID onto the same flags so IsDropSourceCollectible(plan.type, mountID) works (e.g. Zul'Aman rare mounts).
-    if ns.EnsureBlizzardCollectionsLoaded then
-        ns.EnsureBlizzardCollectionsLoaded()
-    end
-    local function MirrorOneMountJournalIndexKeys(drop)
-        if not drop or drop.type ~= "mount" or not drop.itemID then return end
-        local itemKey = "mount\0" .. tostring(drop.itemID)
-        if not dropSourceIndex[itemKey] then return end
-        local journalID = drop.mountID
-        if not journalID and C_MountJournal and C_MountJournal.GetMountFromItem then
-            journalID = C_MountJournal.GetMountFromItem(drop.itemID)
-            if issecretvalue and journalID and issecretvalue(journalID) then journalID = nil end
-        end
-        journalID = journalID and tonumber(journalID) or nil
-        if not journalID or journalID == tonumber(drop.itemID) then return end
-        local jKey = "mount\0" .. tostring(journalID)
-        dropSourceIndex[jKey] = true
-        if guaranteedIndex[itemKey] then guaranteedIndex[jKey] = true end
-        if repeatableIndex[itemKey] then repeatableIndex[jKey] = true end
-        local diff = dropDifficultyIndex[itemKey]
-        if diff then dropDifficultyIndex[jKey] = diff end
-    end
-    local function MirrorMountJournalKeysInArray(drops)
-        if not drops then return end
-        for i = 1, #drops do
-            MirrorOneMountJournalIndexKeys(drops[i])
-        end
-    end
-    for _, drops in pairs(npcDropDB) do MirrorMountJournalKeysInArray(drops) end
-    for _, drops in pairs(objectDropDB) do MirrorMountJournalKeysInArray(drops) end
-    for _, drops in pairs(fishingDropDB) do MirrorMountJournalKeysInArray(drops) end
-    for _, zData in pairs(zoneDropDB) do
-        local drops = zData.drops or zData
-        MirrorMountJournalKeysInArray(drops)
-    end
-    for _, containerData in pairs(containerDropDB) do
-        local list = containerData.drops or containerData
-        if type(list) == "table" then
-            local arr = list.drops or list
-            if type(arr) == "table" then MirrorMountJournalKeysInArray(arr) end
-        end
-    end
-
-    -- Pet journal uses speciesID; DB rows use pet\0<itemID>. Mirror species key for IsDropSourceCollectible / UI.
-    local function MirrorOnePetSpeciesIndexKeys(drop)
-        if not drop or drop.type ~= "pet" or not drop.itemID then return end
-        local itemKey = "pet\0" .. tostring(drop.itemID)
-        if not dropSourceIndex[itemKey] then return end
-        local speciesID = drop.speciesID
-        if not speciesID and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-            local _, _, _, _, _, _, _, _, _, _, _, _, sid = C_PetJournal.GetPetInfoByItemID(drop.itemID)
-            speciesID = sid
-            if issecretvalue and speciesID and issecretvalue(speciesID) then speciesID = nil end
-        end
-        speciesID = speciesID and tonumber(speciesID) or nil
-        if not speciesID or speciesID == tonumber(drop.itemID) then return end
-        local sKey = "pet\0" .. tostring(speciesID)
-        dropSourceIndex[sKey] = true
-        if guaranteedIndex[itemKey] then guaranteedIndex[sKey] = true end
-        if repeatableIndex[itemKey] then repeatableIndex[sKey] = true end
-        local diff = dropDifficultyIndex[itemKey]
-        if diff then dropDifficultyIndex[sKey] = diff end
-    end
-    local function MirrorPetSpeciesKeysInArray(drops)
-        if not drops then return end
-        for i = 1, #drops do
-            MirrorOnePetSpeciesIndexKeys(drops[i])
-        end
-    end
-    for _, drops in pairs(npcDropDB) do MirrorPetSpeciesKeysInArray(drops) end
-    for _, drops in pairs(objectDropDB) do MirrorPetSpeciesKeysInArray(drops) end
-    for _, drops in pairs(fishingDropDB) do MirrorPetSpeciesKeysInArray(drops) end
-    for _, zData in pairs(zoneDropDB) do
-        local drops = zData.drops or zData
-        MirrorPetSpeciesKeysInArray(drops)
-    end
-    for _, containerData in pairs(containerDropDB) do
-        local list = containerData.drops or containerData
-        if type(list) == "table" then
-            local arr = list.drops or list
-            if type(arr) == "table" then MirrorPetSpeciesKeysInArray(arr) end
-        end
+    -- Mount/Pet journal mirror keys are non-critical for startup loot tracking.
+    -- Build them in a deferred, budgeted pass to reduce /reload hitch.
+    if Fns.ScheduleDeferredJournalMirrorIndexBuild then
+        Fns.ScheduleDeferredJournalMirrorIndexBuild()
     end
 
     -- Build sourceItemToAllMountKeys: sourceItemID -> { mountKey1, mountKey2, ... }
@@ -1284,6 +1209,103 @@ function Fns.BuildReverseIndices()
     end
 
     reverseIndicesBuilt = true
+end
+
+---Deferred journal-key mirror pass (mount journalID / pet speciesID).
+---Keeps startup responsive; base itemID indices are already ready synchronously.
+function Fns.ScheduleDeferredJournalMirrorIndexBuild()
+    if journalMirrorBuildPending then
+        return
+    end
+
+    local BUDGET_MS = 2.5
+    journalMirrorBuildPending = true
+    C_Timer.After(0.5, function()
+        journalMirrorBuildPending = false
+        if not reverseIndicesBuilt then return end
+
+        if ns.EnsureBlizzardCollectionsLoaded then
+            ns.EnsureBlizzardCollectionsLoaded()
+        end
+
+        local work = {}
+        local function PushDrops(drops)
+            if type(drops) ~= "table" then return end
+            for i = 1, #drops do
+                work[#work + 1] = drops[i]
+            end
+        end
+
+        for _, drops in pairs(npcDropDB) do PushDrops(drops) end
+        for _, drops in pairs(objectDropDB) do PushDrops(drops) end
+        for _, drops in pairs(fishingDropDB) do PushDrops(drops) end
+        for _, zData in pairs(zoneDropDB) do
+            PushDrops(zData.drops or zData)
+        end
+        for _, containerData in pairs(containerDropDB) do
+            local list = containerData.drops or containerData
+            if type(list) == "table" then
+                PushDrops(list.drops or list)
+            end
+        end
+
+        local idx = 1
+        local function ProcessBatch()
+            local batchStart = debugprofilestop()
+            while idx <= #work do
+                local drop = work[idx]
+
+                if drop and drop.itemID then
+                    if drop.type == "mount" then
+                        local itemKey = "mount\0" .. tostring(drop.itemID)
+                        if dropSourceIndex[itemKey] then
+                            local journalID = drop.mountID
+                            if not journalID and C_MountJournal and C_MountJournal.GetMountFromItem then
+                                journalID = C_MountJournal.GetMountFromItem(drop.itemID)
+                                if issecretvalue and journalID and issecretvalue(journalID) then journalID = nil end
+                            end
+                            journalID = journalID and tonumber(journalID) or nil
+                            if journalID and journalID ~= tonumber(drop.itemID) then
+                                local jKey = "mount\0" .. tostring(journalID)
+                                dropSourceIndex[jKey] = true
+                                if guaranteedIndex[itemKey] then guaranteedIndex[jKey] = true end
+                                if repeatableIndex[itemKey] then repeatableIndex[jKey] = true end
+                                local diff = dropDifficultyIndex[itemKey]
+                                if diff then dropDifficultyIndex[jKey] = diff end
+                            end
+                        end
+                    elseif drop.type == "pet" then
+                        local itemKey = "pet\0" .. tostring(drop.itemID)
+                        if dropSourceIndex[itemKey] then
+                            local speciesID = drop.speciesID
+                            if not speciesID and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                                local _, _, _, _, _, _, _, _, _, _, _, _, sid = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+                                speciesID = sid
+                                if issecretvalue and speciesID and issecretvalue(speciesID) then speciesID = nil end
+                            end
+                            speciesID = speciesID and tonumber(speciesID) or nil
+                            if speciesID and speciesID ~= tonumber(drop.itemID) then
+                                local sKey = "pet\0" .. tostring(speciesID)
+                                dropSourceIndex[sKey] = true
+                                if guaranteedIndex[itemKey] then guaranteedIndex[sKey] = true end
+                                if repeatableIndex[itemKey] then repeatableIndex[sKey] = true end
+                                local diff = dropDifficultyIndex[itemKey]
+                                if diff then dropDifficultyIndex[sKey] = diff end
+                            end
+                        end
+                    end
+                end
+
+                idx = idx + 1
+                if debugprofilestop() - batchStart > BUDGET_MS then
+                    C_Timer.After(0, ProcessBatch)
+                    return
+                end
+            end
+        end
+
+        ProcessBatch()
+    end)
 end
 
 -- Helper: keep sourceItemToAllMountKeys in sync when questStarterMountToSourceItemID is updated at runtime.
@@ -1491,14 +1513,14 @@ function WarbandNexus:RegisterTryCounterLootToastForBagDedupe(collectibleType, n
         mark("mount\0" .. tostring(sourceItemID))
         if C_MountJournal and C_MountJournal.GetMountFromItem then
             local mid = C_MountJournal.GetMountFromItem(sourceItemID)
-            if mid and (not issecretvalue or not issecretvalue(mid)) and type(mid) == "number" and mid > 0 then
+            if mid and not (issecretvalue and issecretvalue(mid)) and type(mid) == "number" and mid > 0 then
                 mark("mount\0" .. tostring(mid))
             end
         end
     end
     if collectibleType == "pet" and sourceItemID and type(sourceItemID) == "number" and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
         local sid = select(13, C_PetJournal.GetPetInfoByItemID(sourceItemID))
-        if sid and (not issecretvalue or not issecretvalue(sid)) and type(sid) == "number" and sid > 0 then
+        if sid and not (issecretvalue and issecretvalue(sid)) and type(sid) == "number" and sid > 0 then
             mark("pet\0" .. tostring(sid))
         end
     end
@@ -1523,14 +1545,14 @@ function WarbandNexus:ShouldSuppressBagCollectibleToastAsTryCounterDuplicate(col
         if recent("mount\0" .. tostring(itemID)) then return true end
         if C_MountJournal and C_MountJournal.GetMountFromItem then
             local mid = C_MountJournal.GetMountFromItem(itemID)
-            if mid and (not issecretvalue or not issecretvalue(mid)) and type(mid) == "number" and mid > 0 then
+            if mid and not (issecretvalue and issecretvalue(mid)) and type(mid) == "number" and mid > 0 then
                 if recent("mount\0" .. tostring(mid)) then return true end
             end
         end
     end
     if collectibleType == "pet" and itemID and type(itemID) == "number" and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
         local sid = select(13, C_PetJournal.GetPetInfoByItemID(itemID))
-        if sid and (not issecretvalue or not issecretvalue(sid)) and type(sid) == "number" and sid > 0 then
+        if sid and not (issecretvalue and issecretvalue(sid)) and type(sid) == "number" and sid > 0 then
             if recent("pet\0" .. tostring(sid)) then return true end
         end
     end
@@ -1545,7 +1567,7 @@ local function SendTryCounterCollectibleObtained(self, payload, sourceItemID)
     if payload.type and payload.id ~= nil then
         WarbandNexus:RegisterTryCounterLootToastForBagDedupe(payload.type, payload.id, sourceItemID)
     end
-    self:SendMessage("WN_COLLECTIBLE_OBTAINED", payload)
+    self:SendMessage(E.COLLECTIBLE_OBTAINED, payload)
 end
 
 ---Mark a drop item as obtained so the try counter stops tracking it.
@@ -2423,7 +2445,7 @@ function Fns.BuildCollectibleObtainedChatLink(data)
     end
     if data.type == "pet" and data.id and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then
         local ok, n = pcall(C_PetJournal.GetPetInfoBySpeciesID, data.id)
-        if ok and n and type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
+        if ok and n and type(n) == "string" and not (issecretvalue and issecretvalue(n)) and n ~= "" then
             return "|cff1eff00[" .. n .. "]|r"
         end
     end
@@ -2689,7 +2711,7 @@ function Fns.ReseedStatisticsForDrops(drops, resolvedDropStatIds)
     end
 
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_reseeded" })
+        WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "statistics_reseeded" })
     end
 end
 
@@ -2835,7 +2857,7 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
             end
         end
         if WN.SendMessage then
-            WN:SendMessage("WN_PLANS_UPDATED", { action = "try_count_set" })
+            WN:SendMessage(E.PLANS_UPDATED, { action = "try_count_set" })
         end
     end)
 end
@@ -3082,8 +3104,8 @@ end
 -- =====================================================================
 
 ---ENCOUNTER_END handler for instanced bosses
----NOTE: Event arguments passed via RegisterEvent are NOT secret values.
----Only CombatLogGetCurrentEventInfo() returns secrets during instanced combat.
+---NOTE: Midnight 12.0 can return secret values in ENCOUNTER_END args in some contexts.
+---This handler defensively guards encounterID/encounterName/difficultyID before comparisons or keying.
 ---This handler is the primary instanced kill detection path when loot GUIDs are unreliable.
 ---@param event string
 ---@param encounterID number
@@ -3118,7 +3140,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
 
     -- Midnight 12.0: encounterID can be secret in dungeons; cannot use as table key or tostring().
     if issecretvalue and encounterID and issecretvalue(encounterID) then
-        if encounterName and (not issecretvalue or not issecretvalue(encounterName)) and encounterNameToNpcs[encounterName] then
+        if encounterName and not (issecretvalue and issecretvalue(encounterName)) and encounterNameToNpcs[encounterName] then
             npcIDs = encounterNameToNpcs[encounterName]
             useNameFallback = true
             -- Normalize: resolve canonical encounter_<ID> key via the first matched NPC.
@@ -3170,15 +3192,14 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
 
     -- Safe display name for storage / synthetic keys (Midnight: never concat or store secret encounterName)
     local safeEncounterDisplayName = nil
-    if type(encounterName) == "string" and encounterName ~= ""
-        and (not issecretvalue or not issecretvalue(encounterName)) then
+    if type(encounterName) == "string" and not (issecretvalue and issecretvalue(encounterName)) and encounterName ~= "" then
         safeEncounterDisplayName = encounterName
     end
 
     -- Feed localized encounter name to TooltipService for name-based tooltip lookup.
     -- Skip when name is secret/empty — caches are keyed by name; TryCounter passes npcIDs when ID is secret.
     if self.Tooltip and self.Tooltip._feedEncounterKill and safeEncounterDisplayName then
-        local safeEncID = (not useNameFallback and encounterID and (not issecretvalue or not issecretvalue(encounterID))) and encounterID or nil
+        local safeEncID = (not useNameFallback and encounterID and not (issecretvalue and issecretvalue(encounterID))) and encounterID or nil
         local npcIDsForFeed = (safeEncID == nil and useNameFallback and npcIDs and #npcIDs > 0) and npcIDs or nil
         self.Tooltip._feedEncounterKill(safeEncounterDisplayName, safeEncID, npcIDsForFeed)
     end
@@ -3279,10 +3300,9 @@ end
 local function TryCounterAnnounceCollectibleMountsOnInstanceEntry(WN)
     if not WN or not WN.Print or not Fns.IsAutoTryCounterEnabled() then return end
     if Fns.IsTryCounterChatHidden() then return end
-    local inI = IsInInstance()
+    local inI, it = IsInInstance()
     if issecretvalue and inI and issecretvalue(inI) then return end
     if not inI then return end
-    local _, it = IsInInstance()
     if issecretvalue and it and issecretvalue(it) then it = nil end
     if it ~= "party" and it ~= "raid" then return end
 
@@ -4098,7 +4118,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
 
     -- Only process self-loot
     local playerName = UnitName("player")
-    if not playerName then return end
+    if not playerName or (issecretvalue and issecretvalue(playerName)) then return end
     local authorBase = author and author:match("^([^%-]+)") or author
     if author and author ~= "" and author ~= playerName and (not authorBase or authorBase ~= playerName) then return end
 
@@ -4399,7 +4419,7 @@ end
 ---@return number|nil mapID
 Fns.GetSafeMapID = function()
     local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-    local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
+    local mapID = (rawMapID and not (issecretvalue and issecretvalue(rawMapID))) and rawMapID or nil
     if mapID then
         lastSafeMapID = mapID
     else
@@ -4443,7 +4463,7 @@ function Fns.CollectFishingDropsForZone()
         end
         local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(currentMapID)
         local nextID = mapInfo and mapInfo.parentMapID
-        currentMapID = (nextID and (not issecretvalue or not issecretvalue(nextID))) and nextID or nil
+        currentMapID = (nextID and not (issecretvalue and issecretvalue(nextID))) and nextID or nil
     end
     return drops, false
 end
@@ -4486,7 +4506,7 @@ Fns.IsInTrackableFishingZone = function()
         if fishingDropDB[current] then return true end
         local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(current)
         local nextID = mapInfo and mapInfo.parentMapID
-        current = (nextID and (not issecretvalue or not issecretvalue(nextID))) and nextID or nil
+        current = (nextID and not (issecretvalue and issecretvalue(nextID))) and nextID or nil
     end
     return false
 end
@@ -4532,17 +4552,18 @@ function Fns.CurrentUnitsHaveEligibleNpcContext()
     return Fns.LootEligibleNpcFromGuid(mo) or Fns.LootEligibleNpcFromGuid(tg) or Fns.LootEligibleNpcFromGuid(npc)
 end
 
+local function IsBlockingMobCorpseGuid(guid)
+    if not guid or not Fns.UnitGuidLooksLikeMobCorpse(guid) then return false end
+    local nid = Fns.GetNPCIDFromGUID(guid)
+    return not Fns.IsFishingBobberNpcId(nid)
+end
+
 ---Uses lootSession snapshot (deferred/opened capture). When set, mob loot should run even if
 ---GetLootSourceInfo reports a GameObject (seen after a recent herb/ore cast in same session).
 function Fns.LootSessionHasMobLootContext()
-    local function isBlockingMobCorpse(guid)
-        if not guid or not Fns.UnitGuidLooksLikeMobCorpse(guid) then return false end
-        local nid = Fns.GetNPCIDFromGUID(guid)
-        return not Fns.IsFishingBobberNpcId(nid)
-    end
-    return isBlockingMobCorpse(lootSession.mouseoverGUID)
-        or isBlockingMobCorpse(lootSession.targetGUID)
-        or isBlockingMobCorpse(lootSession.npcGUID)
+    return IsBlockingMobCorpseGuid(lootSession.mouseoverGUID)
+        or IsBlockingMobCorpseGuid(lootSession.targetGUID)
+        or IsBlockingMobCorpseGuid(lootSession.npcGUID)
 end
 
 ---Same as LootSessionHasMobLootContext but for LOOT_READY snapshot (lootSession not filled yet).
@@ -4551,27 +4572,17 @@ end
 ---@param npcGUID string|nil
 ---@return boolean
 function Fns.LootReadySnapshotHasMobLootContext(mouseoverGUID, targetGUID, npcGUID)
-    local function isBlockingMobCorpse(guid)
-        if not guid or not Fns.UnitGuidLooksLikeMobCorpse(guid) then return false end
-        local nid = Fns.GetNPCIDFromGUID(guid)
-        return not Fns.IsFishingBobberNpcId(nid)
-    end
-    return isBlockingMobCorpse(mouseoverGUID)
-        or isBlockingMobCorpse(targetGUID)
-        or isBlockingMobCorpse(npcGUID)
+    return IsBlockingMobCorpseGuid(mouseoverGUID)
+        or IsBlockingMobCorpseGuid(targetGUID)
+        or IsBlockingMobCorpseGuid(npcGUID)
 end
 
 ---Fresh read at call site (e.g. LOOT_CLOSED before session is promoted).
 Fns.CurrentUnitsHaveMobLootContext = function()
-    local function isBlockingMobCorpse(guid)
-        if not guid or not Fns.UnitGuidLooksLikeMobCorpse(guid) then return false end
-        local nid = Fns.GetNPCIDFromGUID(guid)
-        return not Fns.IsFishingBobberNpcId(nid)
-    end
     local mo = Fns.SafeGetMouseoverGUID()
     local tg = Fns.SafeGetTargetGUID()
     local npc = Fns.SafeGetUnitGUID("npc")
-    return isBlockingMobCorpse(mo) or isBlockingMobCorpse(tg) or isBlockingMobCorpse(npc)
+    return IsBlockingMobCorpseGuid(mo) or IsBlockingMobCorpseGuid(tg) or IsBlockingMobCorpseGuid(npc)
 end
 
 ---Fully reset lootSession to a clean state. Called at the start of every new
@@ -5085,7 +5096,7 @@ function Fns.ResolveFromZone(ctx, inInstance, addon)
         end
         local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
         local nextID = mapInfo and mapInfo.parentMapID
-        mapID = (nextID and (not issecretvalue or not issecretvalue(nextID))) and nextID or nil
+        mapID = (nextID and not (issecretvalue and issecretvalue(nextID))) and nextID or nil
     end
 end
 
@@ -5849,18 +5860,19 @@ function Fns.MergeTrackDB()
                             npcDropDB[npcID] = {}
                         end
                         local existing = npcDropDB[npcID]
+                        local existingByItemID = {}
+                        for j = 1, #existing do
+                            local ex = existing[j]
+                            if ex and ex.itemID then
+                                existingByItemID[ex.itemID] = true
+                            end
+                        end
                         for i = 1, #drops do
                             local drop = drops[i]
                             if drop and drop.itemID then
-                                local found = false
-                                for j = 1, #existing do
-                                    if existing[j].itemID == drop.itemID then
-                                        found = true
-                                        break
-                                    end
-                                end
-                                if not found then
+                                if not existingByItemID[drop.itemID] then
                                     existing[#existing + 1] = drop
+                                    existingByItemID[drop.itemID] = true
                                 end
                             end
                         end
@@ -5882,18 +5894,19 @@ function Fns.MergeTrackDB()
                             objectDropDB[objectID] = {}
                         end
                         local existing = objectDropDB[objectID]
+                        local existingByItemID = {}
+                        for j = 1, #existing do
+                            local ex = existing[j]
+                            if ex and ex.itemID then
+                                existingByItemID[ex.itemID] = true
+                            end
+                        end
                         for i = 1, #drops do
                             local drop = drops[i]
                             if drop and drop.itemID then
-                                local found = false
-                                for j = 1, #existing do
-                                    if existing[j].itemID == drop.itemID then
-                                        found = true
-                                        break
-                                    end
-                                end
-                                if not found then
+                                if not existingByItemID[drop.itemID] then
                                     existing[#existing + 1] = drop
+                                    existingByItemID[drop.itemID] = true
                                 end
                             end
                         end
@@ -6081,7 +6094,7 @@ function Fns.SeedFromStatistics()
         if seeded > 0 then
             WarbandNexus:Debug("TryCounter: Seeded %d entries from WoW Statistics (char: %s)", seeded, charKey)
             if WarbandNexus.SendMessage then
-                WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
+                WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "statistics_seeded" })
             end
         end
 
@@ -6123,7 +6136,7 @@ function Fns.SeedFromStatistics()
                 if retrySeeded > 0 then
                     WarbandNexus:Debug("TryCounter: Retry resolved %d / %d entries", retrySeeded, #unresolvedDrops)
                     if WarbandNexus.SendMessage then
-                        WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
+                        WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "statistics_seeded" })
                     end
                 end
                 Fns.ScheduleDeferredRarityMountMaxSync(2)
@@ -6160,7 +6173,7 @@ function Fns.SeedFromStatistics()
                         if finalSeeded > 0 then
                             WarbandNexus:Debug("TryCounter: Final retry resolved %d / %d entries", finalSeeded, #stillUnresolved)
                             if WarbandNexus.SendMessage then
-                                WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
+                                WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "statistics_seeded" })
                             end
                         end
                         Fns.ScheduleDeferredRarityMountMaxSync(2)
@@ -6431,8 +6444,12 @@ end
 ---Initialize the automatic try counter system
 function WarbandNexus:InitializeTryCounter()
     if tryCounterReady or tryCounterInitializing then return end
+    if self and self.db and self.db.profile and self.db.profile.modulesEnabled
+        and self.db.profile.modulesEnabled.tryCounter == false then
+        return
+    end
     tryCounterInitializing = true
-
+    local ok, err = xpcall(function()
     Fns.EnsureDB()
 
     -- Load DB references (initial load from static CollectibleSourceDB)
@@ -6449,11 +6466,11 @@ function WarbandNexus:InitializeTryCounter()
         local ok = pcall(function()
             hookSelf:RawHook("UseContainerItem", function(bagID, slotIndex)
                 if bagID and slotIndex then
-                    local safeBag = (not issecretvalue or not issecretvalue(bagID)) and bagID or nil
-                    local safeSlot = (not issecretvalue or not issecretvalue(slotIndex)) and slotIndex or nil
+                    local safeBag = not (issecretvalue and issecretvalue(bagID)) and bagID or nil
+                    local safeSlot = not (issecretvalue and issecretvalue(slotIndex)) and slotIndex or nil
                     if safeBag and safeSlot and safeBag >= 0 and safeBag <= 4 then
                         local itemID = C_Container.GetContainerItemID(safeBag, safeSlot)
-                        if itemID and (not issecretvalue or not issecretvalue(itemID)) and containerDropDB[itemID] then
+                        if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
                             lastContainerItemID = itemID
                             lastContainerItemTime = GetTime()
                         end
@@ -6476,6 +6493,7 @@ function WarbandNexus:InitializeTryCounter()
 
     -- Sync lockout state with server quest flags (prevents false increments after /reload mid-farm)
     Fns.SyncLockoutState()
+    lastLockoutSyncAt = GetTime() or 0
 
     -- Pre-resolve mount/pet IDs for all known drop items (warmup cache for SeedFromStatistics)
     -- This ensures resolvedIDs is populated before statistics seeding runs.
@@ -6528,7 +6546,11 @@ function WarbandNexus:InitializeTryCounter()
     -- Delayed 2s to ensure quest log data is available after login/reload.
     -- Also refreshes discovery snapshot so auto-discovery has a clean baseline.
     C_Timer.After(2, function()
-        Fns.SyncLockoutState()
+        local now = GetTime() or 0
+        if now - (lastLockoutSyncAt or 0) >= 1.5 then
+            Fns.SyncLockoutState()
+            lastLockoutSyncAt = now
+        end
         Fns.TakeDiscoverySnapshot()
     end)
 
@@ -6569,7 +6591,14 @@ function WarbandNexus:InitializeTryCounter()
         end
     end)
 
+    end, function(e)
+        return tostring(e)
+    end)
+
     tryCounterInitializing = false
+    if not ok then
+        ns.DebugPrint("|cffff4444[WN-TC]|r InitializeTryCounter failed: " .. tostring(err))
+    end
 end
 
 ---Debug: list merged Statistics-ID buckets for mounts (cross-difficulty / cross-NPC merge). Requires profile.debugMode.
@@ -6671,10 +6700,9 @@ function WarbandNexus:TryCounterDebugReport()
         end
     end
 
-    -- 4. Target
-    local tg = UnitGUID and UnitGUID("target")
-    local safeTg = tg and Fns.SafeGuardGUID(tg) or nil
-    msg("Target GUID: " .. safeStr(tg))
+    -- 4. Target (never call UnitGUID("target") raw — may be secret in instances)
+    local safeTg = Fns.SafeGetUnitGUID("target")
+    msg("Target GUID: " .. safeStr(safeTg))
     if safeTg then
         local nid = Fns.GetNPCIDFromGUID(safeTg)
         local oid = Fns.GetObjectIDFromGUID(safeTg)
@@ -6687,7 +6715,7 @@ function WarbandNexus:TryCounterDebugReport()
         if count >= 2 then break end
         count = count + 1
         local diffStr = data.difficultyID
-        if diffStr ~= nil and issecretvalue and issecretvalue(diffStr) then diffStr = "(secret)" end
+        if issecretvalue and diffStr and issecretvalue(diffStr) then diffStr = "(secret)" end
         if diffStr == nil then diffStr = "nil" elseif diffStr ~= "(secret)" then diffStr = tostring(diffStr) end
         msg("recentKills sample: npcID=" .. tostring(data.npcID) .. " isEncounter=" .. tostring(data.isEncounter) .. " difficultyID=" .. diffStr)
     end
@@ -6695,7 +6723,7 @@ function WarbandNexus:TryCounterDebugReport()
 
     -- 6. Map / zone (guard mapID for 12.0)
     local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-    local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
+    local mapID = (rawMapID and not (issecretvalue and issecretvalue(rawMapID))) and rawMapID or nil
     msg("Map: mapID=" .. safeStr(mapID) .. " zoneDropDB[mapID]=" .. (mapID and zoneDropDB[mapID] and "yes" or "no"))
     if mapID and C_Map and C_Map.GetMapInfo then
         local info = C_Map.GetMapInfo(mapID)
@@ -6719,7 +6747,7 @@ function WarbandNexus:TryCounterDebugReport()
         local sid = sampleStatIds[i]
         local val = GetStatistic(sid)
         local display = "(secret)"
-        if val ~= nil and not (issecretvalue and issecretvalue(val)) then
+        if not (issecretvalue and val and issecretvalue(val)) then
             display = tostring(val)
         end
         msg("GetStatistic(" .. sid .. ")=" .. display)
@@ -6760,7 +6788,7 @@ function WarbandNexus:CheckTargetDrops()
     local rawUnitName = UnitName(unit)
     local unitName = "Unknown"
     if type(rawUnitName) == "string" and rawUnitName ~= ""
-        and (not issecretvalue or not issecretvalue(rawUnitName)) then
+        and not (issecretvalue and issecretvalue(rawUnitName)) then
         unitName = rawUnitName
     end
     
@@ -7050,7 +7078,7 @@ function WarbandNexus:RestoreRarityImportBackup()
         end
     end
     if updated > 0 and self.SendMessage then
-        self:SendMessage("WN_PLANS_UPDATED", { action = "legacy_mount_tracker_import" })
+        self:SendMessage(E.PLANS_UPDATED, { action = "legacy_mount_tracker_import" })
     end
     return updated, scanned
 end
@@ -7151,7 +7179,7 @@ function WarbandNexus:SyncRarityMountAttemptsMax()
     end
 
     if updated > 0 and self.SendMessage then
-        self:SendMessage("WN_PLANS_UPDATED", { action = "legacy_mount_tracker_import" })
+        self:SendMessage(E.PLANS_UPDATED, { action = "legacy_mount_tracker_import" })
     end
 
     return updated, scanned

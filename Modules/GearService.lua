@@ -31,12 +31,11 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
+local issecretvalue = issecretvalue
 
-local function DebugPrint(...)
-    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-        _G.print("|cff00BFFF[GearService]|r", ...)
-    end
-end
+local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00BFFF[GearService]|r"))
+    or ns.DebugPrint
+    or function() end
 
 local gearScanTimer = nil
 local currencyGearScanTimer = nil
@@ -143,11 +142,7 @@ local SPEC_MAIN_STAT = {
     [577] = "AGI", [581] = "AGI",
 }
 
-local CLASS_FILE_TO_ID = {
-    WARRIOR = 1, PALADIN = 2, HUNTER = 3, ROGUE = 4, PRIEST = 5,
-    DEATHKNIGHT = 6, SHAMAN = 7, MAGE = 8, WARLOCK = 9, MONK = 10,
-    DRUID = 11, DEMONHUNTER = 12, EVOKER = 13,
-}
+local CLASS_FILE_TO_ID = Constants.CLASS_FILE_TO_CLASS_ID
 
 local CLASS_ARMOR_SUBCLASS = {
     WARRIOR = 4, PALADIN = 4, DEATHKNIGHT = 4,
@@ -1275,9 +1270,8 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     local findings = {}
     if not selectedCharKey then return findings end
 
-    local isDebug = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode
     local function dbg(msg)
-        if isDebug then _G.print("|cff00BFFF[StorageUpgrade]|r " .. msg) end
+        DebugPrint("|cff00BFFF[StorageUpgrade]|r " .. tostring(msg))
     end
 
     local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
@@ -1305,6 +1299,13 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
 
     local addedCount = 0
 
+    local function NameFromItemLink(link, fallbackId)
+        if not link or type(link) ~= "string" or (issecretvalue and issecretvalue(link)) then
+            return tostring(fallbackId)
+        end
+        return link:match("%[(.-)%]") or tostring(fallbackId)
+    end
+
     local function AddCandidate(slotID, candidate)
         if not findings[slotID] then findings[slotID] = {} end
         local link = candidate.itemLink or candidate.link
@@ -1327,7 +1328,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
 
         local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
         local slotLabel = (slotDef and slotDef.label) or tostring(slotID)
-        local itemName = link and link:match("%[(.-)%]") or tostring(candidate.itemID)
+        local itemName = NameFromItemLink(link, candidate.itemID)
         dbg("  +++ " .. slotLabel .. ": " .. itemName .. " ilvl=" .. tostring(candidate.itemLevel) .. " from=" .. tostring(candidate.source))
     end
 
@@ -1363,7 +1364,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         if (quality or 0) < 2 then return end
 
         local link = item.itemLink or item.link
-        local itemName = link and link:match("%[(.-)%]") or tostring(item.itemID)
+        local itemName = NameFromItemLink(link, item.itemID)
 
         for i = 1, #targetSlots do
             local slotID = targetSlots[i]
@@ -1730,7 +1731,7 @@ function WarbandNexus:GetGearUpgradeCurrencies(charKey)
 end
 
 -- After currency changes (e.g. crests spent on upgrade), re-scan gear so item ilvl/tier and watermarks stay in sync.
-WarbandNexus:RegisterMessage("WN_CURRENCY_UPDATED", function()
+WarbandNexus:RegisterMessage(Constants.EVENTS.CURRENCY_UPDATED, function()
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
     if currencyGearScanTimer then currencyGearScanTimer:Cancel() end
     currencyGearScanTimer = C_Timer.NewTimer(0.4, function()

@@ -5,7 +5,16 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
+
+local issecretvalue = issecretvalue
+
+local function SafeLower(s)
+    if not s or s == "" then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    return s:lower()
+end
 
 -- Unique AceEvent handler identity for ItemsUI
 local ItemsUIEvents = {}
@@ -33,7 +42,6 @@ local AcquireItemRow = ns.UI_AcquireItemRow
 local ReleaseItemRow = ns.UI_ReleaseItemRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
-local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateStatsBar = ns.UI_CreateStatsBar
 local CreateResultsContainer = ns.UI_CreateResultsContainer
 local ApplyVisuals = ns.UI_ApplyVisuals
@@ -87,7 +95,7 @@ local function RegisterItemsEvents(parent)
     local function ScheduleDrawItemList()
         if not IsItemsTabActive() then return end
         if pendingDrawTimer then return end  -- already scheduled
-        pendingDrawTimer = C_Timer.After(DRAW_DEBOUNCE, function()
+        pendingDrawTimer = C_Timer.NewTimer(DRAW_DEBOUNCE, function()
             pendingDrawTimer = nil
             if IsItemsTabActive() and parent then
                 WarbandNexus:DrawItemList(parent)
@@ -100,7 +108,7 @@ local function RegisterItemsEvents(parent)
     
     -- Async item metadata resolution (items that were "Loading..." now have real names)
     -- Keep: UI.lua does NOT handle WN_ITEM_METADATA_READY.
-    WarbandNexus.RegisterMessage(ItemsUIEvents, "WN_ITEM_METADATA_READY", function()
+    WarbandNexus.RegisterMessage(ItemsUIEvents, E.ITEM_METADATA_READY, function()
         if IsItemsTabActive() then
             DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
             ScheduleDrawItemList()
@@ -129,8 +137,11 @@ function WarbandNexus:DrawItemList(parent)
     end
     HideEmptyStateCard(parent, "items")
     
-    -- PERFORMANCE: Release pooled frames back to pool before redrawing
-    ReleaseAllPooledChildren(parent)
+    -- PERFORMANCE: Release pooled frames for partial redraw calls.
+    -- PopulateContent already does this once per full-tab render.
+    if not parent._preparedByPopulate then
+        ReleaseAllPooledChildren(parent)
+    end
     
     -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
     local titleCard = CreateCard(headerParent, 70)
@@ -486,6 +497,7 @@ function WarbandNexus:DrawItemList(parent)
         -- Guild Bank gold (ONLY use cached value from scan - no live API fallback)
         if IsInGuild() then
             local guildName = GetGuildInfo("player")
+            if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
             local guildGold = nil
             
             -- Try to get cached gold from scan data for CURRENT guild only
@@ -618,6 +630,10 @@ end
 --============================================================================
 
 function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTab, itemsSearchText)
+    local itemsSearchActive = itemsSearchText
+        and not (issecretvalue and issecretvalue(itemsSearchText))
+        and itemsSearchText ~= ""
+
     local expandedGroups = ns.UI_GetExpandedGroups()
     
     -- Get items based on selected sub-tab (4 separate sources)
@@ -633,11 +649,11 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     end
     
     -- Apply search filter (Items tab specific)
-    if itemsSearchText and itemsSearchText ~= "" then
+    if itemsSearchActive then
         local filtered = {}
         for _, item in ipairs(items) do
-            local itemName = (item.name or ""):lower()
-            local itemLink = (item.itemLink or ""):lower()
+            local itemName = SafeLower(item.name)
+            local itemLink = SafeLower(item.itemLink)
             if itemName:find(itemsSearchText, 1, true) or itemLink:find(itemsSearchText, 1, true) then
                 table.insert(filtered, item)
             end
@@ -647,15 +663,15 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     
     -- Sort items alphabetically by name
     table.sort(items, function(a, b)
-        local nameA = (a.name or ""):lower()
-        local nameB = (b.name or ""):lower()
+        local nameA = SafeLower(a.name)
+        local nameB = SafeLower(b.name)
         return nameA < nameB
     end)
     
     -- ===== EMPTY STATE =====
     if #items == 0 then
         -- If search is active, use SearchResultsRenderer for search-specific empty state
-        if itemsSearchText and itemsSearchText ~= "" then
+        if itemsSearchActive then
             local height = SearchResultsRenderer:RenderEmptyState(self, parent, itemsSearchText, "items")
             -- Update SearchStateManager with result count
             SearchStateManager:UpdateResults("items", 0)
@@ -676,7 +692,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     -- ===== GROUP ITEMS BY TYPE =====
     local groups = {}
     local groupOrder = {}
-    local hasSearchFilter = itemsSearchText and itemsSearchText ~= ""
+    local hasSearchFilter = itemsSearchActive
     
     for _, item in ipairs(items) do
         local typeName = item.itemType or ((ns.L and ns.L["GROUP_MISC"]) or "Miscellaneous")
@@ -766,7 +782,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             row.nameText:SetWidth(nameWidth)
             
             local baseName = item.name
-            if not baseName and item.link then
+            if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
                 baseName = item.link:match("%[(.-)%]")
             end
             if not baseName and item.pending then

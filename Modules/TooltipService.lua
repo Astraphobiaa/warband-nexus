@@ -15,6 +15,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 
 -- Midnight 12.0: Secret Values API (nil on pre-12.0 clients, backward-compatible)
 local issecretvalue = issecretvalue
@@ -32,9 +33,9 @@ local isVisible = false
 local currentAnchor = nil
 local isInitialized = false
 
--- Event names
-local TOOLTIP_SHOW = "WN_TOOLTIP_SHOW"
-local TOOLTIP_HIDE = "WN_TOOLTIP_HIDE"
+-- Event names (single source: Constants.EVENTS)
+local TOOLTIP_SHOW = E.TOOLTIP_SHOW
+local TOOLTIP_HIDE = E.TOOLTIP_HIDE
 
 -- ============================================================================
 -- TOOLTIP SERVICE
@@ -548,7 +549,7 @@ end
 function TooltipService:GetItemTooltipStatLines(itemLink, itemID)
     if not C_TooltipInfo then return {} end
     local tooltipData
-    if itemLink and type(itemLink) == "string" and (not issecretvalue or not issecretvalue(itemLink)) then
+    if itemLink and type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)) then
         if C_TooltipInfo.GetHyperlink then
             local ok, result = pcall(C_TooltipInfo.GetHyperlink, itemLink)
             if ok and result then tooltipData = result end
@@ -623,7 +624,7 @@ function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
     -- Load tooltip data first (needed for slot inference when equipLoc is PROFESSION_GEAR)
     local tooltipData
     if C_TooltipInfo then
-        if itemLink and type(itemLink) == "string" and (not issecretvalue or not issecretvalue(itemLink)) and C_TooltipInfo.GetHyperlink then
+        if itemLink and type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)) and C_TooltipInfo.GetHyperlink then
             local ok, result = pcall(C_TooltipInfo.GetHyperlink, itemLink)
             if ok and result then tooltipData = result end
         end
@@ -1259,7 +1260,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         local displayLink = itemLink
         if isLockedOut and not collected then
             local plainName = drop.name or ((ns.L and ns.L["TOOLTIP_UNKNOWN"]) or "Unknown")
-            if itemLink then
+            if itemLink and type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)) then
                 local linkName = itemLink:match("%[(.-)%]")
                 if linkName then plainName = linkName end
             end
@@ -1787,7 +1788,7 @@ function TooltipService:InitializeGameTooltipHook()
             local function GetCurrentZoneDrops()
                 if not sourceDB.zones then return nil, false, false end
                 local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-                local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
+                local mapID = (rawMapID and not (issecretvalue and issecretvalue(rawMapID))) and rawMapID or nil
                 while mapID and mapID > 0 do
                     local zData = sourceDB.zones[mapID]
                     if zData then
@@ -1800,7 +1801,7 @@ function TooltipService:InitializeGameTooltipHook()
                     end
                     local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
                     local nextID = mapInfo and mapInfo.parentMapID
-                    mapID = (nextID and (not issecretvalue or not issecretvalue(nextID))) and nextID or nil
+                    mapID = (nextID and not (issecretvalue and issecretvalue(nextID))) and nextID or nil
                 end
                 return nil, false, false
             end
@@ -2027,7 +2028,7 @@ function TooltipService:InitializeGameTooltipHook()
 
             local encNpcIDs = npcIDsOverride
             if not encNpcIDs or type(encNpcIDs) ~= "table" or #encNpcIDs == 0 then
-                if encounterID ~= nil and (not issecretvalue or not issecretvalue(encounterID)) then
+                if encounterID ~= nil and not (issecretvalue and issecretvalue(encounterID)) then
                     encNpcIDs = sourceDB.encounters and sourceDB.encounters[encounterID]
                 end
             end
@@ -2217,22 +2218,52 @@ end
 ]]
 local concentrationHookInstalled = false
 local WN_CONCENTRATION_MARKER = (ns.L and ns.L["TOOLTIP_CONCENTRATION_MARKER"]) or "Warband Nexus - Concentration"
+local CONCENTRATION_CACHE_TTL = 10
+local concentrationCurrencyCache = {
+    builtAt = 0,
+    idSet = {},
+    nameSet = {},
+}
 
-local function IsConcentrationCurrencyID(currencyID)
-    if not currencyID then return false end
-    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return false end
-    local characters = WarbandNexus.db.global.characters
-    if not characters then return false end
-    for _, charData in pairs(characters) do
-        if charData.concentration then
-            for _, concData in pairs(charData.concentration) do
-                if concData.currencyID == currencyID then
-                    return true
+local function GetConcentrationCurrencyCache()
+    local now = GetTime and GetTime() or 0
+    if concentrationCurrencyCache.builtAt > 0 and (now - concentrationCurrencyCache.builtAt) < CONCENTRATION_CACHE_TTL then
+        return concentrationCurrencyCache
+    end
+
+    local idSet = {}
+    local nameSet = {}
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters then
+        for _, charData in pairs(WarbandNexus.db.global.characters) do
+            local concentrationData = charData and charData.concentration
+            if concentrationData then
+                for _, concData in pairs(concentrationData) do
+                    local currencyID = concData and concData.currencyID
+                    if type(currencyID) == "number" and currencyID > 0 then
+                        idSet[currencyID] = true
+                    end
                 end
             end
         end
     end
-    return false
+
+    for currencyID in pairs(idSet) do
+        local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+        if ok and info and info.name and not (issecretvalue and issecretvalue(info.name)) then
+            nameSet[info.name] = true
+        end
+    end
+
+    concentrationCurrencyCache.builtAt = now
+    concentrationCurrencyCache.idSet = idSet
+    concentrationCurrencyCache.nameSet = nameSet
+    return concentrationCurrencyCache
+end
+
+local function IsConcentrationCurrencyID(currencyID)
+    if not currencyID then return false end
+    local cache = GetConcentrationCurrencyCache()
+    return cache.idSet[currencyID] == true
 end
 
 local function HasAlreadyInjected(tooltip)
@@ -2258,27 +2289,8 @@ local function IsConcentrationTooltip(tooltip)
     stripped = stripped:match("^%s*(.-)%s*$")
     if not stripped or stripped == "" then return false end
     if stripped == "Concentration" then return true end
-    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return false end
-    local characters = WarbandNexus.db.global.characters
-    if not characters then return false end
-    for _, charData in pairs(characters) do
-        if charData.concentration then
-            for _, concData in pairs(charData.concentration) do
-                if concData.currencyID and concData.currencyID > 0 then
-                    local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, concData.currencyID)
-                    if ok and info and info.name then
-                        local safeName = info.name
-                        if not (issecretvalue and issecretvalue(safeName)) and stripped == safeName then
-                            return true
-                        end
-                    end
-                    break
-                end
-            end
-            break
-        end
-    end
-    return false
+    local cache = GetConcentrationCurrencyCache()
+    return cache.nameSet[stripped] == true
 end
 
 -- The actual function that appends concentration data to a visible tooltip

@@ -12,7 +12,10 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local Constants    = ns.Constants
 local FontManager   = ns.FontManager
+
+local issecretvalue = issecretvalue
 
 -- Services / helpers
 local COLORS              = ns.UI_COLORS
@@ -35,6 +38,26 @@ local SLOT_BY_ID         = ns.SLOT_BY_ID
 local EQUIP_LOC_TO_SLOTS = ns.EQUIP_LOC_TO_SLOTS
 
 local format = string.format
+
+--- English track names from Blizzard tooltip/API → locale (e.g. zhCN PVE_CREST_*).
+local function LocalizeUpgradeTrackName(name)
+    if not name or name == "" then return name end
+    if issecretvalue and issecretvalue(name) then return name end
+    local L = ns.L
+    if not L then return name end
+    local trimmed = name:match("^%s*(.-)%s*$") or name
+    local key = ({
+        Adventurer = "PVE_CREST_ADV",
+        Veteran = "PVE_CREST_VET",
+        Champion = "PVE_CREST_CHAMP",
+        Hero = "PVE_CREST_HERO",
+        Myth = "PVE_CREST_MYTH",
+        Explorer = "PVE_CREST_EXPLORER",
+        Crafted = "GEAR_TRACK_CRAFTED_FALLBACK",
+    })[trimmed]
+    if key and L[key] then return L[key] end
+    return name
+end
 
 local function FormatFloat2(value)
     if not value then return nil end
@@ -168,7 +191,11 @@ local function GetItemIconSafe(linkOrId)
         end
         local itemId = type(linkOrId) == "number" and linkOrId or nil
         if not itemId and type(linkOrId) == "string" then
-            itemId = tonumber(linkOrId:match("item:(%d+)"))
+            if issecretvalue and issecretvalue(linkOrId) then
+                itemId = nil
+            else
+                itemId = tonumber(linkOrId:match("item:(%d+)"))
+            end
         end
         if not itemId then return nil end
         -- GetItemInfoInstant returns: itemID, itemType, itemSubType, itemEquipLoc, icon, classID, subclassID
@@ -321,12 +348,6 @@ local function GetClassHex(classFile)
     return "ffffff"
 end
 
--- classID for GetSpecializationInfoForClassID when DB row has no classID (legacy).
-local CLASS_FILE_TO_CLASS_ID = {
-    WARRIOR = 1, PALADIN = 2, HUNTER = 3, ROGUE = 4, PRIEST = 5, DEATHKNIGHT = 6,
-    SHAMAN = 7, MAGE = 8, WARLOCK = 9, MONK = 10, DRUID = 11, DEMONHUNTER = 12, EVOKER = 13,
-}
-
 --- Tooltip spec: prefer saved specID; else first spec for class (offline / stale DB still get correct primary stat).
 local function GetGearTabTooltipSpecID(charData)
     if not charData then return nil end
@@ -337,7 +358,8 @@ local function GetGearTabTooltipSpecID(charData)
         local cf = charData.classFile
         if type(cf) == "string" and cf ~= "" then
             local uc = strupper or string.upper
-            cid = CLASS_FILE_TO_CLASS_ID[uc(cf)]
+            local map = Constants and Constants.CLASS_FILE_TO_CLASS_ID
+            cid = map and map[uc(cf)]
         end
     end
     if cid and cid > 0 and GetSpecializationInfoForClassID then
@@ -523,28 +545,29 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
             local additionalLines = {}
             if up and up.isCrafted then
                 additionalLines[#additionalLines + 1] = { type = "spacer", height = 6 }
-                local tierLabel = up.craftedTierName or "Crafted"
+                local tierLabel = LocalizeUpgradeTrackName(up.craftedTierName or "Crafted")
                 if not up.canUpgrade then
                     additionalLines[#additionalLines + 1] = {
-                        text = format("%s (max ilvl %d)", tierLabel, up.currentIlvl or 0),
+                        text = format((ns.L and ns.L["GEAR_CRAFTED_MAX_ILVL_LINE"]) or "%s (max ilvl %d)", tierLabel, up.currentIlvl or 0),
                         color = { 0.6, 0.6, 0.6 }
                     }
                 else
                     local range = GetCraftedIlvlRange(up, currencyAmounts)
                     if range then
+                        local bestName = LocalizeUpgradeTrackName(range.bestCrestName or "")
                         additionalLines[#additionalLines + 1] = {
-                            text = format("Recraft to %s (ilvl %d)", range.bestCrestName or "", range.maxIlvl),
+                            text = format((ns.L and ns.L["GEAR_CRAFTED_RECAST_TO_LINE"]) or "Recraft to %s (ilvl %d)", bestName, range.maxIlvl),
                             color = { 0.4, 1, 0.4 }
                         }
                         additionalLines[#additionalLines + 1] = {
-                            text = format("Cost: %d %s Dawncrest", range.bestCrestCost or 0, range.bestCrestName or ""),
+                            text = format((ns.L and ns.L["GEAR_CRAFTED_COST_DAWNCREST"]) or "Cost: %d %s Dawncrest", range.bestCrestCost or 0, bestName),
                             color = { 0.6, 0.9, 0.6 }
                         }
                         if range.nextTierName and range.nextTierCost and range.nextTierHave then
                             local needed = range.nextTierCost - range.nextTierHave
                             if needed > 0 then
                                 additionalLines[#additionalLines + 1] = {
-                                    text = format("%s (ilvl %d): %d/%d crests (%d more needed)", range.nextTierName, range.nextTierMaxIlvl or 0, range.nextTierHave, range.nextTierCost, needed),
+                                    text = format((ns.L and ns.L["GEAR_CRAFTED_NEXT_TIER_CRESTS"]) or "%s (ilvl %d): %d/%d crests (%d more needed)", LocalizeUpgradeTrackName(range.nextTierName), range.nextTierMaxIlvl or 0, range.nextTierHave, range.nextTierCost, needed),
                                     color = { 0.7, 0.7, 0.7 }
                                 }
                             end
@@ -566,7 +589,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                     local targetIlvl = TRACK_ILVLS and TRACK_ILVLS[up.trackName] and TRACK_ILVLS[up.trackName][targetTier]
                     local ilvlStr = targetIlvl and format(" (%d)", targetIlvl) or ""
                     additionalLines[#additionalLines + 1] = {
-                        text = format((ns.L and ns.L["GEAR_UPGRADE_AVAILABLE_FORMAT"]) or "Available upgrade to %s %d/%d%s", up.trackName or "", targetTier, up.maxUpgrade or 0, ilvlStr),
+                        text = format((ns.L and ns.L["GEAR_UPGRADE_AVAILABLE_FORMAT"]) or "Available upgrade to %s %d/%d%s", LocalizeUpgradeTrackName(up.trackName or ""), targetTier, up.maxUpgrade or 0, ilvlStr),
                         color = { 0.4, 1, 0.4 }
                     }
                     additionalLines[#additionalLines + 1] = {
@@ -588,7 +611,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                     end
                 else
                     additionalLines[#additionalLines + 1] = {
-                        text = format((ns.L and ns.L["GEAR_NEED_MORE_CRESTS_FORMAT"]) or "%s %d/%d — need more crests", up.trackName or "", up.currUpgrade or 0, up.maxUpgrade or 0),
+                        text = format((ns.L and ns.L["GEAR_NEED_MORE_CRESTS_FORMAT"]) or "%s %d/%d — need more crests", LocalizeUpgradeTrackName(up.trackName or ""), up.currUpgrade or 0, up.maxUpgrade or 0),
                         color = { 0.8, 0.5, 0.2 }
                     }
                 end
@@ -741,15 +764,15 @@ local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts)
 
     -- Crafted items: show current tier + achievable recraft target
     if up.isCrafted then
-        local currentTier = up.craftedTierName or "Crafted"
+        local currentTier = LocalizeUpgradeTrackName(up.craftedTierName or "Crafted")
         local range = currencyAmounts and GetCraftedIlvlRange(up, currencyAmounts) or nil
         if range and range.maxIlvl > (up.currentIlvl or 0) then
-            return format("|cff%s%s → %s %d|r", hex, currentTier, range.bestCrestName or "", range.maxIlvl)
+            return format("|cff%s%s → %s %d|r", hex, currentTier, LocalizeUpgradeTrackName(range.bestCrestName or ""), range.maxIlvl)
         end
         return format("|cff%s%s %d|r", hex, currentTier, up.currentIlvl or 0)
     end
 
-    local track = (up.trackName and up.trackName ~= "") and up.trackName or nil
+    local track = (up.trackName and up.trackName ~= "") and LocalizeUpgradeTrackName(up.trackName) or nil
     local curT, maxT = up.currUpgrade or 0, up.maxUpgrade or 0
     if maxT and maxT > 0 and track then
         return format("|cff%s%s %d/%d|r", hex, track, curT, maxT)
@@ -1114,7 +1137,11 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         nameText:SetPoint("LEFT", ico, "RIGHT", 6, 0)
         nameText:SetTextColor(0.85, 0.85, 0.85)
         -- Shorten name: "Adventurer Dawncrest" → "Adventurer"
-        local shortName = (cur.name or ""):match("^(%S+)") or cur.name or ""
+        local rawCrestName = cur.name or ""
+        local shortName = ""
+        if rawCrestName and not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName ~= "" then
+            shortName = rawCrestName:match("^(%S+)") or rawCrestName
+        end
         nameText:SetText(shortName)
         nameText:SetShadowOffset(1, -1)
         nameText:SetShadowColor(0, 0, 0, 0.8)

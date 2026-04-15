@@ -5,7 +5,20 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
+
+local issecretvalue = issecretvalue
+
+local function SafeLower(s)
+    if not s or s == "" then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    return s:lower()
+end
+
+local function CompareCharNameLower(a, b)
+    return SafeLower(a.name) < SafeLower(b.name)
+end
 
 -- Unique AceEvent handler identity for CharactersUI
 local CharactersUIEvents = {}
@@ -29,11 +42,8 @@ local CreateRaceIcon = ns.UI_CreateRaceIcon
 local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local CreateClassIcon = ns.UI_CreateClassIcon
 local CreateFavoriteButton = ns.UI_CreateFavoriteButton
-local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateOnlineIndicator = ns.UI_CreateOnlineIndicator
 local GetColumnOffset = ns.UI_GetColumnOffset
-local DrawEmptyState = ns.UI_DrawEmptyState
-local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateIcon = ns.UI_CreateIcon -- Factory for icons
@@ -58,10 +68,13 @@ local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local function BuildGuildText(char, isCurrentCharacter)
     local guildName = (char and char.guildName) or nil
     if isCurrentCharacter then
-        guildName = IsInGuild() and GetGuildInfo("player") or guildName
+        local liveGuild = IsInGuild() and GetGuildInfo("player") or nil
+        if liveGuild and not (issecretvalue and issecretvalue(liveGuild)) then
+            guildName = liveGuild
+        end
     end
 
-    if guildName and guildName ~= "" then
+    if guildName and not (issecretvalue and issecretvalue(guildName)) and guildName ~= "" then
         -- Guild name: soft lavender so it’s visible but not louder than name
         return string.format("|cffffffff%s|r", guildName)
     end
@@ -86,8 +99,7 @@ local function RegisterCharacterEvents(parent)
     -- chars tab refresh via PopulateContent → DrawCharacterList. Having both caused double rebuild.
     
     -- WN_CHARACTER_TRACKING_CHANGED: keep — UI.lua does NOT handle this event.
-    local Constants = ns.Constants
-    WarbandNexus.RegisterMessage(CharactersUIEvents, "WN_CHARACTER_TRACKING_CHANGED", function(event, data)
+    WarbandNexus.RegisterMessage(CharactersUIEvents, E.CHARACTER_TRACKING_CHANGED, function(event, data)
         local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         if mf and mf:IsShown() and mf.currentTab == "chars" then
             DebugPrint("|cff9370DB[WN CharactersUI]|r Tracking status changed, refreshing UI...")
@@ -522,24 +534,24 @@ function WarbandNexus:DrawCharacterList(parent)
                     if (a.level or 0) ~= (b.level or 0) then
                         return (a.level or 0) > (b.level or 0)
                     end
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 end)
                 return list
             end
             table.sort(list, function(a, b)
                 if sortMode == "name" then
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 elseif sortMode == "level" then
                     if (a.level or 0) ~= (b.level or 0) then
                         return (a.level or 0) > (b.level or 0)
                     else
-                        return (a.name or ""):lower() < (b.name or ""):lower()
+                        return CompareCharNameLower(a, b)
                     end
                 elseif sortMode == "ilvl" then
                     if (a.itemLevel or 0) ~= (b.itemLevel or 0) then
                         return (a.itemLevel or 0) > (b.itemLevel or 0)
                     else
-                        return (a.name or ""):lower() < (b.name or ""):lower()
+                        return CompareCharNameLower(a, b)
                     end
                 elseif sortMode == "gold" then
                     local goldA = ns.Utilities:GetCharTotalCopper(a)
@@ -547,14 +559,14 @@ function WarbandNexus:DrawCharacterList(parent)
                     if goldA ~= goldB then
                         return goldA > goldB
                     else
-                        return (a.name or ""):lower() < (b.name or ""):lower()
+                        return CompareCharNameLower(a, b)
                     end
                 end
                 -- Fallback
                 if (a.level or 0) ~= (b.level or 0) then
                     return (a.level or 0) > (b.level or 0)
                 else
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 end
             end)
             return list
@@ -590,7 +602,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 if (a.level or 0) ~= (b.level or 0) then
                     return (a.level or 0) > (b.level or 0)
                 else
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 end
             end)
             for _, char in ipairs(remaining) do
@@ -604,7 +616,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 if (a.level or 0) ~= (b.level or 0) then
                     return (a.level or 0) > (b.level or 0)
                 else
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 end
             end)
             return list

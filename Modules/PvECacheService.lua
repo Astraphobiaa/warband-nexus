@@ -17,6 +17,10 @@ local ADDON_NAME, ns = ...
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
+local Utilities = ns.Utilities
+local function CmpNameSort(a, b)
+    return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.name) or "") < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.name) or "")
+end
 
 -- ============================================================================
 -- CONSTANTS
@@ -845,9 +849,7 @@ function WarbandNexus:GetPvEData(charKey)
                 end
                 
                 -- Sort by name
-                table.sort(dungeons, function(a, b)
-                    return (a.name or "") < (b.name or "")
-                end)
+                table.sort(dungeons, CmpNameSort)
             end
         end
         
@@ -875,7 +877,7 @@ function WarbandNexus:GetPvEData(charKey)
             })
         end
         -- Sort by name for consistent display
-        table.sort(hydratedLockouts, function(a, b) return (a.name or "") < (b.name or "") end)
+        table.sort(hydratedLockouts, CmpNameSort)
         
         -- Return data for specific character
         local vaultActivities = dbCache.greatVault and dbCache.greatVault.activities and dbCache.greatVault.activities[charKey]
@@ -885,9 +887,9 @@ function WarbandNexus:GetPvEData(charKey)
             dungeonScores = dungeonScoresData,
             vaultActivities = vaultActivities,
             vaultRewards = dbCache.greatVault and dbCache.greatVault.rewards and dbCache.greatVault.rewards[charKey],
-            greatVault = vaultActivities or {},  -- Alias: PvEDataCollector uses .greatVault
+            greatVault = vaultActivities or {},  -- Alias for legacy consumers
             raidLockouts = hydratedLockouts,
-            lockouts = hydratedLockouts,  -- Alias: PvEDataCollector and DataService use .lockouts
+            lockouts = hydratedLockouts,  -- Alias for DataService / UI
             worldBosses = dbCache.lockouts and dbCache.lockouts.worldBosses and dbCache.lockouts.worldBosses[charKey],
             -- Delves data (companion is account-wide, per-char quest status)
             delves = {

@@ -6,21 +6,26 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
+local DebugPrint = ns.DebugPrint or function() end
+local DebugVerbosePrint = ns.DebugVerbosePrint or DebugPrint
 
 -- Unique AceEvent handler identity for NotificationManager
 local NotificationEvents = {}
 
 -- Current addon version (from Constants)
 local Constants = ns.Constants
+local E = Constants.EVENTS
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
--- Changelog for current version only: locale key CHANGELOG_V + version without dots (e.g. 2.5.12 -> CHANGELOG_V2512)
+-- Changelog for current version only: locale key CHANGELOG_V + numeric x.y.z triple (e.g. 2.5.15-beta1 -> CHANGELOG_V2515)
 local FALLBACK_CHANGELOG = "v" .. tostring(CURRENT_VERSION) .. "\n- See Locales for CHANGELOG_V key matching this version.\n\nCurseForge: Warband Nexus"
 
 local function VersionToChangelogKey(version)
     if not version or type(version) ~= "string" then return nil end
-    local compact = version:gsub("%.", "")
-    return "CHANGELOG_V" .. compact
+    -- Numeric x.y.z only (supports suffixes like -beta1 on ADDON_VERSION; maps to CHANGELOG_V2515)
+    local a, b, c = version:match("^(%d+)%.(%d+)%.(%d+)")
+    if not a then return nil end
+    return "CHANGELOG_V" .. a .. b .. c
 end
 
 local function BuildChangelog()
@@ -47,6 +52,13 @@ local CHANGELOG = {
 
 -- Export CHANGELOG to namespace for command access
 ns.CHANGELOG = CHANGELOG
+
+local function NotifyDebug(msg, ...)
+    if select("#", ...) > 0 then
+        msg = string.format(msg, ...)
+    end
+    DebugPrint("|cff00ccff[Notification Debug]|r " .. tostring(msg))
+end
 
 --[[============================================================================
     THEME COLOR INTEGRATION
@@ -86,6 +98,7 @@ end
 ============================================================================]]
 
 local notificationQueue = {}
+local notificationQueueHead = 1
 
 -- TryCounter + CollectionService can both send WN_COLLECTIBLE_OBTAINED within a short window:
 --   • bag scan right after loot (item hits bags while Try Counter already toasted), or
@@ -104,7 +117,7 @@ local function BuildCollectibleLootToastDedupeKey(data)
     if t == "mount" then
         if C_MountJournal and C_MountJournal.GetMountFromItem and type(id) == "number" then
             local mid = C_MountJournal.GetMountFromItem(id)
-            if mid and (not issecretvalue or not issecretvalue(mid)) and type(mid) == "number" and mid > 0 then
+            if mid and not (issecretvalue and issecretvalue(mid)) and type(mid) == "number" and mid > 0 then
                 id = mid
             end
         end
@@ -112,7 +125,7 @@ local function BuildCollectibleLootToastDedupeKey(data)
     end
     if t == "pet" and C_PetJournal and C_PetJournal.GetPetInfoByItemID and type(id) == "number" then
         local speciesID = select(13, C_PetJournal.GetPetInfoByItemID(id))
-        if speciesID and (not issecretvalue or not issecretvalue(speciesID)) and type(speciesID) == "number" and speciesID > 0 then
+        if speciesID and not (issecretvalue and issecretvalue(speciesID)) and type(speciesID) == "number" and speciesID > 0 then
             id = speciesID
         end
         return "pet\0" .. tostring(id)
@@ -126,17 +139,44 @@ end
 ---Add a notification to the queue
 ---@param notification table Notification data
 local function QueueNotification(notification)
-    table.insert(notificationQueue, notification)
+    notificationQueue[#notificationQueue + 1] = notification
+end
+
+local function HasPendingNotifications()
+    return notificationQueueHead <= #notificationQueue
+end
+
+local function DequeueNotification()
+    if not HasPendingNotifications() then
+        notificationQueue = {}
+        notificationQueueHead = 1
+        return nil
+    end
+
+    local notification = notificationQueue[notificationQueueHead]
+    notificationQueue[notificationQueueHead] = nil
+    notificationQueueHead = notificationQueueHead + 1
+
+    if notificationQueueHead > 32 and notificationQueueHead > (#notificationQueue / 2) then
+        local compacted = {}
+        for i = notificationQueueHead, #notificationQueue do
+            compacted[#compacted + 1] = notificationQueue[i]
+        end
+        notificationQueue = compacted
+        notificationQueueHead = 1
+    end
+
+    return notification
 end
 
 ---Process notification queue (show one at a time)
 local function ProcessNotificationQueue()
-    if #notificationQueue == 0 then
+    if not HasPendingNotifications() then
         return
     end
     
     -- Show first notification
-    local notification = table.remove(notificationQueue, 1)
+    local notification = DequeueNotification()
     
     if notification.type == "update" then
         WarbandNexus:ShowUpdateNotification(notification.data)
@@ -145,7 +185,7 @@ local function ProcessNotificationQueue()
     end
     
     -- Schedule next notification (2 second delay)
-    if #notificationQueue > 0 then
+    if HasPendingNotifications() then
         C_Timer.After(2, ProcessNotificationQueue)
     end
 end
@@ -480,8 +520,40 @@ end
 if not WarbandNexus.alertQueue then
     WarbandNexus.alertQueue = {} -- Waiting alerts (if >3 active)
 end
+WarbandNexus.alertQueueHead = WarbandNexus.alertQueueHead or 1
 -- Queue processing debounce timer (prevents multiple simultaneous queue processing)
 local queueProcessTimer = nil
+
+local function HasQueuedAlerts()
+    return WarbandNexus.alertQueueHead <= #WarbandNexus.alertQueue
+end
+
+local function EnqueueAlert(config)
+    WarbandNexus.alertQueue[#WarbandNexus.alertQueue + 1] = config
+end
+
+local function DequeueAlert()
+    if not HasQueuedAlerts() then
+        WarbandNexus.alertQueue = {}
+        WarbandNexus.alertQueueHead = 1
+        return nil
+    end
+
+    local nextConfig = WarbandNexus.alertQueue[WarbandNexus.alertQueueHead]
+    WarbandNexus.alertQueue[WarbandNexus.alertQueueHead] = nil
+    WarbandNexus.alertQueueHead = WarbandNexus.alertQueueHead + 1
+
+    if WarbandNexus.alertQueueHead > 16 and WarbandNexus.alertQueueHead > (#WarbandNexus.alertQueue / 2) then
+        local compacted = {}
+        for i = WarbandNexus.alertQueueHead, #WarbandNexus.alertQueue do
+            compacted[#compacted + 1] = WarbandNexus.alertQueue[i]
+        end
+        WarbandNexus.alertQueue = compacted
+        WarbandNexus.alertQueueHead = 1
+    end
+
+    return nextConfig
+end
 
 -- Alert positioning constants
 local ALERT_HEIGHT = 88       -- Full toast height (fixed for all variants)
@@ -731,27 +803,27 @@ local function RemoveAlert(alert)
     end
     
     -- Process queue with debounce (prevents multiple simultaneous dismissals from spawning too many alerts)
-    if #WarbandNexus.alertQueue > 0 then
+    if HasQueuedAlerts() then
         -- Cancel any existing queue timer
         if queueProcessTimer then
             queueProcessTimer:Cancel()
         end
         
         -- Short debounce to batch rapid dismissals, then process queue
-        queueProcessTimer = C_Timer.After(0.15, function()
+        queueProcessTimer = C_Timer.NewTimer(0.15, function()
             queueProcessTimer = nil
             
             -- Process queue: show ONE alert at a time with staggered entrance
             local function ProcessNextInQueue()
                 if not WarbandNexus or not WarbandNexus.activeAlerts then return end
-                if #WarbandNexus.alertQueue > 0 and #WarbandNexus.activeAlerts < 3 then
-                    local nextConfig = table.remove(WarbandNexus.alertQueue, 1)
+                if HasQueuedAlerts() and #WarbandNexus.activeAlerts < 3 then
+                    local nextConfig = DequeueAlert()
                     
                     if WarbandNexus.ShowModalNotification then
                         WarbandNexus:ShowModalNotification(nextConfig)
                         
                         -- If more slots available, stagger next alert after entrance completes
-                        if #WarbandNexus.alertQueue > 0 and #WarbandNexus.activeAlerts < 3 then
+                        if HasQueuedAlerts() and #WarbandNexus.activeAlerts < 3 then
                             C_Timer.After(0.25, ProcessNextInQueue)
                         end
                     end
@@ -769,7 +841,7 @@ end
 function WarbandNexus:ShowModalNotification(config)
     -- Queue system: max 3 alerts visible at once
     if #self.activeAlerts >= 3 then
-        table.insert(self.alertQueue, config)
+        EnqueueAlert(config)
         return
     end
     
@@ -1619,10 +1691,10 @@ end
 
 ---Show vault reminder popup (simplified wrapper)
 ---@param data table Vault data
----@deprecated Use SendMessage("WN_VAULT_REWARD_AVAILABLE") instead
+---@deprecated Use SendMessage(E.VAULT_REWARD_AVAILABLE) instead
 function WarbandNexus:ShowVaultReminder(data)
     -- Send vault reward event
-    self:SendMessage("WN_VAULT_REWARD_AVAILABLE", data or {})
+    self:SendMessage(E.VAULT_REWARD_AVAILABLE, data or {})
 end
 
 --[[============================================================================
@@ -1670,7 +1742,7 @@ function WarbandNexus:CheckNotificationsOnLogin()
     if notifs.showVaultReminder then
         C_Timer.After(0.5, function()
             if not C_WeeklyRewards then
-                ns.DebugPrint("|cff888888[Vault]|r C_WeeklyRewards = nil")
+                DebugVerbosePrint("|cff888888[Vault]|r C_WeeklyRewards = nil")
                 return
             end
             local hasRewards = C_WeeklyRewards.HasAvailableRewards and C_WeeklyRewards.HasAvailableRewards()
@@ -1685,43 +1757,43 @@ function WarbandNexus:CheckNotificationsOnLogin()
             local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
             local activityCount = activities and #activities or 0
             local secsUntilReset = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and C_DateAndTime.GetSecondsUntilWeeklyReset()) or nil
-            ns.DebugPrint(string.format("|cff00ccff[Vault]|r HasAvailableRewards=%s | isCurrentPeriod=%s | canClaim=%s | activities=%s | secsUntilReset=%s",
+            DebugVerbosePrint(string.format("|cff00ccff[Vault]|r HasAvailableRewards=%s | isCurrentPeriod=%s | canClaim=%s | activities=%s | secsUntilReset=%s",
                 tostring(hasRewards), tostring(isCurrentPeriod), tostring(canClaim), tostring(activityCount), secsUntilReset and tostring(secsUntilReset) or "n/a"))
             if activities and activityCount > 0 then
                 local a1 = activities[1]
                 if a1 then
-                    ns.DebugPrint(string.format("|cff00ccff[Vault]|r First activity: type=%s progress=%s threshold=%s",
+                    DebugVerbosePrint(string.format("|cff00ccff[Vault]|r First activity: type=%s progress=%s threshold=%s",
                         tostring(a1.type), tostring(a1.progress), tostring(a1.threshold)))
                 end
             end
             local shouldShow = hasRewards and isCurrentPeriod and canClaim and activities and activityCount > 0
             if shouldShow then
-                ns.DebugPrint("|cff00ccff[Vault]|r Showing reminder (current period, claimable).")
+                DebugVerbosePrint("|cff00ccff[Vault]|r Showing reminder (current period, claimable).")
                 QueueNotification({
                     type = "vault",
                     data = {}
                 })
             else
                 if not hasRewards then
-                    ns.DebugPrint("|cff888888[Vault]|r NOT showing: HasAvailableRewards=false.")
+                    DebugVerbosePrint("|cff888888[Vault]|r NOT showing: HasAvailableRewards=false.")
                 elseif not isCurrentPeriod then
-                    ns.DebugPrint("|cff888888[Vault]|r NOT showing: rewards not for current period (e.g. expired/old season).")
+                    DebugVerbosePrint("|cff888888[Vault]|r NOT showing: rewards not for current period (e.g. expired/old season).")
                 elseif not canClaim then
-                    ns.DebugPrint("|cff888888[Vault]|r NOT showing: CanClaimRewards=false.")
+                    DebugVerbosePrint("|cff888888[Vault]|r NOT showing: CanClaimRewards=false.")
                 else
-                    ns.DebugPrint("|cff888888[Vault]|r NOT showing: no activities.")
+                    DebugVerbosePrint("|cff888888[Vault]|r NOT showing: no activities.")
                 end
             end
         end)
     end
     
     -- Process queue with minimal delay (update notification is immediately queued)
-    if #notificationQueue > 0 then
+    if HasPendingNotifications() then
         C_Timer.After(0.5, ProcessNotificationQueue)
     else
         -- Vault check has 0.5s delay, check again after it completes
         C_Timer.After(1.5, function()
-            if #notificationQueue > 0 then
+            if HasPendingNotifications() then
                 ProcessNotificationQueue()
             end
         end)
@@ -1737,7 +1809,7 @@ end
 ---Initialize event-driven notification system
 function WarbandNexus:InitializeNotificationListeners()
     -- Register for custom notification events
-    self:RegisterMessage("WN_SHOW_NOTIFICATION", "OnShowNotification")
+    self:RegisterMessage(E.SHOW_NOTIFICATION, "OnShowNotification")
     
     -- ── BULLETPROOF COLLECTIBLE DISPATCH ──────────────────────────────────────
     -- WN_COLLECTIBLE_OBTAINED has MULTIPLE consumers on WarbandNexus:
@@ -1758,12 +1830,10 @@ function WarbandNexus:InitializeNotificationListeners()
     --   Add a new entry to collectibleDispatch below. Do NOT register for
     --   WN_COLLECTIBLE_OBTAINED via RegisterMessage anywhere else in the codebase.
     -- ─────────────────────────────────────────────────────────────────────────
-    local DebugPrint = ns.DebugPrint or function() end
-    
     -- Direct dispatch with pcall isolation.
     -- Each consumer is called explicitly (no table indirection).
     -- pcall ensures one consumer's error doesn't break the others.
-    self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", function(event, data)
+    self:RegisterMessage(E.COLLECTIBLE_OBTAINED, function(event, data)
         DebugPrint("|cff00ccff[WN Dispatch]|r WN_COLLECTIBLE_OBTAINED received:"
             .. " type=" .. tostring(data and data.type)
             .. " name=" .. tostring(data and data.name))
@@ -1793,18 +1863,18 @@ function WarbandNexus:InitializeNotificationListeners()
         end
     end)
     
-    self:RegisterMessage("WN_PLAN_COMPLETED", "OnPlanCompleted")
-    self:RegisterMessage("WN_VAULT_CHECKPOINT_COMPLETED", "OnVaultCheckpointCompleted")
-    self:RegisterMessage("WN_VAULT_SLOT_COMPLETED", "OnVaultSlotCompleted")
-    self:RegisterMessage("WN_VAULT_PLAN_COMPLETED", "OnVaultPlanCompleted")
-    self:RegisterMessage("WN_QUEST_COMPLETED", "OnQuestCompleted")
+    self:RegisterMessage(E.PLAN_COMPLETED, "OnPlanCompleted")
+    self:RegisterMessage(E.VAULT_CHECKPOINT_COMPLETED, "OnVaultCheckpointCompleted")
+    self:RegisterMessage(E.VAULT_SLOT_COMPLETED, "OnVaultSlotCompleted")
+    self:RegisterMessage(E.VAULT_PLAN_COMPLETED, "OnVaultPlanCompleted")
+    self:RegisterMessage(E.QUEST_COMPLETED, "OnQuestCompleted")
     -- WN_REPUTATION_GAINED is handled in Core.lua (chat notifications)
-    self:RegisterMessage("WN_VAULT_REWARD_AVAILABLE", "OnVaultRewardAvailable")
+    self:RegisterMessage(E.VAULT_REWARD_AVAILABLE, "OnVaultRewardAvailable")
     -- Reminders now use progress-based indicators on plan cards (no popup)
     
     -- Font change listener (low-impact: active notifications auto-dismiss quickly, new ones will use updated font)
     -- NOTE: Uses NotificationEvents as 'self' key to avoid overwriting PlansTrackerWindow's handler.
-    WarbandNexus.RegisterMessage(NotificationEvents, "WN_FONT_CHANGED", function()
+    WarbandNexus.RegisterMessage(NotificationEvents, E.FONT_CHANGED, function()
         -- Active notifications will pick up new font on next creation
         -- No action needed for already-visible notifications (they auto-dismiss)
     end)
@@ -2158,26 +2228,19 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     end
     if not displayName or displayName == "" then return end
     
-    -- DEBUG: Log notification attempt
-    if self.db and self.db.profile and self.db.profile.debugMode then
-        self:Print(string.format("|cff00ccff[Notification Debug]|r Collectible obtained: %s - %s (ID: %s)", 
-            data.type or "nil", 
-            displayName or "nil",
-            tostring(data.id or "nil")))
-    end
+    NotifyDebug("Collectible obtained: %s - %s (ID: %s)",
+        data.type or "nil",
+        displayName or "nil",
+        tostring(data.id or "nil"))
     
     -- Check if loot notifications are enabled
     if not self.db or not self.db.profile or not self.db.profile.notifications then
-        if self.db and self.db.profile and self.db.profile.debugMode then
-            self:Print("|cffff6600[Notification Debug]|r BLOCKED: notifications table missing")
-        end
+        NotifyDebug("|cffff6600BLOCKED: notifications table missing|r")
         return
     end
     
     if not self.db.profile.notifications.showLootNotifications then
-        if self.db and self.db.profile and self.db.profile.debugMode then
-            self:Print("|cffff6600[Notification Debug]|r BLOCKED: showLootNotifications = false")
-        end
+        NotifyDebug("|cffff6600BLOCKED: showLootNotifications = false|r")
         return
     end
     
@@ -2193,9 +2256,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     }
     local toggleKey = typeToggleMap[data.type]
     if toggleKey and self.db.profile.notifications[toggleKey] == false then
-        if self.db and self.db.profile and self.db.profile.debugMode then
-            self:Print(string.format("|cffff6600[Notification Debug]|r BLOCKED: %s = false", toggleKey))
-        end
+        NotifyDebug("|cffff6600BLOCKED: %s = false|r", toggleKey)
         return
     end
 
@@ -2206,9 +2267,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         local nowDedupe = GetTime()
         local prevToast = lastCollectibleLootToastShownAt[lootToastDedupeKey]
         if prevToast and (nowDedupe - prevToast) < COLLECTIBLE_LOOT_TOAST_DEDUP_SEC then
-            if self.db and self.db.profile and self.db.profile.debugMode then
-                self:Print("|cff888888[Notification Debug]|r Skipped duplicate collectible loot toast: " .. lootToastDedupeKey)
-            end
+            NotifyDebug("|cff888888Skipped duplicate collectible loot toast: %s|r", lootToastDedupeKey)
             return
         end
     end
@@ -2217,9 +2276,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     -- If hideBlizzardAchievementAlert is false (unchecked), Blizzard shows its own popup,
     -- so we skip ours to avoid duplicate notifications
     if data.type == "achievement" and not self.db.profile.notifications.hideBlizzardAchievementAlert then
-        if self.db and self.db.profile and self.db.profile.debugMode then
-            self:Print("|cffff6600[Notification Debug]|r BLOCKED: achievement (Blizzard popup enabled)")
-        end
+        NotifyDebug("|cffff6600BLOCKED: achievement (Blizzard popup enabled)|r")
         return
     end
     
@@ -2234,12 +2291,10 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         -- Use preResetTryCount if provided (0 = first try; counter was reset before notification fired)
         local failedCount = (data.preResetTryCount ~= nil) and data.preResetTryCount or (self.GetTryCount and self:GetTryCount(data.type, data.id)) or 0
 
-        if self.db and self.db.profile and self.db.profile.debugMode then
-            self:Print(string.format("|cff00ccff[Notification Debug]|r Try count: isDropSource=%s, failedCount=%d, preResetTryCount=%s",
-                tostring(isDropSource),
-                failedCount,
-                tostring(data.preResetTryCount)))
-        end
+        NotifyDebug("Try count: isDropSource=%s, failedCount=%d, preResetTryCount=%s",
+            tostring(isDropSource),
+            failedCount,
+            tostring(data.preResetTryCount))
 
         local isGuaranteed = self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(data.type, data.id)
         if not isGuaranteed then
@@ -2259,11 +2314,9 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         end
     end
     
-    if self.db and self.db.profile and self.db.profile.debugMode then
-        self:Print(string.format("|cff00ccff[Notification Debug]|r SHOWING notification: hasTryCount=%s, tryMessage=%s",
-            tostring(hasTryCount),
-            tryMessage or "nil"))
-    end
+    NotifyDebug("SHOWING notification: hasTryCount=%s, tryMessage=%s",
+        tostring(hasTryCount),
+        tryMessage or "nil")
     
     -- Show notification (try message replaces default subtitle for farmed drops only)
     local overrides = {}
@@ -2890,7 +2943,7 @@ function WarbandNexus:TestNotificationEvents(type, id)
         C_Timer.After(delay, function()
             local mountID = id or 460
             local mountName, _, icon = C_MountJournal.GetMountInfoByID(mountID)
-            self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+            self:SendMessage(E.COLLECTIBLE_OBTAINED, {
                 type = "mount",
                 id = mountID,
                 name = mountName or "Test Mount (Event)",
@@ -2924,7 +2977,7 @@ function WarbandNexus:TestNotificationEvents(type, id)
                 planIcon = "Interface\\Icons\\INV_Misc_Note_06"
             end
             
-            self:SendMessage("WN_PLAN_COMPLETED", {
+            self:SendMessage(E.PLAN_COMPLETED, {
                 planType = "achievement",
                 name = planName,
                 icon = planIcon
@@ -2939,7 +2992,7 @@ function WarbandNexus:TestNotificationEvents(type, id)
     -- Test vault slot event
     if type == "vault" or type == "all" then
         C_Timer.After(delay, function()
-            self:SendMessage("WN_VAULT_SLOT_COMPLETED", {
+            self:SendMessage(E.VAULT_SLOT_COMPLETED, {
                 characterName = "TestChar",
                 category = "dungeon",
                 slotIndex = 1,
@@ -2956,7 +3009,7 @@ function WarbandNexus:TestNotificationEvents(type, id)
     -- Test vault reward available event
     if type == "vaultreward" or type == "all" then
         C_Timer.After(delay, function()
-            self:SendMessage("WN_VAULT_REWARD_AVAILABLE", {})
+            self:SendMessage(E.VAULT_REWARD_AVAILABLE, {})
         end)
         if type == "vaultreward" then
             self:Print("|cff00ff00Test vault reward event sent!|r")
@@ -2968,7 +3021,7 @@ function WarbandNexus:TestNotificationEvents(type, id)
     -- Test quest completion event
     if type == "quest" or type == "all" then
         C_Timer.After(delay, function()
-            self:SendMessage("WN_QUEST_COMPLETED", {
+            self:SendMessage(E.QUEST_COMPLETED, {
                 characterName = "TestChar",
                 category = "dailyQuests",
                 questTitle = "Test Daily Quest"
@@ -2997,7 +3050,7 @@ function WarbandNexus:TestNotificationEvents(type, id)
             return
         end
         C_Timer.After(delay, function()
-            self:SendMessage("WN_REPUTATION_GAINED", {
+            self:SendMessage(E.REPUTATION_GAINED, {
                 factionID = 2590,
                 factionName = "The Assembly of the Deeps",
                 gainAmount = 250,

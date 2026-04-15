@@ -12,6 +12,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local issecretvalue = issecretvalue
 
 -- ============================================================================
 -- CONSTANTS AND CONFIGURATION
@@ -441,6 +442,10 @@ function WarbandNexus:GetSourceFromTooltip(sourceID)
     for _, line in ipairs(tooltipData.lines) do
         if line.leftText then
             local text = line.leftText
+            if issecretvalue and issecretvalue(text) then
+                text = nil
+            end
+            if text then
             
             -- Check if line contains source keywords
             for _, keyword in ipairs(sourceKeywords) do
@@ -454,6 +459,7 @@ function WarbandNexus:GetSourceFromTooltip(sourceID)
                     
                     return text:trim()
                 end
+            end
             end
         end
     end
@@ -677,8 +683,15 @@ end
     @param progressCallback function (optional) - Called with progress updates
 ]]
 function WarbandNexus:SearchUncollectedTransmog(categoryKey, searchText, callback, progressCallback)
-    if not searchText or searchText == "" then
-        -- No search text, just get regular uncollected items
+    if not searchText or type(searchText) ~= "string" then
+        self:GetUncollectedTransmog(categoryKey, callback, progressCallback)
+        return
+    end
+    if issecretvalue and issecretvalue(searchText) then
+        self:GetUncollectedTransmog(categoryKey, callback, progressCallback)
+        return
+    end
+    if searchText == "" then
         self:GetUncollectedTransmog(categoryKey, callback, progressCallback)
         return
     end

@@ -1,32 +1,27 @@
-# CurseForge / Wago — **Warband Nexus v2.5.12** (2026-04-12)
+# CurseForge / Wago — **Warband Nexus v2.5.15-beta1** (2026-04-15)
 
 ## Summary for project description / changelog field
 
-**v2.5.12** — Notifications **Try counter chat output** dropdown layout fixed (opens downward, reserved space, stable route order). **GameTooltip:SetText** alpha fix in Settings / Gold Management / Plans (Midnight). Try Counter instance-entry **[WN-Drops]** messaging; manual/Rarity handling for owned non-repeatable collectibles. Tooltip/collection/locale polish; shorter **[WN-TC]** probe chat format.
+**v2.5.15 beta 1 (pre-release)** — Performance: main-window populate coalescing, tab-switch debounce, CollectionService budgeted scans, guild bank + bank-open chunked scans, Plans grid precompute, collections abort. Bug fixes: TOC loads `Config.lua` after `Constants.lua`; main frame OnHide clears populate timer. Localization: gear crafted lines, concentration timers, Steam-style played time; locale parity for `GEAR_CRAFTED_*`, `STATS_PLAYED_STEAM_*`, `PROF_CONCENTRATION_*` across supported languages. **Feedback welcome** before the stable 2.5.15 build.
 
 ## Full notes
 
-### UI
+### Performance
 
-- Settings → Notifications: try-counter chat route dropdown opens **downward** with extra gap so the list does not cover the checkbox grid; `valueOrder` keeps Loot → Warband Nexus → all tabs.
+- **UI (`Modules/UI.lua`)**: `SchedulePopulateContent` debounce; `OnHide` timer cancel; single defer on tab switch; badge-only currency/reputation when off-tab.
+- **CollectionService**: `ScheduleEnsureCollectionDataDeferred`; `ScanCollection` / `BuildFullCollectionData` use `FRAME_BUDGET_MS`.
+- **Guild bank & ItemsCache**: chunked scans; atomic tab assign; invalidate on close.
+- **Plans & Collections**: `regularCountBefore` O(n); `AbortCollectionsChunkedBuilds`; Core abort.
 
 ### Bug fixes
 
-- `GameTooltip:SetText(..., r, g, b, a)` — no invalid wrap argument; Settings / Gold popup / Plans UI.
-
-### Try Counter
-
-- Instance entry: drop list vs short hint aligned with trackable/mount logic.
-- `ProcessManualDrop` / Rarity: non-repeatable + already collected → no try inflation.
-
-### Tooltips & collections
-
-- Midnight `issecretvalue` patterns where touched; DB/service alignment.
+- **TOC**: `Config.lua` after `Modules/Constants.lua` (fixes `ns.Constants` at Config init).
+- **Main `OnHide`**: populate timer cleared after cancel.
 
 ### Localization
 
-- Key parity with enUS; `CHANGELOG_V2512` What's New.
+- **GearUI**, **ProfessionService**, **StatisticsUI** keys; multi-locale parity (see CHANGELOG.md).
 
 ---
 
-Package: `WarbandNexus-2.5.12.zip` from `python build_addon.py` at repo root.
+Package: `WarbandNexus-2.5.15-beta1.zip` from `python build_addon.py` at repo root. **`/reload`** after installing.

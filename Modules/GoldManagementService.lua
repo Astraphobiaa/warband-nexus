@@ -6,6 +6,7 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local L = ns.L
+local E = ns.Constants.EVENTS
 
 -- Throttling
 local lastActionTime = 0
@@ -102,8 +103,8 @@ end
 --============================================================================
 
 function WarbandNexus:InitializeGoldManagementService()
-    self:RegisterMessage("WN_MONEY_UPDATED")
-    self:RegisterMessage("WN_GOLD_MANAGEMENT_CHANGED")
+    self:RegisterMessage(E.MONEY_UPDATED)
+    self:RegisterMessage(E.GOLD_MANAGEMENT_CHANGED)
 end
 
 -- Public function that can be called by ItemsCacheService

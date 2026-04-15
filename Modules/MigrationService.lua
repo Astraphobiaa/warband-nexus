@@ -15,6 +15,17 @@ local ADDON_NAME, ns = ...
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
+
+local function PrintUserMessage(message)
+    if not message or message == "" then return end
+    local addon = _G.WarbandNexus
+    if addon and addon.Print then
+        addon:Print(message)
+    else
+        _G.print(message)
+    end
+end
+
 ---@class MigrationService
 local MigrationService = {}
 ns.MigrationService = MigrationService
@@ -88,7 +99,7 @@ function MigrationService:CheckSchemaReset(db)
     end
 
     DebugPrint("|cff9370DB[WN Migration]|r [Migration Event] SCHEMA_RESET triggered (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. ")")
-    _G.print("|cff6a0dad" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r: " .. ((ns.L and ns.L["DATABASE_UPDATED_MSG"]) or "Database updated to a new version.") .. " (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. ")")
+    PrintUserMessage("|cff6a0dad" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r: " .. ((ns.L and ns.L["DATABASE_UPDATED_MSG"]) or "Database updated to a new version.") .. " (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. ")")
 
     -- Wipe global (itemStorage, reputationData, characters, etc.)
     if db.global then wipe(db.global) end
@@ -111,7 +122,7 @@ function MigrationService:CheckSchemaReset(db)
     -- Stamp current schema version (must be after wipe so it persists)
     db.global._schemaVersion = CURRENT_SCHEMA_VERSION
 
-    _G.print("|cff6a0dad" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r: " .. ((ns.L and ns.L["MIGRATION_RESET_COMPLETE"]) or "Reset complete. All data will be rescanned automatically."))
+    PrintUserMessage("|cff6a0dad" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r: " .. ((ns.L and ns.L["MIGRATION_RESET_COMPLETE"]) or "Reset complete. All data will be rescanned automatically."))
     return true
 end
 
@@ -186,12 +197,10 @@ function MigrationService:MigrateGenderField(db)
     
     -- ONE-TIME: Add default gender to characters that don't have it
     if not db.global.genderMigrationV1 then
-        local updated = 0
         for charKey, charData in pairs(db.global.characters) do
             if charData and not charData.gender then
                 -- Default to male (2) - will be corrected on next login
                 charData.gender = 2
-                updated = updated + 1
             end
         end
         -- Gender migration applied silently
@@ -207,12 +216,10 @@ function MigrationService:MigrateTrackingField(db)
         return
     end
     
-    local updated = 0
     for charKey, charData in pairs(db.global.characters) do
         if charData and charData.isTracked == nil then
             -- Existing characters automatically tracked (backward compatibility)
             charData.isTracked = true
-            updated = updated + 1
         end
     end
     
@@ -329,19 +336,15 @@ function MigrationService:MigrateTrackingConfirmed(db)
         return
     end
     
-    local migratedCount = 0
-    
     for charKey, charData in pairs(db.global.characters) do
         -- If character is tracked but doesn't have trackingConfirmed flag, add it
         if charData.isTracked == true and not charData.trackingConfirmed then
             charData.trackingConfirmed = true
-            migratedCount = migratedCount + 1
         end
         
         -- Also add flag to untracked characters with explicit isTracked=false
         if charData.isTracked == false and not charData.trackingConfirmed then
             charData.trackingConfirmed = true
-            migratedCount = migratedCount + 1
         end
     end
     
@@ -352,8 +355,6 @@ function MigrationService:MigrateGoldFormat(db)
     if not db.global.characters then
         return
     end
-    
-    local migrated = 0
     
     -- Migrate characters
     for charKey, charData in pairs(db.global.characters) do
@@ -366,7 +367,6 @@ function MigrationService:MigrateGoldFormat(db)
                 charData.copper = math.floor(totalCopper % 100)
                 -- DELETE old field to prevent overflow
                 charData.totalCopper = nil
-                migrated = migrated + 1
             end
             
             -- If very old format exists (gold/silver/copper as separate fields), ensure floored
@@ -394,7 +394,6 @@ function MigrationService:MigrateGoldFormat(db)
             wb.silver = math.floor((totalCopper % 10000) / 100)
             wb.copper = math.floor(totalCopper % 100)
             wb.totalCopper = nil  -- DELETE to prevent overflow
-            migrated = migrated + 1
         end
         
         -- Ensure breakdown values are integers

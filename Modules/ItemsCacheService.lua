@@ -23,6 +23,7 @@ local WarbandNexus = ns.WarbandNexus
 
 -- Debug print helper (only prints if debug mode enabled)
 local DebugPrint = ns.DebugPrint
+local DebugVerbosePrint = ns.DebugVerbosePrint or function() end
 
 -- Keystone detection moved to PvECacheService (C_MythicPlus API, event-driven)
 
@@ -846,7 +847,7 @@ end
 ---Batches all bag updates and sends ONE coalesced ITEMS_UPDATED message
 ---@param bagIDs table Table of bagIDs that were updated (from bucket)
 function WarbandNexus:OnBagUpdate(bagIDs)
-    DebugPrint("|cff9370DB[WN ItemsCache]|r [Items Event] BAG_UPDATE (bucket) triggered")
+    DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r [Items Event] BAG_UPDATE (bucket) triggered")
     -- GUARD: Only process bag updates if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -875,9 +876,100 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     end
 end
 
+---Chunked bank-area scan: one bag (container) per frame to cap frame cost (inventory → bank → warband).
+---@param charKey string
+function WarbandNexus:RunBudgetedBankOpenScan(charKey)
+    if not charKey then
+        charKey = ns.Utilities:GetCharacterKey()
+    end
+
+    local invIdx = 1
+    local allInv = {}
+    local totalSlots = 0
+
+    local bankIdx = 1
+    local allBank = {}
+
+    local wbIdx = 1
+    local allWb = {}
+
+    local runInv
+    local runBank
+    local runWarband
+
+    runWarband = function()
+        if not isBankOpen then
+            bankScanInProgress = false
+            return
+        end
+        if wbIdx > #WARBAND_BAGS then
+            self:SaveWarbandBankCompressed(allWb)
+            bankScanInProgress = false
+            self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "all", charKey = charKey })
+            return
+        end
+        local bagID = WARBAND_BAGS[wbIdx]
+        local bagItems = ScanBag(bagID)
+        for i = 1, #bagItems do
+            local item = bagItems[i]
+            item.tabIndex = wbIdx
+            allWb[#allWb + 1] = item
+        end
+        wbIdx = wbIdx + 1
+        C_Timer.After(0, runWarband)
+    end
+
+    runBank = function()
+        if not isBankOpen then
+            bankScanInProgress = false
+            return
+        end
+        if bankIdx > #BANK_BAGS then
+            self:SaveItemsCompressed(charKey, "bank", allBank)
+            C_Timer.After(0, runWarband)
+            return
+        end
+        local bagID = BANK_BAGS[bankIdx]
+        local bagItems = ScanBag(bagID)
+        for i = 1, #bagItems do
+            allBank[#allBank + 1] = bagItems[i]
+        end
+        bankIdx = bankIdx + 1
+        C_Timer.After(0, runBank)
+    end
+
+    runInv = function()
+        if not isBankOpen then
+            bankScanInProgress = false
+            return
+        end
+        if invIdx > #INVENTORY_BAGS then
+            self:SaveItemsCompressed(charKey, "bags", allInv)
+            if self.db and self.db.char then
+                if not self.db.char.bags then self.db.char.bags = {} end
+                self.db.char.bags.usedSlots = #allInv
+                self.db.char.bags.totalSlots = totalSlots
+                self.db.char.bags.lastScan = time()
+            end
+            C_Timer.After(0, runBank)
+            return
+        end
+        local bagID = INVENTORY_BAGS[invIdx]
+        totalSlots = totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
+        local bagItems = ScanBag(bagID)
+        for i = 1, #bagItems do
+            allInv[#allInv + 1] = bagItems[i]
+        end
+        invIdx = invIdx + 1
+        C_Timer.After(0, runInv)
+    end
+
+    runInv()
+end
+
 ---Handle BANKFRAME_OPENED event
 function WarbandNexus:OnBankOpened()
-    DebugPrint("|cff9370DB[WN ItemsCache]|r [Bank Event] BANKFRAME_OPENED triggered")
+    DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r [Bank Event] BANKFRAME_OPENED triggered")
     
     -- Set global flag for Gold Manager
     WarbandNexus.bankIsOpen = true
@@ -900,18 +992,9 @@ function WarbandNexus:OnBankOpened()
     
     local charKey = ns.Utilities:GetCharacterKey()
     
-    -- Defer scans across frames to avoid a single-frame FPS spike
-    -- (inventory + bank + warband = hundreds of slots scanned synchronously)
+    -- One container per frame (replaces nested 0 + 0.05s timers; avoids large synchronous spikes)
     C_Timer.After(0, function()
-        self:ScanInventoryBags(charKey)
-        C_Timer.After(0.05, function()
-            self:ScanBankBags(charKey)
-            C_Timer.After(0.05, function()
-                self:ScanWarbandBank()
-                bankScanInProgress = false  -- Re-enable incremental updates
-                self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = charKey})
-            end)
-        end)
+        self:RunBudgetedBankOpenScan(charKey)
     end)
 end
 
@@ -921,7 +1004,7 @@ function WarbandNexus:OnBankClosed()
     isWarbandBankOpen = false  -- Both tabs close together
     bankScanInProgress = false  -- Safety: ensure flag is cleared
     WarbandNexus.bankIsOpen = false  -- Clear global flag for Gold Manager
-    DebugPrint("|cff9370DB[WN ItemsCache]|r [Bank Event] BANKFRAME_CLOSED")
+    DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r [Bank Event] BANKFRAME_CLOSED")
 end
 
 ---Handle BAG_UPDATE_DELAYED (fires once after all pending bag operations complete)

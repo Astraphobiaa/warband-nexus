@@ -31,23 +31,6 @@ local CreateIcon = ns.UI_CreateIcon
 -- RUNTIME DEPENDENCY VALIDATION
 --============================================================================
 
-local function ValidateDependencies()
-    local missing = {}
-    
-    if not COLORS then table.insert(missing, "UI_COLORS") end
-    if not ApplyVisuals then table.insert(missing, "UI_ApplyVisuals") end
-    if not FontManager then table.insert(missing, "FontManager") end
-    if not CreateIcon then table.insert(missing, "UI_CreateIcon") end
-    
-    if #missing > 0 then
-        DebugPrint("|cffff0000[WN WindowFactory ERROR]|r Missing dependencies: " .. table.concat(missing, ", "))
-        DebugPrint("|cffff0000[WN WindowFactory ERROR]|r Ensure SharedWidgets.lua loads before WindowFactory.lua in .toc")
-        return false
-    end
-    
-    return true
-end
-
 -- Defer validation to first use (allows SharedWidgets to complete loading)
 -- Dependencies checked at runtime in CreateExternalWindow function
 
@@ -319,18 +302,29 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
             if frame._addBtn and frame._addBtn:IsMouseOver() then return true end
             return false
         end
-        
-        popup._mouseWasDown = false
-        popup:SetScript("OnUpdate", function(self)
-            if not self:IsShown() then return end
-            local isDown = IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton")
-            -- Detect mouse-down edge (transition from up to down)
-            if isDown and not self._mouseWasDown then
-                if not IsMouseOverPopup(self) then
-                    self:Hide()
-                end
+
+        local dismissOverlay = CreateFrame("Frame", nil, UIParent)
+        dismissOverlay:SetAllPoints(UIParent)
+        dismissOverlay:SetFrameStrata("FULLSCREEN_DIALOG")
+        dismissOverlay:SetFrameLevel(math.max(1, popup:GetFrameLevel() - 1))
+        dismissOverlay:EnableMouse(true)
+        dismissOverlay:Hide()
+        dismissOverlay:SetScript("OnMouseDown", function()
+            if popup:IsShown() and not IsMouseOverPopup(popup) then
+                popup:Hide()
             end
-            self._mouseWasDown = isDown
+        end)
+        popup._dismissOverlay = dismissOverlay
+        popup:SetScript("OnShow", function(self)
+            if self._dismissOverlay then
+                self._dismissOverlay:SetFrameLevel(math.max(1, self:GetFrameLevel() - 1))
+                self._dismissOverlay:Show()
+            end
+        end)
+        popup:SetScript("OnHide", function(self)
+            if self._dismissOverlay then
+                self._dismissOverlay:Hide()
+            end
         end)
         
         -- Icon
@@ -564,7 +558,6 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     popup:ClearAllPoints()
     popup:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -4)
     popup:SetClampedToScreen(true)
-    popup._mouseWasDown = true  -- Prevent immediate dismiss (mouse is down from the click that opened us)
     popup:Show()
     popup:Raise()
     

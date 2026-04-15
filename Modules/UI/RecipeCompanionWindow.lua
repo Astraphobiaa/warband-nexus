@@ -21,6 +21,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local ApplyVisuals = ns.UI_ApplyVisuals
@@ -987,18 +988,18 @@ function WarbandNexus:InitializeRecipeCompanion()
 
     -- NOTE: Uses RecipeCompanionEvents as 'self' key to avoid overwriting other modules' handlers.
     -- Listen for recipe selection (guard with module check)
-    WarbandNexus.RegisterMessage(RecipeCompanionEvents, "WN_RECIPE_SELECTED", function(_, recipeInfo)
+    WarbandNexus.RegisterMessage(RecipeCompanionEvents, E.RECIPE_SELECTED, function(_, recipeInfo)
         if not ns.Utilities:IsModuleEnabled("professions") then return end
         OnRecipeSelected(recipeInfo)
     end)
 
     -- Listen for profession window lifecycle (guard with module check)
-    WarbandNexus.RegisterMessage(RecipeCompanionEvents, "WN_PROFESSION_WINDOW_OPENED", function()
+    WarbandNexus.RegisterMessage(RecipeCompanionEvents, E.PROFESSION_WINDOW_OPENED, function()
         if not ns.Utilities:IsModuleEnabled("professions") then return end
         OnProfessionWindowOpened()
     end)
 
-    WarbandNexus.RegisterMessage(RecipeCompanionEvents, "WN_PROFESSION_WINDOW_CLOSED", function()
+    WarbandNexus.RegisterMessage(RecipeCompanionEvents, E.PROFESSION_WINDOW_CLOSED, function()
         OnProfessionWindowClosed()
     end)
 
@@ -1016,7 +1017,7 @@ function WarbandNexus:InitializeRecipeCompanion()
     end
 
     -- WN_RECIPE_DATA_UPDATED: refresh when recipe scan completes (guard with module check)
-    WarbandNexus.RegisterMessage(RecipeCompanionEvents, "WN_RECIPE_DATA_UPDATED", function()
+    WarbandNexus.RegisterMessage(RecipeCompanionEvents, E.RECIPE_DATA_UPDATED, function()
         if not ns.Utilities:IsModuleEnabled("professions") then return end
         if companionFrame and companionFrame:IsShown() and currentRecipeID then
             RefreshCompanion()

@@ -959,6 +959,12 @@ L["UNSPENT_POINTS"] = "Неиспользованные очки"
 L["COLLECTIBLE"] = "Коллекционный"
 L["RECHARGE"] = "Очистка"
 L["FULL"] = "Полный"
+L["PROF_CONCENTRATION_FULL"] = "Полный"
+L["PROF_CONCENTRATION_HOURS_REMAINING"] = "%d ч"
+L["PROF_CONCENTRATION_MINUTES_REMAINING"] = "%d мин"
+L["PROF_CONCENTRATION_DAYS_HOURS_MIN"] = "%d д %d ч %d мин"
+L["PROF_CONCENTRATION_HOURS_MIN"] = "%d ч %d мин"
+L["PROF_CONCENTRATION_MINUTES_ONLY"] = "%d мин"
 L["PROF_OPEN_RECIPE"] = "Открыть"
 L["PROF_OPEN_RECIPE_TOOLTIP"] = "Открыть список рецептов профессии"
 L["PROF_ONLY_CURRENT_CHAR"] = "Только для текущего персонажа"
@@ -1472,6 +1478,10 @@ L["GEAR_UPGRADES_GOLD_ONLY_FORMAT"] = "%d улучшение(-ий) только
 L["GEAR_NEED_MORE_CRESTS_FORMAT"] = "%s %d/%d — нужно больше гербов"
 L["WOW_TOKEN_LABEL"] = "WOW ЖЕТОН"
 L["FORMAT_BUTTON"] = "Формат"
+L["STATS_PLAYED_STEAM_ZERO"] = "0 ч"
+L["STATS_PLAYED_STEAM_FLOAT"] = "%.1f ч"
+L["STATS_PLAYED_STEAM_THOUSAND"] = "%d,%03d ч"
+L["STATS_PLAYED_STEAM_INT"] = "%d ч"
 L["SHOW_ALL"] = "Показать все"
 L["DISCORD_TOOLTIP"] = "Warband Nexus Discord"
 L["SOURCE_OTHER"] = "Прочее"
@@ -1529,6 +1539,7 @@ L["PVE_CREST_ADV"] = "Adventurer"
 L["PVE_CREST_CHAMP"] = "Champion"
 L["PVE_CREST_HERO"] = "Hero"
 L["PVE_CREST_MYTH"] = "Myth"
+L["PVE_CREST_EXPLORER"] = "Explorer"
 L["PVE_CREST_VET"] = "Veteran"
 
 -- Vault Tooltips
@@ -1556,6 +1567,11 @@ L["WARBAND_WEALTH"] = "Warband Wealth"
 L["GEAR_CRAFTED_CREST_COST"] = "Recraft cost: %d crests"
 L["GEAR_CRAFTED_NO_CRESTS"] = "No crests available for recraft"
 L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
+L["GEAR_TRACK_CRAFTED_FALLBACK"] = "Создано"
+L["GEAR_CRAFTED_MAX_ILVL_LINE"] = "%s (макс. ур. предмета %d)"
+L["GEAR_CRAFTED_RECAST_TO_LINE"] = "Переделка в %s (ур. предмета %d)"
+L["GEAR_CRAFTED_COST_DAWNCREST"] = "Стоимость: %d %s Dawncrest"
+L["GEAR_CRAFTED_NEXT_TIER_CRESTS"] = "%s (ур. предмета %d): %d/%d гербов (нужно ещё %d)"
 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
@@ -1635,6 +1651,26 @@ Localization
 
 Дальнейшие планы
 - More Midnight API validation; Try Counter and notifications tuned from live raids and dungeons; further settings and tooltip polish.
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.15 (CHANGELOG_V2515) — English notes; see enUS for detail
+L["CHANGELOG_V2515"] = [=[v2.5.15 beta 1 (2026-04-15)
+
+Beta — pre-release; feedback welcome before stable.
+
+Performance
+- UI: SchedulePopulateContent debounces (last schedule wins); OnHide cancels populate timer; one defer per main tab switch; no redundant tab-button refresh while switching; currency/reputation messages only update badges when that tab is hidden.
+- CollectionService: coalesced EnsureCollectionData; ScanCollection uses a FRAME_BUDGET_MS coroutine; BuildFullCollectionData batch budget aligned.
+- Guild bank & ItemsCache: chunked scans; atomic tab results; invalidate on cancel/close.
+- Plans & Collections: PlansUI two-column grid precompute O(n); AbortCollectionsChunkedBuilds; Core abort ties collections to existing tab teardown.
+
+Bug fixes
+- TOC: Config.lua loads after Modules/Constants.lua (fixes ns.Constants nil during Config init).
+- Main frame OnHide: populate timer cleared after cancel.
+
+Localization
+- GearUI: upgrade track names + crafted recraft tooltip lines; PVE_CREST_EXPLORER; Profession concentration + Steam-style played time strings; locale parity for GEAR_CRAFTED_*, STATS_PLAYED_STEAM_*, PROF_CONCENTRATION_* (de, fr, es, es-mx, it, pt, ru, ko, zhTW; enUS/zhCN baseline).
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Список дел и недельный прогресс: снято = в процессе; включено = только завершённые. Вкладки обзора: снято = не получено (только из списка при «Показать запланированные»); включено = полученные из списка (запланированные всё ещё фильтруют)."

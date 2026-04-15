@@ -949,6 +949,12 @@ L["UNSPENT_POINTS"] = "未使用點數"
 L["COLLECTIBLE"] = "收藏品"
 L["RECHARGE"] = "充能"
 L["FULL"] = "已滿"
+L["PROF_CONCENTRATION_FULL"] = "已滿"
+L["PROF_CONCENTRATION_HOURS_REMAINING"] = "%d 小時"
+L["PROF_CONCENTRATION_MINUTES_REMAINING"] = "%d 分鐘"
+L["PROF_CONCENTRATION_DAYS_HOURS_MIN"] = "%d 天 %d 小時 %d 分鐘"
+L["PROF_CONCENTRATION_HOURS_MIN"] = "%d 小時 %d 分鐘"
+L["PROF_CONCENTRATION_MINUTES_ONLY"] = "%d 分鐘"
 L["PROF_OPEN_RECIPE"] = "開啟"
 L["PROF_OPEN_RECIPE_TOOLTIP"] = "開啟此專業的配方列表"
 L["PROF_ONLY_CURRENT_CHAR"] = "僅目前角色可用"
@@ -1462,6 +1468,10 @@ L["GEAR_UPGRADES_GOLD_ONLY_FORMAT"] = "%d次僅需金幣升級（此前已達成
 L["GEAR_NEED_MORE_CRESTS_FORMAT"] = "%s %d/%d — 需要更多紋章"
 L["WOW_TOKEN_LABEL"] = "WOW代幣"
 L["FORMAT_BUTTON"] = "格式"
+L["STATS_PLAYED_STEAM_ZERO"] = "0 小時"
+L["STATS_PLAYED_STEAM_FLOAT"] = "%.1f 小時"
+L["STATS_PLAYED_STEAM_THOUSAND"] = "%d,%03d 小時"
+L["STATS_PLAYED_STEAM_INT"] = "%d 小時"
 L["SHOW_ALL"] = "顯示全部"
 L["DISCORD_TOOLTIP"] = "Warband Nexus Discord"
 L["SOURCE_OTHER"] = "其他"
@@ -1519,6 +1529,7 @@ L["PVE_CREST_ADV"] = "Adventurer"
 L["PVE_CREST_CHAMP"] = "Champion"
 L["PVE_CREST_HERO"] = "Hero"
 L["PVE_CREST_MYTH"] = "Myth"
+L["PVE_CREST_EXPLORER"] = "探索者"
 L["PVE_CREST_VET"] = "Veteran"
 
 -- Vault Tooltips
@@ -1545,7 +1556,12 @@ L["WARBAND_WEALTH"] = "Warband Wealth"
 -- Gear Crafting
 L["GEAR_CRAFTED_CREST_COST"] = "Recraft cost: %d crests"
 L["GEAR_CRAFTED_NO_CRESTS"] = "No crests available for recraft"
-L["GEAR_CRAFTED_RECRAFT_RANGE"] = "Recraft range: %d-%d (%s Dawncrest)"
+L["GEAR_CRAFTED_RECRAFT_RANGE"] = "再造範圍：%d-%d（%s 黎明紋章）"
+L["GEAR_TRACK_CRAFTED_FALLBACK"] = "製造"
+L["GEAR_CRAFTED_MAX_ILVL_LINE"] = "%s（最高裝等 %d）"
+L["GEAR_CRAFTED_RECAST_TO_LINE"] = "再造至 %s（裝等 %d）"
+L["GEAR_CRAFTED_COST_DAWNCREST"] = "消耗：%d %s 黎明紋章"
+L["GEAR_CRAFTED_NEXT_TIER_CRESTS"] = "%s（裝等 %d）：紋章 %d/%d（還需 %d）"
 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
@@ -1625,6 +1641,26 @@ Localization
 
 後續規劃
 - More Midnight API validation; Try Counter and notifications tuned from live raids and dungeons; further settings and tooltip polish.
+
+CurseForge: Warband Nexus]=]
+
+-- v2.5.15 (CHANGELOG_V2515) — English notes; see enUS for detail
+L["CHANGELOG_V2515"] = [=[v2.5.15 beta 1 (2026-04-15)
+
+Beta — pre-release; feedback welcome before stable.
+
+Performance
+- UI: SchedulePopulateContent debounces (last schedule wins); OnHide cancels populate timer; one defer per main tab switch; no redundant tab-button refresh while switching; currency/reputation messages only update badges when that tab is hidden.
+- CollectionService: coalesced EnsureCollectionData; ScanCollection uses a FRAME_BUDGET_MS coroutine; BuildFullCollectionData batch budget aligned.
+- Guild bank & ItemsCache: chunked scans; atomic tab results; invalidate on cancel/close.
+- Plans & Collections: PlansUI two-column grid precompute O(n); AbortCollectionsChunkedBuilds; Core abort ties collections to existing tab teardown.
+
+Bug fixes
+- TOC: Config.lua loads after Modules/Constants.lua (fixes ns.Constants nil during Config init).
+- Main frame OnHide: populate timer cleared after cancel.
+
+Localization
+- GearUI: upgrade track names + crafted recraft tooltip lines; PVE_CREST_EXPLORER; Profession concentration + Steam-style played time strings; locale parity for GEAR_CRAFTED_*, STATS_PLAYED_STEAM_*, PROF_CONCENTRATION_* (de, fr, es, es-mx, it, pt, ru, ko, zhTW; enUS/zhCN baseline).
 
 CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "待辦與週進度：未勾選＝進行中的計畫；勾選＝僅已完成。瀏覽分頁：未勾選＝未收藏（開啟「顯示已計畫」時僅清單內）；勾選＝清單上已收藏項目（「顯示已計畫」仍會限制）。"

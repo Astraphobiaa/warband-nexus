@@ -6,6 +6,11 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
+local Utilities = ns.Utilities
+local function CmpQuestTitle(a, b)
+    return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.title) or "") < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.title) or "")
+end
 
 -- AceEvent identity: WN_PLANS_UPDATED → refresh daily-plan presence cache (one handler)
 local DailyQuestManagerEvents = {}
@@ -338,7 +343,7 @@ local function SortDynamicQuestCategoryList(list)
         local aTime = (type(a.timeLeft) == "number" and a.timeLeft > 0) and a.timeLeft or math.huge
         local bTime = (type(b.timeLeft) == "number" and b.timeLeft > 0) and b.timeLeft or math.huge
         if aTime ~= bTime then return aTime < bTime end
-        return (a.title or "") < (b.title or "")
+        return CmpQuestTitle(a, b)
     end)
 end
 
@@ -756,7 +761,8 @@ function WarbandNexus:ScanMidnightQuests()
             if info and not info.isHeader and info.questID then
                 local inMidnight = info.mapID and MIDNIGHT_MAP_SET[info.mapID]
                 local inMidnightParent = info.mapID and midnightParentMaps[info.mapID]
-                local title = info.title or ""
+                -- Never use info.title raw (may be secret); GetQuestTitle normalizes + fallback
+                local title = GetQuestTitle(info.questID, info)
                 local lTitle = title:lower()
                 local isPrey = lTitle:find("prey:", 1, true) or lTitle:find("prey hunt", 1, true)
                 local isMidnightSA = (inMidnight or inMidnightParent)
@@ -823,7 +829,7 @@ function WarbandNexus:ScanMidnightQuests()
                     local bSub = b.isSubQuest and 1 or 0
                     if aSub ~= bSub then return aSub < bSub end
                     if a.isComplete ~= b.isComplete then return not a.isComplete end
-                    return (a.title or "") < (b.title or "")
+                    return CmpQuestTitle(a, b)
                 end)
             else
                 SortDynamicQuestCategoryList(list)
@@ -900,7 +906,7 @@ function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes)
     }
 
     self.db.global.plans[#self.db.global.plans + 1] = plan
-    self:SendMessage("WN_PLANS_UPDATED", {
+    self:SendMessage(E.PLANS_UPDATED, {
         action   = "daily_plan_created",
         planID   = planID,
         planType = "daily_quests",
@@ -986,7 +992,7 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
     plan.quests = newQuests
     plan.lastUpdate = time()
 
-    self:SendMessage("WN_PLANS_UPDATED", {
+    self:SendMessage(E.PLANS_UPDATED, {
         action   = "daily_plan_updated",
         planID   = plan.id,
         planType = "daily_quests",
@@ -998,12 +1004,17 @@ end
 -- ============================================================================
 
 function WarbandNexus:InitializeDailyQuestManager()
+    if self._dailyQuestManagerInitialized then
+        return
+    end
+    self._dailyQuestManagerInitialized = true
+
     -- QUEST_TURNED_IN: dispatched by EventManager's consolidated handler (avoids AceEvent overwrite)
     self:RegisterEvent("QUEST_LOG_UPDATE", "OnDailyQuestUpdate")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnDailyQuestLogin")
 
     SyncDailyQuestPlanIndexes()
-    WarbandNexus.RegisterMessage(DailyQuestManagerEvents, "WN_PLANS_UPDATED", function()
+    WarbandNexus.RegisterMessage(DailyQuestManagerEvents, E.PLANS_UPDATED, function()
         RequestDailyQuestIndexRebuild()
     end)
 
@@ -1011,7 +1022,11 @@ function WarbandNexus:InitializeDailyQuestManager()
     -- (expired weeklies are removed; new week's quests appear)
     if C_Timer and C_Timer.NewTicker then
         self.dailyQuestWeeklyCheckTime = time()
-        C_Timer.NewTicker(60, function()
+        if self._dailyQuestWeeklyTicker then
+            self._dailyQuestWeeklyTicker:Cancel()
+            self._dailyQuestWeeklyTicker = nil
+        end
+        self._dailyQuestWeeklyTicker = C_Timer.NewTicker(60, function()
             if not self.db or not self.db.global then return end
             if ns.Utilities and ns.Utilities.IsModuleEnabled and not ns.Utilities:IsModuleEnabled("plans") then return end
             if not self.db.global.plans then return end
@@ -1027,7 +1042,7 @@ function WarbandNexus:InitializeDailyQuestManager()
                     end
                 end
                 if self.SendMessage then
-                    self:SendMessage("WN_PLANS_UPDATED", { action = "weekly_reset", planType = "daily_quests" })
+                    self:SendMessage(E.PLANS_UPDATED, { action = "weekly_reset", planType = "daily_quests" })
                 end
             end
         end)
@@ -1099,7 +1114,7 @@ function WarbandNexus:OnDailyQuestCompleted(event, questID)
     end
 
     if self.SendMessage then
-        self:SendMessage("WARBAND_QUEST_PROGRESS_UPDATED", {
+        self:SendMessage(E.QUEST_PROGRESS_UPDATED, {
             questID = questID,
             reason  = "QUEST_TURNED_IN",
         })
@@ -1115,7 +1130,7 @@ function WarbandNexus:OnDailyQuestUpdate()
 
     if self.questUpdateTimer then return end
 
-    self.questUpdateTimer = C_Timer.After(1, function()
+    self.questUpdateTimer = C_Timer.NewTimer(1, function()
         self.questUpdateTimer = nil
         local currentKey = ns.Utilities:GetCharacterKey()
         local dailyList = GetDailyQuestPlansForCharKey(currentKey)
@@ -1126,7 +1141,7 @@ function WarbandNexus:OnDailyQuestUpdate()
         end
 
         if self.SendMessage then
-            self:SendMessage("WARBAND_QUEST_PROGRESS_UPDATED", {
+            self:SendMessage(E.QUEST_PROGRESS_UPDATED, {
                 reason = "QUEST_LOG_UPDATE",
             })
         end

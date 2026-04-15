@@ -5,7 +5,10 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
+
+local issecretvalue = issecretvalue
 
 -- LibDBIcon reference for minimap lock
 local LDBI = LibStub("LibDBIcon-1.0", true)
@@ -452,7 +455,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
         if option.get then
             local currentValue = option.get()
             local display = (currentValue and values[currentValue])
-                or (currentValue and type(currentValue) == "string" and currentValue:match("[^\\/]+$"))  -- filename from path
+                or (currentValue and type(currentValue) == "string" and not (issecretvalue and issecretvalue(currentValue)) and currentValue:match("[^\\/]+$"))  -- filename from path
                 or (currentValue and tostring(currentValue))
                 or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
             valueText:SetText(display)
@@ -633,7 +636,6 @@ local function CreateDropdownWidget(parent, option, yOffset)
             if key == "ESCAPE" then
                 if dropdown._clickCatcher then
                     dropdown._clickCatcher:Hide()
-                    dropdown._clickCatcher = nil
                 end
                 self:Hide()
                 activeMenu = nil
@@ -658,20 +660,22 @@ local function CreateDropdownWidget(parent, option, yOffset)
             end
             dropdown._clickCatcher = clickCatcher
         end
-        
+
+        -- Ensure click-catcher is hidden when menu is hidden (single stable handler).
+        if not menu._clickCatcherHideHandlerInstalled then
+            menu._clickCatcherHideHandlerInstalled = true
+            menu:SetScript("OnHide", function()
+                local catcher = dropdown._clickCatcher
+                if catcher then
+                    catcher:Hide()
+                end
+            end)
+        end
+
         -- Show click-catcher when menu is shown
-        clickCatcher:Show()
-        
-        -- Ensure click-catcher is hidden when menu is hidden
-        local originalOnHide = menu:GetScript("OnHide")
-        menu:SetScript("OnHide", function(self)
-            if clickCatcher then
-                clickCatcher:Hide()
-            end
-            if originalOnHide then
-                originalOnHide(self)
-            end
-        end)
+        if clickCatcher then
+            clickCatcher:Show()
+        end
     end)
     
     -- Label + gap + 32px control + margin before next row
@@ -728,7 +732,12 @@ local function CreateInputWidget(parent, option, yOffset)
     -- On enter pressed or focus lost → commit value
     local function CommitValue()
         if option.set then
-            option.set(editBox:GetText())
+            local t = editBox:GetText()
+            if t and issecretvalue and issecretvalue(t) then
+                editBox:ClearFocus()
+                return
+            end
+            option.set(t)
         end
         editBox:ClearFocus()
     end
@@ -1179,7 +1188,7 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.modulesEnabled.currencies ~= false end,
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.currencies = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "currencies", value)
+                WarbandNexus:SendMessage(E.MODULE_TOGGLED, "currencies", value)
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
@@ -1190,7 +1199,7 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.modulesEnabled.reputations ~= false end,
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.reputations = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "reputations", value)
+                WarbandNexus:SendMessage(E.MODULE_TOGGLED, "reputations", value)
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
@@ -1201,7 +1210,7 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.modulesEnabled.items ~= false end,
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.items = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "items", value)
+                WarbandNexus:SendMessage(E.MODULE_TOGGLED, "items", value)
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
@@ -1212,7 +1221,7 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.modulesEnabled.storage ~= false end,
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.storage = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "storage", value)
+                WarbandNexus:SendMessage(E.MODULE_TOGGLED, "storage", value)
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
@@ -1226,7 +1235,7 @@ local function BuildSettings(parent, containerWidth)
                     WarbandNexus:SetPvEModuleEnabled(value)
                 else
                     WarbandNexus.db.profile.modulesEnabled.pve = value
-                    WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "pve", value)
+                    WarbandNexus:SendMessage(E.MODULE_TOGGLED, "pve", value)
                 end
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
@@ -1241,7 +1250,7 @@ local function BuildSettings(parent, containerWidth)
                     WarbandNexus:SetPlansModuleEnabled(value)
                 else
                     WarbandNexus.db.profile.modulesEnabled.plans = value
-                    WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "plans", value)
+                    WarbandNexus:SendMessage(E.MODULE_TOGGLED, "plans", value)
                 end
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
@@ -1256,7 +1265,7 @@ local function BuildSettings(parent, containerWidth)
                     WarbandNexus:SetProfessionModuleEnabled(value)
                 else
                     WarbandNexus.db.profile.modulesEnabled.professions = value
-                    WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "professions", value)
+                    WarbandNexus:SendMessage(E.MODULE_TOGGLED, "professions", value)
                 end
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
@@ -1268,7 +1277,7 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.modulesEnabled.gear ~= false end,
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.gear = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "gear", value)
+                WarbandNexus:SendMessage(E.MODULE_TOGGLED, "gear", value)
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
@@ -1279,7 +1288,7 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.modulesEnabled.collections ~= false end,
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.collections = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "collections", value)
+                WarbandNexus:SendMessage(E.MODULE_TOGGLED, "collections", value)
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
@@ -1293,7 +1302,7 @@ local function BuildSettings(parent, containerWidth)
                     WarbandNexus:SetTryCounterModuleEnabled(value)
                 else
                     WarbandNexus.db.profile.modulesEnabled.tryCounter = value
-                    WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "tryCounter", value)
+                    WarbandNexus:SendMessage(E.MODULE_TOGGLED, "tryCounter", value)
                 end
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
@@ -2887,6 +2896,7 @@ local function BuildSettings(parent, containerWidth)
     lookupBtnText:SetTextColor(lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3])
     lookupBtn:SetScript("OnClick", function()
         local rawID = itemIDBox:GetText()
+        if rawID and issecretvalue and issecretvalue(rawID) then return end
         local itemID = tonumber(rawID)
         if not itemID then return end
         ns._trackDBForm.itemID = itemID
@@ -2960,8 +2970,14 @@ local function BuildSettings(parent, containerWidth)
             tooltip = (ns.L and ns.L["ADD_ENTRY_DESC"]) or "Add this custom drop entry.",
             func = function()
                 local f = ns._trackDBForm
-                local itemID = tonumber(itemIDBox:GetText())
-                local sourceID = tonumber(sourceIDBox:GetText())
+                local rawItem = itemIDBox:GetText()
+                local rawSrc = sourceIDBox:GetText()
+                if (rawItem and issecretvalue and issecretvalue(rawItem))
+                    or (rawSrc and issecretvalue and issecretvalue(rawSrc)) then
+                    return
+                end
+                local itemID = tonumber(rawItem)
+                local sourceID = tonumber(rawSrc)
                 if not itemID or not sourceID then
                     WarbandNexus:Print("|cffff4444" .. ((ns.L and ns.L["ENTRY_ADD_FAILED"]) or "Item ID and Source ID are required.") .. "|r")
                     return

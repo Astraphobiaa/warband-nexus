@@ -8,8 +8,8 @@
 
 local ADDON_NAME, ns = ...
 
--- Debug print helper
-local DebugPrint = ns.DebugPrint
+-- Verbose-only: layout creation is noisy in normal debug mode.
+local DebugVerbosePrint = ns.DebugVerbosePrint
 
 --============================================================================
 -- DYNAMIC CARD LAYOUT MANAGER
@@ -52,9 +52,18 @@ function CardLayoutManager:Create(parent, columns, cardSpacing, startYOffset)
     -- Store instance
     local instanceKey = tostring(parent)
     self.instances[instanceKey] = instance
+
+    if not parent._wnCardLayoutHideHook then
+        parent._wnCardLayoutHideHook = true
+        parent:HookScript("OnHide", function()
+            self.instances[instanceKey] = nil
+        end)
+    end
     
-    DebugPrint("|cff9d5cff[WN CardLayoutManager]|r Layout instance created: " .. 
-          columns .. " columns, " .. cardSpacing .. "px spacing")
+    if DebugVerbosePrint then
+        DebugVerbosePrint("|cff9d5cff[WN CardLayoutManager]|r Layout instance created: " .. 
+              columns .. " columns, " .. cardSpacing .. "px spacing")
+    end
     
     return instance
 end

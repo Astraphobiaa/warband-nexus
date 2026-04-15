@@ -1,5 +1,72 @@
 ═══════════════════════════════════════════════════════════════════════════
 
+  WARBAND NEXUS — 2.5.15 beta 1 (2026-04-15)  [pre-release]
+
+═══════════════════════════════════════════════════════════════════════════
+
+This release (beta)
+
+Performance
+- UI (main window, Modules/UI.lua)
+- SchedulePopulateContent: debounce timer resets on each call (last event wins); optional
+  pendingPopulateSkipCooldown OR-merge for profession etc. (bypass POPULATE_COOLDOWN).
+- OnHide: cancel populate timer; clear pendingPopulateSkipCooldown; populateDebounceGen bump so
+  any in-flight deferred callback is ignored; C_Timer.After fallback stores :Cancel handle when
+  the API returns one.
+- CollectionService: post-scan cache key listing is verbose-only (avoids O(categories) pairs
+  when debug verbose is off; scan summary line unchanged).
+- Main tab switch: one C_Timer.After(0) only — pre-clear scroll (pooled children + recycle),
+  PopulateContent, clear isMainTabSwitch (removed nested double After(0)).
+- PopulateContent: UpdateTabButtonStates skipped while isMainTabSwitch (tab bar already
+  updated on click).
+- WN_CURRENCY_UPDATED: full refresh only on currency/gear tab; else UpdateTabCountBadges("currency").
+- WN_REPUTATION_UPDATED / WN_REPUTATION_CACHE_READY: badge-only UpdateTabCountBadges("reputations")
+  when not on reputations tab; no duplicate PopulateContent (ReputationUI redraws that tab).
+
+CollectionService (Modules/CollectionService.lua)
+- ScheduleEnsureCollectionDataDeferred: coalesces burst EnsureCollectionData to one next-frame
+  call; exposed as ns.ScheduleEnsureCollectionDataDeferred.
+- Replaced scattered C_Timer.After(0, EnsureCollectionData) from GetUncollected*/GetCollected*
+  empty-store paths with the scheduler.
+- ScanCollection: resume coroutine under FRAME_BUDGET_MS per frame (replaces NewTicker 0.1s).
+- BuildFullCollectionData: batch budget uses FRAME_BUDGET_MS (was fixed 6ms).
+
+Guild bank & items cache
+- GuildBankScanner: async scan in FRAME_BUDGET_MS chunks; build items in tabItemsBuilding then
+  assign atomically; new scan bumps generation; InvalidateGuildBankScan + Core OnGuildBankClosed.
+- GuildBankScanner: trace + scan complete lines use DebugVerbosePrint; failure paths stay on DebugPrint.
+- GuildBankScanner: GroupItemsByCategory uses numeric for loop (no ipairs).
+- ItemsCacheService: RunBudgetedBankOpenScan — one container per frame (bags → bank → warband);
+  bankScanInProgress; abort chain if bank closes mid-scan.
+- ItemsCacheService: BAG_UPDATE bucket / bank open-close event trace → DebugVerbosePrint (high frequency).
+
+Plans, Collections, Core
+- PlansUI: regularCountBefore[] precompute for 2-column grid (O(n) vs per-card loop over 1..i-1).
+- CollectionsUI: AbortCollectionsChunkedBuilds bumps mount/pet/toy draw generations.
+- Core AbortTabOperations: collections tab calls AbortCollectionsChunkedBuilds (with plans/rep/currency).
+
+Docs
+- docs/QUEUE_REVISION_CHECKLIST.md: Midnight/taint, timers, services, UI smoke, Constants.EVENTS,
+  before/after performance table.
+
+Bug fixes
+- WarbandNexus.toc: load Config.lua after Modules/Constants.lua (fixes ns.Constants nil at
+  Config.lua line 9 and missing InitializeConfig at runtime).
+- Main frame OnHide: always nil out populate timer after cancel attempt.
+
+Localization
+- GearUI: LocalizeUpgradeTrackName() for API English tracks → L["PVE_CREST_*"]; used on paperdoll
+  track text and item tooltips (upgrade + crafted recraft lines).
+- GearUI: crafted tooltip lines localized (GEAR_CRAFTED_MAX_ILVL_LINE, RECAST_TO, COST_DAWNCREST,
+  NEXT_TIER_CRESTS); GEAR_TRACK_CRAFTED_FALLBACK for “Crafted” label.
+- Locales: PVE_CREST_EXPLORER (Explorer); zhCN/zhTW 探索者; other listed locales get Explorer key.
+- ProfessionService: GetConcentrationTimeToFull / Detailed use PROF_CONCENTRATION_* strings.
+- Statistics UI: Steam-style played-time row (FormatPlayedSteam) uses STATS_PLAYED_STEAM_*.
+- All listed locales: parity for GEAR_CRAFTED_*, STATS_PLAYED_STEAM_*, PROF_CONCENTRATION_*
+  (de, fr, es, es-mx, it, pt, ru, ko, zhTW; enUS/zhCN/de included in the same release).
+
+═══════════════════════════════════════════════════════════════════════════
+
   WARBAND NEXUS — 2.5.14 (2026-04-13)
 
 ═══════════════════════════════════════════════════════════════════════════
@@ -23,6 +90,8 @@ This release
   - Added 13 missing encounter ID mappings: Kael'thas (MGT), Anzu, Skadi, Altairus, Slabhide, Al'Akir, Mandokir, Kilnara, Alysrazor, Attumen (RTK), Nightbane (RTK).
 
 Earlier (short)
+- 2.5.15 beta 1 — Same as Performance / Bug fixes / Localization in this file (beta tag in TOC +
+  Constants; What's New text marks pre-release). Full markdown: CHANGELOG.md.
 - 2.5.12 — Collections "Recent" cards, mount preview, detail headers, try counter and PvE fixes.
 - 2.5.11 — PvE bounty column, achievement list scan, try counter and plans UI.
 - 2.5.10 — "Planned" label only when the item is still missing; tooltip fixes.

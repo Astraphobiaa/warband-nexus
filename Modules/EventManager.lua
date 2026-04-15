@@ -13,12 +13,10 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
+local E = Constants.EVENTS
 
 -- Unique AceEvent handler identity for EventManager
 local EventManagerEvents = {}
-
--- Debug print helper (only prints if debug mode enabled)
-local DebugPrint = ns.DebugPrint
 
 -- ============================================================================
 -- EVENT CONFIGURATION
@@ -27,32 +25,12 @@ local DebugPrint = ns.DebugPrint
 local EVENT_CONFIG = {
     -- Throttle delays (seconds) - minimum time between processing
     THROTTLE = {
-        BAG_UPDATE = 0.15,           -- Fast response for bag changes
         COLLECTION_CHANGED = 0.5,    -- Debounce rapid collection additions
-        PVE_DATA_CHANGED = 1.0,      -- Slow response for PvE updates
         PET_LIST_CHANGED = 2.0,      -- Very slow for pet caging
     },
-    
-    -- Priority levels (higher = processed first)
-    PRIORITY = {
-        CRITICAL = 100,  -- UI-blocking events (bank open/close)
-        HIGH = 75,       -- User-initiated actions (manual refresh)
-        NORMAL = 50,     -- Standard game events (bag updates)
-        LOW = 25,        -- Background updates (collections)
-        IDLE = 10,       -- Deferred processing (statistics)
-    },
 }
-
--- ============================================================================
--- STATE
--- ============================================================================
 
 local activeTimers = {}    -- Active throttle/debounce timers
-local eventStats = {       -- Event processing statistics
-    processed = {},
-    throttled = {},
-    queued = {},
-}
 
 -- ============================================================================
 -- THROTTLE & DEBOUNCE UTILITIES
@@ -69,7 +47,6 @@ local eventStats = {       -- Event processing statistics
 local function Throttle(key, interval, func, ...)
     -- If already throttled, skip
     if activeTimers[key] then
-        eventStats.throttled[key] = (eventStats.throttled[key] or 0) + 1
         return false
     end
     
@@ -80,7 +57,6 @@ local function Throttle(key, interval, func, ...)
     
     -- Execute immediately
     func(...)
-    eventStats.processed[key] = (eventStats.processed[key] or 0) + 1
     
     return true
 end
@@ -100,14 +76,11 @@ local function Debounce(key, interval, func, ...)
     if activeTimers[key] then
         activeTimers[key]:Cancel()
     end
-    
-    eventStats.queued[key] = (eventStats.queued[key] or 0) + 1
-    
+
     -- Set new timer
     activeTimers[key] = C_Timer.NewTimer(interval, function()
         activeTimers[key] = nil
         func(unpack(args))
-        eventStats.processed[key] = (eventStats.processed[key] or 0) + 1
     end)
 end
 
@@ -250,7 +223,7 @@ function WarbandNexus:OnMoneyChanged()
         C_Timer.After(0.05, function()
             if WarbandNexus then
                 WarbandNexus.moneyRefreshPending = false
-                WarbandNexus:SendMessage("WN_MONEY_UPDATED")
+                WarbandNexus:SendMessage(E.MONEY_UPDATED)
             end
         end)
     end
@@ -461,7 +434,7 @@ function WarbandNexus:InitializeEventManager()
     -- WN_CURRENCY_UPDATED fires with currencyID when a single currency changes.
     -- We check if it's a concentration currency and refresh if so.
     -- NOTE: Uses EventManagerEvents as 'self' key to avoid overwriting CurrencyUI's handler.
-    WarbandNexus.RegisterMessage(EventManagerEvents, "WN_CURRENCY_UPDATED", function(_, currencyID)
+    WarbandNexus.RegisterMessage(EventManagerEvents, E.CURRENCY_UPDATED, function(_, currencyID)
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if currencyID and WarbandNexus.OnConcentrationCurrencyChanged then
             WarbandNexus:OnConcentrationCurrencyChanged(currencyID)

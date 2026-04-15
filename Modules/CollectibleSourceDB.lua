@@ -2432,7 +2432,7 @@ function ns.CollectibleSourceDB.GetSourceStringForMount(mountID)
         local function addMount(itemID, sourceStr)
             if not itemID then return end
             local mID = C_MountJournal.GetMountFromItem(itemID)
-            if mID and (not issecretvalue or not issecretvalue(mID)) and not idx[mID] then
+            if mID and not (issecretvalue and issecretvalue(mID)) and not idx[mID] then
                 idx[mID] = sourceStr
             end
         end

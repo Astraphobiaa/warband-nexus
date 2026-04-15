@@ -9,7 +9,16 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
+
+local issecretvalue = issecretvalue
+
+local function SafeLower(s)
+    if not s or s == "" then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    return s:lower()
+end
 
 -- Unique AceEvent handler identity for CurrencyUI
 local CurrencyUIEvents = {}
@@ -38,7 +47,6 @@ local AcquireCurrencyRow = ns.UI_AcquireCurrencyRow
 local ReleaseCurrencyRow = ns.UI_ReleaseCurrencyRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
-local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
@@ -91,12 +99,18 @@ end
 ---@param searchText string Search text (lowercase)
 ---@return boolean matches
 local function CurrencyMatchesSearch(currency, searchText)
-    if not searchText or searchText == "" then
+    if not searchText then
+        return true
+    end
+    if issecretvalue and issecretvalue(searchText) then
+        return true
+    end
+    if searchText == "" then
         return true
     end
     
-    local name = (currency.name or ""):lower()
-    local category = (currency.category or ""):lower()
+    local name = SafeLower(currency.name)
+    local category = SafeLower(currency.category)
     
     return name:find(searchText, 1, true) or category:find(searchText, 1, true)
 end
@@ -316,8 +330,14 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
             
             if currData then
                 -- Apply search filter
-                local matchesSearch = (not searchText or searchText == "" or 
-                    (currData.name and currData.name:lower():find(searchText, 1, true)))
+                local matchesSearch
+                if not searchText or (issecretvalue and issecretvalue(searchText)) or searchText == "" then
+                    matchesSearch = true
+                else
+                    local cname = currData.name
+                    matchesSearch = cname and not (issecretvalue and issecretvalue(cname))
+                        and cname:lower():find(searchText, 1, true)
+                end
                 
                 if matchesSearch then
                     -- ALWAYS show CURRENT character's individual quantity as the primary row value.
@@ -965,19 +985,19 @@ function WarbandNexus:DrawCurrencyTab(parent)
         
         -- NOTE: Uses CurrencyUIEvents as 'self' key to avoid overwriting other modules' handlers.
         -- Loading / cache: redraw only when Currency tab is active; tab switch runs DrawCurrencyTab via PopulateContent.
-        WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_LOADING_STARTED", function()
+        WarbandNexus.RegisterMessage(CurrencyUIEvents, E.CURRENCY_LOADING_STARTED, function()
             if parent and IsCurrencyTabActive() then
                 WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
-        WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_CACHE_READY", function()
+        WarbandNexus.RegisterMessage(CurrencyUIEvents, E.CURRENCY_CACHE_READY, function()
             if parent and IsCurrencyTabActive() then
                 WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
-        WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_CACHE_CLEARED", function()
+        WarbandNexus.RegisterMessage(CurrencyUIEvents, E.CURRENCY_CACHE_CLEARED, function()
             if parent and IsCurrencyTabActive() then
                 WarbandNexus:DrawCurrencyTab(parent)
             end

@@ -5,7 +5,20 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
+
+local issecretvalue = issecretvalue
+
+local function SafeLower(s)
+    if not s or s == "" then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    return s:lower()
+end
+
+local function CompareCharNameLower(a, b)
+    return SafeLower(a.name) < SafeLower(b.name)
+end
 
 -- Unique AceEvent handler identity for StorageUI
 local StorageUIEvents = {}
@@ -17,6 +30,7 @@ local SearchResultsRenderer = ns.SearchResultsRenderer
 -- Tooltip API
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
+local DebugPrint = ns.DebugPrint
 
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
@@ -29,8 +43,6 @@ local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
-local CreateThemedButton = ns.UI_CreateThemedButton
-local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local FormatNumber = ns.UI_FormatNumber
 local COLORS = ns.UI_COLORS
 
@@ -65,9 +77,6 @@ local function RegisterStorageEvents(parent)
     end
     parent.storageUpdateHandler = true
     
-    -- Debug print helper
-    local DebugPrint = ns.DebugPrint
-    
     -- Debounced DrawStorageTab: coalesces rapid WN_ITEMS_UPDATED + WN_ITEM_METADATA_READY
     -- into a single redraw (e.g., bank open fires both within milliseconds)
     local pendingDrawTimer = nil
@@ -83,7 +92,7 @@ local function RegisterStorageEvents(parent)
     local function ScheduleStorageRefresh()
         if not IsStorageTabActive() then return end
         if pendingDrawTimer then return end  -- already scheduled
-        pendingDrawTimer = C_Timer.After(DRAW_DEBOUNCE, function()
+        pendingDrawTimer = C_Timer.NewTimer(DRAW_DEBOUNCE, function()
             pendingDrawTimer = nil
             if IsStorageTabActive() and parent then
                 local resultsContainer = parent.storageResultsContainer or parent._storageResultsContainer
@@ -109,7 +118,7 @@ local function RegisterStorageEvents(parent)
     local lastMetadataRefreshDraw = 0
     local METADATA_REFRESH_COOLDOWN = 2
 
-    WarbandNexus.RegisterMessage(StorageUIEvents, "WN_ITEM_METADATA_READY", function()
+    WarbandNexus.RegisterMessage(StorageUIEvents, E.ITEM_METADATA_READY, function()
         if IsStorageTabActive() then
             local now = GetTime()
             if now - lastMetadataRefreshDraw < METADATA_REFRESH_COOLDOWN then return end
@@ -129,8 +138,11 @@ end
 function WarbandNexus:DrawStorageTab(parent)
 -- Register event listeners (only once)
     RegisterStorageEvents(parent)
-    -- Release all pooled children before redrawing (performance optimization)
-    ReleaseAllPooledChildren(parent)
+    -- Release pooled rows for partial redraw calls.
+    -- PopulateContent already does this for full-tab renders.
+    if not parent._preparedByPopulate then
+        ReleaseAllPooledChildren(parent)
+    end
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
@@ -296,6 +308,10 @@ end
 --============================================================================
 
 function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchText)
+    local storageSearchActive = storageSearchText
+        and not (issecretvalue and issecretvalue(storageSearchText))
+        and storageSearchText ~= ""
+
     -- Clean up old non-virtual children (headers, cards) from previous render.
     -- VLM handles its own _isVirtualRow frames; we only need to recycle stale headers.
     local recycleBin = ns.UI_RecycleBin
@@ -346,11 +362,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     
     -- Search filtering helper
     local function ItemMatchesSearch(item)
-        if not storageSearchText or storageSearchText == "" then
+        if not storageSearchActive then
             return true
         end
-        local itemName = (item.name or ""):lower()
-        local itemLink = (item.itemLink or ""):lower()
+        local itemName = SafeLower(item.name)
+        local itemLink = SafeLower(item.itemLink)
         return itemName:find(storageSearchText, 1, true) or itemLink:find(storageSearchText, 1, true)
     end
     
@@ -358,7 +374,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     local categoriesWithMatches = {}
     local hasAnyMatches = false
     
-    if storageSearchText and storageSearchText ~= "" then
+    if storageSearchActive then
         -- Scan Warband Bank (NEW ItemsCacheService API)
         local warbandData = self:GetWarbandBankData()
         if warbandData and warbandData.items then
@@ -448,7 +464,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     end
     
     -- If search is active but no matches, show empty state and return
-    if storageSearchText and storageSearchText ~= "" and not hasAnyMatches then
+    if storageSearchActive and not hasAnyMatches then
         local height = SearchResultsRenderer:RenderEmptyState(self, parent, storageSearchText, "storage")
         -- Update SearchStateManager with result count
         SearchStateManager:UpdateResults("storage", 0)
@@ -456,7 +472,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     end
     
     -- Quick check for general "no data" empty state (when no search is active)
-    if not storageSearchText or storageSearchText == "" then
+    if not storageSearchActive then
         -- Check if there's any data at all
         local hasAnyData = false
         
@@ -522,7 +538,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
     end
     
-    if storageSearchText and storageSearchText ~= "" then
+    if storageSearchActive then
         for _, char in ipairs(characters) do
             local charKey = char._key
             local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
@@ -562,7 +578,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     if personalTotalMatches > 0 then
         -- Auto-expand if search has matches in this section
         local personalExpanded = self.storageExpandAllActive or expanded.personal
-        if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["personal"] then
+        if storageSearchActive and categoriesWithMatches["personal"] then
             personalExpanded = true
         end
         
@@ -598,18 +614,18 @@ if personalExpanded then
         if sortMode and sortMode ~= "manual" then
             table.sort(characters, function(a, b)
                 if sortMode == "name" then
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 elseif sortMode == "level" then
                     if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 elseif sortMode == "ilvl" then
                     if (a.itemLevel or 0) ~= (b.itemLevel or 0) then return (a.itemLevel or 0) > (b.itemLevel or 0) end
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 elseif sortMode == "gold" then
                     local goldA = ns.Utilities:GetCharTotalCopper(a)
                     local goldB = ns.Utilities:GetCharTotalCopper(b)
                     if goldA ~= goldB then return goldA > goldB end
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 end
                 return (a.level or 0) > (b.level or 0)
             end)
@@ -629,14 +645,14 @@ if personalExpanded then
                 for _, c in pairs(charMap) do table.insert(remaining, c) end
                 table.sort(remaining, function(a, b)
                     if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 end)
                 for _, c in ipairs(remaining) do table.insert(ordered, c) end
                 characters = ordered
             else
                 table.sort(characters, function(a, b)
                     if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-                    return (a.name or ""):lower() < (b.name or ""):lower()
+                    return CompareCharNameLower(a, b)
                 end)
             end
         end
@@ -658,7 +674,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                 local charCategoryKey = "personal_" .. charKey
                 
                 -- Skip character if search active and no matches
-                if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches[charCategoryKey] then
+                if storageSearchActive and not categoriesWithMatches[charCategoryKey] then
                     -- Skip this character
                 else
                     -- Auto-expand if search has matches for this character
@@ -668,7 +684,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                         isCharExpanded = true
                         expanded.categories[charCategoryKey] = true
                     end
-                    if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[charCategoryKey] then
+                    if storageSearchActive and categoriesWithMatches[charCategoryKey] then
                         isCharExpanded = true
                     end
                     
@@ -742,7 +758,7 @@ if isCharExpanded then
                     for typeName in pairs(charItems) do
                         -- Only include types that have matching items
                         local hasMatchingItems = false
-                        if storageSearchText and storageSearchText ~= "" then
+                        if storageSearchActive then
                             for _, item in ipairs(charItems[typeName]) do
                                 if ItemMatchesSearch(item) then
                                     hasMatchingItems = true
@@ -763,7 +779,7 @@ if isCharExpanded then
                         local typeKey = "personal_" .. charKey .. "_" .. typeName
                         
                         -- Skip category if search active and no matches
-                        if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches[typeKey] then
+                        if storageSearchActive and not categoriesWithMatches[typeKey] then
                             -- Skip this category
                         else
                             -- Auto-expand if search has matches in this category
@@ -773,7 +789,7 @@ if isCharExpanded then
                                 isTypeExpanded = true
                                 expanded.categories[typeKey] = true
                             end
-                            if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[typeKey] then
+                            if storageSearchActive and categoriesWithMatches[typeKey] then
                                 isTypeExpanded = true
                             end
                             
@@ -786,7 +802,7 @@ if isCharExpanded then
                             end
                             
                             -- Calculate display count
-                            local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #charItems[typeName]
+                            local displayCount = (storageSearchActive) and matchCount or #charItems[typeName]
                             
                             -- Skip header if it has no items to show
                             if displayCount == 0 then
@@ -891,7 +907,7 @@ if isTypeExpanded then
     
     -- Count total matches in warband section (for search filtering)
     local warbandTotalMatches = 0
-    if storageSearchText and storageSearchText ~= "" then
+    if storageSearchActive then
         for typeName, items in pairs(warbandItems) do
             for _, item in ipairs(items) do
                 if ItemMatchesSearch(item) then
@@ -910,7 +926,7 @@ if isTypeExpanded then
     if warbandTotalMatches > 0 then
         -- Auto-expand if search has matches in this section
         local warbandExpanded = self.storageExpandAllActive or expanded.warband
-        if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["warband"] then
+        if storageSearchActive and categoriesWithMatches["warband"] then
             warbandExpanded = true
         end
         
@@ -939,7 +955,7 @@ if warbandExpanded then
             for typeName in pairs(warbandItems) do
                 -- Only include types that have matching items
                 local hasMatchingItems = false
-                if storageSearchText and storageSearchText ~= "" then
+                if storageSearchActive then
                     for _, item in ipairs(warbandItems[typeName]) do
                         if ItemMatchesSearch(item) then
                             hasMatchingItems = true
@@ -961,7 +977,7 @@ if warbandExpanded then
             local categoryKey = "warband_" .. typeName
             
             -- Skip category if search active and no matches
-            if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches[categoryKey] then
+            if storageSearchActive and not categoriesWithMatches[categoryKey] then
                 -- Skip this category
             else
                 -- Auto-expand if search has matches in this category
@@ -971,7 +987,7 @@ if warbandExpanded then
                     isTypeExpanded = true
                     expanded.categories[categoryKey] = true
                 end
-                if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[categoryKey] then
+                if storageSearchActive and categoriesWithMatches[categoryKey] then
                     isTypeExpanded = true
                 end
                 
@@ -984,7 +1000,7 @@ if warbandExpanded then
                 end
                 
                 -- Calculate display count
-                local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #warbandItems[typeName]
+                local displayCount = (storageSearchActive) and matchCount or #warbandItems[typeName]
                 
                 -- Skip header if it has no items to show
                 if displayCount == 0 then
@@ -1054,9 +1070,7 @@ if warbandExpanded then
     if self.db and self.db.global and self.db.global.guildBank then
         for guildName, guildData in pairs(self.db.global.guildBank) do
             if guildData and guildData.tabs then
-                if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-                    _G.print("[StorageUI] Found cached guild bank:", guildName)
-                end
+                if DebugPrint then DebugPrint("[StorageUI] Found cached guild bank:", guildName) end
                 
                 -- Flatten all items from all tabs for this guild
                 local guildItems = {}
@@ -1088,9 +1102,7 @@ if warbandExpanded then
                                 end
                                 table.insert(guildItems[typeName], item)
                                 
-                                if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-                                    _G.print("[StorageUI] Item", item.itemID, "from", guildName, "-> typeName:", typeName)
-                                end
+                                if DebugPrint then DebugPrint("[StorageUI] Item", item.itemID, "from", guildName, "-> typeName:", typeName) end
                             end
                         end
                     end
@@ -1106,7 +1118,7 @@ if warbandExpanded then
     
     -- Count total matches across all guilds
     local guildTotalMatches = 0
-    if storageSearchText and storageSearchText ~= "" then
+    if storageSearchActive then
         for guildName, guildItems in pairs(allGuildItems) do
             for typeName, items in pairs(guildItems) do
                 for _, item in ipairs(items) do
@@ -1125,8 +1137,8 @@ if warbandExpanded then
         end
     end
     
-    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-        _G.print("[StorageUI] Total guild bank items:", guildTotalMatches, "from", (function()
+    if DebugPrint then
+        DebugPrint("[StorageUI] Total guild bank items:", guildTotalMatches, "from", (function()
             local count = 0
             for _ in pairs(allGuildItems) do count = count + 1 end
             return count
@@ -1140,7 +1152,7 @@ if warbandExpanded then
         
         -- Count matches for this specific guild
         local guildMatches = 0
-        if storageSearchText and storageSearchText ~= "" then
+        if storageSearchActive then
             for typeName, items in pairs(guildItems) do
                 for _, item in ipairs(items) do
                     if ItemMatchesSearch(item) then
@@ -1164,7 +1176,7 @@ if warbandExpanded then
                 guildExpanded = true
                 expanded.categories[guildKey] = true
             end
-            if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[guildKey] then
+            if storageSearchActive and categoriesWithMatches[guildKey] then
                 guildExpanded = true
             end
             
@@ -1199,7 +1211,7 @@ if warbandExpanded then
             for typeName in pairs(guildItems) do
                 -- Only include types that have matching items
                 local hasMatchingItems = false
-                if storageSearchText and storageSearchText ~= "" then
+                if storageSearchActive then
                     for _, item in ipairs(guildItems[typeName]) do
                         if ItemMatchesSearch(item) then
                             hasMatchingItems = true
@@ -1221,7 +1233,7 @@ if warbandExpanded then
                 local categoryKey = guildKey .. "_" .. typeName  -- Changed: unique per guild
                 
                 -- Skip category if search active and no matches
-                if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches[categoryKey] then
+                if storageSearchActive and not categoriesWithMatches[categoryKey] then
                     -- Skip this category
                 else
                     -- Auto-expand if search has matches in this category
@@ -1231,7 +1243,7 @@ if warbandExpanded then
                         isTypeExpanded = true
                         expanded.categories[categoryKey] = true
                     end
-                    if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[categoryKey] then
+                    if storageSearchActive and categoriesWithMatches[categoryKey] then
                         isTypeExpanded = true
                     end
                     
@@ -1244,7 +1256,7 @@ if warbandExpanded then
                     end
                     
                     -- Calculate display count
-                    local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #guildItems[typeName]
+                    local displayCount = (storageSearchActive) and matchCount or #guildItems[typeName]
                     
                     -- Skip header if it has no items to show
                     if displayCount == 0 then
@@ -1322,7 +1334,7 @@ if warbandExpanded then
             row.nameText:SetWidth(nameWidth)
             
             local baseName = item.name
-            if not baseName and item.link then
+            if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
                 baseName = item.link:match("%[(.-)%]")
             end
             if not baseName and item.pending then

@@ -295,8 +295,6 @@ function WarbandNexus:WrapCriticalFunctions()
         -- Event Handlers
         "OnBagUpdate",
         "OnMoneyChanged",
-        "OnCollectionChanged",
-        "OnPvEDataChanged",
     }
     
     -- Wrap each function

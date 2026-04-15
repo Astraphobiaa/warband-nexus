@@ -23,6 +23,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 
 -- ============================================================================
 -- CONSTANTS
@@ -90,7 +91,34 @@ end
 -- ============================================================================
 
 local messageQueue = {}
+local messageQueueHead = 1
 local isProcessing = false
+
+local function HasQueuedMessages()
+    return messageQueueHead <= #messageQueue
+end
+
+local function DequeueMessage()
+    if not HasQueuedMessages() then
+        messageQueue = {}
+        messageQueueHead = 1
+        return nil
+    end
+    local entry = messageQueue[messageQueueHead]
+    messageQueue[messageQueueHead] = nil
+    messageQueueHead = messageQueueHead + 1
+
+    if messageQueueHead > 64 and messageQueueHead > (#messageQueue / 2) then
+        local compacted = {}
+        for i = messageQueueHead, #messageQueue do
+            compacted[#compacted + 1] = messageQueue[i]
+        end
+        messageQueue = compacted
+        messageQueueHead = 1
+    end
+
+    return entry
+end
 
 ---Add a message to the FIFO queue and start processing if idle.
 ---@param message string Formatted chat message
@@ -100,27 +128,27 @@ local function QueueMessage(message, group)
     
     if not isProcessing then
         isProcessing = true
-        local first = table.remove(messageQueue, 1)
+        local first = DequeueMessage()
         if first then
             if ChatOutput and ChatOutput.SendToFramesWithGroup then
                 ChatOutput.SendToFramesWithGroup(first.text, first.group)
             end
         end
         
-        if #messageQueue > 0 then
+        if HasQueuedMessages() then
             local function ProcessNext()
-                if #messageQueue == 0 then
+                if not HasQueuedMessages() then
                     isProcessing = false
                     return
                 end
-                local entry = table.remove(messageQueue, 1)
+                local entry = DequeueMessage()
                 if entry then
                     if ChatOutput and ChatOutput.SendToFramesWithGroup then
                         ChatOutput.SendToFramesWithGroup(entry.text, entry.group)
                     end
                 end
                 
-                if #messageQueue > 0 then
+                if HasQueuedMessages() then
                     C_Timer.After(QUEUE_INTERVAL, ProcessNext)
                 else
                     isProcessing = false
@@ -265,6 +293,6 @@ end
 
 ---Initialize chat message service (register event listeners)
 function WarbandNexus:InitializeChatMessageService()
-    self:RegisterMessage("WN_REPUTATION_GAINED", OnReputationGained)
-    self:RegisterMessage("WN_CURRENCY_GAINED", OnCurrencyGained)
+    self:RegisterMessage(E.REPUTATION_GAINED, OnReputationGained)
+    self:RegisterMessage(E.CURRENCY_GAINED, OnCurrencyGained)
 end

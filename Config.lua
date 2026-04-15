@@ -6,14 +6,14 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local L = ns.L
+local E = ns.Constants.EVENTS
 
--- Debug print helper
-local function DebugPrint(...)
-    local addon = _G.WarbandNexus
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
-        _G.print(...)
-    end
-end
+-- Forward declarations for color picker state (used by options.set handlers).
+local colorPickerOriginalColors = nil
+local colorPickerHookInstalled = false
+local colorPickerTicker = nil
+local lastR, lastG, lastB = nil, nil, nil
+local colorPickerConfirmed = false
 
 --============================================================================
 -- HELPER FUNCTIONS (DRY - Don't Repeat Yourself)
@@ -23,7 +23,7 @@ end
 local function CreateModuleToggleHandler(moduleName)
     return function(_, value)
         WarbandNexus.db.profile.modulesEnabled[moduleName] = value
-        WarbandNexus:SendMessage("WN_MODULE_TOGGLED", moduleName, value)
+        WarbandNexus:SendMessage(E.MODULE_TOGGLED, moduleName, value)
         if WarbandNexus.RefreshUI then
             WarbandNexus:RefreshUI()
         end
@@ -1355,11 +1355,6 @@ local options = {
 }
 
 -- ===== COLOR PICKER REAL-TIME PREVIEW HOOK =====
-local colorPickerOriginalColors = nil
-local colorPickerHookInstalled = false
-local colorPickerTicker = nil
-local lastR, lastG, lastB = nil, nil, nil
-local colorPickerConfirmed = false
 
 -- TAINT FIX: ColorPickerFrame hooks are now installed LAZILY (on first color picker open)
 -- instead of during OnInitialize. Hooking Blizzard frames during addon init can taint
@@ -1475,7 +1470,7 @@ function WarbandNexus:ShowWipeDataConfirmation()
                    "• All settings\n\n" ..
                    "|cffffaa00This action CANNOT be undone!|r\n\n" ..
                    "Type |cff00ccffAccept|r to confirm:",
-            button1 = "Cancel",
+            button1 = ACCEPT or "Accept",
             button2 = nil,
             hasEditBox = true,
             maxLetters = 10,
@@ -1520,7 +1515,6 @@ end
 ]]
 function WarbandNexus:InitializeConfig()
     local AceConfig = LibStub("AceConfig-3.0")
-    local AceConfigDialog = LibStub("AceConfigDialog-3.0")
     local AceDBOptions = LibStub("AceDBOptions-3.0")
     
     -- Store options on addon instance for custom UI access

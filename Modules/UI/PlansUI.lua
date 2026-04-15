@@ -5,7 +5,29 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
+
+local issecretvalue = issecretvalue
+
+--- Lowercase for search only when the string is safe to touch (Midnight 12.0+).
+local function SafeLower(s)
+    if not s or s == "" then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    return s:lower()
+end
+
+--- Display-safe player name / realm (Midnight: never concatenate secret API strings).
+local function SafePlayerName()
+    local n = UnitName("player")
+    if not n or (issecretvalue and issecretvalue(n)) then return nil end
+    return n
+end
+local function SafeRealmName()
+    local r = GetRealmName and GetRealmName()
+    if not r or (issecretvalue and issecretvalue(r)) then return nil end
+    return r
+end
 
 -- Unique AceEvent handler identity for PlansUI
 local PlansUIEvents = {}
@@ -32,7 +54,6 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateExternalWindow = ns.UI_CreateExternalWindow
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
-local CreateTableRow = ns.UI_CreateTableRow
 local CreateExpandableRow = ns.UI_CreateExpandableRow
 local CardLayoutManager = ns.UI_CardLayoutManager
 
@@ -175,6 +196,8 @@ function WarbandNexus:ParseSourceText(source)
     }
     
     if not source then return parts end
+    if type(source) ~= "string" then return parts end
+    if issecretvalue and issecretvalue(source) then return parts end
     
     -- Clean escape sequences from source text before parsing
     local cleanSource = source
@@ -187,6 +210,9 @@ function WarbandNexus:ParseSourceText(source)
         cleanSource = cleanSource:gsub("|r", "")  -- Remove color reset
         cleanSource = cleanSource:gsub("|H.-|h", "")  -- Remove hyperlinks
         cleanSource = cleanSource:gsub("|h", "")  -- Remove closing hyperlink tags
+    end
+    if type(cleanSource) ~= "string" or (issecretvalue and issecretvalue(cleanSource)) then
+        return parts
     end
     
     -- Determine source type using Blizzard's localized BATTLE_PET_SOURCE_* globals
@@ -825,6 +851,11 @@ function WarbandNexus:DrawPlansTab(parent)
         searchInput:SetScript("OnTextChanged", function(self, userInput)
             if not userInput then return end  -- Ignore programmatic SetText calls
             local text = self:GetText() or ""
+            if text and issecretvalue and issecretvalue(text) then
+                ns._plansActiveSearch = nil
+                if self.Instructions then self.Instructions:Show() end
+                return
+            end
             ns._plansActiveSearch = (text ~= "") and text or nil
             -- Show/hide placeholder
             if self.Instructions then
@@ -1038,21 +1069,26 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         resetTimeText:SetText(ns.Utilities:FormatTimeCompact(sec))
     end
 
-    resetBar.timeSinceUpdate = 0
-    resetBar:SetScript("OnUpdate", function(self2, elapsed)
-        self2.timeSinceUpdate = self2.timeSinceUpdate + elapsed
-        if self2.timeSinceUpdate >= 60 then
-            self2.timeSinceUpdate = 0
-            local ok2, sec2 = pcall(function()
-                if WarbandNexus.GetWeeklyResetTime then
-                    return WarbandNexus:GetWeeklyResetTime() - GetServerTime()
-                elseif C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
-                    return C_DateAndTime.GetSecondsUntilWeeklyReset() or 0
-                end
-                return 0
-            end)
-            local s = (ok2 and type(sec2) == "number") and sec2 or 0
-            resetTimeText:SetText(ns.Utilities:FormatTimeCompact(s))
+    if resetBar._weeklyResetTicker then
+        resetBar._weeklyResetTicker:Cancel()
+        resetBar._weeklyResetTicker = nil
+    end
+    resetBar._weeklyResetTicker = C_Timer.NewTicker(60, function()
+        local ok2, sec2 = pcall(function()
+            if WarbandNexus.GetWeeklyResetTime then
+                return WarbandNexus:GetWeeklyResetTime() - GetServerTime()
+            elseif C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+                return C_DateAndTime.GetSecondsUntilWeeklyReset() or 0
+            end
+            return 0
+        end)
+        local s = (ok2 and type(sec2) == "number") and sec2 or 0
+        resetTimeText:SetText(ns.Utilities:FormatTimeCompact(s))
+    end)
+    resetBar:SetScript("OnHide", function(self2)
+        if self2._weeklyResetTicker then
+            self2._weeklyResetTicker:Cancel()
+            self2._weeklyResetTicker = nil
         end
     end)
 
@@ -1383,15 +1419,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     -- Apply search filter (My Plans global search, skip for daily_tasks)
     if category ~= "daily_tasks" then
         local activeSearch = ns._plansActiveSearch
-        if activeSearch and activeSearch ~= "" then
+        if activeSearch and not (issecretvalue and issecretvalue(activeSearch)) and activeSearch ~= "" then
             local query = activeSearch:lower()
             local searchFiltered = {}
             for i = 1, #plans do
                 local plan = plans[i]
                 local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ""
-                local name = resolvedName:lower()
-                local source = (plan.resolvedSource or plan.source or ""):lower()
-                local ptype = (plan.type or ""):lower()
+                local name = SafeLower(resolvedName)
+                local source = SafeLower(plan.resolvedSource or plan.source or "")
+                local ptype = SafeLower(plan.type or "")
                 if name:find(query, 1, true) or source:find(query, 1, true) or ptype:find(query, 1, true) then
                     searchFiltered[#searchFiltered + 1] = plan
                 end
@@ -1425,6 +1461,20 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         end
     end
     plans = filteredPlans
+
+    -- 2-column layout: count of "regular" plans before each index (excludes weekly_vault / daily_quests).
+    -- Precompute O(n) instead of O(n²) inner loop per card.
+    local regularCountBefore = {}
+    do
+        local rc = 0
+        for idx = 1, #plans do
+            regularCountBefore[idx] = rc
+            local pt = plans[idx].type
+            if pt ~= "weekly_vault" and pt ~= "daily_quests" then
+                rc = rc + 1
+            end
+        end
+    end
 
     if category == "daily_tasks" then
         return self:DrawDailyTasksView(parent, yOffset, width, plans)
@@ -1536,15 +1586,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- Use provided width (Parent - 20) for consistent margins
             local listCardWidth = (width - cardSpacing) / 2
             
-            -- Determine column (alternate between 0 and 1)
-            -- CRITICAL: Count only regular plans (exclude weekly_vault and daily_quests from column calculation)
-            local regularPlanIndex = 0
-            for j = 1, i - 1 do
-                if plans[j].type ~= "weekly_vault" and plans[j].type ~= "daily_quests" then
-                    regularPlanIndex = regularPlanIndex + 1
-                end
-            end
-            local col = regularPlanIndex % 2
+            -- Determine column (alternate between 0 and 1); regularCountBefore[i] = regular plans in [1..i-1]
+            local col = (regularCountBefore[i] or 0) % 2
         
         -- Per-type card height (achievements need more vertical space for collapsed content)
         local cardHeight = (plan.type == "achievement") and CARD_HEIGHT_ACHIEVEMENT or CARD_HEIGHT_DEFAULT
@@ -2700,7 +2743,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     end
 
     table.sort(results, function(a, b)
-        return (a.name or "") < (b.name or "")
+        return SafeLower(a.name) < SafeLower(b.name)
     end)
 
     -- Phase 4.4: Limit browse results rendering for performance
@@ -2728,15 +2771,23 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         local item = results[i]
         item.category = category
         -- Resolve empty source from API so browser shows same source as collection tabs (e.g. Voidstorm Fishing).
-        if (not item.source or item.source == "") and item.id then
+        local sourceMissing = not item.source
+        if not sourceMissing and item.source then
+            if issecretvalue and issecretvalue(item.source) then
+                sourceMissing = true
+            elseif item.source == "" then
+                sourceMissing = true
+            end
+        end
+        if sourceMissing and item.id then
             if category == "mount" and C_MountJournal and C_MountJournal.GetMountInfoExtraByID then
                 local ok, _, _, src = pcall(C_MountJournal.GetMountInfoExtraByID, item.id)
-                if ok and src and type(src) == "string" and src ~= "" and (not issecretvalue or not issecretvalue(src)) then
+                if ok and src and type(src) == "string" and not (issecretvalue and issecretvalue(src)) and src ~= "" then
                     item.source = src
                 end
             elseif category == "pet" and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then
                 local ok, _, _, _, _, src = pcall(C_PetJournal.GetPetInfoBySpeciesID, item.id)
-                if ok and src and type(src) == "string" and src ~= "" and (not issecretvalue or not issecretvalue(src)) then
+                if ok and src and type(src) == "string" and not (issecretvalue and issecretvalue(src)) and src ~= "" then
                     item.source = src
                 end
             end
@@ -3006,17 +3057,26 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             -- Special handling for achievements
             if category == "achievement" then
                 local rawText = item.source or ""
-                if WarbandNexus.CleanSourceText then
+                if rawText and issecretvalue and issecretvalue(rawText) then
+                    rawText = ""
+                end
+                if rawText ~= "" and WarbandNexus.CleanSourceText then
                     rawText = WarbandNexus:CleanSourceText(rawText)
+                    if type(rawText) ~= "string" or (issecretvalue and issecretvalue(rawText)) then
+                        rawText = ""
+                    end
                 end
                 
                 -- Extract progress if it exists
                 local description, progress = rawText:match("^(.-)%s*(Progress:%s*.+)$")
+                if description and issecretvalue and issecretvalue(description) then
+                    description = nil
+                end
                 
                 local lastElement = nil
                 
                 -- === INFORMATION (Description) - BELOW icon, WHITE color ===
-                if description and description ~= "" then
+                if description and not (issecretvalue and issecretvalue(description)) and description ~= "" then
                     local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     infoText:SetPoint("TOPLEFT", 10, line3Y)
                     infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
@@ -3026,7 +3086,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     infoText:SetMaxLines(2)
                     infoText:SetNonSpaceWrap(false)
                     lastElement = infoText
-                elseif item.description and item.description ~= "" then
+                elseif item.description and not (issecretvalue and issecretvalue(item.description)) and item.description ~= "" then
                     local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     infoText:SetPoint("TOPLEFT", 10, line3Y)
                     infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
@@ -3039,7 +3099,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 end
                 
                 -- === PROGRESS - BELOW information, NO spacing ===
-                if progress then
+                if progress and not (issecretvalue and issecretvalue(progress)) then
                     local progressText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     if lastElement then
                         progressText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -2)
@@ -3057,11 +3117,19 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 
                 -- === REWARD - BELOW progress WITH spacing (one line gap) ===
                 local displayRewardText = item.rewardText
+                if displayRewardText and issecretvalue and issecretvalue(displayRewardText) then
+                    displayRewardText = nil
+                end
                 if (not displayRewardText or displayRewardText == "") and item.id and WarbandNexus.GetAchievementRewardInfo then
                     local ri = WarbandNexus:GetAchievementRewardInfo(item.id)
-                    if ri then displayRewardText = ri.title or ri.itemName end
+                    if ri then
+                        local rt = ri.title or ri.itemName
+                        if rt and not (issecretvalue and issecretvalue(rt)) then
+                            displayRewardText = rt
+                        end
+                    end
                 end
-                if displayRewardText and displayRewardText ~= "" then
+                if displayRewardText and not (issecretvalue and issecretvalue(displayRewardText)) and displayRewardText ~= "" then
                     local rewardText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     if lastElement then
                         rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -14)
@@ -3224,8 +3292,8 @@ function WarbandNexus:ShowCustomPlanDialog()
 
     
     -- Get character info
-    local currentName = UnitName("player")
-    local currentRealm = GetRealmName()
+    local currentName = SafePlayerName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
+    local currentRealm = SafeRealmName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
     local _, currentClass = UnitClass("player")
     local classColors = RAID_CLASS_COLORS[currentClass]
     
@@ -3318,6 +3386,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     titleInput:SetScript("OnChar", function(self, char)
         if char == "\n" or char == "\r" then
             local text = self:GetText()
+            if not text or (issecretvalue and issecretvalue(text)) then return end
             self:SetText(text:gsub("[\n\r]", ""))
         end
     end)
@@ -3354,6 +3423,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Limit to 300 characters total, max 30 characters per word
     descInput:SetScript("OnTextChanged", function(self)
         local text = self:GetText()
+        if not text then return end
+        if issecretvalue and issecretvalue(text) then return end
         -- Remove any newlines that might have been inserted
         text = text:gsub("[\n\r]", " ")
         
@@ -3384,10 +3455,14 @@ function WarbandNexus:ShowCustomPlanDialog()
         end
         
         -- Update text if modified
-        if modified and text ~= self:GetText() then
-            local cursorPos = self:GetCursorPosition()
-            self:SetText(text)
-            self:SetCursorPosition(math.min(cursorPos, string.len(text)))
+        if modified then
+            local cur = self:GetText()
+            if cur and issecretvalue and issecretvalue(cur) then return end
+            if text ~= cur then
+                local cursorPos = self:GetCursorPosition()
+                self:SetText(text)
+                self:SetCursorPosition(math.min(cursorPos, string.len(text)))
+            end
         end
     end)
     
@@ -3395,6 +3470,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     descInput:SetScript("OnChar", function(self, char)
         if char == "\n" or char == "\r" then
             local text = self:GetText()
+            if not text or (issecretvalue and issecretvalue(text)) then return end
             local cursorPos = self:GetCursorPosition()
             self:SetText(text:gsub("[\n\r]", " "))
             self:SetCursorPosition(cursorPos)
@@ -3604,6 +3680,10 @@ function WarbandNexus:ShowCustomPlanDialog()
     saveBtn:SetScript("OnClick", function()
         local title = titleInput:GetText()
         local description = descInput:GetText()
+        if title and issecretvalue and issecretvalue(title) then return end
+        if description and issecretvalue and issecretvalue(description) then
+            description = nil
+        end
         
         if title and title ~= "" then
             local cycleCount = (selectedResetType ~= "none") and selectedCycleCount or nil
@@ -3678,7 +3758,7 @@ function WarbandNexus:CompleteCustomPlan(planId)
             end
 
             -- Fire event immediately so UI refreshes instantly
-            self:SendMessage("WN_PLANS_UPDATED", {
+            self:SendMessage(E.PLANS_UPDATED, {
                 action = "completed",
                 planID = plan.id,
             })
@@ -3719,8 +3799,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     local COLORS = ns.UI_COLORS
     
     -- Get current character info
-    local currentName = UnitName("player")
-    local currentRealm = GetRealmName()
+    local currentName = SafePlayerName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
+    local currentRealm = SafeRealmName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
     
     -- Check if current character already has a weekly plan
     local existingPlan = self:HasActiveWeeklyPlan(currentName, currentRealm)
@@ -4050,8 +4130,8 @@ function WarbandNexus:ShowDailyPlanDialog()
     local COLORS = ns.UI_COLORS
     local CAT_DISPLAY = ns.CATEGORY_DISPLAY or {}
     
-    local currentName = UnitName("player")
-    local currentRealm = GetRealmName()
+    local currentName = SafePlayerName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
+    local currentRealm = SafeRealmName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
     local _, currentClass = UnitClass("player")
     local classColors = RAID_CLASS_COLORS[currentClass]
     

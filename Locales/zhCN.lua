@@ -402,6 +402,7 @@ L["PVE_CREST_VET"] = "老兵"
 L["PVE_CREST_CHAMP"] = "勇士"
 L["PVE_CREST_HERO"] = "英雄"
 L["PVE_CREST_MYTH"] = "神话"
+L["PVE_CREST_EXPLORER"] = "探索者"
 L["PVE_COL_COFFER_SHARDS"] = "宝匣钥匙碎片"
 L["PVE_COL_RESTORED_KEY"] = "修复的宝匣钥匙"
 L["PVE_COL_VAULT_SLOT1"] = "宝库 1"
@@ -1168,6 +1169,25 @@ L["CHANGELOG_V2512"] = [=[v2.5.12 (2026-04-12)
 
 CurseForge: Warband Nexus]=]
 
+L["CHANGELOG_V2515"] = [=[v2.5.15 beta 1（2026-04-15）
+
+测试（Beta）版本 — 欢迎反馈，稳定版发布前请勿视为最终发行。
+
+性能
+- 界面：SchedulePopulateContent 去抖（以最后一次调度为准）；OnHide 取消填充计时器；主标签切换仅一次延迟；切换中不重复刷新标签按钮；非当前标签时货币/声望仅更新角标。
+- CollectionService：合并 EnsureCollectionData；ScanCollection 使用 FRAME_BUDGET_MS 协程；BuildFullCollectionData 批次预算一致。
+- 公会银行与物品缓存：分块扫描；分标签原子赋值；取消/关闭时失效。
+- 计划与收藏：PlansUI 双列网格 O(n) 预计算；AbortCollectionsChunkedBuilds；Core 中止与标签拆解一致。
+
+修复
+- TOC：Config.lua 在 Modules/Constants.lua 之后加载（修复 Config 初始化时 ns.Constants 为空）。
+- 主框体 OnHide：取消后清空填充计时器。
+
+本地化
+- GearUI：升级轨道名称与制造/再造提示行；PVE_CREST_EXPLORER；专精专注与 Steam 风格游戏时间格式；GEAR_CRAFTED_*、STATS_PLAYED_STEAM_*、PROF_CONCENTRATION_* 多语言补全（de、fr、es、es-mx、it、pt、ru、ko、zhTW；enUS/zhCN 基线）。
+
+CurseForge: Warband Nexus]=]
+
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "确认操作"
 L["CONFIRM"] = "确认"
@@ -1367,6 +1387,12 @@ L["UNSPENT_KNOWLEDGE_COUNT"] = "%d个未使用的知识点"
 L["COLLECTIBLE"] = "收藏品"
 L["RECHARGE"] = "充能"
 L["FULL"] = "已满"
+L["PROF_CONCENTRATION_FULL"] = "已满"
+L["PROF_CONCENTRATION_HOURS_REMAINING"] = "%d 小时"
+L["PROF_CONCENTRATION_MINUTES_REMAINING"] = "%d 分钟"
+L["PROF_CONCENTRATION_DAYS_HOURS_MIN"] = "%d 天 %d 小时 %d 分钟"
+L["PROF_CONCENTRATION_HOURS_MIN"] = "%d 小时 %d 分钟"
+L["PROF_CONCENTRATION_MINUTES_ONLY"] = "%d 分钟"
 L["PROF_OPEN_RECIPE"] = "打开"
 L["PROF_OPEN_RECIPE_TOOLTIP"] = "打开此专业的配方列表"
 L["PROF_ONLY_CURRENT_CHAR"] = "仅当前角色可用"
@@ -1816,6 +1842,11 @@ L["GEAR_NEED_MORE_CRESTS_FORMAT"] = "%s %d/%d — 需要更多纹章"
 L["GEAR_CRAFTED_RECRAFT_RANGE"] = "再造范围：%d-%d（%s 黎明纹章）"
 L["GEAR_CRAFTED_CREST_COST"] = "再造消耗：%d 纹章"
 L["GEAR_CRAFTED_NO_CRESTS"] = "没有可用于再造的纹章"
+L["GEAR_TRACK_CRAFTED_FALLBACK"] = "制造"
+L["GEAR_CRAFTED_MAX_ILVL_LINE"] = "%s（最高装等 %d）"
+L["GEAR_CRAFTED_RECAST_TO_LINE"] = "再造至 %s（装等 %d）"
+L["GEAR_CRAFTED_COST_DAWNCREST"] = "消耗：%d %s 黎明纹章"
+L["GEAR_CRAFTED_NEXT_TIER_CRESTS"] = "%s（装等 %d）：纹章 %d/%d（还需 %d）"
 L["GEAR_TAB_TITLE"] = "装备管理"
 L["GEAR_TAB_DESC"] = "已装备、升级选项及跨角色升级候选"
 L["GEAR_SECTION_EQUIPPED"] = "已装备"
@@ -1844,6 +1875,10 @@ L["WOW_TOKEN_LABEL"] = "WOW代币"
 
 -- Statistics UI
 L["FORMAT_BUTTON"] = "格式"
+L["STATS_PLAYED_STEAM_ZERO"] = "0 小时"
+L["STATS_PLAYED_STEAM_FLOAT"] = "%.1f 小时"
+L["STATS_PLAYED_STEAM_THOUSAND"] = "%d,%03d 小时"
+L["STATS_PLAYED_STEAM_INT"] = "%d 小时"
 
 -- Professions UI
 L["SHOW_ALL"] = "显示全部"

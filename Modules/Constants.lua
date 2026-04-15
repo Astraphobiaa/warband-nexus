@@ -41,16 +41,17 @@ local Constants = {
     
     -- Main addon version (must match ## Version in WarbandNexus.toc)
     -- IMPORTANT: Update this whenever you update the TOC version!
+    -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "2.5.12",
+    ADDON_VERSION = "2.5.15-beta1",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-04-12",
+    ADDON_RELEASE_DATE = "2026-04-15",
     
     --==========================================================================
     -- EXPANSION TARGETING
     --==========================================================================
     
-    CURRENT_EXPANSION_INTERFACE = 120000,   -- Midnight 12.0.x (## Interface in TOC)
+    CURRENT_EXPANSION_INTERFACE = 120001,   -- Midnight 12.0.1 (## Interface in TOC; must match WarbandNexus.toc)
     CURRENT_EXPANSION_NAME = "Midnight",    -- Used for filtering profession content to latest expansion
     
     --==========================================================================
@@ -101,11 +102,20 @@ local Constants = {
         -- Data updates
         CHARACTER_UPDATED = "WN_CHARACTER_UPDATED",
         ITEMS_UPDATED = "WN_ITEMS_UPDATED",
+        BAGS_UPDATED = "WN_BAGS_UPDATED",
         GEAR_UPDATED = "WN_GEAR_UPDATED",
         MONEY_UPDATED = "WN_MONEY_UPDATED",
         PVE_UPDATED = "WN_PVE_UPDATED",
+        CURRENCY_UPDATED = "WN_CURRENCY_UPDATED",
         CURRENCIES_UPDATED = "WN_CURRENCIES_UPDATED",
+        CURRENCY_LOADING_STARTED = "WN_CURRENCY_LOADING_STARTED",
+        CURRENCY_CACHE_READY = "WN_CURRENCY_CACHE_READY",
+        CURRENCY_CACHE_CLEARED = "WN_CURRENCY_CACHE_CLEARED",
+        CURRENCY_GAINED = "WN_CURRENCY_GAINED",
         REPUTATION_UPDATED = "WN_REPUTATION_UPDATED",
+        REPUTATION_LOADING_STARTED = "WN_REPUTATION_LOADING_STARTED",
+        REPUTATION_CACHE_READY = "WN_REPUTATION_CACHE_READY",
+        REPUTATION_CACHE_CLEARED = "WN_REPUTATION_CACHE_CLEARED",
 
         -- Collections
         COLLECTIBLE_OBTAINED = "WN_COLLECTIBLE_OBTAINED",
@@ -118,11 +128,14 @@ local Constants = {
         PLANS_UPDATED = "WN_PLANS_UPDATED",
         PLAN_COMPLETED = "WN_PLAN_COMPLETED",
         QUEST_COMPLETED = "WN_QUEST_COMPLETED",
+        --- Daily / weekly quest plan progress (not WN_ prefix — legacy identifier)
+        QUEST_PROGRESS_UPDATED = "WARBAND_QUEST_PROGRESS_UPDATED",
         
         -- Vault
         VAULT_CHECKPOINT_COMPLETED = "WN_VAULT_CHECKPOINT_COMPLETED",
         VAULT_SLOT_COMPLETED = "WN_VAULT_SLOT_COMPLETED",
         VAULT_PLAN_COMPLETED = "WN_VAULT_PLAN_COMPLETED",
+        VAULT_REWARD_AVAILABLE = "WN_VAULT_REWARD_AVAILABLE",
         
         -- Reminders (progress-based, shown on plan cards)
         REMINDER_ACTIVATED = "WN_REMINDER_ACTIVATED",
@@ -135,6 +148,10 @@ local Constants = {
         SEARCH_QUERY_UPDATED = "WN_SEARCH_QUERY_UPDATED",
         TOOLTIP_SHOW = "WN_TOOLTIP_SHOW",
         TOOLTIP_HIDE = "WN_TOOLTIP_HIDE",
+        FONT_CHANGED = "WN_FONT_CHANGED",
+        FONT_LIST_UPDATED = "WN_FONT_LIST_UPDATED",
+        LOADING_UPDATED = "WN_LOADING_UPDATED",
+        LOADING_COMPLETE = "WN_LOADING_COMPLETE",
         
         -- Notifications
         SHOW_NOTIFICATION = "WN_SHOW_NOTIFICATION",
@@ -154,6 +171,11 @@ local Constants = {
 
         -- Modules
         MODULE_TOGGLED = "WN_MODULE_TOGGLED",
+
+        -- Character / tracking / gold UI
+        CHARACTER_TRACKING_CHANGED = "WN_CHARACTER_TRACKING_CHANGED",
+        CHARACTER_BANK_MONEY_LOG_UPDATED = "WN_CHARACTER_BANK_MONEY_LOG_UPDATED",
+        GOLD_MANAGEMENT_CHANGED = "WN_GOLD_MANAGEMENT_CHANGED",
     },
     
     --==========================================================================
@@ -181,6 +203,13 @@ local Constants = {
         DRUID = "|cffFF7D0A",        -- Orange
         DEMONHUNTER = "|cffA330EE",  -- Purple-Magenta
         EVOKER = "|cff33937F",       -- Teal
+    },
+
+    -- English class file string (UnitClass) -> GetSpecializationInfoForClassID classID
+    CLASS_FILE_TO_CLASS_ID = {
+        WARRIOR = 1, PALADIN = 2, HUNTER = 3, ROGUE = 4, PRIEST = 5,
+        DEATHKNIGHT = 6, SHAMAN = 7, MAGE = 8, WARLOCK = 9, MONK = 10,
+        DRUID = 11, DEMONHUNTER = 12, EVOKER = 13,
     },
     
     --==========================================================================
@@ -224,6 +253,40 @@ local Constants = {
         [6] = {min = 9000, max = 21000, range = 12000},     -- Honored
         [7] = {min = 21000, max = 42000, range = 21000},    -- Revered
         [8] = {min = 42000, max = 999999, range = 0},       -- Exalted (capped, no range)
+    },
+
+    --==========================================================================
+    -- RACE ICON ATLAS (raceFile / clientFileString -> middle segment of atlas name)
+    -- Used by SharedWidgets: string.format("raceicon128-%s-%s", prefix, gender)
+    --==========================================================================
+    RACE_FILE_TO_ATLAS_PREFIX = {
+        ["BloodElf"] = "bloodelf",
+        ["DarkIronDwarf"] = "darkirondwarf",
+        ["Dracthyr"] = "dracthyrvisage",
+        ["Draenei"] = "draenei",
+        ["Dwarf"] = "dwarf",
+        ["Earthen"] = "earthen",
+        ["Haranir"] = "haranir",
+        ["Harronir"] = "haranir",
+        ["Gnome"] = "gnome",
+        ["Goblin"] = "goblin",
+        ["HighmountainTauren"] = "highmountain",
+        ["Human"] = "human",
+        ["KulTiran"] = "kultiran",
+        ["LightforgedDraenei"] = "lightforged",
+        ["MagharOrc"] = "magharorc",
+        ["Mechagnome"] = "mechagnome",
+        ["Nightborne"] = "nightborne",
+        ["NightElf"] = "nightelf",
+        ["Orc"] = "orc",
+        ["Pandaren"] = "pandaren",
+        ["Tauren"] = "tauren",
+        ["Troll"] = "troll",
+        ["Scourge"] = "undead",
+        ["Worgen"] = "worgen",
+        ["ZandalariTroll"] = "zandalari",
+        ["VoidElf"] = "voidelf",
+        ["Vulpera"] = "vulpera",
     },
     
     -- NOTE: Renown and Friendship thresholds are NOT standardized

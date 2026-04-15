@@ -11,16 +11,26 @@
 ]]
 
 local ADDON_NAME, ns = ...
+local issecretvalue = issecretvalue
+
+local function SafeScannerPlayerName()
+    local n = UnitName("player")
+    if not n or (issecretvalue and issecretvalue(n)) then return "Unknown" end
+    return n
+end
+local function SafeScannerRealmName()
+    local r = GetRealmName and GetRealmName()
+    if not r or (issecretvalue and issecretvalue(r)) then return "Unknown" end
+    return r
+end
 
 -- ============================================================================
 -- DEBUG HELPER
 -- ============================================================================
 
-local function DebugPrint(...)
-    if ns.WarbandNexus and ns.WarbandNexus.db and ns.WarbandNexus.db.profile and ns.WarbandNexus.db.profile.debugMode then
-        print("|cff00ff00[RepScanner]|r", ...)
-    end
-end
+local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00ff00[RepScanner]|r"))
+    or ns.DebugPrint
+    or function() end
 
 -- ============================================================================
 -- REPUTATION SCANNER (Pure API Layer)
@@ -218,8 +228,8 @@ function ReputationScanner:FetchFaction(factionID, indexDescription)
     
     -- Add character metadata (v2.1: Per-character storage)
     result._characterKey = ns.Utilities:GetCharacterKey()
-    result._characterName = UnitName("player") or "Unknown"
-    result._characterRealm = GetRealmName() or "Unknown"
+    result._characterName = SafeScannerPlayerName()
+    result._characterRealm = SafeScannerRealmName()
     
     return result
 end
@@ -259,8 +269,8 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
     local scanIdx = 1
     local scanner = self
     local charKey = ns.Utilities:GetCharacterKey()
-    local charName = UnitName("player") or "Unknown"
-    local charRealm = GetRealmName() or "Unknown"
+    local charName = SafeScannerPlayerName()
+    local charRealm = SafeScannerRealmName()
     
     local function ProcessFaction(index)
         local factionData = C_Reputation.GetFactionDataByIndex(index)
