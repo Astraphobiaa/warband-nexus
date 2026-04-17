@@ -41,6 +41,8 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local Utilities = ns.Utilities
+local Constants = ns.Constants
 local issecretvalue = issecretvalue
 
 -- ============================================================================
@@ -245,18 +247,14 @@ end
 
 ---@return boolean
 function ChatOutput.IsChattynatorPresent()
-    if C_AddOns and C_AddOns.IsAddOnLoaded then
-        return C_AddOns.IsAddOnLoaded("Chattynator") == true
-    end
-    return IsAddOnLoaded and IsAddOnLoaded("Chattynator") == true
+    if not Utilities or not Utilities.CheckAddOnLoaded then return false end
+    return Utilities:CheckAddOnLoaded("Chattynator")
 end
 
 ---@return boolean
 function ChatOutput.IsElvUIPresent()
-    if C_AddOns and C_AddOns.IsAddOnLoaded then
-        return C_AddOns.IsAddOnLoaded("ElvUI") == true
-    end
-    return IsAddOnLoaded and IsAddOnLoaded("ElvUI") == true
+    if not Utilities or not Utilities.CheckAddOnLoaded then return false end
+    return Utilities:CheckAddOnLoaded("ElvUI")
 end
 
 ---If true, WarbandNexus:Print picks DEFAULT_CHAT_FRAME instead of ResolveFallbackChatFrame.
@@ -792,7 +790,6 @@ function WarbandNexus:PrintSessionLoginChat()
     if not notifs or not notifs.enabled or notifs.showLoginChat == false then return end
     if not ns.ChatOutput or not ns.ChatOutput.SendAddonSystemLine then return end
     self._sessionLoginChatPrinted = true
-    local Constants = ns.Constants
     local v = Constants and Constants.ADDON_VERSION or ""
     local L = ns.L
     local fmt = string.format

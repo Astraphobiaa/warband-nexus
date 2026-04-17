@@ -933,10 +933,10 @@ local function FormatTimeLeft(minutes)
 end
 
 local EVENT_GROUP_NAMES = {
-    soiree     = "Saltheril's Soiree",
-    abundance  = "Abundance",
-    haranir    = "Legends of the Haranir",
-    stormarion = "Stormarion Assault",
+    soiree     = (ns.L and ns.L["EVENT_GROUP_SOIREE"]) or "Saltheril's Soiree",
+    abundance  = (ns.L and ns.L["EVENT_GROUP_ABUNDANCE"]) or "Abundance",
+    haranir    = (ns.L and ns.L["EVENT_GROUP_HARANIR"]) or "Legends of the Haranir",
+    stormarion = (ns.L and ns.L["EVENT_GROUP_STORMARION"]) or "Stormarion Assault",
 }
 
 local function AttachQuestRowTooltip(frame, quest)
@@ -958,13 +958,24 @@ local function AttachQuestRowTooltip(frame, quest)
         if quest.progress and not quest.isComplete then
             local pct = math.floor((quest.progress.percent or 0) * 100)
             lines[#lines + 1] = {
-                text = string.format("Progress: %d/%d (%d%%)", quest.progress.totalFulfilled or 0, quest.progress.totalRequired or 0, pct),
+                text = string.format(
+                    (ns.L and ns.L["QUEST_PROGRESS_FORMAT"]) or "Progress: %d/%d (%d%%)",
+                    quest.progress.totalFulfilled or 0,
+                    quest.progress.totalRequired or 0,
+                    pct
+                ),
                 color = pct >= 100 and {0.27, 1, 0.27} or {1, 0.82, 0.2},
             }
         end
         if quest.timeLeft and quest.timeLeft > 0 then
             local timeColor = quest.timeLeft < 60 and {1, 0.3, 0.3} or {0.7, 0.7, 0.7}
-            lines[#lines + 1] = { text = FormatTimeLeft(quest.timeLeft) .. " remaining", color = timeColor }
+            lines[#lines + 1] = {
+                text = string.format(
+                    (ns.L and ns.L["QUEST_TIME_REMAINING_FORMAT"]) or "%s remaining",
+                    FormatTimeLeft(quest.timeLeft)
+                ),
+                color = timeColor
+            }
         end
         if quest.isComplete then
             lines[#lines + 1] = { text = "|cff44ff44" .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete") .. "|r", color = {0.27, 1, 0.27} }
@@ -973,20 +984,20 @@ local function AttachQuestRowTooltip(frame, quest)
         end
         if quest.questID then
             lines[#lines + 1] = { text = format((ns.L and ns.L["QUEST_ID_FORMAT"]) or "Quest ID: %s", quest.questID), color = {0.5, 0.5, 0.5} }
-            lines[#lines + 1] = { text = "Click for Wowhead link", color = {0.5, 0.4, 0.7} }
+            lines[#lines + 1] = { text = (ns.L and ns.L["CLICK_FOR_WOWHEAD_LINK"]) or "Click for Wowhead link", color = {0.5, 0.4, 0.7} }
         end
 
         if ns.TooltipService and ns.TooltipService.Show then
             ns.TooltipService:Show(self, {
                 type = "custom",
-                title = quest.title or "Quest",
+                title = quest.title or ((ns.L and ns.L["SOURCE_TYPE_QUEST"]) or "Quest"),
                 icon = false,
                 anchor = "ANCHOR_RIGHT",
                 lines = lines,
             })
         else
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(quest.title or "Quest", 1, 1, 1)
+            GameTooltip:SetText(quest.title or ((ns.L and ns.L["SOURCE_TYPE_QUEST"]) or "Quest"), 1, 1, 1)
             for i = 1, #lines do
                 local c = lines[i].color or {1, 1, 1}
                 GameTooltip:AddLine(lines[i].text, c[1], c[2], c[3], true)
@@ -1334,7 +1345,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                             objIcon:SetVertexColor(0.5, 0.5, 0.5)
                                         end
 
-                                        local objText = obj.text or string.format("Objective %d", oi)
+                                        local objText = obj.text or string.format((ns.L and ns.L["OBJECTIVE_INDEX_FORMAT"]) or "Objective %d", oi)
                                         local objColor = obj.finished and "|cff44ff44" or "|cffaaaaaa"
                                         local objFs = FontManager:CreateFontString(row, "small", "OVERLAY")
                                         objFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20, objY + 2)
@@ -1630,7 +1641,16 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                         end
                     end)
                     completeBtn:SetScript("OnEnter", function(btn)
-                        ns.TooltipService:Show(btn, { type = "custom", title = "Complete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                        ns.TooltipService:Show(
+                            btn,
+                            {
+                                type = "custom",
+                                title = (ns.L and ns.L["PLAN_ACTION_COMPLETE"]) or "Complete the Plan",
+                                icon = false,
+                                anchor = "ANCHOR_TOP",
+                                lines = {}
+                            }
+                        )
                     end)
                     completeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
                 end
@@ -1650,7 +1670,16 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     if self.RefreshUI then self:RefreshUI() end
                 end)
                 removeBtn:SetScript("OnEnter", function(btn)
-                    ns.TooltipService:Show(btn, { type = "custom", title = "Delete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                    ns.TooltipService:Show(
+                        btn,
+                        {
+                            type = "custom",
+                            title = (ns.L and ns.L["PLAN_ACTION_DELETE"]) or "Delete the Plan",
+                            icon = false,
+                            anchor = "ANCHOR_TOP",
+                            lines = {}
+                        }
+                    )
                 end)
                 removeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
                 
@@ -4162,7 +4191,9 @@ function WarbandNexus:ShowDailyPlanDialog()
         infoText:SetWidth(400)
         infoText:SetWordWrap(true)
         infoText:SetJustifyH("CENTER")
-        infoText:SetText("|cffaaaaaa" .. currentName .. "-" .. currentRealm .. " already has an active quest plan.|r")
+        local charFullName = currentName .. "-" .. currentRealm
+        local dailyExistsDesc = (ns.L and ns.L["DAILY_PLAN_EXISTS_DESC"]) or "%s already has an active weekly quest plan. You can find it in the 'Weekly Progress' category."
+        infoText:SetText("|cffaaaaaa" .. string.format(dailyExistsDesc, charFullName) .. "|r")
         
         local okBtn = CreateThemedButton(contentFrame, OKAY or "OK", 120)
         okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -16)
@@ -4198,7 +4229,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     -- "Midnight" content label
     local contentLabel = FontManager:CreateFontString(charFrame, "small", "OVERLAY")
     contentLabel:SetPoint("RIGHT", -10, 0)
-    contentLabel:SetText("|cff888888Midnight|r")
+    contentLabel:SetText("|cff888888" .. ((ns.L and ns.L["CONTENT_MIDNIGHT"]) or "Midnight") .. "|r")
     
     -- Quest type checkboxes
     local selectedQuestTypes = {
@@ -4216,10 +4247,10 @@ function WarbandNexus:ShowDailyPlanDialog()
     
     local CATEGORIES = ns.QUEST_CATEGORIES or {}
     local categoryDescs = {
-        weeklyQuests = "Weekly objectives, hunts, sparks, world boss, delves",
-        worldQuests  = "Zone-wide repeatable world quests",
-        dailyQuests  = "Daily repeatable quests from NPCs",
-        events       = "Bonus objectives, tasks, and activities",
+        weeklyQuests = (ns.L and ns.L["QUEST_CATEGORY_DESC_WEEKLY"]) or "Weekly objectives, hunts, sparks, world boss, delves",
+        worldQuests  = (ns.L and ns.L["QUEST_CATEGORY_DESC_WORLD"]) or "Zone-wide repeatable world quests",
+        dailyQuests  = (ns.L and ns.L["QUEST_CATEGORY_DESC_DAILY"]) or "Daily repeatable quests from NPCs",
+        events       = (ns.L and ns.L["QUEST_CATEGORY_DESC_EVENTS"]) or "Bonus objectives, tasks, and activities",
     }
     
     for i, catInfo in ipairs(CATEGORIES) do

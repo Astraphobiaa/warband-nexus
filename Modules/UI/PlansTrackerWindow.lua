@@ -799,7 +799,16 @@ local function RefreshTrackerContentImmediate()
                         end
                     end)
                     deleteBtn:SetScript("OnEnter", function(self)
-                        ns.TooltipService:Show(self, { type = "custom", title = "Delete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                        ns.TooltipService:Show(
+                            self,
+                            {
+                                type = "custom",
+                                title = (ns.L and ns.L["PLAN_ACTION_DELETE"]) or "Delete the Plan",
+                                icon = false,
+                                anchor = "ANCHOR_TOP",
+                                lines = {}
+                            }
+                        )
                     end)
                     deleteBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
                     rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
@@ -818,7 +827,16 @@ local function RefreshTrackerContentImmediate()
                             end
                         end)
                         completeBtn:SetScript("OnEnter", function(self)
-                            ns.TooltipService:Show(self, { type = "custom", title = "Complete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                            ns.TooltipService:Show(
+                                self,
+                                {
+                                    type = "custom",
+                                    title = (ns.L and ns.L["PLAN_ACTION_COMPLETE"]) or "Complete the Plan",
+                                    icon = false,
+                                    anchor = "ANCHOR_TOP",
+                                    lines = {}
+                                }
+                            )
                         end)
                         completeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
                         rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP

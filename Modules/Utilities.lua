@@ -602,6 +602,38 @@ function Utilities.FormatCurrencySeasonProgressLine(cd)
 end
 
 --============================================================================
+-- OPTIONAL BLIZZARD ADDON LOADING (C_AddOns — Midnight 12.0.1)
+--============================================================================
+
+--- Load an optional Blizzard addon via C_AddOns. Uses pcall; no-op while in combat lockdown.
+--- Replaces scattered C_AddOns.LoadAddOn / legacy LoadAddOn branches across modules.
+---@param addonName string
+---@return boolean ok True if already loaded or LoadAddOn pcall succeeded
+function Utilities:SafeLoadAddOn(addonName)
+    if not addonName or addonName == "" then return false end
+    if InCombatLockdown() then return false end
+    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(addonName) then
+        return true
+    end
+    if C_AddOns and C_AddOns.LoadAddOn then
+        local ok = pcall(C_AddOns.LoadAddOn, addonName)
+        return ok
+    end
+    return false
+end
+
+--- Whether another addon is loaded (C_AddOns only; Midnight 12.0.1).
+---@param addonName string
+---@return boolean
+function Utilities:CheckAddOnLoaded(addonName)
+    if not addonName or addonName == "" then return false end
+    if C_AddOns and C_AddOns.IsAddOnLoaded then
+        return C_AddOns.IsAddOnLoaded(addonName) == true
+    end
+    return false
+end
+
+--============================================================================
 -- WOWHEAD URL
 --============================================================================
 

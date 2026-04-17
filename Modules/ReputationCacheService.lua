@@ -84,6 +84,38 @@ local DELVE_COMPANION_ALIASES = {
     ["Valeera"] = "Valeera Sanguinar",
 }
 
+-- Delve companion XP items may award friendship/companion reputation without a
+-- reliable CHAT_MSG_COMBAT_FACTION_CHANGE line. Seed a pending rep notification
+-- when these are looted so the next FullScan can fill the exact gain from diff.
+local DELVE_COMPANION_XP_ITEM_IDS = {
+    [254576] = true, -- Chunk of Companion Experience
+}
+
+---Queue a safety-net reputation gain from snapshot diff when chat parsing missed it.
+---Used for delve companions / friendship-style factions where CHAT_MSG may not fire
+---or may use an unexpected localized message format.
+---@param factionName string
+---@param factionID number
+---@param gainAmount number
+local function QueueSnapshotFallbackNotification(factionName, factionID, gainAmount)
+    if not factionName or factionName == "" or not gainAmount or gainAmount <= 0 then return end
+    local pending = ReputationCache._pendingChatNotifications
+    if pending[factionName] then
+        pending[factionName].gain = math.max(pending[factionName].gain or 0, gainAmount)
+        if (pending[factionName].factionID or 0) == 0 and factionID and factionID > 0 then
+            pending[factionName].factionID = factionID
+        end
+        return
+    end
+    pending[factionName] = {
+        gain = gainAmount,
+        factionID = factionID,
+        oldStandingName = nil,
+        oldRenownLevel = nil,
+        isRenownLevelUp = false,
+    }
+end
+
 -- Loading state for UI (similar to PlansLoadingState pattern)
 ns.ReputationLoadingState = ns.ReputationLoadingState or {
     isLoading = false,
@@ -613,6 +645,8 @@ function ReputationCache:BuildSnapshot(silent)
 end
 
 ---Time-budgeted BuildSnapshot: spreads faction iteration across frames (max 4ms each).
+---Builds into fresh tables then swaps once — avoids wiping _snapshot mid-build (race with
+---PerformFullScan friendship safety-net / nameToID resolution during rep gains).
 function ReputationCache:BuildSnapshotAsync()
     DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] SnapshotBuild triggered (async)")
     if not C_Reputation or not C_Reputation.GetNumFactions or not C_Reputation.GetFactionDataByIndex then
@@ -626,8 +660,8 @@ function ReputationCache:BuildSnapshotAsync()
         C_Reputation.ExpandAllFactionHeaders()
     end
     
-    wipe(self._snapshot)
-    wipe(self._nameToID)
+    local newSnapshot = {}
+    local newNameToID = {}
     
     local numFactions = C_Reputation.GetNumFactions() or 0
     local scanIdx = 1
@@ -637,13 +671,15 @@ function ReputationCache:BuildSnapshotAsync()
     local function SnapshotBatch()
         local batchStart = debugprofilestop()
         while scanIdx <= numFactions do
-            cache:_ProcessSnapshotFaction(scanIdx)
+            cache:_ProcessSnapshotFaction(scanIdx, newSnapshot, newNameToID)
             scanIdx = scanIdx + 1
             if debugprofilestop() - batchStart > BUDGET_MS then
                 C_Timer.After(0, SnapshotBatch)
                 return
             end
         end
+        cache._snapshot = newSnapshot
+        cache._nameToID = newNameToID
         cache:_FinalizeSnapshot()
         if P then P:StopAsync("BuildSnapshot") end
         cache:ProcessPendingChatNotifications()
@@ -653,7 +689,12 @@ end
 
 ---Process a single faction for snapshot building.
 ---@param index number Faction index from GetFactionDataByIndex
-function ReputationCache:_ProcessSnapshotFaction(index)
+---@param targetSnapshot table|nil Defaults to self._snapshot
+---@param targetNameToID table|nil Defaults to self._nameToID
+function ReputationCache:_ProcessSnapshotFaction(index, targetSnapshot, targetNameToID)
+    targetSnapshot = targetSnapshot or self._snapshot
+    targetNameToID = targetNameToID or self._nameToID
+    
     local data = C_Reputation.GetFactionDataByIndex(index)
     if not data or not data.factionID or data.factionID <= 0 then return end
     
@@ -662,10 +703,10 @@ function ReputationCache:_ProcessSnapshotFaction(index)
     if issecretvalue and safeName and issecretvalue(safeName) then safeName = nil end
     
     if safeName and safeName ~= "" and not data.isHeader then
-        self._nameToID[safeName] = fid
+        targetNameToID[safeName] = fid
     end
     
-    self._snapshot[fid] = {
+    targetSnapshot[fid] = {
         barValue = data.currentStanding or 0,
         barMin = data.currentReactionThreshold or 0,
         barMax = data.nextReactionThreshold or 0,
@@ -675,18 +716,18 @@ function ReputationCache:_ProcessSnapshotFaction(index)
     
     local isMajorFaction = C_Reputation.IsMajorFaction and C_Reputation.IsMajorFaction(fid)
     if isMajorFaction then
-        self._snapshot[fid].isMajorFaction = true
+        targetSnapshot[fid].isMajorFaction = true
         if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
             local majorData = C_MajorFactions.GetMajorFactionData(fid)
             if majorData then
-                self._snapshot[fid].renownLevel = majorData.renownLevel or 0
+                targetSnapshot[fid].renownLevel = majorData.renownLevel or 0
             end
         end
-        if not self._snapshot[fid].renownLevel or self._snapshot[fid].renownLevel == 0 then
+        if not targetSnapshot[fid].renownLevel or targetSnapshot[fid].renownLevel == 0 then
             if C_MajorFactions and C_MajorFactions.GetCurrentRenownLevel then
                 local level = C_MajorFactions.GetCurrentRenownLevel(fid)
                 if level and level > 0 then
-                    self._snapshot[fid].renownLevel = level
+                    targetSnapshot[fid].renownLevel = level
                 end
             end
         end
@@ -695,20 +736,20 @@ function ReputationCache:_ProcessSnapshotFaction(index)
     if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
         local friendInfo = C_GossipInfo.GetFriendshipReputation(fid)
         if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
-            self._snapshot[fid].isFriendship = true
-            self._snapshot[fid].friendshipStanding = friendInfo.standing or 0
-            self._snapshot[fid].friendshipMaxRep = friendInfo.maxRep or 0
-            self._snapshot[fid].friendshipReactionThreshold = friendInfo.reactionThreshold or 0
-            self._snapshot[fid].friendshipNextThreshold = friendInfo.nextThreshold or 0
-            self._snapshot[fid].friendshipName = friendInfo.text or ""
+            targetSnapshot[fid].isFriendship = true
+            targetSnapshot[fid].friendshipStanding = friendInfo.standing or 0
+            targetSnapshot[fid].friendshipMaxRep = friendInfo.maxRep or 0
+            targetSnapshot[fid].friendshipReactionThreshold = friendInfo.reactionThreshold or 0
+            targetSnapshot[fid].friendshipNextThreshold = friendInfo.nextThreshold or 0
+            targetSnapshot[fid].friendshipName = friendInfo.text or ""
         end
     end
     
     if C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(fid) then
         local pVal, pThreshold = C_Reputation.GetFactionParagonInfo(fid)
         if pVal and pThreshold and pThreshold > 0 then
-            self._snapshot[fid].paragonValue = pVal
-            self._snapshot[fid].paragonThreshold = pThreshold
+            targetSnapshot[fid].paragonValue = pVal
+            targetSnapshot[fid].paragonThreshold = pThreshold
         end
     end
 end
@@ -1069,9 +1110,116 @@ function ReputationCache:RegisterEventListeners()
             }
         end
         
+        -- Generic chat lines (FACTION_STANDING_INCREASED_GENERIC*) carry no amount; derive
+        -- gain after FullScan from DB delta using a pre-update baseline.
+        local entry = pending[parsedName]
+        if factionID > 0 and (entry.gain or 0) == 0 and WarbandNexus.GetFactionByID then
+            local dbData = WarbandNexus:GetFactionByID(factionID)
+            if dbData and entry.preCurrentValue == nil then
+                entry.preCurrentValue = dbData.currentValue or 0
+                if dbData.friendship then
+                    entry.preFriendshipCurrent = dbData.friendship.current
+                end
+            end
+        end
+        
         DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Queued: " .. parsedName .. " +" .. gainAmount .. " (waiting for DB update)")
     end
-    
+
+    ---Extract itemID from a CHAT_MSG_LOOT message item link.
+    ---@param message string
+    ---@return number|nil
+    local function ExtractLootItemID(message)
+        if not message or type(message) ~= "string" then return nil end
+        if issecretvalue and issecretvalue(message) then return nil end
+        local itemID = message:match("|Hitem:(%d+):")
+        if itemID then
+            itemID = tonumber(itemID)
+        end
+        return itemID
+    end
+
+    ---Resolve the active delve companion factionID from the most reliable sources.
+    ---Order: cached PvE data -> snapshot aliases -> live Delves API.
+    ---@return number|nil
+    local function ResolveDelveCompanionFactionID()
+        local db = WarbandNexus and WarbandNexus.db
+        local cachedFactionID = db
+            and db.global
+            and db.global.pveCache
+            and db.global.pveCache.delves
+            and db.global.pveCache.delves.companion
+            and db.global.pveCache.delves.companion.factionID
+        if cachedFactionID and not (issecretvalue and issecretvalue(cachedFactionID)) then
+            cachedFactionID = tonumber(cachedFactionID) or cachedFactionID
+            if cachedFactionID and cachedFactionID > 0 then
+                return cachedFactionID
+            end
+        end
+
+        local nameToID = ReputationCache._nameToID
+        if nameToID then
+            local aliasID = nameToID["Valeera Sanguinar"] or nameToID["Valeera"]
+            if aliasID and aliasID > 0 then
+                return aliasID
+            end
+        end
+
+        if C_DelvesUI and C_DelvesUI.GetFactionForCompanion then
+            local factionID = C_DelvesUI.GetFactionForCompanion()
+            if factionID and not (issecretvalue and issecretvalue(factionID)) then
+                factionID = tonumber(factionID) or factionID
+                if factionID and factionID > 0 then
+                    return factionID
+                end
+            end
+        end
+
+        return nil
+    end
+
+    ---Seed a pending companion rep notification from a known companion XP loot item.
+    ---The exact gain is derived later from FullScan DB delta when chat parsing is absent.
+    ---@param itemID number
+    local function QueueCompanionLootFallback(itemID)
+        if not itemID or not DELVE_COMPANION_XP_ITEM_IDS[itemID] then return false end
+        local factionID = ResolveDelveCompanionFactionID()
+        if not factionID then return false end
+
+        local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionID)
+        local factionName = factionData and factionData.name or nil
+        if issecretvalue and factionName and issecretvalue(factionName) then
+            factionName = nil
+        end
+        if not factionName or factionName == "" then
+            factionName = "Faction " .. tostring(factionID)
+        end
+
+        local preDBData = WarbandNexus.GetFactionByID and WarbandNexus:GetFactionByID(factionID) or nil
+        local preCurrentValue = preDBData and preDBData.currentValue or 0
+        local preMaxValue = preDBData and preDBData.maxValue or 0
+        local preFriendshipCurrent = preDBData and preDBData.friendship and preDBData.friendship.current or nil
+
+        local pending = ReputationCache._pendingChatNotifications
+        if not pending[factionName] then
+            pending[factionName] = {
+                gain = 0,
+                factionID = factionID,
+                oldStandingName = nil,
+                oldRenownLevel = nil,
+                isRenownLevelUp = false,
+                preCurrentValue = preCurrentValue,
+                preMaxValue = preMaxValue,
+                preFriendshipCurrent = preFriendshipCurrent,
+            }
+        elseif (pending[factionName].factionID or 0) == 0 then
+            pending[factionName].factionID = factionID
+        end
+
+        DebugPrint("|cff9370DB[ReputationCache]|r [LootFallback] Seeded pending companion gain from itemID " .. tostring(itemID) .. " for " .. tostring(factionName))
+        return true
+    end
+
     -- Blizzard rep chat suppression: ChatIntegrationService.lua (single CHAT_MSG_COMBAT_FACTION_CHANGE hook).
     
     -- ============================================================
@@ -1090,6 +1238,7 @@ function ReputationCache:RegisterEventListeners()
     -- ============================================================
     local repEventFrame = CreateFrame("Frame")
     repEventFrame:RegisterEvent("CHAT_MSG_COMBAT_FACTION_CHANGE")
+    repEventFrame:RegisterEvent("CHAT_MSG_LOOT")
     repEventFrame:RegisterEvent("UPDATE_FACTION")
     repEventFrame:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED")
     
@@ -1145,7 +1294,9 @@ function ReputationCache:RegisterEventListeners()
                 C_Timer.After(0.15, function()
                     local totalGain = pendingGains[factionName]
                     pendingGains[factionName] = nil
-                    if totalGain and totalGain > 0 then
+                    -- Include totalGain == 0: generic "reputation increased" lines have no %d;
+                    -- gain is derived in ProcessPendingChatNotifications from pre-scan DB values.
+                    if totalGain ~= nil then
                         QueueChatNotification(factionName, totalGain)
                     end
                 end)
@@ -1222,6 +1373,21 @@ function ReputationCache:RegisterEventListeners()
             
             -- Schedule FullScan → DB update → chat notification processing
             ScheduleFullScanForChat()
+            return
+        end
+
+        -- ────────────────────────────────────────────────────────────
+        -- CHAT_MSG_LOOT: companion XP item safety-net
+        -- Some Delves companion XP rewards only show as loot items.
+        -- Seed a pending rep notification so the next FullScan can
+        -- derive the exact gain from friendship snapshot diff.
+        -- ────────────────────────────────────────────────────────────
+        if event == "CHAT_MSG_LOOT" then
+            local message = ...
+            local itemID = ExtractLootItemID(message)
+            if itemID and QueueCompanionLootFallback(itemID) then
+                ScheduleFullScanForChat()
+            end
             return
         end
         
@@ -1736,7 +1902,8 @@ function ReputationCache:PerformFullScan(bypassThrottle)
             -- Phase 3 (next frame): Update DB
             C_Timer.After(0, function()
                 -- Delve companions / friendship (Brann, Valeera): CHAT_MSG may not fire or parse.
-                -- Queue gains from snapshot diff ONLY for friendship — others get CHAT_MSG, so we avoid flooding.
+                -- Safety net: queue gains from snapshot diff for processed friendship factions too,
+                -- not just ones already marked in the old snapshot.
                 local pending = self._pendingChatNotifications
                 local snapshot = self._snapshot
                 if snapshot and next(snapshot) then
@@ -1744,7 +1911,8 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                         local factionID = data.factionID and (tonumber(data.factionID) or data.factionID)
                         if factionID and factionID > 0 then
                             local old = snapshot[factionID]
-                            if old and old.isFriendship and C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+                            local isFriendshipFaction = (old and old.isFriendship) or (data.type == "friendship") or (data.friendship ~= nil)
+                            if old and isFriendshipFaction and C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
                                 local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
                                 if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
                                     local newVal = friendInfo.standing or 0
@@ -1752,16 +1920,10 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                                     if newVal > oldVal then
                                         local gainAmount = newVal - oldVal
                                         local fData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionID)
-                                        local factionName = (fData and fData.name and fData.name ~= "") and fData.name or ("Faction " .. tostring(factionID))
-                                        if not pending[factionName] then
-                                            pending[factionName] = {
-                                                gain = gainAmount,
-                                                factionID = factionID,
-                                                oldStandingName = nil,
-                                                oldRenownLevel = nil,
-                                                isRenownLevelUp = false,
-                                            }
-                                        end
+                                        local factionName = (fData and fData.name and fData.name ~= "") and fData.name
+                                            or (data.name and data.name ~= "" and data.name)
+                                            or ("Faction " .. tostring(factionID))
+                                        QueueSnapshotFallbackNotification(factionName, factionID, gainAmount)
                                     end
                                 end
                             end
@@ -1787,6 +1949,11 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                 if self._snapshotReady then
                     self:PerformSnapshotDiff()
                 end
+
+                -- Process pending rep notifications immediately after DB update/diff.
+                -- BuildSnapshotAsync still runs next to rebuild name/faction caches, but
+                -- chat output should not wait on the async snapshot pass to complete.
+                self:ProcessPendingChatNotifications()
                 
                 -- Phase 4 (next frame): Rebuild snapshot
                 C_Timer.After(0, function()
@@ -1827,6 +1994,19 @@ function ReputationCache:ProcessPendingChatNotifications()
         local dbData = (factionID > 0) and WarbandNexus:GetFactionByID(factionID) or nil
         
         if dbData then
+            if gainAmount <= 0 then
+                local deltaCurrent = (dbData.currentValue or 0) - (entry.preCurrentValue or 0)
+                local deltaFriendship = dbData.friendship
+                    and dbData.friendship.current
+                    and entry.preFriendshipCurrent
+                    and (dbData.friendship.current - entry.preFriendshipCurrent)
+                    or 0
+                local derivedGain = math.max(deltaCurrent or 0, deltaFriendship or 0)
+                if derivedGain > 0 then
+                    gainAmount = derivedGain
+                end
+            end
+
             -- Detect standing change: compare pre-update vs post-update
             local wasStandingUp = false
             local isRenownLevelUp = entry.isRenownLevelUp or false

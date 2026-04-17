@@ -220,21 +220,21 @@ end
 -- Columns that users can toggle on/off via the Columns button.
 -- Keys match COLUMNS table; display labels shown in the dropdown.
 local TOGGLEABLE_COLUMNS = {
-    { key = "skill",       label = "Skill" },
-    { key = "conc",        label = "Concentration" },
-    { key = "recharge",    label = "Recharge" },
-    { key = "knowledge",   label = "Knowledge" },
-    { key = "recipes",     label = "Recipes" },
-    { key = "firstCraft",  label = "First Craft" },
-    { key = "uniques",     label = "Uniques" },
-    { key = "treatise",    label = "Treatise" },
-    { key = "weeklyQuest", label = "Weekly Quest" },
-    { key = "treasure",    label = "Treasure" },
-    { key = "gathering",   label = "Gathering" },
-    { key = "catchUp",     label = "Catch Up" },
-    { key = "moxie",       label = "Moxie" },
-    { key = "cooldowns",   label = "Cooldowns" },
-    { key = "equipment",   label = "Equipment" },
+    { key = "skill",       label = (ns.L and ns.L["SKILL"]) or "Skill" },
+    { key = "conc",        label = (ns.L and ns.L["CONCENTRATION"]) or "Concentration" },
+    { key = "recharge",    label = (ns.L and ns.L["RECHARGE"]) or "Recharge" },
+    { key = "knowledge",   label = (ns.L and ns.L["KNOWLEDGE"]) or "Knowledge" },
+    { key = "recipes",     label = (ns.L and ns.L["RECIPES"]) or "Recipes" },
+    { key = "firstCraft",  label = (ns.L and ns.L["FIRST_CRAFT"]) or "First Craft" },
+    { key = "uniques",     label = (ns.L and ns.L["UNIQUES"]) or "Uniques" },
+    { key = "treatise",    label = (ns.L and ns.L["TREATISE"]) or "Treatise" },
+    { key = "weeklyQuest", label = (ns.L and ns.L["WEEKLY_QUEST_CAT"]) or "Weekly Quest" },
+    { key = "treasure",    label = (ns.L and ns.L["SOURCE_TYPE_TREASURE"]) or "Treasure" },
+    { key = "gathering",   label = (ns.L and ns.L["GATHERING"]) or "Gathering" },
+    { key = "catchUp",     label = (ns.L and ns.L["CATCH_UP"]) or "Catch Up" },
+    { key = "moxie",       label = (ns.L and ns.L["MOXIE"]) or "Moxie" },
+    { key = "cooldowns",   label = (ns.L and ns.L["COOLDOWNS"]) or "Cooldowns" },
+    { key = "equipment",   label = (ns.L and ns.L["EQUIPMENT"]) or "Equipment" },
 }
 
 local COLUMN_DEFAULT_VISIBLE = {
@@ -2071,7 +2071,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                     end
                 end
                 if #lines > 0 and ShowTooltip then
-                    ShowTooltip(self, { type = "custom", title = "Cooldowns", lines = lines, anchor = "ANCHOR_TOP" })
+                    ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["COOLDOWNS"]) or "Cooldowns", lines = lines, anchor = "ANCHOR_TOP" })
                 end
             end)
             cdHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)

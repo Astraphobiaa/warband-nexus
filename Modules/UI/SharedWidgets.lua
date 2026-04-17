@@ -1976,7 +1976,7 @@ local TAB_HEADER_ICONS = {
     reputation = "MajorFactions_MapIcons_Centaur64",
     pve = "Tormentors-Boss",
     statistics = "racing",
-    collections = "PetJournalPortrait",
+    collections = "UI-Achievement-Shield-NoPoints",
     professions = "Vehicle-HammerGold",
     gear = "QuestLegendary",
 }
@@ -2037,7 +2037,16 @@ local function CreateHeaderIcon(parent, atlasName, size, borderSize, point, x, y
     local icon = container:CreateTexture(nil, "ARTWORK", nil, 0)
     icon:SetPoint("TOPLEFT", iconInset, -iconInset)
     icon:SetPoint("BOTTOMRIGHT", -iconInset, iconInset)
-    icon:SetAtlas(atlasName, false)
+    local iconApplied = false
+    if atlasName and atlasName ~= "" then
+        local ok = pcall(icon.SetAtlas, icon, atlasName, false)
+        if ok then
+            iconApplied = true
+        end
+    end
+    if not iconApplied then
+        icon:SetAtlas("icons_64x64_important", false)
+    end
     -- Anti-flicker optimization
     icon:SetSnapToPixelGrid(false)
     icon:SetTexelSnappingBias(0)
@@ -3511,8 +3520,8 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     wowheadBtn:SetFrameLevel((root:GetFrameLevel() or 0) + 8)
     wowheadBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
-        GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
+        GameTooltip:AddLine((L and L["WOWHEAD_LABEL"]) or "Wowhead", 1, 0.82, 0)
+        GameTooltip:AddLine((L and L["CLICK_TO_COPY_LINK"]) or "Click to copy link", 0.6, 0.6, 0.6, true)
         GameTooltip:Show()
     end)
     wowheadBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5613,7 +5622,10 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
 
         local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         title:SetPoint("TOPLEFT", 10, -8)
-        title:SetText("|cffffcc00Wowhead|r  |cff888888Ctrl+C|r")
+        title:SetText(
+            "|cffffcc00" .. ((ns.L and ns.L["WOWHEAD_LABEL"]) or "Wowhead") .. "|r  |cff888888"
+            .. ((ns.L and ns.L["CTRL_C_LABEL"]) or "Ctrl+C") .. "|r"
+        )
         f._title = title
 
         local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")

@@ -451,9 +451,16 @@ function WarbandNexus:DrawCharacterList(parent)
 
     if tokenPrice and tokenPrice > 0 then
         local affordableCount = math.floor(totalWithWarband / tokenPrice)
-        tkValue:SetText(FormatMoney(tokenPrice, 12) .. "  |cff66c0ff(" .. affordableCount .. " Tokens)|r")
+        tkValue:SetText(
+            FormatMoney(tokenPrice, 12)
+                .. "  |cff66c0ff("
+                .. affordableCount
+                .. " "
+                .. (((ns.L and ns.L["WOW_TOKEN_COUNT_LABEL"]) or "Tokens"))
+                .. ")|r"
+        )
     else
-        tkValue:SetText("|cff888888N/A|r")
+        tkValue:SetText("|cff888888" .. ((ns.L and ns.L["NOT_AVAILABLE_SHORT"]) or "N/A") .. "|r")
         -- One-shot retry if price not ready yet (event-driven path is primary).
         if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then
             C_Timer.After(1.25, function()
@@ -1288,10 +1295,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     local hasKnowledgeLine = (collectible > 0) or (unspent > 0)
                     if hasKnowledgeLine then
                         lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-                        local cName = kd.currencyName or "Knowledge"
+                        local cName = kd.currencyName or ((ns.L and ns.L["KNOWLEDGE"]) or "Knowledge")
                         if collectible > 0 then
                             lines[#lines + 1] = {
-                                left = "Collectible",
+                                left = (ns.L and ns.L["COLLECTIBLE"]) or "Collectible",
                                 right = tostring(collectible),
                                 leftColor = {1, 1, 1},
                                 rightColor = {0.3, 0.9, 0.3}
@@ -1328,7 +1335,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     local concText = string.format("%d / %d", estimated, concData.max)
 
                     lines[#lines + 1] = {
-                        left = "Concentration",
+                        left = (ns.L and ns.L["CONCENTRATION"]) or "Concentration",
                         right = concText,
                         leftColor = {1, 1, 1},
                         rightColor = concColor
@@ -1337,9 +1344,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     -- Recharge timer (white label, yellow duration)
                     if estimated < concData.max and WarbandNexus and WarbandNexus.GetConcentrationTimeToFull then
                         local timeStr = WarbandNexus:GetConcentrationTimeToFull(concData)
-                        if timeStr and timeStr ~= "" and timeStr ~= "Full" then
+                        if timeStr and timeStr ~= "" and timeStr ~= ((ns.L and ns.L["FULL"]) or "Full") then
                             lines[#lines + 1] = {
-                                left = "Recharge",
+                                left = (ns.L and ns.L["RECHARGE"]) or "Recharge",
                                 right = timeStr,
                                 leftColor = {1, 1, 1},
                                 rightColor = {1, 0.82, 0}
@@ -1362,9 +1369,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                             -- Get stat lines first to extract actual slot type (Head, Chest, Tool, etc.)
                             local statLines = tooltipSvc and tooltipSvc.GetItemTooltipSummaryLines and tooltipSvc:GetItemTooltipSummaryLines(item.itemLink, item.itemID, slotKey) or {}
                             -- First line contains the slot type (e.g., "Head", "Chest", "Tool")
-                            local slotLabel = (statLines[1] and statLines[1].left) or (slotKey == "tool" and "Tool" or "Accessory")
+                            local slotLabel = (statLines[1] and statLines[1].left)
+                                or (slotKey == "tool" and ((ns.L and ns.L["TOOL"]) or "Tool") or ((ns.L and ns.L["ACCESSORY"]) or "Accessory"))
                             lines[#lines + 1] = {
-                                left = iconStr .. (item.name or "Unknown"),
+                                left = iconStr .. (item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")),
                                 right = slotLabel,
                                 leftColor = {1, 1, 1},
                                 rightColor = {0.5, 0.5, 0.5},

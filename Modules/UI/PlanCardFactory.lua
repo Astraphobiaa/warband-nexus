@@ -223,8 +223,8 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         whBtn:SetFrameLevel(card:GetFrameLevel() + 5)
         whBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Wowhead", 1, 0.82, 0)
-            GameTooltip:AddLine("Click to copy link", 0.6, 0.6, 0.6, true)
+            GameTooltip:AddLine((ns.L and ns.L["WOWHEAD_LABEL"]) or "Wowhead", 1, 0.82, 0)
+            GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY_LINK"]) or "Click to copy link", 0.6, 0.6, 0.6, true)
             GameTooltip:Show()
         end)
         whBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1845,7 +1845,16 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                         end
                     end)
                     removeBtn:SetScript("OnEnter", function(self)
-                        ns.TooltipService:Show(self, { type = "custom", title = "Delete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                        ns.TooltipService:Show(
+                            self,
+                            {
+                                type = "custom",
+                                title = (ns.L and ns.L["PLAN_ACTION_DELETE"]) or "Delete the Plan",
+                                icon = false,
+                                anchor = "ANCHOR_TOP",
+                                lines = {}
+                            }
+                        )
                     end)
                     removeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
                     

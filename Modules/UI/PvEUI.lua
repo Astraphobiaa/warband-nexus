@@ -11,7 +11,7 @@
     ACCEPTABLE API CALLS (UI-only):
     - C_DateAndTime.GetSecondsUntilWeeklyReset() - Fallback for weekly reset timer
     - C_ChallengeMode.GetMapUIInfo() - Dungeon name/icon (not cached, static data)
-    - C_CurrencyInfo.GetCurrencyInfo() - Currency details for TWW currencies
+    - C_CurrencyInfo.GetCurrencyInfo() - Currency details for display (Midnight)
     - C_Item.GetItemIconByID() - Trovehunter's Bounty icon for Bountiful column header
     
     DEPRECATED API CALLS (Moved to PvECacheService):
@@ -2239,10 +2239,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                         WeeklyRewardsFrame:Hide()
                         return
                     end
-                    if C_AddOns and C_AddOns.LoadAddOn then
-                        C_AddOns.LoadAddOn("Blizzard_WeeklyRewards")
-                    elseif _G.LoadAddOn then
-                        _G.LoadAddOn("Blizzard_WeeklyRewards")
+                    if InCombatLockdown() then return end
+                    local U = ns.Utilities
+                    if U and U.SafeLoadAddOn then
+                        U:SafeLoadAddOn("Blizzard_WeeklyRewards")
                     end
                     if WeeklyRewardsFrame then
                         WeeklyRewardsFrame:Show()

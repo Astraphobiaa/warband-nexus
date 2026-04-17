@@ -1138,7 +1138,7 @@ function WarbandNexus:GearStorageUpgradeDebugReportAll()
         end
     end
     if #tracked == 0 then
-        self:Print("|cffff6600[WN GearStorageDebug]|r No tracked characters.")
+        self:Print("|cffff6600[WN GearStorageDebug]|r " .. ((ns.L and ns.L["GEAR_NO_TRACKED_CHARACTERS_TITLE"]) or "No tracked characters.") )
         return
     end
 

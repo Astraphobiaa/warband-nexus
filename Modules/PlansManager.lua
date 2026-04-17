@@ -148,7 +148,9 @@ function WarbandNexus:RefreshPlanCache()
 
     -- Rebuild from db.global.plans
     if self.db and self.db.global and self.db.global.plans then
-        for _, plan in ipairs(self.db.global.plans) do
+        local _plans = self.db.global.plans
+        for _i = 1, #_plans do
+            local plan = _plans[_i]
             if plan.id then
                 byId[plan.id] = plan
             end
@@ -216,7 +218,9 @@ function WarbandNexus:RefreshPlanCache()
     
     -- Also check custom plans
     if self.db and self.db.global and self.db.global.customPlans then
-        for _, plan in ipairs(self.db.global.customPlans) do
+        local _customPlans = self.db.global.customPlans
+        for _i = 1, #_customPlans do
+            local plan = _customPlans[_i]
             if plan.id then
                 byId[plan.id] = plan
             end
@@ -463,7 +467,9 @@ function WarbandNexus:CheckPlansForCompletion()
             processPlan(list[i])
         end
     else
-        for _, plan in ipairs(self.db.global.plans) do
+        local _plans = self.db.global.plans
+        for _i = 1, #_plans do
+            local plan = _plans[_i]
             processPlan(plan)
         end
     end
@@ -540,7 +546,9 @@ function WarbandNexus:TryCompletePlanFromCollectibleObtained(data)
     end
 
     -- Fallback: full scan (unknown dType key, cold _plansByCollectibleKey, or edge match)
-    for _, plan in ipairs(self.db.global.plans) do
+    local _plans = self.db.global.plans
+    for _i = 1, #_plans do
+        local plan = _plans[_i]
         if not plan.completed and not plan.completionNotified and plan.type == dType then
             local matched = false
             if plan.type == "mount" and plan.mountID and idMount then
@@ -1038,7 +1046,9 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     local oldWorldCount = oldProgress and oldProgress.worldActivityCount or plan.progress.worldActivityCount
     
     -- Update dungeon slots
-    for i, slot in ipairs(plan.slots.dungeon) do
+    local dungeonSlots = plan.slots.dungeon
+    for i = 1, #dungeonSlots do
+        local slot = dungeonSlots[i]
         if not slot.manualOverride then
             local wasCompleted = slot.completed
             slot.completed = plan.progress.dungeonCount >= slot.threshold
@@ -1060,7 +1070,9 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     end
     
     -- Update raid slots
-    for i, slot in ipairs(plan.slots.raid) do
+    local raidSlots = plan.slots.raid
+    for i = 1, #raidSlots do
+        local slot = raidSlots[i]
         if not slot.manualOverride then
             local wasCompleted = slot.completed
             slot.completed = plan.progress.raidBossCount >= slot.threshold
@@ -1082,7 +1094,9 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     end
     
     -- Update world slots
-    for i, slot in ipairs(plan.slots.world) do
+    local worldSlots = plan.slots.world
+    for i = 1, #worldSlots do
+        local slot = worldSlots[i]
         if not slot.manualOverride then
             local wasCompleted = slot.completed
             slot.completed = plan.progress.worldActivityCount >= slot.threshold
@@ -1106,7 +1120,9 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     -- Update special assignment slots
     local oldSACount = oldProgress and oldProgress.specialAssignmentCount or (plan.progress.specialAssignmentCount or 0)
     if plan.slots.specialAssignment then
-        for i, slot in ipairs(plan.slots.specialAssignment) do
+        local saSlots = plan.slots.specialAssignment
+        for i = 1, #saSlots do
+            local slot = saSlots[i]
             if not slot.manualOverride then
                 local wasCompleted = slot.completed
                 slot.completed = (plan.progress.specialAssignmentCount or 0) >= slot.threshold
@@ -1250,20 +1266,34 @@ function WarbandNexus:ResetWeeklyPlans()
 
     local function resetOneVaultPlan(plan)
         if not plan or plan.type ~= PLAN_TYPES.WEEKLY_VAULT then return end
-        for _, slot in ipairs(plan.slots.dungeon) do
-            slot.completed = false
-            slot.manualOverride = false
+        do
+            local ds = plan.slots.dungeon
+            for si = 1, #ds do
+                local slot = ds[si]
+                slot.completed = false
+                slot.manualOverride = false
+            end
         end
-        for _, slot in ipairs(plan.slots.raid) do
-            slot.completed = false
-            slot.manualOverride = false
+        do
+            local rs = plan.slots.raid
+            for si = 1, #rs do
+                local slot = rs[si]
+                slot.completed = false
+                slot.manualOverride = false
+            end
         end
-        for _, slot in ipairs(plan.slots.world) do
-            slot.completed = false
-            slot.manualOverride = false
+        do
+            local ws = plan.slots.world
+            for si = 1, #ws do
+                local slot = ws[si]
+                slot.completed = false
+                slot.manualOverride = false
+            end
         end
         if plan.slots.specialAssignment then
-            for _, slot in ipairs(plan.slots.specialAssignment) do
+            local sas = plan.slots.specialAssignment
+            for si = 1, #sas do
+                local slot = sas[si]
                 slot.completed = false
                 slot.manualOverride = false
             end
@@ -1285,7 +1315,9 @@ function WarbandNexus:ResetWeeklyPlans()
             resetOneVaultPlan(list[i])
         end
     else
-        for _, plan in ipairs(self.db.global.plans) do
+        local _plans = self.db.global.plans
+        for _i = 1, #_plans do
+            local plan = _plans[_i]
             resetOneVaultPlan(plan)
         end
     end
@@ -1384,7 +1416,9 @@ function WarbandNexus:HasActiveWeeklyPlan(characterName, characterRealm)
         end
     end
 
-    for _, plan in ipairs(self.db.global.plans) do
+    local _plans = self.db.global.plans
+    for _i = 1, #_plans do
+        local plan = _plans[_i]
         if plan.type == "weekly_vault" and
             plan.characterName == characterName and
             plan.characterRealm == characterRealm then
@@ -1428,7 +1462,9 @@ function WarbandNexus:OnPvEUpdateCheckPlans()
         return
     end
 
-    for _, plan in ipairs(self.db.global.plans) do
+    local _plans = self.db.global.plans
+    for _i = 1, #_plans do
+        local plan = _plans[_i]
         if plan.type == "weekly_vault" and
             plan.characterName == currentName and
             plan.characterRealm == currentRealm then
@@ -1468,7 +1504,9 @@ function WarbandNexus:CheckRecurringPlanResets()
     local now = time()
     local changed = false
 
-    for _, plan in ipairs(self.db.global.customPlans) do
+    local _customPlans = self.db.global.customPlans
+    for _i = 1, #_customPlans do
+        local plan = _customPlans[_i]
         local rc = plan.resetCycle
         if rc and rc.enabled and plan.completed then
             local shouldReset = false
@@ -1529,7 +1567,9 @@ function WarbandNexus:CheckWeeklyReset()
         return
     end
 
-    for _, plan in ipairs(self.db.global.plans) do
+    local _plans = self.db.global.plans
+    for _i = 1, #_plans do
+        local plan = _plans[_i]
         if plan.type == "weekly_vault" then
             if plan.lastReset < threshold then
                 self:ResetWeeklyPlans()
@@ -1862,14 +1902,18 @@ function WarbandNexus:GetPlanByID(planID)
 
     if self.db and self.db.global then
         if self.db.global.plans then
-            for _, plan in ipairs(self.db.global.plans) do
+            local _plans = self.db.global.plans
+            for _i = 1, #_plans do
+                local plan = _plans[_i]
                 if plan.id == planID then
                     return plan
                 end
             end
         end
         if self.db.global.customPlans then
-            for _, plan in ipairs(self.db.global.customPlans) do
+            local _customPlans = self.db.global.customPlans
+            for _i = 1, #_customPlans do
+                local plan = _customPlans[_i]
                 if plan.id == planID then
                     return plan
                 end

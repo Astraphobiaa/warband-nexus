@@ -637,16 +637,9 @@ local function EnsureBlizzardCollectionsLoaded()
     if blizzardCollectionsLoaded then return end
     if InCombatLockdown() then return end
     blizzardCollectionsLoaded = true
-    local function SafeLoadAddOn(addonName)
-        local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(addonName)
-        if isLoaded then return end
-        if C_AddOns and C_AddOns.LoadAddOn then
-            pcall(C_AddOns.LoadAddOn, addonName)
-        elseif LoadAddOn then
-            pcall(LoadAddOn, addonName)
-        end
+    if Utilities and Utilities.SafeLoadAddOn then
+        Utilities:SafeLoadAddOn("Blizzard_Collections")
     end
-    SafeLoadAddOn("Blizzard_Collections")
     DebugPrint("|cff00ff00[WN CollectionService]|r Ensured Blizzard_Collections is loaded for API data")
 end
 ns.EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded
@@ -962,17 +955,17 @@ end
 local TOY_SOURCE_TYPE_MAX = 32
 -- Blizzard Toy Box Filter > Sources order (fallback when TOY_SOURCE_TYPE_N globals missing or SOURCE_TYPE_OTHER)
 local TOY_SOURCE_TYPE_NAMES = {
-    [1] = "Drop",
-    [2] = "Quest",
-    [3] = "Vendor",
-    [4] = "Profession",
-    [5] = "Pet Battle",
-    [6] = "Achievement",
-    [7] = "World Event",
-    [8] = "Promotion",
-    [9] = "In-Game Shop",
-    [10] = "Discovery",
-    [11] = "Trading Post",
+    [1] = (ns.L and ns.L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",
+    [2] = (ns.L and ns.L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",
+    [3] = (ns.L and ns.L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",
+    [4] = (ns.L and ns.L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",
+    [5] = (ns.L and ns.L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",
+    [6] = (ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",
+    [7] = (ns.L and ns.L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",
+    [8] = (ns.L and ns.L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",
+    [9] = (ns.L and ns.L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop",
+    [10] = (ns.L and ns.L["PARSE_DISCOVERY"]) or "Discovery",
+    [11] = (ns.L and ns.L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",
 }
 
 ---Category label for Blizzard source type index. Prefer game globals/locale; else use Sources filter names (Drop, Quest, Vendor, ...).
@@ -983,7 +976,7 @@ function WarbandNexus:GetToySourceTypeName(sourceIndex)
     if L and L[key] and L[key] ~= key and L[key] ~= "SOURCE_TYPE_OTHER" then return L[key] end
     local g = _G[key]
     if type(g) == "string" and g ~= "" and g ~= "SOURCE_TYPE_OTHER" then return g end
-    return TOY_SOURCE_TYPE_NAMES[sourceIndex] or ("Category " .. sourceIndex)
+    return TOY_SOURCE_TYPE_NAMES[sourceIndex] or string.format((L and L["SOURCE_TYPE_CATEGORY_FORMAT"]) or "Category %d", sourceIndex)
 end
 
 function WarbandNexus:GetToySourceTypeCount()
@@ -2628,7 +2621,7 @@ local illusionDebugCount = 0  -- Debug counter for illusion logging
 ---Unified collection configuration for background scanning
 COLLECTION_CONFIGS = {
     mount = {
-        name = "Mounts",
+        name = (ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts",
         iterator = function()
             EnsureBlizzardCollectionsLoaded()
             if not C_MountJournal or not C_MountJournal.GetMountIDs then return {} end
@@ -2681,7 +2674,7 @@ COLLECTION_CONFIGS = {
     },
     
     pet = {
-        name = "Pets",
+        name = (ns.L and ns.L["CATEGORY_PETS"]) or "Pets",
         iterator = function()
             if not C_PetJournal then return {} end
             
@@ -2791,7 +2784,7 @@ COLLECTION_CONFIGS = {
     },
 
     toy = {
-        name = "Toys",
+        name = (ns.L and ns.L["CATEGORY_TOYS"]) or "Toys",
         iterator = function()
             if not C_ToyBox then return {} end
             
@@ -2885,7 +2878,7 @@ COLLECTION_CONFIGS = {
     },
 
     achievement = {
-        name = "Achievements",
+        name = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements",
         iterator = function()
             if not GetCategoryList then return {} end
             
@@ -2944,7 +2937,7 @@ COLLECTION_CONFIGS = {
     },
 
     title = {
-        name = "Titles",
+        name = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles",
         iterator = function()
             if not GetCategoryList then return {} end
             
@@ -3002,7 +2995,7 @@ COLLECTION_CONFIGS = {
     },
 
     transmog = {
-        name = "Transmog",
+        name = (ns.L and ns.L["CATEGORY_TRANSMOG"]) or "Transmog",
         iterator = function()
             if not C_TransmogCollection or not C_TransmogCollection.GetAllAppearanceSources then
                 return {}
@@ -3162,7 +3155,7 @@ COLLECTION_CONFIGS = {
     },
 
     title = {
-        name = "Titles",
+        name = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles",
         iterator = function()
             if not GetNumTitles or not GetTitleName or not IsTitleKnown then return {} end
             

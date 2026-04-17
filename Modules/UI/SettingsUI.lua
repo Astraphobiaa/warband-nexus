@@ -2557,11 +2557,17 @@ local function BuildSettings(parent, containerWidth)
                 sources = {},
             }
             local typeLabel = ""
-            if drop.type == "mount" then typeLabel = "|cff00ccff[Mount]|r "
-            elseif drop.type == "pet" then typeLabel = "|cff44ff44[Pet]|r "
-            elseif drop.type == "toy" then typeLabel = "|cffff8800[Toy]|r "
-            elseif drop.type == "illusion" then typeLabel = "|cffcc66ff[Illusion]|r "
-            else typeLabel = "|cff888888[Item]|r " end
+            if drop.type == "mount" then
+                typeLabel = "|cff00ccff[" .. ((ns.L and ns.L["TYPE_MOUNT"]) or "Mount") .. "]|r "
+            elseif drop.type == "pet" then
+                typeLabel = "|cff44ff44[" .. ((ns.L and ns.L["TYPE_PET"]) or "Pet") .. "]|r "
+            elseif drop.type == "toy" then
+                typeLabel = "|cffff8800[" .. ((ns.L and ns.L["TYPE_TOY"]) or "Toy") .. "]|r "
+            elseif drop.type == "illusion" then
+                typeLabel = "|cffcc66ff[" .. ((ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion") .. "]|r "
+            else
+                typeLabel = "|cff888888[" .. ((ns.L and ns.L["TYPE_ITEM"]) or "Item") .. "]|r "
+            end
             dropdownValues[key] = typeLabel .. drop.name
         end
         local sources = itemRegistry[key].sources

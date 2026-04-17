@@ -2075,14 +2075,17 @@ function WarbandNexus:DrawGearTab(parent)
     local allChars = GetTrackedCharacters()
     if #allChars == 0 then
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
-        local height = DrawEmptyState and DrawEmptyState(parent,
-            "No tracked characters",
-            "Log in to a character to start tracking gear.") or 200
+        local height = DrawEmptyState and DrawEmptyState(
+            parent,
+            (ns.L and ns.L["GEAR_NO_TRACKED_CHARACTERS_TITLE"]) or "No tracked characters",
+            (ns.L and ns.L["GEAR_NO_TRACKED_CHARACTERS_DESC"]) or "Log in to a character to start tracking gear."
+        ) or 200
         return height
     end
 
     -- ── Header Card (in fixedHeader - non-scrolling) ─────
-    local headerCard = CreateCard(headerParent, 78)
+    -- Keep header height aligned with other tabs (Currency/Items/Collections standard).
+    local headerCard = CreateCard(headerParent, 70)
     headerCard:SetPoint("TOPLEFT",  SIDE_MARGIN, -headerYOffset)
     headerCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
 
@@ -2131,8 +2134,8 @@ function WarbandNexus:DrawGearTab(parent)
         end)
     end
 
-    -- Taller header card (selector row) than the default 70px tab header; keep fixedHeader from clipping.
-    headerYOffset = headerYOffset + (GetLayout().afterHeader or 75) + 8
+    -- Use shared header spacing so Gear matches the global tab header rhythm.
+    headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
 
     if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
 

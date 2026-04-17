@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local Utilities = ns.Utilities
 local FontManager = ns.FontManager  -- Centralized font management
 local DebugPrint = ns.DebugPrint or function() end
 local DebugVerbosePrint = ns.DebugVerbosePrint or DebugPrint
@@ -2598,12 +2599,8 @@ function WarbandNexus:TestLootNotification(type, id, step)
         
         -- Ensure Blizzard_AchievementUI is loaded (provides AchievementShield_OnLoad etc.)
         -- TAINT GUARD: LoadAddOn is a protected action; cannot call during combat
-        if not InCombatLockdown() then
-            if C_AddOns and C_AddOns.LoadAddOn then
-                pcall(C_AddOns.LoadAddOn, "Blizzard_AchievementUI")
-            elseif LoadAddOn then
-                pcall(LoadAddOn, "Blizzard_AchievementUI")
-            end
+        if not InCombatLockdown() and Utilities and Utilities.SafeLoadAddOn then
+            Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
         end
         
         -- Check suppression state
@@ -2653,7 +2650,9 @@ function WarbandNexus:TestLootNotification(type, id, step)
         local ok, n = pcall(GetAchievementNumCriteria, achievementID)
         local numCriteria = (ok and n and n > 0) and n or nil
         if not numCriteria then
-            for _, fid in ipairs({ 6, 7, 8, 60981 }) do
+            local fallbackAchIds = { 6, 7, 8, 60981 }
+            for fi = 1, #fallbackAchIds do
+                local fid = fallbackAchIds[fi]
                 local ok2, n2 = pcall(GetAchievementNumCriteria, fid)
                 if ok2 and n2 and n2 > 0 then achievementID = fid; numCriteria = n2; break end
             end
@@ -2667,12 +2666,8 @@ function WarbandNexus:TestLootNotification(type, id, step)
             self:Print("|cffff0000Invalid achievement ID: " .. achievementID .. "|r")
             return
         end
-        if not InCombatLockdown() then
-            if C_AddOns and C_AddOns.LoadAddOn then
-                pcall(C_AddOns.LoadAddOn, "Blizzard_AchievementUI")
-            elseif LoadAddOn then
-                pcall(LoadAddOn, "Blizzard_AchievementUI")
-            end
+        if not InCombatLockdown() and Utilities and Utilities.SafeLoadAddOn then
+            Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
         end
         local isSuppressed = self.db and self.db.profile and self.db.profile.notifications
             and self.db.profile.notifications.hideBlizzardAchievementAlert
@@ -2693,7 +2688,9 @@ function WarbandNexus:TestLootNotification(type, id, step)
         local ok, n = pcall(GetAchievementNumCriteria, achievementID)
         local numCriteria = (ok and n and n > 0) and n or nil
         if not numCriteria then
-            for _, fid in ipairs({ 6, 7, 8, 60981, 11, 12 }) do
+            local tryAchIds = { 6, 7, 8, 60981, 11, 12 }
+            for ti = 1, #tryAchIds do
+                local fid = tryAchIds[ti]
                 local ok2, n2 = pcall(GetAchievementNumCriteria, fid)
                 if ok2 and n2 and n2 > 0 then achievementID = fid; numCriteria = n2; break end
             end

@@ -47,11 +47,11 @@ if Enum.BagIndex.Bank then
     table.insert(PERSONAL_BANK_BAGS, Enum.BagIndex.Bank)
 end
 
--- Bank bag slots (6-11 in TWW, bag 12 is Warband now!)
+-- Bank bag slots (6-11 retail; bag 12 is Warband)
 for i = 1, NUM_BANKBAGSLOTS or 7 do
     local bagEnum = Enum.BagIndex["BankBag_" .. i]
     if bagEnum then
-        -- Skip bag 12 - it's now Warband's first tab in TWW!
+        -- Skip bag 12 — Warband first tab uses this slot
         if bagEnum ~= 12 and bagEnum ~= Enum.BagIndex.AccountBankTab_1 then
         table.insert(PERSONAL_BANK_BAGS, bagEnum)
         end
@@ -72,7 +72,7 @@ local INVENTORY_BAGS = {
     Enum.BagIndex.Bag_4 or 4,
 }
 
--- Reagent Bag (TWW: Enum.BagIndex.ReagentBag or 5)
+-- Reagent Bag (Enum.BagIndex.ReagentBag or 5)
 if Enum.BagIndex.ReagentBag then
     table.insert(INVENTORY_BAGS, Enum.BagIndex.ReagentBag)
 end
@@ -894,8 +894,10 @@ function WarbandNexus:OnEnable()
     -- GUILDBANKBAGSLOTS_CHANGED fires when guild bank opens/changes
     self:RegisterEvent("GUILDBANKBAGSLOTS_CHANGED", "OnGuildBankUpdate")
     
-    -- Hook Guild Bank UI load
-    if not C_AddOns.IsAddOnLoaded("Blizzard_GuildBankUI") then
+    -- Hook Guild Bank UI load (Utilities: nil-safe C_AddOns.IsAddOnLoaded)
+    local Util = ns.Utilities
+    local guildBankUILoaded = Util and Util.CheckAddOnLoaded and Util:CheckAddOnLoaded("Blizzard_GuildBankUI")
+    if not guildBankUILoaded then
         self:RegisterEvent("ADDON_LOADED", "OnAddonLoaded")
     else
         -- Already loaded, hook now

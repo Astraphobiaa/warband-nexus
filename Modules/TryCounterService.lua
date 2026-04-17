@@ -61,6 +61,7 @@ local ADDON_NAME, ns = ...
 -- IIFE: Lua 5.1 / WoW cap ~200 locals per function; main chunk exceeded limit.
 ;(function()
 local WarbandNexus = ns.WarbandNexus
+local Utilities = ns.Utilities
 local E = ns.Constants.EVENTS
 -- Packed internal funcs: Lua 5.1 / WoW ~200 locals per function scope.
 local Fns = {}
@@ -3377,10 +3378,8 @@ end
 
 function Fns.TryCounterLoadEncounterJournal()
     if InCombatLockdown() then return end
-    if C_AddOns and C_AddOns.LoadAddOn then
-        pcall(C_AddOns.LoadAddOn, "Blizzard_EncounterJournal")
-    elseif LoadAddOn then
-        pcall(LoadAddOn, "Blizzard_EncounterJournal")
+    if Utilities and Utilities.SafeLoadAddOn then
+        Utilities:SafeLoadAddOn("Blizzard_EncounterJournal")
     end
 end
 
@@ -7092,10 +7091,8 @@ function WarbandNexus:ImportRarityMountHandoff()
         self:Print("|cffff6600[WN]|r Exit combat, then run |cff00ccff/wn rarityimport|r again.")
         return
     end
-    if C_AddOns and C_AddOns.LoadAddOn then
-        pcall(C_AddOns.LoadAddOn, "Rarity")
-    elseif LoadAddOn then
-        pcall(LoadAddOn, "Rarity")
+    if Utilities and Utilities.SafeLoadAddOn then
+        Utilities:SafeLoadAddOn("Rarity")
     end
 
     local delays = { 0.2, 1.0, 3.0, 8.0 }

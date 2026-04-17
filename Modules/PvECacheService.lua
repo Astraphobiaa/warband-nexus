@@ -377,11 +377,11 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
             if activity.type == Enum.WeeklyRewardChestThresholdType.Raid
                 and C_WeeklyRewards.GetActivityEncounterInfo then
                 local encounters = C_WeeklyRewards.GetActivityEncounterInfo(activity.type, activity.index)
-                if encounters and #encounters > 0 then
-                    -- EJ APIs require Blizzard_EncounterJournal to be loaded
-                    if not EJ_GetEncounterInfo and not InCombatLockdown() then
-                        pcall(C_AddOns.LoadAddOn, "Blizzard_EncounterJournal")
-                    end
+                    if encounters and #encounters > 0 then
+                        -- EJ APIs require Blizzard_EncounterJournal to be loaded
+                        if not EJ_GetEncounterInfo and not InCombatLockdown() and Utilities and Utilities.SafeLoadAddOn then
+                            Utilities:SafeLoadAddOn("Blizzard_EncounterJournal")
+                        end
                     data.encounters = {}
                     for ei = 1, #encounters do
                         local enc = encounters[ei]

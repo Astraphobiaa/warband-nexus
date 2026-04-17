@@ -1715,13 +1715,8 @@ local PET_MODEL_VERTICAL_OFFSET = 0.12
 -- not PlayerModel alone (Blizzard_MountCollection.lua — MountJournal_UpdateMountDisplay).
 
 local function Collections_LoadBlizzardCollections()
-    local name = "Blizzard_Collections"
-    if C_AddOns and C_AddOns.LoadAddOn then
-        pcall(C_AddOns.LoadAddOn, name)
-        return
-    end
-    if LoadAddOn then
-        pcall(LoadAddOn, name)
+    if Utilities and Utilities.SafeLoadAddOn then
+        Utilities:SafeLoadAddOn("Blizzard_Collections")
     end
 end
 

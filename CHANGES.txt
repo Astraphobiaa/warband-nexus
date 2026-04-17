@@ -6,6 +6,21 @@
 
 This release (beta)
 
+API / utilities (Midnight 12.0.1)
+- Utilities:SafeLoadAddOn (C_AddOns + pcall + combat guard) — single path for optional Blizzard
+  load; removed legacy LoadAddOn branches.
+- Utilities:CheckAddOnLoaded — ChatIntegrationService (Chattynator / ElvUI detection).
+- TryCounterService, NotificationManager, PvECacheService: use SafeLoadAddOn for Blizzard_EncounterJournal,
+  Rarity, Blizzard_AchievementUI.
+- Core.lua OnEnable: Guild Bank UI load detection uses Utilities:CheckAddOnLoaded (nil-safe C_AddOns).
+- Locales REP_API_UNAVAILABLE_DESC + ReputationUI fallback: version text WoW 12.0.1 (Midnight).
+- NotificationManager: criteria test achievement ID fallback loop uses numeric for (no ipairs).
+
+PlansManager (Modules/PlansManager.lua)
+- Iterate db.global.plans / customPlans and vault slot arrays with numeric for + index (no ipairs)
+  on rebuild, progress updates, weekly reset, GetPlanByID.
+- ChatIntegrationService: `Constants` local for GetNumChatWindows (was undefined global).
+
 Performance
 - UI (main window, Modules/UI.lua)
 - SchedulePopulateContent: debounce timer resets on each call (last event wins); optional
