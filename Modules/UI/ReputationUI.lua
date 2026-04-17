@@ -318,7 +318,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 }
             else
                 -- CHARACTER-SPECIFIC: Collect data for this character
-                local charKey = cachedData._characterKey or "Unknown"
+                local charKey = cachedData._characterKey or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
                 local char = charLookup[charKey]
                 
                 if char then

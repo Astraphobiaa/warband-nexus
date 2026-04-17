@@ -46,6 +46,16 @@ local ROUTE_GROUP_LOOT       = ChatOutput and ChatOutput.MESSAGE_GROUPS.LOOT or 
 local ROUTE_GROUP_CURRENCY   = ChatOutput and ChatOutput.MESSAGE_GROUPS.CURRENCY or "CURRENCY"
 local ROUTE_GROUP_REPUTATION = ChatOutput and ChatOutput.MESSAGE_GROUPS.REPUTATION or "COMBAT_FACTION_CHANGE"
 
+---@param factionID number|string|nil
+---@return string
+local function FormatFactionFallbackName(factionID)
+    local base = (ns.L and ns.L["REP_FACTION_FALLBACK"]) or "Faction"
+    if factionID == nil then
+        return base
+    end
+    return base .. " " .. tostring(factionID)
+end
+
 -- ============================================================================
 -- HELPER FUNCTIONS
 -- ============================================================================
@@ -232,7 +242,7 @@ local function OnReputationGained(event, data)
         return
     end
     
-    local factionName = data.factionName or ("Faction " .. data.factionID)
+    local factionName = data.factionName or FormatFactionFallbackName(data.factionID)
     local gainAmount = data.gainAmount or 0
     local currentRep = data.currentRep or 0
     local maxRep = data.maxRep or 0

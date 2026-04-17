@@ -242,7 +242,7 @@ function WarbandNexus:DeleteCharacter(characterKey)
     
     -- Get character name for logging
     local charData = self.db.global.characters[characterKey]
-    local charName = charData.name or "Unknown"
+    local charName = charData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     
     -- Remove from favorites if present
     if self.db.global.favoriteCharacters then
@@ -492,7 +492,9 @@ function WarbandNexus:MigrateToV2()
                         local isAccountWide = isMajorFaction -- Major factions are account-wide
                         
                         self.db.global.reputations[factionID] = {
-                            name = (metadata and metadata.name) or repData.name or ("Faction " .. tostring(factionID)),
+                            name = (metadata and metadata.name)
+                                or repData.name
+                                or (((ns.L and ns.L["REP_FACTION_FALLBACK"]) or "Faction") .. " " .. tostring(factionID)),
                             icon = metadata and metadata.icon,
                             isMajorFaction = isMajorFaction,
                             isRenown = repData.renownLevel ~= nil,
@@ -661,7 +663,7 @@ function WarbandNexus:EnforceCharacterLimit(limit)
             key = charKey,
             lastSeen = charData.lastSeen or 0,
             isFavorite = isFavorite,
-            name = charData.name or "Unknown"
+            name = charData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
         })
     end
     

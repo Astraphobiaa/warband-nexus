@@ -2484,7 +2484,12 @@ function WarbandNexus:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID,
     -- The NEW_PET_ADDED event will handle the authoritative collection detection when learned.
     -- ========================================
     if classID == 15 and subclassID == 2 then
-        local spellName, spellID = GetItemSpell(itemID)
+        -- C_Item.GetItemSpell (10.2.5+) with global fallback for older API signatures
+        local getItemSpell = (C_Item and C_Item.GetItemSpell) or _G.GetItemSpell
+        local spellName, spellID = nil, nil
+        if getItemSpell then
+            spellName, spellID = getItemSpell(itemID)
+        end
         if spellName and spellID then
     DebugPrint("|cffffcc00[WN CollectionService]|r Pet item fallback: GetPetInfoByItemID failed, using item info. spell=" .. tostring(spellName) .. " spellID=" .. tostring(spellID))
             

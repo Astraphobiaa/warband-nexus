@@ -201,7 +201,7 @@ function WarbandNexus:DrawStatistics(parent)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     titleCard:Show()
-    headerYOffset = headerYOffset + 75
+    headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
 
     if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
 

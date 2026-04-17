@@ -1439,7 +1439,7 @@ function WarbandNexus:GenerateWeeklyAlerts()
     for i = 1, #recentChars do
         local char = recentChars[i]
         local charKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)) or char._key
-        local charName = char.name or "Unknown"
+        local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
         
         -- Safely get class color
         local classColor = { r = 1, g = 1, b = 1 }
@@ -2844,7 +2844,9 @@ function WarbandNexus:UpdateSingleReputation(factionID)
             if repData and not self.db.global.reputations[factionID] then
                 local factionData = C_Reputation and C_Reputation.GetFactionDataByID(factionID)
                 self.db.global.reputations[factionID] = {
-                    name = friendInfo.name or (factionData and factionData.name) or ("Faction " .. factionID),
+                    name = friendInfo.name
+                        or (factionData and factionData.name)
+                        or (((ns.L and ns.L["REP_FACTION_FALLBACK"]) or "Faction") .. " " .. tostring(factionID)),
                     icon = friendInfo.texture,
                     isMajorFaction = true,
                     isRenown = true,
@@ -2862,7 +2864,8 @@ function WarbandNexus:UpdateSingleReputation(factionID)
             -- Update metadata (ALWAYS update, not just first time - Blizzard can change flags)
             local majorData = C_MajorFactions.GetMajorFactionData(factionID)
             self.db.global.reputations[factionID] = self.db.global.reputations[factionID] or {}
-            self.db.global.reputations[factionID].name = majorData and majorData.name or ("Faction " .. factionID)
+            self.db.global.reputations[factionID].name = majorData and majorData.name
+                or (((ns.L and ns.L["REP_FACTION_FALLBACK"]) or "Faction") .. " " .. tostring(factionID))
             self.db.global.reputations[factionID].icon = majorData and majorData.textureKit
             self.db.global.reputations[factionID].isMajorFaction = true
             self.db.global.reputations[factionID].isRenown = true
@@ -4106,164 +4109,10 @@ local pairs = pairs
 local tinsert = table.insert
 local time = time
 
---[[
-    Scan Warband Bank (Account-wide storage)
-    
-    @param specificBagIDs table|nil - Optional: Specific bag IDs to scan
-                                      nil = Full scan (all warband bags)
-                                      {14, 15} = Scan only tabs 2 and 3
-    @return boolean - Success status
-]]
-function WarbandNexus:ScanWarbandBank(specificBagIDs)
-    -- Check if module is enabled
-    if not ns.Utilities:IsModuleEnabled("items") then
-        return false
-    end
-    
-    -- Initialize structure if needed
-    if not self.db.global.warbandBank then
-        self.db.global.warbandBank = { items = {}, gold = 0, silver = 0, copper = 0, lastScan = 0 }
-    end
-    if not self.db.global.warbandBank.items then
-        self.db.global.warbandBank.items = {}
-    end
-    
-    -- Determine which bags to scan
-    local bagsToScan
-    local isFullScan = (specificBagIDs == nil)
-    
-    if isFullScan then
-        -- Full scan: Verify bank is accessible
-        local isOpen = ns.Utilities:IsWarbandBankOpen(self)
-        if not isOpen then
-            local firstBagID = Enum.BagIndex.AccountBankTab_1
-            local numSlots = C_Container.GetContainerNumSlots(firstBagID) or 0
-            if not numSlots or numSlots == 0 then
-                return false
-            end
-        end
-        
-        -- Clear cache on full scan
-        wipe(self.db.global.warbandBank.items)
-        bagsToScan = ns.WARBAND_BAGS -- All warband bags
-    else
-        -- Incremental scan: Only specified bags
-        -- DON'T wipe cache - we'll merge updates
-        bagsToScan = specificBagIDs
-    end
-    
-    local totalItems = 0
-    local totalSlots = 0
-    local usedSlots = 0
-    
-    -- Scan specified bags
-    for i = 1, #bagsToScan do
-        local bagID = bagsToScan[i]
-        -- Find tabIndex from bagID
-        local tabIndex = nil
-        for j = 1, #ns.WARBAND_BAGS do
-            local wbBagID = ns.WARBAND_BAGS[j]
-            if wbBagID == bagID then
-                tabIndex = j
-                break
-            end
-        end
-        
-        -- SKIP IGNORED TABS (Settings UI integration)
-        local shouldSkip = false
-        if tabIndex and self.db.profile.ignoredTabs and self.db.profile.ignoredTabs[tabIndex] then
-            shouldSkip = true
-        end
-        
-        if not shouldSkip and tabIndex then
-            -- Initialize tab if needed
-            if not self.db.global.warbandBank.items[tabIndex] then
-                self.db.global.warbandBank.items[tabIndex] = {}
-            else
-                -- Clear this tab's data (incremental update)
-                wipe(self.db.global.warbandBank.items[tabIndex])
-            end
-            
-            local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
-            totalSlots = totalSlots + numSlots
-
-            for slotID = 1, numSlots do
-                local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-                
-                if itemInfo and itemInfo.itemID then
-                    usedSlots = usedSlots + 1
-                    totalItems = totalItems + (itemInfo.stackCount or 1)
-                    
-                    -- Get extended item info
-                    local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
-                          _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemInfo.itemID)
-                    
-                    -- Special handling for Battle Pets (classID 17)
-                    local displayName = itemName
-                    local displayIcon = itemInfo.iconFileID or itemTexture
-                    
-                    if classID == 17 and itemInfo.hyperlink then
-                        local hp = itemInfo.hyperlink
-                        if type(hp) == "string" and not (issecretvalue and issecretvalue(hp)) then
-                            local petName = hp:match("%[(.-)%]")
-                            if petName and petName ~= "" and petName ~= "Pet Cage" then
-                                displayName = petName
-                            end
-                            local speciesID = tonumber(hp:match("|Hbattlepet:(%d+):"))
-                            if speciesID and C_PetJournal then
-                                local _, petIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-                                if petIcon then
-                                    displayIcon = petIcon
-                                end
-                            end
-                        end
-                    end
-                    
-                    self.db.global.warbandBank.items[tabIndex][slotID] = {
-                        itemID = itemInfo.itemID,
-                        itemLink = itemInfo.hyperlink,
-                        stackCount = itemInfo.stackCount or 1,
-                        quality = itemInfo.quality or itemQuality or 0,
-                        iconFileID = displayIcon,
-                        name = displayName,
-                        itemLevel = itemLevel,
-                        itemType = itemType,
-                        itemSubType = itemSubType,
-                        classID = classID,
-                        subclassID = subclassID,
-                    }
-                end
-            end
-        end
-    end
-    
-    -- Update metadata (only on full scan)
-    if isFullScan then
-        self.db.global.warbandBank.lastScan = time()
-        self.db.global.warbandBank.totalSlots = totalSlots
-        self.db.global.warbandBank.usedSlots = usedSlots
-        
-        -- Get Warband bank gold
-        if C_Bank and C_Bank.FetchDepositedMoney then
-            local totalCopper = math.floor(C_Bank.FetchDepositedMoney(Enum.BankType.Account) or 0)
-            self.db.global.warbandBank.gold = math.floor(totalCopper / 10000)
-            self.db.global.warbandBank.silver = math.floor((totalCopper % 10000) / 100)
-            self.db.global.warbandBank.copper = math.floor(totalCopper % 100)
-        end
-        
-        -- Update V2 storage
-        if self.UpdateWarbandBankV2 then
-            self:UpdateWarbandBankV2(self.db.global.warbandBank)
-        end
-    end
-    
-    -- Fire event for UI refresh
-    if self.SendMessage then
-        self:SendMessage(E.BAGS_UPDATED)
-    end
-    
-    return true
-end
+-- NOTE: WarbandNexus:ScanWarbandBank() lives in Modules/ItemsCacheService.lua.
+-- A legacy implementation previously existed here but was always overridden by
+-- the ItemsCacheService version (which loads later per WarbandNexus.toc order).
+-- Removed 2026-04 as dead code. See Core.lua delegate table for the canonical reference.
 
 --[[
     Scan Personal Bank (Character-specific bank storage)

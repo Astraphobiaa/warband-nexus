@@ -1694,7 +1694,9 @@ local function CollectCooldownData()
                     end
 
                     cooldownEntries[recipeID] = {
-                        recipeName  = recipeName or (cooldownEntries[recipeID] and cooldownEntries[recipeID].recipeName) or "Unknown",
+                        recipeName  = recipeName
+                            or (cooldownEntries[recipeID] and cooldownEntries[recipeID].recipeName)
+                            or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
                         recipeIcon  = recipeIcon or (cooldownEntries[recipeID] and cooldownEntries[recipeID].recipeIcon) or 134400,
                         cooldownEnd = cooldownEnd,
                         duration    = duration,

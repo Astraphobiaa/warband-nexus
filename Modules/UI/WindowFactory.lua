@@ -419,7 +419,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         local plannedWord = (L and L["PLANNED"]) or "Planned"
         plannedTag = " |cffffcc00(" .. plannedWord .. ")|r"
     end
-    popup._name:SetText(statusIcon .. " " .. nameColor .. (name or "Unknown") .. "|r" .. plannedTag)
+    popup._name:SetText(statusIcon .. " " .. nameColor .. (name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r" .. plannedTag)
     
     -- Points line
     if points and points > 0 then

@@ -497,7 +497,7 @@ local function RenderContent(scrollChild)
             local isCollapsed = collapsedSlots[si]
 
             -- ── Reagent section header (collapsible, with border) ──
-            local primaryName = slot.reagents[1] and slot.reagents[1].name or "Unknown"
+            local primaryName = slot.reagents[1] and slot.reagents[1].name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
             local namePrefix = isSufficient and (CHECK_ICON .. " ") or ""
             local nameColor = isSufficient and "|cff44ff44" or (totalHave > 0 and "|cffffcc00" or "|cffffffff")
 

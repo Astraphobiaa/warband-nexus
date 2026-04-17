@@ -35,7 +35,10 @@
       P3: Zone hostileOnly-only pools (e.g. Crackling Shard / any mob). raresOnly zone mounts
           are NOT matched here — those NPCs are listed in CollectibleSourceDB.npcs; try counts require
           exact GUID→npcID match (P1/P2) so wrong mobs never increment.
-      P4: Encounter recentKills → instance boss bookkeeping
+      P4: Encounter recentKills → instance boss bookkeeping (ENCOUNTER_END feed)
+      P5: ENCOUNTER_START cache → Midnight 12.0 rescue when every other GUID/ID is secret.
+          Uses the pull-time snapshot (encounterID/Name/difficultyID) captured at ENCOUNTER_START,
+          before secret-value enforcement kicks in. Only triggers inside instances.
     
     MULTI-CORPSE / AoE (zone farm mounts, e.g. Bloodfeaster / Pack Mule):
       Blizzard merges AoE loot into one window. Midnight 12.0+ blocks addon subscription to
@@ -51,9 +54,10 @@
       ENCOUNTER_END → delayed 5s: only if no prior path counted
     
     Events: LOOT_READY, LOOT_OPENED, LOOT_CLOSED, CHAT_MSG_LOOT,
-      ENCOUNTER_END, UNIT_SPELLCAST_SENT, ITEM_LOCK_CHANGED, PLAYER_ENTERING_WORLD,
-      PLAYER_REGEN_ENABLED,
-      PLAYER_INTERACTION_MANAGER
+      ENCOUNTER_START, ENCOUNTER_END, BOSS_KILL,
+      UNIT_SPELLCAST_SENT, UNIT_SPELLCAST_CHANNEL_START, UNIT_SPELLCAST_INTERRUPTED, UNIT_SPELLCAST_FAILED_QUIET,
+      ITEM_LOCK_CHANGED, PLAYER_ENTERING_WORLD, PLAYER_REGEN_ENABLED,
+      PLAYER_INTERACTION_MANAGER, PLAYER_TARGET_CHANGED, QUEST_LOG_UPDATE
 ]]
 
 local ADDON_NAME, ns = ...
@@ -219,7 +223,13 @@ local TRYCOUNTER_EVENTS = {
     "CHAT_MSG_LOOT",
     "CHAT_MSG_CURRENCY",
     "CHAT_MSG_MONEY",
+    -- Encounter lifecycle:
+    --   ENCOUNTER_START fires at pull (values typically non-secret; best window to capture IDs).
+    --   ENCOUNTER_END fires on kill/wipe (12.0: encounterID/Name/difficultyID may be secret).
+    --   BOSS_KILL complements ENCOUNTER_END for world bosses and some legacy content.
+    "ENCOUNTER_START",
     "ENCOUNTER_END",
+    "BOSS_KILL",
     "PLAYER_ENTERING_WORLD",
     "UNIT_SPELLCAST_SENT",
     "UNIT_SPELLCAST_CHANNEL_START",
@@ -316,8 +326,12 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
         addon:OnTryCounterChatMsgLoot(...)
     elseif event == "CHAT_MSG_CURRENCY" or event == "CHAT_MSG_MONEY" then
         addon:OnTryCounterChatMsgCurrency(...)
+    elseif event == "ENCOUNTER_START" then
+        addon:OnTryCounterEncounterStart(event, ...)
     elseif event == "ENCOUNTER_END" then
         addon:OnTryCounterEncounterEnd(event, ...)
+    elseif event == "BOSS_KILL" then
+        addon:OnTryCounterBossKill(event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         addon:OnTryCounterInstanceEntry(event, ...)
     elseif event == "UNIT_SPELLCAST_SENT" then
@@ -357,15 +371,30 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
     end
 end)
 
--- Fishing spell IDs
+-- Fishing cast spell IDs (fired on UNIT_SPELLCAST_SENT / UNIT_SPELLCAST_CHANNEL_START).
+-- NOTE: Spell 471021 / 471008 are PASSIVE profession-rank unlocks for Midnight Fishing —
+-- they never fire UNIT_SPELLCAST_* events and were removed accordingly (see warcraft.wiki.gg).
+-- The actual Midnight cast uses 1239033 / 1257770 / 1239227 / 1281823 / 1281824 variants.
 local FISHING_SPELLS = {
-    [131474] = true,  -- Fishing (modern)
-    [7620] = true,    -- Fishing (legacy)
-    [110412] = true,  -- Fishing (Zen)
-    [271990] = true,  -- Fishing (BfA)
-    [271991] = true,  -- Fishing (KT variant)
-    [471021] = true,  -- Fishing (Midnight 12.0)
-    [471008] = true,  -- Fishing (Midnight 12.0 PTR)
+    -- Classic / Cataclysm / MoP
+    [7620]    = true,  -- Fishing (classic legacy)
+    [131474]  = true,  -- Fishing (Cataclysm/MoP base channel)
+    [110412]  = true,  -- Fishing (Zen Master, Pandaria)
+    -- Battle for Azeroth
+    [271616]  = true,  -- Fishing (BfA base cast)
+    [271990]  = true,  -- Fishing (BfA Kul Tiran rank)
+    [271991]  = true,  -- Fishing (BfA Zandalari rank)
+    -- Dragonflight
+    [384481]  = true,  -- Fishing (Dragonflight)
+    [389234]  = true,  -- Fishing (Dragonflight alt)
+    -- The War Within
+    [463743]  = true,  -- Fishing (TWW Astral Void)
+    -- Midnight 12.0+ (all observed cast variants)
+    [1239033] = true,  -- Fishing (Midnight base)
+    [1239227] = true,  -- Fishing for Salmon (Midnight)
+    [1257770] = true,  -- Midnight Fishing (3.2s channel)
+    [1281823] = true,  -- Fishing (Midnight variant)
+    [1281824] = true,  -- Fishing (Midnight instant cast)
 }
 
 -- Creature NPC ids for the fishing bobber (GUID type is Creature — not a lootable corpse).
@@ -530,6 +559,19 @@ local processedGUIDs = {}    -- [guid] = timestamp
 local mergedLootTryCountedAt = {}  -- [fingerprint] = GetTime() — open-world merged loot, one wave per GUID set
 --- PLAYER_ENTERING_WORLD: GetInstanceInfo difficulty for current instanceID (ENCOUNTER_END can mismatch).
 local tryCounterInstanceDiffCache = { instanceID = nil, difficultyID = nil }
+--- ENCOUNTER_START snapshot: capture encounterID/Name/difficultyID at pull so ENCOUNTER_END and loot paths
+--- have a non-secret fallback when Midnight 12.0 encounter restrictions mask those fields in the END payload.
+--- Cleared on ENCOUNTER_END (matching encID), PLAYER_ENTERING_WORLD (instance swap), or 20-minute TTL.
+local currentEncounterCache = {
+    encounterID = nil,          -- number|nil (non-secret, captured at start)
+    encounterName = nil,        -- string|nil (non-secret)
+    difficultyID = nil,         -- number|nil (non-secret, preferred over END's secret value)
+    groupSize = nil,            -- number|nil
+    startTime = 0,              -- GetTime() at ENCOUNTER_START
+    instanceID = nil,           -- GetInstanceInfo()[8] snapshot for scope checks
+}
+--- How long an ENCOUNTER_START cache entry stays authoritative without a matching ENCOUNTER_END.
+local ENCOUNTER_CACHE_TTL = 1200  -- 20 minutes (covers long wipes, phase-heavy fights, AFK loot)
 --- One hint per instance+difficulty per login (replaces old multi-line chat dump).
 local tryCounterInstanceEntryAnnounced = {}
 --- GetInstanceInfo()[8] template InstanceID → JournalInstance.ID (EJ_GetInstanceInfo 10th return); false = scanned, no match.
@@ -2011,24 +2053,17 @@ function Fns.ResolveLiveInstanceDifficultyID(instanceType, giDifficulty)
     return nil
 end
 
----Check if a difficultyID satisfies a dropDifficulty requirement.
----Midnight 12.0: guards against secret values to avoid ADDON_ACTION_FORBIDDEN.
----@param difficultyID number WoW difficultyID from ENCOUNTER_END or difficulty API
----@param requiredDifficulty string "Mythic"|"Heroic"|"25H"
----@return boolean true if the difficulty qualifies for the drop
-function Fns.DoesDifficultyMatch(difficultyID, requiredDifficulty)
-    if not requiredDifficulty or requiredDifficulty == "All Difficulties" then
-        return true
-    end
-    if not difficultyID then return false end
-    if issecretvalue and issecretvalue(difficultyID) then return false end
-
-    local label = Fns.ResolveDifficultyLabel(difficultyID)
-    if not label then return false end
-
+---Match a difficulty label against a single requirement string using threshold semantics.
+---Private helper for DoesDifficultyMatch — NOT called directly from loot paths.
+---@param label string resolved label from ResolveDifficultyLabel
+---@param requiredDifficulty string
+---@return boolean
+local function MatchSingleDifficulty(label, requiredDifficulty)
     if requiredDifficulty == "Mythic" then
         return label == "Mythic"
     elseif requiredDifficulty == "Heroic" then
+        -- Threshold: Heroic+ (Heroic, Mythic, legacy 25H) — matches standard "drops on Heroic or higher" mounts
+        -- like Invincible's Reins (25H only, covered by "25H" explicit) or Life-Binder's Handmaiden (Heroic+).
         return label == "Heroic" or label == "Mythic" or label == "25H"
     elseif requiredDifficulty == "25H" then
         return label == "25H"
@@ -2048,6 +2083,44 @@ function Fns.DoesDifficultyMatch(difficultyID, requiredDifficulty)
     return false
 end
 
+---Check if a difficultyID satisfies a dropDifficulty requirement.
+---Midnight 12.0: guards against secret values to avoid ADDON_ACTION_FORBIDDEN.
+---
+---Supports THREE requirement formats:
+---  1. string: "Mythic" / "Heroic" / "25H" / "Normal" / "LFR" / "25-man" / "All Difficulties"
+---     Threshold semantics — "Heroic" matches Heroic + Mythic + 25H.
+---  2. table (array of strings): { "Heroic", "Mythic" } — explicit whitelist (ANY match = true).
+---     Used when a mount drops from a discrete set of difficulties that don't form a threshold
+---     (e.g. a legacy raid mount that drops on Normal OR Mythic but not Heroic).
+---  3. nil / "All Difficulties": always matches.
+---
+---@param difficultyID number WoW difficultyID from ENCOUNTER_END or difficulty API
+---@param requiredDifficulty string|table|nil "Mythic"|{"Heroic","Mythic"}|nil
+---@return boolean true if the difficulty qualifies for the drop
+function Fns.DoesDifficultyMatch(difficultyID, requiredDifficulty)
+    if not requiredDifficulty or requiredDifficulty == "All Difficulties" then
+        return true
+    end
+    if not difficultyID then return false end
+    if issecretvalue and issecretvalue(difficultyID) then return false end
+
+    local label = Fns.ResolveDifficultyLabel(difficultyID)
+    if not label then return false end
+
+    -- Array form: explicit whitelist (OR across entries, no threshold expansion).
+    if type(requiredDifficulty) == "table" then
+        for i = 1, #requiredDifficulty do
+            local req = requiredDifficulty[i]
+            if type(req) == "string" and MatchSingleDifficulty(label, req) then
+                return true
+            end
+        end
+        return false
+    end
+
+    return MatchSingleDifficulty(label, requiredDifficulty)
+end
+
 ---Effective difficulty for loot gating while inside an instance.
 ---Order: (1) cache from instance entry + matching instanceID, (2) live GetInstanceInfo,
 ---(3) ENCOUNTER_END snapshot, (4) GetDungeon/GetRaidDifficultyID.
@@ -2055,6 +2128,17 @@ end
 ---@param recentKillDiff number|nil difficulty from recentKills (ENCOUNTER_END snapshot)
 ---@return number|nil
 function Fns.ResolveEffectiveEncounterDifficultyID(inInstance, recentKillDiff)
+    -- Priority 0: ENCOUNTER_START cache (captured at pull, typically non-secret in Midnight 12.0).
+    -- This beats GetInstanceInfo because it persists through the brief secret-value window that
+    -- can wrap GetInstanceInfo return values during active encounters.
+    if currentEncounterCache.difficultyID
+        and type(currentEncounterCache.difficultyID) == "number"
+        and currentEncounterCache.difficultyID > 0
+        and currentEncounterCache.startTime > 0
+        and (GetTime() - currentEncounterCache.startTime) <= ENCOUNTER_CACHE_TTL then
+        return currentEncounterCache.difficultyID
+    end
+
     if inInstance then
         local _, typ, liveDiff, _, _, _, _, iid = GetInstanceInfo()
         local safeIid = iid
@@ -3104,6 +3188,72 @@ end
 -- EVENT HANDLERS
 -- =====================================================================
 
+---ENCOUNTER_START handler (warcraft.wiki.gg/wiki/ENCOUNTER_START).
+---Fires at pull (before heavy secret-value enforcement in many contexts) with payload:
+---  encounterID (number), encounterName (string), difficultyID (number), groupSize (number)
+---We cache this snapshot so ENCOUNTER_END and loot-processing paths have a non-secret fallback
+---when Midnight 12.0 encounter-restriction secrets arrive in later events.
+---@param event string
+---@param encounterID number|userdata
+---@param encounterName string|userdata
+---@param difficultyID number|userdata
+---@param groupSize number|userdata
+function WarbandNexus:OnTryCounterEncounterStart(event, encounterID, encounterName, difficultyID, groupSize)
+    if not Fns.IsAutoTryCounterEnabled() then return end
+
+    -- Filter secrets: partial capture is still useful (e.g. have difficultyID + name but not ID).
+    local safeEncID = (type(encounterID) == "number" and not (issecretvalue and issecretvalue(encounterID))) and encounterID or nil
+    local safeName  = (type(encounterName) == "string" and encounterName ~= ""
+        and not (issecretvalue and issecretvalue(encounterName))) and encounterName or nil
+    local safeDiff  = (type(difficultyID) == "number" and not (issecretvalue and issecretvalue(difficultyID))) and difficultyID or nil
+    local safeSize  = (type(groupSize) == "number" and not (issecretvalue and issecretvalue(groupSize))) and groupSize or nil
+
+    -- Snapshot instanceID for scope (ENCOUNTER_END may leak across instances if we ignore scope).
+    local _, _, _, _, _, _, _, iid = GetInstanceInfo()
+    if iid and issecretvalue and issecretvalue(iid) then iid = nil end
+
+    currentEncounterCache.encounterID   = safeEncID
+    currentEncounterCache.encounterName = safeName
+    currentEncounterCache.difficultyID  = safeDiff
+    currentEncounterCache.groupSize     = safeSize
+    currentEncounterCache.startTime     = GetTime()
+    currentEncounterCache.instanceID    = iid
+
+    -- Feed tooltip service so it can surface encounter context (mirrors ENCOUNTER_END path).
+    if self.Tooltip and self.Tooltip._feedEncounterKill and safeName then
+        -- Only npcIDs list is useful here; ENCOUNTER_END will feed the actual kill entry later.
+        local npcIDs = (safeEncID and encounterDB[safeEncID]) or (safeName and encounterNameToNpcs[safeName]) or nil
+        self.Tooltip._feedEncounterKill(safeName, safeEncID, npcIDs)
+    end
+end
+
+---BOSS_KILL handler (warcraft.wiki.gg/wiki/BOSS_KILL).
+---Complements ENCOUNTER_END for world bosses and a handful of legacy raid encounters
+---where ENCOUNTER_END may be unreliable. Payload: encounterID, encounterName.
+---Routes through the same encounter bookkeeping as ENCOUNTER_END but without difficulty/success
+---fields (world bosses use Normal difficulty per DIFFICULTY_ID_TO_LABELS[172]).
+---@param event string
+---@param encounterID number|userdata
+---@param encounterName string|userdata
+function WarbandNexus:OnTryCounterBossKill(event, encounterID, encounterName)
+    if not Fns.IsAutoTryCounterEnabled() then return end
+
+    local safeEncID = (type(encounterID) == "number" and not (issecretvalue and issecretvalue(encounterID))) and encounterID or nil
+    local safeName  = (type(encounterName) == "string" and encounterName ~= ""
+        and not (issecretvalue and issecretvalue(encounterName))) and encounterName or nil
+
+    if not safeEncID and not safeName then return end
+
+    -- World bosses: difficultyID 172 ("World Boss" → Normal). Delegate to ENCOUNTER_END handler
+    -- so the full recentKills + delayed-fallback pipeline runs uniformly. success=1 (BOSS_KILL
+    -- only fires on kills, never wipes).
+    local diffFromCache = currentEncounterCache.difficultyID
+    local diffToUse = (type(diffFromCache) == "number" and diffFromCache > 0) and diffFromCache or 172
+    local groupSize = currentEncounterCache.groupSize or 0
+
+    self:OnTryCounterEncounterEnd(event, safeEncID, safeName, diffToUse, groupSize, 1)
+end
+
 ---ENCOUNTER_END handler for instanced bosses
 ---NOTE: Midnight 12.0 can return secret values in ENCOUNTER_END args in some contexts.
 ---This handler defensively guards encounterID/encounterName/difficultyID before comparisons or keying.
@@ -3116,12 +3266,43 @@ end
 ---@param success number 1 = killed, 0 = wipe
 function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName, difficultyID, groupSize, success)
     if not Fns.IsAutoTryCounterEnabled() then return end
-    if success ~= 1 then return end -- Only on successful kills
+
+    -- On WIPE (success != 1) we still clear the ENCOUNTER_START cache so the next pull starts fresh.
+    -- Kept in-line (not deferred) because there's no loot/chat path that needs the cached values.
+    if success ~= 1 then
+        if currentEncounterCache._graceTimer then currentEncounterCache._graceTimer:Cancel() end
+        currentEncounterCache.encounterID = nil
+        currentEncounterCache.encounterName = nil
+        currentEncounterCache.difficultyID = nil
+        currentEncounterCache.groupSize = nil
+        currentEncounterCache.startTime = 0
+        currentEncounterCache.instanceID = nil
+        currentEncounterCache._graceTimer = nil
+        return
+    end
 
     -- Record timestamp BEFORE DB lookup. Suppresses zone-based fallback in ProcessNPCLoot
     -- for encounters not in our DB (e.g. Commander Kroluk in March on Quel'Danas) that would
     -- otherwise falsely match zone rare-mount drops in the same map region.
     lastEncounterEndTime = GetTime()
+
+    -- Midnight 12.0 rescue: promote non-secret ENCOUNTER_START snapshot when END payload is secret.
+    -- The cache is authoritative when startTime is fresh (< TTL) and the cached IDs complement missing
+    -- END fields. We never overwrite a non-secret END value with the cached one.
+    local cacheFresh = currentEncounterCache.startTime > 0
+        and (GetTime() - currentEncounterCache.startTime) <= ENCOUNTER_CACHE_TTL
+    if cacheFresh then
+        if (not encounterID or (issecretvalue and issecretvalue(encounterID))) and currentEncounterCache.encounterID then
+            encounterID = currentEncounterCache.encounterID
+        end
+        if (not encounterName or type(encounterName) ~= "string" or encounterName == ""
+            or (issecretvalue and issecretvalue(encounterName))) and currentEncounterCache.encounterName then
+            encounterName = currentEncounterCache.encounterName
+        end
+        if (not difficultyID or (issecretvalue and issecretvalue(difficultyID))) and currentEncounterCache.difficultyID then
+            difficultyID = currentEncounterCache.difficultyID
+        end
+    end
 
     local npcIDs = nil
     local encounterKey = nil
@@ -3289,6 +3470,21 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
             self:ProcessNPCLoot()
         end)
     end
+
+    -- ENCOUNTER_START cache is consumed by this end event — clear for next pull.
+    -- Kept brief grace window (2s) so late CHAT_MSG_LOOT / delayed fallbacks can still read the
+    -- non-secret difficulty/name. After that we reset to avoid leaking into subsequent pulls.
+    local graceTimer = currentEncounterCache._graceTimer
+    if graceTimer then graceTimer:Cancel() end
+    currentEncounterCache._graceTimer = C_Timer.NewTimer(2, function()
+        currentEncounterCache.encounterID = nil
+        currentEncounterCache.encounterName = nil
+        currentEncounterCache.difficultyID = nil
+        currentEncounterCache.groupSize = nil
+        currentEncounterCache.startTime = 0
+        currentEncounterCache.instanceID = nil
+        currentEncounterCache._graceTimer = nil
+    end)
 end
 
 -- =====================================================================
@@ -3546,6 +3742,15 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     if not inInstance then
         tryCounterInstanceDiffCache.instanceID = nil
         tryCounterInstanceDiffCache.difficultyID = nil
+        -- ENCOUNTER_START cache is instance-scoped — clear on exit.
+        if currentEncounterCache._graceTimer then currentEncounterCache._graceTimer:Cancel() end
+        currentEncounterCache.encounterID = nil
+        currentEncounterCache.encounterName = nil
+        currentEncounterCache.difficultyID = nil
+        currentEncounterCache.groupSize = nil
+        currentEncounterCache.startTime = 0
+        currentEncounterCache.instanceID = nil
+        currentEncounterCache._graceTimer = nil
         for guid, data in pairs(recentKills) do
             if data.isEncounter then
                 recentKills[guid] = nil
@@ -5123,6 +5328,44 @@ function Fns.ResolveFromRecentKills(ctx, inInstance)
     end
 end
 
+---P5: Resolve from ENCOUNTER_START cache when in an instance and every prior path failed.
+---Midnight 12.0 rescue path — handles the worst-case scenario where:
+---  * GetLootSourceInfo returns secret GUIDs (P1 empty after SafeGuardGUID)
+---  * UnitGUID("npc"/"target"/"mouseover") returns secrets (P2 empty)
+---  * ENCOUNTER_END hasn't fired yet OR fired with fully secret payload (P4 empty)
+---The cached ENCOUNTER_START data gives us a non-secret encounterID/Name → encounterDB → npcIDs.
+---Only activates when inInstance=true and the cache is fresh.
+function Fns.ResolveFromEncounterCache(ctx, inInstance)
+    if ctx.drops then return end
+    if not inInstance then return end
+    if currentEncounterCache.startTime == 0 then return end
+    if (GetTime() - currentEncounterCache.startTime) > ENCOUNTER_CACHE_TTL then return end
+
+    -- Try encounter ID path first (authoritative), then name path.
+    local npcIDs = nil
+    local dedupTag = nil
+    if currentEncounterCache.encounterID and encounterDB[currentEncounterCache.encounterID] then
+        npcIDs = encounterDB[currentEncounterCache.encounterID]
+        dedupTag = "enc_cache_" .. tostring(currentEncounterCache.encounterID)
+    elseif currentEncounterCache.encounterName and encounterNameToNpcs[currentEncounterCache.encounterName] then
+        npcIDs = encounterNameToNpcs[currentEncounterCache.encounterName]
+        dedupTag = "enc_cache_name_" .. currentEncounterCache.encounterName
+    end
+    if not npcIDs or #npcIDs == 0 then return end
+
+    -- Pick the first eligible NPC that has a drop table. Multi-NPC encounters (e.g. council fights)
+    -- share the same encounterID, so first-eligible is correct for attribution.
+    for i = 1, #npcIDs do
+        local nid = npcIDs[i]
+        if nid and tryCounterNpcEligible[nid] and npcDropDB[nid] then
+            ctx.drops = npcDropDB[nid]
+            ctx.matchedNpcID = nid
+            ctx.dedupGUID = dedupTag
+            return
+        end
+    end
+end
+
 -- =====================================================================
 -- ProcessNPCLoot — orchestrator: P1→P2→P3→P4, first match wins, exact IDs only.
 -- =====================================================================
@@ -5200,6 +5443,13 @@ function WarbandNexus:ProcessNPCLoot()
     -- P4: Encounter recentKills (instance boss bookkeeping)
     if not ctx.drops then
         Fns.ResolveFromRecentKills(ctx, inInstance)
+    end
+
+    -- P5: ENCOUNTER_START cache (Midnight 12.0 rescue when all GUIDs are secret).
+    -- Only triggers inside an instance; start-time snapshot supplies non-secret IDs
+    -- that encounterDB / encounterNameToNpcs can resolve to a drop table.
+    if not ctx.drops then
+        Fns.ResolveFromEncounterCache(ctx, inInstance)
     end
 
     if not ctx.drops then

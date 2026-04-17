@@ -77,6 +77,7 @@ local ReputationCache = {
     isInitialized = false,
     isScanning = false,
     initScanPending = false,  -- True while waiting for the initial delayed scan; suppresses event-driven FullScans
+    pendingUnparsedRepSignal = false, -- A rep chat line fired but parser could not extract faction/amount
 }
 
 -- WoW 12.0+ Delve companions: chat may use short name; API uses full name.
@@ -90,6 +91,16 @@ local DELVE_COMPANION_ALIASES = {
 local DELVE_COMPANION_XP_ITEM_IDS = {
     [254576] = true, -- Chunk of Companion Experience
 }
+
+---@param factionID number|string|nil
+---@return string
+local function FormatFactionFallbackName(factionID)
+    local base = (ns.L and ns.L["REP_FACTION_FALLBACK"]) or "Faction"
+    if factionID == nil then
+        return base
+    end
+    return base .. " " .. tostring(factionID)
+end
 
 ---Queue a safety-net reputation gain from snapshot diff when chat parsing missed it.
 ---Used for delve companions / friendship-style factions where CHAT_MSG may not fire
@@ -114,6 +125,20 @@ local function QueueSnapshotFallbackNotification(factionName, factionID, gainAmo
         oldRenownLevel = nil,
         isRenownLevelUp = false,
     }
+end
+
+---Check whether there is already a pending notification for a factionID.
+---@param pending table
+---@param factionID number|nil
+---@return boolean
+local function HasPendingNotificationForFactionID(pending, factionID)
+    if not pending or not factionID or factionID <= 0 then return false end
+    for _, entry in pairs(pending) do
+        if entry and entry.factionID == factionID then
+            return true
+        end
+    end
+    return false
 end
 
 -- Loading state for UI (similar to PlansLoadingState pattern)
@@ -358,7 +383,7 @@ local function HydrateFactionData(factionID, compact, isAccountWide)
     elseif metadata and metadata.name then
         resolvedName = metadata.name
     else
-        resolvedName = "Faction #" .. factionID
+        resolvedName = ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction") .. " #" .. tostring(factionID)
     end
     
     -- Resolve type: prefer stored > API > fallback
@@ -933,8 +958,38 @@ function ReputationCache:RegisterEventListeners()
         pat = pat:gsub("([%(%)%.%+%-%*%?%[%]%^%$%%])", "%%%1")
         -- Replace placeholders with capture groups
         pat = pat:gsub("\001", "(.+)")
-        pat = pat:gsub("\002", "(%%d+)")
+        -- Amounts can include locale/group separators in some clients (e.g. 1,250 / 1.250 / 1 250).
+        pat = pat:gsub("\002", "([%%d%%.,%%s]+)")
         return pat
+    end
+
+    ---Normalize chat payload before parsing:
+    ---1) remove color escapes
+    ---2) unwrap hyperlinks to visible text
+    ---3) trim leading/trailing spaces
+    ---@param message string
+    ---@return string
+    local function NormalizeReputationMessage(message)
+        if not message or type(message) ~= "string" then return "" end
+        if issecretvalue and issecretvalue(message) then return "" end
+        local msg = message
+        msg = msg:gsub("|c%x%x%x%x%x%x%x%x", "")
+        msg = msg:gsub("|r", "")
+        msg = msg:gsub("|H.-|h(.-)|h", "%1")
+        msg = msg:gsub("^%s+", "")
+        msg = msg:gsub("%s+$", "")
+        return msg
+    end
+
+    ---Extract integer amount from a localized amount token.
+    ---@param amountText string|number|nil
+    ---@return number
+    local function ParseLocalizedAmount(amountText)
+        if amountText == nil then return 0 end
+        if issecretvalue and issecretvalue(amountText) then return 0 end
+        local raw = tostring(amountText)
+        local digits = raw:gsub("%D", "")
+        return tonumber(digits) or 0
     end
     
     -- Gain patterns: most specific first (bonus variants before basic)
@@ -985,42 +1040,44 @@ function ReputationCache:RegisterEventListeners()
     local function ParseReputationMessage(message)
         if not message then return nil, 0, false end
         if issecretvalue and issecretvalue(message) then return nil, 0, false end
+        local safeMessage = NormalizeReputationMessage(message)
+        if safeMessage == "" then return nil, 0, false end
         -- Try gain patterns (most specific first — first match wins)
         for i = 1, #GAIN_PATTERNS do
-            local factionName, amount = message:match(GAIN_PATTERNS[i])
+            local factionName, amount = safeMessage:match(GAIN_PATTERNS[i])
             if factionName then
-                return factionName, tonumber(amount) or 0, false
+                return factionName, ParseLocalizedAmount(amount), false
             end
         end
         -- Generic increase (no amount in message text)
         if GENERIC_GAIN_ACCOUNT_WIDE_PATTERN then
-            local factionName = message:match(GENERIC_GAIN_ACCOUNT_WIDE_PATTERN)
+            local factionName = safeMessage:match(GENERIC_GAIN_ACCOUNT_WIDE_PATTERN)
             if factionName then
                 return factionName, 0, false
             end
         end
         if GENERIC_GAIN_PATTERN then
-            local factionName = message:match(GENERIC_GAIN_PATTERN)
+            local factionName = safeMessage:match(GENERIC_GAIN_PATTERN)
             if factionName then
                 return factionName, 0, false
             end
         end
         -- Fallback: WoW 12.0 delve companion may use "Standing with X increased by N" style (no global)
-        local factionName, amount = message:match("with (.+) increased by (%d+)")
+        local factionName, amount = safeMessage:match("with (.+) increased by ([%d%.,%s]+)")
         if factionName and amount then
-            return factionName, tonumber(amount) or 0, false
+            return factionName, ParseLocalizedAmount(amount), false
         end
         -- Decrease
         if DECREASE_ACCOUNT_WIDE_PATTERN then
-            local factionName, amount = message:match(DECREASE_ACCOUNT_WIDE_PATTERN)
+            local factionName, amount = safeMessage:match(DECREASE_ACCOUNT_WIDE_PATTERN)
             if factionName then
-                return factionName, tonumber(amount) or 0, true
+                return factionName, ParseLocalizedAmount(amount), true
             end
         end
         if DECREASE_PATTERN then
-            local factionName, amount = message:match(DECREASE_PATTERN)
+            local factionName, amount = safeMessage:match(DECREASE_PATTERN)
             if factionName then
-                return factionName, tonumber(amount) or 0, true
+                return factionName, ParseLocalizedAmount(amount), true
             end
         end
         return nil, 0, false
@@ -1192,7 +1249,7 @@ function ReputationCache:RegisterEventListeners()
             factionName = nil
         end
         if not factionName or factionName == "" then
-            factionName = "Faction " .. tostring(factionID)
+            factionName = FormatFactionFallbackName(factionID)
         end
 
         local preDBData = WarbandNexus.GetFactionByID and WarbandNexus:GetFactionByID(factionID) or nil
@@ -1277,7 +1334,11 @@ function ReputationCache:RegisterEventListeners()
             local factionName, gainAmount, isDecrease = ParseReputationMessage(message)
             
             if not factionName then
-                DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Could not parse message")
+                -- If parsing fails, still schedule a fast FullScan and derive gains from snapshot diff.
+                -- This covers unrecognized localized formats and Blizzard message shape changes.
+                ReputationCache.pendingUnparsedRepSignal = true
+                DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Could not parse message — scheduled fallback scan")
+                ScheduleFullScanForChat()
                 return
             end
             if isDecrease then return end  -- Don't notify for rep losses
@@ -1337,9 +1398,9 @@ function ReputationCache:RegisterEventListeners()
             
             -- Resolve faction name for the pending key
             local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(majorFactionID)
-            local factionName = (factionData and factionData.name) or ("Faction " .. majorFactionID)
+            local factionName = (factionData and factionData.name) or FormatFactionFallbackName(majorFactionID)
             if factionName and issecretvalue and issecretvalue(factionName) then
-                factionName = "Faction " .. majorFactionID
+                factionName = FormatFactionFallbackName(majorFactionID)
             end
             
             -- Capture any buffered gain BEFORE clearing the buffer.
@@ -1901,6 +1962,62 @@ function ReputationCache:PerformFullScan(bypassThrottle)
             
             -- Phase 3 (next frame): Update DB
             C_Timer.After(0, function()
+                -- Parse fallback: if a rep chat signal was received but parsing failed,
+                -- derive gains directly from old snapshot -> newly processed normalized data.
+                -- This path is only armed by CHAT_MSG_COMBAT_FACTION_CHANGE parse misses.
+                if self.pendingUnparsedRepSignal and self._snapshot and next(self._snapshot) then
+                    local pending = self._pendingChatNotifications
+                    for i = 1, #normalizedData do
+                        local data = normalizedData[i]
+                        local factionID = data and data.factionID and (tonumber(data.factionID) or data.factionID)
+                        if factionID and factionID > 0 and not HasPendingNotificationForFactionID(pending, factionID) then
+                            local old = self._snapshot[factionID]
+                            if old then
+                                local newCurrent = data.currentValue or 0
+                                local gainAmount = 0
+                                local isRenownLevelUp = false
+
+                                -- Friendship path (uses friendship standing counters).
+                                local newFriendCurrent = data.friendship and data.friendship.current
+                                if newFriendCurrent and old.friendshipStanding and newFriendCurrent > old.friendshipStanding then
+                                    gainAmount = math.max(gainAmount, newFriendCurrent - old.friendshipStanding)
+                                end
+
+                                -- Renown level-up path (bar may reset after level increase).
+                                local oldRenown = old.renownLevel or 0
+                                local newRenown = data.renown and data.renown.level or oldRenown
+                                if newRenown > oldRenown then
+                                    local oldRemaining = math.max(0, (old.barMax or 0) - (old.barValue or 0))
+                                    gainAmount = math.max(gainAmount, oldRemaining + newCurrent)
+                                    isRenownLevelUp = true
+                                elseif newCurrent > (old.barValue or 0) then
+                                    gainAmount = math.max(gainAmount, newCurrent - (old.barValue or 0))
+                                end
+
+                                -- Paragon path (separate progression counter).
+                                local newParagon = data.paragon and data.paragon.current
+                                if newParagon and old.paragonValue and newParagon > old.paragonValue then
+                                    gainAmount = math.max(gainAmount, newParagon - old.paragonValue)
+                                end
+
+                                if gainAmount > 0 then
+                                    local factionName = (data._chatName and data._chatName ~= "" and data._chatName)
+                                        or (data.name and data.name ~= "" and data.name)
+                                        or FormatFactionFallbackName(factionID)
+                                    pending[factionName] = {
+                                        gain = gainAmount,
+                                        factionID = factionID,
+                                        oldStandingName = nil,
+                                        oldRenownLevel = oldRenown > 0 and oldRenown or nil,
+                                        isRenownLevelUp = isRenownLevelUp,
+                                    }
+                                end
+                            end
+                        end
+                    end
+                end
+                self.pendingUnparsedRepSignal = false
+
                 -- Delve companions / friendship (Brann, Valeera): CHAT_MSG may not fire or parse.
                 -- Safety net: queue gains from snapshot diff for processed friendship factions too,
                 -- not just ones already marked in the old snapshot.
@@ -1922,7 +2039,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                                         local fData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionID)
                                         local factionName = (fData and fData.name and fData.name ~= "") and fData.name
                                             or (data.name and data.name ~= "" and data.name)
-                                            or ("Faction " .. tostring(factionID))
+                                            or FormatFactionFallbackName(factionID)
                                         QueueSnapshotFallbackNotification(factionName, factionID, gainAmount)
                                     end
                                 end

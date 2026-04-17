@@ -103,7 +103,11 @@ CollectionRules.TRANSMOG = {
     ]]
     GetCharacterEligibility = function(sourceID)
         if not sourceID or not C_TransmogCollection then
-            return {canUse = false, reason = "API not available", isCollected = false}
+            return {
+                canUse = false,
+                reason = (ns.L and ns.L["COLLECTION_RULE_API_NOT_AVAILABLE"]) or "API not available",
+                isCollected = false
+            }
         end
         
         local sourceInfo = C_TransmogCollection.GetSourceInfo(sourceID)
@@ -195,13 +199,21 @@ CollectionRules.MOUNT = {
     ]]
     GetCharacterEligibility = function(mountID)
         if not mountID or not C_MountJournal then
-            return {canUse = false, reason = "API not available", isCollected = false}
+            return {
+                canUse = false,
+                reason = (ns.L and ns.L["COLLECTION_RULE_API_NOT_AVAILABLE"]) or "API not available",
+                isCollected = false
+            }
         end
         
         local name, _, _, _, isUsable, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
         
         if not name then
-            return {canUse = false, reason = "Invalid mount", isCollected = false}
+            return {
+                canUse = false,
+                reason = (ns.L and ns.L["COLLECTION_RULE_INVALID_MOUNT"]) or "Invalid mount",
+                isCollected = false
+            }
         end
         
         local result = {
@@ -211,7 +223,7 @@ CollectionRules.MOUNT = {
         }
         
         if not result.canUse and not result.isCollected then
-            result.reason = "Faction or class restricted"
+            result.reason = (ns.L and ns.L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"]) or "Faction or class restricted"
         end
         
         return result

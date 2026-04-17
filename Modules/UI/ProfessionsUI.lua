@@ -1216,7 +1216,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     
     titleCard:Show()
-    headerYOffset = headerYOffset + (showWideHint and 93 or 75)
+    headerYOffset = headerYOffset + (showWideHint and 93 or (GetLayout().afterHeader or 75))
 
     -- Set fixedHeader height (title card only; column headers go in columnHeaderClip)
     if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
@@ -1520,7 +1520,13 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     row.nameText:ClearAllPoints()
     row.nameText:SetPoint("LEFT", nameX, 6)
     row.nameText:SetWidth(nameW)
-    row.nameText:SetText(format("|cff%02x%02x%02x%s|r", classColor.r*255, classColor.g*255, classColor.b*255, char.name or "Unknown"))
+    row.nameText:SetText(format(
+        "|cff%02x%02x%02x%s|r",
+        classColor.r*255,
+        classColor.g*255,
+        classColor.b*255,
+        char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    ))
 
     if not row.realmText then
         row.realmText = FontManager:CreateFontString(row, "small", "OVERLAY")
@@ -1595,7 +1601,7 @@ local function SetEquipCell(cell, eqData, slotKey)
             if item.itemLink then
                 GameTooltip:SetHyperlink(item.itemLink)
             else
-                GameTooltip:AddLine(item.name or "Unknown", 1, 1, 1)
+                GameTooltip:AddLine(item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 1, 1, 1)
             end
             GameTooltip:Show()
         end)
@@ -2244,7 +2250,12 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                         local iconStr = item.icon and format("|T%s:0|t ", tostring(item.icon)) or ""
                         local statLines = tooltipSvc and tooltipSvc.GetItemTooltipSummaryLines and tooltipSvc:GetItemTooltipSummaryLines(item.itemLink, item.itemID, slotKey) or {}
                         local slotLabel = (statLines[1] and statLines[1].left) or (slotKey == "tool" and "Tool" or "Accessory")
-                        lines[#lines+1] = { left = iconStr .. (item.name or "Unknown"), right = slotLabel, leftColor = {1,1,1}, rightColor = {0.5,0.5,0.5} }
+                        lines[#lines+1] = {
+                            left = iconStr .. (item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")),
+                            right = slotLabel,
+                            leftColor = {1,1,1},
+                            rightColor = {0.5,0.5,0.5}
+                        }
                     end
                 end
             else

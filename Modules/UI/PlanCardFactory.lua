@@ -3148,7 +3148,7 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     local charText = FontManager:CreateFontString(card, "body", "OVERLAY")
     charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
     charText:SetTextColor(classColor[1], classColor[2], classColor[3])
-    local charDisplay = plan.characterName or "Unknown"
+    local charDisplay = plan.characterName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     if plan.characterRealm and plan.characterRealm ~= "" then
         local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(plan.characterRealm)) or plan.characterRealm
         charDisplay = charDisplay .. " - " .. rShown

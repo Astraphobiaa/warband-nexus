@@ -703,7 +703,9 @@ function WarbandNexus:ShowSetAlertDialog(planID)
     end
     
     local f = reminderDialog
-    local displayName = (self.GetResolvedPlanName and self:GetResolvedPlanName(plan)) or plan.name or "Unknown"
+    local displayName = (self.GetResolvedPlanName and self:GetResolvedPlanName(plan))
+        or plan.name
+        or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     f.planLabel:SetText("|cffffffff" .. displayName .. "|r")
     f._currentPlanID = planID
     
