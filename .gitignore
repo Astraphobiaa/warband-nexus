@@ -1,28 +1,31 @@
 # ===========================================
-# WoW Addon .gitignore
+# Warband Nexus — WoW addon repository policy
 # ===========================================
+# Tracked content is allowlisted at the end: only the addon tree that ships
+# under Interface/AddOns/WarbandNexus. Everything else is ignored and must
+# not be committed.
 
-# Cursor IDE
+# Cursor / IDE / AI tooling
 .cursor/
-
-# VS Code
+.claude/
 .vscode/
+.idea/
 
-# Debug/Log files
+# Debug / logs
 *.log
 debug.log
 *.debug
 
-# WoW SavedVariables (user data - should not be in repo)
+# WoW SavedVariables (never commit user data)
 SavedVariables/
 
-# Backup files
+# Backups
 *.bak
 *.backup
 *~
 *.orig
 
-# OS generated files
+# OS junk
 .DS_Store
 .DS_Store?
 ._*
@@ -32,40 +35,68 @@ ehthumbs.db
 Thumbs.db
 desktop.ini
 
-# Temporary files
+# Temp / editor swap
 *.tmp
 .tmp/
-.tmp-addon-db-audit/
+Locales/.tmp/
 *.temp
 *.swp
 *.swo
 
-# Package/Archive files (if you package releases)
+# Archives / packager output
 *.zip
 *.rar
 *.7z
-
-# BigWigs/CurseForge Packager output
 .release/
-
-# Release distribution folder (built copy - not source code)
+build/
 WarbandNexus/
 
-# scripts\build-curseforge.ps1 output
-build/
+# Dev / docs / tooling (not part of the in-game addon)
+*.md
+/CHANGES.txt
+tests/
+/test_*.lua
+/test2.lua
+build_addon.*
+update_locales.lua
+docs/
+_enc_w.html
+.pkgmeta
+.gitattributes
 
-# Local scripts (not part of addon payload; optional per-machine tooling)
-scripts/
-
-# CurseForge packager metadata (tracked for packager, but changes ignored)
-# .pkgmeta
-
-# External libs that should be downloaded separately (optional)
-# Uncomment if you want users to download libs themselves
-# libs/Ace3/
-
-# Screenshots folder (for CurseForge listing, not needed in releases)
+# Screenshots (listing assets, not addon runtime)
 Screenshots/*.png
 Screenshots/*.jpg
 Screenshots/*.jpeg
 
+# ---------------------------------------------------------------------------
+# Allowlist: only these paths are tracked (WoW addon payload).
+# Later rules win; keep this block last except for fine-grained re-ignores.
+# ---------------------------------------------------------------------------
+/*
+!.gitignore
+
+!WarbandNexus.toc
+!Core.lua
+!Config.lua
+!embeds.xml
+!Bindings.xml
+!LICENSE
+
+!/Modules/
+!/Modules/**
+
+!/Locales/
+!/Locales/**
+
+!/libs/
+!/libs/**
+
+!/Fonts/
+!/Fonts/**
+
+!/Media/
+!/Media/**
+
+# Vendor / lib docs are non-runtime but kept with embedded libs
+libs/**/*.md
