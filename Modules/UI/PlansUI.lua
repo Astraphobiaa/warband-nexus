@@ -1728,13 +1728,13 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     if pt1 and rel1 then
                         card.nameText:SetPoint(pt1, rel1, relPt1, x1, y1)
                     end
-                    if card.wowheadBtn then
-                        local nameGap = (ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP) or 6
-                        card.nameText:SetPoint("RIGHT", card.wowheadBtn, "LEFT", -nameGap, 0)
+                    local nameGap = (ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP) or 6
+                    local anchorNameRight = card.chatLinkBtn or card.wowheadBtn
+                    if anchorNameRight then
+                        card.nameText:SetPoint("RIGHT", anchorNameRight, "LEFT", -nameGap, 0)
                     else
                         local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
                         local whW = (ns.PLAN_CARD_WOWHEAD_SIZE) or 18
-                        local nameGap = (ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP) or 6
                         card.nameText:SetPoint("RIGHT", card, "RIGHT", -(whInset + whW + nameGap), 0)
                     end
                 end

@@ -210,6 +210,9 @@ local DEBUG_TRACE_EVENTS = {
     CHAT_MSG_CURRENCY = true,
     CHAT_MSG_MONEY = true,
     ITEM_LOCK_CHANGED = true,
+    UNIT_SPELLCAST_SENT = true,
+    UNIT_SPELLCAST_CHANNEL_START = true,
+    UNIT_SPELLCAST_INTERRUPTED = true,
 }
 
 -- MUST be declared before tryCounterFrame:SetScript("OnEvent") — otherwise the closure resolves globals (nil).
@@ -4087,8 +4090,10 @@ end
 ---Begin fishing context when a known Fishing spell starts (shared by SENT + CHANNEL_START).
 ---@param spellID number|nil
 function WarbandNexus:TryCounterBeginFishingContext(spellID)
-    if issecretvalue and spellID and issecretvalue(spellID) then return end
-    if not spellID or not FISHING_SPELLS[spellID] then return end
+    if spellID then
+        if issecretvalue and issecretvalue(spellID) then return end
+        if not FISHING_SPELLS[spellID] then return end
+    end
     fishingCtx.active = true
     fishingCtx.castTime = GetTime()
     -- Safety: if the bite never completes and LOOT_CLOSED never fires, clear context so chests/mobs
@@ -4104,15 +4109,38 @@ end
 ---UNIT_SPELLCAST_SENT handler (detect fishing casts)
 function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, spellID)
     if unit ~= "player" then return end
+    -- Midnight 12.0: target/spellID can be secret values during instanced combat
+    if issecretvalue and target and issecretvalue(target) then target = nil end
+    if issecretvalue and spellID and issecretvalue(spellID) then
+        -- We cannot read the spellID. If it's fishing, we might be able to read the channel texture.
+        -- UNIT_SPELLCAST_SENT fires slightly before the channel starts, so we might not have it yet.
+        -- But we can rely on UNIT_SPELLCAST_CHANNEL_START to catch it.
+        return
+    end
     if target then
         lastGatherCastName = target
         lastGatherCastTime = GetTime()
     end
-    if FISHING_SPELLS[spellID] then
+    
+    local isFishing = spellID and FISHING_SPELLS[spellID]
+    -- Midnight 12.0: dynamically detect unknown fishing spells via icon fallback.
+    -- C_Spell.GetSpellInfo can return secret iconID; pcall + issecretvalue guard.
+    if not isFishing and spellID and C_Spell and C_Spell.GetSpellInfo then
+        local ok, spellInfo = pcall(C_Spell.GetSpellInfo, spellID)
+        if ok and spellInfo then
+            local iconID = spellInfo.iconID
+            if iconID and not (issecretvalue and issecretvalue(iconID)) and iconID == 136245 then
+                isFishing = true
+                FISHING_SPELLS[spellID] = true
+            end
+        end
+    end
+
+    if isFishing then
         self:TryCounterBeginFishingContext(spellID)
-    elseif PICKPOCKET_SPELLS[spellID] then
+    elseif spellID and PICKPOCKET_SPELLS[spellID] then
         isPickpocketing = true
-    elseif PROFESSION_LOOT_SPELLS[spellID] then
+    elseif spellID and PROFESSION_LOOT_SPELLS[spellID] then
         isProfessionLooting = true
     end
 end
@@ -4121,9 +4149,39 @@ end
 ---Args: unitTarget, castGUID, spellID
 function WarbandNexus:OnTryCounterSpellcastChannelStart(event, unit, castGUID, spellID)
     if unit ~= "player" then return end
-    if issecretvalue and spellID and issecretvalue(spellID) then return end
-    if spellID and FISHING_SPELLS[spellID] then
-        self:TryCounterBeginFishingContext(spellID)
+    
+    local isFishing = false
+    local validSpellID = spellID
+    
+    if issecretvalue and spellID and issecretvalue(spellID) then
+        validSpellID = nil
+        -- Secret value during instanced combat. We can't read spellID.
+        -- Try to detect via UnitChannelInfo texture.
+        if UnitChannelInfo then
+            local _, _, texture = UnitChannelInfo("player")
+            if texture and not (issecretvalue and issecretvalue(texture)) and texture == 136245 then
+                isFishing = true
+            end
+        end
+        if not isFishing then return end
+    else
+        isFishing = spellID and FISHING_SPELLS[spellID]
+    end
+    
+    -- Midnight 12.0: dynamically detect unknown fishing channel spells via icon fallback.
+    if not isFishing and validSpellID and C_Spell and C_Spell.GetSpellInfo then
+        local ok, spellInfo = pcall(C_Spell.GetSpellInfo, validSpellID)
+        if ok and spellInfo then
+            local iconID = spellInfo.iconID
+            if iconID and not (issecretvalue and issecretvalue(iconID)) and iconID == 136245 then
+                isFishing = true
+                FISHING_SPELLS[validSpellID] = true
+            end
+        end
+    end
+    
+    if isFishing then
+        self:TryCounterBeginFishingContext(validSpellID)
     end
 end
 
@@ -4140,9 +4198,18 @@ function WarbandNexus:OnTryCounterSpellcastFailed(event, unit, castGUID, spellID
     if unit ~= "player" then return end
     if issecretvalue and spellID and issecretvalue(spellID) then return end
     if not FISHING_SPELLS[spellID] then return end
-    fishingCtx.active = false
-    fishingCtx.castTime = 0
-    if fishingCtx.resetTimer then fishingCtx.resetTimer:Cancel() fishingCtx.resetTimer = nil end
+    
+    -- Clicking the bobber interrupts the fishing channel.
+    -- If we clear the context instantly, LOOT_READY fires 0.1s later with NO fishing context.
+    -- We delay the clearing by 1.5s to ensure the loot window can capture the context.
+    local captureTime = fishingCtx.castTime
+    C_Timer.After(1.5, function()
+        if fishingCtx.active and fishingCtx.castTime == captureTime and not fishingCtx.lootWasFishing then
+            fishingCtx.active = false
+            fishingCtx.castTime = 0
+            if fishingCtx.resetTimer then fishingCtx.resetTimer:Cancel() fishingCtx.resetTimer = nil end
+        end
+    end)
 end
 
 -- =====================================================================
@@ -4235,21 +4302,16 @@ function WarbandNexus:OnTryCounterLootReady(autoloot)
     lootReady.targetGUID = Fns.SafeGetTargetGUID()
     lootReady.npcGUID = Fns.SafeGetUnitGUID("npc")
     lootReady.time = GetTime()
-    -- Cast context alone misses: special fishing (e.g. Void Hole), or active cleared after prior LOOT_CLOSED
-    -- while the next bite still comes from bobber/pool-only sources.
-    -- If mouseover/target/npc is a real mob corpse (not bobber), never treat as fishing from cast TTL —
-    -- stale fishingCtx after a cast would otherwise count trash loot as fishing in fishable zones.
-    -- Profession gathering (herb/ore) channels must not combine with cast TTL + IsFishingLoot() or herb
-    -- loot in fishable zones mis-increments Nether-Warped Egg tries.
-    local ctxWindow = fishingCtx.active and (lootReady.time - fishingCtx.castTime) <= FISHING_CAST_CONTEXT_TTL
-    local unitLooksLikeMobCorpseLoot = Fns.LootReadySnapshotHasMobLootContext(
-        lootReady.mouseoverGUID, lootReady.targetGUID, lootReady.npcGUID)
+    -- Structural bobber/pool (zone DB) or IsFishingLoot API. Profession loot is excluded so herb/ore
+    -- in fishable zones does not set wasFishing (see ClassifyLootSession GameObject-only guard).
     local apiFish = Fns.SafeIsFishingLoot()
     local structuralFish = Fns.LootSourcesLookLikeFishingOnly(lootReady.sourceGUIDs)
         and Fns.IsInTrackableFishingZone()
     -- Cast TTL alone + fishable zone was counting normal mob loot when sources were empty/secret.
+    -- IsFishingLoot() is authoritative at LOOT_READY: ignore target/mouseover mob corpses (common while
+    -- fishing near kills); mob ground loot has IsFishingLoot() false, so we do not need the old unit guard.
     lootReady.wasFishing = structuralFish
-        or (ctxWindow and not unitLooksLikeMobCorpseLoot and apiFish and not isProfessionLooting)
+        or (apiFish and not isProfessionLooting)
 end
 
 ---LOOT_CLOSED handler (reset fishing flag, pickpocket flag, safety timer)
@@ -4910,6 +4972,21 @@ Fns.ClassifyLootSession = function(source, isFromItem)
             fishingLootAPI = Fns.SafeIsFishingLoot() and not isProfessionLooting
         end
     end
+    
+    -- Dynamically learn toy/oversized bobber NPC IDs when the API confirms it is fishing.
+    -- Uses existing Midnight-safe GUID helpers (UnitGuidLooksLikeMobCorpse + GetNPCIDFromGUID).
+    if fishingLootAPI and lootSession.sourceGUIDs then
+        for i = 1, #lootSession.sourceGUIDs do
+            local g = lootSession.sourceGUIDs[i]
+            if type(g) == "string" and not (issecretvalue and issecretvalue(g))
+               and g:match("^Creature") then
+                local nid = Fns.GetNPCIDFromGUID(g)
+                if nid and not FISHING_BOBBER_NPC_IDS[nid] then
+                    FISHING_BOBBER_NPC_IDS[nid] = true
+                end
+            end
+        end
+    end
     local fishingContextFresh = fishingCtx.active and (now - fishingCtx.castTime) <= FISHING_CAST_CONTEXT_TTL
     local sourceCompatible = fishingContextFresh and Fns.IsFishingSourceCompatible(lootSession.sourceGUIDs)
 
@@ -4935,7 +5012,10 @@ Fns.ClassifyLootSession = function(source, isFromItem)
             corpseInSources = Fns.LootSessionHasAnyMobCorpseSources(lootSession.sourceGUIDs)
         end
         local corpseFromUnits = Fns.LootSessionHasMobLootContext()
-        local corpsePresent = corpseInSources or (not fishingFromSourcesOnly and corpseFromUnits)
+        -- When the client reports fishing loot (API or LOOT_READY snapshot), trust it over unit
+        -- frames — target/mouseover often stays on a nearby corpse while reeling in.
+        local corpsePresent = fishingLootAPI and corpseInSources
+            or (not fishingLootAPI and (corpseInSources or (not fishingFromSourcesOnly and corpseFromUnits)))
         if not corpsePresent then return "fishing" end
     end
     -- Clear stale fishing context when source GUIDs point to a tracked NPC/object

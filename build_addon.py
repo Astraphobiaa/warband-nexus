@@ -6,6 +6,9 @@ Stage Warband Nexus into build/WarbandNexus and create a ZIP for manual upload
 Requires Python 3.8+ (stdlib only; uses os.walk + zipfile). Run from repo root:
   python3 build_addon.py
   py build_addon.py   # Windows Python launcher
+
+Ships only runtime files: toc + Locales + Modules + libs (per embeds.xml), Media, etc.
+Dev-only root scripts (test*.lua, update_locales.lua) and repo docs are excluded.
 """
 from __future__ import annotations
 
@@ -37,6 +40,7 @@ EXCLUDE_ROOT = frozenset({
     ".tmp-addon-db-audit",
     "WarbandNexus",  # stray distribution folder if present
     "tests",
+    "docs",
 })
 
 # Skip these directory names at any depth (matches embeds / .pkgmeta)
@@ -62,6 +66,8 @@ ROOT_FILES_SKIP = frozenset({
     "EVENTS_AUDIT.md",
     "STEP_FIX_LOG.md",
     "build_addon.py",
+    "build_addon.ps1",
+    "CONTRIBUTORS.md",
 })
 
 LIB_JUNK = [
@@ -90,6 +96,18 @@ def read_addon_version() -> str:
     return m.group(1)
 
 
+def _skip_root_ship_file(name: str) -> bool:
+    """Repo-root files that must not appear in the addon folder (dev/tests/docs)."""
+    if name in ROOT_FILES_SKIP:
+        return True
+    if name == "update_locales.lua":
+        return True
+    # e.g. test2.lua, test_fishing.lua, test_regex.lua (not loaded by .toc)
+    if name.endswith(".lua") and name.startswith("test"):
+        return True
+    return False
+
+
 def copy_tree_filtered() -> None:
     if STAGE_DIR.exists():
         shutil.rmtree(STAGE_DIR)
@@ -113,7 +131,7 @@ def copy_tree_filtered() -> None:
                 continue
             if any(p in EXCLUDE_DIR_ANYWHERE for p in rel.parts[:-1]):
                 continue
-            if len(rel.parts) == 1 and rel.name in ROOT_FILES_SKIP:
+            if len(rel.parts) == 1 and _skip_root_ship_file(fn):
                 continue
 
             dst = STAGE_DIR / rel

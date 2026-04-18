@@ -1,27 +1,22 @@
-# CurseForge / Wago — **Warband Nexus v2.5.15-beta1** (2026-04-15)
+# CurseForge / Wago — **Warband Nexus v2.6.1** (2026-04-18)
 
 ## Summary for project description / changelog field
 
-**v2.5.15 beta 1 (pre-release)** — Performance: main-window populate coalescing, tab-switch debounce, CollectionService budgeted scans, guild bank + bank-open chunked scans, Plans grid precompute, collections abort. Bug fixes: TOC loads `Config.lua` after `Constants.lua`; main frame OnHide clears populate timer. Localization: gear crafted lines, concentration timers, Steam-style played time; locale parity for `GEAR_CRAFTED_*`, `STATS_PLAYED_STEAM_*`, `PROF_CONCENTRATION_*` across supported languages. **Feedback welcome** before the stable 2.5.15 build.
+**v2.6.1** — Try Counter: fishing try counts no longer stall when target/mouseover remains on a nearby mob corpse; routing trusts `IsFishingLoot()` / the LOOT_READY snapshot. Includes 2.6.0 content: Gear UI enchant/gem warnings, mail icon on characters, `/wn keys` grouping, fishing bobber/spell fixes, Midnight instanced-combat guards.
 
 ## Full notes
 
-### Performance
+### Bug fixes (2.6.1)
 
-- **UI (`Modules/UI.lua`)**: `SchedulePopulateContent` debounce; `OnHide` timer cancel; single defer on tab switch; badge-only currency/reputation when off-tab.
-- **CollectionService**: `ScheduleEnsureCollectionDataDeferred`; `ScanCollection` / `BuildFullCollectionData` use `FRAME_BUDGET_MS`.
-- **Guild bank & ItemsCache**: chunked scans; atomic tab assign; invalidate on close.
-- **Plans & Collections**: `regularCountBefore` O(n); `AbortCollectionsChunkedBuilds`; Core abort.
+- **Try Counter (`TryCounterService`)**: Fixed misclassification of fishing loot as NPC loot when unit frames still pointed at a corpse; increments resume reliably.
 
-### Bug fixes
+### 2.6.0 highlights
 
-- **TOC**: `Config.lua` after `Modules/Constants.lua` (fixes `ns.Constants` at Config init).
-- **Main `OnHide`**: populate timer cleared after cancel.
-
-### Localization
-
-- **GearUI**, **ProfessionService**, **StatisticsUI** keys; multi-locale parity (see CHANGELOG.md).
+- **Gear UI**: Enchant/gem warnings vs upgrade arrows; offline characters; translations.
+- **Characters**: Pending mail icon.
+- **Commands**: `/wn keys` line grouping and throttle safety.
+- **Try Counter**: Toy bobbers, unknown fishing spells, Midnight combat.
 
 ---
 
-Package: `WarbandNexus-2.5.15-beta1.zip` from `python build_addon.py` at repo root. **`/reload`** after installing.
+Package: `WarbandNexus-2.6.1.zip` from `python build_addon.py` or `py build_addon.py` at repo root. **`/reload`** after installing.

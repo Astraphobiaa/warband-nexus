@@ -1161,6 +1161,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         specIcon             = specIcon,
         heroSpecID           = heroSpecID,
         heroSpecName         = heroSpecName,
+        hasMail              = HasNewMail() and true or false,
     }
     -- ========== V2: Store PvE data globally ==========
     self:UpdatePvEDataV2(key, pveData)
@@ -1214,6 +1215,14 @@ function WarbandNexus:UpdateProfessionData()
             dataType = "professions"
         })
     end)
+end
+
+function WarbandNexus:UpdateMailStatus()
+    local key = ns.Utilities:GetCharacterKey()
+    if self.db.global.characters and self.db.global.characters[key] then
+        self.db.global.characters[key].hasMail = HasNewMail() and true or false
+        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = key, dataType = "mail" })
+    end
 end
 
 --[[

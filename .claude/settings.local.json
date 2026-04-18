@@ -28,7 +28,27 @@
       "Bash(git -C \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\" diff HEAD -- Modules/CollectionService.lua)",
       "Bash(git -C \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\" diff HEAD -- Modules/UI/CollectionsUI.lua)",
       "Bash(git -C \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\" diff -- Modules/TryCounterService.lua)",
-      "Bash(grep -rn \"online\\\\|isOnline\\\\|currentChar\\\\|playerName\\\\|GetUnitName\" \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\\\\Modules\\\\UI\\\\\" --include=\"*.lua\" -i | grep -v \"^Binary\" | head -40)"
+      "Bash(grep -rn \"online\\\\|isOnline\\\\|currentChar\\\\|playerName\\\\|GetUnitName\" \"c:\\\\Users\\\\Mert\\\\Documents\\\\GitHub\\\\warband-nexus\\\\Modules\\\\UI\\\\\" --include=\"*.lua\" -i | grep -v \"^Binary\" | head -40)",
+      "Bash(python -c ' *)",
+      "Bash(py --version)",
+      "Bash(perl --version)",
+      "Bash(perl _translate.pl)",
+      "Bash(perl _parity.pl)",
+      "Bash(perl _mount_audit.pl)",
+      "WebSearch",
+      "WebFetch(domain:www.wowhead.com)",
+      "WebFetch(domain:news.blizzard.com)",
+      "WebFetch(domain:warcraft.wiki.gg)",
+      "WebFetch(domain:epiccarry.com)",
+      "WebFetch(domain:conquestcapped.com)",
+      "WebFetch(domain:koroboost.com)",
+      "WebFetch(domain:www.method.gg)",
+      "WebFetch(domain:www.mmo-champion.com)",
+      "WebFetch(domain:www.warcraftmounts.com)",
+      "Bash(perl -e ' *)",
+      "Bash(perl -e 'open\\(F,\"c:/Users/Mert/Documents/GitHub/warband-nexus/Modules/CollectibleSourceDB.lua\"\\) or die; my\\($open,$close\\)=\\(0,0\\); while\\(<F>\\){ $open+=\\(\\)=/\\\\{/g; $close+=\\(\\)=/\\\\}/g; } print \"open=$open close=$close\\\\n\";')",
+      "Bash(perl -e 'open\\(F,\"c:/Users/Mert/Documents/GitHub/warband-nexus/Modules/CollectionService.lua\"\\) or die; my\\($open,$close\\)=\\(0,0\\); while\\(<F>\\){ $open+=\\(\\)=/\\\\{/g; $close+=\\(\\)=/\\\\}/g; } print \"open=$open close=$close\\\\n\";')",
+      "Bash(perl -e 'open\\(F,\"c:/Users/Mert/Documents/GitHub/warband-nexus/Modules/CollectibleSourceDB.lua\"\\) or die; my\\($o,$c\\)=\\(0,0\\); while\\(<F>\\){ $o+=\\(\\)=/\\\\{/g; $c+=\\(\\)=/\\\\}/g; } print \"{: $o  }: $c\\\\n\";')"
     ],
     "additionalDirectories": [
       "C:\\Users\\Mert\\.claude\\projects\\c--Users-Mert-Documents-GitHub-warband-nexus"

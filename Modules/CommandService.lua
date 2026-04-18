@@ -49,6 +49,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn|r — " .. ((ns.L and ns.L["CMD_OPEN"]) or "Open addon window"))
         addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "Toggle To-Do Tracker window"))
         addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Open settings"))
+        addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones to party chat")
         addon:Print("  |cff00ccff/wn minimap|r — " .. ((ns.L and ns.L["CMD_MINIMAP"]) or "Toggle minimap button"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
@@ -107,6 +108,97 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:ToggleMinimapButton()
         else
             addon:Print("|cffff6600" .. ((ns.L and ns.L["MINIMAP_NOT_AVAILABLE"]) or "Minimap button module not loaded.") .. "|r")
+        end
+        return
+        
+    elseif cmd == "keys" or cmd == "keystones" then
+        if not addon.GetAllCharacters then
+            addon:Print("|cffff6600[WN] Character data not available.|r")
+            return
+        end
+        
+        local characters = addon:GetAllCharacters()
+        local keysFound = 0
+        local reportLinesLocal = {}
+        local reportLinesParty = {}
+        
+        for i = 1, #characters do
+            local char = characters[i]
+            local keystone = nil
+            if addon.db and addon.db.global and addon.db.global.pveProgress then
+                local pve = addon.db.global.pveProgress[char.key]
+                if pve and pve.mythicPlus and pve.mythicPlus.keystone then
+                    keystone = pve.mythicPlus.keystone
+                end
+            end
+            
+            -- Fallback to v1 data if missing in v2
+            if not keystone and char.mythicKey then
+                keystone = char.mythicKey
+            end
+            
+            if keystone and keystone.level and keystone.level > 0 then
+                local dungeonName = keystone.dungeonName or "Unknown Dungeon"
+                local mapID = keystone.dungeonID or keystone.mapID or 0
+                
+                -- Construct Class Colored Name for Local Print
+                local classColor = char.classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[char.classFile] or {r=1, g=1, b=1}
+                local colorHex = string.format("ff%02x%02x%02x", classColor.r * 255, classColor.g * 255, classColor.b * 255)
+                local coloredName = string.format("|c%s%s|r", colorHex, char.name)
+                
+                -- Construct Clickable Keystone Link for Local Print
+                local keystoneLink = string.format("|cffa335ee|Hitem:180653::::::::80:253::::::|h[%s (+%d)]|h|r", dungeonName, keystone.level)
+                
+                table.insert(reportLinesLocal, string.format("%s - %s", coloredName, keystoneLink))
+                
+                -- Use plain text for Party to prevent WoW Server from dropping unverified item links
+                -- Format: Name [+Level Dungeon]
+                local shortDungeonName = dungeonName:gsub("The ", ""):sub(1, 15) -- shorten dungeon names slightly if needed
+                table.insert(reportLinesParty, string.format("%s [+%d %s]", char.name, keystone.level, shortDungeonName))
+                keysFound = keysFound + 1
+            end
+        end
+        
+        if keysFound == 0 then
+            addon:Print("|cffff6600[WN] No keystones found across your characters.|r")
+        else
+            if IsInGroup() and not IsInRaid() then
+                SendChatMessage("[WN Keys]: Key List", "PARTY")
+                local currentLine = ""
+                local lineCount = 0
+                
+                for i = 1, #reportLinesParty do
+                    local entry = reportLinesParty[i]
+                    if currentLine == "" then
+                        currentLine = entry
+                    else
+                        -- Check if adding the next entry exceeds WoW's 255 character chat limit
+                        if string.len(currentLine) + string.len(" | ") + string.len(entry) > 250 then
+                            lineCount = lineCount + 1
+                            local sendStr = currentLine
+                            C_Timer.After(lineCount * 0.2, function()
+                                SendChatMessage(sendStr, "PARTY")
+                            end)
+                            currentLine = entry
+                        else
+                            currentLine = currentLine .. " | " .. entry
+                        end
+                    end
+                end
+                
+                if currentLine ~= "" then
+                    lineCount = lineCount + 1
+                    local sendStr = currentLine
+                    C_Timer.After(lineCount * 0.2, function()
+                        SendChatMessage(sendStr, "PARTY")
+                    end)
+                end
+            else
+                addon:Print("|cff00ccff[WN] Keystones (Not in a party, printing to self):|r")
+                for i = 1, #reportLinesLocal do
+                    addon:Print("  " .. reportLinesLocal[i])
+                end
+            end
         end
         return
         

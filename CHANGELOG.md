@@ -2,6 +2,40 @@
 
 All notable changes to **Warband Nexus** are documented here. In-game What's New uses locale key `CHANGELOG_V` + the numeric `x.y.z` only (e.g. `2.5.15-beta1` → `CHANGELOG_V2515`).
 
+## [2.6.1] - 2026-04-18
+
+### Try Counter (Fishing)
+
+- Fixed fishing try counts sometimes not incrementing when **target** or **mouseover** was still on a nearby mob corpse. The addon now trusts `IsFishingLoot()` / the LOOT_READY snapshot over stale unit-frame context, so the fishing route is no longer misclassified as NPC loot.
+
+---
+
+## [2.6.0] - 2026-04-18
+
+### Gear UI
+
+- Missing enchant/gem warning icons no longer overlap with upgrade arrows or text.
+- Warning icon and upgrade arrow now stack vertically when both are present.
+- Enchant and gem warnings now work correctly for offline characters.
+- Added missing enchant/gem warning translations for all supported languages.
+
+### Characters
+
+- Mail icon now shown next to characters who have pending mail.
+
+### Commands (`/wn keys`)
+
+- Keystones are now grouped on fewer lines to prevent chat spam with many alts.
+- Fixed potential chat throttle or disconnect when reporting 25+ character keys.
+
+### Try Counter (Fishing)
+
+- Fishing now works correctly with toy/cosmetic bobbers.
+- Improved compatibility with new and unknown fishing spells.
+- Fixed potential errors during instanced combat (Midnight 12.0).
+
+---
+
 ## [2.5.15-beta1] - 2026-04-15
 
 _Pre-release (beta 1); not a final stable build._

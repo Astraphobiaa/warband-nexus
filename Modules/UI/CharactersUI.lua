@@ -82,6 +82,32 @@ local function BuildGuildText(char, isCurrentCharacter)
     return "|cff5c5c5c—|r"
 end
 
+---Pending-mail badge next to character name. Inline |T paths are unreliable in modern clients; use a Texture.
+local function ApplyPendingMailIconTexture(tex)
+    tex:SetTexCoord(0, 1, 0, 1)
+    if C_Texture and C_Texture.GetAtlasInfo then
+        local atlasTry = { "Mail-Icon", "minimap-tracking-mailbox", "Mailbox-Tracking" }
+        for _, name in ipairs(atlasTry) do
+            local ok, info = pcall(C_Texture.GetAtlasInfo, name)
+            if ok and info then
+                tex:SetAtlas(name)
+                return
+            end
+        end
+    end
+    if C_Texture and C_Texture.GetFileIDFromPath then
+        local paths = { "interface/minimap/tracking/mailbox", "Interface/Minimap/Tracking/Mailbox" }
+        for _, p in ipairs(paths) do
+            local ok, fid = pcall(C_Texture.GetFileIDFromPath, p)
+            if ok and fid and type(fid) == "number" and fid > 0 then
+                tex:SetTexture(fid)
+                return
+            end
+        end
+    end
+    tex:SetTexture("Interface/Minimap/Tracking/Mailbox")
+end
+
 --============================================================================
 -- EVENT-DRIVEN UI REFRESH
 --============================================================================
@@ -1014,10 +1040,21 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.nameText:SetNonSpaceWrap(false)
         row.nameText:SetMaxLines(1)
     end
-    row.nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
-        classColor.r * 255, classColor.g * 255, classColor.b * 255, 
+    row.nameText:SetText(string.format("|cff%02x%02x%02x%s|r",
+        classColor.r * 255, classColor.g * 255, classColor.b * 255,
         char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")))
-        
+    if char.hasMail then
+        if not row.mailIcon then
+            row.mailIcon = row:CreateTexture(nil, "OVERLAY")
+            row.mailIcon:SetSize(14, 14)
+        end
+        ApplyPendingMailIconTexture(row.mailIcon)
+        row.mailIcon:ClearAllPoints()
+        row.mailIcon:SetPoint("LEFT", row.nameText, "LEFT", row.nameText:GetStringWidth() + 3, -1)
+        row.mailIcon:Show()
+    elseif row.mailIcon then
+        row.mailIcon:Hide()
+    end
     if not row.realmText then
         row.realmText = FontManager:CreateFontString(row, "small", "OVERLAY")
         row.realmText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -23)

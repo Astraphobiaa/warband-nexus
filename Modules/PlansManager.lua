@@ -2731,6 +2731,110 @@ function WarbandNexus:ParseMultipleSources(sourceText)
     return sources
 end
 
+-- ============================================================================
+-- CHAT LINKS (To-Do plan cards: mount / pet / toy / achievement / item types)
+-- ============================================================================
+
+local function SafeChatLinkString(link)
+    if not link or type(link) ~= "string" or link == "" then return nil end
+    if issecretvalue and issecretvalue(link) then return nil end
+    return link
+end
+
+--- Whether the plan type can expose a WoW chat hyperlink (button shown on card).
+function WarbandNexus:PlanSupportsChatLink(plan)
+    if not plan or not plan.type then return false end
+    local t = plan.type
+    if t == "mount" and plan.mountID then return true end
+    if t == "pet" and plan.speciesID then return true end
+    if (t == "toy" or t == "recipe" or t == "transmog") and plan.itemID then return true end
+    if t == "illusion" and plan.itemID then return true end
+    if t == "achievement" and plan.achievementID then return true end
+    return false
+end
+
+--- Returns a full chat hyperlink string, or nil if not available / not loaded yet.
+function WarbandNexus:GetPlanChatLink(plan)
+    if not plan or not plan.type then return nil end
+    local t = plan.type
+
+    if t == "mount" and plan.mountID and type(plan.mountID) == "number" then
+        if C_MountJournal then
+            if C_MountJournal.GetMountLink then
+                local ok, link = pcall(C_MountJournal.GetMountLink, plan.mountID)
+                local s = SafeChatLinkString(ok and link)
+                if s then return s end
+            end
+            if C_MountJournal.GetMountItemID and C_Item and C_Item.GetItemLinkByID then
+                local ok, itemID = pcall(C_MountJournal.GetMountItemID, plan.mountID)
+                if ok and itemID and type(itemID) == "number" and itemID > 0 then
+                    local ok2, link = pcall(C_Item.GetItemLinkByID, itemID)
+                    local s = SafeChatLinkString(ok2 and link)
+                    if s then return s end
+                end
+            end
+        end
+        return nil
+    end
+
+    if t == "pet" and plan.speciesID and type(plan.speciesID) == "number" and C_PetJournal then
+        if C_PetJournal.GetPetLink then
+            local ok, link = pcall(C_PetJournal.GetPetLink, plan.speciesID)
+            local s = SafeChatLinkString(ok and link)
+            if s then return s end
+        end
+        return nil
+    end
+
+    if (t == "toy" or t == "recipe" or t == "transmog") and plan.itemID and type(plan.itemID) == "number" and C_Item and C_Item.GetItemLinkByID then
+        local ok, link = pcall(C_Item.GetItemLinkByID, plan.itemID)
+        return SafeChatLinkString(ok and link)
+    end
+
+    if t == "illusion" and plan.itemID and type(plan.itemID) == "number" and C_Item and C_Item.GetItemLinkByID then
+        local ok, link = pcall(C_Item.GetItemLinkByID, plan.itemID)
+        return SafeChatLinkString(ok and link)
+    end
+
+    if t == "achievement" and plan.achievementID and type(plan.achievementID) == "number" then
+        if C_AchievementInfo and C_AchievementInfo.GetAchievementLink then
+            local ok, link = pcall(C_AchievementInfo.GetAchievementLink, plan.achievementID)
+            local s = SafeChatLinkString(ok and link)
+            if s then return s end
+        end
+        if GetAchievementLink then
+            local ok, link = pcall(GetAchievementLink, plan.achievementID)
+            return SafeChatLinkString(ok and link)
+        end
+        return nil
+    end
+
+    return nil
+end
+
+--- Inserts the plan's chat link into the edit box, or opens chat with the link prefilled.
+function WarbandNexus:InsertPlanChatLink(plan)
+    local link = self:GetPlanChatLink(plan)
+    if not link then
+        local L = ns.L
+        local msg = (L and L["PLAN_CHAT_LINK_UNAVAILABLE"]) or "Chat link is not available for this entry."
+        if self.Print then
+            self:Print("|cffff9900" .. msg .. "|r")
+        end
+        return
+    end
+    local edit = ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow()
+    if edit and ChatEdit_InsertLink then
+        ChatEdit_InsertLink(link)
+        return
+    end
+    if ChatFrame_OpenChat then
+        pcall(ChatFrame_OpenChat, link)
+    elseif ChatEdit_InsertLink then
+        pcall(ChatEdit_InsertLink, link)
+    end
+end
+
 
 
 

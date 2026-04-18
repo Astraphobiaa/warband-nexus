@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - English Localization (Base)
     
     This is the default/fallback locale for all other languages.
@@ -589,7 +589,7 @@ L["CRITERIA_PROGRESS_FORMAT"] = "Progress %d/%d"
 L["CRITERIA_PROGRESS_CRITERION"] = "Criteria"
 L["ACHIEVEMENT_PROGRESS_TITLE"] = "Achievement Progress"
 L["REPUTATION_GAINS"] = "Rep Gains in Chat"
-L["REPUTATION_GAINS_TOOLTIP"] = "Display reputation gain messages in chat when you earn faction standing"
+L["REPUTATION_GAINS_TOOLTIP"] = "Show [WN-Reputation] lines only for standing the game reports in chat (plus renown level-ups and delve companion XP loot). Does not broadcast every faction that changed during a scan."
 L["CURRENCY_GAINS"] = "Currency Gains in Chat"
 L["CURRENCY_GAINS_TOOLTIP"] = "Display currency gain messages in chat when you earn currencies"
 L["SCREEN_FLASH_EFFECT"] = "Flash on Rare Drop"
@@ -839,7 +839,7 @@ Improvements
 - Readable realm spacing in Gear, weekly plans, Plans tracker, tracking dialog (saved keys still use Blizzard normalized realm text).
 - Collectibles: wider BfA Tamed Bloodfeaster NPC list; clearer notes for chest vs boss and multi-corpse try counting.
 - SplitCharacterKey + first-hyphen-only parsing for Name-Realm strings.
-- Mount DB cross-checks: community DB/Mounts Lua + Wowhead/WoWDB.
+- Mount DB cross-checks against community datasets and third-party "dropped by" listings.
 
 Bug fixes
 - Try Counter: chat loot + shared drop tables (e.g. Tamed Bloodfeaster) no longer lose CHAT try updates.
@@ -880,6 +880,27 @@ Bug fixes
 
 Localization
 - GearUI: upgrade track names + crafted recraft tooltip lines; PVE_CREST_EXPLORER; Profession concentration + Steam-style played time strings; locale parity for GEAR_CRAFTED_*, STATS_PLAYED_STEAM_*, PROF_CONCENTRATION_* (de, fr, es, es-mx, it, pt, ru, ko, zhTW; enUS/zhCN baseline).
+
+CurseForge: Warband Nexus]=]
+
+-- What's New / changelog body for ADDON_VERSION 2.6.0 (key CHANGELOG_V260)
+L["CHANGELOG_V260"] = [=[v2.6.0 (2026-04-18)
+
+New Features
+- Added a new slash command: /wn keys (or /wn keystones). This command lets you quickly announce all of your alts' Mythic Keystones to your Party chat.
+- The /wn keys output features class-colored character names and generates clickable, interactive Mythic Keystone item links directly in chat. If you aren't in a party, the list is printed locally for your convenience.
+
+Bug fixes
+- Collectibles / Try Counter: Corrected the fishing drop maps for the Nether-Warped Egg and Nether-Warped Drake. Tracking is now properly assigned to the 5 confirmed Midnight zones (Eversong Woods, Harandar, Zul'Aman, Voidstorm, Slayer's Rise) instead of over-broad tracking that could trigger false positives from unrelated Patient Treasure spawns.
+- Added explicit documentation regarding Patient Treasure world objects, which are correctly skipped by the addon's fishing try counter (as they lack a bobber/pool).
+
+CurseForge: Warband Nexus]=]
+
+-- What's New / changelog body for ADDON_VERSION 2.6.1 (key CHANGELOG_V261)
+L["CHANGELOG_V261"] = [=[v2.6.1 (2026-04-18)
+
+Bug fixes
+- Try Counter: Fishing try counts no longer stall when your target or mouseover is still on a nearby mob corpse; the client fishing flag is trusted over stale unit context.
 
 CurseForge: Warband Nexus]=]
 
@@ -984,6 +1005,27 @@ L["TAB_PROFESSIONS"] = "Professions"
 L["TAB_COLLECTIONS"] = "Collections"
 L["COLLECTIONS_SUBTITLE"] = "Mounts, pets, toys, and transmog overview"
 L["COLLECTIONS_SUBTAB_RECENT"] = "Recent"
+-- Collections sub-tab content headers (Recent + per-type; AceLocale returns key if missing — must define)
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "Achievements"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "Browse and search your achievements."
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "Mounts"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "Warband mount collection, sources, and preview."
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "Pets"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "Battle pets and companions across your account."
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Toy Box"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "Toys and usable collectibles."
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Recent obtains"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "Newest achievements, mounts, pets, and toys recorded on your account."
+L["COLLECTIONS_RECENT_JUST_NOW"] = "Just now"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d min ago"
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d hr ago"
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d days ago"
+L["COLLECTIONS_ACQUIRED_LABEL"] = "Recorded"
+L["COLLECTIONS_ACQUIRED_LINE"] = "%s: %s"
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "Nothing recorded yet."
+L["COLLECTIONS_RECENT_EMPTY"] = "Nothing recorded yet."
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "No matching entries."
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "No entries yet."
 L["SELECT_MOUNT_FROM_LIST"] = "Select a mount from the list"
 L["SELECT_PET_FROM_LIST"] = "Select a pet from the list"
 L["SELECT_TO_SEE_DETAILS"] = "Select a %s to see details."
@@ -1206,6 +1248,9 @@ L["TRYCOUNTER_CHAT_TAG_FISHING"] = "fishing"
 L["TRYCOUNTER_CHAT_TAG_RESET"] = "counter reset"
 L["TRYCOUNTER_ATTEMPTS_FOR"] = "%d attempts for %s"
 L["TRYCOUNTER_OBTAINED_RESET"] = "Obtained %s! Try counter reset."
+-- "What a grind" message shown when cumulative drop probability exceeded 70%.
+-- Params: totalTries, cumulativePct (e.g. 87), itemLink
+L["TRYCOUNTER_WHAT_A_GRIND"] = "What a grind! %d attempts (expected ~%d%% to have it by now) for %s"
 L["TRYCOUNTER_CAUGHT_RESET"] = "Caught %s! Try counter reset."
 L["TRYCOUNTER_CAUGHT"] = "Caught %s!"
 L["TRYCOUNTER_CONTAINER_RESET"] = "Obtained %s from container! Try counter reset."
@@ -1382,6 +1427,8 @@ L["GEAR_SLOT_RING1"] = "Ring 1"
 L["GEAR_SLOT_RING2"] = "Ring 2"
 L["GEAR_SLOT_TRINKET1"] = "Trinket 1"
 L["GEAR_SLOT_TRINKET2"] = "Trinket 2"
+    L["GEAR_MISSING_ENCHANT"] = "Missing Enchant"
+    L["GEAR_MISSING_GEM"] = "Missing Gem"
 L["GEAR_UPGRADE_AVAILABLE_FORMAT"] = "Available upgrade to %s %d/%d%s"
 L["GEAR_UPGRADES_WITH_CURRENCY_FORMAT"] = "%d upgrade(s) with current currency"
 L["GEAR_CRESTS_GOLD_ONLY"] = "Crests needed: 0 (gold only — previously reached)"
@@ -1536,6 +1583,9 @@ L["FIRSTCRAFT"] = PROFESSIONS_FIRST_CRAFT or "First Craft"
 L["WOWHEAD_LABEL"] = "Wowhead"
 L["CTRL_C_LABEL"] = "Ctrl+C"
 L["CLICK_TO_COPY_LINK"] = "Click to copy link"
+L["PLAN_CHAT_LINK_TITLE"] = "Chat link"
+L["PLAN_CHAT_LINK_HINT"] = "Click to insert into chat"
+L["PLAN_CHAT_LINK_UNAVAILABLE"] = "Chat link is not available for this entry."
 L["CLICK_FOR_WOWHEAD_LINK"] = "Click for Wowhead link"
 L["PLAN_ACTION_COMPLETE"] = "Complete the Plan"
 L["PLAN_ACTION_DELETE"] = "Delete the Plan"

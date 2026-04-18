@@ -919,6 +919,8 @@ function WarbandNexus:OnEnable()
     -- Combat protection for UI (taint prevention: we only Hide/Show our own frame, no secure frames)
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStart") -- Entering combat
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")  -- Leaving combat
+    self:RegisterEvent("UPDATE_PENDING_MAIL", "OnMailUpdated")
+    self:RegisterEvent("MAIL_CLOSED", "OnMailUpdated")
     
     -- PvE events managed by EventManager (throttled)
     
@@ -1562,6 +1564,16 @@ function WarbandNexus:IsStillOnTab(expectedTab)
     local mf = self.UI.mainFrame
     return mf:IsShown() and mf.currentTab == expectedTab
 end
+
+function WarbandNexus:OnMailUpdated()
+    if self.UpdateMailStatus then
+        self:UpdateMailStatus()
+    end
+end
+
+-- ============================================================================
+-- DEBUG HELPERS
+-- ==========================================================================================================================
 
 --[[============================================================================
     NOTE: Additional delegate functions and utility wrappers are defined at the

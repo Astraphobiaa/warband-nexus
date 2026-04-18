@@ -31,8 +31,8 @@
     npcs, rares, objects, fishing, containers, zones, encounters, encounterNames, lockoutQuests
     are built at load from sources only. Do not add data to any legacy table.
 
-    Mount NPC audits: cross-check open-source DB/Mounts/*.lua trees (community collector addons;
-    Classic through Midnight), wago.tools DB2 CSV exports where needed, plus Wowhead/WoWDB “Dropped by”.
+    Mount NPC audits: cross-checked against community-maintained open-source mount
+    datasets (Classic through Midnight) and DB2 CSV exports where needed.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -41,9 +41,8 @@ local ADDON_NAME, ns = ...
 -- BfA "Zone Drop" mounts - shared drop tables (referenced by multiple NPC entries)
 -- These mounts drop from specific mob factions within a zone, NOT every mob.
 --
--- Cross-check: community DB/Mounts/BattleForAzeroth.lua (baseline npcs={} per itemId) and
--- WoWDB/Wowhead "Dropped by" (often larger: shared loot templates, phasing, creature templates).
--- DataForAzeroth / SimpleArmory: collection leaderboards — they do not publish per-NPC drop IDs.
+-- Cross-check: community-maintained BfA mount datasets (baseline npcs={} per itemId) and
+-- third-party "dropped by" listings (often larger: shared loot templates, phasing, creature templates).
 -- =====================================================================
 local _duneScavenger = {
     { type = "mount", itemID = 163576, name = "Captured Dune Scavenger", repeatable = true },
@@ -125,7 +124,15 @@ local _voidstormRareMounts = {
 }
 
 -- MIDNIGHT 12.0 Fishing mount chain:
--- Nether-Warped Egg (fishing/treasure catch in Midnight zones) -> Nether-Warped Drake (mount; item 260916 = "Lost Nether Drake" in-game).
+-- Nether-Warped Egg -> Nether-Warped Drake (mount; item 260916 = "Lost Nether Drake" in-game).
+-- Drop source: direct fishing loot (bobber/pool) in ALL main Midnight zones.
+-- Verified against community fishing-zone datasets:
+--   Eversong Woods (2395), Harandar (2413), Zul'Aman (2437), Voidstorm (2405), Slayer's Rise (2444).
+-- Sub-zones (Silvermoon 2393, Isle of Quel'Danas 2424, The Den 2576, Atal'Aman 2536, Arcantina 2541)
+-- are reached automatically by CollectFishingDropsForZone()'s parent-map-chain walker.
+-- NOTE: Patient Treasure chests that spawn while fishing are world objects (GameObject), NOT fishing loot.
+-- The addon's ClassifyLootSession skips GameObject-only sources that lack a bobber/pool, so Patient
+-- Treasure opens never route to ProcessFishingLoot. This is expected — only bobber/pool catches count.
 local _netherWarpedEgg = {
     { type = "item", itemID = 268730, name = "Nether-Warped Egg",
       yields = {
@@ -148,8 +155,8 @@ local _netherWarpedEgg = {
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
 
 ns.CollectibleSourceDB = {
-    version = "12.0.33",
-    lastUpdated = "2026-04-13",
+    version = "12.0.34",
+    lastUpdated = "2026-04-18",
     sourceSchemaVersion = 1,
     sourceTypes = {
         "instance_boss", -- npcID + drops
@@ -167,7 +174,7 @@ ns.CollectibleSourceDB = {
     sources = {
         {
             sourceType = "fishing",
-            mapIDs = { 2393, 2395, 2424, 2413, 2576, 2437, 2536, 2405, 2541 },
+            mapIDs = { 2395, 2413, 2437, 2405, 2444 },  -- Eversong, Harandar, Zul'Aman, Voidstorm, Slayer's Rise
             drops = _netherWarpedEgg,
         },
 
@@ -288,9 +295,6 @@ ns.CollectibleSourceDB = {
               { type = "mount", itemID = 77067, name = "Reins of the Blazing Drake" },
               { type = "mount", itemID = 77069, name = "Life-Binder's Handmaiden" },
           },
-        },
-        { sourceType = "object", objectID = 207123,  -- Kasha's Bag (Zul'Aman - timed event chest)
-          drops = { { type = "mount", itemID = 69230, name = "Amani Battle Bear", guaranteed = true } },
         },
         -- MoP
         { sourceType = "object", objectID = 214424,  -- Cache of Pure Energy (Mogu'shan Vaults - post-Elegon chest)
@@ -642,9 +646,6 @@ ns.CollectibleSourceDB = {
         -- ========================================
         -- WRATH OF THE LICH KING
         -- ========================================
-        { sourceType = "world_rare", npcID = 32491,  -- Time-Lost Proto-Drake (Storm Peaks)
-          drops = { { type = "mount", itemID = 44168, name = "Reins of the Time-Lost Proto-Drake", guaranteed = true } },
-        },
         { sourceType = "instance_boss", npcID = 26693,  -- Skadi the Ruthless (Utgarde Pinnacle Heroic)
           drops = { { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" } },
         },
@@ -679,9 +680,6 @@ ns.CollectibleSourceDB = {
           statisticIds = { 4688 },
           dropDifficulty = "25H",
         },
-        { sourceType = "instance_boss", npcID = 32273,  -- Infinite Corruptor (Culling of Stratholme Heroic)
-          drops = { { type = "mount", itemID = 43951, name = "Reins of the Bronze Drake", guaranteed = true } },
-        },
         -- Vault of Archavon bosses (faction-specific item IDs)
         { sourceType = "instance_boss", npcID = 31125,  -- Archavon the Stone Watcher
           drops = {
@@ -715,13 +713,6 @@ ns.CollectibleSourceDB = {
         -- ========================================
         -- CATACLYSM
         -- ========================================
-        -- World Rares (guaranteed drops)
-        { sourceType = "world_rare", npcID = 50062,  -- Aeonaxx (Deepholm)
-          drops = { { type = "mount", itemID = 63042, name = "Reins of the Phosphorescent Stone Drake", guaranteed = true } },
-        },
-        { sourceType = "world_rare", npcID = 50005,  -- Poseidus (Vashj'ir)
-          drops = { { type = "mount", itemID = 67151, name = "Reins of Poseidus", guaranteed = true } },
-        },
         { sourceType = "instance_boss", npcID = 43873,  -- Altairus (Vortex Pinnacle)
           drops = { { type = "mount", itemID = 63040, name = "Reins of the Drake of the North Wind" } },
         },
@@ -1052,29 +1043,6 @@ ns.CollectibleSourceDB = {
         -- WARLORDS OF DRAENOR
         -- ========================================
 
-        -- Rare Spawns (guaranteed drops from verified sources)
-        [81001] = { -- Nok-Karosh (Frostfire Ridge) [Verified]
-            { type = "mount", itemID = 116794, name = "Garn Nighthowl", guaranteed = true },
-        },
-        [50990] = { -- Nakk the Thunderer (Nagrand)
-            { type = "mount", itemID = 116659, name = "Bloodhoof Bull", guaranteed = true },
-        },
-        [50981] = { -- Luk'hok (Nagrand)
-            { type = "mount", itemID = 116661, name = "Mottled Meadowstomper", guaranteed = true },
-        },
-        [50992] = { -- Gorok (Frostfire Ridge)
-            { type = "mount", itemID = 116674, name = "Great Greytusk", guaranteed = true },
-        },
-        [51015] = { -- Silthide (Talador)
-            { type = "mount", itemID = 116767, name = "Sapphire Riverbeast", guaranteed = true },
-        },
-        [50985] = { -- Poundfist (Gorgrond)
-            { type = "mount", itemID = 116792, name = "Sunhide Gronnling", guaranteed = true },
-        },
-        [50883] = { -- Pathrunner (Shadowmoon Valley)
-            { type = "mount", itemID = 116773, name = "Swift Breezestrider", guaranteed = true },
-        },
-
         -- World Boss
         [87493] = { -- Rukhmar (Spires of Arak) [Verified]
             { type = "mount", itemID = 116771, name = "Solar Spirehawk" },
@@ -1212,9 +1180,6 @@ ns.CollectibleSourceDB = {
         -- ========================================
 
         -- Darkshore / BfA World Rares
-        [148790] = { -- Frightened Kodo (Darkshore)
-            { type = "mount", itemID = 166433, name = "Frightened Kodo", guaranteed = true },
-        },
         [160708] = { -- Mail Muncher (Horrific Visions)
             { type = "mount", itemID = 174653, name = "Mail Muncher" },
         },
@@ -1243,7 +1208,7 @@ ns.CollectibleSourceDB = {
         [123863] = _duneScavenger,  -- Sethrak Outrider
 
         -- BfA Zone Drops: Terrified Pack Mule (Drustvar - Hexthralled / Corlain line)
-        -- Community baseline + Wowhead item=163574 "Dropped by" (duplicate display names = extra creature ids).
+        -- Community baseline + cross-checked "dropped by" lists (duplicate display names = extra creature ids).
         [129995] = _terrifiedPackMule,  -- Emily Mayville (rare)
         [130016] = _terrifiedPackMule,  -- Emily Mayville (alt spawn / phase)
         [131519] = _terrifiedPackMule,  -- Hexthralled Falconer
@@ -1259,8 +1224,8 @@ ns.CollectibleSourceDB = {
         [141642] = _terrifiedPackMule,  -- Hexthralled Halberdier (Goodspeed's Guard, etc.)
 
         -- BfA Zone Drops: Reins of a Tamed Bloodfeaster (Nazmir - Blood Troll mobs)
-        -- Baseline: community BfA mount DB npcs (16). Extended: Wowhead/WoWDB "Dropped by", Amaki/Zalamar
-        -- lines, Loa-Gutter summoners (Midnight), ritualists, extra warrior template — verify on item=163575.
+        -- Baseline: community BfA mount dataset npcs (16). Extended: cross-checked "dropped by" lists, Amaki/Zalamar
+        -- lines, Loa-Gutter summoners (Midnight), ritualists, extra warrior template — verify on the mount item.
         [120606] = _bloodfeaster,  -- Blood Troll Hexxer / Mystic
         [120607] = _bloodfeaster,  -- Blood Troll Warrior (template)
         [120613] = _bloodfeaster,  -- Blood Troll Warmother
@@ -1278,7 +1243,7 @@ ns.CollectibleSourceDB = {
         [126888] = _bloodfeaster,  -- Blood Witch Vashera
         [126890] = _bloodfeaster,  -- Blood Priestess Zu'Anji
         [126891] = _bloodfeaster,  -- Blood Witch Yialu
-        [127040] = _bloodfeaster,  -- Zalamar Zealot (Wowhead drop list: Zalamar line)
+        [127040] = _bloodfeaster,  -- Zalamar Zealot (Zalamar line)
         [127145] = _bloodfeaster,  -- Zalamar Bloodsinger
         [127224] = _bloodfeaster,  -- Blood Troll Shaman / Empowered Worshipper (display)
         [127770] = _bloodfeaster,  -- Blood Troll Warrior (alt template, Nazmir)
@@ -1297,13 +1262,13 @@ ns.CollectibleSourceDB = {
         [133077] = _bloodfeaster,  -- Nazmani War Slave
         [133181] = _bloodfeaster,  -- Nazmani Ritualist
         [133279] = _bloodfeaster,  -- Nazmani Drudge
-        [133445] = _bloodfeaster,  -- Nazmani Raider (Wowhead npc=133445 / item=163575 dropped-by)
+        [133445] = _bloodfeaster,  -- Nazmani Raider (item 163575 dropped-by cross-check)
         [136293] = _bloodfeaster,  -- Blood Troll Savage
         [136639] = _bloodfeaster,  -- Blood Troll Berserker
         [138816] = _bloodfeaster,  -- Loa-Gutter Summoner (Midnight+ Nazmir)
 
         -- BfA Zone Drops: Goldenmane's Reins (Stormsong Valley - Tidesage/Irontide mobs)
-        -- Source: WoWHead-verified (25 NPC IDs)
+        -- Source: community datasets cross-checked (25 NPC IDs)
         [129750] = _goldenmane,  -- Tidesage Initiate
         [131646] = _goldenmane,  -- Tidesage Seacaller
         [135585] = _goldenmane,  -- Tidesage Adept
@@ -1535,9 +1500,6 @@ ns.CollectibleSourceDB = {
         [168647] = { -- Valfir the Unrelenting (Ardenweald)
             { type = "mount", itemID = 180730, name = "Wild Glimmerfur Prowler" },
         },
-        [164107] = { -- Gormtamer Tizo (Ardenweald)
-            { type = "mount", itemID = 180725, name = "Arboreal Gulper", guaranteed = true },
-        },
         [164112] = { -- Humon'gozz (Ardenweald)
             { type = "mount", itemID = 182650, name = "Unusual Ally" },
         },
@@ -1762,6 +1724,9 @@ ns.CollectibleSourceDB = {
             statisticIds = { 20484 },  -- Darkflame Cleft kills (Mythic)
             dropDifficulty = "Mythic",
         },
+        -- No statisticIds: WoW stat 20500 / merged seed often reads 0 or mismatches journal keys, which
+        -- made ProcessMissedDrops skip manual increments entirely — UI showed 0 tries. Counts come from
+        -- per-kill loot-miss increments (tryCountReflectsTo → mount 2119), same as farming the item.
         [213119] = { -- Void Speaker Eirich (The Stonevault Mythic/M+) [Verified]
             { type = "item", itemID = 226683, name = "Malfunctioning Mechsuit", repeatable = false,
               questStarters = {
@@ -1769,7 +1734,6 @@ ns.CollectibleSourceDB = {
               },
               tryCountReflectsTo = { type = "mount", itemID = 221765, name = "Stonevault Mechsuit", mountID = 2119 },
             },
-            statisticIds = { 20500 },  -- The Stonevault kills (Mythic)
             dropDifficulty = "Mythic",
         },
 
@@ -1901,23 +1865,23 @@ ns.CollectibleSourceDB = {
         [257027] = _voidstormRareMounts, -- Rakshur the Bonegrinder (Slayer's Rise)
 
         -- Midnight 12.0 â€” only bosses that drop mounts (2 dungeons M/M+, 1 raid M)
-        -- Source: warcraftmounts.com Patch 12.0.1; encounter IDs: wago.tools DungeonEncounter DB2
+        -- Source: community mount datasets for Patch 12.0.1; encounter IDs: DungeonEncounter DB2
         -- difficultyIDs: 23 = Mythic dungeon, 8 = Mythic Keystone (M+), 16 = Mythic raid (all map to "Mythic")
         -- Spectral / Lucent Hawkstrider: BoP, account-wide mount (learn once). Same cadence as other M dungeon mounts.
-        -- Not BoE farm copies — try count must not "reset on obtain" (repeatable = false). Sources: wowhead item pages, warcraftmounts.com.
+        -- Not BoE farm copies — try count must not "reset on obtain" (repeatable = false).
         [231636] = { -- Restless Heart (Windrunner Spire) â€” Spectral Hawkstrider â€” encounterID 3059
             { type = "mount", itemID = 262914, name = "Spectral Hawkstrider", repeatable = false },
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+); same encounter, no separate M+ entry
         },
-        [231865] = { -- Degentrius (Magisters' Terrace) â€” Lucent Hawkstrider â€” encounterID 3074 (npc=231865 wowhead)
+        [231865] = { -- Degentrius (Magisters' Terrace) â€” Lucent Hawkstrider â€” encounterID 3074 (npcID 231865)
             -- mountID: journal id (avoids GetMountFromItem when secret in instances); spell fallback still applies
             { type = "mount", itemID = 260231, name = "Lucent Hawkstrider", mountID = 2817, repeatable = false },
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+)
         },
         [214650] = { -- L'ura / Midnight Falls (March on Quel'Danas raid final boss) â€” encounterID 3183
-            { type = "mount", itemID = 246590, name = "Ashes of Belo'ren", guaranteed = true },
+            { type = "mount", itemID = 246590, name = "Ashes of Belo'ren" },
             dropDifficulty = "Mythic",
             difficultyIDs = { 16 },  -- Mythic raid only
         },
@@ -2519,4 +2483,123 @@ function ns.CollectibleSourceDB.GetSourceStringForMount(mountID)
     end
 
     return db._mountSourceByMountID[mountID]
+end
+
+-- =================================================================
+-- Drop rates LUT (per-kill/per-attempt community-documented rates).
+-- Keyed by mount teach-item itemID. Values are probabilities in [0,1].
+-- Used for "What a grind" messaging: cumulative P = 1 - (1-rate)^tries.
+-- Rates are approximate community baselines as of 2026-04; refine with in-game
+-- experience. Wrong rates only cause missed/false grind messages — gameplay safe.
+-- Omit an entry to disable the grind-check for that mount.
+-- =================================================================
+ns.CollectibleSourceDB.dropRates = {
+    -- Classic / Vanilla
+    [13335]  = 0.01,    -- Deathcharger's Reins (Baron Rivendare, Strat)
+    [18767]  = 0.02,    -- Swift Razzashi Raptor (Bloodlord Mandokir, ZG)
+    [19872]  = 0.01,    -- Swift Zulian Tiger (High Priest Thekal, ZG)
+    [21176]  = 0.01,    -- Black Qiraji Resonating Crystal (AQ40) — legacy gated
+    [30480]  = 0.007,   -- Fiery Warhorse's Reins (Attumen, Karazhan)
+    -- TBC
+    [32458]  = 0.013,   -- Ashes of Al'ar (Kael'thas, Tempest Keep)
+    [32768]  = 0.013,   -- Reins of the Raven Lord (Anzu, Sethekk Halls H)
+    [29228]  = 0.013,   -- Swift White Hawkstrider (Kael'thas, Magisters' Terrace H)
+    [35513]  = 0.013,   -- Blue Drake (Malygos 10)
+    -- Holiday / Event
+    [37012]  = 0.005,   -- Headless Horseman's Reins (Hallow's End)
+    [71665]  = 0.0003,  -- Big Love Rocket (Apothecary Hummel, Love is in the Air)
+    -- WotLK
+    [43951]  = 0.04,    -- Reins of the Bronze Drake (CoS timed)
+    [43952]  = 0.04,    -- Reins of the Azure Drake (Malygos 10)
+    [43953]  = 0.04,    -- Reins of the Twilight Drake (Sartharion+3)
+    [43986]  = 0.005,   -- Reins of the Blue Drake (Malygos 10, legacy)
+    [44168]  = 0.0003,  -- Reins of the Time-Lost Proto-Drake (Storm Peaks rare)
+    [44177]  = 0.01,    -- Reins of the Ice Mammoth (legacy rare)
+    [44689]  = 0.02,    -- Reins of the Blue Drake (alt)
+    [45693]  = 0.01,    -- Mimiron's Head (Yogg-Saron 0-keeper 25)
+    [46109]  = 0.00014, -- Reins of the Sea Turtle (fishing)
+    [50818]  = 0.009,   -- Reins of the Crimson Deathcharger — Invincible (LK25H)
+    [49636]  = 0.04,    -- Reins of the Onyxian Drake (Onyxia 25)
+    -- Cataclysm
+    [63231]  = 0.01,    -- Flametalon of Alysrazor (Firelands)
+    [63040]  = 0.01,    -- Smoldering Egg of Millagazor (Ragnaros)
+    [63043]  = 0.01,    -- Life-Binder's Handmaiden (Deathwing H)
+    [63042]  = 0.0001,  -- Reins of the Phosphorescent Stone Drake (Aeonaxx rare)
+    [67151]  = 0.0002,  -- Reins of Poseidus (rare world serpent)
+    [69230]  = 0.03,    -- Amani Battle Bear (ZA timed, legacy)
+    [78919]  = 0.005,   -- Experiment 12-B (Ultraxion LFR/N)
+    -- MoP
+    [87771]  = 0.01,    -- Reins of the Heavenly Crimson Cloud Serpent (Sha of Anger)
+    [87777]  = 0.009,   -- Reins of the Astral Cloud Serpent (Elegon)
+    [89783]  = 0.01,    -- Son of Galleon's Saddle (Galleon rare)
+    [93666]  = 0.015,   -- Clutch of Ji-Kun (Ji-Kun, Throne of Thunder)
+    [94228]  = 0.01,    -- Spawn of Horridon (Horridon, ToT)
+    [95059]  = 0.01,    -- Kor'kron Juggernaut (Garrosh H, SoO)
+    [104253] = 0.01,    -- Reins of the Thundering Ruby Cloud Serpent (Alani)
+    -- WoD
+    [116775] = 0.015,   -- Giant Coldsnout (Draenor zone rare cluster)
+    [116669] = 0.01,    -- Garn Nighthowl (Nok-Karosh type, Frostfire rare)
+    [127156] = 0.01,    -- Trained Rocktusk
+    [128671] = 0.005,   -- Ironhoof Destroyer (Blackhand M)
+    [130965] = 0.01,    -- Felsteel Annihilator (Archimonde M)
+    -- Legion
+    [137574] = 0.01,    -- Midnight's Eternal Reins (Kara Nightbane)
+    [137615] = 0.005,   -- Abyss Worm (Mistress Sassz'ine M)
+    [142236] = 0.005,   -- Antoran Charhound (Felhounds of Sargeras M)
+    [147899] = 0.005,   -- Shackled Ur'zul (Argus M)
+    [152844] = 0.005,   -- Fiendish Hellfire Core (Jaina M, BoD)
+    [152912] = 0.00025, -- Pond Nettle (fishing, Legion)
+    [152815] = 0.02,    -- Highmountain Elderhorn (legacy)
+    -- BfA
+    [163131] = 0.0002,  -- Great Sea Ray (fishing, BfA)
+    [163575] = 0.005,   -- Glacial Tidestorm (Jaina M)
+    [166518] = 0.005,   -- G.M.O.D. (Mekkatorque M)
+    [166705] = 0.005,   -- Bloodflank Charger (Stormwall Blockade M)
+    [168832] = 0.005,   -- Awakened Mindborer (Queen Azshara M)
+    [174859] = 0.005,   -- Ankoan Waverider (Uu'nat M, Crucible)
+    [175836] = 0.005,   -- Ny'alothan Ta'etheral (N'Zoth M)
+    -- Shadowlands
+    [180725] = 0.01,    -- Arboreal Gulper (Gormtamer Tizo rare, Ardenweald)
+    [186656] = 0.005,   -- Soultwisted Deathwalker (Sylvanas M)
+    [190177] = 0.005,   -- Vengeance (Jailer M)
+    -- Dragonflight
+    [201098] = 0.01,    -- Renewed Proto-Drake: Reins of Wrathion's Steed
+    [204729] = 0.005,   -- Shadowflame Reaver (Raszageth M)
+    [210600] = 0.005,   -- Cobalt Pyreclaw (Fyrakk M)
+    [220267] = 0.005,   -- Ashen Predator (Nymue M)
+    -- War Within S1-S2
+    [224147] = 0.008,   -- Sureki Skyrazor (Queen Ansurek M)
+    [236960] = 0.03,    -- Prototype A.S.M.R. (Gallywix M, Nerub-ar / Liberation)
+    -- Midnight 12.0
+    [246590] = 0.5,     -- Ashes of Belo'ren (Manaforge Omega S1 — per-player ~50%)
+    [260916] = 0.0001,  -- Nether-Warped Drake (fishing, Midnight)
+}
+
+-- =================================================================
+-- Returns the known per-attempt drop rate for a mount item, or nil.
+-- @param itemID number mount teach-item itemID
+-- @return number|nil rate in [0,1]
+-- =================================================================
+function ns.CollectibleSourceDB.GetDropRate(itemID)
+    if not itemID then return nil end
+    local id = tonumber(itemID)
+    if not id then return nil end
+    local rate = ns.CollectibleSourceDB.dropRates[id]
+    if type(rate) ~= "number" or rate <= 0 or rate >= 1 then return nil end
+    return rate
+end
+
+-- =================================================================
+-- Cumulative probability of obtaining a drop in N independent attempts.
+-- P(obtained by N tries) = 1 - (1 - rate)^tries
+-- @param itemID number mount teach-item itemID
+-- @param tries number number of attempts (>= 0)
+-- @return number|nil P in [0,1], or nil when rate unknown
+-- =================================================================
+function ns.CollectibleSourceDB.GetCumulativeProbability(itemID, tries)
+    local rate = ns.CollectibleSourceDB.GetDropRate(itemID)
+    if not rate then return nil end
+    local n = tonumber(tries) or 0
+    if n <= 0 then return 0 end
+    return 1 - (1 - rate) ^ n
 end

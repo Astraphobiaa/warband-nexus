@@ -1757,6 +1757,42 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
         MarkAsShownByName(name)
         MarkAsPermanentlyNotified("mount", mountID)
 
+        -- "What a grind" chat line when cumulative drop probability > 70%.
+        -- Honors hideTryCounterChat; gracefully no-ops when rate/itemID unknown.
+        if ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetCumulativeProbability
+            and C_MountJournal and C_MountJournal.GetMountItemID then
+            local okItem, mountItemID = pcall(C_MountJournal.GetMountItemID, mountID)
+            if okItem and mountItemID and type(mountItemID) == "number" and mountItemID > 0 then
+                local tries = (self.GetTryCount and self:GetTryCount("mount", mountID)) or 0
+                local total = (tonumber(tries) or 0) + 1
+                local cumP = ns.CollectibleSourceDB.GetCumulativeProbability(mountItemID, total)
+                if cumP and cumP > 0.70 then
+                    local hideChat = self.db and self.db.profile and self.db.profile.notifications
+                        and self.db.profile.notifications.hideTryCounterChat
+                    if not hideChat then
+                        local itemLink
+                        if GetItemInfo then
+                            local _, link = GetItemInfo(mountItemID)
+                            if link and link ~= "" then itemLink = link end
+                        end
+                        if not itemLink then
+                            itemLink = "|cffffffff[" .. (name or "Mount") .. "]|r"
+                        end
+                        local L = ns.L
+                        local fmt = (L and L["TRYCOUNTER_WHAT_A_GRIND"])
+                            or "What a grind! %d attempts (expected ~%d%% to have it by now) for %s"
+                        local pct = math.floor(cumP * 100 + 0.5)
+                        local msg = "|cffff8800[WN-Grind]|r " .. string.format(fmt, total, pct, itemLink)
+                        if ns.ChatOutput and ns.ChatOutput.SendTryCounterMessage then
+                            ns.ChatOutput.SendTryCounterMessage(msg)
+                        elseif self.Print then
+                            self:Print(msg)
+                        end
+                    end
+                end
+            end
+        end
+
         self:SendMessage(E.COLLECTIBLE_OBTAINED, {
             type = "mount",
             id = mountID,

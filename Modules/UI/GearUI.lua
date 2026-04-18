@@ -86,9 +86,8 @@ local function P(n) return math.floor(n * PAPERDOLL_SCALE + 0.5) end
 local SLOT_SIZE      = P(38)
 local SLOT_GAP       = P(5)
 local DOLL_PAD       = P(12)
--- Slot–ok arası eski konum; ok–yazı arası: daha negatif = yazı daha içeri (ikona yakın)
-local SLOT_TO_ARROW_GAP = P(4)   -- slot ile upgrade ikonu arası (eski değer)
-local ARROW_TO_TEXT_GAP = -8     -- yazılar içeri kaydırıldı (sol: sağa, sağ: sola)
+local SLOT_TO_ARROW_GAP = P(4)   -- slot ile upgrade ikonu arası
+local ARROW_TO_TEXT_GAP = P(6)   -- ok ile yazı arası boşluk (artık yaslamalı olduğu için pozitif olmalı)
 local TRACK_TEXT_W   = P(136)  -- Track metin taşmasını engellemek için genişletildi
 local UPGRADE_ARROW_W = P(16)
 local CURRENCY_PANEL_W = 240
@@ -539,10 +538,99 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
 
     -- Tooltip: item link + simplified upgrade info (custom tooltip service)
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
+    
+    -- Dynamically evaluate enchant and gem status from itemLink so it works for offline characters
+    local hasEnchant = false
+    local isMissingGem = false
+    local isEnchantable = false
+    
+    if slotData and slotData.itemLink then
+        local enchantStr = string.match(slotData.itemLink, "item:%d+:(%d*)")
+        if enchantStr and enchantStr ~= "" and enchantStr ~= "0" then
+            hasEnchant = true
+        end
+        
+        local stats = GetItemStats and GetItemStats(slotData.itemLink) or {}
+        for k, v in pairs(stats) do
+            if type(k) == "string" and string.find(k, "EMPTY_SOCKET_") then
+                isMissingGem = true
+                break
+            end
+        end
+        
+        -- In Midnight / TWW, these are the enchantable slots
+        local enchantableSlots = {
+            [5] = true,  -- Chest
+            [7] = true,  -- Legs
+            [8] = true,  -- Feet
+            [9] = true,  -- Wrist
+            [11] = true, -- Ring 1
+            [12] = true, -- Ring 2
+            [15] = true, -- Back
+            [16] = true  -- Main Hand
+        }
+        isEnchantable = enchantableSlots[slotID] or false
+    end
+    
+    -- Warning icon for missing enchant or gem
+    if slotData and slotData.itemLink and (isMissingGem or (isEnchantable and not hasEnchant)) then
+        local warnIcon = btn:CreateTexture(nil, "OVERLAY", nil, 7)
+        warnIcon:SetSize(18, 18)
+        warnIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+        
+        if upgradeArrow then
+            upgradeArrow:ClearAllPoints()
+            if side == "left" then
+                upgradeArrow:SetPoint("CENTER", btn, "CENTER", -ARROW_OFFSET_FROM_SLOT_CENTER, 9)
+                warnIcon:SetPoint("CENTER", btn, "CENTER", -ARROW_OFFSET_FROM_SLOT_CENTER, -9)
+            elseif side == "right" then
+                upgradeArrow:SetPoint("CENTER", btn, "CENTER", ARROW_OFFSET_FROM_SLOT_CENTER, 9)
+                warnIcon:SetPoint("CENTER", btn, "CENTER", ARROW_OFFSET_FROM_SLOT_CENTER, -9)
+            else
+                if arrowAnchor then
+                    upgradeArrow:SetPoint("CENTER", arrowAnchor, "CENTER", 0, 9)
+                    warnIcon:SetPoint("CENTER", arrowAnchor, "CENTER", 0, -9)
+                else
+                    upgradeArrow:SetPoint("CENTER", btn, "CENTER", -ARROW_OFFSET_FROM_SLOT_CENTER, 9)
+                    warnIcon:SetPoint("CENTER", btn, "CENTER", -ARROW_OFFSET_FROM_SLOT_CENTER, -9)
+                end
+            end
+        else
+            if side == "left" then
+                warnIcon:SetPoint("CENTER", btn, "CENTER", -ARROW_OFFSET_FROM_SLOT_CENTER, 0)
+            elseif side == "right" then
+                warnIcon:SetPoint("CENTER", btn, "CENTER", ARROW_OFFSET_FROM_SLOT_CENTER, 0)
+            else
+                if arrowAnchor then
+                    warnIcon:SetPoint("CENTER", arrowAnchor, "CENTER", 0, 0)
+                else
+                    warnIcon:SetPoint("CENTER", btn, "CENTER", -ARROW_OFFSET_FROM_SLOT_CENTER, 0)
+                end
+            end
+        end
+        
+        btn.warnIcon = warnIcon
+    end
+    
     btn:SetScript("OnEnter", function(self)
         if slotData and slotData.itemLink then
             local up = upgradeInfo and upgradeInfo[slotID]
             local additionalLines = {}
+            
+            -- Missing Enchant/Gem warnings at the top of additional lines
+            if isEnchantable and not hasEnchant then
+                additionalLines[#additionalLines + 1] = {
+                    text = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:14|t |cffff3333" .. ((ns.L and ns.L["GEAR_MISSING_ENCHANT"]) or "Missing Enchant") .. "|r",
+                    color = {1, 0.2, 0.2}
+                }
+            end
+            if isMissingGem then
+                additionalLines[#additionalLines + 1] = {
+                    text = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:14|t |cffff3333" .. ((ns.L and ns.L["GEAR_MISSING_GEM"]) or "Missing Gem") .. "|r",
+                    color = {1, 0.2, 0.2}
+                }
+            end
+            
             if up and up.isCrafted then
                 additionalLines[#additionalLines + 1] = { type = "spacer", height = 6 }
                 local tierLabel = LocalizeUpgradeTrackName(up.craftedTierName or "Crafted")
@@ -687,10 +775,13 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
         if slotNameLabel.SetWordWrap then slotNameLabel:SetWordWrap(false) end
     end
 
-    -- Status label: ortadan çizgi — yazı/ikon/slot merkezleri aynı hizada
+    -- Status label ve text layout
     local trackText = (statusText and statusText ~= "") and statusText or nil
     local trackLabel = nil
     local w = textWidth or TRACK_TEXT_W
+    
+    local currentTextOffset = TEXT_OFFSET_FROM_SLOT_CENTER
+    -- Dikey hizalama yapıldığı için artık +20 yatay itme yapmaya gerek yok
 
     if trackText and side ~= "top" then
         trackLabel = FontManager and FontManager.CreateFontString and FontManager:CreateFontString(parent, "tiny", "OVERLAY") or parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -700,47 +791,60 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
         trackLabel:SetWidth(w)
 
         if side == "left" or side == "right" or isBottomLeft or isBottomRight then
-            -- Sol/sağ/silah: yazı bloğu ikonun YANINDA, aynı satırda dikey ortalanır
             local textCenterX
             if side == "left" or isBottomLeft then
-                textCenterX = -TEXT_OFFSET_FROM_SLOT_CENTER
+                textCenterX = -currentTextOffset
             else
-                textCenterX = TEXT_OFFSET_FROM_SLOT_CENTER
+                textCenterX = currentTextOffset
             end
             local textContainer = CreateFrame("Frame", nil, parent)
             textContainer:SetSize(textWidth or TRACK_TEXT_W, P(36))
             textContainer:SetPoint("CENTER", btn, "CENTER", textCenterX, 0)
-            -- Sol/sağ/silah: iki satırlık yazı bloğu ikonla dikey hizalı olsun (diğerleri gibi)
+            
             local blockCenterOffset = 8
             trackLabel:SetParent(textContainer)
             trackLabel:ClearAllPoints()
             trackLabel:SetWidth(textWidth or TRACK_TEXT_W)
             trackLabel:SetPoint("CENTER", textContainer, "CENTER", 0, -blockCenterOffset)
-            trackLabel:SetJustifyH("CENTER")
+            
+            -- Set justification based on side to fix the huge gap
+            if side == "left" or isBottomLeft then
+                trackLabel:SetJustifyH("RIGHT")
+            elseif side == "right" or isBottomRight then
+                trackLabel:SetJustifyH("LEFT")
+            else
+                trackLabel:SetJustifyH("CENTER")
+            end
+            
             if slotNameLabel then
                 slotNameLabel:SetParent(textContainer)
                 slotNameLabel:ClearAllPoints()
                 slotNameLabel:SetPoint("BOTTOM", trackLabel, "TOP", 0, 2)
                 slotNameLabel:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
                 slotNameLabel:SetPoint("RIGHT", textContainer, "RIGHT", 0, 0)
-                slotNameLabel:SetJustifyH("CENTER")
+                
+                if side == "left" or isBottomLeft then
+                    slotNameLabel:SetJustifyH("RIGHT")
+                elseif side == "right" or isBottomRight then
+                    slotNameLabel:SetJustifyH("LEFT")
+                else
+                    slotNameLabel:SetJustifyH("CENTER")
+                end
             end
         end
     elseif slotNameLabel then
-        -- Track yoksa: slot adı yine merkez hizada (sol/sağ/alt)
         if side == "left" then
-            slotNameLabel:SetPoint("CENTER", btn, "CENTER", -TEXT_OFFSET_FROM_SLOT_CENTER, 0)
+            slotNameLabel:SetPoint("CENTER", btn, "CENTER", -currentTextOffset, 0)
             slotNameLabel:SetWidth(TRACK_TEXT_W)
-            slotNameLabel:SetJustifyH("CENTER")
+            slotNameLabel:SetJustifyH("RIGHT")
         elseif side == "right" then
-            slotNameLabel:SetPoint("CENTER", btn, "CENTER", TEXT_OFFSET_FROM_SLOT_CENTER, 0)
+            slotNameLabel:SetPoint("CENTER", btn, "CENTER", currentTextOffset, 0)
             slotNameLabel:SetWidth(TRACK_TEXT_W)
-            slotNameLabel:SetJustifyH("CENTER")
+            slotNameLabel:SetJustifyH("LEFT")
         else
-            -- bottom_left/bottom_right: slot adı ikonun yanında (aynı satır)
-            slotNameLabel:SetPoint("CENTER", btn, "CENTER", (side == "bottom_right") and TEXT_OFFSET_FROM_SLOT_CENTER or -TEXT_OFFSET_FROM_SLOT_CENTER, 0)
+            slotNameLabel:SetPoint("CENTER", btn, "CENTER", (side == "bottom_right") and currentTextOffset or -currentTextOffset, 0)
             slotNameLabel:SetWidth(textWidth or TRACK_TEXT_W)
-            slotNameLabel:SetJustifyH("CENTER")
+            slotNameLabel:SetJustifyH((side == "bottom_right") and "LEFT" or "RIGHT")
         end
     end
 

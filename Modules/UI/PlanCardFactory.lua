@@ -190,7 +190,14 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     card.nameText = nameText
     card.planNameText = nameText  -- Store reference for overflow checking
     
-    -- Wowhead link button (top-right of name row; name truncates to its left)
+    -- Wowhead + optional chat link (top-right of name row; name truncates to their left)
+    local CDL = ns.CollectionsDetailHeaderLayout or {}
+    local whW = CDL.WOWHEAD_SIZE or ns.PLAN_CARD_WOWHEAD_SIZE or 18
+    local whTop = CDL.CARD_WOWHEAD_TOP_OFFSET or 10
+    local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
+    local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
+    local LINK_GAP = 4
+
     local wowheadEntityType, wowheadID
     if plan.type == "mount" then
         wowheadEntityType = "mount"
@@ -209,11 +216,8 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     elseif plan.type == "title" then
         wowheadEntityType, wowheadID = "title", plan.titleID
     end
+
     if wowheadEntityType and wowheadID and wowheadID > 0 then
-        local CDL = ns.CollectionsDetailHeaderLayout or {}
-        local whW = CDL.WOWHEAD_SIZE or 18
-        local whTop = CDL.CARD_WOWHEAD_TOP_OFFSET or 10
-        local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
         local whBtn = CreateFrame("Button", nil, card)
         whBtn:SetSize(whW, whW)
         whBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -whInset, -whTop)
@@ -234,13 +238,40 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
                 ns.UI.Factory:ShowWowheadCopyURL(capturedType, capturedID, self)
             end
         end)
-        local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
-        nameText:SetPoint("RIGHT", whBtn, "LEFT", -nameGap, 0)
+    end
+
+    if WarbandNexus.PlanSupportsChatLink and WarbandNexus:PlanSupportsChatLink(plan) then
+        local linkBtn = CreateFrame("Button", nil, card)
+        linkBtn:SetSize(whW, whW)
+        if card.wowheadBtn then
+            linkBtn:SetPoint("TOPRIGHT", card.wowheadBtn, "TOPLEFT", -LINK_GAP, 0)
+        else
+            linkBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -whInset, -whTop)
+        end
+        linkBtn:SetFrameLevel(card:GetFrameLevel() + 5)
+        linkBtn:SetNormalTexture("Interface\\CHATFRAME\\UI-ChatIcon-Chat")
+        linkBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        local capPlan = plan
+        linkBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            local L = ns.L
+            GameTooltip:AddLine((L and L["PLAN_CHAT_LINK_TITLE"]) or "Chat link", 1, 0.82, 0)
+            GameTooltip:AddLine((L and L["PLAN_CHAT_LINK_HINT"]) or "Click to insert into chat", 0.6, 0.6, 0.6, true)
+            GameTooltip:Show()
+        end)
+        linkBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        linkBtn:SetScript("OnClick", function()
+            if WarbandNexus.InsertPlanChatLink then
+                WarbandNexus:InsertPlanChatLink(capPlan)
+            end
+        end)
+        card.chatLinkBtn = linkBtn
+    end
+
+    local anchorNameRight = card.chatLinkBtn or card.wowheadBtn
+    if anchorNameRight then
+        nameText:SetPoint("RIGHT", anchorNameRight, "LEFT", -nameGap, 0)
     else
-        local CDL = ns.CollectionsDetailHeaderLayout or {}
-        local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
-        local whW = CDL.WOWHEAD_SIZE or ns.PLAN_CARD_WOWHEAD_SIZE or 18
-        local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
         nameText:SetPoint("RIGHT", card, "RIGHT", -(whInset + whW + nameGap), 0)
     end
 
@@ -760,13 +791,14 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
             local gap = 8
             local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
             local whW = ns.PLAN_CARD_WOWHEAD_SIZE or 18
-            if card.wowheadBtn then
-                row:SetPoint("TOPRIGHT", card.wowheadBtn, "TOPLEFT", -gap, 0)
+            local anchorForTry = card.chatLinkBtn or card.wowheadBtn
+            if anchorForTry then
+                row:SetPoint("TOPRIGHT", anchorForTry, "TOPLEFT", -gap, 0)
             else
                 local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
                 row:SetPoint("TOPRIGHT", card, "TOPRIGHT", -(whInset + whW + gap), -10)
             end
-            -- Try sits on the name row, immediately to the right of the title (before Wowhead)
+            -- Try sits on the name row, immediately to the right of the title (before chat/Wowhead)
             if card.nameText then
                 card.nameText:SetPoint("RIGHT", row, "LEFT", -nameGap, 0)
             end
@@ -777,8 +809,9 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         card.tryCountClickable:Hide()
         if card.nameText then
             local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
-            if card.wowheadBtn then
-                card.nameText:SetPoint("RIGHT", card.wowheadBtn, "LEFT", -nameGap, 0)
+            local anchorNameRight = card.chatLinkBtn or card.wowheadBtn
+            if anchorNameRight then
+                card.nameText:SetPoint("RIGHT", anchorNameRight, "LEFT", -nameGap, 0)
             else
                 local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
                 local whW = ns.PLAN_CARD_WOWHEAD_SIZE or 18

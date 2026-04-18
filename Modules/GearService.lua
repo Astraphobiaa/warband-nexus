@@ -800,6 +800,33 @@ function WarbandNexus:ScanEquippedGear()
                     name      = name,
                 }
 
+                -- Enchant and Gem detection
+                local hasEnchant = false
+                local enchantStr = string.match(itemLink, "item:%d+:(%d*)")
+                if enchantStr and enchantStr ~= "" and enchantStr ~= "0" then
+                    hasEnchant = true
+                end
+                
+                -- Check for empty sockets (GetItemStats returns EMPTY_SOCKET_* keys for unfilled sockets)
+                local isMissingGem = false
+                local stats = GetItemStats and GetItemStats(itemLink) or {}
+                for k, v in pairs(stats) do
+                    if type(k) == "string" and string.find(k, "EMPTY_SOCKET_") then
+                        isMissingGem = true
+                        break
+                    end
+                end
+                
+                slotEntry.hasEnchant = hasEnchant
+                slotEntry.isMissingGem = isMissingGem
+                
+                -- Is this slot enchantable? (Chest:5, Legs:7, Feet:8, Wrist:9, Ring1:11, Ring2:12, Back:15, MainHand:16)
+                local enchantableSlots = {
+                    [5] = true, [7] = true, [8] = true, [9] = true,
+                    [11] = true, [12] = true, [15] = true, [16] = true
+                }
+                slotEntry.isEnchantable = enchantableSlots[slotID] or false
+
                 -- Priority 1: Tooltip scan for exact track/tier (always available for equipped items)
                 local tooltipInfo = ScanUpgradeFromTooltip(slotID)
                 if tooltipInfo then
