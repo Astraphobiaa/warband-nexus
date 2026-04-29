@@ -72,7 +72,7 @@ local FormatTextNumbers = ns.UI_FormatTextNumbers
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local ROW_HEIGHT = GetLayout().rowHeight or 26
 local ROW_SPACING = GetLayout().rowSpacing or 28
-local HEADER_SPACING = GetLayout().HEADER_SPACING or GetLayout().headerSpacing or 40
+local HEADER_SPACING = GetLayout().HEADER_SPACING or GetLayout().headerSpacing or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or GetLayout().betweenSections or 8
 local BASE_INDENT = GetLayout().BASE_INDENT or 15
 local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
@@ -349,22 +349,8 @@ function WarbandNexus:DrawPlansTab(parent)
         ns.expandedCards = {}
     end
     
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
-    local titleCard = CreateCard(headerParent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    
-    -- Header icon with ring border (standardized)
-    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-    local GetTabIcon = ns.UI_GetTabIcon
-    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("plans"))
-    
-    -- Use factory pattern for standardized header layout
-    local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
-    
-    -- Count active (non-completed) plans only, excluding daily_quests (no merged plan table)
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for action buttons =====
     local activePlanCount = self:GetActiveNonDailyIncompleteCount()
-    
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List"
@@ -374,30 +360,15 @@ function WarbandNexus:DrawPlansTab(parent)
         and string.format((ns.L and ns.L["ACTIVE_PLANS_FORMAT"]) or "%d active plans", activePlanCount)
         or string.format((ns.L and ns.L["ACTIVE_PLAN_FORMAT"]) or "%d active plan", activePlanCount)
     local subtitleTextContent = plansSubtitle .. " • " .. activePlanText
-    
-    -- Create container for text group (using Factory pattern, NO BORDER)
-    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40, false)
-    
-    -- Create title text (header font, colored)
-    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
-    titleText:SetText(titleTextContent)
-    titleText:SetJustifyH("LEFT")
-    
-    -- Create subtitle text
-    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
-    subtitleText:SetText(subtitleTextContent)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetJustifyH("LEFT")
-    
-    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
-    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
-    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
-    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    
-    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
-    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
+    local PLANS_TITLE_RIGHT_RESERVE = 560
+    local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
+        tabKey = "plans",
+        titleText = titleTextContent,
+        subtitleText = subtitleTextContent,
+        textRightInset = PLANS_TITLE_RIGHT_RESERVE,
+    }))
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     -- Only show buttons and "Show Completed" checkbox if module is enabled
     if moduleEnabled then
@@ -2291,7 +2262,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         rootHeader:SetPoint("TOPLEFT", 0, -yOffset)
         rootHeader:SetWidth(width)
         
-        yOffset = yOffset + GetLayout().HEADER_HEIGHT
+        yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
         
         -- Draw root category content if expanded
         if rootExpanded then
@@ -2354,7 +2325,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                 childHeader:SetPoint("TOPLEFT", GetLayout().BASE_INDENT, -yOffset) -- Standard indent
                 childHeader:SetWidth(width - GetLayout().BASE_INDENT)
                 
-                yOffset = yOffset + GetLayout().HEADER_HEIGHT
+                yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
                 
                 -- Draw sub-category content if expanded
                 if childExpanded then
@@ -2406,7 +2377,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                             grandchildHeader:SetPoint("TOPLEFT", GetLayout().BASE_INDENT * 2, -yOffset) -- Double indent (30px)
                             grandchildHeader:SetWidth(width - (GetLayout().BASE_INDENT * 2))
                             
-                            yOffset = yOffset + GetLayout().HEADER_HEIGHT
+                            yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
                             
                             -- Draw grandchild achievements if expanded
                             if grandchildExpanded then
@@ -3270,7 +3241,11 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local tryId = item.id
             local tryName = item.name
             local tryCat = category
-            local prevMouseDown = card:GetScript("OnMouseDown")
+            local prevMouseDown = nil
+            do
+                local ok, res = pcall(function() return card:GetScript("OnMouseDown") end)
+                if ok then prevMouseDown = res end
+            end
             card:SetScript("OnMouseDown", function(self, button)
                 if button == "RightButton" then
                     if WarbandNexus and WarbandNexus.ShouldShowTryCountInUI

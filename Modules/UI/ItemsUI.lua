@@ -56,7 +56,7 @@ local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
 local ROW_SPACING = GetLayout().ROW_SPACING or 26
-local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
+local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 -- ROW_COLOR_EVEN/ODD: Now handled by Factory:ApplyRowBackground()
 
@@ -143,47 +143,18 @@ function WarbandNexus:DrawItemList(parent)
         ReleaseAllPooledChildren(parent)
     end
     
-    -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
-    local titleCard = CreateCard(headerParent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    
-    -- Header icon with ring border (standardized)
-    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-    local GetTabIcon = ns.UI_GetTabIcon
-    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("items"))
-    
+    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local accentColor = COLORS.accent  -- Define accentColor for button usage
-    
-    -- Use factory pattern positioning for standardized header layout
-    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["ITEMS_HEADER"]) or "Bank Items") .. "|r"
-    local subtitleTextContent = (ns.L and ns.L["ITEMS_SUBTITLE"]) or "Browse your Warband Bank and Personal Items (Bank + Inventory)"
-    
-    -- Create container for text group (using Factory pattern)
-    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
-    
-    -- Create title text (header font, colored)
-    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
-    titleText:SetText(titleTextContent)
-    titleText:SetJustifyH("LEFT")
-    
-    -- Create subtitle text
-    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
-    subtitleText:SetText(subtitleTextContent)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetJustifyH("LEFT")
-    
-    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
-    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
-    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
-    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    
-    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
-    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
+    local accentColor = COLORS.accent
+    local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
+        tabKey = "items",
+        titleText = "|cff" .. hexColor .. ((ns.L and ns.L["ITEMS_HEADER"]) or "Bank Items") .. "|r",
+        subtitleText = (ns.L and ns.L["ITEMS_SUBTITLE"]) or "Browse your Warband Bank and Personal Items (Bank + Inventory)",
+        textRightInset = 230,
+    }))
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- ===== GOLD MANAGER BUTTON (Header - ALWAYS visible) =====
     local goldMgrBtn = ns.UI.Factory:CreateButton(titleCard, 100, 32)  -- Initial width, will auto-size
@@ -716,7 +687,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     table.sort(groupOrder)
     
     -- ===== BUILD FLAT LIST FOR VIRTUAL SCROLLING =====
-    local HEADER_HEIGHT = GetLayout().HEADER_HEIGHT or 30
+    local HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
     local flatList = {}
     local rowIdx = 0
     

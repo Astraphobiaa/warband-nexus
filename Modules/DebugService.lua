@@ -76,9 +76,11 @@ function DebugService:TestCommand(addon, input)
         addon:Print("  |cff00ccff/wntest rep event|r - Simulate reputation change")
         addon:Print("  |cff00ccff/wntest achievement [id]|r - Test achievement (default: 60981)")
         addon:Print("  |cff00ccff/wntest plan [id]|r - Test plan completion (default: 60981)")
+        addon:Print("  |cff00ccff/wntest currency [id] [gain]|r - Simulate [WN-Currency] chat (default: Hero Dawncrest 3345, +1)")
         addon:Print("|cff888888Examples:|r")
         addon:Print("|cff888888  /wntest achievement 60981|r")
         addon:Print("|cff888888  /wntest plan 60981|r")
+        addon:Print("|cff888888  /wntest currency 2803 50|r")
         return
     end
     
@@ -143,6 +145,22 @@ function DebugService:TestCommand(addon, input)
         else
             addon:Print("|cffff0000TestLootNotification not available!|r")
         end
+    elseif cmd == "currency" then
+        -- Simulate internal currency gain → ChatMessageService (no loot required). Uses live GetCurrencyData for totals in the line.
+        local _, idStr, gainStr = addon:GetArgs(input, 3)
+        local currencyID = tonumber(idStr) or 3345
+        local gain = tonumber(gainStr) or 1
+        if gain < 1 then gain = 1 end
+        if not addon.SendMessage then
+            addon:Print("|cffff0000SendMessage not available.|r")
+            return
+        end
+        addon:Print("|cff00ccffSimulating WN_CURRENCY_GAINED: currencyID=" .. tostring(currencyID) .. " +" .. tostring(gain) .. "|r")
+        addon:SendMessage(Constants.EVENTS.CURRENCY_GAINED, {
+            currencyID = currencyID,
+            gainAmount = gain,
+            gainSource = "quantity",
+        })
     else
         addon:Print("|cffff0000Unknown test command:|r " .. cmd)
         addon:Print("Use /wntest to see available commands")

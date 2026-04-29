@@ -166,14 +166,16 @@ function CommandService:HandleSlashCommand(addon, input)
                 SendChatMessage("[WN Keys]: Key List", "PARTY")
                 local currentLine = ""
                 local lineCount = 0
-                
+                local SEP = "  -  "
+
                 for i = 1, #reportLinesParty do
-                    local entry = reportLinesParty[i]
+                    -- Strip any pipe characters so Midnight's escape-code validator never fires.
+                    local entry = reportLinesParty[i]:gsub("|", "")
                     if currentLine == "" then
                         currentLine = entry
                     else
                         -- Check if adding the next entry exceeds WoW's 255 character chat limit
-                        if string.len(currentLine) + string.len(" | ") + string.len(entry) > 250 then
+                        if string.len(currentLine) + string.len(SEP) + string.len(entry) > 250 then
                             lineCount = lineCount + 1
                             local sendStr = currentLine
                             C_Timer.After(lineCount * 0.2, function()
@@ -181,7 +183,7 @@ function CommandService:HandleSlashCommand(addon, input)
                             end)
                             currentLine = entry
                         else
-                            currentLine = currentLine .. " | " .. entry
+                            currentLine = currentLine .. SEP .. entry
                         end
                     end
                 end
@@ -341,6 +343,16 @@ function CommandService:HandleSlashCommand(addon, input)
 
     elseif cmd == "toydebug" or cmd == "toyinfo" then
         CommandService:ToyDebugReport(addon, input)
+        return
+
+    elseif cmd == "dumpitem" or cmd == "iteminfo" then
+        local _, idArg = addon:GetArgs(input, 2)
+        local itemID = tonumber(idArg)
+        if not itemID then
+            addon:Print("|cffff6600Usage:|r /wn dumpitem <itemID>")
+            return
+        end
+        CommandService:DumpItemReport(addon, itemID)
         return
 
     elseif cmd == "firstcraft" or cmd == "fc" then
@@ -512,6 +524,114 @@ end
 ---@param addon table WarbandNexus addon instance
 ---@param input string Full slash command input
 ---@param skipRetry boolean If true, do not schedule a delayed retry (used for the 2s retry)
+--- Dump everything we can read about an item: GetItemInfo, GetItemInfoInstant,
+--- GetDetailedItemLevelInfo, GetItemStats, GetItemQualityByID, bind-type chain,
+--- and a search through all stored bag/bank/warband-bank data for instances of this item.
+---@param addon table WarbandNexus addon table
+---@param itemID number Item ID to dump
+function CommandService:DumpItemReport(addon, itemID)
+    local function p(line) addon:Print("|cff00BFFF[ItemDump]|r " .. tostring(line)) end
+    p("=== itemID=" .. tostring(itemID) .. " ===")
+
+    -- C_Item.GetItemInfoInstant
+    if C_Item and C_Item.GetItemInfoInstant then
+        local ok, id, itemType, itemSubType, equipLoc, icon, classID, subclassID = pcall(C_Item.GetItemInfoInstant, itemID)
+        if ok then
+            p(string.format("Instant: type=%s subType=%s equipLoc=%s classID=%s subclassID=%s",
+                tostring(itemType), tostring(itemSubType), tostring(equipLoc), tostring(classID), tostring(subclassID)))
+        else
+            p("Instant: error " .. tostring(id))
+        end
+    end
+
+    -- C_Item.GetItemInfo (14 returns)
+    if C_Item and C_Item.GetItemInfo then
+        local ok, name, link, q, lvl, minLvl, type_, subType, stack, equipLoc, tex, sellPrice, classID, subclassID, bindType =
+            pcall(C_Item.GetItemInfo, itemID)
+        if ok then
+            p(string.format("Info: name=%s quality=%s ilvl=%s minLvl=%s bindType=%s",
+                tostring(name), tostring(q), tostring(lvl), tostring(minLvl), tostring(bindType)))
+            p("Info link: " .. tostring(link))
+        else
+            p("Info: error " .. tostring(name))
+        end
+    end
+
+    -- DetailedItemLevelInfo
+    if C_Item and C_Item.GetDetailedItemLevelInfo then
+        local ok, val = pcall(C_Item.GetDetailedItemLevelInfo, itemID)
+        p("DetailedIlvl(itemID): " .. tostring(ok and val or "err"))
+    end
+
+    -- GetItemStats — returns logged-in-player primary view (key reason for filter mismatches)
+    if C_Item and C_Item.GetItemStats then
+        local ok, stats = pcall(C_Item.GetItemStats, "item:" .. itemID)
+        if ok and type(stats) == "table" then
+            local keys = {}
+            for k, v in pairs(stats) do keys[#keys+1] = tostring(k) .. "=" .. tostring(v) end
+            table.sort(keys)
+            p("Stats(by id, logged-in view): " .. (next(keys) and table.concat(keys, ", ") or "<empty>"))
+        else
+            p("Stats(by id): nil/err")
+        end
+    end
+
+    -- Walk every persisted location for this item; print actual stored entry + per-link stats
+    local found = 0
+    local function reportEntry(where, item)
+        if not item or item.itemID ~= itemID then return end
+        found = found + 1
+        local link = item.itemLink or item.link
+        p(string.format("FOUND in %s: classID=%s subclassID=%s quality=%s isBound=%s equipLoc=%s",
+            where, tostring(item.classID), tostring(item.subclassID), tostring(item.quality), tostring(item.isBound), tostring(item.equipLoc)))
+        p("  link: " .. tostring(link))
+        if link and C_Item and C_Item.GetDetailedItemLevelInfo then
+            local ok, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, link)
+            p("  link ilvl: " .. tostring(ok and ilvl or "err"))
+        end
+        if link and C_Item and C_Item.GetItemInfo then
+            local ok, _, _, _, lvl, _, _, _, _, _, _, _, _, _, bt = pcall(C_Item.GetItemInfo, link)
+            p("  link Info: ilvl=" .. tostring(ok and lvl or "err") .. " bindType=" .. tostring(ok and bt or "err"))
+        end
+        if link and C_Item and C_Item.GetItemStats then
+            local ok, stats = pcall(C_Item.GetItemStats, link)
+            if ok and type(stats) == "table" then
+                local keys = {}
+                for k, v in pairs(stats) do keys[#keys+1] = tostring(k) .. "=" .. tostring(v) end
+                table.sort(keys)
+                p("  link Stats: " .. (next(keys) and table.concat(keys, ", ") or "<empty>"))
+            end
+        end
+    end
+
+    local db = addon.db and addon.db.global
+    -- Warband bank
+    local wbData = (addon.GetWarbandBankData and addon:GetWarbandBankData()) or nil
+    if wbData and wbData.items then
+        for i = 1, #wbData.items do reportEntry("WarbandBank[" .. i .. "]", wbData.items[i]) end
+    end
+    -- Each character bag/bank
+    if db and db.itemStorage then
+        for charKey, _ in pairs(db.itemStorage) do
+            if charKey ~= "warbandBank" and addon.GetItemsData then
+                local d = addon:GetItemsData(charKey)
+                if d then
+                    if d.bags then for i = 1, #d.bags do reportEntry(charKey .. " bag[" .. i .. "]", d.bags[i]) end end
+                    if d.bank then for i = 1, #d.bank do reportEntry(charKey .. " bank[" .. i .. "]", d.bank[i]) end end
+                end
+            end
+        end
+    end
+    p("Total persisted instances: " .. found)
+
+    -- Selected character context
+    local selKey = ns.Utilities and ns.Utilities:GetCharacterKey() or nil
+    local selData = selKey and db and db.characters and db.characters[selKey]
+    if selData then
+        p(string.format("Logged-in: name=%s class=%s specID=%s level=%s", tostring(selData.name), tostring(selData.classFile), tostring(selData.specID), tostring(selData.level)))
+    end
+end
+
 function CommandService:ToyDebugReport(addon, input, skipRetry)
     local _, arg1 = addon:GetArgs(input, 2)
     local itemID = arg1 and tonumber(arg1)

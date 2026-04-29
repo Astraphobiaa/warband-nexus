@@ -54,11 +54,53 @@ local AcquireCharacterRow = ns.UI_AcquireCharacterRow
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
 
 local GetCharKey = ns.UI_GetCharKey
+
+--- DB row key for the logged-in player (raw GetCharacterKey vs canonical SavedVariables key).
+local function ResolveSessionCharactersTableKey()
+    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+        return ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)
+    end
+    return nil
+end
+
+--- True if `char` list row is the current client session (fixes stale UI when row._key ~= GetCharacterKey()).
+local function IsCharLoggedInSession(char)
+    local rowKey = GetCharKey(char)
+    if not rowKey then return false end
+    local raw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not raw then return false end
+    if rowKey == raw then return true end
+    local resolved = ResolveSessionCharactersTableKey()
+    if resolved and rowKey == resolved then return true end
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local a = ns.Utilities:GetCanonicalCharacterKey(rowKey)
+        local b = ns.Utilities:GetCanonicalCharacterKey(raw)
+        if a and b and a == b then return true end
+    end
+    return false
+end
+
+--- True if a stored order key string refers to the logged-in session (manual sort / pin-to-top).
+local function OrderKeyIsSessionChar(orderKey)
+    if not orderKey then return false end
+    local raw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not raw then return false end
+    if orderKey == raw then return true end
+    local resolved = ResolveSessionCharactersTableKey()
+    if resolved and orderKey == resolved then return true end
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local a = ns.Utilities:GetCanonicalCharacterKey(orderKey)
+        local b = ns.Utilities:GetCanonicalCharacterKey(raw)
+        if a and b and a == b then return true end
+    end
+    return false
+end
+
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local ROW_HEIGHT = GetLayout().rowHeight or 26
 local ROW_SPACING = GetLayout().rowSpacing or 28
 local HEADER_HEIGHT = GetLayout().HEADER_HEIGHT or 32
-local HEADER_SPACING = GetLayout().headerSpacing or 40
+local HEADER_SPACING = GetLayout().headerSpacing or 44
 local SECTION_SPACING = GetLayout().betweenSections or 8
 local BASE_INDENT = GetLayout().BASE_INDENT or 15
 local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
@@ -173,8 +215,9 @@ function WarbandNexus:DrawCharacterList(parent)
     -- this runs — do not call again here (double-release duplicated pool entries / shared frames).
     
     local currentPlayerKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if self.db.global.characters and currentPlayerKey and self.db.global.characters[currentPlayerKey] then
-        self.db.global.characters[currentPlayerKey].lastSeen = time()
+    local sessionTableKey = ResolveSessionCharactersTableKey() or currentPlayerKey
+    if self.db.global.characters and sessionTableKey and self.db.global.characters[sessionTableKey] then
+        self.db.global.characters[sessionTableKey].lastSeen = time()
     end
     
     local characters = self:GetAllCharacters()
@@ -184,47 +227,17 @@ function WarbandNexus:DrawCharacterList(parent)
         DebugPrint(string.format("[CharactersUI] db.global.characters count=%d GetAllCharacters count=%d", nDb, #characters))
     end
     
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
-    local titleCard = CreateCard(headerParent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    
-    -- Apply visuals (dark background, accent border)
-    if ApplyVisuals then
-        ApplyVisuals(titleCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-    end
-    
-    -- Header icon with ring border (standardized system from SharedWidgets)
-    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-    local GetTabIcon = ns.UI_GetTabIcon
-    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("characters"))
-    headerIcon.border:SetPoint("CENTER", titleCard, "LEFT", 35, 0)  -- Icon centered vertically at 35px from left
-    
-    -- Create text container (using Factory pattern)
-    local titleTextContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
-    
-    local titleText = FontManager:CreateFontString(titleTextContainer, "header", "OVERLAY")
-    -- Dynamic theme color for title
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — shared Characters-tab layout =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. ((ns.L and ns.L["YOUR_CHARACTERS"]) or "Your Characters") .. "|r")
-    titleText:SetJustifyH("LEFT")
-    
-    local subtitleText = FontManager:CreateFontString(titleTextContainer, "subtitle", "OVERLAY")
-    subtitleText:SetTextColor(1, 1, 1)
     local trackedFormat = (ns.L and ns.L["CHARACTERS_TRACKED_FORMAT"]) or "%s characters tracked"
-    subtitleText:SetText(string.format(trackedFormat, FormatNumber(#characters)))
-    subtitleText:SetJustifyH("LEFT")
-    
-    -- Position texts centered in container
-    titleText:SetPoint("BOTTOM", titleTextContainer, "CENTER", 0, 0)  -- Title at center
-    titleText:SetPoint("LEFT", titleTextContainer, "LEFT", 0, 0)
-    subtitleText:SetPoint("TOP", titleTextContainer, "CENTER", 0, -4)  -- Subtitle below center
-    subtitleText:SetPoint("LEFT", titleTextContainer, "LEFT", 0, 0)
-    
-    -- Position container: LEFT from icon, CENTER vertically to CARD
-    titleTextContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-    titleTextContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+    local titleCard, headerIcon, titleTextContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
+        tabKey = "characters",
+        titleText = "|cff" .. hexColor .. ((ns.L and ns.L["YOUR_CHARACTERS"]) or "Your Characters") .. "|r",
+        subtitleText = string.format(trackedFormat, FormatNumber(#characters)),
+    })
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     -- Sort Dropdown on the Title Card (Header)
     if ns.UI_CreateCharacterSortDropdown then
@@ -262,9 +275,10 @@ function WarbandNexus:DrawCharacterList(parent)
         currentCharGold = GetMoney() or 0
         
         -- Check if character exists in DB (if not, data is being collected)
-        if not self.db.global.characters[currentPlayerKey] then
+        local dbKey = sessionTableKey or currentPlayerKey
+        if not dbKey or not self.db.global.characters[dbKey] then
             isLoadingCharacterData = true
-        elseif not self.db.global.characters[currentPlayerKey].gold then
+        elseif not self.db.global.characters[dbKey].gold then
             -- Character exists but gold not saved yet (initial scan)
             -- Note: DB stores gold/silver/copper separately, not totalCopper
             isLoadingCharacterData = true
@@ -276,8 +290,7 @@ function WarbandNexus:DrawCharacterList(parent)
     for _, char in ipairs(characters) do
         local charGold = ns.Utilities:GetCharTotalCopper(char)
         
-        local charKey = GetCharKey(char)
-        if charKey == currentPlayerKey then
+        if IsCharLoggedInSession(char) then
             -- Use real-time gold for current character (if tracked)
             totalCharGold = totalCharGold + currentCharGold
         else
@@ -559,8 +572,8 @@ function WarbandNexus:DrawCharacterList(parent)
             if sortMode == "default" then
                 -- Standard: logged-in character first, then level (high to low), then name (A-Z, case-insensitive).
                 table.sort(list, function(a, b)
-                    local aOn = currentPlayerKey and (GetCharKey(a) == currentPlayerKey)
-                    local bOn = currentPlayerKey and (GetCharKey(b) == currentPlayerKey)
+                    local aOn = IsCharLoggedInSession(a)
+                    local bOn = IsCharLoggedInSession(b)
                     if aOn ~= bOn then
                         return aOn
                     end
@@ -663,9 +676,9 @@ function WarbandNexus:DrawCharacterList(parent)
 
     -- Logged-in character always first within each section (any sort mode / manual custom order).
     local function pinOnlineCharacterFirst(list)
-        if not currentPlayerKey or not list or #list == 0 then return end
+        if not list or #list == 0 then return end
         for i = 1, #list do
-            if GetCharKey(list[i]) == currentPlayerKey then
+            if IsCharLoggedInSession(list[i]) then
                 if i > 1 then
                     local c = table.remove(list, i)
                     table.insert(list, 1, c)
@@ -689,7 +702,7 @@ function WarbandNexus:DrawCharacterList(parent)
         for _, list in ipairs({trackedFavorites, trackedRegular, untracked}) do
             for i = 1, #list do
                 local char = list[i]
-                local isCurrent = (GetCharKey(char) == currentPlayerKey)
+                local isCurrent = IsCharLoggedInSession(char)
                 fs:SetText(BuildGuildText(char, isCurrent))
                 local w = fs:GetStringWidth()
                 if w > maxW then maxW = w end
@@ -719,8 +732,10 @@ function WarbandNexus:DrawCharacterList(parent)
     end
     
     -- ===== FAVORITES SECTION (Always show header) =====
-    local SECTION_H = 44
-    local favHeader, _, favIcon, favHeaderText = CreateCollapsibleHeader(
+    local SECTION_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
+    -- Vertical gap between Favorites / Characters / Untracked collapsible header strips
+    local SECTION_HEADER_GAP = 12
+    local favHeader, _, favIcon = CreateCollapsibleHeader(
         parent,
         ((ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites"),
         "favorites",
@@ -731,28 +746,19 @@ function WarbandNexus:DrawCharacterList(parent)
             self:RefreshUI()
         end,
         "GM-icon-assistActive-hover",
-        true
+        true,
+        nil,
+        nil,
+        { sectionPreset = "gold" }
     )
     favHeader:SetHeight(SECTION_H)
     favHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     favHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     if favIcon then favIcon:SetSize(28, 28) end
-    if favHeaderText then
-        FontManager:ApplyFont(favHeaderText, "title")
-    end
-    
-    local favAccent = favHeader:CreateTexture(nil, "ARTWORK", nil, 2)
-    favAccent:SetSize(3, SECTION_H - 8)
-    favAccent:SetPoint("LEFT", 4, 0)
-    favAccent:SetColorTexture(1, 0.82, 0.2, 0.9)
     
     local favCount = FontManager:CreateFontString(favHeader, "body", "OVERLAY")
     favCount:SetPoint("RIGHT", -14, 0)
     favCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedFavorites) .. "|r")
-    
-    if ApplyVisuals then
-        ApplyVisuals(favHeader, {0.06, 0.06, 0.08, 0.95}, {1, 0.82, 0.2, 0.5})
-    end
     
     yOffset = yOffset + SECTION_H
     
@@ -778,10 +784,12 @@ function WarbandNexus:DrawCharacterList(parent)
             yOffset = yOffset + 50  -- Space for empty state message
         end
     end
+
+    yOffset = yOffset + SECTION_HEADER_GAP
     
     -- ===== REGULAR CHARACTERS SECTION (Always show header) =====
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-    local charHeader, _, charIcon, charHeaderText = CreateCollapsibleHeader(
+    local charHeader, _, charIcon = CreateCollapsibleHeader(
         parent,
         ((ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters"),
         "characters",
@@ -797,22 +805,10 @@ function WarbandNexus:DrawCharacterList(parent)
     charHeader:SetHeight(SECTION_H)
     charHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     charHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    if charHeaderText then
-        FontManager:ApplyFont(charHeaderText, "title")
-    end
-    
-    local charAccent = charHeader:CreateTexture(nil, "ARTWORK", nil, 2)
-    charAccent:SetSize(3, SECTION_H - 8)
-    charAccent:SetPoint("LEFT", 4, 0)
-    charAccent:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
     
     local charCount = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
     charCount:SetPoint("RIGHT", -14, 0)
     charCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedRegular) .. "|r")
-    
-    if ApplyVisuals then
-        ApplyVisuals(charHeader, {0.06, 0.06, 0.08, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
-    end
     
     yOffset = yOffset + SECTION_H
     
@@ -841,12 +837,13 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- ===== UNTRACKED CHARACTERS SECTION (Only show if untracked characters exist) =====
     if #untracked > 0 then
+        yOffset = yOffset + SECTION_HEADER_GAP
         -- Initialize collapse state
         if self.db.profile.ui.untrackedExpanded == nil then
             self.db.profile.ui.untrackedExpanded = false  -- Collapsed by default
         end
         
-        local untrackedHeader, _, untrackedIcon, untrackedHeaderText = CreateCollapsibleHeader(
+        local untrackedHeader, _, untrackedIcon = CreateCollapsibleHeader(
             parent,
             ((ns.L and ns.L["UNTRACKED_CHARACTERS"]) or "Untracked Characters"),
             "untracked",
@@ -857,28 +854,18 @@ function WarbandNexus:DrawCharacterList(parent)
                 self:RefreshUI()
             end,
             "DungeonStoneCheckpointDeactivated",
-            true
+            true,
+            nil,
+            nil,
+            { sectionPreset = "danger" }
         )
         untrackedHeader:SetHeight(SECTION_H)
         untrackedHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
         untrackedHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-        if untrackedHeaderText then
-            FontManager:ApplyFont(untrackedHeaderText, "title")
-            untrackedHeaderText:SetTextColor(0.7, 0.7, 0.7)
-        end
-        
-        local untrackedAccent = untrackedHeader:CreateTexture(nil, "ARTWORK", nil, 2)
-        untrackedAccent:SetSize(3, SECTION_H - 8)
-        untrackedAccent:SetPoint("LEFT", 4, 0)
-        untrackedAccent:SetColorTexture(0.8, 0.25, 0.25, 0.9)
         
         local untrackedCount = FontManager:CreateFontString(untrackedHeader, "body", "OVERLAY")
         untrackedCount:SetPoint("RIGHT", -14, 0)
         untrackedCount:SetText("|cff888888" .. FormatNumber(#untracked) .. "|r")
-        
-        if ApplyVisuals then
-            ApplyVisuals(untrackedHeader, {0.06, 0.06, 0.08, 0.95}, {0.8, 0.25, 0.25, 0.5})
-        end
         
         yOffset = yOffset + SECTION_H
         
@@ -918,7 +905,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
 
     -- Define charKey for use in buttons (canonical key for DB/service consistency)
     local charKey = GetCharKey(char)
-    local isCurrent = (charKey == currentPlayerKey)
+    local isCurrent = IsCharLoggedInSession(char)
     
     -- Set alternating background colors (Factory pattern)
     ns.UI.Factory:ApplyRowBackground(row, index)
@@ -1087,6 +1074,27 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.guildText:SetWidth(guildColW - 4)
     row.guildText:SetText(BuildGuildText(char, isCurrent))
     row.guildText:Show()
+
+    -- Left class tint: ends at name/realm column only (does not extend under guild column).
+    do
+        local nameLeft = nameOffset + nameLeftPadding
+        local nameColW = CHAR_ROW_COLUMNS.name.width
+        local swName = row.nameText:GetStringWidth() or 0
+        local swRealm = row.realmText:GetStringWidth() or 0
+        local mailExtra = 0
+        if row.mailIcon and row.mailIcon:IsShown() then
+            mailExtra = (row.mailIcon:GetWidth() or 14) + 4
+        end
+        local nameBlockRight = nameLeft + math.min(nameColW, math.max(swName, swRealm) + mailExtra + 4)
+        local gradientEnd = nameBlockRight
+        local rowW = row:GetWidth() or 800
+        if gradientEnd > rowW - 2 then
+            gradientEnd = rowW - 2
+        end
+        if ns.UI_ApplyCharacterRowClassGradientAccent then
+            ns.UI_ApplyCharacterRowClassGradientAccent(row, char.classFile, gradientEnd)
+        end
+    end
     
     -- Level column: level + rested line (DB-driven).
     local guildTotal = guildColW + guildSpacing
@@ -1882,9 +1890,9 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
         local seen = {}
         if currentPlayerKey then
             for i = 1, #keysInCategory do
-                if keysInCategory[i] == currentPlayerKey then
-                    customOrder[1] = currentPlayerKey
-                    seen[currentPlayerKey] = true
+                if OrderKeyIsSessionChar(keysInCategory[i]) then
+                    customOrder[1] = keysInCategory[i]
+                    seen[keysInCategory[i]] = true
                     break
                 end
             end
@@ -1926,7 +1934,7 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     -- Logged-in character stays at top of this section after any reorder (matches DrawCharacterList).
     if currentPlayerKey then
         for i = 1, #customOrder do
-            if customOrder[i] == currentPlayerKey then
+            if OrderKeyIsSessionChar(customOrder[i]) then
                 if i > 1 then
                     local c = table.remove(customOrder, i)
                     table.insert(customOrder, 1, c)
@@ -1939,9 +1947,9 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     -- Save and refresh
     self.db.profile.characterOrder[listKey] = customOrder
     
-    -- Ensure current character's lastSeen stays as "now"
-    if self.db.global.characters and self.db.global.characters[currentPlayerKey] then
-        self.db.global.characters[currentPlayerKey].lastSeen = time()
+    local tk = ResolveSessionCharactersTableKey() or currentPlayerKey
+    if self.db.global.characters and tk and self.db.global.characters[tk] then
+        self.db.global.characters[tk].lastSeen = time()
     end
     
     self:RefreshUI()

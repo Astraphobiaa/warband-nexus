@@ -26,8 +26,6 @@ local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local PlanCardFactory = ns.UI_PlanCardFactory
 local COLORS = ns.UI_COLORS
-local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-local GetTabIcon = ns.UI_GetTabIcon
 local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -1695,21 +1693,31 @@ local REFERENCE_RADIUS = 0.86
 -- that extend outside GetModelRadius() still fit (phoenix-type mounts were clipping the viewport).
 local FIXED_CAM_DISTANCE = 3.55
 -- Extra pull-back after normalize (Blizzard journal effectively uses scene-specific framing; we approximate).
-local MODEL_VIEWER_CAMERA_FIT_PADDING = 1.30
--- Viewport üst boşluk (açıklama ile model alanı arası); Frame SetPoint ile descText anchor (Widget API).
-local MODEL_VIEWPORT_TOP_GAP = 10
+-- Bumped from 1.30: tall mounts with banners/wings (e.g. Geargrinder Mk. 11) were drawing
+-- past viewport bounds; Model widgets bypass SetClipsChildren, so the framing must do the
+-- containment. Higher value = camera pulls back further = model occupies less of the box
+-- but stays fully inside it.
+local MODEL_VIEWER_CAMERA_FIT_PADDING = 1.60
+-- Viewport üst boşluk (açıklama → model; Mount Journal’e yakın, sıkı)
+local MODEL_VIEWPORT_TOP_GAP = 6
+-- Pet: ince bant hâlâ hafif yukarı; mount tam yükseklik kullandığında bu px devre dışı kalabilir
+local MOUNT_VIEWPORT_NUDGE_UP = 6
 -- Viewport içinde 1–2 px: kenara yapışık görüntüyü yumuşatır (clip rect içinde).
 local MODEL_VIEWPORT_INSET = 2
--- Mount Journal ModelScene kameraları yatay oryante; çok uzun dikey slot üstte boşluk + altta kırpma yapar.
+-- Pet/PlayerModel: geniş yuvarda yükseklik tavanı. Mount’ta bu tavan kaldırılır (aşağıda büyük boşluk + altta kırpma önlendi).
 local MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH = 0.62
--- WrappedAndUnwrappedModelScene: hafif zoom-out (API yoksa pcall sessizce başarısız olur).
-local MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT = 1.14
+-- ModelScene: Mount Journal’e yakın çerçeve; çok büyük mult ayak/alt kesilmesine yol açabiliyordu.
+local MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT = 1.04
+-- ModelScene: içeriği hafif yukarı (ekran; ayak hizası Blizzard journal’e yakın)
+local MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y = 14
 local MODEL_SCALE_MIN = 0.15
 local MODEL_SCALE_MAX = 6.0
 local ZOOM_MULTIPLIER_MIN = 0.5
 local ZOOM_MULTIPLIER_MAX = 2.0
 -- Pet models often sit low in the box vs mounts; small upward offset in model space after centering.
 local PET_MODEL_VERTICAL_OFFSET = 0.12
+-- PlayerModel mount yolu (ModelScene yok): dikey hizalama
+local MOUNT_PLAYERMODEL_FALLBACK_Y_OFFSET = 0.16
 
 -- Blizzard_Collections Mainline: MountJournal uses ModelScene:TransitionToModelSceneID + GetActorByTag("unwrapped"),
 -- not PlayerModel alone (Blizzard_MountCollection.lua — MountJournal_UpdateMountDisplay).
@@ -1734,6 +1742,10 @@ local function ApplyJournalModelSceneZoom(scene, zoomMultiplier)
     end
     if scene.SetCamDistanceScale then
         pcall(scene.SetCamDistanceScale, scene, mul)
+    end
+    -- Mount Journal: önizleme biraz yukarıda; aksi halde binek+binici frame altında kalıyor
+    if scene.SetViewTranslation then
+        pcall(scene.SetViewTranslation, scene, 0, MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y)
     end
 end
 
@@ -2026,14 +2038,21 @@ local function CreateModelViewer(parent, width, height)
         local sh = slot:GetHeight()
         if not sw or sw < 1 then sw = math.max(1, w - 2 * CONTENT_INSET) end
         if not sh or sh < 2 then sh = math.max(2, h * (1 - MODEL_FALLBACK_TOP_RATIO)) end
+        -- Mount: tüm slot yüksekliğini model için kullan (Blizzard Mount Journal; 0.62 tavan büyük üst/alt siyah bant yaratıyordu).
+        local isMountView = panel._lastMountID and (not panel._lastPetID)
         local maxH = sw * MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH
-        local vh = math.min(sh, maxH)
-        local vPad = (sh - vh) * 0.5
+        local vh = isMountView and sh or math.min(sh, maxH)
+        local totalVPad = math.max(0, sh - vh)
+        local vCenter = totalVPad * 0.5
+        local nudgeUp = isMountView and MOUNT_VIEWPORT_NUDGE_UP or 0
+        nudgeUp = math.min(nudgeUp, vCenter)
+        local vPadTop = math.max(0, vCenter - nudgeUp)
+        local vPadBottom = totalVPad - vPadTop
         modelViewport:ClearAllPoints()
         modelViewport:SetPoint("LEFT", slot, "LEFT", 0, 0)
         modelViewport:SetPoint("RIGHT", slot, "RIGHT", 0, 0)
-        modelViewport:SetPoint("TOP", slot, "TOP", 0, -vPad)
-        modelViewport:SetPoint("BOTTOM", slot, "BOTTOM", 0, vPad)
+        modelViewport:SetPoint("TOP", slot, "TOP", 0, -vPadTop)
+        modelViewport:SetPoint("BOTTOM", slot, "BOTTOM", 0, vPadBottom)
         ApplyModelToViewportInsets()
     end
     panel.UpdateModelFrameSize = UpdateModelFrameSize
@@ -2080,6 +2099,8 @@ local function CreateModelViewer(parent, width, height)
         local yOff = 0
         if panel._lastPetID and not panel._lastMountID then
             yOff = PET_MODEL_VERTICAL_OFFSET
+        elseif panel._lastMountID and (not panel._lastPetID) and (not panel._mountDisplayUsesJournalScene) then
+            yOff = MOUNT_PLAYERMODEL_FALLBACK_Y_OFFSET
         end
         model:SetPosition(0, yOff, 0)
         if model.UseModelCenterToTransform then model:UseModelCenterToTransform(true) end
@@ -2091,9 +2112,16 @@ local function CreateModelViewer(parent, width, height)
             if model.SetCameraDistance then
                 local vw, vh = modelViewport:GetWidth(), modelViewport:GetHeight()
                 local aspectPad = 1.0
-                if vw and vh and vh > 1 and (vw / vh) > 1.12 then
-                    -- Wide preview: tall mounts clip vertically more often — nudge camera back slightly.
-                    aspectPad = 1.09
+                if vw and vh and vw > 1 and vh > 1 then
+                    local ratio = vw / vh
+                    if ratio > 1.12 then
+                        -- Wide preview: tall mounts (banners, wings) clip vertically — pull camera back
+                        -- proportionally to the aspect ratio so they fit.
+                        aspectPad = math.min(1.45, 1.0 + (ratio - 1.0) * 0.35)
+                    elseif ratio < 0.85 then
+                        -- Tall preview: wide mounts clip horizontally — same logic, mirrored.
+                        aspectPad = math.min(1.45, 1.0 + (1.0 / ratio - 1.0) * 0.35)
+                    end
                 end
                 local camDist = FIXED_CAM_DISTANCE
                     * MODEL_VIEWER_CAMERA_FIT_PADDING
@@ -2393,6 +2421,14 @@ local function CreateModelViewer(parent, width, height)
         end
     end)
 
+    local function scheduleModelViewerLayout()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function() UpdateModelFrameSize() end)
+        else
+            UpdateModelFrameSize()
+        end
+    end
+
     function panel:SetMount(mountID, creatureDisplayIDFromCache)
         if not mountID then
             if panel._journalMountScene then
@@ -2406,6 +2442,7 @@ local function CreateModelViewer(parent, width, height)
             panel._useSetMountForRestore = false
             panel._mountUiModelSceneID = nil
             panel._usesJournalCamera = false
+            scheduleModelViewerLayout()
             return
         end
         local extraDisplayID, _, _, uiScene = SafeGetMountInfoExtra(mountID)
@@ -2437,6 +2474,7 @@ local function CreateModelViewer(parent, width, height)
                 model:ClearModel()
                 ShowPlayerModelPath(false)
                 panel.normalizedRadius = false
+                scheduleModelViewerLayout()
                 return
             end
         end
@@ -2465,6 +2503,7 @@ local function CreateModelViewer(parent, width, height)
             if model.SetAnimation then pcall(model.SetAnimation, model, 0) end
             ScheduleJournalSceneAfterMount(mountID)
             ScheduleBoundingRadiusRetries(mountID, 0)
+            scheduleModelViewerLayout()
             return
         end
         if creatureDisplayID and creatureDisplayID > 0 then
@@ -2492,6 +2531,7 @@ local function CreateModelViewer(parent, width, height)
             panel._usesJournalCamera = false
             panel.normalizedRadius = false
         end
+        scheduleModelViewerLayout()
     end
 
     function panel:SetPet(speciesID, creatureDisplayIDFromCache)
@@ -2507,6 +2547,7 @@ local function CreateModelViewer(parent, width, height)
             panel._useSetMountForRestore = false
             panel._mountUiModelSceneID = nil
             panel._usesJournalCamera = false
+            scheduleModelViewerLayout()
             return
         end
         if panel._journalMountScene then
@@ -2522,6 +2563,7 @@ local function CreateModelViewer(parent, width, height)
             panel._useSetMountForRestore = false
             panel._mountUiModelSceneID = nil
             panel._usesJournalCamera = false
+            panel._lastMountID = nil
             model:ClearModel()
             model:SetDisplayInfo(creatureDisplayID)
             panel._lastPetID = speciesID
@@ -2540,6 +2582,7 @@ local function CreateModelViewer(parent, width, height)
             panel._lastCreatureDisplayID = nil
             panel.normalizedRadius = false
         end
+        scheduleModelViewerLayout()
     end
 
     local DEFAULT_ICON_MOUNT = "Interface\\Icons\\Ability_Mount_RidingHorse"
@@ -5985,6 +6028,21 @@ local function DrawAchievementsContent(contentFrame)
     collectionsState._drawAchievementsContentBusy = nil
 end
 
+-- Fixed header: search bar uses full row width when Owned/Missing row is hidden (Recent).
+local function LayoutCollectionsSearchBar(hdrCache)
+    if not hdrCache or not hdrCache.searchBar or not hdrCache.searchRow then return end
+    local bar = hdrCache.searchBar
+    local sr = hdrCache.searchRow
+    local fr = hdrCache.filterRow
+    bar:ClearAllPoints()
+    bar:SetPoint("TOPLEFT", sr, "TOPLEFT", 0, 0)
+    if fr and fr:IsShown() then
+        bar:SetPoint("TOPRIGHT", fr, "TOPLEFT", -8, 0)
+    else
+        bar:SetPoint("TOPRIGHT", sr, "TOPRIGHT", 0, 0)
+    end
+end
+
 -- ============================================================================
 -- DRAW COLLECTIONS TAB (Main Entry)
 -- ============================================================================
@@ -6016,9 +6074,8 @@ function WarbandNexus:DrawCollectionsTab(parent)
             hdrCache.recentObtainedPanel:Hide()
         end
 
-        if hdrCache.collectionsTextContainer and hdrCache.collectionsHeaderIcon then
+        if hdrCache.collectionsTextContainer and hdrCache.collectionsHeaderIcon and ns.UI_ReanchorStandardTabTitleLayout then
             hdrCache.collectionsTextContainer:SetSize(200, 40)
-            hdrCache.collectionsTextContainer:ClearAllPoints()
             if hdrCache.collectionsTitleText and hdrCache.collectionsSubtitleText then
                 hdrCache.collectionsTitleText:ClearAllPoints()
                 hdrCache.collectionsTitleText:SetPoint("BOTTOM", hdrCache.collectionsTextContainer, "CENTER", 0, 0)
@@ -6027,8 +6084,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 hdrCache.collectionsSubtitleText:SetPoint("TOP", hdrCache.collectionsTextContainer, "CENTER", 0, -4)
                 hdrCache.collectionsSubtitleText:SetPoint("LEFT", hdrCache.collectionsTextContainer, "LEFT", 0, 0)
             end
-            hdrCache.collectionsTextContainer:SetPoint("LEFT", hdrCache.collectionsHeaderIcon.border, "RIGHT", 12, 0)
-            hdrCache.collectionsTextContainer:SetPoint("CENTER", hdrCache.titleCard, "CENTER", 0, 0)
+            ns.UI_ReanchorStandardTabTitleLayout(hdrCache.collectionsHeaderIcon, hdrCache.titleCard, hdrCache.collectionsTextContainer, COLLECTIONS_TITLE_CARD_HEIGHT)
             hdrCache.collectionsTextContainer:Show()
             if hdrCache.collectionsTitleText then hdrCache.collectionsTitleText:Show() end
             if hdrCache.collectionsSubtitleText then hdrCache.collectionsSubtitleText:Show() end
@@ -6064,38 +6120,25 @@ function WarbandNexus:DrawCollectionsTab(parent)
         else
             hdrCache.filterRow:Show()
         end
+        LayoutCollectionsSearchBar(hdrCache)
 
         headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
     else
         hdrCache = {}
         collectionsState._fixedHeaderCache = hdrCache
 
-        -- ===== HEADER CARD — CurrencyUI / ItemsUI ile aynı yerleşim =====
-        local titleCard = CreateCard(headerParent, COLLECTIONS_TITLE_CARD_HEIGHT)
+        -- ===== HEADER CARD — Characters-tab standard title layout =====
+        local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+        local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+        local titleCard, headerIcon, textContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
+            cardHeight = COLLECTIONS_TITLE_CARD_HEIGHT,
+            tabKey = "collections",
+            titleText = "|cff" .. hexColor .. ((ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections") .. "|r",
+            subtitleText = (ns.L and ns.L["COLLECTIONS_SUBTITLE"]) or "Mounts, pets, toys, and transmog overview",
+        })
         titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
         titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         hdrCache.titleCard = titleCard
-
-        local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("collections"))
-        local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-        local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-        local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections") .. "|r"
-        local subtitleTextContent = (ns.L and ns.L["COLLECTIONS_SUBTITLE"]) or "Mounts, pets, toys, and transmog overview"
-
-        local textContainer = Factory:CreateContainer(titleCard, 200, 40, false)
-        local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
-        titleText:SetText(titleTextContent)
-        titleText:SetJustifyH("LEFT")
-        local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
-        subtitleText:SetText(subtitleTextContent)
-        subtitleText:SetTextColor(1, 1, 1)
-        subtitleText:SetJustifyH("LEFT")
-        titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)
-        titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-        subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)
-        subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-        textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-        textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
 
         hdrCache.collectionsHeaderIcon = headerIcon
         hdrCache.collectionsTextContainer = textContainer
@@ -6141,6 +6184,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
             local hc = collectionsState._fixedHeaderCache
             if hc and hc.filterRow then
                 if collectionsState.currentSubTab == "recent" then hc.filterRow:Hide() else hc.filterRow:Show() end
+                LayoutCollectionsSearchBar(hc)
             end
         end)
         subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
@@ -6240,6 +6284,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         searchBar:EnableMouse(true)
         searchBar:SetScript("OnMouseDown", function() searchBox:SetFocus() end)
         collectionsState.searchBox = searchBox
+        hdrCache.searchBar = searchBar
 
         -- ===== FILTERS (right side of search row: Owned | Missing) =====
         local lblOwned = (ns.L and (ns.L["FILTER_SHOW_OWNED"] or ns.L["FILTER_COLLECTED"])) or "Owned"
@@ -6307,6 +6352,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         if collectionsState.currentSubTab == "recent" then
             filterRow:Hide()
         end
+        LayoutCollectionsSearchBar(hdrCache)
 
         headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
     end

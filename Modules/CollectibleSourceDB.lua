@@ -1864,8 +1864,20 @@ ns.CollectibleSourceDB = {
         [256926] = _voidstormRareMounts, -- Queen o' War
         [257027] = _voidstormRareMounts, -- Rakshur the Bonegrinder (Slayer's Rise)
 
-        -- Midnight 12.0 â€” only bosses that drop mounts (2 dungeons M/M+, 1 raid M)
-        -- Source: community mount datasets for Patch 12.0.1; encounter IDs: DungeonEncounter DB2
+        -- Midnight 12.0 Season 1 — complete list of boss encounters that drop a mount.
+        --
+        -- Verified against Wowhead/Icy-Veins/community guides as of 2026-04 (Midnight S1 active):
+        --   • 2 Mythic dungeons (M/M+): Windrunner Spire, Magisters' Terrace
+        --   • 1 Mythic raid: March on Quel'Danas → Midnight Falls (final boss only)
+        --
+        -- Other Midnight S1 content WITHOUT direct mount drops (no try-counter entry needed):
+        --   • Raids: The Dreamrift (Chimaerus), The Voidspire (6 bosses)
+        --   • Dungeons in M+ rotation: Maisara Caverns, Nexus-Point Xenas (new) +
+        --     Algeth'ar Academy, Seat of the Triumvirate, Skyreach, Pit of Saron (legacy in rotation)
+        --   • Achievement-reward mounts (Tenebrous Harrower / Calamitous Carrion /
+        --     Convalescent Carrion) are earned once via meta-achievements, not boss drops —
+        --     they belong to the achievement tracking path, NOT this NPC drop table.
+        --
         -- difficultyIDs: 23 = Mythic dungeon, 8 = Mythic Keystone (M+), 16 = Mythic raid (all map to "Mythic")
         -- Spectral / Lucent Hawkstrider: BoP, account-wide mount (learn once). Same cadence as other M dungeon mounts.
         -- Not BoE farm copies — try count must not "reset on obtain" (repeatable = false).
@@ -1880,10 +1892,12 @@ ns.CollectibleSourceDB = {
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+)
         },
-        [214650] = { -- L'ura / Midnight Falls (March on Quel'Danas raid final boss) â€” encounterID 3183
-            { type = "mount", itemID = 246590, name = "Ashes of Belo'ren" },
+        [214650] = { -- Midnight Falls encounter (March on Quel'Danas raid, final boss) — encounterID 3183
+            -- Seat of the Triumvirate (Legion / M+ rotation) reuses npcID 214650 and boss name L'ura.
+            -- Belo'ren drops only from March on Quel'Danas Mythic; exclude Legion dungeon instance MapID.
+            { type = "mount", itemID = 246590, name = "Ashes of Belo'ren", excludeInstanceIDs = { 1753 } },
             dropDifficulty = "Mythic",
-            difficultyIDs = { 16 },  -- Mythic raid only
+            difficultyIDs = { 16 },  -- Mythic raid only (excludes M+ kills sharing this npcID)
         },
 
         -- ========================================
@@ -2020,7 +2034,9 @@ ns.CollectibleSourceDB = {
         ["Void Speaker Eirich"] = { 213119 },
         ["Queen Ansurek"] = { 218370 },
         ["Chrome King Gallywix"] = { 241526 },
-        -- Midnight raid boss (mount drops)
+        -- March on Quel'Danas raid — Midnight Falls (final encounter, Mythic drops mount).
+        -- Difficulty gating in CollectibleSourceDB[214650].difficultyIDs = { 16 } restricts the
+        -- Belo'ren mount to Mythic raid only; M+ kills sharing this npcID are filtered out.
         ["Midnight Falls"] = { 214650 },
         ["L'ura"] = { 214650 },
         -- Midnight zone rares (mount drops)
@@ -2571,7 +2587,7 @@ ns.CollectibleSourceDB.dropRates = {
     [224147] = 0.008,   -- Sureki Skyrazor (Queen Ansurek M)
     [236960] = 0.03,    -- Prototype A.S.M.R. (Gallywix M, Nerub-ar / Liberation)
     -- Midnight 12.0
-    [246590] = 0.5,     -- Ashes of Belo'ren (Manaforge Omega S1 — per-player ~50%)
+    [246590] = 0.5,     -- Ashes of Belo'ren (March on Quel'Danas — Midnight Falls Mythic; per-player ~50%)
     [260916] = 0.0001,  -- Nether-Warped Drake (fishing, Midnight)
 }
 

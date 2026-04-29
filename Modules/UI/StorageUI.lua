@@ -60,7 +60,7 @@ local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
 local ROW_SPACING = GetLayout().ROW_SPACING or 26
-local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
+local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 -- ROW_COLOR_EVEN/ODD: Now handled by Factory:ApplyRowBackground()
 
@@ -171,36 +171,15 @@ function WarbandNexus:DrawStorageTab(parent)
     -- Get search text from SearchStateManager
     local storageSearchText = SearchStateManager:GetQuery("storage")
     
-    -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
+    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout =====
     if not parent._storageTitleCard then
-        local titleCard = CreateCard(headerParent, 70)
-
-        -- Header icon with ring border (standardized)
-        local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-        local GetTabIcon = ns.UI_GetTabIcon
-        local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("storage"))
-
-        -- Create container for text group (using Factory pattern)
-        local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
-
-        -- Create title text (header font, colored)
-        local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
-        titleText:SetJustifyH("LEFT")
-
-        -- Create subtitle text
-        local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
-        subtitleText:SetTextColor(1, 1, 1)  -- White
-        subtitleText:SetJustifyH("LEFT")
-
-        -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
-        titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)
-        titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-        subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)
-        subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-
-        -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
-        textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-        textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+        local r0, g0, b0 = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+        local hex0 = string.format("%02x%02x%02x", r0 * 255, g0 * 255, b0 * 255)
+        local titleCard, headerIcon, textContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
+            tabKey = "storage",
+            titleText = "|cff" .. hex0 .. ((ns.L and ns.L["STORAGE_HEADER"]) or "Storage Browser") .. "|r",
+            subtitleText = (ns.L and ns.L["STORAGE_HEADER_DESC"]) or "Browse all items organized by type",
+        })
 
         -- Sort Dropdown on the Title Card (Header)
         if ns.UI_CreateCharacterSortDropdown then
@@ -219,6 +198,8 @@ function WarbandNexus:DrawStorageTab(parent)
 
         -- Store references for reuse
         parent._storageTitleCard = titleCard
+        parent._storageHeaderIcon = headerIcon
+        parent._storageTextContainer = textContainer
         parent._storageTitleText = titleText
         parent._storageSubtitleText = subtitleText
     end
@@ -240,6 +221,9 @@ function WarbandNexus:DrawStorageTab(parent)
     titleCard:ClearAllPoints()
     titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
     titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+    if ns.UI_ReanchorStandardTabTitleLayout and parent._storageHeaderIcon and parent._storageTextContainer then
+        ns.UI_ReanchorStandardTabTitleLayout(parent._storageHeaderIcon, titleCard, parent._storageTextContainer, 70)
+    end
     titleCard:Show()
     
     headerYOffset = headerYOffset + GetLayout().afterHeader
@@ -828,7 +812,7 @@ if isCharExpanded then
                             )
                             typeHeader2:SetPoint("TOPLEFT", typeIndent, -yOffset)
                             typeHeader2:SetWidth(width - typeIndent)
-                            yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Type header (no extra spacing before rows)
+                            yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)  -- Type header (no extra spacing before rows)
 if isTypeExpanded then
 -- Display items (with search filter)
                                     for _, item in ipairs(charItems[typeName]) do
@@ -1023,7 +1007,7 @@ if warbandExpanded then
                 )
                 typeHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
                 typeHeader:SetWidth(width - BASE_INDENT)
-                    yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Type header (no extra spacing before rows)
+                    yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)  -- Type header (no extra spacing before rows)
                     
                     if isTypeExpanded then
                         -- Display items in this category (with search filter)
@@ -1281,7 +1265,7 @@ if warbandExpanded then
                         )
                         typeHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
                         typeHeader:SetWidth(width - BASE_INDENT)
-                        yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Type header (no extra spacing before rows)
+                        yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)  -- Type header (no extra spacing before rows)
                         
                         if isTypeExpanded then
                             -- Display items in this category (with search filter)

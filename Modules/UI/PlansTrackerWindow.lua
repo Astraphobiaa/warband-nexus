@@ -556,9 +556,14 @@ local function RefreshTrackerContentImmediate()
                     trackLabel:SetText(nowTracked and (PLAN_COLORS.tracked or "|cff44ff44") .. tLabel .. "|r" or (PLAN_COLORS.notTracked or "|cffffcc00") .. uLabel .. "|r")
                 end)
 
-                -- Achievement tooltip on header hover
-                local origOnEnter = row.headerFrame:GetScript("OnEnter")
-                local origOnLeave = row.headerFrame:GetScript("OnLeave")
+                -- Achievement tooltip on header hover (Frame may have no prior OnEnter/OnLeave — guard GetScript)
+                local origOnEnter, origOnLeave = nil, nil
+                do
+                    local ok, res = pcall(function() return row.headerFrame:GetScript("OnEnter") end)
+                    if ok then origOnEnter = res end
+                    ok, res = pcall(function() return row.headerFrame:GetScript("OnLeave") end)
+                    if ok then origOnLeave = res end
+                end
                 row.headerFrame:SetScript("OnEnter", function(self)
                     if origOnEnter then origOnEnter(self) end
                     ShowPlanTooltip(row.headerFrame, plan, isExpanded)
@@ -670,6 +675,12 @@ local function RefreshTrackerContentImmediate()
                         dungeonSlots = {}, raidSlots = {}, worldSlots = {}
                     }
 
+                    local vaultLootReady = false
+                    if WarbandNexus.HasUnclaimedVaultRewards then
+                        local ok, v = pcall(WarbandNexus.HasUnclaimedVaultRewards, WarbandNexus)
+                        vaultLootReady = ok and v == true
+                    end
+
                     local saMax = currentProgress.specialAssignmentTotal or 2
                     local progressRows = {
                         { label = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",     current = currentProgress.raidBossCount,       max = 6, thresholds = {2, 4, 6} },
@@ -711,18 +722,27 @@ local function RefreshTrackerContentImmediate()
                             fill:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
                         end
                         
-                        -- Threshold markers (small ticks on bar)
+                        -- Threshold markers — or "Ready!" at each slot when vault loot is claimable
+                        local readyLabel = (ns.L and ns.L["VAULT_LOOT_READY_SHORT"]) or "Ready!"
                         for _, threshold in ipairs(row.thresholds) do
                             local markerPct = threshold / row.max
                             local markerX = (markerPct * (barWidth - 2)) + 1
-                            local tick = barBg:CreateTexture(nil, "OVERLAY")
-                            tick:SetSize(1, 14)
-                            tick:SetPoint("LEFT", barBg, "LEFT", markerX, 0)
-                            tick:SetTexture("Interface\\Buttons\\WHITE8x8")
-                            if row.current >= threshold then
-                                tick:SetVertexColor(0.2, 1, 0.2, 0.8)
+                            if vaultLootReady then
+                                local rl = FontManager:CreateFontString(barBg, "small", "OVERLAY")
+                                rl:SetPoint("CENTER", barBg, "LEFT", markerX, 0)
+                                rl:SetWidth(math.max(28, barWidth / math.max(1, #row.thresholds) - 2))
+                                rl:SetJustifyH("CENTER")
+                                rl:SetText("|cff44ff44" .. readyLabel .. "|r")
                             else
-                                tick:SetVertexColor(0.6, 0.6, 0.6, 0.5)
+                                local tick = barBg:CreateTexture(nil, "OVERLAY")
+                                tick:SetSize(1, 14)
+                                tick:SetPoint("LEFT", barBg, "LEFT", markerX, 0)
+                                tick:SetTexture("Interface\\Buttons\\WHITE8x8")
+                                if row.current >= threshold then
+                                    tick:SetVertexColor(0.2, 1, 0.2, 0.8)
+                                else
+                                    tick:SetVertexColor(0.6, 0.6, 0.6, 0.5)
+                                end
                             end
                         end
                         

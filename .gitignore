@@ -54,6 +54,7 @@ WarbandNexus/
 # Dev / docs / tooling (not part of the in-game addon)
 *.md
 /CHANGES.txt
+/CHANGELOG.md
 tests/
 /test_*.lua
 /test2.lua
@@ -63,6 +64,8 @@ docs/
 _enc_w.html
 .pkgmeta
 .gitattributes
+# Local dev scripts (packaging, locale checks) — not part of Interface/AddOns payload
+/scripts/
 
 # Screenshots (listing assets, not addon runtime)
 Screenshots/*.png
@@ -97,6 +100,11 @@ Screenshots/*.jpeg
 
 !/Media/
 !/Media/**
+
+# Vendor meta (upstream Ace/lib changelogs — not runtime)
+libs/changelog.txt
+libs/CHANGES.txt
+libs/Changelog*.txt
 
 # Vendor / lib docs are non-runtime but kept with embedded libs
 libs/**/*.md

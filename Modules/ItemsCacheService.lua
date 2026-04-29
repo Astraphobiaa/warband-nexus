@@ -20,6 +20,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local issecretvalue = issecretvalue
 
 -- Debug print helper (only prints if debug mode enabled)
 local DebugPrint = ns.DebugPrint
@@ -1133,6 +1134,135 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
 end
 
 -- ============================================================================
+-- MERGE: v2 itemStorage + legacy character inventory + personalBanks
+-- `itemStorage[charKey] = {}` (empty) or v2-only must still see legacy table rows;
+-- `characters[charKey]` and canonical key may differ.
+-- ============================================================================
+
+---@param item table
+---@return string|nil
+local function ItemMergeDedupeKey(item)
+    if not item or not item.itemID then return nil end
+    local link = item.itemLink or item.link
+    if link and type(link) == "string" and link ~= "" then
+        if issecretvalue and issecretvalue(link) then
+            return "I:" .. tostring(item.itemID)
+        end
+        return "L:" .. link
+    end
+    return "I:" .. tostring(item.itemID) .. ":" .. tostring(item.quality or 0)
+end
+
+---@param list table|nil
+---@param seen table<string, boolean>
+local function AddSeenFromItemList(list, seen)
+    if not list or not seen then return end
+    for i = 1, #list do
+        local it = list[i]
+        if it and it.itemID then
+            local k = ItemMergeDedupeKey(it)
+            if k then seen[k] = true end
+        end
+    end
+end
+
+---@param target table
+---@param source table
+---@param seen table<string, boolean>
+local function AppendItemsDeduped(target, source, seen)
+    if not target or not source or not seen then return end
+    for i = 1, #source do
+        local it = source[i]
+        if it and it.itemID then
+            local k = ItemMergeDedupeKey(it)
+            if k and not seen[k] then
+                seen[k] = true
+                target[#target + 1] = it
+            end
+        end
+    end
+end
+
+---@param pb table|nil
+---@return table
+local function PersonalBankToItemArray(pb)
+    if not pb then return {} end
+    local bankData = pb.compressed and (DecompressItemData(pb.data) or {}) or (pb.data or {})
+    local bankArr = {}
+    if type(bankData) == "table" and not bankData[1] then
+        for bagID, bagData in pairs(bankData) do
+            if type(bagData) == "table" then
+                for slotID, item in pairs(bagData) do
+                    if type(item) == "table" and item.itemID then
+                        bankArr[#bankArr + 1] = {
+                            bagID = item.actualBagID or bagID,
+                            slot = slotID,
+                            slotIndex = slotID,
+                            itemID = item.itemID,
+                            itemLink = item.itemLink,
+                            stackCount = item.stackCount or 1,
+                            quality = item.quality,
+                            isBound = item.isBound or false,
+                        }
+                    end
+                end
+            end
+        end
+    end
+    return bankArr
+end
+
+---@param self table
+---@param result table
+---@param charKey string
+local function MergeExtraItemSourcesIntoItemsData(self, result, charKey)
+    if not result or not charKey or charKey == "" then return end
+    result.bags = result.bags or {}
+    result.bank = result.bank or {}
+    local global = self.db and self.db.global
+    if not global then return end
+
+    local seen = {}
+    AddSeenFromItemList(result.bags, seen)
+    AddSeenFromItemList(result.bank, seen)
+
+    local keys = {}
+    local function addKey(k)
+        if not k or k == "" then return end
+        for i = 1, #keys do
+            if keys[i] == k then return end
+        end
+        keys[#keys + 1] = k
+    end
+    addKey(charKey)
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        addKey(ns.Utilities:GetCanonicalCharacterKey(charKey))
+    end
+
+    for i = 1, #keys do
+        local k = keys[i]
+        local ch = global.characters and global.characters[k]
+        if ch then
+            if ch.items and #ch.items > 0 then
+                AppendItemsDeduped(result.bags, HydrateItems(ch.items), seen)
+            end
+            if ch.bank and #ch.bank > 0 then
+                AppendItemsDeduped(result.bank, HydrateItems(ch.bank), seen)
+            end
+        end
+        local pb = global.personalBanks and global.personalBanks[k]
+        if pb then
+            local arr = PersonalBankToItemArray(pb)
+            if #arr > 0 then
+                AppendItemsDeduped(result.bank, HydrateItems(arr), seen)
+            end
+        end
+    end
+    HydrateItems(result.bags)
+    HydrateItems(result.bank)
+end
+
+-- ============================================================================
 -- PUBLIC API (FOR UI AND DATASERVICE)
 -- ============================================================================
 
@@ -1145,89 +1275,51 @@ function WarbandNexus:GetItemsData(charKey)
     local cached = decompressedItemCache[charKey]
     if cached then return cached end
     
-    -- Check if new storage system exists
-    if not self.db.global.itemStorage or not self.db.global.itemStorage[charKey] then
-        -- Fallback 1: legacy character.items / character.bank (uncompressed)
+    local result = { bags = {}, bank = {}, bagsLastUpdate = 0, bankLastUpdate = 0 }
+    local storage = self.db.global.itemStorage and self.db.global.itemStorage[charKey]
+    local hasV2Data = storage and (storage.bags or storage.bank)
+
+    if not hasV2Data then
         if self.db.global.characters and self.db.global.characters[charKey] then
             local charData = self.db.global.characters[charKey]
-            local result = {
+            result = {
                 bags = HydrateItems(charData.items or {}),
                 bank = HydrateItems(charData.bank or {}),
                 bagsLastUpdate = charData.itemsLastUpdate or 0,
                 bankLastUpdate = charData.bankLastUpdate or 0,
             }
-            decompressedItemCache[charKey] = result
-            return result
-        end
-        -- Fallback 2: legacy personalBanks (bank only; single store, no duplication)
-        if self.db.global.personalBanks and self.db.global.personalBanks[charKey] then
+        elseif self.db.global.personalBanks and self.db.global.personalBanks[charKey] then
             local pb = self.db.global.personalBanks[charKey]
-            local bankData = pb.compressed and (DecompressItemData(pb.data) or {}) or (pb.data or {})
-            local bankArr = {}
-            if type(bankData) == "table" and not bankData[1] then
-                for bagID, bagData in pairs(bankData) do
-                    if type(bagData) == "table" then
-                        for slotID, item in pairs(bagData) do
-                            if type(item) == "table" and item.itemID then
-                                bankArr[#bankArr + 1] = {
-                                    bagID = item.actualBagID or bagID,
-                                    slot = slotID,
-                                    slotIndex = slotID,
-                                    itemID = item.itemID,
-                                    itemLink = item.itemLink,
-                                    stackCount = item.stackCount or 1,
-                                    quality = item.quality,
-                                    isBound = item.isBound or false,
-                                }
-                            end
-                        end
-                    end
-                end
-            end
-            local result = {
+            local arr = PersonalBankToItemArray(pb)
+            result = {
                 bags = {},
-                bank = HydrateItems(bankArr),
+                bank = HydrateItems(arr),
                 bagsLastUpdate = 0,
                 bankLastUpdate = pb.lastUpdate or 0,
             }
-            decompressedItemCache[charKey] = result
-            return result
         end
-        return {bags = {}, bank = {}, bagsLastUpdate = 0, bankLastUpdate = 0}
-    end
-    
-    -- Decompress from DB storage (on-demand, cached for session)
-    local storage = self.db.global.itemStorage[charKey]
-    local result = {
-        bags = {},
-        bank = {},
-        bagsLastUpdate = 0,
-        bankLastUpdate = 0,
-    }
-    
-    -- Decompress bags and hydrate with metadata
-    if storage.bags then
-        if storage.bags.compressed then
-            result.bags = DecompressItemData(storage.bags.data) or {}
-        else
-            result.bags = storage.bags.data or {}
+    else
+        if storage.bags then
+            if storage.bags.compressed then
+                result.bags = DecompressItemData(storage.bags.data) or {}
+            else
+                result.bags = storage.bags.data or {}
+            end
+            HydrateItems(result.bags)
+            result.bagsLastUpdate = storage.bags.lastUpdate or 0
         end
-        HydrateItems(result.bags)
-        result.bagsLastUpdate = storage.bags.lastUpdate or 0
-    end
-    
-    -- Decompress bank and hydrate with metadata
-    if storage.bank then
-        if storage.bank.compressed then
-            result.bank = DecompressItemData(storage.bank.data) or {}
-        else
-            result.bank = storage.bank.data or {}
+        if storage.bank then
+            if storage.bank.compressed then
+                result.bank = DecompressItemData(storage.bank.data) or {}
+            else
+                result.bank = storage.bank.data or {}
+            end
+            HydrateItems(result.bank)
+            result.bankLastUpdate = storage.bank.lastUpdate or 0
         end
-        HydrateItems(result.bank)
-        result.bankLastUpdate = storage.bank.lastUpdate or 0
     end
-    
-    -- Cache for session (invalidated when items are re-scanned)
+
+    MergeExtraItemSourcesIntoItemsData(self, result, charKey)
     decompressedItemCache[charKey] = result
     return result
 end

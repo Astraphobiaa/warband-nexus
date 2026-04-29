@@ -41,16 +41,148 @@ local CONTENT_PADDING_BOTTOM = UI_SPACING.MIN_BOTTOM_SPACING  -- Bottom padding 
 
 -- Forward declaration: BuildSettings and ShowSettings share this reference.
 local settingsFrame = nil
+local settingsKeybindStopListening = nil
+local settingsKeybindIsListening = false
+local settingsKeybindButton = nil
+local settingsKeybindCaptureFrame = nil
+
+---Same output channel as welcome message — not Lua print() (often only in System / default chat).
+local function WnDiagSettings(msg)
+    if WarbandNexus and WarbandNexus.Print then
+        WarbandNexus:Print("|cff00ccff[WN DIAG]|r " .. tostring(msg))
+    end
+end
+
+---WarbandNexusFrame uses InstallESCHandler (EnableKeyboard true). With Settings open on top, the main
+---window can still own the client keyboard stack — WASD / space stop working. Disable only while Settings is shown.
+local function SuppressMainWindowKeyboardWhileSettingsOpen()
+    local mf = _G.WarbandNexusFrame
+    if not mf or not mf:IsShown() then return end
+    if InCombatLockdown() then return end
+    -- #region agent log
+    do
+        local W = rawget(_G, "WarbandNexus")
+        local db = W and W.db and W.db.profile
+        if db and db.debugMode and W and W.Print then
+            local kb = (mf.IsKeyboardEnabled and mf:IsKeyboardEnabled()) and "true" or "false"
+            local prop = (mf.IsPropagateKeyboardInput and mf:IsPropagateKeyboardInput()) and "true" or "false"
+            W:Print("|cff00ffff[WN ESC H7]|r SuppressMainKB(before): enabled=" .. kb .. " propagate=" .. prop)
+        end
+    end
+    -- #endregion agent log
+    if mf.EnableKeyboard then
+        mf:EnableKeyboard(false)
+    end
+    -- #region agent log
+    do
+        local W = rawget(_G, "WarbandNexus")
+        local db = W and W.db and W.db.profile
+        if db and db.debugMode and W and W.Print then
+            local kb = (mf.IsKeyboardEnabled and mf:IsKeyboardEnabled()) and "true" or "false"
+            local prop = (mf.IsPropagateKeyboardInput and mf:IsPropagateKeyboardInput()) and "true" or "false"
+            W:Print("|cff00ffff[WN ESC H7]|r SuppressMainKB(after): enabled=" .. kb .. " propagate=" .. prop)
+        end
+    end
+    -- #endregion agent log
+end
+
+local function RestoreMainWindowKeyboardAfterSettingsClose()
+    local mf = _G.WarbandNexusFrame
+    if not mf or not mf:IsShown() then return end
+    if InCombatLockdown() then return end
+    if mf.EnableKeyboard then
+        mf:EnableKeyboard(true)
+    end
+    if mf.SetPropagateKeyboardInput then
+        mf:SetPropagateKeyboardInput(true)
+    end
+    -- #region agent log
+    do
+        local W = rawget(_G, "WarbandNexus")
+        local db = W and W.db and W.db.profile
+        if db and db.debugMode and W and W.Print then
+            local kb = (mf.IsKeyboardEnabled and mf:IsKeyboardEnabled()) and "true" or "false"
+            local prop = (mf.IsPropagateKeyboardInput and mf:IsPropagateKeyboardInput()) and "true" or "false"
+            W:Print("|cff00ffff[WN ESC H8]|r RestoreMainKB: enabled=" .. kb .. " propagate=" .. prop)
+        end
+    end
+    -- #endregion agent log
+end
+
+---Chat debug (Lua 5.1): only when WarbandNexus.db.profile.debugMode is true (Config → Debug Mode).
+local function SettingsEscDebug(msg, ...)
+    local W = WarbandNexus
+    local db = W and W.db and W.db.profile
+    if not (db and db.debugMode) then return end
+    if not (W and W.Print) then return end
+    local text
+    if select("#", ...) > 0 then
+        local ok, s = pcall(string.format, msg, ...)
+        text = ok and s or tostring(msg)
+    else
+        text = tostring(msg)
+    end
+    W:Print("|cff00ccff[WN Settings ESC]|r " .. text)
+end
 local IGNORED_KEYS = {
     LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true,
     LALT = true, RALT = true, UNKNOWN = true,
 }
 
----Re-enable keyboard after Hide/Show cycles (WoW does not always restore focus).
-local function RefreshSettingsKeyboard(frame)
-    if not frame or InCombatLockdown() then return end
-    if frame.EnableKeyboard then frame:EnableKeyboard(true) end
-    if frame.SetPropagateKeyboardInput then frame:SetPropagateKeyboardInput(true) end
+-- ESC: Do NOT use SetOverrideBinding* on ESC for this panel. On current clients the API can report
+-- success while the synthetic CLICK never reaches an addon Button — ESC is then swallowed and
+-- ToggleGameMenu / UISpecialFrames never run. Close path: WindowManager + ToggleGameMenu / CloseAllWindows / CloseSpecialWindows hooks (settings root does NOT use InstallESCHandler — see below).
+local LEGACY_ESC_PROXY_NAME = "WarbandNexusSettingsEscProxy"
+
+---Strip any stale ESC overrides (upgrades + other code paths); does not install new overrides.
+local function EnsureSettingsEscBindingsCleared()
+    if InCombatLockdown() then return end
+    if not ClearOverrideBindings then return end
+    local panel = _G.WarbandNexusSettingsPanel
+    if not panel or not panel:IsShown() then return end
+    pcall(ClearOverrideBindings, panel)
+    local legacy = _G[LEGACY_ESC_PROXY_NAME]
+    if legacy then
+        pcall(ClearOverrideBindings, legacy)
+    end
+    SettingsEscDebug("ESC: hooks-only mode (cleared stale override bindings on panel)")
+end
+
+local function ClearSettingsEscOverride()
+    if not ClearOverrideBindings then return end
+    SettingsEscDebug("ClearSettingsEscOverride()")
+    local panel = _G.WarbandNexusSettingsPanel
+    if panel then
+        pcall(ClearOverrideBindings, panel)
+    end
+    local legacy = _G[LEGACY_ESC_PROXY_NAME]
+    if legacy then
+        pcall(ClearOverrideBindings, legacy)
+    end
+end
+
+-- Post-hook: Blizzard ESC / CloseSpecialWindows path must hide the panel even if UISpecialFrames order fails.
+local settingsCloseSpecialHooked = false
+local function EnsureSettingsCloseSpecialHook()
+    if settingsCloseSpecialHooked or type(hooksecurefunc) ~= "function" then return end
+    settingsCloseSpecialHooked = true
+    hooksecurefunc("CloseSpecialWindows", function()
+        if ns._wnEscJustHandled then return end
+        local p = _G.WarbandNexusSettingsPanel
+        if p and p:IsShown() then
+            -- #region agent log
+            do
+                local W = WarbandNexus
+                local db = W and W.db and W.db.profile
+                if db and db.debugMode and W and W.Print then
+                    W:Print("|cff00ffff[WN ESC H2]|r CloseSpecialWindows post-hook ran while Settings visible → Hide")
+                end
+            end
+            -- #endregion agent log
+            SettingsEscDebug("CloseSpecialWindows post-hook → Hide()")
+            p:Hide()
+        end
+    end)
 end
 
 ---Long setting tooltips: use SetText wrap flag + minimum width so text breaks into lines.
@@ -86,8 +218,24 @@ local function GetToggleBindingDisplayText()
     return (GetBindingText and GetBindingText(key)) or key
 end
 
+local function IsForbiddenToggleKeybind(key)
+    if not key or key == "" then return false end
+    local k = tostring(key):upper()
+    return (k == "ESC" or k == "ESCAPE" or k == "ESCAPEKEY")
+end
+
 local function SaveToggleKeybind(key)
     if not WarbandNexus or not WarbandNexus.db then return false end
+    if IsForbiddenToggleKeybind(key) then
+        WarbandNexus.db.profile.toggleKeybind = nil
+        if WarbandNexus.ApplyToggleKeybind then
+            WarbandNexus:ApplyToggleKeybind()
+        end
+        if WarbandNexus.Print then
+            WarbandNexus:Print("|cffff6600Toggle keybind cannot be ESC. Binding cleared.|r")
+        end
+        return false
+    end
     WarbandNexus.db.profile.toggleKeybind = key
     if WarbandNexus.ApplyToggleKeybind then
         WarbandNexus:ApplyToggleKeybind()
@@ -397,6 +545,21 @@ end
 -- WIDGET BUILDERS
 --============================================================================
 
+---Close another open settings dropdown (UIParent-level click-catcher can sit above scroll content and steal clicks).
+local function CloseOtherSettingsDropdownForClick(currentDropdown)
+    if ns._wnSettingsOpenDropdownMenu and ns._wnSettingsOpenDropdownMenu:IsShown()
+        and ns._wnSettingsOpenDropdownOwner
+        and ns._wnSettingsOpenDropdownOwner ~= currentDropdown
+    then
+        ns._wnSettingsOpenDropdownMenu:Hide()
+    end
+    if ns._wnSettingsDropdownClickCatcher and ns._wnSettingsOpenDropdownOwner
+        and ns._wnSettingsOpenDropdownOwner ~= currentDropdown
+    then
+        ns._wnSettingsDropdownClickCatcher:Hide()
+    end
+end
+
 ---Create dropdown widget
 local function CreateDropdownWidget(parent, option, yOffset)
     -- Label
@@ -424,12 +587,18 @@ local function CreateDropdownWidget(parent, option, yOffset)
     if ApplyVisuals then
         ApplyVisuals(dropdown, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
-    
+    dropdown:EnableMouse(true)
+    -- LeftButtonUp only: avoids double OnClick and stops the click-catcher from seeing a paired down/up in the same open action.
+    if dropdown.RegisterForClicks then
+        dropdown:RegisterForClicks("LeftButtonUp")
+    end
+
     local valueText = FontManager:CreateFontString(dropdown, "body", "OVERLAY")
     valueText:SetPoint("LEFT", 12, 0)
     valueText:SetPoint("RIGHT", -32, 0)
     valueText:SetJustifyH("LEFT")
     valueText:SetTextColor(1, 1, 1, 1)
+    if valueText.EnableMouse then valueText:EnableMouse(false) end
     
     -- Arrow icon
     local arrow = dropdown:CreateTexture(nil, "ARTWORK")
@@ -469,10 +638,17 @@ local function CreateDropdownWidget(parent, option, yOffset)
     -- Dropdown menu
     local activeMenu = nil
     
+    if parent and parent.EnableMouse then parent:EnableMouse(true) end
+
     dropdown:SetScript("OnClick", function(self)
+        CloseOtherSettingsDropdownForClick(dropdown)
+
         local values = GetValues()
         if not values then return end
-        
+
+        -- Parent menus to the settings window so UIParent-level hit layers do not sit above scroll content.
+        local menuParent = _G.WarbandNexusSettingsPanel or UIParent
+
         -- Toggle
         if activeMenu and activeMenu:IsShown() then
             activeMenu:Hide()
@@ -524,7 +700,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
         -- Reuse existing menu if available (Factory container for standard compliance)
         local menu = dropdown._dropdownMenu
         if not menu then
-            menu = ns.UI.Factory:CreateContainer(UIParent, 200, 300, true)
+            menu = ns.UI.Factory:CreateContainer(menuParent, 200, 300, true)
             if menu then
                 menu:SetFrameStrata("FULLSCREEN_DIALOG")
                 menu:SetFrameLevel(300)
@@ -534,8 +710,11 @@ local function CreateDropdownWidget(parent, option, yOffset)
                 end
             end
             dropdown._dropdownMenu = menu
+        else
+            menu:SetParent(menuParent)
         end
-        
+        if not menu then return end
+
         -- Update menu size and position
         menu:SetSize(menuWidth, contentHeight + menuPad * 2)
         if option.menuOpensUpward then
@@ -543,6 +722,15 @@ local function CreateDropdownWidget(parent, option, yOffset)
             menu:SetPoint("BOTTOMLEFT", dropdown, "TOPLEFT", 0, 2)
         else
             menu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
+        end
+        -- Stay above the settings panel and other UI; click-catcher must stay just under the menu.
+        menu:SetFrameStrata("FULLSCREEN_DIALOG")
+        local baseLvl = (menuParent.GetFrameLevel and menuParent:GetFrameLevel()) or 0
+        menu:SetFrameLevel(baseLvl + 100)
+        menu:Raise()
+        if not InCombatLockdown() then
+            if menu.EnableKeyboard then menu:EnableKeyboard(true) end
+            if menu.SetPropagateKeyboardInput then menu:SetPropagateKeyboardInput(true) end
         end
         
         -- Clear existing children (scrollFrame and buttons)
@@ -584,6 +772,10 @@ local function CreateDropdownWidget(parent, option, yOffset)
         for _, data in ipairs(sortedOptions) do
             local btn = ns.UI.Factory:CreateButton(scrollChild, btnWidth, itemHeight, true)
             if not btn then break end
+            btn:EnableMouse(true)
+            if btn.RegisterForClicks then
+                btn:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
+            end
             btn:SetPoint("TOPLEFT", 0, -yPos)
             
             local isCurrent = (currentValue == data.value)
@@ -598,6 +790,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
             btnText:SetPoint("LEFT", 10, 0)
             btnText:SetPoint("RIGHT", -10, 0)
             btnText:SetJustifyH("LEFT")
+            if btnText.EnableMouse then btnText:EnableMouse(false) end
             btnText:SetText(data.text)
             
             if isCurrent then
@@ -646,25 +839,44 @@ local function CreateDropdownWidget(parent, option, yOffset)
         -- Create click-catcher (full-screen invisible frame)
         local clickCatcher = dropdown._clickCatcher
         if not clickCatcher then
-            clickCatcher = ns.UI.Factory:CreateContainer(UIParent, 1, 1, false)
+            clickCatcher = ns.UI.Factory:CreateContainer(menuParent, 1, 1, false)
             if clickCatcher then
-                clickCatcher:SetAllPoints()
+                clickCatcher:SetAllPoints(menuParent)
                 clickCatcher:SetFrameStrata("FULLSCREEN_DIALOG")
-                clickCatcher:SetFrameLevel(menu:GetFrameLevel() - 1)
+                clickCatcher:SetFrameLevel(math.max(0, (menu:GetFrameLevel() or 0) - 1))
                 clickCatcher:EnableMouse(true)
-                clickCatcher:SetScript("OnMouseDown", function()
+                -- MouseUp: opening click finishes on the dropdown; showing catcher same-frame (or on MouseDown)
+                -- caused the first "outside" event to fire immediately and close the list.
+                clickCatcher:SetScript("OnMouseUp", function(_, button)
+                    if button and button ~= "LeftButton" then return end
                     menu:Hide()
                     activeMenu = nil
                     clickCatcher:Hide()
                 end)
             end
             dropdown._clickCatcher = clickCatcher
+        else
+            clickCatcher:SetParent(menuParent)
+            clickCatcher:SetAllPoints(menuParent)
+            clickCatcher:SetScript("OnMouseUp", function(_, button)
+                if button and button ~= "LeftButton" then return end
+                menu:Hide()
+                activeMenu = nil
+                clickCatcher:Hide()
+            end)
         end
 
         -- Ensure click-catcher is hidden when menu is hidden (single stable handler).
         if not menu._clickCatcherHideHandlerInstalled then
             menu._clickCatcherHideHandlerInstalled = true
             menu:SetScript("OnHide", function()
+                if ns._wnSettingsOpenDropdownMenu == menu then
+                    ns._wnSettingsOpenDropdownMenu = nil
+                    ns._wnSettingsOpenDropdownOwner = nil
+                end
+                if ns._wnSettingsDropdownClickCatcher == dropdown._clickCatcher then
+                    ns._wnSettingsDropdownClickCatcher = nil
+                end
                 local catcher = dropdown._clickCatcher
                 if catcher then
                     catcher:Hide()
@@ -672,9 +884,19 @@ local function CreateDropdownWidget(parent, option, yOffset)
             end)
         end
 
-        -- Show click-catcher when menu is shown
+        -- Defer catcher to next frame so the click that opened the menu is not treated as "outside".
+        ns._wnSettingsOpenDropdownMenu = menu
+        ns._wnSettingsOpenDropdownOwner = dropdown
+        ns._wnSettingsDropdownClickCatcher = clickCatcher
         if clickCatcher then
-            clickCatcher:Show()
+            clickCatcher:Hide()
+            C_Timer.After(0, function()
+                if not dropdown._clickCatcher or dropdown._clickCatcher ~= clickCatcher then return end
+                if not menu or not menu:IsShown() then return end
+                clickCatcher:SetFrameStrata(menu:GetFrameStrata())
+                clickCatcher:SetFrameLevel(math.max(0, (menu:GetFrameLevel() or 0) - 1))
+                clickCatcher:Show()
+            end)
         end
     end)
     
@@ -1012,6 +1234,7 @@ local function BuildSettings(parent, containerWidth)
     keybindLabel:SetTextColor(1, 1, 1, 1)
 
     local keybindBtn = CreateFrame("Button", nil, generalSection.content, "BackdropTemplate")
+    settingsKeybindButton = keybindBtn
     keybindBtn:SetSize(160, 26)
     keybindBtn:SetPoint("LEFT", keybindLabel, "RIGHT", 10, 0)
     if ApplyVisuals then
@@ -1024,27 +1247,72 @@ local function BuildSettings(parent, containerWidth)
     keybindBtnText:SetTextColor(1, 1, 1, 1)
 
     local isListening = false
+    local captureFrame = settingsKeybindCaptureFrame
+    if not captureFrame then
+        captureFrame = CreateFrame("Frame", nil, UIParent)
+        captureFrame:SetAllPoints(UIParent)
+        captureFrame:Hide()
+        settingsKeybindCaptureFrame = captureFrame
+    end
 
     local function StopListening()
         isListening = false
-        keybindBtn:EnableKeyboard(false)
+        settingsKeybindIsListening = false
+        if captureFrame then
+            if captureFrame.EnableKeyboard then
+                captureFrame:EnableKeyboard(false)
+            end
+            if captureFrame.SetPropagateKeyboardInput then
+                captureFrame:SetPropagateKeyboardInput(true)
+            end
+            captureFrame:Hide()
+        end
         keybindBtnText:SetText(GetToggleBindingDisplayText())
         keybindBtnText:SetTextColor(1, 1, 1, 1)
         if ApplyVisuals then
             ApplyVisuals(keybindBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
         end
+        -- #region agent log
+        do
+            local W = rawget(_G, "WarbandNexus")
+            local db = W and W.db and W.db.profile
+            if db and db.debugMode and W and W.Print then
+                W:Print("|cff00ffff[WN ESC H12]|r Keybind capture stopped")
+            end
+        end
+        -- #endregion agent log
     end
 
     local function StartListening()
         if InCombatLockdown() then return end
         isListening = true
-        keybindBtn:EnableKeyboard(true)
+        settingsKeybindIsListening = true
+        if captureFrame then
+            captureFrame:Show()
+            if captureFrame.EnableKeyboard then
+                captureFrame:EnableKeyboard(true)
+            end
+            if captureFrame.SetPropagateKeyboardInput then
+                captureFrame:SetPropagateKeyboardInput(false)
+            end
+        end
         keybindBtnText:SetText((ns.L and ns.L["KEYBINDING_PRESS_KEY"]) or "Press a key...")
         keybindBtnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
         if ApplyVisuals then
             ApplyVisuals(keybindBtn, {0.12, 0.08, 0.18, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
         end
+        -- #region agent log
+        do
+            local W = rawget(_G, "WarbandNexus")
+            local db = W and W.db and W.db.profile
+            if db and db.debugMode and W and W.Print then
+                W:Print("|cff00ffff[WN ESC H12]|r Keybind capture started")
+            end
+        end
+        -- #endregion agent log
     end
+    settingsKeybindStopListening = StopListening
+    StopListening()
 
     keybindBtn:SetScript("OnClick", function()
         if isListening then
@@ -1054,7 +1322,7 @@ local function BuildSettings(parent, containerWidth)
         end
     end)
 
-    keybindBtn:SetScript("OnKeyDown", function(_, key)
+    captureFrame:SetScript("OnKeyDown", function(_, key)
         if not isListening then return end
         if IGNORED_KEYS[key] then return end
 
@@ -1077,7 +1345,45 @@ local function BuildSettings(parent, containerWidth)
         if IsAltKeyDown() then prefix = "ALT-" .. prefix end
 
         local fullKey = prefix .. key
-        SaveToggleKeybind(fullKey)
+        if IsForbiddenToggleKeybind(fullKey) then
+            SaveToggleKeybind(fullKey) -- existing path prints warning + clears
+            StopListening()
+            return
+        end
+        if not WarbandNexus or not WarbandNexus.db then
+            StopListening()
+            return
+        end
+        WarbandNexus.db.profile.toggleKeybind = fullKey
+        -- Defer binding install until the physical key is released; otherwise the OS-level
+        -- key-repeat / OnKeyUp of the same press can fire the freshly-bound toggle and close
+        -- Settings immediately after "Keybinding saved".
+        ns._wnSuppressToggleMainOnce = true
+        local settleFrame = captureFrame
+        local function InstallBindingNow()
+            if not ns._wnSuppressToggleMainOnce then return end
+            if WarbandNexus and WarbandNexus.ApplyToggleKeybind then
+                WarbandNexus:ApplyToggleKeybind()
+            end
+            -- Clear suppression one more frame later so any queued toggle is swallowed.
+            C_Timer.After(0, function()
+                ns._wnSuppressToggleMainOnce = nil
+            end)
+        end
+        if settleFrame then
+            settleFrame:SetScript("OnKeyUp", function(self)
+                self:SetScript("OnKeyUp", nil)
+                InstallBindingNow()
+            end)
+        end
+        -- Fallback: if OnKeyUp never arrives (modifier-only release, focus change),
+        -- install after a short delay.
+        C_Timer.After(0.35, function()
+            if settleFrame and settleFrame.SetScript then
+                settleFrame:SetScript("OnKeyUp", nil)
+            end
+            InstallBindingNow()
+        end)
 
         if WarbandNexus and WarbandNexus.Print then
             WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["KEYBINDING_SAVED"]) or "Keybinding saved.") .. "|r")
@@ -1643,6 +1949,15 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.notifications.screenFlashEffect end,
             set = function(value) WarbandNexus.db.profile.notifications.screenFlashEffect = value end,
         },
+        {
+            key = "tryCounterDropScreenshot",
+            parentKey = "autoTryCounter",
+            label = (ns.L and ns.L["TRY_COUNTER_DROP_SCREENSHOT"]) or "Screenshot on tracked drop",
+            tooltip = (ns.L and ns.L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"])
+                or "When a mount, pet, toy, or illusion you were try-tracking finally drops, take an automatic screenshot (~0.3s after the popup). Independent of the screen flash option.",
+            get = function() return WarbandNexus.db.profile.notifications.tryCounterDropScreenshot ~= false end,
+            set = function(value) WarbandNexus.db.profile.notifications.tryCounterDropScreenshot = value end,
+        },
     }
     
     local notifGridYOffset, notifWidgets = CreateCheckboxGrid(notifSection.content, notifOptions, 0, effectiveWidth - 30)
@@ -1654,7 +1969,7 @@ local function BuildSettings(parent, containerWidth)
         name = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LABEL"]) or "Try counter chat output",
         desc = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DESC"])
             or "Default uses the same tabs as Loot messages. “Warband Nexus” is a separate filter you can enable per tab (often listed in the chat tab settings). “All tabs” prints to every standard chat window.",
-        -- Open downward: upward menus covered the label and checkbox rows above this control.
+        -- Open downward like other dropdowns (avoids confusing “flip”; layout gap trimmed separately).
         menuOpensUpward = false,
         valueOrder = { "loot", "dedicated", "all_tabs" },
         values = {
@@ -1673,8 +1988,8 @@ local function BuildSettings(parent, containerWidth)
         end,
     }, notifGridYOffset)
 
-    -- Extra gap so the open dropdown list (below the button) does not cover "Add try counter…"
-    notifGridYOffset = notifGridYOffset - (14 + 92)
+    -- Tight spacing under try-counter route control
+    notifGridYOffset = notifGridYOffset - 4
     local addTcChatBtn = ns.UI.Factory:CreateButton(notifSection.content)
     addTcChatBtn:SetSize(math.min(effectiveWidth - 30, 320), 30)
     addTcChatBtn:SetPoint("TOPLEFT", 0, notifGridYOffset)
@@ -3139,18 +3454,39 @@ function WarbandNexus:ShowSettings()
         self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
         return
     end
-    
+
+    -- #region agent log
+    WnDiagSettings("ShowSettings() — look in the SAME chat tab as '(Warband Nexus) Welcome…' (not print() / System only).")
+    -- #endregion agent log
+
+    EnsureSettingsCloseSpecialHook()
+
     -- Prevent duplicates: if already shown, bring to front
     if settingsFrame and settingsFrame:IsShown() then
-        RefreshSettingsKeyboard(settingsFrame)
+        -- #region agent log
+        WnDiagSettings("path A: panel already visible → Raise only (OnShow will NOT run — no OnShow log).")
+        -- #endregion agent log
+        if not InCombatLockdown() and settingsFrame.EnableKeyboard then
+            settingsFrame:EnableKeyboard(false)
+        end
         settingsFrame:Raise()
+        C_Timer.After(0, function()
+            if settingsKeybindStopListening then settingsKeybindStopListening() end
+            if settingsKeybindButton and settingsKeybindButton.EnableKeyboard then
+                settingsKeybindButton:EnableKeyboard(false)
+            end
+            EnsureSettingsEscBindingsCleared()
+            SuppressMainWindowKeyboardWhileSettingsOpen()
+        end)
         return
     end
     
     -- Reuse existing hidden frame to prevent orphaned frame leaks.
     -- Previous code created a new frame every time, leaving old hidden frames in memory.
     if settingsFrame then
-        RefreshSettingsKeyboard(settingsFrame)
+        -- #region agent log
+        WnDiagSettings("path B: Show() on existing frame → OnShow runs.")
+        -- #endregion agent log
         settingsFrame:Show()
         settingsFrame:Raise()
         return
@@ -3159,7 +3495,8 @@ function WarbandNexus:ShowSettings()
     -- Forward declarations for resize callbacks.
     local scrollFrame, scrollChild, lastWidth
     
-    -- Main frame (created once, reused across open/close cycles; global name for UISpecialFrames ESC)
+    -- Main frame: no addon FrameXML — same pattern as InformationDialog / WindowFactory.CreateExternalWindow
+    -- (pure Lua CreateFrame("Frame", globalName, UIParent)). ESC: UISpecialFrames + WindowManager + hooks.
     local SETTINGS_FRAME_NAME = "WarbandNexusSettingsPanel"
     local f = ns.UI.Factory:CreateContainer(UIParent, 700, 650, false, SETTINGS_FRAME_NAME)
     if not f then return end
@@ -3182,6 +3519,15 @@ function WarbandNexus:ShowSettings()
     -- When a FULLSCREEN_DIALOG frame hides, WoW's layout engine can recalculate
     -- sibling frame positions, causing the main window to shift.
     f:SetScript("OnHide", function()
+        SettingsEscDebug("OnHide WarbandNexusSettingsPanel")
+        if settingsKeybindStopListening and settingsKeybindIsListening then
+            settingsKeybindStopListening()
+        end
+        if settingsKeybindButton and settingsKeybindButton.EnableKeyboard then
+            settingsKeybindButton:EnableKeyboard(false)
+        end
+        RestoreMainWindowKeyboardAfterSettingsClose()
+        ClearSettingsEscOverride()
         local mainFrame = _G.WarbandNexusFrame
         if mainFrame and mainFrame:IsShown() then
             local left = mainFrame:GetLeft()
@@ -3193,16 +3539,6 @@ function WarbandNexus:ShowSettings()
         end
     end)
 
-    f:SetScript("OnShow", function(self)
-        RefreshSettingsKeyboard(self)
-        -- Next frame: keyboard focus can lag behind Show on some clients; re-apply once.
-        C_Timer.After(0, function()
-            if self and self:IsShown() then
-                RefreshSettingsKeyboard(self)
-            end
-        end)
-    end)
-
     -- Blizzard ESC chain (CloseSpecialWindows) — complements WindowManager when keyboard focus is elsewhere.
     do
         local list = _G.UISpecialFrames
@@ -3211,32 +3547,60 @@ function WarbandNexus:ShowSettings()
         end
     end
     
-    -- ESC: same hierarchy as main window (POPUP closes before MAIN).
+    -- ESC: Register for hierarchy, but do NOT InstallESCHandler on the root. EnableKeyboard(true) on a
+    -- large panel captures the keyboard stack and breaks movement, chat, and keybinding capture for the whole client.
+    -- Close via ToggleGameMenu / CloseSpecialWindows / CloseAllWindows hooks + UISpecialFrames (EnsureSettingsCloseSpecialHook).
+    -- Strata: FLOATING (HIGH).
     if ns.WindowManager then
-        ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.POPUP)
-        -- Above other POPUP-tier frames at default level so ESC hierarchy prefers this window.
-        f:SetFrameLevel((f:GetFrameLevel() or 300) + 25)
-        -- Explicit close keeps behavior obvious if hierarchy changes.
+        ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.FLOATING)
+        f:SetFrameLevel((f:GetFrameLevel() or 120) + 25)
         ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP, function()
+            SettingsEscDebug("WindowManager registered closeFunc → Hide()")
             f:Hide()
         end)
-        ns.WindowManager:InstallESCHandler(f)
-    else
-        f:SetFrameStrata("FULLSCREEN_DIALOG")
-        f:SetFrameLevel(200)
-        if not InCombatLockdown() then
-            f:EnableKeyboard(true)
-            f:SetPropagateKeyboardInput(true)
+        if not InCombatLockdown() and f.EnableKeyboard then
+            f:EnableKeyboard(false)
         end
-        f:SetScript("OnKeyDown", function(self, key)
-            if key == "ESCAPE" then
-                if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
-                self:Hide()
-            else
-                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
-            end
-        end)
+    else
+        f:SetFrameStrata("HIGH")
+        f:SetFrameLevel(150)
+        if not InCombatLockdown() and f.EnableKeyboard then
+            f:EnableKeyboard(false)
+        end
     end
+
+    f:SetScript("OnShow", function(self)
+        -- #region agent log
+        WnDiagSettings("OnShow: WarbandNexusSettingsPanel (frame script; you should see path B/C above on open)")
+        -- #endregion agent log
+        local ok, err = pcall(function()
+            SettingsEscDebug(
+                "OnShow name=%s strata=%s level=%s",
+                tostring(self:GetName()),
+                tostring(self.GetFrameStrata and self:GetFrameStrata()) or "?",
+                tostring(self.GetFrameLevel and self:GetFrameLevel()) or "?"
+            )
+            SettingsEscDebug(
+                "READY: Debug Mode on — press ESC. Expect [H1a] ToggleGameMenu; [H2] CloseSpecialWindows; hooks close panel (root has no keyboard capture)."
+            )
+        end)
+        if not ok then
+            WnDiagSettings("ERROR in OnShow pcall: " .. tostring(err))
+        end
+        if self.Raise then self:Raise() end
+        C_Timer.After(0, function()
+            if not self or not self:IsShown() then return end
+            if settingsKeybindStopListening then settingsKeybindStopListening() end
+            if settingsKeybindButton and settingsKeybindButton.EnableKeyboard then
+                settingsKeybindButton:EnableKeyboard(false)
+            end
+            if not InCombatLockdown() and self.EnableKeyboard then
+                self:EnableKeyboard(false)
+            end
+            EnsureSettingsEscBindingsCleared()
+            SuppressMainWindowKeyboardWhileSettingsOpen()
+        end)
+    end)
     
     -- Header (Factory container)
     local header = ns.UI.Factory:CreateContainer(f, 1, 40, false)
@@ -3273,7 +3637,7 @@ function WarbandNexus:ShowSettings()
     icon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
     
     -- Title
-    local title = FontManager:CreateFontString(header, "title", "OVERLAY")
+    local title = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     title:SetPoint("LEFT", icon, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
     title:EnableMouse(true)
     title:SetText((ns.L and ns.L["WARBAND_NEXUS_SETTINGS"]) or "Warband Nexus Settings")
@@ -3356,6 +3720,7 @@ function WarbandNexus:ShowSettings()
     scrollFrame:SetPoint("TOPLEFT", UI_SPACING.SIDE_MARGIN, -UI_SPACING.TOP_MARGIN)
     scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", 0, UI_SPACING.TOP_MARGIN)
     scrollFrame:EnableMouseWheel(true)
+    if scrollFrame.EnableMouse then scrollFrame:EnableMouse(true) end
     if scrollFrame.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
         ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
     end
@@ -3364,6 +3729,7 @@ function WarbandNexus:ShowSettings()
     scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
     local scrollWidth = scrollFrame:GetWidth() or 660
     scrollChild:SetWidth(scrollWidth)
+    scrollChild:EnableMouse(true)
     scrollFrame:SetScrollChild(scrollChild)
     
     -- Resize: only update scroll width during drag; full rebuild on mouse release (no continuous render)
@@ -3410,9 +3776,15 @@ function WarbandNexus:ShowSettings()
         end)
     end)
     
+    -- #region agent log
+    WnDiagSettings("path C: first-time create → f:Show() next (OnShow runs).")
+    -- #endregion agent log
     f:Show()
     settingsFrame = f
 end
 
 -- Export
 ns.ShowSettings = function() WarbandNexus:ShowSettings() end
+
+-- CloseSpecialWindows path for ESC (do not rely on ShowSettings having run first).
+EnsureSettingsCloseSpecialHook()

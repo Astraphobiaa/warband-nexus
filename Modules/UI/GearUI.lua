@@ -15,6 +15,11 @@ local WarbandNexus = ns.WarbandNexus
 local Constants    = ns.Constants
 local FontManager   = ns.FontManager
 
+--- Tek merkez: Modules/FontManager.lua → FONT_ROLE
+local function GFR(roleKey)
+    return FontManager:GetFontRole(roleKey)
+end
+
 local issecretvalue = issecretvalue
 
 -- Services / helpers
@@ -38,6 +43,29 @@ local SLOT_BY_ID         = ns.SLOT_BY_ID
 local EQUIP_LOC_TO_SLOTS = ns.EQUIP_LOC_TO_SLOTS
 
 local format = string.format
+
+local WEAPON_ENCHANT_EQUIP_LOCS = {
+    INVTYPE_WEAPON = true,
+    INVTYPE_WEAPONMAINHAND = true,
+    INVTYPE_WEAPONOFFHAND = true,
+    INVTYPE_2HWEAPON = true,
+}
+
+---Midnight primary-enchant expectation by slot + equip location.
+---@param slotID number
+---@param slotData table|nil
+---@return boolean
+local function IsPrimaryEnchantExpected(slotID, slotData)
+    local enchantableSlots = Constants and Constants.GEAR_ENCHANTABLE_SLOTS
+    if not (enchantableSlots and enchantableSlots[slotID]) then
+        return false
+    end
+    if slotID == 16 or slotID == 17 then
+        local equipLoc = slotData and slotData.equipLoc or ""
+        return WEAPON_ENCHANT_EQUIP_LOCS[equipLoc] == true
+    end
+    return true
+end
 
 --- English track names from Blizzard tooltip/API → locale (e.g. zhCN PVE_CREST_*).
 local function LocalizeUpgradeTrackName(name)
@@ -90,7 +118,8 @@ local SLOT_TO_ARROW_GAP = P(4)   -- slot ile upgrade ikonu arası
 local ARROW_TO_TEXT_GAP = P(6)   -- ok ile yazı arası boşluk (artık yaslamalı olduğu için pozitif olmalı)
 local TRACK_TEXT_W   = P(136)  -- Track metin taşmasını engellemek için genişletildi
 local UPGRADE_ARROW_W = P(16)
-local CURRENCY_PANEL_W = 240
+local CURRENCY_PANEL_W = 248
+local GEAR_STAT_PANEL_W = 292
 local CENTER_GAP     = P(10)
 local CURRENCY_PAPERDOLL_GAP = 14  -- boşluk crest paneli ile paperdoll arası
 
@@ -98,11 +127,21 @@ local CURRENCY_PAPERDOLL_GAP = 14  -- boşluk crest paneli ile paperdoll arası
 local LEFT_PANEL_W   = TRACK_TEXT_W + ARROW_TO_TEXT_GAP + UPGRADE_ARROW_W + SLOT_TO_ARROW_GAP + SLOT_SIZE
 local RIGHT_PANEL_W  = SLOT_SIZE + SLOT_TO_ARROW_GAP + UPGRADE_ARROW_W + 2 + ARROW_TO_TEXT_GAP + TRACK_TEXT_W
 local MODEL_W       = P(228)
+-- Neutral center fill: Blizzard tooltip tile (FrameXML Backdrop — see warcraft.wiki.gg UIOBJECT Frame / Backdrop).
+-- Avoids a flat ColorTexture “void” without class-specific art.
+local GEAR_MODEL_PANEL_BACKDROP = {
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Buttons\\WHITE8X8",
+    edgeSize = 1,
+    tile = true,
+    tileSize = 8,
+    insets = { left = 0, right = 0, top = 0, bottom = 0 },
+}
 -- Paperdoll blok genişliği (sol kolon + model + sağ kolon) — kart içinde ortalanır
 local PAPERDOLL_BLOCK_W = LEFT_PANEL_W + CENTER_GAP + MODEL_W + CENTER_GAP + RIGHT_PANEL_W
 
 -- Minimum card inner width (currency + gaps + paperdoll block + stats) — layout bu genişliğin altına inmez
-local MIN_CARD_INNER_W = CURRENCY_PANEL_W + CURRENCY_PAPERDOLL_GAP * 2 + PAPERDOLL_BLOCK_W + 260
+local MIN_CARD_INNER_W = CURRENCY_PANEL_W + CURRENCY_PAPERDOLL_GAP * 2 + PAPERDOLL_BLOCK_W + GEAR_STAT_PANEL_W
 -- Minimum scrollChild width: daraldığında yatay scroll, elementler üst üste binmesin
 local MIN_GEAR_CARD_W = 2 * (SIDE_MARGIN or 16) + 2 * 12 + MIN_CARD_INNER_W  -- 12 = CARD_PAD
 ns.MIN_GEAR_CARD_W = MIN_GEAR_CARD_W  -- used by UI.lua for scrollChild width on gear tab
@@ -430,7 +469,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
     ilvlLabel:SetPoint("BOTTOMRIGHT", -2, 2)
     ilvlLabel:SetFontObject(SystemFont_Tiny)  -- ensure font set before Populate() ever calls SetText
     if FontManager and FontManager.CreateFontString then
-        local fs = FontManager:CreateFontString(btn, "tiny", "OVERLAY")
+        local fs = FontManager:CreateFontString(btn, GFR("gearSlotIlvl"), "OVERLAY")
         if fs and fs.SetFontObject then
             fs:SetPoint("BOTTOMRIGHT", -2, 2)
             fs:SetJustifyH("RIGHT")
@@ -558,18 +597,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
             end
         end
         
-        -- In Midnight / TWW, these are the enchantable slots
-        local enchantableSlots = {
-            [5] = true,  -- Chest
-            [7] = true,  -- Legs
-            [8] = true,  -- Feet
-            [9] = true,  -- Wrist
-            [11] = true, -- Ring 1
-            [12] = true, -- Ring 2
-            [15] = true, -- Back
-            [16] = true  -- Main Hand
-        }
-        isEnchantable = enchantableSlots[slotID] or false
+        isEnchantable = IsPrimaryEnchantExpected(slotID, slotData)
     end
     
     -- Warning icon for missing enchant or gem
@@ -616,6 +644,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
         if slotData and slotData.itemLink then
             local up = upgradeInfo and upgradeInfo[slotID]
             local additionalLines = {}
+            local underTitleLines
             
             -- Missing Enchant/Gem warnings at the top of additional lines
             if isEnchantable and not hasEnchant then
@@ -669,8 +698,8 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                 end
             elseif up and up.canUpgrade then
                 local affordable, goldOnly = CalculateAffordableUpgrades(up, currencyAmounts)
-                additionalLines[#additionalLines + 1] = { type = "spacer", height = 6 }
                 if affordable > 0 then
+                    additionalLines[#additionalLines + 1] = { type = "spacer", height = 6 }
                     -- Show achievable target only (e.g. 2/6 when 20 crests and 1/6 — not 6/6).
                     local targetTier = (up.currUpgrade or 0) + affordable
                     local TRACK_ILVLS = ns.TRACK_ILVLS
@@ -698,9 +727,11 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                         end
                     end
                 else
-                    additionalLines[#additionalLines + 1] = {
-                        text = format((ns.L and ns.L["GEAR_NEED_MORE_CRESTS_FORMAT"]) or "%s %d/%d — need more crests", LocalizeUpgradeTrackName(up.trackName or ""), up.currUpgrade or 0, up.maxUpgrade or 0),
-                        color = { 0.8, 0.5, 0.2 }
+                    underTitleLines = {
+                        {
+                            text = format((ns.L and ns.L["GEAR_NEED_MORE_CRESTS_FORMAT"]) or "%s %d/%d — need more crests", LocalizeUpgradeTrackName(up.trackName or ""), up.currUpgrade or 0, up.maxUpgrade or 0),
+                            color = { 0.8, 0.5, 0.2 }
+                        }
                     }
                 end
             end
@@ -710,6 +741,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                     itemID = slotData.itemID,
                     itemLink = slotData.itemLink,
                     additionalLines = additionalLines,
+                    underTitleLines = underTitleLines,
                     anchor = "ANCHOR_RIGHT",
                     itemTooltipContext = itemTooltipContext,
                 })
@@ -719,6 +751,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                     itemID = slotData.itemID,
                     itemLink = slotData.itemLink,
                     additionalLines = additionalLines,
+                    underTitleLines = underTitleLines,
                     anchor = "ANCHOR_RIGHT",
                     itemTooltipContext = itemTooltipContext,
                 })
@@ -769,7 +802,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
     end
     local slotNameLabel
     if slotName ~= "" then
-        slotNameLabel = FontManager and FontManager.CreateFontString and FontManager:CreateFontString(parent, "tiny", "OVERLAY") or parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        slotNameLabel = FontManager and FontManager.CreateFontString and FontManager:CreateFontString(parent, GFR("gearSlotName"), "OVERLAY") or parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         slotNameLabel:SetText("|cffffffff" .. slotName .. "|r")
         slotNameLabel:SetNonSpaceWrap(false)
         if slotNameLabel.SetWordWrap then slotNameLabel:SetWordWrap(false) end
@@ -784,7 +817,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
     -- Dikey hizalama yapıldığı için artık +20 yatay itme yapmaya gerek yok
 
     if trackText and side ~= "top" then
-        trackLabel = FontManager and FontManager.CreateFontString and FontManager:CreateFontString(parent, "tiny", "OVERLAY") or parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        trackLabel = FontManager and FontManager.CreateFontString and FontManager:CreateFontString(parent, GFR("gearTrackLabel"), "OVERLAY") or parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         trackLabel:SetText(trackText)
         trackLabel:SetNonSpaceWrap(false)
         if trackLabel.SetWordWrap then trackLabel:SetWordWrap(false) end
@@ -885,9 +918,69 @@ local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts)
     return nil
 end
 
+--- Offline character center panel: class-accent top rule + bottom bar with badge (3D/2D preview only).
+---@param centerRef Frame
+---@param classFile string|nil
+local function ApplyGearOfflineCenterChrome(centerRef, classFile)
+    if not centerRef then return end
+    local chrome = ns._gearOfflineCenterChrome
+    if not chrome then
+        chrome = CreateFrame("Frame", nil, centerRef)
+        chrome:SetAllPoints()
+        chrome:EnableMouse(false)
+        chrome:EnableMouseWheel(false)
+        chrome.isPersistentRowElement = true
+        local topLine = chrome:CreateTexture(nil, "ARTWORK", nil, 2)
+        topLine:SetHeight(2)
+        topLine:SetPoint("TOPLEFT", chrome, "TOPLEFT", 0, -1)
+        topLine:SetPoint("TOPRIGHT", chrome, "TOPRIGHT", 0, -1)
+        chrome._topLine = topLine
+        local bar = CreateFrame("Frame", nil, chrome)
+        bar:SetPoint("BOTTOMLEFT", chrome, "BOTTOMLEFT", 0, 0)
+        bar:SetPoint("BOTTOMRIGHT", chrome, "BOTTOMRIGHT", 0, 0)
+        bar:SetHeight(36)
+        chrome._bar = bar
+        local barBg = bar:CreateTexture(nil, "BACKGROUND")
+        barBg:SetAllPoints()
+        barBg:SetColorTexture(0, 0, 0, 0.5)
+        chrome._barBg = barBg
+        local barClassLine = bar:CreateTexture(nil, "BORDER", nil, 1)
+        barClassLine:SetHeight(2)
+        barClassLine:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+        barClassLine:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
+        chrome._barClassLine = barClassLine
+        local label = FontManager:CreateFontString(chrome, GFR("gearChromeHint"), "OVERLAY")
+        label:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 10, 7)
+        label:SetJustifyH("LEFT")
+        label:SetTextColor(0.93, 0.94, 0.96, 0.95)
+        label:SetShadowOffset(1, -1)
+        label:SetShadowColor(0, 0, 0, 0.9)
+        chrome._label = label
+        ns._gearOfflineCenterChrome = chrome
+    end
+    if chrome:GetParent() ~= centerRef then
+        chrome:SetParent(centerRef)
+    end
+    chrome:ClearAllPoints()
+    chrome:SetAllPoints()
+    -- Above model (0) and interaction layer (~20), below nothing that matters; mouse passes through to drag layer.
+    chrome:SetFrameLevel(25)
+    local c = (classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]) or { r = 0.55, g = 0.5, b = 0.75 }
+    if chrome._topLine then
+        chrome._topLine:SetColorTexture(c.r, c.g, c.b, 0.55)
+    end
+    if chrome._barClassLine then
+        chrome._barClassLine:SetColorTexture(c.r, c.g, c.b, 0.9)
+    end
+    if chrome._label then
+        chrome._label:SetText((ns.L and ns.L["GEAR_OFFLINE_BADGE"]) or "Offline")
+    end
+    chrome:Show()
+end
+
 --- Draw paperdoll: sol panel (yazı-ikon-slot) | orta (model) | sağ panel (slot-ikon-yazı) | alt panel.
 --- baseX: paperdoll bloğunun sol kenarı (kart içinde crest panelinden sonra ortalanmış alan).
-local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar, baseX)
+local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar, baseX, charKey)
     baseX = baseX or CARD_PAD
     local itemTooltipContext = BuildGearTabItemTooltipContext(charData)
     -- Sol panel: fixed width; slot sağda (yazı - ikon - slot)
@@ -949,69 +1042,481 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local modelX    = baseX + LEFT_PANEL_W + CENTER_GAP
     local modelTopY = startY
 
-    -- scrollChild is the stable parent — model is parented here once and NEVER
-    -- re-parented. Re-parenting a PlayerModel resets WoW's internal renderer
-    -- causing the "slide up from bottom" animation on every refresh.
-    -- The model is positioned by anchoring to the card (which is recreated each
-    -- refresh) — anchor changes don't trigger animation restarts.
+    -- scrollChild is the stable parent — portrait panel is parented here once and NEVER
+    -- re-parented (same pattern as the old PlayerModel paperdoll).
     local scrollParent = card:GetParent()
 
+    --- Resolve creature display ID for portrait: saved gear snapshot, or live for logged-in char.
+    local function ResolveGearPaperdollDisplayID()
+        local snap = gearData and gearData.modelSnapshot
+        local id = snap and snap.displayID
+        if type(id) == "string" then id = tonumber(id) end
+        if id and issecretvalue and issecretvalue(id) then id = nil end
+        if id and type(id) == "number" and id > 0 then return math.floor(id) end
+        if isCurrentChar == true then
+            if UnitCreatureDisplayID then
+                local ok, d = pcall(UnitCreatureDisplayID, "player")
+                if ok and d and type(d) == "number" and d > 0
+                    and not (issecretvalue and issecretvalue(d)) then
+                    return math.floor(d)
+                end
+            end
+            if C_PlayerInfo and C_PlayerInfo.GetDisplayID then
+                local ok, d = pcall(C_PlayerInfo.GetDisplayID)
+                if ok and d and type(d) == "number" and d > 0
+                    and not (issecretvalue and issecretvalue(d)) then
+                    return math.floor(d)
+                end
+            end
+        end
+        return nil
+    end
+
+    local function AcquireGearPortraitPanel()
+        local pan = ns._gearPortraitPanel
+        if not pan then
+            pan = CreateFrame("Frame", nil, scrollParent, "BackdropTemplate")
+            local tex = pan:CreateTexture(nil, "ARTWORK", nil, 1)
+            tex:SetPoint("TOPLEFT", pan, "TOPLEFT", 2, -2)
+            tex:SetPoint("BOTTOMRIGHT", pan, "BOTTOMRIGHT", -2, 2)
+            tex:SetSnapToPixelGrid(false)
+            tex:SetTexelSnappingBias(0)
+            pan._tex = tex
+            pan.isPersistentRowElement = true
+            ns._gearPortraitPanel = pan
+        end
+        if not pan._wnGearTooltipPanelBg then
+            pan:SetBackdrop(GEAR_MODEL_PANEL_BACKDROP)
+            pan._wnGearTooltipPanelBg = true
+        end
+        pan:SetBackdropColor(0.1, 0.1, 0.12, 0.92)
+        return pan
+    end
+
+    -- Hide until we know which center widget to show; legacy PlayerModel (unused)
+    if ns._gearPortraitPanel then ns._gearPortraitPanel:Hide() end
+    if ns._gearDressModel then ns._gearDressModel:Hide() end
+    if ns._gearOfflineModel then ns._gearOfflineModel:Hide() end
+    if ns._gearOfflineCenterChrome then ns._gearOfflineCenterChrome:Hide() end
+    if ns._gearPlayerModel then
+        ns._gearPlayerModel:Hide()
+        ns._gearPlayerModel._unitSet = false
+        ns._gearPlayerModel._displaySet = false
+    end
+
+    -- 2D portrait: fallback (SetPortraitTexture*). Shown when 3D (DressUpModel) cannot be built.
+    -- TexCoord crop = extra zoom on the bust.
+    local GEAR_PORTRAIT_CROP = { 0.09, 0.91, 0.06, 0.94 }
+
+    -- Primary: DressUpModel — current character SetUnit+Dress; alts: snapshot+TryOn. modelView in SavedVariables.
+    local GEAR_REFERENCE_RADIUS = 0.92
+    local GEAR_FIXED_CAM_DISTANCE = 3.15
+    local GEAR_CAM_FIT_PADDING = 1.12
+    local GEAR_FIXED_CAM_SCALE = 1.8
+    local GEAR_MODEL_SCALE_MIN = 0.15
+    local GEAR_MODEL_SCALE_MAX = 6.0
+    local GEAR_ZOOM_MIN = 0.5
+    local GEAR_ZOOM_MAX = 2.0
+    local GEAR_ROTATE_SENSITIVITY = 0.02
+
     local centerRef = nil
-    if isCurrentChar == true then
-        local model = ns._gearPlayerModel
-        if not model then
-            local ok, m = pcall(function()
-                local f = CreateFrame("PlayerModel", nil, scrollParent)
-                if f.SetKeepModelOnHide then f:SetKeepModelOnHide(true) end
-                return f
+
+-- Two distinct widgets so SetUnit/Dress state on the online widget can never
+    -- bleed into the offline widget (DressUpModel + SetUnit + later SetDisplayInfo
+    -- = white-mannequin: dressing layer keeps a stale slot list whose item textures
+    -- aren't in the local cache for alts). PlayerModel has no dressing layer, so
+    -- SetDisplayInfo renders the displayID's baked race/sex/customizations directly.
+    local function BuildModelClip(widgetType)
+        -- Clip frame: holds background + 3D model + interaction layer. SetClipsChildren
+        -- prevents the model from drawing over neighbouring cards/scroll edges.
+        local clip = CreateFrame("Frame", nil, scrollParent, "BackdropTemplate")
+        if clip.SetClipsChildren then clip:SetClipsChildren(true) end
+        clip:SetBackdrop(GEAR_MODEL_PANEL_BACKDROP)
+        clip:SetBackdropColor(0.06, 0.06, 0.08, 0.96)
+        clip.isPersistentRowElement = true
+
+        -- Class-tinted vertical gradient drawn behind the 3D model. Same look as the
+        -- offline character card so online and offline panels share a consistent feel.
+        local grad = clip:CreateTexture(nil, "BACKGROUND", nil, 1)
+        grad:SetPoint("TOPLEFT", clip, "TOPLEFT", 1, -1)
+        grad:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT", -1, 1)
+        grad:SetColorTexture(1, 1, 1, 1)
+        clip._gradient = grad
+        clip._SetClassTint = function(self, classFile)
+            local cc = (classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile])
+                or { r = 0.55, g = 0.5, b = 0.75 }
+            local tR, tG, tB = cc.r * 0.50, cc.g * 0.50, cc.b * 0.50
+            if grad.SetGradient and CreateColor then
+                pcall(grad.SetGradient, grad, "VERTICAL",
+                    CreateColor(tR, tG, tB, 0.90),
+                    CreateColor(0.04, 0.04, 0.05, 0.95))
+            else
+                grad:SetColorTexture(tR, tG, tB, 0.90)
+            end
+        end
+
+        local m = CreateFrame(widgetType, nil, clip)
+        m:SetAllPoints(clip)
+        m:SetModelDrawLayer("ARTWORK")
+        m:EnableMouse(false)
+        m:EnableMouseWheel(false)
+        m._clip = clip
+        clip._model = m
+
+        m._rotation = 0
+        m._zoom = 1.0
+        m._scale = 1.0
+        m._normalized = false
+
+        local function ApplyTransform()
+            pcall(function()
+                m:SetPosition(0, 0, 0)
+                if m.UseModelCenterToTransform then m:UseModelCenterToTransform(true) end
+                if m.SetPitch then m:SetPitch(0) end
+                m:SetFacing(m._rotation)
+                if m.SetPortraitZoom then m:SetPortraitZoom(0) end
+                if m._normalized and m.SetModelScale and m.SetCameraDistance then
+                    m:SetModelScale(m._scale)
+                    local vw, vh = clip:GetWidth() or 1, clip:GetHeight() or 1
+                    local aspectPad = (vh > 1 and (vw / vh) > 1.12) and 1.09 or 1.0
+                    local camDist = GEAR_FIXED_CAM_DISTANCE
+                        * GEAR_CAM_FIT_PADDING
+                        * aspectPad
+                        * m._zoom
+                        * m._scale
+                    m:SetCameraDistance(math.max(0.1, camDist))
+                elseif m.SetCamDistanceScale then
+                    m:SetCamDistanceScale(GEAR_FIXED_CAM_SCALE * m._zoom)
+                end
+                if m.SetViewTranslation then m:SetViewTranslation(0, 0) end
             end)
-            if ok and m then
-                model = m
-                model.isPersistentRowElement = true
-                ns._gearPlayerModel = model
+        end
+        clip._ApplyTransform = ApplyTransform
+
+        local function NormalizeRadius()
+            if not m.GetModelRadius or not m.SetModelScale or not m.SetCameraDistance then return false end
+            local ok, r = pcall(m.GetModelRadius, m)
+            if not ok or not r or r <= 0 then return false end
+            local s = (GEAR_REFERENCE_RADIUS / r) * 0.94
+            if s < GEAR_MODEL_SCALE_MIN then s = GEAR_MODEL_SCALE_MIN
+            elseif s > GEAR_MODEL_SCALE_MAX then s = GEAR_MODEL_SCALE_MAX end
+            m._normalized = true
+            m._scale = s
+            ApplyTransform()
+            return true
+        end
+        clip._Normalize = NormalizeRadius
+
+        m:SetScript("OnModelLoaded", function()
+            if m.SetAnimation then
+                pcall(m.SetAnimation, m, 0)
+            end
+            if m.ClearFog then
+                pcall(m.ClearFog, m)
+            end
+            NormalizeRadius()
+            ApplyTransform()
+        end)
+
+        -- Interaction layer: rotation drag (left/right button) + wheel zoom.
+        local il = CreateFrame("Frame", nil, clip)
+        il:SetAllPoints()
+        il:SetFrameLevel(m:GetFrameLevel() + 20)
+        il:EnableMouse(true)
+        il:EnableMouseWheel(true)
+        clip._il = il
+
+        local function SchedulePersistView()
+            if not clip._viewCharKey or not (WarbandNexus and WarbandNexus.SaveGearModelViewState) then return end
+            if ns._gearViewSaveTimer then
+                ns._gearViewSaveTimer:Cancel()
+                ns._gearViewSaveTimer = nil
+            end
+            ns._gearViewSaveTimer = C_Timer.NewTimer(0.35, function()
+                ns._gearViewSaveTimer = nil
+                if not clip or not clip._viewCharKey or not clip._model then return end
+                WarbandNexus:SaveGearModelViewState(clip._viewCharKey, clip._model._rotation, clip._model._zoom)
+            end)
+        end
+
+        local function ScaleX()
+            local s = il:GetEffectiveScale() or 1
+            return (s > 0) and s or 1
+        end
+
+        local function dragOnUpdate()
+            if m._dragX == nil or not m._dragBtn then il:SetScript("OnUpdate", nil); return end
+            if not IsMouseButtonDown(m._dragBtn) then
+                m._dragX, m._dragBtn = nil, nil
+                il:SetScript("OnUpdate", nil)
+                return
+            end
+            local x = GetCursorPosition() / ScaleX()
+            local dx = x - m._dragX
+            m._dragX = x
+            m._rotation = (m._dragRot or 0) - dx * GEAR_ROTATE_SENSITIVITY
+            m._dragRot = m._rotation
+            m:SetFacing(m._rotation)
+        end
+        il:SetScript("OnMouseDown", function(_, btn)
+            if btn ~= "LeftButton" and btn ~= "RightButton" then return end
+            m._dragX = GetCursorPosition() / ScaleX()
+            m._dragRot = m._rotation
+            m._dragBtn = btn
+            il:SetScript("OnUpdate", dragOnUpdate)
+        end)
+        il:SetScript("OnMouseUp", function(_, btn)
+            if btn == m._dragBtn then m._dragX, m._dragBtn = nil, nil end
+            il:SetScript("OnUpdate", nil)
+            SchedulePersistView()
+        end)
+        il:SetScript("OnHide", function()
+            m._dragX, m._dragBtn = nil, nil
+            il:SetScript("OnUpdate", nil)
+        end)
+        il:SetScript("OnMouseWheel", function(_, delta)
+            local z = m._zoom * ((delta > 0) and 0.9 or 1.1)
+            if z < GEAR_ZOOM_MIN then z = GEAR_ZOOM_MIN
+            elseif z > GEAR_ZOOM_MAX then z = GEAR_ZOOM_MAX end
+            m._zoom = z
+            ApplyTransform()
+            SchedulePersistView()
+        end)
+
+        return clip
+    end
+
+    local function AcquireGearDressModel()
+        if not ns._gearDressModel then
+            ns._gearDressModel = BuildModelClip("DressUpModel")
+        end
+        return ns._gearDressModel
+    end
+
+    -- Offline-alt rendering: a SECOND DressUpModel widget that NEVER calls SetUnit.
+    -- The widget is reset with SetCustomRace (race base mesh — ships with client, always
+    -- rendered with textures) and then SetItemTransmogInfoList replays the saved per-slot
+    -- transmog list (Wowpedia: UIOBJECT_DressUpModel). White-mannequin only happens when
+    -- a player displayID's appearance bundle isn't cached — this path avoids displayIDs
+    -- entirely. Customisations (skin/face/hair) fall back to race defaults; no public API
+    -- exposes them outside the barber shop.
+    local function AcquireGearOfflineModel()
+        if not ns._gearOfflineModel then
+            ns._gearOfflineModel = BuildModelClip("DressUpModel")
+        end
+        return ns._gearOfflineModel
+    end
+
+    local function ApplyOfflineModelSnapshot(m, snap)
+        if not snap or not m then return false end
+        local raceID = snap.raceID
+        local sex = snap.dressGender
+        if sex ~= 0 and sex ~= 1 then sex = (snap.sex == 3) and 1 or 0 end
+        if not raceID then return false end
+
+        -- One pcall: if ItemTransmogInfo build fails, still get base race body on screen.
+        local ok = pcall(function()
+            if m.ClearModel then m:ClearModel() end
+            if m.SetCustomRace then m:SetCustomRace(raceID, sex) end
+            if m.SetUseTransmogSkin then m:SetUseTransmogSkin(false) end
+            if snap.transmogList and m.SetItemTransmogInfoList and ItemUtil and ItemUtil.CreateItemTransmogInfo then
+                local list = {}
+                for i = 1, #snap.transmogList do
+                    local e = snap.transmogList[i]
+                    if type(e) == "table" then
+                        list[#list + 1] = ItemUtil.CreateItemTransmogInfo(e.app or 0, e.sec or 0, e.ill or 0)
+                    end
+                end
+                if #list > 0 then
+                    pcall(m.SetItemTransmogInfoList, m, list)
+                end
+            end
+            if m.SetSheathed then m:SetSheathed(true) end
+            if m.SetAnimation then
+                pcall(m.SetAnimation, m, 0)
+            end
+        end)
+        return ok
+    end
+
+    if not centerRef and isCurrentChar == true then
+        local clip = AcquireGearDressModel()
+        if not clip._wnGearTooltipPanelBg then
+            clip:SetBackdrop(GEAR_MODEL_PANEL_BACKDROP)
+            clip._wnGearTooltipPanelBg = true
+        end
+        clip:SetBackdropColor(0.06, 0.06, 0.08, 0.96)
+        if clip._SetClassTint then clip:_SetClassTint(classFile) end
+        clip._viewCharKey = charKey
+        local m = clip._model
+        if clip:GetParent() ~= scrollParent then clip:SetParent(scrollParent) end
+        clip:ClearAllPoints()
+        clip:SetSize(MODEL_W, MODEL_H)
+        clip:SetPoint("TOPLEFT", card, "TOPLEFT", modelX, modelTopY)
+        clip:SetFrameLevel(card:GetFrameLevel() + 5)
+
+        -- Reset framing state on character swap so radius normalize re-runs cleanly.
+        m._normalized = false
+        m._scale = 1.0
+        m._zoom = 0.72
+        m._rotation = 0
+        do
+            local mv = gearData and gearData.modelView
+            if type(mv) == "table" then
+                if mv.rotation ~= nil then
+                    m._rotation = tonumber(mv.rotation) or 0
+                end
+                if mv.zoom ~= nil then
+                    m._zoom = tonumber(mv.zoom) or m._zoom
+                end
             end
         end
-        if model then
-            -- Ensure stable parent (scrollChild) — NEVER re-parent to card
-            if model:GetParent() ~= scrollParent then
-                model:SetParent(scrollParent)
+        if m._zoom < GEAR_ZOOM_MIN then m._zoom = GEAR_ZOOM_MIN
+        elseif m._zoom > GEAR_ZOOM_MAX then m._zoom = GEAR_ZOOM_MAX end
+        m._dragRot = m._rotation
+
+        local ok = pcall(function()
+            m:SetUnit("player")
+            if m.Dress then m:Dress() end
+            if m.RefreshUnit then m:RefreshUnit() end
+        end)
+
+        if ok then
+            if m.ClearFog then
+                pcall(m.ClearFog, m)
             end
-            model:ClearAllPoints()
-            model:SetSize(MODEL_W, MODEL_H)
-            -- Anchor TO the card so model scrolls with it, without being its child
-            model:SetPoint("TOPLEFT", card, "TOPLEFT", modelX, modelTopY)
-            model:SetFrameLevel(card:GetFrameLevel() + 5)
-            model:SetCamDistanceScale(0.92)
-            model:SetPortraitZoom(0.42)
-            if not model._unitSet then
-                model:SetUnit("player")
-                model._unitSet = true
+            if m.SetAnimation then
+                pcall(m.SetAnimation, m, 0)
             end
-            model:Show()
-            centerRef = model
-        end
-    else
-        if ns._gearPlayerModel then
-            ns._gearPlayerModel:Hide()
-            ns._gearPlayerModel._unitSet = false
+            if clip._Normalize then clip._Normalize() end
+            if clip._ApplyTransform then clip._ApplyTransform() end
+            if ns._gearNoPreviewFrame then ns._gearNoPreviewFrame:Hide() end
+            clip:Show()
+            m:Show()
+            centerRef = clip
+        else
+            clip:Hide()
         end
     end
 
-    -- Fallback: No Preview (same stable-parent pattern)
+    -- Offline alts: skip every 3D / 2D rendering attempt and go directly to the
+    -- modern character card below. The DressUpModel snapshot path
+    -- (SetCustomRace + SetItemTransmogInfoList) and the SetPortraitTextureFromCreatureDisplayID
+    -- 2D fallback are both unreliable for alts — Blizzard's player displayIDs are
+    -- session-bound runtime handles, so replaying them in a different session
+    -- produces a white mannequin or broken portrait. The class-themed card is
+    -- consistent, readable, and never breaks.
+    if not centerRef and isCurrentChar ~= true then
+        if ns._gearOfflineModel then ns._gearOfflineModel:Hide() end
+        if ns._gearDressModel then ns._gearDressModel:Hide() end
+        local pan = ns._gearPortraitPanel
+        if pan then pan:Hide() end
+    end
+
+    -- Online (current character) 2D portrait fallback: only when the live DressUpModel
+    -- failed AND we're on the player. SetPortraitTexture("player") is reliable; we never
+    -- run SetPortraitTextureFromCreatureDisplayID for offline alts here.
+    if not centerRef and isCurrentChar == true then
+        local pan = AcquireGearPortraitPanel()
+        if pan:GetParent() ~= scrollParent then pan:SetParent(scrollParent) end
+        pan:ClearAllPoints()
+        pan:SetSize(MODEL_W, MODEL_H)
+        pan:SetPoint("TOPLEFT", card, "TOPLEFT", modelX, modelTopY)
+        pan:SetFrameLevel(card:GetFrameLevel() + 5)
+        local tex = pan._tex
+        local ok2d = false
+        if tex and SetPortraitTexture then
+            if tex.SetVertexColor then tex:SetVertexColor(1, 1, 1, 1) end
+            ok2d = pcall(function() SetPortraitTexture(tex, "player") end)
+        end
+        if ok2d then
+            if tex and tex.SetTexCoord then
+                local c = GEAR_PORTRAIT_CROP
+                tex:SetTexCoord(c[1], c[2], c[3], c[4])
+            end
+            pan:Show()
+            if ns._gearNoPreviewFrame then ns._gearNoPreviewFrame:Hide() end
+            if ns._gearDressModel then ns._gearDressModel:Hide() end
+            if ns._gearOfflineModel then ns._gearOfflineModel:Hide() end
+            centerRef = pan
+        end
+    end
+
+    -- Fallback: modern offline character card.
+    -- Layout: class-colored vertical gradient → large class icon → character name
+    -- (class-colored) → "Lv N · Race" line → item-level pill → soft hint at bottom.
+    -- All elements pulled from charData; gracefully degrades when fields are missing.
     if not centerRef then
         local portrait = ns._gearNoPreviewFrame
         if not portrait then
             portrait = CreateFrame("Frame", nil, scrollParent, "BackdropTemplate")
-            local noPreview = FontManager:CreateFontString(portrait, "header", "OVERLAY")
-            noPreview:SetPoint("CENTER", portrait, "CENTER", 0, 0)
-            noPreview:SetJustifyH("CENTER")
-            noPreview:SetTextColor(0.5, 0.5, 0.55, 1)
-            noPreview:SetText((ns.L and ns.L["GEAR_NO_PREVIEW"]) or "No Preview")
-            noPreview:SetShadowOffset(1, -1)
-            noPreview:SetShadowColor(0, 0, 0, 0.8)
             portrait.isPersistentRowElement = true
             ns._gearNoPreviewFrame = portrait
+
+            -- Class-tinted vertical gradient (top → bottom: dim → black).
+            local grad = portrait:CreateTexture(nil, "BACKGROUND", nil, 1)
+            grad:SetPoint("TOPLEFT", portrait, "TOPLEFT", 1, -1)
+            grad:SetPoint("BOTTOMRIGHT", portrait, "BOTTOMRIGHT", -1, 1)
+            grad:SetColorTexture(1, 1, 1, 1)
+            portrait._gradient = grad
+
+            -- Large class icon — modern transparent atlas (classicon-<class>) instead of
+            -- the legacy WORLDSTATEFRAME sheet which left a coloured square outline.
+            local icon = portrait:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(80, 80)
+            icon:SetPoint("CENTER", portrait, "CENTER", 0, 22)
+            portrait._classIcon = icon
+
+            -- Soft circular halo behind icon (atlas if available, else dim disc).
+            local ring = portrait:CreateTexture(nil, "ARTWORK", nil, -1)
+            ring:SetSize(108, 108)
+            ring:SetPoint("CENTER", icon, "CENTER", 0, 0)
+            if ring.SetAtlas then
+                local ok = pcall(ring.SetAtlas, ring, "communities-create-avatar-bg-glow", true)
+                if not ok then ring:SetColorTexture(0, 0, 0, 0.0) end
+            end
+            ring:SetVertexColor(1, 1, 1, 0.35)
+            portrait._iconRing = ring
+
+            -- Character name (class-colored).
+            local name = FontManager:CreateFontString(portrait, GFR("gearPortraitLine"), "OVERLAY")
+            name:SetPoint("TOP", icon, "BOTTOM", 0, -10)
+            name:SetWidth(MODEL_W - 16)
+            name:SetJustifyH("CENTER")
+            name:SetShadowOffset(1, -1)
+            name:SetShadowColor(0, 0, 0, 0.95)
+            portrait._name = name
+
+            -- "Lv N · Race" meta line.
+            local meta = FontManager:CreateFontString(portrait, GFR("gearPortraitMeta"), "OVERLAY")
+            meta:SetPoint("TOP", name, "BOTTOM", 0, -2)
+            meta:SetWidth(MODEL_W - 16)
+            meta:SetJustifyH("CENTER")
+            meta:SetTextColor(0.78, 0.8, 0.88, 1)
+            meta:SetShadowOffset(1, -1)
+            meta:SetShadowColor(0, 0, 0, 0.85)
+            portrait._meta = meta
+
+            -- Item level pill: small framed bg with bold ilvl text.
+            local pill = CreateFrame("Frame", nil, portrait, "BackdropTemplate")
+            pill:SetSize(78, 22)
+            pill:SetPoint("TOP", meta, "BOTTOM", 0, -10)
+            pill:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+                insets = { left = 0, right = 0, top = 0, bottom = 0 },
+            })
+            pill:SetBackdropColor(0, 0, 0, 0.55)
+            portrait._pill = pill
+            local pillLabel = FontManager:CreateFontString(pill, GFR("gearPortraitMeta"), "OVERLAY")
+            pillLabel:SetPoint("CENTER", pill, "CENTER", 0, 0)
+            pillLabel:SetTextColor(1, 0.82, 0.0, 1)
+            pillLabel:SetShadowOffset(1, -1)
+            pillLabel:SetShadowColor(0, 0, 0, 0.9)
+            portrait._pillLabel = pillLabel
         end
+
         if portrait:GetParent() ~= scrollParent then
             portrait:SetParent(scrollParent)
         end
@@ -1019,11 +1524,86 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         portrait:SetSize(MODEL_W, MODEL_H)
         portrait:SetPoint("TOPLEFT", card, "TOPLEFT", modelX, modelTopY)
         portrait:SetFrameLevel(card:GetFrameLevel() + 5)
-        portrait:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        portrait:SetBackdropColor(0.05, 0.05, 0.07, 0.95)
+        portrait:SetBackdrop(GEAR_MODEL_PANEL_BACKDROP)
+        portrait:SetBackdropColor(0.06, 0.06, 0.08, 0.96)
         portrait:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.65)
+
+        local cc = (classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile])
+            or { r = 0.55, g = 0.5, b = 0.75 }
+        if portrait._gradient and portrait._gradient.SetGradient then
+            -- Top: dim class tint; bottom: near-black.
+            local topR, topG, topB = cc.r * 0.32, cc.g * 0.32, cc.b * 0.32
+            local createColor = (CreateColor or ColorMixin) and CreateColor or nil
+            if createColor then
+                pcall(portrait._gradient.SetGradient, portrait._gradient, "VERTICAL",
+                    CreateColor(topR, topG, topB, 0.85),
+                    CreateColor(0.04, 0.04, 0.05, 0.95))
+            else
+                portrait._gradient:SetColorTexture(topR, topG, topB, 0.85)
+            end
+        end
+
+        if portrait._classIcon then
+            local applied = false
+            if classFile and portrait._classIcon.SetAtlas then
+                local atlas = "classicon-" .. string.lower(classFile)
+                applied = pcall(portrait._classIcon.SetAtlas, portrait._classIcon, atlas)
+            end
+            if applied then
+                -- Reset TexCoord so a previous WORLDSTATEFRAME crop doesn't clip the atlas.
+                portrait._classIcon:SetTexCoord(0, 1, 0, 1)
+            else
+                -- Legacy fallback: WORLDSTATEFRAME sheet with TCoords.
+                -- Inset the TexCoords by ~6 % on each edge to crop the coloured square
+                -- border that surrounds each class icon cell in the sprite sheet.
+                portrait._classIcon:SetTexture("Interface\\WORLDSTATEFRAME\\Icons-Classes")
+                local coords = CLASS_ICON_TCOORDS and classFile and CLASS_ICON_TCOORDS[classFile]
+                if coords then
+                    local INSET = 0.02
+                    portrait._classIcon:SetTexCoord(
+                        coords[1] + INSET, coords[2] - INSET,
+                        coords[3] + INSET, coords[4] - INSET)
+                end
+            end
+            portrait._classIcon:SetVertexColor(1, 1, 1, 1)
+            portrait._classIcon:Show()
+        end
+
+        if portrait._iconRing then
+            portrait._iconRing:SetVertexColor(cc.r, cc.g, cc.b, 0.45)
+        end
+
+        local displayName = (charData and charData.name) or ((ns.L and ns.L["GEAR_NO_PREVIEW"]) or "No Preview")
+        if portrait._name then
+            portrait._name:SetText(displayName)
+            portrait._name:SetTextColor(cc.r, cc.g, cc.b, 1)
+        end
+
+        if portrait._meta then
+            local lvl = charData and tonumber(charData.level) or nil
+            local race = (charData and (charData.raceName or charData.race)) or nil
+            local parts = {}
+            if lvl and lvl > 0 then parts[#parts + 1] = "Lv " .. lvl end
+            if race and race ~= "" then parts[#parts + 1] = race end
+            portrait._meta:SetText(#parts > 0 and table.concat(parts, "  ·  ") or ((ns.L and ns.L["GEAR_NO_PREVIEW_HINT"]) or "Log in on this character to refresh the appearance preview."))
+        end
+
+        -- iLvl pill removed — the equipped ilvl is already visible in the header.
+        if portrait._pill then portrait._pill:Hide() end
+
         portrait:Show()
         centerRef = portrait
+    end
+
+    do
+        local isNoPreview = (centerRef == ns._gearNoPreviewFrame)
+        if isCurrentChar == true or isNoPreview or not centerRef then
+            if ns._gearOfflineCenterChrome then
+                ns._gearOfflineCenterChrome:Hide()
+            end
+        else
+            ApplyGearOfflineCenterChrome(centerRef, classFile)
+        end
     end
 
     -- Border around model/portrait (singleton — reused across refreshes)
@@ -1048,7 +1628,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     if not ilvlFrame then
         ilvlFrame = CreateFrame("Frame", nil, card)
         ilvlFrame:SetSize(120, 24)
-        local ilvlOverlay = FontManager:CreateFontString(ilvlFrame, "header", "OVERLAY")
+        local ilvlOverlay = FontManager:CreateFontString(ilvlFrame, GFR("gearIlvlBadge"), "OVERLAY")
         ilvlOverlay:SetPoint("CENTER", 0, 0)
         ilvlOverlay:SetJustifyH("CENTER")
         ilvlOverlay:SetShadowOffset(1, -1)
@@ -1076,7 +1656,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local nameWrapper = ns._gearNameWrapper
     if not nameWrapper then
         nameWrapper = CreateFrame("Frame", nil, card)
-        local nameLabel = FontManager:CreateFontString(nameWrapper, "header", "OVERLAY")
+        local nameLabel = FontManager:CreateFontString(nameWrapper, GFR("gearCharacterName"), "OVERLAY")
         nameLabel:SetPoint("CENTER", nameWrapper, "CENTER", 0, 10)
         nameLabel:SetPoint("LEFT", nameWrapper, "LEFT", 0, 0)
         nameLabel:SetPoint("RIGHT", nameWrapper, "RIGHT", 0, 0)
@@ -1119,9 +1699,34 @@ local SECONDARY_STATS = {
     { label = (ns.L and ns.L["STAT_VERSATILITY"]) or "Versatility",         fn = function() return GetCombatRating and GetCombatRating(29) or 0 end, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
 }
 
+-- Offline snapshot: sıra veya etiket ile eşleştir (eski SV uyumu)
+local function MergeOfflineSecondaryForGear(savedSec)
+    local out = {}
+    for i = 1, #SECONDARY_STATS do
+        local def = SECONDARY_STATS[i]
+        local rating, pct = 0, 0
+        local s = savedSec and savedSec[i]
+        if s and type(s.rating) == "number" then
+            rating = math.floor(s.rating)
+            pct = (type(s.pct) == "number") and s.pct or 0
+        elseif savedSec then
+            for j = 1, #savedSec do
+                local ent = savedSec[j]
+                if ent and ent.label == def.label then
+                    rating = tonumber(ent.rating) or 0
+                    pct = (type(ent.pct) == "number") and ent.pct or 0
+                    break
+                end
+            end
+        end
+        out[#out + 1] = { label = def.label, rating = rating, pct = pct }
+    end
+    return out
+end
+
 --- Equipped gear card: 3-panel layout — Currency (left) | Paperdoll (center) | Stats (right).
 --- charKey: key from dropdown (used for currency/gold lookup).
---- isCurrentChar: true if selected character is the logged-in one (model vs class portrait).
+--- isCurrentChar: true if selected character is the logged-in one (live portrait fallback).
 --- currencies: array from GetGearUpgradeCurrenciesFromDB (passed to avoid duplicate API calls).
 local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar, currencies)
     local rowStep = SLOT_SIZE + SLOT_GAP
@@ -1132,7 +1737,9 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     local weaponBottom = 8 * rowStep + 8 + SLOT_SIZE
     local paperdollH = contentTop + weaponBottom + CARD_PAD
     currencies = currencies or {}
-    local STAT_PANEL_W = 260
+    local STAT_PANEL_W = GEAR_STAT_PANEL_W
+    local STAT_COL_PCT_W = 54
+    local STAT_COL_VAL_W = 58
     local contentH = paperdollH
     local cardH = CARD_PAD + 24 + contentH + CARD_PAD
 
@@ -1151,7 +1758,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     end
 
     -- Currency panel height: header(20) + crests(rows) + divider(12) + gold(24) + pad(8)
-    local CREST_ROW_H = 28
+    local CREST_ROW_H = 32
     local currenciesH = 24 + #crestCurrencies * CREST_ROW_H + 12 + 28 + 8
 
     local parentW = (parent and parent.GetWidth) and parent:GetWidth() or 0
@@ -1180,7 +1787,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     leftPanel:SetBackdropBorderColor(accent[1] * 0.5, accent[2] * 0.5, accent[3] * 0.5, 0.6)
 
     -- Panel header (ortalanmış)
-    local panelTitle = FontManager:CreateFontString(leftPanel, "header", "OVERLAY")
+    local panelTitle = FontManager:CreateFontString(leftPanel, GFR("gearPanelTitle"), "OVERLAY")
     panelTitle:SetPoint("TOPLEFT", leftPanel, "TOPLEFT", 10, -8)
     panelTitle:SetPoint("TOPRIGHT", leftPanel, "TOPRIGHT", -10, -8)
     panelTitle:SetJustifyH("CENTER")
@@ -1191,7 +1798,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     -- Crest rows: icon | name ............ amount / cap
     local curY = -28
     local curPad = 10
-    local iconSize = 22
+    local iconSize = 24
     for _, cur in ipairs(crestCurrencies) do
         -- Alternating row bg
         local rowBg = leftPanel:CreateTexture(nil, "BACKGROUND")
@@ -1237,7 +1844,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         end)
 
         -- Name (left aligned)
-        local nameText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
+        local nameText = FontManager:CreateFontString(leftPanel, GFR("gearCurrencyLabel"), "OVERLAY")
         nameText:SetPoint("LEFT", ico, "RIGHT", 6, 0)
         nameText:SetTextColor(0.85, 0.85, 0.85)
         -- Shorten name: "Adventurer Dawncrest" → "Adventurer"
@@ -1263,7 +1870,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                 seasonMax = nil,
             }
         end
-        local amountText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
+        local amountText = FontManager:CreateFontString(leftPanel, GFR("gearCurrencyAmount"), "OVERLAY")
         amountText:SetPoint("RIGHT", leftPanel, "RIGHT", -curPad, 0)
         amountText:SetPoint("TOP", ico, "TOP", 0, 0)
         amountText:SetPoint("BOTTOM", ico, "BOTTOM", 0, 0)
@@ -1291,14 +1898,14 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         goldIco:SetTexture(goldCurrency.icon or 133784)
         goldIco:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-        local goldText = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
+        local goldText = FontManager:CreateFontString(leftPanel, GFR("gearGoldLabel"), "OVERLAY")
         goldText:SetPoint("LEFT", goldIco, "RIGHT", 6, 0)
         goldText:SetTextColor(1, 0.82, 0)
         goldText:SetText((ns.L and ns.L["GOLD_LABEL"]) or "Gold")
         goldText:SetShadowOffset(1, -1)
         goldText:SetShadowColor(0, 0, 0, 0.8)
 
-        local goldAmt = FontManager:CreateFontString(leftPanel, "tiny", "OVERLAY")
+        local goldAmt = FontManager:CreateFontString(leftPanel, GFR("gearGoldAmount"), "OVERLAY")
         goldAmt:SetPoint("RIGHT", leftPanel, "RIGHT", -curPad, 0)
         goldAmt:SetPoint("TOP", goldIco, "TOP", 0, 0)
         goldAmt:SetPoint("BOTTOM", goldIco, "BOTTOM", 0, 0)
@@ -1313,27 +1920,25 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     local middleW = cardInnerW - CURRENCY_PANEL_W - STAT_PANEL_W - (CURRENCY_PAPERDOLL_GAP * 2)
     local middlePad = math.max(0, (middleW - PAPERDOLL_BLOCK_W) / 2)
     local paperdollBaseX = CARD_PAD + CURRENCY_PANEL_W + CURRENCY_PAPERDOLL_GAP + middlePad
-    DrawPaperDollInCard(card, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true, paperdollBaseX)
+    DrawPaperDollInCard(card, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true, paperdollBaseX, charKey)
 
-    -- ── RIGHT PANEL: Character Stats ────────────────────────────────────────
-    local STAT_ROW_H = 24
+    -- ── RIGHT PANEL: Character Stats (Stat | % | Value — üç sütun) ───────────
+    local STAT_ROW_H = 28
     local primaryRows = {}
     local secondaryRows = {}
     if isCurrentChar and UnitStat then
         local mainStat = (WarbandNexus.GetCurrentCharacterMainStat and WarbandNexus:GetCurrentCharacterMainStat()) or nil
-        -- Show only main stat (STR/AGI/INT per spec) + Stamina; hide other primary stats
         local mainStatId = (mainStat == "STR" and 1) or (mainStat == "AGI" and 2) or (mainStat == "INT" and 4) or nil
         for i = 1, #STAT_IDS do
             local stat = STAT_IDS[i]
             if stat.id == 3 then
-                -- Always show Stamina
+                -- Stamina always
             elseif mainStatId and stat.id ~= mainStatId then
-                -- Skip non-main primary (e.g. STR/AGI for Intellect spec)
                 stat = nil
             end
             if stat then
                 local ok, _, total = pcall(UnitStat, "player", stat.id)
-                if ok and total and total > 0 then
+                if ok and type(total) == "number" then
                     primaryRows[#primaryRows + 1] = {
                         label = stat.label,
                         value = FormatNumber and FormatNumber(math.floor(total)) or tostring(math.floor(total)),
@@ -1343,48 +1948,58 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         end
         for i = 1, #SECONDARY_STATS do
             local stat = SECONDARY_STATS[i]
-            local ok, rating = pcall(stat.fn)
-            local ok2, pct = pcall(stat.pctFn)
-            if ok and rating and rating > 0 then
-                local pctStr = (ok2 and pct) and format("%.1f%%", pct) or ""
-                secondaryRows[#secondaryRows + 1] = {
-                    label = stat.label,
-                    value = pctStr .. "  |cffffffff" .. (FormatNumber and FormatNumber(math.floor(rating)) or tostring(math.floor(rating))) .. "|r",
-                }
-            end
+            local okR, rating = pcall(stat.fn)
+            local okP, pct = pcall(stat.pctFn)
+            local rNum = (okR and type(rating) == "number") and rating or 0
+            local pNum = (okP and type(pct) == "number") and pct or 0
+            secondaryRows[#secondaryRows + 1] = {
+                label = stat.label,
+                pctStr = format("%.1f%%", pNum),
+                ratingStr = FormatNumber and FormatNumber(math.floor(rNum)) or tostring(math.floor(rNum)),
+            }
         end
     elseif not isCurrentChar and charData and charData.stats then
-        -- Offline: show persisted stats (saved when character was last online)
-        local mainStat = (WarbandNexus.GetCharacterMainStat and WarbandNexus:GetCharacterMainStat(charData)) or nil
+        local mainStat = nil
+        local mc = charData.stats.mainStatCode
+        if mc == "STR" or mc == "AGI" or mc == "INT" then
+            mainStat = mc
+        end
+        if not mainStat and WarbandNexus.GetCharacterMainStat then
+            mainStat = WarbandNexus:GetCharacterMainStat(charData)
+        end
         local mainStatId = (mainStat == "STR" and 1) or (mainStat == "AGI" and 2) or (mainStat == "INT" and 4) or nil
         local prim = charData.stats.primary
         if prim and next(prim) then
-            for i = 1, #STAT_IDS do
-                local stat = STAT_IDS[i]
+            for idx = 1, #STAT_IDS do
+                local stat = STAT_IDS[idx]
                 if stat.id == 3 then
                     -- Stamina always
                 elseif mainStatId and stat.id ~= mainStatId then
                     stat = nil
                 end
-                if stat and prim[stat.id] and prim[stat.id] > 0 then
-                    primaryRows[#primaryRows + 1] = {
-                        label = stat.label,
-                        value = FormatNumber and FormatNumber(prim[stat.id]) or tostring(prim[stat.id]),
-                    }
+                if stat then
+                    local raw = prim[stat.id]
+                    if raw == nil then raw = 0 end
+                    if type(raw) == "number" then
+                        primaryRows[#primaryRows + 1] = {
+                            label = stat.label,
+                            value = FormatNumber and FormatNumber(math.floor(raw)) or tostring(math.floor(raw)),
+                        }
+                    end
                 end
             end
         end
-        local sec = charData.stats.secondary
-        if sec and #sec > 0 then
-            for j = 1, #sec do
-                local s = sec[j]
-                if s and s.label and s.rating and s.rating > 0 then
-                    local pctStr = (s.pct and type(s.pct) == "number") and format("%.1f%%", s.pct) or ""
-                    secondaryRows[#secondaryRows + 1] = {
-                        label = s.label,
-                        value = pctStr .. "  |cffffffff" .. (FormatNumber and FormatNumber(s.rating) or tostring(s.rating)) .. "|r",
-                    }
-                end
+        local mergedSec = MergeOfflineSecondaryForGear(charData.stats.secondary)
+        for j = 1, #mergedSec do
+            local s = mergedSec[j]
+            if s then
+                local pNum = (type(s.pct) == "number") and s.pct or 0
+                local rNum = (type(s.rating) == "number") and s.rating or 0
+                secondaryRows[#secondaryRows + 1] = {
+                    label = s.label,
+                    pctStr = format("%.1f%%", pNum),
+                    ratingStr = FormatNumber and FormatNumber(math.floor(rNum)) or tostring(math.floor(rNum)),
+                }
             end
         end
     end
@@ -1410,7 +2025,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     statPanel:SetBackdropBorderColor(accent[1] * 0.5, accent[2] * 0.5, accent[3] * 0.5, 0.6)
 
     -- Panel header (ortalanmış)
-    local statTitle = FontManager:CreateFontString(statPanel, "header", "OVERLAY")
+    local statTitle = FontManager:CreateFontString(statPanel, GFR("gearSectionTitle"), "OVERLAY")
     statTitle:SetPoint("TOPLEFT", statPanel, "TOPLEFT", 10, -8)
     statTitle:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -10, -8)
     statTitle:SetJustifyH("CENTER")
@@ -1420,13 +2035,15 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
 
     local statY = -32
     local statPad = 12
+    local statInnerW = STAT_PANEL_W - statPad * 2
+    local colLabelW = math.max(48, statInnerW - STAT_COL_PCT_W - STAT_COL_VAL_W - 12)
 
     if #primaryRows > 0 or #secondaryRows > 0 then
         for i = 1, #primaryRows do
             local stat = primaryRows[i]
-            local row = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
+            local row = FontManager:CreateFontString(statPanel, GFR("gearStatLabel"), "OVERLAY")
             row:SetPoint("TOPLEFT", statPad, statY)
-            row:SetWidth(118)
+            row:SetWidth(colLabelW)
             row:SetWordWrap(false)
             row:SetJustifyH("LEFT")
             row:SetTextColor(0.75, 0.8, 0.9)
@@ -1434,9 +2051,18 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             row:SetShadowOffset(1, -1)
             row:SetShadowColor(0, 0, 0, 0.8)
 
-            local val = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
+            local mid = FontManager:CreateFontString(statPanel, GFR("gearPrimaryMid"), "OVERLAY")
+            mid:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad - STAT_COL_VAL_W - 6, statY)
+            mid:SetWidth(STAT_COL_PCT_W)
+            mid:SetJustifyH("RIGHT")
+            mid:SetText("—")
+            mid:SetTextColor(0.38, 0.4, 0.46)
+            mid:SetShadowOffset(1, -1)
+            mid:SetShadowColor(0, 0, 0, 0.8)
+
+            local val = FontManager:CreateFontString(statPanel, GFR("gearStatRating"), "OVERLAY")
             val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY)
-            val:SetPoint("LEFT", row, "RIGHT", 6, 0)
+            val:SetWidth(STAT_COL_VAL_W)
             val:SetJustifyH("RIGHT")
             val:SetTextColor(0.4, 0.9, 0.5)
             val:SetText(stat.value)
@@ -1457,9 +2083,9 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
 
         for i = 1, #secondaryRows do
             local stat = secondaryRows[i]
-            local row = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
+            local row = FontManager:CreateFontString(statPanel, GFR("gearStatLabel"), "OVERLAY")
             row:SetPoint("TOPLEFT", statPad, statY)
-            row:SetWidth(118)
+            row:SetWidth(colLabelW)
             row:SetWordWrap(false)
             row:SetJustifyH("LEFT")
             row:SetTextColor(0.75, 0.8, 0.9)
@@ -1467,12 +2093,21 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             row:SetShadowOffset(1, -1)
             row:SetShadowColor(0, 0, 0, 0.8)
 
-            local val = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
+            local pctFs = FontManager:CreateFontString(statPanel, GFR("gearStatPct"), "OVERLAY")
+            pctFs:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad - STAT_COL_VAL_W - 6, statY)
+            pctFs:SetWidth(STAT_COL_PCT_W)
+            pctFs:SetJustifyH("RIGHT")
+            pctFs:SetTextColor(0.65, 0.78, 0.9)
+            pctFs:SetText(stat.pctStr or "0.0%")
+            pctFs:SetShadowOffset(1, -1)
+            pctFs:SetShadowColor(0, 0, 0, 0.8)
+
+            local val = FontManager:CreateFontString(statPanel, GFR("gearStatRating"), "OVERLAY")
             val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY)
-            val:SetPoint("LEFT", row, "RIGHT", 6, 0)
+            val:SetWidth(STAT_COL_VAL_W)
             val:SetJustifyH("RIGHT")
             val:SetTextColor(0.55, 0.85, 0.95)
-            val:SetText(stat.value)
+            val:SetText(stat.ratingStr or "0")
             val:SetShadowOffset(1, -1)
             val:SetShadowColor(0, 0, 0, 0.8)
 
@@ -1480,7 +2115,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         end
     else
         -- Offline character: no stats available
-        local noStats = FontManager:CreateFontString(statPanel, "tiny", "OVERLAY")
+        local noStats = FontManager:CreateFontString(statPanel, GFR("gearEmptyStatsHint"), "OVERLAY")
         noStats:SetPoint("TOPLEFT", statPad, statY)
         noStats:SetTextColor(0.45, 0.45, 0.45)
         noStats:SetText((ns.L and ns.L["GEAR_STATS_CURRENT_ONLY"]) or "Stats available for\ncurrent character only")
@@ -1521,6 +2156,7 @@ local function BuildStorageRecommendationRows(findings, gearData)
                         itemID = best.itemID,
                         source = best.source or "",
                         sourceType = best.sourceType or "",
+                        sourceClassFile = best.sourceClassFile,
                         delta = target - current,
                         requiredLevel = best.requiredLevel,
                     }
@@ -1538,13 +2174,38 @@ local function BuildStorageRecommendationRows(findings, gearData)
     return rows
 end
 
+--- Color character name in storage source line; warband stays plain.
+local function ColoredStorageSourceName(classFile, name)
+    if not name or name == "" then return name end
+    return "|cff" .. GetClassHex(classFile) .. name .. "|r"
+end
+
+local function FormatStorageSourceDisplay(source, sourceClassFile, viewerClassFile)
+    if not source then return "" end
+    if source == "Warband Bank" then
+        return source
+    end
+    if source == "Your Bag" or source == "Your Bank" then
+        return ColoredStorageSourceName(viewerClassFile, source)
+    end
+    local paren = source:find(" %(")
+    if paren and paren > 1 then
+        local namePart = source:sub(1, paren - 1)
+        local rest = source:sub(paren)
+        return ColoredStorageSourceName(sourceClassFile, namePart) .. rest
+    end
+    return ColoredStorageSourceName(sourceClassFile, source)
+end
+
 local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storageFindings, charData)
     local rows = BuildStorageRecommendationRows(storageFindings, gearData)
     local itemTooltipContext = BuildGearTabItemTooltipContext(charData)
     local title = (ns.L and ns.L["GEAR_STORAGE_TITLE"]) or "Storage Upgrade Recommendations"
-    local rowH = 26
-    local titleToContentGap = 16
-    local cardH = 52 + titleToContentGap + (math.max(#rows, 1) * rowH)
+    local subtitle = (ns.L and ns.L["GEAR_STORAGE_SUBTITLE"]) or "Transferable items only (BoE / Warbound)"
+    local rowH = 36
+    local headerH = 56
+    local titleToContentGap = 12
+    local cardH = headerH + titleToContentGap + (math.max(#rows, 1) * rowH) + 10
 
     local card = CreateCard(parent, cardH)
     card:SetPoint("TOPLEFT", SIDE_MARGIN, yOffset)
@@ -1553,13 +2214,18 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
     local accent = (COLORS and COLORS.accent) or { 0.6, 0.6, 1.0 }
     local hexAcc = format("%02x%02x%02x", math.floor(accent[1] * 255), math.floor(accent[2] * 255), math.floor(accent[3] * 255))
 
-    local titleText = FontManager:CreateFontString(card, "header", "OVERLAY")
-    titleText:SetPoint("TOPLEFT", 12, -10)
+    local titleText = FontManager:CreateFontString(card, GFR("gearStorageCardTitle"), "OVERLAY")
+    titleText:SetPoint("TOPLEFT", 14, -12)
     titleText:SetText("|cff" .. hexAcc .. title .. "|r")
 
-    local startY = -38 - titleToContentGap
+    local subtitleText = FontManager:CreateFontString(card, GFR("gearStorageSubtitle"), "OVERLAY")
+    subtitleText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -2)
+    subtitleText:SetText(subtitle)
+    subtitleText:SetTextColor(0.6, 0.6, 0.7)
+
+    local startY = -headerH - titleToContentGap
     if #rows == 0 then
-        local empty = FontManager:CreateFontString(card, "small", "OVERLAY")
+        local empty = FontManager:CreateFontString(card, GFR("gearStorageEmpty"), "OVERLAY")
         empty:SetPoint("TOPLEFT", 14, startY)
         empty:SetPoint("TOPRIGHT", -14, startY)
         empty:SetJustifyH("LEFT")
@@ -1580,9 +2246,9 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
         end
 
         -- Column 1: Gear slot (fixed width, with spacing)
-        local slotText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
-        slotText:SetPoint("LEFT", 12, 0)
-        slotText:SetWidth(88)
+        local slotText = FontManager:CreateFontString(container, GFR("gearStorageRow"), "OVERLAY")
+        slotText:SetPoint("LEFT", 10, 0)
+        slotText:SetWidth(80)
         slotText:SetJustifyH("LEFT")
         slotText:SetText(row.slotName)
         slotText:SetTextColor(0.95, 0.95, 1.0)
@@ -1590,8 +2256,8 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
         slotText:SetNonSpaceWrap(false)
 
         -- Column 2: current ilvl [atlas] target ilvl + increase (wider so 3-digit ilvls don't truncate)
-        local currIlvlText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
-        currIlvlText:SetPoint("LEFT", slotText, "RIGHT", 14, 0)
+        local currIlvlText = FontManager:CreateFontString(container, GFR("gearStorageRow"), "OVERLAY")
+        currIlvlText:SetPoint("LEFT", slotText, "RIGHT", 10, 0)
         currIlvlText:SetWidth(40)
         currIlvlText:SetJustifyH("RIGHT")
         currIlvlText:SetText(tostring(row.currentIlvl or 0))
@@ -1599,8 +2265,8 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
         currIlvlText:SetWordWrap(false)
 
         local arrowTex = container:CreateTexture(nil, "ARTWORK")
-        arrowTex:SetSize(12, 12)
-        arrowTex:SetPoint("LEFT", currIlvlText, "RIGHT", 8, 0)
+        arrowTex:SetSize(14, 14)
+        arrowTex:SetPoint("LEFT", currIlvlText, "RIGHT", 6, 0)
         if arrowTex.SetAtlas then
             arrowTex:SetAtlas("common-dropdown-icon-play", true)
         else
@@ -1609,8 +2275,8 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
             arrowTex:SetVertexColor(0.3, 1, 0.4)
         end
 
-        local targetIlvlText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
-        targetIlvlText:SetPoint("LEFT", arrowTex, "RIGHT", 8, 0)
+        local targetIlvlText = FontManager:CreateFontString(container, GFR("gearStorageRow"), "OVERLAY")
+        targetIlvlText:SetPoint("LEFT", arrowTex, "RIGHT", 6, 0)
         targetIlvlText:SetWidth(40)
         targetIlvlText:SetJustifyH("LEFT")
         targetIlvlText:SetText(tostring(row.targetIlvl or 0))
@@ -1618,8 +2284,8 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
         targetIlvlText:SetWordWrap(false)
 
         local delta = (row.targetIlvl and row.currentIlvl) and (row.targetIlvl - row.currentIlvl) or 0
-        local increaseText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
-        increaseText:SetPoint("LEFT", targetIlvlText, "RIGHT", 10, 0)
+        local increaseText = FontManager:CreateFontString(container, GFR("gearStorageRow"), "OVERLAY")
+        increaseText:SetPoint("LEFT", targetIlvlText, "RIGHT", 8, 0)
         increaseText:SetWidth(44)
         increaseText:SetJustifyH("LEFT")
         increaseText:SetText(delta > 0 and ("+" .. tostring(delta)) or "")
@@ -1631,49 +2297,51 @@ local function DrawStorageRecommendationsCard(parent, yOffset, gearData, storage
         if row.requiredLevel and row.requiredLevel > 0 then
             levelPrefix = "Lv" .. tostring(row.requiredLevel) .. " "
         end
-        local levelText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
-        levelText:SetPoint("LEFT", increaseText, "RIGHT", 16, 0)
+        local levelText = FontManager:CreateFontString(container, GFR("gearStorageRow"), "OVERLAY")
+        levelText:SetPoint("LEFT", increaseText, "RIGHT", 10, 0)
         levelText:SetText(levelPrefix)
         levelText:SetTextColor(1, 1, 1)
         levelText:SetWordWrap(false)
 
         local itemIcon = container:CreateTexture(nil, "ARTWORK")
-        itemIcon:SetSize(18, 18)
+        itemIcon:SetSize(22, 22)
         itemIcon:SetPoint("LEFT", levelText, "RIGHT", 4, 0)
         local icon = row.itemLink and GetItemIconSafe(row.itemLink) or GetItemIconSafe(row.itemID)
         itemIcon:SetTexture(icon or 134400)
         itemIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-        -- Column 4: Item name (flex, between icon and source)
-        local itemText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
-        itemText:SetPoint("LEFT", itemIcon, "RIGHT", 10, 0)
-        itemText:SetPoint("RIGHT", container, "RIGHT", -168, 0)
+        -- Source (right): no fixed width — grows left so item name can use remaining space (no huge gap).
+        local sourceText = FontManager:CreateFontString(container, GFR("gearStorageSource"), "OVERLAY")
+        sourceText:SetPoint("RIGHT", container, "RIGHT", -10, 0)
+        sourceText:SetJustifyH("RIGHT")
+        local bindLabel = ""
+        if row.sourceType == "warbound" then
+            bindLabel = "WB"
+        elseif row.sourceType == "warbound_until_equipped" then
+            bindLabel = "WuE"
+        elseif row.sourceType == "boe" then
+            bindLabel = "BoE"
+        end
+        local sourceBody = FormatStorageSourceDisplay(row.source, row.sourceClassFile, charData and charData.classFile)
+        if bindLabel ~= "" then
+            sourceText:SetText(sourceBody .. "  |cff888888(" .. bindLabel .. ")|r")
+        else
+            sourceText:SetText(sourceBody)
+        end
+        sourceText:SetTextColor(1, 1, 1)
+        sourceText:SetWordWrap(false)
+        sourceText:SetNonSpaceWrap(false)
+
+        -- Item name: fills space between icon and source column
+        local itemText = FontManager:CreateFontString(container, GFR("gearStorageRow"), "OVERLAY")
+        itemText:SetPoint("LEFT", itemIcon, "RIGHT", 8, 0)
+        itemText:SetPoint("RIGHT", sourceText, "LEFT", -8, 0)
         itemText:SetJustifyH("LEFT")
         local displayItem = row.itemLink or ("item:" .. tostring(row.itemID or 0))
         itemText:SetText(displayItem)
         itemText:SetTextColor(0.75, 0.85, 1.0)
         itemText:SetWordWrap(false)
         itemText:SetNonSpaceWrap(false)
-
-        -- Column 5: Source (fixed width, right-aligned, with margin)
-        local sourceText = FontManager:CreateFontString(container, "tiny", "OVERLAY")
-        sourceText:SetPoint("RIGHT", -12, 0)
-        sourceText:SetWidth(156)
-        sourceText:SetJustifyH("RIGHT")
-        local bindLabel = ""
-        if row.sourceType == "warbound" then
-            bindLabel = (ns.L and ns.L["GEAR_STORAGE_WARBOUND"]) or "Warbound"
-        elseif row.sourceType == "boe" then
-            bindLabel = (ns.L and ns.L["GEAR_STORAGE_BOE"]) or "BoE"
-        end
-        if bindLabel ~= "" then
-            sourceText:SetText((row.source or "") .. "  |cff888888(" .. bindLabel .. ")|r")
-        else
-            sourceText:SetText(row.source or "")
-        end
-        sourceText:SetTextColor(0.8, 0.8, 0.85)
-        sourceText:SetWordWrap(false)
-        sourceText:SetNonSpaceWrap(false)
 
         -- Tooltip: item only (no extra Slot/iLvl/From lines)
         container:SetScript("OnEnter", function(self)
@@ -1782,10 +2450,10 @@ local function EnsureGearSelectorColumnLabels(btn)
         btn._label:Hide()
         btn._label = nil
     end
-    btn._nameLabel = FontManager:CreateFontString(btn, "body", "OVERLAY")
-    btn._sepLabel = FontManager:CreateFontString(btn, "body", "OVERLAY")
-    btn._realmLabel = FontManager:CreateFontString(btn, "body", "OVERLAY")
-    btn._measureFs = FontManager:CreateFontString(btn, "body", "ARTWORK")
+    btn._nameLabel = FontManager:CreateFontString(btn, GFR("gearCharSelector"), "OVERLAY")
+    btn._sepLabel = FontManager:CreateFontString(btn, GFR("gearCharSelector"), "OVERLAY")
+    btn._realmLabel = FontManager:CreateFontString(btn, GFR("gearCharSelector"), "OVERLAY")
+    btn._measureFs = FontManager:CreateFontString(btn, GFR("gearCharSelector"), "ARTWORK")
     btn._measureFs:SetAlpha(0)
     btn._measureFs:SetPoint("TOPLEFT", btn, "TOPLEFT", -4000, 0)
 end
@@ -1796,9 +2464,9 @@ local function EnsureGearEntryColumnLabels(entryBtn)
         entryBtn._label:Hide()
         entryBtn._label = nil
     end
-    entryBtn._nameLabel = FontManager:CreateFontString(entryBtn, "body", "OVERLAY")
-    entryBtn._sepLabel = FontManager:CreateFontString(entryBtn, "body", "OVERLAY")
-    entryBtn._realmLabel = FontManager:CreateFontString(entryBtn, "body", "OVERLAY")
+    entryBtn._nameLabel = FontManager:CreateFontString(entryBtn, GFR("gearCharSelector"), "OVERLAY")
+    entryBtn._sepLabel = FontManager:CreateFontString(entryBtn, GFR("gearCharSelector"), "OVERLAY")
+    entryBtn._realmLabel = FontManager:CreateFontString(entryBtn, GFR("gearCharSelector"), "OVERLAY")
 end
 
 --- Close Gear character picker when main addon frame hides (menu is parented to UIParent).
@@ -2187,46 +2855,21 @@ function WarbandNexus:DrawGearTab(parent)
         return height
     end
 
-    -- ── Header Card (in fixedHeader - non-scrolling) ─────
-    -- Keep header height aligned with other tabs (Currency/Items/Collections standard).
-    local headerCard = CreateCard(headerParent, 70)
-    headerCard:SetPoint("TOPLEFT",  SIDE_MARGIN, -headerYOffset)
-    headerCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-
-    local headerIcon = CreateHeaderIcon and CreateHeaderIcon(headerCard, GetTabIcon and GetTabIcon("gear") or nil)
-
+    -- ── Header Card (in fixedHeader - non-scrolling) — Characters-tab layout + room for char selector ─────
     local r, g, b = accent[1], accent[2], accent[3]
     local hexAcc  = format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
     local titleTextContent = "|cff" .. hexAcc .. ((ns.L and ns.L["GEAR_TAB_TITLE"]) or "Gear Management") .. "|r"
     local subtitleTextContent = (ns.L and ns.L["GEAR_TAB_DESC"]) or "Equipped gear, upgrade analysis, and crest tracking"
     local gearHeaderRightReserve = GEAR_CHAR_SELECTOR_WIDTH + SIDE_MARGIN + 4
 
-    local textContainer = ns.UI and ns.UI.Factory and ns.UI.Factory:CreateContainer(headerCard, 200, 40)
-    if textContainer then
-        local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
-        titleText:SetText(titleTextContent)
-        titleText:SetJustifyH("LEFT")
-        titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)
-        titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-        local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
-        subtitleText:SetText(subtitleTextContent)
-        subtitleText:SetTextColor(1, 1, 1)
-        subtitleText:SetJustifyH("LEFT")
-        subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)
-        subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-        textContainer:SetPoint("LEFT", headerIcon and headerIcon.border or headerCard, "RIGHT", headerIcon and 12 or 24, 0)
-        textContainer:SetPoint("RIGHT", headerCard, "RIGHT", -gearHeaderRightReserve, 0)
-    else
-        local titleText = FontManager:CreateFontString(headerCard, "header", "OVERLAY")
-        titleText:SetText(titleTextContent)
-        titleText:SetJustifyH("LEFT")
-        titleText:SetPoint("TOPLEFT", headerIcon and headerIcon.border or headerCard, "TOPRIGHT", headerIcon and 10 or 12, -4)
-        local subtitleText = FontManager:CreateFontString(headerCard, "subtitle", "OVERLAY")
-        subtitleText:SetText(subtitleTextContent)
-        subtitleText:SetTextColor(0.6, 0.6, 0.6)
-        subtitleText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -3)
-        subtitleText:SetPoint("RIGHT", headerCard, "RIGHT", -gearHeaderRightReserve, 0)
-    end
+    local headerCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
+        tabKey = "gear",
+        titleText = titleTextContent,
+        subtitleText = subtitleTextContent,
+        textRightInset = gearHeaderRightReserve,
+    }))
+    headerCard:SetPoint("TOPLEFT",  SIDE_MARGIN, -headerYOffset)
+    headerCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
 
     local gearCharSel = CreateCharacterSelector(headerCard, charKey, 0)
     headerCard:Show()

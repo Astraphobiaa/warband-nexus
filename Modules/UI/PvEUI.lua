@@ -64,7 +64,7 @@ local COLORS = ns.UI_COLORS
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local ROW_HEIGHT = GetLayout().rowHeight or 26
 local ROW_SPACING = GetLayout().rowSpacing or 28
-local HEADER_SPACING = GetLayout().headerSpacing or 40
+local HEADER_SPACING = GetLayout().headerSpacing or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 local BASE_INDENT = GetLayout().BASE_INDENT or 15
 local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
@@ -208,6 +208,96 @@ local function IsVaultSlotAtMax(activity, typeName)
     end
     
     return false
+end
+
+--- Canonical PvE cache key for a character row (matches GetPvEData / pveCache writes).
+local function PvE_GetCanonicalKeyForChar(char)
+    if not char then return nil end
+    local raw = char._key
+    if (not raw or raw == "") and ns.Utilities and ns.Utilities.GetCharacterKey then
+        raw = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
+    end
+    if not raw or raw == "" then return nil end
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+    end
+    return raw
+end
+
+--- Completed slot but reward can still improve (API iLvl or difficulty/M+ tier ceiling).
+local function PvE_SlotShowsVaultUpgrade(act, typeName)
+    if not act then return false end
+    local ni = tonumber(act.nextLevelIlvl) or 0
+    if ni > 0 then return true end
+    local th = tonumber(act.threshold) or 0
+    local prog = tonumber(act.progress) or 0
+    if th <= 0 or prog < th then return false end
+    if IsVaultSlotAtMax(act, typeName) then return false end
+    return true
+end
+
+--- One vault column string (Raid / M+ / World). @param iconSize 13 = PvE row, 10 = dense tooltip
+local function PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vaultLootClaimable, iconSize)
+    iconSize = iconSize or 13
+    local sz = iconSize
+    local READY = string.format("|TInterface\\RAIDFRAME\\ReadyCheck-Ready:%d:%d|t", sz, sz)
+    local NOT_READY = string.format("|TInterface\\RAIDFRAME\\ReadyCheck-NotReady:%d:%d|t", sz, sz)
+    local GREEN_ARROW = string.format("|A:loottoast-arrow-green:%d:%d|a", sz, sz)
+    local readyClaimLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
+    if vaultLootClaimable then
+        return "|cff44ff44" .. readyClaimLabel .. "|r"
+    end
+    slotCount = slotCount or 3
+    if slotCount < 1 then slotCount = 3 end
+    local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
+    local parts = {}
+    local hasIncomplete = false
+    local hasUpgrade = false
+    for s = 1, slotCount do
+        local act = activityList and activityList[s]
+        local th = tonumber(act and act.threshold) or 0
+        local prog = tonumber(act and act.progress) or 0
+        local complete = (th > 0 and prog >= th)
+        if not complete then
+            hasIncomplete = true
+            parts[s] = NOT_READY
+        elseif PvE_SlotShowsVaultUpgrade(act, typeName) then
+            hasUpgrade = true
+            parts[s] = GREEN_ARROW
+        else
+            parts[s] = READY
+        end
+    end
+    if not hasIncomplete and not hasUpgrade and slotCount > 0 then
+        return "|cffffd700" .. pendingLabel .. "|r"
+    end
+    return table.concat(parts, "")
+end
+
+--- All slots in one vault track meet threshold (weekly objectives done for that row).
+local function PvE_VaultTrackSlotsAllComplete(activityList, slotCount)
+    slotCount = tonumber(slotCount) or 0
+    if slotCount < 1 then return false end
+    for s = 1, slotCount do
+        local act = activityList and activityList[s]
+        local th = tonumber(act and act.threshold) or 0
+        local prog = tonumber(act and act.progress) or 0
+        if th <= 0 or prog < th then
+            return false
+        end
+    end
+    return true
+end
+
+--- Raid + M+ + World tracks all slots complete (same idea as full vault grid filled).
+local function PvE_AllVaultTracksComplete(vaultActs)
+    if not vaultActs then return false end
+    local raidT = vaultActs.raids and #vaultActs.raids or 3
+    local dT = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
+    local wT = vaultActs.world and #vaultActs.world or 3
+    return PvE_VaultTrackSlotsAllComplete(vaultActs.raids, raidT)
+        and PvE_VaultTrackSlotsAllComplete(vaultActs.mythicPlus, dT)
+        and PvE_VaultTrackSlotsAllComplete(vaultActs.world, wT)
 end
 
 --[[
@@ -603,12 +693,737 @@ local function BuildWorldProgressLines(lines, worldTierProgress, threshold)
     end
 end
 
+--- Paint the 3x3 Great Vault grid (Raid / Dungeon / World x 3 slots) on vaultCard.
+--- Shared by expanded PvE summary vault card and Weekly Vault Tracker cards.
+--- @return cardHeight, cardWidth
+function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
+    local baseCardWidth = opt.baseCardWidth
+    local baseCardHeight = opt.baseCardHeight
+    local vaultByType = opt.vaultByType
+    local pve = opt.pve
+    local vaultActivitiesData = opt.vaultActivitiesData
+    local isCurrentChar = opt.isCurrentChar
+    -- WVT: enable slot clicks + tooltips for every card (Great Vault is global); expanded row uses current char only.
+    local vaultSlotInteract = (opt.enableVaultSlotInteraction == true) or isCurrentChar
+    -- Weekly Vault Tracker: plain container + no extra chrome; tighter rows/slots optional.
+    local applyVaultCardChrome = (opt.applyVaultCardChrome ~= false)
+    local minSlotBtnH = opt.minSlotBtnH or 44
+    local rowVPad = opt.vaultRowVPad
+    if rowVPad == nil then rowVPad = 4 end
+    local trackIconSize = opt.trackIconSize or 18
+    local slotFontKey = opt.slotFontKey or "body"
+    local rowLabelFontKey = opt.rowLabelFontKey or "body"
+    local slotTierYOffset = opt.slotTierYOffset
+    if slotTierYOffset == nil then slotTierYOffset = 7 end
+    -- Weekly Vault Tracker: fewer nested borders — flat rows, soft separators, subtle hover (no per-slot ApplyVisuals).
+    local compactSlotStyle = (opt.compactSlotStyle == true)
+
+    local VAULT_LEFT_PAD  = 4
+    local VAULT_RIGHT_PAD = 4
+    local VAULT_COL_GAP   = 5   -- gap between columns
+    local vaultColGap = opt.vaultColGap or VAULT_COL_GAP
+    local leftPad = opt.vaultLeftPad or VAULT_LEFT_PAD
+    local rightPad = opt.vaultRightPad or VAULT_RIGHT_PAD
+    local VAULT_ROW_VPAD  = 4   -- row vertical padding (tighter = taller buttons)
+    local borderPadding   = opt.borderPadding or 2
+    local numRows         = 3
+    local numCols         = 4   -- label + 3 slots
+
+    local cardWidth = baseCardWidth
+    local availableWidth  = cardWidth - (borderPadding * 2)
+    local availableHeight = baseCardHeight - (borderPadding * 2)
+
+    -- Compute one cell width, shared by ALL 4 columns
+    local gapsTotal = leftPad + rightPad + vaultColGap * (numCols - 1)
+    local VAULT_COL_W = math.floor((availableWidth - gapsTotal) / numCols)
+    -- Alias for slot/label (they're identical)
+    local VAULT_LABEL_W = VAULT_COL_W
+    local VAULT_SLOT_W  = VAULT_COL_W
+
+    local cellHeight = math.floor(availableHeight / numRows)
+    local btnH       = math.max(minSlotBtnH, cellHeight - rowVPad * 2)
+
+    local cardHeight = cellHeight * numRows + borderPadding * 2
+
+    -- CRITICAL: Set card dimensions for proper border
+    vaultCard:SetHeight(cardHeight)
+    vaultCard:SetWidth(cardWidth)
+
+    -- Re-apply border after dimension change (skip when painting onto a plain container — WVT outer card already framed)
+    if ApplyVisuals and applyVaultCardChrome then
+        local accentColor = COLORS.accent
+        ApplyVisuals(vaultCard, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    end
+
+    -- Default thresholds for each activity type (when no data exists)
+    local defaultThresholds = {
+        ["Raid"] = {2, 4, 6},
+        ["Dungeon"] = {1, 4, 8},
+        ["World"] = {3, 3, 3},
+        ["PvP"] = {3, 3, 3}
+    }
+
+    -- Table Rows (3 ROWS - perfect grid alignment)
+    local sortedTypes = {"Raid", "Dungeon", "World"}
+
+    for rowIndex, typeName in ipairs(sortedTypes) do
+        -- Map display name to actual data key
+        local dataKey = typeName
+        if typeName == "Dungeon" then
+            dataKey = "M+"
+        end
+        local activities = vaultByType[dataKey]
+
+        -- Calculate Y position (row 0, 1, 2) with border padding
+        local rowY = borderPadding + ((rowIndex - 1) * cellHeight)
+
+        -- Create row frame container (using Factory pattern)
+        local rowFrame = ns.UI.Factory:CreateContainer(vaultCard)
+        rowFrame:SetPoint("TOPLEFT", borderPadding, -rowY)
+        rowFrame:SetSize(cardWidth - (borderPadding * 2), cellHeight)
+
+        -- Row background
+        if not rowFrame.bg then
+            rowFrame.bg = rowFrame:CreateTexture(nil, "BACKGROUND")
+            rowFrame.bg:SetAllPoints()
+        end
+        if compactSlotStyle then
+            rowFrame.bg:SetColorTexture(0.09, 0.09, 0.11, 0.72)
+        else
+            rowFrame.bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)
+        end
+
+        -- Track icon + label (left column, vertically centered)
+        local trackIcons = {
+            Raid    = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+            Dungeon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
+            World   = "Interface\\Icons\\INV_Misc_Map_01",
+        }
+        local trackIcon = rowFrame:CreateTexture(nil, "ARTWORK")
+        trackIcon:SetSize(trackIconSize, trackIconSize)
+        trackIcon:SetPoint("LEFT", rowFrame, "LEFT", leftPad, 0)
+        trackIcon:SetTexture(trackIcons[typeName] or "Interface\\Icons\\INV_Misc_QuestionMark")
+        trackIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        local typeDisplayName = typeName
+        if typeName == "Raid" then
+            typeDisplayName = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids"
+        elseif typeName == "Dungeon" then
+            typeDisplayName = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeons"
+        elseif typeName == "World" then
+            typeDisplayName = (ns.L and ns.L["VAULT_WORLD"]) or "World"
+        end
+        local label = FontManager:CreateFontString(rowFrame, rowLabelFontKey, "OVERLAY")
+        label:SetPoint("LEFT", trackIcon, "RIGHT", 5, 0)
+        -- Icon + gap consumed; rest of the column is text
+        label:SetWidth(VAULT_LABEL_W - (trackIconSize + 5))
+        label:SetJustifyH("LEFT")
+        label:SetWordWrap(false)
+        label:SetText(string.format(compactSlotStyle and "|cffbbbbbb%s|r" or "|cffe8e8e8%s|r", typeDisplayName))
+
+        -- Row separator line (except for first row)
+        if rowIndex > 1 then
+            local sep = rowFrame:CreateTexture(nil, "BORDER")
+            sep:SetHeight(1)
+            sep:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", leftPad, 0)
+            sep:SetPoint("TOPRIGHT", rowFrame, "TOPRIGHT", -rightPad, 0)
+            if compactSlotStyle then
+                sep:SetColorTexture(0.22, 0.22, 0.28, 0.38)
+            else
+                sep:SetColorTexture(0.20, 0.20, 0.24, 0.6)
+            end
+        end
+
+        -- Slot thresholds
+        local thresholds = defaultThresholds[typeName] or {3, 3, 3}
+
+        -- Vault toggle: click opens, click again closes
+        local function OpenGreatVault()
+            if WeeklyRewardsFrame and WeeklyRewardsFrame:IsShown() then
+                WeeklyRewardsFrame:Hide()
+                return
+            end
+            if InCombatLockdown() then return end
+            local U = ns.Utilities
+            if U and U.SafeLoadAddOn then
+                U:SafeLoadAddOn("Blizzard_WeeklyRewards")
+            end
+            if WeeklyRewardsFrame then
+                WeeklyRewardsFrame:Show()
+            end
+        end
+
+        -- Theme accent color for online-char slot border
+        local ac = ns.UI_COLORS and ns.UI_COLORS.accent or {0.40, 0.20, 0.58}
+
+        for slotIndex = 1, 3 do
+            -- Slot col index = 1..3 (col 0 is label). Uniform column widths + gaps.
+            local xOffset = leftPad + slotIndex * (VAULT_COL_W + vaultColGap)
+            local yOffset = -(cellHeight - btnH) / 2  -- vertically centered
+
+            local slotFrame = CreateFrame("Button", nil, rowFrame)
+            slotFrame:SetSize(VAULT_SLOT_W, btnH)
+            slotFrame:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", xOffset, yOffset)
+
+            -- Slot base: very dark bg, no visible border yet (state sets it below)
+            if not slotFrame.bg then
+                slotFrame.bg = slotFrame:CreateTexture(nil, "BACKGROUND")
+                slotFrame.bg:SetAllPoints()
+            end
+            if compactSlotStyle then
+                slotFrame.bg:SetColorTexture(0.10, 0.10, 0.12, 0.82)
+            else
+                slotFrame.bg:SetColorTexture(0.06, 0.06, 0.09, 0.95)
+            end
+
+            -- Left-side state stripe (slimmer in compact tracker layout)
+            if not slotFrame.stripe then
+                slotFrame.stripe = slotFrame:CreateTexture(nil, "BORDER")
+                slotFrame.stripe:SetWidth(compactSlotStyle and 2 or 3)
+                slotFrame.stripe:SetPoint("TOPLEFT", slotFrame, "TOPLEFT", 0, 0)
+                slotFrame.stripe:SetPoint("BOTTOMLEFT", slotFrame, "BOTTOMLEFT", 0, 0)
+            end
+
+            -- Current char or WVT: click opens/closes Great Vault (compact = soft hover, no heavy slot border)
+            if vaultSlotInteract then
+                slotFrame:RegisterForClicks("LeftButtonUp")
+                slotFrame:SetScript("OnClick", OpenGreatVault)
+                slotFrame:SetScript("OnMouseDown", function(self) self:SetAlpha(compactSlotStyle and 0.88 or 0.65) end)
+                slotFrame:SetScript("OnMouseUp", function(self) self:SetAlpha(1) end)
+                if compactSlotStyle then
+                    local hlTex = slotFrame:CreateTexture(nil, "HIGHLIGHT")
+                    hlTex:SetBlendMode("ADD")
+                    hlTex:SetAllPoints()
+                    hlTex:SetColorTexture(1, 1, 1, 0.07)
+                    slotFrame:SetHighlightTexture(hlTex)
+                else
+                    ApplyVisuals(slotFrame,
+                        {ac[1] * 0.14, ac[2] * 0.14, ac[3] * 0.18, 1},
+                        {ac[1] * 0.70, ac[2] * 0.70, ac[3] * 0.70, 0.70})
+                    local hl = slotFrame:CreateTexture(nil, "HIGHLIGHT")
+                    hl:SetAllPoints()
+                    hl:SetColorTexture(ac[1], ac[2], ac[3], 0.14)
+                end
+            end
+
+            -- Get activity data for this slot
+            local activity = activities and activities[slotIndex]
+
+            local threshold = (activity and activity.threshold) or thresholds[slotIndex] or 0
+            local progress = activity and activity.progress or 0
+            local isComplete = (threshold > 0 and progress >= threshold)
+
+            if activity and isComplete then
+                local isAtMax = IsVaultSlotAtMax(activity, dataKey)
+                -- State: completed — green tint (softer in compact tracker style)
+                if compactSlotStyle then
+                    slotFrame.stripe:SetColorTexture(0.20, 0.62, 0.26, 0.65)
+                    slotFrame.bg:SetColorTexture(0.07, 0.14, 0.09, 0.88)
+                else
+                    slotFrame.stripe:SetColorTexture(0.20, 0.75, 0.20, 0.90)
+                    slotFrame.bg:SetColorTexture(0.04, 0.10, 0.04, 0.95)
+                end
+
+                local displayText = GetVaultActivityDisplayText(activity, dataKey)
+                local rewardIlvl  = GetRewardItemLevel(activity)
+                local hasArrow    = not isAtMax
+                -- ALL slot text uses identical width + centered position (equal everywhere)
+                local textW = VAULT_SLOT_W - 12
+
+                local tierText = FontManager:CreateFontString(slotFrame, slotFontKey, "OVERLAY")
+                tierText:SetPoint("CENTER", slotFrame, "CENTER", 0, slotTierYOffset)
+                tierText:SetWidth(textW)
+                tierText:SetJustifyH("CENTER")
+                tierText:SetWordWrap(false)
+                tierText:SetText(string.format("|cff33dd33%s|r", displayText))
+
+                if rewardIlvl and rewardIlvl > 0 then
+                    local ilvlText = FontManager:CreateFontString(slotFrame, slotFontKey, "OVERLAY")
+                    ilvlText:SetPoint("TOP", tierText, "BOTTOM", 0, -2)
+                    ilvlText:SetWidth(textW)
+                    ilvlText:SetJustifyH("CENTER")
+                    ilvlText:SetWordWrap(false)
+                    local ilvlFormat = (ns.L and ns.L["ILVL_FORMAT"]) or "iLvl %d"
+                    ilvlText:SetText(string.format("|cffffd700" .. ilvlFormat .. "|r", rewardIlvl))
+                end
+
+                -- Upgrade arrow: `loottoast-arrow-green` (Blizzard loot toast); sublayer 7 so slot text stays underneath
+                if hasArrow and slotFrame.stripe then
+                    local arrowTexture = slotFrame:CreateTexture(nil, "OVERLAY", nil, 7)
+                    arrowTexture:SetSize(compactSlotStyle and 18 or 22, compactSlotStyle and 18 or 22)
+                    arrowTexture:SetPoint("LEFT", slotFrame.stripe, "RIGHT", 2, 0)
+                    arrowTexture:SetAtlas("loottoast-arrow-green", false)
+                end
+
+                -- Add tooltip for completed slots
+                if ShowTooltip then
+                    slotFrame:EnableMouse(true)
+                    slotFrame:SetScript("OnEnter", function(self)
+                        local lines = {}
+                        local displayText = GetVaultActivityDisplayText(activity, dataKey)
+                        local rewardIlvl = GetRewardItemLevel(activity)
+                        local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
+                        local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
+
+                        -- Current Reward header + value
+                        if rewardIlvl and rewardIlvl > 0 then
+                            table.insert(lines, {
+                                text = string.format("|cff00ff00%s|r",
+                                    (ns.L and ns.L["VAULT_REWARD"]) or "Current Reward"),
+                                color = {0.5, 1, 0.5}
+                            })
+                            table.insert(lines, {
+                                text = string.format("|cffffd700iLvl %d|r  |cffffffff- (%s)|r",
+                                    rewardIlvl, displayText),
+                                color = {1, 1, 1}
+                            })
+                        end
+
+                        -- Upgrade: "Improve to iLvl X: Complete on Y difficulty"
+                        local isAtMaxSlot = IsVaultSlotAtMax(activity, dataKey)
+                        if not isAtMaxSlot then
+                            local nextTierName = GetNextTierName(activity, dataKey)
+                            if nextTierName then
+                                table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                                local improveLabel = (ns.L and ns.L["VAULT_IMPROVE_TO"]) or "Improve to"
+                                if activity.nextLevelIlvl and activity.nextLevelIlvl > 0 then
+                                    table.insert(lines, {
+                                        text = string.format("|cffa0d0ff%s iLvl %d:|r",
+                                            improveLabel, activity.nextLevelIlvl),
+                                        color = {0.63, 0.82, 1}
+                                    })
+                                end
+                                local completeOnLabel = (ns.L and ns.L["VAULT_COMPLETE_ON"]) or "Complete this activity on %s"
+                                table.insert(lines, {
+                                    text = string.format("|cff888888" .. completeOnLabel .. "|r", nextTierName),
+                                    color = {0.5, 0.5, 0.5}
+                                })
+                            end
+                        end
+
+                        -- RAID: Encounter list (primary: vault API, fallback: lockouts)
+                        if dataKey == "Raid" then
+                            if activity.encounters and #activity.encounters > 0 then
+                                BuildRaidEncounterLines(lines, activity.encounters)
+                            elseif pve.raidLockouts and #pve.raidLockouts > 0 then
+                                BuildRaidBossLinesFromLockouts(lines, pve.raidLockouts)
+                            end
+                        end
+
+                        -- DUNGEON: Top runs (Blizzard pattern: GetRunHistory + GetNumCompletedDungeonRuns)
+                        if dataKey == "M+" then
+                            local rawHistory = pve.mythicPlus and pve.mythicPlus.runHistory
+                            local dungeonRunCounts = vaultActivitiesData and vaultActivitiesData.dungeonRunCounts
+                            BuildDungeonRunLines(lines, rawHistory, dungeonRunCounts, threshold)
+                        end
+
+                        -- WORLD: Tier progress from GetSortedProgressForActivity (Blizzard pattern)
+                        if dataKey == "World" then
+                            local worldTierProgress = vaultActivitiesData and vaultActivitiesData.worldTierProgress
+                            BuildWorldProgressLines(lines, worldTierProgress, threshold)
+                        end
+
+                        if vaultSlotInteract then
+                            table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                            table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
+                        end
+                        local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
+                        ShowTooltip(self, {
+                            type = "custom",
+                            icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
+                            title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
+                            lines = lines,
+                            anchor = "ANCHOR_TOP"
+                        })
+                    end)
+
+                    slotFrame:SetScript("OnLeave", function(self)
+                        if HideTooltip then
+                            HideTooltip()
+                        end
+                    end)
+                    BindForwardScrollWheel(slotFrame)
+                end
+
+
+            elseif activity and not isComplete then
+                -- State: in-progress — amber tint
+                if compactSlotStyle then
+                    slotFrame.stripe:SetColorTexture(0.55, 0.42, 0.14, 0.58)
+                    slotFrame.bg:SetColorTexture(0.11, 0.09, 0.05, 0.86)
+                else
+                    slotFrame.stripe:SetColorTexture(0.85, 0.60, 0.10, 0.85)
+                    slotFrame.bg:SetColorTexture(0.10, 0.08, 0.02, 0.95)
+                end
+
+                local progressText = FontManager:CreateFontString(slotFrame, slotFontKey, "OVERLAY")
+                progressText:SetPoint("CENTER", slotFrame, "CENTER", 0, 0)
+                progressText:SetWidth(VAULT_SLOT_W - 12)
+                progressText:SetJustifyH("CENTER")
+                progressText:SetWordWrap(false)
+                progressText:SetText(string.format("|cffffcc00%s|r|cff666666/|r|cff888888%s|r",
+                    FormatNumber(progress), FormatNumber(threshold)))
+
+                -- Add tooltip for incomplete slots
+                if ShowTooltip then
+                    slotFrame:EnableMouse(true)
+                    slotFrame:SetScript("OnEnter", function(self)
+                        local lines = {}
+                        local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
+                        local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
+
+                        local activityHint = ""
+                        if dataKey == "M+" then
+                            activityHint = (ns.L and ns.L["VAULT_DUNGEONS"]) or "dungeons"
+                        elseif dataKey == "Raid" then
+                            activityHint = (ns.L and ns.L["VAULT_BOSS_KILLS"]) or "boss kills"
+                        elseif dataKey == "World" then
+                            activityHint = (ns.L and ns.L["VAULT_WORLD_ACTIVITIES"]) or "world activities"
+                        else
+                            activityHint = (ns.L and ns.L["VAULT_ACTIVITIES"]) or "activities"
+                        end
+
+                        -- Unlock Reward header
+                        local unlockLabel = (ns.L and ns.L["VAULT_UNLOCK_REWARD"]) or "Unlock Reward"
+                        table.insert(lines, {
+                            text = string.format("|cff00ff00%s|r", unlockLabel),
+                            color = {0.5, 1, 0.5}
+                        })
+
+                        -- "Complete N more X to unlock"
+                        local remaining = threshold - progress
+                        if remaining > 0 then
+                            local completeMoreLabel = (ns.L and ns.L["VAULT_COMPLETE_MORE_FORMAT"]) or "Complete %d more %s this week to unlock."
+                            table.insert(lines, {
+                                text = string.format("|cffffffff" .. completeMoreLabel .. "|r",
+                                    remaining, activityHint),
+                                color = {1, 1, 1}
+                            })
+                        end
+
+                        -- M+ specific: "The item level will be based on the lowest of your top N runs (currently X)"
+                        if dataKey == "M+" then
+                            local currentTierText = GetVaultActivityDisplayText(activity, dataKey)
+                            table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                            local basedOnLabel = (ns.L and ns.L["VAULT_BASED_ON_FORMAT"]) or "The item level of this reward will be based on the lowest of your top %d runs this week (currently %s)."
+                            table.insert(lines, {
+                                text = string.format("|cff888888" .. basedOnLabel .. "|r",
+                                    threshold, currentTierText),
+                                color = {0.5, 0.5, 0.5}
+                            })
+                        end
+
+                        -- Raid specific: "The item level will be based on the difficulty of your boss kills"
+                        if dataKey == "Raid" then
+                            local currentDiffText = GetVaultActivityDisplayText(activity, dataKey)
+                            table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                            local raidBasedLabel = (ns.L and ns.L["VAULT_RAID_BASED_FORMAT"]) or "Reward based on highest difficulty defeated (currently %s)."
+                            table.insert(lines, {
+                                text = string.format("|cff888888" .. raidBasedLabel .. "|r", currentDiffText),
+                                color = {0.5, 0.5, 0.5}
+                            })
+                        end
+
+                        -- RAID: Encounter list (primary: vault API, fallback: lockouts)
+                        if dataKey == "Raid" then
+                            if activity.encounters and #activity.encounters > 0 then
+                                BuildRaidEncounterLines(lines, activity.encounters)
+                            elseif pve.raidLockouts and #pve.raidLockouts > 0 then
+                                BuildRaidBossLinesFromLockouts(lines, pve.raidLockouts)
+                            end
+                        end
+
+                        -- DUNGEON: Top runs (Blizzard pattern)
+                        if dataKey == "M+" and progress > 0 then
+                            local rawHistory = pve.mythicPlus and pve.mythicPlus.runHistory
+                            local dungeonRunCounts = vaultActivitiesData and vaultActivitiesData.dungeonRunCounts
+                            BuildDungeonRunLines(lines, rawHistory, dungeonRunCounts, threshold)
+                        end
+
+                        -- WORLD: Tier progress (Blizzard pattern)
+                        if dataKey == "World" and progress > 0 then
+                            local worldTierProgress = vaultActivitiesData and vaultActivitiesData.worldTierProgress
+                            BuildWorldProgressLines(lines, worldTierProgress, threshold)
+                        end
+
+                        if vaultSlotInteract then
+                            table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                            table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
+                        end
+                        local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
+                        ShowTooltip(self, {
+                            type = "custom",
+                            icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
+                            title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
+                            lines = lines,
+                            anchor = "ANCHOR_TOP"
+                        })
+                    end)
+
+                    slotFrame:SetScript("OnLeave", function(self)
+                        if HideTooltip then
+                            HideTooltip()
+                        end
+                    end)
+                    BindForwardScrollWheel(slotFrame)
+                end
+            else
+                -- State: no data — dim stripe / neutral cell
+                if compactSlotStyle then
+                    slotFrame.stripe:SetColorTexture(0.16, 0.16, 0.20, 0.42)
+                    slotFrame.bg:SetColorTexture(0.10, 0.10, 0.12, 0.78)
+                else
+                    slotFrame.stripe:SetColorTexture(0.22, 0.22, 0.28, 0.60)
+                end
+
+                local emptyText = FontManager:CreateFontString(slotFrame, slotFontKey, "OVERLAY")
+                emptyText:SetPoint("CENTER", slotFrame, "CENTER", 0, 0)
+                emptyText:SetWidth(VAULT_SLOT_W - 12)
+                emptyText:SetJustifyH("CENTER")
+                emptyText:SetWordWrap(false)
+                if threshold > 0 then
+                    emptyText:SetText(string.format("|cff555555%s|r|cff444444/|r|cff555555%s|r", FormatNumber(0), FormatNumber(threshold)))
+
+                    -- Add tooltip for empty slots
+                    if ShowTooltip then
+                        slotFrame:EnableMouse(true)
+                        slotFrame:SetScript("OnEnter", function(self)
+                            local lines = {}
+
+                            local activityHint = ""
+                            if dataKey == "M+" then
+                                activityHint = (ns.L and ns.L["VAULT_DUNGEONS"]) or "dungeons"
+                            elseif dataKey == "Raid" then
+                                activityHint = (ns.L and ns.L["VAULT_BOSS_KILLS"]) or "boss kills"
+                            elseif dataKey == "World" then
+                                activityHint = (ns.L and ns.L["VAULT_WORLD_ACTIVITIES"]) or "world activities"
+                            else
+                                activityHint = (ns.L and ns.L["VAULT_ACTIVITIES"]) or "activities"
+                            end
+
+                            local unlockLabel = (ns.L and ns.L["VAULT_UNLOCK_REWARD"]) or "Unlock Reward"
+                            table.insert(lines, {
+                                text = string.format("|cff00ff00%s|r", unlockLabel),
+                                color = {0.5, 1, 0.5}
+                            })
+                            local completeMoreLabel = (ns.L and ns.L["VAULT_COMPLETE_MORE_FORMAT"]) or "Complete %d more %s this week to unlock."
+                            table.insert(lines, {
+                                text = string.format("|cffffffff" .. completeMoreLabel .. "|r",
+                                    threshold, activityHint),
+                                color = {1, 1, 1}
+                            })
+
+                            if vaultSlotInteract then
+                                table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                                table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
+                            end
+                            local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
+                            ShowTooltip(self, {
+                                type = "custom",
+                                icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
+                                title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
+                                lines = lines,
+                                anchor = "ANCHOR_TOP"
+                            })
+                        end)
+
+                        slotFrame:SetScript("OnLeave", function(self)
+                            if HideTooltip then
+                                HideTooltip()
+                            end
+                        end)
+                        BindForwardScrollWheel(slotFrame)
+                    end
+                else
+                    emptyText:SetText("|cff666666-|r")
+                end
+            end
+        end
+
+        -- No need to increment vaultY anymore (using rowIndex)
+    end
+
+    return cardHeight, cardWidth
+end
+
+--============================================================================
+-- WEEKLY VAULT TRACKER — 3-column card grid (no expand/collapse headers)
+--============================================================================
+
+function WarbandNexus:DrawPvEVaultTrackerCardGrid(parent, startYOffset, characters, currentPlayerKey)
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mf and mf.columnHeaderClip then
+        mf.columnHeaderClip:Hide()
+    end
+
+    local scrollFrame = parent:GetParent()
+    local viewportW = (scrollFrame and scrollFrame:GetWidth()) or 800
+    parent:SetWidth(math.max(viewportW, 520))
+    if mf and mf.columnHeaderInner then
+        mf.columnHeaderInner:SetWidth(parent:GetWidth())
+    end
+
+    local SIDE_PAD = 8
+    local GAP = 6
+    local COLS = 3
+    local innerW = math.max(100, parent:GetWidth() - SIDE_PAD * 2)
+    local gapBetweenCards = (COLS - 1) * GAP
+    local cardW = math.floor((innerW - gapBetweenCards) / COLS)
+    -- Compact WVT: fixed row height; vault opens/closes only from grid slots (not whole card).
+    local cardH = 206
+    local HDR_ICON = 24
+    local PAD = 5
+
+    local pendingStr = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
+    local readyClaimStr = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
+
+    local layoutIdx = 0
+    for i = 1, #characters do
+        local char = characters[i]
+        local charKey = PvE_GetCanonicalKeyForChar(char)
+        if charKey then
+            layoutIdx = layoutIdx + 1
+            local col = (layoutIdx - 1) % COLS
+            local row = math.floor((layoutIdx - 1) / COLS)
+            local x = SIDE_PAD + col * (cardW + GAP)
+            local yTop = startYOffset + row * (cardH + GAP)
+
+            local pveData = self:GetPvEData(charKey) or {}
+            local vaultActs = pveData.vaultActivities or {}
+
+            local claim = pveData.vaultRewards and pveData.vaultRewards.hasAvailableRewards == true
+            local isCurrentChar = (charKey == currentPlayerKey)
+            if (not claim) and isCurrentChar and self.HasUnclaimedVaultRewards then
+                local ok, v = pcall(self.HasUnclaimedVaultRewards, self)
+                claim = ok and v == true
+            end
+
+            local classColor = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
+            local card = CreateCard(parent, cardH)
+            card:SetWidth(cardW)
+            card:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -yTop)
+
+            local ac = ns.UI_COLORS and ns.UI_COLORS.accent or { 0.40, 0.20, 0.58 }
+            if card.SetBackdropBorderColor then
+                if isCurrentChar then
+                    card:SetBackdropBorderColor(ac[1], ac[2], ac[3], 0.95)
+                else
+                    card:SetBackdropBorderColor(ac[1] * 0.85, ac[2] * 0.85, ac[3] * 0.85, 0.75)
+                end
+            end
+
+            -- Full-width header strip: identity left, vault status right (same inner width as grid below).
+            local innerW = cardW - 2 * PAD
+            local HEADER_H = 40
+            local HDR_AFTER_GAP = 3
+            local GRID_AFTER_SEP = 4
+
+            local vaultComplete = PvE_AllVaultTracksComplete(vaultActs)
+            local showStatus = claim or vaultComplete
+            local statusReserve = showStatus and 104 or 8
+
+            local headerBar = ns.UI.Factory:CreateContainer(card, innerW, HEADER_H)
+            headerBar:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, -PAD)
+
+            local vaultHeadIcon = CreateIcon(headerBar, "BonusLoot-Chest", HDR_ICON, true, nil, true)
+            vaultHeadIcon:SetPoint("CENTER", headerBar, "LEFT", HDR_ICON * 0.5, 0)
+            vaultHeadIcon:Show()
+
+            local nameColW = math.max(56, innerW - HDR_ICON - 5 - statusReserve)
+            local realmDisp = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ""
+
+            local nameFs = FontManager:CreateFontString(headerBar, FontManager:GetFontRole("pveVaultCardCharName"), "OVERLAY")
+            nameFs:SetPoint("TOPLEFT", headerBar, "TOPLEFT", HDR_ICON + 5, -4)
+            nameFs:SetWidth(nameColW)
+            nameFs:SetJustifyH("LEFT")
+            nameFs:SetWordWrap(false)
+            nameFs:SetText(string.format(
+                "|cff%02x%02x%02x%s|r",
+                classColor.r * 255,
+                classColor.g * 255,
+                classColor.b * 255,
+                char.name or "?"
+            ))
+
+            local realmFs = FontManager:CreateFontString(headerBar, FontManager:GetFontRole("pveVaultCardRealm"), "OVERLAY")
+            realmFs:SetPoint("TOPLEFT", nameFs, "BOTTOMLEFT", 0, -1)
+            realmFs:SetWidth(nameColW)
+            realmFs:SetJustifyH("LEFT")
+            realmFs:SetWordWrap(false)
+            realmFs:SetText(realmDisp ~= "" and ("|cffaaaaaa" .. realmDisp .. "|r") or " ")
+
+            local statusFs = FontManager:CreateFontString(headerBar, FontManager:GetFontRole("pveVaultCardStatus"), "OVERLAY")
+            statusFs:SetWidth(statusReserve)
+            statusFs:SetJustifyH("RIGHT")
+            statusFs:SetWordWrap(false)
+            if claim then
+                statusFs:SetTextColor(0.35, 1, 0.35)
+                statusFs:SetText(readyClaimStr)
+                statusFs:Show()
+            elseif vaultComplete then
+                statusFs:SetTextColor(1, 0.82, 0.35)
+                statusFs:SetText(pendingStr)
+                statusFs:Show()
+            else
+                statusFs:Hide()
+            end
+            statusFs:SetPoint("CENTER", headerBar, "RIGHT", -math.floor(statusReserve * 0.5), 0)
+
+            local hdrSep = card:CreateTexture(nil, "BORDER")
+            hdrSep:SetHeight(1)
+            hdrSep:SetColorTexture(ac[1] * 0.42, ac[2] * 0.42, ac[3] * 0.42, 0.5)
+            hdrSep:SetPoint("TOPLEFT", headerBar, "BOTTOMLEFT", 0, -HDR_AFTER_GAP)
+            hdrSep:SetPoint("TOPRIGHT", headerBar, "BOTTOMRIGHT", 0, -HDR_AFTER_GAP)
+
+            local vaultInnerW = innerW
+            local baseVaultGridH = 136
+            local vaultGridHost = ns.UI.Factory:CreateContainer(card, vaultInnerW, baseVaultGridH)
+            vaultGridHost:SetPoint("TOPLEFT", hdrSep, "BOTTOMLEFT", 0, -GRID_AFTER_SEP)
+
+            local vaultByType = {}
+            if vaultActs.raids then vaultByType["Raid"] = vaultActs.raids end
+            if vaultActs.mythicPlus then vaultByType["M+"] = vaultActs.mythicPlus end
+            if vaultActs.world then vaultByType["World"] = vaultActs.world end
+
+            select(1, self:PaintPvEVaultGridOnCard(vaultGridHost, {
+                baseCardWidth = vaultInnerW,
+                baseCardHeight = baseVaultGridH,
+                vaultByType = vaultByType,
+                pve = pveData,
+                vaultActivitiesData = vaultActs,
+                isCurrentChar = isCurrentChar,
+                enableVaultSlotInteraction = true,
+                applyVaultCardChrome = false,
+                compactSlotStyle = true,
+                borderPadding = 0,
+                vaultColGap = 3,
+                vaultLeftPad = 3,
+                vaultRightPad = 3,
+                minSlotBtnH = 28,
+                vaultRowVPad = 2,
+                trackIconSize = 13,
+                slotFontKey = "body",
+                rowLabelFontKey = "body",
+                slotTierYOffset = 5,
+            }))
+            -- Great Vault toggle only via slot buttons (OnClick already opens/closes WeeklyRewardsFrame).
+
+            card:Show()
+        end
+    end
+
+    local rows = layoutIdx > 0 and math.ceil(layoutIdx / COLS) or 0
+    local bottom = startYOffset + math.max(0, rows) * (cardH + GAP) + 24
+    return bottom
+end
+
 --============================================================================
 -- DRAW PVE PROGRESS (Great Vault, Lockouts, M+)
 --============================================================================
 
 function WarbandNexus:DrawPvEProgress(parent)
     local width = parent:GetWidth() - 20
+    local vaultTrackerMode = self.db and self.db.profile and self.db.profile.pveVaultTrackerMode == true
 
     local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
     local headerParent = fixedHeader or parent
@@ -677,46 +1492,25 @@ function WarbandNexus:DrawPvEProgress(parent)
         end
     end
     
-    -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
-    local titleCard = CreateCard(headerParent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    
-    -- Header icon with ring border (standardized)
-    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-    local GetTabIcon = ns.UI_GetTabIcon
-    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("pve"))
-    
+    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for timer/sort/WVT =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    
-    -- Use factory pattern positioning for standardized header layout
     local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["PVE_TITLE"]) or "PvE Progress") .. "|r"
     local subtitleTextContent = (ns.L and ns.L["PVE_SUBTITLE"]) or "Great Vault, Raid Lockouts & Mythic+ across your Warband"
-    
-    -- Create container for text group (using Factory pattern)
-    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
-    
-    -- Create title text (header font, colored)
-    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
-    titleText:SetText(titleTextContent)
-    titleText:SetJustifyH("LEFT")
-    
-    -- Create subtitle text
-    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
-    subtitleText:SetText(subtitleTextContent)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetJustifyH("LEFT")
-    
-    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
-    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
-    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
-    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    
-    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
-    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
+    if vaultTrackerMode then
+        subtitleTextContent = (ns.L and ns.L["PVE_VAULT_TRACKER_SUBTITLE"]) or
+            "Unclaimed rewards and cleared vault rows"
+    end
+    -- Room for weekly reset + sort dropdown + Weekly Vault Tracker row (approximate, avoids overlap)
+    local PVE_TITLE_RIGHT_RESERVE = 400
+    local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
+        tabKey = "pve",
+        titleText = titleTextContent,
+        subtitleText = subtitleTextContent,
+        textRightInset = PVE_TITLE_RIGHT_RESERVE,
+    }))
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     -- Weekly reset timer (standardized widget)
     local CreateResetTimer = ns.UI_CreateResetTimer
@@ -742,6 +1536,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     )
     
     -- Sort Dropdown on the Title Card
+    local sortAnchor = resetTimer.container
     if ns.UI_CreateCharacterSortDropdown then
         local sortOptions = {
             {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
@@ -753,6 +1548,36 @@ function WarbandNexus:DrawPvEProgress(parent)
         if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
         local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function() self:RefreshUI() end)
         sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -15, 0)
+        sortAnchor = sortBtn
+    end
+
+    local trackerToggle = CreateThemedCheckbox(titleCard, vaultTrackerMode)
+    if trackerToggle then
+        trackerToggle:SetPoint("RIGHT", sortAnchor, "LEFT", -14, 0)
+        trackerToggle:HookScript("OnClick", function(box)
+            local enabled = box:GetChecked() == true
+            self.db.profile.pveVaultTrackerMode = enabled
+            self:RefreshUI()
+        end)
+
+        local trackerLabel = FontManager:CreateFontString(titleCard, FontManager:GetFontRole("pveTitleCardCheckboxLabel"), "OVERLAY")
+        trackerLabel:SetPoint("RIGHT", trackerToggle, "LEFT", -10, 0)
+        trackerLabel:SetText((ns.L and ns.L["WEEKLY_VAULT_TRACKER"]) or "Weekly Vault Tracker")
+        trackerLabel:SetTextColor(0.86, 0.86, 0.9)
+
+        local trackerChestBtn = CreateFrame("Button", nil, titleCard)
+        trackerChestBtn:SetSize(26, 26)
+        trackerChestBtn:SetPoint("RIGHT", trackerLabel, "LEFT", -8, 0)
+        local trackerChestIcon = CreateIcon(trackerChestBtn, "BonusLoot-Chest", 22, true, nil, true)
+        trackerChestIcon:SetPoint("CENTER")
+        trackerChestIcon:Show()
+        trackerChestBtn:EnableMouse(true)
+        trackerChestBtn:SetScript("OnEnter", function(self)
+            WarbandNexus:ShowPvEVaultAllCharactersTooltip(self)
+        end)
+        trackerChestBtn:SetScript("OnLeave", function()
+            if HideTooltip then HideTooltip() end
+        end)
     end
     
     titleCard:Show()
@@ -761,14 +1586,27 @@ function WarbandNexus:DrawPvEProgress(parent)
     if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
 
     -- ===== COLUMN HEADER ROW (inline PvE status summary) =====
-    -- All Midnight Dawncrest tiers (same IDs as vault currency card)
-    local PVE_DAWNCRESTS = {
-        { id = 3383, labelKey = "PVE_CREST_ADV" },
-        { id = 3341, labelKey = "PVE_CREST_VET" },
-        { id = 3343, labelKey = "PVE_CREST_CHAMP" },
-        { id = 3345, labelKey = "PVE_CREST_HERO" },
-        { id = 3347, labelKey = "PVE_CREST_MYTH" },
-    }
+    -- All Midnight Dawncrest tiers — IDs from Constants.MIDNIGHT_S1 (same as Gear / Currency cache)
+    local PVE_DAWNCRESTS = {}
+    do
+        local MS1 = ns.Constants and ns.Constants.DAWNCREST_UI
+        local ordered = MS1 and MS1.COLUMN_IDS
+        local labels = MS1 and MS1.PVE_LABEL_KEYS
+        if ordered and labels then
+            for i = 1, #ordered do
+                local id = ordered[i]
+                PVE_DAWNCRESTS[#PVE_DAWNCRESTS + 1] = { id = id, labelKey = labels[id] }
+            end
+        else
+            PVE_DAWNCRESTS = {
+                { id = 3383, labelKey = "PVE_CREST_ADV" },
+                { id = 3341, labelKey = "PVE_CREST_VET" },
+                { id = 3343, labelKey = "PVE_CREST_CHAMP" },
+                { id = 3345, labelKey = "PVE_CREST_HERO" },
+                { id = 3347, labelKey = "PVE_CREST_MYTH" },
+            }
+        end
+    end
     local PVE_RESTORED_KEY_FALLBACK_ID = 3089
     local PVE_SHARDS_ID = nil
     local PVE_RESTORED_KEY_ID = nil
@@ -880,6 +1718,7 @@ function WarbandNexus:DrawPvEProgress(parent)
 
     -- Check if module is disabled - show beautiful disabled state card (before column strip / scroll width)
     if not ns.Utilities:IsModuleEnabled("pve") then
+        WarbandNexus._pveVaultTooltipCharsSnapshot = {}
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["PVE_TITLE"]) or "PvE Progress")
         return yOffset + cardHeight
@@ -895,16 +1734,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     end
 
     local function GetRowCanonicalPvEKey(char)
-        if not char then return nil end
-        local raw = char._key
-        if (not raw or raw == "") and ns.Utilities and ns.Utilities.GetCharacterKey then
-            raw = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
-        end
-        if not raw or raw == "" then return nil end
-        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-            return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
-        end
-        return raw
+        return PvE_GetCanonicalKeyForChar(char)
     end
     
     -- Canonical key must match PvECacheService writes and GetPvEData(charKey) lookups
@@ -1056,6 +1886,123 @@ function WarbandNexus:DrawPvEProgress(parent)
         table.insert(sortedCharacters, char)
     end
     characters = sortedCharacters
+    do
+        local snap = {}
+        for i = 1, #characters do
+            snap[i] = characters[i]
+        end
+        WarbandNexus._pveVaultTooltipCharsSnapshot = snap
+    end
+
+    if vaultTrackerMode then
+        --- Slots meeting vault threshold (Raid / M+ / World / PvP tracks), same rules as inline grid.
+        local function CountVaultSlotsUnlocked(vaultActs)
+            if not vaultActs then return 0 end
+            local unlocked = 0
+            local function countTrack(activityList)
+                if not activityList then return end
+                for idx = 1, #activityList do
+                    local act = activityList[idx]
+                    if act and act.threshold and act.threshold > 0 and act.progress and act.progress >= act.threshold then
+                        unlocked = unlocked + 1
+                    end
+                end
+            end
+            countTrack(vaultActs.raids)
+            countTrack(vaultActs.mythicPlus)
+            countTrack(vaultActs.world)
+            countTrack(vaultActs.pvp)
+            return unlocked
+        end
+
+        local function ResolveVaultClaimable(charKey, charPveData)
+            local hasClaimable = charPveData.vaultRewards and charPveData.vaultRewards.hasAvailableRewards == true
+            if (not hasClaimable) and charKey == currentPlayerKey and self.HasUnclaimedVaultRewards then
+                local ok, liveHasRewards = pcall(self.HasUnclaimedVaultRewards, self)
+                hasClaimable = ok and liveHasRewards == true
+            end
+            return hasClaimable
+        end
+
+        --- True when PvE cache has at least one Great Vault activity row (Raid / M+ / World / PvP).
+        local function HasVaultActivitySnapshot(vaultActs)
+            if not vaultActs then return false end
+            local keys = { "raids", "mythicPlus", "world", "pvp" }
+            for ki = 1, #keys do
+                local list = vaultActs[keys[ki]]
+                if list and #list > 0 then
+                    return true
+                end
+            end
+            return false
+        end
+
+        --- WVT: only toons with vault data (cached activity rows, unlocked vault slots, or rewards to claim).
+        local function IncludeInVaultTracker(charKey, charPveData)
+            if ResolveVaultClaimable(charKey, charPveData) then
+                return true
+            end
+            local vaultActs = charPveData.vaultActivities
+            if HasVaultActivitySnapshot(vaultActs) then
+                return true
+            end
+            if CountVaultSlotsUnlocked(vaultActs) >= 1 then
+                return true
+            end
+            return false
+        end
+
+        local claimFirst = {}
+        local rest = {}
+        for i = 1, #characters do
+            local char = characters[i]
+            local charKey = GetRowCanonicalPvEKey(char)
+            if charKey then
+                local charPveData = self:GetPvEData(charKey) or {}
+                if IncludeInVaultTracker(charKey, charPveData) then
+                    if ResolveVaultClaimable(charKey, charPveData) then
+                        claimFirst[#claimFirst + 1] = char
+                    else
+                        rest[#rest + 1] = char
+                    end
+                end
+            end
+        end
+        characters = {}
+        for j = 1, #claimFirst do characters[#characters + 1] = claimFirst[j] end
+        for j = 1, #rest do characters[#characters + 1] = rest[j] end
+    end
+
+    -- ===== LOADING / ERROR / EMPTY (before column strip — vault tracker uses alternate layout) =====
+    if ns.PvELoadingState and ns.PvELoadingState.isLoading then
+        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+        if UI_CreateLoadingStateCard then
+            local newYOffset = UI_CreateLoadingStateCard(
+                parent,
+                yOffset,
+                ns.PvELoadingState,
+                (ns.L and ns.L["LOADING_PVE"]) or "Loading PvE Data..."
+            )
+            return newYOffset + 50
+        end
+    end
+
+    if ns.PvELoadingState and ns.PvELoadingState.error and not ns.PvELoadingState.isLoading then
+        local UI_CreateErrorStateCard = ns.UI_CreateErrorStateCard
+        if UI_CreateErrorStateCard then
+            yOffset = UI_CreateErrorStateCard(parent, yOffset, ns.PvELoadingState.error)
+        end
+    end
+
+    if #characters == 0 then
+        local emptyTab = vaultTrackerMode and "pve_vault" or "pve"
+        local _, height = CreateEmptyStateCard(parent, emptyTab, yOffset)
+        return yOffset + height
+    end
+
+    if vaultTrackerMode then
+        return self:DrawPvEVaultTrackerCardGrid(parent, yOffset, characters, currentPlayerKey)
+    end
     
     -- ===== NAME WIDTH (measured from longest name; no compression — scroll handles overflow) =====
     local tempMeasure = FontManager:CreateFontString(parent, "body", "OVERLAY")
@@ -1093,6 +2040,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     local colHeaderOverlayH = 0
 
     if columnHeaderClip then
+        columnHeaderClip:Show()
         columnHeaderClip:SetHeight(COL_HEADER_HEIGHT + PVE_COLUMN_HEADER_PAD)
         colHeaderOverlayH = COL_HEADER_HEIGHT + PVE_COLUMN_HEADER_PAD
     end
@@ -1178,34 +2126,6 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- Push scroll content below frozen column header overlay (ProfessionsUI pattern)
     yOffset = yOffset + colHeaderOverlayH
 
-    -- ===== LOADING STATE (after column strip so content does not sit under frozen headers) =====
-    if ns.PvELoadingState and ns.PvELoadingState.isLoading then
-        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
-        if UI_CreateLoadingStateCard then
-            local newYOffset = UI_CreateLoadingStateCard(
-                parent,
-                yOffset,
-                ns.PvELoadingState,
-                (ns.L and ns.L["LOADING_PVE"]) or "Loading PvE Data..."
-            )
-            return newYOffset + 50
-        end
-    end
-
-    -- ===== ERROR STATE (IF DATA COLLECTION FAILED) =====
-    if ns.PvELoadingState and ns.PvELoadingState.error and not ns.PvELoadingState.isLoading then
-        local UI_CreateErrorStateCard = ns.UI_CreateErrorStateCard
-        if UI_CreateErrorStateCard then
-            yOffset = UI_CreateErrorStateCard(parent, yOffset, ns.PvELoadingState.error)
-        end
-    end
-
-    -- ===== EMPTY STATE =====
-    if #characters == 0 then
-        local _, height = CreateEmptyStateCard(parent, "pve", yOffset)
-        return yOffset + height
-    end
-
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====
     for i, char in ipairs(characters) do
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
@@ -1281,7 +2201,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         favIcon:SetPoint("CENTER", 0, 0)
         StyleFavoriteIcon(favIcon, isFavorite)
         favFrame:Show()
-        
+
         -- Character name text
         local xOffset = 0
         local spacerWidth = 30    -- Spacing around bullets (equal spacing)
@@ -1351,32 +2271,22 @@ function WarbandNexus:DrawPvEProgress(parent)
 
             -- Vault summary from activities
             local vaultActs = pve.vaultActivities or {}
-            -- Determine unlocked slot count from the best vault track (Raid / M+ / World / PvP).
-            local function GetUnlockedCount(activityList)
-                local unlocked = 0
-                if not activityList then return unlocked end
-                for idx = 1, #activityList do
-                    local act = activityList[idx]
-                    if act and act.threshold and act.threshold > 0 and act.progress and act.progress >= act.threshold then
-                        unlocked = unlocked + 1
-                    end
+
+            -- Claimable Great Vault loot (not the same as "threshold progress completed" ticks below).
+            -- Prefer live API for current character, but never let transient API timing
+            -- wipe a known cached "unclaimed rewards" state.
+            local vaultLootClaimable = (pve.hasUnclaimedRewards == true)
+            if isCurrentChar and WarbandNexus.HasUnclaimedVaultRewards then
+                local ok, v = pcall(WarbandNexus.HasUnclaimedVaultRewards, WarbandNexus)
+                if ok then
+                    vaultLootClaimable = (v == true) or vaultLootClaimable
                 end
-                return unlocked
             end
-            local raidUnlocked = GetUnlockedCount(vaultActs.raids)
-            local dungeonUnlocked = GetUnlockedCount(vaultActs.mythicPlus)
-            local worldUnlocked = GetUnlockedCount(vaultActs.world)
 
             local READY_ICON = "|TInterface\\RAIDFRAME\\ReadyCheck-Ready:13|t"
             local NOT_READY_ICON = "|TInterface\\RAIDFRAME\\ReadyCheck-NotReady:13|t"
-            local function FormatVaultSlots(unlocked, total)
-                total = total or 3
-                local parts = {}
-                for s = 1, total do
-                    parts[s] = (s <= unlocked) and READY_ICON or NOT_READY_ICON
-                end
-                -- Tight triplet; groups separated by column gaps (GapBetweenColumns), not spaces here
-                return table.concat(parts, "")
+            local function FormatVaultTrackSlots(activityList, slotCount, typeName)
+                return PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vaultLootClaimable, 13)
             end
 
             --- Format currency for inline row: always show current quantity.
@@ -1516,9 +2426,9 @@ function WarbandNexus:DrawPvEProgress(parent)
             local raidTotal = vaultActs.raids and #vaultActs.raids or 3
             local dungeonTotal = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
             local worldTotal = vaultActs.world and #vaultActs.world or 3
-            colValues[n + 3] = { text = FormatVaultSlots(raidUnlocked, raidTotal), color = {1, 1, 1} }
-            colValues[n + 4] = { text = FormatVaultSlots(dungeonUnlocked, dungeonTotal), color = {1, 1, 1} }
-            colValues[n + 5] = { text = FormatVaultSlots(worldUnlocked, worldTotal), color = {1, 1, 1} }
+            colValues[n + 3] = { text = FormatVaultTrackSlots(vaultActs.raids, raidTotal, "Raid"), color = {1, 1, 1} }
+            colValues[n + 4] = { text = FormatVaultTrackSlots(vaultActs.mythicPlus, dungeonTotal, "M+"), color = {1, 1, 1} }
+            colValues[n + 5] = { text = FormatVaultTrackSlots(vaultActs.world, worldTotal, "World"), color = {1, 1, 1} }
             -- Trovehunter's Bounty / bountiful weeklies: per-character snapshot from PvE cache (not live API on every row).
             local delveChar = (pve.delves and pve.delves.character) or {}
             local bountifulDone = delveChar.bountifulComplete
@@ -1979,13 +2889,23 @@ function WarbandNexus:DrawPvEProgress(parent)
             end
 
             -- Bottom row: Dawncrest/currency snapshot (restored under Keystone card)
-            local crestCurrencies = {
-                { id = 3383, fallbackIcon = 134400 },
-                { id = 3341, fallbackIcon = 134400 },
-                { id = 3343, fallbackIcon = 134400 },
-                { id = 3345, fallbackIcon = 134400 },
-                { id = 3347, fallbackIcon = 134400 },
-            }
+            local crestCurrencies = {}
+            do
+                local MS1 = ns.Constants and ns.Constants.DAWNCREST_UI
+                if MS1 and MS1.COLUMN_IDS then
+                    for i = 1, #MS1.COLUMN_IDS do
+                        crestCurrencies[#crestCurrencies + 1] = { id = MS1.COLUMN_IDS[i], fallbackIcon = 134400 }
+                    end
+                else
+                    crestCurrencies = {
+                        { id = 3383, fallbackIcon = 134400 },
+                        { id = 3341, fallbackIcon = 134400 },
+                        { id = 3343, fallbackIcon = 134400 },
+                        { id = 3345, fallbackIcon = 134400 },
+                        { id = 3347, fallbackIcon = 134400 },
+                    }
+                end
+            end
             local numCurrencies = #crestCurrencies
             local rowIconSize = 30
             local rowSpacing = 8
@@ -2123,494 +3043,15 @@ function WarbandNexus:DrawPvEProgress(parent)
                 end
             end
             
-            -- VAULT GRID: 4 EQUAL COLUMNS (Label | Slot1 | Slot2 | Slot3)
-            -- Every column is exactly the same width — true symmetric grid
-            local VAULT_LEFT_PAD  = 4
-            local VAULT_RIGHT_PAD = 4
-            local VAULT_COL_GAP   = 5   -- gap between columns
-            local VAULT_ROW_VPAD  = 4   -- row vertical padding (tighter = taller buttons)
-            local borderPadding   = 2
-            local numRows         = 3
-            local numCols         = 4   -- label + 3 slots
-
-            cardWidth  = baseCardWidth
-            local availableWidth  = cardWidth - (borderPadding * 2)
-            local availableHeight = baseCardHeight - (borderPadding * 2)
-
-            -- Compute one cell width, shared by ALL 4 columns
-            local gapsTotal = VAULT_LEFT_PAD + VAULT_RIGHT_PAD + VAULT_COL_GAP * (numCols - 1)
-            local VAULT_COL_W = math.floor((availableWidth - gapsTotal) / numCols)
-            -- Alias for slot/label (they're identical)
-            local VAULT_LABEL_W = VAULT_COL_W
-            local VAULT_SLOT_W  = VAULT_COL_W
-
-            local cellHeight = math.floor(availableHeight / numRows)
-            local btnH       = math.max(44, cellHeight - VAULT_ROW_VPAD * 2)
-
-            cardHeight = cellHeight * numRows + borderPadding * 2
-            
-            -- CRITICAL: Set card dimensions for proper border
-            vaultCard:SetHeight(cardHeight)
-            vaultCard:SetWidth(cardWidth)
-            
-            -- Re-apply border after dimension change
-            if ApplyVisuals then
-                local accentColor = COLORS.accent
-                ApplyVisuals(vaultCard, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
-            end
-            
-            -- Default thresholds for each activity type (when no data exists)
-            local defaultThresholds = {
-                ["Raid"] = {2, 4, 6},
-                ["Dungeon"] = {1, 4, 8},
-                ["World"] = {3, 3, 3},
-                ["PvP"] = {3, 3, 3}
-            }
-            
-            -- Table Rows (3 ROWS - perfect grid alignment)
-            local sortedTypes = {"Raid", "Dungeon", "World"}
-            
-            for rowIndex, typeName in ipairs(sortedTypes) do
-                -- Map display name to actual data key
-                local dataKey = typeName
-                if typeName == "Dungeon" then
-                    dataKey = "M+"
-                end
-                local activities = vaultByType[dataKey]
-                
-                -- Calculate Y position (row 0, 1, 2) with border padding
-                local rowY = borderPadding + ((rowIndex - 1) * cellHeight)
-                
-                -- Create row frame container (using Factory pattern)
-                local rowFrame = ns.UI.Factory:CreateContainer(vaultCard)
-                rowFrame:SetPoint("TOPLEFT", borderPadding, -rowY)
-                rowFrame:SetSize(cardWidth - (borderPadding * 2), cellHeight)
-                
-                -- Row background: solid black (consistent with Overall/Affix cards)
-                if not rowFrame.bg then
-                    rowFrame.bg = rowFrame:CreateTexture(nil, "BACKGROUND")
-                    rowFrame.bg:SetAllPoints()
-                    rowFrame.bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)  -- Solid dark background
-                end
-                
-                -- Track icon + label (left column, vertically centered)
-                local trackIcons = {
-                    Raid    = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
-                    Dungeon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-                    World   = "Interface\\Icons\\INV_Misc_Map_01",
-                }
-                local trackIcon = rowFrame:CreateTexture(nil, "ARTWORK")
-                trackIcon:SetSize(18, 18)
-                trackIcon:SetPoint("LEFT", rowFrame, "LEFT", VAULT_LEFT_PAD, 0)
-                trackIcon:SetTexture(trackIcons[typeName] or "Interface\\Icons\\INV_Misc_QuestionMark")
-                trackIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-
-                local typeDisplayName = typeName
-                if typeName == "Raid" then
-                    typeDisplayName = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids"
-                elseif typeName == "Dungeon" then
-                    typeDisplayName = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeons"
-                elseif typeName == "World" then
-                    typeDisplayName = (ns.L and ns.L["VAULT_WORLD"]) or "World"
-                end
-                local label = FontManager:CreateFontString(rowFrame, "body", "OVERLAY")
-                label:SetPoint("LEFT", trackIcon, "RIGHT", 5, 0)
-                -- Icon (18) + icon-text gap (5) = 23 consumed; rest of the column is text
-                label:SetWidth(VAULT_LABEL_W - 23)
-                label:SetJustifyH("LEFT")
-                label:SetWordWrap(false)
-                label:SetText(string.format("|cffe8e8e8%s|r", typeDisplayName))
-
-                -- Row separator line (except for first row)
-                if rowIndex > 1 then
-                    local sep = rowFrame:CreateTexture(nil, "BORDER")
-                    sep:SetHeight(1)
-                    sep:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", VAULT_LEFT_PAD, 0)
-                    sep:SetPoint("TOPRIGHT", rowFrame, "TOPRIGHT", -VAULT_RIGHT_PAD, 0)
-                    sep:SetColorTexture(0.20, 0.20, 0.24, 0.6)
-                end
-
-                -- Slot thresholds
-                local thresholds = defaultThresholds[typeName] or {3, 3, 3}
-
-                -- Vault toggle: click opens, click again closes
-                local function OpenGreatVault()
-                    if WeeklyRewardsFrame and WeeklyRewardsFrame:IsShown() then
-                        WeeklyRewardsFrame:Hide()
-                        return
-                    end
-                    if InCombatLockdown() then return end
-                    local U = ns.Utilities
-                    if U and U.SafeLoadAddOn then
-                        U:SafeLoadAddOn("Blizzard_WeeklyRewards")
-                    end
-                    if WeeklyRewardsFrame then
-                        WeeklyRewardsFrame:Show()
-                    end
-                end
-
-                -- Theme accent color for online-char slot border
-                local ac = ns.UI_COLORS and ns.UI_COLORS.accent or {0.40, 0.20, 0.58}
-
-                for slotIndex = 1, 3 do
-                    -- Slot col index = 1..3 (col 0 is label). Uniform column widths + gaps.
-                    local xOffset = VAULT_LEFT_PAD + slotIndex * (VAULT_COL_W + VAULT_COL_GAP)
-                    local yOffset = -(cellHeight - btnH) / 2  -- vertically centered
-
-                    local slotFrame = CreateFrame("Button", nil, rowFrame)
-                    slotFrame:SetSize(VAULT_SLOT_W, btnH)
-                    slotFrame:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", xOffset, yOffset)
-
-                    -- Slot base: very dark bg, no visible border yet (state sets it below)
-                    if not slotFrame.bg then
-                        slotFrame.bg = slotFrame:CreateTexture(nil, "BACKGROUND")
-                        slotFrame.bg:SetAllPoints()
-                    end
-                    slotFrame.bg:SetColorTexture(0.06, 0.06, 0.09, 0.95)
-
-                    -- Left-side accent stripe (3px, state-colored later)
-                    if not slotFrame.stripe then
-                        slotFrame.stripe = slotFrame:CreateTexture(nil, "BORDER")
-                        slotFrame.stripe:SetWidth(3)
-                        slotFrame.stripe:SetPoint("TOPLEFT", slotFrame, "TOPLEFT", 0, 0)
-                        slotFrame.stripe:SetPoint("BOTTOMLEFT", slotFrame, "BOTTOMLEFT", 0, 0)
-                    end
-
-                    -- Online char: accent border all around + hover highlight + click handler
-                    if isCurrentChar then
-                        ApplyVisuals(slotFrame,
-                            {ac[1] * 0.14, ac[2] * 0.14, ac[3] * 0.18, 1},
-                            {ac[1] * 0.70, ac[2] * 0.70, ac[3] * 0.70, 0.70})
-                        local hl = slotFrame:CreateTexture(nil, "HIGHLIGHT")
-                        hl:SetAllPoints()
-                        hl:SetColorTexture(ac[1], ac[2], ac[3], 0.14)
-                        slotFrame:RegisterForClicks("LeftButtonUp")
-                        slotFrame:SetScript("OnClick", OpenGreatVault)
-                        slotFrame:SetScript("OnMouseDown", function(self) self:SetAlpha(0.65) end)
-                        slotFrame:SetScript("OnMouseUp",   function(self) self:SetAlpha(1)    end)
-                    end
-                    
-                    -- Get activity data for this slot
-                    local activity = activities and activities[slotIndex]
-                    
-                    local threshold = (activity and activity.threshold) or thresholds[slotIndex] or 0
-                    local progress = activity and activity.progress or 0
-                    local isComplete = (threshold > 0 and progress >= threshold)
-                    
-                    if activity and isComplete then
-                        local isAtMax = IsVaultSlotAtMax(activity, dataKey)
-                        -- State: completed — green left stripe
-                        slotFrame.stripe:SetColorTexture(0.20, 0.75, 0.20, 0.90)
-                        slotFrame.bg:SetColorTexture(0.04, 0.10, 0.04, 0.95)
-
-                        local displayText = GetVaultActivityDisplayText(activity, dataKey)
-                        local rewardIlvl  = GetRewardItemLevel(activity)
-                        local hasArrow    = not isAtMax
-                        -- ALL slot text uses identical width + centered position (equal everywhere)
-                        local textW = VAULT_SLOT_W - 12
-
-                        local tierText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                        tierText:SetPoint("CENTER", slotFrame, "CENTER", 0, 7)
-                        tierText:SetWidth(textW)
-                        tierText:SetJustifyH("CENTER")
-                        tierText:SetWordWrap(false)
-                        tierText:SetText(string.format("|cff33dd33%s|r", displayText))
-
-                        if rewardIlvl and rewardIlvl > 0 then
-                            local ilvlText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                            ilvlText:SetPoint("TOP", tierText, "BOTTOM", 0, -2)
-                            ilvlText:SetWidth(textW)
-                            ilvlText:SetJustifyH("CENTER")
-                            ilvlText:SetWordWrap(false)
-                            local ilvlFormat = (ns.L and ns.L["ILVL_FORMAT"]) or "iLvl %d"
-                            ilvlText:SetText(string.format("|cffffd700" .. ilvlFormat .. "|r", rewardIlvl))
-                        end
-
-                        -- Upgrade arrow: `loottoast-arrow-green` (Blizzard loot toast); sublayer 7 so slot text stays underneath
-                        if hasArrow and slotFrame.stripe then
-                            local arrowTexture = slotFrame:CreateTexture(nil, "OVERLAY", nil, 7)
-                            arrowTexture:SetSize(22, 22)
-                            arrowTexture:SetPoint("LEFT", slotFrame.stripe, "RIGHT", 2, 0)
-                            arrowTexture:SetAtlas("loottoast-arrow-green", false)
-                        end
-                        
-                        -- Add tooltip for completed slots
-                        if ShowTooltip then
-                            slotFrame:EnableMouse(true)
-                            slotFrame:SetScript("OnEnter", function(self)
-                                local lines = {}
-                                local displayText = GetVaultActivityDisplayText(activity, dataKey)
-                                local rewardIlvl = GetRewardItemLevel(activity)
-                                local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
-                                local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
-
-                                -- Current Reward header + value
-                                if rewardIlvl and rewardIlvl > 0 then
-                                    table.insert(lines, {
-                                        text = string.format("|cff00ff00%s|r",
-                                            (ns.L and ns.L["VAULT_REWARD"]) or "Current Reward"),
-                                        color = {0.5, 1, 0.5}
-                                    })
-                                    table.insert(lines, {
-                                        text = string.format("|cffffd700iLvl %d|r  |cffffffff- (%s)|r",
-                                            rewardIlvl, displayText),
-                                        color = {1, 1, 1}
-                                    })
-                                end
-
-                                -- Upgrade: "Improve to iLvl X: Complete on Y difficulty"
-                                local isAtMaxSlot = IsVaultSlotAtMax(activity, dataKey)
-                                if not isAtMaxSlot then
-                                    local nextTierName = GetNextTierName(activity, dataKey)
-                                    if nextTierName then
-                                        table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                                        local improveLabel = (ns.L and ns.L["VAULT_IMPROVE_TO"]) or "Improve to"
-                                        if activity.nextLevelIlvl and activity.nextLevelIlvl > 0 then
-                                            table.insert(lines, {
-                                                text = string.format("|cffa0d0ff%s iLvl %d:|r",
-                                                    improveLabel, activity.nextLevelIlvl),
-                                                color = {0.63, 0.82, 1}
-                                            })
-                                        end
-                                        local completeOnLabel = (ns.L and ns.L["VAULT_COMPLETE_ON"]) or "Complete this activity on %s"
-                                        table.insert(lines, {
-                                            text = string.format("|cff888888" .. completeOnLabel .. "|r", nextTierName),
-                                            color = {0.5, 0.5, 0.5}
-                                        })
-                                    end
-                                end
-
-                                -- RAID: Encounter list (primary: vault API, fallback: lockouts)
-                                if dataKey == "Raid" then
-                                    if activity.encounters and #activity.encounters > 0 then
-                                        BuildRaidEncounterLines(lines, activity.encounters)
-                                    elseif pve.raidLockouts and #pve.raidLockouts > 0 then
-                                        BuildRaidBossLinesFromLockouts(lines, pve.raidLockouts)
-                                    end
-                                end
-
-                                -- DUNGEON: Top runs (Blizzard pattern: GetRunHistory + GetNumCompletedDungeonRuns)
-                                if dataKey == "M+" then
-                                    local rawHistory = pve.mythicPlus and pve.mythicPlus.runHistory
-                                    local dungeonRunCounts = vaultActivitiesData and vaultActivitiesData.dungeonRunCounts
-                                    BuildDungeonRunLines(lines, rawHistory, dungeonRunCounts, threshold)
-                                end
-
-                                -- WORLD: Tier progress from GetSortedProgressForActivity (Blizzard pattern)
-                                if dataKey == "World" then
-                                    local worldTierProgress = vaultActivitiesData and vaultActivitiesData.worldTierProgress
-                                    BuildWorldProgressLines(lines, worldTierProgress, threshold)
-                                end
-
-                                if isCurrentChar then
-                                    table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                                    table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
-                                end
-                                local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
-                                ShowTooltip(self, {
-                                    type = "custom",
-                                    icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
-                                    title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
-                                    lines = lines,
-                                    anchor = "ANCHOR_TOP"
-                                })
-                            end)
-
-                            slotFrame:SetScript("OnLeave", function(self)
-                                if HideTooltip then
-                                    HideTooltip()
-                                end
-                            end)
-                            BindForwardScrollWheel(slotFrame)
-                        end
-
-
-                    elseif activity and not isComplete then
-                        -- State: in-progress — amber left stripe
-                        slotFrame.stripe:SetColorTexture(0.85, 0.60, 0.10, 0.85)
-                        slotFrame.bg:SetColorTexture(0.10, 0.08, 0.02, 0.95)
-
-                        local progressText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                        progressText:SetPoint("CENTER", slotFrame, "CENTER", 0, 0)
-                        progressText:SetWidth(VAULT_SLOT_W - 12)
-                        progressText:SetJustifyH("CENTER")
-                        progressText:SetWordWrap(false)
-                        progressText:SetText(string.format("|cffffcc00%s|r|cff666666/|r|cff888888%s|r",
-                            FormatNumber(progress), FormatNumber(threshold)))
-                        
-                        -- Add tooltip for incomplete slots
-                        if ShowTooltip then
-                            slotFrame:EnableMouse(true)
-                            slotFrame:SetScript("OnEnter", function(self)
-                                local lines = {}
-                                local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
-                                local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
-
-                                local activityHint = ""
-                                if dataKey == "M+" then
-                                    activityHint = (ns.L and ns.L["VAULT_DUNGEONS"]) or "dungeons"
-                                elseif dataKey == "Raid" then
-                                    activityHint = (ns.L and ns.L["VAULT_BOSS_KILLS"]) or "boss kills"
-                                elseif dataKey == "World" then
-                                    activityHint = (ns.L and ns.L["VAULT_WORLD_ACTIVITIES"]) or "world activities"
-                                else
-                                    activityHint = (ns.L and ns.L["VAULT_ACTIVITIES"]) or "activities"
-                                end
-
-                                -- Unlock Reward header
-                                local unlockLabel = (ns.L and ns.L["VAULT_UNLOCK_REWARD"]) or "Unlock Reward"
-                                table.insert(lines, {
-                                    text = string.format("|cff00ff00%s|r", unlockLabel),
-                                    color = {0.5, 1, 0.5}
-                                })
-
-                                -- "Complete N more X to unlock"
-                                local remaining = threshold - progress
-                                if remaining > 0 then
-                                    local completeMoreLabel = (ns.L and ns.L["VAULT_COMPLETE_MORE_FORMAT"]) or "Complete %d more %s this week to unlock."
-                                    table.insert(lines, {
-                                        text = string.format("|cffffffff" .. completeMoreLabel .. "|r",
-                                            remaining, activityHint),
-                                        color = {1, 1, 1}
-                                    })
-                                end
-
-                                -- M+ specific: "The item level will be based on the lowest of your top N runs (currently X)"
-                                if dataKey == "M+" then
-                                    local currentTierText = GetVaultActivityDisplayText(activity, dataKey)
-                                    table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                                    local basedOnLabel = (ns.L and ns.L["VAULT_BASED_ON_FORMAT"]) or "The item level of this reward will be based on the lowest of your top %d runs this week (currently %s)."
-                                    table.insert(lines, {
-                                        text = string.format("|cff888888" .. basedOnLabel .. "|r",
-                                            threshold, currentTierText),
-                                        color = {0.5, 0.5, 0.5}
-                                    })
-                                end
-
-                                -- Raid specific: "The item level will be based on the difficulty of your boss kills"
-                                if dataKey == "Raid" then
-                                    local currentDiffText = GetVaultActivityDisplayText(activity, dataKey)
-                                    table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                                    local raidBasedLabel = (ns.L and ns.L["VAULT_RAID_BASED_FORMAT"]) or "Reward based on highest difficulty defeated (currently %s)."
-                                    table.insert(lines, {
-                                        text = string.format("|cff888888" .. raidBasedLabel .. "|r", currentDiffText),
-                                        color = {0.5, 0.5, 0.5}
-                                    })
-                                end
-
-                                -- RAID: Encounter list (primary: vault API, fallback: lockouts)
-                                if dataKey == "Raid" then
-                                    if activity.encounters and #activity.encounters > 0 then
-                                        BuildRaidEncounterLines(lines, activity.encounters)
-                                    elseif pve.raidLockouts and #pve.raidLockouts > 0 then
-                                        BuildRaidBossLinesFromLockouts(lines, pve.raidLockouts)
-                                    end
-                                end
-
-                                -- DUNGEON: Top runs (Blizzard pattern)
-                                if dataKey == "M+" and progress > 0 then
-                                    local rawHistory = pve.mythicPlus and pve.mythicPlus.runHistory
-                                    local dungeonRunCounts = vaultActivitiesData and vaultActivitiesData.dungeonRunCounts
-                                    BuildDungeonRunLines(lines, rawHistory, dungeonRunCounts, threshold)
-                                end
-
-                                -- WORLD: Tier progress (Blizzard pattern)
-                                if dataKey == "World" and progress > 0 then
-                                    local worldTierProgress = vaultActivitiesData and vaultActivitiesData.worldTierProgress
-                                    BuildWorldProgressLines(lines, worldTierProgress, threshold)
-                                end
-
-                                if isCurrentChar then
-                                    table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                                    table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
-                                end
-                                local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
-                                ShowTooltip(self, {
-                                    type = "custom",
-                                    icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
-                                    title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
-                                    lines = lines,
-                                    anchor = "ANCHOR_TOP"
-                                })
-                            end)
-
-                            slotFrame:SetScript("OnLeave", function(self)
-                                if HideTooltip then
-                                    HideTooltip()
-                                end
-                            end)
-                            BindForwardScrollWheel(slotFrame)
-                        end
-                    else
-                        -- State: no data — dim left stripe
-                        slotFrame.stripe:SetColorTexture(0.22, 0.22, 0.28, 0.60)
-
-                        local emptyText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                        emptyText:SetPoint("CENTER", slotFrame, "CENTER", 0, 0)
-                        emptyText:SetWidth(VAULT_SLOT_W - 12)
-                        emptyText:SetJustifyH("CENTER")
-                        emptyText:SetWordWrap(false)
-                        if threshold > 0 then
-                            emptyText:SetText(string.format("|cff555555%s|r|cff444444/|r|cff555555%s|r", FormatNumber(0), FormatNumber(threshold)))
-                            
-                            -- Add tooltip for empty slots
-                            if ShowTooltip then
-                                slotFrame:EnableMouse(true)
-                                slotFrame:SetScript("OnEnter", function(self)
-                                    local lines = {}
-
-                                    local activityHint = ""
-                                    if dataKey == "M+" then
-                                        activityHint = (ns.L and ns.L["VAULT_DUNGEONS"]) or "dungeons"
-                                    elseif dataKey == "Raid" then
-                                        activityHint = (ns.L and ns.L["VAULT_BOSS_KILLS"]) or "boss kills"
-                                    elseif dataKey == "World" then
-                                        activityHint = (ns.L and ns.L["VAULT_WORLD_ACTIVITIES"]) or "world activities"
-                                    else
-                                        activityHint = (ns.L and ns.L["VAULT_ACTIVITIES"]) or "activities"
-                                    end
-
-                                    local unlockLabel = (ns.L and ns.L["VAULT_UNLOCK_REWARD"]) or "Unlock Reward"
-                                    table.insert(lines, {
-                                        text = string.format("|cff00ff00%s|r", unlockLabel),
-                                        color = {0.5, 1, 0.5}
-                                    })
-                                    local completeMoreLabel = (ns.L and ns.L["VAULT_COMPLETE_MORE_FORMAT"]) or "Complete %d more %s this week to unlock."
-                                    table.insert(lines, {
-                                        text = string.format("|cffffffff" .. completeMoreLabel .. "|r",
-                                            threshold, activityHint),
-                                        color = {1, 1, 1}
-                                    })
-
-                                    if isCurrentChar then
-                                        table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                                        table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
-                                    end
-                                    local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
-                                    ShowTooltip(self, {
-                                        type = "custom",
-                                        icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
-                                        title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
-                                        lines = lines,
-                                        anchor = "ANCHOR_TOP"
-                                    })
-                                end)
-
-                                slotFrame:SetScript("OnLeave", function(self)
-                                    if HideTooltip then
-                                        HideTooltip()
-                                    end
-                                end)
-                                BindForwardScrollWheel(slotFrame)
-                            end
-                        else
-                            emptyText:SetText("|cff666666-|r")
-                        end
-                    end
-                end
-                
-                -- No need to increment vaultY anymore (using rowIndex)
-            end
+            local paintedH = select(1, self:PaintPvEVaultGridOnCard(vaultCard, {
+                baseCardWidth = baseCardWidth,
+                baseCardHeight = baseCardHeight,
+                vaultByType = vaultByType,
+                pve = pve,
+                vaultActivitiesData = vaultActivitiesData,
+                isCurrentChar = isCurrentChar,
+            }))
+            cardHeight = paintedH
         else
             -- No vault data: Still set card dimensions so it's visible
             vaultCard:SetHeight(baseCardHeight)
@@ -2628,9 +3069,180 @@ function WarbandNexus:DrawPvEProgress(parent)
             yOffset = yOffset + (cardHeight or 200) + GetLayout().afterElement
         end
         
-        -- Character sections flow directly one after another (like Characters tab)
+    -- Character sections flow directly one after another (like Characters tab)
     end
-    
+
     return yOffset + 20
 end
 
+--- Header chest icon: all tracked characters' vault column summaries (Raid / M+ / World), width-aware row cap.
+function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
+    if not anchorFrame or not ShowTooltip then return end
+
+    local snap = self._pveVaultTooltipCharsSnapshot
+    local lines = {}
+
+    local title = (ns.L and ns.L["VAULT_SUMMARY_ALL_TITLE"]) or "Great Vault — all characters"
+    table.insert(lines, {
+        text = (ns.L and ns.L["VAULT_SUMMARY_ALL_SUB"]) or "Raid · Mythic+ · World columns match the PvE tab.",
+        color = { 0.72, 0.72, 0.76 },
+    })
+    table.insert(lines, { type = "spacer", height = 6 })
+
+    local currentKey = ns.Utilities:GetCharacterKey()
+    if ns.Utilities.GetCanonicalCharacterKey then
+        currentKey = ns.Utilities:GetCanonicalCharacterKey(currentKey) or currentKey
+    end
+
+    local sh = GetScreenHeight() or 1080
+    local sw = GetScreenWidth() or 1920
+    local maxRows = math.max(24, math.min(100, math.floor((sh * 0.52) / 15)))
+    local maxW = math.floor(sw * 0.42)
+    if maxW < 360 then maxW = 360 end
+    if maxW > 620 then maxW = 620 end
+
+    if not snap or #snap == 0 then
+        table.insert(lines, {
+            text = (ns.L and ns.L["VAULT_SUMMARY_NO_CHARS"]) or "No tracked characters.",
+            color = { 0.55, 0.55, 0.58 },
+        })
+    else
+        local rows = {}
+        local listed = 0
+        local idx = 1
+        while idx <= #snap and listed < maxRows do
+            local char = snap[idx]
+            idx = idx + 1
+            local charKey = PvE_GetCanonicalKeyForChar(char)
+            if charKey then
+                listed = listed + 1
+                local pveData = self:GetPvEData(charKey) or {}
+                local vaultActs = pveData.vaultActivities or {}
+                local raidT = vaultActs.raids and #vaultActs.raids or 3
+                local dT = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
+                local wT = vaultActs.world and #vaultActs.world or 3
+
+                local claim = pveData.vaultRewards and pveData.vaultRewards.hasAvailableRewards == true
+                if (not claim) and charKey == currentKey and self.HasUnclaimedVaultRewards then
+                    local ok, v = pcall(self.HasUnclaimedVaultRewards, self)
+                    claim = ok and v == true
+                end
+
+                local r = PvE_FormatVaultTrackColumn(vaultActs.raids, raidT, "Raid", claim, 10)
+                local dcol = PvE_FormatVaultTrackColumn(vaultActs.mythicPlus, dT, "M+", claim, 10)
+                local wcol = PvE_FormatVaultTrackColumn(vaultActs.world, wT, "World", claim, 10)
+
+                local classColor = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
+                local nameStr = string.format(
+                    "|cff%02x%02x%02x%s|r",
+                    classColor.r * 255,
+                    classColor.g * 255,
+                    classColor.b * 255,
+                    char.name or "?"
+                )
+                local realmDisp = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ""
+                if realmDisp ~= "" and #realmDisp > 14 then
+                    realmDisp = realmDisp:sub(1, 11) .. "…"
+                end
+                local realmCol = ""
+                if realmDisp ~= "" then
+                    realmCol = "|cffaaaaaa" .. realmDisp .. "|r"
+                end
+
+                rows[#rows + 1] = {
+                    nameStr = nameStr,
+                    realmStr = realmCol,
+                    r = r,
+                    d = dcol,
+                    w = wcol,
+                }
+            end
+        end
+
+        local hdrName = (ns.L and ns.L["VAULT_SUMMARY_COL_NAME"]) or "Character"
+        local hdrRealm = (ns.L and ns.L["VAULT_SUMMARY_COL_REALM"]) or "Realm"
+        local hdrRaid = (ns.L and ns.L["PVE_HEADER_RAIDS"]) or "Raids"
+        local hdrMPlus = (ns.L and ns.L["PVE_HEADER_DUNGEONS"]) or "M+"
+        local hdrWorld = (ns.L and ns.L["VAULT_WORLD"]) or "World"
+
+        local FontManager = ns.FontManager
+        local measure = FontManager and FontManager:CreateFontString(UIParent, "medium", "OVERLAY")
+        local maxN, maxRm, maxVR, maxVM, maxVW = 52, 52, 40, 40, 40
+        if measure and #rows > 0 then
+            measure:Hide()
+            measure:SetText(hdrName)
+            maxN = math.max(maxN, measure:GetStringWidth() or 0)
+            measure:SetText(hdrRealm)
+            maxRm = math.max(maxRm, measure:GetStringWidth() or 0)
+            measure:SetText(hdrRaid)
+            maxVR = math.max(maxVR, measure:GetStringWidth() or 0)
+            measure:SetText(hdrMPlus)
+            maxVM = math.max(maxVM, measure:GetStringWidth() or 0)
+            measure:SetText(hdrWorld)
+            maxVW = math.max(maxVW, measure:GetStringWidth() or 0)
+            for ri = 1, #rows do
+                local rd = rows[ri]
+                measure:SetText(rd.nameStr)
+                maxN = math.max(maxN, measure:GetStringWidth() or 0)
+                measure:SetText(rd.realmStr ~= "" and rd.realmStr or " ")
+                maxRm = math.max(maxRm, measure:GetStringWidth() or 0)
+                measure:SetText(rd.r)
+                maxVR = math.max(maxVR, measure:GetStringWidth() or 0)
+                measure:SetText(rd.d)
+                maxVM = math.max(maxVM, measure:GetStringWidth() or 0)
+                measure:SetText(rd.w)
+                maxVW = math.max(maxVW, measure:GetStringWidth() or 0)
+            end
+            measure:SetParent(nil)
+        end
+
+        -- Raid / M+ / World: identical width (match TooltipFactory VAULT_GRID_TRACK_MIN_W); center via SetJustifyH there.
+        local vaultColW = math.max(maxVR or 40, maxVM or 40, maxVW or 40, 72)
+        local widths = { maxN, maxRm, vaultColW, vaultColW, vaultColW }
+
+        if #rows > 0 then
+            table.insert(lines, {
+                type = "vault_grid_row",
+                name = hdrName,
+                realm = hdrRealm,
+                colRaid = hdrRaid,
+                colMplus = hdrMPlus,
+                colWorld = hdrWorld,
+                widths = widths,
+                isHeader = true,
+            })
+            for ri = 1, #rows do
+                local rd = rows[ri]
+                table.insert(lines, {
+                    type = "vault_grid_row",
+                    name = rd.nameStr,
+                    realm = rd.realmStr ~= "" and rd.realmStr or " ",
+                    colRaid = rd.r,
+                    colMplus = rd.d,
+                    colWorld = rd.w,
+                    widths = widths,
+                })
+            end
+        end
+
+        local notShown = #snap - (idx - 1)
+        if notShown > 0 then
+            table.insert(lines, { type = "spacer", height = 4 })
+            table.insert(lines, {
+                text = string.format((ns.L and ns.L["VAULT_SUMMARY_MORE"]) or "… and %d more (see PvE list).", notShown),
+                color = { 0.5, 0.52, 0.58 },
+            })
+        end
+    end
+
+    ShowTooltip(anchorFrame, {
+        type = "custom",
+        -- Blizzard UI atlas (same pattern as StatisticsUI CreateIcon); avoids missing Interface\\Icons paths on some builds.
+        icon = "BonusLoot-Chest",
+        iconIsAtlas = true,
+        title = title,
+        lines = lines,
+        anchor = "ANCHOR_RIGHT",
+        maxWidth = maxW,
+    })
+end

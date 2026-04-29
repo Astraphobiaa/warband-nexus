@@ -984,46 +984,30 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local trackedFavorites, trackedRegular, untrackedChars = CategorizeCharacters(characters)
     local totalProfChars = #trackedFavorites + #trackedRegular + #untrackedChars
 
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
+    local expBadgeWidth = 100
+    local filterBtnW = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH or 80
+
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout (wider subtitle area for Professions) =====
     local titleCardH = showWideHint and 88 or 70
-    local titleCard = CreateCard(headerParent, titleCardH)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    if ApplyVisuals then
-        ApplyVisuals(titleCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-    end
-
-    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-    local GetTabIcon = ns.UI_GetTabIcon
-    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("professions") or "Vehicle-HammerGold")
-    headerIcon.border:SetPoint("CENTER", titleCard, "LEFT", 35, 0)
-
-    local titleTextContainer = ns.UI.Factory:CreateContainer(titleCard, 250, 40)
-    local titleText = FontManager:CreateFontString(titleTextContainer, "header", "OVERLAY")
-    titleText:SetText("|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["YOUR_PROFESSIONS"]) or "Warband Professions") .. "|r")
-    titleText:SetJustifyH("LEFT")
-
-    local subtitleText = FontManager:CreateFontString(titleTextContainer, "subtitle", "OVERLAY")
-    subtitleText:SetTextColor(1, 1, 1)
     local subLine = format((ns.L and ns.L["PROFESSIONS_TRACKED_FORMAT"]) or "%s characters with professions", FormatNumber(totalProfChars))
     if showWideHint then
         subLine = subLine .. "\n|cffaaaaaa"
             .. ((ns.L and ns.L["PROFESSIONS_WIDE_TABLE_HINT"])
                 or "Tip: use the bar below or Shift+mouse wheel to see all columns.") .. "|r"
     end
-    subtitleText:SetText(subLine)
-    subtitleText:SetJustifyH("LEFT")
-
-    titleText:SetPoint("BOTTOM", titleTextContainer, "CENTER", 0, 0)
-    titleText:SetPoint("LEFT", titleTextContainer, "LEFT", 0, 0)
-    subtitleText:SetPoint("TOP", titleTextContainer, "CENTER", 0, -4)
-    subtitleText:SetPoint("LEFT", titleTextContainer, "LEFT", 0, 0)
-    titleTextContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-    titleTextContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+    local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
+        cardHeight = titleCardH,
+        textContainerWidth = 250,
+        atlasName = (ns.UI_GetTabIcon and ns.UI_GetTabIcon("professions")) or "Vehicle-HammerGold",
+        titleText = "|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["YOUR_PROFESSIONS"]) or "Warband Professions") .. "|r",
+        subtitleText = subLine,
+        textRightInset = expBadgeWidth + filterBtnW + 40,
+    }))
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
 
     -- Force fixed expansion view: Midnight only (filter selector removed).
     self.db.profile.professionExpansionFilter = "Midnight"
-    local expBadgeWidth = 100
     local expBadgeHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
     local expBadge = ns.UI.Factory:CreateButton(titleCard, expBadgeWidth, expBadgeHeight, false)
     if ApplyVisuals then
@@ -1040,7 +1024,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
     expBadge:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
     
     -- ===== COLUMNS BUTTON (column visibility toggle) =====
-    local filterBtnW = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH or 80
     local filterBtnH = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
     local filterBtn = ns.UI.Factory:CreateButton(titleCard, filterBtnW, filterBtnH, false)
     if ApplyVisuals then
@@ -1349,7 +1332,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     -- ===== SECTION HEADERS & CHARACTER ROWS =====
     local currentPlayerKey = ns.Utilities:GetCharacterKey()
     local rowIndex = 0
-    local HEADER_HEIGHT = GetLayout().HEADER_HEIGHT or 32
+    local SECTION_COLLAPSE_HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
 
     -- Initialize expand state tracking
     if not self.db.profile.ui then self.db.profile.ui = {} end
@@ -1364,7 +1347,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
 
     -- Grouped sections with collapsible headers
-    local function DrawSection(chars, headerLabel, sectionKey, defaultExpanded, headerAtlas, borderColor)
+    local function DrawSection(chars, headerLabel, sectionKey, defaultExpanded, headerAtlas, visualOpts)
         if #chars == 0 then return end
 
         local isExpanded = self.db.profile.ui[sectionKey]
@@ -1381,24 +1364,17 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 self:RefreshUI()
             end,
             headerAtlas,
-            true  -- isAtlas
+            true,  -- isAtlas
+            nil,
+            nil,
+            visualOpts
         )
         if hdrIcon then
             hdrIcon:SetSize(34, 34)
         end
         header:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
         header:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-        if ApplyVisuals then
-            ApplyVisuals(header, {0.08, 0.08, 0.10, 0.95}, borderColor)
-        end
-        -- Gold accent bar for Favorites section (matching CharactersUI style)
-        if sectionKey == "profFavoritesExpanded" then
-            local accent = header:CreateTexture(nil, "ARTWORK", nil, 2)
-            accent:SetSize(3, HEADER_HEIGHT - 8)
-            accent:SetPoint("LEFT", 4, 0)
-            accent:SetColorTexture(1, 0.82, 0.2, 0.9)
-        end
-        yOffset = yOffset + HEADER_HEIGHT
+        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT
 
         if isExpanded then
             for _, char in ipairs(chars) do
@@ -1425,7 +1401,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         "profFavoritesExpanded",
         true,
         "GM-icon-assistActive-hover",
-        {1, 0.82, 0.2, 0.5}
+        { sectionPreset = "gold" }
     )
 
     -- Regular characters section
@@ -1435,7 +1411,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         "profCharactersExpanded",
         true,
         "GM-icon-headCount",
-        {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+        nil
     )
 
     -- Untracked characters section
@@ -1445,7 +1421,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         "profUntrackedExpanded",
         false,
         "DungeonStoneCheckpointDeactivated",
-        {0.8, 0.2, 0.2, 0.6}  -- Red border for untracked
+        { sectionPreset = "danger" }
     )
 
     return yOffset + 10

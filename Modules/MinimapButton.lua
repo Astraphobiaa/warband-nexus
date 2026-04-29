@@ -250,6 +250,24 @@ function WarbandNexus:ShowMinimapMenu()
     -- Modern TWW 11.0+ menu system
     if MenuUtil and MenuUtil.CreateContextMenu then
         MenuUtil.CreateContextMenu(UIParent, function(ownerRegion, rootDescription)
+            local function OpenVaultTrackerView()
+                if InCombatLockdown() then return end
+                if self.db and self.db.profile then
+                    self.db.profile.pveVaultTrackerMode = true
+                    self.db.profile.lastTab = "pve"
+                end
+
+                if not self.mainFrame or not self.mainFrame:IsShown() then
+                    self:ShowMainWindow()
+                end
+
+                local mainFrame = self.mainFrame
+                if mainFrame then
+                    mainFrame.currentTab = "pve"
+                    self:PopulateContent()
+                end
+            end
+
             -- Header
             rootDescription:CreateTitle((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")
             
@@ -289,6 +307,11 @@ function WarbandNexus:ShowMinimapMenu()
                 if self.TogglePlansTrackerWindow then
                     self:TogglePlansTrackerWindow()
                 end
+            end)
+
+            -- Vault Tracker (PvE tab in ready-only mode)
+            rootDescription:CreateButton((ns.L and ns.L["WEEKLY_VAULT_TRACKER"]) or "Weekly Vault Tracker", function()
+                OpenVaultTrackerView()
             end)
 
             rootDescription:CreateDivider()

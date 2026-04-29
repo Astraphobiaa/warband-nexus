@@ -187,6 +187,34 @@ L["CLICK_TO_DELETE"] = "Cliquer pour supprimer"
 L["CONFIRM_DELETE"] = "Êtes-vous sûr de vouloir supprimer |cff00ccff%s|r ?"
 L["CANNOT_UNDO"] = "Cette action est irréversible !"
 
+-- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
+L["EMPTY_CHARACTERS_TITLE"] = "Aucun personnage trouvé"
+L["EMPTY_CHARACTERS_DESC"] = "Connectez-vous à vos personnages pour commencer le suivi.\nLes données sont collectées automatiquement à chaque connexion."
+L["EMPTY_ITEMS_TITLE"] = "Aucun objet mis en cache"
+L["EMPTY_ITEMS_DESC"] = "Ouvrez votre banque de bataillon ou votre banque personnelle pour analyser les objets.\nLes objets sont mis en cache automatiquement lors de la première visite."
+L["EMPTY_INVENTORY_TITLE"] = "Aucun objet dans l'inventaire"
+L["EMPTY_INVENTORY_DESC"] = "Vos sacs d'inventaire sont vides."
+L["EMPTY_PERSONAL_BANK_TITLE"] = "Aucun objet dans la banque personnelle"
+L["EMPTY_PERSONAL_BANK_DESC"] = "Ouvrez votre banque personnelle pour analyser les objets.\nLes objets sont mis en cache automatiquement lors de la première visite."
+L["EMPTY_WARBAND_BANK_TITLE"] = "Aucun objet dans la banque de bataillon"
+L["EMPTY_WARBAND_BANK_DESC"] = "Ouvrez votre banque de bataillon pour analyser les objets.\nLes objets sont mis en cache automatiquement lors de la première visite."
+L["EMPTY_GUILD_BANK_TITLE"] = "Aucun objet dans la banque de guilde"
+L["EMPTY_GUILD_BANK_DESC"] = "Ouvrez votre banque de guilde pour analyser les objets.\nLes objets sont mis en cache automatiquement lors de la première visite."
+L["EMPTY_STORAGE_TITLE"] = "Aucune donnée de stockage"
+L["EMPTY_STORAGE_DESC"] = "Les objets sont analysés lorsque vous ouvrez les banques ou les sacs.\nVisitez une banque pour commencer à suivre votre stockage."
+L["EMPTY_PLANS_TITLE"] = "Pas encore de projets"
+L["EMPTY_PLANS_DESC"] = "Parcourez Montures, Mascottes, Jouets ou Hauts faits ci-dessus\npour ajouter des objectifs de collection et suivre votre progression."
+L["EMPTY_REPUTATION_TITLE"] = "Aucune donnée de réputation"
+L["EMPTY_REPUTATION_DESC"] = "Les réputations sont analysées automatiquement à la connexion.\nConnectez-vous à un personnage pour suivre les factions."
+L["EMPTY_CURRENCY_TITLE"] = "Aucune donnée de monnaie"
+L["EMPTY_CURRENCY_DESC"] = "Les monnaies sont suivies automatiquement sur vos personnages.\nConnectez-vous à un personnage pour les suivre."
+L["EMPTY_PVE_TITLE"] = "Aucune donnée JcE"
+L["EMPTY_PVE_DESC"] = "La progression JcE est suivie lorsque vous vous connectez à vos personnages.\nTrésor mythique, Mythique+ et verrouillages de raid apparaîtront ici."
+L["EMPTY_STATISTICS_TITLE"] = "Aucune statistique disponible"
+L["EMPTY_STATISTICS_DESC"] = "Les statistiques proviennent de vos personnages suivis.\nConnectez-vous à un personnage pour commencer à collecter des données."
+L["COLLECTIONS_COMING_SOON_TITLE"] = "Bientôt disponible"
+L["COLLECTIONS_COMING_SOON_DESC"] = "L'aperçu des collections (montures, mascottes, jouets, transmogrifications) sera disponible ici."
+
 -- Items Tab
 L["PERSONAL_ITEMS"] = "Objets personnels"
 L["ITEMS_SUBTITLE"] = "Parcourir votre banque de bataillon, banque de guilde et objets personnels"
@@ -228,6 +256,16 @@ L["VAULT_SLOT_FORMAT"] = "%s Emplacement %d"
 L["OVERALL_SCORE_LABEL"] = "Score global :"
 L["NOT_COMPLETED_SEASON"] = "Non complété cette saison"
 L["LOADING_PVE"] = "Chargement des données JcE..."
+L["PVE_VAULT_TRACKER_SUBTITLE"] = "Récompenses à récupérer et lignes du coffre terminées"
+L["PVE_VAULT_TRACKER_EMPTY_TITLE"] = "Pas encore de ligne coffre"
+L["PVE_VAULT_TRACKER_EMPTY_DESC"] = "Aucun personnage suivi n'a encore de progression hebdomadaire du Grand coffre enregistrée.\nConnectez chaque personnage ou désactivez le suivi pour voir toute la progression JcE."
+L["VAULT_TRACK_WAITING_RESET_SHORT"] = "Reset"
+L["VAULT_SUMMARY_ALL_TITLE"] = "Grand coffre — tous les personnages"
+L["VAULT_SUMMARY_ALL_SUB"] = "Raid · MM+ · Monde : mêmes colonnes que l’onglet JcE."
+L["VAULT_SUMMARY_COL_NAME"] = "Personnage"
+L["VAULT_SUMMARY_COL_REALM"] = "Royaume"
+L["VAULT_SUMMARY_NO_CHARS"] = "Aucun personnage suivi."
+L["VAULT_SUMMARY_MORE"] = "… et %d de plus (liste JcE)."
 L["NO_VAULT_DATA"] = "Aucune donnée de coffre"
 L["NO_DATA"] = "Aucune donnée"
 L["KEYSTONE"] = "Clé de donjon"
@@ -246,6 +284,7 @@ L["VAULT_WORLD_ACTIVITIES"] = "activités mondiales"
 L["VAULT_ACTIVITIES"] = "activités"
 L["VAULT_REMAINING_SUFFIX"] = "restant(s)"
 L["VAULT_CLICK_TO_OPEN"] = "Cliquer pour ouvrir le Grand coffre"
+L["VAULT_TRACKER_CARD_CLICK_HINT"] = "Cliquer pour ouvrir le Grand coffre"
 
 -- Delves Section (PvE Tab)
 L["BOUNTIFUL_DELVE"] = "Butin du chasseur de trésors"
@@ -371,6 +410,7 @@ L["ADD_QUEST"] = "Ajouter quête"
 L["ADD_VAULT"] = "Ajouter coffre"
 L["ADVANCED_SECTION"] = "Avancé"
 L["AFFIX_TITLE_FALLBACK"] = "Affixe"
+L["WN_REPUTATION_RENOWN_LEVEL_UP"] = "Niveau de renom %d atteint"
 L["ALL_SLOTS_COMPLETE"] = "Tous les emplacements complétés !"
 L["ANTI_ALIASING"] = "Anticrénelage"
 L["ANTI_ALIASING_DESC"] = "Style de rendu des bords de police (affecte la lisibilité)"
@@ -381,61 +421,71 @@ L["BANK_IS_ACTIVE"] = "La banque est active"
 L["BANK_NOT_OPEN_MSG"] = "La banque n'est pas ouverte"
 
 
-L["CHANGELOG_V258"] = "v2.5.8\nCorrections :\n- Compteur d'essais : CHAT_MSG_LOOT ne génère plus d'erreur sur le chemin d'attribution pêche (déclaration anticipée de CurrentUnitsHaveMobLootContext ; était une globale nil).\n\nCurseForge : Warband Nexus"
+-- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
-L["CHANGELOG_V259"] = [=[v2.5.9 (03.04.2026)
+-- What's New / changelog body for ADDON_VERSION 2.6.4 (key CHANGELOG_V264)
+L["CHANGELOG_V264"] = [=[v2.6.4 (2026-04-26)
 
-Améliorations
-- Collections / compteur d'essais : bataille de Dazar'alor — Glacial Tidestorm uniquement mythique sur dame Jaina (pas LFR). G.M.O.D. : LFR sur Jaina ; normal/héroïque/mythique sur le haut tinkertoy Mekkatorque (correctif 2019). Prise en charge LFR explicite ; reseed statistiques avec statisticIds par ligne de butin ; Mekkatorque sans somme LFR Jaina (13379).
-- CollectibleSourceDB : legacyEncounters (boss à monture) réalignés sur les IDs DungeonEncounter Midnight.
-- Dépôt Git : uniquement les sources de l'addon (Core, Modules, Locales, toc, CHANGES, LICENSE, README) ; docs et scripts d'audit retirés.
+- Ashes of Belo'ren and L'ura references updated.
+- Less delay when the Characters, Gear, and PvE tabs refresh their data.
+- Bug fixes and small improvements.
 
---- 2.5.8 ---
-Corrections
-- Compteur d'essais : CHAT_MSG_LOOT, chemin pêche — CurrentUnitsHaveMobLootContext prédéclaré (global nil).
+CurseForge: Warband Nexus]=]
 
---- 2.5.7 / 2.5.7b ---
-Correctif
-- Onglet Équipement : sélecteur de personnage et menu déroulant.
-- Boîte À propos : crédits et contributeurs.
+-- What's New / changelog body for ADDON_VERSION 2.6.3 (key CHANGELOG_V263)
+L["CHANGELOG_V263"] = [=[v2.6.3 (2026-04-21)
 
-Améliorations
-- Personnages : tri Ordre par défaut (perso connecté, puis niveau décroissant, puis nom A–Z). Nouveaux profils : characterSort.key = default. Clés de tri invalides → première option du menu. Perso connecté en tête dans Favoris, suivis et non suivis (y compris ordre manuel) ; graine manuelle inclut toute la section, en ligne d'abord ; characterOrder avec liste non suivie ; réordonnancement garde le perso en ligne en tête.
-- Paramètres : WindowManager (POPUP, ESC partagé avec la fenêtre principale) au lieu d'un strata FULLSCREEN_DIALOG fixe. RefreshSettingsKeyboard réactive le clavier après affichage. Reconstruction des polices : désenregistrement du cadre paramètres dans WindowManager.
-- WindowManager : après combat, EnableKeyboard(true) en plus de SetPropagateKeyboardInput(true).
-- Compteur : difficulté d'instance = instantané à l'entrée (PLAYER_ENTERING_WORLD, ID d'instance), puis GetInstanceInfo, avant ENCOUNTER_END et APIs — corrige mythique lu comme normal (ex. Mechagon HK-8). ResolveLiveInstanceDifficultyID pour M+ et APIs si difficulté 0 ; ResolveEffectiveEncounterDifficultyID centralise le filtrage.
-- Compteur : FilterDropsByDifficulty appliqué à la butine, à l'ENC retardé et à CHAT_MSG_LOOT ; même clé dedup encounter_ que la fenêtre de butin.
-- Compteur : si zéro piste après règles, enregistrer quand même la clé dedup (pas de double via ENC/CHAT).
-- Compteur : butin monde ouvert fusionné avec multiplicateur de cadavres par ID d'objet (ex. Sanguivore de Nazmir).
-- Compteur : double LOOT_READY ne vide plus la session ; traces debug LOOT_READY/CLOSED dédupliquées.
-- Compteur : [WN-Drops] en-tête TRYCOUNTER_INSTANCE_DROPS_HEADER ; difficulté requise entre parenthèses après le lien d'objet — vert / rouge / ambre selon l'instance.
+PvE cache & SavedVariables
+- Character keys are normalized (GetCanonicalCharacterKey) on every PvE cache read/write so each character uses one SV bucket — migration, import, and live updates no longer split the same toon across different key spellings.
+- Mythic+ dungeon scores: avoid wiping good SavedVariables when the API returns overall 0 with no per-map data while SV still has progress; per-map merge keeps prior rows when the API snapshot is all zeros.
+- Great Vault: empty/nil C_WeeklyRewards.GetActivities() does not overwrite persisted vault data (wait for server / open Great Vault).
+- Import from legacy/migration: skip destructive mythic, vault, or lockout writes when the incoming snapshot is empty but existing cache still has rows.
+- Keystone: only clear stored key when the API reports level 0; nil map/level during API races does not wipe a cached key.
+- MYTHIC_PLUS_CURRENT_AFFIX_UPDATE: refresh affixes; prune keystones by weekly reset timestamp only (no blanket wipe of all characters' keys).
+- PLAYER_LOGOUT: persist cache without running a full PvE refresh (logout APIs often return empty/zero).
 
-Corrections
-- Compteur : incrément après message d'exclusion de difficulté (butin vs ENC retardé / CHAT).
+Debug (Config → Debug Mode)
+- Optional chat diagnostics prefixed |cff00ccff[PvE Cache]|r: dungeon score save/skip, keystone decisions, Great Vault API empty vs saved, ImportLegacy branches, and bestRuns overall score line (parallel to dungeonScores).
 
-Localisation
-- SORT_MODE_DEFAULT ; TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED et chaînes liées.
+CurseForge: Warband Nexus]=]
 
---- 2.5.6 ---
-Améliorations
-- Espacement des royaumes plus lisible (équipement, plans, tracker, suivi).
-- Collections : plus de PNJ pour le Sanguivore apprivoisé (BfA) ; notes coffre vs boss et multi-cadavres.
-- SplitCharacterKey + premier tiret Nom-Royaume.
-- Montures : DB communautaire Mounts Lua + Wowhead/WoWDB.
+-- What's New / changelog body for ADDON_VERSION 2.6.2 (key CHANGELOG_V262)
+L["CHANGELOG_V262"] = [=[v2.6.2 (2026-04-21)
 
-Corrections
-- Compteur : butin chat + tables partagées — mises à jour CHAT conservées.
-- Royaumes à tirets : clés canoniques, GetAllCharacters, stats/minimap ; migration ponctuelle.
-- IDs montures : Verdant Skitterfly (192764), cristal qiraji rouge (21321).
-- Dialogue suivi : GetRealmName protégé (valeurs secrètes).
+Currency & chat
+- Fixed WN-Currency chat queue (FIFO with table.remove) so rapid lines are not dropped.
+- Dawncrest / split currencies: fewer duplicate notifications when bag quantity and totalEarned update on different ticks; short defer when useful.
+- Block internal Blizzard currency labels (Delves / System / Seasonal Affix / Events Active|Maximum, etc.) from WN-Currency; validate meta names on live API as well.
+- Login: suppress WN-Currency notifications until the first full currency scan completes (stops login CURRENCY_DISPLAY_UPDATE burst from flooding chat).
 
-Localisation
-- Astuces TRY_COUNT clic / clic droit.
+Reputation
+- Removed duplicate WN-Reputation line from companion delta watcher; DB pipeline owns chat.
+- Companion XP loot: seed pre standing / renown so level-up and standing lines behave correctly.
+- Optional "Reached renown level %d" (locale WN_REPUTATION_RENOWN_LEVEL_UP); renown level-up derived when MAJOR_FACTION events do not fire.
 
-Prochainement
-- Poursuite des vérifications Midnight (collections, IDs de rencontre) ; affinage compteur et notifications selon le jeu réel.
+Keybind & settings UI
+- Toggle keybind cannot be ESC; legacy ESC bindings are cleared on load/save (game menu path stays reliable).
+- Settings: dedicated key capture (clear, combat-blocked); main window keyboard is suppressed while Settings is open so movement, chat, and Blizzard keybinding capture keep working.
+- Settings root keeps frame keyboard off (large panel no longer steals the global key stack).
 
-CurseForge : Warband Nexus]=]
+ESC & WindowManager
+- ToggleGameMenu uses hooksecurefunc only — never replace the global (avoids taint / protected-call failures such as SpellStopCasting).
+- Same ESC press no longer closes two layers (addon + game menu); aligns with CloseSpecialWindows / UISpecialFrames for the Settings panel.
+- Combat restore no longer forces keyboard back on for the Settings panel.
+
+Weekly Vault / PvE UI (ready state)
+- When Great Vault rewards are claimable (live check or cached), Weekly Vault bars on plan cards, the Plans tracker, and the PvE tab show the localized short label (VAULT_LOOT_READY_SHORT) instead of only threshold ticks.
+- PvE Dawncrest columns use Constants.DAWNCREST_UI (single source with Gear / currency).
+
+Commands & professions
+- /wn keys (party): strip link pipes from aggregated text for Midnight chat rules; use a visible separator between entries when packing lines.
+- Profession window: optional "(N)" craft-from-materials count appended to the schematic title after init.
+
+Localization & tooling
+- Locale key parity maintained; scripts/check_locales.py for audits.
+
+CurseForge: Warband Nexus]=]
+
 
 L["CHARACTER_LABEL"] = "Personnage :"
 L["CLEANUP_NO_INACTIVE"] = "Aucun personnage inactif trouvé (90+ jours)"
@@ -827,6 +877,7 @@ L["SELECT_ITEM"] = "Sélectionner un objet"
 L["SELECT_ITEM_DESC"] = "Choisir un collectionnable à gérer."
 L["SELECT_ITEM_HINT"] = "Sélectionnez un objet ci-dessus pour voir les détails."
 L["SELECT_RECIPE"] = "Sélectionner une recette"
+L["RECIPE_COMPANION_EMPTY"] = "Sélectionnez une recette pour voir la disponibilité des réactifs par personnage."
 L["SETTINGS_UI_UNAVAILABLE"] = "Interface des paramètres non disponible. Essayez /wn pour ouvrir la fenêtre principale."
 L["SHOW_ITEM_COUNT_TOOLTIP"] = "Display stack counts on items in the storage and items view"
 L["SHOW_WEEKLY_PLANNER_TOOLTIP"] = "Show or hide the Weekly Planner section inside the Characters tab"
@@ -910,6 +961,8 @@ L["TRACK_ITEM_DB"] = "Suivi base objets"
 L["TRACK_ITEM_DB_DESC"] = "Gérer quels butins de collectionnables suivir. Activer les entrées intégrées ou ajouter des sources personnalisées."
 L["TRACK_USAGE"] = "Utilisation : enable | disable | status"
 L["TRYCOUNTER_INCREMENT_CHAT"] = "%d tentatives pour %s"
+L["TRYCOUNTER_CHAT_OBTAINED_FIRST_LINK"] = "Vous avez obtenu %s du premier coup !"
+L["TRYCOUNTER_CHAT_OBTAINED_AFTER_LINK"] = "Vous avez obtenu %s après %d tentatives !"
 L["TRYCOUNTER_CHAT_ATTEMPTS_FOR_LINK"] = "%d tentatives pour %s"
 L["TRYCOUNTER_CHAT_FIRST_FOR_LINK"] = "Premier essai pour %s"
 L["TRYCOUNTER_CHAT_TAG_CONTAINER"] = "conteneur"
@@ -978,6 +1031,8 @@ L["WEEKLY_QUEST_CAT"] = "Quête hebdomadaire"
 L["WEEKLY_VAULT_PLAN_FORMAT"] = "Plan de grand coffre - %s"
 L["WEEKLY_VAULT_PLAN_NAME"] = "Grand coffre - %s"
 L["WEEKLY_VAULT_READY"] = "Grand coffre prêt !"
+L["VAULT_LOOT_READY_SHORT"] = "Prêt !"
+L["VAULT_TRACK_WAITING_RESET"] = "Reset en attente"
 L["WEEKLY_VAULT_TRACKER"] = "Weekly Vault Tracker"
 L["WEEKS_LABEL"] = "weeks"
 L["WELCOME_MSG_FORMAT"] = "Bienvenue dans Warband Nexus v%s"
@@ -1134,6 +1189,8 @@ L["GEAR_UPGRADE_CURRENCIES"] = "Devises d'amélioration"
 L["GEAR_CHARACTER_STATS"] = "Stats du personnage"
 L["GEAR_NO_ITEM_EQUIPPED"] = "Aucun objet équipé dans cet emplacement."
 L["GEAR_NO_PREVIEW"] = "Pas d'aperçu"
+L["GEAR_OFFLINE_BADGE"] = "Hors ligne"
+L["GEAR_NO_PREVIEW_HINT"] = "Connectez-vous avec ce personnage pour actualiser l'aperçu d'apparence."
 L["GEAR_STATS_CURRENT_ONLY"] = "Stats disponibles uniquement\npour le personnage actuel"
 L["GEAR_SLOT_RING1"] = "Anneau 1"
 L["GEAR_SLOT_RING2"] = "Anneau 2"
@@ -1224,41 +1281,6 @@ L["GEAR_CRAFTED_NEXT_TIER_CRESTS"] = "%s (niveau d'objet %d) : %d/%d écussons (
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
 
--- v2.5.9b (CHANGELOG_V259b)
-
--- v2.5.10 (CHANGELOG_V2510)
-
--- v2.5.11 (CHANGELOG_V2511) — English notes; see enUS for detail
-
--- v2.5.12 (CHANGELOG_V2512) — English notes; see enUS for detail
-
--- v2.5.15 (CHANGELOG_V2515) — English notes; see enUS for detail
-L["CHANGELOG_V2515"] = [=[v2.5.15 beta 1 (2026-04-15)
-
-Beta — pre-release; feedback welcome before stable.
-
-Performance
-- UI: SchedulePopulateContent debounces (last schedule wins); OnHide cancels populate timer; one defer per main tab switch; no redundant tab-button refresh while switching; currency/reputation messages only update badges when that tab is hidden.
-- CollectionService: coalesced EnsureCollectionData; ScanCollection uses a FRAME_BUDGET_MS coroutine; BuildFullCollectionData batch budget aligned.
-- Guild bank & ItemsCache: chunked scans; atomic tab results; invalidate on cancel/close.
-- Plans & Collections: PlansUI two-column grid precompute O(n); AbortCollectionsChunkedBuilds; Core abort ties collections to existing tab teardown.
-
-Bug fixes
-- TOC: Config.lua loads after Modules/Constants.lua (fixes ns.Constants nil during Config init).
-- Main frame OnHide: populate timer cleared after cancel.
-
-Localization
-- GearUI: upgrade track names + crafted recraft tooltip lines; PVE_CREST_EXPLORER; Profession concentration + Steam-style played time strings; locale parity for GEAR_CRAFTED_*, STATS_PLAYED_STEAM_*, PROF_CONCENTRATION_* (de, fr, es, es-mx, it, pt, ru, ko, zhTW; enUS/zhCN baseline).
-
-CurseForge: Warband Nexus]=]
-
--- v2.6.1 (CHANGELOG_V261) — English notes; see enUS for detail
-L["CHANGELOG_V261"] = [=[v2.6.1 (2026-04-18)
-
-Bug fixes
-- Try Counter: Fishing try counts no longer stall when your target or mouseover is still on a nearby mob corpse; the client fishing flag is trusted over stale unit context.
-
-CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "Liste des tâches et progression hebdo : décoché = plans en cours ; coché = uniquement terminés. Onglets Parcourir : décoché = non collectés (filtrés par To-Do si Afficher planifiés) ; coché = entrées collectées sur la To-Do (planifiés limite toujours la liste)."
 L["SHOW_PLANNED_HELP"] = "Onglets Parcourir uniquement (masqués sur la liste To-Do et la progression hebdo) : coché = seulement ce que vous avez mis sur la To-Do. Avec Afficher terminés décoché : encore à obtenir ; coché : déjà finis ; les deux cochés : toute la catégorie planifiée ; les deux décochés : parcours complet des non collectés."
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Aucun succès à afficher"
@@ -1414,3 +1436,41 @@ L["COLLECTION_RULE_API_NOT_AVAILABLE"] = "API non disponible"
 L["COLLECTION_RULE_INVALID_MOUNT"] = "Monture invalide"
 L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limit� par faction ou classe"
 
+
+-- -----------------------------------------------------------------------------
+-- Parity sync from enUS.lua (auto-appended) — 228 keys
+-- -----------------------------------------------------------------------------
+L["CHANGELOG_V266"] = [=[v2.6.6b (2026-04-28)
+
+Gear tab — Storage Upgrade Recommendations
+- Recommendations now respect transferability: only BoE, Warbound, and Warbound-until-equipped items can surface from another character's bags or the Warband Bank. Soulbound items that were once BoE but have since been equipped are filtered out (they cannot be transferred).
+- Two-handed main hand suppresses off-hand suggestions: equipping a 2H staff/polearm no longer brings up low-ilvl off-hand "upgrades" against an empty slot.
+- Warband-until-Equipped (WuE) items are now correctly identified via the tooltip text — Blizzard's bindType API reports them as plain "BoE", which previously mislabelled every WuE item.
+- Cross-character cold-cache fix: WuE and BoE items in another character's bag are now resolved through Blizzard's GET_ITEM_INFO_RECEIVED warm-up so their true ilvl (e.g. Champion 3/6 = 253) is used instead of the template base ilvl.
+- Stat and level filters relaxed when previewing alts: C_Item.GetItemStats only reports the logged-in character's primary, and stale DB level snapshots can lag the live character — both checks now run only when the selected tab character is the player.
+
+Gear tab — UI
+- Storage Upgrade Recommendations card revised: subtitle clarifies "Transferable items only (BoE / Warbound)", row spacing increased, source font weight tuned for readability.
+- Compact bind labels in the recommendation list: BoE / WuE / WB instead of long phrases.
+
+Event-driven UI refresh
+- Gear tab now refreshes on bag updates (newly looted BoEs surface immediately).
+- Money, currency variants, collection events, vault events, character tracking changes, gold management edits, and bank money log updates all trigger the appropriate tab redraw.
+- GET_ITEM_INFO_RECEIVED listener: gear tab re-scans once cold-cache hyperlinks finish async resolution.
+
+Single-roof version system (no more wiped data on releases)
+- Addon releases no longer invalidate any cache. Bumping the addon version preserves all character state, vault progress, mythic key history, and currency totals.
+- Game build (WoW patch) is the trigger for API-bound cache invalidation (reputation, collection) where Blizzard's API shape may have shifted.
+- Per-cache schema versions live in Constants.VERSIONS.CACHE; only the cache whose integer is bumped gets refreshed.
+- Every invalidation creates an automatic backup at db.global.cacheBackups[name] before resetting; recoverable via WarbandNexus:RestoreCacheBackup(name).
+
+Diagnostics
+- New /wn dumpitem <itemID> command: prints all API data + every persisted bag/bank/warband-bank instance of an item to chat for troubleshooting.
+
+CurseForge: Warband Nexus]=]
+L["GEAR_STORAGE_SUBTITLE"] = "Transferable items only (BoE / Warbound)"
+L["GEAR_STORAGE_WARBOUND_UNTIL_EQUIPPED"] = "Warbound until equipped"
+L["TRY_COUNTER_DROP_SCREENSHOT"] = "Screenshot on tracked drop"
+L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"] = "Take an automatic game screenshot shortly after the popup when a try-tracked mount, pet, toy, or illusion drops. Turn off if you do not want extra files in your Screenshots folder."
+L["VAULT_TRACKER_STATUS_PENDING"] = "Pending..."
+L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "Ready to Claim"

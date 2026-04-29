@@ -21,7 +21,7 @@
     
     Data Flow:
     1) CURRENCY_DISPLAY_UPDATE fires → enqueue(currencyID)
-    2) DrainCurrencyQueue() processes FIFO (synchronous, immediate)
+    2) DrainCurrencyQueue() table.remove FIFO until empty (handles bursts + nested events)
     3) UpdateSingleCurrency: API → store quantity in DB → gain detection → fire lean event
     4) UI calls GetCurrencyData/GetCurrenciesForUI → combines SV quantity + RAM metadata
 ]]
@@ -31,6 +31,56 @@ local WarbandNexus = ns.WarbandNexus
 
 -- Midnight 12.0+: GUIDs from APIs may be secret — never compare or substring without guarding.
 local issecretvalue = issecretvalue
+
+---@param name any
+---@return boolean
+local function IsUsableCurrencyName(name)
+    if name == nil or name == "" then return false end
+    if issecretvalue and issecretvalue(name) then return false end
+    return true
+end
+
+---@param currencyID number
+---@param nameFallback string|nil
+---@return string
+local function CurrencyNameForLogic(currencyID, nameFallback)
+    if IsUsableCurrencyName(nameFallback) then
+        return nameFallback
+    end
+    return ""
+end
+
+---Tracker / meta rows in the currency list (not player-facing gains).
+---@param nm string|nil
+---@return boolean
+local function IsTrackerMetaCurrencyName(nm)
+    if not nm or nm == "" then return false end
+    if issecretvalue and issecretvalue(nm) then return false end
+    if nm:find("Tracker", 1, true)
+        or nm:find("EVERGREEN", 1, true)
+        or nm:find("Weekly Cap", 1, true)
+        or nm:find("Account Rewards", 1, true)
+        or nm:match("^Renown%s*%-" ) ~= nil then
+        return true
+    end
+    -- Internal Delves / affix bookkeeping rows (still fire CURRENCY_DISPLAY_UPDATE + look like real currencies)
+    local lower = string.lower(nm)
+    if lower:find("seasonal affix", 1, true) then
+        return true
+    end
+    if lower:find("events active", 1, true) or lower:find("events maximum", 1, true) then
+        if lower:find("delves", 1, true) or lower:find("system", 1, true) then
+            return true
+        end
+    end
+    if lower:find("delves", 1, true) and lower:find("system", 1, true) then
+        return true
+    end
+    if nm:find("%d+%.%d+", 1) and nm:find("Delves", 1, true) then
+        return true
+    end
+    return false
+end
 
 -- Import dependencies
 local Constants = ns.Constants
@@ -52,10 +102,12 @@ local CurrencyCache = {
     lastFullScan = 0,
     lastUpdate = 0,
     
-    -- Queue: FIFO for currency updates (prevents lost events during rapid gains)
-    updateQueue = {},       -- {currencyID1, currencyID2, ...}
-    updateQueueHead = 1,    -- O(1) dequeue head index
-    isDraining = false,     -- Re-entrancy guard
+    -- Queue: FIFO for currency updates (multi-currency loot can fire many events in one frame).
+    updateQueue = {},       -- { currencyID, ... } — use table.remove(1); do not leave nil holes (# is undefined with holes)
+    isDraining = false,     -- While true, OnCurrencyUpdate only appends; one drain loop drains until empty
+
+    --- Deferred split-currency chat: invalidate stale C_Timer.After when same ID updates again same frame.
+    deferGainToken = {},    -- [currencyID] = number
     
     -- Throttle timers
     fullScanThrottle = nil,
@@ -64,6 +116,9 @@ local CurrencyCache = {
     isInitialized = false,
     isScanning = false,
     initScanPending = false,  -- True while waiting for the initial 5s delayed scan; suppresses event-driven FullScans
+    -- Login: CURRENCY_DISPLAY_UPDATE spam runs UpdateSingleCurrency before the delayed FullScan seeds SV;
+    -- without this, every ID looks like a fresh gain. Cleared after the first successful PerformFullScan (needsScan path).
+    suppressCurrencyGainChatUntilScan = false,
 }
 
 -- Loading state for UI (similar to ReputationLoadingState pattern)
@@ -82,31 +137,62 @@ local currencyMetadataCacheOrder = {}     -- Circular buffer eviction order
 local currencyMetadataCacheHead = 1       -- Circular buffer head index
 local CURRENCY_METADATA_CACHE_MAX = 256
 
--- Whitelist: currency IDs visible in the Currency tab (populated during FullScan)
--- Used to filter out hidden/system currencies from chat notifications.
-local visibleCurrencyIDs = {}             -- [currencyID] = true
+-- Whitelist: currency IDs observed during scans (accumulates across FullScans and sessions).
+-- Backed by db.global.currencyData.visibleCurrencyIDs — used for UI hints; chat eligibility uses
+-- C_CurrencyInfo (isHeader, etc.) in DispatchCurrencyGainChat, not this set alone.
+local function GetVisibleCurrencyIDs()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
+        return nil
+    end
+    local root = WarbandNexus.db.global.currencyData
+    if not root then return nil end
+    if not root.visibleCurrencyIDs then
+        root.visibleCurrencyIDs = {}
+    end
+    return root.visibleCurrencyIDs
+end
+
+local function MarkCurrencyVisible(currencyID)
+    if not currencyID or currencyID == 0 then return end
+    local set = GetVisibleCurrencyIDs()
+    if set then set[currencyID] = true end
+end
+
+local function IsCurrencyVisibleKnown(currencyID)
+    local set = GetVisibleCurrencyIDs()
+    return set and set[currencyID] == true
+end
+
+local function IsVisibleSetEmpty()
+    local set = GetVisibleCurrencyIDs()
+    if not set then return true end
+    return next(set) == nil
+end
 
 ---Normalize API quantity for currencies that expose "total earned" style values.
 ---Some capped currencies report (max + current); we want display = current on hand.
--- Dawncrest currency IDs (both old 3391/3342 and current 3383/3341) for cap/normalization checks.
-local DAWNCREST_IDS = { [3383]=true, [3341]=true, [3343]=true, [3345]=true, [3347]=true, [3391]=true, [3342]=true }
 
--- Midnight S1 Coffer Key Shards (Wowhead currency id); name-based match can miss in some locales.
-local COFFER_KEY_SHARD_CURRENCY_IDS = { [3310] = true }
-
----Season-style progress: weekly display cap + season max + totalEarned (same rules as Dawncrests).
----Coffer Key Shards use dynamic IDs — detect by localized name.
----@param currencyID number
+---Coffer Key Shards: ID drifts by patch — detect by localized name only.
 ---@param info table|nil C_CurrencyInfo.GetCurrencyInfo result
 ---@return boolean
-local function IsSeasonProgressSplitCurrency(currencyID, info)
-    if DAWNCREST_IDS[currencyID] then return true end
-    if COFFER_KEY_SHARD_CURRENCY_IDS[currencyID] then return true end
+local function IsCofferKeyShardByApiInfo(info)
     if not info or not info.name then return false end
     local nm = info.name
     if issecretvalue and issecretvalue(nm) then return false end
     local n = string.lower(tostring(nm))
     return n:find("coffer", 1, true) ~= nil and n:find("shard", 1, true) ~= nil
+end
+
+---Season-style UI: Blizzard marks progress-style currencies with useTotalEarnedForMaxQty.
+---No hardcoded currency ID lists — new 12.0.x currencies work when the API sets these flags.
+---@param currencyID number
+---@param info table|nil C_CurrencyInfo.GetCurrencyInfo result
+---@return boolean
+local function IsSeasonProgressSplitCurrency(currencyID, info)
+    if not info then return false end
+    if info.isHeader then return false end
+    if info.useTotalEarnedForMaxQty == true then return true end
+    return IsCofferKeyShardByApiInfo(info)
 end
 
 --- Season denominator for "Current / Season Max" + cap coloring (totalEarned vs cap).
@@ -138,18 +224,6 @@ local function SafeCurrencyNumber(v)
     return tonumber(v)
 end
 
---- Name-based Coffer Key Shard (dynamic currency ID per patch).
----@param currencyID number
----@param info table|nil
----@return boolean
-local function IsCofferKeyShardCurrency(currencyID, info)
-    if COFFER_KEY_SHARD_CURRENCY_IDS[currencyID] then return true end
-    if not info or not info.name then return false end
-    local nm = info.name
-    if issecretvalue and issecretvalue(nm) then return false end
-    local n = string.lower(tostring(nm))
-    return n:find("coffer", 1, true) ~= nil and n:find("shard", 1, true) ~= nil
-end
 
 --- Legacy global (if present): earned-this-week may differ from structured API on some builds.
 ---@param currencyID number
@@ -176,7 +250,7 @@ local function ProgressEarnedFromCurrencyInfo(currencyID, info)
     local tracked = SafeCurrencyNumber(info.trackedQuantity)
     local useTotal = info.useTotalEarnedForMaxQty == true
 
-    if IsCofferKeyShardCurrency(currencyID, info) then
+    if IsCofferKeyShardByApiInfo(info) then
         -- Do NOT max() across fields: totalEarned can be cumulative (e.g. 1800) while UI cap is weekly/season (600) → bogus "1800/600".
         -- Prefer this-week progress, then clamp any fallback to the smallest known cap (weekly, else maxQuantity).
         local maxW = SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
@@ -250,9 +324,13 @@ local function GetDB()
             lastScan = 0,
             currencies = {},
             headers = {},  -- Blizzard currency headers structure
+            visibleCurrencyIDs = {},  -- cumulative whitelist for notifications
         }
     end
-    
+    if not WarbandNexus.db.global.currencyData.visibleCurrencyIDs then
+        WarbandNexus.db.global.currencyData.visibleCurrencyIDs = {}
+    end
+
     return WarbandNexus.db.global.currencyData
 end
 
@@ -273,8 +351,8 @@ local function ResolveCurrencyMetadata(currencyID)
     -- Fetch from WoW API
     if not C_CurrencyInfo then return nil end
     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
-    if not info or not info.name then return nil end
-    
+    if not info then return nil end
+
     local maxQ = info.maxQuantity or 0
     local maxWeekly = info.maxWeeklyQuantity or 0
     -- Dawncrests / Coffer Key Shards: maxQuantity = season cap, maxWeeklyQuantity = weekly cap.
@@ -287,9 +365,10 @@ local function ResolveCurrencyMetadata(currencyID)
     else
         effectiveMax = maxWeekly
     end
+    local safeDisplayName = IsUsableCurrencyName(info.name) and info.name or ("Currency #" .. tostring(currencyID))
     local metadata = {
         currencyID = currencyID,
-        name = info.name,
+        name = safeDisplayName,
         icon = info.iconFileID,
         iconFileID = info.iconFileID,
         maxQuantity = effectiveMax,
@@ -401,6 +480,9 @@ function WarbandNexus:InitializeCurrencyCache()
         ns.CurrencyLoadingState.loadingProgress = 0
         ns.CurrencyLoadingState.currentStage = "Waiting for API..."
         
+        -- Block WN-Currency chat until FullScan writes current API state (avoids login spam from event burst).
+        CurrencyCache.suppressCurrencyGainChatUntilScan = true
+        
         -- Fire loading started event
         if WarbandNexus.SendMessage then
             WarbandNexus:SendMessage(E.CURRENCY_LOADING_STARTED)
@@ -466,7 +548,8 @@ local function FetchCurrencyFromAPI(currencyID)
     if not C_CurrencyInfo then return nil end
     
     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
-    if not info or not info.name then return nil end
+    if not info then return nil end
+
     local maxQ = info.maxQuantity or 0
     local maxWeekly = info.maxWeeklyQuantity or 0
     -- Normalization needs the LARGER cap (season cap) to strip the embedded cap from raw quantity.
@@ -474,7 +557,9 @@ local function FetchCurrencyFromAPI(currencyID)
     if normCap == 0 and IsSeasonProgressSplitCurrency(currencyID, info) then
         normCap = 200
     end
-    local normalizedQuantity = NormalizeQuantity(info.quantity, normCap, info.useTotalEarnedForMaxQty)
+    local rawQty = SafeCurrencyNumber(info.quantity)
+    if rawQty == nil then rawQty = 0 end
+    local normalizedQuantity = NormalizeQuantity(rawQty, normCap, info.useTotalEarnedForMaxQty)
     -- Display cap: weekly cap for Dawncrests / coffer shards (progress), season cap otherwise.
     local displayCap
     if IsSeasonProgressSplitCurrency(currencyID, info) and maxWeekly > 0 then
@@ -487,11 +572,12 @@ local function FetchCurrencyFromAPI(currencyID)
     if type(progress) == "number" and type(sm) == "number" and sm > 0 and progress > sm then
         progress = sm
     end
+    local displayName = IsUsableCurrencyName(info.name) and info.name or ("Currency #" .. tostring(currencyID))
     return {
         currencyID = currencyID,
         quantity = normalizedQuantity,
-        name = info.name,
-        isDiscovered = info.isDiscovered or false,
+        name = displayName,
+        isDiscovered = (info.discovered == true) or (info.isDiscovered == true),
         isAccountWide = info.isAccountWide or false,
         isAccountTransferable = info.isAccountTransferable or false,
         maxQuantity = displayCap,
@@ -505,11 +591,94 @@ end
 -- UPDATE OPERATIONS (Direct DB)
 -- ============================================================================
 
+--- Dawncrest / useTotalEarnedForMaxQty: Blizzard may fire two updates for one drop (bag qty vs totalEarned).
+--- Same gain amount on alternate "quantity" vs "progress" dispatches within this window = one physical gain.
+local CROSS_SOURCE_CHAT_DEDUP_SEC = 1.25
+local lastCurrencyGainChatByID = {} -- [currencyID] = { t = number, amount = number, source = string }
+
+---@param currencyData table FetchCurrencyFromAPI result row
+---@param gainSource string|"quantity"|"progress"
+---@return boolean wouldHaveSent True if not blocked by tracker deny-list
+local function DispatchCurrencyGainChat(currencyID, currencyData, gainAmount, gainSource)
+    if not currencyData or gainAmount <= 0 then return false end
+    if CurrencyCache.suppressCurrencyGainChatUntilScan then
+        return false
+    end
+    -- Player-facing currency rows: CurrencyInfo.isHeader = category rows, not spendable currency (API docs).
+    if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+        local live = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+        if live and live.isHeader == true then return false end
+        local chkName = currencyData.name
+        if (not chkName or chkName == "") and live and live.name and not (issecretvalue and issecretvalue(live.name)) then
+            chkName = live.name
+        end
+        if IsTrackerMetaCurrencyName(chkName or "") then return false end
+        -- Row name from live API can differ from cached currencyData (stale SV); block on either.
+        if live and live.name and not (issecretvalue and issecretvalue(live.name)) then
+            if IsTrackerMetaCurrencyName(live.name) then return false end
+        end
+        if live and IsSeasonProgressSplitCurrency(currencyID, live) then
+            local prev = lastCurrencyGainChatByID[currencyID]
+            local now = GetTime()
+            if prev and prev.amount == gainAmount and prev.source ~= gainSource
+                and (now - prev.t) <= CROSS_SOURCE_CHAT_DEDUP_SEC then
+                return false
+            end
+        end
+    elseif IsTrackerMetaCurrencyName(currencyData.name or "") then
+        return false
+    end
+    MarkCurrencyVisible(currencyID)
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage(E.CURRENCY_GAINED, {
+            currencyID = currencyID,
+            gainAmount = gainAmount,
+            gainSource = gainSource,
+        })
+        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+            local live = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+            if live and IsSeasonProgressSplitCurrency(currencyID, live) then
+                lastCurrencyGainChatByID[currencyID] = {
+                    t = GetTime(),
+                    amount = gainAmount,
+                    source = gainSource,
+                }
+            end
+        end
+    end
+    return true
+end
+
+---Merge API quantity with CURRENCY_DISPLAY_UPDATE payload when the client API is one frame stale
+---(multi-currency loot: first ID updates, second still reads old values from GetCurrencyInfo).
+---@param oldQuantity number
+---@param apiQuantity number
+---@param eventHint table|nil { absQuantity?, quantityChange? }
+---@return number newQuantity
+---@return boolean usedHint
+local function MergeCurrencyQuantityWithEventHint(oldQuantity, apiQuantity, eventHint)
+    local n = tonumber(apiQuantity) or 0
+    if not eventHint then return n, false end
+    local evDelta = SafeCurrencyNumber(eventHint.quantityChange)
+    local evAbs = SafeCurrencyNumber(eventHint.absQuantity)
+    if n ~= oldQuantity then
+        return n, false
+    end
+    if evDelta and evDelta > 0 then
+        return oldQuantity + evDelta, true
+    end
+    if evAbs ~= nil and evAbs ~= oldQuantity then
+        return evAbs, true
+    end
+    return n, false
+end
+
 ---Update a single currency in DB for current character.
 ---SV stores only quantity (number). Metadata comes from ResolveCurrencyMetadata on-demand.
 ---@param currencyID number Currency ID to update
+---@param eventHint table|nil optional { absQuantity?, quantityChange? } from CURRENCY_DISPLAY_UPDATE
 ---@return boolean success True if updated successfully
-local function UpdateSingleCurrency(currencyID)
+local function UpdateSingleCurrency(currencyID, eventHint)
     if not currencyID or currencyID == 0 then return false end
     
     local db = GetDB()
@@ -537,9 +706,14 @@ local function UpdateSingleCurrency(currencyID)
         return false
     end
     
-    local newQuantity = currencyData.quantity or 0
+    local mergedQty, usedEventHint = MergeCurrencyQuantityWithEventHint(oldQuantity, currencyData.quantity or 0, eventHint)
+    local newQuantity = mergedQty
+    if usedEventHint then
+        currencyData.quantity = newQuantity
+    end
     local te = currencyData.totalEarned
-    local splitCur = IsSeasonProgressSplitCurrency(currencyID, { name = currencyData.name })
+    local apiInfo = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
+    local splitCur = apiInfo and IsSeasonProgressSplitCurrency(currencyID, apiInfo)
     if not db.totalEarned then db.totalEarned = {} end
     if not db.totalEarned[charKey] then db.totalEarned[charKey] = {} end
     local oldTe = db.totalEarned[charKey][currencyID]
@@ -564,33 +738,52 @@ local function UpdateSingleCurrency(currencyID)
     db.lastScan = CurrencyCache.lastUpdate
 
     -- Check for gain and fire lean notification event
-    if newQuantity > oldQuantity then
-        local gainAmount = newQuantity - oldQuantity
-        
-        -- Filter: Only notify for currencies visible in the Currency tab.
-        -- visibleCurrencyIDs is populated during PerformFullScan from the Blizzard currency list.
-        -- This automatically excludes all hidden/system/internal currencies (e.g., "Patch 11.0.0 - Delve...").
-        if next(visibleCurrencyIDs) == nil then
-            -- FullScan hasn't run yet (first ~5s after login): fallback to isDiscovered check
-            if not currencyData.isDiscovered then
-                return true  -- DB updated, but no notification
-            end
-        else
-            -- Normal path: whitelist check (O(1) lookup)
-            if not visibleCurrencyIDs[currencyID] then
-                return true  -- DB updated, but no notification (hidden/system currency)
-            end
+    local qGain = (newQuantity > oldQuantity) and (newQuantity - oldQuantity) or 0
+    local pGain = (splitCur and type(oldTe) == "number" and type(te) == "number" and te > oldTe) and (te - oldTe) or 0
+
+    -- Season-progress rows (Dawncrest tiers, etc.): Blizzard often updates totalEarned and bag quantity on separate ticks.
+    -- Same tick with both deltas: one "progress" line (matches currency panel). Quantity-only: defer one frame so te can land → fewer bogus "(20)" totals.
+    if splitCur and qGain > 0 and pGain > 0 then
+        if not DispatchCurrencyGainChat(currencyID, currencyData, pGain, "progress") then
+            return true
         end
-        
-        -- Fire lean event — consumers read display data from DB
-        if WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage(E.CURRENCY_GAINED, {
-                currencyID = currencyID,
-                gainAmount = gainAmount,
-            })
+    elseif splitCur and qGain > 0 then
+        local snapQ = oldQuantity
+        local snapTe = (type(oldTe) == "number") and oldTe or nil
+        CurrencyCache.deferGainToken[currencyID] = (CurrencyCache.deferGainToken[currencyID] or 0) + 1
+        local tok = CurrencyCache.deferGainToken[currencyID]
+        C_Timer.After(0, function()
+            if CurrencyCache.deferGainToken[currencyID] ~= tok then
+                return
+            end
+            local cd = FetchCurrencyFromAPI(currencyID)
+            if not cd then return end
+            local info = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
+            if not info or not IsSeasonProgressSplitCurrency(currencyID, info) then return end
+            local teN = cd.totalEarned
+            local qN = tonumber(cd.quantity) or 0
+            if type(teN) == "number" and type(snapTe) == "number" and teN > snapTe then
+                local g = teN - snapTe
+                if g > 0 then
+                    DispatchCurrencyGainChat(currencyID, cd, g, "progress")
+                end
+            elseif qN > snapQ then
+                local g = qN - snapQ
+                if g > 0 then
+                    DispatchCurrencyGainChat(currencyID, cd, g, "quantity")
+                end
+            end
+        end)
+    elseif splitCur and pGain > 0 then
+        if not DispatchCurrencyGainChat(currencyID, currencyData, pGain, "progress") then
+            return true
+        end
+    elseif qGain > 0 then
+        if not DispatchCurrencyGainChat(currencyID, currencyData, qGain, "quantity") then
+            return true
         end
     end
-    
+
     return true
 end
 
@@ -673,7 +866,7 @@ local function ScanHeaderNode(headerIndex, depth, currencyDataCollector)
                 end
                 if currencyID and currencyID > 0 then
                     table.insert(node.currencies, currencyID)
-                    visibleCurrencyIDs[currencyID] = true
+                    MarkCurrencyVisible(currencyID)
                     local data = FetchCurrencyFromAPI(currencyID)
                     if data then
                         table.insert(currencyDataCollector, data)
@@ -739,7 +932,7 @@ local function BuildHierarchyFromAPI()
                     currencyID = tonumber(link:match("currency:(%d+)"))
                 end
                 if currencyID and currencyID > 0 then
-                    visibleCurrencyIDs[currencyID] = true
+                    MarkCurrencyVisible(currencyID)
                     local data = FetchCurrencyFromAPI(currencyID)
                     if data then
                         table.insert(currencyDataCollector, data)
@@ -869,7 +1062,9 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     self.isScanning = true
     ns._fullScanInProgress = true
 
-    wipe(visibleCurrencyIDs)
+    -- Do NOT wipe the visibility whitelist — it accumulates across scans/sessions/characters.
+    -- A scan that misses a header (timing / already-expanded quirks) must not drop previously
+    -- observed currency IDs (Dawncrests, Untainted Mana-Crystals, Undercoin, etc.).
 
     ns.CurrencyLoadingState.isLoading = true
     ns.CurrencyLoadingState.loadingProgress = 0
@@ -918,7 +1113,17 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     -- Update DB (quantities per character)
     ns.CurrencyLoadingState.loadingProgress = 85
     ns.CurrencyLoadingState.currentStage = "Saving to database..."
+    -- Keep suppression active THROUGH UpdateAll on the initial login scan: account-wide
+    -- currencies (Dawncrests, Coffer Key Shards, Reservoir Anima, etc.) often differ between
+    -- the SV snapshot from last logout and the current API state because other characters'
+    -- activity sync'd them while offline. Without this, every login spams the entire delta
+    -- as "gains" (see user report: full Dawncrest totals printed on every login).
+    -- Subsequent scans (event-driven during play) leave the flag false and emit normally.
+    local wasInitialScan = CurrencyCache.suppressCurrencyGainChatUntilScan
     self:UpdateAll(currencyDataArray)
+    if wasInitialScan then
+        CurrencyCache.suppressCurrencyGainChatUntilScan = false
+    end
 
     -- Complete
     ns.CurrencyLoadingState.isLoading = false
@@ -947,9 +1152,14 @@ function CurrencyCache:UpdateAll(currencyDataArray)
         return false
     end
     
-    -- Get current character key
     local currentCharKey = ns.Utilities:GetCharacterKey()
-    
+    if not currentCharKey then
+        return false
+    end
+    if ns.Utilities.GetCanonicalCharacterKey then
+        currentCharKey = ns.Utilities:GetCanonicalCharacterKey(currentCharKey) or currentCharKey
+    end
+
     -- CRITICAL: Clear ONLY current character's data (preserve other characters)
     if not db.currencies[currentCharKey] then
         db.currencies[currentCharKey] = {}
@@ -970,12 +1180,20 @@ function CurrencyCache:UpdateAll(currencyDataArray)
         if data.currencyID then
             db.currencies[currentCharKey][data.currencyID] = data.quantity or 0
             local teFull = data.totalEarned
-            if teFull ~= nil and type(teFull) == "number" and IsSeasonProgressSplitCurrency(data.currencyID, { name = data.name }) then
+            local rowApi = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(data.currencyID)
+            if teFull ~= nil and type(teFull) == "number" and rowApi and IsSeasonProgressSplitCurrency(data.currencyID, rowApi) then
                 db.totalEarned[currentCharKey][data.currencyID] = teFull
             end
             currencyCount = currencyCount + 1
         end
     end
+
+    -- Do NOT emit WN_CURRENCY_GAINED from FullScan reconciliation diffs. That path compares
+    -- last SV snapshot to fresh API; after character change / account sync, hundreds of
+    -- currencies can differ at once and each looks like a "gain" — flooding chat.
+    -- Real-time gains still go through CURRENCY_DISPLAY_UPDATE → UpdateSingleCurrency →
+    -- DispatchCurrencyGainChat (and login spam is still suppressed by suppressCurrencyGainChatUntilScan).
+    -- (Previously: emit Undercoin etc. if only FullScan updated — rare; tradeoff accepted vs chat spam.)
     
     -- Update metadata
     self.lastFullScan = time()
@@ -997,61 +1215,63 @@ end
 -- ============================================================================
 -- CURRENCY UPDATE QUEUE (Synchronous FIFO)
 -- ============================================================================
--- WoW Lua is single-threaded: no real concurrency.
--- The queue ensures:
---   1) No events are lost (old cancel-restart throttle discarded middle events)
---   2) Each currency is processed in FIFO order with up-to-date API data
---   3) Re-entrancy guard prevents nested processing
---   4) Same-currency duplicates within one drain are auto-handled by
---      the newQuantity == oldQuantity guard in UpdateSingleCurrency
+-- Multi-currency / same-currency bursts enqueue many IDs. Events may fire while we are
+-- inside UpdateSingleCurrency or PerformFullScan — those handlers only append. One drain
+-- loop runs until the queue is empty (table.remove from front). Never wipe the queue
+-- after a pass: that dropped updates appended while isDraining was true.
 -- ============================================================================
 
----Drain the currency queue synchronously. Processes all pending items in order.
----Called after every enqueue unless already draining (re-entrancy guard).
+---Drain the currency queue synchronously until empty.
+---Nested DrainCurrencyQueue calls (while isDraining) return immediately; the outer loop
+---keeps table.remove(1) until #queue == 0, including items added during processing.
 local function DrainCurrencyQueue()
     if CurrencyCache.isDraining then return end
     CurrencyCache.isDraining = true
-    
-    while CurrencyCache.updateQueueHead <= #CurrencyCache.updateQueue do
-        local currencyID = CurrencyCache.updateQueue[CurrencyCache.updateQueueHead]
-        CurrencyCache.updateQueue[CurrencyCache.updateQueueHead] = nil
-        CurrencyCache.updateQueueHead = CurrencyCache.updateQueueHead + 1
-        
-        if currencyID == 0 then
-            -- Marker: full scan requested (no specific currency ID)
+
+    while #CurrencyCache.updateQueue > 0 do
+        local entry = table.remove(CurrencyCache.updateQueue, 1)
+        if entry == 0 then
             CurrencyCache:PerformFullScan()
-        else
-            if UpdateSingleCurrency(currencyID) then
+        elseif type(entry) == "table" and entry.currencyID then
+            if UpdateSingleCurrency(entry.currencyID, entry) then
                 if WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage(E.CURRENCY_UPDATED, currencyID)
+                    WarbandNexus:SendMessage(E.CURRENCY_UPDATED, entry.currencyID)
+                end
+            end
+        elseif type(entry) == "number" and entry > 0 then
+            if UpdateSingleCurrency(entry) then
+                if WarbandNexus.SendMessage then
+                    WarbandNexus:SendMessage(E.CURRENCY_UPDATED, entry)
                 end
             end
         end
     end
 
-    CurrencyCache.updateQueue = {}
-    CurrencyCache.updateQueueHead = 1
-    
     CurrencyCache.isDraining = false
 end
 
 ---Handle CURRENCY_DISPLAY_UPDATE event (FIFO queue + synchronous drain)
----Every event is enqueued and processed immediately. No events are lost.
+---Event payload (Retail): currencyType, quantity, quantityChange, quantityGainSource, destroyReason
+---When multiple currencies drop in one moment, GetCurrencyInfo can lag; pass quantity/quantityChange through.
 ---@param currencyType number|nil Currency type/ID
----@param quantity number|nil New quantity
-local function OnCurrencyUpdate(currencyType, quantity)
+---@param quantity number|nil Post-update quantity hint from the event
+---@param quantityChange number|nil Delta from the event (authoritative when API is stale)
+local function OnCurrencyUpdate(currencyType, quantity, quantityChange, quantityGainSource, destroyReason)
     -- GUARD: Only process if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
         return
     end
     
     if currencyType and currencyType > 0 then
-        table.insert(CurrencyCache.updateQueue, currencyType)
+        table.insert(CurrencyCache.updateQueue, {
+            currencyID = currencyType,
+            absQuantity = SafeCurrencyNumber(quantity),
+            quantityChange = SafeCurrencyNumber(quantityChange),
+        })
     else
         table.insert(CurrencyCache.updateQueue, 0)
     end
     
-    -- Drain immediately (re-entrancy guard inside prevents nested calls)
     DrainCurrencyQueue()
 end
 
@@ -1107,7 +1327,8 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
                 db.currencies[charKey] = {}
             end
             db.currencies[charKey][currencyID] = quantity
-            if liveTotalEarned ~= nil and type(liveTotalEarned) == "number" and IsSeasonProgressSplitCurrency(currencyID, { name = liveData.name }) then
+            local teSplitInfo = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
+            if liveTotalEarned ~= nil and type(liveTotalEarned) == "number" and teSplitInfo and IsSeasonProgressSplitCurrency(currencyID, teSplitInfo) then
                 if not db.totalEarned then db.totalEarned = {} end
                 if not db.totalEarned[charKey] then db.totalEarned[charKey] = {} end
                 db.totalEarned[charKey][currencyID] = liveTotalEarned
@@ -1295,10 +1516,6 @@ function WarbandNexus:GetCurrenciesForUI()
             end
         end
     end
-    -- Gear tab uses same data; ensure upgrade crests are always in the union.
-    for id in pairs(DAWNCREST_IDS) do
-        currencyIDSet[id] = true
-    end
 
     local currentCharKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
     local function normKey(k) return (k and tostring(k):gsub("%s+", "")) or "" end
@@ -1316,7 +1533,8 @@ function WarbandNexus:GetCurrenciesForUI()
         entry.chars = {}
         local total, maxQty = 0, 0
         local splitNormCap = nil
-        if metadata and IsSeasonProgressSplitCurrency(currencyID, metadata) then
+        local splitInfoEarly = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
+        if metadata and splitInfoEarly and IsSeasonProgressSplitCurrency(currencyID, splitInfoEarly) then
             local sm = tonumber(metadata.seasonMax) or 0
             local mw = tonumber(metadata.maxWeeklyQuantity) or 0
             splitNormCap = (sm > 0) and sm or ((mw > 0) and mw or nil)
@@ -1329,7 +1547,7 @@ function WarbandNexus:GetCurrenciesForUI()
         -- API reads and writes through GetCurrencyData() in the inner loop.
         local hasLiveCurrentQty, liveCurrentQty = false, 0
         if currentCharKey and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-            local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+            local info = splitInfoEarly or C_CurrencyInfo.GetCurrencyInfo(currencyID)
             if info and info.name and not (issecretvalue and issecretvalue(info.name)) then
                 local rawQty = SafeCurrencyNumber(info.quantity) or 0
                 local maxQ = SafeCurrencyNumber(info.maxQuantity)
@@ -1481,8 +1699,8 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     -- CHAT_MSG_CURRENCY filter + debounced scan: ChatIntegrationService.lua (single hook owner).
     
     -- Register WoW events (may not fire in TWW)
-    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", function(event, currencyType, quantity)
-        OnCurrencyUpdate(currencyType, quantity)
+    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", function(event, currencyType, quantity, quantityChange, quantityGainSource, destroyReason)
+        OnCurrencyUpdate(currencyType, quantity, quantityChange, quantityGainSource, destroyReason)
     end)
     
     self:RegisterEvent("ACCOUNT_CHARACTER_CURRENCY_DATA_RECEIVED", function()

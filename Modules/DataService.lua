@@ -52,6 +52,22 @@ local RESTED_XP_GAIN_PER_8H = 0.05
 local SECONDS_PER_8H = 8 * 60 * 60
 local CollectRestedData
 
+--- GetMoney() may return a secret value (Midnight+); math.floor/tonumber on it throws.
+--- When secret, fall back to last saved gold/silver/copper from existingEntry if present.
+local function SafeGetMoneyCopperFromEntry(existingEntry)
+    local m = GetMoney()
+    if m == nil then return 0 end
+    if issecretvalue and issecretvalue(m) then
+        if existingEntry and type(existingEntry.gold) == "number" then
+            return math.floor((existingEntry.gold or 0) * 10000 + (existingEntry.silver or 0) * 100 + (existingEntry.copper or 0))
+        end
+        return 0
+    end
+    local n = tonumber(m)
+    if not n then return 0 end
+    return math.floor(n)
+end
+
 local function GetRestedCapMultiplier(raceFile)
     return (raceFile == "Pandaren") and 3.0 or 1.5
 end
@@ -257,39 +273,42 @@ end
 ---@param forceRefresh boolean|nil Deprecated (kept for compatibility)
 ---@return table Character data from db.global.characters
 function WarbandNexus:GetCharacterData(forceRefresh)
-    local charKey = ns.Utilities:GetCharacterKey()
-    if not charKey then return {} end
-    
-    -- DIRECT DB ACCESS
-    if not self.db.global.characters or not self.db.global.characters[charKey] then
-        return {}  -- Character not tracked
+    local rawKey = ns.Utilities:GetCharacterKey()
+    if not rawKey then return {} end
+    local tableKey = rawKey
+    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+        local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
+        if resolved then tableKey = resolved end
     end
-    
-    return self.db.global.characters[charKey]
+    if not self.db.global.characters or not self.db.global.characters[tableKey] then
+        return {}
+    end
+    return self.db.global.characters[tableKey]
 end
 
 ---Update character data in DB (called by event handlers)
 ---DIRECT DB WRITE - No sessionCache (API > DB > UI pattern)
 ---@param dataType string Specific data type to update ("gold", "level", "spec", "itemLevel", etc.)
 function WarbandNexus:UpdateCharacterCache(dataType)
-    local charKey = ns.Utilities:GetCharacterKey()
-    if not charKey then return end
-    
-    -- DIRECT DB ACCESS - No sessionCache
-    if not self.db.global.characters or not self.db.global.characters[charKey] then
+    local rawKey = ns.Utilities:GetCharacterKey()
+    if not rawKey then return end
+    local tableKey = rawKey
+    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+        local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
+        if resolved then tableKey = resolved end
+    end
+    if not self.db.global.characters or not self.db.global.characters[tableKey] then
         return
     end
-    
     -- GUARD: Only tracked characters get full updates (gold, level, spec, etc.)
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
     end
-    
-    local charData = self.db.global.characters[charKey]
+    local charData = self.db.global.characters[tableKey]
     
     -- Update specific data type in DB
     if dataType == "gold" then
-        local totalCopper = math.floor(GetMoney())
+        local totalCopper = SafeGetMoneyCopperFromEntry(charData)
         local gold = math.floor(totalCopper / 10000)
         local silver = math.floor((totalCopper % 10000) / 100)
         local copper = math.floor(totalCopper % 100)
@@ -299,7 +318,9 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         charData.copper = copper
         
     elseif dataType == "level" then
-        charData.level = UnitLevel("player")
+        local lv = UnitLevel("player")
+        if issecretvalue and lv and issecretvalue(lv) then return end
+        charData.level = lv
         
     elseif dataType == "spec" then
         local specIndex = GetSpecialization()
@@ -353,9 +374,12 @@ function WarbandNexus:UpdateCharacterCache(dataType)
     -- Update lastSeen timestamp
     charData.lastSeen = time()
     
-    -- Fire event for UI refresh (DB-First pattern)
+    local msgKey = rawKey
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        msgKey = ns.Utilities:GetCanonicalCharacterKey(rawKey) or rawKey
+    end
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
-        charKey = charKey,
+        charKey = msgKey,
         dataType = dataType
     })
 end
@@ -756,27 +780,34 @@ local function CollectPlayerStats()
         if ok and total and type(total) == "number" then primary[id] = math.floor(total) end
     end
     if not next(primary) then primary = nil end
+    -- Snapshot main stat code for Gear tab offline — matches live panel (hero specs / Midnight IDs).
+    local mainStatCode = nil
+    if WarbandNexus and WarbandNexus.GetCurrentCharacterMainStat then
+        mainStatCode = WarbandNexus:GetCurrentCharacterMainStat()
+    end
+    local L = ns.L
     local secondary = {}
     local secondFns = {
-        { label = "Critical Strike", rating = 9,  pctFn = function() return GetCritChance and GetCritChance() or 0 end },
-        { label = "Haste",           rating = 18, pctFn = function() return GetHaste and GetHaste() or 0 end },
-        { label = "Mastery",         rating = 26, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
-        { label = "Versatility",     rating = 29, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
+        { label = (L and L["STAT_CRITICAL_STRIKE"]) or "Critical Strike", rating = 9,  pctFn = function() return GetCritChance and GetCritChance() or 0 end },
+        { label = (L and L["STAT_HASTE"]) or "Haste",                     rating = 18, pctFn = function() return GetHaste and GetHaste() or 0 end },
+        { label = (L and L["STAT_MASTERY"]) or "Mastery",                 rating = 26, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
+        { label = (L and L["STAT_VERSATILITY"]) or "Versatility",         rating = 29, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
     }
     for i = 1, #secondFns do
         local s = secondFns[i]
         local okR, rating = pcall(GetCombatRating, s.rating)
         local okP, pct = pcall(s.pctFn)
-        if okR and type(rating) == "number" and rating > 0 then
-            secondary[#secondary + 1] = {
-                label = s.label,
-                rating = math.floor(rating),
-                pct = (okP and pct and type(pct) == "number") and pct or nil,
-            }
-        end
+        local rVal = 0
+        if okR and type(rating) == "number" then rVal = math.floor(rating) end
+        local pVal = (okP and pct and type(pct) == "number") and pct or 0
+        secondary[#secondary + 1] = {
+            label = s.label,
+            rating = rVal,
+            pct = pVal,
+        }
     end
     if not next(primary) and not next(secondary) then return nil end
-    return { primary = primary, secondary = secondary }
+    return { primary = primary, secondary = secondary, mainStatCode = mainStatCode }
 end
 
 --- Collect rested XP snapshot from API for DB persistence (API > DB > UI).
@@ -785,13 +816,17 @@ CollectRestedData = function()
     if GetRestState then
         exhaustionID, restStateName, restStateFactor = GetRestState()
         if issecretvalue and exhaustionID and issecretvalue(exhaustionID) then exhaustionID = nil end
+        if issecretvalue and restStateFactor and issecretvalue(restStateFactor) then restStateFactor = nil end
     end
 
     local rawRestedXP = (GetXPExhaustion and GetXPExhaustion()) or 0
     if issecretvalue and rawRestedXP and issecretvalue(rawRestedXP) then rawRestedXP = 0 end
     local currentRestedXP = rawRestedXP
     local currentXP = UnitXP("player") or 0
+    if issecretvalue and issecretvalue(currentXP) then currentXP = 0 end
+    if type(currentXP) ~= "number" then currentXP = 0 end
     local maxXPApi = UnitXPMax("player")
+    if maxXPApi ~= nil and issecretvalue and issecretvalue(maxXPApi) then maxXPApi = nil end
     local maxXP = (type(maxXPApi) == "number") and maxXPApi or nil
     local _, playerRaceFile = UnitRace("player")
     local capMultiplier = GetRestedCapMultiplier(playerRaceFile)
@@ -856,11 +891,18 @@ function WarbandNexus:SaveMinimalCharacterData()
     local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
     if not key then return false end
     local Constants = ns.Constants
+
+    -- Initialize characters table (needed for SafeGetMoneyCopperFromEntry fallback)
+    if not self.db.global.characters then
+        self.db.global.characters = {}
+    end
+    local existingEntry = self.db.global.characters[key]
     
     -- Get basic character info
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")
-    local totalCopper = math.floor(GetMoney())
+    if issecretvalue and level and issecretvalue(level) then return false end
+    local totalCopper = SafeGetMoneyCopperFromEntry(existingEntry)
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")
     local guildName = IsInGuild() and GetGuildInfo("player") or nil
@@ -880,11 +922,6 @@ function WarbandNexus:SaveMinimalCharacterData()
         return false
     end
     
-    -- Initialize characters table
-    if not self.db.global.characters then
-        self.db.global.characters = {}
-    end
-    
     -- Convert totalCopper to gold/silver/copper (for compatibility)
     local gold = math.floor(totalCopper / 10000)
     local remainingCopper = totalCopper % 10000
@@ -895,7 +932,6 @@ function WarbandNexus:SaveMinimalCharacterData()
     -- SaveMinimalCharacterData can run BEFORE the tracking confirmation popup
     -- is shown (race condition: SaveCharacter at 2s vs popup at 2.5s).
     -- If we overwrite trackingConfirmed here, the popup will never appear.
-    local existingEntry = self.db.global.characters[key]
     local preserveTracked = existingEntry and existingEntry.isTracked
     -- Never coerce nil → false: false is treated like "unconfirmed" by old popups and breaks (not false)==true.
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
@@ -985,15 +1021,15 @@ function WarbandNexus:SaveCurrentCharacterData()
     -- Get character info
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")
+    if issecretvalue and level and issecretvalue(level) then return false end
     local guildName = IsInGuild() and GetGuildInfo("player") or nil
     if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
     
     -- CRITICAL: Store as single totalCopper (Lua number = 64-bit)
-    -- Per documentation: GetMoney() returns copper directly
-    -- FLOOR to ensure integer (prevent float overflow in texture rendering)
-    local totalCopper = math.floor(GetMoney())
-    
-    
+    -- GetMoney() may be a secret value in some contexts — use SafeGetMoneyCopperFromEntry
+    local existingSnapshot = self.db.global.characters and self.db.global.characters[key]
+    local totalCopper = SafeGetMoneyCopperFromEntry(existingSnapshot)
+
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")  -- race = localized name, raceFile = English ID
     -- Get gender with C_PlayerInfo fallback (more reliable in TWW)
@@ -1095,7 +1131,7 @@ function WarbandNexus:SaveCurrentCharacterData()
     -- CRITICAL: Preserve trackingConfirmed flag from existing entry.
     -- This flag is set by ConfirmCharacterTracking() when user makes a choice.
     -- Without preserving it, every save would lose the user's tracking confirmation.
-    local existingEntry = self.db.global.characters[key]
+    local existingEntry = existingSnapshot
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
     local preserveTimePlayed = existingEntry and existingEntry.timePlayed
     -- Preserve profession service data (collected separately by ProfessionService)
@@ -1218,10 +1254,17 @@ function WarbandNexus:UpdateProfessionData()
 end
 
 function WarbandNexus:UpdateMailStatus()
-    local key = ns.Utilities:GetCharacterKey()
-    if self.db.global.characters and self.db.global.characters[key] then
-        self.db.global.characters[key].hasMail = HasNewMail() and true or false
-        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = key, dataType = "mail" })
+    local rawKey = ns.Utilities:GetCharacterKey()
+    if not rawKey then return end
+    local tableKey = rawKey
+    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+        local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
+        if resolved then tableKey = resolved end
+    end
+    if self.db.global.characters and self.db.global.characters[tableKey] then
+        self.db.global.characters[tableKey].hasMail = HasNewMail() and true or false
+        local msgKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(rawKey)) or rawKey
+        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = msgKey, dataType = "mail" })
     end
 end
 
@@ -1232,32 +1275,32 @@ end
 ]]
 function WarbandNexus:UpdateCharacterGold()
     -- No tracking guard here - gold updates for both tracked and untracked characters
-    
-    local key = ns.Utilities:GetCharacterKey()
-    
-    if self.db.global.characters and self.db.global.characters[key] then
-        local totalCopper = math.floor(GetMoney())
-        
-        -- Store as breakdown to avoid SavedVariables 32-bit overflow
+    local rawKey = ns.Utilities:GetCharacterKey()
+    if not rawKey then return false end
+    local tableKey = rawKey
+    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+        local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
+        if resolved then tableKey = resolved end
+    end
+    if self.db.global.characters and self.db.global.characters[tableKey] then
+        local totalCopper = SafeGetMoneyCopperFromEntry(self.db.global.characters[tableKey])
         local gold = math.floor(totalCopper / 10000)
         local silver = math.floor((totalCopper % 10000) / 100)
         local copper = math.floor(totalCopper % 100)
-        
-        self.db.global.characters[key].gold = gold
-        self.db.global.characters[key].silver = silver
-        self.db.global.characters[key].copper = copper
-        
-        self.db.global.characters[key].lastSeen = time()
-        
-        -- Fire event for UI refresh (DB-First pattern)
+        self.db.global.characters[tableKey].gold = gold
+        self.db.global.characters[tableKey].silver = silver
+        self.db.global.characters[tableKey].copper = copper
+        self.db.global.characters[tableKey].lastSeen = time()
+        local msgKey = rawKey
+        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            msgKey = ns.Utilities:GetCanonicalCharacterKey(rawKey) or rawKey
+        end
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
-            charKey = key,
+            charKey = msgKey,
             dataType = "gold"
         })
-        
         return true
     end
-    
     return false
 end
 

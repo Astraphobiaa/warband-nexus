@@ -33,7 +33,7 @@ local function BuildChangelog()
     local key = VersionToChangelogKey(CURRENT_VERSION)
     local changelogText = key and ns.L and ns.L[key]
     if not changelogText or changelogText == "" then
-        changelogText = (ns.L and ns.L["CHANGELOG_V259"]) or (ns.L and ns.L["CHANGELOG_V258"]) or FALLBACK_CHANGELOG
+        changelogText = (ns.L and ns.L["CHANGELOG_V264"]) or FALLBACK_CHANGELOG
     end
     if not changelogText or changelogText == "" then
         changelogText = FALLBACK_CHANGELOG
@@ -1682,12 +1682,14 @@ function WarbandNexus:HasUnclaimedVaultRewards()
             return false
         end
     end
-    -- Fallback: require activity data when new APIs not present
-    local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
-    if not activities or #activities == 0 then
-        return false
+    -- Midnight+: current-period + can-claim checks are authoritative.
+    if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod and C_WeeklyRewards.CanClaimRewards then
+        return true
     end
-    return true
+
+    -- Legacy fallback when one/both newer APIs are unavailable.
+    local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
+    return activities ~= nil and #activities > 0
 end
 
 ---Show vault reminder popup (simplified wrapper)
@@ -2353,12 +2355,17 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         lastCollectibleLootToastShownAt[lootToastDedupeKey] = GetTime()
     end
 
-    -- Screen flash + auto screenshot — BAM moment for items obtained through farming (try count > 0)
+    -- Screen flash (setting: screenFlashEffect) + optional screenshot — try-tracked collectible drop
     if hasTryCount then
         self:PlayScreenFlash(0.6)
-        C_Timer.After(0.3, function()
-            Screenshot()
-        end)
+        if self.db.profile.notifications.tryCounterDropScreenshot ~= false then
+            C_Timer.After(0.3, function()
+                local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+                if db and db.tryCounterDropScreenshot ~= false and Screenshot then
+                    Screenshot()
+                end
+            end)
+        end
     end
 end
 

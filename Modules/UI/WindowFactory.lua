@@ -130,7 +130,7 @@ local function CreateExternalWindow(config)
     iconFrame:Show()  -- CRITICAL: Show the header icon!
     
     -- Title
-    local titleText = FontManager:CreateFontString(header, "title", "OVERLAY")
+    local titleText = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
     titleText:SetText("|cffffffff" .. config.title .. "|r")
     
@@ -333,7 +333,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._icon:SetPoint("TOPLEFT", PADDING, -PADDING)
         
         -- Name (right of icon, top-aligned; status icon is prepended to text)
-        popup._name = FontManager:CreateFontString(popup, "title", "OVERLAY")
+        popup._name = FontManager:CreateFontString(popup, FontManager:GetFontRole("collectionAchievementPopupName"), "OVERLAY")
         popup._name:SetPoint("TOPLEFT", popup._icon, "TOPRIGHT", 10, 0)
         popup._name:SetJustifyH("LEFT")
         popup._name:SetWordWrap(true)
@@ -341,7 +341,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._name:SetWidth(NAME_WIDTH)
         
         -- Points line (below name)
-        popup._points = FontManager:CreateFontString(popup, "body", "OVERLAY")
+        popup._points = FontManager:CreateFontString(popup, FontManager:GetFontRole("collectionAchievementPopupBody"), "OVERLAY")
         popup._points:SetPoint("TOPLEFT", popup._name, "BOTTOMLEFT", 0, -3)
         popup._points:SetJustifyH("LEFT")
         popup._points:SetWidth(NAME_WIDTH)
@@ -352,7 +352,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._separator:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4)
         
         -- Description
-        popup._desc = FontManager:CreateFontString(popup, "body", "OVERLAY")
+        popup._desc = FontManager:CreateFontString(popup, FontManager:GetFontRole("collectionAchievementPopupBody"), "OVERLAY")
         popup._desc:SetJustifyH("LEFT")
         popup._desc:SetWordWrap(true)
         popup._desc:SetMaxLines(6)
@@ -360,7 +360,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._desc:SetWidth(CONTENT_WIDTH)
         
         -- Reward text
-        popup._reward = FontManager:CreateFontString(popup, "body", "OVERLAY")
+        popup._reward = FontManager:CreateFontString(popup, FontManager:GetFontRole("collectionAchievementPopupBody"), "OVERLAY")
         popup._reward:SetPoint("TOPLEFT", popup._desc, "BOTTOMLEFT", 0, -6)
         popup._reward:SetJustifyH("LEFT")
         popup._reward:SetWordWrap(true)
@@ -371,7 +371,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._trackBtn = CreateFrame("Button", nil, popup)
         popup._trackBtn:SetSize(BTN_WIDTH, BTN_HEIGHT)
         popup._trackBtn:SetPoint("BOTTOMLEFT", PADDING, 10)
-        popup._trackLabel = FontManager:CreateFontString(popup._trackBtn, "body", "OVERLAY")
+        popup._trackLabel = FontManager:CreateFontString(popup._trackBtn, FontManager:GetFontRole("collectionAchievementPopupButton"), "OVERLAY")
         popup._trackLabel:SetPoint("CENTER")
         popup._trackBtn:SetScript("OnEnter", function()
             if popup._trackLabel then popup._trackLabel:SetTextColor(0.6, 0.9, 1, 1) end
@@ -390,7 +390,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         if ApplyVisuals then
             ApplyVisuals(popup._addBtn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
         end
-        popup._addLabel = FontManager:CreateFontString(popup._addBtn, "body", "OVERLAY")
+        popup._addLabel = FontManager:CreateFontString(popup._addBtn, FontManager:GetFontRole("collectionAchievementPopupButton"), "OVERLAY")
         popup._addLabel:SetPoint("CENTER")
         popup._addBtn:SetScript("OnEnter", function(self)
             if ApplyVisuals then ApplyVisuals(self, {0.18, 0.18, 0.22, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}) end

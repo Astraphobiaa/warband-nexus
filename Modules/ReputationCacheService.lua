@@ -92,7 +92,8 @@ local DELVE_COMPANION_ALIASES = {
 -- Loot chat must match the itemID in |Hitem:ID| for CHAT_MSG_LOOT. Midnight renamed/re-ID'd chunks;
 -- Mislaid Curiosity objects drop chunks whose ID is build-specific (TWW vs Midnight).
 local DELVE_COMPANION_XP_ITEM_IDS = {
-    [254748] = true, -- Chunk of Companion Experience (Midnight 12.x — primary)
+    [254748] = true, -- Chunk of Companion Experience (Midnight 12.x — earlier build)
+    [254756] = true, -- Chunk of Companion Experience (Midnight 12.x — 12.0.1 observed)
     [254576] = true, -- Chunk of Companion Experience (older/PTR build)
     [228071] = true, -- Chunk of Companion Experience (TWW)
     [228072] = true, -- Chunk of Companion Experience (TWW variant / deprecated row)
@@ -887,6 +888,36 @@ function ReputationCache:PerformSnapshotDiff()
             --    Chat notifications are handled by ProcessPendingChatNotifications
             --    which reads PROCESSED DB data after FullScan.
             --    The diff just keeps the snapshot in sync for next comparison.
+            --
+            -- EXCEPTION: Delve companion friendship gains (e.g. Valeera Sanguinar from
+            -- Chunk of Companion Experience / Mislaid Curiosity) often arrive with no
+            -- CHAT_MSG_COMBAT_FACTION_CHANGE line AND a build-specific loot itemID that
+            -- bypasses the allowlist seed. Fall back to seeding from the observed
+            -- friendship/bar delta so ProcessPendingChatNotifications can emit chat.
+            if gainAmount > 0 and factionName and factionName ~= "" and self._pendingChatNotifications then
+                local isDelveCompanion = (factionName == "Valeera Sanguinar")
+                    or (factionName == "Valeera")
+                    or (factionName:find("Valeera", 1, true) ~= nil)
+                    or (self._companionFactionID and self._companionFactionID == factionID)
+                if isDelveCompanion and not self._pendingChatNotifications[factionName] then
+                    self._pendingChatNotifications[factionName] = {
+                        gain = gainAmount,
+                        factionID = factionID,
+                        oldStandingName = nil,
+                        oldRenownLevel = nil,
+                        isRenownLevelUp = false,
+                        preCurrentValue = old.barValue, -- already updated above, but ProcessPending uses DB diff
+                        preMaxValue = old.barMax,
+                        preFriendshipCurrent = old.friendshipStanding,
+                    }
+                    self._companionFactionID = factionID
+                    if WarbandNexus and WarbandNexus.SendMessage then
+                        -- Notifications will be flushed at end of PerformFullScan, but this diff
+                        -- can also run standalone (throttled path) — fire immediately.
+                        self:ProcessPendingChatNotifications()
+                    end
+                end
+            end
         end
     end
 end
@@ -1163,6 +1194,24 @@ function ReputationCache:RegisterEventListeners()
         return itemID
     end
 
+    --- Name-based fallback: Midnight re-IDs "Chunk of Companion Experience" per build,
+    --- and "Mislaid Curiosity" objects drop chunks whose IDs aren't in our allowlist.
+    --- Matching by localized item name catches any new/renamed chunk rewards.
+    local COMPANION_XP_NAME_PATTERNS = {
+        "Companion Experience",
+        "Companion XP",
+    }
+    local function LootMessageIsCompanionXP(message)
+        if not message or type(message) ~= "string" then return false end
+        if issecretvalue and issecretvalue(message) then return false end
+        local name = message:match("%[(.-)%]")
+        if not name or name == "" then return false end
+        for _, pat in ipairs(COMPANION_XP_NAME_PATTERNS) do
+            if name:find(pat, 1, true) then return true end
+        end
+        return false
+    end
+
     ---Resolve the active delve companion factionID from the most reliable sources.
     ---Order: cached PvE data -> snapshot aliases -> live Delves API.
     ---@return number|nil
@@ -1212,18 +1261,35 @@ function ReputationCache:RegisterEventListeners()
     ---Seed a pending companion rep notification from a known companion XP loot item.
     ---The exact gain is derived later from FullScan DB delta when chat parsing is absent.
     ---@param itemID number
-    local function QueueCompanionLootFallback(itemID)
-        if not itemID or not DELVE_COMPANION_XP_ITEM_IDS[itemID] then return false end
-        local factionID = ResolveDelveCompanionFactionID()
-        if not factionID then return false end
-
-        local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionID)
-        local factionName = factionData and factionData.name or nil
-        if issecretvalue and factionName and issecretvalue(factionName) then
-            factionName = nil
+    local function QueueCompanionLootFallback(itemID, forceAllow)
+        if not forceAllow then
+            if not itemID or not DELVE_COMPANION_XP_ITEM_IDS[itemID] then return false end
         end
-        if not factionName or factionName == "" then
-            factionName = FormatFactionFallbackName(factionID)
+        local factionID = ResolveDelveCompanionFactionID()
+
+        -- Last-ditch: if we can't resolve factionID from any API/cache, seed the
+        -- pending entry under the companion's known name anyway. ProcessPendingChatNotifications
+        -- resolves factionID from the updated DB on the next FullScan, and the
+        -- diff-based detection in PerformSnapshotDiff will fill in the gain.
+        local factionName
+        if factionID then
+            local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionID)
+            factionName = factionData and factionData.name or nil
+            if issecretvalue and factionName and issecretvalue(factionName) then
+                factionName = nil
+            end
+            if not factionName or factionName == "" then
+                factionName = FormatFactionFallbackName(factionID)
+            end
+        else
+            factionName = "Valeera Sanguinar"
+            factionID = 0
+        end
+
+        -- Remember this as the active companion faction so PerformSnapshotDiff can
+        -- seed rep deltas even if future chunks arrive with unresolved factionID.
+        if factionID and factionID > 0 then
+            ReputationCache._companionFactionID = factionID
         end
 
         local preDBData = WarbandNexus.GetFactionByID and WarbandNexus:GetFactionByID(factionID) or nil
@@ -1243,21 +1309,32 @@ function ReputationCache:RegisterEventListeners()
             end
         end
 
+        local preStanding = preDBData and preDBData.standingName or nil
+        local preRenownLvl = (preDBData and preDBData.renown and preDBData.renown.level) or nil
+
         local pending = ReputationCache._pendingChatNotifications
         if not pending[factionName] then
             pending[factionName] = {
                 gain = 0,
                 factionID = factionID,
-                oldStandingName = nil,
-                oldRenownLevel = nil,
+                oldStandingName = preStanding,
+                oldRenownLevel = preRenownLvl,
                 isRenownLevelUp = false,
                 preCurrentValue = preCurrentValue,
                 preMaxValue = preMaxValue,
                 preFriendshipCurrent = preFriendshipCurrent,
                 preGossipStanding = preGossipStanding,
             }
-        elseif (pending[factionName].factionID or 0) == 0 then
-            pending[factionName].factionID = factionID
+        else
+            if (pending[factionName].factionID or 0) == 0 then
+                pending[factionName].factionID = factionID
+            end
+            if pending[factionName].oldStandingName == nil and preStanding then
+                pending[factionName].oldStandingName = preStanding
+            end
+            if pending[factionName].oldRenownLevel == nil and preRenownLvl ~= nil then
+                pending[factionName].oldRenownLevel = preRenownLvl
+            end
         end
 
         DebugPrint("|cff9370DB[ReputationCache]|r [LootFallback] Seeded pending companion gain from itemID " .. tostring(itemID) .. " for " .. tostring(factionName))
@@ -1436,8 +1513,32 @@ function ReputationCache:RegisterEventListeners()
         if event == "CHAT_MSG_LOOT" then
             local message = ...
             local itemID = ExtractLootItemID(message)
+            local isCompanionXPMsg = LootMessageIsCompanionXP(message)
+            local seeded = false
             if itemID and QueueCompanionLootFallback(itemID) then
+                seeded = true
+            elseif isCompanionXPMsg then
+                -- Name-based fallback for build-specific or Mislaid-Curiosity chunks not in allowlist.
+                if QueueCompanionLootFallback(itemID, true) then
+                    seeded = true
+                    if itemID then
+                        DELVE_COMPANION_XP_ITEM_IDS[itemID] = true
+                    end
+                end
+            end
+            if seeded then
                 ScheduleFullScanForChat()
+            end
+            -- Direct companion watcher: independent of the pending/FullScan pipeline.
+            -- Fires WN_REPUTATION_GAINED for Valeera purely from observed delta.
+            if itemID and DELVE_COMPANION_XP_ITEM_IDS[itemID] or isCompanionXPMsg then
+                ReputationCache:CaptureCompanionBaseline()
+                C_Timer.After(0.4, function()
+                    if ReputationCache then ReputationCache:CheckCompanionRepDelta() end
+                end)
+                C_Timer.After(1.2, function()
+                    if ReputationCache then ReputationCache:CheckCompanionRepDelta() end
+                end)
             end
             return
         end
@@ -2051,7 +2152,12 @@ function ReputationCache:ProcessPendingChatNotifications()
             -- Detect standing change: compare pre-update vs post-update
             local wasStandingUp = false
             local isRenownLevelUp = entry.isRenownLevelUp or false
-            
+            -- Delve companion often skips MAJOR_FACTION_RENOWN_LEVEL_CHANGED; derive from pre-scan vs DB.
+            if not isRenownLevelUp and dbData.renown and type(dbData.renown.level) == "number"
+                and type(entry.oldRenownLevel) == "number" and dbData.renown.level > entry.oldRenownLevel then
+                isRenownLevelUp = true
+            end
+
             if isRenownLevelUp then
                 wasStandingUp = true
             elseif entry.oldStandingName and dbData.standingName
@@ -2075,6 +2181,7 @@ function ReputationCache:ProcessPendingChatNotifications()
                 standingName = dbData.standingName,
                 standingColor = dbData.standingColor,
                 isRenownLevelUp = isRenownLevelUp,
+                renownLevel = dbData.renown and dbData.renown.level or nil,
             })
         else
             -- Faction not in DB (edge case: newly discovered faction not yet scanned)
@@ -2083,6 +2190,106 @@ function ReputationCache:ProcessPendingChatNotifications()
     end
     
     wipe(pending)
+end
+
+-- ============================================================================
+-- DELVE COMPANION DIRECT WATCHER
+-- Captures Valeera's raw rep values from the live faction list before companion-XP loot,
+-- then diffs after a short delay to trigger FullScan so the DB/UI stay in sync.
+-- Chat lines come ONLY from ProcessPendingChatNotifications (seeded by QueueCompanionLootFallback
+-- + CHAT_MSG_COMBAT_FACTION_CHANGE). Do not Send WN_REPUTATION_GAINED from here: raw
+-- C_Reputation.GetFactionDataByID (e.g. nextReactionThreshold) does not match Processor DB
+-- totals and produced duplicate lines (e.g. 41,248/41,248 vs 217k/262k + Level).
+-- ============================================================================
+
+local function WalkFactionsForCompanion()
+    -- Scan the live faction list and return (factionID, currentValue, friendshipStanding)
+    -- for any faction whose name matches a known delve companion alias OR whose
+    -- factionID matches the cached companion ID.
+    if not C_Reputation then return nil end
+    local cachedID = ReputationCache._companionFactionID
+    local bestID, bestCur, bestFriend
+
+    local numFactions = (C_Reputation.GetNumFactions and C_Reputation.GetNumFactions())
+        or (GetNumFactions and GetNumFactions())
+        or 0
+    for i = 1, numFactions do
+        local fid, fname
+        if C_Reputation.GetFactionDataByIndex then
+            local d = C_Reputation.GetFactionDataByIndex(i)
+            if d then
+                fid, fname = d.factionID, d.name
+            end
+        end
+        if not fid and GetFactionInfo then
+            local n, _, _, _, _, _, _, _, _, _, _, _, _, id = GetFactionInfo(i)
+            fname, fid = n, id
+        end
+        if fid and fname and type(fname) == "string"
+            and not (issecretvalue and issecretvalue(fname)) then
+            local isMatch = (cachedID and cachedID == fid)
+                or fname == "Valeera Sanguinar"
+                or fname == "Valeera"
+                or fname:find("Valeera", 1, true) ~= nil
+            if isMatch then
+                local data = C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(fid)
+                local cur = (data and data.currentStanding) or 0
+                local friend
+                if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+                    local gfi = C_GossipInfo.GetFriendshipReputation(fid)
+                    if gfi and gfi.friendshipFactionID and gfi.friendshipFactionID > 0 then
+                        local st = gfi.standing
+                        if not (issecretvalue and st and issecretvalue(st)) then
+                            friend = tonumber(st)
+                        end
+                    end
+                end
+                bestID, bestCur, bestFriend = fid, cur, friend
+                break
+            end
+        end
+    end
+    return bestID, bestCur, bestFriend
+end
+
+---Capture Valeera's current rep values as the "pre" baseline.
+---Called before each companion-XP loot so the next delta check has something to diff against.
+function ReputationCache:CaptureCompanionBaseline()
+    local fid, cur, friend = WalkFactionsForCompanion()
+    if not fid then return end
+    self._companionFactionID = fid
+    self._companionLast = self._companionLast or {}
+    -- Only overwrite if we don't already have a baseline (avoid clobbering between
+    -- the rapid double loot lines the Blizzard loot framer sometimes emits).
+    if self._companionLast.factionID ~= fid then
+        self._companionLast = { factionID = fid, currentValue = cur or 0, friendship = friend or 0 }
+    end
+end
+
+---Compare current Valeera rep to the captured baseline on positive delta; refresh DB via FullScan.
+---WN chat is emitted by ProcessPendingChatNotifications after that scan (not from raw API fields here).
+function ReputationCache:CheckCompanionRepDelta()
+    local fid, cur, friend = WalkFactionsForCompanion()
+    if not fid then return end
+    self._companionFactionID = fid
+
+    local last = self._companionLast
+    if not last or last.factionID ~= fid then
+        self._companionLast = { factionID = fid, currentValue = cur or 0, friendship = friend or 0 }
+        return
+    end
+
+    local deltaCurrent = (cur or 0) - (last.currentValue or 0)
+    local deltaFriend  = (friend or 0) - (last.friendship or 0)
+    local gain = math.max(deltaCurrent, deltaFriend)
+    if gain <= 0 then return end
+
+    DebugPrint("|cff9370DB[ReputationCache]|r [CompanionWatcher] Delta +" .. gain
+        .. " (cur=" .. (cur or 0) .. ", friend=" .. tostring(friend) .. ") — FullScan for DB sync")
+
+    self._companionLast = { factionID = fid, currentValue = cur or 0, friendship = friend or 0 }
+
+    self:PerformFullScan(true)
 end
 
 -- ============================================================================

@@ -43,9 +43,23 @@ local Constants = {
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "2.6.1",
+    ADDON_VERSION = "2.6.6b",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-04-18",
+    ADDON_RELEASE_DATE = "2026-04-26",
+
+    -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
+    --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
+    --   2. The matching CACHE.<name> integer is bumped manually here (breaking schema change).
+    -- Addon version bumps DO NOT invalidate any cache by themselves.
+    -- Bump CACHE.<name> only when the cache's stored shape becomes incompatible with the new code.
+    VERSIONS = {
+        CACHE = {
+            reputation = 1,
+            collection = 1,
+            currency   = 1,
+            pve        = 1,
+        },
+    },
     
     --==========================================================================
     -- EXPANSION TARGETING
@@ -222,6 +236,43 @@ local Constants = {
         [3313] = { name = "Radiant Dust", category = "crest" },            -- Runed Crest equivalent
         [3312] = { name = "Radiant Shard", category = "crest" },           -- Carved Crest equivalent
         [3089] = { name = "Coffer Key", category = "delves" },             -- Delve Coffer Keys
+    },
+
+    --==========================================================================
+    -- DAWNCREST UI COLUMN ORDER (Gear tab + PvE summary only)
+    --==========================================================================
+    -- Chat notifications and CurrencyCache use C_CurrencyInfo flags (useTotalEarnedForMaxQty, etc.),
+    -- not this list — so new patch currencies do not require ID updates for WN-Currency messages.
+    DAWNCREST_UI = {
+        COLUMN_IDS = { 3383, 3341, 3343, 3345, 3347 },
+        DISPLAY_NAMES = {
+            [3383] = "Adventurer Dawncrest",
+            [3341] = "Veteran Dawncrest",
+            [3343] = "Champion Dawncrest",
+            [3345] = "Hero Dawncrest",
+            [3347] = "Myth Dawncrest",
+        },
+        PVE_LABEL_KEYS = {
+            [3383] = "PVE_CREST_ADV",
+            [3341] = "PVE_CREST_VET",
+            [3343] = "PVE_CREST_CHAMP",
+            [3345] = "PVE_CREST_HERO",
+            [3347] = "PVE_CREST_MYTH",
+        },
+    },
+
+    -- Slots used for "missing primary enchant" (Gear tab + GearService). INVSLOT_* ids.
+    -- Midnight 12.x primary enchants: head, shoulder, chest, boots, rings, weapon(s).
+    -- Cloak/wrist/legs are intentionally omitted to avoid false flags.
+    GEAR_ENCHANTABLE_SLOTS = {
+        [1] = true,   -- Head
+        [3] = true,   -- Shoulder
+        [5] = true,   -- Chest
+        [8] = true,   -- Feet
+        [11] = true,  -- Finger 1
+        [12] = true,  -- Finger 2
+        [16] = true,  -- Main hand (weapon-capable)
+        [17] = true,  -- Off hand (weapon-capable)
     },
 
     -- PvE tab — Trovehunter's Bounty column uses IsQuestFlaggedCompleted on a hidden tracking quest (per-char snapshot in cache).

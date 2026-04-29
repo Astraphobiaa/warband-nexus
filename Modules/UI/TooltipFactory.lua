@@ -36,6 +36,14 @@ local ICON_SIZE = 32
 local ICON_PADDING = 8
 local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
+-- Wide tooltips (e.g. PvE vault summary): TooltipService may preset frame.fixedWidth before layout.
+local WIDTH_CAP_TOP = 820
+local VAULT_GRID_GAP_NAME_REALM = 10
+local VAULT_GRID_GAP_BEFORE_VAULT = 12
+local VAULT_GRID_GAP_VAULT_COL = 6
+-- Minimum width per Raid/M+/World column (three slot icons or “Pending…”).
+local VAULT_GRID_TRACK_MIN_W = 72
+
 --[[
     Create singleton tooltip frame
     @return Frame - Reusable tooltip frame
@@ -97,8 +105,11 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.linePool = {}
     frame.doubleLines = {}
     frame.doubleLinePool = {}
+    frame.vaultGridRows = {}
+    frame.vaultGridLinePool = {}
     frame.titleLine = nil
     frame.descLine = nil
+    frame.titleAffixLines = {}
     frame.allLines = {}
     
     -- Layout state (dynamic width, clamped to min/max)
@@ -132,6 +143,14 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             self.descLine:SetText("")
             self.descLine:ClearAllPoints()
         end
+
+        for _, tLine in ipairs(self.titleAffixLines) do
+            tLine:Hide()
+            tLine:SetText("")
+            tLine:ClearAllPoints()
+            table.insert(self.linePool, tLine)
+        end
+        table.wipe(self.titleAffixLines)
         
         -- Return all lines to pool
         for _, line in ipairs(self.lines) do
@@ -153,6 +172,26 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             table.insert(self.doubleLinePool, dLine)
         end
         table.wipe(self.doubleLines)
+
+        for _, vr in ipairs(self.vaultGridRows) do
+            vr.nameFs:Hide()
+            vr.realmFs:Hide()
+            vr.raidFs:Hide()
+            vr.mplusFs:Hide()
+            vr.worldFs:Hide()
+            vr.nameFs:SetText("")
+            vr.realmFs:SetText("")
+            vr.raidFs:SetText("")
+            vr.mplusFs:SetText("")
+            vr.worldFs:SetText("")
+            vr.nameFs:ClearAllPoints()
+            vr.realmFs:ClearAllPoints()
+            vr.raidFs:ClearAllPoints()
+            vr.mplusFs:ClearAllPoints()
+            vr.worldFs:ClearAllPoints()
+            table.insert(self.vaultGridLinePool, vr)
+        end
+        table.wipe(self.vaultGridRows)
         
         -- Clear unified line list
         table.wipe(self.allLines)
@@ -172,8 +211,15 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         local tex = self.iconFrame.texture
         if iconPath then
             if isAtlas then
-                tex:SetAtlas(iconPath)
-                tex:SetTexCoord(0, 1, 0, 1)
+                local ok = pcall(function()
+                    tex:SetAtlas(iconPath, false)
+                end)
+                if ok then
+                    tex:SetTexCoord(0, 1, 0, 1)
+                else
+                    tex:SetTexture("Interface\\Icons\\INV_Misc_Chest_03")
+                    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                end
             elseif type(iconPath) == "number" then
                 tex:SetTexture(iconPath)
                 tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -197,6 +243,27 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         titleLine:SetText(text or "")
         titleLine:SetTextColor(r or 1, g or 0.82, b or 0)
         titleLine:Show()
+    end
+
+    -- Lines directly under the colored title (before separator) — e.g. Gear "need more crests".
+    frame.AddTitleAffix = function(self, text, r, g, b, wrap)
+        local line = self:GetOrCreateLine()
+        line:SetText(text or "")
+        line:SetTextColor(r or 1, g or 1, b or 1)
+        local contentWidth = (self.fixedWidth or MAX_WIDTH) - (self.paddingH * 2)
+        line:SetWidth(contentWidth)
+        if wrap then
+            line:SetWordWrap(true)
+            line:SetNonSpaceWrap(true)
+            line:SetMaxLines(0)
+            line:SetHeight(0)
+        else
+            line:SetWordWrap(false)
+            line:SetHeight(0)
+        end
+        line:Show()
+        table.insert(self.titleAffixLines, line)
+        self:LayoutLines()
     end
     
     -- ========================================================================
@@ -324,6 +391,78 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         dLine.right:SetJustifyH("RIGHT")
         return dLine
     end
+
+    -- ========================================================================
+    -- INTERNAL: Vault summary row — fixed columns (name | realm | raid | m+ | world)
+    -- ========================================================================
+    frame.GetOrCreateVaultGridRow = function(self)
+        if #self.vaultGridLinePool > 0 then
+            return table.remove(self.vaultGridLinePool)
+        end
+        local row = {}
+        row.nameFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.nameFs:SetJustifyH("LEFT")
+        row.nameFs:SetWordWrap(false)
+        row.realmFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.realmFs:SetJustifyH("LEFT")
+        row.realmFs:SetWordWrap(false)
+        row.raidFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.raidFs:SetJustifyH("CENTER")
+        row.raidFs:SetWordWrap(false)
+        row.mplusFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.mplusFs:SetJustifyH("CENTER")
+        row.mplusFs:SetWordWrap(false)
+        row.worldFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.worldFs:SetJustifyH("CENTER")
+        row.worldFs:SetWordWrap(false)
+        return row
+    end
+
+    --[[
+        Five-column row for Great Vault summary tooltip (aligned name/realm + vault tracks).
+        widths = { nameW, realmW, raidW, mplusW, worldW } in pixels.
+        opts.isHeader — gold column labels for vault headers.
+    ]]
+    frame.AddVaultGridRow = function(self, nameText, realmText, colRaid, colMplus, colWorld, widths, opts)
+        opts = opts or {}
+        local row = self:GetOrCreateVaultGridRow()
+        row.nameFs:SetText(nameText or "")
+        row.realmFs:SetText(realmText or "")
+        row.raidFs:SetText(colRaid or "")
+        row.mplusFs:SetText(colMplus or "")
+        row.worldFs:SetText(colWorld or "")
+        row.widthName = (widths and widths[1]) or 80
+        row.widthRealm = (widths and widths[2]) or 80
+        row.widthRaid = (widths and widths[3]) or 48
+        row.widthMplus = (widths and widths[4]) or 48
+        row.widthWorld = (widths and widths[5]) or 48
+        row.isHeader = opts.isHeader == true
+        if opts.isHeader then
+            local hr, hg, hb = 1, 0.82, 0.35
+            row.nameFs:SetTextColor(hr, hg, hb)
+            row.realmFs:SetTextColor(hr, hg, hb)
+            row.raidFs:SetTextColor(hr, hg, hb)
+            row.mplusFs:SetTextColor(hr, hg, hb)
+            row.worldFs:SetTextColor(hr, hg, hb)
+        else
+            row.nameFs:SetTextColor(1, 1, 1)
+            row.realmFs:SetTextColor(1, 1, 1)
+            row.raidFs:SetTextColor(1, 1, 1)
+            row.mplusFs:SetTextColor(1, 1, 1)
+            row.worldFs:SetTextColor(1, 1, 1)
+        end
+        row.nameFs:Show()
+        row.realmFs:Show()
+        row.raidFs:SetJustifyH("CENTER")
+        row.mplusFs:SetJustifyH("CENTER")
+        row.worldFs:SetJustifyH("CENTER")
+        row.raidFs:Show()
+        row.mplusFs:Show()
+        row.worldFs:Show()
+        table.insert(self.vaultGridRows, row)
+        table.insert(self.allLines, { type = "vault_grid", element = row })
+        self:LayoutLines()
+    end
     
     -- ========================================================================
     -- INTERNAL: Layout - header (icon + title + desc) then body lines
@@ -352,6 +491,16 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             if descHeaderW > maxContentW then descHeaderW = descHeaderW end
             if dw > maxContentW then maxContentW = dw end
         end
+
+        -- Measure title affixes (lines under the item name, right of icon)
+        if self.titleAffixLines then
+            for _, aLine in ipairs(self.titleAffixLines) do
+                aLine:SetWidth(0)
+                local w = aLine:GetStringWidth() or 0
+                local withIcon = w + (self.hasIcon and (ICON_SIZE + ICON_PADDING) or 0)
+                if withIcon > maxContentW then maxContentW = withIcon end
+            end
+        end
         
         -- Measure body lines
         for _, lineData in ipairs(self.allLines) do
@@ -364,11 +513,18 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 lineData.element.right:SetWidth(0)
                 local lw = (lineData.element.left:GetStringWidth() or 0) + (lineData.element.right:GetStringWidth() or 0) + 20
                 if lw > maxContentW then maxContentW = lw end
+            elseif lineData.type == "vault_grid" then
+                local v = lineData.element
+                local lw = v.widthName + VAULT_GRID_GAP_NAME_REALM + v.widthRealm + VAULT_GRID_GAP_BEFORE_VAULT
+                    + v.widthRaid + VAULT_GRID_GAP_VAULT_COL + v.widthMplus + VAULT_GRID_GAP_VAULT_COL + v.widthWorld
+                if lw > maxContentW then maxContentW = lw end
             end
         end
         
-        -- Clamp width: content + padding, within min/max
-        local computedWidth = math.max(MIN_WIDTH, math.min(MAX_WIDTH, maxContentW + padding * 2))
+        -- Clamp width: respect TooltipService maxWidth preset (Vault summary), cap at WIDTH_CAP_TOP.
+        local requestedCap = tonumber(self.fixedWidth) or MAX_WIDTH
+        local widthCap = math.min(WIDTH_CAP_TOP, math.max(MAX_WIDTH, requestedCap))
+        local computedWidth = math.max(MIN_WIDTH, math.min(widthCap, maxContentW + padding * 2))
         self.fixedWidth = computedWidth
         self:SetWidth(computedWidth)
         
@@ -386,6 +542,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         if self.descLine and self.descLine:IsShown() then
             local textLeftX = self.hasIcon and (padding + ICON_SIZE + ICON_PADDING) or padding
             self.descLine:SetWidth(computedWidth - textLeftX - padding)
+        end
+        if self.titleAffixLines and #self.titleAffixLines > 0 then
+            local tlx = self.hasIcon and (padding + ICON_SIZE + ICON_PADDING) or padding
+            for _, aLine in ipairs(self.titleAffixLines) do
+                aLine:SetWidth(computedWidth - tlx - padding)
+            end
         end
         
         -- ── Phase 2: Position elements ──
@@ -410,15 +572,32 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             self.titleLine:SetWidth((self.fixedWidth or 350) - textLeftX - padding)
             titleBottom = yOffset - self.titleLine:GetHeight()
         end
+
+        -- Title affixes: directly under the colored name (before separator, same indent as title)
+        local afterHeaderText = titleBottom
+        if self.titleAffixLines and #self.titleAffixLines > 0 then
+            local yTop = titleBottom
+            for _, aLine in ipairs(self.titleAffixLines) do
+                yTop = yTop - 2
+                aLine:ClearAllPoints()
+                aLine:SetPoint("TOPLEFT", self, "TOPLEFT", textLeftX, yTop)
+                aLine:SetWidth((self.fixedWidth or 350) - textLeftX - padding)
+                aLine:SetHeight(0)
+                yTop = yTop - aLine:GetStringHeight()
+            end
+            afterHeaderText = yTop
+        end
         
-        -- Description (below title, still indented if icon)
-        local descBottom = titleBottom
+        -- Description (below title/affix, still indented if icon)
+        local descBottom = afterHeaderText
         if self.descLine and self.descLine:IsShown() then
             self.descLine:ClearAllPoints()
-            self.descLine:SetPoint("TOPLEFT", self, "TOPLEFT", textLeftX, titleBottom - 2)
+            self.descLine:SetPoint("TOPLEFT", self, "TOPLEFT", textLeftX, afterHeaderText - 2)
             self.descLine:SetWidth((self.fixedWidth or 350) - textLeftX - padding)
             self.descLine:SetHeight(0)
-            descBottom = titleBottom - 2 - self.descLine:GetStringHeight()
+            descBottom = afterHeaderText - 2 - self.descLine:GetStringHeight()
+        else
+            descBottom = afterHeaderText
         end
         
         -- Header bottom = lowest of icon bottom vs text bottom
@@ -442,12 +621,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         
         if showSeparator then
-            bodyStartY = headerBottom - 6
+            bodyStartY = headerBottom - 3
             self.separator:ClearAllPoints()
             self.separator:SetPoint("TOPLEFT", self, "TOPLEFT", padding, bodyStartY)
             self.separator:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, bodyStartY)
             self.separator:Show()
-            bodyStartY = bodyStartY - 1 - 6  -- separator height + bottom gap
+            bodyStartY = bodyStartY - 1 - 4  -- separator height + gap to first body line
         else
             self.separator:Hide()
         end
@@ -486,6 +665,40 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 local lineHeight = math.max(dLine.left:GetHeight(), dLine.right:GetHeight())
                 yOffset = yOffset - lineHeight - lineSpacing
                 prevElement = dLine.left
+            elseif lineData.type == "vault_grid" then
+                local v = lineData.element
+                v.nameFs:ClearAllPoints()
+                v.realmFs:ClearAllPoints()
+                v.raidFs:ClearAllPoints()
+                v.mplusFs:ClearAllPoints()
+                v.worldFs:ClearAllPoints()
+
+                if prevElement then
+                    v.nameFs:SetPoint("TOPLEFT", prevElement, "BOTTOMLEFT", 0, -lineSpacing)
+                else
+                    v.nameFs:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
+                end
+
+                v.nameFs:SetWidth(v.widthName)
+                v.realmFs:SetWidth(v.widthRealm)
+                v.raidFs:SetWidth(v.widthRaid)
+                v.mplusFs:SetWidth(v.widthMplus)
+                v.worldFs:SetWidth(v.widthWorld)
+
+                v.realmFs:SetPoint("TOPLEFT", v.nameFs, "TOPRIGHT", VAULT_GRID_GAP_NAME_REALM, 0)
+                v.raidFs:SetPoint("TOPLEFT", v.realmFs, "TOPRIGHT", VAULT_GRID_GAP_BEFORE_VAULT, 0)
+                v.mplusFs:SetPoint("TOPLEFT", v.raidFs, "TOPRIGHT", VAULT_GRID_GAP_VAULT_COL, 0)
+                v.worldFs:SetPoint("TOPLEFT", v.mplusFs, "TOPRIGHT", VAULT_GRID_GAP_VAULT_COL, 0)
+
+                local lineHeight = math.max(
+                    v.nameFs:GetStringHeight(),
+                    v.realmFs:GetStringHeight(),
+                    v.raidFs:GetStringHeight(),
+                    v.mplusFs:GetStringHeight(),
+                    v.worldFs:GetStringHeight()
+                )
+                yOffset = yOffset - lineHeight - lineSpacing
+                prevElement = v.nameFs
             end
         end
         

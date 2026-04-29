@@ -20,41 +20,54 @@ local WarbandNexus = ns.WarbandNexus
 -- CACHE MANAGEMENT
 -- ============================================================================
 
---[[
-    Force refresh all caches (central cache invalidation)
-    Called on addon version updates to ensure clean data
-]]
-function WarbandNexus:ForceRefreshAllCaches()
-    -- Reputation Cache: NON-DESTRUCTIVE invalidation.
-    -- Do NOT call ClearReputationCache() — it does a nuclear wipe that destroys
-    -- ALL characters' reputation data. Instead, just reset the version to force
-    -- a rescan. UpdateAll() will overwrite current char + purge stale AW entries.
-    if self.db.global.reputationData then
-        self.db.global.reputationData.version = nil  -- Force rescan on next Initialize
-        self.db.global.reputationData.lastScan = 0
-        DebugPrint("|cff9370DB[WN]|r Invalidated reputation cache (non-destructive)")
-    end
-    
-    -- Currency Cache
-    if self.db.global.currencyCache then
-        self.db.global.currencyCache = nil
-        DebugPrint("|cff9370DB[WN]|r Cleared currency cache")
-    end
-    
-    -- Collection Cache
-    if self.db.global.collectionCache then
-        self.db.global.collectionCache = nil
-        DebugPrint("|cff9370DB[WN]|r Cleared collection cache")
-    end
-    
-    -- PvE Cache
-    if self.db.global.pveCache then
-        self.db.global.pveCache = nil
-        DebugPrint("|cff9370DB[WN]|r Cleared PvE cache")
-    end
-    
-    -- Set refresh flag
-    self.db.global.needsFullRefresh = true
+-- Map cache name → DB path the cache is stored at. Backups + version-resets
+-- operate via this table so the call sites stay declarative.
+local CACHE_PATHS = {
+    reputation = "reputationData",
+    collection = "collectionCache",
+    currency   = "currencyCache",
+    pve        = "pveCache",
+}
+
+--- Backup a cache to db.global.cacheBackups[name] before invalidation.
+--- A shallow copy is sufficient (caches re-fetch from API; backup is only for recovery).
+local function BackupCache(self, name)
+    local key = CACHE_PATHS[name]
+    if not key then return end
+    local current = self.db.global[key]
+    if current == nil then return end
+    self.db.global.cacheBackups = self.db.global.cacheBackups or {}
+    self.db.global.cacheBackups[name] = {
+        savedAt = time(),
+        data    = current,
+    }
+end
+
+--- Invalidate a single cache non-destructively.
+--- Resets only the cache's version field so the next service initialise re-fetches
+--- from the API. The data table itself stays intact — partial scans, obtained
+--- markers, and weekly state survive. A backup snapshot is taken first.
+---@param name string Cache name: "reputation", "collection", "currency", "pve"
+---@param reason string|nil Diagnostic reason ("game_build", "schema_bump", manual)
+function WarbandNexus:InvalidateCache(name, reason)
+    local key = CACHE_PATHS[name]
+    if not key then return end
+    local cache = self.db.global[key]
+    if not cache then return end
+    BackupCache(self, name)
+    cache.version = nil
+    if cache.lastScan ~= nil then cache.lastScan = 0 end
+    DebugPrint("|cff9370DB[WN]|r Invalidated cache '" .. name .. "' (" .. tostring(reason or "manual") .. ", non-destructive; backup saved)")
+end
+
+--- Restore a cache from its most recent backup. Manual recovery hook.
+function WarbandNexus:RestoreCacheBackup(name)
+    local key = CACHE_PATHS[name]
+    local backups = self.db.global.cacheBackups
+    if not key or not backups or not backups[name] then return false end
+    self.db.global[key] = backups[name].data
+    DebugPrint("|cff9370DB[WN]|r Restored cache '" .. name .. "' from backup")
+    return true
 end
 
 -- ============================================================================

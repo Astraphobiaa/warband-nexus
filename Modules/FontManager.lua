@@ -11,6 +11,9 @@
     - body     : Default text, labels, list content
     - small    : Captions, hints, metadata, secondary info (smallest)
     Alias: "smalltext" -> "small"
+
+    Semantic aliases (tek yerden tema): FontManager:GetFontRole("gearStatLabel") → one of the above.
+    Tab/modül bazlı eşleme: FontManager.FONT_ROLE / ns.UI_FONT_ROLE.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -24,6 +27,115 @@ local LSM = (LibStub and LibStub("LibSharedMedia-3.0", true)) or nil
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 local FontManager = {}
+
+--[[
+    Semantic UI roles → size category (tek noktadan tema / Gear ve diğer sekmeler).
+    CreateFontString: FontManager:CreateFontString(parent, FontManager:GetFontRole("gearStatLabel"), layer)
+]]
+FontManager.FONT_ROLE = {
+    --------------------------------------------------------------------
+    -- Paylaşılan sekme / başlık / diyalog (tüm UI tek yerden)
+    --------------------------------------------------------------------
+    tabTitlePrimary = "header",
+    tabSubtitle = "subtitle",
+    sectionCollapsibleTitle = "title",
+    popupDialogTitle = "title",
+    settingsSectionTitle = "header",
+    noticeTitle = "body",
+    noticeBody = "small",
+    statsBarText = "small",
+    emptyStateTitle = "title",
+    emptyStateBody = "body",
+    emptyCardTitle = "header",
+    emptyCardBody = "body",
+    moduleDisabledTitle = "header",
+    moduleDisabledBody = "body",
+    loadingCardTitle = "title",
+    loadingCardProgress = "body",
+    loadingCardHint = "small",
+    loadingPanelTitle = "title",
+    loadingPanelProgress = "body",
+    errorCardBody = "body",
+    resetTimerText = "body",
+    searchPlaceholder = "body",
+    searchButtonText = "body",
+    versionBadge = "small",
+    tryPopupHeader = "title",
+    tryPopupBody = "body",
+    dialogButtonLabel = "body",
+    listRowLabel = "body",
+    listRowValue = "body",
+    listRowQty = "body",
+    listRowLocation = "body",
+    factorySectionHeaderTitle = "title",
+    factorySectionHeaderRight = "body",
+    factoryDataRowLabel = "body",
+    factoryDataRowRight = "small",
+    cardHeaderLabel = "subtitle",
+    cardHeaderValue = "body",
+
+    --------------------------------------------------------------------
+    -- Ana pencere başlığı, nav sekmeleri, shell (UI.lua / WindowFactory)
+    --------------------------------------------------------------------
+    windowChromeTitle = "title",
+    mainNavTabLabel = "body",
+    mainNavTabCount = "small",
+    mainShellTrackingStatus = "body",
+    trackingRequiredBannerTitle = "title",
+    trackingRequiredBannerBody = "body",
+    collectionAchievementPopupName = "title",
+    collectionAchievementPopupBody = "body",
+    collectionAchievementPopupButton = "body",
+    loadingBarPrimaryText = "body",
+    loadingBarSecondaryText = "body",
+    searchEditBoxBody = "body",
+
+    --------------------------------------------------------------------
+    -- PvE sekmesi — kart başlığı / vault tracker etiketi
+    --------------------------------------------------------------------
+    pveVaultCardCharName = "title",
+    pveVaultCardRealm = "subtitle",
+    pveVaultCardStatus = "subtitle",
+    pveTitleCardCheckboxLabel = "body",
+
+    --------------------------------------------------------------------
+    -- Gear tab — panels & stats (3 sütun grid ile uyumlu body/small dengesi)
+    --------------------------------------------------------------------
+    gearPanelTitle = "title",
+    gearSectionTitle = "title",
+    gearStatLabel = "body",
+    gearStatPct = "body",
+    gearStatRating = "body",
+    gearPrimaryMid = "small",
+    gearCurrencyLabel = "body",
+    gearCurrencyAmount = "body",
+    gearGoldLabel = "body",
+    gearGoldAmount = "body",
+    gearStorageCardTitle = "title",
+    gearStorageSubtitle = "subtitle",
+    gearStorageEmpty = "small",
+    gearStorageRow = "body",
+    gearStorageSource = "small",
+    gearCharacterName = "title",
+    gearPortraitLine = "title",
+    gearPortraitMeta = "small",
+    gearIlvlBadge = "subtitle",
+    gearSlotIlvl = "small",
+    gearSlotName = "small",
+    gearTrackLabel = "small",
+    gearChromeHint = "small",
+    gearEmptyStatsHint = "body",
+    gearCharSelector = "body",
+}
+
+---@param roleKey string
+---@return string category header|title|subtitle|body|small
+function FontManager:GetFontRole(roleKey)
+    if not roleKey or type(roleKey) ~= "string" then return "body" end
+    local cat = self.FONT_ROLE and self.FONT_ROLE[roleKey]
+    if type(cat) == "string" and cat ~= "" then return cat end
+    return "body"
+end
 
 --============================================================================
 -- CONFIGURATION
@@ -648,6 +760,13 @@ end
 -- Export to namespace
 ns.FontManager = FontManager
 ns.GetFilteredFontOptions = GetFilteredFontOptions
+--- Tek kaynak font rol tablosu (modüller doğrudan okuyabilir)
+ns.UI_FONT_ROLE = FontManager.FONT_ROLE
+
+--- Global helper for UI modules: semantic role → category string
+function ns.GetFontRole(roleKey)
+    return FontManager:GetFontRole(roleKey)
+end
 
 -- Notify UI when other addons register new fonts (LSM callback)
 if LSM and LSM.RegisterCallback then

@@ -980,7 +980,7 @@ local function CreateInfoFrame()
     frame.headerIcon:SetPoint("LEFT", 12, 0)
 
     -- Title
-    frame.titleText = FontManager:CreateFontString(header, "title", "OVERLAY")
+    frame.titleText = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     frame.titleText:SetPoint("LEFT", frame.headerIcon, "RIGHT", 8, 0)
     frame.titleText:SetPoint("RIGHT", header, "RIGHT", -40, 0)
     frame.titleText:SetJustifyH("LEFT")

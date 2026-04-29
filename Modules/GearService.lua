@@ -74,9 +74,12 @@ for i = 1, #GEAR_SLOTS do
     SLOT_BY_ID[s.id] = s
 end
 
--- WoW uses shared "item redundancy" for rings and trinkets: one watermark per pair.
--- So Ring 1 and Ring 2 share the same high watermark; Trinket 1 and Trinket 2 share the same.
-local SLOT_PAIRS = { [11] = 12, [12] = 11, [13] = 14, [14] = 13 }
+-- WoW uses shared "item redundancy" for rings, trinkets, and weapons: one watermark per group.
+-- Ring 1/2, Trinket 1/2, and Main Hand/Off Hand all share their respective high watermark slot.
+-- For paired slots, gold-only affordability must be capped by THIS item's ilvl — otherwise the
+-- pair's higher ilvl makes upgrades look free when the upgrade NPC actually charges crests
+-- (e.g. Off Hand at 285 falsely marks Main Hand 282→285 as gold-only).
+local SLOT_PAIRS = { [11] = 12, [12] = 11, [13] = 14, [14] = 13, [16] = 17, [17] = 16 }
 
 --- Effective watermark for a slot: max of this slot and its pair (for rings/trinkets).
 --- Used only for display/consistency; gold-only affordability uses per-slot watermark (this slot's max only).
@@ -139,10 +142,42 @@ local SPEC_MAIN_STAT = {
     [262] = "INT", [263] = "AGI", [264] = "INT",
     [265] = "INT", [266] = "INT", [267] = "INT",
     [268] = "AGI", [269] = "AGI", [270] = "INT",
-    [577] = "AGI", [581] = "AGI",
+    -- Demon Hunter (Midnight): Devourer uses Intellect; Havoc/Vengeance remain Agility (TooltipService SPEC_ID_PRIMARY_KIND parity).
+    [577] = "AGI", [581] = "AGI", [1456] = "AGI",
+    [1480] = "INT", -- Devourer
 }
 
 local CLASS_FILE_TO_ID = Constants.CLASS_FILE_TO_CLASS_ID
+
+--- Blizzard primaryStat / GetSpecPrimaryStat: 1=Str, 2=Agi, 4=Int (Stamina=3 is never a spec primary).
+local function PrimaryStatEnumToMainStatCode(enum)
+    if enum == nil or type(enum) ~= "number" then return nil end
+    if enum == 1 then return "STR" end
+    if enum == 2 then return "AGI" end
+    if enum == 4 then return "INT" end
+    if LE_UNIT_STAT_STRENGTH and enum == LE_UNIT_STAT_STRENGTH then return "STR" end
+    if LE_UNIT_STAT_AGILITY and enum == LE_UNIT_STAT_AGILITY then return "AGI" end
+    if LE_UNIT_STAT_INTELLECT and enum == LE_UNIT_STAT_INTELLECT then return "INT" end
+    return nil
+end
+
+--- Prefer static SPEC_MAIN_STAT, then client API for unknown / new Midnight spec IDs.
+local function ResolveMainStatFromSpecID(specID)
+    if not specID or type(specID) ~= "number" then return nil end
+    if SPEC_MAIN_STAT[specID] then
+        return SPEC_MAIN_STAT[specID]
+    end
+    if C_SpecializationInfo and C_SpecializationInfo.GetSpecPrimaryStat then
+        local ok, code = pcall(C_SpecializationInfo.GetSpecPrimaryStat, C_SpecializationInfo, specID)
+        if not ok or code == nil then
+            ok, code = pcall(C_SpecializationInfo.GetSpecPrimaryStat, specID)
+        end
+        if ok and code ~= nil then
+            return PrimaryStatEnumToMainStatCode(code)
+        end
+    end
+    return nil
+end
 
 local CLASS_ARMOR_SUBCLASS = {
     WARRIOR = 4, PALADIN = 4, DEATHKNIGHT = 4,
@@ -185,22 +220,26 @@ local function GetCharacterMainStat(charData)
             local classID = classFile and CLASS_FILE_TO_ID[classFile] or nil
             if classID then
                 local resolvedSpecID = GetSpecializationInfoForClassID(classID, specID)
-                if resolvedSpecID and SPEC_MAIN_STAT[resolvedSpecID] then
-                    return SPEC_MAIN_STAT[resolvedSpecID]
+                if resolvedSpecID then
+                    local m = ResolveMainStatFromSpecID(resolvedSpecID)
+                    if m then return m end
                 end
             end
         end
-        if SPEC_MAIN_STAT[specID] then
-            return SPEC_MAIN_STAT[specID]
-        end
+        local m = ResolveMainStatFromSpecID(specID)
+        if m then return m end
+        -- Have a global spec ID but resolution failed (e.g. unknown API): do NOT substitute first class spec
+        -- — that mislabels Midnight specs (e.g. DH Devourer 1480 vs Havoc 577).
+        return nil
     end
-    -- No spec in DB: infer from the class's first specialization (e.g. Mage → Arcane → INT).
+    -- Legacy DB rows with no global spec ID: infer from the class's first specialization (e.g. Mage → Arcane → INT).
     if charData.classFile and GetSpecializationInfoForClassID then
         local classID = CLASS_FILE_TO_ID[charData.classFile]
         if classID then
             local firstSpecID = GetSpecializationInfoForClassID(classID, 1)
-            if firstSpecID and SPEC_MAIN_STAT[firstSpecID] then
-                return SPEC_MAIN_STAT[firstSpecID]
+            if firstSpecID then
+                local m = ResolveMainStatFromSpecID(firstSpecID)
+                if m then return m end
             end
         end
     end
@@ -219,8 +258,15 @@ end
 function WarbandNexus:GetCurrentCharacterMainStat()
     local specIndex = GetSpecialization and GetSpecialization()
     if not specIndex or not GetSpecializationInfo then return nil end
-    local specID = GetSpecializationInfo(specIndex)
-    return (specID and SPEC_MAIN_STAT[specID]) or nil
+    -- Midnight+: GetSpecializationInfo slot indices for "primary stat enum" drift across patches.
+    -- Prefer global specID → SPEC_MAIN_STAT / C_SpecializationInfo.GetSpecPrimaryStat (same as offline GetCharacterMainStat).
+    local specID = select(1, GetSpecializationInfo(specIndex))
+    if specID and type(specID) == "number" and specID > 0 then
+        local m = ResolveMainStatFromSpecID(specID)
+        if m then return m end
+    end
+    local _, _, _, _, _, r6, r7 = GetSpecializationInfo(specIndex)
+    return PrimaryStatEnumToMainStatCode(r6) or PrimaryStatEnumToMainStatCode(r7)
 end
 
 --- Expected primary stat for the *selected* character in Gear storage scan.
@@ -234,9 +280,14 @@ local function ResolveExpectedPrimaryStatFromCharacter(charData, selectedIsLogge
     if selectedIsLoggedInPlayer and GetSpecialization and GetSpecializationInfo then
         local specIndex = GetSpecialization()
         if specIndex then
-            local specID = GetSpecializationInfo(specIndex)
-            if specID and SPEC_MAIN_STAT[specID] then
-                return SPEC_MAIN_STAT[specID], "live(specID=" .. tostring(specID) .. ")"
+            local specID = select(1, GetSpecializationInfo(specIndex))
+            local m = (specID and ResolveMainStatFromSpecID(specID)) or nil
+            if not m then
+                local _, _, _, _, _, r6, r7 = GetSpecializationInfo(specIndex)
+                m = PrimaryStatEnumToMainStatCode(r6) or PrimaryStatEnumToMainStatCode(r7)
+            end
+            if m then
+                return m, "live(specID=" .. tostring(specID) .. ")"
             end
         end
     end
@@ -312,11 +363,11 @@ local function MatchGetItemStatsPrimariesToExpected(itemLink, expectedMainStat, 
     if not itemLink then return true end
     local isTrinket = (slotID == 13 or slotID == 14)
 
+    -- GetItemStats / C_Item.GetItemStats often returns nil for hyperlinks restored from another
+    -- character's SavedVariables bag snapshot (not yet in this session's client cache) — even when
+    -- the selected character IS the logged-in player. Armor/weapon checks already ran in EvaluateItem.
     local statTable = GetItemStatTableForLink(itemLink)
     if not statTable then
-        if expectedMainStat and SlotExpectsPrimaryStatForFilter(slotID) and not isTrinket then
-            return false
-        end
         return true
     end
 
@@ -327,9 +378,13 @@ local function MatchGetItemStatsPrimariesToExpected(itemLink, expectedMainStat, 
         return true
     end
 
-    -- GetItemStats reflects the logged-in character; for a *different* selected alt, primaries may be omitted.
-    -- Trinkets: do not hard-reject (avoids hiding valid tri-stat / multi-stat trinkets when previewing alts).
-    if isTrinket and not selectedIsLoggedInPlayer then
+    -- C_Item.GetItemStats is *logged-in-player scoped*: for a Warbound-until-Equipped (WuE)
+    -- or other flexible-primary item, it returns only the active player's primary, not the
+    -- item's full primary set. Filtering by primary stat against an alt produces false
+    -- negatives (e.g. Karynna logged in → API returns Int → STR-spec Vhorzenn rejected).
+    -- When previewing an alt, defer to the armor/weapon class filter (already strict) and
+    -- skip the stat check entirely. The selected-as-logged-in path retains the strict check.
+    if not selectedIsLoggedInPlayer then
         return true
     end
 
@@ -398,36 +453,215 @@ local function IsWeaponCompatible(charData, slotID, itemClassID, itemSubclassID,
     return allowedByClass[itemSubclassID] == true
 end
 
---- Returns the TEMPLATE bind type of an item (what the item *is*), not whether it's currently bound.
---- BoE items show "boe" even if isBound=true in a character's bag (they were bound on pickup/equip).
---- Uses itemID for lookup since link-based GetItemInfo may not be cached for other characters.
-local function GetBindingType(item)
-    if not item then return nil end
-    if not C_Item or not C_Item.GetItemInfo then return nil end
+--- Enum.ItemBind / LE_ITEM_BIND: "Bind to Warband" (TWW+). Not the same as legacy BNET/BOA.
+---@type number
+local ITEM_BIND_WARBAND = (type(LE_ITEM_BIND_WARBAND) == "number" and LE_ITEM_BIND_WARBAND)
+    or (Enum and Enum.ItemBind and type(Enum.ItemBind.Warband) == "number" and Enum.ItemBind.Warband)
+    or 8
 
-    -- Try link first (most accurate), then itemID
+--- 9 = ToBnetAccountUntilEquipped — "Warbound until equipped".
+---@type number
+local ITEM_BIND_BNET_UNTIL_EQUIPPED = (Enum and Enum.ItemBind and type(Enum.ItemBind.ToBnetAccountUntilEquipped) == "number" and Enum.ItemBind.ToBnetAccountUntilEquipped) or 9
+
+--- 7 = ToWoWAccount (legacy bind-to-account); still transferable within account/warband scope for recommendations.
+---@type number
+local ITEM_BIND_TO_WOW_ACCOUNT = (Enum and Enum.ItemBind and type(Enum.ItemBind.ToWoWAccount) == "number" and Enum.ItemBind.ToWoWAccount) or 7
+
+--- Read bindType (14th return) without relying on a long pcall multi-assign (pcall failure can mis-align locals).
+---@param itemInfo number|string|nil itemID, link, or name
+---@return number|nil bindType Enum.ItemBind numeric, or nil if not cached / error
+local function GetRawItemBindTypeFromGetItemInfo(itemInfo)
+    if not itemInfo or not C_Item or not C_Item.GetItemInfo then return nil end
+    local ok, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14 = pcall(C_Item.GetItemInfo, itemInfo)
+    if not ok or not r1 then return nil end
+    if type(r14) ~= "number" then return nil end
+    return r14
+end
+
+---@param item table|nil
+---@return number|nil
+local function GetRawItemBindType(item)
+    if not item then return nil end
     local linkOrID = item.itemLink or item.link or item.itemID
     if not linkOrID then return nil end
-
-    local ok, _, _, _, _, _, _, _, _, _, _, _, _, bindType = pcall(C_Item.GetItemInfo, linkOrID)
-
-    -- If link failed, retry with itemID (template data is always available by ID)
-    if (not ok or not bindType) and item.itemID and item.itemID ~= linkOrID then
-        ok, _, _, _, _, _, _, _, _, _, _, _, _, bindType = pcall(C_Item.GetItemInfo, item.itemID)
+    local bind = GetRawItemBindTypeFromGetItemInfo(linkOrID)
+    if bind == nil and item.itemID and item.itemID ~= linkOrID then
+        bind = GetRawItemBindTypeFromGetItemInfo(item.itemID)
     end
+    if bind == nil and GetItemInfo then
+        local ok, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14 = pcall(GetItemInfo, linkOrID)
+        if ok and r1 and type(r14) == "number" then
+            bind = r14
+        end
+    end
+    return bind
+end
 
-    if not ok or not bindType then return nil end
+--- C_Item.GetItemInfo: 5th return is itemMinLevel (required character level).
+---@param itemInfo number|string|nil
+---@return number|nil
+local function GetItemMinLevelFromItemInfo(itemInfo)
+    if not itemInfo or not C_Item or not C_Item.GetItemInfo then return nil end
+    local ok, _, _, _, minLvl = pcall(C_Item.GetItemInfo, itemInfo)
+    if not ok or minLvl == nil then return nil end
+    if issecretvalue and issecretvalue(minLvl) then return nil end
+    if type(minLvl) ~= "number" or minLvl <= 0 then return nil end
+    return minLvl
+end
 
-    if bindType == LE_ITEM_BIND_ON_EQUIP or bindType == LE_ITEM_BIND_ON_USE then
+--- Map numeric Enum.ItemBind to storage-upgrade category (nil = not transferable template).
+--- BoE = bind-on-equip only (not Bind on Use). Warbound-until-equipped is its own UI label.
+---@param bindType number|nil
+---@return string|nil "boe"|"warbound"|"warbound_until_equipped"
+local function CategoryFromRawBind(bindType)
+    if bindType == nil then return nil end
+    if bindType == LE_ITEM_BIND_ON_EQUIP or bindType == 2 then
         return "boe"
     end
-    if bindType == LE_ITEM_BIND_TO_BNETACCOUNT or bindType == LE_ITEM_BIND_TO_ACCOUNT then
+    if bindType == ITEM_BIND_BNET_UNTIL_EQUIPPED or bindType == 9 then
+        return "warbound_until_equipped"
+    end
+    if bindType == LE_ITEM_BIND_TO_BNETACCOUNT or bindType == LE_ITEM_BIND_TO_ACCOUNT
+        or bindType == ITEM_BIND_WARBAND or bindType == ITEM_BIND_TO_WOW_ACCOUNT then
         return "warbound"
     end
     return nil
 end
 
+--- Tooltip-based override for warband binding. In TWW Midnight, GetItemInfo's 14th
+--- return ("bindType") reports WuE items as 2 (OnEquip) — the Warbound-until-Equipped
+--- aspect lives on a separate item flag surfaced only in the tooltip text. Without
+--- this scan, every WuE item is mislabelled "BoE" in the recommendation list.
+---@param itemLink string|nil
+---@param itemID number|nil
+---@return string|nil "warbound_until_equipped"|"warbound"|nil
+local function ScanTooltipForWarbandBind(itemLink, itemID)
+    if not C_TooltipInfo then return nil end
+    local tipData = nil
+    if itemLink and not (issecretvalue and issecretvalue(itemLink)) and C_TooltipInfo.GetHyperlink then
+        local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemLink)
+        if ok and data and data.lines then tipData = data end
+    end
+    if not tipData and itemID and C_TooltipInfo.GetItemByID then
+        local ok, data = pcall(C_TooltipInfo.GetItemByID, itemID)
+        if ok and data and data.lines then tipData = data end
+    end
+    if not tipData or not tipData.lines then return nil end
+
+    local strWuE = _G.ITEM_ACCOUNTBOUND_UNTIL_EQUIP or "Warbound until equipped"
+    local strWB1 = _G.ITEM_BIND_TO_BNETACCOUNT or "Binds to Battle.net Account"
+    local strWB2 = _G.ITEM_BIND_TO_ACCOUNT or "Binds to Account"
+    local strWB3 = _G.ITEM_BIND_TO_WARBAND or "Binds to Warband"
+    local strWB4 = "Warbound"
+
+    for li = 1, #tipData.lines do
+        local lt = tipData.lines[li] and tipData.lines[li].leftText
+        if lt and not (issecretvalue and issecretvalue(lt)) and type(lt) == "string" then
+            if lt:find(strWuE, 1, true) or lt:find("until equipped", 1, true) then
+                return "warbound_until_equipped"
+            end
+            if lt:find(strWB3, 1, true) or lt:find(strWB1, 1, true) or lt:find(strWB2, 1, true) or lt:find(strWB4, 1, true) then
+                return "warbound"
+            end
+        end
+    end
+    return nil
+end
+
+--- Returns the TEMPLATE bind type of an item (what the item *is*), not whether it's currently bound.
+--- BoE items show "boe" even if isBound=true in a character's bag (they were bound on pickup/equip).
+--- Tooltip scan takes precedence: WuE items report bindType=2 (OnEquip) via GetItemInfo,
+--- so we must read the tooltip text to distinguish "BoE" from "Warbound until Equipped".
+local function GetBindingType(item)
+    if not item then return nil end
+    local link = item.itemLink or item.link
+    local tipCat = ScanTooltipForWarbandBind(link, item.itemID)
+    if tipCat then return tipCat end
+    return CategoryFromRawBind(GetRawItemBindType(item))
+end
+
 local GEAR_DATA_VERSION = "1.1.0"
+
+local WEAPON_ENCHANT_EQUIP_LOCS = {
+    INVTYPE_WEAPON = true,
+    INVTYPE_WEAPONMAINHAND = true,
+    INVTYPE_WEAPONOFFHAND = true,
+    INVTYPE_2HWEAPON = true,
+}
+
+---Midnight primary-enchant expectation by slot + equip location.
+---@param slotID number
+---@param equipLoc string|nil
+---@return boolean
+local function IsPrimaryEnchantExpected(slotID, equipLoc)
+    local enchantableSlots = Constants and Constants.GEAR_ENCHANTABLE_SLOTS
+    if not (enchantableSlots and enchantableSlots[slotID]) then
+        return false
+    end
+    if slotID == 16 or slotID == 17 then
+        return WEAPON_ENCHANT_EQUIP_LOCS[equipLoc or ""] == true
+    end
+    return true
+end
+
+--- UnitSex: 1 unknown, 2 male, 3 female. DressUpModel:SetCustomRace (when used) expects 0 = male, 1 = female.
+---@param unitSex number|nil
+---@return number 0|1
+local function UnitSexToDressGender0Or1(unitSex)
+    if unitSex == 3 then return 1 end
+    return 0
+end
+
+---Capture a model snapshot for offline rendering.
+---Player displayIDs are runtime handles into the active character's appearance bundle —
+---they cannot be cached and replayed for an offline alt (replay → white mannequin, the
+---bundle is gone after logout). Wowpedia: UIOBJECT_PlayerModel / API_C_PlayerInfo.GetDisplayID.
+---
+---Reliable replay path: capture race + sex + a serialised transmog list (per-slot
+---ItemTransmogInfo). Offline render uses Actor:SetCustomRace + Actor:SetItemTransmogInfoList,
+---which reproduces race body + equipped transmog (face/hair/skin customisations are not
+---available outside the barber shop API, so those fall back to race defaults — accepted).
+---@return table
+local function BuildCharacterModelSnapshot()
+    local uSex = UnitSex and UnitSex("player") or nil
+    local snap = {
+        lastUpdate = time(),
+        raceID = UnitRace and select(3, UnitRace("player")) or nil,
+        sex = uSex, -- raw UnitSex (2/3) for debugging/compat
+        dressGender = UnitSexToDressGender0Or1(uSex),
+    }
+
+    -- Capture transmog list via a hidden DressUpModel: SetUnit + Dress reads the
+    -- live worn appearance, GetItemTransmogInfoList returns 19 ItemTransmogInfo
+    -- entries (per-slot appearanceID/secondaryAppearanceID/illusionID). We serialise
+    -- raw fields because the mixin metatable can't survive SavedVariables.
+    local ok, list = pcall(function()
+        local m = CreateFrame("DressUpModel")
+        m:SetUnit("player")
+        if m.Dress then m:Dress() end
+        if m.SetUseTransmogChoices then m:SetUseTransmogChoices(true) end
+        if m.SetUseTransmogSkin then m:SetUseTransmogSkin(false) end
+        local l = m.GetItemTransmogInfoList and m:GetItemTransmogInfoList() or nil
+        m:Hide()
+        m:SetParent(nil)
+        return l
+    end)
+    if ok and type(list) == "table" then
+        local serialised = {}
+        for i, t in ipairs(list) do
+            if type(t) == "table" then
+                serialised[i] = {
+                    app = t.appearanceID or 0,
+                    sec = t.secondaryAppearanceID or 0,
+                    ill = t.illusionID or 0,
+                }
+            end
+        end
+        snap.transmogList = serialised
+    end
+
+    return snap
+end
 
 -- ============================================================================
 -- UPGRADE ANALYSIS  (No API — ilvl-based inference from DB only, works offline)
@@ -820,12 +1054,8 @@ function WarbandNexus:ScanEquippedGear()
                 slotEntry.hasEnchant = hasEnchant
                 slotEntry.isMissingGem = isMissingGem
                 
-                -- Is this slot enchantable? (Chest:5, Legs:7, Feet:8, Wrist:9, Ring1:11, Ring2:12, Back:15, MainHand:16)
-                local enchantableSlots = {
-                    [5] = true, [7] = true, [8] = true, [9] = true,
-                    [11] = true, [12] = true, [15] = true, [16] = true
-                }
-                slotEntry.isEnchantable = enchantableSlots[slotID] or false
+                -- Is this slot enchantable? (aligned with GearUI — Constants.GEAR_ENCHANTABLE_SLOTS)
+                slotEntry.isEnchantable = IsPrimaryEnchantExpected(slotID, equipLoc)
 
                 -- Priority 1: Tooltip scan for exact track/tier (always available for equipped items)
                 local tooltipInfo = ScanUpgradeFromTooltip(slotID)
@@ -882,12 +1112,17 @@ function WarbandNexus:ScanEquippedGear()
         end
     end
 
+    local preservedModelView = existingData and existingData.modelView
     db[charKey] = {
         version    = GEAR_DATA_VERSION,
         lastScan   = time(),
         slots      = slots,
         watermarks = watermarks,
+        modelSnapshot = BuildCharacterModelSnapshot(),
     }
+    if type(preservedModelView) == "table" then
+        db[charKey].modelView = preservedModelView
+    end
 
     do
         local n = 0
@@ -929,6 +1164,28 @@ function WarbandNexus:GetEquippedGear(charKey)
     local db = GetDB()
     if not db or not charKey then return nil end
     return db[charKey]
+end
+
+--- Gear tab 3D paperdoll: persist rotation + zoom in SavedVariables (per character, with gearData).
+---@param charKey string
+---@param rotation number|nil facing radians (DressUpModel)
+---@param zoom number|nil user zoom factor (same as m._zoom in GearUI)
+function WarbandNexus:SaveGearModelViewState(charKey, rotation, zoom)
+    if not charKey then return end
+    if self.db and self.db.global and not self.db.global.gearData then
+        self.db.global.gearData = {}
+    end
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+    end
+    local db = GetDB()
+    if not db then return end
+    local entry = db[charKey]
+    if not entry then return end
+    if not entry.modelView then entry.modelView = {} end
+    entry.modelView.rotation = rotation
+    entry.modelView.zoom = zoom
+    entry.modelView.lastUpdate = time()
 end
 
 -- ============================================================================
@@ -1225,19 +1482,28 @@ local function ResolveStorageItemIlvl(item)
     if not item or not item.itemID then return 0 end
 
     local link = item.itemLink or item.link
-    if not link then
-        -- Strict mode for recommendation accuracy: if no link, we cannot guarantee tooltip-matching ilvl.
+    if link then
+        -- Prefer link-based ilvl first so storage row matches tooltip when cache is warm.
+        local ilvl = GetEffectiveIlvl(link)
+        if ilvl > 0 then return ilvl end
+        local ok, _, _, level = pcall(C_Item.GetItemInfo, link)
+        if ok and level and type(level) == "number" and level > 0 then
+            return level
+        end
+        -- Link is present but cold-cache. Falling back to itemID would return the
+        -- TEMPLATE base ilvl (e.g. 233 for an upgraded 253 WuE chest), which causes
+        -- false negatives ("not an upgrade") for cross-character WuE/Warbound items.
+        -- Kick off async warm-up via GetItemInfo (already done above) and skip this
+        -- candidate — WN_ITEM_METADATA_READY / WN_ITEMS_UPDATED will re-trigger the scan.
         return 0
     end
-    -- Prefer link-based ilvl first so storage row matches tooltip (avoids cache vs link mismatch)
-    local ilvl = GetEffectiveIlvl(link)
-    if ilvl > 0 then return ilvl end
-    local ok, _, _, level = pcall(C_Item.GetItemInfo, link)
-    if ok and level and type(level) == "number" and level > 0 then
-        return level
+    local ilvlId = GetEffectiveIlvl(item.itemID)
+    if ilvlId > 0 then return ilvlId end
+    local ok2, _, _, level2 = pcall(C_Item.GetItemInfo, item.itemID)
+    if ok2 and level2 and type(level2) == "number" and level2 > 0 then
+        return level2
     end
 
-    -- Link present but ilvl unknown (cache miss). Skip instead of using stale/cache-only numbers.
     return 0
 end
 
@@ -1246,14 +1512,24 @@ end
 ---@param sourceCharKey string The character that owns this item
 ---@param selectedCharKey string The character we're gearing
 ---@return string label  e.g. "Warband Bank", "Shaman Foo (Bag)", "Your Bag"
----@return string type   "warband" | "self_bag" | "self_bank" | "char_bag" | "char_bank" | "boe"
+---@return string type   "warband" | "self_bag" | "self_bank" | "char_bag" | "char_bank" | "boe" | "warbound" | "warbound_until_equipped"
 local function ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageType)
     local allCharsDB = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
     local charData = allCharsDB and allCharsDB[sourceCharKey]
     local charName = (charData and charData.name) or sourceCharKey
 
     if storageType == "warband" then
-        return "Warband Bank", "warbound"
+        -- Warband Bank items are by definition accessible to every warband character.
+        -- We do not need a bindType check to confirm transferability — storage location
+        -- already implies it. We still try to derive a bind label for UI display.
+        -- Tooltip scan takes precedence over GetItemInfo's bindType (which is unreliable
+        -- for WuE items in TWW Midnight — see GetBindingType).
+        local rawWB = GetRawItemBindType(item)
+        if rawWB == LE_ITEM_BIND_QUEST or rawWB == 4 then
+            return nil, nil
+        end
+        local wbCat = GetBindingType(item) or "warbound"
+        return "Warband Bank", wbCat
     end
 
     local function canonical(k)
@@ -1267,26 +1543,44 @@ local function ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageT
     local selectedNorm = canonical(selectedCharKey)
     local isSameChar = (sourceNorm ~= "" and selectedNorm ~= "" and sourceNorm == selectedNorm)
 
-    local bindType = GetBindingType(item)
-    -- bindType: "boe" (BoE/BoU), "warbound" (Warbound/Account), nil (soulbound or API not cached)
-    -- Rule: only show BoE and Warbound items. Reject confirmed soulbound.
-    -- If bindType is nil (API cache miss), check isBound field:
-    --   isBound=false → item isn't bound yet, likely BoE/Warbound → show it
-    --   isBound=true + bindType=nil → likely soulbound (BoP) → reject
-    local isSoulbound = (bindType == nil and item.isBound == true)
-    if isSoulbound then
-        return nil, nil
-    end
-
-    local effectiveType = bindType or "boe"
-
     if isSameChar then
         if storageType == "bank" then return "Your Bank", "self_bank" end
         return "Your Bag", "self_bag"
     end
 
+    -- Cross-character: prefer tooltip scan (catches WuE items reported as bindType=2 by
+    -- GetItemInfo). If tooltip says Warbound or Warbound-until-equipped, item is transferable.
+    local tipCat = ScanTooltipForWarbandBind(item.itemLink or item.link, item.itemID)
+
+    -- A BoE *template* item that has been equipped/right-clicked becomes Soulbound to the
+    -- source character. The bag snapshot records this via item.isBound=true. Such items are
+    -- NOT transferable to another alt — only the warband-binding categories survive equip.
+    -- Reject any cross-character entry that is flagged isBound and not warband-bound.
+    if item.isBound == true and tipCat == nil then
+        return nil, nil
+    end
+
+    if tipCat then
+        local suffix = (storageType == "bank") and " (Bank)" or " (Bag)"
+        return charName .. suffix, tipCat
+    end
+
+    -- No tooltip-derived warband flag → fall back to template bindType for BoE detection.
+    local rawBind = GetRawItemBindType(item)
+    if rawBind == LE_ITEM_BIND_ON_ACQUIRE or rawBind == 1 then
+        return nil, nil
+    end
+    if rawBind == LE_ITEM_BIND_QUEST or rawBind == 4 then
+        return nil, nil
+    end
+
+    local bindCategory = CategoryFromRawBind(rawBind)
+    if not bindCategory then
+        return nil, nil
+    end
+
     local suffix = (storageType == "bank") and " (Bank)" or " (Bag)"
-    return charName .. suffix, effectiveType
+    return charName .. suffix, bindCategory
 end
 
 --- Find items in storage (all chars' bags/bank + warband bank) that would
@@ -1301,7 +1595,45 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         DebugPrint("|cff00BFFF[StorageUpgrade]|r " .. tostring(msg))
     end
 
+
     local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
+
+    -- Build itemID lookup for paired slots (rings 11/12, trinkets 13/14) so we can
+    -- suppress duplicate-equip recommendations: if the same itemID is already worn
+    -- in the partner slot, recommending it for the other slot would either be a
+    -- false positive (same instance) or a unique-equip conflict (most trinkets and
+    -- legendary-style rings carry the unique flag).
+    local equippedItemIDBySlot = {}
+    do
+        local equippedGear = self:GetEquippedGear(selectedCharKey)
+        local slots = equippedGear and equippedGear.slots or {}
+        for _, slotID in ipairs({ 11, 12, 13, 14 }) do
+            local s = slots[slotID]
+            if s and s.itemID then
+                equippedItemIDBySlot[slotID] = tonumber(s.itemID)
+            end
+        end
+    end
+    local PARTNER_SLOT = { [11] = 12, [12] = 11, [13] = 14, [14] = 13 }
+
+    -- If the main hand currently holds a two-handed weapon, the off-hand slot
+    -- is logically occupied (cannot equip an off-hand without dropping the 2H).
+    -- Suppress any off-hand recommendations so we don't surface a low-ilvl
+    -- "upgrade" against an empty slot 17.
+    local mainHandIs2H = false
+    do
+        local equippedGear = self:GetEquippedGear(selectedCharKey)
+        local mh = equippedGear and equippedGear.slots and equippedGear.slots[16]
+        local mhEquipLoc = mh and mh.equipLoc or ""
+        if mhEquipLoc == "" and mh and mh.itemLink then
+            local ok, loc = pcall(GetEquipLoc, mh.itemLink)
+            if ok then mhEquipLoc = loc or "" end
+        end
+        if mhEquipLoc == "INVTYPE_2HWEAPON" or mhEquipLoc == "INVTYPE_RANGED" or mhEquipLoc == "INVTYPE_RANGEDRIGHT" then
+            mainHandIs2H = true
+        end
+    end
+
     local allChars = self.db and self.db.global and self.db.global.characters
     local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k) return ns.Utilities:GetCanonicalCharacterKey(k) end or function(k) return k end
     local charData = allChars and allChars[selectedCharKey]
@@ -1333,17 +1665,54 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         return link:match("%[(.-)%]") or tostring(fallbackId)
     end
 
+    --- Class file for storage row coloring (nil = neutral: warband / unknown).
+    local function ResolveSourceClassFile(ownerKey)
+        if not ownerKey or not allChars then return nil end
+        local d = allChars[ownerKey]
+        if d and d.classFile then return d.classFile end
+        local want = getCanonicalKey(ownerKey) or ownerKey
+        for k, v in pairs(allChars) do
+            if v and v.classFile then
+                local nk = getCanonicalKey(k) or k
+                if nk == want then return v.classFile end
+            end
+        end
+        return nil
+    end
+
+    --- Level + race/class (only when the selected tab character is the logged-in player — API is player-scoped).
+    local function SelectedCharacterMeetsItemRequirements(itemLink, itemID)
+        local minLvl = GetItemMinLevelFromItemInfo(itemLink) or GetItemMinLevelFromItemInfo(itemID)
+        local charLvl = charData and tonumber(charData.level)
+        -- charData.level is a stale snapshot from the last time this character was online —
+        -- it can lag behind the current real level (e.g. char dinged 90 but DB still shows 89,
+        -- so a "Requires Level 90" recommendation gets rejected). When previewing an alt, we
+        -- can't fetch live level from the API; trust storage availability + class/armor filter
+        -- instead of a brittle stale-level check.
+        if selectedIsLoggedInPlayer and minLvl and charLvl and charLvl < minLvl then
+            return false
+        end
+        if selectedIsLoggedInPlayer and itemLink and type(itemLink) == "string"
+            and not (issecretvalue and issecretvalue(itemLink)) then
+            if C_Item and C_Item.IsDressableItemByRace then
+                local okR, dress = pcall(C_Item.IsDressableItemByRace, itemLink)
+                if okR and dress == false then return false end
+            end
+            if C_Item and C_Item.IsDressableItemByClass then
+                local okC, dressC = pcall(C_Item.IsDressableItemByClass, itemLink)
+                if okC and dressC == false then return false end
+            end
+        end
+        return true
+    end
+
     local function AddCandidate(slotID, candidate)
         if not findings[slotID] then findings[slotID] = {} end
         local link = candidate.itemLink or candidate.link
         if link then
             candidate.itemLevel = ResolveStorageItemIlvl({ itemID = candidate.itemID, itemLink = link, link = link })
-            -- C_Item.GetItemInfo returns: name, link, quality, itemLevel, reqLevel, ...
-            -- With pcall: ok, name, link, quality, itemLevel, reqLevel
-            local rok, _, _, _, _, reqLevel = pcall(C_Item.GetItemInfo, link)
-            if rok and reqLevel and type(reqLevel) == "number" and reqLevel > 0 then
-                candidate.requiredLevel = reqLevel
-            end
+            local minL = GetItemMinLevelFromItemInfo(link) or GetItemMinLevelFromItemInfo(candidate.itemID)
+            if minL then candidate.requiredLevel = minL end
         end
         if (candidate.itemLevel or 0) == 0 then return end
         for i = 1, #findings[slotID] do
@@ -1379,6 +1748,10 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         local targetSlots = EQUIP_LOC_TO_SLOTS[equipLoc]
         if not targetSlots then return end
 
+        if C_Item and C_Item.RequestLoadItemDataByID and item.itemID then
+            pcall(C_Item.RequestLoadItemDataByID, item.itemID)
+        end
+
         local ilvl = ResolveStorageItemIlvl(item)
         if ilvl == 0 then return end
 
@@ -1395,14 +1768,28 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
 
         for i = 1, #targetSlots do
             local slotID = targetSlots[i]
+            local partner = PARTNER_SLOT[slotID]
+            local sameItemInPartner = partner and equippedItemIDBySlot[partner] == tonumber(item.itemID)
+            if slotID == 17 and mainHandIs2H then
+                -- Off-hand suppressed because main hand holds a two-handed weapon.
+            elseif sameItemInPartner then
+                -- Partner slot already wears this exact itemID (rings/trinkets pair) —
+                -- recommending it for the other slot would be a duplicate / unique-equip
+                -- conflict. Skip silently for this slot only; the candidate may still be
+                -- valid for the partner slot itself (handled in another iteration).
+            else
             local isArmorOK = IsArmorCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc)
             local isWeaponOK = IsWeaponCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc, mainStat)
             local isStatOK = MatchGetItemStatsPrimariesToExpected(link, mainStat, slotID, selectedIsLoggedInPlayer)
 
-            if not isArmorOK or not isWeaponOK then
-                -- skip silently
+            if not isArmorOK then
+                -- silent
+            elseif not isWeaponOK then
+                -- silent
             elseif not isStatOK then
                 dbg("  --- REJECTED(stat): " .. itemName .. " slot=" .. tostring(slotID) .. " mainStat=" .. tostring(mainStat))
+            elseif not SelectedCharacterMeetsItemRequirements(link, item.itemID) then
+                dbg("  --- REJECTED(level/race-class): " .. itemName .. " slot=" .. tostring(slotID))
             else
                 local currentIlvl = equippedMap[slotID] or 0
                 if ilvl > currentIlvl then
@@ -1417,12 +1804,14 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                             sourceType = sourceType,
                             isBound    = item.isBound,
                             equipLoc   = equipLoc,
+                            sourceClassFile = ResolveSourceClassFile(sourceCharKey),
                         })
                     else
                         local bt = GetBindingType(item)
                         dbg("  --- REJECTED(bind): " .. itemName .. " ilvl=" .. tostring(ilvl) .. " bindType=" .. tostring(bt) .. " isBound=" .. tostring(item.isBound) .. " src=" .. tostring(sourceCharKey) .. "/" .. tostring(storageType))
                     end
                 end
+            end
             end
         end
     end
@@ -1436,46 +1825,70 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         end
     end
 
-    -- ── All Characters (bags + bank) ─────────────────────────────────────────
-    -- Resolve items using every key variant so we don't miss (itemStorage may be keyed differently than allChars).
-    if allChars then
+    -- ── All characters + every itemStorage key (bags + bank) ──────────────────
+    -- Include orphan keys: bag data can exist under a key not present in `characters` (legacy/realm).
+    do
         local itemStorage = self.db and self.db.global and self.db.global.itemStorage or nil
-        for charKey, _ in pairs(allChars) do
-            local canonicalChar = getCanonicalKey(charKey) or charKey
-            local function getItemsForChar()
-                local data = (WarbandNexus.GetItemsData and WarbandNexus:GetItemsData(canonicalChar)) or nil
+        local repKeyByCanon = {}
+        local scanOrder = {}
+
+        if allChars then
+            for charKey, _ in pairs(allChars) do
+                local c = getCanonicalKey(charKey) or charKey
+                if c and not repKeyByCanon[c] then
+                    repKeyByCanon[c] = charKey
+                    scanOrder[#scanOrder + 1] = c
+                end
+            end
+        end
+        if itemStorage then
+            for storageKey, _ in pairs(itemStorage) do
+                if storageKey ~= "warbandBank" then
+                    local c = getCanonicalKey(storageKey) or storageKey
+                    if c and not repKeyByCanon[c] then
+                        repKeyByCanon[c] = storageKey
+                        scanOrder[#scanOrder + 1] = c
+                    end
+                end
+            end
+        end
+
+        local function getItemsForCharacter(canonicalChar, charKey)
+            local data = (WarbandNexus.GetItemsData and WarbandNexus:GetItemsData(canonicalChar)) or nil
+            if data and ((data.bags and #data.bags > 0) or (data.bank and #data.bank > 0)) then
+                return data
+            end
+            if charKey and charKey ~= canonicalChar then
+                data = (WarbandNexus.GetItemsData and WarbandNexus:GetItemsData(charKey)) or nil
                 if data and ((data.bags and #data.bags > 0) or (data.bank and #data.bank > 0)) then
                     return data
                 end
-                if charKey ~= canonicalChar then
-                    data = (WarbandNexus.GetItemsData and WarbandNexus:GetItemsData(charKey)) or nil
-                    if data and ((data.bags and #data.bags > 0) or (data.bank and #data.bank > 0)) then
-                        return data
-                    end
-                end
-                if itemStorage then
-                    for storageKey, _ in pairs(itemStorage) do
-                        if storageKey ~= "warbandBank" and (getCanonicalKey(storageKey) or storageKey) == canonicalChar then
-                            data = (WarbandNexus.GetItemsData and WarbandNexus:GetItemsData(storageKey)) or nil
-                            if data and ((data.bags and #data.bags > 0) or (data.bank and #data.bank > 0)) then
-                                return data
-                            end
+            end
+            if itemStorage then
+                for storageKey, _ in pairs(itemStorage) do
+                    if storageKey ~= "warbandBank" and (getCanonicalKey(storageKey) or storageKey) == canonicalChar then
+                        data = (WarbandNexus.GetItemsData and WarbandNexus:GetItemsData(storageKey)) or nil
+                        if data and ((data.bags and #data.bags > 0) or (data.bank and #data.bank > 0)) then
+                            return data
                         end
                     end
                 end
-                return nil
             end
-            local itemsData = getItemsForChar()
+            return nil
+        end
+
+        for i = 1, #scanOrder do
+            local canonicalChar = scanOrder[i]
+            local charKey = repKeyByCanon[canonicalChar] or canonicalChar
+            local itemsData = getItemsForCharacter(canonicalChar, charKey)
             if itemsData then
                 local bags = itemsData.bags or {}
-                for i = 1, #bags do
-                    local item = bags[i]
-                    EvaluateItem(item, charKey, "bag")
+                for j = 1, #bags do
+                    EvaluateItem(bags[j], charKey, "bag")
                 end
                 local bank = itemsData.bank or {}
-                for i = 1, #bank do
-                    local item = bank[i]
-                    EvaluateItem(item, charKey, "bank")
+                for j = 1, #bank do
+                    EvaluateItem(bank[j], charKey, "bank")
                 end
             end
         end
@@ -1496,7 +1909,13 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             if otherGear and otherGear.slots then
             local otherName = (otherCharData and otherCharData.name) or otherCharKey
             for slotID, slotData in pairs(otherGear.slots) do
-                if slotData and slotData.itemID and (slotData.itemLink or slotData.itemLevel) then
+                local _partner = PARTNER_SLOT[slotID]
+                local _sameInPartner = slotData and slotData.itemID and _partner and equippedItemIDBySlot[_partner] == tonumber(slotData.itemID)
+                if slotID == 17 and mainHandIs2H then
+                    -- Off-hand suppressed (selected character wields a 2H weapon).
+                elseif _sameInPartner then
+                    -- Same itemID already equipped in the paired slot on the selected character.
+                elseif slotData and slotData.itemID and (slotData.itemLink or slotData.itemLevel) then
                     local currentIlvl = equippedMap[slotID] or 0
                     local itemLevel = ResolveStorageItemIlvl(slotData)
                     if itemLevel > currentIlvl then
@@ -1525,7 +1944,10 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                             local targetSlots = EQUIP_LOC_TO_SLOTS[equipLoc]
                             if targetSlots then
                                 local bindType = GetBindingType(fakeItem)
-                                if bindType == "boe" or bindType == "warbound" then
+                                -- Equipped items: BoE templates are now soulbound (cannot transfer)
+                                -- and WuE templates have been "spent" by equipping (also locked).
+                                -- Only persistent warband-bound items are still transferable.
+                                if bindType == "warbound" then
                                     local itemClassID = slotData.classID
                                     local itemSubclassID = slotData.subclassID
                                     if not itemClassID or not itemSubclassID then
@@ -1542,7 +1964,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                                         if not IsWeaponCompatible(charData, sid, itemClassID, itemSubclassID, equipLoc, mainStat) then ok = false break end
                                         if not MatchGetItemStatsPrimariesToExpected(slotData.itemLink, mainStat, sid, selectedIsLoggedInPlayer) then ok = false break end
                                     end
-                                    if ok then
+                                    if ok and SelectedCharacterMeetsItemRequirements(slotData.itemLink, slotData.itemID) then
                                         AddCandidate(slotID, {
                                             itemID     = slotData.itemID,
                                             itemLink   = slotData.itemLink,
@@ -1552,11 +1974,9 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                                             sourceType = bindType,
                                             isBound    = true,
                                             equipLoc   = equipLoc,
-                                            requiredLevel = (function()
-                                                if not slotData.itemLink then return nil end
-                                                local ok2, _, _, _, _, reqLvl = pcall(C_Item.GetItemInfo, slotData.itemLink)
-                                                return (ok2 and reqLvl and type(reqLvl) == "number" and reqLvl > 0) and reqLvl or nil
-                                            end)(),
+                                            sourceClassFile = otherCharData and otherCharData.classFile or nil,
+                                            requiredLevel = GetItemMinLevelFromItemInfo(slotData.itemLink)
+                                                or GetItemMinLevelFromItemInfo(slotData.itemID),
                                         })
                                     end
                                 end
@@ -1585,18 +2005,11 @@ end
 -- CURRENCY SNAPSHOT  (Resources available for upgrading)
 -- ============================================================================
 
--- Currency IDs for item upgrades (Midnight 12.0.1 — Dawncrests only; Valorstone removed)
--- Must match IDs used in PvEUI / CurrencyCacheService. Order: Adventurer → Myth.
-local UPGRADE_CURRENCY_IDS = {
-    3383,  -- Adventurer Dawncrest (Wowhead: currency=3383)
-    3341,  -- Veteran Dawncrest    (Wowhead: currency=3341)
-    3343,  -- Champion Dawncrest
-    3345,  -- Hero Dawncrest
-    3347,  -- Myth Dawncrest
-}
+-- Currency IDs for item upgrades (Dawncrest column order — UI only; see Constants.DAWNCREST_UI)
+local UPGRADE_CURRENCY_IDS = (Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.COLUMN_IDS)
+    or { 3383, 3341, 3343, 3345, 3347 }
 
--- Fallback names for Dawncrests (when API not ready)
-local UPGRADE_CURRENCY_NAMES = {
+local UPGRADE_CURRENCY_NAMES = (Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.DISPLAY_NAMES) or {
     [3383] = "Adventurer Dawncrest",
     [3341] = "Veteran Dawncrest",
     [3343] = "Champion Dawncrest",
@@ -1609,10 +2022,12 @@ for i = 1, #UPGRADE_CURRENCY_IDS do
     UPGRADE_CURRENCY_ID_SET[UPGRADE_CURRENCY_IDS[i]] = true
 end
 
---- Match CurrencyCacheService: weekly display cap + season max from API (Dawncrest IDs + Coffer Key Shards by name).
+--- Match CurrencyCacheService: progress-style currencies from API (no hardcoded ID list).
 local function IsGearSeasonSplitCurrency(currencyID, info)
-    if UPGRADE_CURRENCY_ID_SET[currencyID] then return true end
-    if not info or not info.name then return false end
+    if not info then return false end
+    if info.isHeader then return false end
+    if info.useTotalEarnedForMaxQty == true then return true end
+    if not info.name then return false end
     local nm = info.name
     if issecretvalue and issecretvalue(nm) then return false end
     local n = string.lower(tostring(nm))

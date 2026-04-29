@@ -886,6 +886,67 @@ end
 -- ============================================================================
 
 --[[
+    Append " (N)" craft count from materials (not schematic.quantityMax) to the recipe detail title.
+    Scans SchematicForm regions after Init; deferred one frame so default text is present.
+]]
+local function ApplyCraftCountToSchematicFormTitle(schematicForm, recipeInfo)
+    if not schematicForm or not recipeInfo or not recipeInfo.recipeID then return end
+    if not C_TradeSkillUI then return end
+
+    local recipeID = recipeInfo.recipeID
+    local craftMax = WarbandNexus.GetRecipeCraftCountFromMaterials
+        and WarbandNexus:GetRecipeCraftCountFromMaterials(recipeID)
+    if craftMax == nil then return end
+
+    local baseName = recipeInfo.name
+    if (not baseName or baseName == "") and C_TradeSkillUI.GetRecipeSchematic then
+        local schOk, schematic = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
+        if schOk and schematic and schematic.name then
+            baseName = schematic.name
+        end
+    end
+    if not baseName or baseName == "" then return end
+
+    local function stripColors(s)
+        if not s then return "" end
+        return (tostring(s):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", ""))
+    end
+
+    local baseStrip = stripColors(baseName)
+    local desired = baseName .. " (" .. craftMax .. ")"
+
+    local function visit(frame, depth)
+        if not frame or depth > 12 then return false end
+        local regions = { frame:GetRegions() }
+        for i = 1, #regions do
+            local r = regions[i]
+            if r and r.GetText and r.SetText then
+                local t = r:GetText()
+                if t and t ~= "" then
+                    local ts = stripColors(t)
+                    if ts == baseStrip or ts == stripColors(desired) then
+                        r:SetText(desired)
+                        return true
+                    end
+                    local escaped = baseStrip:gsub("([%(%)%.%+%-%*%?%[%]%^%$%%])", "%%%1")
+                    if ts:match("^" .. escaped .. "%s*%(%d+)%)$") then
+                        r:SetText(desired)
+                        return true
+                    end
+                end
+            end
+        end
+        local children = { frame:GetChildren() }
+        for j = 1, #children do
+            if visit(children[j], depth + 1) then return true end
+        end
+        return false
+    end
+
+    visit(schematicForm, 0)
+end
+
+--[[
     Install a secure hook on ProfessionsFrame.CraftingPage.SchematicForm:Init().
     Deferred until TRADE_SKILL_SHOW fires (frame is load-on-demand).
     The hook fires WN_RECIPE_SELECTED with recipeInfo for the companion window.
@@ -903,6 +964,10 @@ local function InstallRecipeHook()
         if WarbandNexus and WarbandNexus.SendMessage then
             WarbandNexus:SendMessage(E.RECIPE_SELECTED, recipeInfo)
         end
+        C_Timer.After(0, function()
+            if not self or not recipeInfo or not recipeInfo.recipeID then return end
+            pcall(ApplyCraftCountToSchematicFormTitle, self, recipeInfo)
+        end)
     end)
 
     if ok then
@@ -2078,22 +2143,54 @@ function WarbandNexus:GetAllConcentrationData()
         if charData.concentration then
             local charName = charData.name or charKey
             local classFile = charData.classFile or "PRIEST"
+            -- Same concentration currency can be stored under multiple skillLineIDs (duplicate rows).
+            -- Deduplicate by currencyID per character; legacy rows without currencyID by profession name.
+            local seenCurrency = {}
+            local seenLegacyProf = {}
 
             for key, concData in pairs(charData.concentration) do
                 local profName = (type(key) == "number" and concData.professionName) or (type(key) == "string" and key) or "Profession"
-                if not result[profName] then
-                    result[profName] = {}
+                local cid = concData.currencyID
+
+                if cid and cid > 0 then
+                    if seenCurrency[cid] then
+                        -- Already listed this pool for this character
+                    else
+                        seenCurrency[cid] = true
+                        if not result[profName] then
+                            result[profName] = {}
+                        end
+                        local entry = {
+                            charKey    = charKey,
+                            charName   = charName,
+                            classFile  = classFile,
+                            current    = concData.current or 0,
+                            max        = concData.max or 0,
+                            lastUpdate = concData.lastUpdate or 0,
+                            currencyID = cid,
+                        }
+                        result[profName][#result[profName] + 1] = entry
+                    end
+                else
+                    if seenLegacyProf[profName] then
+                        -- Duplicate legacy bucket for same profession name
+                    else
+                        seenLegacyProf[profName] = true
+                        if not result[profName] then
+                            result[profName] = {}
+                        end
+                        local entry = {
+                            charKey    = charKey,
+                            charName   = charName,
+                            classFile  = classFile,
+                            current    = concData.current or 0,
+                            max        = concData.max or 0,
+                            lastUpdate = concData.lastUpdate or 0,
+                            currencyID = cid,
+                        }
+                        result[profName][#result[profName] + 1] = entry
+                    end
                 end
-                local entry = {
-                    charKey    = charKey,
-                    charName   = charName,
-                    classFile  = classFile,
-                    current    = concData.current or 0,
-                    max        = concData.max or 0,
-                    lastUpdate = concData.lastUpdate or 0,
-                    currencyID = concData.currencyID,
-                }
-                result[profName][#result[profName] + 1] = entry
             end
         end
     end
@@ -2104,6 +2201,133 @@ function WarbandNexus:GetAllConcentrationData()
     end
 
     return result
+end
+
+--[[
+    How many crafts are possible from materials (same math as Recipe Companion: warband bank +
+    all tracked characters' bags/banks). Uses limiting required reagent slots only; optional slots skipped.
+    Tries C_TradeSkillUI.GetRecipeReagentInfo when available (often matches profession list for current toon).
+]]
+function WarbandNexus:GetRecipeCraftCountFromMaterials(recipeID)
+    if not recipeID or not C_TradeSkillUI then return nil end
+
+    local function tryBlizzardReagentLines()
+        if not C_TradeSkillUI.GetRecipeNumReagents or not C_TradeSkillUI.GetRecipeReagentInfo then
+            return nil
+        end
+        local nOk, num = pcall(C_TradeSkillUI.GetRecipeNumReagents, recipeID)
+        if not nOk or not num or num < 1 then return nil end
+
+        local minCraft = math.huge
+        local any = false
+        for idx = 1, num do
+            local ok, a, b, c, d = pcall(C_TradeSkillUI.GetRecipeReagentInfo, recipeID, idx)
+            if ok then
+                local req, have
+                if type(a) == "table" then
+                    local t = a
+                    req = tonumber(t.quantityRequired or t.count)
+                    have = tonumber(t.playerQuantity or t.quantityAvailable or t.quantityInInventory)
+                else
+                    -- Typical: name, icon, quantityRequired, quantityOnHand
+                    req = tonumber(c)
+                    have = tonumber(d)
+                end
+                if req and req > 0 then
+                    any = true
+                    minCraft = math.min(minCraft, math.floor((have or 0) / req))
+                end
+            end
+        end
+        if any and minCraft ~= math.huge then
+            return math.max(0, minCraft)
+        end
+        return nil
+    end
+
+    local function sumItemAcrossTracked(itemID)
+        if not itemID or not self.GetDetailedItemCountsFast then return 0 end
+        local details = self:GetDetailedItemCountsFast(itemID)
+        if not details then return 0 end
+        local have = details.warbandBank or 0
+        local chars = details.characters
+        if chars then
+            for ci = 1, #chars do
+                local ch = chars[ci]
+                have = have + (ch.bagCount or 0) + (ch.bankCount or 0)
+            end
+        end
+        return have
+    end
+
+    local function fromSchematic(isRecraft)
+        local schOk, schematic = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, isRecraft)
+        if not schOk or not schematic or not schematic.reagentSlotSchematics then
+            return nil
+        end
+        local slots = schematic.reagentSlotSchematics
+        local minCraft = math.huge
+        local haveLimiting = false
+
+        for si = 1, #slots do
+            local slot = slots[si]
+            if slot and slot.reagents and #slot.reagents > 0 and slot.required ~= false then
+                local qtyReq = tonumber(slot.quantityRequired) or 1
+                if qtyReq < 1 then qtyReq = 1 end
+
+                local nr = #slot.reagents
+                local slotCraft
+
+                if nr > 3 then
+                    local best = 0
+                    for ri = 1, nr do
+                        local reagent = slot.reagents[ri]
+                        if reagent and reagent.itemID then
+                            local have = sumItemAcrossTracked(reagent.itemID)
+                            best = math.max(best, math.floor(have / qtyReq))
+                        end
+                    end
+                    slotCraft = best
+                elseif nr >= 2 then
+                    local best = 0
+                    for ri = 1, nr do
+                        local reagent = slot.reagents[ri]
+                        if reagent and reagent.itemID then
+                            local have = sumItemAcrossTracked(reagent.itemID)
+                            best = math.max(best, math.floor(have / qtyReq))
+                        end
+                    end
+                    slotCraft = best
+                else
+                    local reagent = slot.reagents[1]
+                    if reagent and reagent.itemID then
+                        local have = sumItemAcrossTracked(reagent.itemID)
+                        slotCraft = math.floor(have / qtyReq)
+                    else
+                        slotCraft = 0
+                    end
+                end
+
+                if slotCraft ~= nil then
+                    haveLimiting = true
+                    minCraft = math.min(minCraft, slotCraft)
+                end
+            end
+        end
+
+        if not haveLimiting then return nil end
+        if minCraft == math.huge then return 0 end
+        return math.max(0, math.floor(minCraft))
+    end
+
+    local apiCount = tryBlizzardReagentLines()
+    if apiCount ~= nil then
+        return apiCount
+    end
+
+    local n = fromSchematic(false)
+    if n ~= nil then return n end
+    return fromSchematic(true)
 end
 
 --[[

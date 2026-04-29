@@ -31,28 +31,72 @@ local MigrationService = {}
 ns.MigrationService = MigrationService
 
 --[[
-    Check for addon version updates and invalidate caches if needed
-    This ensures users get clean data after addon updates
+    Single-roof version check.
+
+    Three independent version axes are tracked under db.global.versions:
+      - addon: bumps on every release. NEVER triggers cache invalidation by itself.
+      - game:  Blizzard build (select(4, GetBuildInfo())). When this changes the
+               WoW API surface may have shifted — invalidate API-bound caches.
+      - cache.<name>: per-cache schema versions from Constants.VERSIONS.CACHE.
+               Bump these manually when a cache's stored shape becomes
+               incompatible. Each is checked independently; only the cache
+               whose version moved is invalidated.
+
+    Invalidation is non-destructive (resets cache.version field, keeps data) and
+    always backs up the prior table to db.global.cacheBackups[name] first, so a
+    misfire can be reverted via /wn ... or InvalidateCache/RestoreCacheBackup.
 ]]
-function MigrationService:CheckAddonVersion(db, addon)
-    -- Get current addon version from Constants
-    local ADDON_VERSION = ns.Constants and ns.Constants.ADDON_VERSION or "1.1.0"
-    
-    -- Get saved version from DB
-    local savedVersion = db.global.addonVersion or "0.0.0"
-    
-    -- Check if version changed
-    if savedVersion ~= ADDON_VERSION then
-        DebugPrint("|cff9370DB[WN Migration]|r [Migration Event] VERSION_UPDATE triggered (" .. savedVersion .. " → " .. ADDON_VERSION .. ")")
-        
-        -- Force refresh all caches (delegate to DatabaseOptimizer)
-        if addon.ForceRefreshAllCaches then
-            addon:ForceRefreshAllCaches()
-        end
-        
-        -- Update saved version
-        db.global.addonVersion = ADDON_VERSION
+function MigrationService:CheckVersions(db, addon)
+    local Constants = ns.Constants or {}
+    local currentAddon  = Constants.ADDON_VERSION or "0.0.0"
+    local currentGame   = (select(4, GetBuildInfo()))
+    local currentCacheV = (Constants.VERSIONS and Constants.VERSIONS.CACHE) or {}
+
+    db.global.versions = db.global.versions or {}
+    local v = db.global.versions
+    v.cache = v.cache or {}
+
+    -- Migrate legacy single-key db.global.addonVersion into the unified registry
+    -- so existing users do not get a phantom "version changed" on first run.
+    if db.global.addonVersion and not v.addon then
+        v.addon = db.global.addonVersion
     end
+    db.global.addonVersion = nil
+
+    -- 1. Addon version: track only, never invalidate caches.
+    if v.addon ~= currentAddon then
+        DebugPrint("|cff9370DB[WN Migration]|r addon " .. tostring(v.addon) .. " → " .. tostring(currentAddon) .. " (no cache action)")
+        v.addon = currentAddon
+    end
+
+    -- 2. Game build: invalidate API-bound caches (reputation, collection) whose
+    --    server-side data shape may have changed after a patch.
+    if currentGame and v.game ~= currentGame then
+        DebugPrint("|cff9370DB[WN Migration]|r game build " .. tostring(v.game) .. " → " .. tostring(currentGame) .. " (invalidating API caches)")
+        if addon.InvalidateCache then
+            addon:InvalidateCache("reputation", "game_build")
+            addon:InvalidateCache("collection", "game_build")
+        end
+        v.game = currentGame
+    end
+
+    -- 3. Per-cache schema bump: invalidate only the cache whose schema integer
+    --    in Constants.VERSIONS.CACHE was raised in this release.
+    for name, version in pairs(currentCacheV) do
+        if v.cache[name] ~= version then
+            local prev = v.cache[name]
+            DebugPrint("|cff9370DB[WN Migration]|r cache schema '" .. name .. "' " .. tostring(prev) .. " → " .. tostring(version) .. " (invalidating)")
+            if prev ~= nil and addon.InvalidateCache then
+                addon:InvalidateCache(name, "schema_bump")
+            end
+            v.cache[name] = version
+        end
+    end
+end
+
+-- Backwards-compat alias: old callers still invoke CheckAddonVersion.
+function MigrationService:CheckAddonVersion(db, addon)
+    return self:CheckVersions(db, addon)
 end
 
 -- Schema version: Increment on breaking DB changes to trigger full reset.

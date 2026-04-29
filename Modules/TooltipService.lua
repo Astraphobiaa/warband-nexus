@@ -117,7 +117,12 @@ function TooltipService:Show(anchorFrame, data)
     
     -- Clear previous content
     frame:Clear()
-    
+    -- Optional wide tooltips (e.g. PvE vault summary); clamp to sane bounds for small resolutions
+    if data.maxWidth and tonumber(data.maxWidth) then
+        local mw = tonumber(data.maxWidth)
+        frame.fixedWidth = math.max(260, math.min(mw, 820))
+    end
+
     -- Render based on type
     if data.type == "custom" then
         self:RenderCustomTooltip(frame, data)
@@ -238,11 +243,44 @@ local function StripTooltipTextForStatMatch(text)
     return (s:gsub("|r", ""))
 end
 
--- Blizzard GetSpecializationInfo primaryStat: 1=Str, 2=Agi, 4=Int — map specID -> kind for Gear tooltips.
--- Extend when new SpecializationIDs ship.
+---@param leftText string|nil
+---@param rightText string|nil
+---@return boolean
+local function IsItemTooltipClassRestrictionLine(leftText, rightText)
+    if leftText and issecretvalue and issecretvalue(leftText) then return false end
+    if rightText and issecretvalue and issecretvalue(rightText) then return false end
+    local combined = tostring(leftText or "")
+    if rightText and tostring(rightText) ~= "" then
+        combined = combined .. " " .. tostring(rightText)
+    end
+    local plain = StripTooltipTextForStatMatch(combined)
+    plain = plain:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+    if plain == "" then return false end
+    plain = plain:lower()
+    if plain:find("^classes%s*:") or plain:find("^classi%s*:") or plain:find("^clases?%s*:") or plain:find("^classe?%s*:") or plain:find("^klassen?%s*:") then
+        return true
+    end
+    return false
+end
+
+---@param line table|nil
+---@return boolean
+local function IsVisuallyEmptyTooltipDataLine(line)
+    if not line then return true end
+    local l, r = line.leftText, line.rightText
+    if l and issecretvalue and issecretvalue(l) then return false end
+    if r and issecretvalue and issecretvalue(r) then return false end
+    l = l and tostring(l):gsub("%s", "") or ""
+    r = r and tostring(r):gsub("%s", "") or ""
+    return l == "" and r == ""
+end
+
+-- Blizzard primaryStat: 1=Str, 2=Agi, 4=Int. Used for which Str/Agi/Int line is "yours" on item tooltips.
+-- Midnight: DH 1480 Devourer = Intellect; Havoc/Vengeance = Agility (see SpecializationID table on wiki).
+-- For unknown spec IDs, ResolvePrimaryStatKindForSpec falls back to scanning GetSpecializationInfoForClassID.
 local SPEC_ID_PRIMARY_KIND = {
     [250] = "strength", [251] = "strength", [252] = "strength", [1455] = "strength",
-    [577] = "agility", [581] = "agility", [1480] = "agility", [1456] = "agility",
+    [577] = "agility", [581] = "agility", [1480] = "intellect", [1456] = "agility",
     [102] = "intellect", [103] = "agility", [104] = "agility", [105] = "intellect", [1447] = "intellect",
     [1467] = "intellect", [1468] = "intellect", [1473] = "intellect", [1465] = "intellect",
     [253] = "agility", [254] = "agility", [255] = "agility", [1448] = "agility",
@@ -255,6 +293,112 @@ local SPEC_ID_PRIMARY_KIND = {
     [265] = "intellect", [266] = "intellect", [267] = "intellect", [1454] = "intellect",
     [71] = "strength", [72] = "strength", [73] = "strength", [1446] = "strength",
 }
+
+---@param n number|nil
+---@return string|nil
+local function PrimaryStatCodeToKind(n)
+    n = tonumber(n)
+    if not n then return nil end
+    if n == 1 then return "strength" end
+    if n == 2 then return "agility" end
+    if n == 4 then return "intellect" end
+    if LE_UNIT_STAT_STRENGTH and n == LE_UNIT_STAT_STRENGTH then return "strength" end
+    if LE_UNIT_STAT_AGILITY and n == LE_UNIT_STAT_AGILITY then return "agility" end
+    if LE_UNIT_STAT_INTELLECT and n == LE_UNIT_STAT_INTELLECT then return "intellect" end
+    return nil
+end
+
+-- One cache: many tooltip lines share the same specID; avoid re-scanning class rows every line.
+local _primaryKindBySpec = {}
+local _primaryKindLookupFailed = {}
+
+--- Primary stat line kind for tooltip coloring: Str/Agi/Int that matches the character's spec.
+--- Order: (1) C_SpecializationInfo for that spec+class (covers all client-defined specs, future patches),
+--- (2) static SPEC_ID_PRIMARY_KIND, (3) C_SpecializationInfo.GetSpecPrimaryStat if present, (4) return scan.
+---@param specID number
+---@return string|nil
+local function ResolvePrimaryStatKindForSpec(specID)
+    if not specID or specID < 1 then return nil end
+    if _primaryKindBySpec[specID] then return _primaryKindBySpec[specID] end
+    if _primaryKindLookupFailed[specID] then return nil end
+
+    local sex = 2
+    if UnitSex and _G.UnitExists and UnitExists("player") then
+        local u = UnitSex("player")
+        if u == 2 or u == 3 then sex = u end
+    end
+
+    if C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo
+        and GetNumSpecializationsForClassID and GetSpecializationInfoForClassID then
+        local f = C_SpecializationInfo.GetSpecializationInfo
+        for classID = 1, 20 do
+            local nSpec = GetNumSpecializationsForClassID(classID)
+            if nSpec and nSpec > 0 then
+                for specIndex = 1, nSpec do
+                    if select(1, GetSpecializationInfoForClassID(classID, specIndex)) == specID then
+                        -- pcall: ok, r1..rN from GetSpecializationInfo. Returns specId, name, desc, icon, role, primaryStat, ...
+                        local pack = { pcall(f, specIndex, false, false, nil, sex, nil, classID) }
+                        if not pack[1] then
+                            pack = { pcall(f, C_SpecializationInfo, specIndex, false, false, nil, sex, nil, classID) }
+                        end
+                        if pack[1] and pack[2] == specID and pack[7] then
+                            local k = PrimaryStatCodeToKind(pack[7])
+                            if k then
+                                _primaryKindBySpec[specID] = k
+                                return k
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    do
+        local t = SPEC_ID_PRIMARY_KIND[specID]
+        if t then
+            _primaryKindBySpec[specID] = t
+            return t
+        end
+    end
+
+    if C_SpecializationInfo and C_SpecializationInfo.GetSpecPrimaryStat then
+        local ok, code = pcall(C_SpecializationInfo.GetSpecPrimaryStat, C_SpecializationInfo, specID)
+        if not ok or not code then
+            ok, code = pcall(C_SpecializationInfo.GetSpecPrimaryStat, specID)
+        end
+        if ok and code then
+            local k = PrimaryStatCodeToKind(code)
+            if k then
+                _primaryKindBySpec[specID] = k
+                return k
+            end
+        end
+    end
+
+    if GetNumSpecializationsForClassID and GetSpecializationInfoForClassID then
+        for classID = 1, 20 do
+            local nSpec = GetNumSpecializationsForClassID(classID)
+            if nSpec and nSpec > 0 then
+                for idx = 1, nSpec do
+                    local r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12 = GetSpecializationInfoForClassID(classID, idx)
+                    if r1 == specID then
+                        for _, v in ipairs({ r6, r7, r8, r9, r10, r11, r12, r5, r4, r3, r2 }) do
+                            local k = PrimaryStatCodeToKind(v)
+                            if k then
+                                _primaryKindBySpec[specID] = k
+                                return k
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    _primaryKindLookupFailed[specID] = true
+    return nil
+end
 
 ---@param leftText string|nil
 ---@param rightText string|nil
@@ -298,7 +442,7 @@ local function ApplyGearTabPrimaryStatLineHighlight(line, ctx)
     if not line or not ctx then return end
     local specID = tonumber(ctx.specID)
     if not specID or specID < 1 then return end
-    local want = SPEC_ID_PRIMARY_KIND[specID]
+    local want = ResolvePrimaryStatKindForSpec(specID)
     if not want then return end
 
     local plain = GetCombinedPlainLeftRight(line.leftText, line.rightText)
@@ -366,6 +510,16 @@ function TooltipService:RenderCustomTooltip(frame, data)
                     line.left, line.right,
                     leftColor[1], leftColor[2], leftColor[3],
                     rightColor[1], rightColor[2], rightColor[3]
+                )
+            elseif line.type == "vault_grid_row" then
+                frame:AddVaultGridRow(
+                    line.name,
+                    line.realm,
+                    line.colRaid,
+                    line.colMplus,
+                    line.colWorld,
+                    line.widths,
+                    { isHeader = line.isHeader == true }
                 )
             elseif line.left then
                 local leftColor = line.leftColor or {1, 1, 1}
@@ -444,6 +598,9 @@ function TooltipService:RenderItemTooltip(frame, data)
         if TooltipUtil and TooltipUtil.SurfaceArgs then
             pcall(TooltipUtil.SurfaceArgs, tooltipData)
         end
+        while #tooltipData.lines > 1 and IsVisuallyEmptyTooltipDataLine(tooltipData.lines[#tooltipData.lines]) do
+            table.remove(tooltipData.lines)
+        end
         
         -- First line = item name (title)
         local firstLine = tooltipData.lines[1]
@@ -463,42 +620,59 @@ function TooltipService:RenderItemTooltip(frame, data)
         
         frame:SetTitle(titleText, titleR, titleG, titleB)
         
+        if data.underTitleLines then
+            for _, u in ipairs(data.underTitleLines) do
+                if u and u.text then
+                    local c = u.color or { 0.8, 0.5, 0.2 }
+                    if frame.AddTitleAffix then
+                        frame:AddTitleAffix(u.text, c[1], c[2], c[3], u.wrap or false)
+                    else
+                        frame:AddLine(u.text, c[1], c[2], c[3], u.wrap or false)
+                    end
+                end
+            end
+        end
+
         -- All remaining lines = item data (binding, type, ilvl, stats, effects, etc.)
         for i = 2, #tooltipData.lines do
             local line = tooltipData.lines[i]
-            if data.itemTooltipContext then
-                ApplyGearTabPrimaryStatLineHighlight(line, data.itemTooltipContext)
-            end
             local leftText = line.leftText
             local rightText = line.rightText
-            
-            -- Skip completely empty lines (add spacer)
-            if (not leftText or leftText == "") and (not rightText or rightText == "") then
-                frame:AddSpacer(4)
-            elseif rightText and rightText ~= "" then
-                -- Double line (left + right)
-                local lr, lg, lb = 1, 1, 1
-                local rr, rg, rb = 1, 1, 1
-                if line.leftColor then
-                    lr = line.leftColor.r or 1
-                    lg = line.leftColor.g or 1
-                    lb = line.leftColor.b or 1
+            local skipClass = data.itemTooltipContext and IsItemTooltipClassRestrictionLine(leftText, rightText)
+            if not skipClass then
+                if data.itemTooltipContext then
+                    ApplyGearTabPrimaryStatLineHighlight(line, data.itemTooltipContext)
                 end
-                if line.rightColor then
-                    rr = line.rightColor.r or 1
-                    rg = line.rightColor.g or 1
-                    rb = line.rightColor.b or 1
+                leftText = line.leftText
+                rightText = line.rightText
+                -- Skip completely empty lines (add spacer)
+                if (not leftText or leftText == "") and (not rightText or rightText == "") then
+                    frame:AddSpacer(4)
+                elseif rightText and rightText ~= "" then
+                    -- Double line (left + right)
+                    local lr, lg, lb = 1, 1, 1
+                    local rr, rg, rb = 1, 1, 1
+                    if line.leftColor then
+                        lr = line.leftColor.r or 1
+                        lg = line.leftColor.g or 1
+                        lb = line.leftColor.b or 1
+                    end
+                    if line.rightColor then
+                        rr = line.rightColor.r or 1
+                        rg = line.rightColor.g or 1
+                        rb = line.rightColor.b or 1
+                    end
+                    frame:AddDoubleLine(leftText or "", rightText, lr, lg, lb, rr, rg, rb)
+                else
+                    -- Single line
+                    local lr, lg, lb = 1, 1, 1
+                    if line.leftColor then
+                        lr = line.leftColor.r or 1
+                        lg = line.leftColor.g or 1
+                        lb = line.leftColor.b or 1
+                    end
+                    frame:AddLine(leftText, lr, lg, lb, line.wrapText or false)
                 end
-                frame:AddDoubleLine(leftText or "", rightText, lr, lg, lb, rr, rg, rb)
-            else
-                -- Single line
-                local lr, lg, lb = 1, 1, 1
-                if line.leftColor then
-                    lr = line.leftColor.r or 1
-                    lg = line.leftColor.g or 1
-                    lb = line.leftColor.b or 1
-                end
-                frame:AddLine(leftText, lr, lg, lb, line.wrapText or false)
             end
         end
     else
@@ -510,16 +684,31 @@ function TooltipService:RenderItemTooltip(frame, data)
                 if qColor then r, g, b = qColor.r, qColor.g, qColor.b end
             end
             frame:SetTitle(itemName, r, g, b)
-            frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading details...", 0.7, 0.7, 0.7)
         else
             frame:SetTitle(string.format((ns.L and ns.L["ITEM_NUMBER_FORMAT"]) or "Item #%s", itemID or "?"), 1, 1, 1)
+        end
+        if data.underTitleLines then
+            for _, u in ipairs(data.underTitleLines) do
+                if u and u.text then
+                    local c = u.color or { 0.8, 0.5, 0.2 }
+                    if frame.AddTitleAffix then
+                        frame:AddTitleAffix(u.text, c[1], c[2], c[3], u.wrap or false)
+                    else
+                        frame:AddLine(u.text, c[1], c[2], c[3], u.wrap or false)
+                    end
+                end
+            end
+        end
+        if itemName then
+            frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading details...", 0.7, 0.7, 0.7)
+        else
             frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", 0.7, 0.7, 0.7)
         end
     end
     
     -- Additional custom lines (Item ID, stack count, location, instructions, etc.)
     if data.additionalLines then
-        frame:AddSpacer(8)
+        frame:AddSpacer(4)
         for _, line in ipairs(data.additionalLines) do
             if line.type == "spacer" then
                 frame:AddSpacer(line.height or 8)

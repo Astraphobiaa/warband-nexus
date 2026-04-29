@@ -78,7 +78,7 @@ function WarbandNexus:ShowInfoDialog()
     logo:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
     
     -- Title (centered) (WHITE - never changes with theme)
-    local title = FontManager:CreateFontString(header, "header", "OVERLAY")
+    local title = FontManager:CreateFontString(header, FontManager:GetFontRole("tabTitlePrimary"), "OVERLAY")
     title:SetPoint("CENTER", header, "CENTER", 0, 0)
     title:SetText((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")
     title:SetTextColor(1, 1, 1)  -- Always white

@@ -26,6 +26,7 @@ local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateIcon = ns.UI_CreateIcon
+local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(math.floor(tonumber(n) or 0)) end
 local function GetFactory()
     return ns.UI and ns.UI.Factory
 end
@@ -39,25 +40,34 @@ local SCROLLBAR_GAP = 22
 local HEADER_HEIGHT = 32
 local WINDOW_WIDTH = 350
 local ICON_SIZE = 20
-local ROW_HEIGHT = 20
-local SECTION_SPACING = 4
+local ROW_HEIGHT = 22
+local SECTION_SPACING = 6
 local REAGENT_HEADER_HEIGHT = 22
 local MIN_FRAME_HEIGHT = 120
 local MAX_FRAME_HEIGHT = 600
 local DEFAULT_WIDTH = 350
 local DEFAULT_HEIGHT = 420
 
--- Quality tier atlas icons
-local QUALITY_ATLAS = {
+-- Midnight / Artisan Nexus parity: two rank glyphs (1 and 2), not legacy multi-diamond tiers.
+local QUALITY_ATLAS_RANK1 = {
+    "Professions-ChatIcon-Quality-12-Tier1",
+    "Professions-Icon-Quality-Tier1",
     "Professions-ChatIcon-Quality-Tier1",
-    "Professions-ChatIcon-Quality-Tier2",
-    "Professions-ChatIcon-Quality-Tier3",
+    "Professions-Crafting-Quality-Icon-Tier1",
 }
+local QUALITY_ATLAS_RANK2 = {
+    "Professions-ChatIcon-Quality-12-Tier2",
+    "Professions-Icon-Quality-Tier2",
+    "Professions-ChatIcon-Quality-Tier2",
+    "Professions-Crafting-Quality-Icon-Tier2",
+}
+local TIER_ATLAS_LISTS = { QUALITY_ATLAS_RANK1, QUALITY_ATLAS_RANK2 }
 
 -- ── State ──
 local companionFrame = nil
 local toggleTrackerBtn = nil       -- Button on ProfessionsFrame to toggle Recipe Companion
 local currentRecipeID = nil
+local currentRecipeName = nil
 local currentReagentData = nil     -- Cached reagent data for current recipe
 local pendingRefresh = false
 local bagUpdateRegistered = false
@@ -121,6 +131,8 @@ end
 ]]
 -- Inline icon sizes for quality tier markup in font strings (pixels)
 local ICON_INLINE = 16
+-- Recipe Companion rank column textures: fixed square size so R1/R2 atlases match visually
+local QUALITY_RANK_ICON_SIZE = 18
 
 -- Storage type icon sizes (real Texture frames — independent of font size)
 local STORAGE_ICON = 16
@@ -133,8 +145,45 @@ local CHECK_ICON = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t"
 -- ── Row index counter (reset per render pass) ──
 local rowCounter = 0
 
+local function AtlasExists(name)
+    if not name then return false end
+    if C_Texture and C_Texture.GetAtlasInfo then
+        return C_Texture.GetAtlasInfo(name) ~= nil
+    end
+    return true
+end
+
+--- Map recipe tier column index to one of two Midnight rank atlases (tier 3+ uses rank 2 art).
+local function RankForTierColumn(tierIdx)
+    local t = tonumber(tierIdx) or 1
+    if t < 1 then t = 1 end
+    if t > 2 then t = 2 end
+    return t
+end
+
+local function ApplyRankAtlasToTexture(tex, rank)
+    if not tex or not tex.SetAtlas then return false end
+    local r = RankForTierColumn(rank)
+    local list = TIER_ATLAS_LISTS[r] or TIER_ATLAS_LISTS[1]
+    for i = 1, #list do
+        local atlas = list[i]
+        if AtlasExists(atlas) then
+            local ok = pcall(function()
+                tex:SetAtlas(atlas, false)
+                tex:SetTexCoord(0, 1, 0, 1)
+                tex:SetSize(QUALITY_RANK_ICON_SIZE, QUALITY_RANK_ICON_SIZE)
+                tex:Show()
+            end)
+            if ok then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function QualityTag(tierIdx)
-    local atlas = QUALITY_ATLAS[tierIdx]
+    local atlas = (TIER_ATLAS_LISTS[RankForTierColumn(tierIdx)] or TIER_ATLAS_LISTS[1])[1]
     if not atlas then return "" end
     if CreateAtlasMarkup then
         return CreateAtlasMarkup(atlas, ICON_INLINE, ICON_INLINE)
@@ -321,8 +370,9 @@ local function CreateSeparator(parent, yOffset, width)
     return yOffset + 1 + SECTION_SPACING
 end
 
--- Fixed column width for each quality tier (icon + number + gap)
-local TIER_COL_WIDTH = 38
+-- Per-tier column: icon + gap + "(99.999)"-style formatted count (left-anchored, grows right)
+local TIER_COL_WIDTH = 96
+local TIER_ICON_TO_TEXT_GAP = 2
 
 --[[
     Render quality tier counts as fixed-position columns on a row frame.
@@ -345,20 +395,26 @@ local function RenderQualityColumns(parent, counts, numTiers)
         col:SetPoint("RIGHT", parent, "RIGHT", colOffset, 0)
         col:Show()
 
-        -- Icon at fixed LEFT position within column (always aligned)
+        -- Icon: same 1 / 2 rank atlases as Artisan Nexus (ProfessionQualityAtlas)
         local icon = col:CreateTexture(nil, "ARTWORK")
-        icon:SetAtlas(QUALITY_ATLAS[ti])
-        icon:SetSize(ICON_INLINE, ICON_INLINE)
-        icon:SetPoint("LEFT", 2, 0)
+        ApplyRankAtlasToTexture(icon, ti)
+        icon:SetPoint("LEFT", col, "LEFT", 0, 0)
 
-        -- Count text immediately after icon (tight gap)
+        -- Count: parentheses + formatted number; tight to icon, grows right within column max width
         local countText = FontManager:CreateFontString(col, "body", "OVERLAY")
-        countText:SetPoint("LEFT", icon, "RIGHT", 2, 0)
+        countText:SetPoint("LEFT", icon, "RIGHT", TIER_ICON_TO_TEXT_GAP, 0)
+        countText:SetJustifyH("LEFT")
+        local maxW = TIER_COL_WIDTH - QUALITY_RANK_ICON_SIZE - TIER_ICON_TO_TEXT_GAP - 2
+        if countText.SetMaxWidth then
+            countText:SetMaxWidth(maxW)
+        else
+            countText:SetWidth(maxW)
+        end
 
         if count > 0 then
-            countText:SetText("|cffffffff" .. count .. "|r")
+            countText:SetText("|cffffffff(" .. FormatNumber(count) .. ")|r")
         else
-            countText:SetText("|cffffffff-|r")
+            countText:SetText("|cffffffff(-)|r")
         end
     end
 end
@@ -389,7 +445,8 @@ local function RenderContent(scrollChild)
     if not currentReagentData or #currentReagentData == 0 then
         local noData = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
         noData:SetPoint("TOPLEFT", PADDING, -PADDING)
-        noData:SetText("|cffffffff" .. ((ns.L and ns.L["SELECT_RECIPE"]) or "Select a recipe") .. "|r")
+        local emptyMsg = (ns.L and ns.L["RECIPE_COMPANION_EMPTY"]) or (ns.L and ns.L["SELECT_RECIPE"]) or "Select a recipe"
+        noData:SetText("|cffffffff" .. emptyMsg .. "|r")
         noData:Show()
         scrollChild:SetHeight(40)
         return
@@ -445,10 +502,6 @@ local function RenderContent(scrollChild)
                         nameOffset = PADDING + 16
                     end
 
-                    local nameText = FontManager:CreateFontString(crafterRow, "body", "OVERLAY")
-                    nameText:SetPoint("LEFT", nameOffset, 0)
-                    nameText:SetText(classColor .. crafter.charName .. "|r")
-
                     local concText = FontManager:CreateFontString(crafterRow, "body", "OVERLAY")
                     concText:SetPoint("RIGHT", crafterRow, "RIGHT", -PADDING, 0)
                     concText:SetJustifyH("RIGHT")
@@ -464,9 +517,9 @@ local function RenderContent(scrollChild)
                         else
                             concColor = "|cffffffff"
                         end
-                        concText:SetText(concColor .. estConc .. "/" .. maxConc .. "|r")
+                        concText:SetText(concColor .. "(" .. estConc .. "/" .. maxConc .. ")|r")
                     else
-                        concText:SetText("|cffffffff-|r")
+                        concText:SetText("|cffffffff(-)|r")
                     end
 
                     local skillText = FontManager:CreateFontString(crafterRow, "body", "OVERLAY")
@@ -474,7 +527,22 @@ local function RenderContent(scrollChild)
                     skillText:SetJustifyH("RIGHT")
 
                     local skillColor = crafter.skillLevel >= crafter.maxSkillLevel and "|cff44ff44" or "|cffffcc00"
-                    skillText:SetText(skillColor .. crafter.skillLevel .. "/" .. crafter.maxSkillLevel .. "|r")
+                    skillText:SetText(skillColor .. "(" .. crafter.skillLevel .. "/" .. crafter.maxSkillLevel .. ")|r")
+
+                    -- Name: LEFT only + max width — do not anchor RIGHT to skillText (creates an anchor
+                    -- cycle with skillText→concText and can overflow the Lua stack in layout).
+                    local nameText = FontManager:CreateFontString(crafterRow, "body", "OVERLAY")
+                    nameText:SetPoint("LEFT", nameOffset, 0)
+                    nameText:SetJustifyH("LEFT")
+                    nameText:SetWordWrap(false)
+                    local nameMaxW = math.max(50, (contentWidth or 300) - nameOffset - PADDING - 140)
+                    -- SetMaxWidth is not available on all FontString builds; SetWidth constrains the line.
+                    if nameText.SetMaxWidth then
+                        nameText:SetMaxWidth(nameMaxW)
+                    elseif nameText.SetWidth then
+                        nameText:SetWidth(nameMaxW)
+                    end
+                    nameText:SetText(classColor .. crafter.charName .. "|r")
                 end
             end
 
@@ -592,6 +660,8 @@ local function RenderContent(scrollChild)
                     end
                 end
 
+                yOffset = yOffset + 4
+
                 -- ── Total row ──
                 rowCounter = rowCounter + 1
                 local totalRow
@@ -659,6 +729,20 @@ end
 -- ============================================================================
 
 --[[
+    Header: recipe name + crafts possible from materials (GetRecipeCraftCountFromMaterials — not quantityMax).
+]]
+local function FormatCompanionTitle(recipeID, recipeName)
+    local name = recipeName or "Recipe"
+    if recipeID and WarbandNexus and WarbandNexus.GetRecipeCraftCountFromMaterials then
+        local n = WarbandNexus:GetRecipeCraftCountFromMaterials(recipeID)
+        if n ~= nil and n >= 0 then
+            return "|cffffffff" .. name .. " (" .. n .. ")|r"
+        end
+    end
+    return "|cffffffff" .. name .. "|r"
+end
+
+--[[
     Refresh companion window content (debounced).
 ]]
 local function RefreshCompanion()
@@ -672,6 +756,9 @@ local function RefreshCompanion()
             if ok then
                 currentReagentData = data
             end
+        end
+        if companionFrame.titleText and currentRecipeID and currentRecipeName then
+            companionFrame.titleText:SetText(FormatCompanionTitle(currentRecipeID, currentRecipeName))
         end
         if companionFrame.contentScrollChild then
             RenderContent(companionFrame.contentScrollChild)
@@ -693,13 +780,12 @@ local function OnRecipeSelected(recipeInfo)
     if WarbandNexus.db and WarbandNexus.db.profile.recipeCompanionEnabled == false then return end
 
     currentRecipeID = recipeInfo.recipeID
+    currentRecipeName = recipeInfo.name or "Recipe"
     collapsedSlots = {} -- Reset collapse state for new recipe
     craftersSectionCollapsed = false
 
-    -- Update title
     if companionFrame and companionFrame.titleText then
-        local recipeName = recipeInfo.name or "Recipe"
-        companionFrame.titleText:SetText("|cffffffff" .. recipeName .. "|r")
+        companionFrame.titleText:SetText(FormatCompanionTitle(recipeInfo.recipeID, currentRecipeName))
     end
 
     RefreshCompanion()
@@ -962,12 +1048,13 @@ local function CreateCompanionWindow()
         end)
     end
 
-    -- ── OnShow: update scrollChild width ──
+    -- ── OnShow: sync scroll width + render (empty hint or recipe data) so first open is not a blank panel ──
     frame:SetScript("OnShow", function(self)
         local sw = scrollFrame:GetWidth()
         if sw and sw > 0 then
             scrollChild:SetWidth(sw)
         end
+        RefreshCompanion()
     end)
 
     frame:SetScript("OnHide", function()

@@ -526,17 +526,11 @@ local CC_WHITE    = "|cffffffff"
 local CC_MUTED    = "|cff888888"
 local EM_DASH_CUR = "\226\128\148"
 
--- Midnight / Wowhead id; name fallback for dynamic IDs per locale.
-local COFFER_KEY_SHARD_CURRENCY_IDS = { [3310] = true }
-
---- Coffer Key Shards: weekly earn cap (Blizzard "Weekly Maximum"), not season totals.
----@param currencyID number|nil
+--- Coffer Key Shards: localized name match (currency ID changes between patches).
+---@param currencyID number|nil unused (kept for call-site compatibility)
 ---@param name string|nil
 ---@return boolean
 function Utilities:IsCofferKeyShardCurrency(currencyID, name)
-    if currencyID and COFFER_KEY_SHARD_CURRENCY_IDS[currencyID] then
-        return true
-    end
     if not name or name == "" then
         return false
     end

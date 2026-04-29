@@ -69,9 +69,9 @@ local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
 local ROW_SPACING = GetLayout().ROW_SPACING or 26
-local HEADER_HEIGHT = GetLayout().HEADER_HEIGHT or 32
-local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
-local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 40
+local SECTION_COLLAPSE_HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
+local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
+local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
 local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
@@ -731,7 +731,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         )
                         blizHeader:SetPoint("TOPLEFT", headerIndent, -yOffset)
                         blizHeader:SetWidth(width - headerIndent)
-                        yOffset = yOffset + HEADER_HEIGHT
+                        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT
                         
                         if headerExpanded then
                             -- Render direct currency rows (build flat list for virtual scroll)
@@ -838,7 +838,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         )
                         blizHeader:SetPoint("TOPLEFT", headerIndent, -yOffset)
                         blizHeader:SetWidth(width - headerIndent)
-                        yOffset = yOffset + HEADER_HEIGHT
+                        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT
                         
                         if headerExpanded then
                             -- Render rows with "Best: CharName" suffix (build flat list for virtual scroll)
@@ -1050,41 +1050,22 @@ function WarbandNexus:DrawCurrencyTab(parent)
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
 
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for Show Empty =====
     local headerParent = fixedHeader or parent
     local showZero = self.db.profile.currencyShowZero
     if showZero == nil then showZero = true end
     
-    local CreateCard = ns.UI_CreateCard
-    local titleCard = CreateCard(headerParent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    
-    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-    local GetTabIcon = ns.UI_GetTabIcon
-    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("currency"))
-    
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    
-    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["CURRENCY_TITLE"]) or "Currency Tracker") .. "|r"
-    local subtitleTextContent = (ns.L and ns.L["CURRENCY_SUBTITLE"]) or "Track all currencies across your characters"
-    
-    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
-    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
-    titleText:SetText(titleTextContent)
-    titleText:SetJustifyH("LEFT")
-    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
-    subtitleText:SetText(subtitleTextContent)
-    subtitleText:SetTextColor(1, 1, 1)
-    subtitleText:SetJustifyH("LEFT")
-    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)
-    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)
-    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+    local titleCard, _, _, _, _ = ns.UI_CreateStandardTabTitleCard(headerParent, {
+        tabKey = "currency",
+        titleText = "|cff" .. hexColor .. ((ns.L and ns.L["CURRENCY_TITLE"]) or "Currency Tracker") .. "|r",
+        subtitleText = (ns.L and ns.L["CURRENCY_SUBTITLE"]) or "Track all currencies across your characters",
+        textRightInset = 118,
+    })
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     local showZeroBtn = CreateThemedButton(titleCard, showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"), 100)
     showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)

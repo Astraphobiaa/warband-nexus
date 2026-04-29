@@ -86,7 +86,7 @@ local COLORS = ns.UI_COLORS
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local ROW_HEIGHT = GetLayout().rowHeight or 26
 local ROW_SPACING = GetLayout().rowSpacing or 28
-local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
+local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 local BASE_INDENT = GetLayout().BASE_INDENT or 15
 local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
@@ -160,45 +160,16 @@ function WarbandNexus:DrawStatistics(parent)
         return headerYOffset + (height or 120)
     end
 
-    -- ===== HEADER CARD (in fixedHeader - non-scrolling) =====
-    local titleCard = CreateCard(headerParent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    
-    -- Header icon with ring border (standardized)
-    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-    local GetTabIcon = ns.UI_GetTabIcon
-    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("statistics"))
-    
-    -- Use factory pattern positioning for standardized header layout
+    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["ACCOUNT_STATISTICS"]) or "Account Statistics") .. "|r"
-    local subtitleTextContent = (ns.L and ns.L["STATISTICS_SUBTITLE"]) or "Collection progress, gold, and storage overview"
-    
-    -- Create container for text group (using Factory pattern)
-    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
-    
-    -- Create title text (header font, colored)
-    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
-    titleText:SetText(titleTextContent)
-    titleText:SetJustifyH("LEFT")
-    
-    -- Create subtitle text
-    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
-    subtitleText:SetText(subtitleTextContent)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetJustifyH("LEFT")
-    
-    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
-    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
-    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
-    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    
-    -- Position container: LEFT from icon, CENTER vertically to CARD (matching factory pattern)
-    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
+    local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
+        tabKey = "statistics",
+        titleText = "|cff" .. hexColor .. ((ns.L and ns.L["ACCOUNT_STATISTICS"]) or "Account Statistics") .. "|r",
+        subtitleText = (ns.L and ns.L["STATISTICS_SUBTITLE"]) or "Collection progress, gold, and storage overview",
+    }))
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     titleCard:Show()
     headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)

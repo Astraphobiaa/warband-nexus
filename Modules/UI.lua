@@ -315,6 +315,15 @@ function WarbandNexus:ToggleMainWindow()
         self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
         return
     end
+    if ns and ns._wnSuppressToggleMainOnce then
+        return
+    end
+    -- Modal-first behavior: if Settings is open, close it first.
+    local settingsPanel = _G.WarbandNexusSettingsPanel
+    if settingsPanel and settingsPanel:IsShown() then
+        settingsPanel:Hide()
+        return
+    end
     if mainFrame and mainFrame:IsShown() then
         mainFrame:Hide()
         self.mainFrame = nil  -- Clear reference
@@ -726,7 +735,7 @@ function WarbandNexus:CreateMainWindow()
     icon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
 
     -- Title (WHITE - never changes with theme)
-    local title = FontManager:CreateFontString(header, "title", "OVERLAY")
+    local title = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
     title:SetText((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")
     title:SetTextColor(1, 1, 1)  -- Always white
@@ -910,7 +919,7 @@ function WarbandNexus:CreateMainWindow()
     trackingIcon:SetVertexColor(0.35, 1, 0.45)
     f.statusIcon = trackingIcon
 
-    local statusText = FontManager:CreateFontString(trackingStatusBtn, "body", "OVERLAY")
+    local statusText = FontManager:CreateFontString(trackingStatusBtn, FontManager:GetFontRole("mainShellTrackingStatus"), "OVERLAY")
     statusText:SetPoint("LEFT", iconBack, "RIGHT", 8, 0)
     statusText:SetPoint("RIGHT", trackingChip, "RIGHT", -8, 0)
     statusText:SetJustifyH("LEFT")
@@ -968,13 +977,13 @@ function WarbandNexus:CreateMainWindow()
         activeBar:SetAlpha(0)
         btn.activeBar = activeBar
 
-        local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
+        local label = FontManager:CreateFontString(btn, FontManager:GetFontRole("mainNavTabLabel"), "OVERLAY")
         label:SetPoint("CENTER", 0, 1)
         label:SetText(text)
         btn.label = label
 
         -- Row count badge (dimmed, right of label)
-        local countLabel = FontManager:CreateFontString(btn, "small", "OVERLAY")
+        local countLabel = FontManager:CreateFontString(btn, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
         countLabel:SetPoint("LEFT", label, "RIGHT", 3, 0)
         countLabel:SetTextColor(0.5, 0.5, 0.5, 0.8)
         countLabel:SetText("")
@@ -1046,6 +1055,11 @@ function WarbandNexus:CreateMainWindow()
                         if not (child.isPooled and child.rowType) and not child.isPersistentRowElement then
                             child:Hide()
                             child:SetParent(recycleBin)
+                        elseif child.isPersistentRowElement then
+                            -- Persistent elements (e.g. Gear 3D DressUpModel) survive tab teardown but must be
+                            -- hidden on tab switch so they don't render over other tabs. The owning tab's
+                            -- refresh re-shows them when re-entered.
+                            child:Hide()
                         end
                     end
                     f._contentPreCleared = true
@@ -1340,9 +1354,14 @@ function WarbandNexus:CreateMainWindow()
     -- AceEvent allows only ONE handler per (event, self) pair.
     -- Must bypass POPULATE_COOLDOWN: after login/alt switch, ITEMS_UPDATED etc. can set lastEventPopulateTime
     -- and this refresh would be dropped — leaving Character tab layout stale or visually broken.
+    -- Gear tab rebuilds 3D paperdoll + full card — avoid skipCooldown (full populate every ~0.1s) on
+    -- rapid WN_CHARACTER_UPDATED (e.g. item level ticks at 0.3s, DataService) or models appear to "flicker".
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function()
-        if f and f:IsShown() and (f.currentTab == "chars" or f.currentTab == "gear" or f.currentTab == "stats") then
+        if not f or not f:IsShown() then return end
+        if f.currentTab == "chars" or f.currentTab == "stats" then
             SchedulePopulateContent(true)
+        elseif f.currentTab == "gear" then
+            SchedulePopulateContent()
         end
     end)
     
@@ -1359,11 +1378,16 @@ function WarbandNexus:CreateMainWindow()
     end)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PVE_UPDATED, function()
-        if f and f:IsShown() and f.currentTab == "pve" then
+        if not f or not f:IsShown() then return end
+        -- PvE tab + Characters tab (mythic key column reads character row; mirror updates from PvECacheService)
+        if f.currentTab == "pve" then
             -- Vault data arrives asynchronously via WEEKLY_REWARDS_UPDATE.
             -- Reset cooldown so this event is never silently dropped.
             lastEventPopulateTime = 0
             SchedulePopulateContent()
+        elseif f.currentTab == "chars" then
+            lastEventPopulateTime = 0
+            SchedulePopulateContent(true)
         end
     end)
     
@@ -1373,6 +1397,9 @@ function WarbandNexus:CreateMainWindow()
         if not f or not f:IsShown() then return end
         if f.currentTab == "currency" or f.currentTab == "gear" then
             SchedulePopulateContent()
+        elseif f.currentTab == "chars" then
+            -- Total Gold / WoW Token card reads token price; refresh without 800ms cooldown drop.
+            SchedulePopulateContent(true)
         else
             WarbandNexus:UpdateTabCountBadges("currency")
         end
@@ -1454,12 +1481,111 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
+    -- BAGS_UPDATED also feeds the gear-tab recommendation scan (cross-character bag items
+    -- are candidates) so newly looted BoEs surface without a manual reopen.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.BAGS_UPDATED, function()
-        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage") then
+        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage" or f.currentTab == "gear") then
             SchedulePopulateContent()
         end
     end)
-    
+
+    -- Money: chars Total Gold card, gear-tab affordability (gold-only upgrades).
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MONEY_UPDATED, function()
+        if not f or not f:IsShown() then return end
+        if f.currentTab == "chars" or f.currentTab == "gear" then
+            SchedulePopulateContent(true)
+        end
+    end)
+
+    -- Currency variants: gear upgrade panel + currency tab depend on full currency state.
+    local function refreshCurrency()
+        if not f or not f:IsShown() then return end
+        if f.currentTab == "currency" or f.currentTab == "gear" then
+            SchedulePopulateContent()
+        elseif f.currentTab == "chars" then
+            SchedulePopulateContent(true)
+        else
+            WarbandNexus:UpdateTabCountBadges("currency")
+        end
+    end
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCIES_UPDATED, refreshCurrency)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_GAINED, refreshCurrency)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_CACHE_READY, refreshCurrency)
+
+    -- Collections: obtained/scan results + achievement tracking flips need to redraw cards.
+    -- Plans tab also reads obtained state for try-counter rows.
+    local function refreshCollection()
+        if not f or not f:IsShown() then return end
+        if f.currentTab == "collections" or f.currentTab == "plans" then
+            SchedulePopulateContent(true)
+        elseif f.currentTab == "chars" then
+            WarbandNexus:UpdateTabCountBadges("collections")
+        end
+    end
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.COLLECTIBLE_OBTAINED, refreshCollection)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.COLLECTION_UPDATED, refreshCollection)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ACHIEVEMENT_TRACKING_UPDATED, refreshCollection)
+
+    -- Vault: any vault data delta (slot completion, reward available, plan completion) must
+    -- propagate to PvE tab (vault card) and chars-tab vault badge.
+    local function refreshVault()
+        if not f or not f:IsShown() then return end
+        if f.currentTab == "pve" then
+            lastEventPopulateTime = 0
+            SchedulePopulateContent()
+        elseif f.currentTab == "chars" then
+            SchedulePopulateContent(true)
+        end
+    end
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_CHECKPOINT_COMPLETED, refreshVault)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_SLOT_COMPLETED, refreshVault)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_PLAN_COMPLETED, refreshVault)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_REWARD_AVAILABLE, refreshVault)
+
+    -- Tracking toggle changes the visible character roster on every tab that lists chars.
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_TRACKING_CHANGED, function()
+        if not f or not f:IsShown() then return end
+        SchedulePopulateContent(true)
+    end)
+
+    -- Gold management edits + bank money log: chars tab gold cards / popup.
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.GOLD_MANAGEMENT_CHANGED, function()
+        if f and f:IsShown() and f.currentTab == "chars" then
+            SchedulePopulateContent(true)
+        end
+    end)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_BANK_MONEY_LOG_UPDATED, function()
+        if f and f:IsShown() and f.currentTab == "chars" then
+            SchedulePopulateContent(true)
+        end
+    end)
+
+    -- Item metadata async warm-up: cross-character SV links are often cold on login.
+    -- Gear tab storage recommendations rely on link-based ilvl (e.g. WuE 253 vs template 233);
+    -- when the warm-up completes, re-scan so previously-skipped candidates surface.
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEM_METADATA_READY, function()
+        if f and f:IsShown() and f.currentTab == "gear" then
+            SchedulePopulateContent()
+        end
+    end)
+
+    -- Blizzard fires GET_ITEM_INFO_RECEIVED whenever a cold-cache hyperlink finishes
+    -- async resolution. ResolveStorageItemIlvl bails out (returns 0) on cold links,
+    -- so we must re-run the gear scan once the client cache warms — otherwise the
+    -- recommendation list stays empty for the entire session.
+    if not UIEvents._itemInfoFrame then
+        local infoFrame = CreateFrame("Frame")
+        UIEvents._itemInfoFrame = infoFrame
+        infoFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+        infoFrame:SetScript("OnEvent", function(_, _, itemID, success)
+            if not success then return end
+            if not f or not f:IsShown() then return end
+            if f.currentTab == "gear" then
+                SchedulePopulateContent()
+            end
+        end)
+    end
+
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName)
         if not f or not f.tabButtons then return end
         -- Map module name to tab key (currencies -> currency; others same)
@@ -1605,6 +1731,7 @@ function WarbandNexus:PopulateContent()
     -- Hide persistent gear frames when leaving their tab
     if mainFrame.currentTab ~= "gear" then
         if ns._gearPlayerModel then ns._gearPlayerModel:Hide() end
+        if ns._gearPortraitPanel then ns._gearPortraitPanel:Hide() end
         if ns._gearNoPreviewFrame then ns._gearNoPreviewFrame:Hide() end
         if ns._gearModelBorder then ns._gearModelBorder:Hide() end
         if ns._gearIlvlFrame then ns._gearIlvlFrame:Hide() end
@@ -1780,14 +1907,14 @@ function WarbandNexus:DrawTrackingRequiredBanner(parent)
     end
     icon:SetVertexColor(1, 0.4, 0.4)
 
-    local title = GetFontManager():CreateFontString(card, "title", "OVERLAY")
+    local title = GetFontManager():CreateFontString(card, GetFontManager():GetFontRole("trackingRequiredBannerTitle"), "OVERLAY")
     title:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -2)
     title:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -2)
     title:SetJustifyH("LEFT")
     title:SetTextColor(1, 0.55, 0.45)
     title:SetText((ns.L and ns.L["TRACKING_TAB_LOCKED_TITLE"]) or "Character is not tracked")
 
-    local desc = GetFontManager():CreateFontString(card, "body", "OVERLAY")
+    local desc = GetFontManager():CreateFontString(card, GetFontManager():GetFontRole("trackingRequiredBannerBody"), "OVERLAY")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     desc:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -8)
     desc:SetJustifyH("LEFT")
@@ -2138,7 +2265,7 @@ do
 
         local loadText
         if ns.FontManager then
-            loadText = ns.FontManager:CreateFontString(bar, "body", "OVERLAY")
+            loadText = ns.FontManager:CreateFontString(bar, ns.FontManager:GetFontRole("loadingBarPrimaryText"), "OVERLAY")
         else
             loadText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         end
@@ -2151,7 +2278,7 @@ do
 
         local progText
         if ns.FontManager then
-            progText = ns.FontManager:CreateFontString(bar, "body", "OVERLAY")
+            progText = ns.FontManager:CreateFontString(bar, ns.FontManager:GetFontRole("loadingBarSecondaryText"), "OVERLAY")
         else
             progText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         end

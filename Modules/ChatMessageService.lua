@@ -5,7 +5,7 @@
     Architecture:
     - Event-driven: Listens to internal addon events (WN_REPUTATION_GAINED, WN_CURRENCY_GAINED)
     - DB-first: Reputation events carry full display data from PROCESSED DB (after FullScan).
-    - Currency events carry {currencyID, gainAmount}; display data from DB.
+    - Currency events carry {currencyID, gainAmount, gainSource?}; display data from DB / live API.
     - FIFO message queue: ensures smooth output flow (0.15s per message), no overlap or loss.
     - Per-panel routing: ns.ChatOutput only (no raw DEFAULT_CHAT_FRAME:AddMessage) so
       Chattynator’s DEFAULT hook sees Interface/AddOns/WarbandNexus/ on the stack.
@@ -24,6 +24,15 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
+local issecretvalue = issecretvalue
+
+---@param v any
+---@return number|nil
+local function SafeCurrencyNum(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    return tonumber(v)
+end
 
 -- ============================================================================
 -- CONSTANTS
@@ -98,36 +107,28 @@ end
 
 -- ============================================================================
 -- MESSAGE QUEUE (FIFO — prevents overlap, ensures smooth flow)
+-- Uses table.remove(1) only: a head index + Lua # on sparse tables drops or
+-- corrupts queued lines when gains fire back-to-back (same as CurrencyCache fix).
 -- ============================================================================
 
 local messageQueue = {}
-local messageQueueHead = 1
 local isProcessing = false
 
-local function HasQueuedMessages()
-    return messageQueueHead <= #messageQueue
-end
-
-local function DequeueMessage()
-    if not HasQueuedMessages() then
-        messageQueue = {}
-        messageQueueHead = 1
-        return nil
+---Drain one entry; schedule next after QUEUE_INTERVAL if more remain.
+local function ProcessQueuePump()
+    local entry = table.remove(messageQueue, 1)
+    if not entry then
+        isProcessing = false
+        return
     end
-    local entry = messageQueue[messageQueueHead]
-    messageQueue[messageQueueHead] = nil
-    messageQueueHead = messageQueueHead + 1
-
-    if messageQueueHead > 64 and messageQueueHead > (#messageQueue / 2) then
-        local compacted = {}
-        for i = messageQueueHead, #messageQueue do
-            compacted[#compacted + 1] = messageQueue[i]
-        end
-        messageQueue = compacted
-        messageQueueHead = 1
+    if ChatOutput and ChatOutput.SendToFramesWithGroup then
+        ChatOutput.SendToFramesWithGroup(entry.text, entry.group)
     end
-
-    return entry
+    if #messageQueue > 0 then
+        C_Timer.After(QUEUE_INTERVAL, ProcessQueuePump)
+    else
+        isProcessing = false
+    end
 end
 
 ---Add a message to the FIFO queue and start processing if idle.
@@ -135,40 +136,12 @@ end
 ---@param group string Message group name for per-panel routing
 local function QueueMessage(message, group)
     messageQueue[#messageQueue + 1] = { text = message, group = group }
-    
-    if not isProcessing then
-        isProcessing = true
-        local first = DequeueMessage()
-        if first then
-            if ChatOutput and ChatOutput.SendToFramesWithGroup then
-                ChatOutput.SendToFramesWithGroup(first.text, first.group)
-            end
-        end
-        
-        if HasQueuedMessages() then
-            local function ProcessNext()
-                if not HasQueuedMessages() then
-                    isProcessing = false
-                    return
-                end
-                local entry = DequeueMessage()
-                if entry then
-                    if ChatOutput and ChatOutput.SendToFramesWithGroup then
-                        ChatOutput.SendToFramesWithGroup(entry.text, entry.group)
-                    end
-                end
-                
-                if HasQueuedMessages() then
-                    C_Timer.After(QUEUE_INTERVAL, ProcessNext)
-                else
-                    isProcessing = false
-                end
-            end
-            C_Timer.After(QUEUE_INTERVAL, ProcessNext)
-        else
-            isProcessing = false
-        end
+
+    if isProcessing then
+        return
     end
+    isProcessing = true
+    ProcessQueuePump()
 end
 
 -- ============================================================================
@@ -176,8 +149,8 @@ end
 -- ============================================================================
 
 ---Handle currency gain event
----Event payload: {currencyID, gainAmount}
----Display data: read from DB via GetCurrencyData
+---Event payload: { currencyID, gainAmount, gainSource? = "quantity"|"progress" }
+---Display data: read from DB via GetCurrencyData (fallback: live GetCurrencyInfo)
 local function OnCurrencyGained(event, data)
     if not data or not data.currencyID then return end
     
@@ -187,12 +160,36 @@ local function OnCurrencyGained(event, data)
     end
     
     local dbData = WarbandNexus:GetCurrencyData(data.currencyID)
+    if not dbData and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+        local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, data.currencyID)
+        if ok and info then
+            local q = SafeCurrencyNum(info.quantity) or 0
+            local maxW = SafeCurrencyNum(info.maxWeeklyQuantity) or 0
+            local maxQ = SafeCurrencyNum(info.maxQuantity) or 0
+            local nm = info.name
+            if nm and issecretvalue and issecretvalue(nm) then
+                nm = nil
+            end
+            dbData = {
+                currencyID = data.currencyID,
+                quantity = q,
+                name = nm or ("Currency #" .. tostring(data.currencyID)),
+                maxQuantity = (maxW > 0) and maxW or maxQ,
+                seasonMax = (maxQ > 0) and maxQ or nil,
+                totalEarned = SafeCurrencyNum(info.totalEarned),
+                quality = info.quality or 1,
+            }
+        end
+    end
     if not dbData then return end
     
     local currencyName = dbData.name or ("Currency " .. data.currencyID)
     local gainAmount = data.gainAmount or 0
+    local gainSource = data.gainSource or "quantity"
     local currentQuantity = dbData.quantity or 0
     local maxQuantity = dbData.maxQuantity
+    local seasonMax = dbData.seasonMax
+    local totalEarned = dbData.totalEarned
     local quality = dbData.quality or 1
     
     if gainAmount <= 0 then return end
@@ -207,7 +204,27 @@ local function OnCurrencyGained(event, data)
     end
     
     local message
-    if maxQuantity and maxQuantity > 0 then
+    if gainSource == "progress" and type(totalEarned) == "number" then
+        local denom = (type(seasonMax) == "number" and seasonMax > 0) and seasonMax
+            or (maxQuantity and maxQuantity > 0 and maxQuantity)
+        if denom then
+            message = string.format(
+                "%s%s: |cff%s+%s|r |cff%s(%s / %s)|r",
+                PREFIX_CURRENCY,
+                displayName,
+                COLOR_GAIN, FormatNumber(gainAmount),
+                COLOR_REP_PROGRESS, FormatNumber(totalEarned), FormatNumber(denom)
+            )
+        else
+            message = string.format(
+                "%s%s: |cff%s+%s|r |cff%s(%s)|r",
+                PREFIX_CURRENCY,
+                displayName,
+                COLOR_GAIN, FormatNumber(gainAmount),
+                COLOR_REP_PROGRESS, FormatNumber(totalEarned)
+            )
+        end
+    elseif maxQuantity and maxQuantity > 0 then
         message = string.format(
             "%s%s: |cff%s+%s|r |cff%s(%s / %s)|r",
             PREFIX_CURRENCY,
@@ -282,8 +299,21 @@ local function OnReputationGained(event, data)
         end
         QueueMessage(message, ROUTE_GROUP_REPUTATION)
     end
-    
-    if data.wasStandingUp then
+
+    -- Renown tier-up (major factions): explicit line; avoids missing companion when MAJOR_FACTION_* did not fire.
+    if data.isRenownLevelUp and type(data.renownLevel) == "number" and data.renownLevel > 0 then
+        local tail = string.format(
+            (ns.L and ns.L["WN_REPUTATION_RENOWN_LEVEL_UP"]) or "Reached renown level %d",
+            data.renownLevel
+        )
+        local renownUpMsg = string.format(
+            "%s|cff%s%s|r: %s",
+            PREFIX_REPUTATION,
+            factionColorHex, factionName,
+            tail
+        )
+        QueueMessage(renownUpMsg, ROUTE_GROUP_REPUTATION)
+    elseif data.wasStandingUp then
         local upStandingName = data.standingName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
         local upStandingColor = data.standingColor or {r = 1, g = 1, b = 1}
         local upStandingHex = RGBToHex(upStandingColor)

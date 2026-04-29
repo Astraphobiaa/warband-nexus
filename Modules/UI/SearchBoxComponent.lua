@@ -96,7 +96,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     searchBox:SetHeight(20)
     
     -- Use FontManager for consistent font styling (SAFE version)
-    FontManager:SafeSetFont(searchBox, "body")
+    FontManager:SafeSetFont(searchBox, FontManager:GetFontRole("searchEditBoxBody"))
     
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(50)
@@ -107,7 +107,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     end
     
     -- Placeholder text
-    local placeholderText = FontManager:CreateFontString(searchBox, "body", "ARTWORK")
+    local placeholderText = FontManager:CreateFontString(searchBox, FontManager:GetFontRole("searchPlaceholder"), "ARTWORK")
     placeholderText:SetPoint("LEFT", 0, 0)
     placeholderText:SetText(placeholder or "Search...")
     placeholderText:SetTextColor(1, 1, 1, 0.4)  -- White with transparency

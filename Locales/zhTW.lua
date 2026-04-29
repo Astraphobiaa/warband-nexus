@@ -135,6 +135,35 @@ L["REMOVE_FROM_TRACKING_FORMAT"] = "將 %s 從追蹤中移除"
 L["CLICK_TO_DELETE"] = "點擊刪除"
 L["CONFIRM_DELETE"] = "確定要刪除 |cff00ccff%s|r？"
 L["CANNOT_UNDO"] = "此操作無法復原！"
+
+-- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
+L["EMPTY_CHARACTERS_TITLE"] = "找不到角色"
+L["EMPTY_CHARACTERS_DESC"] = "登入角色以開始追蹤。\n角色資料會在每次登入時自動收集。"
+L["EMPTY_ITEMS_TITLE"] = "暫無物品快取"
+L["EMPTY_ITEMS_DESC"] = "開啟戰群銀行或個人銀行以掃描物品。\n首次造訪時會自動快取物品。"
+L["EMPTY_INVENTORY_TITLE"] = "背包中沒有物品"
+L["EMPTY_INVENTORY_DESC"] = "你的背包是空的。"
+L["EMPTY_PERSONAL_BANK_TITLE"] = "個人銀行暫無物品"
+L["EMPTY_PERSONAL_BANK_DESC"] = "開啟個人銀行以掃描物品。\n首次造訪時會自動快取物品。"
+L["EMPTY_WARBAND_BANK_TITLE"] = "戰群銀行暫無物品"
+L["EMPTY_WARBAND_BANK_DESC"] = "開啟戰群銀行以掃描物品。\n首次造訪時會自動快取物品。"
+L["EMPTY_GUILD_BANK_TITLE"] = "公會銀行暫無物品"
+L["EMPTY_GUILD_BANK_DESC"] = "開啟公會銀行以掃描物品。\n首次造訪時會自動快取物品。"
+L["EMPTY_STORAGE_TITLE"] = "暫無儲存資料"
+L["EMPTY_STORAGE_DESC"] = "開啟銀行或背包時會掃描物品。\n造訪銀行即可開始追蹤儲存。"
+L["EMPTY_PLANS_TITLE"] = "暫無計畫"
+L["EMPTY_PLANS_DESC"] = "在上方瀏覽坐騎、寵物、玩具或成就\n以新增收集目標並追蹤進度。"
+L["EMPTY_REPUTATION_TITLE"] = "暫無聲望資料"
+L["EMPTY_REPUTATION_DESC"] = "聲望會在登入時自動掃描。\n登入角色即可開始追蹤陣營聲望。"
+L["EMPTY_CURRENCY_TITLE"] = "暫無貨幣資料"
+L["EMPTY_CURRENCY_DESC"] = "貨幣會自動在所有角色間追蹤。\n登入角色即可開始追蹤貨幣。"
+L["EMPTY_PVE_TITLE"] = "暫無PvE資料"
+L["EMPTY_PVE_DESC"] = "登入角色時會追蹤PvE進度。\n寶庫、傳奇鑰石與團隊副本鎖定將顯示於此。"
+L["EMPTY_STATISTICS_TITLE"] = "暫無統計資料"
+L["EMPTY_STATISTICS_DESC"] = "統計資料來自已追蹤的角色。\n登入角色即可開始收集資料。"
+L["COLLECTIONS_COMING_SOON_TITLE"] = "即將推出"
+L["COLLECTIONS_COMING_SOON_DESC"] = "收藏總覽（坐騎、寵物、玩具、塑形）將於此提供。"
+
 L["PERSONAL_ITEMS"] = "個人物品"
 L["ITEMS_SUBTITLE"] = "瀏覽你的戰團銀行、公會銀行和個人物品"
 L["ITEMS_DISABLED_TITLE"] = "戰團銀行物品"
@@ -171,6 +200,16 @@ L["VAULT_SLOT_FORMAT"] = "%s 槽位 %d"
 L["OVERALL_SCORE_LABEL"] = "總評分："
 L["NOT_COMPLETED_SEASON"] = "本季未完成"
 L["LOADING_PVE"] = "正在載入 PvE 資料..."
+L["PVE_VAULT_TRACKER_SUBTITLE"] = "待領獎勵與已清空寶庫列"
+L["PVE_VAULT_TRACKER_EMPTY_TITLE"] = "尚無寶庫列"
+L["PVE_VAULT_TRACKER_EMPTY_DESC"] = "尚無已追蹤角色儲存每週寶庫進度。\n請登入各角色或關閉追蹤以查看完整 PvE 進度。"
+L["VAULT_TRACK_WAITING_RESET_SHORT"] = "重置"
+L["VAULT_SUMMARY_ALL_TITLE"] = "宏偉寶庫 — 全部角色"
+L["VAULT_SUMMARY_ALL_SUB"] = "團隊、傳奇+、世界：與 PvE 標籤欄相同。"
+L["VAULT_SUMMARY_COL_NAME"] = "角色"
+L["VAULT_SUMMARY_COL_REALM"] = "伺服器"
+L["VAULT_SUMMARY_NO_CHARS"] = "沒有已追蹤角色。"
+L["VAULT_SUMMARY_MORE"] = "… 另有 %d 個（見 PvE 清單）。"
 L["NO_VAULT_DATA"] = "無寶庫資料"
 L["NO_DATA"] = "無資料"
 L["KEYSTONE"] = "鑰石"
@@ -189,6 +228,7 @@ L["VAULT_WORLD_ACTIVITIES"] = "世界活動"
 L["VAULT_ACTIVITIES"] = "活動"
 L["VAULT_REMAINING_SUFFIX"] = "剩餘"
 L["VAULT_CLICK_TO_OPEN"] = "點擊開啟宏偉寶庫"
+L["VAULT_TRACKER_CARD_CLICK_HINT"] = "點擊開啟宏偉寶庫"
 
 -- Delves Section (PvE Tab)
 L["BOUNTIFUL_DELVE"] = "藏寶獵人的賞金"
@@ -489,6 +529,8 @@ L["WEEKLY_VAULT_PLAN_FORMAT"] = "每週寶庫計劃 - %s"
 L["ALL_SLOTS_COMPLETE"] = "所有槽位已完成！"
 L["QUEST_COMPLETED_SUFFIX"] = "已完成"
 L["WEEKLY_VAULT_READY"] = "每週寶庫就緒！"
+L["VAULT_LOOT_READY_SHORT"] = "就緒！"
+L["VAULT_TRACK_WAITING_RESET"] = "等待重置"
 L["UNCLAIMED_REWARDS"] = "你有未領取的獎勵"
 L["TOTAL_GOLD_LABEL"] = "總金幣："
 L["LEFT_CLICK_TOGGLE"] = "左鍵：切換視窗"
@@ -557,61 +599,71 @@ L["WELCOME_TYPE_CMD"] = "請輸入"
 L["WELCOME_OPEN_INTERFACE"] = "以開啟介面。"
 
 
-L["CHANGELOG_V258"] = "v2.5.8\n修正：\n- 嘗試計數：CHAT_MSG_LOOT 在釣魚歸因路徑上不再報錯（CurrentUnitsHaveMobLootContext 前向宣告；先前為 nil 全域）。\n\nCurseForge：Warband Nexus"
+-- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
-L["CHANGELOG_V259"] = [=[v2.5.9（2026-04-03）
+-- What's New / changelog body for ADDON_VERSION 2.6.4 (key CHANGELOG_V264)
+L["CHANGELOG_V264"] = [=[v2.6.4 (2026-04-26)
 
-改進
-- 收藏 / 嘗試計數：達薩羅之戰 — Glacial Tidestorm 僅珍娜史詩（非隨機團）。G.M.O.D.：隨機團珍娜；普通/英雄/史詩大工匠（2019 熱修）。明確隨機團；依掉落列 statisticIds 重播統計；大工匠不含珍娜隨機團（13379）。
-- CollectibleSourceDB：坐騎首領 legacyEncounters 對齊 Midnight DungeonEncounter ID。
-- Git 儲存庫：僅插件原始碼（Core、Modules、Locales、toc、CHANGES、LICENSE、README）；文件與稽核腳本已移除。
+- Ashes of Belo'ren and L'ura references updated.
+- Less delay when the Characters, Gear, and PvE tabs refresh their data.
+- Bug fixes and small improvements.
 
---- 2.5.8 ---
-修正
-- 嘗試計數：釣魚 CHAT_MSG_LOOT — CurrentUnitsHaveMobLootContext 前置宣告（先前 nil 全域）。
+CurseForge: Warband Nexus]=]
 
---- 2.5.7 / 2.5.7b ---
-熱修
-- 裝備分頁：角色選擇與下拉選單。
-- 關於 / 資訊：致謝與貢獻者。
+-- What's New / changelog body for ADDON_VERSION 2.6.3 (key CHANGELOG_V263)
+L["CHANGELOG_V263"] = [=[v2.6.3 (2026-04-21)
 
-改進
-- 角色：預設排序（目前角色 → 等級高→低 → 名 A–Z）。新設定檔 characterSort.key = default。無效鍵對應選單第一項。我的最愛、追蹤、未追蹤中線上角色置頂（含手動排序）；手動種子含整區、線上優先；characterOrder 含未追蹤清單；重排保持線上置頂。
-- 設定：WindowManager（POPUP、與主視窗共用 ESC）取代固定 FULLSCREEN_DIALOG。RefreshSettingsKeyboard 在 Show 後恢復鍵盤。字型重建時從 WindowManager 註銷設定視窗。
-- WindowManager：戰後恢復除 SetPropagateKeyboardInput(true) 外呼叫 EnableKeyboard(true)。
-- 嘗試計數：副本難度優先進本快照（PLAYER_ENTERING_WORLD、副本 ID），再 GetInstanceInfo，早於 ENCOUNTER_END 與 API — 修正史詩讀成普通（如機械岡 HK-8）。difficulty 0 時 M+/API 用 ResolveLiveInstanceDifficultyID；ResolveEffectiveEncounterDifficultyID 統一過濾。
-- 嘗試計數：FilterDropsByDifficulty 用於拾取、延遲 ENC、CHAT_MSG_LOOT；與拾取視窗相同 encounter_ 去重鍵。
-- 嘗試計數：規則後無可追蹤掉落仍記錄去重鍵（避免延遲 ENC/CHAT 重複）。
-- 嘗試計數：野外合併拾取依物品 ID 屍體倍率（如納茲米爾血饕餮）。
-- 嘗試計數：LOOT_READY 連發不清空工作階段；偵錯追蹤短時去重。
-- 嘗試計數：[WN-Drops] TRYCOUNTER_INSTANCE_DROPS_HEADER；連結後括號顯示所需難度 — 綠/紅/琥珀。
+PvE cache & SavedVariables
+- Character keys are normalized (GetCanonicalCharacterKey) on every PvE cache read/write so each character uses one SV bucket — migration, import, and live updates no longer split the same toon across different key spellings.
+- Mythic+ dungeon scores: avoid wiping good SavedVariables when the API returns overall 0 with no per-map data while SV still has progress; per-map merge keeps prior rows when the API snapshot is all zeros.
+- Great Vault: empty/nil C_WeeklyRewards.GetActivities() does not overwrite persisted vault data (wait for server / open Great Vault).
+- Import from legacy/migration: skip destructive mythic, vault, or lockout writes when the incoming snapshot is empty but existing cache still has rows.
+- Keystone: only clear stored key when the API reports level 0; nil map/level during API races does not wipe a cached key.
+- MYTHIC_PLUS_CURRENT_AFFIX_UPDATE: refresh affixes; prune keystones by weekly reset timestamp only (no blanket wipe of all characters' keys).
+- PLAYER_LOGOUT: persist cache without running a full PvE refresh (logout APIs often return empty/zero).
 
-修正
-- 嘗試計數：已提示略過難度後計數仍增（拾取 vs 延遲 ENC/CHAT）。
+Debug (Config → Debug Mode)
+- Optional chat diagnostics prefixed |cff00ccff[PvE Cache]|r: dungeon score save/skip, keystone decisions, Great Vault API empty vs saved, ImportLegacy branches, and bestRuns overall score line (parallel to dungeonScores).
 
-本地化
-- SORT_MODE_DEFAULT；TRYCOUNTER_INSTANCE_COLLECTIBLE_DETECTED 等。
+CurseForge: Warband Nexus]=]
 
---- 2.5.6 ---
-改進
-- 裝備、計畫、追蹤、追蹤器中伺服器更易讀。
-- 收藏：更多 BfA 血饕餮 NPC；寶箱 vs 首領備註與多屍體。
-- SplitCharacterKey + 名-伺服器首個連字號。
-- 坐騎：社群 Lua DB + Wowhead/WoWDB。
+-- What's New / changelog body for ADDON_VERSION 2.6.2 (key CHANGELOG_V262)
+L["CHANGELOG_V262"] = [=[v2.6.2 (2026-04-21)
 
-修正
-- 嘗試計數：聊天拾取 + 共用表 — 保留 CHAT 更新。
-- 連字號伺服器：規範鍵、GetAllCharacters、stats/小地圖；一次性遷移。
-- 坐騎 ID：Verdant Skitterfly（192764）、紅色其拉水晶（21321）。
-- 對話框：GetRealmName 保護。
+Currency & chat
+- Fixed WN-Currency chat queue (FIFO with table.remove) so rapid lines are not dropped.
+- Dawncrest / split currencies: fewer duplicate notifications when bag quantity and totalEarned update on different ticks; short defer when useful.
+- Block internal Blizzard currency labels (Delves / System / Seasonal Affix / Events Active|Maximum, etc.) from WN-Currency; validate meta names on live API as well.
+- Login: suppress WN-Currency notifications until the first full currency scan completes (stops login CURRENCY_DISPLAY_UPDATE burst from flooding chat).
 
-本地化
-- TRY_COUNT 左鍵/右鍵提示。
+Reputation
+- Removed duplicate WN-Reputation line from companion delta watcher; DB pipeline owns chat.
+- Companion XP loot: seed pre standing / renown so level-up and standing lines behave correctly.
+- Optional "Reached renown level %d" (locale WN_REPUTATION_RENOWN_LEVEL_UP); renown level-up derived when MAJOR_FACTION events do not fire.
 
-後續
-- 加強收藏與遭遇 ID 的 Midnight 校驗；依團本回饋打磨嘗試計數與通知。
+Keybind & settings UI
+- Toggle keybind cannot be ESC; legacy ESC bindings are cleared on load/save (game menu path stays reliable).
+- Settings: dedicated key capture (clear, combat-blocked); main window keyboard is suppressed while Settings is open so movement, chat, and Blizzard keybinding capture keep working.
+- Settings root keeps frame keyboard off (large panel no longer steals the global key stack).
 
-CurseForge：Warband Nexus]=]
+ESC & WindowManager
+- ToggleGameMenu uses hooksecurefunc only — never replace the global (avoids taint / protected-call failures such as SpellStopCasting).
+- Same ESC press no longer closes two layers (addon + game menu); aligns with CloseSpecialWindows / UISpecialFrames for the Settings panel.
+- Combat restore no longer forces keyboard back on for the Settings panel.
+
+Weekly Vault / PvE UI (ready state)
+- When Great Vault rewards are claimable (live check or cached), Weekly Vault bars on plan cards, the Plans tracker, and the PvE tab show the localized short label (VAULT_LOOT_READY_SHORT) instead of only threshold ticks.
+- PvE Dawncrest columns use Constants.DAWNCREST_UI (single source with Gear / currency).
+
+Commands & professions
+- /wn keys (party): strip link pipes from aggregated text for Midnight chat rules; use a visible separator between entries when packing lines.
+- Profession window: optional "(N)" craft-from-materials count appended to the schematic title after init.
+
+Localization & tooling
+- Locale key parity maintained; scripts/check_locales.py for audits.
+
+CurseForge: Warband Nexus]=]
+
 
 L["CONFIRM_ACTION"] = "確認操作"
 L["CONFIRM"] = "確認"
@@ -642,6 +694,7 @@ L["ADD_PLAN"] = "新增"
 L["PLANNED"] = "計劃中"
 L["VAULT_SLOT_WORLD"] = "世界"
 L["AFFIX_TITLE_FALLBACK"] = "詞綴"
+L["WN_REPUTATION_RENOWN_LEVEL_UP"] = "達成名望等級 %d"
 L["PLAN_COMPLETED"] = "計劃已完成："
 L["WEEKLY_VAULT_PLAN_NAME"] = "每週寶庫 - %s"
 L["VAULT_PLANS_RESET"] = "每週宏偉寶庫計劃已重設！（%d 個計劃%s）"
@@ -728,6 +781,7 @@ L["ENTRY_REMOVED"] = "條目已移除。"
 L["RECIPE_COMPANION_TITLE"] = "配方助手"
 L["TOGGLE_TRACKER"] = "切換追蹤"
 L["SELECT_RECIPE"] = "選擇配方"
+L["RECIPE_COMPANION_EMPTY"] = "請選擇配方以依角色查看材料持有狀況。"
 L["CRAFTERS_SECTION"] = "製造者"
 L["TOTAL_REAGENTS"] = "材料總數"
 L["DATABASE_UPDATED_MSG"] = "資料庫已更新到新版本。"
@@ -788,6 +842,8 @@ L["STANDING_HONORED"] = "尊敬"
 L["STANDING_REVERED"] = "崇敬"
 L["STANDING_EXALTED"] = "崇拜"
 L["TRYCOUNTER_INCREMENT_CHAT"] = "%d 次嘗試 · %s"
+L["TRYCOUNTER_CHAT_OBTAINED_FIRST_LINK"] = "你第一次嘗試就獲得了%s！"
+L["TRYCOUNTER_CHAT_OBTAINED_AFTER_LINK"] = "獲得%s！累計嘗試 %d 次。"
 L["TRYCOUNTER_CHAT_ATTEMPTS_FOR_LINK"] = "%d 次嘗試 · %s"
 L["TRYCOUNTER_CHAT_FIRST_FOR_LINK"] = "首次嘗試 · %s"
 L["TRYCOUNTER_CHAT_TAG_CONTAINER"] = "容器"
@@ -1064,6 +1120,8 @@ L["GEAR_UPGRADE_CURRENCIES"] = "升級貨幣"
 L["GEAR_CHARACTER_STATS"] = "角色屬性"
 L["GEAR_NO_ITEM_EQUIPPED"] = "此欄位未裝備物品。"
 L["GEAR_NO_PREVIEW"] = "無預覽"
+L["GEAR_OFFLINE_BADGE"] = "離線"
+L["GEAR_NO_PREVIEW_HINT"] = "請用此角色登入以重新整理外觀預覽。"
 L["GEAR_STATS_CURRENT_ONLY"] = "屬性僅對\n當前角色可用"
 L["GEAR_SLOT_RING1"] = "戒指 1"
 L["GEAR_SLOT_RING2"] = "戒指 2"
@@ -1154,40 +1212,6 @@ L["GEAR_CRAFTED_NEXT_TIER_CRESTS"] = "%s（裝等 %d）：紋章 %d/%d（還需 
 -- Other
 L["TRACK_ACTIVITIES"] = "Track Activities"
 
--- v2.5.9b (CHANGELOG_V259b)
-
--- v2.5.10 (CHANGELOG_V2510)
-
--- v2.5.11 (CHANGELOG_V2511) — English notes; see enUS for detail
-
--- v2.5.12 (CHANGELOG_V2512) — English notes; see enUS for detail
-
--- v2.5.15 (CHANGELOG_V2515) — English notes; see enUS for detail
-L["CHANGELOG_V2515"] = [=[v2.5.15 beta 1 (2026-04-15)
-
-Beta — pre-release; feedback welcome before stable.
-
-Performance
-- UI: SchedulePopulateContent debounces (last schedule wins); OnHide cancels populate timer; one defer per main tab switch; no redundant tab-button refresh while switching; currency/reputation messages only update badges when that tab is hidden.
-- CollectionService: coalesced EnsureCollectionData; ScanCollection uses a FRAME_BUDGET_MS coroutine; BuildFullCollectionData batch budget aligned.
-- Guild bank & ItemsCache: chunked scans; atomic tab results; invalidate on cancel/close.
-- Plans & Collections: PlansUI two-column grid precompute O(n); AbortCollectionsChunkedBuilds; Core abort ties collections to existing tab teardown.
-
-Bug fixes
-- TOC: Config.lua loads after Modules/Constants.lua (fixes ns.Constants nil during Config init).
-- Main frame OnHide: populate timer cleared after cancel.
-
-Localization
-- GearUI: upgrade track names + crafted recraft tooltip lines; PVE_CREST_EXPLORER; Profession concentration + Steam-style played time strings; locale parity for GEAR_CRAFTED_*, STATS_PLAYED_STEAM_*, PROF_CONCENTRATION_* (de, fr, es, es-mx, it, pt, ru, ko, zhTW; enUS/zhCN baseline).
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V261"] = [=[v2.6.1（2026-04-18）
-
-修正
-- 嘗試計數：當目標或滑鼠指向仍停留在附近敵方屍體上時，釣魚嘗試計數不再卡住；優先信任客戶端釣魚標記而非過期的單位上下文。
-
-CurseForge: Warband Nexus]=]
 L["SHOW_COMPLETED_HELP"] = "待辦與週進度：未勾選＝進行中的計畫；勾選＝僅已完成。瀏覽分頁：未勾選＝未收藏（開啟「顯示已計畫」時僅清單內）；勾選＝清單上已收藏項目（「顯示已計畫」仍會限制）。"
 L["SHOW_PLANNED_HELP"] = "僅瀏覽分頁（在待辦與週進度中隱藏）：勾選＝僅顯示你加入待辦的目標。「顯示已完成」關＝仍缺；開＝已完成；兩項都開＝該分類全部已計畫；都關＝完整未收藏瀏覽。"
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "沒有可顯示的成就"
@@ -1343,3 +1367,41 @@ L["COLLECTION_RULE_API_NOT_AVAILABLE"] = "API????"
 L["COLLECTION_RULE_INVALID_MOUNT"] = "????"
 L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "????????"
 
+
+-- -----------------------------------------------------------------------------
+-- Parity sync from enUS.lua (auto-appended) — 228 keys
+-- -----------------------------------------------------------------------------
+L["CHANGELOG_V266"] = [=[v2.6.6b (2026-04-28)
+
+Gear tab — Storage Upgrade Recommendations
+- Recommendations now respect transferability: only BoE, Warbound, and Warbound-until-equipped items can surface from another character's bags or the Warband Bank. Soulbound items that were once BoE but have since been equipped are filtered out (they cannot be transferred).
+- Two-handed main hand suppresses off-hand suggestions: equipping a 2H staff/polearm no longer brings up low-ilvl off-hand "upgrades" against an empty slot.
+- Warband-until-Equipped (WuE) items are now correctly identified via the tooltip text — Blizzard's bindType API reports them as plain "BoE", which previously mislabelled every WuE item.
+- Cross-character cold-cache fix: WuE and BoE items in another character's bag are now resolved through Blizzard's GET_ITEM_INFO_RECEIVED warm-up so their true ilvl (e.g. Champion 3/6 = 253) is used instead of the template base ilvl.
+- Stat and level filters relaxed when previewing alts: C_Item.GetItemStats only reports the logged-in character's primary, and stale DB level snapshots can lag the live character — both checks now run only when the selected tab character is the player.
+
+Gear tab — UI
+- Storage Upgrade Recommendations card revised: subtitle clarifies "Transferable items only (BoE / Warbound)", row spacing increased, source font weight tuned for readability.
+- Compact bind labels in the recommendation list: BoE / WuE / WB instead of long phrases.
+
+Event-driven UI refresh
+- Gear tab now refreshes on bag updates (newly looted BoEs surface immediately).
+- Money, currency variants, collection events, vault events, character tracking changes, gold management edits, and bank money log updates all trigger the appropriate tab redraw.
+- GET_ITEM_INFO_RECEIVED listener: gear tab re-scans once cold-cache hyperlinks finish async resolution.
+
+Single-roof version system (no more wiped data on releases)
+- Addon releases no longer invalidate any cache. Bumping the addon version preserves all character state, vault progress, mythic key history, and currency totals.
+- Game build (WoW patch) is the trigger for API-bound cache invalidation (reputation, collection) where Blizzard's API shape may have shifted.
+- Per-cache schema versions live in Constants.VERSIONS.CACHE; only the cache whose integer is bumped gets refreshed.
+- Every invalidation creates an automatic backup at db.global.cacheBackups[name] before resetting; recoverable via WarbandNexus:RestoreCacheBackup(name).
+
+Diagnostics
+- New /wn dumpitem <itemID> command: prints all API data + every persisted bag/bank/warband-bank instance of an item to chat for troubleshooting.
+
+CurseForge: Warband Nexus]=]
+L["GEAR_STORAGE_SUBTITLE"] = "Transferable items only (BoE / Warbound)"
+L["GEAR_STORAGE_WARBOUND_UNTIL_EQUIPPED"] = "Warbound until equipped"
+L["TRY_COUNTER_DROP_SCREENSHOT"] = "Screenshot on tracked drop"
+L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"] = "Take an automatic game screenshot shortly after the popup when a try-tracked mount, pet, toy, or illusion drops. Turn off if you do not want extra files in your Screenshots folder."
+L["VAULT_TRACKER_STATUS_PENDING"] = "Pending..."
+L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "Ready to Claim"

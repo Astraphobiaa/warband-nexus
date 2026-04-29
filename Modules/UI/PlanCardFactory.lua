@@ -898,8 +898,12 @@ end
     @param expandCallback function - Callback to execute on expand/collapse
 ]]
 function PlanCardFactory:SetupCardClickHandler(card, expandCallback)
-    -- Store original click handler if exists
-    local originalOnMouseUp = card:GetScript("OnMouseUp")
+    -- Store original click handler if exists (Midnight: GetScript errors when no script set on Frame)
+    local originalOnMouseUp = nil
+    do
+        local ok, res = pcall(function() return card:GetScript("OnMouseUp") end)
+        if ok then originalOnMouseUp = res end
+    end
     
     if not card.clickedOnRemoveBtn then
         card.clickedOnRemoveBtn = false
@@ -2940,6 +2944,12 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         raidBossCount = 0,
         worldActivityCount = 0
     }
+
+    local vaultLootReady = false
+    if WarbandNexus.HasUnclaimedVaultRewards then
+        local ok, v = pcall(WarbandNexus.HasUnclaimedVaultRewards, WarbandNexus)
+        vaultLootReady = ok and v == true
+    end
     
     local contentY = -70
     local cardWidth = card:GetWidth()
@@ -3047,6 +3057,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         end
         
         -- Checkpoint Markers (positioned relative to inner bar width)
+        local readyShort = (ns.L and ns.L["VAULT_LOOT_READY_SHORT"]) or "Ready!"
         for i, threshold in ipairs(slot.thresholds) do
             local checkpointSlot = slot.slotData[i]
             local slotProgress = math.min(slot.current, threshold)
@@ -3055,31 +3066,39 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
             local markerXPercent = threshold / slot.max
             local markerX = (markerXPercent * innerBarWidth) + 1  -- +1 for left border offset
             
-            -- Checkpoint arrow
-            local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
-            checkArrow:SetSize(24, 24)
-            checkArrow:SetPoint("CENTER", barBg, "BOTTOMLEFT", markerX, 0)
-            checkArrow:SetAtlas("MiniMap-QuestArrow")
-            if completed then
-                checkArrow:SetVertexColor(0.2, 1, 0.2, 1)
+            if vaultLootReady then
+                local rl = FontManager:CreateFontString(slotFrame, "small", "OVERLAY")
+                rl:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -6)
+                rl:SetWidth(math.max(32, innerBarWidth / math.max(1, #slot.thresholds) - 2))
+                rl:SetJustifyH("CENTER")
+                rl:SetText("|cff44ff44" .. readyShort .. "|r")
             else
-                checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)
-            end
-            
-            -- Checkpoint label (aligned with checkmark position)
-            if completed then
-                local checkFrame = ns.UI.Factory:CreateContainer(slotFrame, 16, 16)
-                checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
+                -- Checkpoint arrow
+                local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
+                checkArrow:SetSize(24, 24)
+                checkArrow:SetPoint("CENTER", barBg, "BOTTOMLEFT", markerX, 0)
+                checkArrow:SetAtlas("MiniMap-QuestArrow")
+                if completed then
+                    checkArrow:SetVertexColor(0.2, 1, 0.2, 1)
+                else
+                    checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)
+                end
                 
-                local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
-                checkmark:SetAllPoints()
-                checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
-            else
-                local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
-                label:SetTextColor(1, 1, 1)
-                local progressText = string.format("%d / %d", slotProgress, threshold)
-                label:SetText(FormatTextNumbers(progressText))
+                -- Checkpoint label (aligned with checkmark position)
+                if completed then
+                    local checkFrame = ns.UI.Factory:CreateContainer(slotFrame, 16, 16)
+                    checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
+                    
+                    local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
+                    checkmark:SetAllPoints()
+                    checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+                else
+                    local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
+                    label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
+                    label:SetTextColor(1, 1, 1)
+                    local progressText = string.format("%d / %d", slotProgress, threshold)
+                    label:SetText(FormatTextNumbers(progressText))
+                end
             end
             
             -- Hidden checkbox for manual override

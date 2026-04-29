@@ -34,7 +34,6 @@ local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
 
 -- Import shared UI components
-local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
@@ -72,8 +71,8 @@ local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
 local ROW_SPACING = GetLayout().ROW_SPACING or 26
-local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
-local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 40
+local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
+local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
 local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
@@ -2009,7 +2008,7 @@ function WarbandNexus:DrawReputationList(container, width)
                     header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                     header:SetWidth(width - BASE_INDENT)
                     
-                    yOffset = yOffset + GetLayout().HEADER_HEIGHT
+                    yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
                     
                     if headerExpanded then
                 
@@ -2234,7 +2233,7 @@ function WarbandNexus:DrawReputationList(container, width)
                         header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                         header:SetWidth(width - BASE_INDENT)
                     
-                        yOffset = yOffset + GetLayout().HEADER_HEIGHT
+                        yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
                     
                     if headerExpanded then
                         
@@ -2503,47 +2502,17 @@ function WarbandNexus:DrawReputationTab(parent)
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.reputations ~= false
     
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) =====
-    local CreateCard = ns.UI_CreateCard
-    local titleCard = CreateCard(headerParent, 70)
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    
-    -- Header icon with ring border
-    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-    local GetTabIcon = ns.UI_GetTabIcon
-    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("reputation"))
-    
-    -- Use factory pattern positioning for standardized header layout
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout =====
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["REP_TITLE"]) or "Reputation Overview") .. "|r"
-    local subtitleTextContent = (ns.L and ns.L["REP_SUBTITLE"]) or "Track factions and renown across your warband"
-    
-    -- Create container for text group (using Factory pattern)
-    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
-    
-    -- Create title text (header font, colored)
-    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
-    titleText:SetText(titleTextContent)
-    titleText:SetJustifyH("LEFT")
-    
-    -- Create subtitle text
-    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
-    subtitleText:SetText(subtitleTextContent)
-    subtitleText:SetTextColor(1, 1, 1)
-    subtitleText:SetJustifyH("LEFT")
-    
-    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
-    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
-    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
-    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
-    
-    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
-    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
+    local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
+        tabKey = "reputation",
+        titleText = "|cff" .. hexColor .. ((ns.L and ns.L["REP_TITLE"]) or "Reputation Overview") .. "|r",
+        subtitleText = (ns.L and ns.L["REP_SUBTITLE"]) or "Track factions and renown across your warband",
+    }))
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     -- View Mode: Always use Filtered View (All Characters view removed)
     

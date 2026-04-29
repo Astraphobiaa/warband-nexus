@@ -1736,9 +1736,10 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
     end
 
     -- Dedup layers only gate NOTIFICATIONS — data update above always runs
-    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("mount", mountID)
     local skipNotification = false
-    if not isRepeatable and WasAlreadyNotified("mount", mountID) then
+    -- Repeatable (farmable) affects try-counter / drop DB only — never bypass permanent toast dedup
+    -- or the same mount can notify again on every journal/login refresh.
+    if WasAlreadyNotified("mount", mountID) then
         skipNotification = true
         DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: mount " .. mountID .. " (already notified)")
     elseif WasRecentlyShownByName(name) then
@@ -1869,41 +1870,55 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     end
 
     -- Dedup layers only gate NOTIFICATIONS — data update above always runs
-    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("pet", speciesID)
     local skipNotification = false
+
+    -- Wrapped journal pets: NEW_PET_ADDED can fire before unwrap — skip toast spam until unwrapped.
+    if C_PetJournal.PetNeedsFanfare and petGUID and C_PetJournal.PetNeedsFanfare(petGUID) then
+        skipNotification = true
+        DebugPrint("|cff888888[WN CollectionService]|r SKIP: pet needs fanfare (wrapped) petGUID=" .. tostring(petGUID))
+    end
+
+    -- Prefer species name for display (stable); journal row name can be wrong during async journal loads.
+    local notifyPetName = name
+    if speciesID and C_PetJournal.GetPetInfoBySpeciesID then
+        local sName = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+        if sName and sName ~= "" and not (issecretvalue and issecretvalue(sName)) then
+            notifyPetName = sName
+        end
+    end
 
     -- Duplicate pet species (2/3, 3/3 etc.) — skip notification but data is already updated
     local numOwned, limit = C_PetJournal.GetNumCollectedInfo(speciesID)
     if issecretvalue and numOwned and issecretvalue(numOwned) then numOwned = nil end
-    if numOwned and numOwned > 1 then
+    if not skipNotification and numOwned and numOwned > 1 then
         skipNotification = true
-        DebugPrint("|cff888888[WN CollectionService]|r SKIP: " .. name .. " (" .. numOwned .. "/" .. (limit or 3) .. " owned) - not first acquisition")
-    elseif not isRepeatable and WasAlreadyNotified("pet", speciesID) then
+        DebugPrint("|cff888888[WN CollectionService]|r SKIP: " .. notifyPetName .. " (" .. numOwned .. "/" .. (limit or 3) .. " owned) - not first acquisition")
+    elseif not skipNotification and WasAlreadyNotified("pet", speciesID) then
         skipNotification = true
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: pet " .. name .. " (already notified)")
-    elseif WasRecentlyShownByName(name) then
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: pet " .. notifyPetName .. " (already notified)")
+    elseif not skipNotification and WasRecentlyShownByName(notifyPetName) then
         skipNotification = true
-        DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
-    elseif WasDetectedInBag("pet", speciesID) then
+        DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. notifyPetName)
+    elseif not skipNotification and WasDetectedInBag("pet", speciesID) then
         skipNotification = true
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (detected in bag before, permanent block)")
-    elseif RingBufferCheck(recentNotifications, "petname:" .. name) then
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. notifyPetName .. " (detected in bag before, permanent block)")
+    elseif not skipNotification and RingBufferCheck(recentNotifications, "petname:" .. notifyPetName) then
         skipNotification = true
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (item-based bag detection)")
-    elseif WasRecentlyNotified("pet", speciesID) then
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. notifyPetName .. " (item-based bag detection)")
+    elseif not skipNotification and WasRecentlyNotified("pet", speciesID) then
         skipNotification = true
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (notified within 5s)")
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. notifyPetName .. " (notified within 5s)")
     end
 
     if not skipNotification then
         MarkAsNotified("pet", speciesID)
-        MarkAsShownByName(name)
+        MarkAsShownByName(notifyPetName)
         MarkAsPermanentlyNotified("pet", speciesID)
 
         self:SendMessage(E.COLLECTIBLE_OBTAINED, {
             type = "pet",
             id = speciesID,
-            name = name,
+            name = notifyPetName,
             icon = icon
         })
     end
@@ -1914,7 +1929,7 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "pet")
     end
 
-    DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET: " .. name .. " (speciesID: " .. speciesID .. ")" .. (skipNotification and " (notification deduped)" or ""))
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET: " .. notifyPetName .. " (speciesID: " .. speciesID .. ")" .. (skipNotification and " (notification deduped)" or ""))
 end
 
 ---Handle NEW_TOY_ADDED event
@@ -1953,9 +1968,8 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
     end
 
     -- Dedup layers only gate NOTIFICATIONS — data update above always runs
-    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("toy", itemID)
     local skipNotification = false
-    if not isRepeatable and WasAlreadyNotified("toy", itemID) then
+    if WasAlreadyNotified("toy", itemID) then
         skipNotification = true
         DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: toy " .. itemID .. " (already notified)")
     elseif WasDetectedInBag("toy", itemID) then
@@ -5098,7 +5112,8 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
     
     -- If there are pending items, schedule a retry after a reasonable delay
     if pendingCount > 0 then
-        C_Timer.After(2.0, function()
+        -- Item data often resolves within a few hundred ms; 2s made rare-drop toasts feel broken.
+        C_Timer.After(0.4, function()
             if WarbandNexus.OnBagUpdateForCollectibles then
                 WarbandNexus:OnBagUpdateForCollectibles()
             end
@@ -5111,7 +5126,8 @@ end
 ---Handle BAG_UPDATE_DELAYED event (detects new collectible items in bags)
 ---Throttled: safety net against rapid calls (debounce in raw frame handles coalescing)
 local lastCollectibleScanTime = 0
-local COLLECTIBLE_SCAN_THROTTLE = 0.3
+-- Keep small: bag debounce already coalesces bursts; large throttle delayed mount/pet toasts.
+local COLLECTIBLE_SCAN_THROTTLE = 0.08
 
 function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
     local now = GetTime()
@@ -5194,8 +5210,10 @@ end
     ARCHITECTURE: Two-path collectible detection system:
     
       Path 1 — BAG SCAN (this listener):
-        Trigger: BAG_UPDATE tracks changed bagIDs → BAG_UPDATE_DELAYED → 0.3s debounce
+        Trigger: BAG_UPDATE tracks changed bagIDs → BAG_UPDATE_DELAYED → short debounce
                  → ScanBagsForNewCollectibles(changedBagIDs)
+        Plus: CHAT_MSG_LOOT (self, possible collectible item) schedules an immediate scan that
+                 bypasses COLLECTIBLE_SCAN_THROTTLE so mount/pet toasts align with chat, not +300ms/+2s later.
         Detects: Uncollected mount/pet/toy items when they land in bags
         Sources: Vendor purchase, trade, loot, mail, quest reward (item-based)
         Optimization: Only scans bags that actually changed, not all 0-4
@@ -5211,7 +5229,11 @@ end
 do
     local bagScanFrame = CreateFrame("Frame")
     local bagScanTimer = nil
-    local BAG_SCAN_DEBOUNCE = 0.3  -- 300ms debounce: BAG_UPDATE_DELAYED is already WoW's "settled" signal
+    local chatLootScanTimer = nil
+    -- BAG_UPDATE_DELAYED already batches; keep this small so rare-drop notifications stay snappy.
+    local BAG_SCAN_DEBOUNCE = 0.06
+    -- CHAT_MSG_LOOT fires after loot is committed; coalesce multi-line loot spam into one scan.
+    local CHAT_LOOT_BAG_SCAN_DEBOUNCE = 0.04
     local baselineInitialized = false
     local changedBagIDs = {}       -- Tracks which bags changed since last scan {[bagID]=true}
     local suppressUntil = 0        -- Suppress BAG_UPDATE_DELAYED until this GetTime() value
@@ -5219,8 +5241,9 @@ do
     bagScanFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     bagScanFrame:RegisterEvent("BAG_UPDATE")           -- Track which specific bags changed
     bagScanFrame:RegisterEvent("BAG_UPDATE_DELAYED")   -- "Settled" signal: trigger scan
+    bagScanFrame:RegisterEvent("CHAT_MSG_LOOT")
     
-    bagScanFrame:SetScript("OnEvent", function(self, event, arg1)
+    bagScanFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         if event == "PLAYER_ENTERING_WORLD" then
             -- Initialize bag baseline on first world entry.
             -- The first call to ScanBagsForNewCollectibles populates previousBagContents
@@ -5248,6 +5271,40 @@ do
             end
             return
         end
+
+        -- CHAT_MSG_LOOT: loot is committed; bypass COLLECTIBLE_SCAN_THROTTLE once so the toast
+        -- is not stuck behind BAG_UPDATE_DELAYED + debounce (felt like "several seconds" on rares).
+        if event == "CHAT_MSG_LOOT" then
+            if not baselineInitialized or GetTime() < suppressUntil then return end
+            local message = arg1
+            local author = arg2
+            if not message or type(message) ~= "string" then return end
+            if issecretvalue and issecretvalue(message) then return end
+            if author and issecretvalue and issecretvalue(author) then return end
+            local playerName = UnitName("player")
+            if not playerName or (issecretvalue and issecretvalue(playerName)) then return end
+            local authorBase = author and author:match("^([^%-]+)") or author
+            if author and author ~= "" and author ~= playerName and (not authorBase or authorBase ~= playerName) then
+                return
+            end
+            local itemIDStr = message:match("|Hitem:(%d+):")
+            local itemID = itemIDStr and tonumber(itemIDStr) or nil
+            if not itemID then return end
+            local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
+            if preClassID and preClassID ~= 0 and preClassID ~= 15 and preClassID ~= 17 then
+                return
+            end
+            if chatLootScanTimer then chatLootScanTimer:Cancel() end
+            chatLootScanTimer = C_Timer.NewTimer(CHAT_LOOT_BAG_SCAN_DEBOUNCE, function()
+                chatLootScanTimer = nil
+                if not WarbandNexus or not WarbandNexus.OnBagUpdateForCollectibles then return end
+                lastCollectibleScanTime = 0
+                WarbandNexus:OnBagUpdateForCollectibles()
+            end)
+            return
+        end
+        
+        if event ~= "BAG_UPDATE_DELAYED" then return end
         
         -- BAG_UPDATE_DELAYED: Debounce rapid fires into a single scan.
         if not baselineInitialized then return end

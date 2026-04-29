@@ -183,12 +183,16 @@ function Fns.BuildObtainedChat(baseKey, baseFallback, itemLink, preResetCount)
         tags[#tags + 1] = (L and L["TRYCOUNTER_CHAT_TAG_RESET"]) or "counter reset"
     end
     local tagStr = (#tags > 0) and (" |cff888888(" .. tconcat(tags, " · ") .. ")|r") or ""
+    -- Success lines must not reuse TRYCOUNTER_INCREMENT_CHAT wording ("N attempts for …"), which reads like a miss.
     if totalTries <= 1 then
-        local fmt = (L and L["TRYCOUNTER_CHAT_FIRST_FOR_LINK"]) or "First attempt for %s"
+        local fmt = (L and L["TRYCOUNTER_CHAT_OBTAINED_FIRST_LINK"])
+            or (L and L["TRYCOUNTER_CHAT_FIRST_FOR_LINK"])
+            or "You got %s on your first try!"
         return prefix .. "|cffffffff" .. format(fmt, itemLink) .. "|r" .. tagStr
     end
-    local fmt = (L and L["TRYCOUNTER_CHAT_ATTEMPTS_FOR_LINK"]) or (L and L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"
-    return prefix .. "|cffffffff" .. format(fmt, totalTries, itemLink) .. "|r" .. tagStr
+    local fmt = (L and L["TRYCOUNTER_CHAT_OBTAINED_AFTER_LINK"])
+        or "You got %s after %d attempts!"
+    return prefix .. "|cffffffff" .. format(fmt, itemLink, totalTries) .. "|r" .. tagStr
 end
 
 -- =====================================================================
@@ -2183,9 +2187,11 @@ function Fns.FilterDropsByDifficulty(drops, encounterDiffID)
     local diffSkipped = nil
     if not drops then return trackable, diffSkipped end
     local npcDropDifficulty = drops.dropDifficulty
+    local npcDifficultyIDs = drops.difficultyIDs
     for i = 1, #drops do
         local drop = drops[i]
         local reqDiff = drop.dropDifficulty or npcDropDifficulty
+        local reqDiffIDs = drop.difficultyIDs or npcDifficultyIDs
         local diffOk = true
         if reqDiff then
             if encounterDiffID then
@@ -2197,6 +2203,23 @@ function Fns.FilterDropsByDifficulty(drops, encounterDiffID)
                 diffOk = false
             end
         end
+        -- difficultyIDs whitelist: when present, encounter difficultyID MUST be in the list.
+        -- Required because the "Mythic" label aliases multiple WoW IDs (16 = Mythic raid,
+        -- 8 = Mythic Keystone, 23 = Mythic dungeon). Same npcID can appear in M+ dungeon
+        -- AND raid (e.g. Midnight Falls — npcID 214650 in March on Quel'Danas Mythic raid vs the
+        -- same npcID appearing in M+ Mythic dungeon contexts); the raid-only
+        -- mount must not increment on M+ kills.
+        if diffOk and reqDiffIDs and type(reqDiffIDs) == "table" and #reqDiffIDs > 0 then
+            if not encounterDiffID or (issecretvalue and issecretvalue(encounterDiffID)) then
+                diffOk = false
+            else
+                local match = false
+                for j = 1, #reqDiffIDs do
+                    if reqDiffIDs[j] == encounterDiffID then match = true; break end
+                end
+                diffOk = match
+            end
+        end
         if diffOk then
             if drop.repeatable or not Fns.IsCollectibleCollected(drop) then
                 trackable[#trackable + 1] = drop
@@ -2205,6 +2228,34 @@ function Fns.FilterDropsByDifficulty(drops, encounterDiffID)
             diffSkipped = { drop = drop, required = reqDiff }
         end
     end
+
+    -- Per-drop instance MapID exclusions (GetInstanceInfo index 8): same npcID reused across
+    -- unrelated instances (e.g. Legion Seat of the Triumvirate vs Midnight raid Midnight Falls).
+    if #trackable > 0 then
+        local mapInstanceID = select(8, GetInstanceInfo())
+        if mapInstanceID and type(mapInstanceID) == "number" and mapInstanceID > 0
+            and not (issecretvalue and issecretvalue(mapInstanceID)) then
+            local filtered = {}
+            for ti = 1, #trackable do
+                local drop = trackable[ti]
+                local excl = drop and drop.excludeInstanceIDs
+                local skip = false
+                if type(excl) == "table" then
+                    for ei = 1, #excl do
+                        if excl[ei] == mapInstanceID then
+                            skip = true
+                            break
+                        end
+                    end
+                end
+                if not skip then
+                    filtered[#filtered + 1] = drop
+                end
+            end
+            trackable = filtered
+        end
+    end
+
     return trackable, diffSkipped
 end
 
@@ -2460,10 +2511,11 @@ function Fns.ScanLootForItems(expectedDrops, cachedNumLoot, cachedSlotData)
             link = GetLootSlotLink and GetLootSlotLink(i)
             if link and issecretvalue and issecretvalue(link) then link = nil end
         end
-        if hasItem and link then
-            local itemID = GetItemInfoInstant(link)
-            if itemID and expectedSet[itemID] then
-                found[itemID] = true
+        if hasItem and link and type(link) == "string" then
+            -- GetItemInfoInstant's first return is item name, not ID — parse the hyperlink.
+            local lootItemID = tonumber(link:match("|Hitem:(%d+):"))
+            if lootItemID and expectedSet[lootItemID] then
+                found[lootItemID] = true
             end
         end
     end

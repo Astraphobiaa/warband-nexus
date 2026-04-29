@@ -278,8 +278,9 @@ function WarbandNexus:OnKeystoneChanged()
                 if not oldKeystone and keystoneData then
                     keystoneChanged = true
                 elseif oldKeystone and keystoneData then
-                    keystoneChanged = (oldKeystone.level ~= keystoneData.level or 
-                                     oldKeystone.mapID ~= keystoneData.mapID)
+                    local ol, nl = tonumber(oldKeystone.level), tonumber(keystoneData.level)
+                    local om, nm = tonumber(oldKeystone.mapID), tonumber(keystoneData.mapID)
+                    keystoneChanged = (ol ~= nl or om ~= nm)
                     -- keystoneChanged already set above
                 elseif oldKeystone and not keystoneData then
                     keystoneChanged = true

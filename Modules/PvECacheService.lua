@@ -18,8 +18,238 @@ local ADDON_NAME, ns = ...
 local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
 local Utilities = ns.Utilities
+
+---Chat-visible diagnostics when Config → Debug Mode is on (SavedVariables-safe summaries only).
+local function PvECacheUserDebug(msg, ...)
+    local W = rawget(_G, "WarbandNexus") or WarbandNexus
+    local db = W and W.db and W.db.profile
+    if not db or not db.debugMode then return end
+    if not (W and W.Print) then return end
+    local text
+    if select("#", ...) > 0 then
+        local ok, s = pcall(string.format, msg, ...)
+        text = ok and s or tostring(msg)
+    else
+        text = tostring(msg)
+    end
+    W:Print("|cff00ccff[PvE Cache]|r " .. text)
+end
+
+--- One SavedVariables bucket per logical character: normalize legacy/UI key spellings
+--- so imports, migration, and live API paths never split the same toon across multiple keys.
+local function CanonicalizePvEKey(charKey)
+    if not charKey or charKey == "" then return charKey end
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local k = ns.Utilities:GetCanonicalCharacterKey(charKey)
+        if k and k ~= "" then return k end
+    end
+    return charKey
+end
+
+---Characters tab reads db.global.characters[].mythicKey; PvE updates must mirror pveCache keystone there.
+---@param addon AceAddon WarbandNexus
+---@param pveCharKey string
+---@param keystoneLevel number|nil
+---@param mapID number|nil
+---@return boolean changed
+local function MirrorKeystoneToCharacterRow(addon, pveCharKey, keystoneLevel, mapID)
+    if not addon or not addon.db or not addon.db.global or not addon.db.global.characters then return false end
+    local tableKey = pveCharKey
+    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+        local r = ns.CharacterService:ResolveCharactersTableKey(addon)
+        if r then tableKey = r end
+    end
+    local row = addon.db.global.characters[tableKey]
+    if not row then return false end
+    local old = row.mythicKey
+    local lv = tonumber(keystoneLevel)
+    local mid = tonumber(mapID)
+    if lv and mid and lv > 0 and mid > 0 then
+        local oldLevel = old and tonumber(old.level) or nil
+        local oldMap = old and tonumber(old.mapID or old.dungeonID) or nil
+        if oldLevel == lv and oldMap == mid then
+            return false
+        end
+        local mapName
+        if C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
+            local ok, mn = pcall(C_ChallengeMode.GetMapUIInfo, mid)
+            if ok and mn and not (issecretvalue and issecretvalue(mn)) then
+                mapName = mn
+            end
+        end
+        row.mythicKey = {
+            level = lv,
+            dungeonID = mid,
+            dungeonName = mapName or "Unknown Dungeon",
+            mapID = mid,
+            scanTime = time(),
+        }
+        return true
+    else
+        if old == nil then
+            return false
+        end
+        row.mythicKey = nil
+        return true
+    end
+end
+
 local function CmpNameSort(a, b)
     return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.name) or "") < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.name) or "")
+end
+
+local function BuildAffixSignature(pveCache)
+    local mp = pveCache and pveCache.mythicPlus
+    local aff = mp and mp.currentAffixes
+    if type(aff) ~= "table" or #aff == 0 then return "" end
+    local ids = {}
+    for i = 1, #aff do
+        local v = aff[i]
+        local id = (type(v) == "table" and v.id) or v
+        id = tonumber(id)
+        if id and id > 0 then
+            ids[#ids + 1] = id
+        end
+    end
+    table.sort(ids)
+    local parts = {}
+    for i = 1, #ids do
+        parts[i] = tostring(ids[i])
+    end
+    return table.concat(parts, ",")
+end
+
+local function BuildRunsSignature(runHistory)
+    if type(runHistory) ~= "table" or #runHistory == 0 then return "" end
+    local parts = {}
+    for i = 1, #runHistory do
+        local r = runHistory[i]
+        if r then
+            parts[#parts + 1] = tostring(r.level or 0) .. ":" .. tostring(r.dungeon or "") .. ":" .. ((r.timed and "1") or "0")
+        end
+    end
+    return table.concat(parts, "|")
+end
+
+---Build a compact change signature for current character PvE UI payload.
+---@param pveCache table|nil
+---@param charKey string
+---@return string
+local function BuildPvESignature(pveCache, charKey)
+    local mp = pveCache and pveCache.mythicPlus
+    local gv = pveCache and pveCache.greatVault
+    local lo = pveCache and pveCache.lockouts
+    local delves = pveCache and pveCache.delves
+
+    local key = mp and mp.keystones and mp.keystones[charKey]
+    local keySig = tostring(key and key.level or 0) .. ":" .. tostring(key and key.mapID or 0)
+
+    local ds = mp and mp.dungeonScores and mp.dungeonScores[charKey]
+    local overall = ds and tonumber(ds.overallScore) or 0
+    local dungeonCount = 0
+    local dungeonSum = 0
+    if ds and type(ds.dungeons) == "table" then
+        for _, row in pairs(ds.dungeons) do
+            dungeonCount = dungeonCount + 1
+            dungeonSum = dungeonSum + tonumber((row and row.score) or 0) + tonumber((row and row.bestLevel) or 0)
+        end
+    end
+
+    local rewards = gv and gv.rewards and gv.rewards[charKey]
+    local rewardSig = rewards and rewards.hasAvailableRewards and "1" or "0"
+
+    local acts = gv and gv.activities and gv.activities[charKey]
+    local raidN = acts and acts.raids and #acts.raids or 0
+    local mPlusN = acts and acts.mythicPlus and #acts.mythicPlus or 0
+    local pvpN = acts and acts.pvp and #acts.pvp or 0
+    local worldN = acts and acts.world and #acts.world or 0
+
+    local runSig = BuildRunsSignature(mp and mp.runHistory and mp.runHistory[charKey])
+    local affSig = BuildAffixSignature(pveCache)
+
+    local lockN = 0
+    if lo and lo.raids and type(lo.raids[charKey]) == "table" then
+        for _ in pairs(lo.raids[charKey]) do lockN = lockN + 1 end
+    end
+
+    local wbN = 0
+    if lo and lo.worldBosses and type(lo.worldBosses[charKey]) == "table" then
+        for _ in pairs(lo.worldBosses[charKey]) do wbN = wbN + 1 end
+    end
+
+    local delveChar = delves and delves.characters and delves.characters[charKey]
+    local delveSig = tostring(delves and delves.season or 0)
+        .. ":" .. ((delveChar and delveChar.bountifulComplete) and "1" or "0")
+        .. ":" .. ((delveChar and delveChar.crackedKeystoneComplete) and "1" or "0")
+        .. ":" .. tostring(delves and delves.companion and delves.companion.renownLevel or 0)
+
+    return table.concat({
+        keySig,
+        tostring(overall),
+        tostring(dungeonCount),
+        tostring(dungeonSum),
+        rewardSig,
+        tostring(raidN), tostring(mPlusN), tostring(pvpN), tostring(worldN),
+        tostring(lockN), tostring(wbN),
+        delveSig,
+        affSig,
+        runSig,
+    }, ";")
+end
+
+local WEEK_SECONDS = 7 * 86400
+
+---Best-effort weekly reset start timestamp (epoch seconds).
+---@return number|nil
+local function GetCurrentWeeklyResetStartTime()
+    if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and GetServerTime then
+        local secsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
+        if secsUntil ~= nil and secsUntil >= 0 then
+            return GetServerTime() + secsUntil - WEEK_SECONDS
+        end
+    end
+    if WarbandNexus and WarbandNexus.GetWeeklyResetTime then
+        local nextReset = WarbandNexus:GetWeeklyResetTime()
+        if nextReset and nextReset > 0 then
+            return nextReset - WEEK_SECONDS
+        end
+    end
+    return nil
+end
+
+---Prune keystones that belong to a previous weekly cycle.
+---Runs on init/update so stale keys never survive a weekly reset.
+local function PruneExpiredKeystonesForWeeklyReset()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.pveCache then
+        return 0
+    end
+    local mp = WarbandNexus.db.global.pveCache.mythicPlus
+    if not mp then return 0 end
+    if not mp.keystones then
+        mp.keystones = {}
+        return 0
+    end
+
+    local resetStart = GetCurrentWeeklyResetStartTime()
+    local removed = 0
+    for key, data in pairs(mp.keystones) do
+        local stamp = type(data) == "table" and data.lastUpdate or nil
+        local stale = false
+        if resetStart and resetStart > 0 then
+            stale = type(stamp) ~= "number" or stamp < resetStart
+        elseif WarbandNexus.HasWeeklyResetOccurred then
+            stale = type(stamp) ~= "number" or WarbandNexus:HasWeeklyResetOccurred(stamp)
+        end
+        if stale then
+            mp.keystones[key] = nil
+            removed = removed + 1
+        end
+    end
+
+    if resetStart and resetStart > 0 then
+        mp.lastKeystoneWeeklyReset = resetStart
+    end
+    return removed
 end
 
 -- ============================================================================
@@ -52,6 +282,51 @@ end
 -- Throttle timers
 local lastUpdateTime = 0
 local pendingUpdate = false
+local keystoneRetryPending = {}
+local keystoneRetryCount = {}
+local keystoneZeroSeenAt = {}
+-- Track last observed (level, mapID) per char so repeated identical API results
+-- (very common: UPDATE_INSTANCE_INFO + CHALLENGE_MODE_MAPS_UPDATE bursts during
+-- reload/zone all read the same values) become no-ops instead of re-running the
+-- write/log path. Stored as "level|mapID" strings; nil API → "nil|nil".
+local keystoneLastSeen = {}
+
+local KEYSTONE_ZERO_CONFIRM_SECONDS = 2
+local KEYSTONE_RETRY_MAX = 3
+
+---Schedule one delayed keystone re-read for API warmup races.
+---Capped at KEYSTONE_RETRY_MAX attempts per session per char so a character that
+---genuinely owns no keystone (API returns nil rather than 0 in some warmup paths)
+---doesn't trigger an infinite retry loop and chat-spam.
+---@param charKey string
+local function ScheduleKeystoneRetry(charKey)
+    if not charKey or keystoneRetryPending[charKey] then
+        return
+    end
+    if not C_Timer or not C_Timer.After then
+        return
+    end
+    local attempts = (keystoneRetryCount[charKey] or 0)
+    if attempts >= KEYSTONE_RETRY_MAX then
+        return
+    end
+    keystoneRetryCount[charKey] = attempts + 1
+    keystoneRetryPending[charKey] = true
+    C_Timer.After(1.2, function()
+        keystoneRetryPending[charKey] = nil
+        if not WarbandNexus or not WarbandNexus.UpdateCharacterKeystone then
+            return
+        end
+        WarbandNexus:UpdateCharacterKeystone(charKey)
+        if WarbandNexus.SavePvECache then
+            WarbandNexus:SavePvECache()
+        end
+        local events = ns.Constants and ns.Constants.EVENTS
+        if WarbandNexus.SendMessage and events and events.PVE_UPDATED then
+            WarbandNexus:SendMessage(events.PVE_UPDATED)
+        end
+    end)
+end
 
 -- ============================================================================
 -- INITIALIZATION
@@ -72,23 +347,35 @@ function WarbandNexus:InitializePvECache()
         return
     end
     
-    -- Version check
-    if self.db.global.pveCache.version ~= CACHE_VERSION then
-        self.db.global.pveCache = {
-            mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} },
-            greatVault = { activities = {}, rewards = {} },
-            lockouts = { raids = {}, worldBosses = {} },
-            delves = { companion = {}, season = 0 },
-            version = CACHE_VERSION,
-            lastUpdate = 0,
-        }
-        return
-    end
-    
-    -- Ensure delves structure exists (for existing DBs pre-delves)
-    if not self.db.global.pveCache.delves then
-        self.db.global.pveCache.delves = { companion = {}, season = 0 }
-    end
+    -- Non-destructive version migration.
+    -- Bumping CACHE_VERSION must NOT wipe per-character Great Vault / keystone data,
+    -- otherwise alts show empty until each one is logged into and re-scanned.
+    -- The current character's data is refreshed on PLAYER_LOGIN regardless; for alts
+    -- we keep whatever is already stored and just ensure the expected sub-tables exist.
+    local cache = self.db.global.pveCache
+    cache.mythicPlus = cache.mythicPlus or { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} }
+    cache.mythicPlus.currentAffixes = cache.mythicPlus.currentAffixes or {}
+    cache.mythicPlus.keystones      = cache.mythicPlus.keystones      or {}
+    cache.mythicPlus.bestRuns       = cache.mythicPlus.bestRuns       or {}
+    cache.mythicPlus.dungeonScores  = cache.mythicPlus.dungeonScores  or {}
+
+    cache.greatVault = cache.greatVault or { activities = {}, rewards = {} }
+    cache.greatVault.activities = cache.greatVault.activities or {}
+    cache.greatVault.rewards    = cache.greatVault.rewards    or {}
+
+    cache.lockouts = cache.lockouts or { raids = {}, worldBosses = {} }
+    cache.lockouts.raids       = cache.lockouts.raids       or {}
+    cache.lockouts.worldBosses = cache.lockouts.worldBosses or {}
+
+    cache.delves = cache.delves or { companion = {}, season = 0 }
+    cache.delves.companion = cache.delves.companion or {}
+    cache.delves.season    = cache.delves.season    or 0
+
+    cache.version = CACHE_VERSION
+    cache.lastUpdate = cache.lastUpdate or 0
+
+    -- Weekly hygiene: do not keep stale pre-reset keystones across sessions.
+    PruneExpiredKeystonesForWeeklyReset()
     
     -- CRITICAL: Validate and clear corrupted vault data
     -- Each character should have max 3 activities per type (raids, mythicPlus, pvp, world)
@@ -153,28 +440,93 @@ function WarbandNexus:UpdateCharacterKeystone(charKey)
     end
     
     if not C_MythicPlus or not charKey or not self.db.global.pveCache then return end
+    charKey = CanonicalizePvEKey(charKey)
     
     local keystoneInfo = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
     local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
-    
+    local ksStore = self.db.global.pveCache.mythicPlus and self.db.global.pveCache.mythicPlus.keystones
+    local existing = ksStore and ksStore[charKey] or nil
+
+    -- Skip when API returned the SAME (level, mapID) as the previous call for this
+    -- character. Without this guard, every event in a reload/zone burst retraces
+    -- the entire keystone path (and re-emits the debug log) for unchanged values.
+    local seenKey = tostring(keystoneLevel) .. "|" .. tostring(keystoneInfo)
+    if keystoneLastSeen[charKey] == seenKey then
+        return
+    end
+    keystoneLastSeen[charKey] = seenKey
+
+    local didChange = false
     if keystoneInfo and keystoneLevel and keystoneLevel > 0 then
         if not self.db.global.pveCache.mythicPlus.keystones then
             self.db.global.pveCache.mythicPlus.keystones = {}
         end
-        
-        self.db.global.pveCache.mythicPlus.keystones[charKey] = {
-            mapID = keystoneInfo,
-            level = keystoneLevel,
-            lastUpdate = time(),
-        }
+        local oldLevel = existing and tonumber(existing.level) or nil
+        local oldMap = existing and tonumber(existing.mapID) or nil
+        local newLevel = tonumber(keystoneLevel)
+        local newMap = tonumber(keystoneInfo)
+        if oldLevel ~= newLevel or oldMap ~= newMap then
+            self.db.global.pveCache.mythicPlus.keystones[charKey] = {
+                mapID = keystoneInfo,
+                level = keystoneLevel,
+                lastUpdate = time(),
+            }
+            didChange = true
+            PvECacheUserDebug("keystone: STORED key=%s mapID=%s level=%s", tostring(charKey), tostring(keystoneInfo), tostring(keystoneLevel))
+        end
+        keystoneZeroSeenAt[charKey] = nil
+        keystoneRetryCount[charKey] = nil
+        if MirrorKeystoneToCharacterRow(self, charKey, keystoneLevel, keystoneInfo) then
+            didChange = true
+        end
     else
         -- Only clear when API reports "no key" (level 0). Nil map+level often means APIs not ready yet —
         -- do not wipe a good cached key (fixes login / affix race losing alt keys).
         if keystoneLevel == 0 then
+            if existing and existing.level and existing.level > 0 then
+                local firstSeen = keystoneZeroSeenAt[charKey]
+                if not firstSeen then
+                    keystoneZeroSeenAt[charKey] = time()
+                    PvECacheUserDebug(
+                        "keystone: API level 0 (first sight) — keep existing cache key=%s mapID=%s level=%s",
+                        tostring(charKey), tostring(existing.mapID), tostring(existing.level))
+                    return
+                end
+                if (time() - firstSeen) < KEYSTONE_ZERO_CONFIRM_SECONDS then
+                    PvECacheUserDebug(
+                        "keystone: API level 0 (await confirm) — keep existing cache key=%s age=%ss",
+                        tostring(charKey), tostring(time() - firstSeen))
+                    return
+                end
+            end
+
             if self.db.global.pveCache.mythicPlus.keystones then
                 self.db.global.pveCache.mythicPlus.keystones[charKey] = nil
             end
+            didChange = existing ~= nil
+            keystoneZeroSeenAt[charKey] = nil
+            PvECacheUserDebug("keystone: API level 0 — cleared cache entry key=%s", tostring(charKey))
+            if MirrorKeystoneToCharacterRow(self, charKey, nil, nil) then
+                didChange = true
+            end
+        else
+            -- API warmup race: keep existing key and schedule one delayed re-read.
+            -- Only log/request when no retry is already in-flight; without this guard,
+            -- bursty events (zoning, login, refresh) repaint the same warning dozens
+            -- of times per second while the API is still warming up.
+            if not keystoneRetryPending[charKey] then
+                if C_MythicPlus.RequestMapInfo then
+                    pcall(C_MythicPlus.RequestMapInfo)
+                end
+                ScheduleKeystoneRetry(charKey)
+                PvECacheUserDebug(
+                    "keystone: no write (API not ready: level=%s mapID=%s) key=%s — existing cache kept",
+                    tostring(keystoneLevel), tostring(keystoneInfo), tostring(charKey))
+            end
         end
+    end
+    if didChange and self.SendMessage and Constants and Constants.EVENTS and Constants.EVENTS.CHARACTER_UPDATED then
+        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = charKey, dataType = "mythicKey" })
     end
 end
 
@@ -187,6 +539,7 @@ function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
     end
     
     if not C_MythicPlus or not charKey or not self.db.global.pveCache then return end
+    charKey = CanonicalizePvEKey(charKey)
     
     -- Get best run level for each dungeon
     local maps = C_ChallengeMode and C_ChallengeMode.GetMapTable()
@@ -217,6 +570,7 @@ function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
     
     self.db.global.pveCache.mythicPlus.bestRuns[charKey].overallScore = overallScore
     self.db.global.pveCache.mythicPlus.bestRuns[charKey].scoreSource = scoreSource
+    PvECacheUserDebug("bestRuns: overallScore=%s source=%s key=%s (parallel to dungeonScores)", tostring(overallScore), tostring(scoreSource), tostring(charKey))
     
     -- Store best runs for each dungeon
     for i = 1, #maps do
@@ -232,6 +586,22 @@ function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
     end
 end
 
+---True if a dungeonScores bucket has any non-zero progress (used to avoid wiping API race zeros).
+local function DungeonScoresBucketHasProgress(scoreEntry)
+    if not scoreEntry then return false end
+    if type(scoreEntry.overallScore) == "number" and scoreEntry.overallScore > 0 then return true end
+    local dungeons = scoreEntry.dungeons
+    if type(dungeons) ~= "table" then return false end
+    for _, row in pairs(dungeons) do
+        if row then
+            if (type(row.score) == "number" and row.score > 0) or (type(row.bestLevel) == "number" and row.bestLevel > 0) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 ---Update character's dungeon scores (overall + per-dungeon breakdown)
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateDungeonScores(charKey)
@@ -241,6 +611,7 @@ function WarbandNexus:UpdateDungeonScores(charKey)
     end
     
     if not C_ChallengeMode or not charKey or not self.db.global.pveCache then return end
+    charKey = CanonicalizePvEKey(charKey)
     
     -- Initialize cache
     if not self.db.global.pveCache.mythicPlus.dungeonScores then
@@ -256,21 +627,23 @@ function WarbandNexus:UpdateDungeonScores(charKey)
     end
     
     local scoreData = self.db.global.pveCache.mythicPlus.dungeonScores[charKey]
+    local existingDungeons = scoreData.dungeons or {}
     
-    -- Get overall dungeon score
+    local newOverall = 0
     if C_ChallengeMode.GetOverallDungeonScore then
-        scoreData.overallScore = C_ChallengeMode.GetOverallDungeonScore() or 0
+        newOverall = C_ChallengeMode.GetOverallDungeonScore() or 0
     end
     
-    -- Get per-dungeon scores (lean: only score + bestLevel stored in SV)
-    -- Metadata (name, texture, timeLimit) resolved on-demand from C_ChallengeMode.GetMapUIInfo()
     local maps = C_ChallengeMode.GetMapTable()
+    local anyIncomingDungeon = false
+    local mergedDungeons = {}
+    local preservedFromSV = 0
+    
     if maps then
         for i = 1, #maps do
             local mapID = maps[i]
             local intimeInfo, overtimeInfo = C_MythicPlus.GetSeasonBestForMap(mapID)
             
-            -- Calculate HIGHEST score from best runs
             local dungeonScore = 0
             local bestLevel = 0
             
@@ -283,15 +656,58 @@ function WarbandNexus:UpdateDungeonScores(charKey)
                 bestLevel = math.max(bestLevel, overtimeInfo.level)
             end
             
-            -- Store only progress data (no metadata)
-            scoreData.dungeons[mapID] = {
-                score = dungeonScore,
-                bestLevel = bestLevel,
-            }
+            if dungeonScore > 0 or bestLevel > 0 then
+                anyIncomingDungeon = true
+            end
+            
+            local old = existingDungeons[mapID]
+            -- Never replace a good cached row with an all-zero snapshot (login / affix / API race).
+            if dungeonScore == 0 and bestLevel == 0 and old and ((old.score or 0) > 0 or (old.bestLevel or 0) > 0) then
+                mergedDungeons[mapID] = { score = old.score or 0, bestLevel = old.bestLevel or 0 }
+                preservedFromSV = preservedFromSV + 1
+            else
+                mergedDungeons[mapID] = { score = dungeonScore, bestLevel = bestLevel }
+            end
         end
     end
     
+    -- API often returns all zeros before M+ data hydrates; do not wipe a good SavedVariables snapshot.
+    if newOverall == 0 and not anyIncomingDungeon and DungeonScoresBucketHasProgress(scoreData) then
+        PvECacheUserDebug(
+            "dungeonScores: SKIP write (API overall=0, no per-map data, SV has progress) key=%s prevOverall=%s",
+            tostring(charKey), tostring(scoreData.overallScore or 0))
+        return
+    end
+    
+    -- GetMapTable() missing (rare): keep per-map SV; still allow overall score when the API returns it.
+    if not maps or #maps == 0 then
+        if newOverall > 0 then
+            scoreData.overallScore = newOverall
+            scoreData.lastUpdate = time()
+            PvECacheUserDebug("dungeonScores: maps missing; updated overall only=%s key=%s", tostring(newOverall), tostring(charKey))
+        else
+            PvECacheUserDebug("dungeonScores: maps missing; no write key=%s apiOverall=0", tostring(charKey))
+        end
+        return
+    end
+    
+    -- Overall: only overwrite with 0 when we never had a score (or API gave a non-zero update).
+    if newOverall > 0 then
+        scoreData.overallScore = newOverall
+    elseif (scoreData.overallScore or 0) == 0 then
+        scoreData.overallScore = 0
+    end
+    
+    scoreData.dungeons = mergedDungeons
     scoreData.lastUpdate = time()
+    PvECacheUserDebug(
+        "dungeonScores: SAVED key=%s apiOverall=%s storedOverall=%s maps=%d incomingAny=%s preservedRows=%d",
+        tostring(charKey),
+        tostring(newOverall),
+        tostring(scoreData.overallScore or 0),
+        #maps,
+        anyIncomingDungeon and "yes" or "no",
+        preservedFromSV)
 end
 
 -- ============================================================================
@@ -307,6 +723,7 @@ function WarbandNexus:UpdateGreatVaultActivities(charKey)
     end
     
     if not C_WeeklyRewards or not charKey then return end
+    charKey = CanonicalizePvEKey(charKey)
     
     -- SYNCHRONOUS: Process vault data already cached by WoW client (from previous OnUIInteract).
     -- ProcessGreatVaultActivities guards against empty data (returns early if GetActivities is nil/empty).
@@ -321,12 +738,16 @@ end
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:ProcessGreatVaultActivities(charKey)
     if not C_WeeklyRewards or not charKey or not self.db.global.pveCache then return end
+    charKey = CanonicalizePvEKey(charKey)
     
     local activities = C_WeeklyRewards.GetActivities()
     if not activities or #activities == 0 then 
         -- CRITICAL: Do NOT create empty arrays when API returns nil/empty.
         -- Server may not have responded to OnUIInteract() yet.
         -- Overwriting with empty data would wipe VaultScanner's persisted data.
+        PvECacheUserDebug(
+            "greatVault: GetActivities empty/nil — NOT overwriting cache (key=%s). Open Great Vault or wait for server.",
+            tostring(charKey))
         return 
     end
     
@@ -458,6 +879,15 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
             end
         end
     end
+    
+    PvECacheUserDebug(
+        "greatVault: SAVED key=%s activities=%d raidSlots=%d mPlusSlots=%d worldSlots=%d pvpSlots=%d apiZeroSkipped=no",
+        tostring(charKey),
+        #activities,
+        #(charData.raids or {}),
+        #(charData.mythicPlus or {}),
+        #(charData.world or {}),
+        #(charData.pvp or {}))
         
     -- CRITICAL: Save to DB after data is populated
     WarbandNexus:SavePvECache()
@@ -479,17 +909,28 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey)
     end
     
     if not C_WeeklyRewards or not charKey or not self.db.global.pveCache then return end
+    charKey = CanonicalizePvEKey(charKey)
     
     local hasAvailable = false
     if C_WeeklyRewards.HasAvailableRewards and C_WeeklyRewards.HasAvailableRewards() then
-        if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod and not C_WeeklyRewards.AreRewardsForCurrentRewardPeriod() then
-            hasAvailable = false
-        elseif C_WeeklyRewards.CanClaimRewards and not C_WeeklyRewards.CanClaimRewards() then
-            hasAvailable = false
-        elseif C_WeeklyRewards.GetActivities then
-            local activities = C_WeeklyRewards.GetActivities()
-            if activities and #activities > 0 then
+        local periodCurrent = true
+        if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod then
+            periodCurrent = C_WeeklyRewards.AreRewardsForCurrentRewardPeriod() == true
+        end
+
+        local canClaim = true
+        if C_WeeklyRewards.CanClaimRewards then
+            canClaim = C_WeeklyRewards.CanClaimRewards() == true
+        end
+
+        if periodCurrent and canClaim then
+            -- Midnight+: current-period + can-claim checks are authoritative.
+            if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod and C_WeeklyRewards.CanClaimRewards then
                 hasAvailable = true
+            else
+                -- Legacy fallback when one/both newer APIs are unavailable.
+                local activities = C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities() or nil
+                hasAvailable = activities ~= nil and #activities > 0
             end
         end
     end
@@ -517,6 +958,7 @@ function WarbandNexus:UpdateRaidLockouts(charKey)
     end
     
     if not charKey or not self.db.global.pveCache then return end
+    charKey = CanonicalizePvEKey(charKey)
     
     local numSavedInstances = GetNumSavedInstances()
     if not numSavedInstances or numSavedInstances == 0 then return end
@@ -566,6 +1008,7 @@ end
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateWorldBossKills(charKey)
     if not charKey or not self.db.global.pveCache then return end
+    charKey = CanonicalizePvEKey(charKey)
     
     -- World boss kills tracked via quest completion
     -- Midnight 12.0.1 world boss quest IDs
@@ -592,6 +1035,7 @@ end
 function WarbandNexus:UpdateMythicPlusRunHistory(charKey)
     if not charKey or not self.db.global.pveCache then return end
     if not C_MythicPlus or not C_MythicPlus.GetRunHistory then return end
+    charKey = CanonicalizePvEKey(charKey)
 
     if not self.db.global.pveCache.mythicPlus.runHistory then
         self.db.global.pveCache.mythicPlus.runHistory = {}
@@ -650,6 +1094,9 @@ end
 ---Uses C_DelvesUI APIs (Midnight 12.0+) for companion info and season tracking.
 function WarbandNexus:UpdateDelvesData(charKey)
     if not self.db.global.pveCache or not self.db.global.pveCache.delves then return end
+    if charKey and charKey ~= "" then
+        charKey = CanonicalizePvEKey(charKey)
+    end
     
     local delves = self.db.global.pveCache.delves
     
@@ -740,11 +1187,15 @@ function WarbandNexus:UpdatePvEData()
     lastUpdateTime = currentTime
     pendingUpdate = false
     
-    -- Get current character key (canonical = DB bucket for this character)
-    local charKey = ns.Utilities:GetCharacterKey()
-    if ns.Utilities.GetCanonicalCharacterKey then
-        charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
-    end
+    -- Get current character key (canonical = one pveCache bucket per character)
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    charKey = CanonicalizePvEKey(charKey)
+    if not charKey then return end
+
+    local beforeSig = BuildPvESignature(self.db.global.pveCache, charKey)
+
+    -- Ensure weekly reset stale keys are pruned even if affix event did not fire this session.
+    PruneExpiredKeystonesForWeeklyReset()
 
     -- Update all PvE data (API > DB)
     self:UpdateMythicPlusAffixes()
@@ -775,8 +1226,11 @@ function WarbandNexus:UpdatePvEData()
     -- Update timestamp (data already in DB)
     self:SavePvECache()
     
-    -- Fire event for UI refresh
-    self:SendMessage(Constants.EVENTS.PVE_UPDATED)
+    local afterSig = BuildPvESignature(self.db.global.pveCache, charKey)
+    if beforeSig ~= afterSig then
+        -- Fire event only when API→DB produced a real data change.
+        self:SendMessage(Constants.EVENTS.PVE_UPDATED)
+    end
     
 end
 
@@ -799,9 +1253,7 @@ function WarbandNexus:GetPvEData(charKey)
     local dbCache = self.db and self.db.global and self.db.global.pveCache or {}
     
     if charKey then
-        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-            charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
-        end
+        charKey = CanonicalizePvEKey(charKey)
         local bestRuns = dbCache.mythicPlus and dbCache.mythicPlus.bestRuns and dbCache.mythicPlus.bestRuns[charKey] or {}
         local dungeonScoresData = dbCache.mythicPlus and dbCache.mythicPlus.dungeonScores and dbCache.mythicPlus.dungeonScores[charKey]
         
@@ -939,6 +1391,40 @@ function WarbandNexus:GetPvEData(charKey)
     end
 end
 
+---True if CollectPvEData produced real M+ rows (not an error/empty pre-hydration snapshot).
+local function LegacyMythicSnapshotHasData(mp)
+    if not mp or type(mp) ~= "table" then return false end
+    if mp.keystone and type(mp.keystone.level) == "number" and mp.keystone.level > 0 and mp.keystone.mapID then
+        return true
+    end
+    if type(mp.overallScore) == "number" and mp.overallScore > 0 then return true end
+    if mp.dungeons then
+        for i = 1, #mp.dungeons do
+            local d = mp.dungeons[i]
+            if d and ((type(d.score) == "number" and d.score > 0) or (type(d.bestLevel) == "number" and d.bestLevel > 0)) then
+                return true
+            end
+        end
+    end
+    if mp.dungeonProgress then
+        for _, data in pairs(mp.dungeonProgress) do
+            if data and ((type(data.score) == "number" and data.score > 0) or (type(data.bestLevel) == "number" and data.bestLevel > 0)) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function GreatVaultActivityHasRows(bucket)
+    if not bucket or type(bucket) ~= "table" then return false end
+    if bucket.raids and #bucket.raids > 0 then return true end
+    if bucket.mythicPlus and #bucket.mythicPlus > 0 then return true end
+    if bucket.world and #bucket.world > 0 then return true end
+    if bucket.pvp and #bucket.pvp > 0 then return true end
+    return false
+end
+
 ---Import legacy PvE data for a specific character into pveCache.
 ---Used by DatabaseOptimizer migration and UpdatePvEDataV2 fallback.
 ---Maps the old DataService progress format → PvECacheService structure.
@@ -946,6 +1432,15 @@ end
 ---@param legacyData table Legacy pveProgress entry or CollectPvEData result
 function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
     if not charKey or not legacyData then return end
+    charKey = CanonicalizePvEKey(charKey)
+    if not charKey or charKey == "" then return end
+    
+    PvECacheUserDebug(
+        "import: START key=%s has.mythicPlus=%s has.greatVault=%s has.lockouts=%s",
+        tostring(charKey),
+        legacyData.mythicPlus and "yes" or "no",
+        legacyData.greatVault and ("yes len=" .. tostring(#legacyData.greatVault)) or "no",
+        legacyData.lockouts and ("yes len=" .. tostring(#legacyData.lockouts)) or "no")
     
     -- Ensure DB is initialized
     if not self.db or not self.db.global or not self.db.global.pveCache then
@@ -958,6 +1453,18 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
     -- ── M+ Data ──
     if legacyData.mythicPlus then
         local mp = legacyData.mythicPlus
+        local existingScores = pc.mythicPlus.dungeonScores and pc.mythicPlus.dungeonScores[charKey]
+        local hadCachedMythic = DungeonScoresBucketHasProgress(existingScores)
+            or (pc.mythicPlus.keystones and pc.mythicPlus.keystones[charKey] and pc.mythicPlus.keystones[charKey].level and pc.mythicPlus.keystones[charKey].level > 0)
+        -- SaveCharacter can run before Challenge Mode APIs hydrate; do not replace good SV with zeros.
+        if hadCachedMythic and not LegacyMythicSnapshotHasData(mp) then
+            local prevOverall = existingScores and type(existingScores.overallScore) == "number" and existingScores.overallScore or 0
+            DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip mythic for %s (stale/empty snapshot)", charKey))
+            PvECacheUserDebug(
+                "import: SKIP mythic (empty snapshot, cache kept) key=%s prevOverall=%s snapshotOverall=%s nonzero=%s",
+                tostring(charKey), tostring(prevOverall), tostring(mp and mp.overallScore or 0),
+                (prevOverall > 0) and "yes" or "no")
+        else
         
         -- Keystone: challenge mapID + level (reject legacy CollectPvEData bag scans that stored itemID as mapID).
         if mp.keystone and mp.keystone.level and mp.keystone.level > 0 and mp.keystone.mapID then
@@ -1031,10 +1538,22 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
                 end
             end
         end
+        local appliedOverall = pc.mythicPlus.dungeonScores[charKey] and pc.mythicPlus.dungeonScores[charKey].overallScore or 0
+        PvECacheUserDebug(
+            "import: mythic APPLIED key=%s storedOverall=%s nonzero=%s",
+            tostring(charKey), tostring(appliedOverall), (appliedOverall > 0) and "yes" or "no")
+        end
     end
     
     -- ── Great Vault ──
     if legacyData.greatVault then
+        local prevVault = pc.greatVault.activities and pc.greatVault.activities[charKey]
+        if #legacyData.greatVault == 0 and GreatVaultActivityHasRows(prevVault) then
+            DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip empty greatVault for %s (keeping cache)", charKey))
+            PvECacheUserDebug(
+                "import: SKIP greatVault (legacy [] but cache had rows) key=%s — vault preserved",
+                tostring(charKey))
+        else
         pc.greatVault.activities = pc.greatVault.activities or {}
         local vaultData = { raids = {}, mythicPlus = {}, pvp = {}, world = {}, lastUpdate = time() }
         
@@ -1069,10 +1588,23 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
                 lastUpdate = time(),
             }
         end
+        PvECacheUserDebug(
+            "import: greatVault APPLIED key=%s raid=%d mPlus=%d world=%d pvp=%d unclaimed=%s",
+            tostring(charKey),
+            #vaultData.raids, #vaultData.mythicPlus, #vaultData.world, #vaultData.pvp,
+            legacyData.hasUnclaimedRewards and "yes" or "no")
+        end
     end
     
     -- ── Raid Lockouts ──
     if legacyData.lockouts then
+        local prevRaids = pc.lockouts.raids and pc.lockouts.raids[charKey]
+        if legacyData.lockouts and #legacyData.lockouts == 0 and type(prevRaids) == "table" and next(prevRaids) then
+            DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip empty lockouts for %s (keeping cache)", charKey))
+            PvECacheUserDebug(
+                "import: SKIP lockouts (legacy [] but cache had rows) key=%s",
+                tostring(charKey))
+        else
         pc.lockouts.raids = pc.lockouts.raids or {}
         pc.lockouts.raids[charKey] = {}
         
@@ -1090,10 +1622,17 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
                 }
             end
         end
+        local nLock = 0
+        if pc.lockouts.raids[charKey] then
+            for _ in pairs(pc.lockouts.raids[charKey]) do nLock = nLock + 1 end
+        end
+        PvECacheUserDebug("import: lockouts APPLIED key=%s raidInstances=%d nonzero=%s", tostring(charKey), nLock, (nLock > 0) and "yes" or "no")
+        end
     end
     
     self:SavePvECache()
     DebugPrint(string.format("|cff9370DB[PvECache]|r Imported legacy PvE data for %s", charKey))
+    PvECacheUserDebug("import: DONE key=%s (SavedVariables write)", tostring(charKey))
 end
 
 ---Clear PvE cache (force refresh)
@@ -1131,10 +1670,7 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Re-collect vault data at T+5s to catch any iLvl that arrived after initial scan.
     C_Timer.After(5, function()
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
-        local charKey = ns.Utilities:GetCharacterKey()
-        if ns.Utilities.GetCanonicalCharacterKey then
-            charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
-        end
+        local charKey = CanonicalizePvEKey(ns.Utilities:GetCharacterKey())
         if charKey then
             WarbandNexus:ProcessGreatVaultActivities(charKey)
             WarbandNexus:SavePvECache()
@@ -1195,19 +1731,11 @@ function WarbandNexus:RegisterPvECacheEvents()
     self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] MYTHIC_PLUS_CURRENT_AFFIX_UPDATE triggered (weekly reset)")
         
-        -- Affix refresh: clear affix IDs. Prune keystones that pre-date the current weekly reset only —
-        -- never wipe every character (that event fires outside rollover too; mass-clear hid all alts' keys).
+        -- Affix refresh: clear affix IDs, then prune stale keystones for the new weekly cycle.
         if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache then
             if WarbandNexus.db.global.pveCache.mythicPlus then
                 WarbandNexus.db.global.pveCache.mythicPlus.currentAffixes = {}
-                local ks = WarbandNexus.db.global.pveCache.mythicPlus.keystones
-                if ks and WarbandNexus.HasWeeklyResetOccurred then
-                    for k, v in pairs(ks) do
-                        if type(v) == "table" and v.lastUpdate and WarbandNexus:HasWeeklyResetOccurred(v.lastUpdate) then
-                            ks[k] = nil
-                        end
-                    end
-                end
+                PruneExpiredKeystonesForWeeklyReset()
             end
             
             WarbandNexus:SavePvECache()
@@ -1261,11 +1789,9 @@ end
 ---This handler only updates NON-vault data (keystone, best runs, rewards) to avoid
 ---overwriting VaultScanner's richer data (nextLevelIlvl, maxIlvl, nextKeyLevel).
 function WarbandNexus:OnVaultDataReceived()
-    -- Get current character key
-    local charKey = ns.Utilities:GetCharacterKey()
-    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-        charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
-    end
+    local charKey = CanonicalizePvEKey(ns.Utilities:GetCharacterKey())
+    if not charKey then return end
+    local beforeSig = BuildPvESignature(self.db.global and self.db.global.pveCache, charKey)
     
     -- DO NOT call ProcessGreatVaultActivities here!
     -- VaultScanner handles vault activities via SyncVaultDataFromScanner (richer data).
@@ -1279,14 +1805,22 @@ function WarbandNexus:OnVaultDataReceived()
     -- Update timestamp (data already in DB)
     self:SavePvECache()
     
-    -- Fire event for UI refresh
-    self:SendMessage(Constants.EVENTS.PVE_UPDATED)
+    local afterSig = BuildPvESignature(self.db.global and self.db.global.pveCache, charKey)
+    if beforeSig ~= afterSig then
+        self:SendMessage(Constants.EVENTS.PVE_UPDATED)
+    end
 end
 
 ---Sync vault data from VaultScanner to PvECacheService
 ---@param vaultSlots table Array of vault slot data from VaultScanner
 function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     if not vaultSlots or type(vaultSlots) ~= "table" then
+        return
+    end
+    -- Never sync an empty slot list into SavedVariables: callers should use
+    -- VaultScanner only after GetActivities() returned data. An empty table
+    -- would clear per-character vault rows without replacing them.
+    if #vaultSlots == 0 then
         return
     end
     
@@ -1299,12 +1833,10 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     end
     if not self.db.global.pveCache then return end
     
-    -- Must match PvEUI / GetPvEData: canonical key so vault rows align after character/realm normalization.
-    local charKey = ns.Utilities:GetCharacterKey()
-    if ns.Utilities.GetCanonicalCharacterKey then
-        charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
-    end
+    -- Must match PvEUI / GetPvEData: one bucket per character after realm normalization.
+    local charKey = CanonicalizePvEKey(ns.Utilities:GetCharacterKey())
     if not charKey then return end
+    local beforeSig = BuildPvESignature(self.db.global and self.db.global.pveCache, charKey)
     
     if not self.db.global.pveCache.greatVault.activities then
         self.db.global.pveCache.greatVault.activities = {}
@@ -1344,6 +1876,18 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
             end
         end
     end
+    
+    -- Keep references so we can roll back if the scanner payload maps to zero
+    -- recognized categories (e.g. unexpected typeName) — otherwise we would wipe
+    -- good SavedVariables data and show "No vault data" for that character.
+    local backupRaids = activities.raids
+    local backupMythicPlus = activities.mythicPlus
+    local backupPvp = activities.pvp
+    local backupWorld = activities.world
+    local hadStoredVaultRows = (backupRaids and #backupRaids > 0)
+        or (backupMythicPlus and #backupMythicPlus > 0)
+        or (backupPvp and #backupPvp > 0)
+        or (backupWorld and #backupWorld > 0)
     
     -- Clear and re-populate from VaultScanner
     activities.raids = {}
@@ -1394,14 +1938,26 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
         end
     end
     
+    local insertedCount = #activities.raids + #activities.mythicPlus + #activities.pvp + #activities.world
+    if insertedCount == 0 and hadStoredVaultRows then
+        activities.raids = backupRaids or {}
+        activities.mythicPlus = backupMythicPlus or {}
+        activities.pvp = backupPvp or {}
+        activities.world = backupWorld or {}
+        return
+    end
+    
     -- Update timestamp
     activities.lastUpdate = time()
     
     -- Save to DB
     self:SavePvECache()
     
-    -- Fire event to refresh UI
-    self:SendMessage(Constants.EVENTS.PVE_UPDATED)
+    local afterSig = BuildPvESignature(self.db.global and self.db.global.pveCache, charKey)
+    if beforeSig ~= afterSig then
+        -- Fire event to refresh UI only when scanner payload changed persisted state.
+        self:SendMessage(Constants.EVENTS.PVE_UPDATED)
+    end
 end
 
 ---Handle UPDATE_INSTANCE_INFO event
@@ -1415,11 +1971,11 @@ function WarbandNexus:OnChallengeModeCompleted()
 end
 
 -- ============================================================================
--- PLAYER_LOGOUT: Flush pending PvE data before session ends
+-- PLAYER_LOGOUT: persist PvE cache (no API refresh)
 -- ============================================================================
--- Great Vault data arrives asynchronously via WEEKLY_REWARDS_UPDATE.
--- If the player logs out before the event fires, vault data for this session
--- would be lost. This hook does a final synchronous save.
+-- Do NOT call UpdatePvEData() here. During logout/teardown, Mythic+ and Weekly
+-- Rewards APIs often return empty/zero; a full refresh overwrites pveCache with
+-- bogus data for the logging-out character (missing vault, Overall Score 0).
 
 local logoutFrame = CreateFrame("Frame")
 logoutFrame:RegisterEvent("PLAYER_LOGOUT")
@@ -1427,10 +1983,7 @@ logoutFrame:SetScript("OnEvent", function()
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return end
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
     
-    -- Process any pending throttled update
-    if pendingUpdate then
-        WarbandNexus:UpdatePvEData()
-    end
+    pendingUpdate = false
     
     -- Final save (ensures all direct DB writes are persisted)
     WarbandNexus:SavePvECache()

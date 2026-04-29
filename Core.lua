@@ -227,6 +227,8 @@ local defaults = {
             key = nil,        -- nil = no sorting (default order)
             ascending = true,
         },
+        -- Weekly Vault Tracker column filter (PvE tab); default off — user opts in via checkbox or minimap
+        pveVaultTrackerMode = false,
         
         -- Notification settings
         notifications = {
@@ -258,6 +260,7 @@ local defaults = {
             useCriteriaAlertFramePosition = false, -- If true, criteria position = Blizzard CriteriaAlertFrame position
             popupGrowth = "AUTO",              -- Growth direction: "AUTO" (smart), "DOWN", "UP"
             screenFlashEffect = true,          -- Screen flash effect on collectible obtained
+            tryCounterDropScreenshot = true,   -- Auto Screenshot() on try-tracked collectible drop (mount/pet/toy/illusion)
             autoTryCounter = true,             -- Automatic try counter for NPC/boss/fishing/container drops
             -- On instance entry: [WN-Drops] lines (boss, item link, difficulty color) vs one short hint
             tryCounterInstanceEntryDropLines = true,
@@ -458,10 +461,11 @@ function WarbandNexus:OnInitialize()
         self:DecompressAndLoad()
     end
     
-    -- Check addon version and invalidate caches if version changed
-    -- CRITICAL: Must run BEFORE migrations to ensure clean data
+    -- Single-roof version check (addon / game build / per-cache schema). Cache
+    -- invalidation is selective and non-destructive — see MigrationService:CheckVersions.
+    -- CRITICAL: Must run BEFORE migrations so caches are coherent before any reads.
     if ns.MigrationService then
-        ns.MigrationService:CheckAddonVersion(self.db, self)
+        ns.MigrationService:CheckVersions(self.db, self)
     end
     
     -- Run all database migrations via MigrationService
@@ -701,6 +705,17 @@ function WarbandNexus:ApplyToggleKeybind()
     ClearOverrideBindings(btn)
 
     local key = self.db and self.db.profile and self.db.profile.toggleKeybind
+    if key then
+        local normalized = tostring(key):upper()
+        if normalized == "ESC" or normalized == "ESCAPE" or normalized == "ESCAPEKEY" then
+            -- Safety migration: ESC is reserved for game menu / close flows.
+            self.db.profile.toggleKeybind = nil
+            if self.Print then
+                self:Print("|cffff6600Invalid toggle keybind ESC removed. Please pick a different key.|r")
+            end
+            return
+        end
+    end
     if key and key ~= "" and not InCombatLockdown() then
         SetOverrideBindingClick(btn, true, key, "WarbandNexusToggleButton")
     end
@@ -871,7 +886,8 @@ function WarbandNexus:OnEnable()
             end
         end
     end)
-    
+
+
     -- Collection events: owned by EventManager (debounced) → CollectionService (handlers)
     -- ACHIEVEMENT_EARNED: owned by CollectionService (OnAchievementEarned)
     -- TRANSMOG_COLLECTION_UPDATED: owned by EventManager → CollectionService

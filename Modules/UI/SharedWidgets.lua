@@ -12,6 +12,11 @@ local issecretvalue = issecretvalue
 
 local FontManager = ns.FontManager
 
+--- Semantic UI role → category (FontManager.FONT_ROLE / tek tema kaynağı)
+local function UIFontRole(roleKey)
+    return FontManager:GetFontRole(roleKey)
+end
+
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 
@@ -239,8 +244,8 @@ local UI_SPACING = {
     TOP_MARGIN = 8,            -- Top content margin
     
     -- Vertical spacing (between elements)
-    HEADER_SPACING = 40,       -- Space after headers
-    SUBHEADER_SPACING = 40,    -- Space after sub-headers
+    HEADER_SPACING = 44,       -- After CreateCollapsibleHeader (SECTION_COLLAPSE_HEADER_HEIGHT + SECTION_SPACING)
+    SUBHEADER_SPACING = 44,    -- Same as HEADER_SPACING for nested collapsible headers
     ROW_SPACING = 26,          -- Space after rows (26px height + 0px gap for tight layout)
     SECTION_SPACING = 8,       -- Space between sections (expansion/type spacing, smaller than HEADER_SPACING)
     EMPTY_STATE_SPACING = 100, -- Empty state message spacing
@@ -256,7 +261,8 @@ local UI_SPACING = {
     -- Row dimensions
     ROW_HEIGHT = 26,           -- Standard row height
     CHAR_ROW_HEIGHT = 36,      -- Character row height (+20% from 30)
-    HEADER_HEIGHT = 32,        -- Collapsible header height
+    HEADER_HEIGHT = 32,        -- Legacy row strip (Collections virtual rows); collapsible sections use SECTION_COLLAPSE_HEADER_HEIGHT
+    SECTION_COLLAPSE_HEADER_HEIGHT = 36, -- CreateCollapsibleHeader (compact; was 44)
     
     -- Icon standardization
     HEADER_ICON_SIZE = 24,     -- Header icon size (reduced from 28 for better balance)
@@ -271,7 +277,7 @@ local UI_SPACING = {
     afterHeader = 75,
     betweenSections = 8,
     betweenRows = 0,
-    headerSpacing = 40,
+    headerSpacing = 44,
     afterElement = 8,
     cardGap = 8,
     rowHeight = 26,
@@ -280,7 +286,7 @@ local UI_SPACING = {
     rowSpacing = 26,
     sideMargin = 10,
     topMargin = 8,
-    subHeaderSpacing = 40,
+    subHeaderSpacing = 44,
     emptyStateSpacing = 100,
     minBottomSpacing = 20,
     headerIconSize = 24,
@@ -734,14 +740,14 @@ local function CreateNoticeFrame(parent, title, description, iconType, width, he
     icon:SetTexture(iconTexture)
     
     -- Title
-    local titleText = FontManager:CreateFontString(frame, "body", "OVERLAY")
+    local titleText = FontManager:CreateFontString(frame, UIFontRole("noticeTitle"), "OVERLAY")
     titleText:SetPoint("LEFT", icon, "RIGHT", 10, 5)
     titleText:SetPoint("RIGHT", -10, 5)
     titleText:SetJustifyH("LEFT")
     titleText:SetText("|cffffcc00" .. title .. "|r")
     
     -- Description
-    local descText = FontManager:CreateFontString(frame, "small", "OVERLAY")
+    local descText = FontManager:CreateFontString(frame, UIFontRole("noticeBody"), "OVERLAY")
     descText:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -15)
     descText:SetPoint("RIGHT", -10, 0)
     descText:SetJustifyH("LEFT")
@@ -785,7 +791,7 @@ local function CreateStatsBar(parent, height)
     local bar = CreateFrame("Frame", nil, parent)
     bar:SetHeight(barHeight)
     
-    local text = FontManager:CreateFontString(bar, "small", "OVERLAY")
+    local text = FontManager:CreateFontString(bar, UIFontRole("statsBarText"), "OVERLAY")
     text:SetPoint("LEFT", 10, 0)
     text:SetTextColor(1, 1, 1)  -- White
     
@@ -1185,14 +1191,14 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         row.icon:SetTexelSnappingBias(0)
         
         -- Name text
-        row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.nameText = FontManager:CreateFontString(row, UIFontRole("listRowLabel"), "OVERLAY")
         row.nameText:SetPoint("LEFT", 43, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
         row.nameText:SetNonSpaceWrap(false)
         
         -- Amount text
-        row.amountText = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.amountText = FontManager:CreateFontString(row, UIFontRole("listRowValue"), "OVERLAY")
         row.amountText:SetPoint("RIGHT", -10, 0)
         row.amountText:SetWidth(150)
         row.amountText:SetJustifyH("RIGHT")
@@ -1283,7 +1289,7 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.bg:SetTexelSnappingBias(0)
         
         -- Quantity text (left)
-        row.qtyText = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.qtyText = FontManager:CreateFontString(row, UIFontRole("listRowQty"), "OVERLAY")
         row.qtyText:SetPoint("LEFT", 15, 0)
         row.qtyText:SetWidth(45)
         row.qtyText:SetJustifyH("RIGHT")
@@ -1299,14 +1305,14 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.icon:SetTexelSnappingBias(0)
         
         -- Name text
-        row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.nameText = FontManager:CreateFontString(row, UIFontRole("listRowLabel"), "OVERLAY")
         row.nameText:SetPoint("LEFT", 98, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
         row.nameText:SetNonSpaceWrap(false)
         
         -- Location text
-        row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.locationText = FontManager:CreateFontString(row, UIFontRole("listRowLocation"), "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
         row.locationText:SetWidth(0)  -- Auto-width (no truncation)
         row.locationText:SetJustifyH("RIGHT")
@@ -1366,7 +1372,7 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.bg:SetTexelSnappingBias(0)
         
         -- Quantity text (left)
-        row.qtyText = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.qtyText = FontManager:CreateFontString(row, UIFontRole("listRowQty"), "OVERLAY")
         row.qtyText:SetPoint("LEFT", 15, 0)
         row.qtyText:SetWidth(45)
         row.qtyText:SetJustifyH("RIGHT")
@@ -1382,14 +1388,14 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.icon:SetTexelSnappingBias(0)
         
         -- Name text
-        row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.nameText = FontManager:CreateFontString(row, UIFontRole("listRowLabel"), "OVERLAY")
         row.nameText:SetPoint("LEFT", 98, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
         row.nameText:SetNonSpaceWrap(false)
         
         -- Location text
-        row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.locationText = FontManager:CreateFontString(row, UIFontRole("listRowLocation"), "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
         row.locationText:SetWidth(0)  -- Auto-width (no truncation)
         row.locationText:SetJustifyH("RIGHT")
@@ -1706,9 +1712,82 @@ local function ForwardMouseWheelToScrollAncestor(frame, delta)
     end
 end
 
+--- Characters tab row: horizontal class tint (Gear model–style: class×0.5, no additive white).
+--- @param gradientWidthPx number|nil  Width from row left edge (px). When set, gradient ends at identity text block; else ~17.5% row width fallback.
+--- Call after ApplyRowBackground / ApplyOnlineCharacterHighlight so row.bg exists for blend target.
+local ROW_CLASS_GRADIENT_WIDTH_FRAC = 0.175
+local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidthPx)
+    if not row then return end
+    local cc = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
+    if not cc then
+        if row._wnClassGradientTex then
+            row._wnClassGradientTex:Hide()
+        end
+        return
+    end
+
+    local r, g, b = cc.r, cc.g, cc.b
+    local br, bgc, bb = 0.08, 0.08, 0.10
+    if row.bg and row.bg.GetVertexColor then
+        br, bgc, bb = row.bg:GetVertexColor()
+    end
+
+    local rw = row:GetWidth() or 200
+    local rh = row:GetHeight() or 46
+    local w
+    if type(gradientWidthPx) == "number" and gradientWidthPx > 1 then
+        w = math.max(8, math.min(rw, gradientWidthPx))
+    else
+        w = math.max(6, rw * ROW_CLASS_GRADIENT_WIDTH_FRAC)
+    end
+
+    local tex = row._wnClassGradientTex
+    if not tex then
+        -- Draw above row.bg so transparent gradient fade reveals row.bg beneath (no second opaque layer).
+        tex = row:CreateTexture(nil, "BACKGROUND", nil, 3)
+        row._wnClassGradientTex = tex
+    end
+    tex:ClearAllPoints()
+    tex:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    tex:SetSize(w, rh)
+    tex:SetTexture("Interface\\Buttons\\WHITE8x8")
+    tex:SetVertexColor(1, 1, 1, 1)
+
+    local ok = false
+    if tex.SetGradient and CreateColor then
+        -- Class tint: closer to RAID_CLASS_COLORS (readable hue); right stop still alpha 0.
+        local tR = math.min(1, r * 0.58)
+        local tG = math.min(1, g * 0.58)
+        local tB = math.min(1, b * 0.58)
+        local cL = CreateColor(tR, tG, tB, 0.38)
+        local cR = CreateColor(br, bgc, bb, 0)
+        ok = pcall(function()
+            tex:SetGradient("HORIZONTAL", cL, cR)
+        end)
+        if not ok and Enum and Enum.GradientOrientation and Enum.GradientOrientation.Horizontal then
+            ok = pcall(function()
+                tex:SetGradient(Enum.GradientOrientation.Horizontal, cL, cR)
+            end)
+        end
+    end
+    if not ok then
+        tex:SetColorTexture(
+            math.min(1, r * 0.34 + br * 0.66),
+            math.min(1, g * 0.34 + bgc * 0.66),
+            math.min(1, b * 0.34 + bb * 0.66),
+            0.32
+        )
+    end
+    tex:Show()
+end
+
+ns.UI_ApplyCharacterRowClassGradientAccent = ApplyCharacterRowClassGradientAccent
+
 -- Create collapsible header with expand/collapse button (NO pooling - headers are few)
 -- noCategoryIcon: when true, skip category icon (e.g. PvE character headers use favorite star only)
-local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas, indentLevel, noCategoryIcon)
+-- visualOpts (optional): { sectionPreset = "accent"|"gold"|"danger" }
+local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas, indentLevel, noCategoryIcon, visualOpts)
+    visualOpts = (type(visualOpts) == "table") and visualOpts or nil
     -- Support for nested headers (indentLevel: 0 = root, 1 = child, etc.)
     indentLevel = indentLevel or 0
     local indent = indentLevel * UI_LAYOUT.BASE_INDENT
@@ -1716,12 +1795,28 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     -- Create new header (no pooling for headers - they're infrequent and context-specific)
     -- Use max(1,...) so layout never gets 0/negative width when parent not yet laid out
     local parentW = (parent and parent:GetWidth()) or 0
+    local sectionH = (UI_LAYOUT and UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     local header = CreateFrame("Button", nil, parent)
-    header:SetSize(math.max(1, parentW - 20 - indent), 32)
-    
-    -- Same visuals as Collections Mounts/Pets/Achievements section headers
+    header:SetSize(math.max(1, parentW - 20 - indent), sectionH)
+
     local accentColor = COLORS.accent
-    ApplyVisuals(header, {0.08, 0.08, 0.10, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    local br, bg, bb, ba = accentColor[1], accentColor[2], accentColor[3], 0.5
+    local sr, sg, sb, sa = accentColor[1], accentColor[2], accentColor[3], 0.9
+    local preset = visualOpts and visualOpts.sectionPreset
+    if preset == "gold" then
+        br, bg, bb = 1, 0.82, 0.2
+        sr, sg, sb = 1, 0.82, 0.2
+    elseif preset == "danger" then
+        br, bg, bb = 0.8, 0.25, 0.25
+        sr, sg, sb = 0.8, 0.25, 0.25
+    end
+    ApplyVisuals(header, {0.06, 0.06, 0.08, 0.95}, {br, bg, bb, ba})
+
+    local stripe = header:CreateTexture(nil, "ARTWORK", nil, 2)
+    stripe:SetSize(3, sectionH - 8)
+    stripe:SetPoint("LEFT", 4, 0)
+    stripe:SetColorTexture(sr, sg, sb, sa)
+    header._wnSectionStripe = stripe
     
     -- Expand/Collapse icon (atlas-based arrows) - STANDARDIZED SIZE
     local expandIcon = header:CreateTexture(nil, "ARTWORK")
@@ -1781,11 +1876,15 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         textOffset = 12  -- Increased spacing between icon and text
     end
     
-    -- Header text
-    local headerText = FontManager:CreateFontString(header, "body", "OVERLAY")
+    -- Header text (title font — matches Characters tab section labels)
+    local headerText = FontManager:CreateFontString(header, UIFontRole("sectionCollapsibleTitle"), "OVERLAY")
     headerText:SetPoint("LEFT", textAnchor, "RIGHT", textOffset, 0)
     headerText:SetText(text)
-    headerText:SetTextColor(1, 1, 1)  -- White
+    if preset == "danger" then
+        headerText:SetTextColor(0.7, 0.7, 0.7)
+    else
+        headerText:SetTextColor(1, 1, 1)
+    end
     
     -- Click handler
     header:SetScript("OnClick", function()
@@ -1979,6 +2078,7 @@ local TAB_HEADER_ICONS = {
     collections = "UI-Achievement-Shield-NoPoints",
     professions = "Vehicle-HammerGold",
     gear = "QuestLegendary",
+    qol = "Soulbinds_Tree_Conduit_Icon_Utility",
 }
 
 -- Centralized size configuration
@@ -2059,6 +2159,79 @@ end
 
 -- Export header icon system
 ns.UI_CreateHeaderIcon = CreateHeaderIcon
+
+--[[
+    Characters-tab standard title row: accent card, ring icon centered at x=35 from left,
+    stacked title (header) + subtitle (subtitle font), text block anchored from icon.
+    @param headerParent Frame — typically fixedHeader
+    @param opts table:
+      cardHeight (number, default 70)
+      textContainerWidth (number, default 200)
+      atlasName (string|nil) — explicit atlas; if nil, tabKey + GetTabIcon
+      tabKey (string|nil)
+      titleText (string) — colored title (|cff...|r)
+      subtitleText (string|nil)
+      textRightInset (number|nil) — if set, text container also anchors RIGHT on card (room for header controls)
+      skipApplyVisuals (boolean) — skip ApplyVisuals on card (rare)
+    @return titleCard, headerIcon, textContainer, titleFs, subtitleFs
+]]
+local function CreateStandardTabTitleCard(headerParent, opts)
+    if not headerParent or type(opts) ~= "table" then return nil end
+    local cardH = opts.cardHeight or 70
+    local textW = opts.textContainerWidth or 200
+    local titleCard = CreateCard(headerParent, cardH)
+    if not opts.skipApplyVisuals and ApplyVisuals and COLORS and COLORS.accent then
+        ApplyVisuals(titleCard, { 0.05, 0.05, 0.07, 0.95 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+    end
+    local atlas = opts.atlasName
+    if (not atlas or atlas == "") and opts.tabKey and ns.UI_GetTabIcon then
+        atlas = ns.UI_GetTabIcon(opts.tabKey)
+    end
+    local headerIcon = CreateHeaderIcon(titleCard, atlas)
+    headerIcon.border:ClearAllPoints()
+    headerIcon.border:SetPoint("CENTER", titleCard, "LEFT", 35, 0)
+
+    local textContainer = ns.UI.Factory:CreateContainer(titleCard, textW, 40)
+    local titleFs = FontManager:CreateFontString(textContainer, UIFontRole("tabTitlePrimary"), "OVERLAY")
+    titleFs:SetText(opts.titleText or "")
+    titleFs:SetJustifyH("LEFT")
+    titleFs:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)
+    titleFs:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+
+    local subtitleFs = FontManager:CreateFontString(textContainer, UIFontRole("tabSubtitle"), "OVERLAY")
+    subtitleFs:SetText(opts.subtitleText or "")
+    subtitleFs:SetTextColor(1, 1, 1)
+    subtitleFs:SetJustifyH("LEFT")
+    subtitleFs:SetPoint("TOP", textContainer, "CENTER", 0, -4)
+    subtitleFs:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+
+    local rin = opts.textRightInset
+    textContainer:ClearAllPoints()
+    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
+    if type(rin) == "number" and rin > 0 then
+        textContainer:SetPoint("RIGHT", titleCard, "RIGHT", -rin, 0)
+        textContainer:SetPoint("TOP", titleCard, "TOP", 0, -(cardH - 40) / 2)
+    else
+        textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+    end
+
+    return titleCard, headerIcon, textContainer, titleFs, subtitleFs
+end
+
+ns.UI_CreateStandardTabTitleCard = CreateStandardTabTitleCard
+
+--- Reapply icon + text layout after reparenting a cached title card (Collections, Storage).
+function ns.UI_ReanchorStandardTabTitleLayout(headerIcon, titleCard, textContainer, cardHeight)
+    if not headerIcon or not headerIcon.border or not titleCard then return end
+    cardHeight = cardHeight or 70
+    headerIcon.border:ClearAllPoints()
+    headerIcon.border:SetPoint("CENTER", titleCard, "LEFT", 35, 0)
+    if textContainer then
+        textContainer:ClearAllPoints()
+        textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
+        textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+    end
+end
 
 -- ============================================================================
 -- CURRENT CHARACTER ICON (Global, easily customizable)
@@ -2712,10 +2885,10 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText, tabCo
         container.icon:SetAlpha(0.4)
         
         -- Create title
-        container.title = FontManager:CreateFontString(container, "title", "OVERLAY")
+        container.title = FontManager:CreateFontString(container, UIFontRole("emptyStateTitle"), "OVERLAY")
         
         -- Create description
-        container.desc = FontManager:CreateFontString(container, "body", "OVERLAY")
+        container.desc = FontManager:CreateFontString(container, UIFontRole("emptyStateBody"), "OVERLAY")
         container.desc:SetTextColor(1, 1, 1)
     end
     
@@ -2861,7 +3034,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     end
     
     -- Placeholder text
-    local placeholderText = FontManager:CreateFontString(searchBox, "body", "ARTWORK")
+    local placeholderText = FontManager:CreateFontString(searchBox, UIFontRole("searchPlaceholder"), "ARTWORK")
     placeholderText:SetPoint("LEFT", 0, 0)
     placeholderText:SetText(placeholder or ((ns.L and ns.L["SEARCH_PLACEHOLDER"]) or "Search..."))
     placeholderText:SetTextColor(1, 1, 1, 0.4)  -- White with transparency
@@ -2967,7 +3140,7 @@ local function CreateThemedButton(parent, text, width)
         ns.UI.Factory:ApplyHighlight(btn)
     end
     
-    local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
+    local btnText = FontManager:CreateFontString(btn, UIFontRole("searchButtonText"), "OVERLAY")
     btnText:SetPoint("CENTER")
     btnText:SetText(text)
     btn.text = btnText
@@ -3050,6 +3223,8 @@ local function CreateThemedCheckbox(parent, initialState)
     checkbox:SetScript("OnLeave", function(self)
         if UpdateBorderColor then UpdateBorderColor(self, self.defaultBorderColor) end
     end)
+
+    checkbox:RegisterForClicks("LeftButtonUp")
 
     return checkbox
 end
@@ -3246,7 +3421,7 @@ local function CreateExternalWindow(config)
     iconFrame:Show()  -- CRITICAL: Show the header icon!
     
     -- Title
-    local titleText = FontManager:CreateFontString(header, "title", "OVERLAY")
+    local titleText = FontManager:CreateFontString(header, UIFontRole("popupDialogTitle"), "OVERLAY")
     titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
     titleText:SetText("|cffffffff" .. config.title .. "|r")
     
@@ -3589,13 +3764,13 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         header:SetPoint("TOPRIGHT", -2, -2)
         ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
 
-        local headerTitle = FontManager:CreateFontString(header, "title", "OVERLAY")
+        local headerTitle = FontManager:CreateFontString(header, UIFontRole("tryPopupHeader"), "OVERLAY")
         headerTitle:SetPoint("CENTER")
         headerTitle:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count")
         headerTitle:SetTextColor(1, 1, 1)
         f.headerTitle = headerTitle
 
-        local nameLabel = FontManager:CreateFontString(f, "body", "OVERLAY")
+        local nameLabel = FontManager:CreateFontString(f, UIFontRole("tryPopupBody"), "OVERLAY")
         nameLabel:SetPoint("TOP", header, "BOTTOM", 0, -12)
         nameLabel:SetJustifyH("CENTER")
         nameLabel:SetTextColor(0.9, 0.9, 0.9)
@@ -3623,7 +3798,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         saveBtn:SetSize(btnWidth, btnHeight)
         saveBtn:SetPoint("TOPRIGHT", editBoxBg, "BOTTOM", -4, -10)
         ApplyVisuals(saveBtn, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
-        local saveBtnText = FontManager:CreateFontString(saveBtn, "body", "OVERLAY")
+        local saveBtnText = FontManager:CreateFontString(saveBtn, UIFontRole("dialogButtonLabel"), "OVERLAY")
         saveBtnText:SetPoint("CENTER")
         saveBtnText:SetText((ns.L and ns.L["SAVE"]) or "Save")
         saveBtnText:SetTextColor(1, 1, 1)
@@ -3639,7 +3814,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         cancelBtn:SetSize(btnWidth, btnHeight)
         cancelBtn:SetPoint("TOPLEFT", editBoxBg, "BOTTOM", 4, -10)
         ApplyVisuals(cancelBtn, { 0.08, 0.08, 0.10, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
-        local cancelBtnText = FontManager:CreateFontString(cancelBtn, "body", "OVERLAY")
+        local cancelBtnText = FontManager:CreateFontString(cancelBtn, UIFontRole("dialogButtonLabel"), "OVERLAY")
         cancelBtnText:SetPoint("CENTER")
         cancelBtnText:SetText(_G.CANCEL or "Cancel")
         cancelBtnText:SetTextColor(0.8, 0.8, 0.8)
@@ -3744,7 +3919,7 @@ local function CreateSection(parent, title, width)
     
     -- Title (if provided) - inside card
     if title then
-        local titleText = FontManager:CreateFontString(section, "header", "OVERLAY", "accent")
+        local titleText = FontManager:CreateFontString(section, UIFontRole("settingsSectionTitle"), "OVERLAY", "accent")
         titleText:SetPoint("TOPLEFT", 15, -12)  -- Inside card
         titleText:SetText(title)
         titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
@@ -3803,8 +3978,8 @@ end
     @return table - {icon, label, value, container}
 ]]
 local function CreateCardHeaderLayout(parent, iconTexture, iconSize, isAtlas, labelText, valueText, labelFont, valueFont)
-    labelFont = labelFont or "subtitle"
-    valueFont = valueFont or "body"
+    labelFont = labelFont or FontManager:GetFontRole("cardHeaderLabel")
+    valueFont = valueFont or FontManager:GetFontRole("cardHeaderValue")
     
     -- Create icon (centered vertically at left side)
     local iconFrame = CreateIcon(parent, iconTexture, iconSize, isAtlas, nil, true)
@@ -3903,7 +4078,7 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     ApplyVisuals(iconBorder, nil, borderColor)  -- Just border, no background
     
     -- "Module Disabled" title
-    local title = FontManager:CreateFontString(contentContainer, "header", "OVERLAY")
+    local title = FontManager:CreateFontString(contentContainer, UIFontRole("moduleDisabledTitle"), "OVERLAY")
     title:SetPoint("TOP", icon, "BOTTOM", 0, -24)
     title:SetText("|cffcccccc" .. ((ns.L and ns.L["MODULE_DISABLED"]) or "Module Disabled") .. "|r")
     
@@ -3911,7 +4086,7 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    local description = FontManager:CreateFontString(contentContainer, "body", "OVERLAY")
+    local description = FontManager:CreateFontString(contentContainer, UIFontRole("moduleDisabledBody"), "OVERLAY")
     description:SetPoint("TOP", title, "BOTTOM", 0, -16)
     description:SetWidth(380)
     description:SetJustifyH("CENTER")
@@ -3948,7 +4123,7 @@ local function CreateResetTimer(parent, anchorPoint, xOffset, yOffset, getSecond
     container:SetPoint(anchorPoint, parent, anchorPoint, xOffset, yOffset)
     
     -- Reset text (positioned at RIGHT of container)
-    local text = FontManager:CreateFontString(container, "body", "OVERLAY")
+    local text = FontManager:CreateFontString(container, UIFontRole("resetTimerText"), "OVERLAY")
     text:SetPoint("RIGHT", container, "RIGHT", 0, 0)
     text:SetTextColor(0.3, 0.9, 0.3)  -- Green color
     
@@ -4082,6 +4257,14 @@ local EMPTY_STATE_CONFIG = {
         titleFallback = "No PvE Data",
         descFallback = "PvE progress is tracked when you log into your characters.\nGreat Vault, Mythic+, and Raid lockouts will appear here.",
     },
+    -- Weekly Vault Tracker filter: no character has claimable vault (cached + live check)
+    pve_vault = {
+        atlas = "Tormentors-Boss",
+        titleKey = "PVE_VAULT_TRACKER_EMPTY_TITLE",
+        descKey = "PVE_VAULT_TRACKER_EMPTY_DESC",
+        titleFallback = "No vault rows yet",
+        descFallback = "No tracked character has weekly vault progress saved yet.\nTurn off Weekly Vault Tracker to see full PvE progress.",
+    },
     statistics = {
         atlas = "racing",
         titleKey = "EMPTY_STATISTICS_TITLE",
@@ -4104,12 +4287,28 @@ local EMPTY_STATE_CONFIG = {
 -- @param tabName: string - Tab identifier (e.g., "characters", "items", "pve")
 -- @param yOffset: number - Y offset from top (default 0)
 -- @return Frame - The empty state frame (shown automatically)
--- @return number - Total height consumed
+-- @return number - Height delta below yOffset (callers use: return yOffset + secondReturn)
 local function CreateEmptyStateCard(parent, tabName, yOffset)
     yOffset = yOffset or 0
-    local COLORS = ns.UI_COLORS
     local FontManager = ns.FontManager
     local SIDE_MARGIN = 10
+
+    -- Walk up the parent chain to find the actual ScrollFrame viewport
+    -- parent may be a resultsContainer nested inside the scrollChild, so parent:GetParent() alone is unreliable
+    local function GetScrollViewportHeight(startFrame)
+        local visibleHeight = 600  -- safe fallback
+        local current = startFrame
+        for i = 1, 5 do
+            current = current and current:GetParent()
+            if not current then break end
+            if current.GetObjectType and current:GetObjectType() == "ScrollFrame" then
+                local h = current:GetHeight()
+                if h and h > 0 then visibleHeight = h end
+                break
+            end
+        end
+        return visibleHeight
+    end
 
     -- Get config for this tab
     local config = EMPTY_STATE_CONFIG[tabName]
@@ -4124,26 +4323,22 @@ local function CreateEmptyStateCard(parent, tabName, yOffset)
     end
 
     -- Reuse existing empty state card on parent
+    -- PopulateContent moves scrollChild children to recycleBin each pass — reparent back every show.
     local cacheKey = "emptyStateCard_" .. tabName
     local card = parent[cacheKey]
     if card then
+        local visibleHeight = GetScrollViewportHeight(parent)
+        local cardHeight = math.max(visibleHeight - yOffset - SIDE_MARGIN, 200)
+        card:SetParent(parent)
+        card:ClearAllPoints()
+        card:SetPoint("TOPLEFT", 0, -yOffset)
+        card:SetPoint("TOPRIGHT", 0, -yOffset)
+        card:SetHeight(cardHeight)
         card:Show()
-        return card, card:GetHeight()
+        return card, cardHeight + SIDE_MARGIN
     end
 
-    -- Walk up the parent chain to find the actual ScrollFrame viewport
-    -- parent may be a resultsContainer nested inside the scrollChild, so parent:GetParent() alone is unreliable
-    local visibleHeight = 600  -- safe fallback
-    local current = parent
-    for i = 1, 5 do
-        current = current and current:GetParent()
-        if not current then break end
-        if current.GetObjectType and current:GetObjectType() == "ScrollFrame" then
-            local h = current:GetHeight()
-            if h and h > 0 then visibleHeight = h end
-            break
-        end
-    end
+    local visibleHeight = GetScrollViewportHeight(parent)
     local cardHeight = math.max(visibleHeight - yOffset - SIDE_MARGIN, 200)
 
     -- Create transparent container that fills the result area (no background, no border)
@@ -4170,13 +4365,13 @@ local function CreateEmptyStateCard(parent, tabName, yOffset)
     icon:SetAlpha(0.6)
 
     -- Title
-    local title = FontManager:CreateFontString(contentContainer, "header", "OVERLAY")
+    local title = FontManager:CreateFontString(contentContainer, UIFontRole("emptyCardTitle"), "OVERLAY")
     title:SetPoint("TOP", iconContainer, "BOTTOM", 0, -20)
     local titleText = (ns.L and ns.L[config.titleKey]) or config.titleFallback
     title:SetText("|cff888888" .. titleText .. "|r")
 
     -- Description
-    local desc = FontManager:CreateFontString(contentContainer, "body", "OVERLAY")
+    local desc = FontManager:CreateFontString(contentContainer, UIFontRole("emptyCardBody"), "OVERLAY")
     desc:SetPoint("TOP", title, "BOTTOM", 0, -12)
     desc:SetWidth(380)
     desc:SetJustifyH("CENTER")
@@ -4184,7 +4379,8 @@ local function CreateEmptyStateCard(parent, tabName, yOffset)
     desc:SetText("|cff666666" .. descText .. "|r")
 
     card:Show()
-    return card, yOffset + cardHeight + SIDE_MARGIN
+    -- Second value is delta only (callers do: return yOffset + height)
+    return card, cardHeight + SIDE_MARGIN
 end
 
 -- Hide empty state card for a specific tab
@@ -4231,7 +4427,7 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
     badge:SetFrameStrata("HIGH")
     
     -- Badge text
-    local text = FontManager:CreateFontString(badge, "small", "OVERLAY")
+    local text = FontManager:CreateFontString(badge, UIFontRole("versionBadge"), "OVERLAY")
     text:SetPoint("RIGHT", badge, "RIGHT", 0, 0)
     text:SetJustifyH("RIGHT")
     text:SetWidth(200)
@@ -5102,12 +5298,12 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     
     -- Loading title
     local FontManager = ns.FontManager
-    local loadingText = FontManager:CreateFontString(loadingCard, "title", "OVERLAY")
+    local loadingText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardTitle"), "OVERLAY")
     loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
     loadingText:SetText("|cff00ccff" .. (title or ((ns.L and ns.L["LOADING"]) or "Loading...")) .. "|r")
     
     -- Progress indicator
-    local progressText = FontManager:CreateFontString(loadingCard, "body", "OVERLAY")
+    local progressText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardProgress"), "OVERLAY")
     progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
     
     local currentStage = loadingState.currentStage or ((ns.L and ns.L["PREPARING"]) or "Preparing")
@@ -5115,7 +5311,7 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, math.min(100, progress)))
     
     -- Hint text
-    local hintText = FontManager:CreateFontString(loadingCard, "small", "OVERLAY")
+    local hintText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardHint"), "OVERLAY")
     hintText:SetPoint("LEFT", spinner, "RIGHT", 15, -25)
     hintText:SetTextColor(0.6, 0.6, 0.6)
     hintText:SetText((ns.L and ns.L["PLEASE_WAIT"]) or "Please wait...")
@@ -5147,7 +5343,7 @@ function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
     
     -- Error message
     local FontManager = ns.FontManager
-    local errorText = FontManager:CreateFontString(errorCard, "body", "OVERLAY")
+    local errorText = FontManager:CreateFontString(errorCard, UIFontRole("errorCardBody"), "OVERLAY")
     errorText:SetPoint("LEFT", warningIconFrame, "RIGHT", 10, 0)
     errorText:SetTextColor(1, 0.7, 0)
     errorText:SetText("|cffffcc00" .. errorMessage .. "|r")
@@ -5211,13 +5407,13 @@ local function UI_CreateLoadingStatePanel(parent)
 
     -- Title
     local FM = ns.FontManager
-    local titleText = FM:CreateFontString(panel, "title", "OVERLAY")
+    local titleText = FM:CreateFontString(panel, FM:GetFontRole("loadingPanelTitle"), "OVERLAY")
     titleText:SetPoint("TOP", spinnerFrame, "BOTTOM", 0, -10)
     titleText:SetJustifyH("CENTER")
     panel._titleText = titleText
 
     -- Progress text (stage + %)
-    local progressText = FM:CreateFontString(panel, "body", "OVERLAY")
+    local progressText = FM:CreateFontString(panel, FM:GetFontRole("loadingPanelProgress"), "OVERLAY")
     progressText:SetPoint("TOP", titleText, "BOTTOM", 0, -6)
     progressText:SetJustifyH("CENTER")
     progressText:SetTextColor(0.55, 0.55, 0.55)
@@ -5441,7 +5637,7 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     end
 
     -- Title text
-    local title = FontManager:CreateFontString(header, "body", "OVERLAY")
+    local title = FontManager:CreateFontString(header, UIFontRole("factorySectionHeaderTitle"), "OVERLAY")
     title:SetPoint("LEFT", collapseBtn, "RIGHT", 4, 0)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
@@ -5449,7 +5645,7 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
 
     -- Right-side text (optional)
     if rightStr then
-        local rightLabel = FontManager:CreateFontString(header, "body", "OVERLAY")
+        local rightLabel = FontManager:CreateFontString(header, UIFontRole("factorySectionHeaderRight"), "OVERLAY")
         rightLabel:SetPoint("RIGHT", header, "RIGHT", -UI_SPACING.SIDE_MARGIN, 0)
         rightLabel:SetJustifyH("RIGHT")
         rightLabel:SetText(rightStr)
@@ -5505,14 +5701,14 @@ function ns.UI.Factory:CreateCollectionListRow(parent, height)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     row.icon = icon
 
-    local label = FontManager:CreateFontString(row, "body", "OVERLAY")
+    local label = FontManager:CreateFontString(row, UIFontRole("factoryDataRowLabel"), "OVERLAY")
     label:SetPoint("LEFT", icon, "RIGHT", gap, 0)
     label:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
     label:SetJustifyH("LEFT")
     label:SetWordWrap(false)
     row.label = label
 
-    local rightLabel = FontManager:CreateFontString(row, "small", "OVERLAY")
+    local rightLabel = FontManager:CreateFontString(row, UIFontRole("factoryDataRowRight"), "OVERLAY")
     rightLabel:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
     rightLabel:SetJustifyH("RIGHT")
     rightLabel:SetWordWrap(false)
