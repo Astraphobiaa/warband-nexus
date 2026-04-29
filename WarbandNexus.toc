@@ -1,8 +1,8 @@
-## Interface: 120001
+## Interface: 120005
 ## Title: Warband Nexus
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Author: WarbandNexus Team
-## Version: 2.6.6b
+## Version: 2.6.7
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
 ## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity, Blizzard_Collections

@@ -1661,7 +1661,7 @@ function WarbandNexus:DrawReputationList(container, width)
         local errorFrame = CreateNoticeFrame(
             parent,
             (ns.L and ns.L["REP_API_UNAVAILABLE_TITLE"]) or "Reputation API Not Available",
-            (ns.L and ns.L["REP_API_UNAVAILABLE_DESC"]) or "The C_Reputation API is not available on this server. This feature requires WoW 12.0.1 (Midnight).",
+            (ns.L and ns.L["REP_API_UNAVAILABLE_DESC"]) or "The C_Reputation API is not available on this server. This feature requires WoW 12.0.5 (Midnight).",
             "alert",
             width - 20,
             100

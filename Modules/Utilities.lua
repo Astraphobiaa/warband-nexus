@@ -596,7 +596,7 @@ function Utilities.FormatCurrencySeasonProgressLine(cd)
 end
 
 --============================================================================
--- OPTIONAL BLIZZARD ADDON LOADING (C_AddOns — Midnight 12.0.1)
+-- OPTIONAL BLIZZARD ADDON LOADING (C_AddOns — Midnight 12.0.5)
 --============================================================================
 
 --- Load an optional Blizzard addon via C_AddOns. Uses pcall; no-op while in combat lockdown.
@@ -616,7 +616,7 @@ function Utilities:SafeLoadAddOn(addonName)
     return false
 end
 
---- Whether another addon is loaded (C_AddOns only; Midnight 12.0.1).
+--- Whether another addon is loaded (C_AddOns only; Midnight 12.0.5).
 ---@param addonName string
 ---@return boolean
 function Utilities:CheckAddOnLoaded(addonName)

@@ -93,7 +93,7 @@ local DELVE_COMPANION_ALIASES = {
 -- Mislaid Curiosity objects drop chunks whose ID is build-specific (TWW vs Midnight).
 local DELVE_COMPANION_XP_ITEM_IDS = {
     [254748] = true, -- Chunk of Companion Experience (Midnight 12.x — earlier build)
-    [254756] = true, -- Chunk of Companion Experience (Midnight 12.x — 12.0.1 observed)
+    [254756] = true, -- Chunk of Companion Experience (Midnight 12.x — 12.0.5 observed)
     [254576] = true, -- Chunk of Companion Experience (older/PTR build)
     [228071] = true, -- Chunk of Companion Experience (TWW)
     [228072] = true, -- Chunk of Companion Experience (TWW variant / deprecated row)

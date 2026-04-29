@@ -2608,7 +2608,7 @@ function WarbandNexus:CollectCurrencyData()
                             local name = currencyData.name:lower()
                             local headerName = currencyData.headerName:lower()
                             
-                            -- Expansion detection (Midnight 12.0.1 first — current; TWW/DF legacy)
+                            -- Expansion detection (Midnight 12.0.5 first — current; TWW/DF legacy)
                             if name:find("dawncrest") or name:find("adventurer dawncrest") or name:find("veteran dawncrest") or name:find("champion dawncrest") or name:find("hero dawncrest") or name:find("myth dawncrest") then
                                 currencyData.expansion = "Midnight"
                                 currencyData.category = "Crest"

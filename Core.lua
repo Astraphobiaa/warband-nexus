@@ -403,7 +403,7 @@ local defaults = {
         characterBankMoneyLogs = {}, -- account-wide: { { timestamp, type, amount, character, classFile }, ... }
 
         -- Collections tab: newest-first ring buffer of recent WN_COLLECTIBLE_OBTAINED (mount/pet/toy/achievement/…)
-        collectionsRecentObtained = {}, -- { { t = time(), type = string, id = number, name = string }, ... }
+        collectionsRecentObtained = {}, -- newest first; pruned to COLLECTIONS_RECENT_RETENTION_SEC (see Constants)
         -- Per-type last time the addon recorded an acquisition (detail panel "Recorded" line; same events as recent strip)
         collectionsLastObtained = {}, -- { mount = { [id]=unix }, pet = {}, toy = {}, achievement = {}, ... }
     },
@@ -511,6 +511,11 @@ function WarbandNexus:OnInitialize()
         if not self.db.global.trackDB.custom.objects then self.db.global.trackDB.custom.objects = {} end
         if not self.db.global.trackDB.disabled then self.db.global.trackDB.disabled = {} end
         if not self.db.global.statisticSnapshots then self.db.global.statisticSnapshots = {} end
+    end
+
+    -- Collections → Recent: prune stale rows (retention: Constants.COLLECTIONS_RECENT_RETENTION_SEC)
+    if self.PruneCollectionsRecentObtained then
+        self:PruneCollectionsRecentObtained()
     end
     
     -- =========================================================================

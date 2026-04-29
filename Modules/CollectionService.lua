@@ -2080,6 +2080,22 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     self._previousIllusionState = currentCollected
 end
 
+---Remove Collections → Recent entries older than Constants.COLLECTIONS_RECENT_RETENTION_SEC (newest-first list).
+function WarbandNexus:PruneCollectionsRecentObtained()
+    if not self.db or not self.db.global then return end
+    local list = self.db.global.collectionsRecentObtained
+    if type(list) ~= "table" then return end
+    local retention = (Constants and Constants.COLLECTIONS_RECENT_RETENTION_SEC) or 604800
+    local cutoff = time() - retention
+    for i = #list, 1, -1 do
+        local e = list[i]
+        local et = e and e.t
+        if type(et) ~= "number" or et < cutoff then
+            table.remove(list, i)
+        end
+    end
+end
+
 ---Persist newest collectible acquisitions for the Collections tab "Recently obtained" strip.
 ---@param data table WN_COLLECTIBLE_OBTAINED payload
 function WarbandNexus:AppendCollectionsRecentObtained(data)
@@ -2106,9 +2122,7 @@ function WarbandNexus:AppendCollectionsRecentObtained(data)
         return
     end
     table.insert(list, 1, { t = now, type = data.type, id = data.id, name = displayName })
-    while #list > 15 do
-        table.remove(list)
-    end
+    self:PruneCollectionsRecentObtained()
 
     local lastRoot = self.db.global.collectionsLastObtained
     if type(lastRoot) ~= "table" then
@@ -5157,6 +5171,8 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
                 end
                 MarkAsPermanentlyNotified(collectible.type, collectible.collectibleID)
             -- LAYER 1: Quick name-based debounce (1-2s) - Prevents rapid-fire duplicates
+            elseif WasAlreadyNotified(collectible.type, collectible.collectibleID) then
+    DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP (bag scan): " .. collectible.itemName)
             elseif not WasRecentlyShownByName(collectible.itemName) then
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW " .. string.upper(collectible.type) .. " IN BAG: " .. collectible.itemName)
                 

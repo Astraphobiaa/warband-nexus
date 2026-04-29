@@ -1011,7 +1011,7 @@ function WarbandNexus:UpdateWorldBossKills(charKey)
     charKey = CanonicalizePvEKey(charKey)
     
     -- World boss kills tracked via quest completion
-    -- Midnight 12.0.1 world boss quest IDs
+    -- Midnight 12.0.5 world boss quest IDs
     local worldBossQuests = {
         93913, -- Midnight: World Boss (Quel'Thalas weekly world boss)
     }

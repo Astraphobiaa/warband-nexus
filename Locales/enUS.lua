@@ -359,7 +359,7 @@ L["REP_RENOWN_FORMAT"] = "Renown %d"
 L["REP_PARAGON_FORMAT"] = "Paragon (%s)"
 L["REP_UNKNOWN_FACTION"] = "Unknown Faction"
 L["REP_API_UNAVAILABLE_TITLE"] = "Reputation API Not Available"
-L["REP_API_UNAVAILABLE_DESC"] = "The C_Reputation API is not available on this server. This feature requires WoW 12.0.1 (Midnight)."
+L["REP_API_UNAVAILABLE_DESC"] = "The C_Reputation API is not available on this server. This feature requires WoW 12.0.5 (Midnight)."
 L["REP_FOOTER_TITLE"] = "Reputation Tracking"
 L["REP_FOOTER_DESC"] = "Reputations are scanned automatically on login and when changed. Use the in-game reputation panel to view detailed information and rewards."
 L["REP_CLEARING_CACHE"] = "Clearing cache and reloading..."
@@ -840,6 +840,26 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 2.6.7 (key CHANGELOG_V267)
+L["CHANGELOG_V267"] = [=[v2.6.7 (2026-04-29)
+
+PvE — Great Vault tracker
+- Added Weekly Vault tracker visibility improvements for unclaimed rewards and completed vault rows.
+- Claimable Great Vault rewards now show the short "loot ready" status label consistently across PvE and Plans surfaces.
+
+UI — minimap shortcut
+- Improved quick access flow through the minimap button and /wn minimap toggle shortcut.
+
+Collections — loot alerts
+- Bag scan now checks the permanent notified cache before firing mount, pet, and toy collectible toasts.
+- Fixed repeated collectible popups caused by duplicate BAG_UPDATE-driven re-detection.
+- Already-notified collectibles now stay silent across reloads and relogs.
+
+Collections — recent list
+- Recent obtained entries are now retention-pruned (7 days) so stale rows are cleaned automatically.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 2.6.6b (key CHANGELOG_V266)
 L["CHANGELOG_V266"] = [=[v2.6.6b (2026-04-28)
 
@@ -858,6 +878,10 @@ Event-driven UI refresh
 - Gear tab now refreshes on bag updates (newly looted BoEs surface immediately).
 - Money, currency variants, collection events, vault events, character tracking changes, gold management edits, and bank money log updates all trigger the appropriate tab redraw.
 - GET_ITEM_INFO_RECEIVED listener: gear tab re-scans once cold-cache hyperlinks finish async resolution.
+
+Collections — loot alerts
+- Bag-scan collectible detection now skips mounts, pets, and toys already marked as notified in SavedVariables (permanent dedupe).
+- Prevents duplicate collection popups when repeated bag updates re-detected the same collectible.
 
 Single-roof version system (no more wiped data on releases)
 - Addon releases no longer invalidate any cache. Bumping the addon version preserves all character state, vault progress, mythic key history, and currency totals.

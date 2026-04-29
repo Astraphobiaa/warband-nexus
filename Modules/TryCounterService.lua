@@ -1960,7 +1960,7 @@ end
 local difficultyCache = {}
 
 -- Maps WoW difficultyID (from ENCOUNTER_END / GetRaidDifficultyID / GetDungeonDifficultyID)
--- to our dropDifficulty label strings.  Complete as of Patch 12.0.1 (Feb 2026).
+-- to our dropDifficulty label strings.  Complete as of Patch 12.0.5 (Apr 2026).
 -- https://warcraft.wiki.gg/wiki/DifficultyID
 -- Regression: tests/test_trycounter.lua mirrors this table plus ResolveDifficultyLabel, DoesDifficultyMatch, FilterDropsByDifficulty.
 local DIFFICULTY_ID_TO_LABELS = {

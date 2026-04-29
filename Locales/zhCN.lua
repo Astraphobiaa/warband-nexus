@@ -13,7 +13,7 @@ local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "zhCN")
 if not L then return end
 
 -- General
-L["ADDON_NAME"] = "Warband Nexus"
+L["ADDON_NAME"] = "战团联结"
 -- Slash Commands
 L["KEYBINDING"] = "快捷键"
 L["KEYBINDING_UNBOUND"] = "未设置"
@@ -55,7 +55,7 @@ L["TAB_STORAGE"] = "存储"
 L["TAB_PLANS"] = "待办"
 L["TAB_REPUTATIONS"] = "声望"
 L["TAB_CURRENCIES"] = "货币"
-L["TAB_PVE"] = "PvE"
+L["TAB_PVE"] = "测量值"
 
 -- Characters Tab
 L["HEADER_CURRENT_CHARACTER"] = "当前角色"
@@ -348,7 +348,7 @@ L["REP_RENOWN_FORMAT"] = "名望 %d"
 L["REP_PARAGON_FORMAT"] = "巅峰（%s）"
 L["REP_UNKNOWN_FACTION"] = "未知阵营"
 L["REP_API_UNAVAILABLE_TITLE"] = "声望 API 不可用"
-L["REP_API_UNAVAILABLE_DESC"] = "此服务器上 C_Reputation API 不可用。此功能需要 WoW 12.0.1（Midnight）。"
+L["REP_API_UNAVAILABLE_DESC"] = "此服务器上 C_Reputation API 不可用。此功能需要 WoW 12.0.5（Midnight）。"
 L["REP_FOOTER_TITLE"] = "声望追踪"
 L["REP_FOOTER_DESC"] = "声望在登录和变更时自动扫描。使用游戏内声望面板查看详细信息和奖励。"
 L["REP_CLEARING_CACHE"] = "正在清除缓存并重新加载..."
@@ -1279,7 +1279,7 @@ L["FILTER_SHOW_OWNED"] = "已拥有"
 L["FILTER_SHOW_MISSING"] = "未拥有"
 
 -- Config: Settings Panel
-L["CONFIG_HEADER"] = "Warband Nexus"
+L["CONFIG_HEADER"] = "战团联结"
 L["CONFIG_HEADER_DESC"] = "现代战团管理和跨角色追踪。"
 L["CONFIG_GENERAL"] = "常规设置"
 L["CONFIG_GENERAL_DESC"] = "基本插件设置和行为选项。"
@@ -1439,7 +1439,7 @@ L["STATS_PLAYED_STEAM_INT"] = "%d 小时"
 L["SHOW_ALL"] = "显示全部"
 
 -- Social
-L["DISCORD_TOOLTIP"] = "Warband Nexus Discord"
+L["DISCORD_TOOLTIP"] = "战团 Nexus 不和谐"
 
 -- Collection Source Filters
 L["SOURCE_OTHER"] = "其他"
@@ -1585,11 +1585,11 @@ L["QUEST_CATEGORY_DESC_DAILY"] = "来自 NPC 的每日可重复任务"
 L["QUEST_CATEGORY_DESC_EVENTS"] = "奖金目标、任务和活动"
 L["GEAR_NO_TRACKED_CHARACTERS_TITLE"] = "没有跟踪的字符"
 L["GEAR_NO_TRACKED_CHARACTERS_DESC"] = "登录角色即可开始追踪装备。"
-L["SOURCE_TYPE_CATEGORY_FORMAT"] = "Category %d"
+L["SOURCE_TYPE_CATEGORY_FORMAT"] = "类别%d"
 L["TYPE_ITEM"] = ITEM or "物品"
-L["CTRL_C_LABEL"] = "Ctrl+C"
+L["CTRL_C_LABEL"] = "Ctrl+C（复制）"
 L["WOW_TOKEN_COUNT_LABEL"] = "代币"
-L["NOT_AVAILABLE_SHORT"] = "N/A"
+L["NOT_AVAILABLE_SHORT"] = "不适用"
 L["COLLECTION_RULE_API_NOT_AVAILABLE"] = "API???"
 L["COLLECTION_RULE_INVALID_MOUNT"] = "????"
 L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "????????"
@@ -1598,6 +1598,24 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "????????"
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V267"] = [=[v2.6.7 (2026-04-29)
+
+PvE — Great Vault tracker
+- Added Weekly Vault tracker visibility improvements for unclaimed rewards and completed vault rows.
+- Claimable Great Vault rewards now show the short "loot ready" status label consistently across PvE and Plans surfaces.
+
+UI — minimap shortcut
+- Improved quick access flow through the minimap button and /wn minimap toggle shortcut.
+
+Collections — loot alerts
+- Bag scan now checks the permanent notified cache before firing mount, pet, and toy collectible toasts.
+- Fixed repeated collectible popups caused by duplicate BAG_UPDATE-driven re-detection.
+- Already-notified collectibles now stay silent across reloads and relogs.
+
+Collections — recent list
+- Recent obtained entries are now retention-pruned (7 days) so stale rows are cleaned automatically.
+
+CurseForge: Warband Nexus]=]
 L["CHANGELOG_V266"] = [=[v2.6.6b (2026-04-28)
 
 Gear tab — Storage Upgrade Recommendations
@@ -1615,6 +1633,10 @@ Event-driven UI refresh
 - Gear tab now refreshes on bag updates (newly looted BoEs surface immediately).
 - Money, currency variants, collection events, vault events, character tracking changes, gold management edits, and bank money log updates all trigger the appropriate tab redraw.
 - GET_ITEM_INFO_RECEIVED listener: gear tab re-scans once cold-cache hyperlinks finish async resolution.
+
+Collections — loot alerts
+- Bag-scan collectible detection now skips mounts, pets, and toys already marked as notified in SavedVariables (permanent dedupe).
+- Prevents duplicate collection popups when repeated bag updates re-detected the same collectible.
 
 Single-roof version system (no more wiped data on releases)
 - Addon releases no longer invalidate any cache. Bumping the addon version preserves all character state, vault progress, mythic key history, and currency totals.

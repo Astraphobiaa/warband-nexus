@@ -51,7 +51,6 @@ local TEXT_GAP = AFTER_ELEMENT
 local SEARCH_ROW_HEIGHT = 32  -- Plans ile birebir aynı
 -- Title card: 70px + text block 200x40 + icon gap 12 — birebir CurrencyUI / ItemsUI.
 local COLLECTIONS_TITLE_CARD_HEIGHT = 70
-local RECENT_PER_SECTION = 10
 local RECENT_SECTION_ORDER = { "achievement", "mount", "pet", "toy" }
 local RECENT_CARD_ICON = 20
 local RECENT_CARD_HEADER_PAD = 8
@@ -4271,6 +4270,7 @@ local function RecentEntryNameMatches(e, qlower)
     return SafeLower(nm):find(qlower, 1, true) ~= nil
 end
 
+---@param maxN number|nil nil = all matches within DB (retention-pruned list)
 local function RecentPickForType(db, typ, qlower, maxN)
     local out = {}
     if type(db) ~= "table" then return out end
@@ -4278,7 +4278,7 @@ local function RecentPickForType(db, typ, qlower, maxN)
         local e = db[i]
         if e and e.type == typ and RecentEntryNameMatches(e, qlower) then
             out[#out + 1] = e
-            if #out >= maxN then break end
+            if maxN and maxN > 0 and #out >= maxN then break end
         end
     end
     return out
@@ -4395,6 +4395,10 @@ local function DrawRecentContent(contentFrame)
 
     if not sch then return end
 
+    if WarbandNexus.PruneCollectionsRecentObtained then
+        WarbandNexus:PruneCollectionsRecentObtained()
+    end
+
     local db = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.collectionsRecentObtained
     local loc = ns.L
     local qraw = collectionsState.searchText or ""
@@ -4450,7 +4454,7 @@ local function DrawRecentContent(contentFrame)
         local anyMatch = false
         for si = 1, #RECENT_SECTION_ORDER do
             local typ = RECENT_SECTION_ORDER[si]
-            if #RecentPickForType(db, typ, qlower, RECENT_PER_SECTION) > 0 then
+            if #RecentPickForType(db, typ, qlower, 1) > 0 then
                 anyMatch = true
                 break
             end
@@ -4465,16 +4469,27 @@ local function DrawRecentContent(contentFrame)
 
     local innerW = math.max(1, (sch:GetWidth() or cw) - 2 * inset)
     local cardW = (innerW - 3 * gap) / 4
-    local cardH = math.max(160, innerCh - 2 * inset)
     local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 6
     local listTopPad = headerBand + 4
-    local maxRows = math.max(1, math.floor((cardH - listTopPad - RECENT_CARD_HEADER_PAD) / (ROW_HEIGHT + 2)))
-    local pickLimit = math.min(RECENT_PER_SECTION, maxRows)
+    local rowStride = ROW_HEIGHT + 2
+
+    local pickedLists = {}
+    local maxCount = 1
+    for si = 1, #RECENT_SECTION_ORDER do
+        local typ = RECENT_SECTION_ORDER[si]
+        local picked = RecentPickForType(db, typ, qlower, nil)
+        pickedLists[si] = picked
+        local c = #picked
+        if c == 0 then c = 1 end
+        if c > maxCount then maxCount = c end
+    end
+
+    local cardH = math.max(160, listTopPad + maxCount * rowStride + RECENT_CARD_HEADER_PAD)
 
     local rowVisualIndex = 0
     for si = 1, #RECENT_SECTION_ORDER do
         local typ = RECENT_SECTION_ORDER[si]
-        local picked = RecentPickForType(db, typ, qlower, pickLimit)
+        local picked = pickedLists[si]
         local cat = CollectionsRecentCategoryLabel(typ)
         local iconTex, iconIsAtlas = GetRecentSectionCategoryIcon(typ)
         local defaultEmptyIcon = (typ == "achievement" and DEFAULT_ICON_ACHIEVEMENT)
