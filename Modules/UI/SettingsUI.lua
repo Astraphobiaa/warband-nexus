@@ -1467,7 +1467,7 @@ local function BuildSettings(parent, containerWidth)
     
     -- Move to next section
     yOffset = yOffset - generalSection:GetHeight() - SECTION_SPACING
-    
+
     --========================================================================
     -- MODULE MANAGEMENT
     --========================================================================
@@ -1624,6 +1624,178 @@ local function BuildSettings(parent, containerWidth)
     
     -- Move to next section
     yOffset = yOffset - moduleSection:GetHeight() - SECTION_SPACING
+
+    --========================================================================
+    -- VAULT BUTTON
+    --========================================================================
+
+    local vaultSection = CreateSection(parent, "Vault Button", effectiveWidth)
+    vaultSection:SetPoint("TOPLEFT", 0, yOffset)
+    vaultSection:SetPoint("TOPRIGHT", 0, yOffset)
+
+    local function GetVaultButtonSettings()
+        WarbandNexus.db.profile.vaultButton = WarbandNexus.db.profile.vaultButton or {}
+        local settings = WarbandNexus.db.profile.vaultButton
+        if settings.enabled == nil then settings.enabled = true end
+        if settings.hideUntilMouseover == nil then settings.hideUntilMouseover = false end
+        if settings.hideUntilReady == nil then settings.hideUntilReady = false end
+        if settings.showRealmName == nil then settings.showRealmName = false end
+        if settings.showRewardItemLevel == nil then settings.showRewardItemLevel = false end
+        if settings.showManaflux == nil then settings.showManaflux = false end
+        settings.columns = settings.columns or {}
+        if settings.columns.raids == nil then settings.columns.raids = true end
+        if settings.columns.mythicPlus == nil then settings.columns.mythicPlus = true end
+        if settings.columns.world == nil then settings.columns.world = true end
+        if settings.columns.bounty == nil then settings.columns.bounty = true end
+        if settings.columns.voidcore == nil then settings.columns.voidcore = true end
+        if settings.columns.manaflux == nil then settings.columns.manaflux = settings.showManaflux == true end
+        settings.showManaflux = settings.columns.manaflux == true
+        settings.opacity = tonumber(settings.opacity) or 1.0
+        return settings
+    end
+
+    local function RefreshVaultButton()
+        if WarbandNexus.RefreshVaultButtonSettings then
+            WarbandNexus:RefreshVaultButtonSettings()
+        end
+    end
+
+    local vaultOptions = {
+        {
+            key = "vaultButtonEnabled",
+            label = "Vault Button",
+            tooltip = "Show the draggable Great Vault status button.",
+            get = function() return GetVaultButtonSettings().enabled ~= false end,
+            set = function(value)
+                GetVaultButtonSettings().enabled = value
+                RefreshVaultButton()
+            end,
+        },
+        {
+            key = "vaultButtonMouseover",
+            label = "Hide Until Mouseover",
+            tooltip = "Keep the vault button invisible until the cursor is over its saved position.",
+            get = function() return GetVaultButtonSettings().hideUntilMouseover == true end,
+            set = function(value)
+                GetVaultButtonSettings().hideUntilMouseover = value
+                RefreshVaultButton()
+            end,
+        },
+        {
+            key = "vaultButtonReadyOnly",
+            label = "Hide Until Ready",
+            tooltip = "Only show the vault button when at least one character has a vault reward ready to claim.",
+            get = function() return GetVaultButtonSettings().hideUntilReady == true end,
+            set = function(value)
+                GetVaultButtonSettings().hideUntilReady = value
+                RefreshVaultButton()
+            end,
+        },
+        {
+            key = "vaultButtonShowRealm",
+            label = "Show Realm Names",
+            tooltip = "Show character realm names in vault button tables and tooltips.",
+            get = function() return GetVaultButtonSettings().showRealmName == true end,
+            set = function(value)
+                GetVaultButtonSettings().showRealmName = value
+                RefreshVaultButton()
+            end,
+        },
+        {
+            key = "vaultButtonRewardIlvl",
+            label = "Show Reward iLvl",
+            tooltip = "Show reward item levels in completed vault slots instead of ready-check icons.",
+            get = function() return GetVaultButtonSettings().showRewardItemLevel == true end,
+            set = function(value)
+                GetVaultButtonSettings().showRewardItemLevel = value
+                RefreshVaultButton()
+            end,
+        },
+        {
+            key = "vaultButtonRaidColumn",
+            label = "Raid Column",
+            tooltip = "Show raid vault progress in the vault button table.",
+            get = function() return GetVaultButtonSettings().columns.raids ~= false end,
+            set = function(value)
+                GetVaultButtonSettings().columns.raids = value
+                RefreshVaultButton()
+            end,
+        },
+        {
+            key = "vaultButtonDungeonColumn",
+            label = "Dungeon Column",
+            tooltip = "Show Mythic+ dungeon vault progress in the vault button table.",
+            get = function() return GetVaultButtonSettings().columns.mythicPlus ~= false end,
+            set = function(value)
+                GetVaultButtonSettings().columns.mythicPlus = value
+                RefreshVaultButton()
+            end,
+        },
+        {
+            key = "vaultButtonWorldColumn",
+            label = "World Column",
+            tooltip = "Show world activity vault progress in the vault button table.",
+            get = function() return GetVaultButtonSettings().columns.world ~= false end,
+            set = function(value)
+                GetVaultButtonSettings().columns.world = value
+                RefreshVaultButton()
+            end,
+        },
+        {
+            key = "vaultButtonBountyColumn",
+            label = "Trovehunter's Bounty Column",
+            tooltip = "Show Trovehunter's Bounty completion in the vault button table.",
+            get = function() return GetVaultButtonSettings().columns.bounty ~= false end,
+            set = function(value)
+                GetVaultButtonSettings().columns.bounty = value
+                RefreshVaultButton()
+            end,
+        },
+        {
+            key = "vaultButtonVoidcoreColumn",
+            label = "Nebulous Voidcore Column",
+            tooltip = "Show Nebulous Voidcore progress in the vault button table.",
+            get = function() return GetVaultButtonSettings().columns.voidcore ~= false end,
+            set = function(value)
+                GetVaultButtonSettings().columns.voidcore = value
+                RefreshVaultButton()
+            end,
+        },
+        {
+            key = "vaultButtonManafluxColumn",
+            label = "Dawnlight Manaflux Column",
+            tooltip = "Show Dawnlight Manaflux currency in the vault button table.",
+            get = function() return GetVaultButtonSettings().columns.manaflux == true end,
+            set = function(value)
+                GetVaultButtonSettings().columns.manaflux = value
+                GetVaultButtonSettings().showManaflux = value
+                RefreshVaultButton()
+            end,
+        },
+    }
+
+    local vaultYOffset = CreateCheckboxGrid(vaultSection.content, vaultOptions, 0, effectiveWidth - 30)
+    vaultYOffset = vaultYOffset - 12
+    vaultYOffset = CreateSliderWidget(vaultSection.content, {
+        name = "Button Opacity",
+        desc = "Adjust the vault button opacity when it is visible.",
+        min = 0.2,
+        max = 1.0,
+        step = 0.05,
+        get = function() return GetVaultButtonSettings().opacity or 1.0 end,
+        set = function(_, value)
+            value = math.floor(value * 20 + 0.5) / 20
+            GetVaultButtonSettings().opacity = value
+            RefreshVaultButton()
+        end,
+        valueFormat = function(v) return string.format("%d%%", v * 100) end,
+    }, vaultYOffset, sliderElements)
+
+    local vaultContentHeight = math.abs(vaultYOffset) + 10
+    vaultSection:SetHeight(vaultContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    vaultSection.content:SetHeight(vaultContentHeight)
+
+    yOffset = yOffset - vaultSection:GetHeight() - SECTION_SPACING
     
     --========================================================================
     -- TAB FILTERING

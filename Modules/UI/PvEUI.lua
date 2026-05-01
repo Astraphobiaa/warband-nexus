@@ -103,7 +103,7 @@ local function GetTrovehunterBountyColumnIcon()
             end
         end
     end
-    return "Interface\\Icons\\INV_10_WorldQuests_Scroll"
+    return 4672496
 end
 
 --- Minimum scrollChild width so inline columns do not overlap; enables horizontal scrollbar.
@@ -797,7 +797,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
         local trackIcons = {
             Raid    = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
             Dungeon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-            World   = "Interface\\Icons\\INV_Misc_Map_01",
+            World   = 4672496,
         }
         local trackIcon = rowFrame:CreateTexture(nil, "ARTWORK")
         trackIcon:SetSize(trackIconSize, trackIconSize)
@@ -1690,7 +1690,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         key = "slot3",
         label = "",
         width = PVE_VAULT_COL_W,
-        icon = "Interface\\Icons\\INV_Misc_Map_01",
+        icon = 4672496,
         tooltipTitle = (ns.L and ns.L["VAULT_WORLD"]) or "World",
     }
     -- Bountiful weekly — Trovehunter's Bounty item icon (live fileID when API returns it)
@@ -2975,7 +2975,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local icons = {
                     ["Raid"] = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
                     ["M+"] = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-                    ["World"] = "Interface\\Icons\\INV_Misc_Map_01"
+                    ["World"] = 4672496
                 }
                 return icons[typeName] or "Interface\\Icons\\INV_Misc_QuestionMark"
             end
