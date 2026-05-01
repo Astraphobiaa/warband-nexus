@@ -72,6 +72,7 @@ Modules\MinimapButton.lua
 Modules\TooltipService.lua
 Modules\GuildBankScanner.lua
 Modules\VaultScanner.lua
+Modules\VaultButton.lua
 Modules\PlansManager.lua
 Modules\CollectibleSourceDB.lua
 Modules\TryCounterService.lua
