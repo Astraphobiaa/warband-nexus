@@ -16,6 +16,7 @@ local BUTTON_SIZE   = 48
 local BADGE_SIZE    = 18
 local ROW_H         = 28
 local HEADER_H      = 24
+local CHROME_H      = 40
 local FRAME_PAD     = 8
 local MAX_ROWS      = 20
 local ICON_TEXTURE  = "Interface\\AddOns\\WarbandNexus\\Media\\icon"
@@ -486,30 +487,15 @@ local function ApplyTheme()
     if S.badgeBg then
         S.badgeBg:SetColorTexture(accent[1], accent[2], accent[3], 1)
     end
-    if S.tableFrame then
-        S.tableFrame:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.9)
-    end
-    if S.title then
-        S.title:SetTextColor(accent[1], accent[2], accent[3], 1)
-    end
-    if S.headerBg then
-        S.headerBg:SetColorTexture(accentDark[1], accentDark[2], accentDark[3], 1)
-    end
+    -- tableFrame / chrome / optionsFrame border colors auto-update via ns.BORDER_REGISTRY
     if S.separator then
         S.separator:SetColorTexture(accent[1], accent[2], accent[3], 0.55)
     end
     if S.optionsFrame then
-        S.optionsFrame:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.9)
-        if S.optionsFrame.title then
-            S.optionsFrame.title:SetTextColor(accent[1], accent[2], accent[3], 1)
-        end
         if S.optionsFrame.columnLabel then
             S.optionsFrame.columnLabel:SetTextColor(accent[1], accent[2], accent[3], 1)
         end
         if S.optionsFrame.opacitySlider then
-            if S.optionsFrame.opacitySlider.SetBackdropBorderColor then
-                S.optionsFrame.opacitySlider:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.7)
-            end
             local thumb = S.optionsFrame.opacitySlider:GetThumbTexture()
             if thumb then
                 thumb:SetColorTexture(accent[1], accent[2], accent[3], 1)
@@ -554,6 +540,10 @@ end
 local function BuildTableFrame()
     if S.tableFrame then return end
     local tableW = GetTableWidth()
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    local COLORS = ns.UI_COLORS or {}
+    local accent = COLORS.accent or {0.40, 0.20, 0.58}
+    local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
 
     local f = CreateFrame("Frame", "WarbandNexusVaultTable", UIParent, "BackdropTemplate")
     AddEscCloseFrame("WarbandNexusVaultTable")
@@ -561,68 +551,96 @@ local function BuildTableFrame()
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(200)
     f:SetMovable(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        local point, _, relativePoint, x, y = self:GetPoint()
-        SaveTablePos(point, relativePoint, x, y)
-    end)
     f:EnableMouse(true)
-    f:SetBackdrop({
-        bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile=true, tileSize=16, edgeSize=16,
-        insets={left=4,right=4,top=4,bottom=4},
-    })
-    f:SetBackdropColor(0.06, 0.06, 0.09, 0.97)
-    f:SetBackdropBorderColor(0.5, 0.4, 0.8, 0.9)
+    if ApplyVisuals then
+        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
+    else
+        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+        f:SetBackdropColor(0.02, 0.02, 0.03, 0.98)
+    end
     f:Hide()
 
-    -- Title
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", FRAME_PAD, -6)
-    title:SetTextColor(0.7, 0.5, 1.0, 1)
-    title:SetText("Warband Nexus Vault Tracker")
+    -- ===== CHROME HEADER (matches main window) =====
+    local chrome = CreateFrame("Frame", nil, f)
+    chrome:SetHeight(CHROME_H)
+    chrome:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -2)
+    chrome:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    chrome:EnableMouse(true)
+    chrome:RegisterForDrag("LeftButton")
+    chrome:SetScript("OnDragStart", function() f:StartMoving() end)
+    chrome:SetScript("OnDragStop", function()
+        f:StopMovingOrSizing()
+        local point, _, relativePoint, x, y = f:GetPoint()
+        SaveTablePos(point, relativePoint, x, y)
+    end)
+    chrome:SetScript("OnMouseUp", function(_, btn)
+        if btn == "RightButton" then ToggleOptionsFrame(f, "RIGHT") end
+    end)
+    if ApplyVisuals then
+        ApplyVisuals(chrome, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
+    end
+    S.headerBg = chrome  -- repurposed for theme refresh
+
+    local titleIcon = chrome:CreateTexture(nil, "ARTWORK")
+    titleIcon:SetSize(24, 24)
+    titleIcon:SetPoint("LEFT", 15, 0)
+    titleIcon:SetTexture(ICON_TEXTURE)
+    if not titleIcon:GetTexture() then titleIcon:SetTexture(ICON_FALLBACK) end
+
+    local FontManager = ns.FontManager
+    local title
+    if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
+        title = FontManager:CreateFontString(chrome, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
+    else
+        title = chrome:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    end
+    title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
+    title:SetText("Vault Tracker")
+    title:SetTextColor(1, 1, 1)
     S.title = title
 
-    -- Close button
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetSize(20, 20)
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    -- Close button (atlas style, matches main window)
+    local closeBtn = CreateFrame("Button", nil, chrome)
+    closeBtn:SetSize(28, 28)
+    closeBtn:SetPoint("RIGHT", -8, 0)
+    if ApplyVisuals then
+        ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8})
+    end
+    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
+    closeIcon:SetSize(16, 16)
+    closeIcon:SetPoint("CENTER")
+    closeIcon:SetAtlas("uitools-icon-close")
+    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
     closeBtn:SetScript("OnClick", HideTable)
-
-    local titleHitBox = CreateFrame("Button", nil, f)
-    titleHitBox:SetPoint("TOPLEFT", f, "TOPLEFT", FRAME_PAD, 0)
-    titleHitBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -28, 0)
-    titleHitBox:SetHeight(28)
-    titleHitBox:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    titleHitBox:EnableMouse(true)
-    titleHitBox:SetScript("OnMouseDown", function(_, button)
-        if button == "LeftButton" then
-            f:StartMoving()
-        end
+    closeBtn:SetScript("OnEnter", function()
+        closeIcon:SetVertexColor(1, 0.2, 0.2)
+        if ApplyVisuals then ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1}) end
     end)
-    titleHitBox:SetScript("OnMouseUp", function(self, button)
-        if button == "LeftButton" then
-            f:StopMovingOrSizing()
-            local point, _, relativePoint, x, y = f:GetPoint()
-            SaveTablePos(point, relativePoint, x, y)
-        elseif button == "RightButton" then
-            ToggleOptionsFrame(f, "RIGHT")
-        end
+    closeBtn:SetScript("OnLeave", function()
+        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        if ApplyVisuals then ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8}) end
     end)
-    S.titleHitBox = titleHitBox
 
-    -- Header row
-    local headerY = -(HEADER_H + 8)
+    -- Settings (gear) button — opens options frame
+    local settingsBtn = CreateFrame("Button", nil, chrome)
+    settingsBtn:SetSize(28, 28)
+    settingsBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
+    settingsBtn:SetNormalAtlas("mechagon-projects")
+    settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
+    settingsBtn:SetScript("OnClick", function() ToggleOptionsFrame(f, "RIGHT") end)
+
+    -- Column header row
+    local headerY = -(CHROME_H + 6)
     local hRow = CreateFrame("Frame", nil, f)
     hRow:SetPoint("TOPLEFT", f, "TOPLEFT", FRAME_PAD, headerY)
     hRow:SetSize(tableW - FRAME_PAD*2, HEADER_H)
-    local hBg = hRow:CreateTexture(nil, "BACKGROUND")
-    hBg:SetAllPoints()
-    hBg:SetColorTexture(0.12, 0.10, 0.18, 1)
-    S.headerBg = hBg
+    if ApplyVisuals then
+        ApplyVisuals(hRow, {0.08, 0.08, 0.10, 1}, {COLORS.border and COLORS.border[1] or 0.20, COLORS.border and COLORS.border[2] or 0.20, COLORS.border and COLORS.border[3] or 0.25, 0.6})
+    else
+        local hBg = hRow:CreateTexture(nil, "BACKGROUND")
+        hBg:SetAllPoints()
+        hBg:SetColorTexture(0.08, 0.08, 0.10, 1)
+    end
 
     -- Header cells
     local function HCell(text, x, w, isIcon, iconTex, tooltipTitle, tooltipText, tooltipKind, tooltipID)
@@ -725,7 +743,7 @@ RefreshTable = function()
     S.rows = {}
 
     if #list == 0 then
-        S.tableFrame:SetSize(tableW, 120)
+        S.tableFrame:SetSize(tableW, CHROME_H + HEADER_H + 80)
         content:SetSize(tableW - FRAME_PAD*2, 40)
         local msg = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         msg:SetPoint("CENTER", content, "CENTER")
@@ -950,7 +968,7 @@ RefreshTable = function()
     local visRows  = math.min(#list, MAX_ROWS)
     local contentH = #list * ROW_H
     local viewH    = visRows * ROW_H
-    local totalH   = HEADER_H + 10 + viewH + FRAME_PAD + 32
+    local totalH   = CHROME_H + 6 + HEADER_H + 2 + viewH + FRAME_PAD
 
     content:SetSize(tableW - FRAME_PAD*2, contentH)
     S.tableFrame:SetSize(tableW, totalH)
@@ -1072,99 +1090,137 @@ end
 local function BuildOptionsFrame()
     if S.optionsFrame then return end
 
-    local colors = GetThemeColors()
-    local accent = colors.accent or {0.40, 0.20, 0.58}
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    local COLORS = ns.UI_COLORS or {}
+    local accent = COLORS.accent or {0.40, 0.20, 0.58}
+    local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
 
     local f = CreateFrame("Frame", "WarbandNexusVaultButtonOptions", UIParent, "BackdropTemplate")
     AddEscCloseFrame("WarbandNexusVaultButtonOptions")
-    f:SetSize(286, 424)
+    f:SetSize(286, 460)
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(210)
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
     f:SetMovable(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = {left = 4, right = 4, top = 4, bottom = 4},
-    })
-    f:SetBackdropColor(0.06, 0.06, 0.08, 0.97)
-    f:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.9)
+    if ApplyVisuals then
+        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
+    else
+        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+        f:SetBackdropColor(0.02, 0.02, 0.03, 0.98)
+    end
     f:Hide()
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -10)
+    -- Chrome header
+    local chrome = CreateFrame("Frame", nil, f)
+    chrome:SetHeight(CHROME_H)
+    chrome:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -2)
+    chrome:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    chrome:EnableMouse(true)
+    chrome:RegisterForDrag("LeftButton")
+    chrome:SetScript("OnDragStart", function() f:StartMoving() end)
+    chrome:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
+    if ApplyVisuals then
+        ApplyVisuals(chrome, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
+    end
+
+    local titleIcon = chrome:CreateTexture(nil, "ARTWORK")
+    titleIcon:SetSize(24, 24)
+    titleIcon:SetPoint("LEFT", 15, 0)
+    titleIcon:SetTexture(ICON_TEXTURE)
+    if not titleIcon:GetTexture() then titleIcon:SetTexture(ICON_FALLBACK) end
+
+    local FontManager = ns.FontManager
+    local title
+    if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
+        title = FontManager:CreateFontString(chrome, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
+    else
+        title = chrome:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    end
+    title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
     title:SetText("Vault Button")
-    title:SetTextColor(accent[1], accent[2], accent[3], 1)
+    title:SetTextColor(1, 1, 1)
     f.title = title
 
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    close:SetSize(20, 20)
-    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    local close = CreateFrame("Button", nil, chrome)
+    close:SetSize(28, 28)
+    close:SetPoint("RIGHT", -8, 0)
+    if ApplyVisuals then
+        ApplyVisuals(close, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8})
+    end
+    local closeIcon = close:CreateTexture(nil, "ARTWORK")
+    closeIcon:SetSize(16, 16)
+    closeIcon:SetPoint("CENTER")
+    closeIcon:SetAtlas("uitools-icon-close")
+    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
     close:SetScript("OnClick", function() f:Hide() end)
+    close:SetScript("OnEnter", function()
+        closeIcon:SetVertexColor(1, 0.2, 0.2)
+        if ApplyVisuals then ApplyVisuals(close, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1}) end
+    end)
+    close:SetScript("OnLeave", function()
+        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        if ApplyVisuals then ApplyVisuals(close, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8}) end
+    end)
 
-    CreateMenuCheckbox(f, "Enable Button", -36,
+    CreateMenuCheckbox(f, "Enable Button", -52,
         function() return GetSettings().enabled ~= false end,
         function(value) GetSettings().enabled = value end)
-    CreateMenuCheckbox(f, "Hide Until Mouseover", -62,
+    CreateMenuCheckbox(f, "Hide Until Mouseover", -78,
         function() return GetSettings().hideUntilMouseover == true end,
         function(value) GetSettings().hideUntilMouseover = value end)
-    CreateMenuCheckbox(f, "Hide Until Ready", -88,
+    CreateMenuCheckbox(f, "Hide Until Ready", -104,
         function() return GetSettings().hideUntilReady == true end,
         function(value) GetSettings().hideUntilReady = value end)
-    CreateMenuCheckbox(f, "Show Realm Names", -114,
+    CreateMenuCheckbox(f, "Show Realm Names", -130,
         function() return GetSettings().showRealmName == true end,
         function(value)
             GetSettings().showRealmName = value
             if S.tableFrame and S.tableFrame:IsShown() then RefreshTable() end
         end)
-    CreateMenuCheckbox(f, "Show Reward iLvl", -140,
+    CreateMenuCheckbox(f, "Show Reward iLvl", -156,
         function() return GetSettings().showRewardItemLevel == true end,
         function(value)
             GetSettings().showRewardItemLevel = value
             RebuildTableFrame()
         end)
     local columnLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    columnLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -172)
+    columnLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -188)
     columnLabel:SetText("Columns")
     columnLabel:SetTextColor(accent[1], accent[2], accent[3], 1)
     f.columnLabel = columnLabel
 
-    CreateMenuCheckbox(f, "Raid", -192,
+    CreateMenuCheckbox(f, "Raid", -208,
         function() return GetSettings().columns.raids ~= false end,
         function(value)
             GetSettings().columns.raids = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Dungeon", -218,
+    CreateMenuCheckbox(f, "Dungeon", -234,
         function() return GetSettings().columns.mythicPlus ~= false end,
         function(value)
             GetSettings().columns.mythicPlus = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "World", -244,
+    CreateMenuCheckbox(f, "World", -260,
         function() return GetSettings().columns.world ~= false end,
         function(value)
             GetSettings().columns.world = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Trovehunter's Bounty", -270,
+    CreateMenuCheckbox(f, "Trovehunter's Bounty", -286,
         function() return GetSettings().columns.bounty ~= false end,
         function(value)
             GetSettings().columns.bounty = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Nebulous Voidcore", -296,
+    CreateMenuCheckbox(f, "Nebulous Voidcore", -312,
         function() return GetSettings().columns.voidcore ~= false end,
         function(value)
             GetSettings().columns.voidcore = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Dawnlight Manaflux", -322,
+    CreateMenuCheckbox(f, "Dawnlight Manaflux", -338,
         function() return GetSettings().columns.manaflux == true end,
         function(value)
             GetSettings().columns.manaflux = value
@@ -1173,12 +1229,12 @@ local function BuildOptionsFrame()
         end)
 
     local opacityLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    opacityLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -356)
+    opacityLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -380)
     opacityLabel:SetTextColor(1, 1, 1, 1)
 
     local slider = CreateFrame("Slider", nil, f, "BackdropTemplate")
-    slider:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -380)
-    slider:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -380)
+    slider:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -410)
+    slider:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -410)
     slider:SetHeight(16)
     slider:SetOrientation("HORIZONTAL")
     slider:SetMinMaxValues(0.2, 1.0)
