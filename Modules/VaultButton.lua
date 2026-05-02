@@ -364,6 +364,22 @@ local function OpenWNTab(tabKey)
     end)
 end
 
+--- Toggle main window: hides if already shown, otherwise opens on the last-used tab
+local function ToggleMainWindow()
+    if InCombatLockdown and InCombatLockdown() then
+        if DEFAULT_CHAT_FRAME then
+            DEFAULT_CHAT_FRAME:AddMessage("|cffff4040Warband Nexus:|r main window is locked during combat.")
+        end
+        return
+    end
+    local mf = WarbandNexus and WarbandNexus.mainFrame
+    if mf and mf:IsShown() then
+        mf:Hide()
+        return
+    end
+    OpenWNTab(nil)
+end
+
 local function OpenWNPveTab() OpenWNTab("pve") end
 
 local WORLD_REWARD_QUALITY_BY_ILVL = {
@@ -1519,10 +1535,12 @@ local function BuildSavedInstancesData()
     return list
 end
 
-local SAVED_FRAME_W = 720
+local SAVED_FRAME_W = 760
 local SAVED_FILTER_H = 36
-local CARD_W, CARD_H = 168, 96
+local CARD_W, CARD_H = 232, 108
 local CARD_GAP = 10
+local DOT_SIZE = 12
+local DOT_GAP = 4
 
 local function BuildSavedInstancesFrame()
     if S.savedFrame then return end
@@ -1660,6 +1678,29 @@ local function BuildSavedInstancesFrame()
     S.savedContent = content
 end
 
+--- Aggregate per-boss state across characters: returns table[bossIdx] = { name, killers={charKey...} }
+local function AggregateBosses(group)
+    local roster = nil
+    for _, c in ipairs(group.characters) do
+        if c.encounters and #c.encounters > 0 then roster = c.encounters; break end
+    end
+    if not roster then return nil end
+    local bosses = {}
+    for i, e in ipairs(roster) do
+        bosses[i] = { name = e.name or ("Boss " .. i), killers = {} }
+    end
+    for _, c in ipairs(group.characters) do
+        if c.encounters then
+            for i, e in ipairs(c.encounters) do
+                if e.killed and bosses[i] then
+                    table.insert(bosses[i].killers, c.charKey)
+                end
+            end
+        end
+    end
+    return bosses
+end
+
 local function BuildInstanceCard(parent, group)
     local ApplyVisuals = ns.UI_ApplyVisuals
     local diffInfo = GetDiffInfo(group.difficulty)
@@ -1667,29 +1708,29 @@ local function BuildInstanceCard(parent, group)
     local card = CreateFrame("Button", nil, parent)
     card:SetSize(CARD_W, CARD_H)
     if ApplyVisuals then
-        ApplyVisuals(card, {0.04, 0.04, 0.06, 0.96}, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.7})
+        ApplyVisuals(card, {0.04, 0.04, 0.06, 0.96}, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.55})
     end
 
-    -- Difficulty banner stripe (top)
+    -- Subtle top stripe (difficulty color)
     local stripe = card:CreateTexture(nil, "ARTWORK")
     stripe:SetPoint("TOPLEFT", 1, -1)
     stripe:SetPoint("TOPRIGHT", -1, -1)
-    stripe:SetHeight(4)
+    stripe:SetHeight(2)
     stripe:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
 
-    -- Difficulty badge top-right
+    -- Difficulty badge (top-right)
     local badge = CreateFrame("Frame", nil, card)
-    badge:SetSize(28, 18)
-    badge:SetPoint("TOPRIGHT", -2, -8)
+    badge:SetSize(diffInfo.short == "LFR" and 36 or 22, 16)
+    badge:SetPoint("TOPRIGHT", -6, -8)
     if ApplyVisuals then
-        ApplyVisuals(badge, {diffInfo.color[1] * 0.6, diffInfo.color[2] * 0.6, diffInfo.color[3] * 0.6, 1},
+        ApplyVisuals(badge, {diffInfo.color[1] * 0.45, diffInfo.color[2] * 0.45, diffInfo.color[3] * 0.45, 1},
             {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1})
     end
     local badgeFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     badgeFS:SetPoint("CENTER")
     badgeFS:SetText("|cffffffff" .. diffInfo.short .. "|r")
 
-    -- Instance name
+    -- Instance name (single line, truncated by width)
     local FontManager = ns.FontManager
     local nameFS
     if FontManager and FontManager.CreateFontString then
@@ -1697,94 +1738,152 @@ local function BuildInstanceCard(parent, group)
     else
         nameFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     end
-    nameFS:SetPoint("TOPLEFT", 8, -10)
-    nameFS:SetPoint("TOPRIGHT", -34, -10)
+    nameFS:SetPoint("TOPLEFT", 10, -8)
+    nameFS:SetPoint("TOPRIGHT", badge, "TOPLEFT", -6, 0)
     nameFS:SetJustifyH("LEFT")
-    nameFS:SetWordWrap(true)
-    nameFS:SetMaxLines(2)
+    nameFS:SetWordWrap(false)
     nameFS:SetText(group.instanceName)
 
-    -- Aggregate progress: best (max killed) and worst (min killed) across chars
-    local bestKilled, total, charCount = 0, 0, #group.characters
-    for _, c in ipairs(group.characters) do
-        if (c.killed or 0) > bestKilled then bestKilled = c.killed or 0 end
-        if (c.total or 0) > total then total = c.total or 0 end
+    -- Boss roster (per-boss aggregate state across warband)
+    local bosses = AggregateBosses(group)
+    local cleared, total = 0, bosses and #bosses or 0
+    if bosses then
+        for _, b in ipairs(bosses) do if #b.killers > 0 then cleared = cleared + 1 end end
     end
 
-    -- Progress bar
-    local barBg = card:CreateTexture(nil, "BACKGROUND")
-    barBg:SetPoint("BOTTOMLEFT", 8, 26)
-    barBg:SetPoint("BOTTOMRIGHT", -8, 26)
-    barBg:SetHeight(8)
-    barBg:SetColorTexture(0.10, 0.10, 0.12, 1)
+    -- Boss dots row
+    local dotRow = CreateFrame("Frame", nil, card)
+    dotRow:SetPoint("TOPLEFT", nameFS, "BOTTOMLEFT", 0, -10)
+    dotRow:SetPoint("RIGHT", card, "RIGHT", -10, 0)
+    dotRow:SetHeight(DOT_SIZE)
 
-    if total > 0 and bestKilled > 0 then
-        local pct = math.min(1, bestKilled / total)
+    if bosses and total > 0 then
+        local availW = CARD_W - 20
+        local needW = total * DOT_SIZE + (total - 1) * DOT_GAP
+        local size = DOT_SIZE
+        local gap = DOT_GAP
+        if needW > availW then
+            -- Shrink dots to fit; min 6px, gap 2px
+            gap = 2
+            size = math.max(6, math.floor((availW - (total - 1) * gap) / total))
+        end
+        for i, b in ipairs(bosses) do
+            local n = #b.killers
+            local dot = dotRow:CreateTexture(nil, "ARTWORK")
+            dot:SetSize(size, size)
+            dot:SetPoint("LEFT", (i - 1) * (size + gap), 0)
+            if n == 0 then
+                dot:SetColorTexture(0.18, 0.18, 0.22, 1)         -- nobody cleared
+            elseif n >= #group.characters then
+                dot:SetColorTexture(0.20, 0.85, 0.30, 1)         -- all chars cleared
+            else
+                dot:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)  -- some cleared
+            end
+        end
+    else
+        local fallback = dotRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fallback:SetPoint("LEFT")
+        fallback:SetTextColor(0.5, 0.5, 0.5)
+        fallback:SetText("(boss roster unavailable)")
+    end
+
+    -- Bottom row: warband progress · character avatars (initials)
+    local pct = (total > 0) and (cleared / total) or 0
+
+    -- Slim progress bar
+    local barBg = card:CreateTexture(nil, "BACKGROUND")
+    barBg:SetPoint("BOTTOMLEFT", 10, 30)
+    barBg:SetPoint("BOTTOMRIGHT", -10, 30)
+    barBg:SetHeight(3)
+    barBg:SetColorTexture(0.10, 0.10, 0.12, 1)
+    if pct > 0 then
         local barFill = card:CreateTexture(nil, "ARTWORK")
         barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
         barFill:SetPoint("BOTTOMLEFT", barBg, "BOTTOMLEFT", 0, 0)
-        barFill:SetWidth(math.max(1, (CARD_W - 16) * pct))
-        local fillColor = (bestKilled >= total) and {0.20, 0.85, 0.30} or {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3]}
-        barFill:SetColorTexture(fillColor[1], fillColor[2], fillColor[3], 1)
+        barFill:SetWidth(math.max(1, (CARD_W - 20) * pct))
+        local color = (cleared >= total) and {0.20, 0.85, 0.30} or {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3]}
+        barFill:SetColorTexture(color[1], color[2], color[3], 1)
     end
 
-    -- Bottom line: progress text + char count
-    local progressFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    progressFS:SetPoint("BOTTOMLEFT", 8, 8)
-    local progColor = (total > 0 and bestKilled >= total) and "|cff44ff44" or "|cffd4af37"
-    progressFS:SetText(progColor .. bestKilled .. "/" .. total .. "|r")
+    -- Warband progress label (left) + character chips (right)
+    local progFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    progFS:SetPoint("BOTTOMLEFT", 10, 10)
+    local progColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
+    progFS:SetText(string.format("%s%d/%d|r |cff888888warband|r", progColor, cleared, total))
 
-    local charFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    charFS:SetPoint("BOTTOMRIGHT", -8, 8)
-    charFS:SetText(string.format("|cffaaaaaa%d %s|r", charCount, charCount == 1 and "char" or "chars"))
+    -- Character chips (class-colored initials), max 6 visible
+    local chipsFrame = CreateFrame("Frame", nil, card)
+    chipsFrame:SetPoint("BOTTOMRIGHT", -10, 8)
+    chipsFrame:SetSize(120, 18)
+    local maxChips = math.min(#group.characters, 6)
+    local chipX = 0
+    for i = #group.characters, math.max(1, #group.characters - maxChips + 1), -1 do
+        local c = group.characters[i]
+        local hex, charName = GetClassHexFromCharacters(c.charKey)
+        local initial = (charName and charName:sub(1, 1)) or "?"
+        local chip = chipsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        chip:SetPoint("RIGHT", -chipX, 0)
+        local k, t = c.killed or 0, c.total or 0
+        local done = (t > 0 and k >= t)
+        chip:SetText(string.format("|cff%s%s|r", hex, initial))
+        chip:SetAlpha(done and 1 or 0.55)
+        chipX = chipX + 12
+    end
+    if #group.characters > maxChips then
+        local extra = chipsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        extra:SetPoint("RIGHT", -chipX, 0)
+        extra:SetText(string.format("|cffaaaaaa+%d|r", #group.characters - maxChips))
+    end
 
     -- Hover tooltip
     card:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:ClearLines()
         GameTooltip:AddLine(group.instanceName, 1, 1, 1)
-        GameTooltip:AddLine("|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r")
+        GameTooltip:AddDoubleLine(
+            "|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r",
+            string.format("|cffd4af37%d/%d|r |cff888888warband cleared|r", cleared, total),
+            1,1,1, 1,1,1)
         GameTooltip:AddLine(" ")
 
+        -- Per-boss with which characters killed it
+        if bosses and #bosses > 0 then
+            for i, b in ipairs(bosses) do
+                local killers = b.killers or {}
+                local right
+                if #killers == 0 then
+                    right = "|cff666666—|r"
+                else
+                    local parts = {}
+                    for _, ck in ipairs(killers) do
+                        local hex, charName = GetClassHexFromCharacters(ck)
+                        table.insert(parts, "|cff" .. hex .. charName .. "|r")
+                    end
+                    right = table.concat(parts, ", ")
+                end
+                local mark = (#killers > 0) and "|cff44ff44" .. CHECK .. "|r" or "|cff444444" .. CROSS .. "|r"
+                GameTooltip:AddDoubleLine(mark .. " " .. b.name, right, 1, 1, 1, 0.9, 0.9, 0.9)
+            end
+            GameTooltip:AddLine(" ")
+        end
+
+        -- Per-character summary
+        GameTooltip:AddLine("|cffaaaaaaCharacters|r")
         for _, c in ipairs(group.characters) do
             local hex, charName = GetClassHexFromCharacters(c.charKey)
             local k, t = c.killed or 0, c.total or 0
-            local progColor2 = (t > 0 and k >= t) and "|cff44ff44" or "|cffd4af37"
-            local left = "|cff" .. hex .. charName .. "|r"
-            local right = string.format("%s%d/%d|r", progColor2, k, t)
+            local color = (t > 0 and k >= t) and "|cff44ff44" or "|cffd4af37"
             local resetSuffix = ""
             if c.reset and c.reset > 0 then
                 local hours = math.floor(c.reset / 3600)
                 local days = math.floor(hours / 24)
-                if days > 0 then
-                    resetSuffix = string.format("  |cff666666(%dd)|r", days)
-                elseif hours > 0 then
-                    resetSuffix = string.format("  |cff666666(%dh)|r", hours)
-                end
+                if days > 0 then resetSuffix = string.format("  |cff666666%dd|r", days)
+                elseif hours > 0 then resetSuffix = string.format("  |cff666666%dh|r", hours) end
             end
-            GameTooltip:AddDoubleLine(left, right .. resetSuffix, 1, 1, 1, 1, 1, 1)
-        end
-
-        -- Encounter detail (use the first character's encounter list — same boss roster across chars)
-        local sample = group.characters[1]
-        if sample and sample.encounters and #sample.encounters > 0 then
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("|cffaaaaaaBosses (any character):|r")
-            -- Aggregate: a boss is "killed" if any character killed it
-            local bossState = {}
-            for _, c in ipairs(group.characters) do
-                if c.encounters then
-                    for i, e in ipairs(c.encounters) do
-                        if e.killed then bossState[i] = true end
-                        bossState[i] = bossState[i] or false
-                    end
-                end
-            end
-            for i, e in ipairs(sample.encounters) do
-                local killed = bossState[i]
-                local mark = killed and "|cff44ff44" .. CHECK .. "|r" or "|cff666666" .. CROSS .. "|r"
-                GameTooltip:AddDoubleLine("  " .. mark, e.name or ("Boss " .. i), 1,1,1, 0.85,0.85,0.85)
-            end
+            GameTooltip:AddDoubleLine(
+                "|cff" .. hex .. charName .. "|r",
+                string.format("%s%d/%d|r%s", color, k, t, resetSuffix),
+                1, 1, 1, 1, 1, 1)
         end
         GameTooltip:Show()
     end)
@@ -2012,18 +2111,37 @@ ToggleMenu = function(anchor)
     anchor = anchor or S.button
     S.menuFrame:ClearAllPoints()
     if anchor then
+        -- Anchor menu beside the button (never on top of it). Pick the side with the most room.
+        local mw = S.menuFrame:GetWidth() or 200
+        local mh = S.menuFrame:GetHeight() or 200
         local screenW = UIParent:GetWidth() or 1920
         local screenH = UIParent:GetHeight() or 1080
-        local cx, cy = anchor:GetCenter()
-        cx = cx or screenW * 0.5
-        cy = cy or screenH * 0.5
-        local onRight  = cx > screenW * 0.5
-        local onBottom = cy < screenH * 0.5
-        local fromCorner = (onBottom and "TOP" or "BOTTOM") .. (onRight and "RIGHT" or "LEFT")
-        local toCorner   = (onBottom and "BOTTOM" or "TOP") .. (onRight and "RIGHT" or "LEFT")
-        local dx = onRight and -2 or 2
-        local dy = onBottom and 4 or -4
-        S.menuFrame:SetPoint(fromCorner, anchor, toCorner, dx, dy)
+        local left   = anchor:GetLeft()   or 0
+        local right  = anchor:GetRight()  or 0
+        local top    = anchor:GetTop()    or 0
+        local bottom = anchor:GetBottom() or 0
+        local roomLeft   = left
+        local roomRight  = screenW - right
+        local roomTop    = screenH - top
+        local roomBottom = bottom
+        local gap = 6
+
+        -- Prefer horizontal placement (looks more like a context menu)
+        if roomRight >= mw + gap then
+            -- Place to the RIGHT of the button
+            local dy = (top - mh < 0) and (mh - (top - bottom)) or 0
+            S.menuFrame:SetPoint("TOPLEFT", anchor, "TOPRIGHT", gap, dy)
+        elseif roomLeft >= mw + gap then
+            -- Place to the LEFT of the button
+            local dy = (top - mh < 0) and (mh - (top - bottom)) or 0
+            S.menuFrame:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -gap, dy)
+        elseif roomBottom >= mh + gap then
+            -- Place BELOW the button
+            S.menuFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -gap)
+        else
+            -- Place ABOVE the button
+            S.menuFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, gap)
+        end
     else
         S.menuFrame:SetPoint("CENTER")
     end
@@ -2125,7 +2243,7 @@ local function BuildButton()
             ToggleMenu(self)
         else
             HideMenu()
-            OpenWNTab(nil)
+            ToggleMainWindow()
         end
     end)
 
