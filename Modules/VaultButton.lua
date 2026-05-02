@@ -522,16 +522,17 @@ local function ApplyTheme()
     local accentDark = colors.accentDark or {0.28, 0.14, 0.41}
     local border = colors.border or accent
 
-    if S.button then
-        S.button:SetBackdropColor(0.06, 0.06, 0.08, 0.92)
-        S.button:SetBackdropBorderColor(0, 0, 0, 0)
-    end
-    if S.border then
+    if S.button and S.button.BorderTop then
+        local Factory = ns.UI and ns.UI.Factory
         local readyCount = CountReady()
+        local r, g, b, a
         if readyCount > 0 then
-            S.border:SetBackdropBorderColor(accent[1], accent[2], accent[3], 1)
+            r, g, b, a = accent[1], accent[2], accent[3], 1
         else
-            S.border:SetBackdropBorderColor(border[1], border[2], border[3], 0.85)
+            r, g, b, a = border[1], border[2], border[3], 0.85
+        end
+        if Factory and Factory.UpdateBorderColor then
+            Factory:UpdateBorderColor(S.button, {r, g, b, a})
         end
     end
     if S.badgeBg then
@@ -1445,13 +1446,18 @@ end
 -- ============================================================================
 -- Saved Instances (Raid Info)
 -- ============================================================================
-local DIFFICULTY_ORDER = { LFR=1, Raid=2, Normal=3, Heroic=4, Mythic=5 }
-local DIFF_COLOR = {
-    [14] = "|cff1eff00",  -- Normal (green)
-    [15] = "|cff0070dd",  -- Heroic (blue)
-    [16] = "|cffa335ee",  -- Mythic (purple)
-    [17] = "|cffaaaaaa",  -- LFR (grey)
+local DIFF_INFO = {
+    [17] = { short = "LFR",    name = "Looking For Raid", color = {0.55, 0.55, 0.55}, hex = "aaaaaa" },
+    [14] = { short = "N",      name = "Normal",           color = {0.12, 0.78, 0.12}, hex = "1eff00" },
+    [15] = { short = "H",      name = "Heroic",           color = {0.00, 0.44, 0.87}, hex = "0070dd" },
+    [16] = { short = "M",      name = "Mythic",           color = {0.64, 0.21, 0.93}, hex = "a335ee" },
 }
+local FALLBACK_DIFF = { short = "?", name = "Unknown", color = {0.4, 0.4, 0.4}, hex = "aaaaaa" }
+local DIFFICULTY_ORDER_DESC = { 16, 15, 14, 17 }  -- Mythic > Heroic > Normal > LFR
+
+local function GetDiffInfo(difficulty)
+    return DIFF_INFO[difficulty] or FALLBACK_DIFF
+end
 
 local function GetClassHexFromCharacters(charKey)
     local chars = GetCharacters()
@@ -1513,6 +1519,11 @@ local function BuildSavedInstancesData()
     return list
 end
 
+local SAVED_FRAME_W = 720
+local SAVED_FILTER_H = 36
+local CARD_W, CARD_H = 168, 96
+local CARD_GAP = 10
+
 local function BuildSavedInstancesFrame()
     if S.savedFrame then return end
     local ApplyVisuals = ns.UI_ApplyVisuals
@@ -1522,7 +1533,7 @@ local function BuildSavedInstancesFrame()
 
     local f = CreateFrame("Frame", "WarbandNexusSavedInstances", UIParent, "BackdropTemplate")
     AddEscCloseFrame("WarbandNexusSavedInstances")
-    f:SetSize(540, 420)
+    f:SetSize(SAVED_FRAME_W, 480)
     f:SetClampedToScreen(true)
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(200)
@@ -1576,12 +1587,66 @@ local function BuildSavedInstancesFrame()
     close:SetScript("OnEnter", function() closeIcon:SetVertexColor(1, 0.2, 0.2) end)
     close:SetScript("OnLeave", function() closeIcon:SetVertexColor(0.9, 0.3, 0.3) end)
 
+    -- Filter / search bar
+    local filterRow = CreateFrame("Frame", nil, f)
+    filterRow:SetHeight(SAVED_FILTER_H)
+    filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", FRAME_PAD, -(CHROME_H + 6))
+    filterRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -FRAME_PAD, -(CHROME_H + 6))
+    if ApplyVisuals then
+        ApplyVisuals(filterRow, {0.06, 0.06, 0.08, 1}, {accent[1], accent[2], accent[3], 0.4})
+    end
+
+    S.savedFilters = { lfr = false, normal = true, heroic = true, mythic = true }
+    S.savedFilterButtons = {}
+    local filterBtns = {
+        { key = "mythic",  label = "M",  diff = 16 },
+        { key = "heroic",  label = "H",  diff = 15 },
+        { key = "normal",  label = "N",  diff = 14 },
+        { key = "lfr",     label = "LFR", diff = 17 },
+    }
+    local fx = 8
+    for _, fb in ipairs(filterBtns) do
+        local di = GetDiffInfo(fb.diff)
+        local b = CreateFrame("Button", nil, filterRow)
+        b:SetSize(fb.key == "lfr" and 38 or 28, 22)
+        b:SetPoint("LEFT", fx, 0)
+        if ApplyVisuals then
+            ApplyVisuals(b, {di.color[1] * 0.35, di.color[2] * 0.35, di.color[3] * 0.35, 1}, {di.color[1], di.color[2], di.color[3], 0.85})
+        end
+        local lbl = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        lbl:SetPoint("CENTER")
+        lbl:SetText("|cff" .. di.hex .. fb.label .. "|r")
+        b:SetScript("OnClick", function()
+            S.savedFilters[fb.key] = not S.savedFilters[fb.key]
+            RefreshSavedInstances()
+        end)
+        b._applyState = function()
+            local active = S.savedFilters[fb.key]
+            if ApplyVisuals then
+                local Factory = ns.UI and ns.UI.Factory
+                if Factory and Factory.UpdateBorderColor then
+                    Factory:UpdateBorderColor(b, {di.color[1], di.color[2], di.color[3], active and 1 or 0.3})
+                end
+            end
+            lbl:SetAlpha(active and 1 or 0.45)
+        end
+        b._applyState()
+        S.savedFilterButtons[fb.key] = b
+        fx = fx + b:GetWidth() + 4
+    end
+
+    -- Char count summary on the right of filter row
+    local summary = filterRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    summary:SetPoint("RIGHT", filterRow, "RIGHT", -10, 0)
+    summary:SetTextColor(0.75, 0.75, 0.8)
+    f.summary = summary
+
     -- Scroll body
     local scroll = CreateFrame("ScrollFrame", nil, f)
-    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", FRAME_PAD, -(CHROME_H + 6))
+    scroll:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", 0, -6)
     scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -FRAME_PAD, FRAME_PAD)
     local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(540 - FRAME_PAD * 2, 1)
+    content:SetSize(SAVED_FRAME_W - FRAME_PAD * 2, 1)
     scroll:SetScrollChild(content)
 
     f:EnableMouseWheel(true)
@@ -1595,6 +1660,139 @@ local function BuildSavedInstancesFrame()
     S.savedContent = content
 end
 
+local function BuildInstanceCard(parent, group)
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    local diffInfo = GetDiffInfo(group.difficulty)
+
+    local card = CreateFrame("Button", nil, parent)
+    card:SetSize(CARD_W, CARD_H)
+    if ApplyVisuals then
+        ApplyVisuals(card, {0.04, 0.04, 0.06, 0.96}, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.7})
+    end
+
+    -- Difficulty banner stripe (top)
+    local stripe = card:CreateTexture(nil, "ARTWORK")
+    stripe:SetPoint("TOPLEFT", 1, -1)
+    stripe:SetPoint("TOPRIGHT", -1, -1)
+    stripe:SetHeight(4)
+    stripe:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
+
+    -- Difficulty badge top-right
+    local badge = CreateFrame("Frame", nil, card)
+    badge:SetSize(28, 18)
+    badge:SetPoint("TOPRIGHT", -2, -8)
+    if ApplyVisuals then
+        ApplyVisuals(badge, {diffInfo.color[1] * 0.6, diffInfo.color[2] * 0.6, diffInfo.color[3] * 0.6, 1},
+            {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1})
+    end
+    local badgeFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    badgeFS:SetPoint("CENTER")
+    badgeFS:SetText("|cffffffff" .. diffInfo.short .. "|r")
+
+    -- Instance name
+    local FontManager = ns.FontManager
+    local nameFS
+    if FontManager and FontManager.CreateFontString then
+        nameFS = FontManager:CreateFontString(card, "body", "OVERLAY")
+    else
+        nameFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    end
+    nameFS:SetPoint("TOPLEFT", 8, -10)
+    nameFS:SetPoint("TOPRIGHT", -34, -10)
+    nameFS:SetJustifyH("LEFT")
+    nameFS:SetWordWrap(true)
+    nameFS:SetMaxLines(2)
+    nameFS:SetText(group.instanceName)
+
+    -- Aggregate progress: best (max killed) and worst (min killed) across chars
+    local bestKilled, total, charCount = 0, 0, #group.characters
+    for _, c in ipairs(group.characters) do
+        if (c.killed or 0) > bestKilled then bestKilled = c.killed or 0 end
+        if (c.total or 0) > total then total = c.total or 0 end
+    end
+
+    -- Progress bar
+    local barBg = card:CreateTexture(nil, "BACKGROUND")
+    barBg:SetPoint("BOTTOMLEFT", 8, 26)
+    barBg:SetPoint("BOTTOMRIGHT", -8, 26)
+    barBg:SetHeight(8)
+    barBg:SetColorTexture(0.10, 0.10, 0.12, 1)
+
+    if total > 0 and bestKilled > 0 then
+        local pct = math.min(1, bestKilled / total)
+        local barFill = card:CreateTexture(nil, "ARTWORK")
+        barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
+        barFill:SetPoint("BOTTOMLEFT", barBg, "BOTTOMLEFT", 0, 0)
+        barFill:SetWidth(math.max(1, (CARD_W - 16) * pct))
+        local fillColor = (bestKilled >= total) and {0.20, 0.85, 0.30} or {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3]}
+        barFill:SetColorTexture(fillColor[1], fillColor[2], fillColor[3], 1)
+    end
+
+    -- Bottom line: progress text + char count
+    local progressFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    progressFS:SetPoint("BOTTOMLEFT", 8, 8)
+    local progColor = (total > 0 and bestKilled >= total) and "|cff44ff44" or "|cffd4af37"
+    progressFS:SetText(progColor .. bestKilled .. "/" .. total .. "|r")
+
+    local charFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    charFS:SetPoint("BOTTOMRIGHT", -8, 8)
+    charFS:SetText(string.format("|cffaaaaaa%d %s|r", charCount, charCount == 1 and "char" or "chars"))
+
+    -- Hover tooltip
+    card:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:ClearLines()
+        GameTooltip:AddLine(group.instanceName, 1, 1, 1)
+        GameTooltip:AddLine("|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r")
+        GameTooltip:AddLine(" ")
+
+        for _, c in ipairs(group.characters) do
+            local hex, charName = GetClassHexFromCharacters(c.charKey)
+            local k, t = c.killed or 0, c.total or 0
+            local progColor2 = (t > 0 and k >= t) and "|cff44ff44" or "|cffd4af37"
+            local left = "|cff" .. hex .. charName .. "|r"
+            local right = string.format("%s%d/%d|r", progColor2, k, t)
+            local resetSuffix = ""
+            if c.reset and c.reset > 0 then
+                local hours = math.floor(c.reset / 3600)
+                local days = math.floor(hours / 24)
+                if days > 0 then
+                    resetSuffix = string.format("  |cff666666(%dd)|r", days)
+                elseif hours > 0 then
+                    resetSuffix = string.format("  |cff666666(%dh)|r", hours)
+                end
+            end
+            GameTooltip:AddDoubleLine(left, right .. resetSuffix, 1, 1, 1, 1, 1, 1)
+        end
+
+        -- Encounter detail (use the first character's encounter list — same boss roster across chars)
+        local sample = group.characters[1]
+        if sample and sample.encounters and #sample.encounters > 0 then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cffaaaaaaBosses (any character):|r")
+            -- Aggregate: a boss is "killed" if any character killed it
+            local bossState = {}
+            for _, c in ipairs(group.characters) do
+                if c.encounters then
+                    for i, e in ipairs(c.encounters) do
+                        if e.killed then bossState[i] = true end
+                        bossState[i] = bossState[i] or false
+                    end
+                end
+            end
+            for i, e in ipairs(sample.encounters) do
+                local killed = bossState[i]
+                local mark = killed and "|cff44ff44" .. CHECK .. "|r" or "|cff666666" .. CROSS .. "|r"
+                GameTooltip:AddDoubleLine("  " .. mark, e.name or ("Boss " .. i), 1,1,1, 0.85,0.85,0.85)
+            end
+        end
+        GameTooltip:Show()
+    end)
+    card:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    return card
+end
+
 RefreshSavedInstances = function()
     BuildSavedInstancesFrame()
     local content = S.savedContent
@@ -1604,74 +1802,74 @@ RefreshSavedInstances = function()
     S.savedRows = {}
 
     local list = BuildSavedInstancesData()
-    if #list == 0 then
+
+    -- Apply difficulty filter
+    local filtered = {}
+    local filters = S.savedFilters or {}
+    for _, g in ipairs(list) do
+        local diff = g.difficulty
+        local pass = (diff == 17 and filters.lfr)
+                  or (diff == 14 and filters.normal)
+                  or (diff == 15 and filters.heroic)
+                  or (diff == 16 and filters.mythic)
+                  or (diff ~= 14 and diff ~= 15 and diff ~= 16 and diff ~= 17)
+        if pass then table.insert(filtered, g) end
+    end
+
+    -- Update filter button states (highlight active)
+    if S.savedFilterButtons then
+        for _, b in pairs(S.savedFilterButtons) do
+            if b._applyState then b._applyState() end
+        end
+    end
+
+    -- Char count summary
+    if S.savedFrame and S.savedFrame.summary then
+        local charSet = {}
+        for _, g in ipairs(filtered) do
+            for _, c in ipairs(g.characters) do charSet[c.charKey] = true end
+        end
+        local n = 0
+        for _ in pairs(charSet) do n = n + 1 end
+        S.savedFrame.summary:SetText(string.format("%d instances · %d characters", #filtered, n))
+    end
+
+    if #filtered == 0 then
         local msg = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        msg:SetPoint("CENTER", content, "CENTER")
+        msg:SetPoint("CENTER", content, "CENTER", 0, -20)
         msg:SetTextColor(0.6, 0.6, 0.6)
-        msg:SetText("No raid lockouts recorded yet.\nLogin a character with active lockouts to populate.")
+        if #list == 0 then
+            msg:SetText("No raid lockouts recorded yet.\nLogin a character with active lockouts to populate.")
+        else
+            msg:SetText("No instances match the current filters.")
+        end
         msg:SetJustifyH("CENTER")
         content:SetHeight(80)
-        S.savedFrame:Show()
         table.insert(S.savedRows, msg)
+        S.savedFrame:Show()
         return
     end
 
-    local FontManager = ns.FontManager
-    local rowH = 56
-    local pad = 8
-    local y = 0
     local contentW = content:GetWidth()
+    local cols = math.max(1, math.floor((contentW + CARD_GAP) / (CARD_W + CARD_GAP)))
+    local rowsCount = math.ceil(#filtered / cols)
 
-    for i, g in ipairs(list) do
-        local row = CreateFrame("Frame", nil, content)
-        row:SetSize(contentW, rowH)
-        row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
-        local bg = row:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        if i % 2 == 0 then
-            bg:SetColorTexture(0.08, 0.08, 0.10, 0.95)
-        else
-            bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)
-        end
+    -- Center the grid horizontally
+    local gridW = cols * CARD_W + (cols - 1) * CARD_GAP
+    local gridXOffset = math.max(0, math.floor((contentW - gridW) / 2))
 
-        local nameFS
-        if FontManager and FontManager.CreateFontString then
-            nameFS = FontManager:CreateFontString(row, "body", "OVERLAY")
-        else
-            nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        end
-        nameFS:SetPoint("TOPLEFT", row, "TOPLEFT", pad, -6)
-        nameFS:SetText(g.instanceName)
-        nameFS:SetTextColor(1, 1, 1)
-
-        local diffColor = DIFF_COLOR[g.difficulty] or "|cffaaaaaa"
-        local diffFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        diffFS:SetPoint("TOPLEFT", nameFS, "BOTTOMLEFT", 0, -2)
-        diffFS:SetText(diffColor .. (g.difficultyName or "") .. "|r")
-
-        -- Character chips on right
-        local chipParent = row
-        local chipLine = chipParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        chipLine:SetPoint("TOPRIGHT", row, "TOPRIGHT", -pad, -8)
-        chipLine:SetPoint("BOTTOMLEFT", diffFS, "BOTTOMRIGHT", 30, 0)
-        chipLine:SetJustifyH("RIGHT")
-        chipLine:SetWordWrap(true)
-        chipLine:SetSpacing(2)
-        local parts = {}
-        for _, c in ipairs(g.characters) do
-            local hex, charName = GetClassHexFromCharacters(c.charKey)
-            local progressColor = "|cffd4af37"
-            if c.total > 0 and c.killed >= c.total then progressColor = "|cff44ff44" end
-            table.insert(parts, string.format("|cff%s%s|r %s%d/%d|r",
-                hex, charName, progressColor, c.killed or 0, c.total or 0))
-        end
-        chipLine:SetText(table.concat(parts, "  "))
-
-        table.insert(S.savedRows, row)
-        y = y + rowH + 2
+    for i, g in ipairs(filtered) do
+        local card = BuildInstanceCard(content, g)
+        local r = math.floor((i - 1) / cols)
+        local c = (i - 1) % cols
+        card:SetPoint("TOPLEFT", content, "TOPLEFT",
+            gridXOffset + c * (CARD_W + CARD_GAP),
+            -(r * (CARD_H + CARD_GAP)))
+        table.insert(S.savedRows, card)
     end
 
-    content:SetHeight(math.max(40, y))
+    content:SetHeight(math.max(40, rowsCount * (CARD_H + CARD_GAP)))
+    S.savedScroll:SetVerticalScroll(0)
     S.savedFrame:Show()
 end
 
@@ -1804,16 +2002,28 @@ local function BuildMenu()
     S.menuFrame = f
 end
 
-ToggleMenu = function()
+ToggleMenu = function(anchor)
     BuildMenu()
     if not S.menuFrame then return end
     if S.menuFrame:IsShown() then
         S.menuFrame:Hide()
         return
     end
+    anchor = anchor or S.button
     S.menuFrame:ClearAllPoints()
-    if S.button then
-        S.menuFrame:SetPoint("TOPLEFT", S.button, "BOTTOMLEFT", 0, -4)
+    if anchor then
+        local screenW = UIParent:GetWidth() or 1920
+        local screenH = UIParent:GetHeight() or 1080
+        local cx, cy = anchor:GetCenter()
+        cx = cx or screenW * 0.5
+        cy = cy or screenH * 0.5
+        local onRight  = cx > screenW * 0.5
+        local onBottom = cy < screenH * 0.5
+        local fromCorner = (onBottom and "TOP" or "BOTTOM") .. (onRight and "RIGHT" or "LEFT")
+        local toCorner   = (onBottom and "BOTTOM" or "TOP") .. (onRight and "RIGHT" or "LEFT")
+        local dx = onRight and -2 or 2
+        local dy = onBottom and 4 or -4
+        S.menuFrame:SetPoint(fromCorner, anchor, toCorner, dx, dy)
     else
         S.menuFrame:SetPoint("CENTER")
     end
@@ -1847,34 +2057,27 @@ local function BuildButton()
     btn:EnableMouse(true)
     btn:RegisterForDrag("LeftButton")
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    btn:SetBackdrop({
-        bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeSize = 0,
-        insets   = {left=0,right=0,top=0,bottom=0},
-    })
-    btn:SetBackdropColor(0.06, 0.06, 0.08, 0.92)
-    btn:SetBackdropBorderColor(0, 0, 0, 0)
 
-    local border = CreateFrame("Frame", nil, btn, "BackdropTemplate")
-    border:SetAllPoints(btn)
-    border:SetFrameLevel(btn:GetFrameLevel() + 2)
-    border:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile=true, tileSize=16, edgeSize=16,
-        insets={left=4,right=4,top=4,bottom=4},
-    })
-    border:SetBackdropBorderColor(0.5, 0.5, 0.6, 0.8)
-    border:EnableMouse(false)
-    S.border = border
+    -- Pixel-perfect 1px accent border via the addon's standard visual system,
+    -- so the icon fills the whole button instead of looking like "frame in frame".
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    local btnAccent = (ns.UI_COLORS and ns.UI_COLORS.accent) or {0.40, 0.20, 0.58}
+    if ApplyVisuals then
+        ApplyVisuals(btn, {0,0,0,0}, {btnAccent[1], btnAccent[2], btnAccent[3], 0.9})
+    else
+        btn:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+        btn:SetBackdropColor(0,0,0,0)
+    end
+    S.border = btn  -- backwards-compat: ApplyTheme refers to S.border for accent updates
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT",     btn, "TOPLEFT",     6, -6)
-    icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -6, 6)
+    icon:SetPoint("TOPLEFT",     btn, "TOPLEFT",     1, -1)
+    icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
     icon:SetTexture(ICON_TEXTURE)
-    -- Fallback if custom icon didn't load
     if not icon:GetTexture() then
         icon:SetTexture(ICON_FALLBACK)
     end
+    icon:SetTexCoord(0.06, 0.94, 0.06, 0.94)  -- trim default texture bezel
     S.icon = icon
 
     local badgeBg = btn:CreateTexture(nil, "OVERLAY")
@@ -1919,10 +2122,10 @@ local function BuildButton()
         if dragged then return end
         GameTooltip:Hide()
         if mouseButton == "RightButton" then
-            -- Right-click is a no-op (drag is handled separately); the menu owns navigation now.
-            HideMenu()
+            ToggleMenu(self)
         else
-            ToggleMenu()
+            HideMenu()
+            OpenWNTab(nil)
         end
     end)
 
