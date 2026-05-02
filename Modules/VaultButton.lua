@@ -1622,12 +1622,13 @@ local function BuildSavedInstancesFrame()
     S.savedFilters = { lfr = false, normal = true, heroic = true, mythic = true }
     S.savedFilterButtons = {}
     local filterBtns = {
-        { key = "mythic",  label = "M",  diff = 16 },
-        { key = "heroic",  label = "H",  diff = 15 },
-        { key = "normal",  label = "N",  diff = 14 },
         { key = "lfr",     label = "LFR", diff = 17 },
+        { key = "normal",  label = "N",   diff = 14 },
+        { key = "heroic",  label = "H",   diff = 15 },
+        { key = "mythic",  label = "M",   diff = 16 },
     }
-    local fx = 8
+    local SIDE_PAD = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
+    local fx = SIDE_PAD
     for _, fb in ipairs(filterBtns) do
         local di = GetDiffInfo(fb.diff)
         local b = CreateFrame("Button", nil, filterRow)
@@ -1658,9 +1659,9 @@ local function BuildSavedInstancesFrame()
         fx = fx + b:GetWidth() + 4
     end
 
-    -- Char count summary on the right of filter row
+    -- Char count summary on the right of filter row (matches addon side margin)
     local summary = filterRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    summary:SetPoint("RIGHT", filterRow, "RIGHT", -10, 0)
+    summary:SetPoint("RIGHT", filterRow, "RIGHT", -SIDE_PAD, 0)
     summary:SetTextColor(0.75, 0.75, 0.8)
     f.summary = summary
 
@@ -1954,20 +1955,28 @@ RefreshSavedInstances = function()
         return
     end
 
+    -- Justified grid: first card is flush to the addon's left side margin and
+    -- the last card in each row is flush to the right side margin. The space
+    -- between cards expands to fill the row, matching the addon's main tabs.
+    local SIDE_PAD = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
     local contentW = content:GetWidth()
-    local cols = math.max(1, math.floor((contentW + CARD_GAP) / (CARD_W + CARD_GAP)))
+    local availW = contentW - 2 * SIDE_PAD
+    local cols = math.max(1, math.floor((availW + CARD_GAP) / (CARD_W + CARD_GAP)))
+    if cols * CARD_W > availW then cols = math.max(1, cols - 1) end
     local rowsCount = math.ceil(#filtered / cols)
 
-    -- Center the grid horizontally
-    local gridW = cols * CARD_W + (cols - 1) * CARD_GAP
-    local gridXOffset = math.max(0, math.floor((contentW - gridW) / 2))
+    local actualGap = CARD_GAP
+    if cols > 1 then
+        actualGap = (availW - cols * CARD_W) / (cols - 1)
+        if actualGap < CARD_GAP then actualGap = CARD_GAP end
+    end
 
     for i, g in ipairs(filtered) do
         local card = BuildInstanceCard(content, g)
         local r = math.floor((i - 1) / cols)
         local c = (i - 1) % cols
         card:SetPoint("TOPLEFT", content, "TOPLEFT",
-            gridXOffset + c * (CARD_W + CARD_GAP),
+            SIDE_PAD + c * (CARD_W + actualGap),
             -(r * (CARD_H + CARD_GAP)))
         table.insert(S.savedRows, card)
     end
