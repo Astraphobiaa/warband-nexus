@@ -345,18 +345,26 @@ local function GetManafluxData(charKey)
     }
 end
 
---- Open WarbandNexus main window on the PvE tab
-local function OpenWNPveTab()
-    if WarbandNexus and WarbandNexus.ShowMainWindow then
-        WarbandNexus:ShowMainWindow()
-        C_Timer.After(0.05, function()
-            local mf = WarbandNexus.mainFrame
-            if mf and mf.tabButtons and mf.tabButtons["pve"] then
-                mf.tabButtons["pve"]:Click()
-            end
-        end)
+--- Open WarbandNexus main window on a specific tab (or no tab change)
+local function OpenWNTab(tabKey)
+    if InCombatLockdown and InCombatLockdown() then
+        if DEFAULT_CHAT_FRAME then
+            DEFAULT_CHAT_FRAME:AddMessage("|cffff4040Warband Nexus:|r main window is locked during combat.")
+        end
+        return
     end
+    if not WarbandNexus or not WarbandNexus.ShowMainWindow then return end
+    WarbandNexus:ShowMainWindow()
+    if not tabKey then return end
+    C_Timer.After(0.05, function()
+        local mf = WarbandNexus.mainFrame
+        if mf and mf.tabButtons and mf.tabButtons[tabKey] and mf.tabButtons[tabKey].Click then
+            mf.tabButtons[tabKey]:Click()
+        end
+    end)
 end
+
+local function OpenWNPveTab() OpenWNTab("pve") end
 
 local WORLD_REWARD_QUALITY_BY_ILVL = {
     [233] = 3, [237] = 3, [240] = 3, [243] = 3,
@@ -451,7 +459,8 @@ end
 S = {
     button=nil, icon=nil, badge=nil, badgeBg=nil, border=nil,
     tableFrame=nil, title=nil, headerBg=nil, separator=nil,
-    optionsFrame=nil, optionsWidgets={}, rows={}
+    optionsFrame=nil, optionsWidgets={}, rows={},
+    menuFrame=nil, savedFrame=nil, savedRows={}
 }
 
 local HideTable
@@ -459,6 +468,11 @@ local RefreshTable
 local RefreshButtonSettings
 local UpdateBadge
 local ToggleOptionsFrame
+local ToggleMenu
+local HideMenu
+local ToggleSavedInstances
+local HideSavedInstances
+local RefreshSavedInstances
 
 local function AddEscCloseFrame(frameName)
     if not frameName or not UISpecialFrames then return end
@@ -574,6 +588,15 @@ HideTable = function()
     if S.optionsFrame then S.optionsFrame:Hide() end
 end
 
+HideMenu = function() if S.menuFrame then S.menuFrame:Hide() end end
+HideSavedInstances = function() if S.savedFrame then S.savedFrame:Hide() end end
+
+local function HideAllPanels()
+    HideTable()
+    HideMenu()
+    HideSavedInstances()
+end
+
 local function BuildTableFrame()
     if S.tableFrame then return end
     local tableW = GetTableWidth()
@@ -609,9 +632,6 @@ local function BuildTableFrame()
         f:StopMovingOrSizing()
         local point, _, relativePoint, x, y = f:GetPoint()
         SaveTablePos(point, relativePoint, x, y)
-    end)
-    chrome:SetScript("OnMouseUp", function(_, btn)
-        if btn == "RightButton" then ToggleOptionsFrame(f, "RIGHT") end
     end)
     if ApplyVisuals then
         ApplyVisuals(chrome, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
@@ -1365,6 +1385,385 @@ ToggleOptionsFrame = function(anchor, placement)
     ApplyTheme()
 end
 
+-- ============================================================================
+-- Saved Instances (Raid Info)
+-- ============================================================================
+local DIFFICULTY_ORDER = { LFR=1, Raid=2, Normal=3, Heroic=4, Mythic=5 }
+local DIFF_COLOR = {
+    [14] = "|cff1eff00",  -- Normal (green)
+    [15] = "|cff0070dd",  -- Heroic (blue)
+    [16] = "|cffa335ee",  -- Mythic (purple)
+    [17] = "|cffaaaaaa",  -- LFR (grey)
+}
+
+local function GetClassHexFromCharacters(charKey)
+    local chars = GetCharacters()
+    local entry = chars and chars[charKey]
+    return GetClassHex(entry and entry.classFile), entry and entry.name or charKey
+end
+
+local function BuildSavedInstancesData()
+    local pveCache = GetPveCache()
+    local lockouts = pveCache and pveCache.lockouts and pveCache.lockouts.raids
+    if not lockouts then return {} end
+
+    -- Group by (instanceName + difficultyName) -> list of {charKey, killed, total}
+    local groups = {}
+    for charKey, instances in pairs(lockouts) do
+        if type(instances) == "table" then
+            for _, inst in pairs(instances) do
+                if inst and inst.name then
+                    local diffName = inst.difficultyName or "Unknown"
+                    local key = inst.name .. "||" .. diffName
+                    local g = groups[key]
+                    if not g then
+                        g = {
+                            instanceName = inst.name,
+                            difficultyName = diffName,
+                            difficulty = inst.difficulty,
+                            characters = {},
+                        }
+                        groups[key] = g
+                    end
+                    local total = tonumber(inst.numEncounters) or (inst.encounters and #inst.encounters) or 0
+                    local killed = tonumber(inst.encounterProgress) or 0
+                    if killed == 0 and inst.encounters then
+                        for _, e in ipairs(inst.encounters) do
+                            if e.killed then killed = killed + 1 end
+                        end
+                    end
+                    table.insert(g.characters, {
+                        charKey = charKey,
+                        killed = killed,
+                        total = total,
+                        reset = inst.reset,
+                        encounters = inst.encounters,
+                    })
+                end
+            end
+        end
+    end
+
+    local list = {}
+    for _, g in pairs(groups) do
+        table.sort(g.characters, function(a, b) return (a.charKey or "") < (b.charKey or "") end)
+        table.insert(list, g)
+    end
+    table.sort(list, function(a, b)
+        if a.instanceName ~= b.instanceName then return a.instanceName < b.instanceName end
+        return (a.difficulty or 0) > (b.difficulty or 0)
+    end)
+    return list
+end
+
+local function BuildSavedInstancesFrame()
+    if S.savedFrame then return end
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    local COLORS = ns.UI_COLORS or {}
+    local accent = COLORS.accent or {0.40, 0.20, 0.58}
+    local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
+
+    local f = CreateFrame("Frame", "WarbandNexusSavedInstances", UIParent, "BackdropTemplate")
+    AddEscCloseFrame("WarbandNexusSavedInstances")
+    f:SetSize(540, 420)
+    f:SetClampedToScreen(true)
+    f:SetFrameStrata("DIALOG")
+    f:SetFrameLevel(200)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    if ApplyVisuals then
+        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
+    end
+    f:Hide()
+
+    local chrome = CreateFrame("Frame", nil, f)
+    chrome:SetHeight(CHROME_H)
+    chrome:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -2)
+    chrome:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    chrome:EnableMouse(true)
+    chrome:RegisterForDrag("LeftButton")
+    chrome:SetScript("OnDragStart", function() f:StartMoving() end)
+    chrome:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
+    if ApplyVisuals then
+        ApplyVisuals(chrome, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
+    end
+
+    local titleIcon = chrome:CreateTexture(nil, "ARTWORK")
+    titleIcon:SetSize(24, 24)
+    titleIcon:SetPoint("LEFT", 15, 0)
+    titleIcon:SetTexture("Interface\\Icons\\INV_Misc_Bell_01")
+
+    local FontManager = ns.FontManager
+    local title
+    if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
+        title = FontManager:CreateFontString(chrome, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
+    else
+        title = chrome:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    end
+    title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
+    title:SetText("Saved Instances")
+    title:SetTextColor(1, 1, 1)
+
+    local close = CreateFrame("Button", nil, chrome)
+    close:SetSize(28, 28)
+    close:SetPoint("RIGHT", -8, 0)
+    if ApplyVisuals then
+        ApplyVisuals(close, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8})
+    end
+    local closeIcon = close:CreateTexture(nil, "ARTWORK")
+    closeIcon:SetSize(16, 16)
+    closeIcon:SetPoint("CENTER")
+    closeIcon:SetAtlas("uitools-icon-close")
+    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+    close:SetScript("OnClick", function() f:Hide() end)
+    close:SetScript("OnEnter", function() closeIcon:SetVertexColor(1, 0.2, 0.2) end)
+    close:SetScript("OnLeave", function() closeIcon:SetVertexColor(0.9, 0.3, 0.3) end)
+
+    -- Scroll body
+    local scroll = CreateFrame("ScrollFrame", nil, f)
+    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", FRAME_PAD, -(CHROME_H + 6))
+    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -FRAME_PAD, FRAME_PAD)
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(540 - FRAME_PAD * 2, 1)
+    scroll:SetScrollChild(content)
+
+    f:EnableMouseWheel(true)
+    f:SetScript("OnMouseWheel", function(self, delta)
+        local cur = scroll:GetVerticalScroll()
+        scroll:SetVerticalScroll(math.max(0, cur - delta * 40))
+    end)
+
+    S.savedFrame = f
+    S.savedScroll = scroll
+    S.savedContent = content
+end
+
+RefreshSavedInstances = function()
+    BuildSavedInstancesFrame()
+    local content = S.savedContent
+    if not content then return end
+
+    for _, row in ipairs(S.savedRows) do row:Hide() end
+    S.savedRows = {}
+
+    local list = BuildSavedInstancesData()
+    if #list == 0 then
+        local msg = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        msg:SetPoint("CENTER", content, "CENTER")
+        msg:SetTextColor(0.6, 0.6, 0.6)
+        msg:SetText("No raid lockouts recorded yet.\nLogin a character with active lockouts to populate.")
+        msg:SetJustifyH("CENTER")
+        content:SetHeight(80)
+        S.savedFrame:Show()
+        table.insert(S.savedRows, msg)
+        return
+    end
+
+    local FontManager = ns.FontManager
+    local rowH = 56
+    local pad = 8
+    local y = 0
+    local contentW = content:GetWidth()
+
+    for i, g in ipairs(list) do
+        local row = CreateFrame("Frame", nil, content)
+        row:SetSize(contentW, rowH)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        if i % 2 == 0 then
+            bg:SetColorTexture(0.08, 0.08, 0.10, 0.95)
+        else
+            bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)
+        end
+
+        local nameFS
+        if FontManager and FontManager.CreateFontString then
+            nameFS = FontManager:CreateFontString(row, "body", "OVERLAY")
+        else
+            nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        end
+        nameFS:SetPoint("TOPLEFT", row, "TOPLEFT", pad, -6)
+        nameFS:SetText(g.instanceName)
+        nameFS:SetTextColor(1, 1, 1)
+
+        local diffColor = DIFF_COLOR[g.difficulty] or "|cffaaaaaa"
+        local diffFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        diffFS:SetPoint("TOPLEFT", nameFS, "BOTTOMLEFT", 0, -2)
+        diffFS:SetText(diffColor .. (g.difficultyName or "") .. "|r")
+
+        -- Character chips on right
+        local chipParent = row
+        local chipLine = chipParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        chipLine:SetPoint("TOPRIGHT", row, "TOPRIGHT", -pad, -8)
+        chipLine:SetPoint("BOTTOMLEFT", diffFS, "BOTTOMRIGHT", 30, 0)
+        chipLine:SetJustifyH("RIGHT")
+        chipLine:SetWordWrap(true)
+        chipLine:SetSpacing(2)
+        local parts = {}
+        for _, c in ipairs(g.characters) do
+            local hex, charName = GetClassHexFromCharacters(c.charKey)
+            local progressColor = "|cffd4af37"
+            if c.total > 0 and c.killed >= c.total then progressColor = "|cff44ff44" end
+            table.insert(parts, string.format("|cff%s%s|r %s%d/%d|r",
+                hex, charName, progressColor, c.killed or 0, c.total or 0))
+        end
+        chipLine:SetText(table.concat(parts, "  "))
+
+        table.insert(S.savedRows, row)
+        y = y + rowH + 2
+    end
+
+    content:SetHeight(math.max(40, y))
+    S.savedFrame:Show()
+end
+
+ToggleSavedInstances = function()
+    if S.savedFrame and S.savedFrame:IsShown() then
+        S.savedFrame:Hide()
+        return
+    end
+    BuildSavedInstancesFrame()
+    if S.savedFrame and S.button and not S.savedFrame:GetPoint() then
+        S.savedFrame:ClearAllPoints()
+        S.savedFrame:SetPoint("TOPLEFT", S.button, "BOTTOMLEFT", 0, -6)
+    end
+    if RequestRaidInfo then pcall(RequestRaidInfo) end
+    RefreshSavedInstances()
+end
+
+-- ============================================================================
+-- Vault Button shortcut menu
+-- ============================================================================
+local function CreateMenuItem(parent, opts, y)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(parent:GetWidth() - 8, 30)
+    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, y)
+
+    local hl = btn:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or {0.40, 0.20, 0.58}
+    hl:SetColorTexture(accent[1], accent[2], accent[3], 0.25)
+
+    if opts.icon then
+        local icon = btn:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(20, 20)
+        icon:SetPoint("LEFT", 6, 0)
+        icon:SetTexture(opts.icon)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+
+    local FontManager = ns.FontManager
+    local label
+    if FontManager and FontManager.CreateFontString then
+        label = FontManager:CreateFontString(btn, "body", "OVERLAY")
+    else
+        label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    end
+    label:SetPoint("LEFT", 32, 0)
+    label:SetText(opts.label)
+    label:SetTextColor(1, 1, 1)
+
+    btn:SetScript("OnClick", function()
+        HideMenu()
+        if opts.action then opts.action() end
+    end)
+    return btn
+end
+
+local function BuildMenu()
+    if S.menuFrame then return end
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    local COLORS = ns.UI_COLORS or {}
+    local accent = COLORS.accent or {0.40, 0.20, 0.58}
+    local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
+
+    local items = {
+        { label = "Vault Tracker", icon = "Interface\\Icons\\INV_Misc_Bag_EnchantedRunecloth", action = function()
+            HideAllPanels()
+            RefreshTable()
+            if S.tableFrame and S.button then
+                S.tableFrame:ClearAllPoints()
+                local saved = GetSavedTablePos()
+                if saved and saved.x and saved.y then
+                    S.tableFrame:SetPoint(saved.point or "CENTER", UIParent, saved.relativePoint or "CENTER", saved.x, saved.y)
+                else
+                    S.tableFrame:SetPoint("TOPLEFT", S.button, "BOTTOMLEFT", 0, -6)
+                end
+            end
+        end },
+        { label = "Saved Instances", icon = "Interface\\Icons\\INV_Misc_Bell_01", action = function()
+            HideTable(); HideMenu(); ToggleSavedInstances()
+        end },
+        { label = "Plans / Todo",    icon = "Interface\\Icons\\INV_Inscription_Scroll", action = function() OpenWNTab("plans") end },
+        { label = "Open Warband Nexus", icon = ICON_TEXTURE,                            action = function() OpenWNTab(nil) end },
+        { label = "Settings",        icon = "Interface\\Icons\\Trade_Engineering",      action = function()
+            HideMenu(); ToggleOptionsFrame(S.button, "RIGHT")
+        end },
+    }
+
+    local W = 200
+    local rowH = 30
+    local headerH = 8
+    local pad = 6
+    local H = headerH + (#items * (rowH + 2)) + pad
+
+    local f = CreateFrame("Frame", "WarbandNexusVaultMenu", UIParent, "BackdropTemplate")
+    AddEscCloseFrame("WarbandNexusVaultMenu")
+    f:SetSize(W, H)
+    f:SetFrameStrata("DIALOG")
+    f:SetFrameLevel(220)
+    f:SetClampedToScreen(true)
+    f:EnableMouse(true)
+    if ApplyVisuals then
+        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
+    end
+    f:Hide()
+
+    local stripe = f:CreateTexture(nil, "BORDER")
+    stripe:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -2)
+    stripe:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    stripe:SetHeight(headerH - 2)
+    stripe:SetColorTexture(accentDark[1], accentDark[2], accentDark[3], 1)
+
+    local y = -headerH - 2
+    for _, opt in ipairs(items) do
+        CreateMenuItem(f, opt, y)
+        y = y - (rowH + 2)
+    end
+
+    -- Auto-hide on focus loss: close when mouse leaves and not over a child
+    f:SetScript("OnUpdate", function(self)
+        if not self:IsMouseOver() then
+            self._hideTimer = (self._hideTimer or 0) + 1
+            if self._hideTimer > 90 then  -- ~1.5s @ 60fps
+                self:Hide()
+            end
+        else
+            self._hideTimer = 0
+        end
+    end)
+
+    S.menuFrame = f
+end
+
+ToggleMenu = function()
+    BuildMenu()
+    if not S.menuFrame then return end
+    if S.menuFrame:IsShown() then
+        S.menuFrame:Hide()
+        return
+    end
+    S.menuFrame:ClearAllPoints()
+    if S.button then
+        S.menuFrame:SetPoint("TOPLEFT", S.button, "BOTTOMLEFT", 0, -4)
+    else
+        S.menuFrame:SetPoint("CENTER")
+    end
+    S.menuFrame._hideTimer = 0
+    S.menuFrame:Show()
+end
+
 RefreshButtonSettings = function()
     local tableWasShown = S.tableFrame and S.tableFrame:IsShown()
     if S.optionsFrame then
@@ -1463,9 +1862,10 @@ local function BuildButton()
         if dragged then return end
         GameTooltip:Hide()
         if mouseButton == "RightButton" then
-            ToggleOptionsFrame()
+            -- Right-click is a no-op (drag is handled separately); the menu owns navigation now.
+            HideMenu()
         else
-            ToggleTable()
+            ToggleMenu()
         end
     end)
 
@@ -1497,6 +1897,9 @@ local function OnDataChanged()
     UpdateBadge()
     if S.tableFrame and S.tableFrame:IsShown() then
         RefreshTable()
+    end
+    if S.savedFrame and S.savedFrame:IsShown() then
+        RefreshSavedInstances()
     end
 end
 
