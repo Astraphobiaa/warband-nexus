@@ -34,7 +34,7 @@ local COL_REWARD_ILVL = 72
 local COL_BOUNTY    = 46   -- Trovehunter's Bounty (done/not)
 local COL_VOIDCORE  = 58   -- Nebulous Voidcore (current/seasonMax)
 local COL_MANAFLUX  = 58   -- Dawnlight Manaflux (current held)
-local COL_STATUS    = 78
+local COL_STATUS    = 110
 
 local TRACK_ICONS = {
     raids      = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
@@ -47,7 +47,35 @@ local TRACK_ICONS = {
 
 local CHECK  = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
 local CROSS  = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+local UPARROW = "|A:loottoast-arrow-green:12:12|a"
 local DASH   = "|cff666666-|r"
+
+-- Maps Vault Button column key -> PvE typeName used by upgrade-detection logic
+local CAT_TO_TYPE = { raids = "Raid", mythicPlus = "M+", world = "World" }
+
+local function IsSlotAtMax(activity, typeName)
+    if not activity or not activity.level then return false end
+    local level = activity.level
+    if typeName == "Raid" then
+        return level == 16
+    elseif typeName == "M+" then
+        return level >= 10
+    elseif typeName == "World" then
+        return level >= 8
+    end
+    return false
+end
+
+local function SlotShowsUpgrade(act, typeName)
+    if not act then return false end
+    local ni = tonumber(act.nextLevelIlvl) or 0
+    if ni > 0 then return true end
+    local th = tonumber(act.threshold) or 0
+    local prog = tonumber(act.progress) or 0
+    if th <= 0 or prog < th then return false end
+    if IsSlotAtMax(act, typeName) then return false end
+    return true
+end
 
 local function GetCurrencyIcon(currencyID, fallback)
     if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
@@ -245,16 +273,18 @@ end
 local function GetSlotData(charKey, category)
     local acts = GetCharActivities(charKey)
     local cat  = acts and acts[category] or {}
+    local typeName = CAT_TO_TYPE[category]
     local slots = {}
     for i = 1, 3 do
         local a = cat[i]
         local prog   = a and (tonumber(a.progress) or 0) or 0
         local thresh = a and (tonumber(a.threshold) or 0) or 0
         slots[i] = {
-            complete  = thresh > 0 and prog >= thresh,
-            ilvl      = a and a.rewardItemLevel or 0,
-            progress  = prog,
-            threshold = thresh,
+            complete   = thresh > 0 and prog >= thresh,
+            ilvl       = a and a.rewardItemLevel or 0,
+            progress   = prog,
+            threshold  = thresh,
+            canUpgrade = SlotShowsUpgrade(a, typeName),
         }
     end
     return slots
@@ -357,9 +387,15 @@ local function SlotSymbols(slots, category)
     for i = 1, 3 do
         local slot = slots[i]
         if slot.complete then
-            table.insert(parts, settings.showRewardItemLevel and FormatRewardIlvl(slot.ilvl, category) or CHECK)
+            if settings.showRewardItemLevel then
+                parts[i] = FormatRewardIlvl(slot.ilvl, category)
+            elseif slot.canUpgrade then
+                parts[i] = UPARROW
+            else
+                parts[i] = CHECK
+            end
         else
-            table.insert(parts, CROSS)
+            parts[i] = CROSS
         end
     end
     return table.concat(parts, " ")
@@ -535,6 +571,7 @@ end
 -- ============================================================================
 HideTable = function()
     if S.tableFrame then S.tableFrame:Hide() end
+    if S.optionsFrame then S.optionsFrame:Hide() end
 end
 
 local function BuildTableFrame()
@@ -886,7 +923,9 @@ RefreshTable = function()
         statusFS:SetSize(COL_STATUS, ROW_H)
         statusFS:SetJustifyH("CENTER")
         statusFS:SetJustifyV("MIDDLE")
-        statusFS:SetText(e.isReady and "|cff33dd33Ready|r" or "|cffffff00Pending|r")
+        local readyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
+        local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
+        statusFS:SetText(e.isReady and ("|cff44ff44" .. readyLabel .. "|r") or ("|cffffd700" .. pendingLabel .. "|r"))
 
         -- Row tooltip: iLvl per slot + bounty status
         row:SetScript("OnEnter", function(self)
@@ -902,9 +941,13 @@ RefreshTable = function()
                 for si = 1, 3 do
                     local s = slots[si]
                     if s.complete then
-                        parts[si] = s.ilvl > 0
-                            and FormatRewardIlvl(s.ilvl, cat.key)
-                            or  CHECK
+                        if s.ilvl > 0 then
+                            parts[si] = FormatRewardIlvl(s.ilvl, cat.key)
+                        elseif s.canUpgrade then
+                            parts[si] = UPARROW
+                        else
+                            parts[si] = CHECK
+                        end
                     else
                         parts[si] = CROSS
                     end
@@ -944,10 +987,12 @@ RefreshTable = function()
                 end
             end
             GameTooltip:AddLine(" ")
+            local readyMsg = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
+            local pendingMsg = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
             if e.isReady then
-                GameTooltip:AddLine("|cff33dd33Vault ready.|r")
+                GameTooltip:AddLine("|cff44ff44" .. readyMsg .. "|r")
             else
-                GameTooltip:AddLine("|cffffff00Available at weekly reset.|r")
+                GameTooltip:AddLine("|cffffd700" .. pendingMsg .. "|r")
             end
             GameTooltip:AddLine("|cff555555[Click] Open PvE tab|r")
             GameTooltip:Show()
@@ -1064,24 +1109,40 @@ end
 -- Main button
 -- ============================================================================
 local function CreateMenuCheckbox(parent, labelText, y, getValue, setValue)
-    local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    cb:SetSize(22, 22)
-    cb:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, y)
-    cb:SetChecked(getValue())
+    local cb
+    if ns.UI_CreateThemedCheckbox then
+        cb = ns.UI_CreateThemedCheckbox(parent, getValue() == true)
+    else
+        cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+        cb:SetSize(22, 22)
+        cb:SetChecked(getValue())
+    end
+    cb:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y)
 
-    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+    local FontManager = ns.FontManager
+    local label
+    if FontManager and FontManager.CreateFontString then
+        label = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    else
+        label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    end
+    label:SetPoint("LEFT", cb, "RIGHT", (ns.UI_SPACING and ns.UI_SPACING.AFTER_ELEMENT) or 6, 0)
     label:SetText(labelText)
     label:SetTextColor(1, 1, 1, 1)
+    label:SetJustifyH("LEFT")
 
-    cb:SetScript("OnClick", function(self)
-        local checked = self:GetChecked()
-        setValue(checked)
+    -- ThemedCheckbox already has OnClick that toggles innerDot; chain our handler
+    local prevOnClick = cb:GetScript("OnClick")
+    cb:SetScript("OnClick", function(self, ...)
+        if prevOnClick then prevOnClick(self, ...) end
+        setValue(self:GetChecked() and true or false)
         RefreshButtonSettings()
     end)
 
     cb.RefreshValue = function(self)
-        self:SetChecked(getValue())
+        local v = getValue() == true
+        self:SetChecked(v)
+        if self.innerDot then self.innerDot:SetShown(v) end
     end
     table.insert(S.optionsWidgets, cb)
     return cb
@@ -1427,19 +1488,38 @@ end
 -- ============================================================================
 local eFrame = CreateFrame("Frame")
 eFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eFrame:SetScript("OnEvent", function()
+eFrame:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_ENTERING_WORLD")
     C_Timer.After(2, function() BuildButton(); UpdateBadge() end)
 end)
+
+local function OnDataChanged()
+    UpdateBadge()
+    if S.tableFrame and S.tableFrame:IsShown() then
+        RefreshTable()
+    end
+end
 
 local function HookWNMessages()
     if not WarbandNexus or not WarbandNexus.RegisterMessage then return end
     local E = ns.Constants and ns.Constants.EVENTS
     if not E then return end
     if E.PVE_UPDATED then
-        WarbandNexus:RegisterMessage(E.PVE_UPDATED, function() UpdateBadge() end)
+        WarbandNexus:RegisterMessage(E.PVE_UPDATED, OnDataChanged)
     end
     if E.CHARACTER_UPDATED then
-        WarbandNexus:RegisterMessage(E.CHARACTER_UPDATED, function() UpdateBadge() end)
+        WarbandNexus:RegisterMessage(E.CHARACTER_UPDATED, OnDataChanged)
+    end
+    if E.VAULT_REWARD_AVAILABLE then
+        WarbandNexus:RegisterMessage(E.VAULT_REWARD_AVAILABLE, OnDataChanged)
+    end
+    if E.VAULT_SLOT_COMPLETED then
+        WarbandNexus:RegisterMessage(E.VAULT_SLOT_COMPLETED, OnDataChanged)
+    end
+    if E.CURRENCY_UPDATED then
+        WarbandNexus:RegisterMessage(E.CURRENCY_UPDATED, function()
+            if S.tableFrame and S.tableFrame:IsShown() then RefreshTable() end
+        end)
     end
 end
 
