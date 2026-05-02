@@ -1095,33 +1095,90 @@ local function ShowHoverTooltip(anchor)
     local accent = colors.accent or {0.40, 0.20, 0.58}
     GameTooltip:SetOwner(anchor, "ANCHOR_RIGHT")
     GameTooltip:ClearLines()
-    GameTooltip:AddLine("Warband Nexus Vault Tracker", accent[1], accent[2], accent[3])
-    local list = BuildCharList()
-    local readyN, pendingN = 0, 0
-    for _, e in ipairs(list) do
-        if e.isReady then readyN = readyN + 1 else pendingN = pendingN + 1 end
-    end
-    if #list == 0 then
-        GameTooltip:AddLine("No vault activity this week.", 0.5, 0.5, 0.5)
+    GameTooltip:AddLine("Warband Nexus", accent[1], accent[2], accent[3])
+
+    local readyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
+    local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
+
+    local charKey = GetCurrentCharKey()
+    local chars = GetCharacters()
+    local entry = chars and charKey and chars[charKey]
+
+    if not entry then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("No vault data for current character yet.", 0.6, 0.6, 0.6)
     else
-        GameTooltip:AddLine(" ")
-        for _, e in ipairs(list) do
-            local status = e.isReady
-                and "|cff33dd33[Ready]|r"
-                or  "|cffffff00[Pending]|r"
-            local slotStr = e.slots > 0
-                and (" |cffaaaaaa("..e.slots.." slot"..(e.slots==1 and "" or "s")..")|r")
-                or ""
-            GameTooltip:AddDoubleLine(
-                FormatCharacterName(e),
-                status..slotStr,
-                1,1,1, 1,1,1)
+        local pveCache = GetPveCache()
+        local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
+        local rewardData = rewards and rewards[charKey]
+        local isReady = (rewardData and rewardData.hasAvailableRewards) or false
+
+        local nameLine = "|cff" .. GetClassHex(entry.classFile) .. (entry.name or charKey) .. "|r"
+        if entry.itemLevel and entry.itemLevel > 0 then
+            nameLine = nameLine .. "  |cffd4af37" .. string.format("%.0f", entry.itemLevel) .. " iLvl|r"
         end
+        GameTooltip:AddLine(nameLine)
         GameTooltip:AddLine(" ")
-        if readyN   > 0 then GameTooltip:AddLine(readyN   .." ready to claim",            0.2, 1.0, 0.3) end
-        if pendingN > 0 then GameTooltip:AddLine(pendingN .." in progress (next reset)",  1.0, 1.0, 0.2) end
+
+        local catLabels = { raids = "Raid", mythicPlus = "Dungeon", world = "World" }
+        for _, key in ipairs({ "raids", "mythicPlus", "world" }) do
+            local slots = GetSlotData(charKey, key)
+            local parts = {}
+            for i = 1, 3 do
+                local s = slots[i]
+                if s.complete then
+                    if s.canUpgrade then parts[i] = UPARROW
+                    else parts[i] = CHECK end
+                else
+                    parts[i] = CROSS
+                end
+            end
+            GameTooltip:AddDoubleLine(
+                "|cffaaaaaa" .. catLabels[key] .. "|r",
+                table.concat(parts, "  "),
+                0.7, 0.7, 0.7, 1, 1, 1)
+        end
+
+        local bounty = GetBountyStatus(charKey)
+        if bounty ~= nil then
+            local bountyLabel = bounty and (CHECK .. " |cff33dd33Collected|r") or "|cffdd3333Not collected|r"
+            GameTooltip:AddDoubleLine("|T1064187:14:14:0:0|t |cffaaaaaaTrovehunter's Bounty|r", bountyLabel, 0.7,0.7,0.7, 1,1,1)
+        end
+
+        local vc = GetVoidcoreData(charKey)
+        if vc then
+            local sm = vc.seasonMax or 0
+            local vcLabel
+            if sm > 0 then
+                vcLabel = (vc.isCapped and "|cffdd3333" or "|cffd4af37")
+                    .. vc.progress .. "/" .. sm
+                    .. (vc.isCapped and " (Capped)|r" or "|r")
+                    .. (vc.quantity > 0 and ("|cffaaaaaa  (" .. vc.quantity .. " held)|r") or "")
+            else
+                vcLabel = "|cffd4af37" .. vc.quantity .. " held|r"
+            end
+            GameTooltip:AddDoubleLine("|T7658128:14:14:0:0|t |cffaaaaaaNebulous Voidcore|r", vcLabel, 0.7,0.7,0.7, 1,1,1)
+        end
+
+        if GetSettings().showManaflux then
+            local mf = GetManafluxData(charKey)
+            if mf then
+                GameTooltip:AddDoubleLine(
+                    "|T" .. GetCurrencyIcon(MANAFLUX_ID, TRACK_ICONS.manaflux) .. ":14:14:0:0|t |cffaaaaaaDawnlight Manaflux|r",
+                    "|cffd4af37" .. (mf.quantity or 0) .. " held|r",
+                    0.7,0.7,0.7, 1,1,1)
+            end
+        end
+
+        GameTooltip:AddLine(" ")
+        if isReady then
+            GameTooltip:AddLine("|cff44ff44" .. readyLabel .. "|r")
+        else
+            GameTooltip:AddLine("|cffffd700" .. pendingLabel .. "|r")
+        end
     end
-    GameTooltip:AddLine("|cff555555[Left-click] Full view  [Right-click] Settings  [Drag] Move|r")
+
+    GameTooltip:AddLine("|cff555555[Left-click] Menu  [Drag] Move|r")
     GameTooltip:Show()
 end
 
