@@ -1423,7 +1423,8 @@ end
 
 function WarbandNexus:DrawPvEProgress(parent)
     local width = parent:GetWidth() - 20
-    local vaultTrackerMode = self.db and self.db.profile and self.db.profile.pveVaultTrackerMode == true
+    -- Weekly Vault Tracker mode removed from PvE tab; standalone Vault Button window covers this.
+    local vaultTrackerMode = false
 
     local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
     local headerParent = fixedHeader or parent
@@ -1551,35 +1552,6 @@ function WarbandNexus:DrawPvEProgress(parent)
         sortAnchor = sortBtn
     end
 
-    local trackerToggle = CreateThemedCheckbox(titleCard, vaultTrackerMode)
-    if trackerToggle then
-        trackerToggle:SetPoint("RIGHT", sortAnchor, "LEFT", -14, 0)
-        trackerToggle:HookScript("OnClick", function(box)
-            local enabled = box:GetChecked() == true
-            self.db.profile.pveVaultTrackerMode = enabled
-            self:RefreshUI()
-        end)
-
-        local trackerLabel = FontManager:CreateFontString(titleCard, FontManager:GetFontRole("pveTitleCardCheckboxLabel"), "OVERLAY")
-        trackerLabel:SetPoint("RIGHT", trackerToggle, "LEFT", -10, 0)
-        trackerLabel:SetText((ns.L and ns.L["WEEKLY_VAULT_TRACKER"]) or "Weekly Vault Tracker")
-        trackerLabel:SetTextColor(0.86, 0.86, 0.9)
-
-        local trackerChestBtn = CreateFrame("Button", nil, titleCard)
-        trackerChestBtn:SetSize(26, 26)
-        trackerChestBtn:SetPoint("RIGHT", trackerLabel, "LEFT", -8, 0)
-        local trackerChestIcon = CreateIcon(trackerChestBtn, "BonusLoot-Chest", 22, true, nil, true)
-        trackerChestIcon:SetPoint("CENTER")
-        trackerChestIcon:Show()
-        trackerChestBtn:EnableMouse(true)
-        trackerChestBtn:SetScript("OnEnter", function(self)
-            WarbandNexus:ShowPvEVaultAllCharactersTooltip(self)
-        end)
-        trackerChestBtn:SetScript("OnLeave", function()
-            if HideTooltip then HideTooltip() end
-        end)
-    end
-    
     titleCard:Show()
     headerYOffset = headerYOffset + GetLayout().afterHeader
     -- Title only; column headers live in columnHeaderClip (horizontal sync with scroll child)
