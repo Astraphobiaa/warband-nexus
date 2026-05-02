@@ -476,7 +476,7 @@ S = {
     button=nil, icon=nil, badge=nil, badgeBg=nil, border=nil,
     tableFrame=nil, title=nil, headerBg=nil, separator=nil,
     optionsFrame=nil, optionsWidgets={}, rows={},
-    menuFrame=nil, savedFrame=nil, savedRows={}
+    menuFrame=nil, savedFrame=nil, savedRows={}, savedExpanded={}
 }
 
 local HideTable
@@ -2132,22 +2132,266 @@ RefreshSavedInstances = function()
     end
 
     -- ────────────────────────────────────────────────────────────────────
-    -- SavedInstances-style matrix: rows = (instance × difficulty),
-    -- columns = each character that has at least one lockout in the
-    -- filtered set. Cell value = that character's kill count for that
-    -- instance, or em-dash if not locked. Hover any cell to see exactly
-    -- which bosses that character killed.
+    -- Drill-down list:
+    --   • Compact summary row per (instance, difficulty) — 38px, scales
+    --     comfortably to 60+ instances without horizontal scroll.
+    --   • Each row carries a per-boss "heat" segment bar that shows at a
+    --     glance which bosses the warband cleared (green = all chars,
+    --     diff color = some, gray = none).
+    --   • Click a row to expand inline and reveal one detail line per
+    --     locked character (boss-by-boss for that toon, kill count,
+    --     reset countdown). Only locked chars show — no 60-column matrix.
     -- ────────────────────────────────────────────────────────────────────
     local ApplyVisuals = ns.UI_ApplyVisuals
     local FontManager  = ns.FontManager
     local SIDE_PAD = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
-    local INSTANCE_COL_W = 220
-    local CHAR_COL_W     = 78
-    local HEADER_H       = 32
-    local ROW_H          = 26
-    local ROW_GAP        = 1
+    local rowW       = content:GetWidth() - 2 * SIDE_PAD
+    local SUMMARY_H  = 38
+    local DETAIL_H   = 24
+    local NAME_COL_W = 200
+    local STATS_COL_W = 150
 
-    -- Distinct, name-sorted character keys present in the filtered set
+    -- Reset content width to viewport (no horizontal scroll needed)
+    content:SetWidth(content:GetParent():GetWidth())
+
+    local function MakeGroupKey(g)
+        return (g.instanceName or "?") .. "||" .. tostring(g.difficulty or 0)
+    end
+
+    local function HeatColor(ratio, diffInfo)
+        if ratio >= 1 then return {0.20, 0.85, 0.30, 1} end
+        if ratio <= 0 then return {0.16, 0.16, 0.20, 1} end
+        local r, g, b = diffInfo.color[1], diffInfo.color[2], diffInfo.color[3]
+        local alpha = 0.4 + ratio * 0.55
+        return {r, g, b, alpha}
+    end
+
+    local function BuildSummaryRow(g, idx, yPos)
+        local diffInfo = GetDiffInfo(g.difficulty)
+        local bosses = AggregateBosses(g)
+        local total = bosses and #bosses or 0
+        local cleared = 0
+        if bosses then
+            for _, b in ipairs(bosses) do if #b.killers > 0 then cleared = cleared + 1 end end
+        end
+
+        local row = CreateFrame("Button", nil, content)
+        row:SetSize(rowW, SUMMARY_H)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD, -yPos)
+        row:RegisterForClicks("LeftButtonUp")
+
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(idx % 2 == 0 and 0.06 or 0.04, idx % 2 == 0 and 0.06 or 0.04, idx % 2 == 0 and 0.08 or 0.06, 0.95)
+
+        local hl = row:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.15)
+
+        -- Difficulty stripe
+        local stripe = row:CreateTexture(nil, "ARTWORK")
+        stripe:SetPoint("TOPLEFT", 0, 0)
+        stripe:SetPoint("BOTTOMLEFT", 0, 0)
+        stripe:SetWidth(3)
+        stripe:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
+
+        -- Difficulty badge
+        local badge = CreateFrame("Frame", nil, row)
+        badge:SetSize(diffInfo.short == "LFR" and 36 or 24, 18)
+        badge:SetPoint("LEFT", 12, 0)
+        if ApplyVisuals then
+            ApplyVisuals(badge, {diffInfo.color[1] * 0.45, diffInfo.color[2] * 0.45, diffInfo.color[3] * 0.45, 1},
+                {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1})
+        end
+        local badgeFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        badgeFS:SetPoint("CENTER")
+        badgeFS:SetText("|cffffffff" .. diffInfo.short .. "|r")
+
+        -- Instance name
+        local nameFS
+        if FontManager and FontManager.CreateFontString then
+            nameFS = FontManager:CreateFontString(row, "body", "OVERLAY")
+        else
+            nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        end
+        nameFS:SetPoint("LEFT", badge, "RIGHT", 10, 0)
+        nameFS:SetWidth(NAME_COL_W - (badge:GetWidth() + 30))
+        nameFS:SetJustifyH("LEFT")
+        nameFS:SetWordWrap(false)
+        nameFS:SetText(g.instanceName)
+        nameFS:SetTextColor(1, 1, 1)
+
+        -- Boss heat segment bar (variable middle column)
+        local heatX = NAME_COL_W + 10
+        local heatRight = rowW - STATS_COL_W - 30
+        local heatW = math.max(40, heatRight - heatX)
+        local heatBg = row:CreateTexture(nil, "BACKGROUND")
+        heatBg:SetPoint("LEFT", row, "LEFT", heatX, 0)
+        heatBg:SetSize(heatW, 14)
+        heatBg:SetColorTexture(0.10, 0.10, 0.12, 1)
+
+        if bosses and total > 0 then
+            local segGap = 2
+            local segW = math.max(4, math.floor((heatW - (total - 1) * segGap) / total))
+            local actualSegGap = (total > 1) and math.floor((heatW - total * segW) / (total - 1)) or 0
+            for i, b in ipairs(bosses) do
+                local ratio = (#g.characters > 0) and (#b.killers / #g.characters) or 0
+                local seg = row:CreateTexture(nil, "ARTWORK")
+                seg:SetSize(segW, 14)
+                seg:SetPoint("LEFT", row, "LEFT", heatX + (i - 1) * (segW + actualSegGap), 0)
+                local col = HeatColor(ratio, diffInfo)
+                seg:SetColorTexture(col[1], col[2], col[3], col[4])
+            end
+        end
+
+        -- Stats: warband progress + char count
+        local statsFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        statsFS:SetPoint("RIGHT", row, "RIGHT", -32, 0)
+        statsFS:SetJustifyH("RIGHT")
+        statsFS:SetWidth(STATS_COL_W)
+        local progColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
+        statsFS:SetText(string.format("%s%d/%d|r |cff888888warband|r  |cffaaaaaa· %d %s|r",
+            progColor, cleared, total,
+            #g.characters, #g.characters == 1 and "char" or "chars"))
+
+        -- Expand chevron
+        local chevron = row:CreateTexture(nil, "OVERLAY")
+        chevron:SetSize(14, 14)
+        chevron:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+        local groupKey = MakeGroupKey(g)
+        local function UpdateChevron()
+            if S.savedExpanded[groupKey] then
+                chevron:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
+            else
+                chevron:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover")
+            end
+        end
+        UpdateChevron()
+
+        row:SetScript("OnClick", function()
+            S.savedExpanded[groupKey] = not S.savedExpanded[groupKey]
+            RefreshSavedInstances()
+        end)
+
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine(g.instanceName, 1, 1, 1)
+            GameTooltip:AddLine("|cff" .. diffInfo.hex .. (g.difficultyName or diffInfo.name) .. "|r")
+            GameTooltip:AddLine(string.format("|cffd4af37%d/%d|r |cff888888warband cleared|r", cleared, total))
+            GameTooltip:AddLine(" ")
+            if bosses then
+                for i, b in ipairs(bosses) do
+                    local nKilled = #b.killers
+                    local label
+                    if nKilled == 0 then
+                        label = "|cff666666—|r"
+                    elseif nKilled >= #g.characters then
+                        label = string.format("|cff44ff44%d/%d chars|r", nKilled, #g.characters)
+                    else
+                        label = string.format("|cffd4af37%d/%d chars|r", nKilled, #g.characters)
+                    end
+                    GameTooltip:AddDoubleLine(b.name, label, 1,1,1, 0.85,0.85,0.85)
+                end
+            end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cff666666Click to expand character lockouts|r")
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        return row
+    end
+
+    local function BuildDetailRow(g, char, yPos)
+        local diffInfo = GetDiffInfo(g.difficulty)
+        local hex, charName = GetClassHexFromCharacters(char.charKey)
+
+        local row = CreateFrame("Frame", nil, content)
+        row:SetSize(rowW, DETAIL_H)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD, -yPos)
+        row:EnableMouse(true)
+
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.07, 0.07, 0.10, 0.85)
+
+        local hl = row:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.15)
+
+        -- Indent + class-colored character name
+        local nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        nameFS:SetPoint("LEFT", row, "LEFT", 28, 0)
+        nameFS:SetWidth(NAME_COL_W - 28)
+        nameFS:SetJustifyH("LEFT")
+        nameFS:SetWordWrap(false)
+        nameFS:SetText("|cff" .. hex .. (charName or char.charKey) .. "|r")
+
+        -- Per-boss kill dots for THIS character
+        local roster = char.encounters or {}
+        local total = #roster
+        local k = char.killed or 0
+        local heatX = NAME_COL_W + 10
+        local heatRight = rowW - STATS_COL_W - 30
+        local heatW = math.max(40, heatRight - heatX)
+        if total > 0 then
+            local size = math.max(8, math.min(12, math.floor((heatW - (total - 1) * 2) / total)))
+            local gap = math.max(2, math.floor((heatW - total * size) / math.max(1, total - 1)))
+            for i, e in ipairs(roster) do
+                local dot = row:CreateTexture(nil, "ARTWORK")
+                dot:SetSize(size, size)
+                dot:SetPoint("LEFT", row, "LEFT", heatX + (i - 1) * (size + gap), 0)
+                if e.killed then
+                    dot:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
+                else
+                    dot:SetColorTexture(0.18, 0.18, 0.22, 1)
+                end
+            end
+        end
+
+        -- Progress text
+        local progressColor = (total > 0 and k >= total) and "|cff44ff44" or "|cffd4af37"
+        local progFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        progFS:SetPoint("RIGHT", row, "RIGHT", -90, 0)
+        progFS:SetWidth(60)
+        progFS:SetJustifyH("RIGHT")
+        progFS:SetText(string.format("%s%d/%d|r", progressColor, k, total))
+
+        -- Reset countdown
+        local resetFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        resetFS:SetPoint("RIGHT", row, "RIGHT", -32, 0)
+        resetFS:SetWidth(50)
+        resetFS:SetJustifyH("RIGHT")
+        resetFS:SetTextColor(0.55, 0.55, 0.6)
+        if char.reset and char.reset > 0 then
+            local h = math.floor(char.reset / 3600)
+            local d = math.floor(h / 24)
+            if d > 0 then resetFS:SetText(d .. "d " .. (h % 24) .. "h")
+            elseif h > 0 then resetFS:SetText(h .. "h")
+            else resetFS:SetText("<1h") end
+        end
+
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine("|cff" .. hex .. (charName or char.charKey) .. "|r")
+            GameTooltip:AddLine(g.instanceName .. " — |cff" .. diffInfo.hex .. (g.difficultyName or diffInfo.name) .. "|r")
+            GameTooltip:AddLine(" ")
+            for bi, e in ipairs(roster) do
+                local mark = e.killed and "|cff44ff44" .. CHECK .. "|r" or "|cff444444" .. CROSS .. "|r"
+                GameTooltip:AddDoubleLine(mark .. " " .. (e.name or ("Boss " .. bi)),
+                    e.killed and "|cff44ff44killed|r" or "|cff666666—|r",
+                    1,1,1, 0.85,0.85,0.85)
+            end
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        return row
+    end
+
+    -- Build distinct char count for summary
     local seen, charKeys = {}, {}
     for _, g in ipairs(filtered) do
         for _, c in ipairs(g.characters) do
@@ -2157,180 +2401,25 @@ RefreshSavedInstances = function()
             end
         end
     end
-    table.sort(charKeys, function(a, b)
-        local _, na = GetClassHexFromCharacters(a)
-        local _, nb = GetClassHexFromCharacters(b)
-        return (na or a) < (nb or b)
-    end)
-
     if S.savedFrame and S.savedFrame.summary then
         S.savedFrame.summary:SetText(string.format("%d instances · %d characters", #filtered, #charKeys))
     end
 
-    local tableW = INSTANCE_COL_W + #charKeys * CHAR_COL_W
-    -- Grow the scrollable content to the table width if it exceeds the
-    -- viewport, so a horizontal scrollbar / shift+wheel becomes useful.
-    local viewportW = content:GetWidth()
-    local effectiveContentW = math.max(viewportW, tableW + 2 * SIDE_PAD)
-    content:SetWidth(effectiveContentW)
+    -- Render
+    local y = 0
+    for idx, g in ipairs(filtered) do
+        local summaryRow = BuildSummaryRow(g, idx, y)
+        table.insert(S.savedRows, summaryRow)
+        y = y + SUMMARY_H + 1
 
-    -- ── Header row: difficulty/instance label + per-character columns ──
-    local header = CreateFrame("Frame", nil, content)
-    header:SetSize(tableW, HEADER_H)
-    header:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD, 0)
-    if ApplyVisuals then
-        local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or {0.40, 0.20, 0.58}
-        local accentDark = (ns.UI_COLORS and ns.UI_COLORS.accentDark) or {0.28, 0.14, 0.41}
-        ApplyVisuals(header, {accentDark[1] * 0.7, accentDark[2] * 0.7, accentDark[3] * 0.7, 1},
-            {accent[1], accent[2], accent[3], 0.7})
-    end
-
-    local instHdr
-    if FontManager and FontManager.CreateFontString then
-        instHdr = FontManager:CreateFontString(header, "body", "OVERLAY")
-    else
-        instHdr = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    end
-    instHdr:SetPoint("LEFT", header, "LEFT", 12, 0)
-    instHdr:SetText("|cffffffffInstance|r")
-
-    for i, ck in ipairs(charKeys) do
-        local hex, charName = GetClassHexFromCharacters(ck)
-        local cellHdr = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        cellHdr:SetSize(CHAR_COL_W, HEADER_H)
-        cellHdr:SetPoint("LEFT", header, "LEFT", INSTANCE_COL_W + (i - 1) * CHAR_COL_W, 0)
-        cellHdr:SetJustifyH("CENTER")
-        cellHdr:SetWordWrap(false)
-        cellHdr:SetText("|cff" .. hex .. (charName or ck) .. "|r")
-        -- Vertical separator
-        local sep = header:CreateTexture(nil, "BORDER")
-        sep:SetWidth(1)
-        sep:SetPoint("TOP", header, "TOPLEFT", INSTANCE_COL_W + (i - 1) * CHAR_COL_W, 0)
-        sep:SetPoint("BOTTOM", header, "BOTTOMLEFT", INSTANCE_COL_W + (i - 1) * CHAR_COL_W, 0)
-        sep:SetColorTexture(1, 1, 1, 0.08)
-    end
-
-    table.insert(S.savedRows, header)
-
-    -- ── Data rows: one per (instance, difficulty) ──
-    local y = HEADER_H + 2
-    for rowIdx, g in ipairs(filtered) do
-        local diffInfo = GetDiffInfo(g.difficulty)
-        local row = CreateFrame("Frame", nil, content)
-        row:SetSize(tableW, ROW_H)
-        row:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD, -y)
-
-        local bg = row:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        if rowIdx % 2 == 0 then
-            bg:SetColorTexture(0.06, 0.06, 0.08, 0.95)
-        else
-            bg:SetColorTexture(0.04, 0.04, 0.06, 0.95)
-        end
-
-        -- Difficulty stripe (left edge)
-        local stripe = row:CreateTexture(nil, "ARTWORK")
-        stripe:SetPoint("TOPLEFT", 0, 0)
-        stripe:SetPoint("BOTTOMLEFT", 0, 0)
-        stripe:SetWidth(3)
-        stripe:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
-
-        -- Difficulty badge
-        local badge = CreateFrame("Frame", nil, row)
-        badge:SetSize(diffInfo.short == "LFR" and 32 or 20, 14)
-        badge:SetPoint("LEFT", 10, 0)
-        if ApplyVisuals then
-            ApplyVisuals(badge, {diffInfo.color[1] * 0.45, diffInfo.color[2] * 0.45, diffInfo.color[3] * 0.45, 1},
-                {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1})
-        end
-        local badgeFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        badgeFS:SetPoint("CENTER")
-        badgeFS:SetText("|cffffffff" .. diffInfo.short .. "|r")
-
-        -- Instance name (truncated to fit within instance column)
-        local nameFS
-        if FontManager and FontManager.CreateFontString then
-            nameFS = FontManager:CreateFontString(row, "body", "OVERLAY")
-        else
-            nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        end
-        nameFS:SetPoint("LEFT", badge, "RIGHT", 8, 0)
-        nameFS:SetWidth(INSTANCE_COL_W - (badge:GetWidth() + 24))
-        nameFS:SetJustifyH("LEFT")
-        nameFS:SetWordWrap(false)
-        nameFS:SetText(g.instanceName)
-        nameFS:SetTextColor(1, 1, 1)
-
-        -- Map char key -> char data for fast lookup
-        local charMap = {}
-        for _, c in ipairs(g.characters) do charMap[c.charKey] = c end
-
-        -- Per-character cells
-        for i, ck in ipairs(charKeys) do
-            local cellX = INSTANCE_COL_W + (i - 1) * CHAR_COL_W
-            -- Vertical separator
-            local sep = row:CreateTexture(nil, "BORDER")
-            sep:SetWidth(1)
-            sep:SetPoint("TOP", row, "TOPLEFT", cellX, 0)
-            sep:SetPoint("BOTTOM", row, "BOTTOMLEFT", cellX, 0)
-            sep:SetColorTexture(1, 1, 1, 0.05)
-
-            local cell = CreateFrame("Frame", nil, row)
-            cell:SetSize(CHAR_COL_W, ROW_H)
-            cell:SetPoint("LEFT", row, "LEFT", cellX, 0)
-
-            local hl = cell:CreateTexture(nil, "HIGHLIGHT")
-            hl:SetAllPoints()
-            hl:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.18)
-
-            local cellFS = cell:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            cellFS:SetAllPoints()
-            cellFS:SetJustifyH("CENTER")
-            cellFS:SetJustifyV("MIDDLE")
-
-            local c = charMap[ck]
-            if c then
-                local k, t = c.killed or 0, c.total or 0
-                local color
-                if t > 0 and k >= t then color = "|cff44ff44"
-                elseif k > 0 then color = "|cffd4af37"
-                else color = "|cff888888" end
-                cellFS:SetText(string.format("%s%d/%d|r", color, k, t))
-
-                cell:EnableMouse(true)
-                local hex, charName = GetClassHexFromCharacters(ck)
-                cell:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:ClearLines()
-                    GameTooltip:AddLine("|cff" .. hex .. (charName or ck) .. "|r")
-                    GameTooltip:AddLine(g.instanceName .. " — |cff" .. diffInfo.hex .. (g.difficultyName or diffInfo.name) .. "|r")
-                    if c.reset and c.reset > 0 then
-                        local h = math.floor(c.reset / 3600)
-                        local d = math.floor(h / 24)
-                        local label = (d > 0) and (d .. "d " .. (h % 24) .. "h")
-                                       or (h > 0) and (h .. "h")
-                                       or "<1h"
-                        GameTooltip:AddLine("|cff666666resets in " .. label .. "|r")
-                    end
-                    GameTooltip:AddLine(" ")
-                    if c.encounters and #c.encounters > 0 then
-                        for bi, e in ipairs(c.encounters) do
-                            local mark = e.killed and "|cff44ff44" .. CHECK .. "|r" or "|cff444444" .. CROSS .. "|r"
-                            GameTooltip:AddDoubleLine(mark .. " " .. (e.name or ("Boss " .. bi)),
-                                e.killed and "|cff44ff44killed|r" or "|cff666666—|r",
-                                1,1,1, 0.85,0.85,0.85)
-                        end
-                    end
-                    GameTooltip:Show()
-                end)
-                cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            else
-                cellFS:SetText("|cff3a3a40—|r")
+        if S.savedExpanded[MakeGroupKey(g)] then
+            for _, char in ipairs(g.characters) do
+                local detailRow = BuildDetailRow(g, char, y)
+                table.insert(S.savedRows, detailRow)
+                y = y + DETAIL_H + 1
             end
+            y = y + 4  -- breathing room after expanded block
         end
-
-        table.insert(S.savedRows, row)
-        y = y + ROW_H + ROW_GAP
     end
 
     content:SetHeight(math.max(40, y))
