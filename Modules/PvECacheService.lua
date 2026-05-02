@@ -990,11 +990,16 @@ function WarbandNexus:UpdateRaidLockouts(charKey)
                     end
                 end
             end
+            -- Capture an absolute server timestamp so the countdown remains
+            -- accurate even after the player logs that toon out (raw `reset`
+            -- is seconds-from-scan and goes stale otherwise).
+            local nowServer = (GetServerTime and GetServerTime()) or time()
             self.db.global.pveCache.lockouts.raids[charKey][id] = {
                 name = name,
                 difficulty = difficulty,
                 difficultyName = difficultyName,
                 reset = reset,
+                resetAt = (tonumber(reset) and reset > 0) and (nowServer + reset) or nil,
                 extended = extended or false,
                 numEncounters = numEncounters,
                 encounterProgress = encounterProgress,

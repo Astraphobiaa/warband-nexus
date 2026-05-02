@@ -962,7 +962,14 @@ RefreshTable = function()
         statusFS:SetJustifyV("MIDDLE")
         local readyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
         local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
-        statusFS:SetText(e.isReady and ("|cff44ff44" .. readyLabel .. "|r") or ("|cffffd700" .. pendingLabel .. "|r"))
+        local slotsReadyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_SLOTS_READY"]) or "Slots Ready"
+        if e.isReady then
+            statusFS:SetText("|cff44ff44" .. readyLabel .. "|r")
+        elseif (e.slots or 0) > 0 then
+            statusFS:SetText("|cff66ddff" .. slotsReadyLabel .. "|r")
+        else
+            statusFS:SetText("|cffffd700" .. pendingLabel .. "|r")
+        end
 
         -- Row tooltip: iLvl per slot + bounty status (themed)
         row:SetScript("OnEnter", function(self)
@@ -1029,8 +1036,11 @@ RefreshTable = function()
             lines[#lines + 1] = { text = " " }
             local readyMsg = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
             local pendingMsg = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
+            local slotsReadyMsg = (ns.L and ns.L["VAULT_TRACKER_STATUS_SLOTS_READY"]) or "Slots Ready"
             if e.isReady then
                 lines[#lines + 1] = { text = readyMsg, color = {0.27, 1, 0.27} }
+            elseif (e.slots or 0) > 0 then
+                lines[#lines + 1] = { text = string.format("%s (%d)", slotsReadyMsg, e.slots), color = {0.4, 0.85, 1} }
             else
                 lines[#lines + 1] = { text = pendingMsg, color = {1, 0.84, 0} }
             end
@@ -1231,8 +1241,12 @@ local function ShowHoverTooltip(anchor)
         end
 
         lines[#lines + 1] = { text = " " }
+        local slotsReadyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_SLOTS_READY"]) or "Slots Ready"
+        local readySlotCount = CountReadySlots(charKey)
         if isReady then
             lines[#lines + 1] = { text = readyLabel, color = {0.27, 1, 0.27} }
+        elseif readySlotCount > 0 then
+            lines[#lines + 1] = { text = string.format("%s (%d)", slotsReadyLabel, readySlotCount), color = {0.4, 0.85, 1} }
         else
             lines[#lines + 1] = { text = pendingLabel, color = {1, 0.84, 0} }
         end
@@ -1540,11 +1554,13 @@ local function BuildSavedInstancesData()
     if not lockouts then return {} end
 
     -- Group by (instanceName + difficultyName) -> list of {charKey, killed, total}
+    local nowServer = (GetServerTime and GetServerTime()) or time()
     local groups = {}
     for charKey, instances in pairs(lockouts) do
         if type(instances) == "table" then
             for _, inst in pairs(instances) do
-                if inst and inst.name then
+                local expired = inst and inst.resetAt and inst.resetAt <= nowServer
+                if inst and inst.name and not expired then
                     local diffName = inst.difficultyName or "Unknown"
                     local key = inst.name .. "||" .. diffName
                     local g = groups[key]
@@ -1568,7 +1584,18 @@ local function BuildSavedInstancesData()
                         charKey = charKey,
                         killed = killed,
                         total = total,
-                        reset = inst.reset,
+                        reset = (function()
+                            -- Prefer absolute resetAt (server timestamp) so the
+                            -- countdown is accurate for offline alts; fall back
+                            -- to the raw `reset` field for legacy cache entries.
+                            local now = (GetServerTime and GetServerTime()) or time()
+                            if inst.resetAt and inst.resetAt > now then
+                                return inst.resetAt - now
+                            elseif inst.resetAt and inst.resetAt <= now then
+                                return 0  -- already expired
+                            end
+                            return inst.reset
+                        end)(),
                         encounters = inst.encounters,
                     })
                 end

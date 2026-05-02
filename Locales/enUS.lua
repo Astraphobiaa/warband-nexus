@@ -1001,6 +1001,27 @@ L["ADDED"] = "Added"
 L["WEEKLY_VAULT_TRACKER"] = "Weekly Vault Tracker"
 L["VAULT_TRACKER_STATUS_PENDING"] = "Pending..."
 L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "Ready to Claim"
+L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Slots Ready"
+
+-- Vault Button (floating shortcut button)
+L["CONFIG_VAULT_BUTTON"] = "Vault Button"
+L["CONFIG_VAULT_BUTTON_DESC"] = "Show the draggable Vault Button on screen. Left-click toggles the main Warband Nexus window; right-click opens the WN shortcut menu."
+L["VAULT_BUTTON_MENU_TITLE"] = "WN Menu"
+L["VAULT_BUTTON_MENU_TRACKER"] = "Vault Tracker"
+L["VAULT_BUTTON_MENU_SAVED"] = "Saved Instances"
+L["VAULT_BUTTON_MENU_PLANS"] = "Plans / Todo"
+L["VAULT_BUTTON_MENU_SETTINGS"] = "Settings"
+
+-- Saved Instances window
+L["SAVED_INSTANCES_TITLE"] = "Saved Instances"
+L["SAVED_INSTANCES_EMPTY"] = "No raid lockouts recorded yet.\nLogin a character with active lockouts to populate."
+L["SAVED_INSTANCES_NO_FILTER_MATCH"] = "No instances match the current filters."
+L["SAVED_INSTANCES_SUMMARY"] = "%d instances · %d characters"
+L["SAVED_INSTANCES_WARBAND_CLEARED"] = "warband cleared"
+L["SAVED_INSTANCES_EXPAND_HINT"] = "Click to expand character lockouts"
+L["SAVED_INSTANCES_RESET_DAYS"] = "%dd"
+L["SAVED_INSTANCES_RESET_HOURS"] = "%dh"
+L["SAVED_INSTANCES_RESET_LESS_HOUR"] = "<1h"
 L["DAILY_QUEST_TRACKER"] = "Daily Quest Tracker"
 
 -- Achievement Popup
