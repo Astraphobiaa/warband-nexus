@@ -723,10 +723,20 @@ function WarbandNexus:ShowSetAlertDialog(planID)
     f.days5Check:SetChecked(has5)
     f.days3Check:SetChecked(has3)
     f.days1Check:SetChecked(has1)
-    f.zoneCheck:SetChecked(false)
-    f.zoneCheck:Disable()
-    f.zoneCheck:SetAlpha(0.4)
-    f.zoneLabel:SetTextColor(0.5, 0.5, 0.5)
+    -- Enable zone-enter only if we can resolve at least one map ID from the plan source/name.
+    -- Otherwise the reminder would never fire, so disabling the checkbox is honest.
+    local mapIDs = GetMapIDsFromPlanSource(plan)
+    if mapIDs and next(mapIDs) ~= nil then
+        f.zoneCheck:SetChecked(r.onZoneEnter == true)
+        f.zoneCheck:Enable()
+        f.zoneCheck:SetAlpha(1)
+        f.zoneLabel:SetTextColor(0.9, 0.9, 0.9)
+    else
+        f.zoneCheck:SetChecked(false)
+        f.zoneCheck:Disable()
+        f.zoneCheck:SetAlpha(0.4)
+        f.zoneLabel:SetTextColor(0.5, 0.5, 0.5)
+    end
     
     f.saveBtn:SetScript("OnClick", function()
         local days = {}

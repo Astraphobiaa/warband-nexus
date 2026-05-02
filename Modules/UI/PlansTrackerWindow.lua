@@ -38,7 +38,7 @@ local UI_SPACING = ns.UI_SPACING or {
 -- ── Layout constants ──
 local PADDING = UI_SPACING.TOP_MARGIN
 local SCROLLBAR_GAP = 22       -- 16px scrollbar + 6px gap (matches main addon UI.lua pattern)
-local HEADER_HEIGHT = UI_SPACING.HEADER_HEIGHT
+local HEADER_HEIGHT = 36  -- Modernized chrome (was UI_SPACING.HEADER_HEIGHT = 32) to match main shell
 local CATEGORY_BAR_HEIGHT = 34
 local CARD_HEIGHT = 48         -- Minimum collapsed achievement header (ExpandableRow); standard cards use dynamic height
 local CARD_MARGIN = 8          -- Vertical gap between cards / rows (no overlap)
@@ -1294,17 +1294,27 @@ function WarbandNexus:CreatePlansTrackerWindow()
     end
     header:SetFrameLevel(frame:GetFrameLevel() + 10)
 
-    -- Header icon
+    -- Header icon (matches main window addon icon proportions)
     local hIcon = header:CreateTexture(nil, "ARTWORK")
-    hIcon:SetSize(18, 18)
+    hIcon:SetSize(22, 22)
     hIcon:SetPoint("LEFT", PADDING + 2, 0)
-    hIcon:SetTexture("Interface\\Icons\\INV_Misc_Map_01")
+    hIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
+    if not hIcon:GetTexture() then
+        hIcon:SetTexture("Interface\\Icons\\INV_Inscription_Scroll")
+    end
+    hIcon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
 
-    -- Title
-    local titleText = FontManager:CreateFontString(header, "body", "OVERLAY")
-    titleText:SetPoint("LEFT", hIcon, "RIGHT", 6, 0)
+    -- Title (uses windowChromeTitle role like the main shell)
+    local titleText
+    if FontManager.GetFontRole then
+        titleText = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
+    else
+        titleText = FontManager:CreateFontString(header, "body", "OVERLAY")
+    end
+    titleText:SetPoint("LEFT", hIcon, "RIGHT", 8, 0)
     local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List"
-    titleText:SetText("|cffffffff" .. collectionPlansLabel .. "|r")
+    titleText:SetText(collectionPlansLabel)
+    titleText:SetTextColor(1, 1, 1)
 
     -- Close button (Factory)
     local closeBtn = Factory:CreateButton(header, 22, 22, true)

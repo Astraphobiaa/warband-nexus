@@ -2065,11 +2065,11 @@ local function BuildMenu()
         end },
     }
 
-    local W = 200
+    local W = 210
     local rowH = 30
-    local headerH = 8
+    local headerH = 26
     local pad = 6
-    local H = headerH + (#items * (rowH + 2)) + pad
+    local H = headerH + (#items * (rowH + 2)) + pad + 2
 
     local f = CreateFrame("Frame", "WarbandNexusVaultMenu", UIParent, "BackdropTemplate")
     AddEscCloseFrame("WarbandNexusVaultMenu")
@@ -2083,13 +2083,34 @@ local function BuildMenu()
     end
     f:Hide()
 
-    local stripe = f:CreateTexture(nil, "BORDER")
-    stripe:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -2)
-    stripe:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
-    stripe:SetHeight(headerH - 2)
-    stripe:SetColorTexture(accentDark[1], accentDark[2], accentDark[3], 1)
+    -- Header bar (matches main chrome style)
+    local header = CreateFrame("Frame", nil, f)
+    header:SetHeight(headerH)
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -2)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    if ApplyVisuals then
+        ApplyVisuals(header, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
+    end
 
-    local y = -headerH - 2
+    local headerIcon = header:CreateTexture(nil, "ARTWORK")
+    headerIcon:SetSize(16, 16)
+    headerIcon:SetPoint("LEFT", 8, 0)
+    headerIcon:SetTexture(ICON_TEXTURE)
+    if not headerIcon:GetTexture() then headerIcon:SetTexture(ICON_FALLBACK) end
+    headerIcon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
+
+    local FontManager = ns.FontManager
+    local titleFS
+    if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
+        titleFS = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
+    else
+        titleFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    end
+    titleFS:SetPoint("LEFT", headerIcon, "RIGHT", 6, 0)
+    titleFS:SetText("WN Menu")
+    titleFS:SetTextColor(1, 1, 1)
+
+    local y = -(headerH + 4)
     for _, opt in ipairs(items) do
         CreateMenuItem(f, opt, y)
         y = y - (rowH + 2)
