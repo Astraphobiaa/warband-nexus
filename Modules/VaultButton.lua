@@ -964,77 +964,81 @@ RefreshTable = function()
         local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
         statusFS:SetText(e.isReady and ("|cff44ff44" .. readyLabel .. "|r") or ("|cffffd700" .. pendingLabel .. "|r"))
 
-        -- Row tooltip: iLvl per slot + bounty status
+        -- Row tooltip: iLvl per slot + bounty status (themed)
         row:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:ClearLines()
             local ilvlLabel = e.itemLevel > 0
                 and ("  |cffd4af37" .. string.format("%.0f", e.itemLevel) .. " iLvl|r") or ""
-            GameTooltip:AddLine(FormatCharacterName(e) .. ilvlLabel)
-            GameTooltip:AddLine(" ")
+            local lines = {}
+            lines[#lines + 1] = { text = FormatCharacterName(e) .. ilvlLabel }
+            lines[#lines + 1] = { text = " " }
+
             for _, cat in ipairs(catDefs) do
                 local slots = allSlots[cat.key]
                 local parts = {}
                 for si = 1, 3 do
                     local s = slots[si]
                     if s.complete then
-                        if s.ilvl > 0 then
-                            parts[si] = FormatRewardIlvl(s.ilvl, cat.key)
-                        elseif s.canUpgrade then
-                            parts[si] = UPARROW
-                        else
-                            parts[si] = CHECK
-                        end
+                        if s.ilvl > 0 then parts[si] = FormatRewardIlvl(s.ilvl, cat.key)
+                        elseif s.canUpgrade then parts[si] = UPARROW
+                        else parts[si] = CHECK end
                     else
                         parts[si] = CROSS
                     end
                 end
-                GameTooltip:AddDoubleLine(
-                    "|cffaaaaaa" .. cat.label .. "|r",
-                    table.concat(parts, "  "),
-                    0.7, 0.7, 0.7, 1, 1, 1)
+                lines[#lines + 1] = {
+                    left = cat.label, right = table.concat(parts, "  "),
+                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
+                }
             end
-            -- Bounty line
+
             if columns.bounty ~= false then
                 local bountyLabel = b == nil and DASH
                     or (b and CHECK .. " |cff33dd33Collected|r" or "|cffdd3333Not collected|r")
-                GameTooltip:AddDoubleLine("|T1064187:14:14:0:0|t |cffaaaaaaTrovehunter's Bounty|r", bountyLabel, 0.7,0.7,0.7, 1,1,1)
+                lines[#lines + 1] = {
+                    left = "|T1064187:14:14:0:0|t Trovehunter's Bounty",
+                    right = bountyLabel,
+                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
+                }
             end
-            -- Voidcore line
-            if columns.voidcore ~= false then
+            if columns.voidcore ~= false and e.voidcore then
                 local vc2 = e.voidcore
-                if vc2 then
-                    local sm = vc2.seasonMax or 0
-                    local vcLabel
-                    if sm > 0 then
-                        vcLabel = (vc2.isCapped and "|cffdd3333" or "|cffd4af37")
-                            .. vc2.progress .. "/" .. sm
-                            .. (vc2.isCapped and " (Capped)|r" or "|r")
-                            .. (vc2.quantity > 0 and ("|cffaaaaaa  (" .. vc2.quantity .. " held)|r") or "")
-                    else
-                        vcLabel = "|cffd4af37" .. vc2.quantity .. " held|r"
-                    end
-                    GameTooltip:AddDoubleLine("|T7658128:14:14:0:0|t |cffaaaaaaNebulous Voidcore|r", vcLabel, 0.7,0.7,0.7, 1,1,1)
+                local sm = vc2.seasonMax or 0
+                local vcLabel
+                if sm > 0 then
+                    vcLabel = (vc2.isCapped and "|cffdd3333" or "|cffd4af37")
+                        .. vc2.progress .. "/" .. sm
+                        .. (vc2.isCapped and " (Capped)|r" or "|r")
+                        .. (vc2.quantity > 0 and ("|cffaaaaaa  (" .. vc2.quantity .. " held)|r") or "")
+                else
+                    vcLabel = "|cffd4af37" .. vc2.quantity .. " held|r"
                 end
+                lines[#lines + 1] = {
+                    left = "|T7658128:14:14:0:0|t Nebulous Voidcore",
+                    right = vcLabel,
+                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
+                }
             end
-            if columns.manaflux == true then
-                local mf2 = e.manaflux
-                if mf2 then
-                    GameTooltip:AddDoubleLine("|T" .. GetCurrencyIcon(MANAFLUX_ID, TRACK_ICONS.manaflux) .. ":14:14:0:0|t |cffaaaaaaDawnlight Manaflux|r", "|cffd4af37" .. (mf2.quantity or 0) .. " held|r", 0.7,0.7,0.7, 1,1,1)
-                end
+            if columns.manaflux == true and e.manaflux then
+                lines[#lines + 1] = {
+                    left = "|T" .. GetCurrencyIcon(MANAFLUX_ID, TRACK_ICONS.manaflux) .. ":14:14:0:0|t Dawnlight Manaflux",
+                    right = "|cffd4af37" .. (e.manaflux.quantity or 0) .. " held|r",
+                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
+                }
             end
-            GameTooltip:AddLine(" ")
+
+            lines[#lines + 1] = { text = " " }
             local readyMsg = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
             local pendingMsg = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
             if e.isReady then
-                GameTooltip:AddLine("|cff44ff44" .. readyMsg .. "|r")
+                lines[#lines + 1] = { text = readyMsg, color = {0.27, 1, 0.27} }
             else
-                GameTooltip:AddLine("|cffffd700" .. pendingMsg .. "|r")
+                lines[#lines + 1] = { text = pendingMsg, color = {1, 0.84, 0} }
             end
-            GameTooltip:AddLine("|cff555555[Click] Open PvE tab|r")
-            GameTooltip:Show()
+            lines[#lines + 1] = { text = "|cff888888[Click] Open PvE tab|r" }
+
+            WNTooltipShow(self, { type = "custom", lines = lines, anchor = "ANCHOR_RIGHT" })
         end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row:SetScript("OnLeave", function() WNTooltipHide() end)
 
         -- Click row to open WN PvE tab
         row:SetScript("OnMouseDown", function(self, btn)
@@ -1105,15 +1109,41 @@ UpdateBadge = function()
 end
 
 -- ============================================================================
--- Hover tooltip (simple list)
+-- Themed tooltip helpers (delegate to ns.UI_ShowTooltip / ns.UI_HideTooltip,
+-- with GameTooltip fallback before TooltipService is initialised).
+-- ============================================================================
+local function WNTooltipShow(anchor, data)
+    if ns.UI_ShowTooltip and WarbandNexus and WarbandNexus.Tooltip then
+        ns.UI_ShowTooltip(anchor, data)
+    else
+        GameTooltip:SetOwner(anchor, data.anchor or "ANCHOR_RIGHT")
+        GameTooltip:ClearLines()
+        if data.title then GameTooltip:AddLine(data.title, 1, 1, 1) end
+        if data.description then GameTooltip:AddLine(data.description, 0.85, 0.85, 0.85, true) end
+        if data.lines then
+            for _, line in ipairs(data.lines) do
+                if line.left or line.right then
+                    local lc, rc = line.leftColor or {1,1,1}, line.rightColor or {1,1,1}
+                    GameTooltip:AddDoubleLine(line.left or "", line.right or "",
+                        lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
+                else
+                    local c = line.color or {1,1,1}
+                    GameTooltip:AddLine(line.text or "", c[1], c[2], c[3], line.wrap == true)
+                end
+            end
+        end
+        GameTooltip:Show()
+    end
+end
+
+local function WNTooltipHide()
+    if ns.UI_HideTooltip then ns.UI_HideTooltip() else GameTooltip:Hide() end
+end
+
+-- ============================================================================
+-- Hover tooltip (current character only)
 -- ============================================================================
 local function ShowHoverTooltip(anchor)
-    local colors = GetThemeColors()
-    local accent = colors.accent or {0.40, 0.20, 0.58}
-    GameTooltip:SetOwner(anchor, "ANCHOR_RIGHT")
-    GameTooltip:ClearLines()
-    GameTooltip:AddLine("Warband Nexus", accent[1], accent[2], accent[3])
-
     local readyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
     local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
 
@@ -1121,9 +1151,9 @@ local function ShowHoverTooltip(anchor)
     local chars = GetCharacters()
     local entry = chars and charKey and chars[charKey]
 
+    local lines = {}
     if not entry then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("No vault data for current character yet.", 0.6, 0.6, 0.6)
+        lines[#lines + 1] = { text = "No vault data for current character yet.", color = {0.6, 0.6, 0.6} }
     else
         local pveCache = GetPveCache()
         local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
@@ -1134,8 +1164,8 @@ local function ShowHoverTooltip(anchor)
         if entry.itemLevel and entry.itemLevel > 0 then
             nameLine = nameLine .. "  |cffd4af37" .. string.format("%.0f", entry.itemLevel) .. " iLvl|r"
         end
-        GameTooltip:AddLine(nameLine)
-        GameTooltip:AddLine(" ")
+        lines[#lines + 1] = { text = nameLine }
+        lines[#lines + 1] = { text = " " }
 
         local catLabels = { raids = "Raid", mythicPlus = "Dungeon", world = "World" }
         for _, key in ipairs({ "raids", "mythicPlus", "world" }) do
@@ -1144,22 +1174,28 @@ local function ShowHoverTooltip(anchor)
             for i = 1, 3 do
                 local s = slots[i]
                 if s.complete then
-                    if s.canUpgrade then parts[i] = UPARROW
-                    else parts[i] = CHECK end
+                    parts[i] = s.canUpgrade and UPARROW or CHECK
                 else
                     parts[i] = CROSS
                 end
             end
-            GameTooltip:AddDoubleLine(
-                "|cffaaaaaa" .. catLabels[key] .. "|r",
-                table.concat(parts, "  "),
-                0.7, 0.7, 0.7, 1, 1, 1)
+            lines[#lines + 1] = {
+                left = catLabels[key],
+                right = table.concat(parts, "  "),
+                leftColor = {0.7, 0.7, 0.7},
+                rightColor = {1, 1, 1},
+            }
         end
 
         local bounty = GetBountyStatus(charKey)
         if bounty ~= nil then
             local bountyLabel = bounty and (CHECK .. " |cff33dd33Collected|r") or "|cffdd3333Not collected|r"
-            GameTooltip:AddDoubleLine("|T1064187:14:14:0:0|t |cffaaaaaaTrovehunter's Bounty|r", bountyLabel, 0.7,0.7,0.7, 1,1,1)
+            lines[#lines + 1] = {
+                left = "|T1064187:14:14:0:0|t Trovehunter's Bounty",
+                right = bountyLabel,
+                leftColor = {0.7, 0.7, 0.7},
+                rightColor = {1, 1, 1},
+            }
         end
 
         local vc = GetVoidcoreData(charKey)
@@ -1174,29 +1210,44 @@ local function ShowHoverTooltip(anchor)
             else
                 vcLabel = "|cffd4af37" .. vc.quantity .. " held|r"
             end
-            GameTooltip:AddDoubleLine("|T7658128:14:14:0:0|t |cffaaaaaaNebulous Voidcore|r", vcLabel, 0.7,0.7,0.7, 1,1,1)
+            lines[#lines + 1] = {
+                left = "|T7658128:14:14:0:0|t Nebulous Voidcore",
+                right = vcLabel,
+                leftColor = {0.7, 0.7, 0.7},
+                rightColor = {1, 1, 1},
+            }
         end
 
         if GetSettings().showManaflux then
             local mf = GetManafluxData(charKey)
             if mf then
-                GameTooltip:AddDoubleLine(
-                    "|T" .. GetCurrencyIcon(MANAFLUX_ID, TRACK_ICONS.manaflux) .. ":14:14:0:0|t |cffaaaaaaDawnlight Manaflux|r",
-                    "|cffd4af37" .. (mf.quantity or 0) .. " held|r",
-                    0.7,0.7,0.7, 1,1,1)
+                lines[#lines + 1] = {
+                    left = "|T" .. GetCurrencyIcon(MANAFLUX_ID, TRACK_ICONS.manaflux) .. ":14:14:0:0|t Dawnlight Manaflux",
+                    right = "|cffd4af37" .. (mf.quantity or 0) .. " held|r",
+                    leftColor = {0.7, 0.7, 0.7},
+                    rightColor = {1, 1, 1},
+                }
             end
         end
 
-        GameTooltip:AddLine(" ")
+        lines[#lines + 1] = { text = " " }
         if isReady then
-            GameTooltip:AddLine("|cff44ff44" .. readyLabel .. "|r")
+            lines[#lines + 1] = { text = readyLabel, color = {0.27, 1, 0.27} }
         else
-            GameTooltip:AddLine("|cffffd700" .. pendingLabel .. "|r")
+            lines[#lines + 1] = { text = pendingLabel, color = {1, 0.84, 0} }
         end
     end
 
-    GameTooltip:AddLine("|cff555555[Left-click] Menu  [Drag] Move|r")
-    GameTooltip:Show()
+    lines[#lines + 1] = { text = " " }
+    lines[#lines + 1] = { text = "|cff888888[Left-click] Toggle Window  [Right-click] Menu  [Drag] Move|r" }
+
+    WNTooltipShow(anchor, {
+        type = "custom",
+        title = "Warband Nexus",
+        icon = ICON_TEXTURE,
+        lines = lines,
+        anchor = "ANCHOR_RIGHT",
+    })
 end
 
 -- ============================================================================
@@ -2274,14 +2325,12 @@ RefreshSavedInstances = function()
         end)
 
         row:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:ClearLines()
-            GameTooltip:AddLine(g.instanceName, 1, 1, 1)
-            GameTooltip:AddLine("|cff" .. diffInfo.hex .. (g.difficultyName or diffInfo.name) .. "|r")
-            GameTooltip:AddLine(string.format("|cffd4af37%d/%d|r |cff888888warband cleared|r", cleared, total))
-            GameTooltip:AddLine(" ")
+            local lines = {}
+            lines[#lines + 1] = { text = "|cff" .. diffInfo.hex .. (g.difficultyName or diffInfo.name) .. "|r" }
+            lines[#lines + 1] = { text = string.format("|cffd4af37%d/%d|r |cff888888warband cleared|r", cleared, total) }
+            lines[#lines + 1] = { text = " " }
             if bosses then
-                for i, b in ipairs(bosses) do
+                for _, b in ipairs(bosses) do
                     local nKilled = #b.killers
                     local label
                     if nKilled == 0 then
@@ -2291,14 +2340,22 @@ RefreshSavedInstances = function()
                     else
                         label = string.format("|cffd4af37%d/%d chars|r", nKilled, #g.characters)
                     end
-                    GameTooltip:AddDoubleLine(b.name, label, 1,1,1, 0.85,0.85,0.85)
+                    lines[#lines + 1] = {
+                        left = b.name, right = label,
+                        leftColor = {1, 1, 1}, rightColor = {0.85, 0.85, 0.85}
+                    }
                 end
             end
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("|cff666666Click to expand character lockouts|r")
-            GameTooltip:Show()
+            lines[#lines + 1] = { text = " " }
+            lines[#lines + 1] = { text = "|cff888888Click to expand character lockouts|r" }
+            WNTooltipShow(self, {
+                type = "custom",
+                title = g.instanceName,
+                lines = lines,
+                anchor = "ANCHOR_RIGHT",
+            })
         end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row:SetScript("OnLeave", function() WNTooltipHide() end)
 
         return row
     end
@@ -2373,20 +2430,26 @@ RefreshSavedInstances = function()
         end
 
         row:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:ClearLines()
-            GameTooltip:AddLine("|cff" .. hex .. (charName or char.charKey) .. "|r")
-            GameTooltip:AddLine(g.instanceName .. " — |cff" .. diffInfo.hex .. (g.difficultyName or diffInfo.name) .. "|r")
-            GameTooltip:AddLine(" ")
+            local lines = {
+                { text = g.instanceName .. " — |cff" .. diffInfo.hex .. (g.difficultyName or diffInfo.name) .. "|r" },
+                { text = " " },
+            }
             for bi, e in ipairs(roster) do
                 local mark = e.killed and "|cff44ff44" .. CHECK .. "|r" or "|cff444444" .. CROSS .. "|r"
-                GameTooltip:AddDoubleLine(mark .. " " .. (e.name or ("Boss " .. bi)),
-                    e.killed and "|cff44ff44killed|r" or "|cff666666—|r",
-                    1,1,1, 0.85,0.85,0.85)
+                lines[#lines + 1] = {
+                    left = mark .. " " .. (e.name or ("Boss " .. bi)),
+                    right = e.killed and "|cff44ff44killed|r" or "|cff666666—|r",
+                    leftColor = {1, 1, 1}, rightColor = {0.85, 0.85, 0.85}
+                }
             end
-            GameTooltip:Show()
+            WNTooltipShow(self, {
+                type = "custom",
+                title = "|cff" .. hex .. (charName or char.charKey) .. "|r",
+                lines = lines,
+                anchor = "ANCHOR_RIGHT",
+            })
         end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row:SetScript("OnLeave", function() WNTooltipHide() end)
 
         return row
     end
@@ -2712,6 +2775,7 @@ local function BuildButton()
                 ApplyButtonVisibility(true)
                 ShowHoverTooltip(self)
             else
+                WNTooltipHide()
                 if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
                 ApplyButtonVisibility(false)
             end

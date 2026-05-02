@@ -1160,6 +1160,24 @@ local function BuildSettings(parent, containerWidth)
             end,
         },
         {
+            key = "vaultButtonEnabled",
+            label = (ns.L and ns.L["CONFIG_VAULT_BUTTON"]) or "Vault Button",
+            tooltip = (ns.L and ns.L["CONFIG_VAULT_BUTTON_DESC"]) or "Show the draggable Vault Button on screen. Left-click toggles the main Warband Nexus window; right-click opens the WN shortcut menu (Vault Tracker, Saved Instances, Plans / Todo, Settings).",
+            get = function()
+                local vb = WarbandNexus.db.profile.vaultButton
+                return not vb or vb.enabled ~= false
+            end,
+            set = function(value)
+                WarbandNexus.db.profile.vaultButton = WarbandNexus.db.profile.vaultButton or {}
+                WarbandNexus.db.profile.vaultButton.enabled = value and true or false
+                if WarbandNexus.SetVaultButtonEnabled then
+                    WarbandNexus:SetVaultButtonEnabled(value and true or false)
+                elseif WarbandNexus.RefreshVaultButtonSettings then
+                    WarbandNexus:RefreshVaultButtonSettings()
+                end
+            end,
+        },
+        {
             key = "minimapVisible",
             label = (ns.L and ns.L["CONFIG_MINIMAP"]) or "Minimap Button",
             tooltip = (ns.L and ns.L["CONFIG_MINIMAP_DESC"]) or "Show a button on the minimap for quick access.",
