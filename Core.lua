@@ -147,6 +147,30 @@ local defaults = {
         -- Display settings
         scrollSpeed = 1.0,         -- Scroll speed multiplier (1.0 = default 28px per step)
         uiScale = 1.0,            -- Global UI scale for the entire addon window (0.6 - 1.5)
+        vaultButton = {
+            enabled = true,
+            hideUntilMouseover = false,
+            hideUntilReady = false,
+            showRealmName = false,
+            showRewardItemLevel = false,
+            showManaflux = false,
+            opacity = 1.0,
+            columns = {
+                raids = true,
+                mythicPlus = true,
+                world = true,
+                bounty = true,
+                voidcore = true,
+                manaflux = false,
+            },
+            position = {
+                point = "CENTER",
+                relativePoint = "CENTER",
+                x = 600,
+                y = 0,
+            },
+            tablePosition = nil,
+        },
         
         -- Theme Colors (RGB 0-1 format) - All calculated from master color
         themeColors = {
