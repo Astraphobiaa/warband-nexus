@@ -154,7 +154,6 @@ local defaults = {
             showRealmName = false,
             showRewardItemLevel = false,
             showManaflux = false,
-            size = 48,
             opacity = 1.0,
             columns = {
                 raids = true,

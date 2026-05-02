@@ -13,8 +13,6 @@ local WarbandNexus = ns.WarbandNexus
 -- Constants
 -- ============================================================================
 local BUTTON_SIZE   = 48
-local BUTTON_MIN_SIZE = 32
-local BUTTON_MAX_SIZE = 96
 local BADGE_SIZE    = 18
 local ROW_H         = 28
 local HEADER_H      = 24
@@ -35,12 +33,12 @@ local COL_REWARD_ILVL = 72
 local COL_BOUNTY    = 46   -- Trovehunter's Bounty (done/not)
 local COL_VOIDCORE  = 58   -- Nebulous Voidcore (current/seasonMax)
 local COL_MANAFLUX  = 58   -- Dawnlight Manaflux (current held)
-local COL_STATUS    = 56
+local COL_STATUS    = 78
 
 local TRACK_ICONS = {
     raids      = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
     mythicPlus = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-    world      = 4672496,
+    world      = "Interface\\Icons\\INV_Misc_Map_01",
     bounty     = 1064187,
     voidcore   = 7658128,
     manaflux   = "Interface\\Icons\\INV_Enchant_DustArcane",
@@ -84,7 +82,6 @@ local function GetSettings()
             hideUntilReady = false,
             showRewardItemLevel = false,
             showManaflux = false,
-            size = BUTTON_SIZE,
             opacity = 1.0,
             position = { point = "CENTER", relativePoint = "CENTER", x = 600, y = 0 },
         }
@@ -107,9 +104,6 @@ local function GetSettings()
     if settings.columns.voidcore == nil then settings.columns.voidcore = true end
     if settings.columns.manaflux == nil then settings.columns.manaflux = settings.showManaflux == true end
     settings.showManaflux = settings.columns.manaflux == true
-    settings.size = tonumber(settings.size) or BUTTON_SIZE
-    if settings.size < BUTTON_MIN_SIZE then settings.size = BUTTON_MIN_SIZE end
-    if settings.size > BUTTON_MAX_SIZE then settings.size = BUTTON_MAX_SIZE end
     settings.opacity = tonumber(settings.opacity) or 1.0
     if settings.opacity < 0.2 then settings.opacity = 0.2 end
     if settings.opacity > 1.0 then settings.opacity = 1.0 end
@@ -183,30 +177,6 @@ local function SavePos(point, relativePoint, x, y)
         x = x or 0,
         y = y or 0,
     }
-end
-
-local function SaveButtonSize(size)
-    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.profile then return end
-    local settings = GetSettings()
-    size = tonumber(size) or BUTTON_SIZE
-    if size < BUTTON_MIN_SIZE then size = BUTTON_MIN_SIZE end
-    if size > BUTTON_MAX_SIZE then size = BUTTON_MAX_SIZE end
-    settings.size = math.floor(size + 0.5)
-end
-
-local function ApplyButtonSize()
-    if not S or not S.button then return end
-    local size = GetSettings().size or BUTTON_SIZE
-    S.button:SetSize(size, size)
-    if S.badgeBg then
-        local badgeSize = math.max(14, math.floor(size * 0.38 + 0.5))
-        S.badgeBg:SetSize(badgeSize, badgeSize)
-        S.badgeBg:ClearAllPoints()
-        S.badgeBg:SetPoint("TOPRIGHT", S.button, "TOPRIGHT", 4, 4)
-        if S.badge then
-            S.badge:SetSize(badgeSize, badgeSize)
-        end
-    end
 end
 
 local function GetSavedTablePos()
@@ -1286,7 +1256,6 @@ RefreshButtonSettings = function()
         end
     end
     ApplyTheme()
-    ApplyButtonSize()
     ApplyButtonVisibility(false)
     if tableWasShown and S.button and S.button:IsShown() then
         RefreshTable()
@@ -1297,19 +1266,11 @@ local function BuildButton()
     if S.button then return end
 
     local btn = CreateFrame("Button", "WarbandNexusVaultButton", UIParent, "BackdropTemplate")
-    local initialSize = GetSettings().size or BUTTON_SIZE
-    btn:SetSize(initialSize, initialSize)
+    btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
     btn:SetClampedToScreen(true)
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(50)
     btn:SetMovable(true)
-    btn:SetResizable(true)
-    if btn.SetResizeBounds then
-        btn:SetResizeBounds(BUTTON_MIN_SIZE, BUTTON_MIN_SIZE, BUTTON_MAX_SIZE, BUTTON_MAX_SIZE)
-    elseif btn.SetMinResize and btn.SetMaxResize then
-        btn:SetMinResize(BUTTON_MIN_SIZE, BUTTON_MIN_SIZE)
-        btn:SetMaxResize(BUTTON_MAX_SIZE, BUTTON_MAX_SIZE)
-    end
     btn:EnableMouse(true)
     btn:RegisterForDrag("LeftButton")
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -1361,27 +1322,6 @@ local function BuildButton()
 
     local dragged = false
 
-    local resizeHandle = CreateFrame("Button", nil, btn)
-    resizeHandle:SetSize(14, 14)
-    resizeHandle:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
-    resizeHandle:SetFrameLevel(btn:GetFrameLevel() + 4)
-    resizeHandle:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-    resizeHandle:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-    resizeHandle:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    resizeHandle:SetScript("OnMouseDown", function()
-        dragged = true
-        HideTable()
-        btn:StartSizing("BOTTOMRIGHT")
-    end)
-    resizeHandle:SetScript("OnMouseUp", function()
-        btn:StopMovingOrSizing()
-        local size = math.max(btn:GetWidth() or BUTTON_SIZE, btn:GetHeight() or BUTTON_SIZE)
-        SaveButtonSize(size)
-        ApplyButtonSize()
-        C_Timer.After(0.05, function() dragged = false end)
-    end)
-    S.resizeHandle = resizeHandle
-
     btn:SetScript("OnEnter", function(self)
         ApplyButtonVisibility(true)
         ShowHoverTooltip(self)
@@ -1421,7 +1361,6 @@ local function BuildButton()
     end
 
     S.button = btn
-    ApplyButtonSize()
     ApplyTheme()
     ApplyButtonVisibility(false)
     UpdateBadge()
