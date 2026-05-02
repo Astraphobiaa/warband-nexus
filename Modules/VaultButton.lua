@@ -1470,6 +1470,8 @@ local DIFF_INFO = {
 }
 local FALLBACK_DIFF = { short = "?", name = "Unknown", color = {0.4, 0.4, 0.4}, hex = "aaaaaa" }
 local DIFFICULTY_ORDER_DESC = { 16, 15, 14, 17 }  -- Mythic > Heroic > Normal > LFR
+-- Sort priority for the Saved Instances grid: LFR first, then N, H, M
+local DIFF_SORT_RANK = { [17] = 1, [14] = 2, [15] = 3, [16] = 4 }
 
 local function GetDiffInfo(difficulty)
     return DIFF_INFO[difficulty] or FALLBACK_DIFF
@@ -1529,8 +1531,10 @@ local function BuildSavedInstancesData()
         table.insert(list, g)
     end
     table.sort(list, function(a, b)
-        if a.instanceName ~= b.instanceName then return a.instanceName < b.instanceName end
-        return (a.difficulty or 0) > (b.difficulty or 0)
+        local ra = DIFF_SORT_RANK[a.difficulty] or 99
+        local rb = DIFF_SORT_RANK[b.difficulty] or 99
+        if ra ~= rb then return ra < rb end
+        return (a.instanceName or "") < (b.instanceName or "")
     end)
     return list
 end
@@ -1608,8 +1612,9 @@ local function BuildSavedInstancesFrame()
     -- Filter / search bar
     local filterRow = CreateFrame("Frame", nil, f)
     filterRow:SetHeight(SAVED_FILTER_H)
-    filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", FRAME_PAD, -(CHROME_H + 6))
-    filterRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -FRAME_PAD, -(CHROME_H + 6))
+    -- Match chrome's 2px window inset for visual symmetry
+    filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -(CHROME_H + 4))
+    filterRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -(CHROME_H + 4))
     if ApplyVisuals then
         ApplyVisuals(filterRow, {0.06, 0.06, 0.08, 1}, {accent[1], accent[2], accent[3], 0.4})
     end
@@ -1661,10 +1666,10 @@ local function BuildSavedInstancesFrame()
 
     -- Scroll body
     local scroll = CreateFrame("ScrollFrame", nil, f)
-    scroll:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", 0, -6)
-    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -FRAME_PAD, FRAME_PAD)
+    scroll:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", 0, -4)
+    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -2, 2)
     local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(SAVED_FRAME_W - FRAME_PAD * 2, 1)
+    content:SetSize(SAVED_FRAME_W - 4, 1)
     scroll:SetScrollChild(content)
 
     f:EnableMouseWheel(true)
@@ -2049,8 +2054,12 @@ local function BuildMenu()
         { label = "Saved Instances", icon = "Interface\\Icons\\INV_Misc_Bell_01", action = function()
             HideTable(); HideMenu(); ToggleSavedInstances()
         end },
-        { label = "Plans / Todo",    icon = "Interface\\Icons\\INV_Inscription_Scroll", action = function() OpenWNTab("plans") end },
-        { label = "Open Warband Nexus", icon = ICON_TEXTURE,                            action = function() OpenWNTab(nil) end },
+        { label = "Plans / Todo",    icon = "Interface\\Icons\\INV_Inscription_Scroll", action = function()
+            if WarbandNexus and WarbandNexus.TogglePlansTrackerWindow then
+                if InCombatLockdown and InCombatLockdown() then return end
+                WarbandNexus:TogglePlansTrackerWindow()
+            end
+        end },
         { label = "Settings",        icon = "Interface\\Icons\\Trade_Engineering",      action = function()
             HideMenu(); ToggleOptionsFrame(S.button, "RIGHT")
         end },
@@ -2216,13 +2225,26 @@ local function BuildButton()
 
     local dragged = false
 
-    btn:SetScript("OnEnter", function(self)
-        ApplyButtonVisibility(true)
-        ShowHoverTooltip(self)
-    end)
-    btn:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-        ApplyButtonVisibility(false)
+    -- Polled hover detection (OnEnter/OnLeave can flicker when alpha=0 with hideUntilMouseover,
+    -- and Blizzard mouse events don't always fire reliably for low-alpha frames). Throttled to
+    -- 100ms to keep cost trivial.
+    btn._hoverPoll = 0
+    btn._hovering  = false
+    btn:SetScript("OnUpdate", function(self, elapsed)
+        self._hoverPoll = (self._hoverPoll or 0) + elapsed
+        if self._hoverPoll < 0.1 then return end
+        self._hoverPoll = 0
+        local over = self:IsMouseOver() and self:IsVisible()
+        if over ~= self._hovering then
+            self._hovering = over
+            if over then
+                ApplyButtonVisibility(true)
+                ShowHoverTooltip(self)
+            else
+                if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+                ApplyButtonVisibility(false)
+            end
+        end
     end)
 
     btn:SetScript("OnDragStart", function(self)
