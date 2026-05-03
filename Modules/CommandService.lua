@@ -47,6 +47,9 @@ function CommandService:HandleSlashCommand(addon, input)
     if cmd == "help" then
         addon:Print("|cff00ccffWarband Nexus|r — " .. ((ns.L and ns.L["AVAILABLE_COMMANDS"]) or "Available commands:"))
         addon:Print("  |cff00ccff/wn|r — " .. ((ns.L and ns.L["CMD_OPEN"]) or "Open addon window"))
+        addon:Print("  |cff00ccff/wnvt|r — Toggle Vault Tracker window")
+        addon:Print("  |cff00ccff/wn vault|r — Toggle Vault Tracker window")
+        addon:Print("  |cff00ccff/wn saved|r — Toggle Saved Instances window")
         addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "Toggle To-Do Tracker window"))
         addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Open settings"))
         addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones to party chat")
@@ -90,7 +93,23 @@ function CommandService:HandleSlashCommand(addon, input)
     if cmd == "show" or cmd == "toggle" or cmd == "open" then
         addon:ShowMainWindow()
         return
-        
+
+    elseif cmd == "vault" or cmd == "vaulttracker" or cmd == "vt" then
+        if addon.ToggleVaultTrackerWindow then
+            addon:ToggleVaultTrackerWindow()
+        else
+            addon:Print("|cffff6600[WN]|r Vault Tracker is not available yet.")
+        end
+        return
+
+    elseif cmd == "saved" or cmd == "savedinstances" or cmd == "raids" then
+        if addon.ToggleSavedInstancesWindow then
+            addon:ToggleSavedInstancesWindow()
+        else
+            addon:Print("|cffff6600[WN]|r Saved Instances is not available yet.")
+        end
+        return
+
     elseif cmd == "todo" or cmd == "plans" or cmd == "plan" then
         if addon.TogglePlansTrackerWindow then
             addon:TogglePlansTrackerWindow()

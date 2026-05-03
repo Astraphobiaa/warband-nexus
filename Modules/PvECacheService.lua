@@ -181,6 +181,7 @@ local function BuildPvESignature(pveCache, charKey)
     local delveSig = tostring(delves and delves.season or 0)
         .. ":" .. ((delveChar and delveChar.bountifulComplete) and "1" or "0")
         .. ":" .. ((delveChar and delveChar.crackedKeystoneComplete) and "1" or "0")
+        .. ":" .. tostring(delveChar and delveChar.gildedStashes or -1)
         .. ":" .. tostring(delves and delves.companion and delves.companion.renownLevel or 0)
 
     return table.concat({
@@ -270,6 +271,21 @@ local function SafeIsQuestFlaggedCompleted(questID)
     if not ok or done == nil then return false end
     if issecretvalue and issecretvalue(done) then return false end
     return done == true
+end
+
+--- Read Gilded Stash weekly progress from the live UI widget (when available).
+local function GetGildedStashCounts()
+    local current, weeklyMax = -1, 4
+    if C_UIWidgetManager and C_UIWidgetManager.GetSpellDisplayVisualizationInfo then
+        local widget = C_UIWidgetManager.GetSpellDisplayVisualizationInfo(7591)
+        local tooltip = widget and widget.spellInfo and widget.spellInfo.tooltip
+        if tooltip then
+            local cur, max = tooltip:match("(%d+)%s*/%s*(%d+)")
+            if cur then current = tonumber(cur) or current end
+            if max then weeklyMax = tonumber(max) or weeklyMax end
+        end
+    end
+    return current, weeklyMax
 end
 
 -- ============================================================================
@@ -1155,6 +1171,9 @@ function WarbandNexus:UpdateDelvesData(charKey)
         
         -- Bountiful / Trovehunter weeklies — snapshot for this character when they are logged in (quest API is session-local).
         delves.characters[charKey].bountifulComplete = self.IsBountifulDelveWeeklyDone and self:IsBountifulDelveWeeklyDone() or false
+        local gildedStashes, gildedStashesMax = GetGildedStashCounts()
+        delves.characters[charKey].gildedStashes = gildedStashes
+        delves.characters[charKey].gildedStashesMax = gildedStashesMax
         local crackedID = Constants.PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID or 92600
         delves.characters[charKey].crackedKeystoneComplete = SafeIsQuestFlaggedCompleted(crackedID)
         delves.characters[charKey].lastUpdate = time()

@@ -141,7 +141,7 @@ function WarbandNexus:InitializeMinimapButton()
             if button == "LeftButton" then
                 addon:ToggleMainWindow()
             elseif button == "RightButton" then
-                addon:ShowMinimapMenu()
+                addon:ShowMinimapMenu(clickedframe)
             end
         end,
         
@@ -246,7 +246,7 @@ end
     Show right-click context menu
     Provides quick access to common actions
 ]]
-function WarbandNexus:ShowMinimapMenu()
+function WarbandNexus:ShowMinimapMenu(anchorFrame)
     -- Modern TWW 11.0+ menu system
     if MenuUtil and MenuUtil.CreateContextMenu then
         MenuUtil.CreateContextMenu(UIParent, function(ownerRegion, rootDescription)
@@ -309,9 +309,20 @@ function WarbandNexus:ShowMinimapMenu()
                 end
             end)
 
-            -- Vault Tracker (PvE tab in ready-only mode)
-            rootDescription:CreateButton((ns.L and ns.L["WEEKLY_VAULT_TRACKER"]) or "Weekly Vault Tracker", function()
-                OpenVaultTrackerView()
+            -- Vault Tracker (standalone window)
+            rootDescription:CreateButton((ns.L and ns.L["VAULT_BUTTON_MENU_TRACKER"]) or "Vault Tracker", function()
+                if self.ToggleVaultTrackerWindow then
+                    self:ToggleVaultTrackerWindow()
+                else
+                    OpenVaultTrackerView()
+                end
+            end)
+
+            -- Saved Instances (raid lockouts across the warband)
+            rootDescription:CreateButton((ns.L and ns.L["VAULT_BUTTON_MENU_SAVED"]) or "Saved Instances", function()
+                if self.ToggleSavedInstancesWindow then
+                    self:ToggleSavedInstancesWindow()
+                end
             end)
 
             rootDescription:CreateDivider()

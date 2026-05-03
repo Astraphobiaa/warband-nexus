@@ -2923,6 +2923,27 @@ function WarbandNexus:SetVaultButtonEnabled(enabled)
     self:RefreshVaultButtonSettings()
 end
 
+--- Public toggle for the Vault Tracker quick window (used by /wnvt and the
+--- minimap context menu).
+function WarbandNexus:ToggleVaultTrackerWindow()
+    if S.tableFrame and S.tableFrame:IsShown() then
+        if HideTable then HideTable() end
+        return
+    end
+    if RefreshTable then
+        RefreshTable()
+        if S.tableFrame and not S.tableFrame:GetPoint() then
+            S.tableFrame:ClearAllPoints()
+            S.tableFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
+    end
+end
+
+--- Public toggle for the Saved Instances window.
+function WarbandNexus:ToggleSavedInstancesWindow()
+    if ToggleSavedInstances then ToggleSavedInstances() end
+end
+
 local function HookThemeRefresh()
     if ns._vaultButtonThemeRefreshHooked or not ns.UI_RefreshColors then return end
     ns._vaultButtonThemeRefreshHooked = true
