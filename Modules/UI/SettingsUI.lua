@@ -1641,10 +1641,10 @@ local function BuildSettings(parent, containerWidth)
     yOffset = yOffset - moduleSection:GetHeight() - SECTION_SPACING
 
     --========================================================================
-    -- VAULT BUTTON
+    -- QUICK TRACKER
     --========================================================================
 
-    local vaultSection = CreateSection(parent, GetLocalizedText("CONFIG_VAULT_BUTTON_SECTION", "Vault Button"), effectiveWidth)
+    local vaultSection = CreateSection(parent, "Quick Tracker", effectiveWidth)
     vaultSection:SetPoint("TOPLEFT", 0, yOffset)
     vaultSection:SetPoint("TOPRIGHT", 0, yOffset)
 
@@ -1658,6 +1658,12 @@ local function BuildSettings(parent, containerWidth)
         if settings.showRewardItemLevel == nil then settings.showRewardItemLevel = false end
         if settings.showRewardProgress == nil then settings.showRewardProgress = false end
         if settings.showManaflux == nil then settings.showManaflux = false end
+        if settings.showSummaryOnMouseover == nil then settings.showSummaryOnMouseover = false end
+        if settings.leftClickAction == nil and settings.leftClickQuickView == true then settings.leftClickAction = "vault" end
+        if settings.leftClickAction ~= "pve" and settings.leftClickAction ~= "vault" and settings.leftClickAction ~= "saved" and settings.leftClickAction ~= "plans" then
+            settings.leftClickAction = "pve"
+        end
+        if settings.includeBountyOnly == nil then settings.includeBountyOnly = false end
         settings.columns = settings.columns or {}
         if settings.columns.raids == nil then settings.columns.raids = true end
         if settings.columns.mythicPlus == nil then settings.columns.mythicPlus = true end
@@ -1665,6 +1671,7 @@ local function BuildSettings(parent, containerWidth)
         if settings.columns.bounty == nil then settings.columns.bounty = true end
         if settings.columns.voidcore == nil then settings.columns.voidcore = true end
         if settings.columns.manaflux == nil then settings.columns.manaflux = settings.showManaflux == true end
+        if settings.columns.gildedStash == nil then settings.columns.gildedStash = false end
         settings.showManaflux = settings.columns.manaflux == true
         settings.opacity = tonumber(settings.opacity) or 1.0
         return settings
@@ -1676,11 +1683,25 @@ local function BuildSettings(parent, containerWidth)
         end
     end
 
+    local function IsLeftClickAction(action)
+        return GetVaultButtonSettings().leftClickAction == action
+    end
+
+    local function SetLeftClickAction(action, value)
+        local settings = GetVaultButtonSettings()
+        if value then
+            settings.leftClickAction = action
+        elseif settings.leftClickAction == action then
+            settings.leftClickAction = "pve"
+        end
+        RefreshVaultButton()
+    end
+
     local vaultOptions = {
         {
             key = "vaultButtonEnabled",
-            label = GetLocalizedText("CONFIG_VAULT_OPT_ENABLED", "Vault Button"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_OPT_ENABLED_DESC", "Show the draggable Great Vault status button."),
+            label = "Enable Quick Tracker",
+            tooltip = "Show the draggable Quick Tracker button.",
             get = function() return GetVaultButtonSettings().enabled ~= false end,
             set = function(value)
                 GetVaultButtonSettings().enabled = value
@@ -1689,8 +1710,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonMouseover",
-            label = GetLocalizedText("CONFIG_VAULT_OPT_MOUSEOVER", "Hide Until Mouseover"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_OPT_MOUSEOVER_DESC", "Keep the vault button invisible until the cursor is over its saved position."),
+            label = "Hide Until Mouseover",
+            tooltip = "Keep the Quick Tracker invisible until the cursor is over its saved position.",
             get = function() return GetVaultButtonSettings().hideUntilMouseover == true end,
             set = function(value)
                 GetVaultButtonSettings().hideUntilMouseover = value
@@ -1698,103 +1719,97 @@ local function BuildSettings(parent, containerWidth)
             end,
         },
         {
-            key = "vaultButtonReadyOnly",
-            label = GetLocalizedText("CONFIG_VAULT_OPT_READY_ONLY", "Hide Until Ready"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_OPT_READY_ONLY_DESC", "Only show the vault button when at least one character has a vault reward ready to claim."),
-            get = function() return GetVaultButtonSettings().hideUntilReady == true end,
+            key = "vaultButtonSummaryMouseover",
+            label = "Warband Summary Mouseover",
+            tooltip = "Show the warband's vault summary on mouseover. Turning this off shows the current character's only.",
+            get = function() return GetVaultButtonSettings().showSummaryOnMouseover == true end,
             set = function(value)
-                GetVaultButtonSettings().hideUntilReady = value
-                RefreshVaultButton()
-            end,
-        },
-        {
-            key = "vaultButtonShowRealm",
-            label = GetLocalizedText("CONFIG_VAULT_OPT_REALM", "Show Realm Names"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_OPT_REALM_DESC", "Show character realm names in vault button tables and tooltips."),
-            get = function() return GetVaultButtonSettings().showRealmName == true end,
-            set = function(value)
-                GetVaultButtonSettings().showRealmName = value
-                RefreshVaultButton()
-            end,
-        },
-        {
-            key = "vaultButtonRewardIlvl",
-            label = GetLocalizedText("CONFIG_VAULT_OPT_REWARD_ILVL", "Show Reward iLvl"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_OPT_REWARD_ILVL_DESC", "Show reward item levels in completed vault slots instead of ready-check icons."),
-            get = function() return GetVaultButtonSettings().showRewardItemLevel == true end,
-            set = function(value)
-                GetVaultButtonSettings().showRewardItemLevel = value
-                RefreshVaultButton()
-            end,
-        },
-        {
-            key = "vaultButtonRaidColumn",
-            label = GetLocalizedText("CONFIG_VAULT_COL_RAID", "Raid Column"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_COL_RAID_DESC", "Show raid vault progress in the vault button table."),
-            get = function() return GetVaultButtonSettings().columns.raids ~= false end,
-            set = function(value)
-                GetVaultButtonSettings().columns.raids = value
-                RefreshVaultButton()
-            end,
-        },
-        {
-            key = "vaultButtonDungeonColumn",
-            label = GetLocalizedText("CONFIG_VAULT_COL_DUNGEON", "Dungeon Column"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_COL_DUNGEON_DESC", "Show Mythic+ dungeon vault progress in the vault button table."),
-            get = function() return GetVaultButtonSettings().columns.mythicPlus ~= false end,
-            set = function(value)
-                GetVaultButtonSettings().columns.mythicPlus = value
-                RefreshVaultButton()
-            end,
-        },
-        {
-            key = "vaultButtonWorldColumn",
-            label = GetLocalizedText("CONFIG_VAULT_COL_WORLD", "World Column"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_COL_WORLD_DESC", "Show world activity vault progress in the vault button table."),
-            get = function() return GetVaultButtonSettings().columns.world ~= false end,
-            set = function(value)
-                GetVaultButtonSettings().columns.world = value
-                RefreshVaultButton()
-            end,
-        },
-        {
-            key = "vaultButtonBountyColumn",
-            label = GetLocalizedText("CONFIG_VAULT_COL_BOUNTY", "Trovehunter's Bounty Column"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_COL_BOUNTY_DESC", "Show Trovehunter's Bounty completion in the vault button table."),
-            get = function() return GetVaultButtonSettings().columns.bounty ~= false end,
-            set = function(value)
-                GetVaultButtonSettings().columns.bounty = value
-                RefreshVaultButton()
-            end,
-        },
-        {
-            key = "vaultButtonVoidcoreColumn",
-            label = GetLocalizedText("CONFIG_VAULT_COL_VOIDCORE", "Nebulous Voidcore Column"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_COL_VOIDCORE_DESC", "Show Nebulous Voidcore progress in the vault button table."),
-            get = function() return GetVaultButtonSettings().columns.voidcore ~= false end,
-            set = function(value)
-                GetVaultButtonSettings().columns.voidcore = value
-                RefreshVaultButton()
-            end,
-        },
-        {
-            key = "vaultButtonManafluxColumn",
-            label = GetLocalizedText("CONFIG_VAULT_COL_MANAFLUX", "Dawnlight Manaflux Column"),
-            tooltip = GetLocalizedText("CONFIG_VAULT_COL_MANAFLUX_DESC", "Show Dawnlight Manaflux currency in the vault button table."),
-            get = function() return GetVaultButtonSettings().columns.manaflux == true end,
-            set = function(value)
-                GetVaultButtonSettings().columns.manaflux = value
-                GetVaultButtonSettings().showManaflux = value
+                GetVaultButtonSettings().showSummaryOnMouseover = value
                 RefreshVaultButton()
             end,
         },
     }
 
-    local vaultYOffset = CreateCheckboxGrid(vaultSection.content, vaultOptions, 0, effectiveWidth - 30)
-    vaultYOffset = vaultYOffset - 12
+    local vaultYOffset, vaultWidgets = CreateCheckboxGrid(vaultSection.content, vaultOptions, 0, effectiveWidth - 30)
+
+    local leftClickLabel = FontManager:CreateFontString(vaultSection.content, "subtitle", "OVERLAY")
+    leftClickLabel:SetPoint("TOPLEFT", 0, vaultYOffset - 5)
+    leftClickLabel:SetText("Left Click")
+    leftClickLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    table.insert(subtitleElements, leftClickLabel)
+
+    local leftClickOptions = {
+        {
+            key = "vaultButtonLeftClickPve",
+            label = "Left Click: PvE Tab",
+            tooltip = "Left clicking the quick tracker opens the PvE tab.",
+            get = function() return IsLeftClickAction("pve") end,
+            set = function(value) SetLeftClickAction("pve", value) end,
+        },
+        {
+            key = "vaultButtonLeftClickVault",
+            label = "Left Click: Vault Tracker",
+            tooltip = "Left clicking the quick tracker opens the Vault Tracker window.",
+            get = function() return IsLeftClickAction("vault") end,
+            set = function(value) SetLeftClickAction("vault", value) end,
+        },
+        {
+            key = "vaultButtonLeftClickSaved",
+            label = "Left Click: Saved Instances",
+            tooltip = "Left clicking the quick tracker opens the Saved Instances mini window.",
+            get = function() return IsLeftClickAction("saved") end,
+            set = function(value) SetLeftClickAction("saved", value) end,
+        },
+        {
+            key = "vaultButtonLeftClickPlans",
+            label = "Left Click: Plans/Todo",
+            tooltip = "Left clicking the quick tracker opens the Plans/ToDo mini window.",
+            get = function() return IsLeftClickAction("plans") end,
+            set = function(value) SetLeftClickAction("plans", value) end,
+        },
+    }
+
+    vaultYOffset = vaultYOffset - 30
+    local leftClickYOffset, leftClickWidgets = CreateCheckboxGrid(vaultSection.content, leftClickOptions, vaultYOffset, effectiveWidth - 30)
+    local function SyncLeftClickWidgets()
+        if not leftClickWidgets then return end
+        local keys = {
+            pve = "vaultButtonLeftClickPve",
+            vault = "vaultButtonLeftClickVault",
+            saved = "vaultButtonLeftClickSaved",
+            plans = "vaultButtonLeftClickPlans",
+        }
+        for action, key in pairs(keys) do
+            local widget = leftClickWidgets[key]
+            if widget and widget.checkbox then
+                local checked = IsLeftClickAction(action)
+                widget.checkbox:SetChecked(checked)
+                if widget.checkbox.checkTexture then
+                    widget.checkbox.checkTexture:SetShown(checked)
+                end
+            end
+        end
+    end
+    local leftClickScripts = {
+        vaultButtonLeftClickPve = "pve",
+        vaultButtonLeftClickVault = "vault",
+        vaultButtonLeftClickSaved = "saved",
+        vaultButtonLeftClickPlans = "plans",
+    }
+    for key, action in pairs(leftClickScripts) do
+        local widget = leftClickWidgets and leftClickWidgets[key]
+        if widget and widget.checkbox then
+            widget.checkbox:SetScript("OnClick", function(self)
+                SetLeftClickAction(action, self:GetChecked())
+                SyncLeftClickWidgets()
+            end)
+        end
+    end
+
+    vaultYOffset = leftClickYOffset - 12
     vaultYOffset = CreateSliderWidget(vaultSection.content, {
-        name = GetLocalizedText("CONFIG_VAULT_BUTTON_OPACITY", "Button Opacity"),
-        desc = GetLocalizedText("CONFIG_VAULT_BUTTON_OPACITY_DESC", "Adjust the vault button opacity when it is visible."),
+        name = "Button Opacity",
+        desc = "Adjust the Quick Tracker button opacity when it is visible.",
         min = 0.2,
         max = 1.0,
         step = 0.05,

@@ -35,6 +35,7 @@ local COL_PROGRESS  = 86
 local COL_BOUNTY    = 46   -- Trovehunter's Bounty (done/not)
 local COL_VOIDCORE  = 58   -- Nebulous Voidcore (current/seasonMax)
 local COL_MANAFLUX  = 58   -- Dawnlight Manaflux (current held)
+local COL_STASH     = 58   -- Gilded Stashes (current/max)
 local COL_STATUS    = 110
 
 local TRACK_ICONS = {
@@ -44,6 +45,7 @@ local TRACK_ICONS = {
     bounty     = 1064187,
     voidcore   = 7658128,
     manaflux   = "Interface\\Icons\\INV_Enchant_DustArcane",
+    gildedStash = "Interface\\Icons\\Inv_cape_special_treasure_c_01",
 }
 
 local CHECK  = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
@@ -126,6 +128,9 @@ local function GetSettings()
             showRewardItemLevel = false,
             showRewardProgress = false,
             showManaflux = false,
+            showSummaryOnMouseover = false,
+            leftClickAction = "pve",
+            includeBountyOnly = false,
             opacity = 1.0,
             position = { point = "CENTER", relativePoint = "CENTER", x = 600, y = 0 },
         }
@@ -141,6 +146,12 @@ local function GetSettings()
     if settings.showRewardItemLevel == nil then settings.showRewardItemLevel = false end
     if settings.showRewardProgress == nil then settings.showRewardProgress = false end
     if settings.showManaflux == nil then settings.showManaflux = false end
+    if settings.showSummaryOnMouseover == nil then settings.showSummaryOnMouseover = false end
+    if settings.leftClickAction == nil and settings.leftClickQuickView == true then settings.leftClickAction = "vault" end
+    if settings.leftClickAction ~= "pve" and settings.leftClickAction ~= "vault" and settings.leftClickAction ~= "saved" and settings.leftClickAction ~= "plans" then
+        settings.leftClickAction = "pve"
+    end
+    if settings.includeBountyOnly == nil then settings.includeBountyOnly = false end
     settings.columns = settings.columns or {}
     if settings.columns.raids == nil then settings.columns.raids = true end
     if settings.columns.mythicPlus == nil then settings.columns.mythicPlus = true end
@@ -148,6 +159,7 @@ local function GetSettings()
     if settings.columns.bounty == nil then settings.columns.bounty = true end
     if settings.columns.voidcore == nil then settings.columns.voidcore = true end
     if settings.columns.manaflux == nil then settings.columns.manaflux = settings.showManaflux == true end
+    if settings.columns.gildedStash == nil then settings.columns.gildedStash = false end
     settings.showManaflux = settings.columns.manaflux == true
     settings.opacity = tonumber(settings.opacity) or 1.0
     if settings.opacity < 0.2 then settings.opacity = 0.2 end
@@ -194,6 +206,7 @@ local function GetTableWidth()
     if columns.bounty ~= false then optionalWidth = optionalWidth + COL_BOUNTY end
     if columns.voidcore ~= false then optionalWidth = optionalWidth + COL_VOIDCORE end
     if columns.manaflux == true then optionalWidth = optionalWidth + COL_MANAFLUX end
+    if columns.gildedStash == true then optionalWidth = optionalWidth + COL_STASH end
     return FRAME_PAD*2 + COL_NAME + COL_ILVL + categoryWidth + optionalWidth + COL_STATUS + 10
 end
 
@@ -340,6 +353,21 @@ local function GetBountyStatus(charKey)
     return delveChar.bountifulComplete
 end
 
+local function GetGildedStashData(charKey)
+    local pveCache = GetPveCache()
+    if not pveCache then return nil end
+    local delveChar = pveCache.delves and pveCache.delves.characters
+        and pveCache.delves.characters[charKey]
+    if not delveChar then return nil end
+    local current = tonumber(delveChar.gildedStashes)
+    if current == nil then return nil end
+    return {
+        current = current,
+        max = tonumber(delveChar.gildedStashesMax) or 4,
+        unknown = current < 0,
+    }
+end
+
 --- Get Nebulous Voidcore data for a character { current, seasonMax }
 --- Uses WarbandNexus:GetCurrencyData which reads from CurrencyCacheService.
 --- - quantity    = how many you currently hold (unspent)
@@ -418,6 +446,29 @@ end
 
 local function OpenWNPveTab() OpenWNTab("pve") end
 
+local function ToggleWNPveTab()
+    if InCombatLockdown and InCombatLockdown() then
+        if DEFAULT_CHAT_FRAME then
+            DEFAULT_CHAT_FRAME:AddMessage("|cffff4040Warband Nexus:|r main window is locked during combat.")
+        end
+        return
+    end
+    local mf = WarbandNexus and WarbandNexus.mainFrame
+    if mf and mf:IsShown() and mf.currentTab == "pve" then
+        mf:Hide()
+        return
+    end
+    OpenWNPveTab()
+end
+
+local function OpenWNSettingsTab()
+    if WarbandNexus and WarbandNexus.OpenOptions then
+        WarbandNexus:OpenOptions()
+    else
+        OpenWNTab("settings")
+    end
+end
+
 local WORLD_REWARD_QUALITY_BY_ILVL = {
     [233] = 3, [237] = 3, [240] = 3, [243] = 3,
     [246] = 4, [250] = 4, [253] = 4,
@@ -480,6 +531,7 @@ local function BuildCharList()
     if not pveCache or not characters then return {} end
     local rewards    = pveCache.greatVault and pveCache.greatVault.rewards
     local currentKey = GetCurrentCharKey()
+    local settings   = GetSettings()
     local result     = {}
     -- For the logged-in char, prefer live HasAvailableRewards() so post-reset carry-over
     -- chests flip the Ready badge immediately (matches the Great Vault\226\128\153s own prompt).
@@ -499,7 +551,8 @@ local function BuildCharList()
             isReady = true
         end
         local isPending  = not isReady and HasAnyProgress(charKey)
-        if isReady or isPending then
+        local bounty = GetBountyStatus(charKey)
+        if isReady or isPending or (settings.includeBountyOnly and bounty == true) then
             table.insert(result, {
                 charKey   = charKey,
                 name      = charData.name or charKey,
@@ -509,9 +562,10 @@ local function BuildCharList()
                 isReady   = isReady,
                 isPending = isPending,
                 isCurrent = (charKey == currentKey),
-                bounty    = GetBountyStatus(charKey),
+                bounty    = bounty,
                 voidcore  = GetVoidcoreData(charKey),
                 manaflux  = GetManafluxData(charKey),
+                gildedStash = GetGildedStashData(charKey),
                 slots     = CountReadySlots(charKey),
             })
         end
@@ -849,6 +903,9 @@ local function BuildTableFrame()
     if columns.bounty ~= false then
         HCell(nil,      hx, COL_BOUNTY,  true,  TRACK_ICONS.bounty, "Trovehunter's Bounty", nil, "item", BOUNTY_ITEM_ID) ; hx = hx + COL_BOUNTY
     end
+    if columns.gildedStash == true then
+        HCell(nil,      hx, COL_STASH,   true,  TRACK_ICONS.gildedStash, "Gilded Stashes", "Weekly gilded stashes claimed.") ; hx = hx + COL_STASH
+    end
     if columns.voidcore ~= false then
         HCell(nil,      hx, COL_VOIDCORE,true,  TRACK_ICONS.voidcore, "Nebulous Voidcore", nil, "currency", VOIDCORE_ID) ; hx = hx + COL_VOIDCORE
     end
@@ -999,6 +1056,24 @@ RefreshTable = function()
             x = x + COL_BOUNTY
         end
 
+        if columns.gildedStash == true then
+            local stashFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            stashFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
+            stashFS:SetSize(COL_STASH, ROW_H)
+            stashFS:SetJustifyH("CENTER")
+            stashFS:SetJustifyV("MIDDLE")
+            local stash = e.gildedStash
+            if not stash then
+                stashFS:SetText(DASH)
+            elseif stash.unknown then
+                stashFS:SetText("|cffaaaaaa?/|r|cffd4af37" .. (stash.max or 4) .. "|r")
+            else
+                local color = (stash.current or 0) >= (stash.max or 4) and "|cff44ff44" or "|cffd4af37"
+                stashFS:SetText(color .. (stash.current or 0) .. "|r|cffaaaaaa/|r|cffd4af37" .. (stash.max or 4) .. "|r")
+            end
+            x = x + COL_STASH
+        end
+
         -- Nebulous Voidcore (current / seasonMax)
         local vc = e.voidcore
         if columns.voidcore ~= false then
@@ -1085,6 +1160,18 @@ RefreshTable = function()
                     right = bountyLabel,
                     leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
                 }
+            end
+            if columns.gildedStash == true then
+                local stash = e.gildedStash
+                if stash then
+                    local stashLabel = stash.unknown and ("|cffaaaaaa?/" .. (stash.max or 4) .. "|r")
+                        or ("|cffd4af37" .. (stash.current or 0) .. "/" .. (stash.max or 4) .. " claimed|r")
+                    lines[#lines + 1] = {
+                        left = "|T" .. TRACK_ICONS.gildedStash .. ":14:14:0:0|t Gilded Stashes",
+                        right = stashLabel,
+                        leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
+                    }
+                end
             end
             if columns.voidcore ~= false and e.voidcore then
                 local vc2 = e.voidcore
@@ -1173,6 +1260,21 @@ local function ToggleTable()
     end
 end
 
+local function ShowQuickView(anchor)
+    HideAllPanels()
+    RefreshTable()
+    if S.tableFrame and (anchor or S.button) then
+        anchor = anchor or S.button
+        S.tableFrame:ClearAllPoints()
+        local saved = GetSavedTablePos()
+        if saved and saved.x and saved.y then
+            S.tableFrame:SetPoint(saved.point or "CENTER", UIParent, saved.relativePoint or "CENTER", saved.x, saved.y)
+        else
+            S.tableFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -6)
+        end
+    end
+end
+
 -- ============================================================================
 -- Badge
 -- ============================================================================
@@ -1233,6 +1335,37 @@ end
 -- Hover tooltip (current character only)
 -- ============================================================================
 local function ShowHoverTooltip(anchor)
+    if GetSettings().showSummaryOnMouseover then
+        local list = BuildCharList()
+        local readyN, pendingN = 0, 0
+        local lines = {}
+        if #list == 0 then
+            lines[#lines + 1] = { text = "No vault activity this week.", color = {0.5, 0.5, 0.5} }
+        else
+            for _, e in ipairs(list) do
+                local bountyOnly = GetSettings().includeBountyOnly == true and e.bounty == true and (e.slots or 0) == 0 and not e.isReady
+                if e.isReady then readyN = readyN + 1 elseif not bountyOnly then pendingN = pendingN + 1 end
+                local status = e.isReady and "|cff33dd33[Ready]|r" or (bountyOnly and "|cff33dd33[Bounty Only]|r" or "|cffffff00[Pending]|r")
+                local slotStr = e.slots > 0
+                    and (" |cffaaaaaa("..e.slots.." slot"..(e.slots==1 and "" or "s")..")|r")
+                    or ""
+                lines[#lines + 1] = { left = FormatCharacterName(e), right = status..slotStr, leftColor = {1,1,1}, rightColor = {1,1,1} }
+            end
+            lines[#lines + 1] = { text = " " }
+            if readyN   > 0 then lines[#lines + 1] = { text = readyN .. " ready to claim", color = {0.2, 1.0, 0.3} } end
+            if pendingN > 0 then lines[#lines + 1] = { text = pendingN .. " in progress / tracked", color = {1.0, 1.0, 0.2} } end
+        end
+        lines[#lines + 1] = { text = " " }
+        lines[#lines + 1] = { text = "|cff888888[Left-click] Action  [Right-click] Menu  [Drag] Move|r" }
+        WNTooltipShow(anchor, {
+            type = "custom",
+            title = "Warband Nexus Vault Tracker",
+            icon = ICON_TEXTURE,
+            lines = lines,
+            anchor = "ANCHOR_RIGHT",
+        })
+        return
+    end
     local readyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
     local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
 
@@ -1287,6 +1420,16 @@ local function ShowHoverTooltip(anchor)
             }
         end
 
+        local currentColumns = GetSettings().columns or {}
+        if currentColumns.gildedStash == true then
+            local stash = GetGildedStashData(charKey)
+            if stash then
+                local stashLabel = stash.unknown and ("|cffaaaaaa?/" .. (stash.max or 4) .. "|r")
+                    or ("|cffd4af37" .. (stash.current or 0) .. "/" .. (stash.max or 4) .. " claimed|r")
+                GameTooltip:AddDoubleLine("|T" .. TRACK_ICONS.gildedStash .. ":14:14:0:0|t |cffaaaaaaGilded Stashes|r", stashLabel, 0.7,0.7,0.7, 1,1,1)
+            end
+        end
+
         local vc = GetVoidcoreData(charKey)
         if vc then
             local sm = vc.seasonMax or 0
@@ -1332,7 +1475,7 @@ local function ShowHoverTooltip(anchor)
     end
 
     lines[#lines + 1] = { text = " " }
-    lines[#lines + 1] = { text = "|cff888888[Left-click] Toggle Window  [Right-click] Menu  [Drag] Move|r" }
+    lines[#lines + 1] = { text = "|cff888888[Left-click] Action  [Right-click] Menu  [Drag] Move|r" }
 
     WNTooltipShow(anchor, {
         type = "custom",
@@ -1346,7 +1489,7 @@ end
 -- ============================================================================
 -- Main button
 -- ============================================================================
-local function CreateMenuCheckbox(parent, labelText, y, getValue, setValue)
+local function CreateMenuCheckbox(parent, labelText, y, getValue, setValue, tooltipText)
     local cb
     if ns.UI_CreateThemedCheckbox then
         cb = ns.UI_CreateThemedCheckbox(parent, getValue() == true)
@@ -1368,6 +1511,21 @@ local function CreateMenuCheckbox(parent, labelText, y, getValue, setValue)
     label:SetText(labelText)
     label:SetTextColor(1, 1, 1, 1)
     label:SetJustifyH("LEFT")
+
+    if tooltipText and tooltipText ~= "" then
+        local function ShowTooltip(owner)
+            GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine(labelText, 1, 1, 1)
+            GameTooltip:AddLine(tooltipText, 0.85, 0.85, 0.85, true)
+            GameTooltip:Show()
+        end
+        cb:SetScript("OnEnter", ShowTooltip)
+        cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        label:EnableMouse(true)
+        label:SetScript("OnEnter", ShowTooltip)
+        label:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
 
     -- ThemedCheckbox already has OnClick that toggles innerDot; chain our handler
     local prevOnClick = cb:GetScript("OnClick")
@@ -1396,7 +1554,7 @@ local function BuildOptionsFrame()
 
     local f = CreateFrame("Frame", "WarbandNexusVaultButtonOptions", UIParent, "BackdropTemplate")
     AddEscCloseFrame("WarbandNexusVaultButtonOptions")
-    f:SetSize(286, 460)
+    f:SetSize(286, 372)
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(210)
     f:SetClampedToScreen(true)
@@ -1437,7 +1595,7 @@ local function BuildOptionsFrame()
         title = VBFontString(chrome, "body")
     end
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
-    title:SetText("Vault Button")
+    title:SetText("Vault Tracker")
     title:SetTextColor(1, 1, 1)
     f.title = title
 
@@ -1462,131 +1620,81 @@ local function BuildOptionsFrame()
         if ApplyVisuals then ApplyVisuals(close, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8}) end
     end)
 
-    CreateMenuCheckbox(f, "Enable Button", -52,
-        function() return GetSettings().enabled ~= false end,
-        function(value) GetSettings().enabled = value end)
-    CreateMenuCheckbox(f, "Hide Until Mouseover", -78,
-        function() return GetSettings().hideUntilMouseover == true end,
-        function(value) GetSettings().hideUntilMouseover = value end)
-    CreateMenuCheckbox(f, "Hide Until Ready", -104,
-        function() return GetSettings().hideUntilReady == true end,
-        function(value) GetSettings().hideUntilReady = value end)
-    CreateMenuCheckbox(f, "Show Realm Names", -130,
+    CreateMenuCheckbox(f, "Show Realm Names", -52,
         function() return GetSettings().showRealmName == true end,
         function(value)
             GetSettings().showRealmName = value
             if S.tableFrame and S.tableFrame:IsShown() then RefreshTable() end
         end)
-    CreateMenuCheckbox(f, "Show Reward iLvl", -156,
+    CreateMenuCheckbox(f, "Show Reward iLvl", -78,
         function() return GetSettings().showRewardItemLevel == true end,
         function(value)
             GetSettings().showRewardItemLevel = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Show Reward Progress", -182,
+    CreateMenuCheckbox(f, "Show Reward Progress", -104,
         function() return GetSettings().showRewardProgress == true end,
         function(value)
             GetSettings().showRewardProgress = value
             RebuildTableFrame()
-        end)
-    CreateMenuCheckbox(f, "Include Delver's Bounty", -208,
+        end,
+        "Show current progress toward the next vault reward threshold.")
+    CreateMenuCheckbox(f, "Include Delver's Bounty", -130,
         function() return GetSettings().includeBountyOnly == true end,
         function(value)
             GetSettings().includeBountyOnly = value
             RebuildTableFrame()
-        end)
-
+        end,
+        "Also show characters that have only looted a Delver's Bounty.")
     local columnLabel = VBFontString(f, "small")
-    columnLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -240)
+    columnLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -168)
     columnLabel:SetText("Columns")
     columnLabel:SetTextColor(accent[1], accent[2], accent[3], 1)
     f.columnLabel = columnLabel
 
-    CreateMenuCheckbox(f, "Raid", -260,
+    CreateMenuCheckbox(f, "Raid", -188,
         function() return GetSettings().columns.raids ~= false end,
         function(value)
             GetSettings().columns.raids = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Dungeon", -286,
+    CreateMenuCheckbox(f, "Dungeon", -214,
         function() return GetSettings().columns.mythicPlus ~= false end,
         function(value)
             GetSettings().columns.mythicPlus = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "World", -312,
+    CreateMenuCheckbox(f, "World", -240,
         function() return GetSettings().columns.world ~= false end,
         function(value)
             GetSettings().columns.world = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Trovehunter's Bounty", -338,
+    CreateMenuCheckbox(f, "Trovehunter's Bounty", -266,
         function() return GetSettings().columns.bounty ~= false end,
         function(value)
             GetSettings().columns.bounty = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Gilded Stashes", -364,
+    CreateMenuCheckbox(f, "Gilded Stashes", -292,
         function() return GetSettings().columns.gildedStash == true end,
         function(value)
             GetSettings().columns.gildedStash = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Nebulous Voidcore", -390,
+    CreateMenuCheckbox(f, "Nebulous Voidcore", -318,
         function() return GetSettings().columns.voidcore ~= false end,
         function(value)
             GetSettings().columns.voidcore = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Dawnlight Manaflux", -416,
+    CreateMenuCheckbox(f, "Dawnlight Manaflux", -344,
         function() return GetSettings().columns.manaflux == true end,
         function(value)
             GetSettings().columns.manaflux = value
             GetSettings().showManaflux = value
             RebuildTableFrame()
         end)
-
-    local opacityLabel = VBFontString(f, "small")
-    opacityLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -380)
-    opacityLabel:SetTextColor(1, 1, 1, 1)
-
-    local slider = CreateFrame("Slider", nil, f, "BackdropTemplate")
-    slider:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -410)
-    slider:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -410)
-    slider:SetHeight(16)
-    slider:SetOrientation("HORIZONTAL")
-    slider:SetMinMaxValues(0.2, 1.0)
-    slider:SetValueStep(0.05)
-    if slider.SetObeyStepOnDrag then
-        slider:SetObeyStepOnDrag(true)
-    end
-    slider:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
-        insets = {left = 0, right = 0, top = 0, bottom = 0},
-    })
-    slider:SetBackdropColor(0.10, 0.10, 0.12, 1)
-    slider:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.7)
-
-    local thumb = slider:CreateTexture(nil, "OVERLAY")
-    thumb:SetSize(12, 18)
-    thumb:SetColorTexture(accent[1], accent[2], accent[3], 1)
-    slider:SetThumbTexture(thumb)
-    f.opacitySlider = slider
-
-    local function UpdateOpacityLabel(value)
-        opacityLabel:SetText(string.format("Opacity: %d%%", math.floor((value or GetSettings().opacity or 1) * 100 + 0.5)))
-    end
-    slider:SetValue(GetSettings().opacity or 1.0)
-    UpdateOpacityLabel(slider:GetValue())
-    slider:SetScript("OnValueChanged", function(_, value)
-        if S.refreshingOptions then return end
-        value = math.floor(value * 20 + 0.5) / 20
-        GetSettings().opacity = value
-        UpdateOpacityLabel(value)
-        RefreshButtonSettings()
-    end)
     f.RefreshValues = function()
         S.refreshingOptions = true
         for _, widget in ipairs(S.optionsWidgets) do
@@ -1594,8 +1702,6 @@ local function BuildOptionsFrame()
                 widget:RefreshValue()
             end
         end
-        slider:SetValue(GetSettings().opacity or 1.0)
-        UpdateOpacityLabel(slider:GetValue())
         S.refreshingOptions = false
     end
 
@@ -2665,6 +2771,7 @@ local function CreateMenuItem(parent, opts, y)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(parent:GetWidth() - 8, 30)
     btn:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, y)
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
     local hl = btn:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
@@ -2690,7 +2797,32 @@ local function CreateMenuItem(parent, opts, y)
     label:SetText(opts.label)
     label:SetTextColor(1, 1, 1)
 
-    btn:SetScript("OnClick", function()
+    local star = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    star:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+    star:SetText("|cffffd700*|r")
+    star:Hide()
+    btn.selectionStar = star
+    btn.leftClickAction = opts.leftClickAction
+
+    btn.RefreshSelection = function(self)
+        local selected = self.leftClickAction and GetSettings().leftClickAction == self.leftClickAction
+        if self.selectionStar then
+            self.selectionStar:SetShown(selected == true)
+        end
+    end
+    btn:RefreshSelection()
+
+    btn:SetScript("OnClick", function(self, mouseButton)
+        if mouseButton == "RightButton" and self.leftClickAction then
+            GetSettings().leftClickAction = self.leftClickAction
+            if S.menuFrame then
+                S.menuFrame.leftClickAction = self.leftClickAction
+                for _, row in ipairs(S.menuFrame.menuItems or {}) do
+                    if row.RefreshSelection then row:RefreshSelection() end
+                end
+            end
+            return
+        end
         HideMenu()
         if opts.action then opts.action() end
     end)
@@ -2705,30 +2837,27 @@ local function BuildMenu()
     local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
 
     local items = {
-        { label = "Vault Tracker", icon = "Interface\\Icons\\INV_Misc_Bag_EnchantedRunecloth", action = function()
+        { label = "PvE Tab", leftClickAction = "pve", icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold", action = function()
             HideAllPanels()
-            RefreshTable()
-            if S.tableFrame and S.button then
-                S.tableFrame:ClearAllPoints()
-                local saved = GetSavedTablePos()
-                if saved and saved.x and saved.y then
-                    S.tableFrame:SetPoint(saved.point or "CENTER", UIParent, saved.relativePoint or "CENTER", saved.x, saved.y)
-                else
-                    S.tableFrame:SetPoint("TOPLEFT", S.button, "BOTTOMLEFT", 0, -6)
-                end
-            end
+            ToggleWNPveTab()
         end },
-        { label = "Saved Instances", icon = "Interface\\Icons\\INV_Misc_Bell_01", action = function()
+        { label = "Vault Tracker",
+          leftClickAction = "vault",
+          icon = "Interface\\Icons\\INV_Misc_Bag_EnchantedRunecloth",
+          action = function()
+            ShowQuickView(S.button)
+        end },
+        { label = "Saved Instances", leftClickAction = "saved", icon = "Interface\\Icons\\INV_Misc_Bell_01", action = function()
             HideTable(); HideMenu(); ToggleSavedInstances()
         end },
-        { label = "Plans / Todo",    icon = "Interface\\Icons\\INV_Inscription_Scroll", action = function()
+        { label = "Plans / Todo",    leftClickAction = "plans", icon = "Interface\\Icons\\INV_Inscription_Scroll", action = function()
             if WarbandNexus and WarbandNexus.TogglePlansTrackerWindow then
                 if InCombatLockdown and InCombatLockdown() then return end
                 WarbandNexus:TogglePlansTrackerWindow()
             end
         end },
         { label = "Settings",        icon = "Interface\\Icons\\Trade_Engineering",      action = function()
-            HideMenu(); ToggleOptionsFrame(S.button, "RIGHT")
+            HideMenu(); OpenWNSettingsTab()
         end },
     }
 
@@ -2749,6 +2878,7 @@ local function BuildMenu()
         ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
     end
     f:Hide()
+    f.leftClickAction = GetSettings().leftClickAction
 
     -- Header bar (matches main chrome style)
     local header = CreateFrame("Frame", nil, f)
@@ -2758,6 +2888,18 @@ local function BuildMenu()
     if ApplyVisuals then
         ApplyVisuals(header, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
     end
+    header:EnableMouse(true)
+    header:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:ClearLines()
+        GameTooltip:AddLine("Quick Tracker", 1, 1, 1)
+        GameTooltip:AddLine("The star marks the current left-click action.", 0.85, 0.85, 0.85, true)
+        GameTooltip:AddLine("Right-click a menu option to set it as the left-click action.", 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    header:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
 
     local headerIcon = header:CreateTexture(nil, "ARTWORK")
     headerIcon:SetSize(16, 16)
@@ -2774,12 +2916,14 @@ local function BuildMenu()
         titleFS = VBFontString(header, "small")
     end
     titleFS:SetPoint("LEFT", headerIcon, "RIGHT", 6, 0)
-    titleFS:SetText("WN Menu")
+    titleFS:SetText("Quick Tracker")
     titleFS:SetTextColor(1, 1, 1)
 
     local y = -(headerH + 4)
+    f.menuItems = {}
     for _, opt in ipairs(items) do
-        CreateMenuItem(f, opt, y)
+        local row = CreateMenuItem(f, opt, y)
+        table.insert(f.menuItems, row)
         y = y - (rowH + 2)
     end
 
@@ -2796,6 +2940,11 @@ local function BuildMenu()
 end
 
 ToggleMenu = function(anchor)
+    local leftClickAction = GetSettings().leftClickAction
+    if S.menuFrame and S.menuFrame.leftClickAction ~= leftClickAction then
+        S.menuFrame:Hide()
+        S.menuFrame = nil
+    end
     BuildMenu()
     if not S.menuFrame then return end
     if S.menuFrame:IsShown() then
@@ -2843,12 +2992,45 @@ ToggleMenu = function(anchor)
     if S.menuCatcher then S.menuCatcher:Show() end
 end
 
+function WarbandNexus:OpenVaultButtonQuickMenu(anchor)
+    ToggleMenu(anchor or S.button)
+end
+
+local function RunLeftClickAction(anchor)
+    local action = GetSettings().leftClickAction
+    if action == "vault" then
+        if S.tableFrame and S.tableFrame:IsShown() then
+            HideTable()
+        else
+            ShowQuickView(anchor or S.button)
+        end
+    elseif action == "saved" then
+        HideTable()
+        HideMenu()
+        ToggleSavedInstances()
+    elseif action == "plans" then
+        HideTable()
+        HideMenu()
+        if WarbandNexus and WarbandNexus.TogglePlansTrackerWindow then
+            if InCombatLockdown and InCombatLockdown() then return end
+            WarbandNexus:TogglePlansTrackerWindow()
+        end
+    elseif action == "pve" or not action then
+        HideAllPanels()
+        ToggleWNPveTab()
+    end
+end
+
 RefreshButtonSettings = function()
     local tableWasShown = S.tableFrame and S.tableFrame:IsShown()
     if S.optionsFrame then
         if S.optionsFrame.RefreshValues then
             S.optionsFrame:RefreshValues()
         end
+    end
+    if S.menuFrame then
+        S.menuFrame:Hide()
+        S.menuFrame = nil
     end
     ApplyTheme()
     ApplyButtonVisibility(false)
@@ -2961,7 +3143,7 @@ local function BuildButton()
             ToggleMenu(self)
         else
             HideMenu()
-            ToggleMainWindow()
+            RunLeftClickAction(self)
         end
     end)
 
