@@ -46,6 +46,7 @@ function CommandService:HandleSlashCommand(addon, input)
     -- Help command
     if cmd == "help" then
         addon:Print("|cff00ccffWarband Nexus|r — " .. ((ns.L and ns.L["AVAILABLE_COMMANDS"]) or "Available commands:"))
+        addon:Print("  |cff00ccff/wnvt|r — Toggle Vault Tracker window")
         addon:Print("  |cff00ccff/wn|r — " .. ((ns.L and ns.L["CMD_OPEN"]) or "Open addon window"))
         addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "Toggle To-Do Tracker window"))
         addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Open settings"))
@@ -91,6 +92,14 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:ShowMainWindow()
         return
         
+    elseif cmd == "vault" or cmd == "vaulttracker" or cmd == "vt" then
+        if addon.ToggleVaultTrackerWindow then
+            addon:ToggleVaultTrackerWindow()
+        else
+            addon:Print("|cffff6600[WN]|r Vault Tracker is not available yet.")
+        end
+        return
+
     elseif cmd == "todo" or cmd == "plans" or cmd == "plan" then
         if addon.TogglePlansTrackerWindow then
             addon:TogglePlansTrackerWindow()

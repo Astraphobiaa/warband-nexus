@@ -1178,6 +1178,14 @@ local function ShowQuickView(anchor)
     end
 end
 
+function WarbandNexus:ToggleVaultTrackerWindow(anchor)
+    if S.tableFrame and S.tableFrame:IsShown() then
+        HideTable()
+    else
+        ShowQuickView(anchor or S.button)
+    end
+end
+
 -- ============================================================================
 -- Badge
 -- ============================================================================
