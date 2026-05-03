@@ -154,6 +154,9 @@ local defaults = {
             showRealmName = false,
             showRewardItemLevel = false,
             showManaflux = false,
+            showSummaryOnMouseover = false,
+            leftClickAction = "pve",
+            includeBountyOnly = false,
             opacity = 1.0,
             columns = {
                 raids = true,
@@ -162,6 +165,7 @@ local defaults = {
                 bounty = true,
                 voidcore = true,
                 manaflux = false,
+                gildedStash = false,
             },
             position = {
                 point = "CENTER",
