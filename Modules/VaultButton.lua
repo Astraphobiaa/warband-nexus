@@ -2303,32 +2303,47 @@ RefreshSavedInstances = function()
         local heatX = NAME_COL_W + 10
         local heatRight = rowW - STATS_COL_W - 30
         local heatW = math.max(40, heatRight - heatX)
-        local heatBg = row:CreateTexture(nil, "BACKGROUND")
+        -- Outlined heat-bar background so empty rows still show the rail clearly
+        local heatBg = CreateFrame("Frame", nil, row)
         heatBg:SetPoint("LEFT", row, "LEFT", heatX, 0)
         heatBg:SetSize(heatW, 14)
-        heatBg:SetColorTexture(0.10, 0.10, 0.12, 1)
+        if ApplyVisuals then
+            ApplyVisuals(heatBg, {0.10, 0.10, 0.12, 1}, {0, 0, 0, 0.85})
+        else
+            local bg = heatBg:CreateTexture(nil, "BACKGROUND")
+            bg:SetAllPoints()
+            bg:SetColorTexture(0.10, 0.10, 0.12, 1)
+        end
 
         if bosses and total > 0 then
             local segGap = 2
-            local segW = math.max(4, math.floor((heatW - (total - 1) * segGap) / total))
+            local segW = math.max(6, math.floor((heatW - (total - 1) * segGap) / total))
             local actualSegGap = (total > 1) and math.floor((heatW - total * segW) / (total - 1)) or 0
             for i, b in ipairs(bosses) do
                 local ratio = (#g.characters > 0) and (#b.killers / #g.characters) or 0
-                local seg = row:CreateTexture(nil, "ARTWORK")
-                seg:SetSize(segW, 14)
-                seg:SetPoint("LEFT", row, "LEFT", heatX + (i - 1) * (segW + actualSegGap), 0)
                 local col = HeatColor(ratio, diffInfo)
-                seg:SetColorTexture(col[1], col[2], col[3], col[4])
+                -- Frame-based segment so we get a crisp 1px outline via ApplyVisuals
+                local segBox = CreateFrame("Frame", nil, row)
+                segBox:SetSize(segW, 14)
+                segBox:SetPoint("LEFT", row, "LEFT", heatX + (i - 1) * (segW + actualSegGap), 0)
+                if ApplyVisuals then
+                    ApplyVisuals(segBox, col, {0.0, 0.0, 0.0, 0.85})
+                else
+                    local seg = segBox:CreateTexture(nil, "ARTWORK")
+                    seg:SetAllPoints()
+                    seg:SetColorTexture(col[1], col[2], col[3], col[4])
+                end
             end
         end
 
-        -- Stats: warband progress + char count
+        -- Stats: cleared/total + char count (no "warband" word, single-line)
         local statsFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         statsFS:SetPoint("RIGHT", row, "RIGHT", -32, 0)
         statsFS:SetJustifyH("RIGHT")
         statsFS:SetWidth(STATS_COL_W)
+        statsFS:SetWordWrap(false)
         local progColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
-        statsFS:SetText(string.format("%s%d/%d|r |cff888888warband|r  |cffaaaaaa· %d %s|r",
+        statsFS:SetText(string.format("%s%d/%d|r  |cffaaaaaa· %d %s|r",
             progColor, cleared, total,
             #g.characters, #g.characters == 1 and "char" or "chars"))
 
@@ -2420,16 +2435,22 @@ RefreshSavedInstances = function()
         local heatRight = rowW - STATS_COL_W - 30
         local heatW = math.max(40, heatRight - heatX)
         if total > 0 then
-            local size = math.max(8, math.min(12, math.floor((heatW - (total - 1) * 2) / total)))
+            local size = math.max(10, math.min(14, math.floor((heatW - (total - 1) * 2) / total)))
             local gap = math.max(2, math.floor((heatW - total * size) / math.max(1, total - 1)))
             for i, e in ipairs(roster) do
-                local dot = row:CreateTexture(nil, "ARTWORK")
-                dot:SetSize(size, size)
-                dot:SetPoint("LEFT", row, "LEFT", heatX + (i - 1) * (size + gap), 0)
-                if e.killed then
-                    dot:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
+                local color = e.killed
+                    and {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1}
+                    or  {0.18, 0.18, 0.22, 1}
+                -- Frame with 1px outline so dots match the segment style
+                local dotBox = CreateFrame("Frame", nil, row)
+                dotBox:SetSize(size, size)
+                dotBox:SetPoint("LEFT", row, "LEFT", heatX + (i - 1) * (size + gap), 0)
+                if ApplyVisuals then
+                    ApplyVisuals(dotBox, color, {0, 0, 0, 0.85})
                 else
-                    dot:SetColorTexture(0.18, 0.18, 0.22, 1)
+                    local dot = dotBox:CreateTexture(nil, "ARTWORK")
+                    dot:SetAllPoints()
+                    dot:SetColorTexture(color[1], color[2], color[3], color[4])
                 end
             end
         end
