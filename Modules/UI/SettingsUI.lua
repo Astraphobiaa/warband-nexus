@@ -1659,6 +1659,7 @@ local function BuildSettings(parent, containerWidth)
         if settings.hideUntilReady == nil then settings.hideUntilReady = false end
         if settings.showRealmName == nil then settings.showRealmName = false end
         if settings.showRewardItemLevel == nil then settings.showRewardItemLevel = false end
+        if settings.showRewardProgress == nil then settings.showRewardProgress = false end
         if settings.showManaflux == nil then settings.showManaflux = false end
         settings.columns = settings.columns or {}
         if settings.columns.raids == nil then settings.columns.raids = true end
