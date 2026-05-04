@@ -1303,7 +1303,10 @@ function WarbandNexus:UpdateDelvesData(charKey)
         -- Bountiful / Trovehunter weeklies — snapshot for this character when they are logged in (quest API is session-local).
         delves.characters[charKey].bountifulComplete = self.IsBountifulDelveWeeklyDone and self:IsBountifulDelveWeeklyDone() or false
         local gildedStashes, gildedStashesMax = GetGildedStashCounts()
-        delves.characters[charKey].gildedStashes = gildedStashes
+        local priorGildedStashes = tonumber(delves.characters[charKey].gildedStashes)
+        if gildedStashes >= 0 or priorGildedStashes == nil then
+            delves.characters[charKey].gildedStashes = gildedStashes
+        end
         delves.characters[charKey].gildedStashesMax = gildedStashesMax
         local crackedID = Constants.PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID or 92600
         delves.characters[charKey].crackedKeystoneComplete = SafeIsQuestFlaggedCompleted(crackedID)
