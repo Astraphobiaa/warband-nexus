@@ -65,7 +65,8 @@ function CommandService:HandleSlashCommand(addon, input)
     if cmd == "help" then
         addon:Print("|cff00ccffWarband Nexus|r — " .. ((ns.L and ns.L["AVAILABLE_COMMANDS"]) or "Available commands:"))
         addon:Print("  |cff00ccff/wn|r — " .. ((ns.L and ns.L["CMD_OPEN"]) or "Open addon window"))
-        addon:Print("  |cff00ccff/wnvt|r — Toggle Vault Tracker window")
+        addon:Print("  |cff00ccff/wn vt|r — Toggle Vault Tracker window")
+        addon:Print("  |cff00ccff/wn qt|r — Open Quick Tracker menu")
         addon:Print("  |cff00ccff/wn vault|r — Toggle Vault Tracker window")
         addon:Print("  |cff00ccff/wn saved|r — Toggle Saved Instances window")
         addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "Toggle To-Do Tracker window"))
@@ -118,6 +119,16 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:ToggleVaultTrackerWindow()
         else
             addon:Print("|cffff6600[WN]|r Vault Tracker is not available yet.")
+        end
+        return
+
+    elseif cmd == "quicktracker" or cmd == "qt" then
+        if addon.OpenVaultButtonQuickMenuAtCursor then
+            addon:OpenVaultButtonQuickMenuAtCursor()
+        elseif addon.OpenVaultButtonQuickMenu then
+            addon:OpenVaultButtonQuickMenu()
+        else
+            addon:Print("|cffff6600[WN]|r Quick Tracker is not available yet.")
         end
         return
 

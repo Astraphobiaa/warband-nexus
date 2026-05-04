@@ -706,7 +706,6 @@ function WarbandNexus:OnInitialize()
     -- Setup slash commands
     self:RegisterChatCommand("wn", "SlashCommand")
     self:RegisterChatCommand("warbandnexus", "SlashCommand")
-    self:RegisterChatCommand("wnvt", "VaultTrackerSlashCommand")
     -- Dev/test utilities (DebugService:TestCommand — rep ui, rep event, overflow, etc.)
     self:RegisterChatCommand("wntest", "WntestSlashCommand")
     
@@ -1090,15 +1089,6 @@ end
 
 function WarbandNexus:SlashCommand(input)
     ns.CommandService:HandleSlashCommand(self, input)
-end
-
---- Standalone slash: /wnvt toggles the Vault Tracker quick window.
-function WarbandNexus:VaultTrackerSlashCommand(input)
-    if self.ToggleVaultTrackerWindow then
-        self:ToggleVaultTrackerWindow()
-    else
-        self:Print("|cffff6600[WN]|r Vault Tracker is not available yet.")
-    end
 end
 
 --- Standalone slash: /wntest <args> (same as /wn test <args>)

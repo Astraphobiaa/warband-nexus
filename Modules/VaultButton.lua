@@ -30,8 +30,9 @@ local COL_ILVL      = 50
 local COL_RAID      = 62
 local COL_DUNGEON   = 62
 local COL_WORLD     = 62
-local COL_REWARD_ILVL = 72
-local COL_PROGRESS  = 86
+local COL_REWARD_ILVL = 94
+local COL_PROGRESS  = 90
+local COL_REWARD_PROGRESS = 136
 local COL_BOUNTY    = 46   -- Trovehunter's Bounty (done/not)
 local COL_VOIDCORE  = 58   -- Nebulous Voidcore (current/seasonMax)
 local COL_MANAFLUX  = 58   -- Dawnlight Manaflux (current held)
@@ -181,7 +182,9 @@ end
 local function GetEnabledCategoryDefs()
     local settings = GetSettings()
     local columns = settings.columns or {}
-    local width = (settings.showRewardItemLevel or settings.showRewardProgress) and COL_PROGRESS or nil
+    local width = settings.showRewardProgress and settings.showRewardItemLevel and COL_REWARD_PROGRESS
+        or (settings.showRewardProgress and COL_PROGRESS)
+        or (settings.showRewardItemLevel and COL_REWARD_ILVL or nil)
     local defs = {}
     if columns.raids ~= false then
         table.insert(defs, { key="raids", width=width or COL_RAID, label="Raid", icon=TRACK_ICONS.raids, tooltip="Raid" })
@@ -2927,19 +2930,22 @@ local function BuildMenu()
         y = y - (rowH + 2)
     end
 
-    local catcher = CreateFrame("Button", nil, UIParent)
-    catcher:SetFrameStrata("DIALOG")
-    catcher:SetFrameLevel(219) -- Right below the menu (220)
-    catcher:SetAllPoints(UIParent)
-    catcher:RegisterForClicks("LeftButtonDown", "RightButtonDown")
-    catcher:SetScript("OnClick", function() HideMenu() end)
-    catcher:Hide()
-    S.menuCatcher = catcher
+    -- Auto-hide on focus loss: close when mouse leaves and not over a child
+    f:SetScript("OnUpdate", function(self)
+        if not self:IsMouseOver() then
+            self._hideTimer = (self._hideTimer or 0) + 1
+            if self._hideTimer > 150 then  -- ~2.5s @ 60fps
+                self:Hide()
+            end
+        else
+            self._hideTimer = 0
+        end
+    end)
 
     S.menuFrame = f
 end
 
-ToggleMenu = function(anchor)
+ToggleMenu = function(anchor, atCursor)
     local leftClickAction = GetSettings().leftClickAction
     if S.menuFrame and S.menuFrame.leftClickAction ~= leftClickAction then
         S.menuFrame:Hide()
@@ -2947,53 +2953,73 @@ ToggleMenu = function(anchor)
     end
     BuildMenu()
     if not S.menuFrame then return end
-    if S.menuFrame:IsShown() then
+    if S.menuFrame:IsShown() and not atCursor then
         S.menuFrame:Hide()
         return
     end
-    anchor = anchor or S.button
     S.menuFrame:ClearAllPoints()
-    if anchor then
-        -- Anchor menu beside the button (never on top of it). Pick the side with the most room.
+    if atCursor then
+        local scale = UIParent:GetEffectiveScale() or 1
+        local x, y = GetCursorPosition()
+        x = (x or 0) / scale
+        y = (y or 0) / scale
+
         local mw = S.menuFrame:GetWidth() or 200
         local mh = S.menuFrame:GetHeight() or 200
         local screenW = UIParent:GetWidth() or 1920
         local screenH = UIParent:GetHeight() or 1080
-        local left   = anchor:GetLeft()   or 0
-        local right  = anchor:GetRight()  or 0
-        local top    = anchor:GetTop()    or 0
-        local bottom = anchor:GetBottom() or 0
-        local roomLeft   = left
-        local roomRight  = screenW - right
-        local roomTop    = screenH - top
-        local roomBottom = bottom
-        local gap = 6
+        local gap = 8
 
-        -- Prefer horizontal placement (looks more like a context menu)
-        if roomRight >= mw + gap then
-            -- Place to the RIGHT of the button
-            local dy = (top - mh < 0) and (mh - (top - bottom)) or 0
-            S.menuFrame:SetPoint("TOPLEFT", anchor, "TOPRIGHT", gap, dy)
-        elseif roomLeft >= mw + gap then
-            -- Place to the LEFT of the button
-            local dy = (top - mh < 0) and (mh - (top - bottom)) or 0
-            S.menuFrame:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -gap, dy)
-        elseif roomBottom >= mh + gap then
-            -- Place BELOW the button
-            S.menuFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -gap)
-        else
-            -- Place ABOVE the button
-            S.menuFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, gap)
-        end
+        x = math.max(gap, math.min(x + gap, screenW - mw - gap))
+        y = math.max(mh + gap, math.min(y - gap, screenH - gap))
+        S.menuFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
     else
-        S.menuFrame:SetPoint("CENTER")
+        anchor = anchor or S.button
+        if anchor then
+            -- Anchor menu beside the button (never on top of it). Pick the side with the most room.
+            local mw = S.menuFrame:GetWidth() or 200
+            local mh = S.menuFrame:GetHeight() or 200
+            local screenW = UIParent:GetWidth() or 1920
+            local screenH = UIParent:GetHeight() or 1080
+            local left   = anchor:GetLeft()   or 0
+            local right  = anchor:GetRight()  or 0
+            local top    = anchor:GetTop()    or 0
+            local bottom = anchor:GetBottom() or 0
+            local roomLeft   = left
+            local roomRight  = screenW - right
+            local roomBottom = bottom
+            local gap = 6
+
+            -- Prefer horizontal placement (looks more like a context menu)
+            if roomRight >= mw + gap then
+                -- Place to the RIGHT of the button
+                local dy = (top - mh < 0) and (mh - (top - bottom)) or 0
+                S.menuFrame:SetPoint("TOPLEFT", anchor, "TOPRIGHT", gap, dy)
+            elseif roomLeft >= mw + gap then
+                -- Place to the LEFT of the button
+                local dy = (top - mh < 0) and (mh - (top - bottom)) or 0
+                S.menuFrame:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -gap, dy)
+            elseif roomBottom >= mh + gap then
+                -- Place BELOW the button
+                S.menuFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -gap)
+            else
+                -- Place ABOVE the button
+                S.menuFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, gap)
+            end
+        else
+            S.menuFrame:SetPoint("CENTER")
+        end
     end
+    S.menuFrame._hideTimer = 0
     S.menuFrame:Show()
-    if S.menuCatcher then S.menuCatcher:Show() end
 end
 
 function WarbandNexus:OpenVaultButtonQuickMenu(anchor)
     ToggleMenu(anchor or S.button)
+end
+
+function WarbandNexus:OpenVaultButtonQuickMenuAtCursor()
+    ToggleMenu(nil, true)
 end
 
 local function RunLeftClickAction(anchor)
@@ -3229,7 +3255,7 @@ function WarbandNexus:SetVaultButtonEnabled(enabled)
     self:RefreshVaultButtonSettings()
 end
 
---- Public toggle for the Vault Tracker quick window (used by /wnvt and the
+--- Public toggle for the Vault Tracker quick window (used by /wn vt and the
 --- minimap context menu).
 function WarbandNexus:ToggleVaultTrackerWindow()
     if S.tableFrame and S.tableFrame:IsShown() then
