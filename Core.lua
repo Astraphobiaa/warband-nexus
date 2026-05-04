@@ -153,6 +153,7 @@ local defaults = {
             hideUntilReady = false,
             showRealmName = false,
             showRewardItemLevel = false,
+            showRewardProgress = false,
             showManaflux = false,
             showSummaryOnMouseover = false,
             includeBountyOnly = false,
