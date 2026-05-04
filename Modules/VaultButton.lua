@@ -338,7 +338,15 @@ end
 local function GetManafluxData(charKey)
     if not WarbandNexus or not WarbandNexus.GetCurrencyData then return nil end
     local ok, cd = pcall(WarbandNexus.GetCurrencyData, WarbandNexus, MANAFLUX_ID, charKey)
-    if not ok or not cd then return nil end
+    if not ok or not cd then
+        local currencyData = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.currencyData
+        local stored = currencyData and currencyData.currencies and currencyData.currencies[charKey]
+            and currencyData.currencies[charKey][MANAFLUX_ID]
+        if type(stored) == "table" then stored = stored.quantity end
+        local quantity = tonumber(stored)
+        if quantity == nil then return nil end
+        return { quantity = quantity, totalEarned = 0 }
+    end
     return {
         quantity = tonumber(cd.quantity) or 0,
         totalEarned = tonumber(cd.totalEarned) or 0,
