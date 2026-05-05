@@ -840,6 +840,29 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 2.6.8 (key CHANGELOG_V268)
+L["CHANGELOG_V268"] = [=[v2.6.8 (2026-05-04)
+
+Try Counter — architectural overhaul
+- Counting is now event-driven by ENCOUNTER_END (next frame instead of a 5-second wait). Chests, personal-loot bags, and post-cinematic loot can be opened seconds, hours, or days later without re-counting or off-by-one.
+- Stat-backed miss path now prints "N attempts for [item]" — previously the reseed could complete silently and Sylvanas / LFR Jaina kills produced no try-counter line at all.
+- Fixed off-by-one on open-world rare farms: 4 misses followed by a drop on kill 5 now correctly says "after 5 attempts" (was "after 4").
+- Fixed encounter fallback being silently suppressed by unrelated tier-token / currency loot (Anima Vessels, etc.) inside the kill window.
+- Added definitive NEW_MOUNT_ADDED / NEW_PET_ADDED backup so post-cinematic chest grants always emit the correct obtained line, even when the primary loot-window detection misses.
+
+Sylvanas (Sanctum of Domination, Mythic)
+- All client locales now resolve the Sylvanas encounter for Vengeance's Reins try counting. Added a slot-first outcome rule for the Mythic chest so secret-GUID loot is attributed by tracked itemID rather than failing to bind to the kill.
+
+Saved Instances
+- Now lists dungeon lockouts alongside raids: 5-player Normal / Heroic / Mythic / M+ rows surface with their own difficulty pills.
+- Lockouts are filtered by reset time so expired rows no longer linger; collapse state per instance persists across sessions.
+- isRaid is treated as advisory — falls back to DifficultyID + maxPlayers when the value is wrapped or missing in Midnight 12.0 contexts.
+
+Data collection
+- Per-character lockouts capture both raid and dungeon entries (matches the cache pipeline) so the Vault button now reflects everything you're saved to.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 2.6.7 (key CHANGELOG_V267)
 L["CHANGELOG_V267"] = [=[v2.6.7 (2026-04-29)
 
@@ -1014,7 +1037,7 @@ L["VAULT_BUTTON_MENU_SETTINGS"] = "Settings"
 
 -- Saved Instances window
 L["SAVED_INSTANCES_TITLE"] = "Saved Instances"
-L["SAVED_INSTANCES_EMPTY"] = "No raid lockouts recorded yet.\nLogin a character with active lockouts to populate."
+L["SAVED_INSTANCES_EMPTY"] = "No raid or dungeon lockouts recorded yet.\nLog in a character with active lockouts to populate."
 L["SAVED_INSTANCES_NO_FILTER_MATCH"] = "No instances match the current filters."
 L["SAVED_INSTANCES_SUMMARY"] = "%d instances · %d characters"
 L["SAVED_INSTANCES_WARBAND_CLEARED"] = "warband cleared"

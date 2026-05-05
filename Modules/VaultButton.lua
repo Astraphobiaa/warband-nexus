@@ -476,7 +476,7 @@ S = {
     button=nil, icon=nil, badge=nil, badgeBg=nil, border=nil,
     tableFrame=nil, title=nil, headerBg=nil, separator=nil,
     optionsFrame=nil, optionsWidgets={}, rows={},
-    menuFrame=nil, savedFrame=nil, savedRows={}, savedExpanded={}
+    menuFrame=nil, savedFrame=nil, savedRows={}, savedExpanded={}, savedInstanceCollapsed={}
 }
 
 local HideTable
@@ -1525,18 +1525,23 @@ ToggleOptionsFrame = function(anchor, placement)
 end
 
 -- ============================================================================
--- Saved Instances (Raid Info)
+-- Saved Instances (raid + dungeon lockouts)
 -- ============================================================================
 local DIFF_INFO = {
     [17] = { short = "LFR",    name = "Looking For Raid", color = {0.55, 0.55, 0.55}, hex = "aaaaaa" },
     [14] = { short = "N",      name = "Normal",           color = {0.12, 0.78, 0.12}, hex = "1eff00" },
     [15] = { short = "H",      name = "Heroic",           color = {0.00, 0.44, 0.87}, hex = "0070dd" },
     [16] = { short = "M",      name = "Mythic",           color = {0.64, 0.21, 0.93}, hex = "a335ee" },
+    -- 5-player saved instances (GetSavedInstanceInfo difficultyID)
+    [1]  = { short = "N",      name = "Normal",           color = {0.12, 0.78, 0.12}, hex = "1eff00" },
+    [2]  = { short = "H",      name = "Heroic",           color = {0.00, 0.44, 0.87}, hex = "0070dd" },
+    [23] = { short = "M",      name = "Mythic",           color = {0.64, 0.21, 0.93}, hex = "a335ee" },
+    [8]  = { short = "M+",     name = "Mythic Keystone",  color = {0.90, 0.45, 0.10}, hex = "ff8000" },
 }
 local FALLBACK_DIFF = { short = "?", name = "Unknown", color = {0.4, 0.4, 0.4}, hex = "aaaaaa" }
 local DIFFICULTY_ORDER_DESC = { 16, 15, 14, 17 }  -- Mythic > Heroic > Normal > LFR
--- Sort priority for the Saved Instances grid: LFR first, then N, H, M
-local DIFF_SORT_RANK = { [17] = 1, [14] = 2, [15] = 3, [16] = 4 }
+-- Sort priority for the Saved Instances grid: LFR first, then N, H, M (dungeons align to same tiers)
+local DIFF_SORT_RANK = { [17] = 1, [14] = 2, [1] = 2, [15] = 3, [2] = 3, [16] = 4, [23] = 4, [8] = 5 }
 
 local function GetDiffInfo(difficulty)
     return DIFF_INFO[difficulty] or FALLBACK_DIFF
@@ -1548,60 +1553,75 @@ local function GetClassHexFromCharacters(charKey)
     return GetClassHex(entry and entry.classFile), entry and entry.name or charKey
 end
 
+---Saved lockout rows must carry resetAt (absolute server time); never show expired or unknown-age rows.
+local function IsSavedLockoutRowActive(inst, nowS)
+    if not inst or type(nowS) ~= "number" then return false end
+    local ra = inst.resetAt
+    if type(ra) ~= "number" then return false end
+    if issecretvalue and issecretvalue(ra) then return false end
+    return ra > nowS
+end
+
 local function BuildSavedInstancesData()
     local pveCache = GetPveCache()
-    local lockouts = pveCache and pveCache.lockouts and pveCache.lockouts.raids
-    if not lockouts then return {} end
+    local lo = pveCache and pveCache.lockouts
+    if not lo then return {} end
+    local raidLockouts = lo.raids
+    local dungeonLockouts = lo.dungeons
 
     -- Group by (instanceName + difficultyName) -> list of {charKey, killed, total}
     local nowServer = (GetServerTime and GetServerTime()) or time()
     local groups = {}
-    for charKey, instances in pairs(lockouts) do
-        if type(instances) == "table" then
-            for _, inst in pairs(instances) do
-                local expired = inst and inst.resetAt and inst.resetAt <= nowServer
-                if inst and inst.name and not expired then
-                    local diffName = inst.difficultyName or "Unknown"
-                    local key = inst.name .. "||" .. diffName
-                    local g = groups[key]
-                    if not g then
-                        g = {
-                            instanceName = inst.name,
-                            difficultyName = diffName,
-                            difficulty = inst.difficulty,
-                            characters = {},
-                        }
-                        groups[key] = g
-                    end
-                    local total = tonumber(inst.numEncounters) or (inst.encounters and #inst.encounters) or 0
-                    local killed = tonumber(inst.encounterProgress) or 0
-                    if killed == 0 and inst.encounters then
-                        for _, e in ipairs(inst.encounters) do
-                            if e.killed then killed = killed + 1 end
+
+    local function AccumulateLockoutBranch(lockoutsByChar)
+        if not lockoutsByChar or type(lockoutsByChar) ~= "table" then return end
+        for charKey, instances in pairs(lockoutsByChar) do
+            if type(instances) == "table" then
+                for _, inst in pairs(instances) do
+                    if inst and inst.name and IsSavedLockoutRowActive(inst, nowServer) then
+                        local diffName = inst.difficultyName or "Unknown"
+                        local key = inst.name .. "||" .. diffName
+                        local g = groups[key]
+                        if not g then
+                            g = {
+                                instanceName = inst.name,
+                                difficultyName = diffName,
+                                difficulty = inst.difficulty,
+                                characters = {},
+                            }
+                            groups[key] = g
                         end
-                    end
-                    table.insert(g.characters, {
-                        charKey = charKey,
-                        killed = killed,
-                        total = total,
-                        reset = (function()
-                            -- Prefer absolute resetAt (server timestamp) so the
-                            -- countdown is accurate for offline alts; fall back
-                            -- to the raw `reset` field for legacy cache entries.
-                            local now = (GetServerTime and GetServerTime()) or time()
-                            if inst.resetAt and inst.resetAt > now then
-                                return inst.resetAt - now
-                            elseif inst.resetAt and inst.resetAt <= now then
-                                return 0  -- already expired
+                        local total = tonumber(inst.numEncounters) or (inst.encounters and #inst.encounters) or 0
+                        local killed = tonumber(inst.encounterProgress) or 0
+                        if killed == 0 and inst.encounters then
+                            for ei = 1, #inst.encounters do
+                                local e = inst.encounters[ei]
+                                if e and e.killed then killed = killed + 1 end
                             end
-                            return inst.reset
-                        end)(),
-                        encounters = inst.encounters,
-                    })
+                        end
+                        g.characters[#g.characters + 1] = {
+                            charKey = charKey,
+                            killed = killed,
+                            total = total,
+                            reset = (function()
+                                local now = (GetServerTime and GetServerTime()) or time()
+                                if inst.resetAt and inst.resetAt > now then
+                                    return inst.resetAt - now
+                                elseif inst.resetAt and inst.resetAt <= now then
+                                    return 0
+                                end
+                                return inst.reset
+                            end)(),
+                            encounters = inst.encounters,
+                        }
+                    end
                 end
             end
         end
     end
+
+    AccumulateLockoutBranch(raidLockouts)
+    AccumulateLockoutBranch(dungeonLockouts)
 
     local list = {}
     for _, g in pairs(groups) do
@@ -1635,8 +1655,9 @@ local function BuildSavedInstancesFrame()
     AddEscCloseFrame("WarbandNexusSavedInstances")
     f:SetSize(SAVED_FRAME_W, 480)
     f:SetClampedToScreen(true)
-    f:SetFrameStrata("DIALOG")
-    f:SetFrameLevel(200)
+    -- Above normal panels/menus; still below world map full-screen if any.
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:SetFrameLevel(100)
     f:SetMovable(true)
     f:EnableMouse(true)
     if ApplyVisuals then
@@ -1669,7 +1690,7 @@ local function BuildSavedInstancesFrame()
         title = chrome:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     end
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
-    title:SetText("Saved Instances")
+    title:SetText((ns.L and ns.L["SAVED_INSTANCES_TITLE"]) or "Saved Instances")
     title:SetTextColor(1, 1, 1)
 
     local close = CreateFrame("Button", nil, chrome)
@@ -2190,7 +2211,8 @@ RefreshSavedInstances = function()
         end
         local n = 0
         for _ in pairs(charSet) do n = n + 1 end
-        S.savedFrame.summary:SetText(string.format("%d instances · %d characters", #filtered, n))
+        local sumFmt = (ns.L and ns.L["SAVED_INSTANCES_SUMMARY"]) or "%d instances · %d characters"
+        S.savedFrame.summary:SetText(string.format(sumFmt, #filtered, n))
     end
 
     if #filtered == 0 then
@@ -2198,9 +2220,9 @@ RefreshSavedInstances = function()
         msg:SetPoint("CENTER", content, "CENTER", 0, -20)
         msg:SetTextColor(0.6, 0.6, 0.6)
         if #list == 0 then
-            msg:SetText("No raid lockouts recorded yet.\nLogin a character with active lockouts to populate.")
+            msg:SetText((ns.L and ns.L["SAVED_INSTANCES_EMPTY"]) or "No saved lockouts yet.\nLog in a character with raid or dungeon lockouts.")
         else
-            msg:SetText("No instances match the current filters.")
+            msg:SetText((ns.L and ns.L["SAVED_INSTANCES_NO_FILTER_MATCH"]) or "No instances match the current filters.")
         end
         msg:SetJustifyH("CENTER")
         content:SetHeight(80)
@@ -2209,42 +2231,152 @@ RefreshSavedInstances = function()
         return
     end
 
-    -- ────────────────────────────────────────────────────────────────────
-    -- Drill-down list:
-    --   • Compact summary row per (instance, difficulty) — 38px, scales
-    --     comfortably to 60+ instances without horizontal scroll.
-    --   • Each row carries a per-boss "heat" segment bar that shows at a
-    --     glance which bosses the warband cleared (green = all chars,
-    --     diff color = some, gray = none).
-    --   • Click a row to expand inline and reveal one detail line per
-    --     locked character (boss-by-boss for that toon, kill count,
-    --     reset countdown). Only locked chars show — no 60-column matrix.
-    -- ────────────────────────────────────────────────────────────────────
+    -- Instance header + indented difficulty rows; soft surfaces (minimal box borders).
     local ApplyVisuals = ns.UI_ApplyVisuals
-    local FontManager  = ns.FontManager
+    local FontManager = ns.FontManager
+    local COLORS = ns.UI_COLORS or {}
+    local accent = COLORS.accent or {0.40, 0.20, 0.58}
     local SIDE_PAD = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
-    local rowW       = content:GetWidth() - 2 * SIDE_PAD
-    local SUMMARY_H  = 38
-    local DETAIL_H   = 24
-    local NAME_COL_W = 200
-    local STATS_COL_W = 150
+    local rowW = content:GetWidth() - 2 * SIDE_PAD
+    local INSTANCE_HEADER_H = 44
+    local SECTION_GAP = 12
+    local DIFF_ROW_H = 36
+    local DETAIL_H = 24
+    local DIFF_INDENT = 16
+    local DETAIL_INDENT = 14
+    local ROW_TAIL = 8
+    local DIFF_NAME_COL_W = 128
+    local SAVED_RIGHT_MARGIN = 14
+    local SAVED_COL_CHEVRON = 24
+    local SAVED_COL_CHARS = 86
+    local SAVED_COL_FRAC = 52
+    local SAVED_COL_GAP = 10
+    local BOSS_BAR_H = 6
 
-    -- Reset content width to viewport (no horizontal scroll needed)
     content:SetWidth(content:GetParent():GetWidth())
+
+    local rightBlockW = SAVED_COL_FRAC + SAVED_COL_GAP + SAVED_COL_CHARS + SAVED_COL_GAP + SAVED_COL_CHEVRON
 
     local function MakeGroupKey(g)
         return (g.instanceName or "?") .. "||" .. tostring(g.difficulty or 0)
     end
 
-    local function HeatColor(ratio, diffInfo)
-        if ratio >= 1 then return {0.20, 0.85, 0.30, 1} end
-        if ratio <= 0 then return {0.16, 0.16, 0.20, 1} end
-        local r, g, b = diffInfo.color[1], diffInfo.color[2], diffInfo.color[3]
-        local alpha = 0.4 + ratio * 0.55
-        return {r, g, b, alpha}
+    local function GroupFilteredByInstance(flat)
+        local by, order = {}, {}
+        for i = 1, #flat do
+            local g = flat[i]
+            local key = g.instanceName or "?"
+            if not by[key] then
+                by[key] = { instanceName = key, children = {} }
+                order[#order + 1] = key
+            end
+            local sec = by[key]
+            sec.children[#sec.children + 1] = g
+        end
+        for oi = 1, #order do
+            local sec = by[order[oi]]
+            table.sort(sec.children, function(a, b)
+                local da = DIFF_SORT_RANK[a.difficulty] or 99
+                local db = DIFF_SORT_RANK[b.difficulty] or 99
+                if da ~= db then return da < db end
+                return (a.difficultyName or "") < (b.difficultyName or "")
+            end)
+        end
+        local out = {}
+        for oi = 1, #order do out[#out + 1] = by[order[oi]] end
+        return out
     end
 
-    local function BuildSummaryRow(g, idx, yPos)
+    local function SectionUniqueCharCount(sec)
+        local seen = {}
+        for ci = 1, #sec.children do
+            local g = sec.children[ci]
+            for pi = 1, #g.characters do
+                seen[g.characters[pi].charKey] = true
+            end
+        end
+        local n = 0
+        for _ in pairs(seen) do n = n + 1 end
+        return n
+    end
+
+    S.savedInstanceCollapsed = S.savedInstanceCollapsed or {}
+
+    local function BuildInstanceHeader(sec, yPos)
+        local innerW = rowW - DIFF_INDENT
+        local hdr = CreateFrame("Button", nil, content)
+        hdr:SetSize(innerW, INSTANCE_HEADER_H)
+        hdr:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD + DIFF_INDENT, -yPos)
+
+        local bg = hdr:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.055, 0.057, 0.062, 0.98)
+        local hiTop = hdr:CreateTexture(nil, "ARTWORK")
+        hiTop:SetHeight(1)
+        hiTop:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, 0)
+        hiTop:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
+        hiTop:SetColorTexture(1, 1, 1, 0.04)
+        local div = hdr:CreateTexture(nil, "ARTWORK")
+        div:SetHeight(1)
+        div:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, 0)
+        div:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, 0)
+        div:SetColorTexture(1, 1, 1, 0.07)
+
+        local chev = hdr:CreateTexture(nil, "OVERLAY")
+        chev:SetSize(12, 12)
+        chev:SetPoint("CENTER", hdr, "RIGHT", -14, 0)
+        local function UpdateInstChevron()
+            if S.savedInstanceCollapsed[sec.instanceName] then
+                chev:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover")
+            else
+                chev:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
+            end
+        end
+        UpdateInstChevron()
+
+        local titleFS
+        if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
+            titleFS = FontManager:CreateFontString(hdr, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
+        else
+            titleFS = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        end
+        titleFS:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, -8)
+        titleFS:SetPoint("RIGHT", chev, "LEFT", -10, 0)
+        titleFS:SetJustifyH("LEFT")
+        titleFS:SetJustifyV("TOP")
+        titleFS:SetWordWrap(false)
+        titleFS:SetMaxLines(1)
+        titleFS:SetText(sec.instanceName)
+        titleFS:SetTextColor(0.92, 0.93, 0.96)
+
+        local nDiff = #sec.children
+        local nChars = SectionUniqueCharCount(sec)
+        local sub = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        sub:SetPoint("TOPLEFT", titleFS, "BOTTOMLEFT", 0, -5)
+        sub:SetPoint("RIGHT", chev, "LEFT", -10, 0)
+        sub:SetJustifyH("LEFT")
+        sub:SetJustifyV("TOP")
+        sub:SetWordWrap(false)
+        sub:SetTextColor(0.48, 0.5, 0.56)
+        sub:SetText(string.format("%d difficulties  ·  %d %s", nDiff, nChars, nChars == 1 and "character" or "characters"))
+
+        hdr:SetScript("OnClick", function()
+            local on = S.savedInstanceCollapsed[sec.instanceName]
+            S.savedInstanceCollapsed[sec.instanceName] = not on
+            RefreshSavedInstances()
+        end)
+        hdr:SetScript("OnEnter", function()
+            bg:SetColorTexture(0.06, 0.062, 0.07, 1)
+        end)
+        hdr:SetScript("OnLeave", function()
+            bg:SetColorTexture(0.055, 0.057, 0.062, 0.98)
+        end)
+
+        table.insert(S.savedRows, hdr)
+        return INSTANCE_HEADER_H
+    end
+
+    local function BuildDifficultyRow(g, yPos)
         local diffInfo = GetDiffInfo(g.difficulty)
         local bosses = AggregateBosses(g)
         local total = bosses and #bosses or 0
@@ -2253,104 +2385,106 @@ RefreshSavedInstances = function()
             for _, b in ipairs(bosses) do if #b.killers > 0 then cleared = cleared + 1 end end
         end
 
+        local innerW = rowW - DIFF_INDENT
         local row = CreateFrame("Button", nil, content)
-        row:SetSize(rowW, SUMMARY_H)
-        row:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD, -yPos)
+        row:SetSize(innerW, DIFF_ROW_H)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD + DIFF_INDENT, -yPos)
         row:RegisterForClicks("LeftButtonUp")
 
         local bg = row:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
-        bg:SetColorTexture(idx % 2 == 0 and 0.06 or 0.04, idx % 2 == 0 and 0.06 or 0.04, idx % 2 == 0 and 0.08 or 0.06, 0.95)
+        bg:SetColorTexture(0.048, 0.05, 0.058, 0.96)
+        local hiRow = row:CreateTexture(nil, "HIGHLIGHT")
+        hiRow:SetAllPoints()
+        hiRow:SetColorTexture(1, 1, 1, 0.04)
 
-        local hl = row:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.15)
+        local strip = row:CreateTexture(nil, "ARTWORK")
+        strip:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+        strip:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+        strip:SetWidth(1)
+        strip:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.42)
 
-        -- Difficulty stripe
-        local stripe = row:CreateTexture(nil, "ARTWORK")
-        stripe:SetPoint("TOPLEFT", 0, 0)
-        stripe:SetPoint("BOTTOMLEFT", 0, 0)
-        stripe:SetWidth(3)
-        stripe:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
-
-        -- Difficulty badge
+        local badgeW = diffInfo.short == "LFR" and 32 or 22
         local badge = CreateFrame("Frame", nil, row)
-        badge:SetSize(diffInfo.short == "LFR" and 36 or 24, 18)
-        badge:SetPoint("LEFT", 12, 0)
-        if ApplyVisuals then
-            ApplyVisuals(badge, {diffInfo.color[1] * 0.45, diffInfo.color[2] * 0.45, diffInfo.color[3] * 0.45, 1},
-                {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1})
+        badge:SetSize(badgeW, 18)
+        badge:SetPoint("LEFT", strip, "RIGHT", 8, 0)
+        do
+            local bb = badge:CreateTexture(nil, "BACKGROUND")
+            bb:SetAllPoints()
+            bb:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.18)
         end
         local badgeFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         badgeFS:SetPoint("CENTER")
         badgeFS:SetText("|cffffffff" .. diffInfo.short .. "|r")
 
-        -- Instance name
         local nameFS
         if FontManager and FontManager.CreateFontString then
             nameFS = FontManager:CreateFontString(row, "body", "OVERLAY")
         else
-            nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         end
         nameFS:SetPoint("LEFT", badge, "RIGHT", 10, 0)
-        nameFS:SetWidth(NAME_COL_W - (badge:GetWidth() + 30))
+        nameFS:SetWidth(DIFF_NAME_COL_W)
         nameFS:SetJustifyH("LEFT")
         nameFS:SetWordWrap(false)
-        nameFS:SetText(g.instanceName)
-        nameFS:SetTextColor(1, 1, 1)
+        nameFS:SetText(g.difficultyName or diffInfo.name)
+        nameFS:SetTextColor(0.82, 0.84, 0.9)
 
-        -- Boss heat segment bar (variable middle column)
-        local heatX = NAME_COL_W + 10
-        local heatRight = rowW - STATS_COL_W - 30
-        local heatW = math.max(40, heatRight - heatX)
-        -- Outlined heat-bar background so empty rows still show the rail clearly
+        local bx0 = 2 + badgeW + 10 + DIFF_NAME_COL_W + 10
+        local heatW = math.max(48, innerW - bx0 - rightBlockW - SAVED_RIGHT_MARGIN)
+        local heatY = -math.floor((DIFF_ROW_H - BOSS_BAR_H) / 2)
+
         local heatBg = CreateFrame("Frame", nil, row)
-        heatBg:SetPoint("LEFT", row, "LEFT", heatX, 0)
-        heatBg:SetSize(heatW, 14)
-        if ApplyVisuals then
-            ApplyVisuals(heatBg, {0.10, 0.10, 0.12, 1}, {0, 0, 0, 0.85})
-        else
-            local bg = heatBg:CreateTexture(nil, "BACKGROUND")
-            bg:SetAllPoints()
-            bg:SetColorTexture(0.10, 0.10, 0.12, 1)
-        end
+        heatBg:SetPoint("TOPLEFT", row, "TOPLEFT", bx0, heatY)
+        heatBg:SetSize(heatW, BOSS_BAR_H)
+        local hbTex = heatBg:CreateTexture(nil, "BACKGROUND")
+        hbTex:SetAllPoints()
+        hbTex:SetColorTexture(0.055, 0.057, 0.065, 1)
 
         if bosses and total > 0 then
-            local segGap = 2
-            local segW = math.max(6, math.floor((heatW - (total - 1) * segGap) / total))
-            local actualSegGap = (total > 1) and math.floor((heatW - total * segW) / (total - 1)) or 0
-            for i, b in ipairs(bosses) do
-                local ratio = (#g.characters > 0) and (#b.killers / #g.characters) or 0
-                local col = HeatColor(ratio, diffInfo)
-                -- Frame-based segment so we get a crisp 1px outline via ApplyVisuals
-                local segBox = CreateFrame("Frame", nil, row)
-                segBox:SetSize(segW, 14)
-                segBox:SetPoint("LEFT", row, "LEFT", heatX + (i - 1) * (segW + actualSegGap), 0)
-                if ApplyVisuals then
-                    ApplyVisuals(segBox, col, {0.0, 0.0, 0.0, 0.85})
-                else
-                    local seg = segBox:CreateTexture(nil, "ARTWORK")
-                    seg:SetAllPoints()
-                    seg:SetColorTexture(col[1], col[2], col[3], col[4])
+            local inner = math.max(1, heatW - 2)
+            local fillFrac = math.max(0, math.min(1, cleared / total))
+            local fillW = math.max(2, math.floor(inner * fillFrac))
+            local fill = heatBg:CreateTexture(nil, "ARTWORK")
+            fill:SetHeight(math.max(2, BOSS_BAR_H - 2))
+            fill:SetPoint("LEFT", heatBg, "LEFT", 1, 0)
+            fill:SetWidth(fillW)
+            local r, g, b = diffInfo.color[1], diffInfo.color[2], diffInfo.color[3]
+            if cleared >= total then
+                fill:SetColorTexture(0.2, 0.78, 0.34, 0.85)
+            else
+                fill:SetColorTexture(r * 0.52, g * 0.52, b * 0.52, 0.68)
+            end
+            if total > 1 and total <= 16 then
+                for ti = 1, total - 1 do
+                    local tick = heatBg:CreateTexture(nil, "OVERLAY")
+                    tick:SetWidth(1)
+                    tick:SetHeight(math.max(2, BOSS_BAR_H - 2))
+                    tick:SetColorTexture(0, 0, 0, 0.2)
+                    tick:SetPoint("LEFT", heatBg, "LEFT", 1 + math.floor(ti * inner / total), 0)
                 end
             end
         end
 
-        -- Stats: cleared/total + char count (no "warband" word, single-line)
-        local statsFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        statsFS:SetPoint("RIGHT", row, "RIGHT", -32, 0)
-        statsFS:SetJustifyH("RIGHT")
-        statsFS:SetWidth(STATS_COL_W)
-        statsFS:SetWordWrap(false)
         local progColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
-        statsFS:SetText(string.format("%s%d/%d|r  |cffaaaaaa· %d %s|r",
-            progColor, cleared, total,
-            #g.characters, #g.characters == 1 and "char" or "chars"))
+        local fracFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fracFS:SetSize(SAVED_COL_FRAC, 18)
+        fracFS:SetJustifyH("RIGHT")
+        fracFS:SetPoint("RIGHT", row, "RIGHT", -SAVED_RIGHT_MARGIN - SAVED_COL_CHEVRON - SAVED_COL_GAP - SAVED_COL_CHARS - SAVED_COL_GAP, 0)
+        fracFS:SetWordWrap(false)
+        fracFS:SetText(string.format("%s%d/%d|r", progColor, cleared, total))
 
-        -- Expand chevron
+        local charsFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        charsFS:SetSize(SAVED_COL_CHARS, 18)
+        charsFS:SetJustifyH("RIGHT")
+        charsFS:SetPoint("RIGHT", row, "RIGHT", -SAVED_RIGHT_MARGIN - SAVED_COL_CHEVRON - SAVED_COL_GAP, 0)
+        charsFS:SetWordWrap(false)
+        charsFS:SetTextColor(0.7, 0.72, 0.78)
+        charsFS:SetText(string.format("%d %s", #g.characters, #g.characters == 1 and "char" or "chars"))
+
         local chevron = row:CreateTexture(nil, "OVERLAY")
-        chevron:SetSize(14, 14)
-        chevron:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+        chevron:SetSize(12, 12)
+        chevron:SetPoint("CENTER", row, "RIGHT", -14, 0)
         local groupKey = MakeGroupKey(g)
         local function UpdateChevron()
             if S.savedExpanded[groupKey] then
@@ -2372,7 +2506,8 @@ RefreshSavedInstances = function()
             lines[#lines + 1] = { text = string.format("|cffd4af37%d/%d|r |cff888888warband cleared|r", cleared, total) }
             lines[#lines + 1] = { text = " " }
             if bosses then
-                for _, b in ipairs(bosses) do
+                for bii = 1, #bosses do
+                    local b = bosses[bii]
                     local nKilled = #b.killers
                     local label
                     if nKilled == 0 then
@@ -2392,89 +2527,90 @@ RefreshSavedInstances = function()
             lines[#lines + 1] = { text = "|cff888888Click to expand character lockouts|r" }
             WNTooltipShow(self, {
                 type = "custom",
-                title = g.instanceName,
+                title = g.instanceName .. " — " .. (g.difficultyName or diffInfo.name),
                 lines = lines,
                 anchor = "ANCHOR_RIGHT",
             })
         end)
         row:SetScript("OnLeave", function() WNTooltipHide() end)
 
-        return row
+        table.insert(S.savedRows, row)
     end
 
-    local function BuildDetailRow(g, char, yPos)
+    local function BuildDetailRow(g, char, yPos, extraIndent)
         local diffInfo = GetDiffInfo(g.difficulty)
         local hex, charName = GetClassHexFromCharacters(char.charKey)
+        local indent = DIFF_INDENT + (extraIndent or 0)
+        local innerW = rowW - indent
 
         local row = CreateFrame("Frame", nil, content)
-        row:SetSize(rowW, DETAIL_H)
-        row:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD, -yPos)
+        row:SetSize(innerW, DETAIL_H)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD + indent, -yPos)
         row:EnableMouse(true)
 
         local bg = row:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
-        bg:SetColorTexture(0.07, 0.07, 0.10, 0.85)
-
+        bg:SetColorTexture(0.042, 0.044, 0.052, 0.92)
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
-        hl:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.15)
+        hl:SetColorTexture(1, 1, 1, 0.035)
 
-        -- Indent + class-colored character name
         local nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        nameFS:SetPoint("LEFT", row, "LEFT", 28, 0)
-        nameFS:SetWidth(NAME_COL_W - 28)
+        nameFS:SetPoint("LEFT", row, "LEFT", 12, 0)
+        nameFS:SetWidth(118)
         nameFS:SetJustifyH("LEFT")
         nameFS:SetWordWrap(false)
         nameFS:SetText("|cff" .. hex .. (charName or char.charKey) .. "|r")
 
-        -- Per-boss kill dots for THIS character
         local roster = char.encounters or {}
         local total = #roster
         local k = char.killed or 0
-        local heatX = NAME_COL_W + 10
-        local heatRight = rowW - STATS_COL_W - 30
-        local heatW = math.max(40, heatRight - heatX)
+        local bx0 = 12 + 118 + 10
+        local heatW = math.max(48, innerW - bx0 - rightBlockW - SAVED_RIGHT_MARGIN)
+        local heatY = -math.floor((DETAIL_H - BOSS_BAR_H) / 2)
+
+        local heatBg = CreateFrame("Frame", nil, row)
+        heatBg:SetPoint("TOPLEFT", row, "TOPLEFT", bx0, heatY)
+        heatBg:SetSize(heatW, BOSS_BAR_H)
+        local hbb = heatBg:CreateTexture(nil, "BACKGROUND")
+        hbb:SetAllPoints()
+        hbb:SetColorTexture(0.05, 0.052, 0.06, 1)
+
         if total > 0 then
-            local size = math.max(10, math.min(14, math.floor((heatW - (total - 1) * 2) / total)))
-            local gap = math.max(2, math.floor((heatW - total * size) / math.max(1, total - 1)))
-            for i, e in ipairs(roster) do
-                local color = e.killed
-                    and {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1}
-                    or  {0.18, 0.18, 0.22, 1}
-                -- Frame with 1px outline so dots match the segment style
-                local dotBox = CreateFrame("Frame", nil, row)
-                dotBox:SetSize(size, size)
-                dotBox:SetPoint("LEFT", row, "LEFT", heatX + (i - 1) * (size + gap), 0)
-                if ApplyVisuals then
-                    ApplyVisuals(dotBox, color, {0, 0, 0, 0.85})
-                else
-                    local dot = dotBox:CreateTexture(nil, "ARTWORK")
-                    dot:SetAllPoints()
-                    dot:SetColorTexture(color[1], color[2], color[3], color[4])
-                end
+            local inner = math.max(1, heatW - 2)
+            local fillFrac = math.max(0, math.min(1, k / total))
+            local fillW = math.max(2, math.floor(inner * fillFrac))
+            local fill = heatBg:CreateTexture(nil, "ARTWORK")
+            fill:SetHeight(math.max(2, BOSS_BAR_H - 2))
+            fill:SetPoint("LEFT", heatBg, "LEFT", 1, 0)
+            fill:SetWidth(fillW)
+            if k >= total then
+                fill:SetColorTexture(0.2, 0.78, 0.34, 0.85)
+            else
+                fill:SetColorTexture(diffInfo.color[1] * 0.48, diffInfo.color[2] * 0.48, diffInfo.color[3] * 0.48, 0.66)
             end
         end
 
-        -- Progress text
         local progressColor = (total > 0 and k >= total) and "|cff44ff44" or "|cffd4af37"
         local progFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        progFS:SetPoint("RIGHT", row, "RIGHT", -90, 0)
-        progFS:SetWidth(60)
+        progFS:SetSize(SAVED_COL_FRAC, 18)
         progFS:SetJustifyH("RIGHT")
+        progFS:SetPoint("RIGHT", row, "RIGHT", -SAVED_RIGHT_MARGIN - SAVED_COL_CHEVRON - SAVED_COL_GAP - SAVED_COL_CHARS - SAVED_COL_GAP, 0)
         progFS:SetText(string.format("%s%d/%d|r", progressColor, k, total))
 
-        -- Reset countdown
         local resetFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        resetFS:SetPoint("RIGHT", row, "RIGHT", -32, 0)
-        resetFS:SetWidth(50)
+        resetFS:SetSize(SAVED_COL_CHARS, 18)
         resetFS:SetJustifyH("RIGHT")
-        resetFS:SetTextColor(0.55, 0.55, 0.6)
+        resetFS:SetPoint("RIGHT", row, "RIGHT", -SAVED_RIGHT_MARGIN - SAVED_COL_CHEVRON - SAVED_COL_GAP, 0)
+        resetFS:SetTextColor(0.52, 0.54, 0.62)
         if char.reset and char.reset > 0 then
             local h = math.floor(char.reset / 3600)
             local d = math.floor(h / 24)
             if d > 0 then resetFS:SetText(d .. "d " .. (h % 24) .. "h")
             elseif h > 0 then resetFS:SetText(h .. "h")
             else resetFS:SetText("<1h") end
+        else
+            resetFS:SetText("")
         end
 
         row:SetScript("OnEnter", function(self)
@@ -2482,7 +2618,8 @@ RefreshSavedInstances = function()
                 { text = g.instanceName .. " — |cff" .. diffInfo.hex .. (g.difficultyName or diffInfo.name) .. "|r" },
                 { text = " " },
             }
-            for bi, e in ipairs(roster) do
+            for bi = 1, #roster do
+                local e = roster[bi]
                 local mark = e.killed and "|cff44ff44" .. CHECK .. "|r" or "|cff444444" .. CROSS .. "|r"
                 lines[#lines + 1] = {
                     left = mark .. " " .. (e.name or ("Boss " .. bi)),
@@ -2499,38 +2636,31 @@ RefreshSavedInstances = function()
         end)
         row:SetScript("OnLeave", function() WNTooltipHide() end)
 
-        return row
+        table.insert(S.savedRows, row)
     end
 
-    -- Build distinct char count for summary
-    local seen, charKeys = {}, {}
-    for _, g in ipairs(filtered) do
-        for _, c in ipairs(g.characters) do
-            if not seen[c.charKey] then
-                seen[c.charKey] = true
-                charKeys[#charKeys + 1] = c.charKey
+    local sections = GroupFilteredByInstance(filtered)
+    local y = 8
+    for si = 1, #sections do
+        local sec = sections[si]
+        if si > 1 then
+            y = y + SECTION_GAP
+        end
+        y = y + BuildInstanceHeader(sec, y)
+        if not S.savedInstanceCollapsed[sec.instanceName] then
+            for ci = 1, #sec.children do
+                local g = sec.children[ci]
+                BuildDifficultyRow(g, y)
+                y = y + DIFF_ROW_H + 2
+                if S.savedExpanded[MakeGroupKey(g)] then
+                    for pi = 1, #g.characters do
+                        BuildDetailRow(g, g.characters[pi], y, DETAIL_INDENT)
+                        y = y + DETAIL_H + 2
+                    end
+                end
             end
         end
-    end
-    if S.savedFrame and S.savedFrame.summary then
-        S.savedFrame.summary:SetText(string.format("%d instances · %d characters", #filtered, #charKeys))
-    end
-
-    -- Render
-    local y = 0
-    for idx, g in ipairs(filtered) do
-        local summaryRow = BuildSummaryRow(g, idx, y)
-        table.insert(S.savedRows, summaryRow)
-        y = y + SUMMARY_H + 1
-
-        if S.savedExpanded[MakeGroupKey(g)] then
-            for _, char in ipairs(g.characters) do
-                local detailRow = BuildDetailRow(g, char, y)
-                table.insert(S.savedRows, detailRow)
-                y = y + DETAIL_H + 1
-            end
-            y = y + 4  -- breathing room after expanded block
-        end
+        y = y + ROW_TAIL
     end
 
     content:SetHeight(math.max(40, y))

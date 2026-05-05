@@ -2,6 +2,23 @@
     Warband Nexus - Collectible Source Database
     Single source of truth: the `sources` array. All try-count and tooltip data is built from it at load.
 
+    RUNTIME TABLES (ApplyTypedSources at file bottom)
+    -------------------------------------------------
+      npcs, rares, objects, fishing, containers, zones, encounters, encounterNames, lockoutQuests
+    TryCounterService clones into npcDropDB / objectDropDB / encounterDB / … at InitializeTryCounter.
+
+    TRY COUNT MODEL (Midnight 12.0.x — full event list in TryCounterService.lua header)
+    -----------------------------------------------------------------------------------
+      Rows define tracked itemIDs (drops[]), optional dropDifficulty / difficultyIDs, repeatable,
+      guaranteed. Try counts live in db.global.tryCounts[type][id].
+      Loot path: scan slots → tracked item present = found (ResetTryCount + “first try / after N”
+      chat via BuildObtainedChat) → absent = miss (ProcessMissedDrops: +1 or ReseedStatistics when
+      statisticIds exist + increment chat). CHAT_MSG_LOOT and ENCOUNTER_END (+5s) are debounced fallbacks.
+      statisticIds must be GetStatistic() statistics IDs (character Statistics), not achievement IDs;
+      verify with /dump GetStatistic(id) when adding bosses.
+      One engine (TryCounterService) handles instance & open world and corpse / chest / personal-style
+      delivery; grow data here (sources, encounter_name, object chest rows, instanceBossSlotOutcomeRules) — do not fork per-raid Lua.
+
     HOW TO ADD A NEW ENTRY
     ----------------------
     Add exactly one element to the `sources` table with:
@@ -16,6 +33,8 @@
       Zone rare:    { sourceType = "zone_drop", mapID = 2395, raresOnly = true, hostileOnly = true, drops = _quelThalasRareMounts }
       Container:    { sourceType = "container", containerItemID = 39883, drops = {...} }
       Encounter:    { sourceType = "encounter", encounterID = 652, npcIDs = { 16152 } }
+    Slot-first boss (chest / secret GUID): add a row to instanceBossSlotOutcomeRules (templateInstanceID,
+      instanceType, difficultyIDs, bossNpcID = npcs{} key, optional encounterJournalID).
 
     DROP ENTRY FORMAT (inside drops):
       - type: "mount", "pet", "toy", or "item"
@@ -29,7 +48,7 @@
         mount/pet try key into one summed seed. dropDifficulty gates loot/encounter UI only, not which stats are merged.
 
     npcs, rares, objects, fishing, containers, zones, encounters, encounterNames, lockoutQuests
-    are built at load from sources only. Do not add data to any legacy table.
+    are built at load from sources only. Do not add data to any legacy table (use sources[] only).
 
     Mount NPC audits: cross-checked against community-maintained open-source mount
     datasets (Classic through Midnight) and DB2 CSV exports where needed.
@@ -155,8 +174,8 @@ local _netherWarpedEgg = {
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
 
 ns.CollectibleSourceDB = {
-    version = "12.0.34",
-    lastUpdated = "2026-04-18",
+    version = "12.0.37",
+    lastUpdated = "2026-05-04",
     sourceSchemaVersion = 1,
     sourceTypes = {
         "instance_boss", -- npcID + drops
@@ -169,6 +188,13 @@ ns.CollectibleSourceDB = {
         "encounter",     -- encounterID + npcIDs
         "encounter_name",-- encounterName + npcIDs
         "lockout_quest", -- npcID + questID/questIDs
+    },
+    --- Instance boss: after ENCOUNTER_END synthetic kill, scan loot slots for tracked itemIDs *before*
+    --- GUID/object resolution (secret GUID chests, personal loot). One rule = one bossNpcID gate.
+    --- Fields: templateInstanceID = GetInstanceInfo()[8]; instanceType = "raid"|"party"; difficultyIDs = {16,...};
+    --- bossNpcID = journal NPC id matching npcDropDB; encounterJournalID optional fallback when encounterDB has no row.
+    instanceBossSlotOutcomeRules = {
+        { templateInstanceID = 1193, instanceType = "raid", difficultyIDs = { 16 }, bossNpcID = 175732, encounterJournalID = 2435 }, -- Sylvanas — SoD Mythic
     },
     -- Single source of truth for new entries. Add here only; see header "HOW TO ADD".
     sources = {
@@ -876,6 +902,16 @@ ns.CollectibleSourceDB = {
         { sourceType = "encounter_name", encounterName = "Restless Heart", npcIDs = { 231636 } },  -- Windrunner Spire
         { sourceType = "encounter_name", encounterName = "Degentrius",     npcIDs = { 231865 } },  -- Magisters' Terrace
         { sourceType = "encounter_name", encounterName = "Midnight Falls", npcIDs = { 214650 } },  -- March on Quel'Danas
+        -- Sanctum of Domination — ENCOUNTER_END encounterName is localized; encounterID may differ in TW/reprints.
+        { sourceType = "encounter_name", encounterName = "Sylvanas Windläufer", npcIDs = { 175732 } },
+        { sourceType = "encounter_name", encounterName = "Sylvanas Coursevent", npcIDs = { 175732 } },
+        { sourceType = "encounter_name", encounterName = "Sylvanas Brisaveloz", npcIDs = { 175732 } },
+        { sourceType = "encounter_name", encounterName = "Sylvanas Correventos", npcIDs = { 175732 } },
+        { sourceType = "encounter_name", encounterName = "Сильвана Ветрокрылая", npcIDs = { 175732 } },
+        { sourceType = "encounter_name", encounterName = "希尔瓦娜斯·风行者", npcIDs = { 175732 } },
+        { sourceType = "encounter_name", encounterName = "希瓦娜斯·風行者", npcIDs = { 175732 } },
+        { sourceType = "encounter_name", encounterName = "실바나스 윈드러너", npcIDs = { 175732 } },
+        { sourceType = "encounter_name", encounterName = "Sylvanas Rüzgarlaşan", npcIDs = { 175732 } },
 
         -- =====================================================================
         -- Lockout Quests (older content: MoP through TWW 11.2)

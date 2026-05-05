@@ -98,6 +98,108 @@ local function CmpNameSort(a, b)
     return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.name) or "") < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.name) or "")
 end
 
+---Boss rows for one GetSavedInstances() slot index (Encounter Journal order).
+---@param slotIndex number
+---@param numEncounters number|nil
+---@return table[]
+local function BuildSavedInstanceEncounterList(slotIndex, numEncounters)
+    local encounters = {}
+    if not numEncounters or numEncounters <= 0 then return encounters end
+    for j = 1, numEncounters do
+        local bossName, _, isKilled = GetSavedInstanceEncounterInfo(slotIndex, j)
+        if issecretvalue and bossName and issecretvalue(bossName) then bossName = nil end
+        if bossName then
+            encounters[#encounters + 1] = {
+                name = bossName,
+                killed = isKilled or false,
+            }
+        end
+    end
+    return encounters
+end
+
+---GetSavedInstanceInfo may return isRaid as boolean or 1/0; it can also be nil in edge builds.
+---Use DifficultyID + maxPlayers as fallback so 5-player lockouts still land in dungeons.
+---@param raw any
+---@param maxPlayers number|nil
+---@param difficultyId number|nil
+---@return boolean|nil true = raid, false = dungeon / small-group saved instance, nil = unknown
+local function CoerceSavedInstanceIsRaid(raw, maxPlayers, difficultyId)
+    if issecretvalue and raw ~= nil and issecretvalue(raw) then
+        raw = nil
+    end
+    if raw == true or raw == 1 then return true end
+    if raw == false or raw == 0 then return false end
+
+    if type(difficultyId) == "number" and not (issecretvalue and issecretvalue(difficultyId)) then
+        -- Raid-style difficulties (see DifficultyID / wow-api-guardian, Midnight 12.0.1)
+        if difficultyId == 14 or difficultyId == 15 or difficultyId == 16 or difficultyId == 17
+            or difficultyId == 3 or difficultyId == 4 or difficultyId == 5 or difficultyId == 6
+            or difficultyId == 9 or difficultyId == 33 or difficultyId == 220 or difficultyId == 241 then
+            return true
+        end
+        -- Party / M+ / timewalking party / delve-ish small group
+        if difficultyId == 1 or difficultyId == 2 or difficultyId == 8 or difficultyId == 23
+            or difficultyId == 24 or difficultyId == 150 or difficultyId == 205
+            or difficultyId == 208 or difficultyId == 236 then
+            return false
+        end
+    end
+
+    if type(maxPlayers) == "number" and maxPlayers > 0
+        and not (issecretvalue and issecretvalue(maxPlayers)) then
+        if maxPlayers <= 5 then return false end
+        if maxPlayers >= 10 then return true end
+    end
+
+    return nil
+end
+
+---Only lockouts with a known future reset time (resetAt) count as active.
+---@param lockout table|nil
+---@param nowS number GetServerTime()-style unix seconds
+---@return boolean
+local function SavedLockoutRowIsActive(lockout, nowS)
+    if not lockout or type(nowS) ~= "number" then return false end
+    local ra = lockout.resetAt
+    if type(ra) ~= "number" then return false end
+    if issecretvalue and issecretvalue(ra) then return false end
+    return ra > nowS
+end
+
+---@param rawMap table|nil [lockoutID] = compact row
+---@param isRaidFlag boolean
+---@return table[]
+local function HydrateSavedLockoutsForChar(rawMap, isRaidFlag)
+    local hydrated = {}
+    local nowS = (GetServerTime and GetServerTime()) or time()
+    for instanceID, lockout in pairs(rawMap or {}) do
+        if SavedLockoutRowIsActive(lockout, nowS) then
+            local difficultyName
+            if lockout.difficulty and GetDifficultyInfo then
+                difficultyName = GetDifficultyInfo(lockout.difficulty)
+            end
+            hydrated[#hydrated + 1] = {
+                instanceID = instanceID,
+                name = lockout.name or ("Instance #" .. tostring(instanceID)),
+                difficulty = lockout.difficulty,
+                difficultyName = difficultyName or lockout.difficultyName or "Unknown",
+                reset = lockout.reset,
+                resetAt = lockout.resetAt,
+                extended = lockout.extended or false,
+                numEncounters = lockout.numEncounters,
+                encounterProgress = lockout.encounterProgress,
+                encounters = lockout.encounters or {},
+                progress = lockout.encounterProgress or 0,
+                total = lockout.numEncounters or 0,
+                isRaid = isRaidFlag,
+            }
+        end
+    end
+    table.sort(hydrated, CmpNameSort)
+    return hydrated
+end
+
 local function BuildAffixSignature(pveCache)
     local mp = pveCache and pveCache.mythicPlus
     local aff = mp and mp.currentAffixes
@@ -355,7 +457,7 @@ function WarbandNexus:InitializePvECache()
         self.db.global.pveCache = {
             mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} },
             greatVault = { activities = {}, rewards = {} },
-            lockouts = { raids = {}, worldBosses = {} },
+            lockouts = { raids = {}, dungeons = {}, worldBosses = {} },
             delves = { companion = {}, season = 0 },
             version = CACHE_VERSION,
             lastUpdate = 0,
@@ -379,8 +481,9 @@ function WarbandNexus:InitializePvECache()
     cache.greatVault.activities = cache.greatVault.activities or {}
     cache.greatVault.rewards    = cache.greatVault.rewards    or {}
 
-    cache.lockouts = cache.lockouts or { raids = {}, worldBosses = {} }
+    cache.lockouts = cache.lockouts or { raids = {}, dungeons = {}, worldBosses = {} }
     cache.lockouts.raids       = cache.lockouts.raids       or {}
+    cache.lockouts.dungeons    = cache.lockouts.dungeons    or {}
     cache.lockouts.worldBosses = cache.lockouts.worldBosses or {}
 
     cache.delves = cache.delves or { companion = {}, season = 0 }
@@ -965,7 +1068,7 @@ end
 -- LOCKOUT DATA
 -- ============================================================================
 
----Update raid lockouts for current character
+---Update saved instance lockouts (raids + dungeons) for current character
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateRaidLockouts(charKey)
     -- GUARD: Only update if character is tracked
@@ -976,51 +1079,79 @@ function WarbandNexus:UpdateRaidLockouts(charKey)
     if not charKey or not self.db.global.pveCache then return end
     charKey = CanonicalizePvEKey(charKey)
     
-    local numSavedInstances = GetNumSavedInstances()
-    if not numSavedInstances or numSavedInstances == 0 then return end
-    
     if not self.db.global.pveCache.lockouts.raids then
         self.db.global.pveCache.lockouts.raids = {}
     end
-    
+    if not self.db.global.pveCache.lockouts.dungeons then
+        self.db.global.pveCache.lockouts.dungeons = {}
+    end
+
+    local numSavedInstances = GetNumSavedInstances()
+    if not numSavedInstances or numSavedInstances == 0 then
+        self.db.global.pveCache.lockouts.raids[charKey] = {}
+        self.db.global.pveCache.lockouts.dungeons[charKey] = {}
+        return
+    end
+
     self.db.global.pveCache.lockouts.raids[charKey] = {}
-    
+    self.db.global.pveCache.lockouts.dungeons[charKey] = {}
+
+    local nowServer = (GetServerTime and GetServerTime()) or time()
+
     for i = 1, numSavedInstances do
-        local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress = GetSavedInstanceInfo(i)
-        
+        -- 13=extendDisabled, 14=instanceId (10.0.5+); keep full tail so encounter fields stay aligned.
+        local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress, _extDis, _instId = GetSavedInstanceInfo(i)
+
         if issecretvalue and name and issecretvalue(name) then name = nil end
         if issecretvalue and difficulty and issecretvalue(difficulty) then difficulty = nil end
         if issecretvalue and difficultyName and issecretvalue(difficultyName) then difficultyName = nil end
-        
-        if name and isRaid and locked then
-            local encounters = {}
-            if numEncounters and numEncounters > 0 then
-                for j = 1, numEncounters do
-                    local bossName, _, isKilled = GetSavedInstanceEncounterInfo(i, j)
-                    if issecretvalue and bossName and issecretvalue(bossName) then bossName = nil end
-                    if bossName then
-                        encounters[#encounters + 1] = {
-                            name = bossName,
-                            killed = isKilled or false,
-                        }
-                    end
+
+        local encProg = nil
+        if encounterProgress ~= nil then
+            if issecretvalue and issecretvalue(encounterProgress) then
+                encProg = nil
+            else
+                encProg = tonumber(encounterProgress)
+            end
+        end
+        local hasBossProgress = encProg and encProg > 0
+        -- Some 5-player rows report locked=false while still on the saved list; boss progress implies a real lock.
+        local activeLock = locked or extended or hasBossProgress
+        if not name or not activeLock then
+            -- Nothing to track for this row.
+        else
+            local resetSec = nil
+            if reset ~= nil then
+                if issecretvalue and issecretvalue(reset) then
+                    resetSec = nil
+                else
+                    resetSec = tonumber(reset)
                 end
             end
-            -- Capture an absolute server timestamp so the countdown remains
-            -- accurate even after the player logs that toon out (raw `reset`
-            -- is seconds-from-scan and goes stale otherwise).
-            local nowServer = (GetServerTime and GetServerTime()) or time()
-            self.db.global.pveCache.lockouts.raids[charKey][id] = {
+            -- Do not persist expired lockouts (GetSavedInstanceInfo reset is seconds until weekly reset).
+            if not resetSec or resetSec <= 0 then
+                -- Skip: already reset or no countdown.
+            else
+            local raidFlag = CoerceSavedInstanceIsRaid(isRaid, maxPlayers, difficulty)
+            local encounters = BuildSavedInstanceEncounterList(i, numEncounters)
+            local row = {
                 name = name,
                 difficulty = difficulty,
                 difficultyName = difficultyName,
                 reset = reset,
-                resetAt = (tonumber(reset) and reset > 0) and (nowServer + reset) or nil,
+                resetAt = nowServer + resetSec,
                 extended = extended or false,
                 numEncounters = numEncounters,
                 encounterProgress = encounterProgress,
                 encounters = encounters,
             }
+            if raidFlag == true then
+                self.db.global.pveCache.lockouts.raids[charKey][id] = row
+            elseif raidFlag == false then
+                self.db.global.pveCache.lockouts.dungeons[charKey][id] = row
+            end
+            -- raidFlag nil: could not classify safely; skip.
+            end
         end
     end
 end
@@ -1329,32 +1460,16 @@ function WarbandNexus:GetPvEData(charKey)
             end
         end
         
-        -- Hydrate lockouts: convert hash { [id] = compact } to array with display fields
-        local rawLockouts = dbCache.lockouts and dbCache.lockouts.raids and dbCache.lockouts.raids[charKey] or {}
-        local hydratedLockouts = {}
-        for instanceID, lockout in pairs(rawLockouts) do
-            local difficultyName
-            if lockout.difficulty and GetDifficultyInfo then
-                difficultyName = GetDifficultyInfo(lockout.difficulty)
-            end
-            table.insert(hydratedLockouts, {
-                instanceID = instanceID,
-                name = lockout.name or ("Instance #" .. instanceID),
-                difficulty = lockout.difficulty,
-                difficultyName = difficultyName or lockout.difficultyName or "Unknown",
-                reset = lockout.reset,
-                extended = lockout.extended or false,
-                numEncounters = lockout.numEncounters,
-                encounterProgress = lockout.encounterProgress,
-                encounters = lockout.encounters or {},
-                progress = lockout.encounterProgress or 0,
-                total = lockout.numEncounters or 0,
-                isRaid = true,
-            })
-        end
-        -- Sort by name for consistent display
-        table.sort(hydratedLockouts, CmpNameSort)
-        
+        -- Hydrate lockouts: raids vs dungeons (Instance Tracker merges both; PvE raid panel uses raids only).
+        local rawRaids = dbCache.lockouts and dbCache.lockouts.raids and dbCache.lockouts.raids[charKey] or {}
+        local rawDungeons = dbCache.lockouts and dbCache.lockouts.dungeons and dbCache.lockouts.dungeons[charKey] or {}
+        local raidLockouts = HydrateSavedLockoutsForChar(rawRaids, true)
+        local dungeonLockouts = HydrateSavedLockoutsForChar(rawDungeons, false)
+        local combinedLockouts = {}
+        for i = 1, #raidLockouts do combinedLockouts[#combinedLockouts + 1] = raidLockouts[i] end
+        for i = 1, #dungeonLockouts do combinedLockouts[#combinedLockouts + 1] = dungeonLockouts[i] end
+        table.sort(combinedLockouts, CmpNameSort)
+
         -- Return data for specific character
         local vaultActivities = dbCache.greatVault and dbCache.greatVault.activities and dbCache.greatVault.activities[charKey]
         local returnData = {
@@ -1364,8 +1479,9 @@ function WarbandNexus:GetPvEData(charKey)
             vaultActivities = vaultActivities,
             vaultRewards = dbCache.greatVault and dbCache.greatVault.rewards and dbCache.greatVault.rewards[charKey],
             greatVault = vaultActivities or {},  -- Alias for legacy consumers
-            raidLockouts = hydratedLockouts,
-            lockouts = hydratedLockouts,  -- Alias for DataService / UI
+            raidLockouts = raidLockouts,
+            dungeonLockouts = dungeonLockouts,
+            lockouts = combinedLockouts,  -- Raids + dungeons for DataService / debug
             worldBosses = dbCache.lockouts and dbCache.lockouts.worldBosses and dbCache.lockouts.worldBosses[charKey],
             -- Delves data (companion is account-wide, per-char quest status)
             delves = {
@@ -1620,37 +1736,63 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
         end
     end
     
-    -- ── Raid Lockouts ──
+    -- ── Saved instance lockouts (raids + dungeons) ──
     if legacyData.lockouts then
         local prevRaids = pc.lockouts.raids and pc.lockouts.raids[charKey]
-        if legacyData.lockouts and #legacyData.lockouts == 0 and type(prevRaids) == "table" and next(prevRaids) then
+        local prevDungeons = pc.lockouts.dungeons and pc.lockouts.dungeons[charKey]
+        local hadPrevLockouts = (type(prevRaids) == "table" and next(prevRaids))
+            or (type(prevDungeons) == "table" and next(prevDungeons))
+        if legacyData.lockouts and #legacyData.lockouts == 0 and hadPrevLockouts then
             DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip empty lockouts for %s (keeping cache)", charKey))
             PvECacheUserDebug(
                 "import: SKIP lockouts (legacy [] but cache had rows) key=%s",
                 tostring(charKey))
         else
         pc.lockouts.raids = pc.lockouts.raids or {}
+        pc.lockouts.dungeons = pc.lockouts.dungeons or {}
         pc.lockouts.raids[charKey] = {}
-        
+        pc.lockouts.dungeons[charKey] = {}
+
+        local nowImp = (GetServerTime and GetServerTime()) or time()
         for i = 1, #legacyData.lockouts do
             local lockout = legacyData.lockouts[i]
             local id = lockout.instanceID or lockout.id
             if id then
-                pc.lockouts.raids[charKey][id] = {
-                    name = lockout.name,
-                    difficulty = lockout.difficulty,
-                    reset = lockout.reset,
-                    extended = lockout.extended or false,
-                    numEncounters = lockout.total or lockout.numEncounters,
-                    encounterProgress = lockout.progress or lockout.encounterProgress,
-                }
+                local rRaw = lockout.reset
+                local resetSec = nil
+                if rRaw ~= nil and not (issecretvalue and issecretvalue(rRaw)) then
+                    resetSec = tonumber(rRaw)
+                end
+                if resetSec and resetSec > 0 then
+                    local row = {
+                        name = lockout.name,
+                        difficulty = lockout.difficulty or lockout.difficultyID,
+                        reset = rRaw,
+                        resetAt = nowImp + resetSec,
+                        extended = lockout.extended or false,
+                        numEncounters = lockout.total or lockout.numEncounters,
+                        encounterProgress = lockout.progress or lockout.encounterProgress,
+                    }
+                    if lockout.isRaid == true then
+                        pc.lockouts.raids[charKey][id] = row
+                    elseif lockout.isRaid == false then
+                        pc.lockouts.dungeons[charKey][id] = row
+                    else
+                        pc.lockouts.raids[charKey][id] = row
+                    end
+                end
             end
         end
-        local nLock = 0
+        local nRaid, nDung = 0, 0
         if pc.lockouts.raids[charKey] then
-            for _ in pairs(pc.lockouts.raids[charKey]) do nLock = nLock + 1 end
+            for _ in pairs(pc.lockouts.raids[charKey]) do nRaid = nRaid + 1 end
         end
-        PvECacheUserDebug("import: lockouts APPLIED key=%s raidInstances=%d nonzero=%s", tostring(charKey), nLock, (nLock > 0) and "yes" or "no")
+        if pc.lockouts.dungeons[charKey] then
+            for _ in pairs(pc.lockouts.dungeons[charKey]) do nDung = nDung + 1 end
+        end
+        PvECacheUserDebug(
+            "import: lockouts APPLIED key=%s raids=%d dungeons=%d nonzero=%s",
+            tostring(charKey), nRaid, nDung, ((nRaid + nDung) > 0) and "yes" or "no")
         end
     end
     
@@ -1665,7 +1807,7 @@ function WarbandNexus:ClearPvECache()
     
     self.db.global.pveCache.mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} }
     self.db.global.pveCache.greatVault = { activities = {}, rewards = {} }
-    self.db.global.pveCache.lockouts = { raids = {}, worldBosses = {} }
+    self.db.global.pveCache.lockouts = { raids = {}, dungeons = {}, worldBosses = {} }
     self.db.global.pveCache.delves = { companion = {}, season = 0 }
     self.db.global.pveCache.lastUpdate = 0
     

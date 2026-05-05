@@ -2348,14 +2348,14 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
             loadingProgress = 80,
         })
         
-        -- Collect lockouts
+        -- Collect lockouts (raids + dungeons; matches PvECacheService.UpdateRaidLockouts)
         if GetNumSavedInstances then
             local numSaved = GetNumSavedInstances()
             for i = 1, numSaved do
                 local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress = GetSavedInstanceInfo(i)
                 if issecretvalue and name and issecretvalue(name) then name = nil end
                 if issecretvalue and difficultyName and issecretvalue(difficultyName) then difficultyName = nil end
-                if name and isRaid then
+                if name and locked then
                     table.insert(pve.lockouts, {
                         name = name,
                         id = id,
@@ -2365,6 +2365,7 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
                         progress = encounterProgress or 0,
                         total = numEncounters or 0,
                         extended = extended,
+                        isRaid = (isRaid == true),
                     })
                 end
             end
