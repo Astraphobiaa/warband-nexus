@@ -1024,7 +1024,7 @@ L["ADDED"] = "Added"
 L["WEEKLY_VAULT_TRACKER"] = "Weekly Vault Tracker"
 L["VAULT_TRACKER_STATUS_PENDING"] = "Pending..."
 L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "Ready to Claim"
-L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Slots Ready"
+L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Slots Earned"
 
 -- Vault Button (floating shortcut button)
 L["CONFIG_VAULT_BUTTON"] = "Vault Button"

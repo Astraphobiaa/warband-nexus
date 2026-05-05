@@ -1436,7 +1436,7 @@ L["TRY_COUNTER_DROP_SCREENSHOT"] = "Screenshot del rilascio tracciato"
 L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"] = "Acquisisci uno screenshot automatico del gioco subito dopo il popup quando cade una cavalcatura, un animale domestico, un giocattolo o un'illusione tracciata. Disattiva se non desideri file aggiuntivi nella cartella Screenshot."
 L["VAULT_TRACKER_STATUS_PENDING"] = "In attesa di..."
 L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "Pronti per reclamare"
-L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Slot pronti"
+L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Slot ottenuti"
 
 L["CONFIG_VAULT_BUTTON"] = "Pulsante Caveau"
 L["CONFIG_VAULT_BUTTON_DESC"] = "Mostra il pulsante Caveau trascinabile. Clic sinistro: apre/chiude la finestra principale; clic destro: apre il menu rapido WN."

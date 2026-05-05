@@ -1572,7 +1572,7 @@ L["TRY_COUNTER_DROP_SCREENSHOT"] = "Screenshot zum verfolgten Abwurf"
 L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"] = "Machen Sie kurz nach dem Popup einen automatischen Spiel-Screenshot, wenn ein Reittier, ein Haustier, ein Spielzeug oder eine Illusion mit Try-Tracking fallen gelassen wird. Deaktivieren Sie diese Option, wenn Sie keine zusätzlichen Dateien in Ihrem Screenshots-Ordner haben möchten."
 L["VAULT_TRACKER_STATUS_PENDING"] = "Ausstehend..."
 L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "Bereit zum Anspruch"
-L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Plätze bereit"
+L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Plätze freigeschaltet"
 
 L["CONFIG_VAULT_BUTTON"] = "Tresor-Knopf"
 L["CONFIG_VAULT_BUTTON_DESC"] = "Zeigt den verschiebbaren Tresor-Knopf an. Linksklick öffnet/schließt das Hauptfenster; Rechtsklick öffnet das WN-Schnellmenü."

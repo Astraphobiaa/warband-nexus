@@ -1436,7 +1436,7 @@ L["TRY_COUNTER_DROP_SCREENSHOT"] = "추적된 드롭에 대한 스크린샷"
 L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"] = "추적된 탈것, 애완동물, 장난감 또는 환상이 떨어질 때 팝업이 표시된 직후 자동 게임 스크린샷을 찍습니다. 스크린샷 폴더에 추가 파일을 원하지 않으면 끄십시오."
 L["VAULT_TRACKER_STATUS_PENDING"] = "보류 중..."
 L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "청구 준비 완료"
-L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "슬롯 준비 완료"
+L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "슬롯 획득"
 
 L["CONFIG_VAULT_BUTTON"] = "금고 버튼"
 L["CONFIG_VAULT_BUTTON_DESC"] = "이동 가능한 금고 버튼을 표시합니다. 좌클릭: 메인 창 토글, 우클릭: WN 단축 메뉴."

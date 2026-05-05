@@ -1429,7 +1429,7 @@ L["TRY_COUNTER_DROP_SCREENSHOT"] = "Captura de pantalla de caída rastreada"
 L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"] = "Tome una captura de pantalla automática del juego poco después de la ventana emergente cuando caiga una montura, mascota, juguete o ilusión rastreada. Desactívelo si no desea archivos adicionales en su carpeta Capturas de pantalla."
 L["VAULT_TRACKER_STATUS_PENDING"] = "Pendiente..."
 L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "Listo para reclamar"
-L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Espacios listos"
+L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Espacios obtenidos"
 
 L["CONFIG_VAULT_BUTTON"] = "Botón de Cámara"
 L["CONFIG_VAULT_BUTTON_DESC"] = "Muestra el botón de Cámara arrastrable. Clic izquierdo: abre/cierra la ventana principal; clic derecho: abre el menú rápido WN."

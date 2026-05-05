@@ -1654,7 +1654,7 @@ L["TRY_COUNTER_DROP_SCREENSHOT"] = "追踪掉落的屏幕截图"
 L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"] = "当尝试追踪的坐骑、宠物、玩具或幻象掉落时，在弹出窗口后不久自动截取游戏屏幕截图。如果您不想在“屏幕截图”文件夹中添加额外文件，请关闭此功能。"
 L["VAULT_TRACKER_STATUS_PENDING"] = "待办的..."
 L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "准备领取"
-L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "已就绪"
+L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "槽位已获得"
 
 L["CONFIG_VAULT_BUTTON"] = "宝库按钮"
 L["CONFIG_VAULT_BUTTON_DESC"] = "显示可拖动的宝库按钮。左键：切换主窗口；右键：打开 WN 快捷菜单。"

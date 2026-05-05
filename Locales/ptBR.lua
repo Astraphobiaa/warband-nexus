@@ -1428,7 +1428,7 @@ L["TRY_COUNTER_DROP_SCREENSHOT"] = "Captura de tela do drop rastreado"
 L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"] = "Faça uma captura de tela automática do jogo logo após o pop-up quando uma montaria, animal de estimação, brinquedo ou ilusão rastreada cair. Desligue se não quiser arquivos extras na pasta Capturas de tela."
 L["VAULT_TRACKER_STATUS_PENDING"] = "Pendente..."
 L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "Pronto para reivindicar"
-L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Slots prontos"
+L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Slots obtidos"
 
 L["CONFIG_VAULT_BUTTON"] = "Botão do Cofre"
 L["CONFIG_VAULT_BUTTON_DESC"] = "Mostra o botão do Cofre arrastável. Clique esquerdo: abre/fecha a janela principal; clique direito: abre o menu rápido WN."

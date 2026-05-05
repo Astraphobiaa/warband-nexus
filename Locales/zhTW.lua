@@ -1427,7 +1427,7 @@ L["TRY_COUNTER_DROP_SCREENSHOT"] = "追蹤掉落的螢幕截圖"
 L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"] = "當嘗試追蹤的坐騎、寵物、玩具或幻象掉落時，在彈出視窗後不久自動截取遊戲螢幕截圖。如果您不想在「螢幕截圖」資料夾中新增額外文件，請關閉此功能。"
 L["VAULT_TRACKER_STATUS_PENDING"] = "待辦的..."
 L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "準備領取"
-L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "格位已就緒"
+L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "格位已獲得"
 
 L["CONFIG_VAULT_BUTTON"] = "寶庫按鈕"
 L["CONFIG_VAULT_BUTTON_DESC"] = "顯示可拖曳的寶庫按鈕。左鍵：切換主視窗；右鍵：開啟 WN 快捷選單。"

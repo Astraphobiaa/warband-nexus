@@ -797,8 +797,9 @@ local function BuildTableFrame()
 
     f:EnableMouseWheel(true)
     f:SetScript("OnMouseWheel", function(self, delta)
-        local cur = scroll:GetVerticalScroll()
-        scroll:SetVerticalScroll(math.max(0, cur - delta * ROW_H * 2))
+        local cur = scroll:GetVerticalScroll() or 0
+        local maxY = math.max(0, (content:GetHeight() or 0) - (scroll:GetHeight() or 0))
+        scroll:SetVerticalScroll(math.min(maxY, math.max(0, cur - delta * ROW_H * 2)))
     end)
 
     S.tableFrame   = f
@@ -1780,8 +1781,9 @@ local function BuildSavedInstancesFrame()
             local cur = scroll:GetHorizontalScroll() or 0
             scroll:SetHorizontalScroll(math.min(maxX, math.max(0, cur - delta * 60)))
         else
-            local cur = scroll:GetVerticalScroll()
-            scroll:SetVerticalScroll(math.max(0, cur - delta * 40))
+            local cur = scroll:GetVerticalScroll() or 0
+            local maxY = math.max(0, (content:GetHeight() or 0) - (scroll:GetHeight() or 0))
+            scroll:SetVerticalScroll(math.min(maxY, math.max(0, cur - delta * 40)))
         end
     end)
 
@@ -2663,8 +2665,14 @@ RefreshSavedInstances = function()
         y = y + ROW_TAIL
     end
 
+    -- Preserve scroll position across expand/collapse refreshes (resetting to 0 was jarring when
+    -- the user toggled an instance row). Clamp to the new content extent so we never exceed the
+    -- bottom of the (possibly shorter) content.
+    local prevScroll = (S.savedScroll and S.savedScroll.GetVerticalScroll and S.savedScroll:GetVerticalScroll()) or 0
     content:SetHeight(math.max(40, y))
-    S.savedScroll:SetVerticalScroll(0)
+    local viewportH = (S.savedScroll and S.savedScroll.GetHeight and S.savedScroll:GetHeight()) or 0
+    local maxY = math.max(0, (content:GetHeight() or 0) - viewportH)
+    S.savedScroll:SetVerticalScroll(math.min(maxY, math.max(0, prevScroll)))
     S.savedFrame:Show()
 end
 
@@ -2679,6 +2687,10 @@ ToggleSavedInstances = function()
         S.savedFrame:SetPoint("TOPLEFT", S.button, "BOTTOMLEFT", 0, -6)
     end
     if RequestRaidInfo then pcall(RequestRaidInfo) end
+    -- Fresh open: explicitly start at the top before RefreshSavedInstances clamps the new content.
+    if S.savedScroll and S.savedScroll.SetVerticalScroll then
+        S.savedScroll:SetVerticalScroll(0)
+    end
     RefreshSavedInstances()
 end
 
@@ -3006,15 +3018,26 @@ eFrame:SetScript("OnEvent", function(self)
     C_Timer.After(2, function() BuildButton(); UpdateBadge() end)
 end)
 
-local function OnDataChanged()
-    UpdateBadge()
-    if S.tableFrame and S.tableFrame:IsShown() then
-        RefreshTable()
-    end
-    if S.savedFrame and S.savedFrame:IsShown() then
-        RefreshSavedInstances()
-    end
+-- Coalesce burst of cache messages (PVE_UPDATED + CHARACTER_UPDATED + VAULT_* often fire in
+-- the same frame) into a single redraw. Without this, each open Saved Instances toggle would
+-- rebuild its rows up to four times per cache wave.
+local pendingDataRefresh = false
+local function ScheduleDataRefresh()
+    if pendingDataRefresh then return end
+    pendingDataRefresh = true
+    C_Timer.After(0.1, function()
+        pendingDataRefresh = false
+        UpdateBadge()
+        if S.tableFrame and S.tableFrame:IsShown() then
+            RefreshTable()
+        end
+        if S.savedFrame and S.savedFrame:IsShown() then
+            RefreshSavedInstances()
+        end
+    end)
 end
+
+local OnDataChanged = ScheduleDataRefresh
 
 local function HookWNMessages()
     if not WarbandNexus or not WarbandNexus.RegisterMessage then return end

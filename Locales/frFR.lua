@@ -1496,7 +1496,7 @@ L["TRY_COUNTER_DROP_SCREENSHOT"] = "Capture d'écran du dépôt suivi"
 L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"] = "Prenez une capture d'écran automatique du jeu peu de temps après la fenêtre contextuelle lorsqu'une monture, un animal de compagnie, un jouet ou une illusion suivi par un essai tombe. Désactivez-le si vous ne souhaitez pas de fichiers supplémentaires dans votre dossier Captures d'écran."
 L["VAULT_TRACKER_STATUS_PENDING"] = "En attente..."
 L["VAULT_TRACKER_STATUS_READY_CLAIM"] = "Prêt à réclamer"
-L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Emplacements prêts"
+L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Emplacements obtenus"
 
 L["CONFIG_VAULT_BUTTON"] = "Bouton de Coffre"
 L["CONFIG_VAULT_BUTTON_DESC"] = "Affiche le bouton Coffre déplaçable. Clic gauche : ouvre/ferme la fenêtre principale ; clic droit : ouvre le menu rapide WN."
