@@ -476,7 +476,8 @@ S = {
     button=nil, icon=nil, badge=nil, badgeBg=nil, border=nil,
     tableFrame=nil, title=nil, headerBg=nil, separator=nil,
     optionsFrame=nil, optionsWidgets={}, rows={},
-    menuFrame=nil, savedFrame=nil, savedRows={}, savedExpanded={}, savedInstanceCollapsed={}
+    menuFrame=nil, savedFrame=nil, savedRows={}, savedExpanded={}, savedInstanceCollapsed={},
+    savedGroupCollapsed={},
 }
 
 local HideTable
@@ -489,6 +490,8 @@ local HideMenu
 local ToggleSavedInstances
 local HideSavedInstances
 local RefreshSavedInstances
+local WNTooltipShow
+local WNTooltipHide
 
 local function AddEscCloseFrame(frameName)
     if not frameName or not UISpecialFrames then return end
@@ -569,6 +572,10 @@ local function ApplyTheme()
             end
         end
     end
+    -- Saved Instances rows/headers are rebuilt with current theme colors.
+    if S.savedFrame and S.savedFrame:IsShown() and RefreshSavedInstances then
+        RefreshSavedInstances()
+    end
 end
 
 local function GetButtonVisibleForReadyState()
@@ -605,7 +612,10 @@ HideTable = function()
     if S.optionsFrame then S.optionsFrame:Hide() end
 end
 
-HideMenu = function() if S.menuFrame then S.menuFrame:Hide() end end
+HideMenu = function() 
+    if S.menuFrame then S.menuFrame:Hide() end 
+    if S.menuCatcher then S.menuCatcher:Hide() end
+end
 HideSavedInstances = function() if S.savedFrame then S.savedFrame:Hide() end end
 
 local function HideAllPanels()
@@ -1123,7 +1133,7 @@ end
 -- Themed tooltip helpers (delegate to ns.UI_ShowTooltip / ns.UI_HideTooltip,
 -- with GameTooltip fallback before TooltipService is initialised).
 -- ============================================================================
-local function WNTooltipShow(anchor, data)
+WNTooltipShow = function(anchor, data)
     if ns.UI_ShowTooltip and WarbandNexus and WarbandNexus.Tooltip then
         ns.UI_ShowTooltip(anchor, data)
     else
@@ -1147,7 +1157,7 @@ local function WNTooltipShow(anchor, data)
     end
 end
 
-local function WNTooltipHide()
+WNTooltipHide = function()
     if ns.UI_HideTooltip then ns.UI_HideTooltip() else GameTooltip:Hide() end
 end
 
@@ -1588,9 +1598,12 @@ local function BuildSavedInstancesData()
                                 instanceName = inst.name,
                                 difficultyName = diffName,
                                 difficulty = inst.difficulty,
+                                instanceID = inst.instanceID,
                                 characters = {},
                             }
                             groups[key] = g
+                        elseif (not g.instanceID) and inst.instanceID then
+                            g.instanceID = inst.instanceID
                         end
                         local total = tonumber(inst.numEncounters) or (inst.encounters and #inst.encounters) or 0
                         local killed = tonumber(inst.encounterProgress) or 0
@@ -1640,10 +1653,12 @@ end
 
 local SAVED_FRAME_W = 760
 local SAVED_FILTER_H = 36
-local CARD_W, CARD_H = 232, 108
+local SAVED_CARD_BASE = 190
+local SAVED_CARD_MIN = 152
+local SAVED_CARD_MAX = 240
 local CARD_GAP = 10
-local DOT_SIZE = 12
-local DOT_GAP = 4
+local SAVED_GROUP_CHEVRON_SIZE = 20
+local SAVED_GROUP_PROGRESS_W = 62
 
 local function BuildSavedInstancesFrame()
     if S.savedFrame then return end
@@ -1660,6 +1675,12 @@ local function BuildSavedInstancesFrame()
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetFrameLevel(100)
     f:SetMovable(true)
+    f:SetResizable(true)
+    if f.SetResizeBounds then
+        f:SetResizeBounds(560, 420, 1200, 920)
+    else
+        f:SetMinResize(560, 420)
+    end
     f:EnableMouse(true)
     if ApplyVisuals then
         ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
@@ -1719,7 +1740,7 @@ local function BuildSavedInstancesFrame()
         ApplyVisuals(filterRow, {0.06, 0.06, 0.08, 1}, {accent[1], accent[2], accent[3], 0.4})
     end
 
-    S.savedFilters = { lfr = false, normal = true, heroic = true, mythic = true }
+    S.savedFilters = { lfr = true, normal = true, heroic = true, mythic = true }
     S.savedFilterButtons = {}
     local filterBtns = {
         { key = "lfr",     label = "LFR", diff = 17 },
@@ -1737,7 +1758,12 @@ local function BuildSavedInstancesFrame()
         if ApplyVisuals then
             ApplyVisuals(b, {di.color[1] * 0.35, di.color[2] * 0.35, di.color[3] * 0.35, 1}, {di.color[1], di.color[2], di.color[3], 0.85})
         end
-        local lbl = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local lbl
+        if FontManager and FontManager.CreateFontString then
+            lbl = FontManager:CreateFontString(b, "small", "OVERLAY")
+        else
+            lbl = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        end
         lbl:SetPoint("CENTER")
         lbl:SetText("|cff" .. di.hex .. fb.label .. "|r")
         b:SetScript("OnClick", function()
@@ -1760,30 +1786,77 @@ local function BuildSavedInstancesFrame()
     end
 
     -- Char count summary on the right of filter row (matches addon side margin)
-    local summary = filterRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local summary
+    if FontManager and FontManager.CreateFontString then
+        summary = FontManager:CreateFontString(filterRow, "small", "OVERLAY")
+    else
+        summary = filterRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    end
     summary:SetPoint("RIGHT", filterRow, "RIGHT", -SIDE_PAD, 0)
     summary:SetTextColor(0.75, 0.75, 0.8)
     f.summary = summary
 
-    -- Scroll body
-    local scroll = CreateFrame("ScrollFrame", nil, f)
-    scroll:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", 0, -4)
-    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -2, 2)
+    -- Scroll body + themed scrollbar (same pattern as NotificationManager / main UI)
+    local CONTENT_PAD = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
+    local SCROLLBAR_COL_W = (ns.UI_LAYOUT and ns.UI_LAYOUT.SCROLLBAR_COLUMN_WIDTH) or 22
+    local scroll = nil
+    local scrollBarColumn = nil
+    local Factory = ns.UI and ns.UI.Factory
+
+    if Factory and Factory.CreateScrollFrame then
+        scroll = Factory:CreateScrollFrame(f, "UIPanelScrollFrameTemplate", true)
+        scroll:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", CONTENT_PAD, -CONTENT_PAD)
+        scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(2 + CONTENT_PAD + SCROLLBAR_COL_W), 2 + CONTENT_PAD)
+
+        if Factory.CreateScrollBarColumn and Factory.PositionScrollBarInContainer and scroll.ScrollBar then
+            local topInset = CHROME_H + SAVED_FILTER_H + CONTENT_PAD + 2
+            local bottomInset = CONTENT_PAD + 2
+            scrollBarColumn = Factory:CreateScrollBarColumn(f, SCROLLBAR_COL_W, topInset, bottomInset)
+            Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
+        end
+    else
+        scroll = CreateFrame("ScrollFrame", nil, f)
+        scroll:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", CONTENT_PAD, -CONTENT_PAD)
+        scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(2 + CONTENT_PAD), 2 + CONTENT_PAD)
+    end
+
     local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(SAVED_FRAME_W - 4, 1)
+    content:SetSize(math.max(320, SAVED_FRAME_W - 4 - CONTENT_PAD * 2 - SCROLLBAR_COL_W), 1)
     scroll:SetScrollChild(content)
 
-    f:EnableMouseWheel(true)
-    f:SetScript("OnMouseWheel", function(self, delta)
-        if IsShiftKeyDown and IsShiftKeyDown() then
-            -- Horizontal scroll (table can overflow with many characters)
-            local maxX = math.max(0, (content:GetWidth() or 0) - (scroll:GetWidth() or 0))
-            local cur = scroll:GetHorizontalScroll() or 0
-            scroll:SetHorizontalScroll(math.min(maxX, math.max(0, cur - delta * 60)))
+    f.savedScrollBarColumn = scrollBarColumn
+
+    local resizeGrip = CreateFrame("Button", nil, f)
+    resizeGrip:SetSize(16, 16)
+    resizeGrip:SetPoint("BOTTOMRIGHT", -2, 2)
+    resizeGrip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    resizeGrip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    resizeGrip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    resizeGrip:SetScript("OnMouseDown", function()
+        if not InCombatLockdown or not InCombatLockdown() then
+            f:StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    resizeGrip:SetScript("OnMouseUp", function()
+        f:StopMovingOrSizing()
+        if f:IsShown() then
+            RefreshSavedInstances()
+        end
+    end)
+
+    f._savedResizeToken = 0
+    f:SetScript("OnSizeChanged", function(self)
+        if not self:IsShown() then return end
+        self._savedResizeToken = (self._savedResizeToken or 0) + 1
+        local token = self._savedResizeToken
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.05, function()
+                if S.savedFrame and S.savedFrame:IsShown() and S.savedFrame._savedResizeToken == token then
+                    RefreshSavedInstances()
+                end
+            end)
         else
-            local cur = scroll:GetVerticalScroll() or 0
-            local maxY = math.max(0, (content:GetHeight() or 0) - (scroll:GetHeight() or 0))
-            scroll:SetVerticalScroll(math.min(maxY, math.max(0, cur - delta * 40)))
+            RefreshSavedInstances()
         end
     end)
 
@@ -1827,19 +1900,22 @@ local function BuildLockoutRow(parent, char, encounters, group, totalW)
     local row = CreateFrame("Frame", nil, parent)
     row:SetSize(totalW, 26)
     row:EnableMouse(true)
-
-    local bg = row:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.05, 0.05, 0.07, 0.85)
+    if ApplyVisuals then
+        ApplyVisuals(row, {0.06, 0.06, 0.09, 0.95}, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.28})
+    else
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.06, 0.06, 0.09, 0.95)
+    end
 
     local hl = row:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
-    hl:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.18)
+    hl:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.25)
 
     -- Layout columns (equal-width predictable structure)
     local PAD = 8
     local NAME_W = 150
-    local PROGRESS_W = 50
+    local PROGRESS_W = SAVED_GROUP_PROGRESS_W
     local RESET_W = 48
     local dotsX = PAD + NAME_W + 8
     local dotsRight = totalW - PAD - PROGRESS_W - 8 - RESET_W - 8
@@ -1866,27 +1942,42 @@ local function BuildLockoutRow(parent, char, encounters, group, totalW)
         local gap = math.max(2, math.floor((dotsW - bossCount * size) / math.max(1, bossCount - 1)))
         if bossCount == 1 then gap = 0 end
         for i, e in ipairs(roster) do
-            local dot = row:CreateTexture(nil, "ARTWORK")
+            -- Boss dot border (subtle outline for better definition)
+            local dotBorder = row:CreateTexture(nil, "ARTWORK", nil, 0)
+            dotBorder:SetSize(size + 2, size + 2)
+            dotBorder:SetPoint("LEFT", row, "LEFT", dotsX + (i - 1) * (size + gap) - 1, 0)
+            dotBorder:SetColorTexture(0.10, 0.10, 0.14, 1)
+            local dot = row:CreateTexture(nil, "ARTWORK", nil, 1)
             dot:SetSize(size, size)
             dot:SetPoint("LEFT", row, "LEFT", dotsX + (i - 1) * (size + gap), 0)
             if e.killed then
                 dot:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
             else
-                dot:SetColorTexture(0.18, 0.18, 0.22, 1)
+                dot:SetColorTexture(0.14, 0.14, 0.18, 1)
             end
         end
     end
 
     -- Progress text
-    local progFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local progFS
+    if FontManager and FontManager.CreateFontString then
+        progFS = FontManager:CreateFontString(row, "small", "OVERLAY")
+    else
+        progFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    end
     progFS:SetPoint("RIGHT", row, "RIGHT", -PAD - RESET_W - 8, 0)
     progFS:SetWidth(PROGRESS_W)
-    progFS:SetJustifyH("RIGHT")
+    progFS:SetJustifyH("CENTER")
     local progColor = (t > 0 and k >= t) and "|cff44ff44" or "|cffd4af37"
-    progFS:SetText(string.format("%s%d/%d|r", progColor, k, t))
+    progFS:SetText(string.format("%s%2d/%-2d|r", progColor, k, t))
 
     -- Reset countdown
-    local resetFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local resetFS
+    if FontManager and FontManager.CreateFontString then
+        resetFS = FontManager:CreateFontString(row, "small", "OVERLAY")
+    else
+        resetFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    end
     resetFS:SetPoint("RIGHT", row, "RIGHT", -PAD, 0)
     resetFS:SetWidth(RESET_W)
     resetFS:SetJustifyH("RIGHT")
@@ -1923,19 +2014,30 @@ local function BuildLockoutRow(parent, char, encounters, group, totalW)
     return row
 end
 
+--- Stable key for Saved Instances group collapse state (instance + difficulty).
+local function MakeSavedGroupKey(group)
+    return string.format("%s||%s", group.instanceName or "?", tostring(group.difficulty or 0))
+end
+
 --- Build the section header for an (instance, difficulty) group
-local function BuildGroupHeader(parent, group, totalW)
+local function BuildGroupHeader(parent, group, totalW, collapsed)
     local ApplyVisuals = ns.UI_ApplyVisuals
     local FontManager = ns.FontManager
     local diffInfo = GetDiffInfo(group.difficulty)
 
-    local header = CreateFrame("Frame", nil, parent)
+    local header = CreateFrame("Button", nil, parent)
     header:SetSize(totalW, 30)
+    header:EnableMouse(true)
+    header:RegisterForClicks("LeftButtonUp")
 
     if ApplyVisuals then
         ApplyVisuals(header, {diffInfo.color[1] * 0.18, diffInfo.color[2] * 0.18, diffInfo.color[3] * 0.18, 1},
             {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.85})
     end
+
+    local hover = header:CreateTexture(nil, "HIGHLIGHT")
+    hover:SetAllPoints()
+    hover:SetColorTexture(1, 1, 1, 0.06)
 
     -- Difficulty stripe (left edge)
     local stripe = header:CreateTexture(nil, "ARTWORK")
@@ -1952,7 +2054,12 @@ local function BuildGroupHeader(parent, group, totalW)
         ApplyVisuals(badge, {diffInfo.color[1] * 0.5, diffInfo.color[2] * 0.5, diffInfo.color[3] * 0.5, 1},
             {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1})
     end
-    local badgeFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local badgeFS
+    if FontManager and FontManager.CreateFontString then
+        badgeFS = FontManager:CreateFontString(badge, "small", "OVERLAY")
+    else
+        badgeFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    end
     badgeFS:SetPoint("CENTER")
     badgeFS:SetText("|cffffffff" .. diffInfo.short .. "|r")
 
@@ -1964,213 +2071,278 @@ local function BuildGroupHeader(parent, group, totalW)
         nameFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     end
     nameFS:SetPoint("LEFT", badge, "RIGHT", 10, 0)
+    nameFS:SetPoint("RIGHT", header, "RIGHT", -110, 0)
+    nameFS:SetJustifyH("LEFT")
+    nameFS:SetWordWrap(false)
+    nameFS:SetMaxLines(1)
     nameFS:SetText(group.instanceName)
     nameFS:SetTextColor(1, 1, 1)
 
-    -- Right side: aggregate "X chars · Y/Z warband"
+    -- Right side fixed columns: [characters] [progress]
     local bosses = AggregateBosses(group)
     local cleared, total = 0, bosses and #bosses or 0
     if bosses then
         for _, b in ipairs(bosses) do if #b.killers > 0 then cleared = cleared + 1 end end
     end
-    local statsFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    statsFS:SetPoint("RIGHT", -10, 0)
-    statsFS:SetTextColor(0.85, 0.85, 0.9)
+
+    local chev = header:CreateTexture(nil, "OVERLAY")
+    chev:SetSize(SAVED_GROUP_CHEVRON_SIZE, SAVED_GROUP_CHEVRON_SIZE)
+    chev:SetPoint("RIGHT", -10, 0)
+    local function UpdateChevron()
+        if collapsed then
+            chev:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover")
+        else
+            chev:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
+        end
+    end
+    UpdateChevron()
+
+    local progressFS
+    if FontManager and FontManager.CreateFontString then
+        progressFS = FontManager:CreateFontString(header, "small", "OVERLAY")
+    else
+        progressFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    end
+    progressFS:SetJustifyH("CENTER")
+    progressFS:SetWordWrap(false)
+    progressFS:SetTextColor(0.85, 0.85, 0.9)
+    progressFS:SetWidth(SAVED_GROUP_PROGRESS_W)
+    progressFS:SetPoint("RIGHT", chev, "LEFT", -10, 0)
     local progColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
-    statsFS:SetText(string.format("%d %s · %s%d/%d|r warband",
-        #group.characters, #group.characters == 1 and "char" or "chars",
-        progColor, cleared, total))
+    progressFS:SetText(string.format("%s%2d/%-2d|r", progColor, cleared, total))
+
+    local countLabelFS
+    if FontManager and FontManager.CreateFontString then
+        countLabelFS = FontManager:CreateFontString(header, "small", "OVERLAY")
+    else
+        countLabelFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    end
+    countLabelFS:SetJustifyH("LEFT")
+    countLabelFS:SetWordWrap(false)
+    countLabelFS:SetTextColor(0.85, 0.85, 0.9)
+    countLabelFS:SetWidth(86)
+    countLabelFS:SetPoint("RIGHT", progressFS, "LEFT", -10, 0)
+    countLabelFS:SetText(#group.characters == 1 and "character" or "characters")
+
+    local countNumFS
+    if FontManager and FontManager.CreateFontString then
+        countNumFS = FontManager:CreateFontString(header, "small", "OVERLAY")
+    else
+        countNumFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    end
+    countNumFS:SetJustifyH("RIGHT")
+    countNumFS:SetWordWrap(false)
+    countNumFS:SetTextColor(0.85, 0.85, 0.9)
+    countNumFS:SetWidth(18)
+    countNumFS:SetPoint("RIGHT", countLabelFS, "LEFT", -6, 0)
+    countNumFS:SetText(string.format("%2d", #group.characters))
+
+    nameFS:ClearAllPoints()
+    nameFS:SetPoint("LEFT", badge, "RIGHT", 10, 0)
+    nameFS:SetPoint("RIGHT", countNumFS, "LEFT", -12, 0)
+
+    header:SetScript("OnEnter", function(self)
+        WNTooltipShow(self, {
+            type = "custom",
+            title = group.instanceName or "?",
+            lines = {
+                { text = "|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r" },
+                { text = " " },
+                { text = (ns.L and ns.L["SAVED_INSTANCES_EXPAND_HINT"]) or "Click to expand/collapse character lockouts" },
+            },
+            anchor = "ANCHOR_RIGHT",
+        })
+    end)
+    header:SetScript("OnLeave", function() WNTooltipHide() end)
 
     return header
 end
 
-local function BuildInstanceCard(parent, group)
-    local ApplyVisuals = ns.UI_ApplyVisuals
-    local diffInfo = GetDiffInfo(group.difficulty)
-
-    local card = CreateFrame("Button", nil, parent)
-    card:SetSize(CARD_W, CARD_H)
-    if ApplyVisuals then
-        ApplyVisuals(card, {0.04, 0.04, 0.06, 0.96}, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.55})
+local function BuildSavedInstanceArtCache()
+    if S.savedInstanceArtByName then return S.savedInstanceArtByName end
+    S.savedInstanceArtByName = {}
+    if not EJ_GetInstanceByIndex or not EJ_GetInstanceInfo then
+        return S.savedInstanceArtByName
     end
 
-    -- Subtle top stripe (difficulty color)
+    for raidFlag = 0, 1 do
+        for idx = 1, 250 do
+            local okIdx, journalID = pcall(EJ_GetInstanceByIndex, idx, raidFlag == 1)
+            if not okIdx or not journalID then break end
+            if not (issecretvalue and issecretvalue(journalID)) then
+                local okInfo, name, _, bgImage, buttonImage, loreImage = pcall(EJ_GetInstanceInfo, journalID)
+                if okInfo and name and type(name) == "string" and not (issecretvalue and issecretvalue(name)) then
+                    local key = string.lower(name)
+                    if key ~= "" and not S.savedInstanceArtByName[key] then
+                        S.savedInstanceArtByName[key] = buttonImage or loreImage or bgImage
+                    end
+                end
+            end
+        end
+    end
+    return S.savedInstanceArtByName
+end
+
+local function GetSavedInstanceArt(group)
+    if not group then return nil end
+    if group.instanceID and EJ_GetInstanceInfo and not (issecretvalue and issecretvalue(group.instanceID)) then
+        local okInfo, _, _, bgImage, buttonImage, loreImage = pcall(EJ_GetInstanceInfo, group.instanceID)
+        local direct = okInfo and (buttonImage or loreImage or bgImage) or nil
+        if direct then return direct end
+    end
+
+    local name = group.instanceName
+    if not name or type(name) ~= "string" or (issecretvalue and issecretvalue(name)) then
+        return nil
+    end
+    local map = BuildSavedInstanceArtCache()
+    return map and map[string.lower(name)] or nil
+end
+
+local function FormatSavedResetShort(secondsLeft)
+    if not secondsLeft or secondsLeft <= 0 then return "" end
+    local hours = math.floor(secondsLeft / 3600)
+    local days = math.floor(hours / 24)
+    if days > 0 then
+        local fmt = (ns.L and ns.L["SAVED_INSTANCES_RESET_DAYS"]) or "%dd"
+        return string.format(fmt, days)
+    end
+    if hours > 0 then
+        local fmt = (ns.L and ns.L["SAVED_INSTANCES_RESET_HOURS"]) or "%dh"
+        return string.format(fmt, hours)
+    end
+    return (ns.L and ns.L["SAVED_INSTANCES_RESET_LESS_HOUR"]) or "<1h"
+end
+
+local function BuildInstanceCard(parent, group, cardSize)
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    local FontManager = ns.FontManager
+    local diffInfo = GetDiffInfo(group.difficulty)
+    local bosses = AggregateBosses(group)
+    local total = bosses and #bosses or 0
+    local cleared = 0
+    if bosses then
+        for i = 1, #bosses do
+            if #bosses[i].killers > 0 then
+                cleared = cleared + 1
+            end
+        end
+    end
+
+    local card = CreateFrame("Button", nil, parent)
+    card:SetSize(cardSize, cardSize)
+    card:EnableMouse(true)
+    if ApplyVisuals then
+        ApplyVisuals(card, {0.04, 0.04, 0.06, 0.96}, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.65})
+    end
+
     local stripe = card:CreateTexture(nil, "ARTWORK")
     stripe:SetPoint("TOPLEFT", 1, -1)
     stripe:SetPoint("TOPRIGHT", -1, -1)
     stripe:SetHeight(2)
     stripe:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
 
-    -- Difficulty badge (top-right)
-    local badge = CreateFrame("Frame", nil, card)
-    badge:SetSize(diffInfo.short == "LFR" and 36 or 22, 16)
-    badge:SetPoint("TOPRIGHT", -6, -8)
-    if ApplyVisuals then
-        ApplyVisuals(badge, {diffInfo.color[1] * 0.45, diffInfo.color[2] * 0.45, diffInfo.color[3] * 0.45, 1},
-            {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1})
-    end
-    local badgeFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    badgeFS:SetPoint("CENTER")
-    badgeFS:SetText("|cffffffff" .. diffInfo.short .. "|r")
+    local titleFS = FontManager and FontManager.CreateFontString
+        and FontManager:CreateFontString(card, "body", "OVERLAY")
+        or card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    titleFS:SetPoint("TOPLEFT", 8, -8)
+    titleFS:SetPoint("TOPRIGHT", -8, -8)
+    titleFS:SetJustifyH("CENTER")
+    titleFS:SetJustifyV("TOP")
+    titleFS:SetWordWrap(true)
+    titleFS:SetMaxLines(2)
+    titleFS:SetText(group.instanceName or "?")
 
-    -- Instance name (single line, truncated by width)
-    local FontManager = ns.FontManager
-    local nameFS
-    if FontManager and FontManager.CreateFontString then
-        nameFS = FontManager:CreateFontString(card, "body", "OVERLAY")
+    local art = card:CreateTexture(nil, "BORDER")
+    art:SetPoint("TOPLEFT", 12, -40)
+    art:SetPoint("TOPRIGHT", -12, -40)
+    art:SetPoint("BOTTOM", card, "BOTTOM", 0, 28)
+    art:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local instanceArt = GetSavedInstanceArt(group)
+    art:SetTexture(instanceArt or "Interface\\Icons\\INV_Misc_QuestionMark")
+    if not instanceArt then
+        art:SetDesaturated(true)
+        art:SetVertexColor(0.65, 0.65, 0.65, 1)
     else
-        nameFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    end
-    nameFS:SetPoint("TOPLEFT", 10, -8)
-    nameFS:SetPoint("TOPRIGHT", badge, "TOPLEFT", -6, 0)
-    nameFS:SetJustifyH("LEFT")
-    nameFS:SetWordWrap(false)
-    nameFS:SetText(group.instanceName)
-
-    -- Boss roster (per-boss aggregate state across warband)
-    local bosses = AggregateBosses(group)
-    local cleared, total = 0, bosses and #bosses or 0
-    if bosses then
-        for _, b in ipairs(bosses) do if #b.killers > 0 then cleared = cleared + 1 end end
+        art:SetDesaturated(false)
+        art:SetVertexColor(1, 1, 1, 1)
     end
 
-    -- Boss dots row
-    local dotRow = CreateFrame("Frame", nil, card)
-    dotRow:SetPoint("TOPLEFT", nameFS, "BOTTOMLEFT", 0, -10)
-    dotRow:SetPoint("RIGHT", card, "RIGHT", -10, 0)
-    dotRow:SetHeight(DOT_SIZE)
+    local diffFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    diffFS:SetPoint("BOTTOM", card, "BOTTOM", 0, 11)
+    diffFS:SetText("|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r")
 
-    if bosses and total > 0 then
-        local availW = CARD_W - 20
-        local needW = total * DOT_SIZE + (total - 1) * DOT_GAP
-        local size = DOT_SIZE
-        local gap = DOT_GAP
-        if needW > availW then
-            -- Shrink dots to fit; min 6px, gap 2px
-            gap = 2
-            size = math.max(6, math.floor((availW - (total - 1) * gap) / total))
-        end
-        for i, b in ipairs(bosses) do
-            local n = #b.killers
-            local dot = dotRow:CreateTexture(nil, "ARTWORK")
-            dot:SetSize(size, size)
-            dot:SetPoint("LEFT", (i - 1) * (size + gap), 0)
-            if n == 0 then
-                dot:SetColorTexture(0.18, 0.18, 0.22, 1)         -- nobody cleared
-            elseif n >= #group.characters then
-                dot:SetColorTexture(0.20, 0.85, 0.30, 1)         -- all chars cleared
-            else
-                dot:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)  -- some cleared
-            end
-        end
-    else
-        local fallback = dotRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fallback:SetPoint("LEFT")
-        fallback:SetTextColor(0.5, 0.5, 0.5)
-        fallback:SetText("(boss roster unavailable)")
-    end
-
-    -- Bottom row: warband progress · character avatars (initials)
-    local pct = (total > 0) and (cleared / total) or 0
-
-    -- Slim progress bar
-    local barBg = card:CreateTexture(nil, "BACKGROUND")
-    barBg:SetPoint("BOTTOMLEFT", 10, 30)
-    barBg:SetPoint("BOTTOMRIGHT", -10, 30)
-    barBg:SetHeight(3)
-    barBg:SetColorTexture(0.10, 0.10, 0.12, 1)
-    if pct > 0 then
-        local barFill = card:CreateTexture(nil, "ARTWORK")
-        barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
-        barFill:SetPoint("BOTTOMLEFT", barBg, "BOTTOMLEFT", 0, 0)
-        barFill:SetWidth(math.max(1, (CARD_W - 20) * pct))
-        local color = (cleared >= total) and {0.20, 0.85, 0.30} or {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3]}
-        barFill:SetColorTexture(color[1], color[2], color[3], 1)
-    end
-
-    -- Warband progress label (left) + character chips (right)
     local progFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    progFS:SetPoint("BOTTOMLEFT", 10, 10)
-    local progColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
-    progFS:SetText(string.format("%s%d/%d|r |cff888888warband|r", progColor, cleared, total))
+    progFS:SetPoint("BOTTOM", diffFS, "TOP", 0, 2)
+    local pColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
+    progFS:SetText(string.format("%s%d/%d|r", pColor, cleared, total))
 
-    -- Character chips (class-colored initials), max 6 visible
-    local chipsFrame = CreateFrame("Frame", nil, card)
-    chipsFrame:SetPoint("BOTTOMRIGHT", -10, 8)
-    chipsFrame:SetSize(120, 18)
-    local maxChips = math.min(#group.characters, 6)
-    local chipX = 0
-    for i = #group.characters, math.max(1, #group.characters - maxChips + 1), -1 do
-        local c = group.characters[i]
-        local hex, charName = GetClassHexFromCharacters(c.charKey)
-        local initial = (charName and charName:sub(1, 1)) or "?"
-        local chip = chipsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        chip:SetPoint("RIGHT", -chipX, 0)
-        local k, t = c.killed or 0, c.total or 0
-        local done = (t > 0 and k >= t)
-        chip:SetText(string.format("|cff%s%s|r", hex, initial))
-        chip:SetAlpha(done and 1 or 0.55)
-        chipX = chipX + 12
-    end
-    if #group.characters > maxChips then
-        local extra = chipsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        extra:SetPoint("RIGHT", -chipX, 0)
-        extra:SetText(string.format("|cffaaaaaa+%d|r", #group.characters - maxChips))
-    end
-
-    -- Hover tooltip
     card:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:ClearLines()
-        GameTooltip:AddLine(group.instanceName, 1, 1, 1)
-        GameTooltip:AddDoubleLine(
-            "|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r",
-            string.format("|cffd4af37%d/%d|r |cff888888warband cleared|r", cleared, total),
-            1,1,1, 1,1,1)
-        GameTooltip:AddLine(" ")
+        local lines = {}
+        lines[#lines + 1] = { text = "|cff999999Difficulty|r" }
+        lines[#lines + 1] = { text = "|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r" }
+        lines[#lines + 1] = { text = " " }
+        lines[#lines + 1] = { text = "|cff999999Bosses -> Characters|r" }
 
-        -- Per-boss with which characters killed it
         if bosses and #bosses > 0 then
-            for i, b in ipairs(bosses) do
+            for bi = 1, #bosses do
+                local b = bosses[bi]
                 local killers = b.killers or {}
                 local right
                 if #killers == 0 then
                     right = "|cff666666—|r"
                 else
                     local parts = {}
-                    for _, ck in ipairs(killers) do
-                        local hex, charName = GetClassHexFromCharacters(ck)
-                        table.insert(parts, "|cff" .. hex .. charName .. "|r")
+                    for ki = 1, #killers do
+                        local hex, name = GetClassHexFromCharacters(killers[ki])
+                        parts[#parts + 1] = "|cff" .. hex .. name .. "|r"
                     end
                     right = table.concat(parts, ", ")
                 end
-                local mark = (#killers > 0) and "|cff44ff44" .. CHECK .. "|r" or "|cff444444" .. CROSS .. "|r"
-                GameTooltip:AddDoubleLine(mark .. " " .. b.name, right, 1, 1, 1, 0.9, 0.9, 0.9)
+                lines[#lines + 1] = {
+                    left = string.format("%d. %s", bi, b.name or ("Boss " .. tostring(bi))),
+                    right = right,
+                    leftColor = {1, 1, 1},
+                    rightColor = {0.88, 0.88, 0.9},
+                }
             end
-            GameTooltip:AddLine(" ")
+        else
+            lines[#lines + 1] = { text = "|cff666666Boss data unavailable|r" }
         end
 
-        -- Per-character summary
-        GameTooltip:AddLine("|cffaaaaaaCharacters|r")
-        for _, c in ipairs(group.characters) do
-            local hex, charName = GetClassHexFromCharacters(c.charKey)
-            local k, t = c.killed or 0, c.total or 0
-            local color = (t > 0 and k >= t) and "|cff44ff44" or "|cffd4af37"
-            local resetSuffix = ""
-            if c.reset and c.reset > 0 then
-                local hours = math.floor(c.reset / 3600)
-                local days = math.floor(hours / 24)
-                if days > 0 then resetSuffix = string.format("  |cff666666%dd|r", days)
-                elseif hours > 0 then resetSuffix = string.format("  |cff666666%dh|r", hours) end
+        lines[#lines + 1] = { text = " " }
+        lines[#lines + 1] = { text = "|cff999999Completed characters|r" }
+        local completed = {}
+        for ci = 1, #group.characters do
+            local c = group.characters[ci]
+            local killed = c.killed or 0
+            local totalBoss = c.total or 0
+            if totalBoss > 0 and killed >= totalBoss then
+                local hex, name = GetClassHexFromCharacters(c.charKey)
+                local resetTag = FormatSavedResetShort(c.reset)
+                if resetTag ~= "" then
+                    completed[#completed + 1] = string.format("|cff%s%s|r |cff777777(%s)|r", hex, name or c.charKey, resetTag)
+                else
+                    completed[#completed + 1] = string.format("|cff%s%s|r", hex, name or c.charKey)
+                end
             end
-            GameTooltip:AddDoubleLine(
-                "|cff" .. hex .. charName .. "|r",
-                string.format("%s%d/%d|r%s", color, k, t, resetSuffix),
-                1, 1, 1, 1, 1, 1)
         end
-        GameTooltip:Show()
+        if #completed == 0 then
+            lines[#lines + 1] = { text = "|cff666666None|r" }
+        else
+            for i = 1, #completed do
+                lines[#lines + 1] = { text = completed[i] }
+            end
+        end
+
+        WNTooltipShow(self, {
+            type = "custom",
+            title = group.instanceName or "?",
+            lines = lines,
+            anchor = "ANCHOR_RIGHT",
+        })
     end)
-    card:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    card:SetScript("OnLeave", function() WNTooltipHide() end)
 
     return card
 end
@@ -2180,36 +2352,40 @@ RefreshSavedInstances = function()
     local content = S.savedContent
     if not content then return end
 
-    for _, row in ipairs(S.savedRows) do row:Hide() end
+    for i = 1, #S.savedRows do
+        S.savedRows[i]:Hide()
+    end
     S.savedRows = {}
 
     local list = BuildSavedInstancesData()
-
-    -- Apply difficulty filter
     local filtered = {}
     local filters = S.savedFilters or {}
-    for _, g in ipairs(list) do
+    for i = 1, #list do
+        local g = list[i]
         local diff = g.difficulty
         local pass = (diff == 17 and filters.lfr)
-                  or (diff == 14 and filters.normal)
-                  or (diff == 15 and filters.heroic)
-                  or (diff == 16 and filters.mythic)
-                  or (diff ~= 14 and diff ~= 15 and diff ~= 16 and diff ~= 17)
-        if pass then table.insert(filtered, g) end
+            or (diff == 14 and filters.normal)
+            or (diff == 15 and filters.heroic)
+            or (diff == 16 and filters.mythic)
+            or (diff ~= 14 and diff ~= 15 and diff ~= 16 and diff ~= 17)
+        if pass then
+            filtered[#filtered + 1] = g
+        end
     end
 
-    -- Update filter button states (highlight active)
     if S.savedFilterButtons then
         for _, b in pairs(S.savedFilterButtons) do
             if b._applyState then b._applyState() end
         end
     end
 
-    -- Char count summary
     if S.savedFrame and S.savedFrame.summary then
         local charSet = {}
-        for _, g in ipairs(filtered) do
-            for _, c in ipairs(g.characters) do charSet[c.charKey] = true end
+        for i = 1, #filtered do
+            local g = filtered[i]
+            for ci = 1, #g.characters do
+                charSet[g.characters[ci].charKey] = true
+            end
         end
         local n = 0
         for _ in pairs(charSet) do n = n + 1 end
@@ -2217,8 +2393,17 @@ RefreshSavedInstances = function()
         S.savedFrame.summary:SetText(string.format(sumFmt, #filtered, n))
     end
 
+    local viewportW = (S.savedScroll and S.savedScroll.GetWidth and S.savedScroll:GetWidth()) or SAVED_FRAME_W
+    content:SetWidth(math.max(320, viewportW))
+
     if #filtered == 0 then
-        local msg = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local FontManager = ns.FontManager
+        local msg
+        if FontManager and FontManager.CreateFontString then
+            msg = FontManager:CreateFontString(content, "body", "OVERLAY")
+        else
+            msg = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        end
         msg:SetPoint("CENTER", content, "CENTER", 0, -20)
         msg:SetTextColor(0.6, 0.6, 0.6)
         if #list == 0 then
@@ -2228,451 +2413,83 @@ RefreshSavedInstances = function()
         end
         msg:SetJustifyH("CENTER")
         content:SetHeight(80)
-        table.insert(S.savedRows, msg)
+        S.savedRows[#S.savedRows + 1] = msg
+        local Factory = ns.UI and ns.UI.Factory
+        if Factory and Factory.UpdateScrollBarVisibility and S.savedScroll then
+            Factory:UpdateScrollBarVisibility(S.savedScroll)
+        end
         S.savedFrame:Show()
         return
     end
 
-    -- Instance header + indented difficulty rows; soft surfaces (minimal box borders).
-    local ApplyVisuals = ns.UI_ApplyVisuals
-    local FontManager = ns.FontManager
-    local COLORS = ns.UI_COLORS or {}
-    local accent = COLORS.accent or {0.40, 0.20, 0.58}
+    table.sort(filtered, function(a, b)
+        local nameA = a.instanceName or ""
+        local nameB = b.instanceName or ""
+        if nameA ~= nameB then return nameA < nameB end
+        local ra = DIFF_SORT_RANK[a.difficulty] or 99
+        local rb = DIFF_SORT_RANK[b.difficulty] or 99
+        if ra ~= rb then return ra < rb end
+        return (a.difficultyName or "") < (b.difficultyName or "")
+    end)
+
     local SIDE_PAD = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
-    local rowW = content:GetWidth() - 2 * SIDE_PAD
-    local INSTANCE_HEADER_H = 44
-    local SECTION_GAP = 12
-    local DIFF_ROW_H = 36
-    local DETAIL_H = 24
-    local DIFF_INDENT = 16
-    local DETAIL_INDENT = 14
-    local ROW_TAIL = 8
-    local DIFF_NAME_COL_W = 128
-    local SAVED_RIGHT_MARGIN = 14
-    local SAVED_COL_CHEVRON = 24
-    local SAVED_COL_CHARS = 86
-    local SAVED_COL_FRAC = 52
-    local SAVED_COL_GAP = 10
-    local BOSS_BAR_H = 6
-
-    content:SetWidth(content:GetParent():GetWidth())
-
-    local rightBlockW = SAVED_COL_FRAC + SAVED_COL_GAP + SAVED_COL_CHARS + SAVED_COL_GAP + SAVED_COL_CHEVRON
-
-    local function MakeGroupKey(g)
-        return (g.instanceName or "?") .. "||" .. tostring(g.difficulty or 0)
-    end
-
-    local function GroupFilteredByInstance(flat)
-        local by, order = {}, {}
-        for i = 1, #flat do
-            local g = flat[i]
-            local key = g.instanceName or "?"
-            if not by[key] then
-                by[key] = { instanceName = key, children = {} }
-                order[#order + 1] = key
-            end
-            local sec = by[key]
-            sec.children[#sec.children + 1] = g
-        end
-        for oi = 1, #order do
-            local sec = by[order[oi]]
-            table.sort(sec.children, function(a, b)
-                local da = DIFF_SORT_RANK[a.difficulty] or 99
-                local db = DIFF_SORT_RANK[b.difficulty] or 99
-                if da ~= db then return da < db end
-                return (a.difficultyName or "") < (b.difficultyName or "")
-            end)
-        end
-        local out = {}
-        for oi = 1, #order do out[#out + 1] = by[order[oi]] end
-        return out
-    end
-
-    local function SectionUniqueCharCount(sec)
-        local seen = {}
-        for ci = 1, #sec.children do
-            local g = sec.children[ci]
-            for pi = 1, #g.characters do
-                seen[g.characters[pi].charKey] = true
-            end
-        end
-        local n = 0
-        for _ in pairs(seen) do n = n + 1 end
-        return n
-    end
-
-    S.savedInstanceCollapsed = S.savedInstanceCollapsed or {}
-
-    local function BuildInstanceHeader(sec, yPos)
-        local innerW = rowW - DIFF_INDENT
-        local hdr = CreateFrame("Button", nil, content)
-        hdr:SetSize(innerW, INSTANCE_HEADER_H)
-        hdr:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD + DIFF_INDENT, -yPos)
-
-        local bg = hdr:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(0.055, 0.057, 0.062, 0.98)
-        local hiTop = hdr:CreateTexture(nil, "ARTWORK")
-        hiTop:SetHeight(1)
-        hiTop:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, 0)
-        hiTop:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
-        hiTop:SetColorTexture(1, 1, 1, 0.04)
-        local div = hdr:CreateTexture(nil, "ARTWORK")
-        div:SetHeight(1)
-        div:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, 0)
-        div:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, 0)
-        div:SetColorTexture(1, 1, 1, 0.07)
-
-        local chev = hdr:CreateTexture(nil, "OVERLAY")
-        chev:SetSize(12, 12)
-        chev:SetPoint("CENTER", hdr, "RIGHT", -14, 0)
-        local function UpdateInstChevron()
-            if S.savedInstanceCollapsed[sec.instanceName] then
-                chev:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover")
-            else
-                chev:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
-            end
-        end
-        UpdateInstChevron()
-
-        local titleFS
-        if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
-            titleFS = FontManager:CreateFontString(hdr, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
-        else
-            titleFS = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        end
-        titleFS:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, -8)
-        titleFS:SetPoint("RIGHT", chev, "LEFT", -10, 0)
-        titleFS:SetJustifyH("LEFT")
-        titleFS:SetJustifyV("TOP")
-        titleFS:SetWordWrap(false)
-        titleFS:SetMaxLines(1)
-        titleFS:SetText(sec.instanceName)
-        titleFS:SetTextColor(0.92, 0.93, 0.96)
-
-        local nDiff = #sec.children
-        local nChars = SectionUniqueCharCount(sec)
-        local sub = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        sub:SetPoint("TOPLEFT", titleFS, "BOTTOMLEFT", 0, -5)
-        sub:SetPoint("RIGHT", chev, "LEFT", -10, 0)
-        sub:SetJustifyH("LEFT")
-        sub:SetJustifyV("TOP")
-        sub:SetWordWrap(false)
-        sub:SetTextColor(0.48, 0.5, 0.56)
-        sub:SetText(string.format("%d difficulties  ·  %d %s", nDiff, nChars, nChars == 1 and "character" or "characters"))
-
-        hdr:SetScript("OnClick", function()
-            local on = S.savedInstanceCollapsed[sec.instanceName]
-            S.savedInstanceCollapsed[sec.instanceName] = not on
-            RefreshSavedInstances()
-        end)
-        hdr:SetScript("OnEnter", function()
-            bg:SetColorTexture(0.06, 0.062, 0.07, 1)
-        end)
-        hdr:SetScript("OnLeave", function()
-            bg:SetColorTexture(0.055, 0.057, 0.062, 0.98)
-        end)
-
-        table.insert(S.savedRows, hdr)
-        return INSTANCE_HEADER_H
-    end
-
-    local function BuildDifficultyRow(g, yPos)
-        local diffInfo = GetDiffInfo(g.difficulty)
-        local bosses = AggregateBosses(g)
-        local total = bosses and #bosses or 0
-        local cleared = 0
-        if bosses then
-            for _, b in ipairs(bosses) do if #b.killers > 0 then cleared = cleared + 1 end end
-        end
-
-        local innerW = rowW - DIFF_INDENT
-        local row = CreateFrame("Button", nil, content)
-        row:SetSize(innerW, DIFF_ROW_H)
-        row:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD + DIFF_INDENT, -yPos)
-        row:RegisterForClicks("LeftButtonUp")
-
-        local bg = row:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(0.048, 0.05, 0.058, 0.96)
-        local hiRow = row:CreateTexture(nil, "HIGHLIGHT")
-        hiRow:SetAllPoints()
-        hiRow:SetColorTexture(1, 1, 1, 0.04)
-
-        local strip = row:CreateTexture(nil, "ARTWORK")
-        strip:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-        strip:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-        strip:SetWidth(1)
-        strip:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.42)
-
-        local badgeW = diffInfo.short == "LFR" and 32 or 22
-        local badge = CreateFrame("Frame", nil, row)
-        badge:SetSize(badgeW, 18)
-        badge:SetPoint("LEFT", strip, "RIGHT", 8, 0)
-        do
-            local bb = badge:CreateTexture(nil, "BACKGROUND")
-            bb:SetAllPoints()
-            bb:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.18)
-        end
-        local badgeFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        badgeFS:SetPoint("CENTER")
-        badgeFS:SetText("|cffffffff" .. diffInfo.short .. "|r")
-
-        local nameFS
-        if FontManager and FontManager.CreateFontString then
-            nameFS = FontManager:CreateFontString(row, "body", "OVERLAY")
-        else
-            nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        end
-        nameFS:SetPoint("LEFT", badge, "RIGHT", 10, 0)
-        nameFS:SetWidth(DIFF_NAME_COL_W)
-        nameFS:SetJustifyH("LEFT")
-        nameFS:SetWordWrap(false)
-        nameFS:SetText(g.difficultyName or diffInfo.name)
-        nameFS:SetTextColor(0.82, 0.84, 0.9)
-
-        local bx0 = 2 + badgeW + 10 + DIFF_NAME_COL_W + 10
-        local heatW = math.max(48, innerW - bx0 - rightBlockW - SAVED_RIGHT_MARGIN)
-        local heatY = -math.floor((DIFF_ROW_H - BOSS_BAR_H) / 2)
-
-        local heatBg = CreateFrame("Frame", nil, row)
-        heatBg:SetPoint("TOPLEFT", row, "TOPLEFT", bx0, heatY)
-        heatBg:SetSize(heatW, BOSS_BAR_H)
-        local hbTex = heatBg:CreateTexture(nil, "BACKGROUND")
-        hbTex:SetAllPoints()
-        hbTex:SetColorTexture(0.055, 0.057, 0.065, 1)
-
-        if bosses and total > 0 then
-            local inner = math.max(1, heatW - 2)
-            local fillFrac = math.max(0, math.min(1, cleared / total))
-            local fillW = math.max(2, math.floor(inner * fillFrac))
-            local fill = heatBg:CreateTexture(nil, "ARTWORK")
-            fill:SetHeight(math.max(2, BOSS_BAR_H - 2))
-            fill:SetPoint("LEFT", heatBg, "LEFT", 1, 0)
-            fill:SetWidth(fillW)
-            local r, g, b = diffInfo.color[1], diffInfo.color[2], diffInfo.color[3]
-            if cleared >= total then
-                fill:SetColorTexture(0.2, 0.78, 0.34, 0.85)
-            else
-                fill:SetColorTexture(r * 0.52, g * 0.52, b * 0.52, 0.68)
-            end
-            if total > 1 and total <= 16 then
-                for ti = 1, total - 1 do
-                    local tick = heatBg:CreateTexture(nil, "OVERLAY")
-                    tick:SetWidth(1)
-                    tick:SetHeight(math.max(2, BOSS_BAR_H - 2))
-                    tick:SetColorTexture(0, 0, 0, 0.2)
-                    tick:SetPoint("LEFT", heatBg, "LEFT", 1 + math.floor(ti * inner / total), 0)
-                end
-            end
-        end
-
-        local progColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
-        local fracFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fracFS:SetSize(SAVED_COL_FRAC, 18)
-        fracFS:SetJustifyH("RIGHT")
-        fracFS:SetPoint("RIGHT", row, "RIGHT", -SAVED_RIGHT_MARGIN - SAVED_COL_CHEVRON - SAVED_COL_GAP - SAVED_COL_CHARS - SAVED_COL_GAP, 0)
-        fracFS:SetWordWrap(false)
-        fracFS:SetText(string.format("%s%d/%d|r", progColor, cleared, total))
-
-        local charsFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        charsFS:SetSize(SAVED_COL_CHARS, 18)
-        charsFS:SetJustifyH("RIGHT")
-        charsFS:SetPoint("RIGHT", row, "RIGHT", -SAVED_RIGHT_MARGIN - SAVED_COL_CHEVRON - SAVED_COL_GAP, 0)
-        charsFS:SetWordWrap(false)
-        charsFS:SetTextColor(0.7, 0.72, 0.78)
-        charsFS:SetText(string.format("%d %s", #g.characters, #g.characters == 1 and "char" or "chars"))
-
-        local chevron = row:CreateTexture(nil, "OVERLAY")
-        chevron:SetSize(12, 12)
-        chevron:SetPoint("CENTER", row, "RIGHT", -14, 0)
-        local groupKey = MakeGroupKey(g)
-        local function UpdateChevron()
-            if S.savedExpanded[groupKey] then
-                chevron:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
-            else
-                chevron:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover")
-            end
-        end
-        UpdateChevron()
-
-        row:SetScript("OnClick", function()
-            S.savedExpanded[groupKey] = not S.savedExpanded[groupKey]
-            RefreshSavedInstances()
-        end)
-
-        row:SetScript("OnEnter", function(self)
-            local lines = {}
-            lines[#lines + 1] = { text = "|cff" .. diffInfo.hex .. (g.difficultyName or diffInfo.name) .. "|r" }
-            lines[#lines + 1] = { text = string.format("|cffd4af37%d/%d|r |cff888888warband cleared|r", cleared, total) }
-            lines[#lines + 1] = { text = " " }
-            if bosses then
-                for bii = 1, #bosses do
-                    local b = bosses[bii]
-                    local nKilled = #b.killers
-                    local label
-                    if nKilled == 0 then
-                        label = "|cff666666—|r"
-                    elseif nKilled >= #g.characters then
-                        label = string.format("|cff44ff44%d/%d chars|r", nKilled, #g.characters)
-                    else
-                        label = string.format("|cffd4af37%d/%d chars|r", nKilled, #g.characters)
-                    end
-                    lines[#lines + 1] = {
-                        left = b.name, right = label,
-                        leftColor = {1, 1, 1}, rightColor = {0.85, 0.85, 0.85}
-                    }
-                end
-            end
-            lines[#lines + 1] = { text = " " }
-            lines[#lines + 1] = { text = "|cff888888Click to expand character lockouts|r" }
-            WNTooltipShow(self, {
-                type = "custom",
-                title = g.instanceName .. " — " .. (g.difficultyName or diffInfo.name),
-                lines = lines,
-                anchor = "ANCHOR_RIGHT",
-            })
-        end)
-        row:SetScript("OnLeave", function() WNTooltipHide() end)
-
-        table.insert(S.savedRows, row)
-    end
-
-    local function BuildDetailRow(g, char, yPos, extraIndent)
-        local diffInfo = GetDiffInfo(g.difficulty)
-        local hex, charName = GetClassHexFromCharacters(char.charKey)
-        local indent = DIFF_INDENT + (extraIndent or 0)
-        local innerW = rowW - indent
-
-        local row = CreateFrame("Frame", nil, content)
-        row:SetSize(innerW, DETAIL_H)
-        row:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD + indent, -yPos)
-        row:EnableMouse(true)
-
-        local bg = row:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(0.042, 0.044, 0.052, 0.92)
-        local hl = row:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetColorTexture(1, 1, 1, 0.035)
-
-        local nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        nameFS:SetPoint("LEFT", row, "LEFT", 12, 0)
-        nameFS:SetWidth(118)
-        nameFS:SetJustifyH("LEFT")
-        nameFS:SetWordWrap(false)
-        nameFS:SetText("|cff" .. hex .. (charName or char.charKey) .. "|r")
-
-        local roster = char.encounters or {}
-        local total = #roster
-        local k = char.killed or 0
-        local bx0 = 12 + 118 + 10
-        local heatW = math.max(48, innerW - bx0 - rightBlockW - SAVED_RIGHT_MARGIN)
-        local heatY = -math.floor((DETAIL_H - BOSS_BAR_H) / 2)
-
-        local heatBg = CreateFrame("Frame", nil, row)
-        heatBg:SetPoint("TOPLEFT", row, "TOPLEFT", bx0, heatY)
-        heatBg:SetSize(heatW, BOSS_BAR_H)
-        local hbb = heatBg:CreateTexture(nil, "BACKGROUND")
-        hbb:SetAllPoints()
-        hbb:SetColorTexture(0.05, 0.052, 0.06, 1)
-
-        if total > 0 then
-            local inner = math.max(1, heatW - 2)
-            local fillFrac = math.max(0, math.min(1, k / total))
-            local fillW = math.max(2, math.floor(inner * fillFrac))
-            local fill = heatBg:CreateTexture(nil, "ARTWORK")
-            fill:SetHeight(math.max(2, BOSS_BAR_H - 2))
-            fill:SetPoint("LEFT", heatBg, "LEFT", 1, 0)
-            fill:SetWidth(fillW)
-            if k >= total then
-                fill:SetColorTexture(0.2, 0.78, 0.34, 0.85)
-            else
-                fill:SetColorTexture(diffInfo.color[1] * 0.48, diffInfo.color[2] * 0.48, diffInfo.color[3] * 0.48, 0.66)
-            end
-        end
-
-        local progressColor = (total > 0 and k >= total) and "|cff44ff44" or "|cffd4af37"
-        local progFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        progFS:SetSize(SAVED_COL_FRAC, 18)
-        progFS:SetJustifyH("RIGHT")
-        progFS:SetPoint("RIGHT", row, "RIGHT", -SAVED_RIGHT_MARGIN - SAVED_COL_CHEVRON - SAVED_COL_GAP - SAVED_COL_CHARS - SAVED_COL_GAP, 0)
-        progFS:SetText(string.format("%s%d/%d|r", progressColor, k, total))
-
-        local resetFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        resetFS:SetSize(SAVED_COL_CHARS, 18)
-        resetFS:SetJustifyH("RIGHT")
-        resetFS:SetPoint("RIGHT", row, "RIGHT", -SAVED_RIGHT_MARGIN - SAVED_COL_CHEVRON - SAVED_COL_GAP, 0)
-        resetFS:SetTextColor(0.52, 0.54, 0.62)
-        if char.reset and char.reset > 0 then
-            local h = math.floor(char.reset / 3600)
-            local d = math.floor(h / 24)
-            if d > 0 then resetFS:SetText(d .. "d " .. (h % 24) .. "h")
-            elseif h > 0 then resetFS:SetText(h .. "h")
-            else resetFS:SetText("<1h") end
-        else
-            resetFS:SetText("")
-        end
-
-        row:SetScript("OnEnter", function(self)
-            local lines = {
-                { text = g.instanceName .. " — |cff" .. diffInfo.hex .. (g.difficultyName or diffInfo.name) .. "|r" },
-                { text = " " },
-            }
-            for bi = 1, #roster do
-                local e = roster[bi]
-                local mark = e.killed and "|cff44ff44" .. CHECK .. "|r" or "|cff444444" .. CROSS .. "|r"
-                lines[#lines + 1] = {
-                    left = mark .. " " .. (e.name or ("Boss " .. bi)),
-                    right = e.killed and "|cff44ff44killed|r" or "|cff666666—|r",
-                    leftColor = {1, 1, 1}, rightColor = {0.85, 0.85, 0.85}
-                }
-            end
-            WNTooltipShow(self, {
-                type = "custom",
-                title = "|cff" .. hex .. (charName or char.charKey) .. "|r",
-                lines = lines,
-                anchor = "ANCHOR_RIGHT",
-            })
-        end)
-        row:SetScript("OnLeave", function() WNTooltipHide() end)
-
-        table.insert(S.savedRows, row)
-    end
-
-    local sections = GroupFilteredByInstance(filtered)
+    local GROUP_GAP = 12
+    local ROW_GAP = 3
+    local rowW = math.max(260, content:GetWidth() - (SIDE_PAD * 2))
     local y = 8
-    for si = 1, #sections do
-        local sec = sections[si]
-        if si > 1 then
-            y = y + SECTION_GAP
+    local prevScroll = (S.savedScroll and S.savedScroll.GetVerticalScroll and S.savedScroll:GetVerticalScroll()) or 0
+
+    S.savedGroupCollapsed = S.savedGroupCollapsed or {}
+
+    for gi = 1, #filtered do
+        local group = filtered[gi]
+        if gi > 1 then
+            y = y + GROUP_GAP
         end
-        y = y + BuildInstanceHeader(sec, y)
-        if not S.savedInstanceCollapsed[sec.instanceName] then
-            for ci = 1, #sec.children do
-                local g = sec.children[ci]
-                BuildDifficultyRow(g, y)
-                y = y + DIFF_ROW_H + 2
-                if S.savedExpanded[MakeGroupKey(g)] then
-                    for pi = 1, #g.characters do
-                        BuildDetailRow(g, g.characters[pi], y, DETAIL_INDENT)
-                        y = y + DETAIL_H + 2
-                    end
-                end
+
+        local groupKey = MakeSavedGroupKey(group)
+        local collapsed = S.savedGroupCollapsed[groupKey] == true
+
+        local header = BuildGroupHeader(content, group, rowW, collapsed)
+        header._savedGroupKey = groupKey
+        header:SetScript("OnClick", function()
+            local key = header._savedGroupKey
+            if not key then return end
+            S.savedGroupCollapsed[key] = not S.savedGroupCollapsed[key]
+            RefreshSavedInstances()
+        end)
+        header:ClearAllPoints()
+        header:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD, -y)
+        S.savedRows[#S.savedRows + 1] = header
+        y = y + header:GetHeight() + ROW_GAP
+
+        if not collapsed then
+            local roster = group.characters or {}
+            table.sort(roster, function(a, b)
+                local _, nameA = GetClassHexFromCharacters(a.charKey)
+                local _, nameB = GetClassHexFromCharacters(b.charKey)
+                return (nameA or a.charKey or "") < (nameB or b.charKey or "")
+            end)
+
+            for ci = 1, #roster do
+                local c = roster[ci]
+                local charRow = BuildLockoutRow(content, c, c.encounters, group, rowW)
+                charRow:ClearAllPoints()
+                charRow:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD, -y)
+                S.savedRows[#S.savedRows + 1] = charRow
+                y = y + charRow:GetHeight() + ROW_GAP
             end
         end
-        y = y + ROW_TAIL
     end
 
-    -- Preserve scroll position across expand/collapse refreshes (resetting to 0 was jarring when
-    -- the user toggled an instance row). Clamp to the new content extent so we never exceed the
-    -- bottom of the (possibly shorter) content.
-    local prevScroll = (S.savedScroll and S.savedScroll.GetVerticalScroll and S.savedScroll:GetVerticalScroll()) or 0
     content:SetHeight(math.max(40, y))
     local viewportH = (S.savedScroll and S.savedScroll.GetHeight and S.savedScroll:GetHeight()) or 0
     local maxY = math.max(0, (content:GetHeight() or 0) - viewportH)
     S.savedScroll:SetVerticalScroll(math.min(maxY, math.max(0, prevScroll)))
+    local Factory = ns.UI and ns.UI.Factory
+    if Factory and Factory.UpdateScrollBarVisibility and S.savedScroll then
+        Factory:UpdateScrollBarVisibility(S.savedScroll)
+    end
     S.savedFrame:Show()
 end
 
@@ -2819,17 +2636,14 @@ local function BuildMenu()
         y = y - (rowH + 2)
     end
 
-    -- Auto-hide on focus loss: close when mouse leaves and not over a child
-    f:SetScript("OnUpdate", function(self)
-        if not self:IsMouseOver() then
-            self._hideTimer = (self._hideTimer or 0) + 1
-            if self._hideTimer > 90 then  -- ~1.5s @ 60fps
-                self:Hide()
-            end
-        else
-            self._hideTimer = 0
-        end
-    end)
+    local catcher = CreateFrame("Button", nil, UIParent)
+    catcher:SetFrameStrata("DIALOG")
+    catcher:SetFrameLevel(219) -- Right below the menu (220)
+    catcher:SetAllPoints(UIParent)
+    catcher:RegisterForClicks("LeftButtonDown", "RightButtonDown")
+    catcher:SetScript("OnClick", function() HideMenu() end)
+    catcher:Hide()
+    S.menuCatcher = catcher
 
     S.menuFrame = f
 end
@@ -2878,8 +2692,8 @@ ToggleMenu = function(anchor)
     else
         S.menuFrame:SetPoint("CENTER")
     end
-    S.menuFrame._hideTimer = 0
     S.menuFrame:Show()
+    if S.menuCatcher then S.menuCatcher:Show() end
 end
 
 RefreshButtonSettings = function()
@@ -2959,16 +2773,24 @@ local function BuildButton()
         if self._hoverPoll < 0.1 then return end
         self._hoverPoll = 0
         local over = self:IsMouseOver() and self:IsVisible()
+        -- Suppress tooltip while the context menu is open to prevent overlap
+        local menuOpen = S.menuFrame and S.menuFrame:IsShown()
         if over ~= self._hovering then
             self._hovering = over
-            if over then
+            if over and not menuOpen then
                 ApplyButtonVisibility(true)
                 ShowHoverTooltip(self)
             else
                 WNTooltipHide()
                 if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
-                ApplyButtonVisibility(false)
+                if not over then
+                    ApplyButtonVisibility(false)
+                end
             end
+        elseif over and menuOpen then
+            -- Menu opened while hovering — hide tooltip immediately
+            WNTooltipHide()
+            if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
         end
     end)
 
@@ -2985,6 +2807,8 @@ local function BuildButton()
     end)
     btn:SetScript("OnClick", function(self, mouseButton)
         if dragged then return end
+        -- Always hide tooltip on any click to prevent overlap with menu
+        WNTooltipHide()
         GameTooltip:Hide()
         if mouseButton == "RightButton" then
             ToggleMenu(self)
