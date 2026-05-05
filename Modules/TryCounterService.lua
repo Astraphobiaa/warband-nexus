@@ -4743,9 +4743,16 @@ function WarbandNexus:OnTryCounterNewMountAdded(mountID)
     Fns.HandleNewCollectibleAdded("mount", tonumber(mountID))
 end
 
-function WarbandNexus:OnTryCounterNewPetAdded(speciesID)
-    if issecretvalue and speciesID and issecretvalue(speciesID) then return end
-    Fns.HandleNewCollectibleAdded("pet", tonumber(speciesID))
+function WarbandNexus:OnTryCounterNewPetAdded(petGUID)
+    -- NEW_PET_ADDED payload is a battle-pet GUID string ("BattlePet-0-..."), NOT a speciesID.
+    -- Resolve via C_PetJournal.GetPetInfoByPetID; the addon's pet try counts are speciesID-keyed.
+    if not petGUID or type(petGUID) ~= "string" or petGUID == "" then return end
+    if issecretvalue and issecretvalue(petGUID) then return end
+    if not C_PetJournal or not C_PetJournal.GetPetInfoByPetID then return end
+    local ok, speciesID = pcall(C_PetJournal.GetPetInfoByPetID, petGUID)
+    if not ok or type(speciesID) ~= "number" or speciesID <= 0 then return end
+    if issecretvalue and issecretvalue(speciesID) then return end
+    Fns.HandleNewCollectibleAdded("pet", speciesID)
 end
 
 ---CHAT_MSG_LOOT: strict fallback when loot window path already ran or never opened.
