@@ -48,20 +48,7 @@ local MAX_FRAME_HEIGHT = 600
 local DEFAULT_WIDTH = 350
 local DEFAULT_HEIGHT = 420
 
--- Midnight / Artisan Nexus parity: two rank glyphs (1 and 2), not legacy multi-diamond tiers.
-local QUALITY_ATLAS_RANK1 = {
-    "Professions-ChatIcon-Quality-12-Tier1",
-    "Professions-Icon-Quality-Tier1",
-    "Professions-ChatIcon-Quality-Tier1",
-    "Professions-Crafting-Quality-Icon-Tier1",
-}
-local QUALITY_ATLAS_RANK2 = {
-    "Professions-ChatIcon-Quality-12-Tier2",
-    "Professions-Icon-Quality-Tier2",
-    "Professions-ChatIcon-Quality-Tier2",
-    "Professions-Crafting-Quality-Icon-Tier2",
-}
-local TIER_ATLAS_LISTS = { QUALITY_ATLAS_RANK1, QUALITY_ATLAS_RANK2 }
+-- Midnight crafting-quality atlases: SharedWidgets (ns.UI_ApplyProfessionCraftingQualityAtlasToTexture).
 
 -- ── State ──
 local companionFrame = nil
@@ -145,45 +132,17 @@ local CHECK_ICON = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t"
 -- ── Row index counter (reset per render pass) ──
 local rowCounter = 0
 
-local function AtlasExists(name)
-    if not name then return false end
-    if C_Texture and C_Texture.GetAtlasInfo then
-        return C_Texture.GetAtlasInfo(name) ~= nil
-    end
-    return true
-end
-
---- Map recipe tier column index to one of two Midnight rank atlases (tier 3+ uses rank 2 art).
-local function RankForTierColumn(tierIdx)
-    local t = tonumber(tierIdx) or 1
-    if t < 1 then t = 1 end
-    if t > 2 then t = 2 end
-    return t
-end
-
 local function ApplyRankAtlasToTexture(tex, rank)
-    if not tex or not tex.SetAtlas then return false end
-    local r = RankForTierColumn(rank)
-    local list = TIER_ATLAS_LISTS[r] or TIER_ATLAS_LISTS[1]
-    for i = 1, #list do
-        local atlas = list[i]
-        if AtlasExists(atlas) then
-            local ok = pcall(function()
-                tex:SetAtlas(atlas, false)
-                tex:SetTexCoord(0, 1, 0, 1)
-                tex:SetSize(QUALITY_RANK_ICON_SIZE, QUALITY_RANK_ICON_SIZE)
-                tex:Show()
-            end)
-            if ok then
-                return true
-            end
-        end
+    local apply = ns.UI_ApplyProfessionCraftingQualityAtlasToTexture
+    if apply then
+        return apply(tex, rank, QUALITY_RANK_ICON_SIZE)
     end
     return false
 end
 
 local function QualityTag(tierIdx)
-    local atlas = (TIER_ATLAS_LISTS[RankForTierColumn(tierIdx)] or TIER_ATLAS_LISTS[1])[1]
+    local atlasFn = ns.UI_GetProfessionCraftingQualityAtlasNameForTier
+    local atlas = atlasFn and atlasFn(tierIdx)
     if not atlas then return "" end
     if CreateAtlasMarkup then
         return CreateAtlasMarkup(atlas, ICON_INLINE, ICON_INLINE)

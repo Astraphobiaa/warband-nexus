@@ -33,7 +33,7 @@ local function BuildChangelog()
     local key = VersionToChangelogKey(CURRENT_VERSION)
     local changelogText = key and ns.L and ns.L[key]
     if not changelogText or changelogText == "" then
-        changelogText = (ns.L and ns.L["CHANGELOG_V264"]) or FALLBACK_CHANGELOG
+        changelogText = (ns.L and ns.L["CHANGELOG_V270"]) or FALLBACK_CHANGELOG
     end
     if not changelogText or changelogText == "" then
         changelogText = FALLBACK_CHANGELOG

@@ -574,8 +574,16 @@ function Utilities.FormatCurrencySeasonProgressLine(cd)
         return CC_MUTED .. EM_DASH_CUR .. "|r"
     end
 
+    -- Dawncrests: 3-value display — bag · season-earned / season-cap (so user sees current AND room left).
     if sm > 0 then
         local teNum = tonumber(te)
+        if teNum ~= nil and teNum ~= qty then
+            local capped = teNum >= sm
+            local progressColor = capped and CC_CAPPED or CC_CAP_OPEN
+            return CC_WHITE .. fmtNum(qty) .. "|r " .. CC_MUTED .. "\194\183|r " ..
+                progressColor .. fmtNum(teNum) .. "|r" ..
+                CC_MUTED .. " / " .. fmtNum(sm) .. "|r"
+        end
         local numColor
         if teNum ~= nil then
             numColor = (teNum >= sm) and CC_CAPPED or CC_CAP_OPEN

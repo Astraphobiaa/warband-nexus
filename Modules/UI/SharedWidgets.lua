@@ -1519,6 +1519,68 @@ local function GetAccentHexColor()
     return string.format("%02x%02x%02x", c[1] * 255, c[2] * 255, c[3] * 255)
 end
 
+--============================================================================
+-- PROFESSION CRAFTING QUALITY ATLASES (Midnight — R1 / R2 / R3 chat icons)
+-- Required atlases: Professions-ChatIcon-Quality-12-Tier1 | Tier2 | Tier3
+-- Recipe Companion + Gear tab; tier reflects actual enchant rank.
+--============================================================================
+
+local PROFESSION_QUALITY_ATLAS_MIDNIGHT_12 = {
+    [1] = "Professions-ChatIcon-Quality-12-Tier1",
+    [2] = "Professions-ChatIcon-Quality-12-Tier2",
+    [3] = "Professions-ChatIcon-Quality-12-Tier3",
+}
+
+local PROFESSION_QUALITY_ATLAS_MAX_TIER = 3
+
+local function ProfessionQualityRankForTierColumn(tierIdx)
+    local t = tonumber(tierIdx) or 1
+    if t < 1 then t = 1 end
+    if t > PROFESSION_QUALITY_ATLAS_MAX_TIER then t = PROFESSION_QUALITY_ATLAS_MAX_TIER end
+    return t
+end
+
+--- Try SetAtlas (plain id, then composite :w:w for some clients).
+--- Do not call SetTexCoord after SetAtlas — it breaks atlas UVs and shows a wrong/grey glyph.
+local function TrySetProfessionQualityAtlasOnTexture(tex, atlas, w)
+    if not atlas or atlas == "" then return false end
+    local width = tonumber(w) or 18
+    local modes = { false, true }
+    local ign = _G.TextureKitConstants and TextureKitConstants.IgnoreAtlasSize
+    if ign ~= nil then
+        modes[#modes + 1] = ign
+    end
+    for mi = 1, #modes do
+        local useAtlasSize = modes[mi]
+        local ok = pcall(function()
+            tex:SetAtlas(atlas, useAtlasSize)
+            tex:SetSize(width, width)
+            tex:SetVertexColor(1, 1, 1, 1)
+            tex:Show()
+        end)
+        if ok then
+            return true
+        end
+    end
+    return false
+end
+
+local function ApplyProfessionCraftingQualityAtlasToTexture(tex, tierIdx, size)
+    if not tex or not tex.SetAtlas then return false end
+    local r = ProfessionQualityRankForTierColumn(tierIdx)
+    local w = tonumber(size) or 18
+    local base = PROFESSION_QUALITY_ATLAS_MIDNIGHT_12[r] or PROFESSION_QUALITY_ATLAS_MIDNIGHT_12[1]
+    local composite = string.format("%s:%d:%d", base, w, w)
+    if TrySetProfessionQualityAtlasOnTexture(tex, base, w) then return true end
+    if TrySetProfessionQualityAtlasOnTexture(tex, composite, w) then return true end
+    return false
+end
+
+local function GetProfessionCraftingQualityAtlasNameForTier(tierIdx)
+    local r = ProfessionQualityRankForTierColumn(tierIdx)
+    return PROFESSION_QUALITY_ATLAS_MIDNIGHT_12[r] or PROFESSION_QUALITY_ATLAS_MIDNIGHT_12[1]
+end
+
 -- Create a card frame (common UI element)
 local function CreateCard(parent, height)
     if not parent then return nil end
@@ -3293,6 +3355,8 @@ end
 
 ns.UI_GetQualityHex = GetQualityHex
 ns.UI_GetAccentHexColor = GetAccentHexColor
+ns.UI_ApplyProfessionCraftingQualityAtlasToTexture = ApplyProfessionCraftingQualityAtlasToTexture
+ns.UI_GetProfessionCraftingQualityAtlasNameForTier = GetProfessionCraftingQualityAtlasNameForTier
 ns.UI_CreateCard = CreateCard
 -- FormatGold, FormatNumber, FormatTextNumbers, FormatMoney
 -- are exported by FormatHelpers.lua (authoritative source, loads after SharedWidgets)

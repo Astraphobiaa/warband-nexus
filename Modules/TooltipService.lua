@@ -460,6 +460,135 @@ local function ApplyGearTabPrimaryStatLineHighlight(line, ctx)
     end
 end
 
+-- TooltipDataLineType (Blizzard): ItemEnchantmentPermanent = 15
+local TOOLTIP_LINE_ITEM_ENCHANTMENT_PERMANENT = (Enum.TooltipDataLineType and Enum.TooltipDataLineType.ItemEnchantmentPermanent) or 15
+
+-- Blizzard surfaces tooltip args onto line tables (see TooltipUtil.SurfaceArgs); lines also carry raw .args.
+local PROFESSION_QUALITY_LINE_KEYS = {
+    "craftingQuality",
+    "quality",
+    "qualityTier",
+    "tier",
+    "qualityIndex",
+    "professionQuality",
+    "itemEnchantmentQuality",
+    "enchantQuality",
+}
+
+local function TooltipSurfaceLineArgs(line)
+    if not line or type(line) ~= "table" then return end
+    if TooltipUtil and TooltipUtil.SurfaceArgs then
+        pcall(TooltipUtil.SurfaceArgs, line)
+    end
+    local args = line.args
+    if type(args) ~= "table" then return end
+    for ai = 1, #args do
+        local a = args[ai]
+        if type(a) == "table" and type(a.field) == "string" and a.field ~= "" then
+            local v = a.stringVal or a.intVal or a.floatVal
+            if v == nil and a.boolVal ~= nil then v = a.boolVal end
+            if v == nil and a.colorVal ~= nil then v = a.colorVal end
+            if v == nil and a.guidVal ~= nil then v = a.guidVal end
+            if v ~= nil and rawget(line, a.field) == nil then
+                line[a.field] = v
+            end
+        end
+    end
+end
+
+local function TooltipSurfaceAllLines(tooltipData)
+    if not tooltipData or type(tooltipData.lines) ~= "table" then return end
+    if TooltipUtil and TooltipUtil.SurfaceArgs then
+        pcall(TooltipUtil.SurfaceArgs, tooltipData)
+    end
+    for i = 1, #tooltipData.lines do
+        TooltipSurfaceLineArgs(tooltipData.lines[i])
+    end
+end
+
+--- Pull tier digit from inline `|A:Professions-ChatIcon-Quality-Tier<N>:...|a` atlas markers
+--- Blizzard renders enchant tier as an inline atlas in the line text, not as a surfaced field
+local function ExtractTierFromInlineAtlasMarker(text)
+    if not text or type(text) ~= "string" then return nil end
+    local d = text:match("Professions%-ChatIcon%-Quality%-[^:|]-Tier(%d)")
+        or text:match("Professions%-Icon%-Quality%-Tier(%d)")
+        or text:match("Professions%-Quality%-Tier(%d)")
+        or text:match("ChatIcon%-Quality%-Tier(%d)")
+    local n = tonumber(d)
+    if n and n >= 1 and n <= 10 then return n end
+    return nil
+end
+
+local function ExtractProfessionCraftingQualityTierFromTooltipLine(line)
+    if not line then return nil end
+    TooltipSurfaceLineArgs(line)
+    for ki = 1, #PROFESSION_QUALITY_LINE_KEYS do
+        local k = PROFESSION_QUALITY_LINE_KEYS[ki]
+        local v = line[k]
+        local n = tonumber(v)
+        if n and n >= 1 and n <= 10 then
+            return math.floor(n + 0.5)
+        end
+    end
+    local fromLeft = ExtractTierFromInlineAtlasMarker(line.leftText)
+    if fromLeft then return fromLeft end
+    local fromRight = ExtractTierFromInlineAtlasMarker(line.rightText)
+    if fromRight then return fromRight end
+    return nil
+end
+
+local function ClampMidnightProfessionQualityTier(n)
+    if type(n) ~= "number" then return nil end
+    local t = math.floor(n + 0.5)
+    if t < 1 then t = 1 end
+    if t > 3 then t = 3 end
+    return t
+end
+
+local _enchantCraftingTierCache = {}
+local ENCHANT_TIER_CACHE_MAX = 120
+
+local function TrimEnchantTierCacheIfNeeded()
+    local n = 0
+    for _ in pairs(_enchantCraftingTierCache) do
+        n = n + 1
+        if n >= ENCHANT_TIER_CACHE_MAX then
+            wipe(_enchantCraftingTierCache)
+            return
+        end
+    end
+end
+
+local function GetEnchantmentCraftingQualityTierFromItemLinkTooltipScan(itemLink)
+    if not itemLink or type(itemLink) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(itemLink) then return nil end
+    local cached = _enchantCraftingTierCache[itemLink]
+    if cached ~= nil then return cached end
+    if not C_TooltipInfo or not C_TooltipInfo.GetHyperlink then return nil end
+    local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemLink)
+    if not ok or not data or type(data.lines) ~= "table" then return nil end
+    TooltipSurfaceAllLines(data)
+    local found = nil
+    for i = 1, #data.lines do
+        local ln = data.lines[i]
+        if ln and ln.type == TOOLTIP_LINE_ITEM_ENCHANTMENT_PERMANENT then
+            found = ExtractProfessionCraftingQualityTierFromTooltipLine(ln)
+            if found then break end
+        end
+    end
+    if found then
+        TrimEnchantTierCacheIfNeeded()
+        _enchantCraftingTierCache[itemLink] = found
+    end
+    return found
+end
+
+--- Gear slot glyph + external callers: enchant row quality from tooltip data (not item GetCraftingQuality).
+local function GetEnchantmentCraftingQualityTierFromItemLink(itemLink)
+    local t = GetEnchantmentCraftingQualityTierFromItemLinkTooltipScan(itemLink)
+    return ClampMidnightProfessionQualityTier(t)
+end
+
 -- ============================================================================
 -- RENDERING METHODS
 -- ============================================================================
@@ -594,10 +723,8 @@ function TooltipService:RenderItemTooltip(frame, data)
     end
     
     if tooltipData and tooltipData.lines and #tooltipData.lines > 0 then
-        -- Process tooltip data lines to complete TooltipDataLine structure
-        if TooltipUtil and TooltipUtil.SurfaceArgs then
-            pcall(TooltipUtil.SurfaceArgs, tooltipData)
-        end
+        -- Surface root + per-line args so craftingQuality etc. exist before profession/atlas rewrite.
+        TooltipSurfaceAllLines(tooltipData)
         while #tooltipData.lines > 1 and IsVisuallyEmptyTooltipDataLine(tooltipData.lines[#tooltipData.lines]) do
             table.remove(tooltipData.lines)
         end
@@ -2600,3 +2727,6 @@ WarbandNexus.Tooltip = TooltipService
 
 -- Export to ns for SharedWidgets access
 ns.TooltipService = TooltipService
+
+--- Enchant-only crafting tier (1–2) from tooltip scan; not item body GetCraftingQuality.
+ns.UI_GetEnchantmentCraftingQualityTierFromItemLink = GetEnchantmentCraftingQualityTierFromItemLink

@@ -48,6 +48,19 @@ local TRACK_ICONS = {
 local CHECK  = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
 local CROSS  = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
 local UPARROW = "|A:loottoast-arrow-green:12:12|a"
+
+--- VaultTracker font helper: routes through FontManager when available, falls back
+--- to GameFontNormal[Small] otherwise. Call sites use one of: "body" | "small" | "title" | "subtitle" | "header".
+local function VBFontString(parent, role, drawLayer)
+    local FM = ns.FontManager
+    if FM and FM.CreateFontString then
+        return FM:CreateFontString(parent, role or "body", drawLayer or "OVERLAY")
+    end
+    local fallback = (role == "small") and "GameFontNormalSmall"
+        or (role == "title" or role == "header") and "GameFontHighlight"
+        or "GameFontNormal"
+    return parent:CreateFontString(nil, drawLayer or "OVERLAY", fallback)
+end
 local DASH   = "|cff666666-|r"
 
 -- Maps Vault Button column key -> PvE typeName used by upgrade-detection logic
@@ -301,6 +314,18 @@ local function CountReadySlots(charKey)
     return n
 end
 
+--- True if `time()` has crossed the stored weeklyResetTime for this char's activities,
+--- meaning the cached "ready slots" are now sitting unclaimed in the vault chest.
+local function VaultResetCrossedFor(charKey)
+    local pveCache = GetPveCache()
+    local activities = pveCache and pveCache.greatVault and pveCache.greatVault.activities
+        and pveCache.greatVault.activities[charKey] or nil
+    if not activities then return false end
+    local resetT = tonumber(activities.weeklyResetTime) or 0
+    if resetT <= 0 then return false end
+    return GetServerTime() >= resetT
+end
+
 --- Get Trovehunter's Bounty status for a character
 --- Returns: true = done, false = not done, nil = unknown (never logged in)
 local function GetBountyStatus(charKey)
@@ -432,9 +457,23 @@ local function BuildCharList()
     local rewards    = pveCache.greatVault and pveCache.greatVault.rewards
     local currentKey = GetCurrentCharKey()
     local result     = {}
+    -- For the logged-in char, prefer live HasAvailableRewards() so post-reset carry-over
+    -- chests flip the Ready badge immediately (matches the Great Vault\226\128\153s own prompt).
+    local liveCurrentReady = false
+    if currentKey and C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards
+        and C_WeeklyRewards.HasAvailableRewards() then
+        liveCurrentReady = true
+    end
     for charKey, charData in pairs(characters) do
         local rewardData = rewards and rewards[charKey]
         local isReady    = rewardData and rewardData.hasAvailableRewards or false
+        if charKey == currentKey and liveCurrentReady then isReady = true end
+        -- Alt auto-flip: cached \226\128\156slots earned\226\128\157 last week + reset crossed -> sitting chest.
+        if not isReady and charKey ~= currentKey
+            and (CountReadySlots(charKey) or 0) > 0
+            and VaultResetCrossedFor(charKey) then
+            isReady = true
+        end
         local isPending  = not isReady and HasAnyProgress(charKey)
         if isReady or isPending then
             table.insert(result, {
@@ -490,6 +529,8 @@ local HideMenu
 local ToggleSavedInstances
 local HideSavedInstances
 local RefreshSavedInstances
+local StartSavedInstancesLiveRefresh
+local StopSavedInstancesLiveRefresh
 local WNTooltipShow
 local WNTooltipHide
 
@@ -616,7 +657,10 @@ HideMenu = function()
     if S.menuFrame then S.menuFrame:Hide() end 
     if S.menuCatcher then S.menuCatcher:Hide() end
 end
-HideSavedInstances = function() if S.savedFrame then S.savedFrame:Hide() end end
+HideSavedInstances = function()
+    if S.savedFrame then S.savedFrame:Hide() end
+    StopSavedInstancesLiveRefresh()
+end
 
 local function HideAllPanels()
     HideTable()
@@ -676,7 +720,7 @@ local function BuildTableFrame()
     if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
         title = FontManager:CreateFontString(chrome, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     else
-        title = chrome:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        title = VBFontString(chrome, "body")
     end
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
     title:SetText("Vault Tracker")
@@ -761,7 +805,7 @@ local function BuildTableFrame()
                 hover:SetScript("OnLeave", function() GameTooltip:Hide() end)
             end
         else
-            local fs = hRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local fs = VBFontString(hRow, "small")
             fs:SetPoint("TOPLEFT", hRow, "TOPLEFT", x, 0)
             fs:SetSize(w, HEADER_H)
             fs:SetJustifyH("CENTER")
@@ -830,7 +874,7 @@ RefreshTable = function()
     if #list == 0 then
         S.tableFrame:SetSize(tableW, CHROME_H + HEADER_H + 80)
         content:SetSize(tableW - FRAME_PAD*2, 40)
-        local msg = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local msg = VBFontString(content, "body")
         msg:SetPoint("CENTER", content, "CENTER")
         msg:SetTextColor(0.5, 0.5, 0.5)
         msg:SetText("No vault activity this week.")
@@ -887,7 +931,7 @@ RefreshTable = function()
 
         -- Name
         local x = 0
-        local nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local nameFS = VBFontString(row, "body")
         nameFS:SetPoint("TOPLEFT", row, "TOPLEFT", x+6, 0)
         nameFS:SetSize(COL_NAME-6, ROW_H)
         nameFS:SetJustifyH("LEFT")
@@ -896,7 +940,7 @@ RefreshTable = function()
         x = x + COL_NAME
 
         -- iLvl
-        local ilvlFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local ilvlFS = VBFontString(row, "body")
         ilvlFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
         ilvlFS:SetSize(COL_ILVL, ROW_H)
         ilvlFS:SetJustifyH("CENTER")
@@ -911,7 +955,7 @@ RefreshTable = function()
         for _, cat in ipairs(catDefs) do
             local slots = GetSlotData(e.charKey, cat.key)
             allSlots[cat.key] = slots
-            local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local fs = VBFontString(row, "body")
             fs:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
             fs:SetSize(cat.width, ROW_H)
             fs:SetJustifyH("CENTER")
@@ -922,7 +966,7 @@ RefreshTable = function()
 
         local b = e.bounty
         if columns.bounty ~= false then
-            local bountyFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local bountyFS = VBFontString(row, "body")
             bountyFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
             bountyFS:SetSize(COL_BOUNTY, ROW_H)
             bountyFS:SetJustifyH("CENTER")
@@ -934,7 +978,7 @@ RefreshTable = function()
         -- Nebulous Voidcore (current / seasonMax)
         local vc = e.voidcore
         if columns.voidcore ~= false then
-            local voidcoreFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local voidcoreFS = VBFontString(row, "body")
             voidcoreFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
             voidcoreFS:SetSize(COL_VOIDCORE, ROW_H)
             voidcoreFS:SetJustifyH("CENTER")
@@ -955,7 +999,7 @@ RefreshTable = function()
 
         -- Dawnlight Manaflux
         if columns.manaflux == true then
-            local manafluxFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local manafluxFS = VBFontString(row, "body")
             manafluxFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
             manafluxFS:SetSize(COL_MANAFLUX, ROW_H)
             manafluxFS:SetJustifyH("CENTER")
@@ -966,7 +1010,7 @@ RefreshTable = function()
         end
 
         -- Status
-        local statusFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local statusFS = VBFontString(row, "body")
         statusFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
         statusFS:SetSize(COL_STATUS, ROW_H)
         statusFS:SetJustifyH("CENTER")
@@ -1294,7 +1338,7 @@ local function CreateMenuCheckbox(parent, labelText, y, getValue, setValue)
     if FontManager and FontManager.CreateFontString then
         label = FontManager:CreateFontString(parent, "body", "OVERLAY")
     else
-        label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label = VBFontString(parent, "small")
     end
     label:SetPoint("LEFT", cb, "RIGHT", (ns.UI_SPACING and ns.UI_SPACING.AFTER_ELEMENT) or 6, 0)
     label:SetText(labelText)
@@ -1366,7 +1410,7 @@ local function BuildOptionsFrame()
     if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
         title = FontManager:CreateFontString(chrome, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     else
-        title = chrome:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        title = VBFontString(chrome, "body")
     end
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
     title:SetText("Vault Button")
@@ -1415,7 +1459,7 @@ local function BuildOptionsFrame()
             GetSettings().showRewardItemLevel = value
             RebuildTableFrame()
         end)
-    local columnLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local columnLabel = VBFontString(f, "small")
     columnLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -188)
     columnLabel:SetText("Columns")
     columnLabel:SetTextColor(accent[1], accent[2], accent[3], 1)
@@ -1459,7 +1503,7 @@ local function BuildOptionsFrame()
             RebuildTableFrame()
         end)
 
-    local opacityLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local opacityLabel = VBFontString(f, "small")
     opacityLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -380)
     opacityLabel:SetTextColor(1, 1, 1, 1)
 
@@ -1660,6 +1704,59 @@ local CARD_GAP = 10
 local SAVED_GROUP_CHEVRON_SIZE = 20
 local SAVED_GROUP_PROGRESS_W = 62
 
+local savedLiveEventFrame = nil
+local savedLiveRefreshPending = false
+
+local function ScheduleSavedInstancesLiveRefresh(triggerPvEUpdate)
+    if triggerPvEUpdate and WarbandNexus and WarbandNexus.UpdatePvEData then
+        pcall(WarbandNexus.UpdatePvEData, WarbandNexus)
+    end
+    if RequestRaidInfo then
+        pcall(RequestRaidInfo)
+    end
+    if savedLiveRefreshPending then return end
+    savedLiveRefreshPending = true
+    C_Timer.After(0.12, function()
+        savedLiveRefreshPending = false
+        if S.savedFrame and S.savedFrame:IsShown() then
+            RefreshSavedInstances()
+        end
+    end)
+end
+
+StartSavedInstancesLiveRefresh = function()
+    if savedLiveEventFrame then return end
+    savedLiveEventFrame = CreateFrame("Frame")
+    savedLiveEventFrame:RegisterEvent("UPDATE_INSTANCE_INFO")
+    savedLiveEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    savedLiveEventFrame:RegisterEvent("PLAYER_DIFFICULTY_CHANGED")
+    savedLiveEventFrame:RegisterEvent("RAID_INSTANCE_WELCOME")
+    savedLiveEventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+    savedLiveEventFrame:RegisterEvent("WEEKLY_REWARDS_UPDATE")
+    savedLiveEventFrame:RegisterEvent("ENCOUNTER_END")
+    savedLiveEventFrame:SetScript("OnEvent", function(_, event)
+        if not (S.savedFrame and S.savedFrame:IsShown()) then return end
+        if event == "ENCOUNTER_END" then
+            -- Encounter end can race cache writes; small delay keeps list accurate.
+            C_Timer.After(0.2, function()
+                if S.savedFrame and S.savedFrame:IsShown() then
+                    ScheduleSavedInstancesLiveRefresh(true)
+                end
+            end)
+            return
+        end
+        ScheduleSavedInstancesLiveRefresh(true)
+    end)
+end
+
+StopSavedInstancesLiveRefresh = function()
+    if not savedLiveEventFrame then return end
+    savedLiveEventFrame:SetScript("OnEvent", nil)
+    savedLiveEventFrame:UnregisterAllEvents()
+    savedLiveEventFrame = nil
+    savedLiveRefreshPending = false
+end
+
 local function BuildSavedInstancesFrame()
     if S.savedFrame then return end
     local ApplyVisuals = ns.UI_ApplyVisuals
@@ -1686,6 +1783,13 @@ local function BuildSavedInstancesFrame()
         ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
     end
     f:Hide()
+    f:SetScript("OnShow", function()
+        StartSavedInstancesLiveRefresh()
+        ScheduleSavedInstancesLiveRefresh(true)
+    end)
+    f:SetScript("OnHide", function()
+        StopSavedInstancesLiveRefresh()
+    end)
 
     local chrome = CreateFrame("Frame", nil, f)
     chrome:SetHeight(CHROME_H)
@@ -1709,7 +1813,7 @@ local function BuildSavedInstancesFrame()
     if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
         title = FontManager:CreateFontString(chrome, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     else
-        title = chrome:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        title = VBFontString(chrome, "body")
     end
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
     title:SetText((ns.L and ns.L["SAVED_INSTANCES_TITLE"]) or "Saved Instances")
@@ -1762,7 +1866,7 @@ local function BuildSavedInstancesFrame()
         if FontManager and FontManager.CreateFontString then
             lbl = FontManager:CreateFontString(b, "small", "OVERLAY")
         else
-            lbl = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            lbl = VBFontString(b, "small")
         end
         lbl:SetPoint("CENTER")
         lbl:SetText("|cff" .. di.hex .. fb.label .. "|r")
@@ -1790,7 +1894,7 @@ local function BuildSavedInstancesFrame()
     if FontManager and FontManager.CreateFontString then
         summary = FontManager:CreateFontString(filterRow, "small", "OVERLAY")
     else
-        summary = filterRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        summary = VBFontString(filterRow, "small")
     end
     summary:SetPoint("RIGHT", filterRow, "RIGHT", -SIDE_PAD, 0)
     summary:SetTextColor(0.75, 0.75, 0.8)
@@ -1926,7 +2030,7 @@ local function BuildLockoutRow(parent, char, encounters, group, totalW)
     if FontManager and FontManager.CreateFontString then
         nameFS = FontManager:CreateFontString(row, "body", "OVERLAY")
     else
-        nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        nameFS = VBFontString(row, "body")
     end
     nameFS:SetPoint("LEFT", row, "LEFT", PAD, 0)
     nameFS:SetWidth(NAME_W)
@@ -1963,7 +2067,7 @@ local function BuildLockoutRow(parent, char, encounters, group, totalW)
     if FontManager and FontManager.CreateFontString then
         progFS = FontManager:CreateFontString(row, "small", "OVERLAY")
     else
-        progFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        progFS = VBFontString(row, "small")
     end
     progFS:SetPoint("RIGHT", row, "RIGHT", -PAD - RESET_W - 8, 0)
     progFS:SetWidth(PROGRESS_W)
@@ -1976,7 +2080,7 @@ local function BuildLockoutRow(parent, char, encounters, group, totalW)
     if FontManager and FontManager.CreateFontString then
         resetFS = FontManager:CreateFontString(row, "small", "OVERLAY")
     else
-        resetFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        resetFS = VBFontString(row, "small")
     end
     resetFS:SetPoint("RIGHT", row, "RIGHT", -PAD, 0)
     resetFS:SetWidth(RESET_W)
@@ -2058,7 +2162,7 @@ local function BuildGroupHeader(parent, group, totalW, collapsed)
     if FontManager and FontManager.CreateFontString then
         badgeFS = FontManager:CreateFontString(badge, "small", "OVERLAY")
     else
-        badgeFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        badgeFS = VBFontString(badge, "small")
     end
     badgeFS:SetPoint("CENTER")
     badgeFS:SetText("|cffffffff" .. diffInfo.short .. "|r")
@@ -2068,7 +2172,7 @@ local function BuildGroupHeader(parent, group, totalW, collapsed)
     if FontManager and FontManager.CreateFontString then
         nameFS = FontManager:CreateFontString(header, "body", "OVERLAY")
     else
-        nameFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        nameFS = VBFontString(header, "body")
     end
     nameFS:SetPoint("LEFT", badge, "RIGHT", 10, 0)
     nameFS:SetPoint("RIGHT", header, "RIGHT", -110, 0)
@@ -2101,7 +2205,7 @@ local function BuildGroupHeader(parent, group, totalW, collapsed)
     if FontManager and FontManager.CreateFontString then
         progressFS = FontManager:CreateFontString(header, "small", "OVERLAY")
     else
-        progressFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        progressFS = VBFontString(header, "small")
     end
     progressFS:SetJustifyH("CENTER")
     progressFS:SetWordWrap(false)
@@ -2115,7 +2219,7 @@ local function BuildGroupHeader(parent, group, totalW, collapsed)
     if FontManager and FontManager.CreateFontString then
         countLabelFS = FontManager:CreateFontString(header, "small", "OVERLAY")
     else
-        countLabelFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        countLabelFS = VBFontString(header, "small")
     end
     countLabelFS:SetJustifyH("LEFT")
     countLabelFS:SetWordWrap(false)
@@ -2128,7 +2232,7 @@ local function BuildGroupHeader(parent, group, totalW, collapsed)
     if FontManager and FontManager.CreateFontString then
         countNumFS = FontManager:CreateFontString(header, "small", "OVERLAY")
     else
-        countNumFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        countNumFS = VBFontString(header, "small")
     end
     countNumFS:SetJustifyH("RIGHT")
     countNumFS:SetWordWrap(false)
@@ -2244,7 +2348,7 @@ local function BuildInstanceCard(parent, group, cardSize)
 
     local titleFS = FontManager and FontManager.CreateFontString
         and FontManager:CreateFontString(card, "body", "OVERLAY")
-        or card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        or VBFontString(card, "body")
     titleFS:SetPoint("TOPLEFT", 8, -8)
     titleFS:SetPoint("TOPRIGHT", -8, -8)
     titleFS:SetJustifyH("CENTER")
@@ -2268,11 +2372,11 @@ local function BuildInstanceCard(parent, group, cardSize)
         art:SetVertexColor(1, 1, 1, 1)
     end
 
-    local diffFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local diffFS = VBFontString(card, "small")
     diffFS:SetPoint("BOTTOM", card, "BOTTOM", 0, 11)
     diffFS:SetText("|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r")
 
-    local progFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local progFS = VBFontString(card, "small")
     progFS:SetPoint("BOTTOM", diffFS, "TOP", 0, 2)
     local pColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
     progFS:SetText(string.format("%s%d/%d|r", pColor, cleared, total))
@@ -2402,7 +2506,7 @@ RefreshSavedInstances = function()
         if FontManager and FontManager.CreateFontString then
             msg = FontManager:CreateFontString(content, "body", "OVERLAY")
         else
-            msg = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            msg = VBFontString(content, "body")
         end
         msg:SetPoint("CENTER", content, "CENTER", 0, -20)
         msg:SetTextColor(0.6, 0.6, 0.6)
@@ -2537,7 +2641,7 @@ local function CreateMenuItem(parent, opts, y)
     if FontManager and FontManager.CreateFontString then
         label = FontManager:CreateFontString(btn, "body", "OVERLAY")
     else
-        label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label = VBFontString(btn, "body")
     end
     label:SetPoint("LEFT", 32, 0)
     label:SetText(opts.label)
@@ -2624,7 +2728,7 @@ local function BuildMenu()
     if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
         titleFS = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     else
-        titleFS = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        titleFS = VBFontString(header, "small")
     end
     titleFS:SetPoint("LEFT", headerIcon, "RIGHT", 6, 0)
     titleFS:SetText("WN Menu")
@@ -2752,7 +2856,7 @@ local function BuildButton()
     badgeBg:Hide()
     S.badgeBg = badgeBg
 
-    local badge = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local badge = VBFontString(btn, "small")
     badge:SetSize(BADGE_SIZE, BADGE_SIZE)
     badge:SetPoint("CENTER", badgeBg, "CENTER", 0, 0)
     badge:SetJustifyH("CENTER")
@@ -2919,6 +3023,45 @@ end
 --- Public toggle for the Saved Instances window.
 function WarbandNexus:ToggleSavedInstancesWindow()
     if ToggleSavedInstances then ToggleSavedInstances() end
+end
+
+--- Get vault status for a character (used by PvE tab Status column + Vault Tracker).
+--- Logic:
+---   * Logged-in char: prefer live `C_WeeklyRewards.HasAvailableRewards()` so post-reset
+---     carry-over chests show Ready immediately (matches the Great Vault\226\128\153s own prompt).
+---     When the player claims, WEEKLY_REWARDS_ITEM_CHANGED clears the cache automatically.
+---   * Other chars: cached `hasAvailableRewards` is authoritative when true; if it's false
+---     but the char had completed slots AND weekly reset has crossed, auto-flip to Ready
+---     (those slots are now a sitting chest \226\128\148 they\226\128\153ll log in to claim).
+--- Returns: { isReady, isPending, readySlots } or nil when there's no progress to show.
+function WarbandNexus:GetVaultStatusForChar(charKey)
+    if not charKey then return nil end
+    local pveCache = GetPveCache()
+    if not pveCache then return nil end
+    local rewards    = pveCache.greatVault and pveCache.greatVault.rewards
+    local rewardData = rewards and rewards[charKey]
+    local isReady    = rewardData and rewardData.hasAvailableRewards == true or false
+
+    local readySlots = CountReadySlots(charKey) or 0
+    local currentKey = GetCurrentCharKey()
+
+    if currentKey and charKey == currentKey and C_WeeklyRewards
+        and C_WeeklyRewards.HasAvailableRewards then
+        if C_WeeklyRewards.HasAvailableRewards() then
+            isReady = true
+        end
+    elseif not isReady and readySlots > 0 and VaultResetCrossedFor(charKey) then
+        -- Alt had ready slots last week; reset has crossed -> chest is sitting unclaimed.
+        isReady = true
+    end
+
+    local hasProg = readySlots > 0 or HasAnyProgress(charKey)
+    if not isReady and not hasProg then return nil end
+    return {
+        isReady    = isReady,
+        isPending  = not isReady and hasProg,
+        readySlots = readySlots,
+    }
 end
 
 local function HookThemeRefresh()

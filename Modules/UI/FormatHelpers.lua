@@ -174,6 +174,11 @@ local EM_DASH_U   = "\226\128\148"
 
 ---@param cd table|nil GetCurrencyData result (quantity, maxQuantity, totalEarned, seasonMax)
 ---@return string Colored amount text for FontString:SetText
+---Three-segment season-progress format: `<current> · <earned> / <cap>`
+---  current = bag balance (cd.quantity)             — white
+---  earned  = season totalEarned (cd.totalEarned)   — green if room left, red if capped
+---  cap     = season cap (cd.seasonMax/maxQuantity) — muted
+---Falls back to current/cap when totalEarned is missing, or just current when no cap exists.
 local function FormatSeasonProgressCurrencyLine(cd)
     if ns.Utilities and ns.Utilities.FormatCurrencySeasonProgressLine then
         return ns.Utilities.FormatCurrencySeasonProgressLine(cd)
@@ -183,27 +188,99 @@ local function FormatSeasonProgressCurrencyLine(cd)
     end
     local qty = tonumber(cd.quantity) or 0
     local maxQ = tonumber(cd.maxQuantity) or 0
-    local te = cd.totalEarned
+    local teNum = tonumber(cd.totalEarned)
     local sm = tonumber(cd.seasonMax) or 0
-    if sm > 0 then
-        local teNum = tonumber(te)
-        local numColor
-        if teNum ~= nil then
-            numColor = (teNum >= sm) and CC_CAPPED or CC_CAP_OPEN
-        else
-            numColor = CC_WHITE
+    local cap = (sm > 0) and sm or ((maxQ > 0) and maxQ or 0)
+    if cap > 0 then
+        local progress = teNum or qty
+        local progressColor = (progress >= cap) and CC_CAPPED or CC_CAP_OPEN
+        if teNum ~= nil and teNum ~= qty then
+            return CC_WHITE .. FormatNumber(qty) .. "|r " .. CC_MUTED .. "\194\183|r " ..
+                progressColor .. FormatNumber(teNum) .. "|r" ..
+                CC_MUTED .. " / " .. FormatNumber(cap) .. "|r"
         end
-        return numColor .. FormatNumber(qty) .. "|r " .. CC_MUTED .. "/ " .. FormatNumber(sm) .. "|r"
-    end
-    if maxQ > 0 then
-        local isCapped = qty >= maxQ
-        local numColor = isCapped and CC_CAPPED or CC_CAP_OPEN
-        return numColor .. FormatNumber(qty) .. "|r " .. CC_MUTED .. "/ " .. FormatNumber(maxQ) .. "|r"
+        return progressColor .. FormatNumber(qty) .. "|r " .. CC_MUTED .. "/ " .. FormatNumber(cap) .. "|r"
     end
     if qty > 0 then
         return CC_WHITE .. FormatNumber(qty) .. "|r"
     end
     return CC_MUTED .. EM_DASH_U .. "|r"
+end
+
+--============================================================================
+-- SHIFT-AWARE SEASON PROGRESS BINDING
+-- Default view: current bag balance only, colored by cap state (open=green, capped=red).
+-- Hold Shift: expanded "<bag> \194\183 <earned> / <cap>" view, same color rule.
+-- Bindings auto-refresh on MODIFIER_STATE_CHANGED. Weak keys so retired FontStrings GC cleanly.
+--============================================================================
+
+local function ResolveSeasonCapState(cd)
+    if not cd then return 0, 0, 0, false end
+    local qty = tonumber(cd.quantity) or 0
+    local maxQ = tonumber(cd.maxQuantity) or 0
+    local sm = tonumber(cd.seasonMax) or 0
+    local cap = (sm > 0) and sm or maxQ
+    local progress = tonumber(cd.totalEarned) or qty
+    local capped = (cap > 0) and (progress >= cap)
+    return qty, progress, cap, capped
+end
+
+local function FormatSeasonProgressShiftAware(cd, expanded)
+    if not cd then return CC_MUTED .. "0|r" end
+    local qty, progress, cap, capped = ResolveSeasonCapState(cd)
+    local color = (cap > 0) and (capped and CC_CAPPED or CC_CAP_OPEN) or CC_WHITE
+    if not expanded then
+        if cap > 0 or qty > 0 then
+            return color .. FormatNumber(qty) .. "|r"
+        end
+        return CC_MUTED .. EM_DASH_U .. "|r"
+    end
+    if cap > 0 then
+        local progressTxt = (progress ~= qty)
+            and (CC_MUTED .. "\194\183|r " .. color .. FormatNumber(progress) .. "|r ")
+            or ""
+        return color .. FormatNumber(qty) .. "|r " ..
+            progressTxt .. CC_MUTED .. "/ " .. FormatNumber(cap) .. "|r"
+    end
+    if qty > 0 then return CC_WHITE .. FormatNumber(qty) .. "|r" end
+    return CC_MUTED .. EM_DASH_U .. "|r"
+end
+
+local _seasonAmountBindings = setmetatable({}, { __mode = "k" })
+local _seasonAmountWatcher
+
+local function EnsureSeasonAmountWatcher()
+    if _seasonAmountWatcher then return end
+    _seasonAmountWatcher = CreateFrame("Frame")
+    _seasonAmountWatcher:RegisterEvent("MODIFIER_STATE_CHANGED")
+    _seasonAmountWatcher:SetScript("OnEvent", function(_, _, key)
+        if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
+        local expanded = IsShiftKeyDown() and true or false
+        for fs, cd in pairs(_seasonAmountBindings) do
+            if fs and fs.SetText and fs.IsObjectType then
+                fs:SetText(FormatSeasonProgressShiftAware(cd, expanded))
+            end
+        end
+    end)
+end
+
+---Bind a FontString to a currency-data object so it shows current-only by default
+---and current\194\183earned/cap when Shift is held. Handles refresh on shift toggle.
+---@param fs FontString
+---@param cd table|nil
+local function BindSeasonProgressAmount(fs, cd)
+    if not fs or not fs.SetText then return end
+    EnsureSeasonAmountWatcher()
+    _seasonAmountBindings[fs] = cd
+    fs:SetText(FormatSeasonProgressShiftAware(cd, IsShiftKeyDown() and true or false))
+end
+
+---Update binding (e.g. on data refresh) and re-render with current shift state.
+local function RefreshSeasonProgressAmount(fs, cd)
+    if not fs or not fs.SetText then return end
+    if cd ~= nil then _seasonAmountBindings[fs] = cd end
+    local data = cd or _seasonAmountBindings[fs]
+    fs:SetText(FormatSeasonProgressShiftAware(data, IsShiftKeyDown() and true or false))
 end
 
 --============================================================================
@@ -227,5 +304,7 @@ ns.UI_FormatTextNumbers = FormatTextNumbers
 ns.UI_FormatGold = FormatGold
 ns.UI_FormatMoney = FormatMoney
 ns.UI_FormatSeasonProgressCurrencyLine = FormatSeasonProgressCurrencyLine
+ns.UI_BindSeasonProgressAmount = BindSeasonProgressAmount
+ns.UI_RefreshSeasonProgressAmount = RefreshSeasonProgressAmount
 
 -- Module loaded - verbose logging removed

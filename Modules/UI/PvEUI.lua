@@ -84,6 +84,429 @@ local PVE_DAWNCREST_COL_W = 128                  -- qty/max (R:rem)
 local PVE_COFFER_COL_W = 148
 local PVE_KEY_COL_W = 88
 local PVE_VAULT_COL_W = 70                       -- triplet of marks per track
+local PVE_BOUNTIFUL_COL_W = 44
+local PVE_STATUS_COL_W    = 130  -- Fits "N Slots Earned" + localized variants without truncation
+local PVE_VOIDCORE_COL_W = 58
+local PVE_MANAFLUX_COL_W = 58
+local PVE_VOIDCORE_ID = 3418
+local PVE_MANAFLUX_ID = 3378
+
+-- Great Vault slot glyphs — match Modules/VaultButton.lua SlotSymbols (12×12).
+local VAULT_SLOT_CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
+local VAULT_SLOT_CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+local VAULT_SLOT_UPARROW = "|A:loottoast-arrow-green:12:12|a"
+
+local UI_GetAccentHexColor = ns.UI_GetAccentHexColor
+
+local function GetPvEDawnCrestColumnDefinitions()
+    local crests = {}
+    local MS1 = ns.Constants and ns.Constants.DAWNCREST_UI
+    local ordered = MS1 and MS1.COLUMN_IDS
+    local labels = MS1 and MS1.PVE_LABEL_KEYS
+    if ordered and labels then
+        for i = 1, #ordered do
+            local id = ordered[i]
+            crests[#crests + 1] = { id = id, labelKey = labels[id] }
+        end
+    else
+        crests = {
+            { id = 3383, labelKey = "PVE_CREST_ADV" },
+            { id = 3341, labelKey = "PVE_CREST_VET" },
+            { id = 3343, labelKey = "PVE_CREST_CHAMP" },
+            { id = 3345, labelKey = "PVE_CREST_HERO" },
+            { id = 3347, labelKey = "PVE_CREST_MYTH" },
+        }
+    end
+    return crests
+end
+
+--- One-time merge: legacy profile.pveVisibleColumns.{bountiful,voidcore,manaflux} -> vaultButton.columns
+local function MigrateLegacyPvEColumnsToVault(profile)
+    if not profile or not profile.pveVisibleColumns then return end
+    local ex = profile.pveVisibleColumns
+    if ex._vaultColumnMergeDone then return end
+    profile.vaultButton = profile.vaultButton or {}
+    local vb = profile.vaultButton
+    vb.columns = vb.columns or {}
+    local c = vb.columns
+    if ex.bountiful ~= nil then c.bounty = ex.bountiful ~= false end
+    if ex.voidcore ~= nil then c.voidcore = ex.voidcore ~= false end
+    if ex.manaflux ~= nil then
+        c.manaflux = ex.manaflux == true
+        vb.showManaflux = c.manaflux
+    end
+    ex._vaultColumnMergeDone = true
+end
+
+--- Defaults mirror Modules/VaultButton.lua GetSettings().columns
+local function EnsureVaultButtonColumnsForPvE(profile)
+    if not profile then return {} end
+    profile.vaultButton = profile.vaultButton or {}
+    local vb = profile.vaultButton
+    vb.columns = vb.columns or {}
+    local c = vb.columns
+    if c.raids == nil then c.raids = true end
+    if c.mythicPlus == nil then c.mythicPlus = true end
+    if c.world == nil then c.world = true end
+    if c.bounty == nil then c.bounty = true end
+    if c.voidcore == nil then c.voidcore = true end
+    if c.manaflux == nil then c.manaflux = vb.showManaflux == true end
+    if c.status == nil then c.status = true end  -- Vault status (Ready/Slots/Pending) on PvE tab
+    vb.showManaflux = c.manaflux == true
+    MigrateLegacyPvEColumnsToVault(profile)
+    return c
+end
+
+--- PvE-only inline columns (crests / coffer / restored key). Vault tracks share vaultButton.columns.
+local function EnsurePvEExtraVisibleColumns(profile)
+    if not profile then return {} end
+    profile.pveVisibleColumns = profile.pveVisibleColumns or {}
+    local ex = profile.pveVisibleColumns
+    MigrateLegacyPvEColumnsToVault(profile)
+    if ex.coffer_shards == nil then ex.coffer_shards = true end
+    if ex.restored_key == nil then ex.restored_key = true end
+    return ex
+end
+
+local function BuildPvEColumnKeySequence(profile)
+    local seq = {}
+    if not profile then return seq end
+    local vc = EnsureVaultButtonColumnsForPvE(profile)
+    local ex = EnsurePvEExtraVisibleColumns(profile)
+    local crestDefs = GetPvEDawnCrestColumnDefinitions()
+    for i = 1, #crestDefs do
+        local id = crestDefs[i].id
+        local k = "crest_" .. tostring(id)
+        if ex[k] ~= false then
+            seq[#seq + 1] = k
+        end
+    end
+    if ex.coffer_shards ~= false then seq[#seq + 1] = "coffer_shards" end
+    if ex.restored_key ~= false then seq[#seq + 1] = "restored_key" end
+    if vc.voidcore ~= false then seq[#seq + 1] = "voidcore" end
+    if vc.manaflux == true then seq[#seq + 1] = "manaflux" end
+    if vc.raids ~= false then seq[#seq + 1] = "slot1" end
+    if vc.mythicPlus ~= false then seq[#seq + 1] = "slot2" end
+    if vc.world ~= false then seq[#seq + 1] = "slot3" end
+    if vc.bounty ~= false then seq[#seq + 1] = "bountiful" end
+    return seq
+end
+
+local function PvE_GetGapAfterColumnKey(leftKey, visibleKeySet)
+    if leftKey == "slot1" or leftKey == "slot2" then return PVE_VAULT_CLUSTER_GAP end
+    if leftKey == "slot3" then return PVE_KEY_TO_VAULT_GAP end
+    if leftKey == "manaflux" then return PVE_KEY_TO_VAULT_GAP end
+    if leftKey == "voidcore" and (not visibleKeySet.manaflux) then return PVE_KEY_TO_VAULT_GAP end
+    if leftKey == "restored_key" and (not visibleKeySet.voidcore) and (not visibleKeySet.manaflux) then
+        return PVE_KEY_TO_VAULT_GAP
+    end
+    return PVE_COL_SPACING
+end
+
+-- PvE Columns dropdown: TOOLTIP strata above headers/tooltips; survives RefreshUI (parent UIParent).
+local PVE_COLUMN_PICKER_STRATA = "TOOLTIP"
+local PVE_COLUMN_PICKER_MENU_LEVEL = 5100
+local PVE_COLUMN_PICKER_CATCHER_LEVEL = 5050
+
+local function PvE_ColumnPickerHideTooltipLayers()
+    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+    if HideTooltip then HideTooltip() end
+end
+
+local function PvE_ColumnPickerHideCatcher()
+    local c = WarbandNexus._wnPvEColumnPickerCatcher
+    if c and c:IsShown() then c:Hide() end
+end
+
+function WarbandNexus:HidePvEColumnPickerMenu()
+    PvE_ColumnPickerHideCatcher()
+    local m = WarbandNexus._wnPvEColumnPickerMenu
+    if m then m:Hide() end
+end
+
+local function PvE_ColumnPickerPositionMenu(menu, anchorBtn)
+    if not menu or not anchorBtn then return end
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPRIGHT", anchorBtn, "BOTTOMRIGHT", 0, -4)
+end
+
+local function PvE_ColumnPickerShowCatcher(menu)
+    local c = WarbandNexus._wnPvEColumnPickerCatcher
+    if not c then
+        c = CreateFrame("Button", "WarbandNexusPvEColumnPickerCatcher", UIParent)
+        c:SetFrameStrata(PVE_COLUMN_PICKER_STRATA)
+        c:SetFrameLevel(PVE_COLUMN_PICKER_CATCHER_LEVEL)
+        c:SetAllPoints(UIParent)
+        c:SetAlpha(0)
+        c:EnableMouse(true)
+        c:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        if c.SetPropagateMouseClicks then c:SetPropagateMouseClicks(false) end
+        c:SetScript("OnClick", function()
+            WarbandNexus:HidePvEColumnPickerMenu()
+        end)
+        WarbandNexus._wnPvEColumnPickerCatcher = c
+    end
+    c:SetFrameStrata(PVE_COLUMN_PICKER_STRATA)
+    c:SetFrameLevel(PVE_COLUMN_PICKER_CATCHER_LEVEL)
+    c:Show()
+    menu:SetFrameStrata(PVE_COLUMN_PICKER_STRATA)
+    menu:SetFrameLevel(PVE_COLUMN_PICKER_MENU_LEVEL)
+    menu:Raise()
+end
+
+local function PvE_GetOrCreateColumnPickerMenu()
+    local Factory = ns.UI and ns.UI.Factory
+    if not Factory or not Factory.CreateContainer then return nil end
+    local m = WarbandNexus._wnPvEColumnPickerMenu
+    if m then return m end
+    local accent = COLORS.accent or { 0.40, 0.20, 0.58 }
+    m = Factory:CreateContainer(UIParent, 292, 320, true)
+    if not m then return nil end
+    m:SetClampedToScreen(true)
+    m:SetFrameStrata(PVE_COLUMN_PICKER_STRATA)
+    m:SetFrameLevel(PVE_COLUMN_PICKER_MENU_LEVEL)
+    m:EnableMouse(true)
+    if ApplyVisuals then
+        ApplyVisuals(m, { 0.02, 0.02, 0.03, 0.98 }, { accent[1], accent[2], accent[3], 1 })
+    end
+    m:Hide()
+    WarbandNexus._wnPvEColumnPickerMenu = m
+    return m
+end
+
+-- Forward declaration: referenced inside PvE_ColumnPickerPopulateMenu callback.
+local PvE_ColumnPickerTryRefreshAfterDraw
+
+--- Rebuild scroll contents from DB. Caller raises menu + catcher.
+local function PvE_ColumnPickerPopulateMenu(menu, addon)
+    local Factory = ns.UI and ns.UI.Factory
+    if not menu or not Factory or not addon then return end
+
+    local profile = addon.db and addon.db.profile
+    if not profile then return end
+
+    local accent = COLORS.accent or { 0.40, 0.20, 0.58 }
+    local menuW = 292
+    local menuPad = 6
+    local scrollBarW = 22
+    local ROW = 26
+    local HEADER_H = 22
+
+    local crestDefs = GetPvEDawnCrestColumnDefinitions()
+    local toggleCount = #crestDefs + 8
+    local contentH = HEADER_H + toggleCount * ROW + ROW + 10
+    local viewportH = math.min(contentH, 300)
+    local menuH = viewportH + menuPad * 2
+
+    menu:SetSize(menuW, menuH)
+    menu:SetParent(UIParent)
+
+    local bin = ns.UI_RecycleBin
+    local children = { menu:GetChildren() }
+    for i = 1, #children do
+        children[i]:Hide()
+        if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
+    end
+
+    local scrollFrame = Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
+    scrollFrame:SetPoint("TOPLEFT", menuPad, -menuPad)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -scrollBarW, menuPad)
+    scrollFrame:EnableMouseWheel(true)
+
+    local scrollBarColumn = Factory:CreateScrollBarColumn(menu, scrollBarW, menuPad, menuPad)
+    if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
+        Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
+    end
+
+    local btnWidth = menuW - menuPad * 2 - scrollBarW
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetWidth(btnWidth)
+    scrollChild:SetHeight(contentH)
+    scrollFrame:SetScrollChild(scrollChild)
+
+    if Factory.UpdateScrollBarVisibility then Factory:UpdateScrollBarVisibility(scrollFrame) end
+
+    local columnHdr = FontManager:CreateFontString(scrollChild, "small", "OVERLAY")
+    columnHdr:SetPoint("TOPLEFT", 14, -8)
+    columnHdr:SetText("Columns")
+    columnHdr:SetTextColor(accent[1], accent[2], accent[3], 1)
+    if columnHdr.EnableMouse then columnHdr:EnableMouse(false) end
+
+    local vc = EnsureVaultButtonColumnsForPvE(profile)
+    local ex = EnsurePvEExtraVisibleColumns(profile)
+
+    local function applyColumnPickerChange(vaultColTouched)
+        if vaultColTouched and WarbandNexus.RefreshVaultButtonSettings then
+            WarbandNexus:RefreshVaultButtonSettings()
+        end
+        PvE_ColumnPickerHideTooltipLayers()
+        if addon.RefreshUI then addon:RefreshUI() end
+        C_Timer.After(0, function()
+            local picker = WarbandNexus._wnPvEColumnPickerMenu
+            if not picker or not picker:IsShown() then return end
+            local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+            if not mf or mf.currentTab ~= "pve" then
+                WarbandNexus:HidePvEColumnPickerMenu()
+                return
+            end
+            PvE_ColumnPickerTryRefreshAfterDraw(WarbandNexus)
+        end)
+    end
+
+    local function addCheckboxRow(y, labelText, isChecked, onToggle)
+        local cb = CreateThemedCheckbox(scrollChild, isChecked)
+        if not cb then return y end
+        cb:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, y)
+        cb:EnableMouse(true)
+        local lbl = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
+        lbl:SetPoint("LEFT", cb, "RIGHT", (ns.UI_SPACING and ns.UI_SPACING.AFTER_ELEMENT) or 6, 0)
+        lbl:SetText(labelText)
+        lbl:SetTextColor(1, 1, 1, 1)
+        lbl:SetJustifyH("LEFT")
+        if lbl.EnableMouse then lbl:EnableMouse(false) end
+        local prevClick = cb:GetScript("OnClick")
+        cb:SetScript("OnClick", function(self, ...)
+            if prevClick then prevClick(self, ...) end
+            onToggle(self:GetChecked() and true or false)
+        end)
+        return y - ROW
+    end
+
+    local y = -HEADER_H
+    for i = 1, #crestDefs do
+        local id = crestDefs[i].id
+        local labelKey = crestDefs[i].labelKey
+        local crestLabel = (labelKey and ns.L and ns.L[labelKey]) or "Dawncrest"
+        local ck = "crest_" .. tostring(id)
+        y = addCheckboxRow(y, crestLabel, ex[ck] ~= false, function(checked)
+            ex[ck] = checked
+            applyColumnPickerChange(false)
+        end)
+    end
+
+    y = addCheckboxRow(y, (ns.L and ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards", ex.coffer_shards ~= false, function(checked)
+        ex.coffer_shards = checked
+        applyColumnPickerChange(false)
+    end)
+
+    y = addCheckboxRow(y, (ns.L and ns.L["PVE_COL_RESTORED_KEY"]) or "Restored Key", ex.restored_key ~= false, function(checked)
+        ex.restored_key = checked
+        applyColumnPickerChange(false)
+    end)
+
+    y = addCheckboxRow(y, "Raid", vc.raids ~= false, function(checked)
+        vc.raids = checked
+        applyColumnPickerChange(true)
+    end)
+
+    y = addCheckboxRow(y, "Dungeon", vc.mythicPlus ~= false, function(checked)
+        vc.mythicPlus = checked
+        applyColumnPickerChange(true)
+    end)
+
+    y = addCheckboxRow(y, "World", vc.world ~= false, function(checked)
+        vc.world = checked
+        applyColumnPickerChange(true)
+    end)
+
+    y = addCheckboxRow(y, "Trovehunter's Bounty", vc.bounty ~= false, function(checked)
+        vc.bounty = checked
+        applyColumnPickerChange(true)
+    end)
+
+    y = addCheckboxRow(y, "Nebulous Voidcore", vc.voidcore ~= false, function(checked)
+        vc.voidcore = checked
+        applyColumnPickerChange(true)
+    end)
+
+    y = addCheckboxRow(y, "Dawnlight Manaflux", vc.manaflux == true, function(checked)
+        vc.manaflux = checked
+        profile.vaultButton = profile.vaultButton or {}
+        profile.vaultButton.showManaflux = checked
+        applyColumnPickerChange(true)
+    end)
+
+    local resetBtn = Factory:CreateButton(scrollChild, btnWidth - 28, ROW - 2, false)
+    if resetBtn and ApplyVisuals then
+        ApplyVisuals(resetBtn, { 0.08, 0.08, 0.10, 1 }, { accent[1], accent[2], accent[3], 0.5 })
+    end
+    if resetBtn then
+        resetBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, y - 4)
+        local resetLbl = FontManager:CreateFontString(resetBtn, "small", "OVERLAY")
+        resetLbl:SetPoint("CENTER", 0, 0)
+        local hex = (UI_GetAccentHexColor and UI_GetAccentHexColor()) or "aaaaee"
+        resetLbl:SetText("|cff" .. hex .. ((ns.L and ns.L["SHOW_ALL"]) or "Show All") .. "|r")
+        if resetLbl.EnableMouse then resetLbl:EnableMouse(false) end
+        resetBtn:SetScript("OnClick", function()
+            for j = 1, #crestDefs do
+                ex["crest_" .. tostring(crestDefs[j].id)] = true
+            end
+            ex.coffer_shards = true
+            ex.restored_key = true
+            vc.raids = true
+            vc.mythicPlus = true
+            vc.world = true
+            vc.bounty = true
+            vc.voidcore = true
+            vc.manaflux = true
+            profile.vaultButton = profile.vaultButton or {}
+            profile.vaultButton.showManaflux = true
+            applyColumnPickerChange(true)
+        end)
+        if Factory.ApplyHighlight then Factory:ApplyHighlight(resetBtn) end
+    end
+end
+
+PvE_ColumnPickerTryRefreshAfterDraw = function(addon)
+    local menu = WarbandNexus._wnPvEColumnPickerMenu
+    local anchor = WarbandNexus._wnPvEColumnPickerAnchorBtn
+    if not menu or not menu:IsShown() or not anchor or not addon then return end
+    PvE_ColumnPickerPopulateMenu(menu, addon)
+    PvE_ColumnPickerPositionMenu(menu, anchor)
+    PvE_ColumnPickerHideTooltipLayers()
+    menu:Show()
+    PvE_ColumnPickerShowCatcher(menu)
+end
+
+--- Columns picker: Vault Tracker options styling (Factory container + scroll + themed toggles).
+local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
+    local Factory = ns.UI and ns.UI.Factory
+    if not Factory or not Factory.CreateButton then return sortAnchor end
+
+    local columnsBtn = Factory:CreateButton(titleCard, 86, (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32, false)
+    if ApplyVisuals then
+        ApplyVisuals(columnsBtn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+    end
+    local columnsBtnText = FontManager:CreateFontString(columnsBtn, "body", "OVERLAY")
+    columnsBtnText:SetPoint("CENTER", 0, 0)
+    columnsBtnText:SetJustifyH("CENTER")
+    columnsBtnText:SetText((ns.L and ns.L["COLUMNS_BUTTON"]) or "Columns")
+    columnsBtnText:SetTextColor(0.9, 0.9, 0.9)
+    if Factory.ApplyHighlight then Factory:ApplyHighlight(columnsBtn) end
+    columnsBtn:SetPoint("RIGHT", sortAnchor, "LEFT", -8, 0)
+
+    WarbandNexus._wnPvEColumnPickerAnchorBtn = columnsBtn
+
+    columnsBtn:SetScript("OnClick", function(btn)
+        WarbandNexus._wnPvEColumnPickerAnchorBtn = btn
+        local menu = WarbandNexus._wnPvEColumnPickerMenu
+        if menu and menu:IsShown() then
+            WarbandNexus:HidePvEColumnPickerMenu()
+            return
+        end
+
+        menu = PvE_GetOrCreateColumnPickerMenu()
+        if not menu then return end
+
+        PvE_ColumnPickerPopulateMenu(menu, addon)
+        PvE_ColumnPickerPositionMenu(menu, btn)
+        PvE_ColumnPickerHideTooltipLayers()
+        menu:Show()
+        PvE_ColumnPickerShowCatcher(menu)
+    end)
+
+    return columnsBtn
+end
 
 --- Header icon for Bountiful column — Blizzard art from Trovehunter's Bounty item.
 ---@return number|string fileID from API, or texture path fallback
@@ -132,10 +555,37 @@ function ns.ComputePvEMinScrollWidth(self)
         tempMeasure:SetParent(nil)
     end
     local nameWidth = math.max(230, math.ceil(maxNameRealmWidth) + 8)
-    local PVE_BOUNTIFUL_COL_W = 44
-    local inlineTotal = 5 * PVE_DAWNCREST_COL_W + PVE_COFFER_COL_W + PVE_KEY_COL_W + 3 * PVE_VAULT_COL_W + PVE_BOUNTIFUL_COL_W
-    local gapSum = 6 * PVE_COL_SPACING + PVE_KEY_TO_VAULT_GAP + 2 * PVE_VAULT_CLUSTER_GAP + PVE_KEY_TO_VAULT_GAP
-    inlineTotal = inlineTotal + gapSum + PVE_COL_RIGHT_MARGIN
+    if not self.db or not self.db.profile then return PVE_CHAR_HEADER_H_MARGIN + PVE_ROW_LEFT_CLUSTER_W + nameWidth + PVE_ROW_MIDDLE_MAX_W + PVE_COL_RIGHT_MARGIN end
+    local columnSeq = BuildPvEColumnKeySequence(self.db.profile)
+    local visibleKeySet = {}
+    for i = 1, #columnSeq do
+        visibleKeySet[columnSeq[i]] = true
+    end
+
+    local widthByKey = {
+        coffer_shards = PVE_COFFER_COL_W,
+        restored_key = PVE_KEY_COL_W,
+        voidcore = PVE_VOIDCORE_COL_W,
+        manaflux = PVE_MANAFLUX_COL_W,
+        slot1 = PVE_VAULT_COL_W,
+        slot2 = PVE_VAULT_COL_W,
+        slot3 = PVE_VAULT_COL_W,
+        bountiful = PVE_BOUNTIFUL_COL_W,
+    }
+    local inlineTotal = 0
+    for i = 1, #columnSeq do
+        local key = columnSeq[i]
+        if key:find("^crest_") then
+            inlineTotal = inlineTotal + PVE_DAWNCREST_COL_W
+        else
+            inlineTotal = inlineTotal + (widthByKey[key] or 0)
+        end
+    end
+
+    for i = 1, #columnSeq - 1 do
+        inlineTotal = inlineTotal + PvE_GetGapAfterColumnKey(columnSeq[i], visibleKeySet)
+    end
+    inlineTotal = inlineTotal + PVE_COL_RIGHT_MARGIN
     return PVE_CHAR_HEADER_H_MARGIN + PVE_ROW_LEFT_CLUSTER_W + nameWidth + PVE_ROW_MIDDLE_MAX_W + inlineTotal
 end
 
@@ -236,20 +686,17 @@ local function PvE_SlotShowsVaultUpgrade(act, typeName)
     return true
 end
 
---- One vault column string (Raid / M+ / World). @param iconSize 13 = PvE row, 10 = dense tooltip
-local function PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vaultLootClaimable, iconSize)
-    iconSize = iconSize or 13
-    local sz = iconSize
-    local READY = string.format("|TInterface\\RAIDFRAME\\ReadyCheck-Ready:%d:%d|t", sz, sz)
-    local NOT_READY = string.format("|TInterface\\RAIDFRAME\\ReadyCheck-NotReady:%d:%d|t", sz, sz)
-    local GREEN_ARROW = string.format("|A:loottoast-arrow-green:%d:%d|a", sz, sz)
+--- One vault column string (Raid / M+ / World). Slot glyphs match Vault Tracker table (12px + spaced).
+local function PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vaultLootClaimable, _)
+    local READY = VAULT_SLOT_CHECK
+    local NOT_READY = VAULT_SLOT_CROSS
+    local GREEN_ARROW = VAULT_SLOT_UPARROW
     local readyClaimLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
     if vaultLootClaimable then
         return "|cff44ff44" .. readyClaimLabel .. "|r"
     end
     slotCount = slotCount or 3
     if slotCount < 1 then slotCount = 3 end
-    local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
     local parts = {}
     local hasIncomplete = false
     local hasUpgrade = false
@@ -269,9 +716,13 @@ local function PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vau
         end
     end
     if not hasIncomplete and not hasUpgrade and slotCount > 0 then
-        return "|cffffd700" .. pendingLabel .. "|r"
+        local done = {}
+        for s = 1, slotCount do
+            done[s] = READY
+        end
+        return table.concat(done, " ")
     end
-    return table.concat(parts, "")
+    return table.concat(parts, " ")
 end
 
 --- All slots in one vault track meet threshold (weekly objectives done for that row).
@@ -1502,8 +1953,11 @@ function WarbandNexus:DrawPvEProgress(parent)
         subtitleTextContent = (ns.L and ns.L["PVE_VAULT_TRACKER_SUBTITLE"]) or
             "Unclaimed rewards and cleared vault rows"
     end
+    -- Append shift-modifier hint so users discover the season-progress expansion.
+    local shiftHintText = (ns.L and ns.L["SHIFT_HINT_SEASON_PROGRESS"]) or "Hold Shift for season progress"
+    subtitleTextContent = subtitleTextContent .. "  |cff666666\194\183|r  |cff888888" .. shiftHintText .. "|r"
     -- Room for weekly reset + sort dropdown + Weekly Vault Tracker row (approximate, avoids overlap)
-    local PVE_TITLE_RIGHT_RESERVE = 400
+    local PVE_TITLE_RIGHT_RESERVE = 520
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "pve",
         titleText = titleTextContent,
@@ -1552,6 +2006,9 @@ function WarbandNexus:DrawPvEProgress(parent)
         sortAnchor = sortBtn
     end
 
+    -- Column visibility (Vault Tracker parity: vaultButton.columns + PvE crest/shard/key toggles)
+    sortAnchor = PvE_AttachInlineColumnPicker(titleCard, sortAnchor, self)
+
     titleCard:Show()
     headerYOffset = headerYOffset + GetLayout().afterHeader
     -- Title only; column headers live in columnHeaderClip (horizontal sync with scroll child)
@@ -1559,26 +2016,7 @@ function WarbandNexus:DrawPvEProgress(parent)
 
     -- ===== COLUMN HEADER ROW (inline PvE status summary) =====
     -- All Midnight Dawncrest tiers — IDs from Constants.MIDNIGHT_S1 (same as Gear / Currency cache)
-    local PVE_DAWNCRESTS = {}
-    do
-        local MS1 = ns.Constants and ns.Constants.DAWNCREST_UI
-        local ordered = MS1 and MS1.COLUMN_IDS
-        local labels = MS1 and MS1.PVE_LABEL_KEYS
-        if ordered and labels then
-            for i = 1, #ordered do
-                local id = ordered[i]
-                PVE_DAWNCRESTS[#PVE_DAWNCRESTS + 1] = { id = id, labelKey = labels[id] }
-            end
-        else
-            PVE_DAWNCRESTS = {
-                { id = 3383, labelKey = "PVE_CREST_ADV" },
-                { id = 3341, labelKey = "PVE_CREST_VET" },
-                { id = 3343, labelKey = "PVE_CREST_CHAMP" },
-                { id = 3345, labelKey = "PVE_CREST_HERO" },
-                { id = 3347, labelKey = "PVE_CREST_MYTH" },
-            }
-        end
-    end
+    local PVE_DAWNCRESTS = GetPvEDawnCrestColumnDefinitions()
     local PVE_RESTORED_KEY_FALLBACK_ID = 3089
     local PVE_SHARDS_ID = nil
     local PVE_RESTORED_KEY_ID = nil
@@ -1612,77 +2050,140 @@ function WarbandNexus:DrawPvEProgress(parent)
         PVE_RESTORED_KEY_ID = PVE_RESTORED_KEY_FALLBACK_ID
     end
 
+    local profile = self.db and self.db.profile
+    local vaultCols = EnsureVaultButtonColumnsForPvE(profile)
+    local pveExtraCols = EnsurePvEExtraVisibleColumns(profile)
     local PVE_COLUMNS = {}
     for i = 1, #PVE_DAWNCRESTS do
         local crestEntry = PVE_DAWNCRESTS[i]
-        local crestIcon = 134400
+        local ck = "crest_" .. tostring(crestEntry.id)
+        if pveExtraCols[ck] ~= false then
+            local crestIcon = 134400
+            if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+                local info = C_CurrencyInfo.GetCurrencyInfo(crestEntry.id)
+                if info and info.iconFileID then
+                    crestIcon = info.iconFileID
+                end
+            end
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = ck,
+                label = "",
+                width = PVE_DAWNCREST_COL_W,
+                icon = crestIcon,
+                crestCurrencyId = crestEntry.id,
+            }
+        end
+    end
+    if pveExtraCols.coffer_shards ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "coffer_shards",
+            label = "",
+            width = PVE_COFFER_COL_W,
+            icon = PVE_SHARDS_ICON,
+            tooltipTitle = (ns.L and ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards",
+        }
+    end
+    if pveExtraCols.restored_key ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "restored_key",
+            label = "",
+            width = PVE_KEY_COL_W,
+            icon = PVE_RESTORED_KEY_ICON,
+            tooltipTitle = (ns.L and ns.L["PVE_COL_RESTORED_KEY"]) or "Restored Key",
+        }
+    end
+    if vaultCols.voidcore ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "voidcore",
+            label = "",
+            width = PVE_VOIDCORE_COL_W,
+            icon = 7658128,
+            tooltipTitle = "Nebulous Voidcore",
+        }
+    end
+    if vaultCols.manaflux == true then
+        local manafluxIcon = "Interface\\Icons\\INV_Enchant_DustArcane"
         if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-            local info = C_CurrencyInfo.GetCurrencyInfo(crestEntry.id)
-            if info and info.iconFileID then
-                crestIcon = info.iconFileID
+            local mfMeta = C_CurrencyInfo.GetCurrencyInfo(PVE_MANAFLUX_ID)
+            if mfMeta and mfMeta.iconFileID then
+                manafluxIcon = mfMeta.iconFileID
             end
         end
         PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "crest_" .. tostring(crestEntry.id),
+            key = "manaflux",
             label = "",
-            width = PVE_DAWNCREST_COL_W,
-            icon = crestIcon,
-            crestCurrencyId = crestEntry.id,
+            width = PVE_MANAFLUX_COL_W,
+            icon = manafluxIcon,
+            tooltipTitle = "Dawnlight Manaflux",
         }
     end
-    PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-        key = "coffer_shards",
-        label = "",
-        width = PVE_COFFER_COL_W,
-        icon = PVE_SHARDS_ICON,
-        tooltipTitle = (ns.L and ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards",
-    }
-    PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-        key = "restored_key",
-        label = "",
-        width = PVE_KEY_COL_W,
-        icon = PVE_RESTORED_KEY_ICON,
-        tooltipTitle = (ns.L and ns.L["PVE_COL_RESTORED_KEY"]) or "Restored Key",
-    }
-    PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-        key = "slot1",
-        label = "",
-        width = PVE_VAULT_COL_W,
-        icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
-        tooltipTitle = (ns.L and ns.L["PVE_HEADER_RAIDS"]) or "Raids",
-    }
-    PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-        key = "slot2",
-        label = "",
-        width = PVE_VAULT_COL_W,
-        icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-        tooltipTitle = (ns.L and ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
-    }
-    PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-        key = "slot3",
-        label = "",
-        width = PVE_VAULT_COL_W,
-        icon = "Interface\\Icons\\INV_Misc_Map_01",
-        tooltipTitle = (ns.L and ns.L["VAULT_WORLD"]) or "World",
-    }
+    if vaultCols.raids ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "slot1",
+            label = "",
+            width = PVE_VAULT_COL_W,
+            icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+            tooltipTitle = (ns.L and ns.L["PVE_HEADER_RAIDS"]) or "Raids",
+        }
+    end
+    if vaultCols.mythicPlus ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "slot2",
+            label = "",
+            width = PVE_VAULT_COL_W,
+            icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
+            tooltipTitle = (ns.L and ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
+        }
+    end
+    if vaultCols.world ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "slot3",
+            label = "",
+            width = PVE_VAULT_COL_W,
+            icon = "Interface\\Icons\\INV_Misc_Map_01",
+            tooltipTitle = (ns.L and ns.L["VAULT_WORLD"]) or "World",
+        }
+    end
     -- Bountiful weekly — Trovehunter's Bounty item icon (live fileID when API returns it)
-    PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-        key = "bountiful",
-        label = "",
-        width = 44,
-        icon = GetTrovehunterBountyColumnIcon(),
-        tooltipTitle = (ns.L and ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty",
-    }
+    if vaultCols.bounty ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "bountiful",
+            label = "",
+            width = PVE_BOUNTIFUL_COL_W,
+            icon = GetTrovehunterBountyColumnIcon(),
+            tooltipTitle = (ns.L and ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty",
+        }
+    end
+    -- Vault Status — same Ready/Slots Earned/Pending readout as the Vault Tracker quick window.
+    if vaultCols.status ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "vault_status",
+            label = "",
+            width = PVE_STATUS_COL_W,
+            icon = "Interface\\Icons\\Achievement_Boss_Argus",
+            tooltipTitle = (ns.L and ns.L["PVE_COL_VAULT_STATUS"]) or "Vault Status",
+        }
+    end
 
     local COL_SPACING = PVE_COL_SPACING
     local COL_RIGHT_MARGIN = PVE_COL_RIGHT_MARGIN
     local COL_ICON_SIZE = 28
     local COL_HEADER_HEIGHT = 30
-    local dawnN = #PVE_DAWNCRESTS
+    local visiblePveColumnKeys = {}
+    for i = 1, #PVE_COLUMNS do
+        visiblePveColumnKeys[PVE_COLUMNS[i].key] = true
+    end
     local function GapBetweenColumns(leftIdx)
-        if leftIdx == dawnN + 2 then return PVE_KEY_TO_VAULT_GAP end
-        if leftIdx == dawnN + 3 or leftIdx == dawnN + 4 then return PVE_VAULT_CLUSTER_GAP end
-        if leftIdx == dawnN + 5 then return PVE_KEY_TO_VAULT_GAP end
+        local leftCol = PVE_COLUMNS[leftIdx]
+        if not leftCol then return PVE_COL_SPACING end
+        local key = leftCol.key
+        if key == "manaflux" then return PVE_KEY_TO_VAULT_GAP end
+        if key == "voidcore" and (not visiblePveColumnKeys.manaflux) then return PVE_KEY_TO_VAULT_GAP end
+        if key == "restored_key" and (not visiblePveColumnKeys.voidcore) and (not visiblePveColumnKeys.manaflux) then
+            return PVE_KEY_TO_VAULT_GAP
+        end
+        if key == "slot1" or key == "slot2" then return PVE_VAULT_CLUSTER_GAP end
+        if key == "slot3" then return PVE_KEY_TO_VAULT_GAP end
         return PVE_COL_SPACING
     end
 
@@ -1696,11 +2197,14 @@ function WarbandNexus:DrawPvEProgress(parent)
         return yOffset + cardHeight
     end
     
-    -- Get all characters (filter tracked only for PvE display)
+    -- Get all characters (filter tracked only for PvE display).
+    -- Also honor profile.hideLowLevelCharacters: skip chars below level 80.
     local allCharacters = self:GetAllCharacters()
     local characters = {}
+    local hideLow = self.db and self.db.profile and self.db.profile.hideLowLevelCharacters == true
     for _, char in ipairs(allCharacters) do
-        if char.isTracked ~= false then  -- Default to tracked if not set
+        local lvl = tonumber(char.level) or 0
+        if char.isTracked ~= false and (not hideLow or lvl >= 80) then
             table.insert(characters, char)
         end
     end
@@ -2255,10 +2759,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 end
             end
 
-            local READY_ICON = "|TInterface\\RAIDFRAME\\ReadyCheck-Ready:13|t"
-            local NOT_READY_ICON = "|TInterface\\RAIDFRAME\\ReadyCheck-NotReady:13|t"
             local function FormatVaultTrackSlots(activityList, slotCount, typeName)
-                return PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vaultLootClaimable, 13)
+                return PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vaultLootClaimable, 12)
             end
 
             --- Format currency for inline row: always show current quantity.
@@ -2309,6 +2811,28 @@ function WarbandNexus:DrawPvEProgress(parent)
                     else
                         table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
                     end
+                    -- Crest sources: when the currency is a Dawncrest, append "Sources" block (Midnight S1 data).
+                    local Constants = ns.Constants
+                    local sources = Constants and Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.SOURCES
+                        and Constants.DAWNCREST_UI.SOURCES[currencyID] or nil
+                    if sources and #sources > 0 then
+                        table.insert(lines, { text = " ", color = {1, 1, 1} })
+                        table.insert(lines, {
+                            text = (ns.L and ns.L["CREST_SOURCES_HEADER"]) or "Sources:",
+                            color = {1, 0.82, 0},
+                        })
+                        for si = 1, #sources do
+                            table.insert(lines, { text = "\194\183 " .. sources[si], color = {0.82, 0.86, 0.95} })
+                        end
+                        if remSeason > 0 then
+                            table.insert(lines, {
+                                text = string.format("%s %s",
+                                    FormatNumber(remSeason),
+                                    (ns.L and ns.L["CREST_TO_CAP_SUFFIX"]) or "to season cap"),
+                                color = {0.55, 0.85, 0.55},
+                            })
+                        end
+                    end
                     return lines
                 end
 
@@ -2330,7 +2854,7 @@ function WarbandNexus:DrawPvEProgress(parent)
 
             -- Render inline values (right to left, matching column header positions)
             local inlineX = -COL_RIGHT_MARGIN
-            local colValues = {}
+            local colValuesByKey = {}
 
             local DIM_COLOR = {0.45, 0.45, 0.45}
             local NORMAL_COLOR = {1, 1, 1}
@@ -2372,7 +2896,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local sm = cd and cd.seasonMax
                 local txt = FormatSeasonLine and FormatSeasonLine(cd) or FormatCurrencyStatus(q)
                 local tipTitle = PVE_DAWNCRESTS[i] and PVE_DAWNCRESTS[i].name or ((ns.L and ns.L["TAB_CURRENCY"]) or "Currency")
-                colValues[i] = {
+                colValuesByKey["crest_" .. tostring(PVE_DAWNCRESTS[i].id)] = {
                     text = txt,
                     richText = FormatSeasonLine ~= nil,
                     color = (not FormatSeasonLine) and ((txt == EM_DASH) and DIM_COLOR or GetCapStateColor(PVE_DAWNCRESTS[i].id, cd and cd.name, q, m, te, sm)) or nil,
@@ -2380,12 +2904,12 @@ function WarbandNexus:DrawPvEProgress(parent)
                     tooltipTitle = tipTitle,
                     tooltipIcon = cd and cd.icon,
                     currencyID = PVE_DAWNCRESTS[i].id,
+                    seasonProgressData = cd,  -- enables shift-aware live binding in render loop
                 }
             end
 
-            local n = #PVE_DAWNCRESTS
             local shardTxt = FormatSeasonLine and FormatSeasonLine(shardData) or FormatCurrencyStatus(shardQty)
-            colValues[n + 1] = {
+            colValuesByKey.coffer_shards = {
                 text = shardTxt,
                 richText = FormatSeasonLine ~= nil,
                 color = (not FormatSeasonLine) and ((shardTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(PVE_SHARDS_ID, shardData and shardData.name, shardQty, shardMax, shardTE, shardSM)) or nil,
@@ -2393,14 +2917,84 @@ function WarbandNexus:DrawPvEProgress(parent)
                 tooltipTitle = (ns.L and ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards",
                 tooltipIcon = shardData and shardData.icon,
                 currencyID = PVE_SHARDS_ID,
+                seasonProgressData = shardData,
             }
-            colValues[n + 2] = { text = keyQty > 0 and FormatNumber(keyQty) or EM_DASH, color = keyQty > 0 and NORMAL_COLOR or DIM_COLOR }
+            colValuesByKey.restored_key = { text = keyQty > 0 and FormatNumber(keyQty) or EM_DASH, color = keyQty > 0 and NORMAL_COLOR or DIM_COLOR }
             local raidTotal = vaultActs.raids and #vaultActs.raids or 3
             local dungeonTotal = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
             local worldTotal = vaultActs.world and #vaultActs.world or 3
-            colValues[n + 3] = { text = FormatVaultTrackSlots(vaultActs.raids, raidTotal, "Raid"), color = {1, 1, 1} }
-            colValues[n + 4] = { text = FormatVaultTrackSlots(vaultActs.mythicPlus, dungeonTotal, "M+"), color = {1, 1, 1} }
-            colValues[n + 5] = { text = FormatVaultTrackSlots(vaultActs.world, worldTotal, "World"), color = {1, 1, 1} }
+            -- Per-slot tooltip helper: shows achieved difficulty per slot (Heroic/Mythic raid, +N keys, Tier N world).
+            -- Activity `level` field: raid = difficulty ID (use GetDifficultyInfo); M+ = key level int; World = tier int.
+            local function FormatSlotDifficultyLabel(activity, category)
+                if not activity then return nil end
+                local lvl = tonumber(activity.level) or 0
+                if lvl <= 0 then return nil end
+                if category == "Raid" then
+                    if GetDifficultyInfo then
+                        local diffName = GetDifficultyInfo(lvl)
+                        if diffName and diffName ~= "" then return diffName end
+                    end
+                    return "Difficulty " .. lvl
+                elseif category == "M+" then
+                    return "+" .. lvl
+                else
+                    return "Tier " .. lvl
+                end
+            end
+
+            local function BuildVaultSlotTooltipLines(activities, category, totalSlots)
+                local lines = {}
+                local catTitle = (category == "Raid") and ((ns.L and ns.L["PVE_HEADER_RAIDS"]) or "Raids")
+                    or (category == "M+") and ((ns.L and ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons")
+                    or ((ns.L and ns.L["VAULT_WORLD"]) or "World")
+                table.insert(lines, { text = catTitle, color = {1, 0.82, 0} })
+                for i = 1, (totalSlots or 3) do
+                    local a = activities and activities[i]
+                    local prog   = a and (tonumber(a.progress) or 0) or 0
+                    local thresh = a and (tonumber(a.threshold) or 0) or 0
+                    local complete = thresh > 0 and prog >= thresh
+                    local diffLabel = complete and FormatSlotDifficultyLabel(a, category) or nil
+                    local rewardIlvl = a and (tonumber(a.rewardItemLevel) or 0) or 0
+                    if complete then
+                        local rhs = diffLabel or ""
+                        if rewardIlvl > 0 then
+                            rhs = (rhs ~= "" and (rhs .. "  ") or "")
+                                .. ((ns.L and ns.L["ILVL_FORMAT"] and string.format(ns.L["ILVL_FORMAT"], rewardIlvl)) or ("iLvl " .. rewardIlvl))
+                        end
+                        table.insert(lines, {
+                            text = string.format("Slot %d: |cff80ff80\226\156\147|r %s", i, rhs ~= "" and rhs or "Unlocked"),
+                            color = {0.85, 0.9, 0.95},
+                        })
+                    elseif thresh > 0 then
+                        table.insert(lines, {
+                            text = string.format("Slot %d: |cffff8888%d/%d|r", i, prog, thresh),
+                            color = {0.65, 0.65, 0.65},
+                        })
+                    else
+                        table.insert(lines, { text = string.format("Slot %d: \226\128\148", i), color = {0.5, 0.5, 0.5} })
+                    end
+                end
+                return lines
+            end
+
+            colValuesByKey.slot1 = {
+                text = FormatVaultTrackSlots(vaultActs.raids, raidTotal, "Raid"),
+                color = {1, 1, 1},
+                tooltip = BuildVaultSlotTooltipLines(vaultActs.raids, "Raid", raidTotal),
+                tooltipTitle = (ns.L and ns.L["PVE_HEADER_RAIDS"]) or "Raids",
+            }
+            colValuesByKey.slot2 = {
+                text = FormatVaultTrackSlots(vaultActs.mythicPlus, dungeonTotal, "M+"),
+                color = {1, 1, 1},
+                tooltip = BuildVaultSlotTooltipLines(vaultActs.mythicPlus, "M+", dungeonTotal),
+                tooltipTitle = (ns.L and ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
+            }
+            colValuesByKey.slot3 = {
+                text = FormatVaultTrackSlots(vaultActs.world, worldTotal, "World"),
+                color = {1, 1, 1},
+                tooltip = BuildVaultSlotTooltipLines(vaultActs.world, "World", worldTotal),
+                tooltipTitle = (ns.L and ns.L["VAULT_WORLD"]) or "World",
+            }
             -- Trovehunter's Bounty / bountiful weeklies: per-character snapshot from PvE cache (not live API on every row).
             local delveChar = (pve.delves and pve.delves.character) or {}
             local bountifulDone = delveChar.bountifulComplete
@@ -2417,17 +3011,74 @@ function WarbandNexus:DrawPvEProgress(parent)
                     color = {1, 1, 1},
                 },
             }
-            colValues[n + 6] = {
-                text = bountifulUnknown and EM_DASH or (bountifulDone and READY_ICON or NOT_READY_ICON),
+            colValuesByKey.bountiful = {
+                text = bountifulUnknown and EM_DASH or (bountifulDone and VAULT_SLOT_CHECK or VAULT_SLOT_CROSS),
                 color = bountifulUnknown and DIM_COLOR or {1, 1, 1},
                 tooltip = bountifulTip,
                 tooltipTitle = bountifulTitle,
                 tooltipIcon = GetTrovehunterBountyColumnIcon(),
             }
+            local voidcoreData = WarbandNexus:GetCurrencyData(PVE_VOIDCORE_ID, charKey)
+            -- Voidcore: always show plain Current / Max (no shift expansion, no totalEarned segment).
+            local vqty = (voidcoreData and tonumber(voidcoreData.quantity)) or 0
+            local vcap = (voidcoreData and (tonumber(voidcoreData.seasonMax) or tonumber(voidcoreData.maxQuantity))) or 0
+            local voidcoreTxt
+            if vcap > 0 then
+                local capped = vqty >= vcap
+                local col = capped and "|cffff5959" or "|cff80ff80"
+                voidcoreTxt = col .. FormatNumber(vqty) .. "|r |cff888888/ " .. FormatNumber(vcap) .. "|r"
+            elseif vqty > 0 then
+                voidcoreTxt = "|cffffffff" .. FormatNumber(vqty) .. "|r"
+            else
+                voidcoreTxt = EM_DASH
+            end
+            colValuesByKey.voidcore = {
+                text = voidcoreTxt,
+                richText = true,
+                tooltip = BuildCurrencyTooltip(PVE_VOIDCORE_ID, voidcoreData and voidcoreData.name, vqty, voidcoreData and voidcoreData.maxQuantity or 0, voidcoreData and voidcoreData.totalEarned, voidcoreData and voidcoreData.seasonMax),
+                tooltipTitle = "Nebulous Voidcore",
+                tooltipIcon = voidcoreData and voidcoreData.icon,
+                currencyID = PVE_VOIDCORE_ID,
+                -- seasonProgressData intentionally omitted: voidcore must NOT use shift-aware binder.
+            }
+            -- Vault Status (matches Vault Tracker quick window readout):
+            --   Ready -> "Ready to Claim" (green)
+            --   ReadySlots > 0 -> "<n> Slots Earned" (cyan)
+            --   Pending only -> "Pending..." (gold)
+            --   No progress -> em-dash dimmed
+            do
+                local vs = WarbandNexus.GetVaultStatusForChar and WarbandNexus:GetVaultStatusForChar(charKey)
+                local statusTxt
+                if not vs then
+                    statusTxt = "|cff666666" .. EM_DASH .. "|r"
+                elseif vs.isReady then
+                    statusTxt = "|cff44ff44" .. ((ns.L and ns.L["VAULT_READY_TO_CLAIM"]) or "Ready to Claim") .. "|r"
+                elseif (vs.readySlots or 0) > 0 then
+                    local label = (ns.L and ns.L["VAULT_SLOTS_EARNED"]) or "Slots Earned"
+                    statusTxt = "|cff66ddff" .. tostring(vs.readySlots) .. " " .. label .. "|r"
+                else
+                    statusTxt = "|cffffd700" .. ((ns.L and ns.L["VAULT_PENDING"]) or "Pending\226\128\166") .. "|r"
+                end
+                colValuesByKey.vault_status = {
+                    text = statusTxt,
+                    richText = true,
+                }
+            end
+
+            local manafluxData = WarbandNexus:GetCurrencyData(PVE_MANAFLUX_ID, charKey)
+            local manafluxQty = (manafluxData and manafluxData.quantity) or 0
+            colValuesByKey.manaflux = {
+                text = manafluxQty > 0 and FormatNumber(manafluxQty) or EM_DASH,
+                color = manafluxQty > 0 and NORMAL_COLOR or DIM_COLOR,
+                tooltip = BuildCurrencyTooltip(PVE_MANAFLUX_ID, manafluxData and manafluxData.name, manafluxQty, manafluxData and manafluxData.maxQuantity or 0, manafluxData and manafluxData.totalEarned, manafluxData and manafluxData.seasonMax),
+                tooltipTitle = "Dawnlight Manaflux",
+                tooltipIcon = manafluxData and manafluxData.icon,
+                currencyID = PVE_MANAFLUX_ID,
+            }
 
             for ci = #PVE_COLUMNS, 1, -1 do
                 local col = PVE_COLUMNS[ci]
-                local val = colValues[ci]
+                local val = colValuesByKey[col.key]
                 if val then
                     local cw = col.width
                     inlineX = inlineX - cw
@@ -2436,11 +3087,17 @@ function WarbandNexus:DrawPvEProgress(parent)
                     colText:SetWidth(cw)
                     colText:SetJustifyH("CENTER")
                     colText:SetWordWrap(false)
-                    colText:SetText(val.text)
-                    if not val.richText and val.color then
-                        colText:SetTextColor(val.color[1], val.color[2], val.color[3])
-                    elseif val.richText then
+                    if val.seasonProgressData and ns.UI_BindSeasonProgressAmount then
+                        -- Shift-aware live binding (default = current only, Shift = current\194\183earned/cap).
+                        ns.UI_BindSeasonProgressAmount(colText, val.seasonProgressData)
                         colText:SetTextColor(1, 1, 1)
+                    else
+                        colText:SetText(val.text)
+                        if not val.richText and val.color then
+                            colText:SetTextColor(val.color[1], val.color[2], val.color[3])
+                        elseif val.richText then
+                            colText:SetTextColor(1, 1, 1)
+                        end
                     end
                     if val.tooltip and ShowTooltip then
                         local hit = CreateFrame("Frame", nil, charHeader)
@@ -2906,7 +3563,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                 amountText:SetWidth(rowItemW + 8)
                 amountText:SetJustifyH("CENTER")
                 amountText:SetWordWrap(false)
-                if ns.UI_FormatSeasonProgressCurrencyLine then
+                if ns.UI_BindSeasonProgressAmount then
+                    -- Shift-aware: default = current only (cap-colored), Shift = expanded current\194\183earned/cap.
+                    ns.UI_BindSeasonProgressAmount(amountText, currencyEntry)
+                elseif ns.UI_FormatSeasonProgressCurrencyLine then
                     amountText:SetText(ns.UI_FormatSeasonProgressCurrencyLine(currencyEntry))
                 else
                     local amtColor = "|cffffffff"
@@ -3100,9 +3760,9 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
                     claim = ok and v == true
                 end
 
-                local r = PvE_FormatVaultTrackColumn(vaultActs.raids, raidT, "Raid", claim, 10)
-                local dcol = PvE_FormatVaultTrackColumn(vaultActs.mythicPlus, dT, "M+", claim, 10)
-                local wcol = PvE_FormatVaultTrackColumn(vaultActs.world, wT, "World", claim, 10)
+                local r = PvE_FormatVaultTrackColumn(vaultActs.raids, raidT, "Raid", claim, 12)
+                local dcol = PvE_FormatVaultTrackColumn(vaultActs.mythicPlus, dT, "M+", claim, 12)
+                local wcol = PvE_FormatVaultTrackColumn(vaultActs.world, wT, "World", claim, 12)
 
                 local classColor = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
                 local nameStr = string.format(

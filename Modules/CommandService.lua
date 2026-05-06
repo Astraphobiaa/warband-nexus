@@ -53,6 +53,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "Toggle To-Do Tracker window"))
         addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Open settings"))
         addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones to party chat")
+        addon:Print("  |cff00ccff/wn maxonly|r — Toggle hiding chars below level 80 in PvE/Gear lists")
         addon:Print("  |cff00ccff/wn minimap|r — " .. ((ns.L and ns.L["CMD_MINIMAP"]) or "Toggle minimap button"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
@@ -127,6 +128,18 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:ToggleMinimapButton()
         else
             addon:Print("|cffff6600" .. ((ns.L and ns.L["MINIMAP_NOT_AVAILABLE"]) or "Minimap button module not loaded.") .. "|r")
+        end
+        return
+
+    elseif cmd == "maxonly" or cmd == "hidealts" then
+        if addon.db and addon.db.profile then
+            addon.db.profile.hideLowLevelCharacters = not addon.db.profile.hideLowLevelCharacters
+            local on = addon.db.profile.hideLowLevelCharacters
+            addon:Print("|cff00ccff[WN]|r Hide characters below level 80: " ..
+                (on and "|cff80ff80ON|r" or "|cffff5959OFF|r"))
+            if addon.RefreshAllUI then addon:RefreshAllUI() end
+            local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            if mf and mf.PopulateContent then mf:PopulateContent() end
         end
         return
         

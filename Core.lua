@@ -257,6 +257,10 @@ local defaults = {
         },
         -- Weekly Vault Tracker column filter (PvE tab); default off — user opts in via checkbox or minimap
         pveVaultTrackerMode = false,
+
+        -- Hide characters below max level (80) on PvE/Gear tabs and the Gear character dropdown.
+        -- Applies uniformly to row lists and dropdowns; toggle via /wn maxonly or settings.
+        hideLowLevelCharacters = false,
         
         -- Notification settings
         notifications = {

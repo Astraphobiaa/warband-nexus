@@ -1793,10 +1793,10 @@ function WarbandNexus:PopulateContent()
     scrollChild._preparedByPopulate = nil
     
     -- Set scrollChild height based on content + bottom padding
-    -- CRITICAL: Use math.max to ensure scrollChild is at least viewport size
-    -- Otherwise, WoW scroll frame won't work properly when content < viewport
     local CONTENT_BOTTOM_PADDING = 8
-    scrollChild:SetHeight(math.max(height + CONTENT_BOTTOM_PADDING, mainFrame.scroll:GetHeight()))
+    local contentBottom = height + CONTENT_BOTTOM_PADDING
+    -- Gear tab: extend scrollChild to viewport so the gear card can fill downward (see DrawPaperDollCard fill).
+    scrollChild:SetHeight(math.max(contentBottom, mainFrame.scroll:GetHeight()))
 
     -- After content height changes, clamp vertical scroll (avoids empty band when range shrinks or layout jumps)
     do

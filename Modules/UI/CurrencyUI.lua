@@ -208,18 +208,20 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     if (not curKey) and ns.Utilities and ns.Utilities.GetCharacterKey then
         curKey = ns.Utilities:GetCharacterKey()
     end
-    if curKey and WarbandNexus.GetCurrencyData and ns.UI_FormatSeasonProgressCurrencyLine then
+    if curKey and WarbandNexus.GetCurrencyData and ns.UI_BindSeasonProgressAmount then
         local cd = WarbandNexus:GetCurrencyData(currencyID, curKey)
         if cd then
-            amountLine = ns.UI_FormatSeasonProgressCurrencyLine(cd)
+            -- Shift-aware: default = current only (cap-colored); Shift = expanded current\194\183earned/cap.
+            ns.UI_BindSeasonProgressAmount(row.amountText, cd)
             usedSeasonProgressLine = true
+            amountLine = row.amountText:GetText() or ""
         end
     end
     if not amountLine then
         local maxQuantity = currency.maxQuantity or 0
         amountLine = FormatCurrencyAmount(currency.quantity or 0, maxQuantity)
+        row.amountText:SetText(amountLine)
     end
-    row.amountText:SetText(amountLine)
     -- Season/cap lines embed |cff colors; do not dim with SetTextColor or capped red (e.g. 0 / 600) washes out.
     if usedSeasonProgressLine or hasQuantity then
         row.amountText:SetTextColor(1, 1, 1, 1)
@@ -1058,10 +1060,13 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    local subtitle = (ns.L and ns.L["CURRENCY_SUBTITLE"]) or "Track all currencies across your characters"
+    local shiftHintText = (ns.L and ns.L["SHIFT_HINT_SEASON_PROGRESS"]) or "Hold Shift for season progress"
+    subtitle = subtitle .. "  |cff666666\194\183|r  |cff888888" .. shiftHintText .. "|r"
     local titleCard, _, _, _, _ = ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "currency",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["CURRENCY_TITLE"]) or "Currency Tracker") .. "|r",
-        subtitleText = (ns.L and ns.L["CURRENCY_SUBTITLE"]) or "Track all currencies across your characters",
+        subtitleText = subtitle,
         textRightInset = 118,
     })
     titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)

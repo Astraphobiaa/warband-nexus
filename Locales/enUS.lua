@@ -296,6 +296,13 @@ L["PVE_CREST_MYTH"] = "Myth"
 L["PVE_CREST_EXPLORER"] = "Explorer"
 L["PVE_COL_COFFER_SHARDS"] = "Coffer Shards"
 L["PVE_COL_RESTORED_KEY"] = "Restored Key"
+L["PVE_COL_VAULT_STATUS"] = "Vault Status"
+L["VAULT_READY_TO_CLAIM"] = "Ready"
+L["VAULT_SLOTS_EARNED"] = "Slots Earned"
+L["VAULT_PENDING"] = "Pending\226\128\166"
+L["CREST_SOURCES_HEADER"] = "Sources:"
+L["CREST_TO_CAP_SUFFIX"] = "to season cap"
+L["SHIFT_HINT_SEASON_PROGRESS"] = "Hold Shift for season progress"
 L["LV_FORMAT"] = "Lv %d"
 L["ILVL_FORMAT"] = "iLvl %d"
 L["VAULT_WORLD"] = "World"
@@ -839,6 +846,27 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
+
+-- What's New / changelog body for ADDON_VERSION 2.7.0 (key CHANGELOG_V270)
+L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
+
+Saved Instances — layout + readability pass
+- Reworked the view into a clean header/row structure: `Instance (Difficulty)` with character progress rows directly underneath.
+- Added per-group collapse/expand controls with larger chevrons and stable collapse state while the window is open.
+- Added fixed right-side columns in headers (character count + progress) for symmetric vertical alignment across all groups.
+- Synced row progress formatting with header progress formatting for consistent numeric alignment.
+
+Saved Instances — theme and typography parity
+- Header and character rows now use outlined borders (theme-colored) for clearer section boundaries.
+- Font rendering now uses the selected addon font through `FontManager` in the Saved Instances surface.
+- Theme refresh now re-renders Saved Instances when open, so color/font changes follow the main addon window immediately.
+
+Saved Instances — scrolling + interaction
+- Switched to the standardized Factory scrollframe + themed scrollbar column used by the main addon UI.
+- Scrollbar visibility now updates automatically based on content size.
+- Resizable window behavior was retained and integrated with content/scroll refresh.
+
+CurseForge: Warband Nexus]=]
 
 -- What's New / changelog body for ADDON_VERSION 2.6.8 (key CHANGELOG_V268)
 L["CHANGELOG_V268"] = [=[v2.6.8 (2026-05-04)
@@ -1528,6 +1556,7 @@ L["MINIMAP_MORE_FORMAT"] = "... +%d more"
 -- Gear UI
 L["GEAR_UPGRADE_CURRENCIES"] = "Upgrade Currencies"
 L["GEAR_CHARACTER_STATS"] = "Character Stats"
+L["GEAR_SECTION_CHARACTER"] = "Character"
 L["GEAR_NO_ITEM_EQUIPPED"] = "No item equipped in this slot."
 L["GEAR_NO_PREVIEW"] = "No Preview"
 L["GEAR_OFFLINE_BADGE"] = "Offline"

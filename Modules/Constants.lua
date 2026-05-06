@@ -43,9 +43,9 @@ local Constants = {
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "2.6.7",
+    ADDON_VERSION = "2.7.0",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-04-29",
+    ADDON_RELEASE_DATE = "2026-05-05",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
@@ -262,6 +262,43 @@ local Constants = {
             [3345] = "PVE_CREST_HERO",
             [3347] = "PVE_CREST_MYTH",
         },
+        -- Source tables for "where to farm" tooltip (Midnight S1).
+        -- Sources: Warcraft Wiki Midnight S1 + Method/IcyVeins/Wowhead patch notes (verify per patch).
+        -- Amount strings are deliberately a mix of exact ("10\226\128\14318 / key") and qualitative
+        -- ("varies") because Blizzard does not document T1\226\128\14310 delve / per-boss raid amounts.
+        SOURCES = {
+            [3383] = {  -- Adventurer
+                "Repeatable Outdoor Events",
+                "Tier 4 Delves",
+            },
+            [3341] = {  -- Veteran
+                "Hard-Mode Prey events  (~15 / ~7\226\128\13110 min)",
+                "Heroic Seasonal Dungeons",
+                "Raid Finder bosses",
+                "Delves Tier 5\226\128\1316",
+                "Trovehunter\226\128\153s Bounty (T4\226\128\1315)",
+            },
+            [3343] = {  -- Champion
+                "Mythic 0 Seasonal Dungeons",
+                "Mythic Keystone +2 to +3 (timed)",
+                "Normal Raid bosses",
+                "Delves Tier 7\226\128\13110",
+                "Trovehunter\226\128\153s Bounty (T6\226\128\1317)",
+                "Weekly Outdoor Events",
+            },
+            [3345] = {  -- Hero
+                "Mythic Keystone +2 to +6 timed  (10\226\128\13118 / key)",
+                "Heroic Raid bosses",
+                "Delves Tier 11",
+                "Trovehunter\226\128\153s Bounty (T8+)",
+            },
+            [3347] = {  -- Myth
+                "Mythic Keystone +7 and higher  (10\226\128\13120 / key)",
+                "Mythic Raid bosses",
+                "T11 Bountiful Gilded Stash  (7 / run, up to 3 / week)",
+            },
+        },
+        WEEKLY_CAP_PER_TIER = 100,  -- Some tiers have +source-specific caps (e.g. Veteran 200 cumulative).
     },
 
     -- Slots used for "missing primary enchant" (Gear tab + GearService). INVSLOT_* ids.
