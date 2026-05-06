@@ -430,9 +430,6 @@ function WarbandNexus:DrawPlansTab(parent)
                     if WarbandNexus.ResetCompletedPlans then
                         local count = WarbandNexus:ResetCompletedPlans()
                         WarbandNexus:Print(string.format((ns.L and ns.L["REMOVED_PLANS_FORMAT"]) or "Removed %d completed plan(s).", count))
-                        if WarbandNexus.RefreshUI then
-                            WarbandNexus:RefreshUI()
-                        end
                     end
                 end,
                 timeout = 0,
@@ -475,9 +472,7 @@ function WarbandNexus:DrawPlansTab(parent)
                 WarbandNexus.db.profile.plansShowCompleted = showCompleted
             end
             -- Refresh UI to apply filter
-            if WarbandNexus.RefreshUI then
-                WarbandNexus:RefreshUI()
-            end
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
         end)
         
         -- Add tooltip (keep border hover effect from shared widget)
@@ -530,9 +525,7 @@ function WarbandNexus:DrawPlansTab(parent)
                     if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
                         WarbandNexus.db.profile.plansShowPlanned = showPlanned
                     end
-                    if WarbandNexus.RefreshUI then
-                        WarbandNexus:RefreshUI()
-                    end
+                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
                 end)
                 
                 local origPlannedEnter = nil
@@ -579,7 +572,7 @@ function WarbandNexus:DrawPlansTab(parent)
         local Constants = ns.Constants
         
         -- WN_PLANS_UPDATED: handled by UI.lua SchedulePopulateContent (debounced).
-        -- Registering here caused double rebuild (immediate RefreshUI + debounced PopulateContent).
+        -- Registering here caused double rebuild (immediate redraw + debounced PopulateContent).
         
         -- Collection scan progress (throttled UI refresh for loading indicators)
         if Constants and Constants.EVENTS then
@@ -594,33 +587,13 @@ function WarbandNexus:DrawPlansTab(parent)
                 lastUIRefresh = now
                 C_Timer.After(0.05, function()
                     if self:IsStillOnTab("plans") then
-                        self:RefreshUI()
+                        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
                     end
                 end)
             end)
             
             -- Collection scan complete (final refresh)
-            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(_, data)
-                if not self:IsStillOnTab("plans") then return end
-                local scanCategory = data and data.category
-                -- "all" means the full EnsureCollectionData pipeline finished (mount/pet/toy/achievement/title/illusion)
-                if scanCategory ~= "all" and scanCategory ~= currentCategory and currentCategory ~= "active" then return end
-                
-                C_Timer.After(0.1, function()
-                    if self:IsStillOnTab("plans") then
-                        self:RefreshUI()
-                    end
-                end)
-            end)
-            -- Uncollected cache updated (e.g. mount/pet/toy obtained) — refresh so completed items disappear from lists
-            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_UPDATED, function(_, updatedType)
-                if not self:IsStillOnTab("plans") then return end
-                if updatedType == "mount" or updatedType == "pet" or updatedType == "toy" then
-                    C_Timer.After(0.05, function()
-                        if self:IsStillOnTab("plans") and self.RefreshUI then self:RefreshUI() end
-                    end)
-                end
-            end)
+            -- COLLECTION_SCAN_COMPLETE and COLLECTION_UPDATED refresh are centralized in UI.lua.
         end
         
         self._plansEventRegistered = true
@@ -749,8 +722,8 @@ function WarbandNexus:DrawPlansTab(parent)
             
             -- Defer UI refresh to next frame to prevent button freeze
             C_Timer.After(0.05, function()
-                if not self or not self.RefreshUI then return end
-                self:RefreshUI()
+                if not WarbandNexus or not WarbandNexus.SendMessage then return end
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
             end)
         end)
         
@@ -817,7 +790,7 @@ function WarbandNexus:DrawPlansTab(parent)
             self:ClearFocus()
             ns._plansActiveSearch = nil
             if self.Instructions then self.Instructions:Show() end
-            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
         end)
         searchInput:SetScript("OnTextChanged", function(self, userInput)
             if not userInput then return end  -- Ignore programmatic SetText calls
@@ -836,7 +809,7 @@ function WarbandNexus:DrawPlansTab(parent)
                 WarbandNexus._plansSearchTimer:Cancel()
             end
             WarbandNexus._plansSearchTimer = C_Timer.NewTimer(0.3, function()
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
             end)
         end)
         searchBar:EnableMouse(true)
@@ -1145,7 +1118,6 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
         removeBtn:SetScript("OnClick", function()
             self:RemovePlan(plan.id)
-            if self.RefreshUI then self:RefreshUI() end
         end)
 
         headerCard:Show()
@@ -1210,7 +1182,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                         elseif expandedGroups then
                             expandedGroups[groupKey] = not isExpanded
                         end
-                        if self.RefreshUI then self:RefreshUI() end
+                        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
                     end)
                     catCard:SetScript("OnEnter", function(self)
                         if ApplyVisuals then
@@ -1459,10 +1431,12 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     end
 
     if category == "daily_tasks" then
+        parent._plansCardLayoutManager = nil
         return self:DrawDailyTasksView(parent, yOffset, width, plans)
     end
     
     if #plans == 0 then
+        parent._plansCardLayoutManager = nil
         -- Empty state card using standardized factory
         local _, height = CreateEmptyStateCard(parent, "plans", yOffset)
         return yOffset + height + 10
@@ -1476,18 +1450,22 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     
     -- Initialize CardLayoutManager for dynamic card positioning
     local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
-    
+    -- Always point at the active layout: PopulateContent rebuilds cards but OnSizeChanged is only hooked once;
+    -- a stale closure capture would RefreshLayout the wrong (old) instance and corrupt positions after resize/scroll.
+    parent._plansCardLayoutManager = layoutManager
+
     -- Resize: defer layout refresh until resize ends (no continuous render during drag)
     if not parent._layoutManagerResizeHandler then
         local layoutResizeTimer = nil
-        parent:SetScript("OnSizeChanged", function(self)
+        parent:SetScript("OnSizeChanged", function(resizeParent)
             if layoutResizeTimer then
                 layoutResizeTimer:Cancel()
             end
             layoutResizeTimer = C_Timer.NewTimer(0.15, function()
                 layoutResizeTimer = nil
-                if layoutManager then
-                    CardLayoutManager:RefreshLayout(layoutManager)
+                local lm = resizeParent and resizeParent._plansCardLayoutManager
+                if lm then
+                    CardLayoutManager:RefreshLayout(lm)
                 end
             end)
         end)
@@ -1607,8 +1585,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     completeBtn:SetScript("OnClick", function()
                         if self.CompleteCustomPlan then
                             self:CompleteCustomPlan(plan.id)
-                            -- Immediate refresh since event may be deferred
-                            if self.RefreshUI then self:RefreshUI() end
                         end
                     end)
                     completeBtn:SetScript("OnEnter", function(btn)
@@ -1638,7 +1614,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 end)
                 removeBtn:SetScript("OnClick", function()
                     self:RemovePlan(plan.id)
-                    if self.RefreshUI then self:RefreshUI() end
                 end)
                 removeBtn:SetScript("OnEnter", function(btn)
                     ns.TooltipService:Show(
@@ -1734,7 +1709,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                             local oldTotal = (contextPlan.resetCycle and contextPlan.resetCycle.totalCycles) or 7
                                             local oldRemaining = (contextPlan.resetCycle and contextPlan.resetCycle.remainingCycles) or oldTotal
                                             contextPlan.resetCycle = { enabled = true, resetType = "daily", lastResetTime = time(), totalCycles = oldTotal, remainingCycles = oldRemaining }
-                                            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                                            WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "reset_cycle_updated", planID = contextPlan.id })
                                         end
                                     end
                                 )
@@ -1747,7 +1722,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                             local oldTotal = (contextPlan.resetCycle and contextPlan.resetCycle.totalCycles) or 4
                                             local oldRemaining = (contextPlan.resetCycle and contextPlan.resetCycle.remainingCycles) or oldTotal
                                             contextPlan.resetCycle = { enabled = true, resetType = "weekly", lastResetTime = time(), totalCycles = oldTotal, remainingCycles = oldRemaining }
-                                            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                                            WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "reset_cycle_updated", planID = contextPlan.id })
                                         end
                                     end
                                 )
@@ -1758,7 +1733,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                     function()
                                         if contextPlan and contextPlan.resetCycle then
                                             contextPlan.resetCycle.enabled = false
-                                            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                                            WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "reset_cycle_updated", planID = contextPlan.id })
                                         end
                                     end
                                 )
@@ -1772,7 +1747,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                             if contextPlan and contextPlan.resetCycle then
                                                 contextPlan.resetCycle.totalCycles = (contextPlan.resetCycle.totalCycles or 0) + amount
                                                 contextPlan.resetCycle.remainingCycles = (contextPlan.resetCycle.remainingCycles or 0) + amount
-                                                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                                                WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "reset_cycle_updated", planID = contextPlan.id })
                                             end
                                         end)
                                     end
@@ -1792,7 +1767,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     
     -- Sync row offsets after all cards are added (prevents gaps from mixed-height cards)
     CardLayoutManager:RecalculateAllPositions(layoutManager)
-    
+    PlanCardFactory:ReflowAllPlanCards(layoutManager)
+
     -- Get final Y offset from layout manager
     local finalYOffset = CardLayoutManager:GetFinalYOffset(layoutManager)
     
@@ -1815,7 +1791,8 @@ end
 -- ============================================================================
 
 function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
-    
+    parent._plansCardLayoutManager = nil
+
     -- Use SharedWidgets search bar (like Items tab)
     -- Create results container that can be refreshed independently
     local resultsContainer = CreateResultsContainer(parent, yOffset + 40, 10)
@@ -1875,7 +1852,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     
     -- PERFORMANCE: Only compute criteria/reward details when row is expanded
     -- This avoids expensive C API calls (GetAchievementCriteriaInfo × N criteria) for collapsed rows
-    -- When user expands a row, RefreshUI is called and this will recompute with rowExpanded=true
+    -- When user expands a row, WN_UI_MAIN_REFRESH_REQUESTED redraw runs so layout recomputes with rowExpanded=true
     local informationText = ""
     local requirementsText = ""
     local criteriaDetails = nil  -- Structured criteria data (populated when expanded)
@@ -2012,12 +1989,12 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         rowExpanded,
         function(expanded)
             expandedGroups[rowKey] = expanded
-            -- CRITICAL: Must call RefreshUI to reposition other rows
+            -- CRITICAL: Must redraw to reposition other rows
             -- PERFORMANCE: Debounce to batch rapid toggle clicks (16ms ≈ 1 frame)
             if WarbandNexus._achieveToggleTimer then WarbandNexus._achieveToggleTimer:Cancel() end
             WarbandNexus._achieveToggleTimer = C_Timer.NewTimer(0.016, function()
                 WarbandNexus._achieveToggleTimer = nil
-                WarbandNexus:RefreshUI()
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
             end)
         end
     )
@@ -2082,9 +2059,6 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                 
                 -- Update achievement flag
                 achievement.isPlanned = true
-                
-                -- Refresh UI (will update all other instances)
-                WarbandNexus:RefreshUI()
             end
         })
         rightHeaderWidget = addBtn
@@ -2142,7 +2116,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         if self._achieveToggleTimer then self._achieveToggleTimer:Cancel() end
         self._achieveToggleTimer = C_Timer.NewTimer(0.016, function()
             self._achieveToggleTimer = nil
-            self:RefreshUI()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
         end)
     end
     
@@ -3693,7 +3667,6 @@ function WarbandNexus:ShowCustomPlanDialog()
             local cycleCount = (selectedResetType ~= "none") and selectedCycleCount or nil
             WarbandNexus:SaveCustomPlan(title, description, selectedResetType, cycleCount)
             dialog.Close()
-            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
         end
     end)
     
@@ -3740,6 +3713,10 @@ function WarbandNexus:SaveCustomPlan(title, description, resetType, cycleCount)
     if self._ResolveSinglePlan then
         self:_ResolveSinglePlan(customPlan, time())
     end
+    self:SendMessage(E.PLANS_UPDATED, {
+        action = "custom_created",
+        planID = customPlan.id,
+    })
 end
 
 function WarbandNexus:GetCustomPlans()
@@ -4085,11 +4062,6 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             -- Create the weekly plan with selected slots
             local plan = self:CreateWeeklyPlan(currentName, currentRealm, selectedSlots)
             if plan then
-                -- Refresh UI to show new plan
-                if self.RefreshUI then
-                    self:RefreshUI()
-                end
-                
                 -- Close dialog
                 dialog.Close()
             end
@@ -4264,7 +4236,6 @@ function WarbandNexus:ShowDailyPlanDialog()
     createBtn:SetScript("OnClick", function()
         local plan = self:CreateDailyPlan(currentName, currentRealm, selectedQuestTypes)
         if plan then
-            if self.RefreshUI then self:RefreshUI() end
             dialog.Close()
         end
     end)

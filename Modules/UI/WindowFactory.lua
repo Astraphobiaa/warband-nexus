@@ -535,9 +535,6 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
                         rewardText = planRewardText,
                     })
                     popup:Hide()
-                    if WarbandNexus.RefreshUI then
-                        WarbandNexus:RefreshUI()
-                    end
                 end
             end)
         end

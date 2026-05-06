@@ -166,16 +166,9 @@ local function RegisterCharacterEvents(parent)
     -- WN_CHARACTER_UPDATED: REMOVED — UI.lua's SchedulePopulateContent already handles
     -- chars tab refresh via PopulateContent → DrawCharacterList. Having both caused double rebuild.
     
-    -- WN_CHARACTER_TRACKING_CHANGED: keep — UI.lua does NOT handle this event.
-    WarbandNexus.RegisterMessage(CharactersUIEvents, E.CHARACTER_TRACKING_CHANGED, function(event, data)
-        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-        if mf and mf:IsShown() and mf.currentTab == "chars" then
-            DebugPrint("|cff9370DB[WN CharactersUI]|r Tracking status changed, refreshing UI...")
-            WarbandNexus:RefreshUI()
-        end
-    end)
+    -- WN_CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
     
-    DebugPrint("|cff00ff00[WN CharactersUI]|r Event listeners registered (WN_CHARACTER_TRACKING_CHANGED)")
+    DebugPrint("|cff00ff00[WN CharactersUI]|r Event listeners registered")
 end
 
 --============================================================================
@@ -250,7 +243,9 @@ function WarbandNexus:DrawCharacterList(parent)
             {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
         }
         if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
-        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.characterSort, function() self:RefreshUI() end)
+        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.characterSort, function()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+        end)
         sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
         sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
     end
@@ -508,8 +503,8 @@ function WarbandNexus:DrawCharacterList(parent)
                 local mf = addon.UI.mainFrame
                 if not mf:IsShown() or mf.currentTab ~= "chars" then return end
                 local p = select(1, C_WowTokenPublic.GetCurrentMarketPrice and C_WowTokenPublic.GetCurrentMarketPrice() or 0)
-                if p and p > 0 and addon.RefreshUI then
-                    addon:RefreshUI()
+                if p and p > 0 and addon.SendMessage then
+                    addon:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
                 end
             end)
         end
@@ -743,7 +738,7 @@ function WarbandNexus:DrawCharacterList(parent)
         function(isExpanded)
             self.db.profile.ui.favoritesExpanded = isExpanded
             if isExpanded then self.recentlyExpanded["favorites"] = GetTime() end
-            self:RefreshUI()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
         end,
         "GM-icon-assistActive-hover",
         true,
@@ -797,7 +792,7 @@ function WarbandNexus:DrawCharacterList(parent)
         function(isExpanded)
             self.db.profile.ui.charactersExpanded = isExpanded
             if isExpanded then self.recentlyExpanded["characters"] = GetTime() end
-            self:RefreshUI()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
         end,
         "GM-icon-headCount",
         true
@@ -851,7 +846,7 @@ function WarbandNexus:DrawCharacterList(parent)
             function(isExpanded)
                 self.db.profile.ui.untrackedExpanded = isExpanded
                 if isExpanded then self.recentlyExpanded["untracked"] = GetTime() end
-                self:RefreshUI()
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
             end,
             "DungeonStoneCheckpointDeactivated",
             true,
@@ -936,7 +931,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             if ns.CharacterService then
                 newStatus = ns.CharacterService:ToggleFavoriteCharacter(WarbandNexus, charKey)
             end
-            WarbandNexus:RefreshUI()
             return newStatus
         end)
     end
@@ -1749,9 +1743,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
                 deleteBtn:SetScript("OnClick", function()
                     local success = WarbandNexus:DeleteCharacter(charKey)
-                    if success and WarbandNexus.RefreshUI then 
-                        WarbandNexus:RefreshUI() 
-                    end
                     if dialog.Close then
                         dialog:Close()
                     else
@@ -1952,5 +1943,5 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
         self.db.global.characters[tk].lastSeen = time()
     end
     
-    self:RefreshUI()
+    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
 end

@@ -290,7 +290,7 @@ function WarbandNexus:DrawItemList(parent)
     inventoryBtn:SetScript("OnClick", function()
         if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "inventory" then return end
         ns.UI_SetItemsSubTab("inventory")
-        WarbandNexus:RefreshUI()
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
     end)
     local ab1 = inventoryBtn:CreateTexture(nil, "OVERLAY")
     ab1:SetHeight(3)
@@ -327,7 +327,7 @@ function WarbandNexus:DrawItemList(parent)
     personalBtn:SetScript("OnClick", function()
         if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "personal" then return end
         ns.UI_SetItemsSubTab("personal")
-        WarbandNexus:RefreshUI()
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
     end)
     local ab2 = personalBtn:CreateTexture(nil, "OVERLAY")
     ab2:SetHeight(3)
@@ -364,7 +364,7 @@ function WarbandNexus:DrawItemList(parent)
     warbandBtn:SetScript("OnClick", function()
         if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "warband" then return end
         ns.UI_SetItemsSubTab("warband")
-        WarbandNexus:RefreshUI()
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
     end)
     local ab3 = warbandBtn:CreateTexture(nil, "OVERLAY")
     ab3:SetHeight(3)
@@ -412,7 +412,7 @@ function WarbandNexus:DrawItemList(parent)
         end
         if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "guild" then return end
         ns.UI_SetItemsSubTab("guild")
-        WarbandNexus:RefreshUI()
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
     end)
     local ab4 = guildBtn:CreateTexture(nil, "OVERLAY")
     ab4:SetHeight(3)
@@ -839,7 +839,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                             expandedGroups[gKey] = not expandedGroups[gKey]
                             if expandedGroups[gKey] then self.recentlyExpanded[gKey] = GetTime() end
                         end
-                        WarbandNexus:RefreshUI()
+                        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
                     end,
                     d.typeIcon
                 )

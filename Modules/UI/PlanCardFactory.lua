@@ -46,7 +46,8 @@ local TYPE_NAMES = {
     transmog = (ns.L and ns.L["TYPE_TRANSMOG"]) or "Transmog",
 }
 
--- Type icon atlas mapping
+-- Type icon atlas mapping (used by both PlanCardFactory and PlansTrackerWindow as the canonical
+-- "what type of plan is this?" visual cue rendered before the name).
 local TYPE_ICONS = {
     mount = "dragon-rostrum",
     pet = "WildBattlePetCapturable",
@@ -54,6 +55,7 @@ local TYPE_ICONS = {
     illusion = "UpgradeItem-32x32",
     title = "poi-legendsoftheharanir",
     transmog = "poi-transmogrifier",
+    achievement = "UI-Achievement-Shield-NoPoints",
 }
 
 local function IsPlaceholderSourceText(sourceText)
@@ -65,6 +67,18 @@ local function IsPlaceholderSourceText(sourceText)
     local sourceUnknown = (ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown"
     local sourceNotAvailable = (ns.L and ns.L["SOURCE_NOT_AVAILABLE"]) or "Source information not available"
     return s == "Unknown" or s == unknownSource or s == sourceUnknown or s == sourceNotAvailable or s == "Legacy"
+end
+
+-- Body text margins (match TOPLEFT 10 / RIGHT -30 used across plan cards)
+local PLAN_CARD_BODY_LEFT = 10
+local PLAN_CARD_BODY_RIGHT_INSET = 30
+local PLAN_CARD_CONTENT_TOP = 60
+local PLAN_CARD_BOTTOM_RESERVE = 38
+local ACHIEVEMENT_CARD_MIN_HEIGHT = 96
+
+local function PlanCardBodyTextWidth(card)
+    local w = card:GetWidth() or 200
+    return math.max(48, w - PLAN_CARD_BODY_LEFT - PLAN_CARD_BODY_RIGHT_INSET)
 end
 
 --[[
@@ -128,6 +142,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
     iconBorder:SetPoint("TOPLEFT", 10, -10)
     iconBorder:EnableMouse(false)
+    card.iconBorder = iconBorder
     
     -- Determine icon: resolve from WoW API first, then fallback chain
     local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -168,7 +183,10 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
         iconFrameObj:EnableMouse(false)
     end
-    
+
+    -- (WN circular badge on the achievement icon was removed per user request — the To-Do already
+    -- conveys this is "your" plan; the badge added visual noise inside the addon.)
+
     -- Completed state: green-tint name only (checkmark removed per design decision)
     
     -- Name text (use larger font for all cards)
@@ -183,9 +201,10 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     
     nameText:SetText(nameColor .. displayName .. "|r")
     nameText:SetJustifyH("LEFT")
-    nameText:SetWordWrap(false)
+    -- Allow up to 2 lines so long titles wrap rather than clip in narrow cards.
+    nameText:SetWordWrap(true)
     nameText:SetNonSpaceWrap(false)
-    nameText:SetMaxLines(1)
+    nameText:SetMaxLines(2)
     nameText:EnableMouse(false)
     card.nameText = nameText
     card.planNameText = nameText  -- Store reference for overflow checking
@@ -370,9 +389,10 @@ end
 ]]
 function PlanCardFactory:CreateAchievementPointsBadge(card, plan, nameText)
     local typeColor = TYPE_COLORS.achievement
-    
+
     local shieldFrame = ns.UI.Factory:CreateContainer(card, 20, 20)
     shieldFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -2)
+    card.pointsBadge = shieldFrame
     shieldFrame:EnableMouse(false)
     
     local shieldIcon = shieldFrame:CreateTexture(nil, "OVERLAY")
@@ -451,6 +471,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     -- Show sources (collapsed: only first source, expanded: all sources)
     -- Store sources in card for expand functionality
     card._sources = sources
+    card._planBodyFallbackFS = nil
     
     -- CRITICAL: Restore source expansion state from persistent storage (like achievement cards)
     if not card.cardKey then
@@ -569,8 +590,8 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         
         -- Create fresh container (using Factory pattern)
         local sourceContainer = ns.UI.Factory:CreateContainer(card)
-        sourceContainer:SetPoint("TOPLEFT", 10, line3Y)
-        sourceContainer:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+        sourceContainer:SetPoint("TOPLEFT", PLAN_CARD_BODY_LEFT, line3Y)
+        sourceContainer:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
         sourceContainer:SetHeight(1)  -- Will be calculated dynamically
         card._sourceContainer = sourceContainer
         
@@ -592,14 +613,14 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 vendorText:SetJustifyH("LEFT")
                 vendorText:SetWordWrap(true)
                 vendorText:SetNonSpaceWrap(false)
-                -- Truncate only in collapsed view
                 if not card._isSourceExpanded then
-                    vendorText:SetMaxLines(1)
+                    vendorText:SetMaxLines(4)
                 else
-                    vendorText:SetMaxLines(2)  -- Max 2 lines even when expanded
+                    vendorText:SetMaxLines(10)
                 end
                 lastTextElement = vendorText
-                containerY = containerY - 18
+                local lhV = math.max(vendorText:GetStringHeight(), 14)
+                containerY = containerY - lhV - 4
             elseif source.npc then
                 local dropText = FontManager:CreateFontString(card._sourceContainer, "body", "OVERLAY")
                 dropText._isSourceElement = true
@@ -626,14 +647,14 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 dropText:SetJustifyH("LEFT")
                 dropText:SetWordWrap(true)
                 dropText:SetNonSpaceWrap(false)
-                -- Truncate only in collapsed view
                 if not card._isSourceExpanded then
-                    dropText:SetMaxLines(1)
+                    dropText:SetMaxLines(4)
                 else
-                    dropText:SetMaxLines(2)  -- Max 2 lines even when expanded
+                    dropText:SetMaxLines(10)
                 end
                 lastTextElement = dropText
-                containerY = containerY - 18
+                local lhD = math.max(dropText:GetStringHeight(), 14)
+                containerY = containerY - lhD - 4
             elseif source.quest then
                 local P = ns.PLAN_UI_COLORS or {}
                 local questLabel = (ns.L and ns.L["QUEST_LABEL"]) or "Quest:"
@@ -646,12 +667,13 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 questText:SetWordWrap(true)
                 questText:SetNonSpaceWrap(false)
                 if not card._isSourceExpanded then
-                    questText:SetMaxLines(1)
+                    questText:SetMaxLines(4)
                 else
-                    questText:SetMaxLines(2)
+                    questText:SetMaxLines(10)
                 end
                 lastTextElement = questText
-                containerY = containerY - 18
+                local lhQ = math.max(questText:GetStringHeight(), 14)
+                containerY = containerY - lhQ - 4
             end
             
             -- Location (Zone) — append difficulty label for mounts (consistent white; avoid duplication)
@@ -681,14 +703,14 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 locationText:SetJustifyH("LEFT")
                 locationText:SetWordWrap(true)
                 locationText:SetNonSpaceWrap(false)
-                -- Truncate only in collapsed view
                 if not card._isSourceExpanded then
-                    locationText:SetMaxLines(1)
+                    locationText:SetMaxLines(5)
                 else
-                    locationText:SetMaxLines(2)  -- Max 2 lines even when expanded
+                    locationText:SetMaxLines(12)
                 end
                 lastTextElement = locationText
-                containerY = containerY - 18
+                local lhZ = math.max(locationText:GetStringHeight(), 14)
+                containerY = containerY - lhZ - 4
             end
             
             -- Add spacing between sources
@@ -736,8 +758,8 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         end
         
         local sourceText = FontManager:CreateFontString(card, "body", "OVERLAY")
-        sourceText:SetPoint("TOPLEFT", 10, currentY)
-        sourceText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+        sourceText:SetPoint("TOPLEFT", PLAN_CARD_BODY_LEFT, currentY)
+        sourceText:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
         
         -- Check if text already has a source type prefix
         local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
@@ -751,21 +773,23 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         end
         sourceText:SetJustifyH("LEFT")
         sourceText:SetWordWrap(true)
-        sourceText:SetMaxLines(2)
+        sourceText:SetMaxLines(10)
         sourceText:SetNonSpaceWrap(false)
+        card._planBodyFallbackFS = sourceText
         lastTextElement = sourceText
     end
     
     
     if not lastTextElement then
         local placeholderText = FontManager:CreateFontString(card, "body", "OVERLAY")
-        placeholderText:SetPoint("TOPLEFT", 10, line3Y)
-        placeholderText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+        placeholderText:SetPoint("TOPLEFT", PLAN_CARD_BODY_LEFT, line3Y)
+        placeholderText:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
         placeholderText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. ((ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source") .. "|r")
         placeholderText:SetJustifyH("LEFT")
         placeholderText:SetWordWrap(true)
-        placeholderText:SetMaxLines(2)
+        placeholderText:SetMaxLines(6)
         placeholderText:SetNonSpaceWrap(false)
+        card._planBodyFallbackFS = placeholderText
         lastTextElement = placeholderText
     end
 
@@ -833,7 +857,7 @@ function PlanCardFactory:CreateExpandableContent(card, anchorFrame)
     local expandedContent = ns.UI.Factory:CreateContainer(card)
     -- Anchor to BOTTOM of anchorFrame with proper spacing (negative Y = down)
     expandedContent:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -8)
-    expandedContent:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+    expandedContent:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
     -- Don't set height here - it will be calculated dynamically based on content
     -- But set a minimum height to ensure frame exists
     expandedContent:SetHeight(1)
@@ -938,6 +962,183 @@ function PlanCardFactory:SetupCardClickHandler(card, expandCallback)
             expandCallback(self)
         end
     end)
+end
+
+--[[
+    Remeasure achievement card stacked text (word-wrap) and sync frame height with layout manager.
+    opts.deferLayout: only ApplyCardGeometry; caller runs RecalculateAllPositions once (resize batch).
+]]
+function PlanCardFactory:ReflowAchievementCard(card, opts)
+    if not card or not card.plan or card.plan.type ~= "achievement" then return end
+    local deferLayout = opts and opts.deferLayout
+    local L = ns.L
+    local P = ns.PLAN_UI_COLORS or {}
+    local labCol = P.infoLabel or "|cff88ff88"
+    local bodyCol = P.body or "|cffffffff"
+    local descLab = (L and L["DESCRIPTION_LABEL"]) or "Description:"
+
+    -- Body text frames are anchored via LEFT/RIGHT to the card, so width auto-tracks card width.
+    -- We force SetWidth(tw) too so GetStringHeight() returns the wrapped height in the same frame
+    -- (anchor-driven width is lazy and can produce single-line height in synchronous reflow).
+    local tw = PlanCardBodyTextWidth(card)
+    if card.infoText then
+        if card.fullDescription and card.fullDescription ~= "" then
+            card.infoText:SetText(labCol .. descLab .. "|r " .. bodyCol .. FormatTextNumbers(card.fullDescription) .. "|r")
+        end
+        card.infoText:SetWordWrap(true)
+        card.infoText:SetNonSpaceWrap(false)
+        card.infoText:SetMaxLines(0)
+        card.infoText:SetWidth(tw)
+    end
+
+    if card.progressLabel then
+        card.progressLabel:SetWordWrap(true)
+        -- Unlimited wrap so the full progress sentence is shown (some locales / long labels overflow MaxLines=4).
+        card.progressLabel:SetMaxLines(0)
+        card.progressLabel:SetWidth(tw)
+    end
+
+    if card.rewardTextFS then
+        card.rewardTextFS:SetWordWrap(true)
+        card.rewardTextFS:SetMaxLines(0)
+        card.rewardTextFS:SetWidth(tw)
+    end
+
+    if card.requirementsHeader then
+        card.requirementsHeader:SetWordWrap(true)
+        card.requirementsHeader:SetMaxLines(0)
+        card.requirementsHeader:SetWidth(tw)
+    end
+
+    -- Compute header bottom (icon row, name, points badge) so wrapped 2-line titles push body down.
+    -- nameText is anchored LEFT to icon and RIGHT to action buttons, but the engine's anchor-driven
+    -- width is lazy — synchronous GetStringHeight() can return single-line height even if the text
+    -- visibly wraps. Force-set nameText width here so wrapped height is measured correctly.
+    if card.nameText then
+        local CDL = ns.CollectionsDetailHeaderLayout or {}
+        local whW = CDL.WOWHEAD_SIZE or ns.PLAN_CARD_WOWHEAD_SIZE or 18
+        local whInset = (ns.GetPlanCardWowheadRightInset and card.plan and ns.GetPlanCardWowheadRightInset(card.plan.type)) or 56
+        local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
+        local LINK_GAP = 4
+        local rightReserve = whInset + whW + nameGap
+        if card.chatLinkBtn then rightReserve = rightReserve + whW + LINK_GAP end
+        -- nameText TOPLEFT is at iconBorder TOPRIGHT(+10) → x ~= iconBorderX(10) + iconW(46) + 10 = 66
+        local nameLeftX = 66
+        local cw = card:GetWidth() or 200
+        local nameW = math.max(60, cw - nameLeftX - rightReserve)
+        card.nameText:SetWidth(nameW)
+    end
+    local nameH = (card.nameText and card.nameText:GetStringHeight()) or 14
+    if not nameH or nameH < 14 then nameH = 14 end
+    -- Derive header geometry from existing card children rather than hardcoded constants.
+    local nameTopInset = 12  -- iconBorder y(-10) + nameText y(-2) relative to icon TOPRIGHT
+    local headerH = nameTopInset + nameH
+    if card.pointsBadge and card.pointsBadge:IsShown() then
+        local bh = card.pointsBadge:GetHeight() or 20
+        headerH = headerH + 2 + bh
+    end
+    -- Ensure header is at least as tall as the icon row (icon height + top inset).
+    local iconBorderH = (card.iconBorder and card.iconBorder:GetHeight()) or 46
+    local minHeader = 10 + iconBorderH
+    if headerH < minHeader then headerH = minHeader end
+
+    local h = headerH + 8  -- 8px gap before first body element
+    local gap = 6
+    local firstShown = true
+    local function addFs(fs)
+        if not fs or not fs:IsShown() then return end
+        if not firstShown then
+            h = h + gap
+        end
+        firstShown = false
+        local sh = fs:GetStringHeight()
+        if not sh or sh < 1 then
+            sh = fs:GetHeight() or 14
+        end
+        h = h + math.max(sh, 12)
+    end
+
+    addFs(card.infoText)
+    addFs(card.progressLabel)
+    addFs(card.rewardTextFS)
+    addFs(card.requirementsHeader)
+
+    if card.isExpanded and card.expandedContent and card.expandedContent:IsShown() then
+        h = h + 8 + math.max(card.expandedContent:GetHeight() or 1, 1)
+    end
+
+    h = h + PLAN_CARD_BOTTOM_RESERVE
+
+    local newH = math.max(ACHIEVEMENT_CARD_MIN_HEIGHT, h)
+    if deferLayout then
+        CardLayoutManager:ApplyCardGeometry(card, newH)
+    elseif card._layoutManager then
+        CardLayoutManager:UpdateCardHeight(card, newH)
+    else
+        card:SetHeight(newH)
+    end
+end
+
+--[[
+    Remeasure mount/pet/toy/etc. source block height after width changes or wrap layout.
+]]
+function PlanCardFactory:ReflowSourcePlanCard(card, opts)
+    if not card or not card.plan then return end
+    local pt = card.plan.type
+    if pt ~= "mount" and pt ~= "pet" and pt ~= "toy" and pt ~= "illusion" and pt ~= "title" and pt ~= "transmog" then
+        return
+    end
+    local deferLayout = opts and opts.deferLayout
+    local tw = PlanCardBodyTextWidth(card)
+    local bodyH = 0
+
+    if card._sourceContainer and card._sourceContainer:IsShown() then
+        card._sourceContainer:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
+        local sumH = 0
+        for i = 1, card._sourceContainer:GetNumChildren() do
+            local ch = select(i, card._sourceContainer:GetChildren())
+            if ch and ch:IsObjectType("FontString") and ch:IsShown() then
+                ch:SetWidth(tw)
+                sumH = sumH + math.max(ch:GetStringHeight(), 14) + 4
+            end
+        end
+        sumH = math.max(sumH, 1)
+        card._sourceContainer:SetHeight(sumH)
+        bodyH = sumH
+    elseif card._planBodyFallbackFS and card._planBodyFallbackFS:IsShown() then
+        card._planBodyFallbackFS:SetWidth(tw)
+        card._planBodyFallbackFS:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
+        bodyH = math.max(card._planBodyFallbackFS:GetStringHeight(), 14)
+    else
+        bodyH = 18
+    end
+
+    local newH = math.max(card.originalHeight or 105, PLAN_CARD_CONTENT_TOP + bodyH + PLAN_CARD_BOTTOM_RESERVE)
+    if deferLayout then
+        CardLayoutManager:ApplyCardGeometry(card, newH)
+    elseif card._layoutManager then
+        CardLayoutManager:UpdateCardHeight(card, newH)
+    else
+        card:SetHeight(newH)
+    end
+end
+
+--- Batch reflow after grid width changes (resize) — one masonry pass at the end.
+function PlanCardFactory:ReflowAllPlanCards(layoutInstance)
+    if not layoutInstance or not layoutInstance.cards then return end
+    for i = 1, #layoutInstance.cards do
+        local info = layoutInstance.cards[i]
+        local c = info and info.card
+        if c and c.plan then
+            local t = c.plan.type
+            if t == "achievement" then
+                self:ReflowAchievementCard(c, { deferLayout = true })
+            elseif t == "mount" or t == "pet" or t == "toy" or t == "illusion" or t == "title" or t == "transmog" then
+                self:ReflowSourcePlanCard(c, { deferLayout = true })
+            end
+        end
+    end
+    CardLayoutManager:RecalculateAllPositions(layoutInstance)
 end
 
 --[[
@@ -1077,61 +1278,49 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
         end
     end
     
-    local currentY = -60
+    -- Anchor body content below the name/badge row so wrapped 2-line titles don't overlap.
+    -- Use separate TOP / LEFT / RIGHT anchors so X is card-relative (consistent inset) while Y follows the header.
+    local headerAnchor = card.pointsBadge or nameText
     local lastTextElement = nil
-    
-    -- Information (show truncated version when collapsed, full text when expanded)
-    if description and not (issecretvalue and issecretvalue(description)) and description ~= "" then
-        -- Clean up description (remove extra whitespace, newlines)
-        description = description:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-        
-        -- Store full description for expand
-        card.fullDescription = description
-        
-        -- Show truncated version (max 2 lines, ~80 chars to prevent overflow)
-        -- Calculate based on card width to ensure it fits
-        local cardWidth = card:GetWidth() or 200
-        local availableWidth = cardWidth - 40  -- 10px left + 30px right margin
-        local charsPerLine = math.floor(availableWidth / 6)  -- ~6 pixels per char
-        local maxChars = charsPerLine * 2  -- 2 lines max
-        maxChars = math.min(maxChars, 80)  -- Cap at 80 chars for safety
-        
-        local truncatedDescription = description
-        if #description > maxChars then
-            truncatedDescription = description:sub(1, maxChars - 3) .. "..."
+
+    local function anchorBodyTop(fs, prev)
+        if prev then
+            fs:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -6)
+            fs:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
+        else
+            fs:SetPoint("TOP", headerAnchor, "BOTTOM", 0, -8)
+            fs:SetPoint("LEFT", card, "LEFT", PLAN_CARD_BODY_LEFT, 0)
+            fs:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
         end
-        
+    end
+
+    -- Description: word-wrap to card width (no manual substring truncation — avoids false ellipsis when space remains)
+    if description and not (issecretvalue and issecretvalue(description)) and description ~= "" then
+        description = description:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+        card.fullDescription = description
+
+        local L = ns.L
+        local labCol = P.infoLabel or "|cff88ff88"
+        local bodyCol = P.body or "|cffffffff"
+        local descLab = (L and L["DESCRIPTION_LABEL"]) or "Description:"
         local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
-        infoText:SetPoint("TOPLEFT", 10, currentY)
-        infoText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-        -- Show truncated version when collapsed, full when expanded
-        local displayText = (card.isExpanded and description) or truncatedDescription
-        infoText:SetText((P.infoLabel or "|cff88ff88") .. ((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r " .. (P.body or "|cffffffff") .. FormatTextNumbers(displayText) .. "|r")
+        anchorBodyTop(infoText, lastTextElement)
+        infoText:SetText(labCol .. descLab .. "|r " .. bodyCol .. FormatTextNumbers(description) .. "|r")
         infoText:SetJustifyH("LEFT")
         infoText:SetWordWrap(true)
-        -- Truncate only in collapsed view
-        if not card.isExpanded then
-            infoText:SetMaxLines(2)
-        else
-            infoText:SetMaxLines(0)  -- No limit when expanded
-        end
+        infoText:SetMaxLines(0)
         infoText:SetNonSpaceWrap(false)
-        -- Force text to fit within bounds (prevent overflow)
-        infoText:SetWidth(card:GetWidth() - 40)  -- 10px left + 30px right margin
-        card.infoText = infoText  -- Store for reference
+        card.infoText = infoText
         lastTextElement = infoText
     end
-    
+
     -- Progress (calculate actual progress from achievement criteria)
     local progressLabel = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
-    if lastTextElement then
-        progressLabel:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -6)
-    else
-        progressLabel:SetPoint("TOPLEFT", 10, currentY)
-    end
-    progressLabel:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+    anchorBodyTop(progressLabel, lastTextElement)
     progressLabel:SetJustifyH("LEFT")
-    progressLabel:SetWordWrap(false)
+    progressLabel:SetWordWrap(true)
+    progressLabel:SetNonSpaceWrap(false)
+    progressLabel:SetMaxLines(0)  -- Show full progress sentence — never truncate.
     card.progressLabel = progressLabel  -- Store for later update
     card.planAchievementID = plan.achievementID  -- Store for progress calculation
     
@@ -1187,28 +1376,19 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     end
     if displayReward and displayReward ~= "" then
         local rewardText = FontManager:CreateFontString(card, "small", "OVERLAY")
-        if lastTextElement then
-            rewardText:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -6)
-        else
-            rewardText:SetPoint("TOPLEFT", 10, currentY)
-        end
-        rewardText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+        anchorBodyTop(rewardText, lastTextElement)
         rewardText:SetText("|cff88ff88" .. ((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r |cffffffff" .. displayReward .. "|r")
         rewardText:SetJustifyH("LEFT")
         rewardText:SetWordWrap(true)
-        rewardText:SetMaxLines(2)
+        rewardText:SetMaxLines(0)  -- Reward text shown in full.
         rewardText:SetNonSpaceWrap(false)
+        card.rewardTextFS = rewardText
         lastTextElement = rewardText
     end
-    
+
     -- Requirements header
     local requirementsHeader = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
-    if lastTextElement then
-        requirementsHeader:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -5)  -- Reduced spacing from -20 to -5
-    else
-        requirementsHeader:SetPoint("TOPLEFT", 10, currentY - 5)
-    end
-    requirementsHeader:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+    anchorBodyTop(requirementsHeader, lastTextElement)
     requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
     requirementsHeader:SetJustifyH("LEFT")
     requirementsHeader:SetTextColor(1, 1, 1)
@@ -1234,12 +1414,6 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
                 PlanCardFactory:ExpandAchievementEmpty(card)
             end
             
-            -- Update Information text to full version (not handled by ExpandAchievementContent)
-            if card.infoText and card.fullDescription then
-                card.infoText:SetText("|cff88ff88" .. ((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r |cffffffff" .. FormatTextNumbers(card.fullDescription) .. "|r")
-                card.infoText:SetMaxLines(0)  -- No limit when expanded
-            end
-            
             -- Update expand button icon (not handled by ExpandAchievementContent)
             if card._expandButton then
                 self:UpdateExpandButtonIcon(card, true)
@@ -1257,6 +1431,8 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             self:UpdateExpandButtonIcon(card, false)
         end
     end
+
+    self:ReflowAchievementCard(card)
 end
 
 --[[
@@ -1282,28 +1458,8 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
             if cardFrame.expandedContent then
                 cardFrame.expandedContent:Hide()
             end
-            if cardFrame.originalHeight then
-                cardFrame:SetHeight(cardFrame.originalHeight)
-                if CardLayoutManager and cardFrame._layoutManager then
-                    CardLayoutManager:UpdateCardHeight(cardFrame, cardFrame.originalHeight)
-                end
-            end
             if cardFrame.requirementsHeader then
                 cardFrame.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
-            end
-            
-            -- Update Information text to truncated version
-            if cardFrame.infoText and cardFrame.fullDescription then
-                local cardWidth = cardFrame:GetWidth() or 200
-                local availableWidth = cardWidth - 40
-                local charsPerLine = math.floor(availableWidth / 6)
-                local maxChars = math.min(charsPerLine * 2, 80)
-                local truncatedDescription = cardFrame.fullDescription
-                if #truncatedDescription > maxChars then
-                    truncatedDescription = truncatedDescription:sub(1, maxChars - 3) .. "..."
-                end
-                cardFrame.infoText:SetText("|cff88ff88" .. ((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r |cffffffff" .. FormatTextNumbers(truncatedDescription) .. "|r")
-                cardFrame.infoText:SetMaxLines(2)
             end
             
             -- Recalculate progress when collapsed to show same format as expanded
@@ -1348,6 +1504,7 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                 cardFrame.progressLabel:SetText("|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
             end
             
+            factory:ReflowAchievementCard(cardFrame)
             -- Update expand button icon
             factory:UpdateExpandButtonIcon(cardFrame, false)
         else
@@ -1360,24 +1517,16 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
             local numCriteria = GetAchievementNumCriteria(achievementID)
             if numCriteria and numCriteria > 0 then
                 PlanCardFactory:ExpandAchievementContent(cardFrame, achievementID)
+                if cardFrame.expandedContent then
+                    cardFrame.expandedContent:Show()
+                end
             else
                 PlanCardFactory:ExpandAchievementEmpty(cardFrame)
-            end
-            
-            -- Ensure expandedContent is shown after expansion
-            if cardFrame.expandedContent then
-                cardFrame.expandedContent:Show()
             end
             
             -- Update requirements header text
             if cardFrame.requirementsHeader then
                 cardFrame.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
-            end
-            
-            -- Update Information text to full version
-            if cardFrame.infoText and cardFrame.fullDescription then
-                cardFrame.infoText:SetText("|cff88ff88" .. ((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r |cffffffff" .. FormatTextNumbers(cardFrame.fullDescription) .. "|r")
-                cardFrame.infoText:SetMaxLines(0)  -- No limit when expanded
             end
             
             -- Update expand button icon
@@ -1410,7 +1559,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
         -- Clear all points and re-anchor to ensure correct position
         expandedContent:ClearAllPoints()
         expandedContent:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -8)
-        expandedContent:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+        expandedContent:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
     end
     
     -- Clear previous content
@@ -1573,32 +1722,15 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
         end
     end
     
-    -- Calculate height (include information text if shown)
-    local numRows = #criteriaDetails
-    local infoHeight = 0
-    if card.fullDescription and card.fullDescription ~= "" then
-        local truncatedDescription = card.infoText and card.infoText:GetText() or ""
-        if truncatedDescription and issecretvalue and issecretvalue(truncatedDescription) then
-            truncatedDescription = ""
-        end
-        if truncatedDescription ~= "" and (truncatedDescription:find("%.%.%.") or #truncatedDescription < #card.fullDescription) then
-            infoHeight = math.ceil(#card.fullDescription / 60) * 14 + 16  -- Approximate height
-        end
-    end
-    -- Calculate requirements height more accurately (accounting for multi-line text)
-    local requirementsHeight = math.abs(criteriaY) + 8
-    local expandedHeight = card.originalHeight + infoHeight + requirementsHeight
-    card:SetHeight(expandedHeight)
+    local ecPadding = 10
+    expandedContent:SetHeight(math.max(ecPadding, math.abs(criteriaY) + ecPadding))
     expandedContent:Show()
     if card.requirementsHeader then
         card.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
         card.requirementsHeader:Show()
     end
 
-    -- Update layout
-    if CardLayoutManager and card._layoutManager then
-        CardLayoutManager:UpdateCardHeight(card, expandedHeight)
-    end
+    PlanCardFactory:ReflowAchievementCard(card)
 end
 
 --[[
@@ -1621,11 +1753,7 @@ function PlanCardFactory:ExpandAchievementEmpty(card)
         card.requirementsHeader:Hide()
     end
     expandedContent:Hide()
-    local expandedHeight = card.originalHeight
-    card:SetHeight(expandedHeight)
-    if CardLayoutManager and card._layoutManager then
-        CardLayoutManager:UpdateCardHeight(card, expandedHeight)
-    end
+    PlanCardFactory:ReflowAchievementCard(card)
 end
 
 --[[
@@ -1652,38 +1780,13 @@ function PlanCardFactory:CreateMountCard(card, plan, progress, nameText)
         self:SetupSourceExpandHandler(card, plan, "mount", anchorFrame)
     end
     
-    -- CRITICAL: Restore source expansion state if card was previously expanded
-    -- This ensures UI matches the persisted state after window resize or layout recalculation
     if card._isSourceExpanded and card._sourceExpandButton then
-        -- Recreate source info with expanded state
         self:CreateSourceInfo(card, plan, -60)
-        
-        -- Update expand button icon
         if card._sourceExpandButton then
             self:UpdateExpandButtonIcon(card, true)
         end
-        
-        -- Calculate expanded height
-        if card.originalHeight and card._sources then
-            local contentHeight = 0
-            for i, source in ipairs(card._sources) do
-                if source.vendor or source.npc or source.quest then
-                    contentHeight = contentHeight + 18
-                end
-                if source.zone then
-                    contentHeight = contentHeight + 18
-                end
-                if i < #card._sources then
-                    contentHeight = contentHeight + 4
-                end
-            end
-            local expandedHeight = card.originalHeight + (contentHeight - (card.originalHeight - 60))
-            card:SetHeight(expandedHeight)
-            if CardLayoutManager and card._layoutManager then
-                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
-            end
-        end
     end
+    self:ReflowSourcePlanCard(card)
 end
 
 --[[
@@ -1706,26 +1809,13 @@ function PlanCardFactory:CreatePetCard(card, plan, progress, nameText)
         self:SetupSourceExpandHandler(card, plan, "pet", anchorFrame)
     end
     
-    -- CRITICAL: Restore source expansion state if card was previously expanded
     if card._isSourceExpanded and card._sourceExpandButton then
         self:CreateSourceInfo(card, plan, -60)
         if card._sourceExpandButton then
             self:UpdateExpandButtonIcon(card, true)
         end
-        if card.originalHeight and card._sources then
-            local contentHeight = 0
-            for i, source in ipairs(card._sources) do
-                if source.vendor or source.npc or source.quest then contentHeight = contentHeight + 18 end
-                if source.zone then contentHeight = contentHeight + 18 end
-                if i < #card._sources then contentHeight = contentHeight + 4 end
-            end
-            local expandedHeight = card.originalHeight + (contentHeight - (card.originalHeight - 60))
-            card:SetHeight(expandedHeight)
-            if CardLayoutManager and card._layoutManager then
-                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
-            end
-        end
     end
+    self:ReflowSourcePlanCard(card)
 end
 
 --[[
@@ -1748,26 +1838,13 @@ function PlanCardFactory:CreateToyCard(card, plan, progress, nameText)
         self:SetupSourceExpandHandler(card, plan, "toy", anchorFrame)
     end
     
-    -- CRITICAL: Restore source expansion state if card was previously expanded
     if card._isSourceExpanded and card._sourceExpandButton then
         self:CreateSourceInfo(card, plan, -60)
         if card._sourceExpandButton then
             self:UpdateExpandButtonIcon(card, true)
         end
-        if card.originalHeight and card._sources then
-            local contentHeight = 0
-            for i, source in ipairs(card._sources) do
-                if source.vendor or source.npc or source.quest then contentHeight = contentHeight + 18 end
-                if source.zone then contentHeight = contentHeight + 18 end
-                if i < #card._sources then contentHeight = contentHeight + 4 end
-            end
-            local expandedHeight = card.originalHeight + (contentHeight - (card.originalHeight - 60))
-            card:SetHeight(expandedHeight)
-            if CardLayoutManager and card._layoutManager then
-                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
-            end
-        end
     end
+    self:ReflowSourcePlanCard(card)
 end
 
 --[[
@@ -1790,26 +1867,13 @@ function PlanCardFactory:CreateIllusionCard(card, plan, progress, nameText)
         self:SetupSourceExpandHandler(card, plan, "illusion", anchorFrame)
     end
     
-    -- CRITICAL: Restore source expansion state if card was previously expanded
     if card._isSourceExpanded and card._sourceExpandButton then
         self:CreateSourceInfo(card, plan, -60)
         if card._sourceExpandButton then
             self:UpdateExpandButtonIcon(card, true)
         end
-        if card.originalHeight and card._sources then
-            local contentHeight = 0
-            for i, source in ipairs(card._sources) do
-                if source.vendor or source.npc or source.quest then contentHeight = contentHeight + 18 end
-                if source.zone then contentHeight = contentHeight + 18 end
-                if i < #card._sources then contentHeight = contentHeight + 4 end
-            end
-            local expandedHeight = card.originalHeight + (contentHeight - (card.originalHeight - 60))
-            card:SetHeight(expandedHeight)
-            if CardLayoutManager and card._layoutManager then
-                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
-            end
-        end
     end
+    self:ReflowSourcePlanCard(card)
 end
 
 --[[
@@ -1832,26 +1896,13 @@ function PlanCardFactory:CreateTitleCard(card, plan, progress, nameText)
         self:SetupSourceExpandHandler(card, plan, "title", anchorFrame)
     end
     
-    -- CRITICAL: Restore source expansion state if card was previously expanded
     if card._isSourceExpanded and card._sourceExpandButton then
         self:CreateSourceInfo(card, plan, -60)
         if card._sourceExpandButton then
             self:UpdateExpandButtonIcon(card, true)
         end
-        if card.originalHeight and card._sources then
-            local contentHeight = 0
-            for i, source in ipairs(card._sources) do
-                if source.vendor or source.npc or source.quest then contentHeight = contentHeight + 18 end
-                if source.zone then contentHeight = contentHeight + 18 end
-                if i < #card._sources then contentHeight = contentHeight + 4 end
-            end
-            local expandedHeight = card.originalHeight + (contentHeight - (card.originalHeight - 60))
-            card:SetHeight(expandedHeight)
-            if CardLayoutManager and card._layoutManager then
-                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
-            end
-        end
     end
+    self:ReflowSourcePlanCard(card)
 end
 
 --[[
@@ -1877,9 +1928,6 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                     removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
                     removeBtn:SetScript("OnClick", function()
                         WarbandNexus:RemovePlan(plan.id)
-                        if WarbandNexus.RefreshUI then
-                            WarbandNexus:RefreshUI()
-                        end
                     end)
                     removeBtn:SetScript("OnEnter", function(self)
                         ns.TooltipService:Show(
@@ -1990,6 +2038,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
         -- Other default cards: show type badge and source info
         self:CreateTypeBadge(card, plan, nameText)
         self:CreateSourceInfo(card, plan, -60)
+        self:ReflowSourcePlanCard(card)
     end
 end
 
@@ -2333,35 +2382,15 @@ end
     Expands to show all sources (without Details label)
 ]]
 function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFrame)
-    -- Check if expand is needed (content exceeds card height or multiple sources)
     if not card._sources or #card._sources == 0 then
         return
     end
-    
-    local originalHeight = card.originalHeight or 130
-    local maxContentHeight = originalHeight - 60
-    local estimatedContentHeight = 0
-    
-    -- Estimate height needed for all sources
-    for i, source in ipairs(card._sources) do
-        if source.vendor or source.npc or source.quest then
-            estimatedContentHeight = estimatedContentHeight + 18
-        end
-        if source.zone then
-            estimatedContentHeight = estimatedContentHeight + 18
-        end
-        if i < #card._sources then
-            estimatedContentHeight = estimatedContentHeight + 4
-        end
-    end
-    
-    -- Only show expand button if content exceeds card height
-    local needsExpand = estimatedContentHeight > maxContentHeight
-    if not needsExpand then
+
+    -- One structured source: full text wraps inside the card (dynamic height via ReflowSourcePlanCard).
+    if #card._sources <= 1 then
         return
     end
-    
-    -- Store needsExpand flag in card for CreateSourceInfo to use
+
     card._needsExpand = true
     
     -- Create unified expand button (20x20, same size as delete button)
@@ -2394,58 +2423,13 @@ function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFr
         end
         
         if cardFrame._isSourceExpanded then
-            -- Expand: Show all sources (like achievement shows expandedContent)
-            -- Recreate source info with all sources
-            factory:CreateSourceInfo(cardFrame, plan, -60)
+            factory:CreateSourceInfo(cardFrame, plan, -PLAN_CARD_CONTENT_TOP)
         else
-            -- Collapse: Show only first source (like achievement hides expandedContent)
-            -- Recreate source info with only first source
-            factory:CreateSourceInfo(cardFrame, plan, -60)
-            
-            -- Reset card height to original (like achievement system)
-            if cardFrame.originalHeight then
-                cardFrame:SetHeight(cardFrame.originalHeight)
-                if CardLayoutManager and cardFrame._layoutManager then
-                    CardLayoutManager:UpdateCardHeight(cardFrame, cardFrame.originalHeight)
-                end
-            end
+            factory:CreateSourceInfo(cardFrame, plan, -PLAN_CARD_CONTENT_TOP)
         end
         
-        -- Update expand button icon
+        factory:ReflowSourcePlanCard(cardFrame)
         factory:UpdateExpandButtonIcon(cardFrame, cardFrame._isSourceExpanded)
-        
-        -- Calculate new card height based on expansion state (like achievement system)
-        local originalHeight = cardFrame.originalHeight or 130
-        local newHeight = originalHeight
-        
-        if cardFrame._isSourceExpanded then
-            -- Expand: Calculate actual content height for all sources
-            local contentHeight = 0
-            if cardFrame._sources then
-                for i, source in ipairs(cardFrame._sources) do
-                    if source.vendor or source.npc or source.quest then
-                        contentHeight = contentHeight + 18
-                    end
-                    if source.zone then
-                        contentHeight = contentHeight + 18
-                    end
-                    if i < #cardFrame._sources then
-                        contentHeight = contentHeight + 4
-                    end
-                end
-            end
-            -- Calculate height needed: originalHeight - reserved space + actual content
-            newHeight = originalHeight + (contentHeight - (originalHeight - 60))
-        end
-        -- else: Collapse - newHeight already set to originalHeight above
-        
-        -- Update card height
-        cardFrame:SetHeight(newHeight)
-        
-        -- Update layout if needed
-        if CardLayoutManager and cardFrame._layoutManager then
-            CardLayoutManager:UpdateCardHeight(cardFrame, newHeight)
-        end
     end
     
     -- Setup card click handler
@@ -2856,9 +2840,6 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
     removeBtn:SetScript("OnClick", function()
         WarbandNexus:RemovePlan(plan.id)
-        if WarbandNexus.RefreshUI then
-            WarbandNexus:RefreshUI()
-        end
     end)
     
     -- Alert button
@@ -2894,7 +2875,6 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     alertBtn:SetScript("OnClick", function()
         if hasActiveReminder and WarbandNexus.DismissReminders then
             WarbandNexus:DismissReminders(plan.id)
-            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             return
         end
         if WarbandNexus.ShowSetAlertDialog then
@@ -3214,9 +3194,6 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
     removeBtn:SetScript("OnClick", function()
         WarbandNexus:RemovePlan(plan.id)
-        if WarbandNexus.RefreshUI then
-            WarbandNexus:RefreshUI()
-        end
     end)
     
     -- Alert button
@@ -3252,7 +3229,6 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     alertBtnDQ:SetScript("OnClick", function()
         if hasActiveReminderDQ and WarbandNexus.DismissReminders then
             WarbandNexus:DismissReminders(plan.id)
-            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             return
         end
         if WarbandNexus.ShowSetAlertDialog then
@@ -3633,4 +3609,6 @@ end
 
 -- Export
 PlanCardFactory.TYPE_ICONS = TYPE_ICONS  -- Export atlas mapping for use in other modules
+PlanCardFactory.TYPE_NAMES = TYPE_NAMES
+PlanCardFactory.TYPE_COLORS = TYPE_COLORS
 ns.UI_PlanCardFactory = PlanCardFactory

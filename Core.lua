@@ -258,8 +258,9 @@ local defaults = {
         -- Weekly Vault Tracker column filter (PvE tab); default off — user opts in via checkbox or minimap
         pveVaultTrackerMode = false,
 
-        -- Hide characters below max level (80) on PvE/Gear tabs and the Gear character dropdown.
-        -- Applies uniformly to row lists and dropdowns; toggle via /wn maxonly or settings.
+        -- Hide low-level characters on PvE/Gear tabs and Gear character dropdown.
+        -- 0 = off, 80 = hide <80, 90 = hide <90. Legacy boolean is kept for backward compatibility.
+        hideLowLevelThreshold = 0,
         hideLowLevelCharacters = false,
         
         -- Notification settings
@@ -467,8 +468,8 @@ local defaults = {
 ---C_WowTokenPublic: price arrives asynchronously after UpdateMarketPrice().
 function WarbandNexus:OnTokenMarketPriceUpdated()
     local mf = self.UI and self.UI.mainFrame
-    if mf and mf:IsShown() and mf.currentTab == "chars" and self.RefreshUI then
-        self:RefreshUI()
+    if mf and mf:IsShown() and mf.currentTab == "chars" and self.SendMessage then
+        self:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
     end
 end
 
@@ -1072,11 +1073,9 @@ end
     Refresh settings when profile is changed/copied/reset
 ]]
 function WarbandNexus:OnProfileChanged()
-    -- Refresh UI elements if they exist
-    if self.RefreshUI then
-        self:RefreshUI()
+    if self.SendMessage then
+        self:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
     end
-    
 end
 
 --[[

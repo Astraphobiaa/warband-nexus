@@ -46,6 +46,15 @@ local settingsKeybindIsListening = false
 local settingsKeybindButton = nil
 local settingsKeybindCaptureFrame = nil
 
+local function GetLocalizedText(key, fallback)
+    local L = ns.L
+    local value = L and L[key]
+    if type(value) == "string" and value ~= "" and value ~= key then
+        return value
+    end
+    return fallback
+end
+
 ---Same output channel as welcome message — not Lua print() (often only in System / default chat).
 local function WnDiagSettings(msg)
     if WarbandNexus and WarbandNexus.Print then
@@ -1154,9 +1163,7 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.showWeeklyPlanner end,
             set = function(value)
                 WarbandNexus.db.profile.showWeeklyPlanner = value
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
             end,
         },
         {
@@ -1513,7 +1520,6 @@ local function BuildSettings(parent, containerWidth)
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.currencies = value
                 WarbandNexus:SendMessage(E.MODULE_TOGGLED, "currencies", value)
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
         {
@@ -1524,7 +1530,6 @@ local function BuildSettings(parent, containerWidth)
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.reputations = value
                 WarbandNexus:SendMessage(E.MODULE_TOGGLED, "reputations", value)
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
         {
@@ -1535,7 +1540,6 @@ local function BuildSettings(parent, containerWidth)
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.items = value
                 WarbandNexus:SendMessage(E.MODULE_TOGGLED, "items", value)
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
         {
@@ -1546,7 +1550,6 @@ local function BuildSettings(parent, containerWidth)
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.storage = value
                 WarbandNexus:SendMessage(E.MODULE_TOGGLED, "storage", value)
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
         {
@@ -1561,7 +1564,6 @@ local function BuildSettings(parent, containerWidth)
                     WarbandNexus.db.profile.modulesEnabled.pve = value
                     WarbandNexus:SendMessage(E.MODULE_TOGGLED, "pve", value)
                 end
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
         {
@@ -1576,7 +1578,6 @@ local function BuildSettings(parent, containerWidth)
                     WarbandNexus.db.profile.modulesEnabled.plans = value
                     WarbandNexus:SendMessage(E.MODULE_TOGGLED, "plans", value)
                 end
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
         {
@@ -1591,7 +1592,6 @@ local function BuildSettings(parent, containerWidth)
                     WarbandNexus.db.profile.modulesEnabled.professions = value
                     WarbandNexus:SendMessage(E.MODULE_TOGGLED, "professions", value)
                 end
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
         {
@@ -1602,7 +1602,6 @@ local function BuildSettings(parent, containerWidth)
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.gear = value
                 WarbandNexus:SendMessage(E.MODULE_TOGGLED, "gear", value)
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
         {
@@ -1613,7 +1612,6 @@ local function BuildSettings(parent, containerWidth)
             set = function(value)
                 WarbandNexus.db.profile.modulesEnabled.collections = value
                 WarbandNexus:SendMessage(E.MODULE_TOGGLED, "collections", value)
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
         {
@@ -1628,7 +1626,6 @@ local function BuildSettings(parent, containerWidth)
                     WarbandNexus.db.profile.modulesEnabled.tryCounter = value
                     WarbandNexus:SendMessage(E.MODULE_TOGGLED, "tryCounter", value)
                 end
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
             end,
         },
     }
@@ -1647,7 +1644,7 @@ local function BuildSettings(parent, containerWidth)
     -- VAULT BUTTON
     --========================================================================
 
-    local vaultSection = CreateSection(parent, "Vault Button", effectiveWidth)
+    local vaultSection = CreateSection(parent, GetLocalizedText("CONFIG_VAULT_BUTTON_SECTION", "Vault Button"), effectiveWidth)
     vaultSection:SetPoint("TOPLEFT", 0, yOffset)
     vaultSection:SetPoint("TOPRIGHT", 0, yOffset)
 
@@ -1681,8 +1678,8 @@ local function BuildSettings(parent, containerWidth)
     local vaultOptions = {
         {
             key = "vaultButtonEnabled",
-            label = "Vault Button",
-            tooltip = "Show the draggable Great Vault status button.",
+            label = GetLocalizedText("CONFIG_VAULT_OPT_ENABLED", "Vault Button"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_OPT_ENABLED_DESC", "Show the draggable Great Vault status button."),
             get = function() return GetVaultButtonSettings().enabled ~= false end,
             set = function(value)
                 GetVaultButtonSettings().enabled = value
@@ -1691,8 +1688,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonMouseover",
-            label = "Hide Until Mouseover",
-            tooltip = "Keep the vault button invisible until the cursor is over its saved position.",
+            label = GetLocalizedText("CONFIG_VAULT_OPT_MOUSEOVER", "Hide Until Mouseover"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_OPT_MOUSEOVER_DESC", "Keep the vault button invisible until the cursor is over its saved position."),
             get = function() return GetVaultButtonSettings().hideUntilMouseover == true end,
             set = function(value)
                 GetVaultButtonSettings().hideUntilMouseover = value
@@ -1701,8 +1698,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonReadyOnly",
-            label = "Hide Until Ready",
-            tooltip = "Only show the vault button when at least one character has a vault reward ready to claim.",
+            label = GetLocalizedText("CONFIG_VAULT_OPT_READY_ONLY", "Hide Until Ready"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_OPT_READY_ONLY_DESC", "Only show the vault button when at least one character has a vault reward ready to claim."),
             get = function() return GetVaultButtonSettings().hideUntilReady == true end,
             set = function(value)
                 GetVaultButtonSettings().hideUntilReady = value
@@ -1711,8 +1708,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonShowRealm",
-            label = "Show Realm Names",
-            tooltip = "Show character realm names in vault button tables and tooltips.",
+            label = GetLocalizedText("CONFIG_VAULT_OPT_REALM", "Show Realm Names"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_OPT_REALM_DESC", "Show character realm names in vault button tables and tooltips."),
             get = function() return GetVaultButtonSettings().showRealmName == true end,
             set = function(value)
                 GetVaultButtonSettings().showRealmName = value
@@ -1721,8 +1718,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonRewardIlvl",
-            label = "Show Reward iLvl",
-            tooltip = "Show reward item levels in completed vault slots instead of ready-check icons.",
+            label = GetLocalizedText("CONFIG_VAULT_OPT_REWARD_ILVL", "Show Reward iLvl"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_OPT_REWARD_ILVL_DESC", "Show reward item levels in completed vault slots instead of ready-check icons."),
             get = function() return GetVaultButtonSettings().showRewardItemLevel == true end,
             set = function(value)
                 GetVaultButtonSettings().showRewardItemLevel = value
@@ -1731,8 +1728,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonRaidColumn",
-            label = "Raid Column",
-            tooltip = "Show raid vault progress in the vault button table.",
+            label = GetLocalizedText("CONFIG_VAULT_COL_RAID", "Raid Column"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_COL_RAID_DESC", "Show raid vault progress in the vault button table."),
             get = function() return GetVaultButtonSettings().columns.raids ~= false end,
             set = function(value)
                 GetVaultButtonSettings().columns.raids = value
@@ -1741,8 +1738,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonDungeonColumn",
-            label = "Dungeon Column",
-            tooltip = "Show Mythic+ dungeon vault progress in the vault button table.",
+            label = GetLocalizedText("CONFIG_VAULT_COL_DUNGEON", "Dungeon Column"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_COL_DUNGEON_DESC", "Show Mythic+ dungeon vault progress in the vault button table."),
             get = function() return GetVaultButtonSettings().columns.mythicPlus ~= false end,
             set = function(value)
                 GetVaultButtonSettings().columns.mythicPlus = value
@@ -1751,8 +1748,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonWorldColumn",
-            label = "World Column",
-            tooltip = "Show world activity vault progress in the vault button table.",
+            label = GetLocalizedText("CONFIG_VAULT_COL_WORLD", "World Column"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_COL_WORLD_DESC", "Show world activity vault progress in the vault button table."),
             get = function() return GetVaultButtonSettings().columns.world ~= false end,
             set = function(value)
                 GetVaultButtonSettings().columns.world = value
@@ -1761,8 +1758,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonBountyColumn",
-            label = "Trovehunter's Bounty Column",
-            tooltip = "Show Trovehunter's Bounty completion in the vault button table.",
+            label = GetLocalizedText("CONFIG_VAULT_COL_BOUNTY", "Trovehunter's Bounty Column"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_COL_BOUNTY_DESC", "Show Trovehunter's Bounty completion in the vault button table."),
             get = function() return GetVaultButtonSettings().columns.bounty ~= false end,
             set = function(value)
                 GetVaultButtonSettings().columns.bounty = value
@@ -1771,8 +1768,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonVoidcoreColumn",
-            label = "Nebulous Voidcore Column",
-            tooltip = "Show Nebulous Voidcore progress in the vault button table.",
+            label = GetLocalizedText("CONFIG_VAULT_COL_VOIDCORE", "Nebulous Voidcore Column"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_COL_VOIDCORE_DESC", "Show Nebulous Voidcore progress in the vault button table."),
             get = function() return GetVaultButtonSettings().columns.voidcore ~= false end,
             set = function(value)
                 GetVaultButtonSettings().columns.voidcore = value
@@ -1781,8 +1778,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonManafluxColumn",
-            label = "Dawnlight Manaflux Column",
-            tooltip = "Show Dawnlight Manaflux currency in the vault button table.",
+            label = GetLocalizedText("CONFIG_VAULT_COL_MANAFLUX", "Dawnlight Manaflux Column"),
+            tooltip = GetLocalizedText("CONFIG_VAULT_COL_MANAFLUX_DESC", "Show Dawnlight Manaflux currency in the vault button table."),
             get = function() return GetVaultButtonSettings().columns.manaflux == true end,
             set = function(value)
                 GetVaultButtonSettings().columns.manaflux = value
@@ -1795,8 +1792,8 @@ local function BuildSettings(parent, containerWidth)
     local vaultYOffset = CreateCheckboxGrid(vaultSection.content, vaultOptions, 0, effectiveWidth - 30)
     vaultYOffset = vaultYOffset - 12
     vaultYOffset = CreateSliderWidget(vaultSection.content, {
-        name = "Button Opacity",
-        desc = "Adjust the vault button opacity when it is visible.",
+        name = GetLocalizedText("CONFIG_VAULT_BUTTON_OPACITY", "Button Opacity"),
+        desc = GetLocalizedText("CONFIG_VAULT_BUTTON_OPACITY_DESC", "Adjust the vault button opacity when it is visible."),
         min = 0.2,
         max = 1.0,
         step = 0.05,
@@ -2885,9 +2882,6 @@ local function BuildSettings(parent, containerWidth)
             end
             -- Defer RefreshUI after font warm-up completes (0.3s accounts for warm-up + GPU rasterization)
             C_Timer.After(0.3, function()
-                if WarbandNexus and WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
                 -- Rebuild settings window if open (after font fully applied)
                 C_Timer.After(0.1, function()
                     if settingsFrame and settingsFrame:IsShown() then

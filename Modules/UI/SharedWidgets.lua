@@ -416,7 +416,7 @@ local function RefreshColors()
         WarbandNexus:RefreshNotificationColors()
     end
     
-    -- Update all accent-colored FontStrings (BEFORE RefreshUI to avoid reload issues)
+    -- Update all accent-colored FontStrings (before main-window redraw to avoid reload issues)
     if ns.FontManager and ns.FontManager.RefreshAccentColors then
         ns.FontManager:RefreshAccentColors()
     end
@@ -442,8 +442,8 @@ local function RefreshColors()
         end
         
         -- Refresh content to update dynamic elements (moved AFTER RefreshAccentColors)
-        if f:IsShown() and WarbandNexus.RefreshUI then
-            WarbandNexus:RefreshUI()
+        if f:IsShown() and WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
         end
     end
 end
@@ -3930,10 +3930,6 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local count = tonumber(rawCount)
         if count and count >= 0 and WarbandNexus and WarbandNexus.SetTryCount and popup._wnTryType and popup._wnTryID then
             WarbandNexus:SetTryCount(popup._wnTryType, popup._wnTryID, count)
-            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
-            if WarbandNexus and WarbandNexus.SendMessage then
-                WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "try_count_set" })
-            end
         end
         popup:Hide()
     end)
@@ -5880,7 +5876,7 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
 
-        local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local title = FontManager and FontManager:CreateFontString(f, "small", "OVERLAY") or f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         title:SetPoint("TOPLEFT", 10, -8)
         title:SetText(
             "|cffffcc00" .. ((ns.L and ns.L["WOWHEAD_LABEL"]) or "Wowhead") .. "|r  |cff888888"
@@ -5888,12 +5884,16 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
         )
         f._title = title
 
-        local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        local closeBtn = self:CreateButton(f, 20, 20, true) or CreateFrame("Button", nil, f)
         closeBtn:SetSize(20, 20)
         closeBtn:SetPoint("TOPRIGHT", -2, -2)
+        local closeLbl = FontManager and FontManager:CreateFontString(closeBtn, "body", "OVERLAY") or closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        closeLbl:SetPoint("CENTER")
+        closeLbl:SetText("x")
+        closeLbl:SetTextColor(0.9, 0.9, 0.9)
         closeBtn:SetScript("OnClick", function() f:Hide() end)
 
-        local editBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+        local editBox = self:CreateEditBox(f) or CreateFrame("EditBox", nil, f)
         editBox:SetSize(336, 22)
         editBox:SetPoint("BOTTOMLEFT", 12, 8)
         editBox:SetAutoFocus(false)

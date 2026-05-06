@@ -1548,6 +1548,18 @@ function WarbandNexus:CreateMainWindow()
         SchedulePopulateContent(true)
     end)
 
+    -- Pure UI state (sub-tab switches, expand/collapse, column pickers, theme accent): coalesced rebuild.
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, function(_, payload)
+        if not f or not f:IsShown() then return end
+        local tab = payload and payload.tab
+        if tab and f.currentTab ~= tab then return end
+        local skipCooldown = true
+        if payload and payload.skipCooldown == false then
+            skipCooldown = false
+        end
+        SchedulePopulateContent(skipCooldown)
+    end)
+
     -- Gold management edits + bank money log: chars tab gold cards / popup.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.GOLD_MANAGEMENT_CHANGED, function()
         if f and f:IsShown() and f.currentTab == "chars" then

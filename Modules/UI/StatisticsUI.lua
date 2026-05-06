@@ -44,31 +44,14 @@ function WarbandNexus:InitializeStatisticsUI()
         
         -- Only refresh if Statistics tab is currently active
         if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
-            if self.RefreshUI then
-                self:RefreshUI()
+            if self.SendMessage then
+                self:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
                 DebugPrint("|cff00ff00[WN StatisticsUI]|r UI refreshed after collection update")
             end
         end
     end)
     
-    -- Register for character data updates (played time, gold, etc.)
-    -- NOTE: Do NOT invalidate collection stats cache here — WN_CHARACTER_UPDATED fires for
-    -- gold, zone, ilvl, spec changes which don't affect mount/pet/toy counts.
-    -- Collection stats are only invalidated by WN_COLLECTION_UPDATED (above).
-    -- Invalidating here caused GetCachedCollectionStats to rebuild (1000+ API calls) on every
-    -- character event, causing severe performance issues.
-    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.CHARACTER_UPDATED, function(event, payload)
-        DebugPrint("|cff9370DB[WN StatisticsUI]|r Character updated event received")
-        
-        -- Only refresh if Statistics tab is currently active
-        -- (Gold totals, played time etc. come from DB, not from collection API)
-        if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
-            if self.RefreshUI then
-                self:RefreshUI()
-                DebugPrint("|cff00ff00[WN StatisticsUI]|r UI refreshed after character update")
-            end
-        end
-    end)
+    -- CHARACTER_UPDATED refresh is centralized in UI.lua for stats tab.
     
     -- Event listeners initialized (verbose logging removed)
 end
@@ -514,7 +497,7 @@ function WarbandNexus:DrawStatistics(parent)
             
             expandBtn:SetScript("OnClick", function()
                 ns._statisticsExpandedStates["warbandWealth"] = not isGoldExpanded
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
             end)
             
             if not isGoldExpanded then
@@ -533,7 +516,7 @@ function WarbandNexus:DrawStatistics(parent)
             goldCard:SetScript("OnMouseDown", function(self, button)
                 if button == "LeftButton" then
                     ns._statisticsExpandedStates["warbandWealth"] = not isGoldExpanded
-                    if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
                 end
             end)
         end
@@ -668,7 +651,7 @@ function WarbandNexus:DrawStatistics(parent)
         end)
         fmtBtn:SetScript("OnClick", function()
             ns._statisticsExpandedStates["mostPlayedSteamMode"] = not steamMode
-            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
         end)
 
         -- ── Total played time at top-right (full format for header) ──
@@ -748,9 +731,7 @@ function WarbandNexus:DrawStatistics(parent)
             
             expandBtn:SetScript("OnClick", function()
                 ns._statisticsExpandedStates["mostPlayed"] = not isExpanded
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
             end)
             
             -- "X more characters" text anchored to button (vertically centered)
@@ -771,9 +752,7 @@ function WarbandNexus:DrawStatistics(parent)
             mpCard:SetScript("OnMouseDown", function(self, button)
                 if button == "LeftButton" then
                     ns._statisticsExpandedStates["mostPlayed"] = not isExpanded
-                    if WarbandNexus.RefreshUI then
-                        WarbandNexus:RefreshUI()
-                    end
+                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
                 end
             end)
         end

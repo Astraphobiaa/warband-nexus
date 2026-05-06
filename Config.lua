@@ -24,9 +24,7 @@ local function CreateModuleToggleHandler(moduleName)
     return function(_, value)
         WarbandNexus.db.profile.modulesEnabled[moduleName] = value
         WarbandNexus:SendMessage(E.MODULE_TOGGLED, moduleName, value)
-        if WarbandNexus.RefreshUI then
-            WarbandNexus:RefreshUI()
-        end
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
     end
 end
 
@@ -265,9 +263,7 @@ local options = {
             get = function() return WarbandNexus.db.profile.showItemCount end,
             set = function(_, value)
                 WarbandNexus.db.profile.showItemCount = value
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
             end,
         },
         recipeCompanionEnabled = {
@@ -582,9 +578,6 @@ local options = {
                 if WarbandNexus.ResetCompletedPlans then
                     local count = WarbandNexus:ResetCompletedPlans()
                     WarbandNexus:Print(string.format((ns.L and ns.L["CONFIG_RESET_PLANS_FORMAT"]) or "Removed %d completed plan(s).", count))
-                    if WarbandNexus.RefreshUI then
-                        WarbandNexus:RefreshUI()
-                    end
                 end
             end,
         },
@@ -738,9 +731,6 @@ local options = {
                         WarbandNexus.selectedCharacterToDelete = nil
                         local AceConfigRegistry = LibStub("AceConfigRegistry-3.0")
                         AceConfigRegistry:NotifyChange("Warband Nexus")
-                        if WarbandNexus.RefreshUI then
-                            WarbandNexus:RefreshUI()
-                        end
                     else
                         WarbandNexus:Print("|cffff0000Failed to delete character. Character may not exist.|r")
                     end
@@ -791,12 +781,6 @@ local options = {
                 if ns.FontManager and ns.FontManager.RefreshAllFonts then
                     ns.FontManager:RefreshAllFonts()
                 end
-                -- Defer RefreshUI after font warm-up completes
-                C_Timer.After(0.3, function()
-                    if WarbandNexus and WarbandNexus.RefreshUI then
-                        WarbandNexus:RefreshUI()
-                    end
-                end)
             end,
         },
         fontScale = {

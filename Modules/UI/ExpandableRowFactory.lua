@@ -86,9 +86,17 @@ local function CreateDetailsFrame(row, parentFrame, options)
         local P = ns.PLAN_UI_COLORS or {}
         infoText:SetText((P.infoLabel or "|cff88ff88") .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r " .. data.information)
         infoText:SetWordWrap(true)
+        infoText:SetNonSpaceWrap(false)
         infoText:SetSpacing(2)
-        
+
+        -- Force explicit width so GetStringHeight() returns the wrapped height in the same frame
+        -- (anchor-derived width is lazy and would yield a single-line height, causing the next
+        -- section to overlap until something triggers a re-layout — observed during scroll).
+        local rowW = (row and row:GetWidth()) or (parentFrame and parentFrame:GetWidth()) or 380
+        infoText:SetWidth(math.max(60, rowW - leftMargin - rightMargin))
+
         local textHeight = infoText:GetStringHeight()
+        if not textHeight or textHeight < 14 then textHeight = 14 end
         yOffset = yOffset - textHeight - sectionSpacing - 4
     end
     
@@ -132,9 +140,15 @@ local function CreateDetailsFrame(row, parentFrame, options)
         criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
         criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
         criteriaHeader:SetJustifyH("LEFT")
+        criteriaHeader:SetWordWrap(true)
+        criteriaHeader:SetNonSpaceWrap(false)
         criteriaHeader:SetText(headerText)
-        
-        yOffset = yOffset - 20
+
+        local crowW = (row and row:GetWidth()) or (parentFrame and parentFrame:GetWidth()) or 380
+        criteriaHeader:SetWidth(math.max(60, crowW - leftMargin - rightMargin))
+        local headerH = criteriaHeader:GetStringHeight()
+        if not headerH or headerH < 16 then headerH = 16 end
+        yOffset = yOffset - headerH - 4
         
         -- Render criteria grid (fixed line height for even two-column alignment, no wrap to avoid "0 / \n1)")
         if #criteriaItems > 0 then
@@ -372,16 +386,37 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         end
     end)
     
-    -- Item Icon (after expand button) - WoW-like smaller
+    -- Item Icon (after expand button) - WoW-like smaller. Supports atlas icons via data.iconIsAtlas.
     if data.icon then
-        local iconFrame = CreateIcon(headerFrame, data.icon, UI_SPACING.HEADER_ICON_SIZE + 4, false, nil, true)
+        local iconFrame = CreateIcon(headerFrame, data.icon, UI_SPACING.HEADER_ICON_SIZE + 4, data.iconIsAtlas == true, nil, true)
         iconFrame:SetPoint("LEFT", 32, 0)
         iconFrame:Show()  -- CRITICAL: Show the row icon!
         row.iconFrame = iconFrame
     end
-    
-    -- Score (for achievements) or Type badge - WoW-like compact
-    if data.score then
+
+    -- Optional small TYPE atlas badge rendered immediately to the LEFT of the title
+    -- (e.g. shield atlas for achievements, dragon-rostrum for mounts). Uses data.typeAtlas.
+    local TYPE_BADGE_SIZE = 14
+    local TYPE_BADGE_GAP = 4
+    local typeBadgeXOffset = 0
+    if data.typeAtlas then
+        local typeBadge = CreateFrame("Frame", nil, headerFrame)
+        typeBadge:SetSize(TYPE_BADGE_SIZE, TYPE_BADGE_SIZE)
+        typeBadge:SetPoint("LEFT", headerFrame, "LEFT", 64, 0)
+        local typeTex = typeBadge:CreateTexture(nil, "OVERLAY")
+        typeTex:SetAllPoints()
+        local ok = pcall(function() typeTex:SetAtlas(data.typeAtlas, false) end)
+        if ok then
+            typeBadge:Show()
+            typeBadgeXOffset = TYPE_BADGE_SIZE + TYPE_BADGE_GAP
+            row.typeBadge = typeBadge
+        else
+            typeBadge:Hide()
+        end
+    end
+
+    -- Score: either inline (legacy) or below the title (data.scoreBelow = true).
+    if data.score and not data.scoreBelow then
         local scoreText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
         scoreText:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", 68, -6)
         scoreText:SetWidth(60)
@@ -391,10 +426,19 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         scoreText:SetText("|cffffd700" .. data.score .. ((ns.L and ns.L["POINTS_SHORT"]) or " pts") .. "|r")
         row.scoreText = scoreText
     end
-    
+
     -- Title: allow 2 lines so long achievement names do not overlap the Track button area
     local titleText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
-    local titleLeft = data.score and 134 or 68
+    local titleLeft
+    if data.scoreBelow then
+        -- Title sits next to the type badge (or icon when no badge); score moves under it.
+        titleLeft = 64 + typeBadgeXOffset
+    elseif data.score then
+        -- Legacy layout: inline score occupies 68..128, title starts after.
+        titleLeft = 134
+    else
+        titleLeft = 64 + typeBadgeXOffset
+    end
     titleText:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", titleLeft, -6)
     titleText:SetPoint("RIGHT", headerFrame, "RIGHT", -90, 0)
     titleText:SetJustifyH("LEFT")
@@ -404,14 +448,27 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     titleText:SetNonSpaceWrap(false)
     titleText:SetText("|cffffffff" .. (data.title or (ns.L["UNKNOWN"] or "Unknown")) .. "|r")
     row.titleText = titleText
-    
+
+    -- Score-below layout: render points under the title, sharing the title's left margin.
+    if data.score and data.scoreBelow then
+        local scoreText = FontManager:CreateFontString(headerFrame, "small", "OVERLAY")
+        scoreText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -2)
+        scoreText:SetJustifyH("LEFT")
+        scoreText:SetWordWrap(false)
+        scoreText:SetText("|cffffd700" .. data.score .. ((ns.L and ns.L["POINTS_SHORT"]) or " pts") .. "|r")
+        row.scoreText = scoreText
+    end
+
     local function SyncHeaderToTitle()
-        local th = titleText:GetStringHeight()
+        local th = titleText:GetStringHeight() or 14
         local minHeader = rowHeight
-        if data.score and row.scoreText then
+        local extraScoreH = 0
+        if data.score and data.scoreBelow and row.scoreText then
+            extraScoreH = (row.scoreText:GetStringHeight() or 12) + 4
+        elseif data.score and row.scoreText then
             minHeader = math.max(minHeader, row.scoreText:GetStringHeight() + 12)
         end
-        local newH = math.max(minHeader, th + 12)
+        local newH = math.max(minHeader, th + extraScoreH + 12)
         headerFrame:SetHeight(newH)
         if row.detailsFrame and row.detailsFrame:IsShown() then
             row:SetHeight(headerFrame:GetHeight() + row.detailsFrame:GetHeight())

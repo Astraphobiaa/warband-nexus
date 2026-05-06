@@ -278,6 +278,99 @@ local function GetAchievementDescriptionForRow(plan)
     return ""
 end
 
+--- Resolve parsed sources for a plan using the central WarbandNexus:ParseMultipleSources helper.
+--- Mirrors PlanCardFactory:CreateSourceInfo's data path so tracker rows show the same Drop/Vendor/Quest/Zone breakdown.
+---@param plan table
+---@return table list of { vendor, npc, quest, zone, cost }
+local function ResolveTrackerPlanSources(plan)
+    if not plan then return {} end
+    -- Mount/Pet: resolve placeholder source from API for parity with main UI.
+    if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(plan.source) and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
+        local resolved = WarbandNexus:GetPlanDisplaySource(plan)
+        if resolved and resolved ~= "" then plan.source = resolved end
+    end
+    -- Toy reliability filter (same as main UI).
+    if plan.type == "toy" and plan.itemID and WarbandNexus and WarbandNexus.ResolveCollectionMetadata then
+        local function reliable(s)
+            if WarbandNexus.IsReliableToySource then return WarbandNexus:IsReliableToySource(s) end
+            return s and s ~= ""
+        end
+        if not reliable(plan.source) then
+            local meta = WarbandNexus:ResolveCollectionMetadata("toy", plan.itemID)
+            if meta and reliable(meta.source) then plan.source = meta.source end
+        end
+    end
+    if not plan.source or plan.source == "" or type(plan.source) ~= "string" then return {} end
+    if WarbandNexus and WarbandNexus.ParseMultipleSources then
+        local ok, result = pcall(function() return WarbandNexus:ParseMultipleSources(plan.source) end)
+        if ok and result then return result end
+    end
+    return {}
+end
+
+--- Build a stack of icon+label info rows (Drop/Vendor/Quest/Zone) on a parent frame.
+--- Anchored TOP to whichever is LOWER: topAnchor.BOTTOM or minTopY (negative offset from parent.TOP).
+--- This ensures info rows sit under the portrait icon AND under the name (no overlap with either).
+local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, minTopY)
+    local sources = ResolveTrackerPlanSources(plan)
+    local L = ns.L
+    local P = PLAN_COLORS or {}
+    local labCol = P.sourceLabel or "|cff99ccff"
+    local body = P.body or "|cffffffff"
+    local dim = P.descDim or "|cff888888"
+
+    local rows = {}
+    -- Inline markup matches PlanCardFactory:CreateSourceInfo so the tracker and main UI render
+    -- the Drop/Vendor/Quest/Location lines identically (single source of truth for visuals).
+    local CLASS_ATLAS_MARKUP = "|A:Class:16:16|a"
+    local QUEST_ICON_MARKUP = "|TInterface\\Icons\\INV_Misc_Map_01:16:16:0:0|t"
+    local function addRow(iconMarkup, labelKey, fallback, value, valueColor)
+        if not value or value == "" then return end
+        local label = (L and L[labelKey]) or fallback
+        local fs = FontManager:CreateFontString(parent, "small", "OVERLAY")
+        fs:SetPoint("LEFT", parent, "LEFT", leftX, 0)
+        fs:SetPoint("RIGHT", parent, "RIGHT", -rightInset, 0)
+        if #rows == 0 then
+            -- First row: anchor to absolute Y (below portrait icon AND below name) so it never
+            -- overlaps with header content regardless of which is taller.
+            fs:SetPoint("TOPLEFT", parent, "TOPLEFT", leftX, minTopY or -32)
+            fs:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightInset, minTopY or -32)
+        else
+            fs:SetPoint("TOP", rows[#rows], "BOTTOM", 0, -2)
+        end
+        fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(true)
+        fs:SetMaxLines(2)
+        fs:SetNonSpaceWrap(false)
+        fs:SetText((iconMarkup or "") .. " " .. labCol .. label .. "|r " .. (valueColor or body) .. tostring(value) .. "|r")
+        rows[#rows + 1] = fs
+    end
+
+    -- Use the first parsed source block (compact tracker view); main UI shows all when expanded.
+    local first = sources and sources[1]
+    if first then
+        if first.vendor then
+            addRow(CLASS_ATLAS_MARKUP, "VENDOR_LABEL", "Vendor:", first.vendor)
+        elseif first.npc then
+            addRow(CLASS_ATLAS_MARKUP, "DROP_LABEL", "Drop:", first.npc)
+        elseif first.quest then
+            addRow(QUEST_ICON_MARKUP, "QUEST_LABEL", "Quest:", first.quest)
+        end
+        if first.zone then
+            local zoneSuffix = ""
+            if plan.type == "mount" and plan.mountID and WarbandNexus and WarbandNexus.GetDropDifficulty then
+                local diff = WarbandNexus:GetDropDifficulty("mount", plan.mountID)
+                if diff and not first.zone:find("(" .. diff .. ")", 1, true) then
+                    zoneSuffix = " " .. body .. "(" .. diff .. ")|r"
+                end
+            end
+            addRow(CLASS_ATLAS_MARKUP, "LOCATION_LABEL", "Location:", first.zone .. zoneSuffix)
+        end
+    end
+
+    return rows
+end
+
 --- Full tooltip for plan card hover (uses addon's custom TooltipService)
 local function ShowPlanTooltip(anchor, plan, isExpanded)
     local TooltipService = ns.TooltipService
@@ -288,6 +381,15 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
     local iconIsAtlas = ns.Utilities:IsAtlasName(planIcon)
 
     local lines = {}
+
+    -- Achievement points (right under the title) — pulled from live API, not duplicated state.
+    if plan.type == "achievement" and plan.achievementID then
+        local ok, _, _, points = pcall(GetAchievementInfo, plan.achievementID)
+        if ok and points and points > 0 then
+            local pointsLabel = (ns.L and ns.L["POINTS_LABEL"]) or "Points"
+            lines[#lines + 1] = { left = pointsLabel .. ":", right = tostring(points), leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.85, 0.45} }
+        end
+    end
 
     -- Description (custom plan note / achievement description)
     local desc = plan.description or plan.note or ""
@@ -490,9 +592,16 @@ local function RefreshTrackerContentImmediate()
                 if infoText == "" then infoText = GetPlanDescription(plan) end
                 if infoText ~= "" then infoText = "|cff99ccff" .. infoText .. "|r" end
                 local requirementsText = GetAchievementRequirementsText(plan.achievementID)
+                -- Border-framed collectible icon stays as the achievement portrait. The TYPE atlas
+                -- (shield) is rendered separately as a small badge before the name (handled below
+                -- by ExpandableRow via data.typeAtlas). Score moves under the title (data.scoreBelow).
+                local PCF = ns.UI_PlanCardFactory
+                local achAtlas = PCF and PCF.TYPE_ICONS and PCF.TYPE_ICONS.achievement or "UI-Achievement-Shield-NoPoints"
                 local rowData = {
                     icon = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.icon or "Interface\\Icons\\Achievement_Quests_Completed_08",
+                    typeAtlas = achAtlas,
                     score = plan.points,
+                    scoreBelow = true,
                     title = FormatTextNumbers((WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement")),
                     information = infoText,
                     criteria = requirementsText,
@@ -783,6 +892,8 @@ local function RefreshTrackerContentImmediate()
                 end
                 AddTrackerCardAccent(card)
 
+                -- Border-framed icon stays as the resolved collectible portrait (mount / toy / pet / etc.).
+                -- The TYPE atlas is rendered separately, between this icon and the name (see below).
                 local iconTexture = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.iconAtlas or plan.icon or PLAN_TYPE_FALLBACK_ICONS[plan.type]
                 local iconIsAtlas = false
                 if type(iconTexture) == "number" then
@@ -875,21 +986,54 @@ local function RefreshTrackerContentImmediate()
                 local textW = colWidth - textX - rightOffset - PADDING
                 if textW < 48 then textW = math.max(40, colWidth - textX - PADDING - 8) end
 
+                -- Reserve right-edge column for Tries (anchored to card TOPRIGHT, same vertical as delete button).
                 local TRY_ROW_W = 78
+                local TRY_ROW_H = 18
                 local tryNameGap = 6
-                local nameRowW = showTryRow and math.max(48, textW - TRY_ROW_W - tryNameGap) or textW
+                local nameRowW = textW
+                if showTryRow then
+                    nameRowW = math.max(48, textW - TRY_ROW_W - tryNameGap)
+                end
 
                 local iconFrame = CreateIcon(card, iconTexture, ICON_SIZE, iconIsAtlas, nil, false)
                 iconFrame:SetPoint("TOPLEFT", card, "TOPLEFT", PADDING, -topPad)
                 iconFrame:SetFrameLevel(card:GetFrameLevel() + 5)
                 iconFrame:Show()
 
+                -- Type atlas badge: small icon (Mount: dragon-rostrum, Toy: CreationCatalyst, etc.)
+                -- rendered immediately to the LEFT of the name. Border-framed collectible icon stays
+                -- on its own; this is a second, smaller indicator that names "what kind of plan" this is.
+                local PCF = ns.UI_PlanCardFactory
+                local typeAtlas = PCF and PCF.TYPE_ICONS and PCF.TYPE_ICONS[plan.type]
+                local TYPE_BADGE_SIZE = 14
+                local TYPE_BADGE_GAP = 4
+                local nameLeftX = textX
+                local typeBadgeFrame
+                if typeAtlas then
+                    typeBadgeFrame = Factory:CreateContainer(card, TYPE_BADGE_SIZE, TYPE_BADGE_SIZE)
+                    typeBadgeFrame:SetPoint("TOPLEFT", card, "TOPLEFT", textX, -topPad - 2)
+                    typeBadgeFrame:EnableMouse(false)
+                    local typeTex = typeBadgeFrame:CreateTexture(nil, "OVERLAY")
+                    typeTex:SetAllPoints()
+                    local ok = pcall(function() typeTex:SetAtlas(typeAtlas, false) end)
+                    if ok then
+                        typeBadgeFrame:Show()
+                        nameLeftX = textX + TYPE_BADGE_SIZE + TYPE_BADGE_GAP
+                    else
+                        typeBadgeFrame:Hide()
+                        typeBadgeFrame = nil
+                    end
+                end
+
                 local unknownName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
                 local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or unknownName
 
+                local effectiveNameRowW = nameRowW - (typeBadgeFrame and (TYPE_BADGE_SIZE + TYPE_BADGE_GAP) or 0)
+                if effectiveNameRowW < 48 then effectiveNameRowW = 48 end
+
                 local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
-                nameText:SetWidth(nameRowW)
-                nameText:SetPoint("TOPLEFT", card, "TOPLEFT", textX, -topPad)
+                nameText:SetWidth(effectiveNameRowW)
+                nameText:SetPoint("TOPLEFT", card, "TOPLEFT", nameLeftX, -topPad)
                 nameText:SetJustifyH("LEFT")
                 nameText:SetJustifyV("TOP")
                 nameText:SetWordWrap(true)
@@ -897,17 +1041,38 @@ local function RefreshTrackerContentImmediate()
                 nameText:SetNonSpaceWrap(false)
                 nameText:SetText("|cffffffff" .. FormatTextNumbers(resolvedName) .. "|r")
 
-                local descText = FontManager:CreateFontString(card, "small", "OVERLAY")
-                descText:SetWidth(textW)
-                descText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -5)
-                descText:SetJustifyH("LEFT")
-                descText:SetJustifyV("TOP")
-                descText:SetWordWrap(true)
-                descText:SetMaxLines(2)
-                descText:SetNonSpaceWrap(false)
-                descText:SetText(GetPlanDescriptionFormatted(plan))
+                local typeBadge, typeIconFrame = nil, typeBadgeFrame
+                local descTopAnchor = nameText
+                -- Info rows (Drop / Vendor / Quest / Location) start at PADDING — aligned with the
+                -- LEFT EDGE of the portrait icon. The minTopY ensures rows sit BELOW the portrait
+                -- icon's bottom edge as well, so they never overlap with the icon when the name
+                -- column happens to be shorter than the icon column. Same data pipeline as the main UI.
+                local portraitBottomY = -(topPad + ICON_SIZE + 4)
+                local infoRows = BuildPlanInfoRows(card, plan, descTopAnchor, PADDING, PADDING, portraitBottomY)
+                local lastBlockBottom = (#infoRows > 0 and infoRows[#infoRows]) or descTopAnchor
+                local infoRowsH = 0
+                for _, fs in ipairs(infoRows) do
+                    infoRowsH = infoRowsH + math.max(fs:GetStringHeight() or 14, 14) + 2
+                end
 
-                local lastBlockBottom = descText
+                -- Achievement plans (and any plan with no parseable source) keep a single description line as fallback.
+                local descText
+                if #infoRows == 0 then
+                    descText = FontManager:CreateFontString(card, "small", "OVERLAY")
+                    -- Fallback description aligns with the portrait icon's left edge, matching info-row layout.
+                    descText:SetPoint("TOP", descTopAnchor, "BOTTOM", 0, -5)
+                    descText:SetPoint("LEFT", card, "LEFT", PADDING, 0)
+                    descText:SetPoint("RIGHT", card, "RIGHT", -PADDING, 0)
+                    descText:SetWidth(math.max(60, colWidth - 2 * PADDING))
+                    descText:SetJustifyH("LEFT")
+                    descText:SetJustifyV("TOP")
+                    descText:SetWordWrap(true)
+                    descText:SetMaxLines(2)
+                    descText:SetNonSpaceWrap(false)
+                    descText:SetText(GetPlanDescriptionFormatted(plan))
+                    lastBlockBottom = descText
+                end
+
                 local extraFooterH = 0
 
                 if plan.type == "custom" and plan.resetCycle and plan.resetCycle.enabled then
@@ -941,20 +1106,23 @@ local function RefreshTrackerContentImmediate()
                 if showTryRow then
                     local disp = resolvedName
                     local tryRow = Factory:CreateTryCountClickable(card, {
-                        height = 18,
+                        height = TRY_ROW_H,
                         frameLevelOffset = 15,
                         showTooltip = true,
                         popupOnRightClick = false,
                     })
-                    tryRow:SetSize(TRY_ROW_W, 18)
-                    -- Same row as name, to the right of the mount/item title
-                    tryRow:SetPoint("TOPLEFT", nameText, "TOPRIGHT", tryNameGap, 0)
+                    tryRow:SetSize(TRY_ROW_W, TRY_ROW_H)
+                    -- Tries sits on the same horizontal row as the delete button, immediately to its left.
+                    -- Vertical center is matched by using the same Y offset (-ACTION_MARGIN) as the delete button anchor.
+                    tryRow:ClearAllPoints()
+                    tryRow:SetPoint("TOPRIGHT", card, "TOPRIGHT", -rightOffset, -ACTION_MARGIN)
                     tryRow:WnUpdateTryCount(plan.type, collectibleID, disp)
                 end
 
-                local nh = nameText:GetStringHeight()
-                local dh = descText:GetStringHeight()
-                local contentH = topPad + math.max(nh, showTryRow and 18 or 0) + 5 + dh + extraFooterH + 10
+                local nh = nameText:GetStringHeight() or 14
+                local typeBadgeH = (typeIconFrame or typeBadge) and (14 + 2) or 0
+                local bodyH = (#infoRows > 0) and infoRowsH or ((descText and descText:GetStringHeight()) or 14)
+                local contentH = topPad + math.max(nh, showTryRow and TRY_ROW_H or 0) + typeBadgeH + 5 + bodyH + extraFooterH + 10
                 local cardH = math.max(MIN_GRID_CARD_H, math.max(ICON_SIZE + topPad + 8, contentH))
                 card:SetHeight(cardH)
 

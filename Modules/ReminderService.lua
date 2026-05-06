@@ -756,13 +756,11 @@ function WarbandNexus:ShowSetAlertDialog(planID)
         self:SetPlanReminder(f._currentPlanID, settings)
         
         f:Hide()
-        if self.RefreshUI then self:RefreshUI() end
     end)
     
     f.removeBtn:SetScript("OnClick", function()
         self:RemovePlanReminder(f._currentPlanID)
         f:Hide()
-        if self.RefreshUI then self:RefreshUI() end
     end)
     
     f:Show()

@@ -4270,6 +4270,23 @@ local function RecentEntryNameMatches(e, qlower)
     return SafeLower(nm):find(qlower, 1, true) ~= nil
 end
 
+-- Strip legacy "Name — Realm" payloads for Recent display (realm-free; matches CollectiblePayloadObtainedBy).
+local UTF8_EM_DASH = "\226\128\148"
+local function RecentCharacterLabelForDisplay(ob)
+    if not ob or ob == "" then return nil end
+    if issecretvalue and issecretvalue(ob) then return nil end
+    local emSep = " " .. UTF8_EM_DASH .. " "
+    local cut = ob:find(emSep, 1, true)
+    if cut then
+        return ob:sub(1, cut - 1)
+    end
+    cut = ob:find(" - ", 1, true)
+    if cut then
+        return ob:sub(1, cut - 1)
+    end
+    return ob
+end
+
 ---@param maxN number|nil nil = all matches within DB (retention-pruned list)
 local function RecentPickForType(db, typ, qlower, maxN)
     local out = {}
@@ -4343,7 +4360,7 @@ local function RecentRowNavigateToEntry(ctype, id)
     else
         return
     end
-    if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+    WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "collections", skipCooldown = true })
 end
 
 local function DrawRecentContent(contentFrame)
@@ -4471,20 +4488,32 @@ local function DrawRecentContent(contentFrame)
     local cardW = (innerW - 3 * gap) / 4
     local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 6
     local listTopPad = headerBand + 4
-    local rowStride = ROW_HEIGHT + 2
 
     local pickedLists = {}
-    local maxCount = 1
     for si = 1, #RECENT_SECTION_ORDER do
-        local typ = RECENT_SECTION_ORDER[si]
-        local picked = RecentPickForType(db, typ, qlower, nil)
-        pickedLists[si] = picked
-        local c = #picked
-        if c == 0 then c = 1 end
-        if c > maxCount then maxCount = c end
+        pickedLists[si] = RecentPickForType(db, RECENT_SECTION_ORDER[si], qlower, nil)
     end
 
-    local cardH = math.max(160, listTopPad + maxCount * rowStride + RECENT_CARD_HEADER_PAD)
+    -- Cards fill the full available panel height; each card has its own internal scroll.
+    local availableH = math.max(160, (innerCh or ch) - 2 * inset)
+    local cardH = availableH
+
+    -- Resolve class color for a character name by scanning the warband DB. Returns hex prefix or default gray.
+    local function ResolveCharacterClassColor(name)
+        if not name or name == "" then return "|cffaaaaaa" end
+        local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+        if type(chars) == "table" then
+            for _, charData in pairs(chars) do
+                if type(charData) == "table" and charData.name == name and charData.class then
+                    local c = C_ClassColor and C_ClassColor.GetClassColor(charData.class)
+                    if c then
+                        return string.format("|cff%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255)
+                    end
+                end
+            end
+        end
+        return "|cffaaaaaa"
+    end
 
     local rowVisualIndex = 0
     for si = 1, #RECENT_SECTION_ORDER do
@@ -4499,7 +4528,7 @@ local function DrawRecentContent(contentFrame)
 
         local card = CreateCard(sch, cardH)
         card:SetParent(sch)
-        card:SetWidth(cardW)
+        card:SetSize(cardW, cardH)
         card:SetPoint("TOPLEFT", sch, "TOPLEFT", inset + (si - 1) * (cardW + gap), -inset)
         card:Show()
 
@@ -4516,24 +4545,41 @@ local function DrawRecentContent(contentFrame)
         titleFs:SetText(cat)
         titleFs:SetTextColor(1, 0.85, 0.45, 1)
 
+        -- Per-card scroll: fills body area below the header; uses central themed scrollbar (Factory:CreateScrollFrame).
+        local cardScroll = Factory:CreateScrollFrame(card, "UIPanelScrollFrameTemplate", true)
+        cardScroll:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD, -listTopPad)
+        cardScroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -RECENT_CARD_HEADER_PAD, RECENT_CARD_HEADER_PAD)
+        EnableStandardScrollWheel(cardScroll)
         local listWInner = math.max(1, cardW - RECENT_CARD_HEADER_PAD * 2)
-        local yList = listTopPad
+        local cardScrollChild = CreateStandardScrollChild(cardScroll, listWInner, 1)
 
-        local function addRow(iconPath, nameRich, rightTime, clickable, onClick)
+        local yList = 0
+        local function addRow(iconPath, nameRich, rightTime, clickable, onClick, tooltipBuilder)
             rowVisualIndex = rowVisualIndex + 1
-            local row = Factory:CreateCollectionListRow(card, ROW_HEIGHT)
-            row:SetParent(card)
+            local row = Factory:CreateCollectionListRow(cardScrollChild, ROW_HEIGHT)
+            row:SetParent(cardScrollChild)
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD, -yList)
+            row:SetPoint("TOPLEFT", cardScrollChild, "TOPLEFT", 0, -yList)
             row:SetWidth(listWInner)
             Factory:ApplyCollectionListRowContent(row, rowVisualIndex, iconPath, nameRich, clickable, false, onClick, rightTime)
+            if tooltipBuilder then
+                row:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    tooltipBuilder(GameTooltip)
+                    GameTooltip:Show()
+                end)
+                row:SetScript("OnLeave", GameTooltip_Hide)
+            else
+                row:SetScript("OnEnter", nil)
+                row:SetScript("OnLeave", nil)
+            end
             yList = yList + ROW_HEIGHT + 2
         end
 
         if qlower and #picked == 0 then
-            addRow(defaultEmptyIcon, "|cff888888" .. searchEmptyTxt .. "|r", nil, false, nil)
+            addRow(defaultEmptyIcon, "|cff888888" .. searchEmptyTxt .. "|r", nil, false, nil, nil)
         elseif #picked == 0 then
-            addRow(defaultEmptyIcon, "|cff888888" .. noneLine .. "|r", nil, false, nil)
+            addRow(defaultEmptyIcon, "|cff888888" .. noneLine .. "|r", nil, false, nil, nil)
         else
             for j = 1, #picked do
                 local e = picked[j]
@@ -4543,11 +4589,47 @@ local function DrawRecentContent(contentFrame)
                 end
                 local rel = FormatCollectionsRecentRelativeTime(e.t)
                 local iconPath = GetRecentEntryDisplayIcon(typ, e.id)
-                local idCopy, typCopy = e.id, typ
-                addRow(iconPath, COLLECTED_COLOR .. nm .. "|r", "|cff888888" .. rel .. "|r", true, function()
+                local idCopy, typCopy, tsCopy, nmCopy = e.id, typ, e.t, nm
+                local ob = RecentCharacterLabelForDisplay(e.obtainedBy)
+                local nameRich = COLLECTED_COLOR .. nm .. "|r"
+
+                local function buildTooltip(tt)
+                    -- Midnight: GameTooltip:SetText(text [, color, alpha, wrap]) — do not pass legacy r,g,b,wrap four floats.
+                    tt:SetText("|cffffd133" .. nmCopy .. "|r")
+                    tt:AddLine(cat, 0.7, 0.7, 0.7, false)
+                    if typCopy == "achievement" and idCopy then
+                        local ok, _, _, points, completed = pcall(GetAchievementInfo, idCopy)
+                        if ok and points and points > 0 then
+                            tt:AddLine(string.format("%d %s", points, (loc and loc["POINTS_LABEL"]) or "Points"), 1, 0.85, 0.45)
+                        end
+                        if ok and completed then
+                            tt:AddLine((loc and loc["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"]) or "Completed.", 0.4, 1, 0.4)
+                        end
+                    end
+                    if ob and ob ~= "" then
+                        local cc = ResolveCharacterClassColor(ob)
+                        tt:AddLine(" ", 1, 1, 1)
+                        local fmtKey = (typCopy == "achievement") and "RECENT_TOOLTIP_ACHIEVEMENT_EARNED_BY" or "RECENT_TOOLTIP_EARNED_BY"
+                        local fmt = (loc and loc[fmtKey]) or ((typCopy == "achievement") and "This achievement was earned by %s" or "Obtained by %s")
+                        tt:AddLine(string.format(fmt, cc .. ob .. "|r"), 0.85, 0.85, 0.85, false)
+                    end
+                    if tsCopy and tsCopy > 0 then
+                        local abs = date("%Y-%m-%d %H:%M", tsCopy)
+                        tt:AddLine(string.format("%s  |cff888888(%s)|r", abs, rel), 0.7, 0.7, 0.7, false)
+                    elseif rel and rel ~= "" then
+                        tt:AddLine(rel, 0.7, 0.7, 0.7, false)
+                    end
+                end
+
+                addRow(iconPath, nameRich, "|cff888888" .. rel .. "|r", true, function()
                     RecentRowNavigateToEntry(typCopy, idCopy)
-                end)
+                end, buildTooltip)
             end
+        end
+
+        cardScrollChild:SetHeight(math.max(yList, 1))
+        if Factory.UpdateScrollBarVisibility then
+            Factory:UpdateScrollBarVisibility(cardScroll)
         end
     end
 

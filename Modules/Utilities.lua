@@ -87,6 +87,37 @@ function Utilities:FormatRealmName(realm)
     return realm:gsub("(%l)(%u)", "%1 %2")
 end
 
+--- Display label for the current logged-in character (collectible toasts / Recent obtains).
+--- Uses the same realm normalization as GetCharacterKey; realm is shown with FormatRealmName spacing.
+---@return string|nil "Name — Realm" style, or name-only, or nil if unavailable / secret
+function Utilities:GetCurrentCharacterDisplayLabel()
+    local name = UnitName("player")
+    if not name or name == "" or (issecretvalue and issecretvalue(name)) then return nil end
+    local realm
+    if GetNormalizedRealmName then
+        local norm = GetNormalizedRealmName()
+        if type(norm) == "string" and norm ~= "" and not (issecretvalue and issecretvalue(norm)) then
+            realm = norm
+        end
+    end
+    if not realm or realm == "" then
+        if GetRealmName then
+            local r = GetRealmName()
+            if type(r) == "string" and r ~= "" and not (issecretvalue and issecretvalue(r)) then
+                realm = r
+            end
+        end
+    end
+    if realm and realm ~= "" then
+        local pretty = self:FormatRealmName(realm)
+        if pretty and pretty ~= "" then
+            return name .. " — " .. pretty
+        end
+        return name .. " — " .. realm
+    end
+    return name
+end
+
 --============================================================================
 -- MODULE CHECKS
 --============================================================================

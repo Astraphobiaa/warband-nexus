@@ -1038,6 +1038,7 @@ L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d ?? ?????"
 L["COLLECTIONS_ACQUIRED_LABEL"] = "?????????????"
 L["COLLECTIONS_ACQUIRED_LINE"] = "%s: %s"
 L["COLLECTIONS_RECENT_TAB_EMPTY"] = "???? ?????? ?? ?????????????."
+L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
 L["COLLECTIONS_RECENT_EMPTY"] = "???? ?????? ?? ?????????????."
 L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "??? ?????????? ???????."
 L["COLLECTIONS_RECENT_SECTION_NONE"] = "??????? ???? ???."
@@ -1056,6 +1057,10 @@ L["GEAR_STORAGE_BOE"] = "ПпН"
 L["GEAR_STORAGE_WARBOUND"] = "Привязано к группе"
 L["GEAR_STORAGE_TITLE"] = "Рекомендации по улучшениям из хранилища"
 L["GEAR_STORAGE_EMPTY"] = "Не найдено лучших улучшений ПпН / Привязано к группе для этого персонажа."
+L["GEAR_STORAGE_EMPTY_NO_BOE_WOE"] = "Не найдено ПпН или WoE для улучшения в слотах экипировки."
+L["GEAR_SLOT_FALLBACK_FORMAT"] = "Слот %d"
+L["GEAR_ITEM_UPGRADE_RECOMMENDATIONS_TITLE"] = "Рекомендации по улучшению предметов"
+L["ILVL_SHORT_LABEL"] = "Ур. пред."
 L["GEAR_TAB_DESC"] = "Надетое снаряжение, варианты улучшения и кандидаты на улучшение между персонажами"
 L["GEAR_TAB_TITLE"] = "Управление экипировкой"
 L["LT_COLLECTION_DATA"] = "Данные коллекции"
@@ -1104,6 +1109,7 @@ L["PROF_INFO_LOCKED"] = "Заблокировано"
 L["PROF_INFO_UNLEARNED"] = "Не изучено"
 L["NOTIFICATION_FIRST_TRY"] = "Получили с первой попытки!"
 L["NOTIFICATION_GOT_IT_AFTER"] = "Получили после %d попыток!"
+L["NOTIFICATION_COLLECTIBLE_CHARACTER_LINE"] = "Персонаж: %s"
 L["MONEY_LOGS_BTN"] = "Денежный журнал"
 L["MONEY_LOGS_TITLE"] = "Денежный журнал"
 L["MONEY_LOGS_SUMMARY_TITLE"] = "Вклад персонажей"
@@ -1169,6 +1175,12 @@ L["GOLD_MGMT_MODE_SHORT_BOTH"] = "Оба"
 L["COMPLETE_LABEL"] = "Выполнено"
 L["FIRST_CRAFT"] = "Первое создание"
 L["COLUMNS_BUTTON"] = "Столбцы"
+L["HIDE_FILTER_BUTTON"] = "Скрыть"
+L["HIDE_FILTER_LEVEL_80"] = "Уровень 80"
+L["HIDE_FILTER_LEVEL_90"] = "Уровень 90"
+L["HIDE_FILTER_STATE_OFF"] = "Выкл"
+L["HIDE_FILTER_TOOLTIP_TOGGLE"] = "Переключить фильтры: Уровень 80 / Уровень 90"
+L["HIDE_FILTER_TOOLTIP_CURRENT"] = "Текущий: %s"
 
 -- Reminder / Alert System
 L["ALERT_ACTIVE"] = "Оповещение активно"
@@ -1194,6 +1206,24 @@ L["PVE_CREST_HERO"] = "Герой"
 L["PVE_CREST_MYTH"] = "Миф"
 L["PVE_CREST_EXPLORER"] = "Исследователь"
 L["PVE_CREST_VET"] = "Ветеран"
+L["PVE_COL_VAULT_STATUS"] = "Статус Хранилища"
+L["PVE_COL_NEBULOUS_VOIDCORE"] = "Туманное Ядро Бездны"
+L["PVE_COL_DAWNLIGHT_MANAFLUX"] = "Манафлюкс Рассвета"
+L["PVE_HEADER_RAID_SHORT"] = "Рейд"
+L["PVE_HEADER_MAP_SHORT"] = "Карта"
+L["PVE_HEADER_STATUS_SHORT"] = "Статус"
+L["PVE_COMPACT_COFFER_SHARD"] = "Осколок сундука"
+L["PVE_COMPACT_RESTORED"] = "Восстановлено"
+L["PVE_COMPACT_VOIDCORE"] = "Ядро Бездны"
+L["PVE_COMPACT_MANAFLUX"] = "Манафлюкс"
+L["PVE_CREST_GENERIC"] = "Герб"
+L["VAULT_SLOTS_SHORT_FORMAT"] = "%d слота"
+L["PVE_VAULT_SLOT_COMPLETE_FORMAT"] = "Слот %d: |cff80ff80✓|r %s"
+L["PVE_VAULT_SLOT_PROGRESS_FORMAT"] = "Слот %d: |cffff8888%d/%d|r"
+L["PVE_VAULT_SLOT_EMPTY_FORMAT"] = "Слот %d: —"
+L["PVE_VAULT_SLOT_UNLOCKED"] = "Разблокировано"
+L["SHIFT_HINT_SEASON_PROGRESS"] = "Удерживайте Shift для прогресса сезона"
+L["SHIFT_HINT_SEASON_PROGRESS_SHORT"] = "Shift: прогресс сезона"
 
 -- Vault Tooltips
 L["VAULT_BASED_ON_FORMAT"] = "Уровень предмета этой награды будет основан на самом низком из ваших лучших прохождений на этой неделе (%d) (в настоящее время %s)."
@@ -1226,6 +1256,14 @@ L["SHOW_COMPLETED_HELP"] = "Список дел и недельный прогр
 L["SHOW_PLANNED_HELP"] = "Только вкладки обзора (скрыты в списке дел и недельном прогрессе): включено = только цели из вашего списка. С «Показать завершённые» снято: ещё нужно; включено: уже сделано; оба включены: все запланированные в категории; оба сняты: полный обзор неполученного."
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Нет достижений для отображения"
 L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "Добавьте достижения из этого списка в дела или измените «Запланированные / Завершённые». Список заполняется при сканировании; попробуйте /reload, если пусто."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP"] = "|cffccaa00Warband Nexus|r\nНажмите, чтобы добавить это достижение в список дел (как + Добавить)."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_REMOVE"] = "|cffccaa00Warband Nexus|r\nНажмите, чтобы убрать это достижение из списка дел."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMBAT"] = "Недоступно в бою."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"] = "Это достижение уже выполнено."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_IN_PLANS"] = "Уже в списке дел."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_TRACKED"] = "Уже отслеживается (панель отслеживания)."
+L["ACHIEVEMENT_FRAME_WN_ALREADY_PLANNED"] = "Уже в списке дел."
+L["ACHIEVEMENT_FRAME_WN_TRACK_FAILED"] = "Не удалось добавить достижение в отслеживание Blizzard (список заполнен или недоступен)."
 L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"] = "Нечего показывать"
 L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"] = "Нет запланированных записей по текущим фильтрам. Добавьте в список или измените «Запланированные / Завершённые»."
 L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"] = "Нет завершённых записей в списке"
@@ -1305,6 +1343,7 @@ L["SLOT_SHOULDER"] = INVTYPE_SHOULDER or "Shoulder"
 L["SLOT_TABARD"] = INVTYPE_TABARD or "Tabard"
 L["SLOT_WAIST"] = INVTYPE_WAIST or "Waist"
 L["SLOT_WRIST"] = INVTYPE_WRIST or "Wrist"
+L["PROFESSION_SUMMARY_SLOT_ACCESSORY"] = "Аксессуар"
 L["SOURCE_TYPE_ACHIEVEMENT"] = BATTLE_PET_SOURCE_6 or "Achievement"
 L["SOURCE_TYPE_DROP"] = BATTLE_PET_SOURCE_1 or "Drop"
 L["SOURCE_TYPE_IN_GAME_SHOP"] = BATTLE_PET_SOURCE_10 or "In-Game Shop"
@@ -1381,6 +1420,60 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "?????????? ???????? ??? ???????
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
+
+Saved Instances — layout + readability pass
+- Reworked the view into a clean header/row structure: `Instance (Difficulty)` with character progress rows directly underneath.
+- Added per-group collapse/expand controls with larger chevrons and stable collapse state while the window is open.
+- Added fixed right-side columns in headers (character count + progress) for symmetric vertical alignment across all groups.
+- Synced row progress formatting with header progress formatting for consistent numeric alignment.
+
+Saved Instances — theme and typography parity
+- Header and character rows now use outlined borders (theme-colored) for clearer section boundaries.
+- Font rendering now uses the selected addon font through `FontManager` in the Saved Instances surface.
+- Theme refresh now re-renders Saved Instances when open, so color/font changes follow the main addon window immediately.
+
+Saved Instances — scrolling + interaction
+- Switched to the standardized Factory scrollframe + themed scrollbar column used by the main addon UI.
+- Scrollbar visibility now updates automatically based on content size.
+- Resizable window behavior was retained and integrated with content/scroll refresh.
+
+CurseForge: Warband Nexus]=]
+
+
+L["CHANGELOG_V268"] = [=[v2.6.8 (2026-05-04)
+
+Try Counter — architectural overhaul
+- Counting is now event-driven by ENCOUNTER_END (next frame instead of a 5-second wait). Chests, personal-loot bags, and post-cinematic loot can be opened seconds, hours, or days later without re-counting or off-by-one.
+- Stat-backed miss path now prints "N attempts for [item]" — previously the reseed could complete silently and Sylvanas / LFR Jaina kills produced no try-counter line at all.
+- Fixed off-by-one on open-world rare farms: 4 misses followed by a drop on kill 5 now correctly says "after 5 attempts" (was "after 4").
+- Fixed encounter fallback being silently suppressed by unrelated tier-token / currency loot (Anima Vessels, etc.) inside the kill window.
+- Added definitive NEW_MOUNT_ADDED / NEW_PET_ADDED backup so post-cinematic chest grants always emit the correct obtained line, even when the primary loot-window detection misses.
+
+Sylvanas (Sanctum of Domination, Mythic)
+- All client locales now resolve the Sylvanas encounter for Vengeance's Reins try counting. Added a slot-first outcome rule for the Mythic chest so secret-GUID loot is attributed by tracked itemID rather than failing to bind to the kill.
+
+Saved Instances
+- Now lists dungeon lockouts alongside raids: 5-player Normal / Heroic / Mythic / M+ rows surface with their own difficulty pills.
+- Lockouts are filtered by reset time so expired rows no longer linger; collapse state per instance persists across sessions.
+- isRaid is treated as advisory — falls back to DifficultyID + maxPlayers when the value is wrapped or missing in Midnight 12.0 contexts.
+
+Data collection
+- Per-character lockouts capture both raid and dungeon entries (matches the cache pipeline) so the Vault button now reflects everything you're saved to.
+
+CurseForge: Warband Nexus]=]
+
+
+L["CREST_SOURCES_HEADER"] = "Источники:"
+L["CREST_TO_CAP_SUFFIX"] = "до сезонного предела"
+L["GEAR_SECTION_CHARACTER"] = "Персонаж"
+L["SAVED_INSTANCES_RESET_DAYS"] = "%dд"
+L["SAVED_INSTANCES_RESET_HOURS"] = "%dч"
+L["SAVED_INSTANCES_RESET_LESS_HOUR"] = "<1ч"
+L["VAULT_PENDING"] = "Ожидание…"
+L["VAULT_READY_TO_CLAIM"] = "Готово"
+L["VAULT_SLOTS_EARNED"] = "Слоты получены"
+
 L["CHANGELOG_V267"] = [=[v2.6.7 (2026-04-29)
 
 PvE — Great Vault tracker
@@ -1441,6 +1534,31 @@ L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Слоты заработаны"
 
 L["CONFIG_VAULT_BUTTON"] = "Кнопка хранилища"
 L["CONFIG_VAULT_BUTTON_DESC"] = "Показывает перетаскиваемую кнопку хранилища. ЛКМ: открыть/закрыть главное окно; ПКМ: открыть быстрое меню WN."
+L["CONFIG_VAULT_BUTTON_SECTION"] = "Кнопка Хранилища"
+L["CONFIG_VAULT_OPT_ENABLED"] = "Кнопка Хранилища"
+L["CONFIG_VAULT_OPT_ENABLED_DESC"] = "Показывает перетаскиваемую кнопку Великого Хранилища."
+L["CONFIG_VAULT_OPT_MOUSEOVER"] = "Скрывать до наведения"
+L["CONFIG_VAULT_OPT_MOUSEOVER_DESC"] = "Делает кнопку невидимой, пока курсор не наведён на сохранённую позицию."
+L["CONFIG_VAULT_OPT_READY_ONLY"] = "Скрывать до готовой награды"
+L["CONFIG_VAULT_OPT_READY_ONLY_DESC"] = "Показывает кнопку только если хотя бы у одного персонажа есть награда Хранилища к получению."
+L["CONFIG_VAULT_OPT_REALM"] = "Показывать игровые миры"
+L["CONFIG_VAULT_OPT_REALM_DESC"] = "Показывает миры персонажей в таблицах и подсказках кнопки Хранилища."
+L["CONFIG_VAULT_OPT_REWARD_ILVL"] = "Показывать уровень предмета награды"
+L["CONFIG_VAULT_OPT_REWARD_ILVL_DESC"] = "Показывает уровень предмета награды в завершённых слотах вместо значков готовности."
+L["CONFIG_VAULT_COL_RAID"] = "Колонка рейда"
+L["CONFIG_VAULT_COL_RAID_DESC"] = "Показывает прогресс рейдового Хранилища в таблице кнопки."
+L["CONFIG_VAULT_COL_DUNGEON"] = "Колонка подземелий"
+L["CONFIG_VAULT_COL_DUNGEON_DESC"] = "Показывает прогресс эпохальных+ подземелий Хранилища в таблице кнопки."
+L["CONFIG_VAULT_COL_WORLD"] = "Колонка мира"
+L["CONFIG_VAULT_COL_WORLD_DESC"] = "Показывает прогресс мировых заданий Хранилища в таблице кнопки."
+L["CONFIG_VAULT_COL_BOUNTY"] = "Колонка «Награда охотника за сокровищами»"
+L["CONFIG_VAULT_COL_BOUNTY_DESC"] = "Показывает выполнение «Награды охотника за сокровищами» в таблице кнопки."
+L["CONFIG_VAULT_COL_VOIDCORE"] = "Колонка «Туманное Ядро Бездны»"
+L["CONFIG_VAULT_COL_VOIDCORE_DESC"] = "Показывает прогресс «Туманного Ядра Бездны» в таблице кнопки."
+L["CONFIG_VAULT_COL_MANAFLUX"] = "Колонка «Манафлюкс Рассвета»"
+L["CONFIG_VAULT_COL_MANAFLUX_DESC"] = "Показывает валюту «Манафлюкс Рассвета» в таблице кнопки."
+L["CONFIG_VAULT_BUTTON_OPACITY"] = "Прозрачность кнопки"
+L["CONFIG_VAULT_BUTTON_OPACITY_DESC"] = "Настраивает прозрачность кнопки Хранилища, когда она видна."
 L["VAULT_BUTTON_MENU_TITLE"] = "Меню WN"
 L["VAULT_BUTTON_MENU_TRACKER"] = "Трекер хранилища"
 L["VAULT_BUTTON_MENU_SAVED"] = "Сохраненные подземелья"

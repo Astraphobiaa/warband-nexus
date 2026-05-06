@@ -246,6 +246,12 @@ end
 -- Capacity 64: more than enough for rapid loot events without memory growth
 local recentNotifications = CreateRingBuffer(64)
 
+local function CollectiblePayloadObtainedBy()
+    local name = UnitName("player")
+    if not name or name == "" or (issecretvalue and issecretvalue(name)) then return nil end
+    return name
+end
+
 -- Cooldown constants
 local NOTIFICATION_COOLDOWN = 5    -- By type_id: 5 seconds
 local NAME_DEBOUNCE_COOLDOWN = 2   -- By item name: 2 seconds
@@ -1798,7 +1804,8 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
             type = "mount",
             id = mountID,
             name = name,
-            icon = icon
+            icon = icon,
+            obtainedBy = CollectiblePayloadObtainedBy(),
         })
     end
 
@@ -1916,6 +1923,7 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
         MarkAsPermanentlyNotified("pet", speciesID)
 
         self:SendMessage(E.COLLECTIBLE_OBTAINED, {
+            obtainedBy = CollectiblePayloadObtainedBy(),
             type = "pet",
             id = speciesID,
             name = notifyPetName,
@@ -1992,7 +2000,8 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
             type = "toy",
             id = itemID,
             name = name,
-            icon = icon
+            icon = icon,
+            obtainedBy = CollectiblePayloadObtainedBy(),
         })
     end
 
@@ -2069,7 +2078,8 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
                 type = "illusion",
                 id = visualID,
                 name = name,
-                icon = icon
+                icon = icon,
+                obtainedBy = CollectiblePayloadObtainedBy(),
             })
             
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW ILLUSION: " .. name .. " (ID: " .. visualID .. ")")
@@ -2116,12 +2126,29 @@ function WarbandNexus:AppendCollectionsRecentObtained(data)
         displayName = (ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement"
     end
     if not displayName or displayName == "" then return end
+    -- One Recent row per type+id (account-wide collectibles; stops relog/alt duplicate lines).
+    local priorTs = self:GetCollectionsAcquiredAt(data.type, data.id)
+    if priorTs ~= nil then
+        return
+    end
+    for i = 1, #list do
+        local e = list[i]
+        if e and e.type == data.type and e.id == data.id then
+            return
+        end
+    end
     local now = time()
     local first = list[1]
     if first and first.type == data.type and first.id == data.id and (now - (first.t or 0)) < 5 then
         return
     end
-    table.insert(list, 1, { t = now, type = data.type, id = data.id, name = displayName })
+    table.insert(list, 1, {
+        t = now,
+        type = data.type,
+        id = data.id,
+        name = displayName,
+        obtainedBy = data.obtainedBy,
+    })
     self:PruneCollectionsRecentObtained()
 
     local lastRoot = self.db.global.collectionsLastObtained
@@ -2219,7 +2246,9 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
 
     -- Mark as collected in store so Collections UI and GetAllAchievementsData show it as completed
     if not collectionStore.achievement then collectionStore.achievement = {} end
-    local entry = collectionStore.achievement[achievementID]
+    local prevAchEntry = collectionStore.achievement[achievementID]
+    local priorAchievementCollected = prevAchEntry and prevAchEntry.collected == true
+    local entry = prevAchEntry
     if not entry then
         collectionStore.achievement[achievementID] = { collected = true }
     else
@@ -2291,9 +2320,13 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "achievement")
     end
-    -- Always emit achievement collectible message from ACHIEVEMENT_EARNED as a safe fallback.
-    -- If AddAlert hook path also fires, short-term dedupe prevents duplicate handling.
-    if not WasRecentlyNotified("achievement", achievementID) then
+    -- Emit collectible toast only for a genuinely new completion (store already had .collected skips spam).
+    -- AddAlert hook may still run; MarkAsNotified here prevents duplicate toast when priorCollected.
+    if priorAchievementCollected then
+        MarkAsNotified("achievement", achievementID)
+        MarkAsPermanentlyNotified("achievement", achievementID)
+        DebugPrint("|cff888888[WN CollectionService]|r Skip achievement toast (already completed in collection store)")
+    elseif not WasRecentlyNotified("achievement", achievementID) then
         MarkAsNotified("achievement", achievementID)
         local ok, _aid, achName, achPoints, _c, _m, _d, _y, _desc, _flags, achIcon = pcall(GetAchievementInfo, achievementID)
         if not ok then achName = nil; achIcon = nil; achPoints = nil end
@@ -2311,6 +2344,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
             name = displayName,
             icon = displayIcon,
             achievementPoints = (type(achPoints) == "number" and achPoints > 0) and achPoints or nil,
+            obtainedBy = CollectiblePayloadObtainedBy(),
         })
     end
 end
@@ -2342,6 +2376,7 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
         name = displayName,
         icon = displayIcon,
         achievementPoints = (type(achPoints) == "number" and achPoints > 0) and achPoints or nil,
+        obtainedBy = CollectiblePayloadObtainedBy(),
     })
 end
 
@@ -5200,7 +5235,8 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
                         type = collectible.type,
                         id = collectible.collectibleID,
                         name = collectible.itemName,
-                        icon = collectible.icon
+                        icon = collectible.icon,
+                        obtainedBy = CollectiblePayloadObtainedBy(),
                     })
                 end
             else

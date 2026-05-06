@@ -771,6 +771,9 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
                 table.remove(favorites, i)
                 addon:Print("|cffffff00" .. ((ns.L and ns.L["REMOVED_FROM_FAVORITES"]) or "Removed from favorites:") .. "|r " .. characterKey)
                 DebugPrint("|cff00ff00[WN CharacterService]|r Favorite removed")
+                if addon.SendMessage then
+                    addon:SendMessage(E.CHARACTER_UPDATED, { charKey = characterKey, dataType = "favorite" })
+                end
                 break
             end
         end
@@ -780,6 +783,9 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
         table.insert(favorites, characterKey)
         addon:Print("|cffffd700" .. ((ns.L and ns.L["ADDED_TO_FAVORITES"]) or "Added to favorites:") .. "|r " .. characterKey)
         DebugPrint("|cff00ff00[WN CharacterService]|r Favorite added")
+        if addon.SendMessage then
+            addon:SendMessage(E.CHARACTER_UPDATED, { charKey = characterKey, dataType = "favorite" })
+        end
         return true
     end
 end

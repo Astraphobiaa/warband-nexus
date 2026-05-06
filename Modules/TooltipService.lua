@@ -900,30 +900,94 @@ function TooltipService:GetItemTooltipStatLines(itemLink, itemID)
     return out
 end
 
--- Slot name mapping for profession equipment (itemEquipLoc from GetItemInfo)
-local INV_TYPE_TO_LABEL = {
-    INVTYPE_HEAD = "Head",
-    INVTYPE_NECK = "Neck",
-    INVTYPE_SHOULDER = "Shoulder",
-    INVTYPE_CHEST = "Chest",
-    INVTYPE_ROBE = "Chest",
-    INVTYPE_WAIST = "Waist",
-    INVTYPE_LEGS = "Legs",
-    INVTYPE_FEET = "Feet",
-    INVTYPE_WRIST = "Wrist",
-    INVTYPE_HAND = "Hands",
-    INVTYPE_FINGER = "Finger",
-    INVTYPE_TRINKET = "Trinket",
-    INVTYPE_CLOAK = "Back",
-    INVTYPE_WEAPONMAINHAND = "Weapon",
-    INVTYPE_WEAPONOFFHAND = "Off Hand",
-    INVTYPE_HOLDABLE = "Held",
-    INVTYPE_2HWEAPON = "Two-Hand",
-    INVTYPE_PROFESSION_GEAR = nil,  -- resolved from tooltip (Head/Chest/etc.)
-    INVTYPE_PROFESSION_TOOL = "Tool",
-}
--- Tooltip slot patterns (e.g. "Unique-Equipped: Head (1)") when equipLoc is PROFESSION_GEAR
-local TOOLTIP_SLOT_PATTERNS = { "Head", "Chest", "Shoulder", "Hands", "Legs", "Feet", "Waist", "Wrist", "Back", "Neck", "Tool" }
+-- Profession gear: use client FrameXML globals (_G.INVTYPE_*) so slot labels match locale.
+local function GetLocalizedEquipLocLabel(equipLoc)
+    if not equipLoc or equipLoc == "" then return nil end
+    local g = _G[equipLoc]
+    if type(g) == "string" and g ~= "" then return g end
+    return nil
+end
+
+local localizedProfessionSlotPatterns
+local function GetLocalizedProfessionSlotPatterns()
+    if localizedProfessionSlotPatterns then return localizedProfessionSlotPatterns end
+    local keys = {
+        "INVTYPE_WEAPONOFFHAND", "INVTYPE_WEAPONMAINHAND", "INVTYPE_2HWEAPON",
+        "INVTYPE_SHOULDER", "INVTYPE_PROFESSION_TOOL",
+        "INVTYPE_HEAD", "INVTYPE_CHEST", "INVTYPE_ROBE", "INVTYPE_WAIST",
+        "INVTYPE_LEGS", "INVTYPE_FEET", "INVTYPE_WRIST", "INVTYPE_HAND",
+        "INVTYPE_CLOAK", "INVTYPE_NECK", "INVTYPE_FINGER", "INVTYPE_TRINKET",
+        "INVTYPE_HOLDABLE",
+    }
+    local seen = {}
+    local list = {}
+    for i = 1, #keys do
+        local s = _G[keys[i]]
+        if type(s) == "string" and s ~= "" and not seen[s] then
+            seen[s] = true
+            list[#list + 1] = s
+        end
+    end
+    table.sort(list, function(a, b) return #a > #b end)
+    localizedProfessionSlotPatterns = list
+    return list
+end
+
+--- Blizzard global strings use printf tokens (%s, %d). Lua patterns must not treat %s as whitespace:
+--- take the literal prefix before the first '%%' for stable substring matching across locales.
+local function LowerGlobalLocalizedPrefix(globalName)
+    local s = _G[globalName]
+    if type(s) ~= "string" or s == "" then return nil end
+    local plain = s:match("^([^%%]*)") or s
+    plain = plain:match("^%s*(.-)%s*$") or plain
+    if plain == "" or #plain < 4 then return nil end
+    return plain:lower()
+end
+
+local function TooltipCombinedLooksLikeBindingOrUnique(combinedLower)
+    if combinedLower:find("binds when", 1, true) or combinedLower:find("unique%-equipped", 1, true)
+        or combinedLower:find("when equipped", 1, true) then
+        return true
+    end
+    local globalsList = {
+        "ITEM_BIND_ON_EQUIP", "ITEM_BIND_ON_PICKUP", "ITEM_BIND_ON_USE", "ITEM_SOULBOUND",
+        "ITEM_ACCOUNTBOUND", "ITEM_BIND_TO_BNETACCOUNT", "ITEM_BIND_TO_ACCOUNT",
+        "ITEM_UNIQUE_EQUIPPED", "ITEM_UNIQUE",
+    }
+    for i = 1, #globalsList do
+        local p = LowerGlobalLocalizedPrefix(globalsList[i])
+        if p and combinedLower:find(p, 1, true) then return true end
+    end
+    return false
+end
+
+local function TooltipCombinedLooksLikeRequiresLevel(combinedLower)
+    if combinedLower:find("requires level", 1, true) then return true end
+    local p = LowerGlobalLocalizedPrefix("ITEM_MIN_LEVEL")
+        or LowerGlobalLocalizedPrefix("ITEM_MIN_SKILL")
+    if p and combinedLower:find(p, 1, true) then return true end
+    return false
+end
+
+local function TooltipLineLooksLikeItemLevel(left, right)
+    local il = _G.ITEM_LEVEL
+    if type(il) ~= "string" or il == "" then il = "Item Level" end
+    local kw = il:match("^([^%%]+)") or il
+    kw = kw:lower():gsub("^%s+", ""):gsub("%s+$", "")
+    if kw == "" then return false end
+    local l = (left or ""):lower()
+    local r = (right or ""):lower()
+    return (l:find(kw, 1, true) ~= nil) or (r:find(kw, 1, true) ~= nil)
+end
+
+local function TooltipLineLooksLikeProfessionEquipSkill(left)
+    if not left or left == "" or not left:find("^%+%d") then return false end
+    local skillWord = _G.SKILL
+    if type(skillWord) == "string" and skillWord ~= "" then
+        return left:lower():find(skillWord:lower(), 1, true) ~= nil
+    end
+    return left:find("Skill", 1, true) ~= nil
+end
 
 --[[
     Return only item level, stats, and equip-effect lines for profession equipment tooltips.
@@ -935,7 +999,11 @@ local TOOLTIP_SLOT_PATTERNS = { "Head", "Chest", "Shoulder", "Hands", "Legs", "F
 ]]
 function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
     local out = {}
-    local slotLabel = (slotKey == "tool") and "Tool" or "Accessory"
+    local L = ns.L
+    local defaultTool = GetLocalizedEquipLocLabel("INVTYPE_PROFESSION_TOOL") or "Tool"
+    local defaultAccessory = (L and L["PROFESSION_SUMMARY_SLOT_ACCESSORY"]) or "Accessory"
+    local slotLabel = (slotKey == "tool") and defaultTool or defaultAccessory
+    local initialSlotLabel = slotLabel
 
     -- Load tooltip data first (needed for slot inference when equipLoc is PROFESSION_GEAR)
     local tooltipData
@@ -966,12 +1034,13 @@ function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
             if ok2 and eqInst and type(eqInst) == "string" and eqInst ~= "" then equipLoc = eqInst end
         end
         if equipLoc and equipLoc ~= "" then
-            local mapped = INV_TYPE_TO_LABEL[equipLoc]
+            local mapped = GetLocalizedEquipLocLabel(equipLoc)
             if mapped then
                 slotLabel = mapped
             elseif equipLoc:find("PROFESSION_GEAR") or equipLoc:find("Profession") then
-                -- Infer from tooltip (e.g. "Unique-Equipped: Head (1)" or "Head")
+                -- Infer from tooltip (e.g. "Unique-Equipped: Head (1)" or localized slot name)
                 if tooltipData and tooltipData.lines then
+                    local patterns = GetLocalizedProfessionSlotPatterns()
                     for i = 1, math.min(#tooltipData.lines, 5) do
                         local line = tooltipData.lines[i]
                         if line then
@@ -983,21 +1052,23 @@ function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
                             end
                             left = (left and tostring(left)) or ""
                             right = (right and tostring(right)) or ""
-                            for _, pat in ipairs(TOOLTIP_SLOT_PATTERNS) do
+                            for pi = 1, #patterns do
+                                local pat = patterns[pi]
                                 local escaped = pat:gsub("%%", "%%%%")
                                 local word = "[%s%(:]" .. escaped .. "[%s%(]"
-                                local start = "^" .. escaped .. "[%s%(]"
-                                if (left ~= "" and (left:find(word) or left:find(start) or left == pat)) or (right ~= "" and (right:find(word) or right:find(start) or right == pat)) then
+                                local startPat = "^" .. escaped .. "[%s%(]"
+                                if (left ~= "" and (left:find(word) or left:find(startPat) or left == pat)) or (right ~= "" and (right:find(word) or right:find(startPat) or right == pat)) then
                                     slotLabel = pat
                                     break
                                 end
                             end
-                            if slotLabel ~= "Accessory" and slotLabel ~= "Tool" then break end
+                            if slotLabel ~= initialSlotLabel then break end
                         end
                     end
                 end
             else
-                slotLabel = INV_TYPE_TO_LABEL[equipLoc] or equipLoc:gsub("INVTYPE_", ""):gsub("(%l)(%u)", "%1 %2") or "Accessory"
+                slotLabel = equipLoc:gsub("INVTYPE_", ""):gsub("(%l)(%u)", "%1 %2")
+                if not slotLabel or slotLabel == "" then slotLabel = defaultAccessory end
             end
         end
     end
@@ -1018,14 +1089,14 @@ function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
         right = (right and tostring(right):gsub("^%s+", ""):gsub("%s+$", "")) or ""
         if left ~= "" or right ~= "" then
             local combined = (left .. " " .. right):lower()
-            -- Exclude: binding, unique-equipped, "Alchemy Accessory" type, empty filler
-            if combined:find("binds when") or combined:find("unique%-equipped") or combined:find("when equipped") then
+            -- Exclude: binding, unique-equipped, requires level/skill (locale-aware via globals where present)
+            if TooltipCombinedLooksLikeBindingOrUnique(combined) or TooltipCombinedLooksLikeRequiresLevel(combined) then
                 -- skip
             else
-                -- Include only: (1) Item Level, (2) stat lines (+Number), (3) equip effect (+X ... Skill). Exclude Requires Level.
-                local isItemLevel = left:find("Item Level") or right:find("Item Level")
+                -- Include only: (1) Item Level, (2) stat lines (+Number), (3) equip effect (+X ... Skill).
+                local isItemLevel = TooltipLineLooksLikeItemLevel(left, right)
                 local isStat = left:find("^%+%d") or right:find("^%+%d")
-                local isEquipEffect = left:find("%+%d") and left:find("Skill")
+                local isEquipEffect = TooltipLineLooksLikeProfessionEquipSkill(left)
                 if isItemLevel or isStat or isEquipEffect then
                     local lc = line.leftColor
                     local rc = line.rightColor
@@ -2583,12 +2654,13 @@ local function IsConcentrationCurrencyID(currencyID)
 end
 
 local function HasAlreadyInjected(tooltip)
+    local marker = (ns.L and ns.L["TOOLTIP_CONCENTRATION_MARKER"]) or "Warband Nexus - Concentration"
     local numLines = tooltip:NumLines()
     for i = 2, numLines do
         local line = _G[tooltip:GetName() .. "TextLeft" .. i]
         if line then
             local lineText = line:GetText()
-            if lineText and not (issecretvalue and issecretvalue(lineText)) and lineText:find("Warband Nexus") then
+            if lineText and not (issecretvalue and issecretvalue(lineText)) and marker ~= "" and lineText:find(marker, 1, true) then
                 return true
             end
         end
@@ -2604,9 +2676,9 @@ local function IsConcentrationTooltip(tooltip)
     local stripped = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
     stripped = stripped:match("^%s*(.-)%s*$")
     if not stripped or stripped == "" then return false end
-    if stripped == "Concentration" then return true end
     local cache = GetConcentrationCurrencyCache()
-    return cache.nameSet[stripped] == true
+    if cache.nameSet[stripped] then return true end
+    return stripped == "Concentration"
 end
 
 -- The actual function that appends concentration data to a visible tooltip

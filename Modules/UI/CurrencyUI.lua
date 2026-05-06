@@ -585,7 +585,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         end
         self.db.profile.currencyExpanded[key] = isExpanded
         if isExpanded then self.recentlyExpanded[key] = GetTime() end
-        self:RefreshUI()
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "currency", skipCooldown = true })
     end
     
     -- Build currency data from global storage (Direct DB architecture)
@@ -1079,7 +1079,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         showZero = not showZero
         self.db.profile.currencyShowZero = showZero
         btn.text:SetText(showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"))
-        self:RefreshUI()
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "currency", skipCooldown = true })
     end)
     titleCard:Show()
     

@@ -118,6 +118,16 @@ end
     @param card Frame - Card that changed height
     @param newHeight number - New height of the card
 ]]
+--- Apply pixel height + layout bookkeeping without recomputing the grid (batch reflows).
+function CardLayoutManager:ApplyCardGeometry(card, newHeight)
+    if not card or not newHeight then return end
+    local cardInfo = card._layoutInfo
+    if cardInfo then
+        cardInfo.currentHeight = newHeight
+    end
+    card:SetHeight(newHeight)
+end
+
 function CardLayoutManager:UpdateCardHeight(card, newHeight)
     local instance = card._layoutManager
     local cardInfo = card._layoutInfo
@@ -126,9 +136,7 @@ function CardLayoutManager:UpdateCardHeight(card, newHeight)
         return
     end
     
-    -- Update stored height
-    cardInfo.currentHeight = newHeight
-    
+    self:ApplyCardGeometry(card, newHeight)
     -- Recalculate all positions to handle cross-column scenarios
     self:RecalculateAllPositions(instance)
 end
@@ -233,7 +241,12 @@ function CardLayoutManager:RefreshLayout(instance)
         return
     end
     
-    -- Use RecalculateAllPositions to handle both X and Y repositioning
+    -- Width changed: reposition for new card widths, then remeasure wrapped text/heights.
+    self:RecalculateAllPositions(instance)
+    local PCF = ns.UI_PlanCardFactory
+    if PCF and PCF.ReflowAllPlanCards then
+        PCF:ReflowAllPlanCards(instance)
+    end
     self:RecalculateAllPositions(instance)
 end
 

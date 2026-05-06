@@ -167,6 +167,9 @@ local Constants = {
         TOOLTIP_HIDE = "WN_TOOLTIP_HIDE",
         FONT_CHANGED = "WN_FONT_CHANGED",
         FONT_LIST_UPDATED = "WN_FONT_LIST_UPDATED",
+        --- UI-initiated full main-window content rebuild (debounced via SchedulePopulateContent).
+        --- Payload: { tab = optional string (only refresh if main frame is on this tab), skipCooldown = optional bool (default true) }
+        UI_MAIN_REFRESH_REQUESTED = "WN_UI_MAIN_REFRESH_REQUESTED",
         LOADING_UPDATED = "WN_LOADING_UPDATED",
         LOADING_COMPLETE = "WN_LOADING_COMPLETE",
         

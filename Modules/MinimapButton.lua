@@ -11,6 +11,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants and ns.Constants.EVENTS
 
 local issecretvalue = issecretvalue
 
@@ -70,7 +71,7 @@ function WarbandNexus:InitializeMinimapButton()
     local function UpdateTooltip(tooltip)
         if not tooltip or not tooltip.AddLine then return end
         
-        tooltip:SetText("|cff6a0dad[Warband Nexus]|r", 1, 1, 1)
+        tooltip:SetText("|cff6a0dad[" .. ((L and L["ADDON_NAME"]) or "Warband Nexus") .. "]|r", 1, 1, 1)
         tooltip:AddLine(" ")
 
         local totalCopper = 0
@@ -264,7 +265,9 @@ function WarbandNexus:ShowMinimapMenu(anchorFrame)
                 local mainFrame = self.mainFrame
                 if mainFrame then
                     mainFrame.currentTab = "pve"
-                    self:PopulateContent()
+                    if E and self.SendMessage then
+                        self:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
+                    end
                 end
             end
 

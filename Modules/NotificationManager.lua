@@ -2350,6 +2350,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     if hasTryCount then
         overrides.autoDismiss = 7
     end
+    -- Intentionally omit data.obtainedBy from toast body (Collections Recent still uses it elsewhere).
     self:Notify(data.type, displayName, data.icon, overrides)
     if lootToastDedupeKey then
         lastCollectibleLootToastShownAt[lootToastDedupeKey] = GetTime()

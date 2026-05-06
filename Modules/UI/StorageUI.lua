@@ -191,7 +191,9 @@ function WarbandNexus:DrawStorageTab(parent)
                 {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
             }
             if not self.db.profile.storageSort then self.db.profile.storageSort = {} end
-            local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.storageSort, function() self:RefreshUI() end)
+            local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.storageSort, function()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true })
+        end)
             sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
             sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
         end
@@ -341,7 +343,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
 
         self._storageExpandedKey = isExpanded and key or nil
-        self:RefreshUI()
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true })
     end
     
     -- Search filtering helper

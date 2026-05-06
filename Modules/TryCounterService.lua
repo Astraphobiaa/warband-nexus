@@ -1609,6 +1609,7 @@ function WarbandNexus:SetTryCount(collectibleType, id, count)
     count = tonumber(count)
     if not count or count < 0 then count = 0 end
     WarbandNexus.db.global.tryCounts[collectibleType][id] = count
+    self:SendMessage(E.PLANS_UPDATED, { action = "try_count_set" })
 end
 
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
@@ -1721,6 +1722,12 @@ end
 
 local function SendTryCounterCollectibleObtained(self, payload, sourceItemID)
     if not self or not self.SendMessage or not payload then return end
+    if not payload.obtainedBy then
+        local name = UnitName("player")
+        if name and name ~= "" and not (issecretvalue and issecretvalue(name)) then
+            payload.obtainedBy = name
+        end
+    end
     if payload.type and payload.id ~= nil then
         WarbandNexus:RegisterTryCounterLootToastForBagDedupe(payload.type, payload.id, sourceItemID)
     end

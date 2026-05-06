@@ -1724,7 +1724,7 @@ function WarbandNexus:DrawReputationList(container, width)
         end
         self._repToggleTimer = C_Timer.NewTimer(0.016, function()
             self._repToggleTimer = nil
-            self:RefreshUI()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "reputations", skipCooldown = true })
         end)
     end
     

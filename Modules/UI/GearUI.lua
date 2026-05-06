@@ -89,6 +89,15 @@ local function LocalizeUpgradeTrackName(name)
     return name
 end
 
+local function GetLocalizedText(key, fallback)
+    local L = ns.L
+    local value = L and L[key]
+    if type(value) == "string" and value ~= "" and value ~= key then
+        return value
+    end
+    return fallback
+end
+
 --- Color-code upgrade-track tiers like item quality: Adventurer→common, Veteran→uncommon,
 --- Champion→rare, Hero→epic, Myth→legendary. Returns hex (no #) or nil for unknown tiers.
 local UPGRADE_TRACK_TIER_HEX = {
@@ -121,10 +130,11 @@ local UI_LAYOUT      = ns.UI_LAYOUT or {}
 local SIDE_MARGIN    = UI_LAYOUT.SIDE_MARGIN or 16
 local TOP_MARGIN     = UI_LAYOUT.TOP_MARGIN or 12
 local HEADER_H       = UI_LAYOUT.HEADER_HEIGHT or 32
--- Character strip + dropdown share the same outer width (menu includes scrollbar column inside this width).
+-- Character strip + dropdown: match header controls elsewhere (SharedWidgets sort dropdown = 32px row, 26px menu entries).
 local GEAR_CHAR_SELECTOR_WIDTH = 292
-local GEAR_CHAR_SELECTOR_HEIGHT = 42
-local GEAR_CHAR_DROPDOWN_ENTRY_H = 34
+local GEAR_CHAR_SELECTOR_HEIGHT = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or HEADER_H or 32
+local GEAR_CHAR_DROPDOWN_ENTRY_H = 26
+local GEAR_HIDE_FILTER_BUTTON_W = 84
 
 -- Paper doll: sol panel | orta panel | sağ panel | alt panel (fixed widths); %10 büyütme
 local PAPERDOLL_SCALE = 1.10
@@ -212,6 +222,48 @@ local function GetSelectedCharKey()
     return ns.Utilities and ns.Utilities:GetCharacterKey()
 end
 
+local function GetLowLevelHideThreshold(profile)
+    if not profile then return 0 end
+    local threshold = tonumber(profile.hideLowLevelThreshold) or 0
+    if threshold >= 90 then return 90 end
+    if threshold >= 80 then return 80 end
+    -- Backward compatibility for older boolean setting.
+    if profile.hideLowLevelCharacters == true then
+        return 80
+    end
+    return 0
+end
+
+local function GetLowLevelHideCycleNext(current)
+    if current == 0 then return 80 end
+    if current == 80 then return 90 end
+    return 0
+end
+
+local function GetLowLevelHideLabel(threshold)
+    if threshold == 90 then return GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") end
+    if threshold == 80 then return GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") end
+    return GetLocalizedText("HIDE_FILTER_STATE_OFF", "Off")
+end
+
+local function ApplyLowLevelHideThreshold(threshold)
+    local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    if not profile then return end
+    local nextThreshold = tonumber(threshold) or 0
+    if nextThreshold ~= 80 and nextThreshold ~= 90 then
+        nextThreshold = 0
+    end
+    profile.hideLowLevelThreshold = nextThreshold
+    profile.hideLowLevelCharacters = (nextThreshold >= 80)
+    local events = Constants and Constants.EVENTS
+    if WarbandNexus and WarbandNexus.SendMessage and events and events.CHARACTER_TRACKING_CHANGED then
+        WarbandNexus:SendMessage(events.CHARACTER_TRACKING_CHANGED, {
+            source = "HideFilter",
+            threshold = nextThreshold,
+        })
+    end
+end
+
 -- Gear event refresh is centralized in UI.lua SchedulePopulateContent
 -- (WN_GEAR_UPDATED, WN_ITEMS_UPDATED, WN_CHARACTER_UPDATED, WN_CURRENCY_UPDATED).
 
@@ -220,7 +272,7 @@ end
 -- ============================================================================
 
 --- Get tracked characters honoring user prefs:
----   * `db.profile.hideLowLevelCharacters` filters out chars below level 80.
+---   * `db.profile.hideLowLevelThreshold` filters out chars below level 80/90.
 ---   * `db.profile.characterOrder` (favorites + regular arrays) drives manual order;
 ---     unranked chars fall back to lastSeen DESC. Mirrors PvE/Characters tab order.
 local function GetTrackedCharacters()
@@ -228,9 +280,10 @@ local function GetTrackedCharacters()
     local db = WarbandNexus.db and WarbandNexus.db.global
     if not db or not db.characters then return chars end
     local profile = WarbandNexus.db and WarbandNexus.db.profile or {}
-    local hideLow = profile.hideLowLevelCharacters == true
+    local minLevel = GetLowLevelHideThreshold(profile)
     for charKey, data in pairs(db.characters) do
-        if data.isTracked and (not hideLow or (tonumber(data.level) or 0) >= 80) then
+        local lvl = tonumber(data.level) or 0
+        if data.isTracked and (minLevel == 0 or lvl >= minLevel) then
             chars[#chars + 1] = { key = charKey, data = data }
         end
     end
@@ -1828,7 +1881,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
                 ilvlFrame:SetFrameLevel(textBase + 1)
             end
             ilvlFrame._label:SetTextColor(1, 0.9, 0)
-            ilvlFrame._label:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " iLvl")
+            ilvlFrame._label:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " " .. GetLocalizedText("ILVL_SHORT_LABEL", "iLvl"))
             ilvlFrame:Show()
         else
             ilvlFrame:Hide()
@@ -1843,7 +1896,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
                 ilvlFrame:SetFrameLevel(textBase + 1)
             end
             ilvlFrame._label:SetTextColor(1, 0.9, 0)
-            ilvlFrame._label:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " iLvl")
+            ilvlFrame._label:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " " .. GetLocalizedText("ILVL_SHORT_LABEL", "iLvl"))
             ilvlFrame:Show()
         else
             ilvlFrame:Hide()
@@ -1920,9 +1973,10 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         if cur.isGold then goldCurrency = cur else crestCurrencies[#crestCurrencies + 1] = cur end
     end
 
-    -- Currency panel height: header(GEAR_SUBPANEL_HDR) + crests(rows) + divider(12) + gold(28) + pad(8)
-    local CREST_ROW_H = 32
-    local currenciesH = GEAR_SUBPANEL_HDR + #crestCurrencies * CREST_ROW_H + 12 + 28 + 8
+    -- Currency panel height: header + crest rows + divider + gold + footer hint + bottom pad
+    local CREST_ROW_H = 36
+    local FOOTER_HINT_H = 14
+    local currenciesH = GEAR_SUBPANEL_HDR + #crestCurrencies * CREST_ROW_H + 12 + 28 + FOOTER_HINT_H + 8
 
     local parentW = (card and card.GetWidth) and card:GetWidth() or ((parent and parent.GetWidth) and parent:GetWidth() or 0)
     local CARD_PAD_X = 12
@@ -2207,15 +2261,6 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     panelTitle:SetShadowOffset(1, -1)
     panelTitle:SetShadowColor(0, 0, 0, 1)
 
-    -- Shift hint (small subtitle under the panel header so users learn to expand for season progress).
-    local shiftHint = FontManager:CreateFontString(currencyPanel, "small", "OVERLAY")
-    shiftHint:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, -22)
-    shiftHint:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, -22)
-    shiftHint:SetJustifyH("CENTER")
-    shiftHint:SetText("|cff888888" .. ((ns.L and ns.L["SHIFT_HINT_SEASON_PROGRESS"]) or "Hold Shift for season progress") .. "|r")
-    shiftHint:SetShadowOffset(1, -1)
-    shiftHint:SetShadowColor(0, 0, 0, 0.8)
-
     -- Crest rows: icon | name (clipped) | fixed-width amount column (symmetric insets with stats panel).
     local curY = -GEAR_SUBPANEL_HDR
     local iconSize = 24
@@ -2272,15 +2317,17 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
         nameText:SetTextColor(0.85, 0.85, 0.85)
-        -- Full crest name; tier-color first word (Adventurer/Veteran/Champion/Hero/Myth) for at-a-glance scan.
+        -- Always use the first word (e.g. Adventurer/Veteran) to keep labels crisp without truncation.
         local rawCrestName = cur.name or ""
         local displayCrestName = rawCrestName
         if rawCrestName and not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName ~= "" then
             local firstWord = rawCrestName:match("^(%S+)")
-            local tierHex = firstWord and GetUpgradeTrackHex(firstWord) or nil
-            if tierHex and firstWord then
-                local rest = rawCrestName:sub(#firstWord + 1)
-                displayCrestName = "|cff" .. tierHex .. firstWord .. "|r" .. rest
+            firstWord = firstWord or rawCrestName
+            local tierHex = GetUpgradeTrackHex(firstWord)
+            if tierHex then
+                displayCrestName = "|cff" .. tierHex .. firstWord .. "|r"
+            else
+                displayCrestName = firstWord
             end
         end
         nameText:SetText(displayCrestName)
@@ -2355,6 +2402,15 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         goldAmt:SetText("|cffffff00" .. (FormatGold and FormatGold(copper) or (tostring(goldCurrency.amount or 0) .. "g")) .. "|r")
     end
 
+    -- Footer hint: Shift info belongs to panel footer, not title region.
+    local shiftHint = FontManager:CreateFontString(currencyPanel, "small", "OVERLAY")
+    shiftHint:SetPoint("BOTTOMLEFT", currencyPanel, "BOTTOMLEFT", currPad, 4)
+    shiftHint:SetPoint("BOTTOMRIGHT", currencyPanel, "BOTTOMRIGHT", -currPad, 4)
+    shiftHint:SetJustifyH("RIGHT")
+    shiftHint:SetText("|cff777777" .. GetLocalizedText("SHIFT_HINT_SEASON_PROGRESS_SHORT", "Shift: Season progress") .. "|r")
+    shiftHint:SetShadowOffset(1, -1)
+    shiftHint:SetShadowColor(0, 0, 0, 0.8)
+
     -- ── RIGHT PANEL: Item Upgrade Recommendations (scrollable, bordered) ───────
     local storagePanel = CreateFrame("Frame", nil, card, "BackdropTemplate")
     local storagePanelH = panelH
@@ -2373,7 +2429,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     storageTitle:SetPoint("TOPLEFT", 12, -8)
     storageTitle:SetPoint("TOPRIGHT", -12, -8)
     storageTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1] * 255), math.floor(accent[2] * 255), math.floor(accent[3] * 255))
-        .. "Item Upgrade Recommendations|r")
+        .. GetLocalizedText("GEAR_ITEM_UPGRADE_RECOMMENDATIONS_TITLE", "Item Upgrade Recommendations") .. "|r")
 
     -- Subtitle removed to declutter; scrollable rows alone communicate "transferable upgrades from Storage".
 
@@ -2394,7 +2450,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                             local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
                             storageRows[#storageRows + 1] = {
                                 slotID = slotID,
-                                slotName = (slotDef and slotDef.label) or ("Slot " .. tostring(slotID)),
+                                slotName = (slotDef and slotDef.label) or GetLocalizedText("GEAR_SLOT_FALLBACK_FORMAT", "Slot %d"):format(tonumber(slotID) or 0),
                                 currentIlvl = current,
                                 targetIlvl = target,
                                 itemLink = best.itemLink,
@@ -2457,7 +2513,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             empty:SetAllPoints()
             empty:SetJustifyH("CENTER")
             empty:SetJustifyV("MIDDLE")
-            empty:SetText((ns.L and ns.L["GEAR_STORAGE_EMPTY"]) or "No better BoE / Warbound upgrades found for this character.")
+            empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY_NO_BOE_WOE", "Can't find any BoE or WoE to upgrade on item slots."))
             empty:SetTextColor(0.55, 0.55, 0.6)
         else
             local itemTooltipContext = BuildGearTabItemTooltipContext(charData)
@@ -2549,7 +2605,7 @@ local function BuildStorageRecommendationRows(findings, gearData)
                     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
                     rows[#rows + 1] = {
                         slotID = slotID,
-                        slotName = (slotDef and slotDef.label) or ("Slot " .. tostring(slotID)),
+                        slotName = (slotDef and slotDef.label) or GetLocalizedText("GEAR_SLOT_FALLBACK_FORMAT", "Slot %d"):format(tonumber(slotID) or 0),
                         currentIlvl = current,
                         targetIlvl = target,
                         itemLink = best.itemLink,
@@ -2791,6 +2847,7 @@ end
 local gearCharDropdownMenu = nil
 local gearCharDropdownBg   = nil
 local gearCharSelectorBtn  = nil
+local gearHideFilterBtn    = nil
 local gearCharDropdownEntryPool = {}
 
 local GEAR_CHAR_SEP = "|cff888888 | |r"
@@ -2924,8 +2981,8 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     btn:ClearAllPoints()
     btn:SetHeight(GEAR_CHAR_SELECTOR_HEIGHT)
     btn:SetWidth(GEAR_CHAR_SELECTOR_WIDTH)
-    -- Same horizontal inset as card side margin so the strip lines up with the header card edges.
-    btn:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SIDE_MARGIN, 10)
+    -- Vertically centered like Characters/Storage/PvE header sort controls (RIGHT, -20, 0).
+    btn:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
     btn:SetBackdropColor(0.08, 0.08, 0.11, 0.9)
     btn:SetBackdropBorderColor(accent[1]*0.6, accent[2]*0.6, accent[3]*0.6, 0.8)
 
@@ -3059,8 +3116,8 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             bg:SetScript("OnClick", function()
                 menu:Hide()
                 bg:Hide()
-                if WarbandNexus and WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
+                if WarbandNexus and WarbandNexus.SendMessage then
+                    WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "gear", skipCooldown = true })
                 end
             end)
             gearCharDropdownBg = bg
@@ -3104,7 +3161,6 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             local entryBtn = gearCharDropdownEntryPool[i]
             if not entryBtn then
                 entryBtn = CreateFrame("Button", nil, entryParent)
-                entryBtn:SetHeight(ENTRY_H)
                 EnsureGearEntryColumnLabels(entryBtn)
                 local entryHi = entryBtn:CreateTexture(nil, "HIGHLIGHT")
                 entryHi:SetAllPoints()
@@ -3112,6 +3168,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
                 gearCharDropdownEntryPool[i] = entryBtn
             end
             EnsureGearEntryColumnLabels(entryBtn)
+            entryBtn:SetHeight(ENTRY_H)
 
             entryBtn:EnableMouseWheel(true)
             entryBtn:SetScript("OnMouseWheel", function(entry, delta)
@@ -3153,8 +3210,8 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
                 SetLabelToChar(cKey)
                 menu:Hide()
                 bg:Hide()
-                if WarbandNexus and WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
+                if WarbandNexus and WarbandNexus.SendMessage then
+                    WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "gear", skipCooldown = true })
                 end
             end)
 
@@ -3205,6 +3262,151 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     end
 
     return btn, yOffset
+end
+
+local function CreateGearHeaderHideButton(parent)
+    local btn = gearHideFilterBtn
+    if not btn then
+        btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        btn:SetSize(GEAR_HIDE_FILTER_BUTTON_W, (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or GEAR_CHAR_SELECTOR_HEIGHT or 32)
+        btn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = { left = 0, right = 0, top = 0, bottom = 0 },
+        })
+        local txt = FontManager:CreateFontString(btn, "body", "OVERLAY")
+        txt:SetPoint("CENTER", 0, 0)
+        txt:SetJustifyH("CENTER")
+        txt:SetTextColor(0.9, 0.9, 0.9)
+        btn._text = txt
+        gearHideFilterBtn = btn
+    end
+
+    btn:SetParent(parent)
+    btn:ClearAllPoints()
+    btn:SetBackdropColor(0.08, 0.08, 0.11, 0.9)
+    btn:SetBackdropBorderColor(0.45, 0.45, 0.55, 0.8)
+
+    btn._text:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"))
+
+    local function HideMenuClose()
+        if btn._menu and btn._menu:IsShown() then btn._menu:Hide() end
+        if btn._catcher and btn._catcher:IsShown() then btn._catcher:Hide() end
+    end
+    local function HideMenuApply(threshold, keepMenuOpen)
+        ApplyLowLevelHideThreshold(threshold)
+        if not keepMenuOpen then
+            HideMenuClose()
+        end
+    end
+    local function HideMenuBuild()
+        local menu = btn._menu
+        if not menu then
+            menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+            menu:SetFrameStrata("FULLSCREEN_DIALOG")
+            menu:SetFrameLevel(5200)
+            menu:SetSize(132, 66)
+            menu:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+                insets = { left = 0, right = 0, top = 0, bottom = 0 },
+            })
+            menu:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
+            local accent = (COLORS and COLORS.accent) or ((ns.UI_COLORS or {}).accent) or { 0.40, 0.20, 0.58 }
+            menu:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.75)
+            btn._menu = menu
+        end
+        local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+        local cur = GetLowLevelHideThreshold(profile)
+        local options = {
+            { value = 80, label = GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") },
+            { value = 90, label = GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") },
+        }
+        local children = { menu:GetChildren() }
+        local bin = ns.UI_RecycleBin
+        for i = 1, #children do
+            children[i]:Hide()
+            if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
+        end
+        local rowH = 30
+        for i = 1, #options do
+            local opt = options[i]
+            local row = CreateFrame("Button", nil, menu, "BackdropTemplate")
+            row:SetPoint("TOPLEFT", 3, -3 - (i - 1) * rowH)
+            row:SetPoint("TOPRIGHT", -3, -3 - (i - 1) * rowH)
+            row:SetHeight(rowH - 2)
+            row:RegisterForClicks("LeftButtonUp")
+            row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+            row:SetBackdropColor((opt.value == cur) and 0.16 or 0.10, (opt.value == cur) and 0.16 or 0.10, (opt.value == cur) and 0.20 or 0.10, 1)
+            local cb = ns.UI_CreateThemedCheckbox and ns.UI_CreateThemedCheckbox(row, opt.value == cur)
+            if not cb then return menu end
+            cb:SetSize(16, 16)
+            cb:SetPoint("LEFT", row, "LEFT", 6, 0)
+            cb:EnableMouse(false)
+            local fs = FontManager:CreateFontString(row, "body", "OVERLAY")
+            fs:SetPoint("LEFT", cb, "RIGHT", 6, 0)
+            fs:SetJustifyH("LEFT")
+            fs:SetText(opt.label)
+            fs:SetTextColor(1, 1, 1)
+            row:SetScript("OnClick", function()
+                local active = GetLowLevelHideThreshold(WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile)
+                local nextThreshold = (active == opt.value) and 0 or opt.value
+                HideMenuApply(nextThreshold, true)
+                HideMenuBuild()
+            end)
+        end
+        return menu
+    end
+
+    btn:SetScript("OnClick", function(self)
+        local menu = btn._menu
+        if menu and menu:IsShown() then
+            HideMenuClose()
+            return
+        end
+        if ns.HideGearCharacterDropdown then
+            ns.HideGearCharacterDropdown()
+        end
+        menu = HideMenuBuild()
+        menu:ClearAllPoints()
+        menu:SetPoint("TOPRIGHT", self, "BOTTOMRIGHT", 0, -4)
+        menu:Show()
+        local catcher = btn._catcher
+        if not catcher then
+            catcher = CreateFrame("Button", nil, UIParent)
+            catcher:SetAllPoints(UIParent)
+            catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+            catcher:SetFrameLevel(5199)
+            catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            catcher:SetScript("OnClick", function(_, button)
+                if menu and menu:IsShown() and not menu:IsMouseOver() and not btn:IsMouseOver() then
+                    HideMenuClose()
+                end
+            end)
+            btn._catcher = catcher
+        end
+        catcher:Show()
+    end)
+    btn:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(0.7, 0.7, 0.85, 1)
+        if not GameTooltip then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"), 1, 1, 1)
+        GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_TOGGLE", "Toggle filters: Level 80 / Level 90"), 0.8, 0.8, 0.8)
+        local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+        local cur = GetLowLevelHideThreshold(profile)
+        GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_CURRENT", "Current: %s"):format(GetLowLevelHideLabel(cur)), 0.4, 1, 0.4)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function(self)
+        self:SetBackdropBorderColor(0.45, 0.45, 0.55, 0.8)
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+
+    btn:Show()
+    return btn
 end
 
 -- ============================================================================
@@ -3267,7 +3469,8 @@ function WarbandNexus:DrawGearTab(parent)
     local hexAcc  = format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
     local titleTextContent = "|cff" .. hexAcc .. ((ns.L and ns.L["GEAR_TAB_TITLE"]) or "Gear Management") .. "|r"
     local subtitleTextContent = (ns.L and ns.L["GEAR_TAB_DESC"]) or "Equipped gear, upgrade analysis, and crest tracking"
-    local gearHeaderRightReserve = GEAR_CHAR_SELECTOR_WIDTH + SIDE_MARGIN + 4
+    -- Reserve space for [Hide filter][Character ▼] aligned with other tabs' -20 right inset + 8px gap between controls.
+    local gearHeaderRightReserve = GEAR_CHAR_SELECTOR_WIDTH + GEAR_HIDE_FILTER_BUTTON_W + 8 + 20 + 4
 
     local headerCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "gear",
@@ -3279,6 +3482,12 @@ function WarbandNexus:DrawGearTab(parent)
     headerCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
 
     local gearCharSel = CreateCharacterSelector(headerCard, charKey, 0)
+    local hideBtn = CreateGearHeaderHideButton(headerCard)
+    if hideBtn and gearCharSel then
+        hideBtn:SetPoint("RIGHT", gearCharSel, "LEFT", -8, 0)
+    elseif hideBtn then
+        hideBtn:SetPoint("RIGHT", headerCard, "RIGHT", -20, 0)
+    end
     headerCard:Show()
     if gearCharSel and gearCharSel._refreshGearCharColumns then
         C_Timer.After(0, function()

@@ -39,6 +39,7 @@ end
 
 -- Unique AceEvent handler identity for PvEUI
 local PvEUIEvents = {}
+local E = ns.Constants.EVENTS
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
@@ -72,22 +73,22 @@ local SIDE_MARGIN = GetLayout().sideMargin or 10
 local TOP_MARGIN = GetLayout().topMargin or 8
 
 -- PvE inline grid: min width for horizontal scroll + columnHeaderInner (see ProfessionsUI / UI.lua)
-local PVE_ROW_LEFT_CLUSTER_W = 12 + 20 + 4 + 33 + 6 -- expand + gap + favorite + gap to name
-local PVE_ROW_MIDDLE_MAX_W = 30 + 60 + 30 + 80     -- bullets + level + ilvl (worst case)
+local PVE_ROW_LEFT_CLUSTER_W = 12 + 20 + 4 + 28 + 6 -- expand + gap + favorite + gap to name
+local PVE_ROW_MIDDLE_MAX_W = 20 + 56 + 20 + 72     -- bullets + level + ilvl (tighter, less left dead-space)
 local PVE_CHAR_HEADER_H_MARGIN = 20                -- char row inset 10 + 10
 local PVE_COLUMN_HEADER_PAD = 2
-local PVE_COL_SPACING = 1                        -- crest / coffer / key (tight)
-local PVE_KEY_TO_VAULT_GAP = 14                  -- currency block ↔ first vault column
-local PVE_VAULT_CLUSTER_GAP = 12                 -- Raid | Dungeon | World (readable groups)
+local PVE_COL_SPACING = 6                        -- uniform baseline spacing for symmetric header rhythm
+local PVE_KEY_TO_VAULT_GAP = 8                   -- currency block ↔ vault block
+local PVE_VAULT_CLUSTER_GAP = 8                  -- Raid | Dungeon | World internal spacing
 local PVE_COL_RIGHT_MARGIN = 8
 local PVE_DAWNCREST_COL_W = 128                  -- qty/max (R:rem)
 local PVE_COFFER_COL_W = 148
-local PVE_KEY_COL_W = 88
-local PVE_VAULT_COL_W = 70                       -- triplet of marks per track
-local PVE_BOUNTIFUL_COL_W = 44
-local PVE_STATUS_COL_W    = 130  -- Fits "N Slots Earned" + localized variants without truncation
-local PVE_VOIDCORE_COL_W = 58
-local PVE_MANAFLUX_COL_W = 58
+local PVE_KEY_COL_W = 100
+local PVE_VAULT_COL_W = 92                       -- keep Raid/Dungeon/World header labels untruncated
+local PVE_BOUNTIFUL_COL_W = 64                   -- enough for "Map" label under icon
+local PVE_STATUS_COL_W    = 150                  -- enough for "N Slots Ready" values
+local PVE_VOIDCORE_COL_W = 72
+local PVE_MANAFLUX_COL_W = 72
 local PVE_VOIDCORE_ID = 3418
 local PVE_MANAFLUX_ID = 3378
 
@@ -97,6 +98,57 @@ local VAULT_SLOT_CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|
 local VAULT_SLOT_UPARROW = "|A:loottoast-arrow-green:12:12|a"
 
 local UI_GetAccentHexColor = ns.UI_GetAccentHexColor
+
+local function GetLocalizedText(key, fallback)
+    local L = ns.L
+    local value = L and L[key]
+    if type(value) == "string" and value ~= "" and value ~= key then
+        return value
+    end
+    return fallback
+end
+
+local function GetLowLevelHideThreshold(profile)
+    if not profile then return 0 end
+    local threshold = tonumber(profile.hideLowLevelThreshold) or 0
+    if threshold >= 90 then return 90 end
+    if threshold >= 80 then return 80 end
+    -- Backward compatibility for older boolean setting.
+    if profile.hideLowLevelCharacters == true then
+        return 80
+    end
+    return 0
+end
+
+local function GetLowLevelHideCycleNext(current)
+    if current == 0 then return 80 end
+    if current == 80 then return 90 end
+    return 0
+end
+
+local function GetLowLevelHideLabel(threshold)
+    if threshold == 90 then return GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") end
+    if threshold == 80 then return GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") end
+    return GetLocalizedText("HIDE_FILTER_STATE_OFF", "Off")
+end
+
+local function ApplyLowLevelHideThreshold(addon, threshold)
+    local profile = addon and addon.db and addon.db.profile
+    if not profile then return end
+    local nextThreshold = tonumber(threshold) or 0
+    if nextThreshold ~= 80 and nextThreshold ~= 90 then
+        nextThreshold = 0
+    end
+    profile.hideLowLevelThreshold = nextThreshold
+    profile.hideLowLevelCharacters = (nextThreshold >= 80)
+    local events = ns.Constants and ns.Constants.EVENTS
+    if addon and addon.SendMessage and events and events.CHARACTER_TRACKING_CHANGED then
+        addon:SendMessage(events.CHARACTER_TRACKING_CHANGED, {
+            source = "HideFilter",
+            threshold = nextThreshold,
+        })
+    end
+end
 
 local function GetPvEDawnCrestColumnDefinitions()
     local crests = {}
@@ -203,8 +255,8 @@ local function PvE_GetGapAfterColumnKey(leftKey, visibleKeySet)
     return PVE_COL_SPACING
 end
 
--- PvE Columns dropdown: TOOLTIP strata above headers/tooltips; survives RefreshUI (parent UIParent).
-local PVE_COLUMN_PICKER_STRATA = "TOOLTIP"
+-- PvE Columns dropdown: fullscreen dialog layer for interactive menus (avoid tooltip strata misuse).
+local PVE_COLUMN_PICKER_STRATA = "FULLSCREEN_DIALOG"
 local PVE_COLUMN_PICKER_MENU_LEVEL = 5100
 local PVE_COLUMN_PICKER_CATCHER_LEVEL = 5050
 
@@ -328,7 +380,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
 
     local columnHdr = FontManager:CreateFontString(scrollChild, "small", "OVERLAY")
     columnHdr:SetPoint("TOPLEFT", 14, -8)
-    columnHdr:SetText("Columns")
+    columnHdr:SetText(GetLocalizedText("COLUMNS_BUTTON", "Columns"))
     columnHdr:SetTextColor(accent[1], accent[2], accent[3], 1)
     if columnHdr.EnableMouse then columnHdr:EnableMouse(false) end
 
@@ -340,7 +392,9 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
             WarbandNexus:RefreshVaultButtonSettings()
         end
         PvE_ColumnPickerHideTooltipLayers()
-        if addon.RefreshUI then addon:RefreshUI() end
+        if addon and addon.SendMessage then
+            addon:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
+        end
         C_Timer.After(0, function()
             local picker = WarbandNexus._wnPvEColumnPickerMenu
             if not picker or not picker:IsShown() then return end
@@ -376,7 +430,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     for i = 1, #crestDefs do
         local id = crestDefs[i].id
         local labelKey = crestDefs[i].labelKey
-        local crestLabel = (labelKey and ns.L and ns.L[labelKey]) or "Dawncrest"
+        local crestLabel = labelKey and GetLocalizedText(labelKey, GetLocalizedText("PVE_CREST_GENERIC", "Dawncrest")) or GetLocalizedText("PVE_CREST_GENERIC", "Dawncrest")
         local ck = "crest_" .. tostring(id)
         y = addCheckboxRow(y, crestLabel, ex[ck] ~= false, function(checked)
             ex[ck] = checked
@@ -394,32 +448,32 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
         applyColumnPickerChange(false)
     end)
 
-    y = addCheckboxRow(y, "Raid", vc.raids ~= false, function(checked)
+    y = addCheckboxRow(y, GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"), vc.raids ~= false, function(checked)
         vc.raids = checked
         applyColumnPickerChange(true)
     end)
 
-    y = addCheckboxRow(y, "Dungeon", vc.mythicPlus ~= false, function(checked)
+    y = addCheckboxRow(y, GetLocalizedText("VAULT_DUNGEON", "Dungeon"), vc.mythicPlus ~= false, function(checked)
         vc.mythicPlus = checked
         applyColumnPickerChange(true)
     end)
 
-    y = addCheckboxRow(y, "World", vc.world ~= false, function(checked)
+    y = addCheckboxRow(y, GetLocalizedText("VAULT_SLOT_WORLD", "World"), vc.world ~= false, function(checked)
         vc.world = checked
         applyColumnPickerChange(true)
     end)
 
-    y = addCheckboxRow(y, "Trovehunter's Bounty", vc.bounty ~= false, function(checked)
+    y = addCheckboxRow(y, GetLocalizedText("BOUNTIFUL_DELVE", "Trovehunter's Bounty"), vc.bounty ~= false, function(checked)
         vc.bounty = checked
         applyColumnPickerChange(true)
     end)
 
-    y = addCheckboxRow(y, "Nebulous Voidcore", vc.voidcore ~= false, function(checked)
+    y = addCheckboxRow(y, GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"), vc.voidcore ~= false, function(checked)
         vc.voidcore = checked
         applyColumnPickerChange(true)
     end)
 
-    y = addCheckboxRow(y, "Dawnlight Manaflux", vc.manaflux == true, function(checked)
+    y = addCheckboxRow(y, GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"), vc.manaflux == true, function(checked)
         vc.manaflux = checked
         profile.vaultButton = profile.vaultButton or {}
         profile.vaultButton.showManaflux = checked
@@ -473,6 +527,128 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
     local Factory = ns.UI and ns.UI.Factory
     if not Factory or not Factory.CreateButton then return sortAnchor end
 
+    local hideBtn = Factory:CreateButton(titleCard, 84, (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32, false)
+    if ApplyVisuals then
+        ApplyVisuals(hideBtn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+    end
+    local hideBtnText = FontManager:CreateFontString(hideBtn, "body", "OVERLAY")
+    hideBtnText:SetPoint("CENTER", 0, 0)
+    hideBtnText:SetJustifyH("CENTER")
+    hideBtnText:SetTextColor(0.9, 0.9, 0.9)
+    hideBtnText:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"))
+    if Factory.ApplyHighlight then Factory:ApplyHighlight(hideBtn) end
+    hideBtn:SetPoint("RIGHT", sortAnchor, "LEFT", -8, 0)
+
+    local function HideMenuClose()
+        if hideBtn._menu and hideBtn._menu:IsShown() then hideBtn._menu:Hide() end
+        if hideBtn._catcher and hideBtn._catcher:IsShown() then hideBtn._catcher:Hide() end
+    end
+    local function HideMenuApply(threshold, keepMenuOpen)
+        ApplyLowLevelHideThreshold(addon, threshold)
+        if not keepMenuOpen then
+            HideMenuClose()
+        end
+    end
+    local function HideMenuBuild()
+        local menu = hideBtn._menu
+        if not menu then
+            menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+            menu:SetFrameStrata("FULLSCREEN_DIALOG")
+            menu:SetFrameLevel(5200)
+            menu:SetSize(132, 66)
+            menu:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+                insets = { left = 0, right = 0, top = 0, bottom = 0 },
+            })
+            menu:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
+            menu:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75)
+            hideBtn._menu = menu
+        end
+        local profile = addon and addon.db and addon.db.profile
+        local cur = GetLowLevelHideThreshold(profile)
+        local options = {
+            { value = 80, label = GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") },
+            { value = 90, label = GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") },
+        }
+        local children = { menu:GetChildren() }
+        local bin = ns.UI_RecycleBin
+        for i = 1, #children do
+            children[i]:Hide()
+            if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
+        end
+        local rowH = 30
+        for i = 1, #options do
+            local opt = options[i]
+            local row = CreateFrame("Button", nil, menu, "BackdropTemplate")
+            row:SetPoint("TOPLEFT", 3, -3 - (i - 1) * rowH)
+            row:SetPoint("TOPRIGHT", -3, -3 - (i - 1) * rowH)
+            row:SetHeight(rowH - 2)
+            row:RegisterForClicks("LeftButtonUp")
+            row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+            row:SetBackdropColor((opt.value == cur) and 0.16 or 0.10, (opt.value == cur) and 0.16 or 0.10, (opt.value == cur) and 0.20 or 0.10, 1)
+            local cb = ns.UI_CreateThemedCheckbox and ns.UI_CreateThemedCheckbox(row, opt.value == cur)
+            if not cb then return menu end
+            cb:SetSize(16, 16)
+            cb:SetPoint("LEFT", row, "LEFT", 6, 0)
+            cb:EnableMouse(false)
+            local fs = FontManager:CreateFontString(row, "body", "OVERLAY")
+            fs:SetPoint("LEFT", cb, "RIGHT", 6, 0)
+            fs:SetJustifyH("LEFT")
+            fs:SetText(opt.label)
+            fs:SetTextColor(1, 1, 1)
+            row:SetScript("OnClick", function()
+                local active = GetLowLevelHideThreshold(addon and addon.db and addon.db.profile)
+                local nextThreshold = (active == opt.value) and 0 or opt.value
+                HideMenuApply(nextThreshold, true)
+                HideMenuBuild()
+            end)
+        end
+        return menu
+    end
+    hideBtn:SetScript("OnClick", function(self)
+        local menu = hideBtn._menu
+        if menu and menu:IsShown() then
+            HideMenuClose()
+            return
+        end
+        -- avoid overlap with columns menu
+        WarbandNexus:HidePvEColumnPickerMenu()
+        menu = HideMenuBuild()
+        menu:ClearAllPoints()
+        menu:SetPoint("TOPRIGHT", self, "BOTTOMRIGHT", 0, -4)
+        menu:Show()
+        local catcher = hideBtn._catcher
+        if not catcher then
+            catcher = CreateFrame("Button", nil, UIParent)
+            catcher:SetAllPoints(UIParent)
+            catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+            catcher:SetFrameLevel(5199)
+            catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            catcher:SetScript("OnClick", function(_, button)
+                if menu and menu:IsShown() and not menu:IsMouseOver() and not hideBtn:IsMouseOver() then
+                    HideMenuClose()
+                end
+            end)
+            hideBtn._catcher = catcher
+        end
+        catcher:Show()
+    end)
+    hideBtn:SetScript("OnEnter", function(self)
+        if not GameTooltip then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"), 1, 1, 1)
+        GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_TOGGLE", "Toggle filters: Level 80 / Level 90"), 0.8, 0.8, 0.8)
+        local profile = addon and addon.db and addon.db.profile
+        local cur = GetLowLevelHideThreshold(profile)
+        GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_CURRENT", "Current: %s"):format(GetLowLevelHideLabel(cur)), 0.4, 1, 0.4)
+        GameTooltip:Show()
+    end)
+    hideBtn:SetScript("OnLeave", function()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+
     local columnsBtn = Factory:CreateButton(titleCard, 86, (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32, false)
     if ApplyVisuals then
         ApplyVisuals(columnsBtn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
@@ -483,7 +659,7 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
     columnsBtnText:SetText((ns.L and ns.L["COLUMNS_BUTTON"]) or "Columns")
     columnsBtnText:SetTextColor(0.9, 0.9, 0.9)
     if Factory.ApplyHighlight then Factory:ApplyHighlight(columnsBtn) end
-    columnsBtn:SetPoint("RIGHT", sortAnchor, "LEFT", -8, 0)
+    columnsBtn:SetPoint("RIGHT", hideBtn, "LEFT", -8, 0)
 
     WarbandNexus._wnPvEColumnPickerAnchorBtn = columnsBtn
 
@@ -534,9 +710,12 @@ function ns.ComputePvEMinScrollWidth(self)
     if not self or not self.GetAllCharacters then return 0 end
     local allCharacters = self:GetAllCharacters()
     local characters = {}
+    local profile = self.db and self.db.profile
+    local minLevel = GetLowLevelHideThreshold(profile)
     for i = 1, #allCharacters do
         local char = allCharacters[i]
-        if char.isTracked ~= false then
+        local lvl = tonumber(char.level) or 0
+        if char.isTracked ~= false and (minLevel == 0 or lvl >= minLevel) then
             characters[#characters + 1] = char
         end
     end
@@ -554,9 +733,9 @@ function ns.ComputePvEMinScrollWidth(self)
         end
         tempMeasure:SetParent(nil)
     end
-    local nameWidth = math.max(230, math.ceil(maxNameRealmWidth) + 8)
-    if not self.db or not self.db.profile then return PVE_CHAR_HEADER_H_MARGIN + PVE_ROW_LEFT_CLUSTER_W + nameWidth + PVE_ROW_MIDDLE_MAX_W + PVE_COL_RIGHT_MARGIN end
-    local columnSeq = BuildPvEColumnKeySequence(self.db.profile)
+    local nameWidth = math.max(200, math.ceil(maxNameRealmWidth) + 8)
+    if not profile then return PVE_CHAR_HEADER_H_MARGIN + PVE_ROW_LEFT_CLUSTER_W + nameWidth + PVE_ROW_MIDDLE_MAX_W + PVE_COL_RIGHT_MARGIN end
+    local columnSeq = BuildPvEColumnKeySequence(profile)
     local visibleKeySet = {}
     for i = 1, #columnSeq do
         visibleKeySet[columnSeq[i]] = true
@@ -619,7 +798,7 @@ end
 
 local function ToggleExpand(key, newState)
     expandedStates[key] = newState
-    WarbandNexus:RefreshUI()
+    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
 end
 
 -- PvE event refresh is centralized in UI.lua SchedulePopulateContent (WN_PVE_UPDATED).
@@ -1953,9 +2132,6 @@ function WarbandNexus:DrawPvEProgress(parent)
         subtitleTextContent = (ns.L and ns.L["PVE_VAULT_TRACKER_SUBTITLE"]) or
             "Unclaimed rewards and cleared vault rows"
     end
-    -- Append shift-modifier hint so users discover the season-progress expansion.
-    local shiftHintText = (ns.L and ns.L["SHIFT_HINT_SEASON_PROGRESS"]) or "Hold Shift for season progress"
-    subtitleTextContent = subtitleTextContent .. "  |cff666666\194\183|r  |cff888888" .. shiftHintText .. "|r"
     -- Room for weekly reset + sort dropdown + Weekly Vault Tracker row (approximate, avoids overlap)
     local PVE_TITLE_RIGHT_RESERVE = 520
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
@@ -2001,7 +2177,9 @@ function WarbandNexus:DrawPvEProgress(parent)
             {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
         }
         if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
-        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function() self:RefreshUI() end)
+        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
+        end)
         sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -15, 0)
         sortAnchor = sortBtn
     end
@@ -2059,11 +2237,18 @@ function WarbandNexus:DrawPvEProgress(parent)
         local ck = "crest_" .. tostring(crestEntry.id)
         if pveExtraCols[ck] ~= false then
             local crestIcon = 134400
+            local crestLabel = ""
             if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
                 local info = C_CurrencyInfo.GetCurrencyInfo(crestEntry.id)
                 if info and info.iconFileID then
                     crestIcon = info.iconFileID
                 end
+                if info and info.name and not (issecretvalue and issecretvalue(info.name)) then
+                    crestLabel = info.name
+                end
+            end
+            if crestLabel == "" and crestEntry.labelKey then
+                crestLabel = GetLocalizedText(crestEntry.labelKey, "")
             end
             PVE_COLUMNS[#PVE_COLUMNS + 1] = {
                 key = ck,
@@ -2071,6 +2256,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 width = PVE_DAWNCREST_COL_W,
                 icon = crestIcon,
                 crestCurrencyId = crestEntry.id,
+                headerLabel = crestLabel,
             }
         end
     end
@@ -2080,7 +2266,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             label = "",
             width = PVE_COFFER_COL_W,
             icon = PVE_SHARDS_ICON,
-            tooltipTitle = (ns.L and ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards",
+            tooltipTitle = GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
+            headerLabel = GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
         }
     end
     if pveExtraCols.restored_key ~= false then
@@ -2089,7 +2276,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             label = "",
             width = PVE_KEY_COL_W,
             icon = PVE_RESTORED_KEY_ICON,
-            tooltipTitle = (ns.L and ns.L["PVE_COL_RESTORED_KEY"]) or "Restored Key",
+            tooltipTitle = GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
+            headerLabel = GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
         }
     end
     if vaultCols.voidcore ~= false then
@@ -2098,7 +2286,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             label = "",
             width = PVE_VOIDCORE_COL_W,
             icon = 7658128,
-            tooltipTitle = "Nebulous Voidcore",
+            tooltipTitle = GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
+            headerLabel = GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
         }
     end
     if vaultCols.manaflux == true then
@@ -2114,7 +2303,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             label = "",
             width = PVE_MANAFLUX_COL_W,
             icon = manafluxIcon,
-            tooltipTitle = "Dawnlight Manaflux",
+            tooltipTitle = GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
+            headerLabel = GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
         }
     end
     if vaultCols.raids ~= false then
@@ -2124,6 +2314,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             width = PVE_VAULT_COL_W,
             icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
             tooltipTitle = (ns.L and ns.L["PVE_HEADER_RAIDS"]) or "Raids",
+            headerLabel = GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"),
         }
     end
     if vaultCols.mythicPlus ~= false then
@@ -2133,6 +2324,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             width = PVE_VAULT_COL_W,
             icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
             tooltipTitle = (ns.L and ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
+            headerLabel = GetLocalizedText("VAULT_DUNGEON", "Dungeon"),
         }
     end
     if vaultCols.world ~= false then
@@ -2142,6 +2334,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             width = PVE_VAULT_COL_W,
             icon = "Interface\\Icons\\INV_Misc_Map_01",
             tooltipTitle = (ns.L and ns.L["VAULT_WORLD"]) or "World",
+            headerLabel = GetLocalizedText("VAULT_SLOT_WORLD", "World"),
         }
     end
     -- Bountiful weekly — Trovehunter's Bounty item icon (live fileID when API returns it)
@@ -2152,6 +2345,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             width = PVE_BOUNTIFUL_COL_W,
             icon = GetTrovehunterBountyColumnIcon(),
             tooltipTitle = (ns.L and ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty",
+            headerLabel = GetLocalizedText("PVE_HEADER_MAP_SHORT", "Map"),
         }
     end
     -- Vault Status — same Ready/Slots Earned/Pending readout as the Vault Tracker quick window.
@@ -2162,13 +2356,14 @@ function WarbandNexus:DrawPvEProgress(parent)
             width = PVE_STATUS_COL_W,
             icon = "Interface\\Icons\\Achievement_Boss_Argus",
             tooltipTitle = (ns.L and ns.L["PVE_COL_VAULT_STATUS"]) or "Vault Status",
+            headerLabel = GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"),
         }
     end
 
     local COL_SPACING = PVE_COL_SPACING
     local COL_RIGHT_MARGIN = PVE_COL_RIGHT_MARGIN
-    local COL_ICON_SIZE = 28
-    local COL_HEADER_HEIGHT = 30
+    local COL_ICON_SIZE = 24
+    local COL_HEADER_HEIGHT = 48
     local visiblePveColumnKeys = {}
     for i = 1, #PVE_COLUMNS do
         visiblePveColumnKeys[PVE_COLUMNS[i].key] = true
@@ -2198,13 +2393,14 @@ function WarbandNexus:DrawPvEProgress(parent)
     end
     
     -- Get all characters (filter tracked only for PvE display).
-    -- Also honor profile.hideLowLevelCharacters: skip chars below level 80.
+    -- Also honor profile.hideLowLevelThreshold: 0 (off), 80, or 90.
     local allCharacters = self:GetAllCharacters()
     local characters = {}
-    local hideLow = self.db and self.db.profile and self.db.profile.hideLowLevelCharacters == true
+    local profile = self.db and self.db.profile
+    local minLevel = GetLowLevelHideThreshold(profile)
     for _, char in ipairs(allCharacters) do
         local lvl = tonumber(char.level) or 0
-        if char.isTracked ~= false and (not hideLow or lvl >= 80) then
+        if char.isTracked ~= false and (minLevel == 0 or lvl >= minLevel) then
             table.insert(characters, char)
         end
     end
@@ -2492,7 +2688,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     end
     local bin = ns.UI_RecycleBin
     if bin then tempMeasure:SetParent(bin) else tempMeasure:SetParent(nil) end
-    local nameWidth = math.max(230, math.ceil(maxNameRealmWidth) + 8)
+    local nameWidth = math.max(200, math.ceil(maxNameRealmWidth) + 8)
 
     -- Wide enough for left cluster + name + level/ilvl + inline columns → horizontal scrollbar when needed
     local scrollFrame = parent:GetParent()
@@ -2524,7 +2720,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         columnHeaderInner:SetWidth(parent:GetWidth())
     end
 
-    -- ===== COLUMN HEADER ROW (icons only, no text labels) =====
+    -- ===== COLUMN HEADER ROW (icon + compact two-line labels) =====
     local colHeaderRow = ns.UI.Factory:CreateContainer(colHeaderParent, 10, COL_HEADER_HEIGHT)
     if columnHeaderInner then
         colHeaderRow:SetPoint("TOPLEFT", SIDE_MARGIN, 0)
@@ -2536,6 +2732,45 @@ function WarbandNexus:DrawPvEProgress(parent)
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     end
 
+    local PVE_COMPACT_HEADER_BY_KEY = {
+        coffer_shards = { text = GetLocalizedText("PVE_COMPACT_COFFER_SHARD", "Coffer Shard"), hex = "ffffff" },
+        restored_key = { text = GetLocalizedText("PVE_COMPACT_RESTORED", "Restored"), hex = "ffffff" },
+        voidcore = { text = GetLocalizedText("PVE_COMPACT_VOIDCORE", "Voidcore"), hex = "ffffff" },
+        manaflux = { text = GetLocalizedText("PVE_COMPACT_MANAFLUX", "Manaflux"), hex = "ffffff" },
+        slot1 = { text = GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"), hex = "ffffff" },
+        slot2 = { text = GetLocalizedText("VAULT_DUNGEON", "Dungeon"), hex = "ffffff" },
+        slot3 = { text = GetLocalizedText("VAULT_SLOT_WORLD", "World"), hex = "ffffff" },
+        bountiful = { text = GetLocalizedText("PVE_HEADER_MAP_SHORT", "Map"), hex = "ffffff" },
+        vault_status = { text = GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"), hex = "ffffff" },
+    }
+    local PVE_COMPACT_CREST_BY_ID = {
+        [3383] = { text = GetLocalizedText("PVE_CREST_ADV", "Adventurer"), hex = "9d9d9d" },
+        [3341] = { text = GetLocalizedText("PVE_CREST_VET", "Veteran"), hex = "1eff00" },
+        [3343] = { text = GetLocalizedText("PVE_CREST_CHAMP", "Champion"), hex = "0070dd" },
+        [3345] = { text = GetLocalizedText("PVE_CREST_HERO", "Hero"), hex = "a335ee" },
+        [3347] = { text = GetLocalizedText("PVE_CREST_MYTH", "Myth"), hex = "ff8000" },
+    }
+
+    local function BuildCompactHeaderLabel(col)
+        local rawLabel = col and (col.headerLabel or col.tooltipTitle) or ""
+        if not rawLabel or rawLabel == "" then return "", "ffffff" end
+        if issecretvalue and issecretvalue(rawLabel) then return "", "ffffff" end
+
+        local key = col and col.key or ""
+        if PVE_COMPACT_HEADER_BY_KEY[key] then
+            local entry = PVE_COMPACT_HEADER_BY_KEY[key]
+            return entry.text, entry.hex
+        elseif key:match("^crest_") then
+            local crestID = tonumber(key:match("^crest_(%d+)$"))
+            if crestID and PVE_COMPACT_CREST_BY_ID[crestID] then
+                local entry = PVE_COMPACT_CREST_BY_ID[crestID]
+                return entry.text, entry.hex
+            end
+            return GetLocalizedText("PVE_CREST_GENERIC", "Crest"), "ffffff"
+        end
+        return "", "ffffff"
+    end
+
     local colX = -COL_RIGHT_MARGIN
     for hci = #PVE_COLUMNS, 1, -1 do
         local col = PVE_COLUMNS[hci]
@@ -2545,7 +2780,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         if col.icon or col.iconAtlas then
             local hitFrame = CreateFrame("Frame", nil, colHeaderRow)
             hitFrame:SetSize(COL_ICON_SIZE + 4, COL_ICON_SIZE + 4)
-            hitFrame:SetPoint("RIGHT", colHeaderRow, "RIGHT", colCenterX + COL_ICON_SIZE * 0.5 + 2, 0)
+            hitFrame:SetPoint("RIGHT", colHeaderRow, "RIGHT", colCenterX + COL_ICON_SIZE * 0.5 + 2, 6)
 
             local iconTex = hitFrame:CreateTexture(nil, "ARTWORK")
             iconTex:SetSize(COL_ICON_SIZE, COL_ICON_SIZE)
@@ -2563,6 +2798,18 @@ function WarbandNexus:DrawPvEProgress(parent)
             elseif col.icon then
                 iconTex:SetTexture(col.icon)
                 iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+
+            local compactLabel, compactHex = BuildCompactHeaderLabel(col)
+            if compactLabel ~= "" then
+                local labelFs = FontManager:CreateFontString(colHeaderRow, "bodySmall", "OVERLAY")
+                labelFs:SetPoint("TOP", hitFrame, "BOTTOM", 0, 0)
+                labelFs:SetWidth(math.max(24, col.width - 4))
+                labelFs:SetJustifyH("CENTER")
+                labelFs:SetWordWrap(false)
+                labelFs:SetText("|cff" .. (compactHex or "ffffff") .. compactLabel .. "|r")
+                labelFs:SetShadowOffset(1, -1)
+                labelFs:SetShadowColor(0, 0, 0, 0.9)
             end
 
             if ShowTooltip then
@@ -2665,7 +2912,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         -- Favorite icon (view-only, left side, next to collapse button)
         -- Match Characters/Professions tabs: 33px column, 65% visual icon (~21px)
         local StyleFavoriteIcon = ns.UI_StyleFavoriteIcon
-        local favColSize = 33
+        local favColSize = 28
         local favIconSize = favColSize * 0.65
         
         local favFrame = CreateFrame("Frame", nil, charHeader)
@@ -2680,9 +2927,9 @@ function WarbandNexus:DrawPvEProgress(parent)
 
         -- Character name text
         local xOffset = 0
-        local spacerWidth = 30    -- Spacing around bullets (equal spacing)
-        local levelWidth = 60     -- "Lv XX" 
-        local ilvlWidth = 80      -- "iLvl XXX"
+        local spacerWidth = 20    -- tighter spacing to reduce left-side dead space
+        local levelWidth = 56     -- "Lv XX"
+        local ilvlWidth = 72      -- "iLvl XXX"
         
         -- Column 1: Character Name - Realm (single line, fixed width, left aligned)
         local charNameText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
@@ -2962,16 +3209,16 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 .. ((ns.L and ns.L["ILVL_FORMAT"] and string.format(ns.L["ILVL_FORMAT"], rewardIlvl)) or ("iLvl " .. rewardIlvl))
                         end
                         table.insert(lines, {
-                            text = string.format("Slot %d: |cff80ff80\226\156\147|r %s", i, rhs ~= "" and rhs or "Unlocked"),
+                            text = GetLocalizedText("PVE_VAULT_SLOT_COMPLETE_FORMAT", "Slot %d: |cff80ff80\226\156\147|r %s"):format(i, rhs ~= "" and rhs or GetLocalizedText("PVE_VAULT_SLOT_UNLOCKED", "Unlocked")),
                             color = {0.85, 0.9, 0.95},
                         })
                     elseif thresh > 0 then
                         table.insert(lines, {
-                            text = string.format("Slot %d: |cffff8888%d/%d|r", i, prog, thresh),
+                            text = GetLocalizedText("PVE_VAULT_SLOT_PROGRESS_FORMAT", "Slot %d: |cffff8888%d/%d|r"):format(i, prog, thresh),
                             color = {0.65, 0.65, 0.65},
                         })
                     else
-                        table.insert(lines, { text = string.format("Slot %d: \226\128\148", i), color = {0.5, 0.5, 0.5} })
+                        table.insert(lines, { text = GetLocalizedText("PVE_VAULT_SLOT_EMPTY_FORMAT", "Slot %d: \226\128\148"):format(i), color = {0.5, 0.5, 0.5} })
                     end
                 end
                 return lines
@@ -3036,7 +3283,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 text = voidcoreTxt,
                 richText = true,
                 tooltip = BuildCurrencyTooltip(PVE_VOIDCORE_ID, voidcoreData and voidcoreData.name, vqty, voidcoreData and voidcoreData.maxQuantity or 0, voidcoreData and voidcoreData.totalEarned, voidcoreData and voidcoreData.seasonMax),
-                tooltipTitle = "Nebulous Voidcore",
+                tooltipTitle = GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
                 tooltipIcon = voidcoreData and voidcoreData.icon,
                 currencyID = PVE_VOIDCORE_ID,
                 -- seasonProgressData intentionally omitted: voidcore must NOT use shift-aware binder.
@@ -3054,8 +3301,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 elseif vs.isReady then
                     statusTxt = "|cff44ff44" .. ((ns.L and ns.L["VAULT_READY_TO_CLAIM"]) or "Ready to Claim") .. "|r"
                 elseif (vs.readySlots or 0) > 0 then
-                    local label = (ns.L and ns.L["VAULT_SLOTS_EARNED"]) or "Slots Earned"
-                    statusTxt = "|cff66ddff" .. tostring(vs.readySlots) .. " " .. label .. "|r"
+                    statusTxt = "|cff66ddff" .. GetLocalizedText("VAULT_SLOTS_SHORT_FORMAT", "%d Slots"):format(tonumber(vs.readySlots) or 0) .. "|r"
                 else
                     statusTxt = "|cffffd700" .. ((ns.L and ns.L["VAULT_PENDING"]) or "Pending\226\128\166") .. "|r"
                 end
@@ -3071,7 +3317,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 text = manafluxQty > 0 and FormatNumber(manafluxQty) or EM_DASH,
                 color = manafluxQty > 0 and NORMAL_COLOR or DIM_COLOR,
                 tooltip = BuildCurrencyTooltip(PVE_MANAFLUX_ID, manafluxData and manafluxData.name, manafluxQty, manafluxData and manafluxData.maxQuantity or 0, manafluxData and manafluxData.totalEarned, manafluxData and manafluxData.seasonMax),
-                tooltipTitle = "Dawnlight Manaflux",
+                tooltipTitle = GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
                 tooltipIcon = manafluxData and manafluxData.icon,
                 currencyID = PVE_MANAFLUX_ID,
             }

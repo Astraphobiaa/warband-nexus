@@ -110,13 +110,13 @@ function DebugService:TestCommand(addon, input)
                 addon:Print("|cffff0000ScanReputations not available!|r")
             end
         elseif subcmd == "ui" then
-            -- Force UI refresh
-            if addon.RefreshUI then
-                addon:Print("|cff00ccffForcing full UI refresh...|r")
-                addon:RefreshUI()
-                addon:Print("|cff00ff00UI refreshed!|r")
+            -- Trigger refresh through the standard event chain.
+            if addon.SendMessage then
+                addon:Print("|cff00ccffSending WN_REPUTATION_UPDATED...|r")
+                addon:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
+                addon:Print("|cff00ff00Event sent!|r")
             else
-                addon:Print("|cffff0000RefreshUI not available!|r")
+                addon:Print("|cffff0000SendMessage not available!|r")
             end
         elseif subcmd == "event" then
             -- Simulate reputation change event

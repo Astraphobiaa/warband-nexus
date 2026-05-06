@@ -5,7 +5,7 @@
 ## Version: 2.7.1
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
-## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity, Blizzard_Collections
+## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity, Blizzard_Collections, Blizzard_AchievementUI
 ## X-Category: Bags & Inventory
 ## X-Website: https://github.com/warbandnexus
 ## X-Curse-Project-ID: 
@@ -74,6 +74,7 @@ Modules\GuildBankScanner.lua
 Modules\VaultScanner.lua
 Modules\VaultButton.lua
 Modules\PlansManager.lua
+Modules\AchievementFrameIntegration.lua
 Modules\CollectibleSourceDB.lua
 Modules\TryCounterService.lua
 Modules\TransmogManager.lua

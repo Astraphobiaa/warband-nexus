@@ -17,6 +17,24 @@ local issecretvalue = issecretvalue
 -- Debug print helper (only shows when debug mode is enabled)
 local DebugPrint = ns.DebugPrint
 
+local function NormalizeLowLevelThreshold(profile)
+    if not profile then return 0 end
+    local threshold = tonumber(profile.hideLowLevelThreshold) or 0
+    if threshold >= 90 then return 90 end
+    if threshold >= 80 then return 80 end
+    if profile.hideLowLevelCharacters == true then
+        return 80
+    end
+    return 0
+end
+
+local function FormatLowLevelThresholdLabel(threshold)
+    local L = ns.L
+    if threshold == 90 then return (L and L["HIDE_FILTER_LEVEL_90"]) or "Level 90" end
+    if threshold == 80 then return (L and L["HIDE_FILTER_LEVEL_80"]) or "Level 80" end
+    return (L and L["HIDE_FILTER_STATE_OFF"]) or "OFF"
+end
+
 --============================================================================
 -- MAIN SLASH COMMAND HANDLER
 --============================================================================
@@ -53,7 +71,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "Toggle To-Do Tracker window"))
         addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Open settings"))
         addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones to party chat")
-        addon:Print("  |cff00ccff/wn maxonly|r — Toggle hiding chars below level 80 in PvE/Gear lists")
+        addon:Print("  |cff00ccff/wn maxonly [off|80|90]|r — Low-level character filter for PvE/Gear lists")
         addon:Print("  |cff00ccff/wn minimap|r — " .. ((ns.L and ns.L["CMD_MINIMAP"]) or "Toggle minimap button"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
@@ -133,13 +151,48 @@ function CommandService:HandleSlashCommand(addon, input)
 
     elseif cmd == "maxonly" or cmd == "hidealts" then
         if addon.db and addon.db.profile then
-            addon.db.profile.hideLowLevelCharacters = not addon.db.profile.hideLowLevelCharacters
-            local on = addon.db.profile.hideLowLevelCharacters
-            addon:Print("|cff00ccff[WN]|r Hide characters below level 80: " ..
-                (on and "|cff80ff80ON|r" or "|cffff5959OFF|r"))
-            if addon.RefreshAllUI then addon:RefreshAllUI() end
-            local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
-            if mf and mf.PopulateContent then mf:PopulateContent() end
+            local _, arg = addon:GetArgs(input, 2)
+            if arg and issecretvalue and issecretvalue(arg) then
+                arg = nil
+            end
+            arg = arg and arg:lower() or nil
+
+            local profile = addon.db.profile
+            local current = NormalizeLowLevelThreshold(profile)
+            local nextThreshold = current
+
+            if not arg or arg == "" then
+                -- Cycle: OFF -> <80 -> <90 -> OFF
+                if current == 0 then
+                    nextThreshold = 80
+                elseif current == 80 then
+                    nextThreshold = 90
+                else
+                    nextThreshold = 0
+                end
+            elseif arg == "off" or arg == "0" then
+                nextThreshold = 0
+            elseif arg == "80" or arg == "<80" then
+                nextThreshold = 80
+            elseif arg == "90" or arg == "<90" then
+                nextThreshold = 90
+            else
+                addon:Print("|cff00ccffUsage:|r /wn maxonly [off|80|90]")
+                addon:Print("|cff888888Current filter:|r " .. FormatLowLevelThresholdLabel(current))
+                return
+            end
+
+            profile.hideLowLevelThreshold = nextThreshold
+            -- Keep legacy boolean synchronized for older modules.
+            profile.hideLowLevelCharacters = (nextThreshold >= 80)
+            addon:Print("|cff00ccff[WN]|r Low-level filter (PvE/Gear): |cff80ff80" .. FormatLowLevelThresholdLabel(nextThreshold) .. "|r")
+            local events = ns.Constants and ns.Constants.EVENTS
+            if addon.SendMessage and events and events.CHARACTER_TRACKING_CHANGED then
+                addon:SendMessage(events.CHARACTER_TRACKING_CHANGED, {
+                    source = "SlashCommand",
+                    threshold = nextThreshold,
+                })
+            end
         end
         return
         

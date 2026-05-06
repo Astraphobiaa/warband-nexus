@@ -408,7 +408,7 @@ local function ToggleColumnSort(col)
     else
         SetColumnSortState(col, "asc")
     end
-    WarbandNexus:RefreshUI()
+    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
 end
 
 --============================================================================
@@ -516,7 +516,7 @@ local function RegisterProfessionEvents(parent)
     local function Refresh()
         local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         if mf and mf:IsShown() and mf.currentTab == "professions" then
-            WarbandNexus:RefreshUI()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
         end
     end
 
@@ -524,10 +524,9 @@ local function RegisterProfessionEvents(parent)
     -- UI.lua's SchedulePopulateContent already handles professions tab refresh for these events.
     -- Having both caused double PopulateContent → DrawProfessionsTab per event.
     
-    -- Keep CHARACTER_UPDATED + CHARACTER_TRACKING_CHANGED: UI.lua does NOT handle
-    -- professions tab for these events (it only handles chars tab for CHARACTER_UPDATED).
+    -- Keep CHARACTER_UPDATED: UI.lua does not schedule professions-tab refresh for this event.
     WarbandNexus.RegisterMessage(ProfessionsUIEvents, Constants.EVENTS.CHARACTER_UPDATED, Refresh)
-    WarbandNexus.RegisterMessage(ProfessionsUIEvents, E.CHARACTER_TRACKING_CHANGED, Refresh)
+    -- CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
 end
 
 --============================================================================
@@ -1127,7 +1126,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             checkRow:SetScript("OnClick", function()
                 self.db.profile.professionVisibleColumns[capturedKey] = not isVisible
                 dropdown:Hide()
-                self:RefreshUI()
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
             end)
             checkRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
             checkRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
@@ -1149,7 +1148,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 self.db.profile.professionVisibleColumns[tc2.key] = true
             end
             dropdown:Hide()
-            self:RefreshUI()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
         end)
         resetRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
         resetRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
@@ -1194,7 +1193,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
             {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
         }
         if not self.db.profile.professionSort then self.db.profile.professionSort = {} end
-        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function() self:RefreshUI() end)
+        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+        end)
         sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -8, 0)
     end
     
@@ -1361,7 +1362,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             function(expanded)
                 self.db.profile.ui[sectionKey] = expanded
                 if expanded then self.profRecentlyExpanded[sectionKey] = GetTime() end
-                self:RefreshUI()
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
             end,
             headerAtlas,
             true,  -- isAtlas

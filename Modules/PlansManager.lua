@@ -964,6 +964,12 @@ function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm, trackedSlo
     self:UpdateWeeklyPlanSlots(plan, true)
     
     table.insert(self.db.global.plans, plan)
+    self:RefreshPlanCache()
+    self:SendMessage(E.PLANS_UPDATED, {
+        action = "weekly_created",
+        planID = plan.id,
+        planType = plan.type,
+    })
     
     self:Print("|cff00ff00Created weekly vault plan for:|r " .. characterName .. "-" .. characterRealm)
     
@@ -1583,6 +1589,55 @@ end
 -- CRUD OPERATIONS
 -- ============================================================================
 
+---Build AddPlan() payload for a journal achievement (single source for Blizzard UI quick-add).
+---@param achievementID number
+---@return table|nil
+function WarbandNexus:BuildAchievementPlanPayload(achievementID)
+    if not achievementID or type(achievementID) ~= "number" then return nil end
+    if issecretvalue and issecretvalue(achievementID) then return nil end
+
+    local ok, id, name, points, _, _, _, _, _, icon, _, rewardText = pcall(GetAchievementInfo, achievementID)
+    if not ok or not id or id ~= achievementID then return nil end
+    if issecretvalue then
+        if name and issecretvalue(name) then name = nil end
+        if points and issecretvalue(points) then points = nil end
+        if icon and issecretvalue(icon) then icon = nil end
+        if rewardText and issecretvalue(rewardText) then rewardText = nil end
+    end
+
+    local sourceText = ""
+    if GetAchievementCategory then
+        local okc, catID = pcall(GetAchievementCategory, achievementID)
+        if okc and type(catID) == "number" and catID > 0 and GetCategoryInfo then
+            local oki, catTitle = pcall(GetCategoryInfo, catID)
+            if oki and type(catTitle) == "string" and catTitle ~= "" and not (issecretvalue and issecretvalue(catTitle)) then
+                sourceText = catTitle
+            end
+        end
+    end
+
+    local rewardLine = nil
+    if self.GetAchievementRewardInfo then
+        local info = self:GetAchievementRewardInfo(achievementID)
+        if info then
+            rewardLine = info.title or info.itemName
+        end
+    end
+    if not rewardLine or rewardLine == "" then
+        rewardLine = (type(rewardText) == "string" and rewardText ~= "" and not (issecretvalue and issecretvalue(rewardText))) and rewardText or nil
+    end
+
+    return {
+        type = PLAN_TYPES.ACHIEVEMENT,
+        achievementID = achievementID,
+        name = name or ((ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement"),
+        icon = icon,
+        points = (type(points) == "number" and points >= 0) and points or nil,
+        source = sourceText,
+        rewardText = rewardLine,
+    }
+end
+
 --[[
     Add a new plan
     @param planType string - Type of plan (mount, pet, toy, recipe)
@@ -1751,6 +1806,10 @@ function WarbandNexus:ResetCompletedPlans()
     -- Refresh cache if any plans were removed
     if removedCount > 0 then
         self:RefreshPlanCache()
+        self:SendMessage(E.PLANS_UPDATED, {
+            action = "reset_completed",
+            removedCount = removedCount,
+        })
     end
     
     return removedCount

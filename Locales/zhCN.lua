@@ -79,6 +79,14 @@ L["SHOW_PLANNED"] = "显示计划中"
 L["SHOW_PLANNED_HELP"] = "仅浏览标签（在待办与周进度中隐藏）：勾选=仅显示你加入待办的目标。“显示已完成”关=仍缺的；开=已完成的；两项都开=该分类全部已计划；两项都关=完整未收藏浏览。"
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "没有可显示的成就"
 L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "从此列表将成就加入待办，或更改“显示已计划/显示已完成”。列表随扫描填充；若为空可尝试 /reload。"
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP"] = "|cffccaa00Warband Nexus|r\n点击将此成就加入待办列表（与 + 添加相同）。"
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_REMOVE"] = "|cffccaa00Warband Nexus|r\n点击将此成就从待办列表中移除。"
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMBAT"] = "战斗中不可用。"
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"] = "此成就已完成。"
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_IN_PLANS"] = "已在待办列表中。"
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_TRACKED"] = "已在追踪（监视栏）。"
+L["ACHIEVEMENT_FRAME_WN_ALREADY_PLANNED"] = "已在待办列表中。"
+L["ACHIEVEMENT_FRAME_WN_TRACK_FAILED"] = "无法将此成就加入暴雪追踪列表（可能已满或暂时不可用）。"
 L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"] = "没有可显示的内容"
 L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"] = "当前筛选下没有匹配的已计划事项。请加入待办或调整“显示已计划/显示已完成”。"
 L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"] = "没有已完成的待办事项"
@@ -278,6 +286,24 @@ L["PVE_CREST_MYTH"] = "神话"
 L["PVE_CREST_EXPLORER"] = "探索者"
 L["PVE_COL_COFFER_SHARDS"] = "宝匣钥匙碎片"
 L["PVE_COL_RESTORED_KEY"] = "修复的宝匣钥匙"
+L["PVE_COL_VAULT_STATUS"] = "宝库状态"
+L["PVE_COL_NEBULOUS_VOIDCORE"] = "缥缈虚空核"
+L["PVE_COL_DAWNLIGHT_MANAFLUX"] = "晨光魔流"
+L["PVE_HEADER_RAID_SHORT"] = "团队"
+L["PVE_HEADER_MAP_SHORT"] = "地图"
+L["PVE_HEADER_STATUS_SHORT"] = "状态"
+L["PVE_COMPACT_COFFER_SHARD"] = "宝匣碎片"
+L["PVE_COMPACT_RESTORED"] = "修复"
+L["PVE_COMPACT_VOIDCORE"] = "虚空核"
+L["PVE_COMPACT_MANAFLUX"] = "魔流"
+L["PVE_CREST_GENERIC"] = "纹章"
+L["VAULT_SLOTS_SHORT_FORMAT"] = "%d 栏"
+L["PVE_VAULT_SLOT_COMPLETE_FORMAT"] = "栏位 %d：|cff80ff80✓|r %s"
+L["PVE_VAULT_SLOT_PROGRESS_FORMAT"] = "栏位 %d：|cffff8888%d/%d|r"
+L["PVE_VAULT_SLOT_EMPTY_FORMAT"] = "栏位 %d：—"
+L["PVE_VAULT_SLOT_UNLOCKED"] = "已解锁"
+L["SHIFT_HINT_SEASON_PROGRESS"] = "按住 Shift 查看赛季进度"
+L["SHIFT_HINT_SEASON_PROGRESS_SHORT"] = "Shift：赛季进度"
 L["LV_FORMAT"] = "等级 %d"
 L["ILVL_FORMAT"] = "装等 %d"
 L["VAULT_WORLD"] = "世界"
@@ -731,6 +757,7 @@ L["VAULT_TRACK_WAITING_RESET"] = "等待重置"
 L["UNCLAIMED_REWARDS"] = "你有未领取的奖励"
 L["NOTIFICATION_FIRST_TRY"] = "第一次尝试就获得了！"
 L["NOTIFICATION_GOT_IT_AFTER"] = "经过%d次尝试后获得！"
+L["NOTIFICATION_COLLECTIBLE_CHARACTER_LINE"] = "角色：%s"
 
 -- Minimap Button
 L["TOTAL_GOLD_LABEL"] = "总金币："
@@ -1009,6 +1036,7 @@ L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d天前"
 L["COLLECTIONS_ACQUIRED_LABEL"] = "已记录"
 L["COLLECTIONS_ACQUIRED_LINE"] = "%s：%s"
 L["COLLECTIONS_RECENT_TAB_EMPTY"] = "未记录任何信息"
+L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
 L["COLLECTIONS_RECENT_EMPTY"] = "未记录任何内容"
 L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "没有匹配的信息"
 L["COLLECTIONS_RECENT_SECTION_NONE"] = "暂无信息"
@@ -1054,6 +1082,12 @@ L["CATCH_UP"] = "追赶"
 L["MOXIE"] = "匠人"
 L["COOLDOWNS"] = "冷却"
 L["COLUMNS_BUTTON"] = "列"
+L["HIDE_FILTER_BUTTON"] = "隐藏"
+L["HIDE_FILTER_LEVEL_80"] = "等级80"
+L["HIDE_FILTER_LEVEL_90"] = "等级90"
+L["HIDE_FILTER_STATE_OFF"] = "关闭"
+L["HIDE_FILTER_TOOLTIP_TOGGLE"] = "切换过滤器：等级80 / 等级90"
+L["HIDE_FILTER_TOOLTIP_CURRENT"] = "当前：%s"
 
 -- Professions: Tooltips & Details
 
@@ -1424,6 +1458,10 @@ L["GEAR_STORAGE_WARBOUND"] = "战团绑定"
 L["GEAR_STORAGE_BOE"] = "装绑"
 L["GEAR_STORAGE_TITLE"] = "存储升级推荐"
 L["GEAR_STORAGE_EMPTY"] = "未找到适合该角色的更好装绑 / 战团绑定升级。"
+L["GEAR_STORAGE_EMPTY_NO_BOE_WOE"] = "物品栏未找到可升级的装绑或WoE。"
+L["GEAR_SLOT_FALLBACK_FORMAT"] = "栏位 %d"
+L["GEAR_ITEM_UPGRADE_RECOMMENDATIONS_TITLE"] = "物品升级推荐"
+L["ILVL_SHORT_LABEL"] = "装等"
 
 -- Characters UI
 L["WOW_TOKEN_LABEL"] = "WOW代币"
@@ -1522,6 +1560,7 @@ L["SLOT_SHOULDER"] = INVTYPE_SHOULDER or "肩部"
 L["SLOT_TABARD"] = INVTYPE_TABARD or "战袍"
 L["SLOT_WAIST"] = INVTYPE_WAIST or "腰部"
 L["SLOT_WRIST"] = INVTYPE_WRIST or "腕部"
+L["PROFESSION_SUMMARY_SLOT_ACCESSORY"] = "配饰"
 L["SOURCE_TYPE_ACHIEVEMENT"] = BATTLE_PET_SOURCE_6 or "成就"
 L["SOURCE_TYPE_DROP"] = BATTLE_PET_SOURCE_1 or "掉落"
 L["SOURCE_TYPE_IN_GAME_SHOP"] = BATTLE_PET_SOURCE_10 or "游戏商城"
@@ -1598,6 +1637,60 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "阵营和职业限制"
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
+
+Saved Instances — layout + readability pass
+- Reworked the view into a clean header/row structure: `Instance (Difficulty)` with character progress rows directly underneath.
+- Added per-group collapse/expand controls with larger chevrons and stable collapse state while the window is open.
+- Added fixed right-side columns in headers (character count + progress) for symmetric vertical alignment across all groups.
+- Synced row progress formatting with header progress formatting for consistent numeric alignment.
+
+Saved Instances — theme and typography parity
+- Header and character rows now use outlined borders (theme-colored) for clearer section boundaries.
+- Font rendering now uses the selected addon font through `FontManager` in the Saved Instances surface.
+- Theme refresh now re-renders Saved Instances when open, so color/font changes follow the main addon window immediately.
+
+Saved Instances — scrolling + interaction
+- Switched to the standardized Factory scrollframe + themed scrollbar column used by the main addon UI.
+- Scrollbar visibility now updates automatically based on content size.
+- Resizable window behavior was retained and integrated with content/scroll refresh.
+
+CurseForge: Warband Nexus]=]
+
+
+L["CHANGELOG_V268"] = [=[v2.6.8 (2026-05-04)
+
+Try Counter — architectural overhaul
+- Counting is now event-driven by ENCOUNTER_END (next frame instead of a 5-second wait). Chests, personal-loot bags, and post-cinematic loot can be opened seconds, hours, or days later without re-counting or off-by-one.
+- Stat-backed miss path now prints "N attempts for [item]" — previously the reseed could complete silently and Sylvanas / LFR Jaina kills produced no try-counter line at all.
+- Fixed off-by-one on open-world rare farms: 4 misses followed by a drop on kill 5 now correctly says "after 5 attempts" (was "after 4").
+- Fixed encounter fallback being silently suppressed by unrelated tier-token / currency loot (Anima Vessels, etc.) inside the kill window.
+- Added definitive NEW_MOUNT_ADDED / NEW_PET_ADDED backup so post-cinematic chest grants always emit the correct obtained line, even when the primary loot-window detection misses.
+
+Sylvanas (Sanctum of Domination, Mythic)
+- All client locales now resolve the Sylvanas encounter for Vengeance's Reins try counting. Added a slot-first outcome rule for the Mythic chest so secret-GUID loot is attributed by tracked itemID rather than failing to bind to the kill.
+
+Saved Instances
+- Now lists dungeon lockouts alongside raids: 5-player Normal / Heroic / Mythic / M+ rows surface with their own difficulty pills.
+- Lockouts are filtered by reset time so expired rows no longer linger; collapse state per instance persists across sessions.
+- isRaid is treated as advisory — falls back to DifficultyID + maxPlayers when the value is wrapped or missing in Midnight 12.0 contexts.
+
+Data collection
+- Per-character lockouts capture both raid and dungeon entries (matches the cache pipeline) so the Vault button now reflects everything you're saved to.
+
+CurseForge: Warband Nexus]=]
+
+
+L["CREST_SOURCES_HEADER"] = "来源："
+L["CREST_TO_CAP_SUFFIX"] = "至赛季上限"
+L["GEAR_SECTION_CHARACTER"] = "角色"
+L["SAVED_INSTANCES_RESET_DAYS"] = "%d天"
+L["SAVED_INSTANCES_RESET_HOURS"] = "%d小时"
+L["SAVED_INSTANCES_RESET_LESS_HOUR"] = "<1小时"
+L["VAULT_PENDING"] = "待定…"
+L["VAULT_READY_TO_CLAIM"] = "就绪"
+L["VAULT_SLOTS_EARNED"] = "已获得栏位"
+
 L["CHANGELOG_V267"] = [=[v2.6.7 (2026-04-29)
 
 PvE — Great Vault tracker
@@ -1658,6 +1751,31 @@ L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "槽位已获得"
 
 L["CONFIG_VAULT_BUTTON"] = "宝库按钮"
 L["CONFIG_VAULT_BUTTON_DESC"] = "显示可拖动的宝库按钮。左键：切换主窗口；右键：打开 WN 快捷菜单。"
+L["CONFIG_VAULT_BUTTON_SECTION"] = "宝库按钮"
+L["CONFIG_VAULT_OPT_ENABLED"] = "宝库按钮"
+L["CONFIG_VAULT_OPT_ENABLED_DESC"] = "显示可拖动的大宝库按钮。"
+L["CONFIG_VAULT_OPT_MOUSEOVER"] = "鼠标悬停时才显示"
+L["CONFIG_VAULT_OPT_MOUSEOVER_DESC"] = "鼠标移到保存的位置之前隐藏按钮。"
+L["CONFIG_VAULT_OPT_READY_ONLY"] = "有奖励可领取时才显示"
+L["CONFIG_VAULT_OPT_READY_ONLY_DESC"] = "仅当至少一名角色有可领取的宝库奖励时显示按钮。"
+L["CONFIG_VAULT_OPT_REALM"] = "显示服务器名称"
+L["CONFIG_VAULT_OPT_REALM_DESC"] = "在宝库按钮表格与提示信息中显示角色的服务器名称。"
+L["CONFIG_VAULT_OPT_REWARD_ILVL"] = "显示奖励物品等级"
+L["CONFIG_VAULT_OPT_REWARD_ILVL_DESC"] = "在已完成栏位显示奖励的物品等级，而非就绪图标。"
+L["CONFIG_VAULT_COL_RAID"] = "团队副本列"
+L["CONFIG_VAULT_COL_RAID_DESC"] = "在宝库按钮表格中显示团队宝库进度。"
+L["CONFIG_VAULT_COL_DUNGEON"] = "地下城列"
+L["CONFIG_VAULT_COL_DUNGEON_DESC"] = "在宝库按钮表格中显示史诗钥石地下城宝库进度。"
+L["CONFIG_VAULT_COL_WORLD"] = "世界任务列"
+L["CONFIG_VAULT_COL_WORLD_DESC"] = "在宝库按钮表格中显示世界活动宝库进度。"
+L["CONFIG_VAULT_COL_BOUNTY"] = "寻宝猎人的赏金列"
+L["CONFIG_VAULT_COL_BOUNTY_DESC"] = "在宝库按钮表格中显示寻宝猎人的赏金完成情况。"
+L["CONFIG_VAULT_COL_VOIDCORE"] = "缥缈虚空核列"
+L["CONFIG_VAULT_COL_VOIDCORE_DESC"] = "在宝库按钮表格中显示缥缈虚空核进度。"
+L["CONFIG_VAULT_COL_MANAFLUX"] = "晨光魔流列"
+L["CONFIG_VAULT_COL_MANAFLUX_DESC"] = "在宝库按钮表格中显示晨光魔流货币。"
+L["CONFIG_VAULT_BUTTON_OPACITY"] = "按钮不透明度"
+L["CONFIG_VAULT_BUTTON_OPACITY_DESC"] = "调整宝库按钮可见时的不透明度。"
 L["VAULT_BUTTON_MENU_TITLE"] = "WN 菜单"
 L["VAULT_BUTTON_MENU_TRACKER"] = "宝库追踪器"
 L["VAULT_BUTTON_MENU_SAVED"] = "副本锁定"

@@ -1097,6 +1097,7 @@ L["COLLECTIONS_RECENT_DAYS_AGO"] = "il y a %d jours"
 L["COLLECTIONS_ACQUIRED_LABEL"] = "Enregistr�"
 L["COLLECTIONS_ACQUIRED_LINE"] = "%s : %s"
 L["COLLECTIONS_RECENT_TAB_EMPTY"] = "Rien d'enregistr� pour le moment."
+L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
 L["COLLECTIONS_RECENT_EMPTY"] = "Rien d'enregistr� pour le moment."
 L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "Aucune entr�e correspondante."
 L["COLLECTIONS_RECENT_SECTION_NONE"] = "Aucune entr�e pour le moment."
@@ -1111,10 +1112,14 @@ L["FALLBACK_TOY_BOX"] = "Coffre à jouets"
 L["FALLBACK_WARBAND_TOY"] = "Jouet de groupe de guerre"
 L["FILTER_SHOW_MISSING"] = "Manquants"
 L["FILTER_SHOW_OWNED"] = "Possédés"
-L["GEAR_STORAGE_BOE"] = "Banque d'Angleterre"
+L["GEAR_STORAGE_BOE"] = "BoE"
 L["GEAR_STORAGE_WARBOUND"] = "Lié au groupe"
 L["GEAR_STORAGE_TITLE"] = "Recommandations d'amélioration du stockage"
 L["GEAR_STORAGE_EMPTY"] = "Aucune meilleure amélioration BoE / Lié au groupe trouvée pour ce personnage."
+L["GEAR_STORAGE_EMPTY_NO_BOE_WOE"] = "Aucun BoE ou WoE trouvé pour améliorer les emplacements d'équipement."
+L["GEAR_SLOT_FALLBACK_FORMAT"] = "Emplacement %d"
+L["GEAR_ITEM_UPGRADE_RECOMMENDATIONS_TITLE"] = "Recommandations d'amélioration d'objet"
+L["ILVL_SHORT_LABEL"] = "Niv. obj."
 L["GEAR_TAB_DESC"] = "Équipement équipé, options d'amélioration et candidats à l'amélioration multi-personnages"
 L["GEAR_TAB_TITLE"] = "Gestion d'équipement"
 L["LT_COLLECTION_DATA"] = "Données de collection"
@@ -1163,6 +1168,7 @@ L["PROF_INFO_LOCKED"] = "Verrouillé"
 L["PROF_INFO_UNLEARNED"] = "Non appris"
 L["NOTIFICATION_FIRST_TRY"] = "Obtenu du premier coup !"
 L["NOTIFICATION_GOT_IT_AFTER"] = "Obtenu après %d tentatives !"
+L["NOTIFICATION_COLLECTIBLE_CHARACTER_LINE"] = "Personnage : %s"
 L["MONEY_LOGS_BTN"] = "Journal d'or"
 L["MONEY_LOGS_TITLE"] = "Journal d'or"
 L["MONEY_LOGS_SUMMARY_TITLE"] = "Contributions par personnage"
@@ -1228,6 +1234,12 @@ L["GOLD_MGMT_MODE_SHORT_BOTH"] = "Les deux"
 L["COMPLETE_LABEL"] = "Terminé"
 L["FIRST_CRAFT"] = "Premier artisanat"
 L["COLUMNS_BUTTON"] = "Colonnes"
+L["HIDE_FILTER_BUTTON"] = "Masquer"
+L["HIDE_FILTER_LEVEL_80"] = "Niveau 80"
+L["HIDE_FILTER_LEVEL_90"] = "Niveau 90"
+L["HIDE_FILTER_STATE_OFF"] = "Désactivé"
+L["HIDE_FILTER_TOOLTIP_TOGGLE"] = "Basculer les filtres : Niveau 80 / Niveau 90"
+L["HIDE_FILTER_TOOLTIP_CURRENT"] = "Actuel : %s"
 
 -- Reminder / Alert System
 L["ALERT_ACTIVE"] = "Alerte active"
@@ -1253,6 +1265,24 @@ L["PVE_CREST_HERO"] = "Héros"
 L["PVE_CREST_MYTH"] = "Mythe"
 L["PVE_CREST_EXPLORER"] = "Explorateur"
 L["PVE_CREST_VET"] = "Vétéran"
+L["PVE_COL_VAULT_STATUS"] = "État du Coffre"
+L["PVE_COL_NEBULOUS_VOIDCORE"] = "Noyau du Vide nébuleux"
+L["PVE_COL_DAWNLIGHT_MANAFLUX"] = "Manaflux de l'Aube"
+L["PVE_HEADER_RAID_SHORT"] = "Raid"
+L["PVE_HEADER_MAP_SHORT"] = "Carte"
+L["PVE_HEADER_STATUS_SHORT"] = "État"
+L["PVE_COMPACT_COFFER_SHARD"] = "Éclat de coffre"
+L["PVE_COMPACT_RESTORED"] = "Restauré"
+L["PVE_COMPACT_VOIDCORE"] = "Vide"
+L["PVE_COMPACT_MANAFLUX"] = "Manaflux"
+L["PVE_CREST_GENERIC"] = "Écusson"
+L["VAULT_SLOTS_SHORT_FORMAT"] = "%d emplacements"
+L["PVE_VAULT_SLOT_COMPLETE_FORMAT"] = "Emplacement %d : |cff80ff80✓|r %s"
+L["PVE_VAULT_SLOT_PROGRESS_FORMAT"] = "Emplacement %d : |cffff8888%d/%d|r"
+L["PVE_VAULT_SLOT_EMPTY_FORMAT"] = "Emplacement %d : —"
+L["PVE_VAULT_SLOT_UNLOCKED"] = "Débloqué"
+L["SHIFT_HINT_SEASON_PROGRESS"] = "Maintenez Maj pour la progression de saison"
+L["SHIFT_HINT_SEASON_PROGRESS_SHORT"] = "Maj : progression de saison"
 
 -- Vault Tooltips
 L["VAULT_BASED_ON_FORMAT"] = "Le niveau d'objet de cette récompense sera basé sur le plus bas de vos %d meilleurs runs cette semaine (actuellement %s)."
@@ -1285,6 +1315,14 @@ L["SHOW_COMPLETED_HELP"] = "Liste des tâches et progression hebdo : décoché =
 L["SHOW_PLANNED_HELP"] = "Onglets Parcourir uniquement (masqués sur la liste To-Do et la progression hebdo) : coché = seulement ce que vous avez mis sur la To-Do. Avec Afficher terminés décoché : encore à obtenir ; coché : déjà finis ; les deux cochés : toute la catégorie planifiée ; les deux décochés : parcours complet des non collectés."
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "Aucun succès à afficher"
 L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "Ajoutez des succès depuis cette liste à votre To-Do, ou changez Afficher planifiés / Afficher terminés. La liste se remplit au scan ; essayez /reload si rien n'apparaît."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP"] = "|cffccaa00Warband Nexus|r\nCliquez pour ajouter ce succès à votre liste To-Do (comme + Ajouter)."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_REMOVE"] = "|cffccaa00Warband Nexus|r\nCliquez pour retirer ce succès de votre liste To-Do."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMBAT"] = "Indisponible en combat."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"] = "Ce succès est déjà terminé."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_IN_PLANS"] = "Déjà dans la liste To-Do."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP_TRACKED"] = "Déjà suivi (barre de suivi)."
+L["ACHIEVEMENT_FRAME_WN_ALREADY_PLANNED"] = "Déjà dans la liste To-Do."
+L["ACHIEVEMENT_FRAME_WN_TRACK_FAILED"] = "Impossible d'ajouter ce succès au suivi Blizzard (liste pleine ou indisponible)."
 L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"] = "Rien à afficher"
 L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"] = "Aucune entrée planifiée ne correspond aux filtres. Ajoutez des objectifs à la To-Do ou modifiez Afficher planifiés / Afficher terminés."
 L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"] = "Aucune entrée To-Do terminée"
@@ -1364,6 +1402,7 @@ L["SLOT_SHOULDER"] = INVTYPE_SHOULDER or "Shoulder"
 L["SLOT_TABARD"] = INVTYPE_TABARD or "Tabard"
 L["SLOT_WAIST"] = INVTYPE_WAIST or "Waist"
 L["SLOT_WRIST"] = INVTYPE_WRIST or "Wrist"
+L["PROFESSION_SUMMARY_SLOT_ACCESSORY"] = "Accessoire"
 L["SOURCE_TYPE_ACHIEVEMENT"] = BATTLE_PET_SOURCE_6 or "Achievement"
 L["SOURCE_TYPE_DROP"] = BATTLE_PET_SOURCE_1 or "Drop"
 L["SOURCE_TYPE_IN_GAME_SHOP"] = BATTLE_PET_SOURCE_10 or "In-Game Shop"
@@ -1440,6 +1479,60 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limit� par faction ou classe"
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
+
+Saved Instances — layout + readability pass
+- Reworked the view into a clean header/row structure: `Instance (Difficulty)` with character progress rows directly underneath.
+- Added per-group collapse/expand controls with larger chevrons and stable collapse state while the window is open.
+- Added fixed right-side columns in headers (character count + progress) for symmetric vertical alignment across all groups.
+- Synced row progress formatting with header progress formatting for consistent numeric alignment.
+
+Saved Instances — theme and typography parity
+- Header and character rows now use outlined borders (theme-colored) for clearer section boundaries.
+- Font rendering now uses the selected addon font through `FontManager` in the Saved Instances surface.
+- Theme refresh now re-renders Saved Instances when open, so color/font changes follow the main addon window immediately.
+
+Saved Instances — scrolling + interaction
+- Switched to the standardized Factory scrollframe + themed scrollbar column used by the main addon UI.
+- Scrollbar visibility now updates automatically based on content size.
+- Resizable window behavior was retained and integrated with content/scroll refresh.
+
+CurseForge: Warband Nexus]=]
+
+
+L["CHANGELOG_V268"] = [=[v2.6.8 (2026-05-04)
+
+Try Counter — architectural overhaul
+- Counting is now event-driven by ENCOUNTER_END (next frame instead of a 5-second wait). Chests, personal-loot bags, and post-cinematic loot can be opened seconds, hours, or days later without re-counting or off-by-one.
+- Stat-backed miss path now prints "N attempts for [item]" — previously the reseed could complete silently and Sylvanas / LFR Jaina kills produced no try-counter line at all.
+- Fixed off-by-one on open-world rare farms: 4 misses followed by a drop on kill 5 now correctly says "after 5 attempts" (was "after 4").
+- Fixed encounter fallback being silently suppressed by unrelated tier-token / currency loot (Anima Vessels, etc.) inside the kill window.
+- Added definitive NEW_MOUNT_ADDED / NEW_PET_ADDED backup so post-cinematic chest grants always emit the correct obtained line, even when the primary loot-window detection misses.
+
+Sylvanas (Sanctum of Domination, Mythic)
+- All client locales now resolve the Sylvanas encounter for Vengeance's Reins try counting. Added a slot-first outcome rule for the Mythic chest so secret-GUID loot is attributed by tracked itemID rather than failing to bind to the kill.
+
+Saved Instances
+- Now lists dungeon lockouts alongside raids: 5-player Normal / Heroic / Mythic / M+ rows surface with their own difficulty pills.
+- Lockouts are filtered by reset time so expired rows no longer linger; collapse state per instance persists across sessions.
+- isRaid is treated as advisory — falls back to DifficultyID + maxPlayers when the value is wrapped or missing in Midnight 12.0 contexts.
+
+Data collection
+- Per-character lockouts capture both raid and dungeon entries (matches the cache pipeline) so the Vault button now reflects everything you're saved to.
+
+CurseForge: Warband Nexus]=]
+
+
+L["CREST_SOURCES_HEADER"] = "Sources :"
+L["CREST_TO_CAP_SUFFIX"] = "jusqu'au plafond de saison"
+L["GEAR_SECTION_CHARACTER"] = "Personnage"
+L["SAVED_INSTANCES_RESET_DAYS"] = "%dj"
+L["SAVED_INSTANCES_RESET_HOURS"] = "%dh"
+L["SAVED_INSTANCES_RESET_LESS_HOUR"] = "<1h"
+L["VAULT_PENDING"] = "En attente…"
+L["VAULT_READY_TO_CLAIM"] = "Prêt"
+L["VAULT_SLOTS_EARNED"] = "Emplacements obtenus"
+
 L["CHANGELOG_V267"] = [=[v2.6.7 (2026-04-29)
 
 PvE — Great Vault tracker
@@ -1500,6 +1593,31 @@ L["VAULT_TRACKER_STATUS_SLOTS_READY"] = "Emplacements obtenus"
 
 L["CONFIG_VAULT_BUTTON"] = "Bouton de Coffre"
 L["CONFIG_VAULT_BUTTON_DESC"] = "Affiche le bouton Coffre déplaçable. Clic gauche : ouvre/ferme la fenêtre principale ; clic droit : ouvre le menu rapide WN."
+L["CONFIG_VAULT_BUTTON_SECTION"] = "Bouton du Coffre"
+L["CONFIG_VAULT_OPT_ENABLED"] = "Bouton du Coffre"
+L["CONFIG_VAULT_OPT_ENABLED_DESC"] = "Affiche le bouton du Grand Trésor déplaçable."
+L["CONFIG_VAULT_OPT_MOUSEOVER"] = "Masquer jusqu'au survol"
+L["CONFIG_VAULT_OPT_MOUSEOVER_DESC"] = "Garde le bouton invisible jusqu'à ce que le curseur passe sur sa position enregistrée."
+L["CONFIG_VAULT_OPT_READY_ONLY"] = "Masquer jusqu'à récompense prête"
+L["CONFIG_VAULT_OPT_READY_ONLY_DESC"] = "Affiche le bouton seulement lorsqu'au moins un personnage a une récompense de coffre à réclamer."
+L["CONFIG_VAULT_OPT_REALM"] = "Afficher les royaumes"
+L["CONFIG_VAULT_OPT_REALM_DESC"] = "Affiche les royaumes des personnages dans les tableaux et infobulles du bouton du coffre."
+L["CONFIG_VAULT_OPT_REWARD_ILVL"] = "Afficher le niveau d'objet"
+L["CONFIG_VAULT_OPT_REWARD_ILVL_DESC"] = "Affiche le niveau d'objet des récompenses dans les emplacements terminés au lieu des icônes de validation."
+L["CONFIG_VAULT_COL_RAID"] = "Colonne Raid"
+L["CONFIG_VAULT_COL_RAID_DESC"] = "Affiche la progression raid du coffre dans le tableau du bouton."
+L["CONFIG_VAULT_COL_DUNGEON"] = "Colonne Donjon"
+L["CONFIG_VAULT_COL_DUNGEON_DESC"] = "Affiche la progression Mythique+ du coffre dans le tableau du bouton."
+L["CONFIG_VAULT_COL_WORLD"] = "Colonne Monde"
+L["CONFIG_VAULT_COL_WORLD_DESC"] = "Affiche la progression monde du coffre dans le tableau du bouton."
+L["CONFIG_VAULT_COL_BOUNTY"] = "Colonne Prime du chasseur de trésors"
+L["CONFIG_VAULT_COL_BOUNTY_DESC"] = "Affiche la complétion de la Prime du chasseur de trésors dans le tableau du bouton."
+L["CONFIG_VAULT_COL_VOIDCORE"] = "Colonne Noyau du Vide nébuleux"
+L["CONFIG_VAULT_COL_VOIDCORE_DESC"] = "Affiche la progression du Noyau du Vide nébuleux dans le tableau du bouton."
+L["CONFIG_VAULT_COL_MANAFLUX"] = "Colonne Manaflux de l'Aube"
+L["CONFIG_VAULT_COL_MANAFLUX_DESC"] = "Affiche la devise Manaflux de l'Aube dans le tableau du bouton."
+L["CONFIG_VAULT_BUTTON_OPACITY"] = "Opacité du bouton"
+L["CONFIG_VAULT_BUTTON_OPACITY_DESC"] = "Règle l'opacité du bouton du coffre lorsqu'il est visible."
 L["VAULT_BUTTON_MENU_TITLE"] = "Menu WN"
 L["VAULT_BUTTON_MENU_TRACKER"] = "Suivi du Coffre"
 L["VAULT_BUTTON_MENU_SAVED"] = "Instances sauvegardées"
