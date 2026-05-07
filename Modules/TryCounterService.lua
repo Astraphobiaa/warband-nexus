@@ -6156,10 +6156,14 @@ function Fns.TryInstanceBossSlotOutcomeFirst(self)
     end
 
     local now = GetTime()
+    local encounterIDForKey = Fns.GetEncounterIDForNpcID(bestRule.bossNpcID) or bestRule.encounterJournalID
+    local slotOutcomeSourceKey = encounterIDForKey
+        and ("encounter_" .. tostring(encounterIDForKey))
+        or ("inst_slot_" .. tostring(bestRule.bossNpcID))
     if anyFound then
         Fns.ClearEncounterRecentKillsForNpcId(bestRule.bossNpcID)
         Fns.ApplyBossSlotOutcomeFoundHandlers(trackable, found, drops)
-        lastTryCountSourceKey = "inst_slot_obt_" .. tostring(bestRule.bossNpcID) .. "_" .. tostring(now)
+        lastTryCountSourceKey = slotOutcomeSourceKey
         lastTryCountSourceTime = now
         lastTryCountLootSourceGUID = sources[1]
         return true
@@ -6177,12 +6181,16 @@ function Fns.TryInstanceBossSlotOutcomeFirst(self)
     if #missed == 0 then return false end
 
     Fns.ClearEncounterRecentKillsForNpcId(bestRule.bossNpcID)
+    if slotOutcomeSourceKey and lastTryCountSourceKey == slotOutcomeSourceKey and (now - lastTryCountSourceTime) < 15 then
+        lastTryCountLootSourceGUID = sources[1]
+        return true
+    end
     Fns.TryCounterLootDebugDropLines(self, "SlotOutcome", missed, 1)
     Fns.ProcessMissedDrops(missed, drops.statisticIds, {
         attemptTimes = 1,
         statReseedLootMissFallback = true,
     })
-    lastTryCountSourceKey = encId and ("encounter_" .. tostring(encId)) or ("inst_slot_miss_" .. tostring(bestRule.bossNpcID))
+    lastTryCountSourceKey = slotOutcomeSourceKey
     lastTryCountSourceTime = now
     lastTryCountLootSourceGUID = sources[1]
     return true
