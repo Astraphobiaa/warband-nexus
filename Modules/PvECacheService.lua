@@ -98,12 +98,35 @@ local function CmpNameSort(a, b)
     return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.name) or "") < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.name) or "")
 end
 
+local function SafeSavedInstanceNumber(value)
+    if value == nil then return nil end
+    if issecretvalue and issecretvalue(value) then return nil end
+    return tonumber(value)
+end
+
+local function BuildSavedInstanceStorageKey(slotIndex, lockoutID, journalInstanceID, difficultyID)
+    if lockoutID ~= nil and not (issecretvalue and issecretvalue(lockoutID)) then
+        local numericID = tonumber(lockoutID)
+        if numericID then return numericID end
+        if type(lockoutID) == "string" and lockoutID ~= "" then return lockoutID end
+    end
+
+    local slot = SafeSavedInstanceNumber(slotIndex) or 0
+    local instanceID = SafeSavedInstanceNumber(journalInstanceID)
+    local difficulty = SafeSavedInstanceNumber(difficultyID)
+    if instanceID then
+        return table.concat({ "instance", tostring(instanceID), tostring(difficulty or 0), tostring(slot) }, ":")
+    end
+    return "slot:" .. tostring(slot)
+end
+
 ---Boss rows for one GetSavedInstances() slot index (Encounter Journal order).
 ---@param slotIndex number
 ---@param numEncounters number|nil
 ---@return table[]
 local function BuildSavedInstanceEncounterList(slotIndex, numEncounters)
     local encounters = {}
+    numEncounters = SafeSavedInstanceNumber(numEncounters)
     if not numEncounters or numEncounters <= 0 then return encounters end
     for j = 1, numEncounters do
         local bossName, _, isKilled = GetSavedInstanceEncounterInfo(slotIndex, j)
@@ -175,13 +198,14 @@ local function HydrateSavedLockoutsForChar(rawMap, isRaidFlag)
     local nowS = (GetServerTime and GetServerTime()) or time()
     for instanceID, lockout in pairs(rawMap or {}) do
         if SavedLockoutRowIsActive(lockout, nowS) then
+            local displayInstanceID = lockout.instanceID or instanceID
             local difficultyName
             if lockout.difficulty and GetDifficultyInfo then
                 difficultyName = GetDifficultyInfo(lockout.difficulty)
             end
             hydrated[#hydrated + 1] = {
-                instanceID = instanceID,
-                name = lockout.name or ("Instance #" .. tostring(instanceID)),
+                instanceID = displayInstanceID,
+                name = lockout.name or ("Instance #" .. tostring(displayInstanceID)),
                 difficulty = lockout.difficulty,
                 difficultyName = difficultyName or lockout.difficultyName or "Unknown",
                 reset = lockout.reset,
@@ -1148,52 +1172,47 @@ function WarbandNexus:UpdateRaidLockouts(charKey)
         if issecretvalue and name and issecretvalue(name) then name = nil end
         if issecretvalue and difficulty and issecretvalue(difficulty) then difficulty = nil end
         if issecretvalue and difficultyName and issecretvalue(difficultyName) then difficultyName = nil end
+        if issecretvalue and locked ~= nil and issecretvalue(locked) then locked = nil end
+        if issecretvalue and extended ~= nil and issecretvalue(extended) then extended = nil end
 
-        local encProg = nil
-        if encounterProgress ~= nil then
-            if issecretvalue and issecretvalue(encounterProgress) then
-                encProg = nil
-            else
-                encProg = tonumber(encounterProgress)
-            end
-        end
+        local difficultyID = SafeSavedInstanceNumber(difficulty)
+        local journalInstanceID = SafeSavedInstanceNumber(_instId)
+        local numEncountersSafe = SafeSavedInstanceNumber(numEncounters)
+        local encProg = SafeSavedInstanceNumber(encounterProgress)
         local hasBossProgress = encProg and encProg > 0
         -- Some 5-player rows report locked=false while still on the saved list; boss progress implies a real lock.
-        local activeLock = locked or extended or hasBossProgress
+        local lockedFlag = locked == true or locked == 1
+        local extendedFlag = extended == true or extended == 1
+        local activeLock = lockedFlag or extendedFlag or hasBossProgress
         if not name or not activeLock then
             -- Nothing to track for this row.
         else
-            local resetSec = nil
-            if reset ~= nil then
-                if issecretvalue and issecretvalue(reset) then
-                    resetSec = nil
-                else
-                    resetSec = tonumber(reset)
-                end
-            end
+            local resetSec = SafeSavedInstanceNumber(reset)
             -- Do not persist expired lockouts (GetSavedInstanceInfo reset is seconds until weekly reset).
             if not resetSec or resetSec <= 0 then
                 -- Skip: already reset or no countdown.
             else
-            local raidFlag = CoerceSavedInstanceIsRaid(isRaid, maxPlayers, difficulty)
-            local encounters = BuildSavedInstanceEncounterList(i, numEncounters)
-            local row = {
-                name = name,
-                difficulty = difficulty,
-                difficultyName = difficultyName,
-                reset = reset,
-                resetAt = nowServer + resetSec,
-                extended = extended or false,
-                numEncounters = numEncounters,
-                encounterProgress = encounterProgress,
-                encounters = encounters,
-            }
-            if raidFlag == true then
-                self.db.global.pveCache.lockouts.raids[charKey][id] = row
-            elseif raidFlag == false then
-                self.db.global.pveCache.lockouts.dungeons[charKey][id] = row
-            end
-            -- raidFlag nil: could not classify safely; skip.
+                local raidFlag = CoerceSavedInstanceIsRaid(isRaid, maxPlayers, difficultyID)
+                local storageKey = BuildSavedInstanceStorageKey(i, id, journalInstanceID, difficultyID)
+                local encounters = BuildSavedInstanceEncounterList(i, numEncountersSafe)
+                local row = {
+                    name = name,
+                    instanceID = journalInstanceID,
+                    difficulty = difficultyID,
+                    difficultyName = difficultyName,
+                    reset = resetSec,
+                    resetAt = nowServer + resetSec,
+                    extended = extendedFlag,
+                    numEncounters = numEncountersSafe,
+                    encounterProgress = encProg,
+                    encounters = encounters,
+                }
+                if raidFlag == true then
+                    self.db.global.pveCache.lockouts.raids[charKey][storageKey] = row
+                elseif raidFlag == false then
+                    self.db.global.pveCache.lockouts.dungeons[charKey][storageKey] = row
+                end
+                -- raidFlag nil: could not classify safely; skip.
             end
         end
     end
