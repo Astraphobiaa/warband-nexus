@@ -263,10 +263,17 @@ local function GetPlanDescriptionFormatted(plan)
         local sourceType, sourceDetail = raw:match("^([^:]+:%s*)(.*)$")
         if sourceDetail and sourceDetail ~= "" then
             local icon = ""
-            if sourceType and not (issecretvalue and issecretvalue(sourceType)) and string.lower(sourceType):match("quest") then
-                icon = "|TInterface\\Icons\\INV_Misc_Map_01:12:12:0:0|t "
-            elseif sourceType and not (issecretvalue and issecretvalue(sourceType)) and string.lower(sourceType):match("drop") then
-                icon = "|TInterface\\Icons\\INV_Misc_Bag_10_Blue:12:12:0:0|t "
+            local IconMk = ns.UI_PlanSourceIconMarkup
+            if IconMk and sourceType and not (issecretvalue and issecretvalue(sourceType)) then
+                local sl = string.lower(sourceType)
+                local szSm = (ns.UI_PLAN_SOURCE_ICON_SM) or math.floor(12 * 1.3 + 0.5)
+                if sl:match("quest") then
+                    icon = IconMk("quest", szSm) .. " "
+                elseif sl:match("drop") or sl:match("loot") then
+                    icon = IconMk("loot", szSm) .. " "
+                elseif sl:match("location") or sl:match("zone") then
+                    icon = IconMk("location", szSm) .. " "
+                end
             end
             return dim .. icon .. srcLabel .. sourceType .. "|r" .. body .. sourceDetail .. "|r"
         end
@@ -324,10 +331,13 @@ local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, min
     local dim = P.descDim or "|cff888888"
 
     local rows = {}
-    -- Inline markup matches PlanCardFactory:CreateSourceInfo so the tracker and main UI render
-    -- the Drop/Vendor/Quest/Location lines identically (single source of truth for visuals).
-    local CLASS_ATLAS_MARKUP = "|A:Class:16:16|a"
-    local QUEST_ICON_MARKUP = "|TInterface\\Icons\\INV_Misc_Map_01:16:16:0:0|t"
+    local szLg = (ns.UI_PLAN_SOURCE_ICON_LG) or math.floor(16 * 1.3 + 0.5)
+    local IconMk = ns.UI_PlanSourceIconMarkup
+    local classMk = IconMk and IconMk("class", szLg) or string.format("|A:Class:%d:%d|a", szLg, szLg)
+    local lootMk = IconMk and IconMk("loot", szLg) or string.format("|A:Banker:%d:%d|a", szLg, szLg)
+    local questMk = IconMk and IconMk("quest", szLg) or string.format("|A:Islands-QuestTurnin:%d:%d|a", szLg, szLg)
+    local locMk = IconMk and IconMk("location", szLg) or string.format("|A:poi-islands-table:%d:%d|a", szLg, szLg)
+    -- Inline markup matches PlanCardFactory:CreateSourceInfo (Loot / Quest / Location atlases).
     local function addRow(iconMarkup, labelKey, fallback, value, valueColor)
         if not value or value == "" then return end
         local label = (L and L[labelKey]) or fallback
@@ -354,11 +364,11 @@ local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, min
     local first = sources and sources[1]
     if first then
         if first.vendor then
-            addRow(CLASS_ATLAS_MARKUP, "VENDOR_LABEL", "Vendor:", first.vendor)
+            addRow(classMk, "VENDOR_LABEL", "Vendor:", first.vendor)
         elseif first.npc then
-            addRow(CLASS_ATLAS_MARKUP, "DROP_LABEL", "Drop:", first.npc)
+            addRow(lootMk, "DROP_LABEL", "Drop:", first.npc)
         elseif first.quest then
-            addRow(QUEST_ICON_MARKUP, "QUEST_LABEL", "Quest:", first.quest)
+            addRow(questMk, "QUEST_LABEL", "Quest:", first.quest)
         end
         if first.zone then
             local zoneSuffix = ""
@@ -368,7 +378,7 @@ local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, min
                     zoneSuffix = " " .. body .. "(" .. diff .. ")|r"
                 end
             end
-            addRow(CLASS_ATLAS_MARKUP, "LOCATION_LABEL", "Location:", first.zone .. zoneSuffix)
+            addRow(locMk, "LOCATION_LABEL", "Location:", first.zone .. zoneSuffix)
         end
     end
 
@@ -391,14 +401,18 @@ local function BuildPlanCriteriaItems(plan)
         local label = (L and L[key]) or fallback
         items[#items + 1] = { text = (iconMarkup or "") .. " " .. labCol .. label .. "|r " .. body .. tostring(value) .. "|r" }
     end
-    local CLASS_ATLAS_MARKUP = "|A:Class:14:14|a"
-    local QUEST_ICON_MARKUP = "|TInterface\\Icons\\INV_Misc_Map_01:14:14:0:0|t"
+    local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
+    local IconMk = ns.UI_PlanSourceIconMarkup
+    local classMk14 = IconMk and IconMk("class", szMd) or string.format("|A:Class:%d:%d|a", szMd, szMd)
+    local lootMk14 = IconMk and IconMk("loot", szMd) or string.format("|A:Banker:%d:%d|a", szMd, szMd)
+    local questMk14 = IconMk and IconMk("quest", szMd) or string.format("|A:Islands-QuestTurnin:%d:%d|a", szMd, szMd)
+    local locMk14 = IconMk and IconMk("location", szMd) or string.format("|A:poi-islands-table:%d:%d|a", szMd, szMd)
     if first.vendor then
-        row(CLASS_ATLAS_MARKUP, "VENDOR_LABEL", "Vendor:", first.vendor)
+        row(classMk14, "VENDOR_LABEL", "Vendor:", first.vendor)
     elseif first.npc then
-        row(CLASS_ATLAS_MARKUP, "DROP_LABEL", "Drop:", first.npc)
+        row(lootMk14, "DROP_LABEL", "Drop:", first.npc)
     elseif first.quest then
-        row(QUEST_ICON_MARKUP, "QUEST_LABEL", "Quest:", first.quest)
+        row(questMk14, "QUEST_LABEL", "Quest:", first.quest)
     end
     if first.zone then
         local zoneSuffix = ""
@@ -408,7 +422,7 @@ local function BuildPlanCriteriaItems(plan)
                 zoneSuffix = " (" .. diff .. ")"
             end
         end
-        row(CLASS_ATLAS_MARKUP, "LOCATION_LABEL", "Location:", first.zone .. zoneSuffix)
+        row(locMk14, "LOCATION_LABEL", "Location:", first.zone .. zoneSuffix)
     end
     return items
 end

@@ -314,6 +314,33 @@ function WarbandNexus:RedrawStorageResultsOnly()
     rc:SetHeight(math.max(contentHeight or 1, 1))
 end
 
+--- After leaf type accordion tweens (no full DrawStorageResults), resize results container from layout tail.
+function WarbandNexus:SyncStorageResultsLayoutFromTail(resultsContainer)
+    if not resultsContainer then return end
+    local tail = resultsContainer._wnStorageLayoutTail
+    local pad = GetLayout().minBottomSpacing or 0
+    if tail and resultsContainer.GetTop and tail.GetBottom then
+        local pTop = resultsContainer:GetTop()
+        local bot = tail:GetBottom()
+        if pTop and bot then
+            local measured = pTop - bot + pad
+            resultsContainer:SetHeight(math.max(1, measured))
+        end
+    end
+    local mf = self.UI and self.UI.mainFrame
+    if mf and mf.scroll and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
+    end
+    local sc = mf and mf.scroll
+    if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+        local maxV = sc:GetVerticalScrollRange() or 0
+        local cur = sc:GetVerticalScroll() or 0
+        if cur > maxV then
+            sc:SetVerticalScroll(maxV)
+        end
+    end
+end
+
 --============================================================================
 -- STORAGE RESULTS RENDERING (Separated for search refresh)
 --============================================================================
@@ -359,7 +386,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
 
     local globalRowIdxAll = 0
     local animatedRows = parent._wnStorageAnimatedRows
-    self.recentlyExpanded = self.recentlyExpanded or {}
     --- Vertical chain tail: major headers + type wraps share one anchor stack so accordion tweens
     --- reposition following siblings immediately (no deferred yOffset drift).
     local storageStackAnchor = nil
@@ -368,32 +394,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     local expanded = self.db.profile.storageExpanded or {}
     if not expanded.categories then expanded.categories = {} end
     
-    -- Toggle function
-    local function ToggleExpand(key, isExpanded)
--- If isExpanded is boolean, use it directly (new callback style)
-        -- If isExpanded is nil, toggle manually (old callback style for backwards compat)
-        if type(isExpanded) == "boolean" then
-            if key == "warband" or key == "personal" or key == "guild" then
-                expanded[key] = isExpanded
-                if isExpanded then self.recentlyExpanded[key] = GetTime() end
-            else
-                expanded.categories[key] = isExpanded
-                if isExpanded then self.recentlyExpanded[key] = GetTime() end
-            end
-        else
-            if key == "warband" or key == "personal" or key == "guild" then
-                expanded[key] = not expanded[key]
-                isExpanded = expanded[key]
-            else
-                expanded.categories[key] = not expanded.categories[key]
-                isExpanded = expanded.categories[key]
-            end
-        end
-
-        self._storageExpandedKey = isExpanded and key or nil
-        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true, instantPopulate = true })
-    end
-
     local function CreateStorageRowsContainer(contentParent, anchorFrame, leftOffset, rightOffset)
         contentParent = contentParent or parent
         local frame = ns.UI.Factory:CreateContainer(contentParent, math.max(1, contentParent:GetWidth()), 1, false)
@@ -406,6 +406,116 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     end
 
     local TYPE_SECTION_HEADER_H = StorageSectionLayout.GetTypeSectionHeaderHeight()
+    local MAIN_SECTION_HEADER_H = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
+
+    --- Nested Major accordion (e.g. character wraps under Personal): tween updates inner wrap height but
+    --- the stack parent (`personalBody`) keeps its initial height — siblings stay visually stuck. Resize
+    --- stack parent + outer section wrap from live child bottoms each tick (WoW Y grows upward).
+    local function ReflowStorageStackParentBody(stackParent, outerWrap, outerHeaderH)
+        if not stackParent then return end
+        local pTop = stackParent:GetTop()
+        if not pTop then return end
+        local lowest = pTop
+        local children = { stackParent:GetChildren() }
+        for i = 1, #children do
+            local c = children[i]
+            if c and c:IsShown() then
+                local cb = c:GetBottom()
+                if cb and cb < lowest then
+                    lowest = cb
+                end
+            end
+        end
+        local extent = pTop - lowest
+        if extent < 1 then
+            extent = math.max(0.1, stackParent:GetHeight() or 0.1)
+        end
+        stackParent:SetHeight(math.max(0.1, extent))
+        if outerWrap and outerHeaderH then
+            outerWrap:SetHeight(outerHeaderH + stackParent:GetHeight())
+        end
+    end
+
+    --- After a type (leaf) accordion tweens, section bodies/wraps above the type row stay at initial heights.
+    --- Reflow measured stacks so character rows and items below sit below expanded content (not drawn on top).
+    --- ctx: { contentBody, sectionWrap, sectionHeaderH, stackParent?, outerSectionWrap?, outerSectionHeaderH? }
+    local function ApplyStorageLeafAncestorReflow(ctx)
+        if not ctx or not ctx.contentBody or not ctx.sectionWrap or not ctx.sectionHeaderH then return end
+        ReflowStorageStackParentBody(ctx.contentBody, ctx.sectionWrap, ctx.sectionHeaderH)
+        ctx.contentBody._wnAccordionFullH = math.max(0.1, ctx.contentBody:GetHeight() or 0.1)
+        if ctx.stackParent and ctx.outerSectionWrap and ctx.outerSectionHeaderH then
+            ReflowStorageStackParentBody(ctx.stackParent, ctx.outerSectionWrap, ctx.outerSectionHeaderH)
+            ctx.stackParent._wnAccordionFullH = math.max(0.1, ctx.stackParent:GetHeight() or 0.1)
+        end
+        WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+    end
+
+    --- Major section (Personal / Warband / Guild / character): wrapped header + body height tween.
+    --- Optional `stackReflowCtx`: { stackParent, outerWrap, outerHeaderH } for nested stacks (Personal → characters).
+    local function MajorStorageAccordionOpts(wrapFrame, bodyGetter, headerH, persistFn, stackReflowCtx)
+        return {
+            animatedContent = bodyGetter,
+            persistToggle = function(exp)
+                if type(exp) == "boolean" and persistFn then
+                    persistFn(exp)
+                end
+            end,
+            accordionOnUpdate = function(drawH)
+                wrapFrame:SetHeight(headerH + math.max(0.1, drawH or 0))
+                if stackReflowCtx and stackReflowCtx.stackParent then
+                    ReflowStorageStackParentBody(
+                        stackReflowCtx.stackParent,
+                        stackReflowCtx.outerWrap,
+                        stackReflowCtx.outerHeaderH
+                    )
+                end
+                WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+            end,
+            accordionComplete = function(exp)
+                if not exp then
+                    local b = bodyGetter()
+                    if b then
+                        b:Hide()
+                        b:SetHeight(0.1)
+                    end
+                end
+                WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+            end,
+        }
+    end
+
+    --- Leaf type rows live under `rowsContainer`; tween that frame (Characters-parity) without full tab redraw.
+    --- Optional `ancestorReflowCtx`: reflow char/warband/guild section + Personal outer after height changes.
+    local function LeafTypeAccordionVisualOpts(wrapFrame, rowsGetter, leafKey, ancestorReflowCtx)
+        return {
+            animatedContent = rowsGetter,
+            persistToggle = function(exp)
+                if type(exp) == "boolean" then
+                    expanded.categories[leafKey] = exp
+                end
+            end,
+            accordionOnUpdate = function(drawH)
+                wrapFrame:SetHeight(TYPE_SECTION_HEADER_H + math.max(0.1, drawH or 0))
+                if ancestorReflowCtx then
+                    ApplyStorageLeafAncestorReflow(ancestorReflowCtx)
+                end
+            end,
+            accordionComplete = function(exp)
+                if not exp then
+                    local rc = rowsGetter()
+                    if rc then
+                        rc:Hide()
+                        rc:SetHeight(0.1)
+                    end
+                end
+                if ancestorReflowCtx then
+                    ApplyStorageLeafAncestorReflow(ancestorReflowCtx)
+                else
+                    WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+                end
+            end,
+        }
+    end
 
     local function PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
         row:SetAlpha(1)
@@ -684,24 +794,43 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         
         local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-        local personalHeader, personalBtn = CreateCollapsibleHeader(
-            parent,
+
+        local personalWrap = ns.UI.Factory:CreateContainer(parent, math.max(1, width), MAIN_SECTION_HEADER_H + 0.1, false)
+        personalWrap:ClearAllPoints()
+        if personalWrap.SetClipsChildren then
+            personalWrap:SetClipsChildren(true)
+        end
+        ChainSectionFrameBelow(parent, personalWrap, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or nil, yOffset)
+
+        local personalBody
+        local personalHeader = CreateCollapsibleHeader(
+            personalWrap,
             (ns.L and ns.L["PERSONAL_ITEMS"]) or "Personal Items",
             "personal",
             personalExpanded,
-            function(isExpanded) ToggleExpand("personal", isExpanded) end,
+            function() end,
             GetCharacterSpecificIcon(),
-            true  -- isAtlas = true
+            true,
+            nil,
+            nil,
+            MajorStorageAccordionOpts(personalWrap, function() return personalBody end, MAIN_SECTION_HEADER_H, function(exp)
+                expanded.personal = exp
+            end)
         )
-        ChainSectionFrameBelow(parent, personalHeader, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or nil, yOffset)
-        personalHeader:SetWidth(width)  -- Set width to match content area
+        personalHeader:SetPoint("TOPLEFT", personalWrap, "TOPLEFT", 0, 0)
+        personalHeader:SetWidth(width)
 
-if personalExpanded then
-        storageStackAnchor = personalHeader
-        yOffset = yOffset + HEADER_SPACING  -- Personal strip (numeric tail mirrors chain)
-        -- Iterate through each character
+        personalBody = ns.UI.Factory:CreateContainer(personalWrap, math.max(1, width), 0.1, false)
+        personalBody:ClearAllPoints()
+        personalBody:SetPoint("TOPLEFT", personalHeader, "BOTTOMLEFT", 0, 0)
+        personalBody:SetPoint("TOPRIGHT", personalHeader, "BOTTOMRIGHT", 0, 0)
+
+        local personalInnerTail = nil
+        local personalInnerAccum = 0
+
+        yOffset = yOffset + HEADER_SPACING
         local hasAnyPersonalItems = false
-        
+
         -- Direct DB access (DB-First pattern) (tracked only)
         local allCharacters = self:GetAllCharacters() or {}
         local characters = {}
@@ -796,23 +925,47 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                         charIcon = "Interface\\Icons\\ClassIcon_" .. char.classFile
                     end
                     
-                    -- Character header (Level 1, indented under Personal Banks)
+                    -- Character block: wrapped header + body (major accordion); types always built inside body.
                     local charIndent = BASE_INDENT * 1  -- 15px
+                    local charWrap = ns.UI.Factory:CreateContainer(personalBody, math.max(1, width - charIndent), MAIN_SECTION_HEADER_H + 0.1, false)
+                    charWrap:ClearAllPoints()
+                    if charWrap.SetClipsChildren then
+                        charWrap:SetClipsChildren(true)
+                    end
+                    if personalInnerTail then
+                        ChainSectionFrameBelow(personalBody, charWrap, personalInnerTail, charIndent, SECTION_SPACING, nil)
+                    else
+                        ChainSectionFrameBelow(personalBody, charWrap, nil, charIndent, nil, 0)
+                    end
+
+                    local charBody
                     local charHeader, charBtn = CreateCollapsibleHeader(
-                        parent,
+                        charWrap,
                         (charDisplayName or charKey),
                         charCategoryKey,
                         isCharExpanded,
-                        function(isExpanded) ToggleExpand(charCategoryKey, isExpanded) end,
+                        function() end,
                         charIcon,
-                        false,  -- isAtlas = false (class icons are texture paths)
-                        1       -- indentLevel = 1 (child header)
+                        false,
+                        1,
+                        nil,
+                        MajorStorageAccordionOpts(charWrap, function() return charBody end, MAIN_SECTION_HEADER_H, function(exp)
+                            expanded.categories[charCategoryKey] = exp
+                        end, {
+                            stackParent = personalBody,
+                            outerWrap = personalWrap,
+                            outerHeaderH = MAIN_SECTION_HEADER_H,
+                        })
                     )
-                    ChainSectionFrameBelow(parent, charHeader, storageStackAnchor, charIndent, SECTION_SPACING, yOffset)
-                    charHeader:SetWidth(width - charIndent)
-                    if isCharExpanded then
-                    -- Chain type wraps to previous BOTTOMLEFT so accordion height tweens push siblings down (engine-driven).
-                    local stackAnchor = charHeader
+                    charHeader:SetPoint("TOPLEFT", charWrap, "TOPLEFT", 0, 0)
+                    charHeader:SetWidth(charWrap:GetWidth())
+
+                    charBody = ns.UI.Factory:CreateContainer(charWrap, math.max(1, charWrap:GetWidth()), 0.1, false)
+                    charBody:ClearAllPoints()
+                    charBody:SetPoint("TOPLEFT", charHeader, "BOTTOMLEFT", 0, 0)
+                    charBody:SetPoint("TOPRIGHT", charHeader, "BOTTOMRIGHT", 0, 0)
+
+                    local stackAnchor = nil
                     local gapBelowStack = SECTION_SPACING
                     -- Group character's items by type (NEW: Array-based iteration)
                     local charItems = {}
@@ -878,7 +1031,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                         end
                     end
                     table.sort(charSortedTypes)
-                    local personalTypesAdvance = charHeader:GetHeight() + SECTION_SPACING
+                    local charBodyAdvance = SECTION_SPACING
 -- Draw each type category for this character
                     for _, typeName in ipairs(charSortedTypes) do
                         local typeKey = "personal_" .. charKey .. "_" .. typeName
@@ -919,14 +1072,18 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                                     typeIcon2 = GetTypeIcon(charItems[typeName][1].classID)
                                 end
                                 
-                                -- Type header + rows (instant expand/collapse via redraw — no list accordion tween)
+                                -- Type header + rows: accordion tween on rowsContainer; stagger on rows (SharedWidgets).
                                 local typeIndent = BASE_INDENT * 2  -- 30px
-                                local typeSectionWrap = ns.UI.Factory:CreateContainer(parent, math.max(1, width - typeIndent), TYPE_SECTION_HEADER_H + 0.1, false)
+                                local typeSectionWrap = ns.UI.Factory:CreateContainer(charBody, math.max(1, charBody:GetWidth() - typeIndent), TYPE_SECTION_HEADER_H + 0.1, false)
                                 typeSectionWrap:ClearAllPoints()
                                 if typeSectionWrap.SetClipsChildren then
                                     typeSectionWrap:SetClipsChildren(true)
                                 end
-                                ChainSectionFrameBelow(parent, typeSectionWrap, stackAnchor, typeIndent, gapBelowStack, yOffset)
+                                if stackAnchor then
+                                    ChainSectionFrameBelow(charBody, typeSectionWrap, stackAnchor, typeIndent, gapBelowStack, nil)
+                                else
+                                    ChainSectionFrameBelow(charBody, typeSectionWrap, nil, typeIndent, nil, SECTION_SPACING)
+                                end
                                 gapBelowStack = SECTION_SPACING
                                 stackAnchor = typeSectionWrap
 
@@ -936,17 +1093,25 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                                 typeName .. " (" .. FormatNumber(displayCount) .. ")",
                                 typeKey,
                                 isTypeExpanded,
-                                function(isExpanded) ToggleExpand(typeKey, isExpanded) end,
+                                function() end,
                                 typeIcon2,
                                 false,  -- isAtlas = false (item icons are texture paths)
                                 0,      -- indent in wrap only; typeSectionWrap already offset under character header
                                 nil,
-                                nil
+                                LeafTypeAccordionVisualOpts(typeSectionWrap, function() return rowsContainer end, typeKey, {
+                                    contentBody = charBody,
+                                    sectionWrap = charWrap,
+                                    sectionHeaderH = MAIN_SECTION_HEADER_H,
+                                    stackParent = personalBody,
+                                    outerSectionWrap = personalWrap,
+                                    outerSectionHeaderH = MAIN_SECTION_HEADER_H,
+                                })
                             )
                             typeHeader2:SetPoint("TOPLEFT", typeSectionWrap, "TOPLEFT", 0, 0)
                             typeHeader2:SetWidth(typeSectionWrap:GetWidth())
                             rowsContainer = CreateStorageRowsContainer(typeSectionWrap, typeHeader2, 0, 0)
                             local rowsYOffset = 0
+                            local rowStaggerIdx = 0
                             for _, item in ipairs(charItems[typeName]) do
                                 local shouldShow = ItemMatchesSearch(item)
                                 if shouldShow then
@@ -966,6 +1131,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                                     row:SetPoint("TOPLEFT", 0, -rowsYOffset)
                                     PopulateStorageRowDirect(row, item, globalRowIdxAll, width - BASE_INDENT * 2, locText)
                                     animatedRows[#animatedRows + 1] = row
+                                    rowStaggerIdx = rowStaggerIdx + 1
                                     rowsYOffset = rowsYOffset + ROW_HEIGHT + GetLayout().betweenRows
                                 end
                             end
@@ -978,29 +1144,39 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                                 rowsContainer:SetHeight(0.1)
                             end
                             typeSectionWrap:SetHeight(TYPE_SECTION_HEADER_H + math.max(0.1, rowsContainer:GetHeight() or 0.1))
-                            personalTypesAdvance = personalTypesAdvance + typeSectionWrap:GetHeight() + SECTION_SPACING
+                            charBodyAdvance = charBodyAdvance + typeSectionWrap:GetHeight() + SECTION_SPACING
                             end  -- if displayCount > 0
                         end  -- if not skipped by search
                     end
                     
-                    storageStackAnchor = stackAnchor
-                    yOffset = yOffset + personalTypesAdvance
-                    -- No per-character empty state needed
+                    local charInnerH = math.max(0.1, charBodyAdvance - SECTION_SPACING)
+                    charBody._wnAccordionFullH = charInnerH
+                    if isCharExpanded then
+                        charBody:Show()
+                        charBody:SetHeight(charInnerH)
                     else
-                    storageStackAnchor = charHeader
-                    yOffset = yOffset + HEADER_SPACING
-                    end  -- if isCharExpanded
-                
+                        charBody:Hide()
+                        charBody:SetHeight(0.1)
+                    end
+                    charWrap:SetHeight(MAIN_SECTION_HEADER_H + charBody:GetHeight())
+                    personalInnerAccum = personalInnerAccum + charWrap:GetHeight() + SECTION_SPACING
+                    personalInnerTail = charWrap
+
                 hasAnyPersonalItems = true
             end  -- else (closes the else at line 449)
         end  -- if itemsData
         end  -- for char
             
-        -- No section-level empty state needed
+        personalBody._wnAccordionFullH = math.max(0.1, personalInnerAccum - SECTION_SPACING)
+        if personalExpanded then
+            personalBody:Show()
+            personalBody:SetHeight(personalBody._wnAccordionFullH)
         else
-            storageStackAnchor = personalHeader
-            yOffset = yOffset + HEADER_SPACING
-        end  -- if personalExpanded
+            personalBody:Hide()
+            personalBody:SetHeight(0.1)
+        end
+        personalWrap:SetHeight(MAIN_SECTION_HEADER_H + personalBody:GetHeight())
+        storageStackAnchor = personalWrap
     end  -- if personalTotalMatches > 0
     
     -- ===== WARBAND BANK SECTION =====
@@ -1056,28 +1232,46 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
             warbandExpanded = true
         end
         
+        local warbandWrap = ns.UI.Factory:CreateContainer(parent, math.max(1, width), MAIN_SECTION_HEADER_H + 0.1, false)
+        warbandWrap:ClearAllPoints()
+        if warbandWrap.SetClipsChildren then
+            warbandWrap:SetClipsChildren(true)
+        end
+        ChainSectionFrameBelow(parent, warbandWrap, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or nil, yOffset)
+
+        local warbandBody
         local warbandHeader, expandBtn, warbandIcon = CreateCollapsibleHeader(
-            parent,
+            warbandWrap,
             (ns.L and ns.L["STORAGE_WARBAND_BANK"]) or "Warband Bank",
             "warband",
             warbandExpanded,
-            function(isExpanded) ToggleExpand("warband", isExpanded) end,
-            "dummy"  -- Dummy value to trigger icon creation
+            function() end,
+            "dummy",
+            false,
+            nil,
+            nil,
+            MajorStorageAccordionOpts(warbandWrap, function() return warbandBody end, MAIN_SECTION_HEADER_H, function(exp)
+                expanded.warband = exp
+            end)
         )
-        ChainSectionFrameBelow(parent, warbandHeader, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or nil, yOffset)
-        warbandHeader:SetWidth(width)  -- Set width to match content area
-        
+        warbandHeader:SetPoint("TOPLEFT", warbandWrap, "TOPLEFT", 0, 0)
+        warbandHeader:SetWidth(width)
+
+        warbandBody = ns.UI.Factory:CreateContainer(warbandWrap, math.max(1, width), 0.1, false)
+        warbandBody:ClearAllPoints()
+        warbandBody:SetPoint("TOPLEFT", warbandHeader, "BOTTOMLEFT", 0, 0)
+        warbandBody:SetPoint("TOPRIGHT", warbandHeader, "BOTTOMRIGHT", 0, 0)
+
         -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
         if warbandIcon then
             warbandIcon:SetTexture(nil)  -- Clear dummy texture
             warbandIcon:SetAtlas("warbands-icon")
             warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
         end
-        
-        local warbandTypesAdvance
-        if warbandExpanded then
-        local stackAnchor = warbandHeader
+
+        local stackAnchor = nil
         local gapBelowStack = SECTION_SPACING
+        local warbandBodyAdvance = SECTION_SPACING
         -- Sort types alphabetically
             local sortedTypes = {}
             for typeName in pairs(warbandItems) do
@@ -1099,8 +1293,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                 end
             end
             table.sort(sortedTypes)
-            warbandTypesAdvance = warbandHeader:GetHeight() + SECTION_SPACING
-        
+
         -- Draw each type category
         for _, typeName in ipairs(sortedTypes) do
             local categoryKey = "warband_" .. typeName
@@ -1142,12 +1335,16 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                     end
                     
                     local typeIndentWB = BASE_INDENT
-                    local typeSectionWrapWB = ns.UI.Factory:CreateContainer(parent, math.max(1, width - typeIndentWB), TYPE_SECTION_HEADER_H + 0.1, false)
+                    local typeSectionWrapWB = ns.UI.Factory:CreateContainer(warbandBody, math.max(1, warbandBody:GetWidth() - typeIndentWB), TYPE_SECTION_HEADER_H + 0.1, false)
                     typeSectionWrapWB:ClearAllPoints()
                     if typeSectionWrapWB.SetClipsChildren then
                         typeSectionWrapWB:SetClipsChildren(true)
                     end
-                    ChainSectionFrameBelow(parent, typeSectionWrapWB, stackAnchor, typeIndentWB, gapBelowStack, yOffset)
+                    if stackAnchor then
+                        ChainSectionFrameBelow(warbandBody, typeSectionWrapWB, stackAnchor, typeIndentWB, gapBelowStack, nil)
+                    else
+                        ChainSectionFrameBelow(warbandBody, typeSectionWrapWB, nil, typeIndentWB, nil, SECTION_SPACING)
+                    end
                     gapBelowStack = SECTION_SPACING
                     stackAnchor = typeSectionWrapWB
 
@@ -1157,17 +1354,22 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                     typeName .. " (" .. FormatNumber(displayCount) .. ")",
                     categoryKey,
                     isTypeExpanded,
-                    function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
+                    function() end,
                     typeIcon,
                     false,
                     nil,
                     nil,
-                    nil
+                    LeafTypeAccordionVisualOpts(typeSectionWrapWB, function() return rowsContainer end, categoryKey, {
+                        contentBody = warbandBody,
+                        sectionWrap = warbandWrap,
+                        sectionHeaderH = MAIN_SECTION_HEADER_H,
+                    })
                 )
                 typeHeader:SetPoint("TOPLEFT", typeSectionWrapWB, "TOPLEFT", 0, 0)
                 typeHeader:SetWidth(typeSectionWrapWB:GetWidth())
                     rowsContainer = CreateStorageRowsContainer(typeSectionWrapWB, typeHeader, 0, 0)
                     local rowsYOffset = 0
+                    local rowStaggerIdxWB = 0
                     for _, item in ipairs(warbandItems[typeName]) do
                         local shouldShow = ItemMatchesSearch(item)
                         if shouldShow then
@@ -1178,6 +1380,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                             row:SetPoint("TOPLEFT", 0, -rowsYOffset)
                             PopulateStorageRowDirect(row, item, globalRowIdxAll, width - BASE_INDENT, locText)
                             animatedRows[#animatedRows + 1] = row
+                            rowStaggerIdxWB = rowStaggerIdxWB + 1
                             rowsYOffset = rowsYOffset + ROW_HEIGHT + GetLayout().betweenRows
                         end
                     end
@@ -1190,18 +1393,21 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                         rowsContainer:SetHeight(0.1)
                     end
                     typeSectionWrapWB:SetHeight(TYPE_SECTION_HEADER_H + math.max(0.1, rowsContainer:GetHeight() or 0.1))
-                    warbandTypesAdvance = warbandTypesAdvance + typeSectionWrapWB:GetHeight() + SECTION_SPACING
+                    warbandBodyAdvance = warbandBodyAdvance + typeSectionWrapWB:GetHeight() + SECTION_SPACING
                 end  -- if displayCount > 0
             end  -- if not skipped by search
         end
-            
-            -- No empty state needed for Warband section
-            storageStackAnchor = stackAnchor
-            yOffset = yOffset + warbandTypesAdvance
+
+        warbandBody._wnAccordionFullH = math.max(0.1, warbandBodyAdvance - SECTION_SPACING)
+        if warbandExpanded then
+            warbandBody:Show()
+            warbandBody:SetHeight(warbandBody._wnAccordionFullH)
         else
-            storageStackAnchor = warbandHeader
-            yOffset = yOffset + HEADER_SPACING
-        end  -- if warbandExpanded
+            warbandBody:Hide()
+            warbandBody:SetHeight(0.1)
+        end
+        warbandWrap:SetHeight(MAIN_SECTION_HEADER_H + warbandBody:GetHeight())
+        storageStackAnchor = warbandWrap
     end  -- if warbandTotalMatches > 0
     
     -- ===== GUILD BANK SECTION =====
@@ -1329,28 +1535,46 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                 (ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank",
                 guildName)
             
+            local guildWrap = ns.UI.Factory:CreateContainer(parent, math.max(1, width), MAIN_SECTION_HEADER_H + 0.1, false)
+            guildWrap:ClearAllPoints()
+            if guildWrap.SetClipsChildren then
+                guildWrap:SetClipsChildren(true)
+            end
+            ChainSectionFrameBelow(parent, guildWrap, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or 0, yOffset)
+
+            local guildBody
             local guildHeader, expandBtn, guildIcon = CreateCollapsibleHeader(
-                parent,
+                guildWrap,
                 guildHeaderText,
                 guildKey,
                 guildExpanded,
-                function(isExpanded) ToggleExpand(guildKey, isExpanded) end,
-                "dummy"  -- Dummy value to trigger icon creation
+                function() end,
+                "dummy",
+                false,
+                nil,
+                nil,
+                MajorStorageAccordionOpts(guildWrap, function() return guildBody end, MAIN_SECTION_HEADER_H, function(exp)
+                    expanded.categories[guildKey] = exp
+                end)
             )
-            ChainSectionFrameBelow(parent, guildHeader, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or 0, yOffset)
-            guildHeader:SetWidth(width)  -- Set width to match content area
-            
+            guildHeader:SetPoint("TOPLEFT", guildWrap, "TOPLEFT", 0, 0)
+            guildHeader:SetWidth(width)
+
+            guildBody = ns.UI.Factory:CreateContainer(guildWrap, math.max(1, width), 0.1, false)
+            guildBody:ClearAllPoints()
+            guildBody:SetPoint("TOPLEFT", guildHeader, "BOTTOMLEFT", 0, 0)
+            guildBody:SetPoint("TOPRIGHT", guildHeader, "BOTTOMRIGHT", 0, 0)
+
             -- Replace with Guild Bank icon (using Atlas)
             if guildIcon then
                 guildIcon:SetTexture(nil)  -- Clear dummy texture
                 guildIcon:SetAtlas("poi-workorders")  -- Guild bank-style icon
                 guildIcon:SetSize(24, 24)
             end
-            
-        local guildTypesAdvance
-        if guildExpanded then
-            local stackAnchor = guildHeader
+
+            local stackAnchor = nil
             local gapBelowStack = SECTION_SPACING
+            local guildBodyAdvance = SECTION_SPACING
             -- Sort types alphabetically
             local sortedTypes = {}
             for typeName in pairs(guildItems) do
@@ -1372,8 +1596,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                 end
             end
             table.sort(sortedTypes)
-            guildTypesAdvance = guildHeader:GetHeight() + SECTION_SPACING
-            
+
             -- Draw each type category for this guild
             for _, typeName in ipairs(sortedTypes) do
                 local categoryKey = guildKey .. "_" .. typeName  -- Changed: unique per guild
@@ -1415,12 +1638,16 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                         end
                         
                         local typeIndentG = BASE_INDENT
-                        local typeSectionWrapG = ns.UI.Factory:CreateContainer(parent, math.max(1, width - typeIndentG), TYPE_SECTION_HEADER_H + 0.1, false)
+                        local typeSectionWrapG = ns.UI.Factory:CreateContainer(guildBody, math.max(1, guildBody:GetWidth() - typeIndentG), TYPE_SECTION_HEADER_H + 0.1, false)
                         typeSectionWrapG:ClearAllPoints()
                         if typeSectionWrapG.SetClipsChildren then
                             typeSectionWrapG:SetClipsChildren(true)
                         end
-                        ChainSectionFrameBelow(parent, typeSectionWrapG, stackAnchor, typeIndentG, gapBelowStack, yOffset)
+                        if stackAnchor then
+                            ChainSectionFrameBelow(guildBody, typeSectionWrapG, stackAnchor, typeIndentG, gapBelowStack, nil)
+                        else
+                            ChainSectionFrameBelow(guildBody, typeSectionWrapG, nil, typeIndentG, nil, SECTION_SPACING)
+                        end
                         gapBelowStack = SECTION_SPACING
                         stackAnchor = typeSectionWrapG
 
@@ -1430,17 +1657,22 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                             typeName .. " (" .. FormatNumber(displayCount) .. ")",
                             categoryKey,
                             isTypeExpanded,
-                            function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
+                            function() end,
                             typeIcon,
                             false,  -- isAtlas = false (item icons are texture paths)
                             0,      -- indent via typeSectionWrapG anchor only (parity with Warband type headers)
                             nil,
-                            nil
+                            LeafTypeAccordionVisualOpts(typeSectionWrapG, function() return rowsContainer end, categoryKey, {
+                                contentBody = guildBody,
+                                sectionWrap = guildWrap,
+                                sectionHeaderH = MAIN_SECTION_HEADER_H,
+                            })
                         )
                         typeHeader:SetPoint("TOPLEFT", typeSectionWrapG, "TOPLEFT", 0, 0)
                         typeHeader:SetWidth(typeSectionWrapG:GetWidth())
                         rowsContainer = CreateStorageRowsContainer(typeSectionWrapG, typeHeader, 0, 0)
                         local rowsYOffset = 0
+                        local rowStaggerIdxG = 0
                         for _, item in ipairs(guildItems[typeName]) do
                             local shouldShow = ItemMatchesSearch(item)
                             if shouldShow then
@@ -1451,6 +1683,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                                 row:SetPoint("TOPLEFT", 0, -rowsYOffset)
                                 PopulateStorageRowDirect(row, item, globalRowIdxAll, width - BASE_INDENT, locText)
                                 animatedRows[#animatedRows + 1] = row
+                                rowStaggerIdxG = rowStaggerIdxG + 1
                                 rowsYOffset = rowsYOffset + ROW_HEIGHT + GetLayout().betweenRows
                             end
                         end
@@ -1463,16 +1696,21 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                             rowsContainer:SetHeight(0.1)
                         end
                         typeSectionWrapG:SetHeight(TYPE_SECTION_HEADER_H + math.max(0.1, rowsContainer:GetHeight() or 0.1))
-                        guildTypesAdvance = guildTypesAdvance + typeSectionWrapG:GetHeight() + SECTION_SPACING
+                        guildBodyAdvance = guildBodyAdvance + typeSectionWrapG:GetHeight() + SECTION_SPACING
                     end  -- if displayCount > 0
                 end  -- if not skipped by search
             end  -- for typeName
-            storageStackAnchor = stackAnchor
-            yOffset = yOffset + guildTypesAdvance
-        else
-            storageStackAnchor = guildHeader
-            yOffset = yOffset + HEADER_SPACING
-        end  -- if guildExpanded
+
+            guildBody._wnAccordionFullH = math.max(0.1, guildBodyAdvance - SECTION_SPACING)
+            if guildExpanded then
+                guildBody:Show()
+                guildBody:SetHeight(guildBody._wnAccordionFullH)
+            else
+                guildBody:Hide()
+                guildBody:SetHeight(0.1)
+            end
+            guildWrap:SetHeight(MAIN_SECTION_HEADER_H + guildBody:GetHeight())
+            storageStackAnchor = guildWrap
         end  -- if guildMatches > 0
     end  -- for guildName (all guilds loop)
     
@@ -1495,6 +1733,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
     end
 
     local pad = GetLayout().minBottomSpacing or 0
+    parent._wnStorageLayoutTail = storageStackAnchor
     if storageStackAnchor and parent.GetTop and storageStackAnchor.GetBottom then
         local pTop = parent:GetTop()
         local bot = storageStackAnchor:GetBottom()

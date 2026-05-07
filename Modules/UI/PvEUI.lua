@@ -2048,7 +2048,7 @@ end
 
 function WarbandNexus:DrawPvEProgress(parent)
     local width = parent:GetWidth() - 20
-    -- Weekly Vault Tracker mode removed from PvE tab; standalone Vault Button window covers this.
+    -- Weekly Vault Tracker mode removed from PvE tab; standalone Easy Access window covers this.
     local vaultTrackerMode = false
 
     local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
@@ -3156,11 +3156,14 @@ function WarbandNexus:DrawPvEProgress(parent)
             local inlineX = -COL_RIGHT_MARGIN
             local colValuesByKey = {}
 
-            local DIM_COLOR = {0.45, 0.45, 0.45}
+            -- |cff888888 parity with FormatHelpers CC_MUTED / Utilities (placeholder & EM dash)
+            local MUTED_RGB = 136 / 255
+            local DIM_COLOR = { MUTED_RGB, MUTED_RGB, MUTED_RGB }
             local NORMAL_COLOR = {1, 1, 1}
             local CAP_OPEN_COLOR = {0.5, 1, 0.5}
             local CAPPED_COLOR = {1, 0.35, 0.35}
             local EM_DASH = "\226\128\148"
+            local EM_DASH_RICH = "|cff888888" .. EM_DASH .. "|r"
 
             local function GetCapStateColor(currencyID, currencyName, qty, maxQty, totalEarned, seasonMax)
                 if ns.Utilities and ns.Utilities.IsCofferKeyShardCurrency and ns.Utilities:IsCofferKeyShardCurrency(currencyID, currencyName) then
@@ -3271,7 +3274,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                             color = {0.65, 0.65, 0.65},
                         })
                     else
-                        table.insert(lines, { text = GetLocalizedText("PVE_VAULT_SLOT_EMPTY_FORMAT", "Slot %d: \226\128\148"):format(i), color = {0.5, 0.5, 0.5} })
+                        table.insert(lines, { text = GetLocalizedText("PVE_VAULT_SLOT_EMPTY_FORMAT", "Slot %d: \226\128\148"):format(i), color = { MUTED_RGB, MUTED_RGB, MUTED_RGB } })
                     end
                 end
                 return lines
@@ -3319,18 +3322,18 @@ function WarbandNexus:DrawPvEProgress(parent)
                 tooltipIcon = GetTrovehunterBountyColumnIcon(),
             }
             local voidcoreData = WarbandNexus:GetCurrencyData(PVE_VOIDCORE_ID, charKey)
-            -- Voidcore: always show plain Current / Max (no shift expansion, no totalEarned segment).
+            -- Voidcore: cell shows owned amount only (green if under cap, red if capped); cap/progress in tooltip.
             local vqty = (voidcoreData and tonumber(voidcoreData.quantity)) or 0
             local vcap = (voidcoreData and (tonumber(voidcoreData.seasonMax) or tonumber(voidcoreData.maxQuantity))) or 0
             local voidcoreTxt
             if vcap > 0 then
                 local capped = vqty >= vcap
                 local col = capped and "|cffff5959" or "|cff80ff80"
-                voidcoreTxt = col .. FormatNumber(vqty) .. "|r |cff888888/ " .. FormatNumber(vcap) .. "|r"
+                voidcoreTxt = col .. FormatNumber(vqty) .. "|r"
             elseif vqty > 0 then
                 voidcoreTxt = "|cffffffff" .. FormatNumber(vqty) .. "|r"
             else
-                voidcoreTxt = EM_DASH
+                voidcoreTxt = EM_DASH_RICH
             end
             colValuesByKey.voidcore = {
                 text = voidcoreTxt,
@@ -3350,7 +3353,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local vs = WarbandNexus.GetVaultStatusForChar and WarbandNexus:GetVaultStatusForChar(charKey)
                 local statusTxt
                 if not vs then
-                    statusTxt = "|cff666666" .. EM_DASH .. "|r"
+                    statusTxt = EM_DASH_RICH
                 elseif vs.isReady then
                     statusTxt = "|cff44ff44" .. ((ns.L and ns.L["VAULT_READY_TO_CLAIM"]) or "Ready to Claim") .. "|r"
                 elseif (vs.readySlots or 0) > 0 then

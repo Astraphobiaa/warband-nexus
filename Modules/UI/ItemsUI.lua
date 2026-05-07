@@ -64,6 +64,185 @@ local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 local format = string.format
 local date = date
 
+-- Bank alt sekmeler: CollectionsUI CreateSubTabBar ile aynı ölçü ve davranış (ikon + hover + _active).
+local ITEMS_BANK_SUBTAB_BTN_HEIGHT = 40
+local ITEMS_BANK_SUBTAB_BTN_SPACING = 8
+local ITEMS_BANK_SUBTAB_ICON_SIZE = 28
+local ITEMS_BANK_SUBTAB_ICON_LEFT = 10
+local ITEMS_BANK_SUBTAB_ICON_TEXT_GAP = 8
+local ITEMS_BANK_SUBTAB_TEXT_RIGHT = 10
+local ITEMS_BANK_SUBTAB_DEFAULT_WIDTH = 150
+local ITEMS_BANK_SUBTAB_GOLD_RESERVE = 136
+
+local function ItemsBankSubTabIconApply(tex, tabInfo)
+    if not tex or not tabInfo then return end
+    tex:SetTexture(nil)
+    local sz = ITEMS_BANK_SUBTAB_ICON_SIZE - 2
+    if tabInfo.iconAtlas then
+        local ok = pcall(function()
+            tex:SetAtlas(tabInfo.iconAtlas, false)
+        end)
+        if ok then
+            tex:SetSize(sz, sz)
+            return
+        end
+    end
+    tex:SetTexture(tabInfo.icon or tabInfo.iconFallback or "Interface\\Icons\\INV_Misc_QuestionMark")
+    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    tex:SetSize(sz, sz)
+end
+
+--- @return Frame bar with bar:SetActiveTab(key), bar.buttons
+local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accentColor)
+    local tabDefs = {
+        { key = "personal", label = (ns.L and ns.L["CHARACTER_BANK"]) or "Personal Bank", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
+        { key = "warband", label = (ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank", iconAtlas = "warbands-icon", icon = "Interface\\Icons\\INV_Misc_Coin_01" },
+        { key = "guild", label = (ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank", iconAtlas = "poi-workorders", icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01" },
+        { key = "inventory", label = (ns.L and ns.L["CHARACTER_INVENTORY"]) or "Inventory", icon = "Interface\\Icons\\INV_Misc_Bag_07" },
+    }
+
+    local bar = CreateFrame("Frame", nil, headerParent)
+    bar:SetHeight(ITEMS_BANK_SUBTAB_BTN_HEIGHT)
+    bar:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    bar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+
+    local btnArea = CreateFrame("Frame", nil, bar)
+    btnArea:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+    btnArea:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -ITEMS_BANK_SUBTAB_GOLD_RESERVE, 0)
+
+    local btnWidths = {}
+    for i = 1, #tabDefs do
+        local tabInfo = tabDefs[i]
+        local tempFs = FontManager:CreateFontString(bar, "body", "OVERLAY")
+        tempFs:SetText(tabInfo.label)
+        local textW = tempFs:GetStringWidth() or 0
+        tempFs:Hide()
+        local needed = ITEMS_BANK_SUBTAB_ICON_LEFT + ITEMS_BANK_SUBTAB_ICON_SIZE + ITEMS_BANK_SUBTAB_ICON_TEXT_GAP + textW + ITEMS_BANK_SUBTAB_TEXT_RIGHT
+        btnWidths[i] = math.max(needed, ITEMS_BANK_SUBTAB_DEFAULT_WIDTH)
+    end
+
+    local buttons = {}
+    local xPos = 0
+    local acc = accentColor or COLORS.accent
+
+    for i = 1, #tabDefs do
+        local tabInfo = tabDefs[i]
+        local btnWidth = btnWidths[i]
+        local btn = ns.UI.Factory:CreateButton(btnArea, btnWidth, ITEMS_BANK_SUBTAB_BTN_HEIGHT)
+        btn:SetPoint("TOPLEFT", btnArea, "TOPLEFT", xPos, 0)
+        btn._tabKey = tabInfo.key
+
+        if ApplyVisuals then
+            ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {acc[1], acc[2], acc[3], 0.6})
+        end
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(btn)
+        end
+
+        local activeBarTex = btn:CreateTexture(nil, "OVERLAY")
+        activeBarTex:SetHeight(3)
+        activeBarTex:SetPoint("BOTTOMLEFT", 8, 4)
+        activeBarTex:SetPoint("BOTTOMRIGHT", -8, 4)
+        activeBarTex:SetColorTexture(acc[1], acc[2], acc[3], 1)
+        activeBarTex:SetAlpha(0)
+        btn.activeBar = activeBarTex
+
+        local btnIcon = btn:CreateTexture(nil, "ARTWORK")
+        ItemsBankSubTabIconApply(btnIcon, tabInfo)
+        btnIcon:SetPoint("LEFT", ITEMS_BANK_SUBTAB_ICON_LEFT, 0)
+
+        local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
+        btnText:SetPoint("LEFT", btnIcon, "RIGHT", ITEMS_BANK_SUBTAB_ICON_TEXT_GAP, 0)
+        btnText:SetPoint("RIGHT", btn, "RIGHT", -ITEMS_BANK_SUBTAB_TEXT_RIGHT, 0)
+        btnText:SetText(tabInfo.label)
+        btnText:SetJustifyH("LEFT")
+        btnText:SetWordWrap(false)
+        local tn = COLORS.textNormal or {0.85, 0.85, 0.85}
+        btnText:SetTextColor(tn[1], tn[2], tn[3])
+        btn._text = btnText
+
+        btn:SetScript("OnClick", function()
+            if ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == tabInfo.key then return end
+            if tabInfo.key == "guild" and not IsInGuild() then
+                WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["GUILD_BANK_REQUIRED"]) or "You must be in a guild to access Guild Bank.") .. "|r")
+                return
+            end
+            ns.UI_SetItemsSubTab(tabInfo.key)
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
+        end)
+
+        if UpdateBorderColor then
+            btn:SetScript("OnEnter", function(self)
+                if self._active then return end
+                UpdateBorderColor(self, {acc[1] * 1.2, acc[2] * 1.2, acc[3] * 1.2, 0.9})
+            end)
+            btn:SetScript("OnLeave", function(self)
+                if self._active then return end
+                UpdateBorderColor(self, {acc[1], acc[2], acc[3], 0.6})
+            end)
+        else
+            btn:SetScript("OnEnter", function(self)
+                if self._active then return end
+                if self.SetBackdropColor then self:SetBackdropColor(0.10, 0.10, 0.12, 0.95) end
+            end)
+            btn:SetScript("OnLeave", function(self)
+                if self._active then return end
+                if self.SetBackdropColor then self:SetBackdropColor(0.12, 0.12, 0.15, 1) end
+            end)
+        end
+
+        buttons[tabInfo.key] = btn
+        xPos = xPos + btnWidth + ITEMS_BANK_SUBTAB_BTN_SPACING
+
+        if tabInfo.key == "guild" and not IsInGuild() then
+            btn:Disable()
+            btn:SetAlpha(0.5)
+        end
+    end
+
+    bar.buttons = buttons
+
+    function bar:SetActiveTab(key)
+        local acc2 = accentColor or COLORS.accent
+        for k, btn in pairs(buttons) do
+            if k == key then
+                btn._active = true
+                if btn.activeBar then btn.activeBar:SetAlpha(1) end
+                if ApplyVisuals then
+                    ApplyVisuals(btn, {acc2[1] * 0.3, acc2[2] * 0.3, acc2[3] * 0.3, 1}, {acc2[1], acc2[2], acc2[3], 1})
+                end
+                if btn._text then
+                    btn._text:SetTextColor(1, 1, 1)
+                    local font, size = btn._text:GetFont()
+                    if font and size then btn._text:SetFont(font, size, "OUTLINE") end
+                end
+                if UpdateBorderColor then UpdateBorderColor(btn, {acc2[1], acc2[2], acc2[3], 1}) end
+                if btn.SetBackdropColor then btn:SetBackdropColor(acc2[1] * 0.3, acc2[2] * 0.3, acc2[3] * 0.3, 1) end
+            else
+                btn._active = false
+                if btn.activeBar then btn.activeBar:SetAlpha(0) end
+                if btn:IsEnabled() then
+                    if ApplyVisuals then
+                        ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {acc2[1] * 0.6, acc2[2] * 0.6, acc2[3] * 0.6, 1})
+                    end
+                    if btn._text then
+                        btn._text:SetTextColor(0.7, 0.7, 0.7)
+                        local font, size = btn._text:GetFont()
+                        if font and size then btn._text:SetFont(font, size, "") end
+                    end
+                    if UpdateBorderColor then UpdateBorderColor(btn, {acc2[1] * 0.6, acc2[2] * 0.6, acc2[3] * 0.6, 1}) end
+                    if btn.SetBackdropColor then btn:SetBackdropColor(0.12, 0.12, 0.15, 1) end
+                elseif btn._text then
+                    btn._text:SetTextColor(0.45, 0.45, 0.45)
+                end
+            end
+        end
+    end
+
+    bar:SetActiveTab(currentKey)
+    return bar
+end
+
 -- Module-level state (shared with main UI.lua via namespace)
 -- State is accessed via ns.UI_GetItemsSubTab(), SearchStateManager, etc.
 
@@ -125,7 +304,6 @@ end
 function WarbandNexus:DrawItemList(parent)
     -- Register event listeners (only once)
     RegisterItemsEvents(parent)
-    self.recentlyExpanded = self.recentlyExpanded or {}
     local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
     local headerParent = fixedHeader or parent
     local yOffset = 8
@@ -251,211 +429,21 @@ function WarbandNexus:DrawItemList(parent)
     local itemsSearchText = SearchStateManager:GetQuery("items")
     local expandedGroups = ns.UI_GetExpandedGroups()
     
-    -- ===== SUB-TAB BUTTONS (in fixedHeader - non-scrolling) =====
-    local tabFrame = ns.UI.Factory:CreateContainer(headerParent)
-    tabFrame:SetHeight(32)
-    tabFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    tabFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    
-    -- Get theme colors
-    local tabActiveColor = COLORS.tabActive
-    local tabInactiveColor = COLORS.tabInactive
+    -- ===== SUB-TAB BAR (Collections CreateSubTabBar parity: 40px, icons, hover, gold reserve) =====
     local accentColor = COLORS.accent
-    
-    local DEFAULT_SUBTAB_WIDTH = 130
-    local tabButtons = {}  -- Store buttons for border updates
-    
-    -- INVENTORY BUTTON (First tab)
-    local inventoryBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
-    inventoryBtn:SetPoint("LEFT", 0, 0)
-    
-    if ApplyVisuals then
-        ApplyVisuals(inventoryBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
-    end
-    
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-        ns.UI.Factory:ApplyHighlight(inventoryBtn)
-    end
-    
-    local inventoryText = FontManager:CreateFontString(inventoryBtn, "body", "OVERLAY")
-    inventoryText:SetPoint("CENTER")
-    inventoryText:SetText((ns.L and ns.L["CHARACTER_INVENTORY"]) or "Inventory")
-    inventoryText:SetTextColor(1, 1, 1)
-    
-    local invTextW = inventoryText:GetStringWidth() or 0
-    if invTextW + 20 > DEFAULT_SUBTAB_WIDTH then
-        inventoryBtn:SetWidth(invTextW + 20)
-    end
-    
-    inventoryBtn:SetScript("OnClick", function()
-        if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "inventory" then return end
-        ns.UI_SetItemsSubTab("inventory")
-        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
-    end)
-    local ab1 = inventoryBtn:CreateTexture(nil, "OVERLAY")
-    ab1:SetHeight(3)
-    ab1:SetPoint("BOTTOMLEFT", 8, 4)
-    ab1:SetPoint("BOTTOMRIGHT", -8, 4)
-    ab1:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
-    ab1:SetAlpha(0)
-    inventoryBtn.activeBar = ab1
-    inventoryBtn._text = inventoryText
-    tabButtons["inventory"] = inventoryBtn
-    
-    -- PERSONAL BANK BUTTON (Second tab)
-    local personalBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
-    personalBtn:SetPoint("LEFT", inventoryBtn, "RIGHT", 8, 0)
-    
-    if ApplyVisuals then
-        ApplyVisuals(personalBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
-    end
-    
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-        ns.UI.Factory:ApplyHighlight(personalBtn)
-    end
-    
-    local personalText = FontManager:CreateFontString(personalBtn, "body", "OVERLAY")
-    personalText:SetPoint("CENTER")
-    personalText:SetText((ns.L and ns.L["CHARACTER_BANK"]) or "Personal Bank")
-    personalText:SetTextColor(1, 1, 1)
-    
-    local pTextW = personalText:GetStringWidth() or 0
-    if pTextW + 20 > DEFAULT_SUBTAB_WIDTH then
-        personalBtn:SetWidth(pTextW + 20)
-    end
-    
-    personalBtn:SetScript("OnClick", function()
-        if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "personal" then return end
-        ns.UI_SetItemsSubTab("personal")
-        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
-    end)
-    local ab2 = personalBtn:CreateTexture(nil, "OVERLAY")
-    ab2:SetHeight(3)
-    ab2:SetPoint("BOTTOMLEFT", 8, 4)
-    ab2:SetPoint("BOTTOMRIGHT", -8, 4)
-    ab2:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
-    ab2:SetAlpha(0)
-    personalBtn.activeBar = ab2
-    personalBtn._text = personalText
-    tabButtons["personal"] = personalBtn
-    
-    -- WARBAND BANK BUTTON (Third tab)
-    local warbandBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
-    warbandBtn:SetPoint("LEFT", personalBtn, "RIGHT", 8, 0)
-    
-    if ApplyVisuals then
-        ApplyVisuals(warbandBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
-    end
-    
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-        ns.UI.Factory:ApplyHighlight(warbandBtn)
-    end
-    
-    local warbandText = FontManager:CreateFontString(warbandBtn, "body", "OVERLAY")
-    warbandText:SetPoint("CENTER")
-    warbandText:SetText((ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank")
-    warbandText:SetTextColor(1, 1, 1)
-    
-    local wTextW = warbandText:GetStringWidth() or 0
-    if wTextW + 20 > DEFAULT_SUBTAB_WIDTH then
-        warbandBtn:SetWidth(wTextW + 20)
-    end
-    
-    warbandBtn:SetScript("OnClick", function()
-        if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "warband" then return end
-        ns.UI_SetItemsSubTab("warband")
-        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
-    end)
-    local ab3 = warbandBtn:CreateTexture(nil, "OVERLAY")
-    ab3:SetHeight(3)
-    ab3:SetPoint("BOTTOMLEFT", 8, 4)
-    ab3:SetPoint("BOTTOMRIGHT", -8, 4)
-    ab3:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
-    ab3:SetAlpha(0)
-    warbandBtn.activeBar = ab3
-    warbandBtn._text = warbandText
-    tabButtons["warband"] = warbandBtn
-    
-    -- GUILD BANK BUTTON (Fourth tab) - Always visible, disabled if not in guild
-    local guildBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
-    guildBtn:SetPoint("LEFT", warbandBtn, "RIGHT", 8, 0)
-    
-    if ApplyVisuals then
-        ApplyVisuals(guildBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
-    end
-    
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-        ns.UI.Factory:ApplyHighlight(guildBtn)
-    end
-    
-    local guildText = FontManager:CreateFontString(guildBtn, "body", "OVERLAY")
-    guildText:SetPoint("CENTER")
-    guildText:SetText((ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank")
-    guildText:SetTextColor(1, 1, 1)
-    
-    local gTextW = guildText:GetStringWidth() or 0
-    if gTextW + 20 > DEFAULT_SUBTAB_WIDTH then
-        guildBtn:SetWidth(gTextW + 20)
-    end
-    
-    -- Check if player is in a guild
-    local isInGuild = IsInGuild()
-    if not isInGuild then
-        guildBtn:Disable()
-        guildBtn:SetAlpha(0.5)
-    end
-    
-    guildBtn:SetScript("OnClick", function()
-        if not IsInGuild() then
-            WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["GUILD_BANK_REQUIRED"]) or "You must be in a guild to access Guild Bank.") .. "|r")
-            return
-        end
-        if (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) == "guild" then return end
-        ns.UI_SetItemsSubTab("guild")
-        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
-    end)
-    local ab4 = guildBtn:CreateTexture(nil, "OVERLAY")
-    ab4:SetHeight(3)
-    ab4:SetPoint("BOTTOMLEFT", 8, 4)
-    ab4:SetPoint("BOTTOMRIGHT", -8, 4)
-    ab4:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
-    ab4:SetAlpha(0)
-    guildBtn.activeBar = ab4
-    guildBtn._text = guildText
-    tabButtons["guild"] = guildBtn
+    local itemsBankSubTabBar = CreateItemsBankSubTabBar(headerParent, yOffset, currentItemsSubTab, accentColor)
 
-    -- Sub-tab vurgusu: Collections/Plans ile aynı (activeBar + ApplyVisuals + metin rengi/outline)
-    for tabKey, btn in pairs(tabButtons) do
-        if currentItemsSubTab == tabKey then
-            if btn.activeBar then btn.activeBar:SetAlpha(1) end
-            if ApplyVisuals then
-                ApplyVisuals(btn, {accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1}, {accentColor[1], accentColor[2], accentColor[3], 1})
-            end
-            if btn._text then
-                btn._text:SetTextColor(1, 1, 1)
-                local font, size = btn._text:GetFont()
-                if font and size then btn._text:SetFont(font, size, "OUTLINE") end
-            end
-            if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1], accentColor[2], accentColor[3], 1}) end
-        else
-            if btn.activeBar then btn.activeBar:SetAlpha(0) end
-            if ApplyVisuals then
-                ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1})
-            end
-            if btn._text then
-                btn._text:SetTextColor(0.7, 0.7, 0.7)
-                local font, size = btn._text:GetFont()
-                if font and size then btn._text:SetFont(font, size, "") end
-            end
-            if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1}) end
-        end
-    end
-    
-    -- ===== GOLD DISPLAY (Per Sub-Tab) =====
-    local goldDisplay = FontManager:CreateFontString(tabFrame, "body", "OVERLAY")
-    goldDisplay:SetPoint("RIGHT", tabFrame, "RIGHT", -10, 0)
+    -- ===== GOLD DISPLAY (Per Sub-Tab; personal bank has no account gold — hide to avoid stale text) =====
+    local goldDisplay = FontManager:CreateFontString(itemsBankSubTabBar, "body", "OVERLAY")
+    goldDisplay:SetPoint("RIGHT", itemsBankSubTabBar, "RIGHT", -10, 0)
     local FormatMoney = ns.UI_FormatMoney
-    
+
+    if currentItemsSubTab == "personal" then
+        goldDisplay:Hide()
+    else
+        goldDisplay:Show()
+    end
+
     if currentItemsSubTab == "warband" then
         -- Warband Bank gold (account-wide)
         local warbandGold = ns.Utilities:GetWarbandBankMoney() or 0
@@ -497,10 +485,11 @@ function WarbandNexus:DrawItemList(parent)
         else
             goldDisplay:SetText(WarbandNexus:API_FormatMoney(charGold))
         end
+    elseif goldDisplay:IsShown() then
+        goldDisplay:SetText("")
     end
-    -- Personal Bank has no gold display (WoW doesn't support gold storage in personal bank)
-    
-    yOffset = yOffset + 32 + GetLayout().afterElement  -- Tab frame height + spacing
+
+    yOffset = yOffset + ITEMS_BANK_SUBTAB_BTN_HEIGHT + GetLayout().afterElement
     
     -- ===== SEARCH BOX (in fixedHeader - non-scrolling) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
@@ -641,18 +630,15 @@ function WarbandNexus:RedrawItemsResultsOnly()
     end
 end
 
---============================================================================
--- ITEMS RESULTS RENDERING (Separated for search refresh)
---============================================================================
-
-function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTab, itemsSearchText)
+--- Build grouped flat list for Items virtual scroll. Returns flatList, endYOffset, itemCount, itemsSearchActive;
+--- flatList is nil when there are no items (caller renders empty state).
+function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, itemsSearchText, startYOffset)
     local itemsSearchActive = itemsSearchText
         and not (issecretvalue and issecretvalue(itemsSearchText))
         and itemsSearchText ~= ""
 
     local expandedGroups = ns.UI_GetExpandedGroups()
-    
-    -- Get items based on selected sub-tab (4 separate sources)
+
     local items = {}
     if currentItemsSubTab == "warband" then
         items = self:GetWarbandBankItems() or {}
@@ -663,8 +649,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     elseif currentItemsSubTab == "personal" then
         items = self:GetBankItems() or {}
     end
-    
-    -- Apply search filter (Items tab specific)
+
     if itemsSearchActive then
         local filtered = {}
         for _, item in ipairs(items) do
@@ -676,62 +661,41 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         end
         items = filtered
     end
-    
-    -- Sort items alphabetically by name
+
     table.sort(items, function(a, b)
         local nameA = SafeLower(a.name)
         local nameB = SafeLower(b.name)
         return nameA < nameB
     end)
-    
-    -- ===== EMPTY STATE =====
+
     if #items == 0 then
-        -- If search is active, use SearchResultsRenderer for search-specific empty state
-        if itemsSearchActive then
-            local height = SearchResultsRenderer:RenderEmptyState(self, parent, itemsSearchText, "items")
-            -- Update SearchStateManager with result count
-            SearchStateManager:UpdateResults("items", 0)
-            return height
-        else
-            -- No items cached (general empty state) - use standardized factory with sub-tab specific config
-            local emptyStateKey = "items_" .. currentItemsSubTab  -- e.g., "items_inventory", "items_guild"
-            local _, height = CreateEmptyStateCard(parent, emptyStateKey, yOffset)
-            -- Update SearchStateManager with result count
-            SearchStateManager:UpdateResults("items", 0)
-            return height
-        end
+        return nil, startYOffset, 0, itemsSearchActive
     end
-    
-    -- Update SearchStateManager with result count (after filtering)
+
     SearchStateManager:UpdateResults("items", #items)
-    
-    -- ===== GROUP ITEMS BY TYPE =====
+
     local groups = {}
     local groupOrder = {}
     local hasSearchFilter = itemsSearchActive
-    
+    local yOffset = startYOffset
+
     for _, item in ipairs(items) do
         local typeName = item.itemType or ((ns.L and ns.L["GROUP_MISC"]) or "Miscellaneous")
         if not groups[typeName] then
             local groupKey = currentItemsSubTab .. "_" .. typeName
-            
-            -- Auto-expand if search is active, otherwise use persisted state
             if hasSearchFilter then
                 expandedGroups[groupKey] = true
             elseif expandedGroups[groupKey] == nil then
                 expandedGroups[groupKey] = true
             end
-            
             groups[typeName] = { name = typeName, items = {}, groupKey = groupKey }
             table.insert(groupOrder, typeName)
         end
         table.insert(groups[typeName].items, item)
     end
-    
-    -- Sort group names alphabetically
+
     table.sort(groupOrder)
-    
-    -- ===== BUILD FLAT LIST FOR VIRTUAL SCROLLING =====
+
     local HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
     local flatList = {}
     local rowIdx = 0
@@ -763,21 +727,122 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         yOffset = yOffset + HEADER_HEIGHT
 
         if isExpanded then
+            local localY = 0
             for _, item in ipairs(group.items) do
                 rowIdx = rowIdx + 1
+                -- Stable identity for virtual row reuse (accordion / Refresh without repopulating textures & text).
+                local rowReuseSig = (group.groupKey or "")
+                    .. "\001"
+                    .. tostring(item.itemID or 0)
+                    .. "\001"
+                    .. tostring(item.tabIndex or "")
+                    .. "\001"
+                    .. tostring(item.actualBagID or item.bagID or "")
+                    .. "\001"
+                    .. tostring(item.slotIndex or item.slot or item.slotID or "")
+                    .. "\001"
+                    .. tostring(item.stackCount or 1)
+                    .. "\001"
+                    .. (item.pending and "p" or "r")
                 flatList[#flatList + 1] = {
                     type = "row",
                     yOffset = yOffset,
                     height = ROW_SPACING,
                     data = item,
                     rowIdx = rowIdx,
+                    groupKey = group.groupKey,
+                    localY = localY,
+                    rowReuseSig = rowReuseSig,
                 }
+                localY = localY + ROW_SPACING
                 yOffset = yOffset + ROW_SPACING
             end
         end
 
         yOffset = yOffset + SECTION_SPACING
     end
+
+    return flatList, yOffset, #items, itemsSearchActive
+end
+
+--- Group header toggle: swap flat list only (same header keys) — avoids full DrawItemsResults / ClearVirtualScroll.
+function WarbandNexus:ApplyItemsVirtualFlatListOnly()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "items" then return end
+    local scrollChild = mf.scrollChild
+    if not scrollChild then return end
+    local rc = scrollChild.resultsContainer
+    if not rc or rc:GetParent() ~= scrollChild then return end
+    local width = scrollChild:GetWidth() - 20
+    if width < 1 then return end
+    local q = ""
+    if SearchStateManager and SearchStateManager.GetQuery then
+        q = SearchStateManager:GetQuery("items") or ""
+    end
+    local subTab = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or "personal"
+
+    local flatList = self:BuildItemsVirtualFlatList(width, subTab, q, 0)
+    if not flatList then
+        self:RedrawItemsResultsOnly()
+        return
+    end
+
+    local VLM = ns.VirtualListModule
+    if not VLM or not VLM.RefreshVirtualListFlatList then
+        self:RedrawItemsResultsOnly()
+        return
+    end
+
+    local contentHeight, forceFull = VLM.RefreshVirtualListFlatList(mf, rc, flatList)
+    if forceFull then
+        self:RedrawItemsResultsOnly()
+        return
+    end
+
+    rc:SetHeight(math.max(contentHeight or 1, 1))
+
+    local CONTENT_BOTTOM_PADDING = 8
+    local tabBodyHeight = 8 + (contentHeight or 0)
+    scrollChild:SetHeight(math.max(tabBodyHeight + CONTENT_BOTTOM_PADDING, mf.scroll:GetHeight()))
+
+    if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
+    end
+    if ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
+        ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+    end
+
+    local sc = mf.scroll
+    if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+        local maxV = sc:GetVerticalScrollRange() or 0
+        local cur = sc:GetVerticalScroll() or 0
+        if cur > maxV then
+            sc:SetVerticalScroll(maxV)
+        end
+    end
+end
+
+--============================================================================
+-- ITEMS RESULTS RENDERING (Separated for search refresh)
+--============================================================================
+
+function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTab, itemsSearchText)
+    local flatList, contentEndY, _itemCount, itemsSearchActive = self:BuildItemsVirtualFlatList(width, currentItemsSubTab, itemsSearchText, yOffset)
+
+    if not flatList then
+        if itemsSearchActive then
+            local height = SearchResultsRenderer:RenderEmptyState(self, parent, itemsSearchText, "items")
+            SearchStateManager:UpdateResults("items", 0)
+            return height
+        else
+            local emptyStateKey = "items_" .. currentItemsSubTab
+            local _, height = CreateEmptyStateCard(parent, emptyStateKey, yOffset)
+            SearchStateManager:UpdateResults("items", 0)
+            return height
+        end
+    end
+
+    yOffset = contentEndY
 
     -- ===== VIRTUAL SCROLL SETUP =====
     local mainFrame = WarbandNexus.UI and WarbandNexus.UI.mainFrame
@@ -787,6 +852,8 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     end
 
     if mainFrame and VLM and #flatList > 0 then
+
+        local expandedGroups = ns.UI_GetExpandedGroups()
 
         local function PopulateRow(row, item, idx, rowNum)
             row:SetAlpha(1)
@@ -870,18 +937,36 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             end)
         end
 
+        local HEADER_STRIP_H = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
+        local Factory = ns.UI.Factory
+
         local totalHeight = VLM.SetupVirtualList(mainFrame, parent, 0, flatList, {
             chainCollapsibleHeaders = true,
+            chainAnimatedSections = true,
+            incrementalRowReuse = true,
+            populateRowFn = function(frame, entry, _idx)
+                PopulateRow(frame, entry.data, entry.rowIdx, entry.rowIdx)
+            end,
             createHeaderFn = function(container, entry)
                 local d = entry.data
                 local gKey = d.group.groupKey
-                local groupHeader = CreateCollapsibleHeader(
-                    container,
-                    format("%s (%s)", d.typeName, FormatNumber(#d.group.items)),
+                local nItems = #d.group.items
+                local rowsBodyH = math.max(0.1, nItems * ROW_SPACING)
+
+                local groupWrap = Factory:CreateContainer(container, math.max(1, width), HEADER_STRIP_H + 0.1, false)
+                if groupWrap.SetClipsChildren then
+                    groupWrap:SetClipsChildren(true)
+                end
+
+                local groupShell
+                local headerStripH = HEADER_STRIP_H
+                local headerBtn = CreateCollapsibleHeader(
+                    groupWrap,
+                    format("%s (%s)", d.typeName, FormatNumber(nItems)),
                     gKey,
                     d.isExpanded,
                     function(_isExpanded)
-                        WarbandNexus:RedrawItemsResultsOnly()
+                        WarbandNexus:ApplyItemsVirtualFlatListOnly()
                     end,
                     d.typeIcon,
                     false,
@@ -891,13 +976,60 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                         persistToggle = function(exp)
                             if type(exp) == "boolean" then
                                 expandedGroups[gKey] = exp
-                                if exp then self.recentlyExpanded[gKey] = GetTime() end
+                            end
+                        end,
+                        -- Collapse: refresh flatList before height tween so VirtualListModule culling matches
+                        -- layout while rows shift (expand already calls onToggle before tween).
+                        applyToggleBeforeCollapseAnimate = true,
+                        animatedContent = function() return groupShell end,
+                        accordionOnUpdate = function(drawH)
+                            groupWrap:SetHeight(headerStripH + math.max(0.1, drawH or 0))
+                        end,
+                        accordionComplete = function(exp)
+                            if groupShell then
+                                if not exp then
+                                    groupShell:Hide()
+                                    groupShell:SetHeight(0.1)
+                                    groupWrap:SetHeight(headerStripH + 0.1)
+                                else
+                                    groupShell:Show()
+                                end
+                            end
+                            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                            if mf and mf.scroll and Factory and Factory.UpdateScrollBarVisibility then
+                                Factory:UpdateScrollBarVisibility(mf.scroll)
+                            end
+                            local sc = mf and mf.scroll
+                            if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+                                local maxV = sc:GetVerticalScrollRange() or 0
+                                local cur = sc:GetVerticalScroll() or 0
+                                if cur > maxV then
+                                    sc:SetVerticalScroll(maxV)
+                                end
                             end
                         end,
                     }
                 )
-                groupHeader:SetWidth(width)
-                return groupHeader
+                headerBtn:SetPoint("TOPLEFT", groupWrap, "TOPLEFT", 0, 0)
+                headerBtn:SetWidth(math.max(1, width))
+
+                groupShell = Factory:CreateContainer(groupWrap, math.max(1, width), 0.1, false)
+                groupShell:ClearAllPoints()
+                groupShell:SetPoint("TOPLEFT", headerBtn, "BOTTOMLEFT", 0, 0)
+                groupShell:SetPoint("TOPRIGHT", headerBtn, "BOTTOMRIGHT", 0, 0)
+                groupShell._wnAccordionFullH = rowsBodyH
+                if d.isExpanded then
+                    groupShell:Show()
+                    groupShell:SetHeight(rowsBodyH)
+                else
+                    groupShell:Hide()
+                    groupShell:SetHeight(0.1)
+                end
+                groupWrap:SetHeight(headerStripH + math.max(0.1, groupShell:GetHeight() or 0.1))
+
+                container._vlm_groupShellByKey[gKey] = groupShell
+
+                return groupWrap
             end,
             createRowFn = function(container, entry)
                 local row = AcquireItemRow(container, width, ROW_HEIGHT)

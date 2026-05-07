@@ -284,7 +284,8 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         if ns.UI and ns.UI.Factory and ns.UI.Factory.AnimateAccordion then
             ns.UI.Factory:AnimateAccordion(detailsFrame, fromDetailsH, toDetailsH, {
                 duration = 0.22,
-                fadeAlpha = true,
+                -- fadeAlpha caused paired MouseDown/Click double-toggle symptoms on some setups; match Plans/PvE accordion.
+                fadeAlpha = false,
                 clipChildren = true,
                 onUpdate = function(currentH)
                     local rowH = headerH + math.max(0, currentH or 0)
@@ -330,6 +331,9 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         -- mid-toggle returns whatever transient SetHeight value we set on a prior tween,
         -- which is what was making the animation a no-op (fromH==toH).
         if not row.detailsFrame then
+            if data.onExpandPopulate then
+                data.onExpandPopulate(data)
+            end
             row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
             row._fullDetailsH = row.detailsFrame:GetHeight()
             row.detailsFrame:Hide()
@@ -338,7 +342,9 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
 
         if newExpanded then
             row.detailsFrame:SetHeight(0.1)  -- start collapsed so the tween is visible
-            row.detailsFrame:SetAlpha(0)
+            -- AnimateAccordion uses fadeAlpha=false here — it does NOT restore alpha. Never zero
+            -- out alpha in that mode or the details body stays invisible for the whole tween.
+            row.detailsFrame:SetAlpha(1)
             row.detailsFrame:Show()
             AnimateRowHeight(0, fullDetailsH, function()
                 if row.onToggle then row.onToggle(true) end
@@ -381,17 +387,20 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     row.expandBtnNormalTex = normalTex
     row.expandBtnHighlightTex = highlightTex
     
-    expandBtn:SetScript("OnClick", function()
+    expandBtn:RegisterForClicks("LeftButtonUp")
+    expandBtn:SetScript("OnClick", function(_, button)
+        if button ~= "LeftButton" then return end
         ToggleExpand()
     end)
     row.expandBtn = expandBtn
     
-    -- Make entire header clickable for expand/collapse
+    -- Header toggles on click release — NOT OnMouseDown. Pairing MouseDown here with the expand
+    -- button's OnClick (fires on MouseUp) caused double ToggleExpand → instant re-close / broken tween.
     headerFrame:EnableMouse(true)
-    headerFrame:SetScript("OnMouseDown", function(self, button)
-        if button == "LeftButton" then
-            ToggleExpand()
-        end
+    headerFrame:RegisterForClicks("LeftButtonUp")
+    headerFrame:SetScript("OnClick", function(_, button)
+        if button ~= "LeftButton" then return end
+        ToggleExpand()
     end)
     
     -- Item Icon (after expand button). data.iconSize overrides the default for callers that
@@ -504,20 +513,23 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     SyncHeaderToTitle()
     
     -- Expanded details container (created on demand)
-    row.detailsFrame = nil
-    
-    -- Initialize expanded state (without triggering callbacks - CRITICAL for preventing infinite loops)
-    if isExpanded then
-        row.isExpanded = true
-        -- Update textures to expanded state (up arrow)
-        if row.expandBtnNormalTex then
-            row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-        end
-        if row.expandBtnHighlightTex then
-            row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-        end
+        row.detailsFrame = nil
         
-        row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
+        -- Initialize expanded state (without triggering callbacks - CRITICAL for preventing infinite loops)
+        if isExpanded then
+            row.isExpanded = true
+            -- Update textures to expanded state (up arrow)
+            if row.expandBtnNormalTex then
+                row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+            end
+            if row.expandBtnHighlightTex then
+                row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+            end
+            
+            if data.onExpandPopulate then
+                data.onExpandPopulate(data)
+            end
+            row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
         row._fullDetailsH = row.detailsFrame:GetHeight()  -- cache before any transient resizes
         row.detailsFrame:Show()
         row:SetHeight(headerFrame:GetHeight() + row._fullDetailsH)

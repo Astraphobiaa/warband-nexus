@@ -312,8 +312,8 @@ function WarbandNexus:ShowMinimapMenu(anchorFrame)
                 end
             end)
 
-            -- Quick Tracker
-            rootDescription:CreateButton("Quick Tracker", function()
+            -- Easy Access (floating shortcut)
+            rootDescription:CreateButton((ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", function()
                 if self.OpenVaultButtonQuickMenu then
                     self:OpenVaultButtonQuickMenu(anchorFrame)
                 else

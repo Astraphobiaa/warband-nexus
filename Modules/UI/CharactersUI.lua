@@ -182,7 +182,6 @@ function WarbandNexus:DrawCharacterList(parent)
         C_WowTokenPublic.UpdateMarketPrice()
     end
 
-    self.recentlyExpanded = self.recentlyExpanded or {}
     local width = parent:GetWidth() - 20
 
     local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
@@ -837,7 +836,6 @@ function WarbandNexus:DrawCharacterList(parent)
         function(isExpanded)
             self.db.profile.ui.favoritesExpanded = isExpanded
             if isExpanded then
-                self.recentlyExpanded["favorites"] = GetTime()
                 if favoritesContent then
                     favoritesContent:Show()
                     favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnAccordionFullH or 0.1))
@@ -892,7 +890,6 @@ function WarbandNexus:DrawCharacterList(parent)
         function(isExpanded)
             self.db.profile.ui.charactersExpanded = isExpanded
             if isExpanded then
-                self.recentlyExpanded["characters"] = GetTime()
                 if charactersContent then
                     charactersContent:Show()
                     charactersContent:SetHeight(math.max(0.1, charactersContent._wnAccordionFullH or 0.1))
@@ -950,7 +947,6 @@ function WarbandNexus:DrawCharacterList(parent)
             function(isExpanded)
                 self.db.profile.ui.untrackedExpanded = isExpanded
                 if isExpanded then
-                    self.recentlyExpanded["untracked"] = GetTime()
                     if untrackedContent then
                         untrackedContent:Show()
                         untrackedContent:SetHeight(math.max(0.1, untrackedContent._wnAccordionFullH or 0.1))

@@ -58,6 +58,46 @@ local TYPE_ICONS = {
     achievement = "UI-Achievement-Shield-NoPoints",
 }
 
+-- Inline |A:...|a markers (Drop / Quest / Location / Vendor): ~30% larger than legacy 16px baseline
+local PLAN_SRC_ICON_LG = math.floor(16 * 1.3 + 0.5)
+local PLAN_SRC_ICON_MD = math.floor(14 * 1.3 + 0.5)
+local PLAN_SRC_ICON_SM = math.floor(12 * 1.3 + 0.5)
+ns.UI_PLAN_SOURCE_ICON_LG = PLAN_SRC_ICON_LG
+ns.UI_PLAN_SOURCE_ICON_MD = PLAN_SRC_ICON_MD
+ns.UI_PLAN_SOURCE_ICON_SM = PLAN_SRC_ICON_SM
+
+--- Inline |A:...|a markup for Loot / Quest / Location source rows (My Plans, tracker, browse cards).
+--- kinds: "loot" | "quest" | "location" | "class" (vendor/generic)
+--- Drop uses Banker atlas (per UI direction). Default size = PLAN_SRC_ICON_LG (~21).
+local function PlanSourceIconMarkup(kind, size)
+    size = size or PLAN_SRC_ICON_LG
+    if kind == "loot" then
+        return string.format("|A:Banker:%d:%d|a", size, size)
+    elseif kind == "quest" then
+        return string.format("|A:Islands-QuestTurnin:%d:%d|a", size, size)
+    elseif kind == "location" then
+        return string.format("|A:poi-islands-table:%d:%d|a", size, size)
+    end
+    return string.format("|A:Class:%d:%d|a", size, size)
+end
+
+ns.UI_PlanSourceIconMarkup = PlanSourceIconMarkup
+
+local function SourcePrefixIconFromLabel(sourceType)
+    if not sourceType or (issecretvalue and issecretvalue(sourceType)) then
+        return PlanSourceIconMarkup("class") .. " "
+    end
+    local st = string.lower(sourceType)
+    if st:match("quest") then
+        return PlanSourceIconMarkup("quest") .. " "
+    elseif st:match("drop") or st:match("loot") then
+        return PlanSourceIconMarkup("loot") .. " "
+    elseif st:match("location") or st:match("zone") then
+        return PlanSourceIconMarkup("location") .. " "
+    end
+    return PlanSourceIconMarkup("class") .. " "
+end
+
 local function IsPlaceholderSourceText(sourceText)
     if type(sourceText) ~= "string" then return true end
     if issecretvalue and issecretvalue(sourceText) then return true end
@@ -609,7 +649,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 vendorText._isSourceElement = true
                 vendorText:SetPoint("TOPLEFT", 0, containerY)
                 vendorText:SetPoint("RIGHT", 0, 0)
-                vendorText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. "|r |cffffffff" .. source.vendor .. "|r")
+                vendorText:SetText(PlanSourceIconMarkup("class") .. " |cff99ccff" .. ((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. "|r |cffffffff" .. source.vendor .. "|r")
                 vendorText:SetJustifyH("LEFT")
                 vendorText:SetWordWrap(true)
                 vendorText:SetNonSpaceWrap(false)
@@ -643,7 +683,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                         end
                     end
                 end
-                dropText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |c" .. npcColor .. " " .. source.npc .. "|r")
+                dropText:SetText(PlanSourceIconMarkup("loot") .. " |cff99ccff" .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |c" .. npcColor .. " " .. source.npc .. "|r")
                 dropText:SetJustifyH("LEFT")
                 dropText:SetWordWrap(true)
                 dropText:SetNonSpaceWrap(false)
@@ -662,7 +702,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 questText._isSourceElement = true
                 questText:SetPoint("TOPLEFT", 0, containerY)
                 questText:SetPoint("RIGHT", 0, 0)
-                questText:SetText("|TInterface\\Icons\\INV_Misc_Map_01:16:16:0:0|t " .. (P.sourceLabel or "|cff99ccff") .. questLabel .. "|r" .. (P.body or "|cffffffff") .. source.quest .. "|r")
+                questText:SetText(PlanSourceIconMarkup("quest") .. " " .. (P.sourceLabel or "|cff99ccff") .. questLabel .. "|r" .. (P.body or "|cffffffff") .. source.quest .. "|r")
                 questText:SetJustifyH("LEFT")
                 questText:SetWordWrap(true)
                 questText:SetNonSpaceWrap(false)
@@ -699,7 +739,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 locationText._isSourceElement = true
                 locationText:SetPoint("TOPLEFT", 0, containerY)
                 locationText:SetPoint("RIGHT", 0, 0)
-                locationText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r" .. zoneDiffLabel)
+                locationText:SetText(PlanSourceIconMarkup("location") .. " |cff99ccff" .. ((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r" .. zoneDiffLabel)
                 locationText:SetJustifyH("LEFT")
                 locationText:SetWordWrap(true)
                 locationText:SetNonSpaceWrap(false)
@@ -766,10 +806,10 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         
         if sourceType and sourceDetail and sourceDetail ~= "" then
             -- Text already has source type prefix
-            sourceText:SetText("|A:Class:16:16|a |cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+            sourceText:SetText(SourcePrefixIconFromLabel(sourceType) .. "|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
         else
             -- No source type prefix, add "Source:" label
-            sourceText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. rawText .. "|r")
+            sourceText:SetText(PlanSourceIconMarkup("class") .. " |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. rawText .. "|r")
         end
         sourceText:SetJustifyH("LEFT")
         sourceText:SetWordWrap(true)
@@ -784,7 +824,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         local placeholderText = FontManager:CreateFontString(card, "body", "OVERLAY")
         placeholderText:SetPoint("TOPLEFT", PLAN_CARD_BODY_LEFT, line3Y)
         placeholderText:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
-        placeholderText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. ((ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source") .. "|r")
+        placeholderText:SetText(PlanSourceIconMarkup("class") .. " |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. ((ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source") .. "|r")
         placeholderText:SetJustifyH("LEFT")
         placeholderText:SetWordWrap(true)
         placeholderText:SetMaxLines(6)
@@ -2566,7 +2606,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local dropText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     dropText:SetPoint("TOPLEFT", 0, yOffset)
                     dropText:SetPoint("RIGHT", 0, 0)
-                    dropText:SetText("|cff99ccff" .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |c" .. npcColor .. " " .. source.npc .. "|r")
+                    dropText:SetText(PlanSourceIconMarkup("loot") .. " |cff99ccff" .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |c" .. npcColor .. " " .. source.npc .. "|r")
                     dropText:SetJustifyH("LEFT")
                     dropText:SetWordWrap(true)
                     dropText:SetNonSpaceWrap(false)
@@ -2577,7 +2617,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local questText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     questText:SetPoint("TOPLEFT", 0, yOffset)
                     questText:SetPoint("RIGHT", 0, 0)
-                    questText:SetText("|TInterface\\Icons\\INV_Misc_Map_01:16:16:0:0|t " .. (P.sourceLabel or "|cff99ccff") .. questLabel .. "|r" .. (P.body or "|cffffffff") .. source.quest .. "|r")
+                    questText:SetText(PlanSourceIconMarkup("quest") .. " " .. (P.sourceLabel or "|cff99ccff") .. questLabel .. "|r" .. (P.body or "|cffffffff") .. source.quest .. "|r")
                     questText:SetJustifyH("LEFT")
                     questText:SetWordWrap(true)
                     questText:SetNonSpaceWrap(false)
@@ -2606,7 +2646,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local locationText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     locationText:SetPoint("TOPLEFT", 0, yOffset)
                     locationText:SetPoint("RIGHT", 0, 0)
-                    locationText:SetText("|cff99ccff" .. ((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r" .. zoneDiffLabel)
+                    locationText:SetText(PlanSourceIconMarkup("location") .. " |cff99ccff" .. ((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r" .. zoneDiffLabel)
                     locationText:SetJustifyH("LEFT")
                     locationText:SetWordWrap(true)
                     locationText:SetNonSpaceWrap(false)
@@ -2657,7 +2697,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                         local costLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                         costLabel:SetPoint("TOPLEFT", 0, yOffset)
                         costLabel:SetPoint("RIGHT", 0, 0)
-                        costLabel:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["COST_LABEL"]) or "Cost:") .. "|r |cffffffff" .. costText .. "|r")
+                        costLabel:SetText(PlanSourceIconMarkup("class") .. " |cff99ccff" .. ((ns.L and ns.L["COST_LABEL"]) or "Cost:") .. "|r |cffffffff" .. costText .. "|r")
                         costLabel:SetJustifyH("LEFT")
                         costLabel:SetWordWrap(true)
                         costLabel:SetNonSpaceWrap(false)
@@ -2667,7 +2707,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                 
                 -- Faction (if available)
                 if source.faction then
-                    local factionText = "|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["FACTION_LABEL"]) or "Faction:") .. "|r |cffffffff" .. source.faction .. "|r"
+                    local factionText = PlanSourceIconMarkup("class") .. " |cff99ccff" .. ((ns.L and ns.L["FACTION_LABEL"]) or "Faction:") .. "|r |cffffffff" .. source.faction .. "|r"
                     if source.renown then
                         local repType = source.isFriendship and ((ns.L and ns.L["FRIENDSHIP_LABEL"]) or "Friendship") or ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown")
                         factionText = factionText .. " |cffffcc00(" .. repType .. " " .. source.renown .. ")|r"
@@ -3585,18 +3625,20 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
     -- Check if text already has a source type prefix (Vendor:, Drop:, Quest:, etc.)
     local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
     if sourceType and sourceDetail and sourceDetail ~= "" then
-        local iconAtlas = "|A:Class:16:16|a "
+        local iconAtlas = PlanSourceIconMarkup("class") .. " "
         local lowerType = (not (issecretvalue and issecretvalue(sourceType))) and string.lower(sourceType) or ""
         if lowerType:match("quest") then
-            iconAtlas = "|TInterface\\Icons\\INV_Misc_Map_01:16:16:0:0|t "
+            iconAtlas = PlanSourceIconMarkup("quest") .. " "
         elseif lowerType:match("profession") or lowerType:match("crafted") then
-            iconAtlas = "|A:Repair:16:16|a "
-        elseif lowerType:match("drop") then
-            iconAtlas = "|TInterface\\Icons\\INV_Misc_Bag_10_Blue:16:16:0:0|t "
+            iconAtlas = string.format("|A:Repair:%d:%d|a ", PLAN_SRC_ICON_LG, PLAN_SRC_ICON_LG)
+        elseif lowerType:match("drop") or lowerType:match("loot") then
+            iconAtlas = PlanSourceIconMarkup("loot") .. " "
+        elseif lowerType:match("location") or lowerType:match("zone") then
+            iconAtlas = PlanSourceIconMarkup("location") .. " "
         end
         sourceText:SetText(iconAtlas .. srcLabel .. sourceType .. "|r" .. body .. sourceDetail .. "|r")
     else
-        sourceText:SetText("|A:Class:16:16|a " .. srcLabel .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r " .. body .. rawText .. "|r")
+        sourceText:SetText(PlanSourceIconMarkup("class") .. " " .. srcLabel .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r " .. body .. rawText .. "|r")
     end
     
     sourceText:SetJustifyH("LEFT")

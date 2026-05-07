@@ -4,7 +4,7 @@
     Mounts tab: Virtual scroll list grouped by Source, Model Viewer, Description panel.
 ]]
 
-local ADDON_NAME, ns = ...
+local ns = select(2, ...)
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 local Constants = ns.Constants
@@ -1045,15 +1045,16 @@ local DEFAULT_ICON_TOY = "Interface\\Icons\\INV_Misc_Toy_07"
 local DEFAULT_ICON_ACHIEVEMENT = "Interface\\Icons\\Achievement_General"
 
 -- Acquire a collection list row (SharedWidgets layout: status icon + icon + label). Used by Mounts, Pets, Achievements.
-local function AcquireCollectionRow(scrollChild, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn)
+local function AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn)
+    if not rowParent then return nil end
     local f = table.remove(CollectionRowPool)
     if not f then
-        f = Factory:CreateCollectionListRow(scrollChild, ROW_HEIGHT)
+        f = Factory:CreateCollectionListRow(rowParent, ROW_HEIGHT)
         f:ClearAllPoints()
     end
-    f:SetParent(scrollChild)
-    f:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", leftIndent or 0, -(item.yOffset or 0))
-    f:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
+    f:SetParent(rowParent)
+    f:SetPoint("TOPLEFT", rowParent, "TOPLEFT", leftIndent or 0, -(item.yOffset or 0))
+    f:SetPoint("TOPRIGHT", rowParent, "TOPRIGHT", 0, -(item.yOffset or 0))
     f:SetHeight(ROW_HEIGHT)
     local onClick
     if onSelect or refreshFn then
@@ -1071,7 +1072,15 @@ local function AcquireMountRow(scrollChild, listWidth, item, selectedMountID, on
     local mount = item.mount
     local nameColor = mount.isCollected and COLLECTED_COLOR or "|cffffffff"
     local labelText = nameColor .. (mount.name or "") .. "|r" .. FormatMountPetToyListTrySuffix("mount", mount.id)
-    return AcquireCollectionRow(scrollChild, item, 0, mount.icon or DEFAULT_ICON_MOUNT, labelText, mount.isCollected, selectedMountID, mount.id, function()
+    local rowParent = scrollChild
+    if item._collSectionKey and collectionsState._mountSectionBodies and collectionsState._mountSectionBodies[item._collSectionKey] then
+        rowParent = collectionsState._mountSectionBodies[item._collSectionKey]
+    end
+    local rowItem = item
+    if item._collRelY then
+        rowItem = { mount = item.mount, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height }
+    end
+    return AcquireCollectionRow(rowParent, rowItem, 0, mount.icon or DEFAULT_ICON_MOUNT, labelText, mount.isCollected, selectedMountID, mount.id, function()
         if onSelectMount then
             onSelectMount(mount.id, mount.name, mount.icon, mount.source, mount.creatureDisplayID, mount.description, mount.isCollected)
         end
@@ -1088,7 +1097,15 @@ local function AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSele
     local pet = item.pet
     local nameColor = pet.isCollected and COLLECTED_COLOR or "|cffffffff"
     local labelText = nameColor .. (pet.name or "") .. "|r" .. FormatMountPetToyListTrySuffix("pet", pet.id)
-    return AcquireCollectionRow(scrollChild, item, 0, pet.icon or DEFAULT_ICON_PET, labelText, pet.isCollected, selectedPetID, pet.id, function()
+    local rowParent = scrollChild
+    if item._collSectionKey and collectionsState._petSectionBodies and collectionsState._petSectionBodies[item._collSectionKey] then
+        rowParent = collectionsState._petSectionBodies[item._collSectionKey]
+    end
+    local rowItem = item
+    if item._collRelY then
+        rowItem = { pet = item.pet, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height }
+    end
+    return AcquireCollectionRow(rowParent, rowItem, 0, pet.icon or DEFAULT_ICON_PET, labelText, pet.isCollected, selectedPetID, pet.id, function()
         if onSelectPet then
             onSelectPet(pet.id, pet.name, pet.icon, pet.source, pet.creatureDisplayID, pet.description, pet.isCollected)
         end
@@ -1105,7 +1122,15 @@ local function AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSele
     local toy = item.toy
     local nameColor = (toy.isCollected or toy.collected) and COLLECTED_COLOR or "|cffffffff"
     local labelText = nameColor .. (toy.name or "") .. "|r" .. FormatMountPetToyListTrySuffix("toy", toy.id)
-    return AcquireCollectionRow(scrollChild, item, 0, toy.icon or DEFAULT_ICON_TOY, labelText, (toy.isCollected == true) or (toy.collected == true), selectedToyID, toy.id, function()
+    local rowParent = scrollChild
+    if item._collSectionKey and collectionsState._toySectionBodies and collectionsState._toySectionBodies[item._collSectionKey] then
+        rowParent = collectionsState._toySectionBodies[item._collSectionKey]
+    end
+    local rowItem = item
+    if item._collRelY then
+        rowItem = { toy = item.toy, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height }
+    end
+    return AcquireCollectionRow(rowParent, rowItem, 0, toy.icon or DEFAULT_ICON_TOY, labelText, (toy.isCollected == true) or (toy.collected == true), selectedToyID, toy.id, function()
         if onSelectToy then
             onSelectToy(toy.id, toy.name, toy.icon, toy.source, toy.description, (toy.isCollected == true) or (toy.collected == true), toy.sourceTypeName)
         end
@@ -1124,7 +1149,21 @@ local function AcquireAchievementRow(scrollChild, listWidth, item, selectedAchie
     local pointsStr = (ach.points and ach.points > 0) and (" (" .. ach.points .. " pts)") or ""
     local labelText = nameColor .. (ach.name or "") .. "|r" .. pointsStr
     local indent = item.indent or 0
-    return AcquireCollectionRow(scrollChild, item, indent, ach.icon or DEFAULT_ICON_ACHIEVEMENT, labelText, ach.isCollected, selectedAchievementID, ach.id, function()
+    local rowParent = scrollChild
+    if item._collSectionKey and collectionsState._achSectionBodies and collectionsState._achSectionBodies[item._collSectionKey] then
+        rowParent = collectionsState._achSectionBodies[item._collSectionKey]
+    end
+    local rowItem = item
+    if item._collRelY then
+        rowItem = {
+            achievement = item.achievement,
+            rowIndex = item.rowIndex,
+            yOffset = item._collRelY,
+            height = item.height,
+            indent = item.indent,
+        }
+    end
+    return AcquireCollectionRow(rowParent, rowItem, indent, ach.icon or DEFAULT_ICON_ACHIEVEMENT, labelText, ach.isCollected, selectedAchievementID, ach.id, function()
         if onSelectAchievement then onSelectAchievement(ach) end
     end, function()
         if collectionsState._achFlatList and collectionsState.achievementListScrollFrame then
@@ -1223,7 +1262,35 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
     local flatList, totalHeight = BuildFlatMountList(groupedData, collapsedHeaders)
     scrollChild:SetHeight(totalHeight)
 
-    -- Create collapsible headers (Plans-style factory); rows are virtualized in UpdateMountListVisibleRange
+    collectionsState._mountSectionBodies = {}
+    local mountSectionContentH = {}
+    for fi = 1, #flatList do
+        local fit = flatList[fi]
+        if fit.type == "header" then
+            local sk = fit.key
+            local sh = 0
+            for fj = fi + 1, #flatList do
+                local r = flatList[fj]
+                if r.type == "header" then break end
+                if r.type == "row" then sh = sh + (r.height or ROW_HEIGHT) end
+            end
+            mountSectionContentH[sk] = sh
+        end
+    end
+    do
+        local ck, ctop = nil, nil
+        for fi = 1, #flatList do
+            local fit = flatList[fi]
+            if fit.type == "header" then
+                ck = fit.key
+                ctop = fit.yOffset + fit.height
+            elseif fit.type == "row" and ck then
+                fit._collSectionKey = ck
+                fit._collRelY = fit.yOffset - ctop
+            end
+        end
+    end
+
     local collHdrChainTail = nil
     local collHdrTopY = nil
     local collHdrPrevH = nil
@@ -1232,31 +1299,63 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
         local it = flatList[i]
         if it.type == "header" then
             local key = it.key
-            local function onToggle(expanded)
-                collapsedHeaders[key] = not expanded
-                local cached = collectionsState._lastGroupedMountData
-                local sch = collectionsState.mountListScrollChild
-                if cached and sch and cf and cf:IsVisible() then
-                    PopulateMountList(sch, listWidth, cached, collapsedHeaders, selectedMountID, onSelectMount, cf, redraw)
-                    if Factory.UpdateScrollBarVisibility and collectionsState.mountListScrollFrame then
-                        Factory:UpdateScrollBarVisibility(collectionsState.mountListScrollFrame)
-                    end
-                elseif redraw and cf and cf:IsVisible() then
-                    redraw(cf)
-                end
-            end
-            local header = CreateCollapsibleHeader(scrollChild, it.label, key, not it.isCollapsed, onToggle, GetMountCategoryIcon(key), true, 0)
-            header:ClearAllPoints()
             local yTop = it.yOffset or 0
             local prevH = collHdrPrevH or COLLAPSE_H_COLL
             local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
             if gap and gap < 0 then gap = 0 end
-            ChainSectionFrameBelow(scrollChild, header, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
+
+            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_H_COLL + 0.1, false)
+            sectionWrap:ClearAllPoints()
+            if sectionWrap.SetClipsChildren then
+                sectionWrap:SetClipsChildren(true)
+            end
+            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
+
+            local sectionBody
+            local secH = mountSectionContentH[key] or 0
+            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function() end, GetMountCategoryIcon(key), true, 0, nil, {
+                animatedContent = function() return sectionBody end,
+                persistToggle = function(exp)
+                    collapsedHeaders[key] = not exp
+                end,
+                accordionOnUpdate = function(drawH)
+                    sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
+                end,
+                accordionComplete = function()
+                    local cached = collectionsState._lastGroupedMountData
+                    local sch = collectionsState.mountListScrollChild
+                    if cached and sch and cf and cf:IsVisible() then
+                        PopulateMountList(sch, listWidth, cached, collapsedHeaders, selectedMountID, onSelectMount, cf, redraw)
+                        if Factory.UpdateScrollBarVisibility and collectionsState.mountListScrollFrame then
+                            Factory:UpdateScrollBarVisibility(collectionsState.mountListScrollFrame)
+                        end
+                    elseif redraw and cf and cf:IsVisible() then
+                        redraw(cf)
+                    end
+                end,
+            })
+            header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
             header:SetWidth(listWidth)
             header:SetHeight(it.height)
-            collHdrChainTail = header
+
+            sectionBody = Factory:CreateContainer(sectionWrap, listWidth, 0.1, false)
+            sectionBody:ClearAllPoints()
+            sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
+            sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
+            sectionBody._wnAccordionFullH = secH
+            if not it.isCollapsed then
+                sectionBody:Show()
+                sectionBody:SetHeight(math.max(0.1, secH))
+            else
+                sectionBody:Hide()
+                sectionBody:SetHeight(0.1)
+            end
+            sectionWrap:SetHeight(COLLAPSE_H_COLL + sectionBody:GetHeight())
+            collectionsState._mountSectionBodies[key] = sectionBody
+
+            collHdrChainTail = sectionWrap
             collHdrTopY = it.yOffset or 0
-            collHdrPrevH = it.height or COLLAPSE_H_COLL
+            collHdrPrevH = sectionWrap:GetHeight()
         end
     end
 
@@ -1372,7 +1471,35 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
     local flatList, totalHeight = BuildFlatPetList(groupedData, collapsedHeaders)
     scrollChild:SetHeight(totalHeight)
 
-    -- Create collapsible headers (Plans-style factory)
+    collectionsState._petSectionBodies = {}
+    local petSectionContentH = {}
+    for fi = 1, #flatList do
+        local fit = flatList[fi]
+        if fit.type == "header" then
+            local sk = fit.key
+            local sh = 0
+            for fj = fi + 1, #flatList do
+                local r = flatList[fj]
+                if r.type == "header" then break end
+                if r.type == "row" then sh = sh + (r.height or ROW_HEIGHT) end
+            end
+            petSectionContentH[sk] = sh
+        end
+    end
+    do
+        local ck, ctop = nil, nil
+        for fi = 1, #flatList do
+            local fit = flatList[fi]
+            if fit.type == "header" then
+                ck = fit.key
+                ctop = fit.yOffset + fit.height
+            elseif fit.type == "row" and ck then
+                fit._collSectionKey = ck
+                fit._collRelY = fit.yOffset - ctop
+            end
+        end
+    end
+
     local collHdrChainTail = nil
     local collHdrTopY = nil
     local collHdrPrevH = nil
@@ -1381,31 +1508,63 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
         local it = flatList[i]
         if it.type == "header" then
             local key = it.key
-            local function onToggle(expanded)
-                collapsedHeaders[key] = not expanded
-                local cached = collectionsState._lastGroupedPetData
-                local sch = collectionsState.petListScrollChild
-                if cached and sch and cf and cf:IsVisible() then
-                    PopulatePetList(sch, listWidth, cached, collapsedHeaders, selectedPetID, onSelectPet, cf, redraw)
-                    if Factory.UpdateScrollBarVisibility and collectionsState.petListScrollFrame then
-                        Factory:UpdateScrollBarVisibility(collectionsState.petListScrollFrame)
-                    end
-                elseif redraw and cf and cf:IsVisible() then
-                    redraw(cf)
-                end
-            end
-            local header = CreateCollapsibleHeader(scrollChild, it.label, key, not it.isCollapsed, onToggle, GetPetCategoryIcon(key), true, 0)
-            header:ClearAllPoints()
             local yTop = it.yOffset or 0
             local prevH = collHdrPrevH or COLLAPSE_H_COLL
             local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
             if gap and gap < 0 then gap = 0 end
-            ChainSectionFrameBelow(scrollChild, header, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
+
+            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_H_COLL + 0.1, false)
+            sectionWrap:ClearAllPoints()
+            if sectionWrap.SetClipsChildren then
+                sectionWrap:SetClipsChildren(true)
+            end
+            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
+
+            local sectionBody
+            local secH = petSectionContentH[key] or 0
+            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function() end, GetPetCategoryIcon(key), true, 0, nil, {
+                animatedContent = function() return sectionBody end,
+                persistToggle = function(exp)
+                    collapsedHeaders[key] = not exp
+                end,
+                accordionOnUpdate = function(drawH)
+                    sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
+                end,
+                accordionComplete = function()
+                    local cached = collectionsState._lastGroupedPetData
+                    local sch = collectionsState.petListScrollChild
+                    if cached and sch and cf and cf:IsVisible() then
+                        PopulatePetList(sch, listWidth, cached, collapsedHeaders, selectedPetID, onSelectPet, cf, redraw)
+                        if Factory.UpdateScrollBarVisibility and collectionsState.petListScrollFrame then
+                            Factory:UpdateScrollBarVisibility(collectionsState.petListScrollFrame)
+                        end
+                    elseif redraw and cf and cf:IsVisible() then
+                        redraw(cf)
+                    end
+                end,
+            })
+            header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
             header:SetWidth(listWidth)
             header:SetHeight(it.height)
-            collHdrChainTail = header
+
+            sectionBody = Factory:CreateContainer(sectionWrap, listWidth, 0.1, false)
+            sectionBody:ClearAllPoints()
+            sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
+            sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
+            sectionBody._wnAccordionFullH = secH
+            if not it.isCollapsed then
+                sectionBody:Show()
+                sectionBody:SetHeight(math.max(0.1, secH))
+            else
+                sectionBody:Hide()
+                sectionBody:SetHeight(0.1)
+            end
+            sectionWrap:SetHeight(COLLAPSE_H_COLL + sectionBody:GetHeight())
+            collectionsState._petSectionBodies[key] = sectionBody
+
+            collHdrChainTail = sectionWrap
             collHdrTopY = it.yOffset or 0
-            collHdrPrevH = it.height or COLLAPSE_H_COLL
+            collHdrPrevH = sectionWrap:GetHeight()
         end
     end
 
@@ -1520,6 +1679,35 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
     local flatList, totalHeight = BuildFlatToyList(groupedData, collapsedHeaders, TOY_SOURCE_CATEGORIES)
     scrollChild:SetHeight(totalHeight)
 
+    collectionsState._toySectionBodies = {}
+    local toySectionContentH = {}
+    for fi = 1, #flatList do
+        local fit = flatList[fi]
+        if fit.type == "header" then
+            local sk = fit.key
+            local sh = 0
+            for fj = fi + 1, #flatList do
+                local r = flatList[fj]
+                if r.type == "header" then break end
+                if r.type == "row" then sh = sh + (r.height or ROW_HEIGHT) end
+            end
+            toySectionContentH[sk] = sh
+        end
+    end
+    do
+        local ck, ctop = nil, nil
+        for fi = 1, #flatList do
+            local fit = flatList[fi]
+            if fit.type == "header" then
+                ck = fit.key
+                ctop = fit.yOffset + fit.height
+            elseif fit.type == "row" and ck then
+                fit._collSectionKey = ck
+                fit._collRelY = fit.yOffset - ctop
+            end
+        end
+    end
+
     local collHdrChainTail = nil
     local collHdrTopY = nil
     local collHdrPrevH = nil
@@ -1528,31 +1716,63 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
         local it = flatList[i]
         if it.type == "header" then
             local key = it.key
-            local function onToggle(expanded)
-                collapsedHeaders[key] = not expanded
-                local cached = collectionsState._lastGroupedToyData
-                local sch = collectionsState.toyListScrollChild
-                if cached and sch and cf and cf:IsVisible() then
-                    PopulateToyList(sch, listWidth, cached, collapsedHeaders, selectedToyID, onSelectToy, cf, redraw)
-                    if Factory.UpdateScrollBarVisibility and collectionsState.toyListScrollFrame then
-                        Factory:UpdateScrollBarVisibility(collectionsState.toyListScrollFrame)
-                    end
-                elseif redraw and cf and cf:IsVisible() then
-                    redraw(cf)
-                end
-            end
-            local header = CreateCollapsibleHeader(scrollChild, it.label, key, not it.isCollapsed, onToggle, GetToyCategoryIcon(key), true, 0)
-            header:ClearAllPoints()
             local yTop = it.yOffset or 0
             local prevH = collHdrPrevH or COLLAPSE_H_COLL
             local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
             if gap and gap < 0 then gap = 0 end
-            ChainSectionFrameBelow(scrollChild, header, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
+
+            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_H_COLL + 0.1, false)
+            sectionWrap:ClearAllPoints()
+            if sectionWrap.SetClipsChildren then
+                sectionWrap:SetClipsChildren(true)
+            end
+            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
+
+            local sectionBody
+            local secH = toySectionContentH[key] or 0
+            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function() end, GetToyCategoryIcon(key), true, 0, nil, {
+                animatedContent = function() return sectionBody end,
+                persistToggle = function(exp)
+                    collapsedHeaders[key] = not exp
+                end,
+                accordionOnUpdate = function(drawH)
+                    sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
+                end,
+                accordionComplete = function()
+                    local cached = collectionsState._lastGroupedToyData
+                    local sch = collectionsState.toyListScrollChild
+                    if cached and sch and cf and cf:IsVisible() then
+                        PopulateToyList(sch, listWidth, cached, collapsedHeaders, selectedToyID, onSelectToy, cf, redraw)
+                        if Factory.UpdateScrollBarVisibility and collectionsState.toyListScrollFrame then
+                            Factory:UpdateScrollBarVisibility(collectionsState.toyListScrollFrame)
+                        end
+                    elseif redraw and cf and cf:IsVisible() then
+                        redraw(cf)
+                    end
+                end,
+            })
+            header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
             header:SetWidth(listWidth)
             header:SetHeight(it.height)
-            collHdrChainTail = header
+
+            sectionBody = Factory:CreateContainer(sectionWrap, listWidth, 0.1, false)
+            sectionBody:ClearAllPoints()
+            sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
+            sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
+            sectionBody._wnAccordionFullH = secH
+            if not it.isCollapsed then
+                sectionBody:Show()
+                sectionBody:SetHeight(math.max(0.1, secH))
+            else
+                sectionBody:Hide()
+                sectionBody:SetHeight(0.1)
+            end
+            sectionWrap:SetHeight(COLLAPSE_H_COLL + sectionBody:GetHeight())
+            collectionsState._toySectionBodies[key] = sectionBody
+
+            collHdrChainTail = sectionWrap
             collHdrTopY = it.yOffset or 0
-            collHdrPrevH = it.height or COLLAPSE_H_COLL
+            collHdrPrevH = sectionWrap:GetHeight()
         end
     end
 
@@ -1662,7 +1882,35 @@ local function PopulateAchievementList(scrollChild, listWidth, categoryData, roo
     local flatList, totalHeight = BuildFlatAchievementList(categoryData, rootCategories, collapsedHeaders)
     scrollChild:SetHeight(totalHeight)
 
-    -- Create collapsible headers (Plans-style factory; indent for hierarchy)
+    collectionsState._achSectionBodies = {}
+    local achSectionContentH = {}
+    for fi = 1, #flatList do
+        local fit = flatList[fi]
+        if fit.type == "header" then
+            local sk = fit.key
+            local sh = 0
+            for fj = fi + 1, #flatList do
+                local r = flatList[fj]
+                if r.type == "header" then break end
+                if r.type == "row" then sh = sh + (r.height or ROW_HEIGHT) end
+            end
+            achSectionContentH[sk] = sh
+        end
+    end
+    do
+        local ck, ctop = nil, nil
+        for fi = 1, #flatList do
+            local fit = flatList[fi]
+            if fit.type == "header" then
+                ck = fit.key
+                ctop = fit.yOffset + fit.height
+            elseif fit.type == "row" and ck then
+                fit._collSectionKey = ck
+                fit._collRelY = fit.yOffset - ctop
+            end
+        end
+    end
+
     local achBaseIndent = (ns.UI_LAYOUT and ns.UI_LAYOUT.BASE_INDENT) or 15
     local collHdrChainTail = nil
     local collHdrTopY = nil
@@ -1674,29 +1922,62 @@ local function PopulateAchievementList(scrollChild, listWidth, categoryData, roo
             local key = it.key
             local indentPx = it.indent or 0
             local indentLevel = (indentPx > 0 and math.floor(indentPx / achBaseIndent)) or 0
-            local function onToggle(expanded)
-                collapsedHeaders[key] = not expanded
-                local cachedCat = collectionsState._lastAchievementCategoryData
-                local cachedRoot = collectionsState._lastAchievementRootCategories
-                local achScrollChild = collectionsState.achievementListScrollChild
-                if cachedCat and cachedRoot and achScrollChild and cf and cf:IsVisible() then
-                    PopulateAchievementList(achScrollChild, listWidth, cachedCat, cachedRoot, collapsedHeaders, selectedAchievementID, onSelectAchievement, cf, redraw)
-                elseif redraw and cf and cf:IsVisible() then
-                    redraw(cf)
-                end
-            end
-            local header = CreateCollapsibleHeader(scrollChild, it.label, key, not it.isCollapsed, onToggle, "UI-Achievement-Shield-NoPoints", true, indentLevel)
-            header:ClearAllPoints()
             local yTop = it.yOffset or 0
-            local prevH = collHdrPrevH or COLLAPSE_H_COLL
+            local prevH = (collHdrChainTail and collHdrChainTail:GetHeight()) or collHdrPrevH or COLLAPSE_H_COLL
             local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
             if gap and gap < 0 then gap = 0 end
-            ChainSectionFrameBelow(scrollChild, header, collHdrChainTail, indentPx, gap, collHdrChainTail and nil or yTop)
-            header:SetWidth(listWidth - indentPx)
+
+            local wrapW = math.max(1, listWidth - indentPx)
+            local sectionWrap = Factory:CreateContainer(scrollChild, wrapW, COLLAPSE_H_COLL + 0.1, false)
+            sectionWrap:ClearAllPoints()
+            if sectionWrap.SetClipsChildren then
+                sectionWrap:SetClipsChildren(true)
+            end
+            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, indentPx, gap, collHdrChainTail and nil or yTop)
+
+            local sectionBody
+            local secH = achSectionContentH[key] or 0
+            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function() end, "UI-Achievement-Shield-NoPoints", true, indentLevel, nil, {
+                animatedContent = function() return sectionBody end,
+                persistToggle = function(exp)
+                    collapsedHeaders[key] = not exp
+                end,
+                accordionOnUpdate = function(drawH)
+                    sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
+                end,
+                accordionComplete = function()
+                    local cachedCat = collectionsState._lastAchievementCategoryData
+                    local cachedRoot = collectionsState._lastAchievementRootCategories
+                    local achScrollChild = collectionsState.achievementListScrollChild
+                    if cachedCat and cachedRoot and achScrollChild and cf and cf:IsVisible() then
+                        PopulateAchievementList(achScrollChild, listWidth, cachedCat, cachedRoot, collapsedHeaders, selectedAchievementID, onSelectAchievement, cf, redraw)
+                    elseif redraw and cf and cf:IsVisible() then
+                        redraw(cf)
+                    end
+                end,
+            })
+            header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
+            header:SetWidth(wrapW)
             header:SetHeight(it.height)
-            collHdrChainTail = header
+
+            sectionBody = Factory:CreateContainer(sectionWrap, wrapW, 0.1, false)
+            sectionBody:ClearAllPoints()
+            sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
+            sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
+            sectionBody._wnAccordionFullH = secH
+            if not it.isCollapsed then
+                sectionBody:Show()
+                sectionBody:SetHeight(math.max(0.1, secH))
+            else
+                sectionBody:Hide()
+                sectionBody:SetHeight(0.1)
+            end
+            sectionWrap:SetHeight(COLLAPSE_H_COLL + sectionBody:GetHeight())
+            collectionsState._achSectionBodies[key] = sectionBody
+
+            collHdrChainTail = sectionWrap
             collHdrTopY = it.yOffset or 0
-            collHdrPrevH = it.height or COLLAPSE_H_COLL
+            collHdrPrevH = sectionWrap:GetHeight()
         end
     end
 

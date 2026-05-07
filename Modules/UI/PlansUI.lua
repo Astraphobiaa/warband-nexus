@@ -59,6 +59,7 @@ local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateExternalWindow = ns.UI_CreateExternalWindow
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local CreateExpandableRow = ns.UI_CreateExpandableRow
+local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
 local CardLayoutManager = ns.UI_CardLayoutManager
 
 -- Loading state for collection scanning (per-category)
@@ -990,7 +991,6 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     local CATEGORIES = ns.QUEST_CATEGORIES or {}
     local CAT_DISPLAY = ns.CATEGORY_DISPLAY or {}
     local ROW_H = GetLayout().rowHeight
-    local CAT_HEADER_H = GetLayout().headerHeight
     local expandedGroups = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
 
     -- ===== WEEKLY RESET TIMER BAR =====
@@ -1145,69 +1145,57 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                     local groupKey = "dq_" .. tostring(plan.id) .. "_" .. catKey
                     local isExpanded = (expandedGroups[groupKey] ~= false)
 
-                    -- Category header
-                    local catCard = CreateCard(parent, CAT_HEADER_H)
-                    catCard:SetPoint("TOPLEFT", 10, -yOffset)
-                    catCard:SetPoint("TOPRIGHT", -10, -yOffset)
-                    catCard:EnableMouse(true)
+                    local SECTION_HDR_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
+                    local catAtlas = (display and display.atlas) or "questlog-questtypeicon-weekly"
+                    local catTitleHex = string.format(
+                        "|cff%02x%02x%02x%s|r",
+                        math.floor(catColor[1] * 255),
+                        math.floor(catColor[2] * 255),
+                        math.floor(catColor[3] * 255),
+                        catName
+                    )
 
-                    -- Category color indicator
-                    local catAccent = catCard:CreateTexture(nil, "ARTWORK")
-                    catAccent:SetSize(3, CAT_HEADER_H - 6)
-                    catAccent:SetPoint("LEFT", 4, 0)
-                    catAccent:SetColorTexture(catColor[1], catColor[2], catColor[3], 0.9)
-
-                    -- Arrow (atlas-based, matching CreateCollapsibleHeader)
-                    local expandIcon = catCard:CreateTexture(nil, "ARTWORK")
-                    expandIcon:SetSize(16, 16)
-                    expandIcon:SetPoint("LEFT", 10, 0)
-                    if isExpanded then
-                        expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)
-                    else
-                        expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
+                    local catHeader, hdrExpandIcon, hdrCategoryIcon = CreateCollapsibleHeader(
+                        parent,
+                        catTitleHex,
+                        groupKey,
+                        isExpanded,
+                        function(expanded)
+                            expandedGroups[groupKey] = expanded
+                            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+                        end,
+                        catAtlas,
+                        true,
+                        nil,
+                        nil,
+                        nil
+                    )
+                    catHeader:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -yOffset)
+                    catHeader:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -yOffset)
+                    catHeader:SetHeight(SECTION_HDR_H)
+                    if catHeader._wnSectionStripe then
+                        catHeader._wnSectionStripe:SetColorTexture(catColor[1], catColor[2], catColor[3], 0.9)
                     end
-                    expandIcon:SetVertexColor(catColor[1], catColor[2], catColor[3])
+                    if hdrExpandIcon then
+                        hdrExpandIcon:SetVertexColor(
+                            math.min(1, catColor[1] * 1.5),
+                            math.min(1, catColor[2] * 1.5),
+                            math.min(1, catColor[3] * 1.5)
+                        )
+                    end
+                    if hdrCategoryIcon then
+                        hdrCategoryIcon:SetVertexColor(catColor[1], catColor[2], catColor[3])
+                    end
 
-                    -- Category name
-                    local catLabel = FontManager:CreateFontString(catCard, "body", "OVERLAY")
-                    catLabel:SetPoint("LEFT", 30, 0)
-                    catLabel:SetTextColor(catColor[1], catColor[2], catColor[3])
-                    catLabel:SetText(catName)
+                    local countHdrFs = FontManager:CreateFontString(catHeader, "body", "OVERLAY")
+                    countHdrFs:SetPoint("RIGHT", -14, 0)
+                    local countColorHdr = (completed == total and total > 0) and "|cff44ff44" or "|cffffffff"
+                    countHdrFs:SetText(countColorHdr .. completed .. "/" .. total .. "|r")
 
-                    -- Count
-                    local countLabel = FontManager:CreateFontString(catCard, "body", "OVERLAY")
-                    countLabel:SetPoint("RIGHT", -12, 0)
-                    local countColor = (completed == total and total > 0) and "|cff44ff44" or "|cffffffff"
-                    countLabel:SetText(countColor .. completed .. "/" .. total .. "|r")
+                    yOffset = yOffset + SECTION_HDR_H + 2
 
-                    catCard:SetScript("OnMouseDown", function()
-                        if ns.UI_SetExpandedGroup then
-                            ns.UI_SetExpandedGroup(groupKey, not isExpanded)
-                        elseif expandedGroups then
-                            expandedGroups[groupKey] = not isExpanded
-                        end
-                        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
-                    end)
-                    catCard:SetScript("OnEnter", function(self)
-                        if ApplyVisuals then
-                            ApplyVisuals(self, {0.10, 0.10, 0.12, 1}, {catColor[1], catColor[2], catColor[3], 0.6})
-                        end
-                    end)
-                    catCard:SetScript("OnLeave", function(self)
-                        if ApplyVisuals then
-                            ApplyVisuals(self, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-                        end
-                    end)
-
-                    catCard:Show()
-                    yOffset = yOffset + CAT_HEADER_H + 2
-
-                    -- Quest rows (when expanded)
                     if isExpanded then
                         if #questList == 0 then
-                            -- Empty-state row: category is tracked but the live scan found
-                            -- nothing right now (unlocked later, between resets, or API
-                            -- not yet ready).
                             local emptyRow, newY = ns.UI.Factory:CreateDataRow(parent, yOffset, 1, ROW_H)
                             emptyRow:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -newY + ROW_H)
                             emptyRow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -newY + ROW_H)
@@ -1224,10 +1212,10 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                         elseif #questList > 0 then
                             for qi = 1, #questList do
                                 local quest = questList[qi]
+                                local hasObjectives = (quest.objectives and #quest.objectives > 0) or false
                                 local isSub = quest.isSubQuest
                                 local leftIndent = isSub and 26 or 14
                                 local iconSize = isSub and 12 or 14
-
                                 local rowH = ROW_H
 
                                 local row
@@ -1236,7 +1224,6 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                 row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -yOffset + rowH)
                                 row:EnableMouse(true)
 
-                                -- Status icon (atlas-based)
                                 local statusIcon = row:CreateTexture(nil, "ARTWORK")
                                 statusIcon:SetSize(iconSize, iconSize)
                                 if hasObjectives then
@@ -1255,7 +1242,6 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                     statusIcon:SetVertexColor(0.6, 0.6, 0.6)
                                 end
 
-                                -- Quest title
                                 local titleFs = FontManager:CreateFontString(row, isSub and "small" or "body", "OVERLAY")
                                 if hasObjectives then
                                     titleFs:SetPoint("TOPLEFT", leftIndent + iconSize + 4, -4)
@@ -1275,7 +1261,6 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                     titleFs:SetText("|cffffffff" .. (quest.title or "") .. "|r")
                                 end
 
-                                -- Assignment: show each objective with individual progress
                                 if hasObjectives then
                                     local objY = -4
                                     for oi = 1, #quest.objectives do
@@ -1308,7 +1293,6 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                         progFs:SetText(string.format("%s%d/%d|r", progColor, obj.numFulfilled, obj.numRequired))
                                     end
 
-                                    -- Zone on the right side
                                     if quest.zone and quest.zone ~= "" then
                                         local zoneFs = FontManager:CreateFontString(row, "small", "OVERLAY")
                                         zoneFs:SetPoint("TOPRIGHT", -14, -6)
@@ -1316,7 +1300,6 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                         zoneFs:SetText("|cff888888" .. quest.zone .. "|r")
                                     end
                                 else
-                                    -- Standard row: zone + time
                                     local zoneFs = FontManager:CreateFontString(row, "body", "OVERLAY")
                                     zoneFs:SetPoint("LEFT", 32 + width * 0.52, 0)
                                     zoneFs:SetWidth(width * 0.25)
@@ -1772,154 +1755,156 @@ end
 -- ACHIEVEMENTS TABLE RENDERING
 -- ============================================================================
 
+local function GapBelowChainTail(yNextTop, chainTailTopY, chainTail)
+    if not chainTail or chainTailTopY == nil then return nil end
+    local prevH = chainTail:GetHeight() or 0
+    local g = yNextTop - chainTailTopY - prevH
+    if g < 0 then g = 0 end
+    return g
+end
+
+--- Fills description / reward / criteria into row data (expensive API). Called on first expand via ExpandableRowFactory + onExpandPopulate.
+local function PopulateAchievementExpandBody(WarbandNexus, achievement, rowData)
+    local informationText = ""
+    local requirementsText = ""
+    local criteriaDetails = nil
+
+    local freshNumCriteria = GetAchievementNumCriteria(achievement.id)
+
+    if achievement.description and achievement.description ~= "" then
+        informationText = FormatTextNumbers(achievement.description)
+    end
+
+    local rewardInfo = WarbandNexus:GetAchievementRewardInfo(achievement.id)
+    if rewardInfo then
+        if informationText ~= "" then
+            informationText = informationText .. "\n\n"
+        end
+
+        local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
+        if rewardInfo.type == "title" then
+            local titleLabel = (ns.L and ns.L["TYPE_TITLE"]) or "Title"
+            informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. titleLabel .. " - |cff00ff00" .. rewardInfo.title .. "|r"
+        elseif rewardInfo.itemName then
+            local itemTypeText = rewardInfo.type:gsub("^%l", string.upper)
+            informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. itemTypeText .. " - |cff00ff00" .. rewardInfo.itemName .. "|r"
+        end
+    elseif achievement.rewardText and achievement.rewardText ~= "" then
+        if informationText ~= "" then
+            informationText = informationText .. "\n\n"
+        end
+        local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
+        informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. FormatTextNumbers(achievement.rewardText)
+    end
+
+    if informationText == "" then
+        informationText = "|cffffffff" .. ((ns.L and ns.L["NO_ADDITIONAL_INFO"]) or "No additional information") .. "|r"
+    end
+
+    local CRITERIA_TYPE_ACHIEVEMENT = 8
+    if freshNumCriteria and freshNumCriteria > 0 then
+        local completedCount = 0
+        criteriaDetails = {}
+
+        for criteriaIndex = 1, freshNumCriteria do
+            local criteriaName, criteriaType, completed, quantity, reqQuantity, charName, flags, assetID, quantityString = GetAchievementCriteriaInfo(achievement.id, criteriaIndex)
+            if criteriaName and criteriaName ~= "" then
+                if completed then
+                    completedCount = completedCount + 1
+                end
+
+                local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                local progressText = ""
+
+                if quantity and reqQuantity and reqQuantity > 1 then
+                    local P = ns.PLAN_UI_COLORS or {}
+                    local progressColor = completed and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
+                    progressText = string.format(" %s(%s / %s)|r", progressColor, FormatNumber(quantity), FormatNumber(reqQuantity))
+                end
+
+                local linkedAchievementID = nil
+                if criteriaType == CRITERIA_TYPE_ACHIEVEMENT and assetID and assetID > 0 then
+                    linkedAchievementID = assetID
+                end
+
+                local P = ns.PLAN_UI_COLORS or {}
+                local textColor
+                if linkedAchievementID then
+                    textColor = completed and "|cff44ddff" or "|cff44bbff"
+                else
+                    textColor = completed and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
+                end
+
+                local formattedCriteriaName = FormatTextNumbers(criteriaName)
+                local plannedSuffix = ""
+                if linkedAchievementID and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(linkedAchievementID) then
+                    local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+                    plannedSuffix = " |cffffcc00(" .. plannedWord .. ")|r"
+                end
+                criteriaDetails[#criteriaDetails + 1] = {
+                    text = statusIcon .. " " .. textColor .. formattedCriteriaName .. "|r" .. progressText .. plannedSuffix,
+                    linkedAchievementID = linkedAchievementID,
+                    completed = completed,
+                }
+            end
+        end
+
+        if #criteriaDetails > 0 then
+            local progressPercent = math.floor((completedCount / freshNumCriteria) * 100)
+            local P2 = ns.PLAN_UI_COLORS or {}
+            local progressColor = (completedCount == freshNumCriteria) and (P2.progressFull or "|cff00ff00") or (P2.incomplete or "|cffffffff")
+            local progressLine = string.format("%s%s of %s (%s%%)|r", progressColor, FormatNumber(completedCount), FormatNumber(freshNumCriteria), FormatNumber(progressPercent))
+
+            local legacyLines = {}
+            for _, cd in ipairs(criteriaDetails) do
+                legacyLines[#legacyLines + 1] = cd.text
+            end
+            requirementsText = progressLine .. "\n" .. table.concat(legacyLines, "\n")
+        else
+            requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_CRITERIA_FOUND"]) or "No criteria found") .. "|r"
+        end
+    else
+        requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_REQUIREMENTS_INSTANT"]) or "No requirements (instant completion)") .. "|r"
+    end
+
+    rowData.information = informationText
+    if criteriaDetails and #criteriaDetails > 0 then
+        rowData.criteria = requirementsText
+        rowData.criteriaData = criteriaDetails
+    else
+        rowData.criteria = requirementsText
+        rowData.criteriaData = nil
+    end
+end
+
 --[[
     Helper function to create a single achievement row (unified for all hierarchy levels)
-    @param parent Frame - Parent container
-    @param achievement table - Achievement data
-    @param yOffset number - Y offset for positioning
-    @param width number - Row width
-    @param indent number - Left indent (for hierarchy levels)
-    @param animIdx number - Animation index for stagger
-    @param shouldAnimate boolean - Whether to animate appearance
-    @param expandedGroups table - Expand state storage
-    @return number - New yOffset after row is drawn
+    Chains vertically under chainTail so accordion height tweens reflow siblings; updates scroll child height via onAccordionResize.
+    @return number yOffset, Frame chainTail, number chainTailTopY
 ]]
-local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, width, indent, animIdx, shouldAnimate, expandedGroups)
+local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, width, indent, stripeIdx, expandedGroups, chainTail, chainTailTopY)
     local COLORS = ns.UI_COLORS
     local rowKey = "achievement_row_" .. achievement.id
     local rowExpanded = expandedGroups[rowKey] or false
-    
-    -- PERFORMANCE: Only compute criteria/reward details when row is expanded
-    -- This avoids expensive C API calls (GetAchievementCriteriaInfo × N criteria) for collapsed rows
-    -- When user expands a row, WN_UI_MAIN_REFRESH_REQUESTED redraw runs so layout recomputes with rowExpanded=true
-    local informationText = ""
-    local requirementsText = ""
-    local criteriaDetails = nil  -- Structured criteria data (populated when expanded)
-    
-    if rowExpanded then
-        -- Get FRESH criteria count from API (only when expanded)
-        local freshNumCriteria = GetAchievementNumCriteria(achievement.id)
-        
-        -- Build Information section
-        if achievement.description and achievement.description ~= "" then
-            informationText = FormatTextNumbers(achievement.description)
-        end
-        
-        -- Get achievement rewards (title, mount, pet, toy, transmog)
-        local rewardInfo = WarbandNexus:GetAchievementRewardInfo(achievement.id)
-        if rewardInfo then
-            if informationText ~= "" then
-                informationText = informationText .. "\n\n"
-            end
-            
-            local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
-            if rewardInfo.type == "title" then
-                local titleLabel = (ns.L and ns.L["TYPE_TITLE"]) or "Title"
-                informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. titleLabel .. " - |cff00ff00" .. rewardInfo.title .. "|r"
-            elseif rewardInfo.itemName then
-                local itemTypeText = rewardInfo.type:gsub("^%l", string.upper) -- Capitalize
-                informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. itemTypeText .. " - |cff00ff00" .. rewardInfo.itemName .. "|r"
-            end
-        elseif achievement.rewardText and achievement.rewardText ~= "" then
-            if informationText ~= "" then
-                informationText = informationText .. "\n\n"
-            end
-            local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
-            informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. FormatTextNumbers(achievement.rewardText)
-        end
-        
-        if informationText == "" then
-            informationText = "|cffffffff" .. ((ns.L and ns.L["NO_ADDITIONAL_INFO"]) or "No additional information") .. "|r"
-        end
-        
-        -- Build Requirements section (expensive: iterates all criteria)
-        local CRITERIA_TYPE_ACHIEVEMENT = 8
-        if freshNumCriteria and freshNumCriteria > 0 then
-            local completedCount = 0
-            criteriaDetails = {}
-            
-            for criteriaIndex = 1, freshNumCriteria do
-                local criteriaName, criteriaType, completed, quantity, reqQuantity, charName, flags, assetID, quantityString = GetAchievementCriteriaInfo(achievement.id, criteriaIndex)
-                if criteriaName and criteriaName ~= "" then
-                    if completed then
-                        completedCount = completedCount + 1
-                    end
-                    
-                    local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
-                    local progressText = ""
-                    
-                    if quantity and reqQuantity and reqQuantity > 1 then
-                        local P = ns.PLAN_UI_COLORS or {}
-                        local progressColor = completed and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
-                        progressText = string.format(" %s(%s / %s)|r", progressColor, FormatNumber(quantity), FormatNumber(reqQuantity))
-                    end
-                    
-                    -- Detect achievement-type criteria (criteriaType 8 = another achievement)
-                    local linkedAchievementID = nil
-                    if criteriaType == CRITERIA_TYPE_ACHIEVEMENT and assetID and assetID > 0 then
-                        linkedAchievementID = assetID
-                    end
-                    
-                    local P = ns.PLAN_UI_COLORS or {}
-                    local textColor
-                    if linkedAchievementID then
-                        textColor = completed and "|cff44ddff" or "|cff44bbff"
-                    else
-                        textColor = completed and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
-                    end
-                    
-                    local formattedCriteriaName = FormatTextNumbers(criteriaName)
-                    -- Append (Planned) for linked achievements that are in plans
-                    local plannedSuffix = ""
-                    if linkedAchievementID and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(linkedAchievementID) then
-                        local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
-                        plannedSuffix = " |cffffcc00(" .. plannedWord .. ")|r"
-                    end
-                    table.insert(criteriaDetails, {
-                        text = statusIcon .. " " .. textColor .. formattedCriteriaName .. "|r" .. progressText .. plannedSuffix,
-                        linkedAchievementID = linkedAchievementID,
-                        completed = completed,
-                    })
-                end
-            end
-            
-            if #criteriaDetails > 0 then
-                local progressPercent = math.floor((completedCount / freshNumCriteria) * 100)
-                local P2 = ns.PLAN_UI_COLORS or {}
-                local progressColor = (completedCount == freshNumCriteria) and (P2.progressFull or "|cff00ff00") or (P2.incomplete or "|cffffffff")
-                local progressLine = string.format("%s%s of %s (%s%%)|r", progressColor, FormatNumber(completedCount), FormatNumber(freshNumCriteria), FormatNumber(progressPercent))
-                
-                -- Build legacy text for backwards compatibility
-                local legacyLines = {}
-                for _, cd in ipairs(criteriaDetails) do
-                    table.insert(legacyLines, cd.text)
-                end
-                requirementsText = progressLine .. "\n" .. table.concat(legacyLines, "\n")
-            else
-                requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_CRITERIA_FOUND"]) or "No criteria found") .. "|r"
-            end
-        else
-            requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_REQUIREMENTS_INSTANT"]) or "No requirements (instant completion)") .. "|r"
-        end
-    end
-    
-    -- Prepare row data for CreateExpandableRow
+
     local achievementTitle = FormatTextNumbers(achievement.name)
     if achievement.isPlanned then
         local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
         achievementTitle = achievementTitle .. " |cffffcc00(" .. plannedWord .. ")|r"
     end
-    -- Criteria bölümü sadece en az bir kriter varsa göster
+
     local rowData = {
         icon = achievement.icon,
         score = achievement.points,
         title = achievementTitle,
-        information = informationText,
-        criteria = (criteriaDetails and #criteriaDetails > 0) and requirementsText or nil,
-        criteriaData = (criteriaDetails and #criteriaDetails > 0) and criteriaDetails or nil,
+        information = "",
+        criteria = nil,
+        criteriaData = nil,
+        onExpandPopulate = function(d)
+            PopulateAchievementExpandBody(WarbandNexus, achievement, d)
+        end,
     }
-    
-    -- Create expandable row using factory
+
     local row = CreateExpandableRow(
         parent,
         width - indent,
@@ -1928,18 +1913,11 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         rowExpanded,
         function(expanded)
             expandedGroups[rowKey] = expanded
-            -- CRITICAL: Must redraw to reposition other rows
-            -- PERFORMANCE: Debounce to batch rapid toggle clicks (16ms ≈ 1 frame)
-            if WarbandNexus._achieveToggleTimer then WarbandNexus._achieveToggleTimer:Cancel() end
-            WarbandNexus._achieveToggleTimer = C_Timer.NewTimer(0.016, function()
-                WarbandNexus._achieveToggleTimer = nil
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
-            end)
         end
     )
     
     -- Set alternating colors (using standard UI_LAYOUT colors)
-    if animIdx % 2 == 0 then
+    if (stripeIdx or 0) % 2 == 0 then
         row.bgColor = GetLayout().ROW_COLOR_EVEN
     else
         row.bgColor = GetLayout().ROW_COLOR_ODD
@@ -1949,18 +1927,6 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     if ApplyVisuals then
         local borderColor = {COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4}
         ApplyVisuals(row.headerFrame, row.bgColor, borderColor)
-    end
-    
-    row:SetPoint("TOPLEFT", indent, -yOffset)
-    
-    -- Animation
-    if shouldAnimate then
-        row:SetAlpha(0)
-        C_Timer.After(animIdx * 0.02, function()
-            if row and row.SetAlpha then
-                UIFrameFadeIn(row, 0.2, row:GetAlpha(), 1)
-            end
-        end)
     end
     
     -- Add "+ Add" button or localized "Added" indicator (using Factory)
@@ -2042,9 +2008,32 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         ToggleTrack(achievement.id)
         trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText)
     end)
+
+    local yRowTop = yOffset
+    if row.SyncHeaderToTitle then
+        row:SyncHeaderToTitle()
+    end
+
+    local gapA = GapBelowChainTail(yRowTop, chainTailTopY, chainTail)
+    ChainSectionFrameBelow(parent, row, chainTail, indent, gapA, chainTail and nil or yRowTop)
+
+    row._wnAchievementsScrollParent = parent
+    row._wnLastAccordionRowH = row:GetHeight()
+    rowData.onAccordionResize = function(rFrame, rowTotalH)
+        local sp = rFrame._wnAchievementsScrollParent
+        if not sp then return end
+        local prevH = rFrame._wnLastAccordionRowH
+        if prevH then
+            local delta = rowTotalH - prevH
+            if delta ~= 0 then
+                sp:SetHeight(math.max(1, sp:GetHeight() + delta))
+            end
+        end
+        rFrame._wnLastAccordionRowH = rowTotalH
+    end
     
-    -- Return new yOffset (standard spacing: row height + betweenRows)
-    return yOffset + row:GetHeight() + GetLayout().betweenRows
+    -- Return new yOffset (standard spacing: row height + betweenRows), new chain tail
+    return yOffset + row:GetHeight() + GetLayout().betweenRows, row, yRowTop
 end
 
 function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, searchText)
@@ -2128,8 +2117,6 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     
     local achChainTail = nil
     local achChainTailTopY = nil
-    local COLLAPSE_H_ACH = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
-    local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
     local BASE_PLAN_INDENT = GetLayout().BASE_INDENT
     
     -- Draw categories hierarchically
@@ -2170,18 +2157,13 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             rootExpanded,
             function(expanded)
                 expandedGroups[rootKey] = expanded
-                if expanded then 
-                    self.recentlyExpanded = self.recentlyExpanded or {}
-                    self.recentlyExpanded[rootKey] = GetTime() 
-                end
                 DebouncedRefresh()
             end,
             "Interface\\Icons\\Achievement_General",
             false
         )
         do
-            local gapR = achChainTail and (yRootTop - achChainTailTopY - COLLAPSE_H_ACH) or nil
-            if gapR and gapR < 0 then gapR = 0 end
+            local gapR = GapBelowChainTail(yRootTop, achChainTailTopY, achChainTail)
             ChainSectionFrameBelow(parent, rootHeader, achChainTail, 0, gapR, achChainTail and nil or yRootTop)
             rootHeader:SetWidth(width)
             achChainTail = rootHeader
@@ -2192,16 +2174,12 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         
         -- Draw root category content if expanded
         if rootExpanded then
-            local shouldAnimate = self.recentlyExpanded and self.recentlyExpanded[rootKey] and (GetTime() - self.recentlyExpanded[rootKey] < 0.5)
-            local animIdx = 0
-            
             -- Mini spacing after header (visual separation)
             yOffset = yOffset + 4
             
             -- Draw root's own achievements first (if any)
             for i, achievement in ipairs(rootCategory.achievements) do
-                animIdx = animIdx + 1
-                yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT, animIdx, shouldAnimate, expandedGroups)
+                yOffset, achChainTail, achChainTailTopY = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT, i, expandedGroups, achChainTail, achChainTailTopY)
             end
             
             -- Add spacing before child categories (if any exist)
@@ -2240,18 +2218,13 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     childExpanded,
                     function(expanded)
                         expandedGroups[childKey] = expanded
-                        if expanded then 
-                            self.recentlyExpanded = self.recentlyExpanded or {}
-                            self.recentlyExpanded[childKey] = GetTime() 
-                        end
                         DebouncedRefresh()
                     end,
                     "Interface\\Icons\\Achievement_General",
                     false
                 )
                 do
-                    local gapC = achChainTail and (yChildTop - achChainTailTopY - COLLAPSE_H_ACH) or nil
-                    if gapC and gapC < 0 then gapC = 0 end
+                    local gapC = GapBelowChainTail(yChildTop, achChainTailTopY, achChainTail)
                     ChainSectionFrameBelow(parent, childHeader, achChainTail, BASE_PLAN_INDENT, gapC, achChainTail and nil or yChildTop)
                     childHeader:SetWidth(width - BASE_PLAN_INDENT)
                     achChainTail = childHeader
@@ -2268,8 +2241,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     -- First, draw this category's own achievements
                     if #childCategory.achievements > 0 then
                         for i, achievement in ipairs(childCategory.achievements) do
-                            animIdx = animIdx + 1
-                            yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT * 2, animIdx, shouldAnimate, expandedGroups)
+                            yOffset, achChainTail, achChainTailTopY = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT * 2, i, expandedGroups, achChainTail, achChainTailTopY)
                         end
                     end
                     
@@ -2299,18 +2271,13 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                                 grandchildExpanded,
                                 function(expanded)
                                     expandedGroups[grandchildKey] = expanded
-                                    if expanded then 
-                                        self.recentlyExpanded = self.recentlyExpanded or {}
-                                        self.recentlyExpanded[grandchildKey] = GetTime() 
-                                    end
                                     DebouncedRefresh()
                                 end,
                                 "Interface\\Icons\\Achievement_General",
                                 false
                             )
                             do
-                                local gapG = achChainTail and (yGcTop - achChainTailTopY - COLLAPSE_H_ACH) or nil
-                                if gapG and gapG < 0 then gapG = 0 end
+                                local gapG = GapBelowChainTail(yGcTop, achChainTailTopY, achChainTail)
                                 ChainSectionFrameBelow(parent, grandchildHeader, achChainTail, BASE_PLAN_INDENT * 2, gapG, achChainTail and nil or yGcTop)
                                 grandchildHeader:SetWidth(width - (BASE_PLAN_INDENT * 2))
                                 achChainTail = grandchildHeader
@@ -2325,8 +2292,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                                 yOffset = yOffset + 4
                                 
                                 for i, achievement in ipairs(grandchildCategory.achievements) do
-                                    animIdx = animIdx + 1
-                                    yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT * 3, animIdx, shouldAnimate, expandedGroups)
+                                    yOffset, achChainTail, achChainTailTopY = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT * 3, i, expandedGroups, achChainTail, achChainTailTopY)
                                 end
                             end
                             
@@ -2339,9 +2305,13 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     
                     -- Show "all completed" message only if no achievements in child AND no grandchildren
                     if #childCategory.achievements == 0 and #childCategory.children == 0 then
+                        local yMsgTop = yOffset
                         local noAchievementsText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-                        noAchievementsText:SetPoint("TOPLEFT", GetLayout().BASE_INDENT * 2, -yOffset)
                         noAchievementsText:SetText("|cff88cc88" .. ((ns.L and ns.L["COMPLETED_ALL_ACHIEVEMENTS"]) or "[COMPLETED] You already completed all achievements in this category!") .. "|r")
+                        local gapM = GapBelowChainTail(yMsgTop, achChainTailTopY, achChainTail)
+                        ChainSectionFrameBelow(parent, noAchievementsText, achChainTail, GetLayout().BASE_INDENT * 2, gapM, achChainTail and nil or yMsgTop)
+                        achChainTail = noAchievementsText
+                        achChainTailTopY = yMsgTop
                         yOffset = yOffset + 25
                     end
                 end
@@ -2355,16 +2325,18 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             
             -- Show "all completed" message only if root has no achievements AND no children
             if #rootCategory.achievements == 0 and #rootCategory.children == 0 then
+                local yMsgTop = yOffset
                 local noAchievementsText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-                noAchievementsText:SetPoint("TOPLEFT", GetLayout().BASE_INDENT, -yOffset)
                 noAchievementsText:SetText("|cff88cc88" .. ((ns.L and ns.L["COMPLETED_ALL_ACHIEVEMENTS"]) or "[COMPLETED] You already completed all achievements in this category!") .. "|r")
+                local gapM = GapBelowChainTail(yMsgTop, achChainTailTopY, achChainTail)
+                ChainSectionFrameBelow(parent, noAchievementsText, achChainTail, GetLayout().BASE_INDENT, gapM, achChainTail and nil or yMsgTop)
+                achChainTail = noAchievementsText
+                achChainTailTopY = yMsgTop
                 yOffset = yOffset + 25
             end
         end
         
-        achChainTail = rootHeader
-        achChainTailTopY = yRootTop
-        -- Spacing after root category (standard section spacing)
+        -- Spacing after root category (standard section spacing); keep achChainTail as last real frame so the next root chains after this section's bottom.
         yOffset = yOffset + SECTION_SPACING
         end  -- if totalAchievements > 0
         end  -- if rootCategory
@@ -2708,6 +2680,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         truncationMsg:SetText("|cff888888" .. string.format(showingFormat, MAX_BROWSE_RESULTS, totalResults) .. "|r")
         yOffset = yOffset + 24
     end
+
+    local planBrowseSrcIconSz = (ns.UI_PLAN_SOURCE_ICON_LG) or math.floor(16 * 1.3 + 0.5)
+    local planBrowseTypeBadgeSz = math.floor(20 * 1.3 + 0.5)
     
     for i = 1, resultsToRender do
         local item = results[i]
@@ -2795,7 +2770,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- === POINTS / TYPE BADGE (directly under title, NO spacing) ===
         if category == "achievement" and item.points then
             -- Achievement: Show shield icon + points (like in My Plans)
-            local shieldFrame = ns.UI.Factory:CreateContainer(card, 20, 20)
+            local shieldFrame = ns.UI.Factory:CreateContainer(card, planBrowseTypeBadgeSz, planBrowseTypeBadgeSz)
             shieldFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)
             shieldFrame:EnableMouse(false)  -- Allow clicks to pass through
             
@@ -2858,7 +2833,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             -- Create icon frame (like Achievement shield icon)
             local iconFrame = nil
             if typeIconAtlas then
-                iconFrame = ns.UI.Factory:CreateContainer(card, 20, 20)
+                iconFrame = ns.UI.Factory:CreateContainer(card, planBrowseTypeBadgeSz, planBrowseTypeBadgeSz)
                 iconFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)
                 iconFrame:EnableMouse(false)  -- Allow clicks to pass through
                 
@@ -2904,7 +2879,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
             local achievementType = (ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or (BATTLE_PET_SOURCE_6 or "Achievement")
             local sourceText = (ns.L and ns.L["SOURCE_ACHIEVEMENT_FORMAT"] and string.format(ns.L["SOURCE_ACHIEVEMENT_FORMAT"], sourceLabel, achievementType, item.sourceAchievement)) or (sourceLabel .. " |cff00ff00[" .. achievementType .. " " .. item.sourceAchievement .. "]|r")
-            achievementText:SetText("|TInterface\\Icons\\Achievement_General:16:16|t " .. sourceText)
+            achievementText:SetText(string.format("|TInterface\\Icons\\Achievement_General:%d:%d|t ", planBrowseSrcIconSz, planBrowseSrcIconSz) .. sourceText)
             achievementText:SetTextColor(1, 1, 1)
             achievementText:SetJustifyH("LEFT")
             achievementText:SetWordWrap(true)
@@ -2945,7 +2920,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local vendorText = FontManager:CreateFontString(card, "body", "OVERLAY")
             vendorText:SetPoint("TOPLEFT", 10, line3Y)
             vendorText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            vendorText:SetText("|A:Class:16:16|a " .. ((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor: ") .. firstSource.vendor)
+            vendorText:SetText((ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or string.format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " " .. ((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor: ") .. firstSource.vendor)
             vendorText:SetTextColor(1, 1, 1)
             vendorText:SetJustifyH("LEFT")
             vendorText:SetWordWrap(true)
@@ -2955,7 +2930,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local npcText = FontManager:CreateFontString(card, "body", "OVERLAY")
             npcText:SetPoint("TOPLEFT", 10, line3Y)
             npcText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            npcText:SetText("|A:Class:16:16|a " .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop: ") .. firstSource.npc)
+            local _srcIcon = ns.UI_PlanSourceIconMarkup
+            local _lootMark = _srcIcon and _srcIcon("loot", planBrowseSrcIconSz) or string.format("|A:Banker:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)
+            npcText:SetText(_lootMark .. " " .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop: ") .. firstSource.npc)
             npcText:SetTextColor(1, 1, 1)
             npcText:SetJustifyH("LEFT")
             npcText:SetWordWrap(true)
@@ -2966,7 +2943,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             factionText:SetPoint("TOPLEFT", 10, line3Y)
             factionText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             local factionLabel = (ns.L and ns.L["FACTION_LABEL"]) or "Faction:"
-            local displayText = "|A:Class:16:16|a " .. factionLabel .. " " .. firstSource.faction
+            local displayText = (ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or string.format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " " .. factionLabel .. " " .. firstSource.faction
             if firstSource.renown then
                 local repType = firstSource.isFriendship and ((ns.L and ns.L["FRIENDSHIP_LABEL"]) or "Friendship") or ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown")
                 displayText = displayText .. " |cffffcc00(" .. repType .. " " .. firstSource.renown .. ")|r"
@@ -2986,7 +2963,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local zoneY = (firstSource.vendor or firstSource.npc or firstSource.faction) and -78 or line3Y
             zoneText:SetPoint("TOPLEFT", 10, zoneY)
             zoneText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            zoneText:SetText("|A:Class:16:16|a " .. ((ns.L and ns.L["ZONE_LABEL"]) or "Zone: ") .. firstSource.zone)
+            local _srcIconZ = ns.UI_PlanSourceIconMarkup
+            local _locMark = _srcIconZ and _srcIconZ("location", planBrowseSrcIconSz) or string.format("|A:poi-islands-table:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)
+            zoneText:SetText(_locMark .. " " .. ((ns.L and ns.L["ZONE_LABEL"]) or "Zone: ") .. firstSource.zone)
             zoneText:SetTextColor(1, 1, 1)
             zoneText:SetJustifyH("LEFT")
             zoneText:SetWordWrap(true)
@@ -3099,7 +3078,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                         local sourceText = FontManager:CreateFontString(card, "body", "OVERLAY")
                         sourceText:SetPoint("TOPLEFT", 10, line3Y)
                         sourceText:SetPoint("RIGHT", card, "RIGHT", -80, 0)
-                        sourceText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. (item.source or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r")
+                        sourceText:SetText((ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or string.format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. (item.source or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r")
                         sourceText:SetJustifyH("LEFT")
                         sourceText:SetWordWrap(true)
                         sourceText:SetMaxLines(2)

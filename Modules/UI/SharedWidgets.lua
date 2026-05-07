@@ -1856,6 +1856,9 @@ ns.UI_ApplyCharacterRowClassGradientAccent = ApplyCharacterRowClassGradientAccen
 --- arrow updates) so SavedVars/state stay in sync before deferred `onToggle` / animation completes.
 --- Optional `visualOpts.accordionComplete = function(isExpanded)` runs after the height tween
 --- finishes (expand or collapse), e.g. sync scroll extents without touching tween frames mid-flight.
+--- Optional `visualOpts.applyToggleBeforeCollapseAnimate = true` calls `onToggle(isExpanded)` once
+--- at collapse start (before the height tween). Virtual-scroll tabs need this so flatList yOffsets
+--- match layout while content moves; deferring until onComplete leaves culling stale mid-animation.
 --- Without animatedContent, the header just toggles its arrow and fires onToggle (legacy behavior).
 local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas, indentLevel, noCategoryIcon, visualOpts)
     visualOpts = (type(visualOpts) == "table") and visualOpts or nil
@@ -1989,11 +1992,17 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
                 if fullH and fullH > 0 then animContent._wnAccordionFullH = fullH end
             end
             if not isExpanded then
+                local toggleBeforeCollapse = visualOpts and visualOpts.applyToggleBeforeCollapseAnimate == true
+                if toggleBeforeCollapse then
+                    onToggle(isExpanded)
+                end
                 ns.UI.Factory:AnimateAccordion(animContent, animContent:GetHeight() or fullH or 0, 0, {
                     fadeAlpha = false,
                     onUpdate = accordionOnUpdate,
                     onComplete = function()
-                        onToggle(isExpanded)
+                        if not toggleBeforeCollapse then
+                            onToggle(isExpanded)
+                        end
                         callAccordionComplete(isExpanded)
                     end,
                 })
@@ -2199,15 +2208,16 @@ ns.UI_CreateRaceIcon = CreateRaceIcon
 local TAB_HEADER_ICONS = {
     characters = "poi-town",
     items = "Banker",
-    storage = "VignetteLoot",
-    plans = "poi-islands-table",
-    currency = "Auctioneer",
+    storage = "Quartermaster",
+    plans = "poi-workorders",
+    currency = "AzeriteReady",
+    -- Fallback when faction is neither Alliance nor Horde (UI_GetTabIcon overrides online).
     reputation = "MajorFactions_MapIcons_Centaur64",
     pve = "Tormentors-Boss",
     statistics = "racing",
-    collections = "UI-Achievement-Shield-NoPoints",
+    collections = "dragon-rostrum",
     professions = "Vehicle-HammerGold",
-    gear = "QuestLegendary",
+    gear = "VignetteEventElite",
     qol = "Soulbinds_Tree_Conduit_Icon_Utility",
 }
 
@@ -2219,6 +2229,16 @@ local HEADER_ICON_YOFFSET = 0    -- Y position
 
 -- Export icon mapping for external use
 ns.UI_GetTabIcon = function(tabName)
+    if tabName == "reputation" then
+        local ok, fg = pcall(UnitFactionGroup, "player")
+        if ok and fg == "Alliance" then
+            return "AllianceAssaultsMapBanner"
+        end
+        if ok and fg == "Horde" then
+            return "HordeAssaultsMapBanner"
+        end
+        return TAB_HEADER_ICONS.reputation or "MajorFactions_MapIcons_Centaur64"
+    end
     return TAB_HEADER_ICONS[tabName] or "shop-icon-housing-characters-up"
 end
 
@@ -3443,6 +3463,21 @@ local function ChainSectionFrameBelow(parent, frame, prevAnchorFrame, desiredLef
     end
 end
 
+--[[
+================================================================================
+UI animation (Warband Nexus)
+
+HEADER_ACCORDION — section content opens/closes with a height tween:
+  CreateCollapsibleHeader(..., visualOpts) with visualOpts.animatedContent,
+  optional accordionOnUpdate(drawH) / accordionComplete(expanded), and
+  ns.UI.Factory:AnimateAccordion (fadeAlpha=false for lists).
+
+Virtual lists need rows parented under the tweened body frame (or a dedicated
+section container) so the clip region matches the accordion.
+================================================================================
+]]
+ns.UI_ANIMATION_HEADER_ACCORDION = "header_accordion"
+
 --============================================================================
 -- NAMESPACE EXPORTS
 --============================================================================
@@ -4378,14 +4413,14 @@ local EMPTY_STATE_CONFIG = {
         descFallback = "Open your Guild Bank to scan items.\nItems are cached automatically on first visit.",
     },
     storage = {
-        atlas = "VignetteLoot",
+        atlas = "Quartermaster",
         titleKey = "EMPTY_STORAGE_TITLE",
         descKey = "EMPTY_STORAGE_DESC",
         titleFallback = "No Storage Data",
         descFallback = "Items are scanned when you open banks or bags.\nVisit a bank to start tracking your storage.",
     },
     plans = {
-        atlas = "poi-islands-table",
+        atlas = "poi-workorders",
         titleKey = "EMPTY_PLANS_TITLE",
         descKey = "EMPTY_PLANS_DESC",
         titleFallback = "No Plans Yet",
@@ -4399,7 +4434,7 @@ local EMPTY_STATE_CONFIG = {
         descFallback = "Reputations are scanned automatically on login.\nLog in to a character to start tracking faction standings.",
     },
     currency = {
-        atlas = "Auctioneer",
+        atlas = "AzeriteReady",
         titleKey = "EMPTY_CURRENCY_TITLE",
         descKey = "EMPTY_CURRENCY_DESC",
         titleFallback = "No Currency Data",
@@ -4428,7 +4463,7 @@ local EMPTY_STATE_CONFIG = {
         descFallback = "Statistics are gathered from your tracked characters.\nLog in to a character to start collecting data.",
     },
     collections = {
-        atlas = "PetJournalPortrait",
+        atlas = "dragon-rostrum",
         titleKey = "COLLECTIONS_COMING_SOON_TITLE",
         descKey = "COLLECTIONS_COMING_SOON_DESC",
         titleFallback = "Coming Soon",
@@ -4477,6 +4512,14 @@ local function CreateEmptyStateCard(parent, tabName, yOffset)
         }
     end
 
+    local atlasForIcon = config.atlas
+    if tabName == "reputation" and ns.UI_GetTabIcon then
+        local dyn = ns.UI_GetTabIcon("reputation")
+        if dyn and dyn ~= "" then
+            atlasForIcon = dyn
+        end
+    end
+
     -- Reuse existing empty state card on parent
     -- PopulateContent moves scrollChild children to recycleBin each pass — reparent back every show.
     local cacheKey = "emptyStateCard_" .. tabName
@@ -4516,7 +4559,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset)
 
     local icon = iconContainer:CreateTexture(nil, "OVERLAY", nil, 7)
     icon:SetAllPoints(iconContainer)
-    icon:SetAtlas(config.atlas)
+    icon:SetAtlas(atlasForIcon)
     icon:SetAlpha(0.6)
 
     -- Title

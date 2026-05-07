@@ -1136,8 +1136,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonEnabled",
-            label = (ns.L and ns.L["CONFIG_VAULT_BUTTON"]) or "Vault Button",
-            tooltip = (ns.L and ns.L["CONFIG_VAULT_BUTTON_DESC"]) or "Show the draggable Vault Button on screen. Left-click toggles the main Warband Nexus window; right-click opens the WN shortcut menu (Vault Tracker, Saved Instances, Plans / Todo, Settings).",
+            label = (ns.L and ns.L["CONFIG_VAULT_BUTTON"]) or "Easy Access",
+            tooltip = (ns.L and ns.L["CONFIG_VAULT_BUTTON_DESC"]) or "Show the draggable Easy Access shortcut on screen. Left-click runs your chosen action; right-click opens the WN shortcut menu (Vault Tracker, Saved Instances, Plans / Todo, Settings).",
             get = function()
                 local vb = WarbandNexus.db.profile.vaultButton
                 return not vb or vb.enabled ~= false
@@ -1609,10 +1609,10 @@ local function BuildSettings(parent, containerWidth)
     yOffset = yOffset - moduleSection:GetHeight() - SECTION_SPACING
 
     --========================================================================
-    -- QUICK TRACKER
+    -- EASY ACCESS (floating shortcut)
     --========================================================================
 
-    local vaultSection = CreateSection(parent, "Quick Tracker", effectiveWidth)
+    local vaultSection = CreateSection(parent, (ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", effectiveWidth)
     vaultSection:SetPoint("TOPLEFT", 0, yOffset)
     vaultSection:SetPoint("TOPRIGHT", 0, yOffset)
 
@@ -1628,7 +1628,8 @@ local function BuildSettings(parent, containerWidth)
         if settings.showManaflux == nil then settings.showManaflux = false end
         if settings.showSummaryOnMouseover == nil then settings.showSummaryOnMouseover = false end
         if settings.leftClickAction == nil and settings.leftClickQuickView == true then settings.leftClickAction = "vault" end
-        if settings.leftClickAction ~= "pve" and settings.leftClickAction ~= "vault" and settings.leftClickAction ~= "saved" and settings.leftClickAction ~= "plans" then
+        local allowedVaultLeftClick = { pve = true, vault = true, saved = true, plans = true, chars = true }
+        if not allowedVaultLeftClick[settings.leftClickAction] then
             settings.leftClickAction = "pve"
         end
         if settings.includeBountyOnly == nil then settings.includeBountyOnly = false end
@@ -1668,8 +1669,8 @@ local function BuildSettings(parent, containerWidth)
     local vaultOptions = {
         {
             key = "vaultButtonEnabled",
-            label = "Enable Quick Tracker",
-            tooltip = "Show the draggable Quick Tracker button.",
+            label = (ns.L and ns.L["CONFIG_VAULT_OPT_ENABLED"]) or "Enable Easy Access",
+            tooltip = (ns.L and ns.L["CONFIG_VAULT_OPT_ENABLED_DESC"]) or "Show the draggable Easy Access shortcut on screen.",
             get = function() return GetVaultButtonSettings().enabled ~= false end,
             set = function(value)
                 GetVaultButtonSettings().enabled = value
@@ -1678,8 +1679,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonMouseover",
-            label = "Hide Until Mouseover",
-            tooltip = "Keep the Quick Tracker invisible until the cursor is over its saved position.",
+            label = (ns.L and ns.L["CONFIG_VAULT_OPT_MOUSEOVER"]) or "Hide Until Mouseover",
+            tooltip = (ns.L and ns.L["CONFIG_VAULT_OPT_MOUSEOVER_DESC"]) or "Keep Easy Access invisible until the cursor is over its saved position.",
             get = function() return GetVaultButtonSettings().hideUntilMouseover == true end,
             set = function(value)
                 GetVaultButtonSettings().hideUntilMouseover = value
@@ -1688,8 +1689,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "vaultButtonSummaryMouseover",
-            label = "Warband Summary Mouseover",
-            tooltip = "Show the warband's vault summary on mouseover. Turning this off shows the current character's only.",
+            label = (ns.L and ns.L["CONFIG_VAULT_OPT_SUMMARY_MOUSEOVER"]) or "Warband Summary Mouseover",
+            tooltip = (ns.L and ns.L["CONFIG_VAULT_OPT_SUMMARY_MOUSEOVER_DESC"]) or "Show the warband's vault summary on mouseover. Turning this off shows the current character's only.",
             get = function() return GetVaultButtonSettings().showSummaryOnMouseover == true end,
             set = function(value)
                 GetVaultButtonSettings().showSummaryOnMouseover = value
@@ -1702,36 +1703,43 @@ local function BuildSettings(parent, containerWidth)
 
     local leftClickLabel = FontManager:CreateFontString(vaultSection.content, "subtitle", "OVERLAY")
     leftClickLabel:SetPoint("TOPLEFT", 0, vaultYOffset - 5)
-    leftClickLabel:SetText("Left Click")
+    leftClickLabel:SetText((ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_HEADER"]) or "Left Click")
     leftClickLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     table.insert(subtitleElements, leftClickLabel)
 
     local leftClickOptions = {
         {
             key = "vaultButtonLeftClickPve",
-            label = "Left Click: PvE Tab",
-            tooltip = "Left clicking the quick tracker opens the PvE tab.",
+            label = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_PVE"]) or "Left Click: PvE Tab",
+            tooltip = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_PVE_DESC"]) or "Left-clicking Easy Access opens the PvE tab.",
             get = function() return IsLeftClickAction("pve") end,
             set = function(value) SetLeftClickAction("pve", value) end,
         },
         {
+            key = "vaultButtonLeftClickChars",
+            label = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_CHARS"]) or "Left Click: Characters Tab",
+            tooltip = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_CHARS_DESC"]) or "Left-clicking Easy Access opens the Characters tab.",
+            get = function() return IsLeftClickAction("chars") end,
+            set = function(value) SetLeftClickAction("chars", value) end,
+        },
+        {
             key = "vaultButtonLeftClickVault",
-            label = "Left Click: Vault Tracker",
-            tooltip = "Left clicking the quick tracker opens the Vault Tracker window.",
+            label = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_VAULT"]) or "Left Click: Vault Tracker",
+            tooltip = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_VAULT_DESC"]) or "Left-clicking Easy Access opens the Vault Tracker window.",
             get = function() return IsLeftClickAction("vault") end,
             set = function(value) SetLeftClickAction("vault", value) end,
         },
         {
             key = "vaultButtonLeftClickSaved",
-            label = "Left Click: Saved Instances",
-            tooltip = "Left clicking the quick tracker opens the Saved Instances mini window.",
+            label = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_SAVED"]) or "Left Click: Saved Instances",
+            tooltip = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_SAVED_DESC"]) or "Left-clicking Easy Access opens the Saved Instances mini window.",
             get = function() return IsLeftClickAction("saved") end,
             set = function(value) SetLeftClickAction("saved", value) end,
         },
         {
             key = "vaultButtonLeftClickPlans",
-            label = "Left Click: Plans/Todo",
-            tooltip = "Left clicking the quick tracker opens the Plans/ToDo mini window.",
+            label = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_PLANS"]) or "Left Click: Plans/Todo",
+            tooltip = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_PLANS_DESC"]) or "Left-clicking Easy Access opens the Plans/To-Do mini window.",
             get = function() return IsLeftClickAction("plans") end,
             set = function(value) SetLeftClickAction("plans", value) end,
         },
@@ -1743,6 +1751,7 @@ local function BuildSettings(parent, containerWidth)
         if not leftClickWidgets then return end
         local keys = {
             pve = "vaultButtonLeftClickPve",
+            chars = "vaultButtonLeftClickChars",
             vault = "vaultButtonLeftClickVault",
             saved = "vaultButtonLeftClickSaved",
             plans = "vaultButtonLeftClickPlans",
@@ -1760,6 +1769,7 @@ local function BuildSettings(parent, containerWidth)
     end
     local leftClickScripts = {
         vaultButtonLeftClickPve = "pve",
+        vaultButtonLeftClickChars = "chars",
         vaultButtonLeftClickVault = "vault",
         vaultButtonLeftClickSaved = "saved",
         vaultButtonLeftClickPlans = "plans",
@@ -1776,8 +1786,8 @@ local function BuildSettings(parent, containerWidth)
 
     vaultYOffset = leftClickYOffset - 12
     vaultYOffset = CreateSliderWidget(vaultSection.content, {
-        name = "Button Opacity",
-        desc = "Adjust the Quick Tracker button opacity when it is visible.",
+        name = (ns.L and ns.L["CONFIG_VAULT_BUTTON_OPACITY"]) or "Button Opacity",
+        desc = (ns.L and ns.L["CONFIG_VAULT_BUTTON_OPACITY_DESC"]) or "Adjust Easy Access opacity when it is visible.",
         min = 0.2,
         max = 1.0,
         step = 0.05,

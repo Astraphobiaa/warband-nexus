@@ -1620,9 +1620,6 @@ end
 function WarbandNexus:DrawReputationList(container, width)
     if not container then return 0 end
     
-    -- Initialize animation tracking (persistent across refreshes)
-    self.recentlyExpanded = self.recentlyExpanded or {}
-    
     -- Hide empty state container (will be shown again if needed)
     HideEmptyStateCard(container, "reputation")
     
@@ -1717,10 +1714,6 @@ function WarbandNexus:DrawReputationList(container, width)
             self.db.profile.reputationExpanded = {}
         end
         self.db.profile.reputationExpanded[key] = isExpanded
-        -- Track expansion time for stagger animation (like ItemsUI pattern)
-        if isExpanded then
-            self.recentlyExpanded[key] = GetTime()
-        end
         -- PERFORMANCE: Debounce refresh to batch rapid toggle clicks (16ms ≈ 1 frame)
         -- Prevents multiple full rebuilds when user clicks headers quickly
         if self._repToggleTimer then

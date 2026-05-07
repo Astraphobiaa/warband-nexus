@@ -516,8 +516,6 @@ end
 function WarbandNexus:DrawCurrencyList(container, width)
     if not container then return 0 end
 
-    self.recentlyExpanded = self.recentlyExpanded or {}
-
     -- Hide empty state container (will be shown again if needed)
     HideEmptyStateCard(container, "currency")
 
@@ -584,7 +582,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
             self.db.profile.currencyExpanded = {}
         end
         self.db.profile.currencyExpanded[key] = isExpanded
-        if isExpanded then self.recentlyExpanded[key] = GetTime() end
         WarbandNexus:RedrawCurrencyResultsOnly()
     end
     
@@ -771,6 +768,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                         rowWidth = width - headerIndent,
                                         indent = headerIndent,
                                         isShowAll = true,
+                                        sectionKey = headerKey,
                                     }
                                     yOffset = yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
                                 end
@@ -898,6 +896,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                         rowWidth = width - headerIndent,
                                         indent = headerIndent,
                                         isShowAll = true,
+                                        sectionKey = headerKey,
                                     }
                                     yOffset = yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
                                 end

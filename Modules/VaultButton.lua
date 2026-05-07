@@ -65,9 +65,9 @@ local function VBFontString(parent, role, drawLayer)
         or "GameFontNormal"
     return parent:CreateFontString(nil, drawLayer or "OVERLAY", fallback)
 end
-local DASH   = "|cff666666-|r"
+local DASH   = "|cff888888-|r"
 
--- Maps Vault Button column key -> PvE typeName used by upgrade-detection logic
+-- Maps Easy Access column key -> PvE typeName used by upgrade-detection logic
 local CAT_TO_TYPE = { raids = "Raid", mythicPlus = "M+", world = "World" }
 
 local function IsSlotAtMax(activity, typeName)
@@ -149,7 +149,8 @@ local function GetSettings()
     if settings.showManaflux == nil then settings.showManaflux = false end
     if settings.showSummaryOnMouseover == nil then settings.showSummaryOnMouseover = false end
     if settings.leftClickAction == nil and settings.leftClickQuickView == true then settings.leftClickAction = "vault" end
-    if settings.leftClickAction ~= "pve" and settings.leftClickAction ~= "vault" and settings.leftClickAction ~= "saved" and settings.leftClickAction ~= "plans" then
+    local allowedLeftClick = { pve = true, vault = true, saved = true, plans = true, chars = true }
+    if not allowedLeftClick[settings.leftClickAction] then
         settings.leftClickAction = "pve"
     end
     if settings.includeBountyOnly == nil then settings.includeBountyOnly = false end
@@ -454,6 +455,23 @@ local function ToggleMainWindow()
 end
 
 local function OpenWNPveTab() OpenWNTab("pve") end
+
+local function OpenWNCharsTab() OpenWNTab("chars") end
+
+local function ToggleWNCharsTab()
+    if InCombatLockdown and InCombatLockdown() then
+        if DEFAULT_CHAT_FRAME then
+            DEFAULT_CHAT_FRAME:AddMessage("|cffff4040Warband Nexus:|r main window is locked during combat.")
+        end
+        return
+    end
+    local mf = WarbandNexus and WarbandNexus.mainFrame
+    if mf and mf:IsShown() and mf.currentTab == "chars" then
+        mf:Hide()
+        return
+    end
+    OpenWNCharsTab()
+end
 
 local function ToggleWNPveTab()
     if InCombatLockdown and InCombatLockdown() then
@@ -2293,7 +2311,7 @@ local function BuildLockoutRow(parent, char, encounters, group, totalW)
         for i, e in ipairs(roster) do
             local mark = e.killed and "|cff44ff44" .. CHECK .. "|r" or "|cff444444" .. CROSS .. "|r"
             GameTooltip:AddDoubleLine(mark .. " " .. (e.name or ("Boss " .. i)),
-                e.killed and "|cff44ff44killed|r" or "|cff666666—|r",
+                e.killed and "|cff44ff44killed|r" or "|cff888888—|r",
                 1,1,1, 0.85,0.85,0.85)
         end
         GameTooltip:Show()
@@ -2579,7 +2597,7 @@ local function BuildInstanceCard(parent, group, cardSize)
                 local killers = b.killers or {}
                 local right
                 if #killers == 0 then
-                    right = "|cff666666—|r"
+                    right = "|cff888888—|r"
                 else
                     local parts = {}
                     for ki = 1, #killers do
@@ -2798,7 +2816,7 @@ ToggleSavedInstances = function()
 end
 
 -- ============================================================================
--- Vault Button shortcut menu
+-- Easy Access shortcut menu
 -- ============================================================================
 local function CreateMenuItem(parent, opts, y)
     local btn = CreateFrame("Button", nil, parent)
@@ -2811,12 +2829,22 @@ local function CreateMenuItem(parent, opts, y)
     local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or {0.40, 0.20, 0.58}
     hl:SetColorTexture(accent[1], accent[2], accent[3], 0.25)
 
-    if opts.icon then
+    local MENU_ICON_SIZE = 20
+    if opts.iconAtlas or opts.icon then
         local icon = btn:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(20, 20)
+        icon:SetSize(MENU_ICON_SIZE, MENU_ICON_SIZE)
         icon:SetPoint("LEFT", 6, 0)
-        icon:SetTexture(opts.icon)
-        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if opts.iconAtlas and icon.SetAtlas then
+            icon:SetTexture(nil)
+            local ok = pcall(icon.SetAtlas, icon, opts.iconAtlas, false)
+            if not ok and opts.icon then
+                icon:SetTexture(opts.icon)
+                icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+        elseif opts.icon then
+            icon:SetTexture(opts.icon)
+            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
     end
 
     local FontManager = ns.FontManager
@@ -2830,10 +2858,22 @@ local function CreateMenuItem(parent, opts, y)
     label:SetText(opts.label)
     label:SetTextColor(1, 1, 1)
 
-    local star = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    star:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
-    star:SetText("|cffffd700*|r")
+    -- Left-click indicator (larger than legacy GameFont "*" glyph)
+    local STAR_SIZE = 18
+    local star = btn:CreateTexture(nil, "OVERLAY")
+    star:SetSize(STAR_SIZE, STAR_SIZE)
+    star:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
     star:Hide()
+    if star.SetAtlas then
+        local ok = pcall(star.SetAtlas, star, "PetJournal-FavoritesIcon", false)
+        if ok then
+            star:SetVertexColor(1, 0.9, 0.2)
+        else
+            star:SetTexture("Interface\\RaidFrame\\ReadyCheck-Waiting")
+        end
+    else
+        star:SetTexture("Interface\\RaidFrame\\ReadyCheck-Waiting")
+    end
     btn.selectionStar = star
     btn.leftClickAction = opts.leftClickAction
 
@@ -2869,27 +2909,46 @@ local function BuildMenu()
     local accent = COLORS.accent or {0.40, 0.20, 0.58}
     local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
 
+    local GetTabIcon = ns.UI_GetTabIcon
+    local tabIcon = function(key)
+        return (GetTabIcon and GetTabIcon(key)) or nil
+    end
+    -- Order: Characters first; icons match main-window tab header atlases (SharedWidgets TAB_HEADER_ICONS)
+    -- plus PvE vault / lockout column textures where no standalone tab exists.
     local items = {
-        { label = "PvE Tab", leftClickAction = "pve", icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold", action = function()
+        { label = "Characters Tab", leftClickAction = "chars",
+          iconAtlas = tabIcon("characters"), icon = "Interface\\Icons\\Achievement_Character_Human_Male",
+          action = function()
+            HideAllPanels()
+            ToggleWNCharsTab()
+        end },
+        { label = "PvE Tab", leftClickAction = "pve",
+          iconAtlas = tabIcon("pve"), icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
+          action = function()
             HideAllPanels()
             ToggleWNPveTab()
         end },
         { label = "Vault Tracker",
           leftClickAction = "vault",
-          icon = "Interface\\Icons\\INV_Misc_Bag_EnchantedRunecloth",
+          iconAtlas = "GreatVault-32x32",
+          icon = "Interface\\Icons\\Achievement_Boss_Argus",
           action = function()
             ShowQuickView(S.button)
-        end },
-        { label = "Saved Instances", leftClickAction = "saved", icon = "Interface\\Icons\\INV_Misc_Bell_01", action = function()
+          end },
+        { label = "Saved Instances", leftClickAction = "saved", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01", action = function()
             HideTable(); HideMenu(); ToggleSavedInstances()
         end },
-        { label = "Plans / Todo",    leftClickAction = "plans", icon = "Interface\\Icons\\INV_Inscription_Scroll", action = function()
+        { label = "Plans / Todo", leftClickAction = "plans",
+          iconAtlas = tabIcon("plans"), icon = "Interface\\Icons\\INV_Inscription_Scroll",
+          action = function()
             if WarbandNexus and WarbandNexus.TogglePlansTrackerWindow then
                 if InCombatLockdown and InCombatLockdown() then return end
                 WarbandNexus:TogglePlansTrackerWindow()
             end
         end },
-        { label = "Settings",        icon = "Interface\\Icons\\Trade_Engineering",      action = function()
+        { label = "Settings",
+          iconAtlas = "mechagon-projects", icon = "Interface\\Icons\\Trade_Engineering",
+          action = function()
             HideMenu(); OpenWNSettingsTab()
         end },
     }
@@ -2925,7 +2984,7 @@ local function BuildMenu()
     header:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:ClearLines()
-        GameTooltip:AddLine("Quick Tracker", 1, 1, 1)
+        GameTooltip:AddLine((ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", 1, 1, 1)
         GameTooltip:AddLine("The star marks the current left-click action.", 0.85, 0.85, 0.85, true)
         GameTooltip:AddLine("Right-click a menu option to set it as the left-click action.", 0.85, 0.85, 0.85, true)
         GameTooltip:Show()
@@ -2949,7 +3008,7 @@ local function BuildMenu()
         titleFS = VBFontString(header, "small")
     end
     titleFS:SetPoint("LEFT", headerIcon, "RIGHT", 6, 0)
-    titleFS:SetText("Quick Tracker")
+    titleFS:SetText((ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access")
     titleFS:SetTextColor(1, 1, 1)
 
     local y = -(headerH + 4)
@@ -3071,6 +3130,9 @@ local function RunLeftClickAction(anchor)
             if InCombatLockdown and InCombatLockdown() then return end
             WarbandNexus:TogglePlansTrackerWindow()
         end
+    elseif action == "chars" then
+        HideAllPanels()
+        ToggleWNCharsTab()
     elseif action == "pve" or not action then
         HideAllPanels()
         ToggleWNPveTab()
