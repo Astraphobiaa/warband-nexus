@@ -534,6 +534,32 @@ local StopSavedInstancesLiveRefresh
 local WNTooltipShow
 local WNTooltipHide
 
+local function ReleaseSavedInstanceRows()
+    if not S.savedRows then
+        S.savedRows = {}
+        return
+    end
+
+    local bin = ns.UI_RecycleBin
+    for i = 1, #S.savedRows do
+        local row = S.savedRows[i]
+        if row then
+            if row.SetScript then
+                pcall(row.SetScript, row, "OnClick", nil)
+                pcall(row.SetScript, row, "OnEnter", nil)
+                pcall(row.SetScript, row, "OnLeave", nil)
+                pcall(row.SetScript, row, "OnMouseWheel", nil)
+            end
+            if row.Hide then pcall(row.Hide, row) end
+            if row.ClearAllPoints then pcall(row.ClearAllPoints, row) end
+            if row.SetParent then
+                pcall(row.SetParent, row, bin or nil)
+            end
+        end
+    end
+    S.savedRows = {}
+end
+
 local function AddEscCloseFrame(frameName)
     if not frameName or not UISpecialFrames then return end
     for i = 1, #UISpecialFrames do
@@ -1789,6 +1815,7 @@ local function BuildSavedInstancesFrame()
     end)
     f:SetScript("OnHide", function()
         StopSavedInstancesLiveRefresh()
+        ReleaseSavedInstanceRows()
     end)
 
     local chrome = CreateFrame("Frame", nil, f)
@@ -2456,10 +2483,7 @@ RefreshSavedInstances = function()
     local content = S.savedContent
     if not content then return end
 
-    for i = 1, #S.savedRows do
-        S.savedRows[i]:Hide()
-    end
-    S.savedRows = {}
+    ReleaseSavedInstanceRows()
 
     local list = BuildSavedInstancesData()
     local filtered = {}
