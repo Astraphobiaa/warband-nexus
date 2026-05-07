@@ -796,11 +796,6 @@ local function IsExpanded(key, defaultState)
     return expandedStates[key]
 end
 
-local function ToggleExpand(key, newState)
-    expandedStates[key] = newState
-    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
-end
-
 -- PvE event refresh is centralized in UI.lua SchedulePopulateContent (WN_PVE_UPDATED).
 
 --============================================================================
@@ -2849,6 +2844,11 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- Push scroll content below frozen column header overlay (ProfessionsUI pattern)
     yOffset = yOffset + colHeaderOverlayH
 
+    local totalLayoutHeight = yOffset
+    local PVE_CHAR_SECTION_GAP = GetLayout().afterElement or 8
+    local prevPvEDetailFrame = nil
+    local scrollFrameRef = parent:GetParent()
+
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====
     for i, char in ipairs(characters) do
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
@@ -2876,19 +2876,72 @@ function WarbandNexus:DrawPvEProgress(parent)
         local hasVaultReward = pve.hasUnclaimedRewards or false
         
         local charExpanded = IsExpanded(charExpandKey, isCurrentChar)
-        
-        -- Create collapsible header
-        -- Returns: header Button, expand arrow Texture (not a click target — use charHeader:Click() for toggle)
+
+        local charDetailContent
+        local buildPvEDetailIfNeeded
+
         local charHeader, expandIconTex = CreateCollapsibleHeader(
             parent,
             "", -- Empty text, we'll add it manually
             charExpandKey,
             charExpanded,
-            function(isExpanded) ToggleExpand(charExpandKey, isExpanded) end,
-            nil, nil, nil, true  -- noCategoryIcon: use favorite star only, no default gold icon
+            function(isExpanded)
+                if isExpanded then
+                    if charDetailContent then
+                        charDetailContent:Show()
+                        charDetailContent:SetHeight(math.max(0.1, charDetailContent._wnAccordionFullH or 0.1))
+                    end
+                elseif charDetailContent then
+                    charDetailContent:Hide()
+                    charDetailContent:SetHeight(0.1)
+                end
+            end,
+            nil, nil, nil, true,
+            {
+                animatedContent = function() return charDetailContent end,
+                -- Runs before SharedWidgets reads _wnAccordionFullH for AnimateAccordion target (expand path).
+                persistToggle = function(exp)
+                    expandedStates[charExpandKey] = exp
+                    if exp and charDetailContent and buildPvEDetailIfNeeded then
+                        buildPvEDetailIfNeeded()
+                    end
+                end,
+                accordionOnUpdate = function(drawH)
+                    if not charDetailContent then return end
+                    if not charDetailContent._pveAnimScrollInit then
+                        charDetailContent._pveAnimScrollInit = true
+                        charDetailContent._pveScrollH0 = parent:GetHeight()
+                        charDetailContent._pveDetailH0 = drawH
+                    end
+                    local delta = drawH - charDetailContent._pveDetailH0
+                    parent:SetHeight(math.max(1, charDetailContent._pveScrollH0 + delta))
+                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+                        local cur = scrollFrameRef:GetVerticalScroll() or 0
+                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+                    end
+                end,
+                accordionComplete = function()
+                    if charDetailContent then
+                        charDetailContent._pveAnimScrollInit = nil
+                        charDetailContent._pveScrollH0 = nil
+                        charDetailContent._pveDetailH0 = nil
+                    end
+                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+                        local cur = scrollFrameRef:GetVerticalScroll() or 0
+                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+                    end
+                end,
+            }
         )
-        charHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+        if prevPvEDetailFrame == nil then
+            charHeader:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -yOffset)
+            charHeader:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -yOffset)
+        else
+            charHeader:SetPoint("TOPLEFT", prevPvEDetailFrame, "BOTTOMLEFT", 0, -PVE_CHAR_SECTION_GAP)
+            charHeader:SetPoint("TOPRIGHT", prevPvEDetailFrame, "BOTTOMRIGHT", 0, -PVE_CHAR_SECTION_GAP)
+        end
         if charHeader.SetClippingChildren then
             charHeader:SetClippingChildren(true)
         end
@@ -2906,9 +2959,9 @@ function WarbandNexus:DrawPvEProgress(parent)
             charHeader.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], 1)
             charHeader.onlineAccent:Show()
         end
-        
-        yOffset = yOffset + GetLayout().headerSpacing  -- Standardized header spacing
-        
+
+        totalLayoutHeight = totalLayoutHeight + GetLayout().headerSpacing
+
         -- Favorite icon (view-only, left side, next to collapse button)
         -- Match Characters/Professions tabs: 33px column, 65% visual icon (~21px)
         local StyleFavoriteIcon = ns.UI_StyleFavoriteIcon
@@ -3386,13 +3439,24 @@ function WarbandNexus:DrawPvEProgress(parent)
         end
         
         charHeader:SetAlpha(1)
-        
-        -- 3 Cards (only when expanded)
-        if charExpanded then
-            local cardContainer = ns.UI.Factory:CreateContainer(parent)
-            cardContainer:SetPoint("TOPLEFT", 10, -yOffset)
-            cardContainer:SetPoint("TOPRIGHT", -10, -yOffset)
-            
+
+        charDetailContent = ns.UI.Factory:CreateContainer(parent)
+        charDetailContent:SetPoint("TOPLEFT", charHeader, "BOTTOMLEFT", 0, 0)
+        charDetailContent:SetPoint("TOPRIGHT", charHeader, "BOTTOMRIGHT", 0, 0)
+        if charDetailContent.SetClipsChildren then
+            charDetailContent:SetClipsChildren(true)
+        end
+
+        buildPvEDetailIfNeeded = function()
+            if not charDetailContent or charDetailContent._wnPopulateKey == charExpandKey then
+                return
+            end
+            charDetailContent._wnPopulateKey = charExpandKey
+
+            local cardContainer = ns.UI.Factory:CreateContainer(charDetailContent)
+            cardContainer:SetPoint("TOPLEFT", charDetailContent, "TOPLEFT", 0, 0)
+            cardContainer:SetPoint("TOPRIGHT", charDetailContent, "TOPRIGHT", 0, 0)
+
             -- Calculate responsive card widths (pixel-snapped)
             -- Order: Overall Score (35%) → Keystone+Affixes (35%) → Vault (30%)
             local PixelSnap = ns.PixelSnap or function(v) return v end
@@ -3441,6 +3505,9 @@ function WarbandNexus:DrawPvEProgress(parent)
             local overallScoreLabel = (ns.L and ns.L["OVERALL_SCORE_LABEL"]) or "Overall Score:"
             scoreText:SetText(string.format("%s %s%s|r", overallScoreLabel, scoreColor, FormatNumber(totalScore)))
             mplusY = mplusY + 35
+            
+            -- Tall M+ grids need more than baseCardHeight; otherwise icons/scores extend past the card bottom border.
+            local mplusNeededH = baseCardHeight
             
             if pve.mythicPlus.dungeons and #pve.mythicPlus.dungeons > 0 then
                 local totalDungeons = #pve.mythicPlus.dungeons
@@ -3611,13 +3678,18 @@ function WarbandNexus:DrawPvEProgress(parent)
                     iconFrame:Show()
                     end
                 end
+                
+                local lastRowY = gridY + (numRows - 1) * (iconSize + rowSpacing)
+                mplusNeededH = math.max(baseCardHeight, lastRowY + iconSize + 34 + 10)
             else
                 local noData = FontManager:CreateFontString(mplusCard, "small", "OVERLAY")
                 noData:SetPoint("TOPLEFT", 15, -mplusY)
                 local noDataLabel = (ns.L and ns.L["NO_DATA"]) or "No data"
                 noData:SetText("|cff666666" .. noDataLabel .. "|r")
+                mplusNeededH = math.max(baseCardHeight, mplusY + 40)
             end
             
+            mplusCard:SetHeight(mplusNeededH)
             mplusCard:Show()
             
             -- === CARD 2: KEYSTONE + AFFIXES (35%) ===
@@ -3942,15 +4014,35 @@ function WarbandNexus:DrawPvEProgress(parent)
         end
         
         vaultCard:Show()
-            
-            cardContainer:SetHeight(cardHeight or 200)
-            yOffset = yOffset + (cardHeight or 200) + GetLayout().afterElement
+
+            -- Single shared bottom edge: vault drives painted height, but M+/summary cards still default to baseCardHeight.
+            local vaultPaintedH = cardHeight or baseCardHeight
+            local unifiedH = math.max(mplusCard:GetHeight(), summaryCard:GetHeight(), vaultPaintedH)
+            mplusCard:SetHeight(unifiedH)
+            summaryCard:SetHeight(unifiedH)
+            vaultCard:SetHeight(unifiedH)
+            cardContainer:SetHeight(unifiedH)
+            charDetailContent._wnAccordionFullH = unifiedH
         end
-        
+
+        if charExpanded then
+            buildPvEDetailIfNeeded()
+            local dh = charDetailContent._wnAccordionFullH or 200
+            charDetailContent:SetHeight(dh)
+            charDetailContent:Show()
+            totalLayoutHeight = totalLayoutHeight + dh + GetLayout().afterElement
+        else
+            charDetailContent:SetHeight(0.1)
+            charDetailContent:Hide()
+            totalLayoutHeight = totalLayoutHeight + 0.1 + PVE_CHAR_SECTION_GAP
+        end
+
+        prevPvEDetailFrame = charDetailContent
+
     -- Character sections flow directly one after another (like Characters tab)
     end
 
-    return yOffset + 20
+    return totalLayoutHeight + 20
 end
 
 --- Header chest icon: all tracked characters' vault column summaries (Raid / M+ / World), width-aware row cap.

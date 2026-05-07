@@ -1357,10 +1357,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
         table.sort(untrackedChars, colSortCmp)
     end
 
-    -- Grouped sections with collapsible headers (animated accordion containers)
+    -- Grouped sections with collapsible headers (SharedWidgets accordion tween + scroll extent sync)
     local previousSectionContent = nil
     local isFirstSection = true
     local sectionRows = parent._wnProfNestedRows
+    local scrollFrameRef = parent.GetParent and parent:GetParent() or nil
 
     local function AcquireSectionContentFrame(anchorHeader)
         local contentFrame
@@ -1399,14 +1400,49 @@ function WarbandNexus:DrawProfessionsTab(parent)
         if isExpanded == nil then isExpanded = defaultExpanded end
 
         local sectionContent
+        local headerVisualOpts = {}
+        if visualOpts and visualOpts.sectionPreset then
+            headerVisualOpts.sectionPreset = visualOpts.sectionPreset
+        end
+        headerVisualOpts.animatedContent = function() return sectionContent end
+        headerVisualOpts.persistToggle = function(exp)
+            self.db.profile.ui[sectionKey] = exp
+            if exp then self.profRecentlyExpanded[sectionKey] = GetTime() end
+        end
+        headerVisualOpts.accordionOnUpdate = function(drawH)
+            if not sectionContent then return end
+            if not sectionContent._profAnimScrollInit then
+                sectionContent._profAnimScrollInit = true
+                sectionContent._profScrollH0 = parent:GetHeight()
+                sectionContent._profDetailH0 = drawH
+            end
+            local delta = drawH - sectionContent._profDetailH0
+            parent:SetHeight(math.max(1, sectionContent._profScrollH0 + delta))
+            if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+                local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+                local cur = scrollFrameRef:GetVerticalScroll() or 0
+                scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+            end
+        end
+        headerVisualOpts.accordionComplete = function()
+            if sectionContent then
+                sectionContent._profAnimScrollInit = nil
+                sectionContent._profScrollH0 = nil
+                sectionContent._profDetailH0 = nil
+            end
+            if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+                local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+                local cur = scrollFrameRef:GetVerticalScroll() or 0
+                scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+            end
+        end
+
         local header, _, hdrIcon = CreateCollapsibleHeader(
             parent,
             string.format(headerLabel .. " |cff888888(%s)|r", FormatNumber(#chars)),
             sectionKey,
             isExpanded,
             function(expanded)
-                self.db.profile.ui[sectionKey] = expanded
-                if expanded then self.profRecentlyExpanded[sectionKey] = GetTime() end
                 if sectionContent then
                     if expanded then
                         sectionContent:Show()
@@ -1421,7 +1457,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             true,  -- isAtlas
             nil,
             nil,
-            (visualOpts and visualOpts.sectionPreset) and { sectionPreset = visualOpts.sectionPreset } or nil
+            headerVisualOpts
         )
         if hdrIcon then
             hdrIcon:SetSize(34, 34)

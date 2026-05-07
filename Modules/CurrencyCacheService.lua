@@ -306,6 +306,26 @@ local function NormalizeQuantity(rawQuantity, maxQuantity, useTotalEarnedForMaxQ
     return quantity
 end
 
+--- Cap for NormalizeQuantity (strip Blizzard "cap + held" encoding when quantity > cap).
+--- Coffer Key Shards: bag quantity is literal; maxWeeklyQuantity is weekly earn cap only —
+--- using it as normCap turns e.g. 1625 into 1025 when weekly max is 600.
+---@param currencyID number
+---@param info table C_CurrencyInfo.GetCurrencyInfo result
+---@return number
+local function NormalizationCapFromCurrencyInfo(currencyID, info)
+    if not info then return 0 end
+    local maxQ = SafeCurrencyNumber(info.maxQuantity) or 0
+    local maxWeekly = SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
+    if IsCofferKeyShardByApiInfo(info) then
+        return (maxQ > 0) and maxQ or 0
+    end
+    local normCap = (maxQ > 0) and maxQ or maxWeekly
+    if normCap == 0 and IsSeasonProgressSplitCurrency(currencyID, info) then
+        normCap = 200
+    end
+    return normCap
+end
+
 -- ============================================================================
 -- DB ACCESS (Direct - No RAM cache)
 -- ============================================================================
@@ -552,11 +572,7 @@ local function FetchCurrencyFromAPI(currencyID)
 
     local maxQ = info.maxQuantity or 0
     local maxWeekly = info.maxWeeklyQuantity or 0
-    -- Normalization needs the LARGER cap (season cap) to strip the embedded cap from raw quantity.
-    local normCap = (maxQ > 0) and maxQ or maxWeekly
-    if normCap == 0 and IsSeasonProgressSplitCurrency(currencyID, info) then
-        normCap = 200
-    end
+    local normCap = NormalizationCapFromCurrencyInfo(currencyID, info)
     local rawQty = SafeCurrencyNumber(info.quantity)
     if rawQty == nil then rawQty = 0 end
     local normalizedQuantity = NormalizeQuantity(rawQty, normCap, info.useTotalEarnedForMaxQty)
@@ -1534,7 +1550,9 @@ function WarbandNexus:GetCurrenciesForUI()
         local total, maxQty = 0, 0
         local splitNormCap = nil
         local splitInfoEarly = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
-        if metadata and splitInfoEarly and IsSeasonProgressSplitCurrency(currencyID, splitInfoEarly) then
+        -- Offline SV cleanup for Dawncrest-style embedded totals — not Coffer Shards (weekly cap ≠ bag encoding).
+        if metadata and splitInfoEarly and IsSeasonProgressSplitCurrency(currencyID, splitInfoEarly)
+            and not IsCofferKeyShardByApiInfo(splitInfoEarly) then
             local sm = tonumber(metadata.seasonMax) or 0
             local mw = tonumber(metadata.maxWeeklyQuantity) or 0
             splitNormCap = (sm > 0) and sm or ((mw > 0) and mw or nil)
@@ -1550,8 +1568,7 @@ function WarbandNexus:GetCurrenciesForUI()
             local info = splitInfoEarly or C_CurrencyInfo.GetCurrencyInfo(currencyID)
             if info and info.name and not (issecretvalue and issecretvalue(info.name)) then
                 local rawQty = SafeCurrencyNumber(info.quantity) or 0
-                local maxQ = SafeCurrencyNumber(info.maxQuantity)
-                liveCurrentQty = NormalizeQuantity(rawQty, maxQ or entry.maxQuantity, info.useTotalEarnedForMaxQty)
+                liveCurrentQty = NormalizeQuantity(rawQty, NormalizationCapFromCurrencyInfo(currencyID, info), info.useTotalEarnedForMaxQty)
                 hasLiveCurrentQty = true
             end
         end
@@ -1958,9 +1975,11 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
                         end
                     end
                     local metadata = ResolveCurrencyMetadata(currencyID)
-                    local maxQuantity = metadata and metadata.maxQuantity or 0
                     local useTotal = metadata and metadata.useTotalEarnedForMaxQty or false
-                    newQuantity = NormalizeQuantity(newQuantity, maxQuantity, useTotal)
+                    local okNi, apiNi = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+                    local normCapSync = (okNi and apiNi) and NormalizationCapFromCurrencyInfo(currencyID, apiNi)
+                        or (metadata and metadata.maxQuantity or 0)
+                    newQuantity = NormalizeQuantity(newQuantity, normCapSync, useTotal)
                     
                     -- ONLY update if the quantity differs from what we have
                     local oldQuantity = db.currencies[charKey] and db.currencies[charKey][currencyID] or 0

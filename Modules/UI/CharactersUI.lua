@@ -853,6 +853,7 @@ function WarbandNexus:DrawCharacterList(parent)
         nil,
         {
             sectionPreset = "gold",
+            animatedContent = function() return favoritesContent end,
         }
     )
     AnchorSectionHeader(favHeader)
@@ -905,7 +906,7 @@ function WarbandNexus:DrawCharacterList(parent)
         true,
         nil,
         nil,
-        nil
+        { animatedContent = function() return charactersContent end }
     )
     AnchorSectionHeader(charHeader)
     if charIcon then charIcon:SetSize(24, 24) end
@@ -965,6 +966,7 @@ function WarbandNexus:DrawCharacterList(parent)
             nil,
             {
                 sectionPreset = "danger",
+                animatedContent = function() return untrackedContent end,
             }
         )
         AnchorSectionHeader(untrackedHeader)
