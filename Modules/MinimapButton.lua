@@ -312,19 +312,12 @@ function WarbandNexus:ShowMinimapMenu(anchorFrame)
                 end
             end)
 
-            -- Vault Tracker (standalone window)
-            rootDescription:CreateButton((ns.L and ns.L["VAULT_BUTTON_MENU_TRACKER"]) or "Vault Tracker", function()
-                if self.ToggleVaultTrackerWindow then
-                    self:ToggleVaultTrackerWindow()
+            -- Quick Tracker
+            rootDescription:CreateButton("Quick Tracker", function()
+                if self.OpenVaultButtonQuickMenu then
+                    self:OpenVaultButtonQuickMenu(anchorFrame)
                 else
                     OpenVaultTrackerView()
-                end
-            end)
-
-            -- Saved Instances (raid lockouts across the warband)
-            rootDescription:CreateButton((ns.L and ns.L["VAULT_BUTTON_MENU_SAVED"]) or "Saved Instances", function()
-                if self.ToggleSavedInstancesWindow then
-                    self:ToggleSavedInstancesWindow()
                 end
             end)
 
