@@ -51,6 +51,7 @@ local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 
 -- Pooling
 local AcquireProfessionRow = ns.UI_AcquireProfessionRow
+local ReleaseProfessionRow = ns.UI_ReleaseProfessionRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
 -- Performance
@@ -965,6 +966,15 @@ function WarbandNexus:DrawProfessionsTab(parent)
     RegisterProfessionEvents(parent)
     HideEmptyStateCard(parent, "professions")
     if ReleaseAllPooledChildren then ReleaseAllPooledChildren(parent) end
+    if parent._wnProfNestedRows and ReleaseProfessionRow then
+        for i = 1, #parent._wnProfNestedRows do
+            local row = parent._wnProfNestedRows[i]
+            if row and row.rowType == "profession" then
+                ReleaseProfessionRow(row)
+            end
+        end
+    end
+    parent._wnProfNestedRows = {}
 
     -- fixedHeader: non-scrolling area for title card + column headers
     local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
@@ -1347,13 +1357,48 @@ function WarbandNexus:DrawProfessionsTab(parent)
         table.sort(untrackedChars, colSortCmp)
     end
 
-    -- Grouped sections with collapsible headers
+    -- Grouped sections with collapsible headers (animated accordion containers)
+    local previousSectionContent = nil
+    local isFirstSection = true
+    local sectionRows = parent._wnProfNestedRows
+
+    local function AcquireSectionContentFrame(anchorHeader)
+        local contentFrame
+        if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
+            contentFrame = ns.UI.Factory:CreateContainer(parent, math.max(1, parent:GetWidth()), 1, false)
+        else
+            contentFrame = CreateFrame("Frame", nil, parent)
+            contentFrame:SetSize(math.max(1, parent:GetWidth()), 1)
+        end
+        contentFrame:ClearAllPoints()
+        contentFrame:SetPoint("TOPLEFT", anchorHeader, "BOTTOMLEFT", -SIDE_MARGIN, 0)
+        contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", SIDE_MARGIN, 0)
+        contentFrame:SetHeight(0.1)
+        contentFrame._wnAccordionFullH = 0
+        return contentFrame
+    end
+
+    local function AnchorSectionHeader(headerFrame)
+        if isFirstSection then
+            headerFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+            headerFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+            isFirstSection = false
+        elseif previousSectionContent then
+            headerFrame:SetPoint("TOPLEFT", previousSectionContent, "BOTTOMLEFT", SIDE_MARGIN, -4)
+            headerFrame:SetPoint("TOPRIGHT", previousSectionContent, "BOTTOMRIGHT", -SIDE_MARGIN, -4)
+        else
+            headerFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+            headerFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+        end
+    end
+
     local function DrawSection(chars, headerLabel, sectionKey, defaultExpanded, headerAtlas, visualOpts)
         if #chars == 0 then return end
 
         local isExpanded = self.db.profile.ui[sectionKey]
         if isExpanded == nil then isExpanded = defaultExpanded end
 
+        local sectionContent
         local header, _, hdrIcon = CreateCollapsibleHeader(
             parent,
             string.format(headerLabel .. " |cff888888(%s)|r", FormatNumber(#chars)),
@@ -1362,36 +1407,57 @@ function WarbandNexus:DrawProfessionsTab(parent)
             function(expanded)
                 self.db.profile.ui[sectionKey] = expanded
                 if expanded then self.profRecentlyExpanded[sectionKey] = GetTime() end
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+                if sectionContent then
+                    if expanded then
+                        sectionContent:Show()
+                        sectionContent:SetHeight(math.max(0.1, sectionContent._wnAccordionFullH or 0.1))
+                    else
+                        sectionContent:Hide()
+                        sectionContent:SetHeight(0.1)
+                    end
+                end
             end,
             headerAtlas,
             true,  -- isAtlas
             nil,
             nil,
-            visualOpts
+            (visualOpts and visualOpts.sectionPreset) and { sectionPreset = visualOpts.sectionPreset } or nil
         )
         if hdrIcon then
             hdrIcon:SetSize(34, 34)
         end
-        header:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-        header:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT
+        header:SetHeight(SECTION_COLLAPSE_HEADER_HEIGHT)
+        AnchorSectionHeader(header)
 
-        if isExpanded then
-            for _, char in ipairs(chars) do
-                rowIndex = rowIndex + 1
-                local ok, result = pcall(self.DrawProfessionRow, self, parent, char, rowIndex, width, yOffset, currentPlayerKey)
-                if ok and result then
-                    yOffset = result
-                else
-                    yOffset = yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
-                    if WarbandNexus.Debug then
-                        WarbandNexus:Debug("|cffff0000[ProfessionsUI] DrawProfessionRow error for " .. tostring(char.name) .. ": " .. tostring(result) .. "|r")
-                    end
+        sectionContent = AcquireSectionContentFrame(header)
+        local sectionYOffset = 0
+        for _, char in ipairs(chars) do
+            rowIndex = rowIndex + 1
+            local ok, nextYOffset, rowFrame = pcall(self.DrawProfessionRow, self, sectionContent, char, rowIndex, width, sectionYOffset, currentPlayerKey)
+            if ok and nextYOffset then
+                sectionYOffset = nextYOffset
+                if rowFrame then
+                    sectionRows[#sectionRows + 1] = rowFrame
+                end
+            else
+                sectionYOffset = sectionYOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
+                if WarbandNexus.Debug then
+                    WarbandNexus:Debug("|cffff0000[ProfessionsUI] DrawProfessionRow error for " .. tostring(char.name) .. ": " .. tostring(nextYOffset) .. "|r")
                 end
             end
         end
 
+        sectionContent._wnAccordionFullH = sectionYOffset
+        if isExpanded then
+            sectionContent:Show()
+            sectionContent:SetHeight(math.max(0.1, sectionYOffset))
+        else
+            sectionContent:Hide()
+            sectionContent:SetHeight(0.1)
+        end
+
+        previousSectionContent = sectionContent
+        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT + (isExpanded and sectionYOffset or 0)
         yOffset = yOffset + 4  -- breathing room between sections
     end
 
@@ -1525,7 +1591,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     row:SetScript("OnEnter", function(self) self:SetAlpha(0.9) end)
     row:SetScript("OnLeave", function(self) self:SetAlpha(1) end)
 
-    return yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
+    return yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0), row
 end
 
 --============================================================================

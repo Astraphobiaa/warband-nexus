@@ -99,6 +99,7 @@ Modules\UI\SettingsUI.lua
 Modules\UI\CharactersUI.lua
 Modules\UI\CurrencyUI.lua
 Modules\UI\ItemsUI.lua
+Modules\UI\StorageSectionLayout.lua
 Modules\UI\StorageUI.lua
 Modules\UI\PveUI.lua
 Modules\UI\ReputationUI.lua

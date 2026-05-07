@@ -35,6 +35,19 @@ local function PvECacheUserDebug(msg, ...)
     W:Print("|cff00ccff[PvE Cache]|r " .. text)
 end
 
+-- Prevent chat spam for repeated identical diagnostic branches.
+local pveCacheDiagLastLogAt = {}
+local function ShouldLogPvECacheDiag(key, intervalSec)
+    local now = GetTime()
+    local last = pveCacheDiagLastLogAt[key] or 0
+    local interval = intervalSec or 30
+    if (now - last) < interval then
+        return false
+    end
+    pveCacheDiagLastLogAt[key] = now
+    return true
+end
+
 --- One SavedVariables bucket per logical character: normalize legacy/UI key spellings
 --- so imports, migration, and live API paths never split the same toon across multiple keys.
 local function CanonicalizePvEKey(charKey)
@@ -688,21 +701,38 @@ function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
         end
     end
     
-    self.db.global.pveCache.mythicPlus.bestRuns[charKey].overallScore = overallScore
-    self.db.global.pveCache.mythicPlus.bestRuns[charKey].scoreSource = scoreSource
-    PvECacheUserDebug("bestRuns: overallScore=%s source=%s key=%s (parallel to dungeonScores)", tostring(overallScore), tostring(scoreSource), tostring(charKey))
+    local bestRunsBucket = self.db.global.pveCache.mythicPlus.bestRuns[charKey]
+    local prevOverall = bestRunsBucket.overallScore or 0
+    local prevSource = bestRunsBucket.scoreSource or "NONE"
+    bestRunsBucket.overallScore = overallScore
+    bestRunsBucket.scoreSource = scoreSource
+    local overallChanged = (prevOverall ~= overallScore) or (prevSource ~= scoreSource)
+    local updatedRuns = 0
     
     -- Store best runs for each dungeon
     for i = 1, #maps do
         local mapID = maps[i]
         local _, level, _, onTime = C_MythicPlus.GetWeeklyBestForMap and C_MythicPlus.GetWeeklyBestForMap(mapID)
         if level and level > 0 then
-            self.db.global.pveCache.mythicPlus.bestRuns[charKey][mapID] = {
+            local old = bestRunsBucket[mapID]
+            local oldLevel = old and old.level or 0
+            local oldOnTime = old and old.onTime or false
+            bestRunsBucket[mapID] = {
                 level = level,
                 onTime = onTime or false,
                 lastUpdate = time(),
             }
+            if oldLevel ~= level or oldOnTime ~= (onTime or false) then
+                updatedRuns = updatedRuns + 1
+            end
         end
+    end
+    
+    if overallChanged or updatedRuns > 0 then
+        PvECacheUserDebug(
+            "bestRuns: key=%s overall=%s source=%s updatedRuns=%d",
+            tostring(charKey), tostring(overallScore), tostring(scoreSource), updatedRuns
+        )
     end
 end
 
@@ -747,6 +777,7 @@ function WarbandNexus:UpdateDungeonScores(charKey)
     end
     
     local scoreData = self.db.global.pveCache.mythicPlus.dungeonScores[charKey]
+    local prevStoredOverall = scoreData.overallScore or 0
     local existingDungeons = scoreData.dungeons or {}
     
     local newOverall = 0
@@ -758,6 +789,7 @@ function WarbandNexus:UpdateDungeonScores(charKey)
     local anyIncomingDungeon = false
     local mergedDungeons = {}
     local preservedFromSV = 0
+    local changedRows = 0
     
     if maps then
         for i = 1, #maps do
@@ -787,15 +819,22 @@ function WarbandNexus:UpdateDungeonScores(charKey)
                 preservedFromSV = preservedFromSV + 1
             else
                 mergedDungeons[mapID] = { score = dungeonScore, bestLevel = bestLevel }
+                local oldScore = old and old.score or 0
+                local oldBestLevel = old and old.bestLevel or 0
+                if oldScore ~= dungeonScore or oldBestLevel ~= bestLevel then
+                    changedRows = changedRows + 1
+                end
             end
         end
     end
     
     -- API often returns all zeros before M+ data hydrates; do not wipe a good SavedVariables snapshot.
     if newOverall == 0 and not anyIncomingDungeon and DungeonScoresBucketHasProgress(scoreData) then
-        PvECacheUserDebug(
-            "dungeonScores: SKIP write (API overall=0, no per-map data, SV has progress) key=%s prevOverall=%s",
-            tostring(charKey), tostring(scoreData.overallScore or 0))
+        if ShouldLogPvECacheDiag("dungeonScores-skip-" .. tostring(charKey), 45) then
+            PvECacheUserDebug(
+                "dungeonScores: SKIP write (API overall=0, no per-map data, SV has progress) key=%s prevOverall=%s",
+                tostring(charKey), tostring(scoreData.overallScore or 0))
+        end
         return
     end
     
@@ -804,9 +843,13 @@ function WarbandNexus:UpdateDungeonScores(charKey)
         if newOverall > 0 then
             scoreData.overallScore = newOverall
             scoreData.lastUpdate = time()
-            PvECacheUserDebug("dungeonScores: maps missing; updated overall only=%s key=%s", tostring(newOverall), tostring(charKey))
+            if prevStoredOverall ~= scoreData.overallScore then
+                PvECacheUserDebug("dungeonScores: maps missing; updated overall only=%s key=%s", tostring(newOverall), tostring(charKey))
+            end
         else
-            PvECacheUserDebug("dungeonScores: maps missing; no write key=%s apiOverall=0", tostring(charKey))
+            if ShouldLogPvECacheDiag("dungeonScores-maps-missing-" .. tostring(charKey), 60) then
+                PvECacheUserDebug("dungeonScores: maps missing; no write key=%s apiOverall=0", tostring(charKey))
+            end
         end
         return
     end
@@ -820,14 +863,17 @@ function WarbandNexus:UpdateDungeonScores(charKey)
     
     scoreData.dungeons = mergedDungeons
     scoreData.lastUpdate = time()
-    PvECacheUserDebug(
-        "dungeonScores: SAVED key=%s apiOverall=%s storedOverall=%s maps=%d incomingAny=%s preservedRows=%d",
-        tostring(charKey),
-        tostring(newOverall),
-        tostring(scoreData.overallScore or 0),
-        #maps,
-        anyIncomingDungeon and "yes" or "no",
-        preservedFromSV)
+    if changedRows > 0 or prevStoredOverall ~= (scoreData.overallScore or 0) then
+        PvECacheUserDebug(
+            "dungeonScores: SAVED key=%s apiOverall=%s storedOverall=%s changedRows=%d maps=%d incomingAny=%s preservedRows=%d",
+            tostring(charKey),
+            tostring(newOverall),
+            tostring(scoreData.overallScore or 0),
+            changedRows,
+            #maps,
+            anyIncomingDungeon and "yes" or "no",
+            preservedFromSV)
+    end
 end
 
 -- ============================================================================

@@ -46,16 +46,22 @@ local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local FormatNumber = ns.UI_FormatNumber
 local COLORS = ns.UI_COLORS
 
+-- Type accordion contract (Characters-parity tween + post-tween scroll sync). Loads before StorageUI (see .toc).
+local StorageSectionLayout = ns.StorageSectionLayout
+if not StorageSectionLayout then
+    error("StorageSectionLayout missing — ensure Modules/UI/StorageSectionLayout.lua loads before StorageUI.lua")
+end
+
 -- Import pooling functions
 local AcquireStorageRow = ns.UI_AcquireStorageRow
 local ReleaseStorageRow = ns.UI_ReleaseStorageRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateResultsContainer = ns.UI_CreateResultsContainer
+local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
 
 -- Import shared UI layout constants
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local BASE_INDENT = GetLayout().BASE_INDENT or 15
-local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
@@ -192,7 +198,7 @@ function WarbandNexus:DrawStorageTab(parent)
             }
             if not self.db.profile.storageSort then self.db.profile.storageSort = {} end
             local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.storageSort, function()
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true })
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true, instantPopulate = true })
         end)
             sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
             sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
@@ -289,6 +295,25 @@ function WarbandNexus:DrawStorageTab(parent)
     return 8 + contentHeight
 end
 
+--- Redraw Storage scroll content only (results container). Skips PopulateContent, scrollChild purge,
+--- and UI_MAIN_REFRESH_REQUESTED debounce — use after accordion toggles for perf.
+function WarbandNexus:RedrawStorageResultsOnly()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "storage" then return end
+    local scrollChild = mf.scrollChild
+    if not scrollChild then return end
+    local rc = scrollChild.storageResultsContainer or scrollChild._storageResultsContainer
+    if not rc or rc:GetParent() ~= scrollChild then return end
+    local width = scrollChild:GetWidth() - 20
+    if width < 1 then return end
+    local q = ""
+    if SearchStateManager and SearchStateManager.GetQuery then
+        q = SearchStateManager:GetQuery("storage") or ""
+    end
+    local contentHeight = self:DrawStorageResults(rc, 0, width, q)
+    rc:SetHeight(math.max(contentHeight or 1, 1))
+end
+
 --============================================================================
 -- STORAGE RESULTS RENDERING (Separated for search refresh)
 --============================================================================
@@ -298,24 +323,47 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         and not (issecretvalue and issecretvalue(storageSearchText))
         and storageSearchText ~= ""
 
-    -- Clean up old non-virtual children (headers, cards) from previous render.
-    -- VLM handles its own _isVirtualRow frames; we only need to recycle stale headers.
+    -- Clean up rows created for subheader accordion containers in previous render.
+    if parent._wnStorageAnimatedRows and ReleaseStorageRow then
+        for i = 1, #parent._wnStorageAnimatedRows do
+            local row = parent._wnStorageAnimatedRows[i]
+            if row and row.rowType == "storage" then
+                ReleaseStorageRow(row)
+            end
+        end
+    end
+    parent._wnStorageAnimatedRows = {}
+
+    -- Clean up old children (headers, accordion containers, rows) from previous render.
     local recycleBin = ns.UI_RecycleBin
+    local function CancelSubtreeAccordion(f)
+        if not f then return end
+        if ns.UI.Factory and ns.UI.Factory.CancelAccordion then
+            ns.UI.Factory:CancelAccordion(f)
+        end
+        local ch = { f:GetChildren() }
+        for j = 1, #ch do
+            CancelSubtreeAccordion(ch[j])
+        end
+    end
     local oldChildren = {parent:GetChildren()}
     for i = 1, #oldChildren do
         local child = oldChildren[i]
         if not child._isVirtualRow then
+            CancelSubtreeAccordion(child)
             child:Hide()
             child:ClearAllPoints()
             child:SetParent(recycleBin or UIParent)
         end
     end
 
-    local indent = BASE_INDENT
-    local flatList = {}
     local globalRowIdxAll = 0
+    local animatedRows = parent._wnStorageAnimatedRows
     self.recentlyExpanded = self.recentlyExpanded or {}
-    
+    --- Vertical chain tail: major headers + type wraps share one anchor stack so accordion tweens
+    --- reposition following siblings immediately (no deferred yOffset drift).
+    local storageStackAnchor = nil
+
     -- Get expanded state
     local expanded = self.db.profile.storageExpanded or {}
     if not expanded.categories then expanded.categories = {} end
@@ -343,7 +391,70 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
 
         self._storageExpandedKey = isExpanded and key or nil
-        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true })
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true, instantPopulate = true })
+    end
+
+    local function CreateStorageRowsContainer(contentParent, anchorFrame, leftOffset, rightOffset)
+        contentParent = contentParent or parent
+        local frame = ns.UI.Factory:CreateContainer(contentParent, math.max(1, contentParent:GetWidth()), 1, false)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", leftOffset or 0, 0)
+        frame:SetPoint("TOPRIGHT", anchorFrame, "BOTTOMRIGHT", rightOffset or 0, 0)
+        frame:SetHeight(0.1)
+        frame._wnAccordionFullH = 0
+        return frame
+    end
+
+    local TYPE_SECTION_HEADER_H = StorageSectionLayout.GetTypeSectionHeaderHeight()
+
+    local function PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
+        row:SetAlpha(1)
+        if row.anim then row.anim:Stop() end
+        ns.UI.Factory:ApplyRowBackground(row, rowIdx)
+
+        row.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
+        row.icon:SetTexture(item.iconFileID or 134400)
+
+        local nameWidth = rowWidth - 350
+        row.nameText:SetWidth(nameWidth)
+
+        local baseName = item.name
+        if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
+            baseName = item.link:match("%[(.-)%]")
+        end
+        if not baseName and item.pending then
+            baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
+        end
+        if not baseName and item.itemID then
+            baseName = C_Item.GetItemInfo(item.itemID)
+        end
+        baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
+
+        local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
+        if item.pending then
+            row.nameText:SetText(format("|cff888888%s|r", displayName))
+        else
+            row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+        end
+
+        row.locationText:SetWidth(0)
+        row.locationText:SetText(locText or "")
+        row.locationText:SetTextColor(1, 1, 1)
+        row.locationText:SetWordWrap(false)
+        row.locationText:SetNonSpaceWrap(false)
+
+        row:SetScript("OnEnter", function(self)
+            if not ShowTooltip then
+                if item.itemLink then
+                    ns.TooltipService:Show(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
+                end
+                return
+            end
+            ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink, anchor = "ANCHOR_LEFT" })
+        end)
+        row:SetScript("OnLeave", function()
+            if HideTooltip then HideTooltip() else ns.TooltipService:Hide() end
+        end)
     end
     
     -- Search filtering helper
@@ -564,6 +675,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     if personalTotalMatches > 0 then
         -- Auto-expand if search has matches in this section
         local personalExpanded = self.storageExpandAllActive or expanded.personal
+        if personalExpanded == nil then
+            personalExpanded = true
+            expanded.personal = true
+        end
         if storageSearchActive and categoriesWithMatches["personal"] then
             personalExpanded = true
         end
@@ -578,11 +693,12 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             GetCharacterSpecificIcon(),
             true  -- isAtlas = true
         )
-        personalHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        ChainSectionFrameBelow(parent, personalHeader, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or nil, yOffset)
         personalHeader:SetWidth(width)  -- Set width to match content area
-        
-        yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
+
 if personalExpanded then
+        storageStackAnchor = personalHeader
+        yOffset = yOffset + HEADER_SPACING  -- Personal strip (numeric tail mirrors chain)
         -- Iterate through each character
         local hasAnyPersonalItems = false
         
@@ -692,11 +808,13 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                         false,  -- isAtlas = false (class icons are texture paths)
                         1       -- indentLevel = 1 (child header)
                     )
-                    charHeader:SetPoint("TOPLEFT", charIndent, -yOffset)
+                    ChainSectionFrameBelow(parent, charHeader, storageStackAnchor, charIndent, SECTION_SPACING, yOffset)
                     charHeader:SetWidth(width - charIndent)
-                    yOffset = yOffset + HEADER_SPACING  -- Character header + spacing before content
-if isCharExpanded then
--- Group character's items by type (NEW: Array-based iteration)
+                    if isCharExpanded then
+                    -- Chain type wraps to previous BOTTOMLEFT so accordion height tweens push siblings down (engine-driven).
+                    local stackAnchor = charHeader
+                    local gapBelowStack = SECTION_SPACING
+                    -- Group character's items by type (NEW: Array-based iteration)
                     local charItems = {}
                     
                     -- Process bags
@@ -760,6 +878,7 @@ if isCharExpanded then
                         end
                     end
                     table.sort(charSortedTypes)
+                    local personalTypesAdvance = charHeader:GetHeight() + SECTION_SPACING
 -- Draw each type category for this character
                     for _, typeName in ipairs(charSortedTypes) do
                         local typeKey = "personal_" .. charKey .. "_" .. typeName
@@ -800,63 +919,77 @@ if isCharExpanded then
                                     typeIcon2 = GetTypeIcon(charItems[typeName][1].classID)
                                 end
                                 
-                                -- Type header (Level 2, double indented under character)
+                                -- Type header + rows (instant expand/collapse via redraw — no list accordion tween)
                                 local typeIndent = BASE_INDENT * 2  -- 30px
+                                local typeSectionWrap = ns.UI.Factory:CreateContainer(parent, math.max(1, width - typeIndent), TYPE_SECTION_HEADER_H + 0.1, false)
+                                typeSectionWrap:ClearAllPoints()
+                                if typeSectionWrap.SetClipsChildren then
+                                    typeSectionWrap:SetClipsChildren(true)
+                                end
+                                ChainSectionFrameBelow(parent, typeSectionWrap, stackAnchor, typeIndent, gapBelowStack, yOffset)
+                                gapBelowStack = SECTION_SPACING
+                                stackAnchor = typeSectionWrap
+
+                                local rowsContainer
                                 local typeHeader2, typeBtn2 = CreateCollapsibleHeader(
-                                parent,
+                                typeSectionWrap,
                                 typeName .. " (" .. FormatNumber(displayCount) .. ")",
                                 typeKey,
                                 isTypeExpanded,
                                 function(isExpanded) ToggleExpand(typeKey, isExpanded) end,
                                 typeIcon2,
                                 false,  -- isAtlas = false (item icons are texture paths)
-                                2       -- indentLevel = 2 (child of character header)
+                                0,      -- indent in wrap only; typeSectionWrap already offset under character header
+                                nil,
+                                nil
                             )
-                            typeHeader2:SetPoint("TOPLEFT", typeIndent, -yOffset)
-                            typeHeader2:SetWidth(width - typeIndent)
-                            yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)  -- Type header (no extra spacing before rows)
-if isTypeExpanded then
--- Display items (with search filter)
-                                    for _, item in ipairs(charItems[typeName]) do
-                                    -- Apply search filter
-                                    local shouldShow = ItemMatchesSearch(item)
-                                    
-                                    if shouldShow then
-                                        globalRowIdxAll = globalRowIdxAll + 1
-                                        local locText = ""
-                                        if item.actualBagID then
-                                            if item.actualBagID == -1 then
-                                                locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
-                                            elseif item.actualBagID >= 0 and item.actualBagID <= 5 then
-                                                locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
-                                            else
-                                                locText = format((ns.L and ns.L["BANK_BAG_FORMAT"]) or "Bank Bag %d", item.actualBagID - 5)
-                                            end
+                            typeHeader2:SetPoint("TOPLEFT", typeSectionWrap, "TOPLEFT", 0, 0)
+                            typeHeader2:SetWidth(typeSectionWrap:GetWidth())
+                            rowsContainer = CreateStorageRowsContainer(typeSectionWrap, typeHeader2, 0, 0)
+                            local rowsYOffset = 0
+                            for _, item in ipairs(charItems[typeName]) do
+                                local shouldShow = ItemMatchesSearch(item)
+                                if shouldShow then
+                                    globalRowIdxAll = globalRowIdxAll + 1
+                                    local locText = ""
+                                    if item.actualBagID then
+                                        if item.actualBagID == -1 then
+                                            locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
+                                        elseif item.actualBagID >= 0 and item.actualBagID <= 5 then
+                                            locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
+                                        else
+                                            locText = format((ns.L and ns.L["BANK_BAG_FORMAT"]) or "Bank Bag %d", item.actualBagID - 5)
                                         end
-                                        flatList[#flatList + 1] = {
-                                            type = "row",
-                                            yOffset = yOffset,
-                                            height = ROW_HEIGHT + GetLayout().betweenRows,
-                                            xOffset = BASE_INDENT * 2,
-                                            data = item,
-                                            rowIdx = globalRowIdxAll,
-                                            rowWidth = width - BASE_INDENT * 2,
-                                            locText = locText,
-                                            sectionKey = typeKey,
-                                        }
-                                        yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows
                                     end
+                                    local row = AcquireStorageRow(rowsContainer, width - BASE_INDENT * 2, ROW_HEIGHT)
+                                    row:ClearAllPoints()
+                                    row:SetPoint("TOPLEFT", 0, -rowsYOffset)
+                                    PopulateStorageRowDirect(row, item, globalRowIdxAll, width - BASE_INDENT * 2, locText)
+                                    animatedRows[#animatedRows + 1] = row
+                                    rowsYOffset = rowsYOffset + ROW_HEIGHT + GetLayout().betweenRows
                                 end
-                                end
-                                
-                                -- Add spacing after each type section
-                                yOffset = yOffset + SECTION_SPACING
+                            end
+                            rowsContainer._wnAccordionFullH = rowsYOffset
+                            if isTypeExpanded then
+                                rowsContainer:Show()
+                                rowsContainer:SetHeight(math.max(0.1, rowsYOffset))
+                            else
+                                rowsContainer:Hide()
+                                rowsContainer:SetHeight(0.1)
+                            end
+                            typeSectionWrap:SetHeight(TYPE_SECTION_HEADER_H + math.max(0.1, rowsContainer:GetHeight() or 0.1))
+                            personalTypesAdvance = personalTypesAdvance + typeSectionWrap:GetHeight() + SECTION_SPACING
                             end  -- if displayCount > 0
                         end  -- if not skipped by search
                     end
                     
+                    storageStackAnchor = stackAnchor
+                    yOffset = yOffset + personalTypesAdvance
                     -- No per-character empty state needed
-                end  -- if isCharExpanded
+                    else
+                    storageStackAnchor = charHeader
+                    yOffset = yOffset + HEADER_SPACING
+                    end  -- if isCharExpanded
                 
                 hasAnyPersonalItems = true
             end  -- else (closes the else at line 449)
@@ -864,6 +997,9 @@ if isTypeExpanded then
         end  -- for char
             
         -- No section-level empty state needed
+        else
+            storageStackAnchor = personalHeader
+            yOffset = yOffset + HEADER_SPACING
         end  -- if personalExpanded
     end  -- if personalTotalMatches > 0
     
@@ -912,6 +1048,10 @@ if isTypeExpanded then
     if warbandTotalMatches > 0 then
         -- Auto-expand if search has matches in this section
         local warbandExpanded = self.storageExpandAllActive or expanded.warband
+        if warbandExpanded == nil then
+            warbandExpanded = true
+            expanded.warband = true
+        end
         if storageSearchActive and categoriesWithMatches["warband"] then
             warbandExpanded = true
         end
@@ -924,7 +1064,7 @@ if isTypeExpanded then
             function(isExpanded) ToggleExpand("warband", isExpanded) end,
             "dummy"  -- Dummy value to trigger icon creation
         )
-        warbandHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        ChainSectionFrameBelow(parent, warbandHeader, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or nil, yOffset)
         warbandHeader:SetWidth(width)  -- Set width to match content area
         
         -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
@@ -934,9 +1074,11 @@ if isTypeExpanded then
             warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
         end
         
-        yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
-if warbandExpanded then
--- Sort types alphabetically
+        local warbandTypesAdvance
+        if warbandExpanded then
+        local stackAnchor = warbandHeader
+        local gapBelowStack = SECTION_SPACING
+        -- Sort types alphabetically
             local sortedTypes = {}
             for typeName in pairs(warbandItems) do
                 -- Only include types that have matching items
@@ -957,6 +1099,7 @@ if warbandExpanded then
                 end
             end
             table.sort(sortedTypes)
+            warbandTypesAdvance = warbandHeader:GetHeight() + SECTION_SPACING
         
         -- Draw each type category
         for _, typeName in ipairs(sortedTypes) do
@@ -998,51 +1141,66 @@ if warbandExpanded then
                         typeIcon = GetTypeIcon(warbandItems[typeName][1].classID)
                     end
                     
-                    -- Type header (indented) - show match count if searching
+                    local typeIndentWB = BASE_INDENT
+                    local typeSectionWrapWB = ns.UI.Factory:CreateContainer(parent, math.max(1, width - typeIndentWB), TYPE_SECTION_HEADER_H + 0.1, false)
+                    typeSectionWrapWB:ClearAllPoints()
+                    if typeSectionWrapWB.SetClipsChildren then
+                        typeSectionWrapWB:SetClipsChildren(true)
+                    end
+                    ChainSectionFrameBelow(parent, typeSectionWrapWB, stackAnchor, typeIndentWB, gapBelowStack, yOffset)
+                    gapBelowStack = SECTION_SPACING
+                    stackAnchor = typeSectionWrapWB
+
+                    local rowsContainer
                     local typeHeader, typeBtn = CreateCollapsibleHeader(
-                    parent,
+                    typeSectionWrapWB,
                     typeName .. " (" .. FormatNumber(displayCount) .. ")",
                     categoryKey,
                     isTypeExpanded,
                     function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
-                    typeIcon
+                    typeIcon,
+                    false,
+                    nil,
+                    nil,
+                    nil
                 )
-                typeHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
-                typeHeader:SetWidth(width - BASE_INDENT)
-                    yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)  -- Type header (no extra spacing before rows)
-                    
-                    if isTypeExpanded then
-                        -- Display items in this category (with search filter)
-                        for _, item in ipairs(warbandItems[typeName]) do
-                        -- Apply search filter
+                typeHeader:SetPoint("TOPLEFT", typeSectionWrapWB, "TOPLEFT", 0, 0)
+                typeHeader:SetWidth(typeSectionWrapWB:GetWidth())
+                    rowsContainer = CreateStorageRowsContainer(typeSectionWrapWB, typeHeader, 0, 0)
+                    local rowsYOffset = 0
+                    for _, item in ipairs(warbandItems[typeName]) do
                         local shouldShow = ItemMatchesSearch(item)
-                        
                         if shouldShow then
                             globalRowIdxAll = globalRowIdxAll + 1
                             local locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
-                            flatList[#flatList + 1] = {
-                                type = "row",
-                                yOffset = yOffset,
-                                height = ROW_HEIGHT + GetLayout().betweenRows,
-                                xOffset = BASE_INDENT,
-                                data = item,
-                                rowIdx = globalRowIdxAll,
-                                rowWidth = width - BASE_INDENT,
-                                locText = locText,
-                                sectionKey = categoryKey,
-                            }
-                            yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows
+                            local row = AcquireStorageRow(rowsContainer, width - BASE_INDENT, ROW_HEIGHT)
+                            row:ClearAllPoints()
+                            row:SetPoint("TOPLEFT", 0, -rowsYOffset)
+                            PopulateStorageRowDirect(row, item, globalRowIdxAll, width - BASE_INDENT, locText)
+                            animatedRows[#animatedRows + 1] = row
+                            rowsYOffset = rowsYOffset + ROW_HEIGHT + GetLayout().betweenRows
                         end
                     end
+                    rowsContainer._wnAccordionFullH = rowsYOffset
+                    if isTypeExpanded then
+                        rowsContainer:Show()
+                        rowsContainer:SetHeight(math.max(0.1, rowsYOffset))
+                    else
+                        rowsContainer:Hide()
+                        rowsContainer:SetHeight(0.1)
                     end
-                    
-                    -- Add spacing after each type section
-                    yOffset = yOffset + SECTION_SPACING
+                    typeSectionWrapWB:SetHeight(TYPE_SECTION_HEADER_H + math.max(0.1, rowsContainer:GetHeight() or 0.1))
+                    warbandTypesAdvance = warbandTypesAdvance + typeSectionWrapWB:GetHeight() + SECTION_SPACING
                 end  -- if displayCount > 0
             end  -- if not skipped by search
         end
             
             -- No empty state needed for Warband section
+            storageStackAnchor = stackAnchor
+            yOffset = yOffset + warbandTypesAdvance
+        else
+            storageStackAnchor = warbandHeader
+            yOffset = yOffset + HEADER_SPACING
         end  -- if warbandExpanded
     end  -- if warbandTotalMatches > 0
     
@@ -1179,7 +1337,7 @@ if warbandExpanded then
                 function(isExpanded) ToggleExpand(guildKey, isExpanded) end,
                 "dummy"  -- Dummy value to trigger icon creation
             )
-            guildHeader:SetPoint("TOPLEFT", 0, -yOffset)
+            ChainSectionFrameBelow(parent, guildHeader, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or 0, yOffset)
             guildHeader:SetWidth(width)  -- Set width to match content area
             
             -- Replace with Guild Bank icon (using Atlas)
@@ -1189,9 +1347,10 @@ if warbandExpanded then
                 guildIcon:SetSize(24, 24)
             end
             
-            yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
-        
+        local guildTypesAdvance
         if guildExpanded then
+            local stackAnchor = guildHeader
+            local gapBelowStack = SECTION_SPACING
             -- Sort types alphabetically
             local sortedTypes = {}
             for typeName in pairs(guildItems) do
@@ -1213,6 +1372,7 @@ if warbandExpanded then
                 end
             end
             table.sort(sortedTypes)
+            guildTypesAdvance = guildHeader:GetHeight() + SECTION_SPACING
             
             -- Draw each type category for this guild
             for _, typeName in ipairs(sortedTypes) do
@@ -1254,126 +1414,71 @@ if warbandExpanded then
                             typeIcon = GetTypeIcon(guildItems[typeName][1].classID)
                         end
                         
-                        -- Type header (indented under guild) - show match count if searching
+                        local typeIndentG = BASE_INDENT
+                        local typeSectionWrapG = ns.UI.Factory:CreateContainer(parent, math.max(1, width - typeIndentG), TYPE_SECTION_HEADER_H + 0.1, false)
+                        typeSectionWrapG:ClearAllPoints()
+                        if typeSectionWrapG.SetClipsChildren then
+                            typeSectionWrapG:SetClipsChildren(true)
+                        end
+                        ChainSectionFrameBelow(parent, typeSectionWrapG, stackAnchor, typeIndentG, gapBelowStack, yOffset)
+                        gapBelowStack = SECTION_SPACING
+                        stackAnchor = typeSectionWrapG
+
+                        local rowsContainer
                         local typeHeader, typeBtn = CreateCollapsibleHeader(
-                            parent,
+                            typeSectionWrapG,
                             typeName .. " (" .. FormatNumber(displayCount) .. ")",
                             categoryKey,
                             isTypeExpanded,
                             function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
                             typeIcon,
                             false,  -- isAtlas = false (item icons are texture paths)
-                            1       -- indentLevel = 1 (child of guild header)
+                            0,      -- indent via typeSectionWrapG anchor only (parity with Warband type headers)
+                            nil,
+                            nil
                         )
-                        typeHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
-                        typeHeader:SetWidth(width - BASE_INDENT)
-                        yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)  -- Type header (no extra spacing before rows)
-                        
-                        if isTypeExpanded then
-                            -- Display items in this category (with search filter)
-                            for _, item in ipairs(guildItems[typeName]) do
-                                -- Apply search filter
-                                local shouldShow = ItemMatchesSearch(item)
-                                
-                                if shouldShow then
-                                    globalRowIdxAll = globalRowIdxAll + 1
-                                    local locText = item.tabName or (item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex)) or ""
-                                    flatList[#flatList + 1] = {
-                                        type = "row",
-                                        yOffset = yOffset,
-                                        height = ROW_HEIGHT + GetLayout().betweenRows,
-                                        xOffset = BASE_INDENT,
-                                        data = item,
-                                        rowIdx = globalRowIdxAll,
-                                        rowWidth = width - BASE_INDENT,
-                                        locText = locText,
-                                        sectionKey = categoryKey,
-                                    }
-                                    yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows
-                                end
+                        typeHeader:SetPoint("TOPLEFT", typeSectionWrapG, "TOPLEFT", 0, 0)
+                        typeHeader:SetWidth(typeSectionWrapG:GetWidth())
+                        rowsContainer = CreateStorageRowsContainer(typeSectionWrapG, typeHeader, 0, 0)
+                        local rowsYOffset = 0
+                        for _, item in ipairs(guildItems[typeName]) do
+                            local shouldShow = ItemMatchesSearch(item)
+                            if shouldShow then
+                                globalRowIdxAll = globalRowIdxAll + 1
+                                local locText = item.tabName or (item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex)) or ""
+                                local row = AcquireStorageRow(rowsContainer, width - BASE_INDENT, ROW_HEIGHT)
+                                row:ClearAllPoints()
+                                row:SetPoint("TOPLEFT", 0, -rowsYOffset)
+                                PopulateStorageRowDirect(row, item, globalRowIdxAll, width - BASE_INDENT, locText)
+                                animatedRows[#animatedRows + 1] = row
+                                rowsYOffset = rowsYOffset + ROW_HEIGHT + GetLayout().betweenRows
                             end
                         end
-                        
-                        -- Add spacing after each type section
-                        yOffset = yOffset + SECTION_SPACING
+                        rowsContainer._wnAccordionFullH = rowsYOffset
+                        if isTypeExpanded then
+                            rowsContainer:Show()
+                            rowsContainer:SetHeight(math.max(0.1, rowsYOffset))
+                        else
+                            rowsContainer:Hide()
+                            rowsContainer:SetHeight(0.1)
+                        end
+                        typeSectionWrapG:SetHeight(TYPE_SECTION_HEADER_H + math.max(0.1, rowsContainer:GetHeight() or 0.1))
+                        guildTypesAdvance = guildTypesAdvance + typeSectionWrapG:GetHeight() + SECTION_SPACING
                     end  -- if displayCount > 0
                 end  -- if not skipped by search
             end  -- for typeName
+            storageStackAnchor = stackAnchor
+            yOffset = yOffset + guildTypesAdvance
+        else
+            storageStackAnchor = guildHeader
+            yOffset = yOffset + HEADER_SPACING
         end  -- if guildExpanded
         end  -- if guildMatches > 0
     end  -- for guildName (all guilds loop)
     
-    -- Virtual scroll setup
+    -- Legacy virtual-list hook: flat list path was never wired; clear any stale VLM state from older builds.
     local mainFrame = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local VLM = ns.VirtualListModule
-
-    if mainFrame and VLM and #flatList > 0 then
-        local function PopulateStorageRow(row, item, entry)
-            row:SetAlpha(1)
-            if row.anim then row.anim:Stop() end
-            ns.UI.Factory:ApplyRowBackground(row, entry.rowIdx)
-            
-            row.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
-            row.icon:SetTexture(item.iconFileID or 134400)
-            
-            local nameWidth = entry.rowWidth - 350
-            row.nameText:SetWidth(nameWidth)
-            
-            local baseName = item.name
-            if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
-                baseName = item.link:match("%[(.-)%]")
-            end
-            if not baseName and item.pending then
-                baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
-            end
-            if not baseName and item.itemID then
-                baseName = C_Item.GetItemInfo(item.itemID)
-            end
-            baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
-            
-            local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-            if item.pending then
-                row.nameText:SetText(format("|cff888888%s|r", displayName))
-            else
-                row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
-            end
-            
-            row.locationText:SetWidth(0)
-            row.locationText:SetText(entry.locText or "")
-            row.locationText:SetTextColor(1, 1, 1)
-            row.locationText:SetWordWrap(false)
-            row.locationText:SetNonSpaceWrap(false)
-            
-            row:SetScript("OnEnter", function(self)
-                if not ShowTooltip then
-                    if item.itemLink then
-                        ns.TooltipService:Show(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
-                    end
-                    return
-                end
-                ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink, anchor = "ANCHOR_LEFT" })
-            end)
-            row:SetScript("OnLeave", function()
-                if HideTooltip then HideTooltip() else ns.TooltipService:Hide() end
-            end)
-        end
-        
-        local totalHeight = VLM.SetupVirtualList(mainFrame, parent, 0, flatList, {
-            createRowFn = function(container, entry)
-                local row = AcquireStorageRow(container, entry.rowWidth, ROW_HEIGHT)
-                PopulateStorageRow(row, entry.data, entry)
-                return row
-            end,
-            releaseRowFn = function(frame)
-                ReleaseStorageRow(frame)
-            end,
-        })
-        
-        return math.max(totalHeight, yOffset) + GetLayout().minBottomSpacing
-    end
-
-    -- Nothing to virtualize (all collapsed / filtered out):
-    -- ensure stale virtual rows from previous render are removed.
     if mainFrame and VLM then
         VLM.ClearVirtualScroll(mainFrame)
     end
@@ -1389,6 +1494,16 @@ if warbandExpanded then
         end
     end
 
-    return yOffset + GetLayout().minBottomSpacing
+    local pad = GetLayout().minBottomSpacing or 0
+    if storageStackAnchor and parent.GetTop and storageStackAnchor.GetBottom then
+        local pTop = parent:GetTop()
+        local bot = storageStackAnchor:GetBottom()
+        if pTop and bot then
+            local measured = pTop - bot + pad
+            -- Prefer numeric yOffset if layout hasn't resolved same-frame (prevents tiny scroll height).
+            return math.max(1, measured, yOffset + pad)
+        end
+    end
+    return yOffset + pad
 end -- DrawStorageResults
 

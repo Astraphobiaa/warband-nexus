@@ -585,7 +585,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         end
         self.db.profile.currencyExpanded[key] = isExpanded
         if isExpanded then self.recentlyExpanded[key] = GetTime() end
-        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "currency", skipCooldown = true })
+        WarbandNexus:RedrawCurrencyResultsOnly()
     end
     
     -- Build currency data from global storage (Direct DB architecture)
@@ -674,6 +674,11 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
     
     -- ===== SHOW ALL MODE (ONLY) =====
+    local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
+    local COLLAPSE_H_CUR = SECTION_COLLAPSE_HEADER_HEIGHT
+    local currencyShowAllChainTail = nil
+    local currencyShowAllChainTailTopY = nil
+
     local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
         
         -- Section 1: Warband Transferable
@@ -700,8 +705,15 @@ function WarbandNexus:DrawCurrencyList(container, width)
             -- Sync Transfer button hidden (manual transfer via in-game currency frame)
             -- local syncBtn = CreateFrame("Button", ...) syncBtn:Hide()
             
-            sectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
-            sectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
+            do
+                local ySec = yOffset
+                local gapS = currencyShowAllChainTail and (ySec - currencyShowAllChainTailTopY - COLLAPSE_H_CUR) or nil
+                if gapS and gapS < 0 then gapS = 0 end
+                ChainSectionFrameBelow(parent, sectionHeader, currencyShowAllChainTail, 0, gapS, currencyShowAllChainTail and nil or ySec)
+                sectionHeader:SetWidth(width)
+                currencyShowAllChainTail = sectionHeader
+                currencyShowAllChainTailTopY = ySec
+            end
             yOffset = yOffset + HEADER_SPACING
             
             if sectionExpanded then
@@ -731,7 +743,10 @@ function WarbandNexus:DrawCurrencyList(container, width)
                             function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                             headerIcon  -- Add icon
                         )
-                        blizHeader:SetPoint("TOPLEFT", headerIndent, -yOffset)
+                        local yHeaderTop = yOffset
+                        local gapH = currencyShowAllChainTail and (yHeaderTop - currencyShowAllChainTailTopY - COLLAPSE_H_CUR) or nil
+                        if gapH and gapH < 0 then gapH = 0 end
+                        ChainSectionFrameBelow(parent, blizHeader, currencyShowAllChainTail, headerIndent, gapH, currencyShowAllChainTail and nil or yHeaderTop)
                         blizHeader:SetWidth(width - headerIndent)
                         yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT
                         
@@ -780,6 +795,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         if depthForComparison == baseDepth then
                             yOffset = yOffset + SECTION_SPACING
                         end
+
+                        currencyShowAllChainTail = blizHeader
+                        currencyShowAllChainTailTopY = yHeaderTop
                     end
                 end
                 
@@ -807,8 +825,15 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 GetCharacterSpecificIcon(),
                 true  -- isAtlas
             )
-            sectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
-            sectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
+            do
+                local ySec = yOffset
+                local gapS = currencyShowAllChainTail and (ySec - currencyShowAllChainTailTopY - COLLAPSE_H_CUR) or nil
+                if gapS and gapS < 0 then gapS = 0 end
+                ChainSectionFrameBelow(parent, sectionHeader, currencyShowAllChainTail, 0, gapS, currencyShowAllChainTail and nil or ySec)
+                sectionHeader:SetWidth(width)
+                currencyShowAllChainTail = sectionHeader
+                currencyShowAllChainTailTopY = ySec
+            end
             yOffset = yOffset + HEADER_SPACING
             
             if sectionExpanded then
@@ -838,7 +863,10 @@ function WarbandNexus:DrawCurrencyList(container, width)
                             function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                             headerIcon  -- Add icon
                         )
-                        blizHeader:SetPoint("TOPLEFT", headerIndent, -yOffset)
+                        local yHeaderTop = yOffset
+                        local gapH = currencyShowAllChainTail and (yHeaderTop - currencyShowAllChainTailTopY - COLLAPSE_H_CUR) or nil
+                        if gapH and gapH < 0 then gapH = 0 end
+                        ChainSectionFrameBelow(parent, blizHeader, currencyShowAllChainTail, headerIndent, gapH, currencyShowAllChainTail and nil or yHeaderTop)
                         blizHeader:SetWidth(width - headerIndent)
                         yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT
                         
@@ -894,6 +922,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         if depthForComparison == baseDepth then
                             yOffset = yOffset + SECTION_SPACING
                         end
+
+                        currencyShowAllChainTail = blizHeader
+                        currencyShowAllChainTailTopY = yHeaderTop
                     end
                 end
                 
@@ -963,6 +994,41 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
 
     return yOffset
+end
+
+--- Redraw Currency scroll results only. Skips PopulateContent — matches Items/Storage partial redraw.
+function WarbandNexus:RedrawCurrencyResultsOnly()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "currency" then return end
+    local scrollChild = mf.scrollChild
+    if not scrollChild then return end
+    local rc = scrollChild.resultsContainer
+    if not rc or rc:GetParent() ~= scrollChild then return end
+    local width = scrollChild:GetWidth() - 20
+    if width < 1 then return end
+
+    local listHeight = self:DrawCurrencyList(rc, width)
+    rc:SetHeight(math.max(listHeight or 1, 1))
+
+    local CONTENT_BOTTOM_PADDING = 8
+    local tabBodyHeight = 8 + (listHeight or 0)
+    scrollChild:SetHeight(math.max(tabBodyHeight + CONTENT_BOTTOM_PADDING, mf.scroll:GetHeight()))
+
+    if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
+    end
+    if ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
+        ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+    end
+
+    local sc = mf.scroll
+    if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+        local maxV = sc:GetVerticalScrollRange() or 0
+        local cur = sc:GetVerticalScroll() or 0
+        if cur > maxV then
+            sc:SetVerticalScroll(maxV)
+        end
+    end
 end
 
 --============================================================================

@@ -11,7 +11,7 @@
           “found” → ResetTryCount + BuildObtainedChat (first try / after N attempts).
         • If it does not appear: treat as “miss” → ProcessMissedDrops → manual +1 or ReseedStatistics
           (when statisticIds exist) + TRYCOUNTER_INCREMENT_CHAT via Fns.TryChat.
-      ENCOUNTER_END (+5s) is a safety net when no loot route counted yet (same miss/reseed rules).
+      ENCOUNTER_END schedules immediate-frame fallback when no loot route counted yet (same miss/reseed rules).
 
     Midnight 12.0.x: all ENCOUNTER_* / GetLootSourceInfo / UnitGUID / CHAT_MSG_LOOT strings guarded
       with issecretvalue before string ops; no COMBAT_LOG_EVENT_UNFILTERED subscription (forbidden).
@@ -72,7 +72,8 @@
     
     ProcessNPCLoot resolver chain (first match wins):
       P1: Per-slot source GUIDs → exact npcID/objectID match
-      P2: Unit GUIDs (npc/mo/tg/lastLoot) → only if P1 found nothing
+      P2: Unit GUIDs (npc/mo/tg/lastLoot) → only if P1 found nothing; guarded so mob GUIDs never steal
+          attribution when slot sources list different corpses or GameObject-only sessions (living rare target).
       P3: Zone hostileOnly-only pools (e.g. Crackling Shard / any mob). raresOnly zone mounts
           are NOT matched here — those NPCs are listed in CollectibleSourceDB.npcs; try counts require
           exact GUID→npcID match (P1/P2) so wrong mobs never increment.
@@ -5762,11 +5763,51 @@ function Fns.ResolveFromGUIDs(ctx, sourceGUIDs, addon)
     return nil
 end
 
+---True when P2 may use this GUID for npcDropDB/objectDrop matching.
+---If Blizzard exposed any Creature/Vehicle corpse in slot sources, require an exact list match so we never
+---attribute trash loot (or a chest) to a living targeted rare / stale last-target.
+---Pure GameObject source lists never consult mob GUIDs from unit tokens.
+---@param guid string|nil
+---@param sourceGUIDs table|nil
+---@return boolean
+function Fns.P2CandidateGuidAllowed(guid, sourceGUIDs)
+    if not guid or type(guid) ~= "string" then return false end
+    if issecretvalue and issecretvalue(guid) then return false end
+
+    local hasCreatureVehicle = false
+    local nonSecretCount = 0
+    local gameObjectOnlyCount = 0
+    if sourceGUIDs then
+        for i = 1, #sourceGUIDs do
+            local g = sourceGUIDs[i]
+            if type(g) ~= "string" or (issecretvalue and issecretvalue(g)) then
+                -- Midnight: corpse GUID may be secret — skip for classification (cannot enforce membership).
+            else
+                nonSecretCount = nonSecretCount + 1
+                if g:match("^Creature") or g:match("^Vehicle") then
+                    hasCreatureVehicle = true
+                    if g == guid then return true end
+                elseif g:match("^GameObject") then
+                    gameObjectOnlyCount = gameObjectOnlyCount + 1
+                end
+            end
+        end
+    end
+
+    local candIsMob = guid:match("^Creature") or guid:match("^Vehicle")
+    if nonSecretCount > 0 and gameObjectOnlyCount == nonSecretCount and not hasCreatureVehicle and candIsMob then
+        return false
+    end
+    if hasCreatureVehicle then return false end
+    return true
+end
+
 ---P2: Resolve from unit GUIDs (npc/mouseover/target/lastLoot).
 ---Only runs when P1 found no match. Each GUID requires exact ID equality.
 function Fns.ResolveFromUnits(ctx, numLoot, addon)
     if ctx.drops then return end
     local lootIsEmpty = (numLoot == 0)
+    local sources = lootSession.sourceGUIDs
 
     local candidates = {
         lootSession.npcGUID,
@@ -5779,14 +5820,18 @@ function Fns.ResolveFromUnits(ctx, numLoot, addon)
     for i = 1, #candidates do
         local guid = candidates[i]
         if guid and (lootIsEmpty or not processedGUIDs[guid]) then
-            local drops, npcID, objectID = Fns.MatchGuidExact(guid)
-            if drops then
-                ctx.drops = drops
-                ctx.matchedNpcID = npcID
-                ctx.lastMatchedObjectID = objectID
-                ctx.dedupGUID = guid
-                ctx.targetGUID = guid
-                return
+            if not Fns.P2CandidateGuidAllowed(guid, sources) then
+                -- skip
+            else
+                local drops, npcID, objectID = Fns.MatchGuidExact(guid)
+                if drops then
+                    ctx.drops = drops
+                    ctx.matchedNpcID = npcID
+                    ctx.lastMatchedObjectID = objectID
+                    ctx.dedupGUID = guid
+                    ctx.targetGUID = guid
+                    return
+                end
             end
         end
     end

@@ -35,6 +35,7 @@ local SearchResultsRenderer = ns.SearchResultsRenderer
 
 -- Import shared UI components
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateThemedButton = ns.UI_CreateThemedButton
@@ -1652,6 +1653,9 @@ function WarbandNexus:DrawReputationList(container, width)
     
     local parent = container
     local yOffset = 0
+    local repChainTail = nil
+    local repChainTailTopY = nil
+    local COLLAPSE_H_REP = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
     
     -- ===== TITLE CARD (Always shown) =====
     
@@ -1883,9 +1887,15 @@ function WarbandNexus:DrawReputationList(container, width)
         awExpandBtn:Show()
     end
     
-    awSectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
-    awSectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
-    awSectionHeader:SetWidth(width)
+    do
+        local ySec = yOffset
+        local gapAw = repChainTail and (ySec - repChainTailTopY - COLLAPSE_H_REP) or nil
+        if gapAw and gapAw < 0 then gapAw = 0 end
+        ChainSectionFrameBelow(parent, awSectionHeader, repChainTail, 0, gapAw, repChainTail and nil or ySec)
+        awSectionHeader:SetWidth(width)
+        repChainTail = awSectionHeader
+        repChainTailTopY = ySec
+    end
     -- Removing custom tint to match other tabs/headers
     -- awSectionHeader:SetBackdropColor(0.15, 0.08, 0.20, 1)  -- Purple-ish
     -- awSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
@@ -2005,8 +2015,15 @@ function WarbandNexus:DrawReputationList(container, width)
                         headerBtn:Show()
                     end
                     
-                    header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
-                    header:SetWidth(width - BASE_INDENT)
+                    do
+                        local yH = yOffset
+                        local gapH = repChainTail and (yH - repChainTailTopY - COLLAPSE_H_REP) or nil
+                        if gapH and gapH < 0 then gapH = 0 end
+                        ChainSectionFrameBelow(parent, header, repChainTail, BASE_INDENT, gapH, repChainTail and nil or yH)
+                        header:SetWidth(width - BASE_INDENT)
+                        repChainTail = header
+                        repChainTailTopY = yH
+                    end
                     
                     yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
                     
@@ -2115,9 +2132,15 @@ function WarbandNexus:DrawReputationList(container, width)
             cbExpandBtn:Show()
         end
         
-        cbSectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
-        cbSectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
-        cbSectionHeader:SetWidth(width)
+        do
+            local ySec = yOffset
+            local gapCb = repChainTail and (ySec - repChainTailTopY - COLLAPSE_H_REP) or nil
+            if gapCb and gapCb < 0 then gapCb = 0 end
+            ChainSectionFrameBelow(parent, cbSectionHeader, repChainTail, 0, gapCb, repChainTail and nil or ySec)
+            cbSectionHeader:SetWidth(width)
+            repChainTail = cbSectionHeader
+            repChainTailTopY = ySec
+        end
         -- Removing custom tint to match other tabs/headers
         -- cbSectionHeader:SetBackdropColor(0.08, 0.12, 0.15, 1)  -- Blue-ish
         -- cbSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
@@ -2230,8 +2253,15 @@ function WarbandNexus:DrawReputationList(container, width)
                             headerBtn:Show()
                         end
                     
-                        header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
-                        header:SetWidth(width - BASE_INDENT)
+                        do
+                            local yH = yOffset
+                            local gapH = repChainTail and (yH - repChainTailTopY - COLLAPSE_H_REP) or nil
+                            if gapH and gapH < 0 then gapH = 0 end
+                            ChainSectionFrameBelow(parent, header, repChainTail, BASE_INDENT, gapH, repChainTail and nil or yH)
+                            header:SetWidth(width - BASE_INDENT)
+                            repChainTail = header
+                            repChainTailTopY = yH
+                        end
                     
                         yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
                     

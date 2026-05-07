@@ -50,6 +50,7 @@ local CreateIcon = ns.UI_CreateIcon -- Factory for icons
 local FormatNumber = ns.UI_FormatNumber
 -- Pooling constants
 local AcquireCharacterRow = ns.UI_AcquireCharacterRow
+local ReleaseCharacterRow = ns.UI_ReleaseCharacterRow
 
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
 
@@ -203,6 +204,18 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Hide empty state card (will be shown again if needed)
     HideEmptyStateCard(parent, "characters")
+
+    -- Characters tab now renders rows inside animated section containers.
+    -- Release previously tracked nested rows before rebuilding to keep pool state correct.
+    if parent._wnCharactersNestedRows and ReleaseCharacterRow then
+        for i = 1, #parent._wnCharactersNestedRows do
+            local row = parent._wnCharactersNestedRows[i]
+            if row and row.rowType == "character" then
+                ReleaseCharacterRow(row)
+            end
+        end
+    end
+    parent._wnCharactersNestedRows = {}
 
     -- Pooled character rows: released in UI.lua PopulateContent (ReleaseAllPooledChildren) before
     -- this runs — do not call again here (double-release duplicated pool entries / shared frames).
@@ -726,155 +739,258 @@ function WarbandNexus:DrawCharacterList(parent)
         self.db.profile.ui.charactersExpanded = true
     end
     
-    -- ===== FAVORITES SECTION (Always show header) =====
+    -- ===== COLLAPSIBLE CHARACTER SECTIONS (accordion animated) =====
     local SECTION_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
-    -- Vertical gap between Favorites / Characters / Untracked collapsible header strips
     local SECTION_HEADER_GAP = 12
+    local sectionRows = parent._wnCharactersNestedRows
+    local previousSectionContent = nil
+    local isFirstSection = true
+
+    local function AcquireSectionContentFrame(anchorHeader)
+        local contentFrame = nil
+        if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
+            contentFrame = ns.UI.Factory:CreateContainer(parent, math.max(1, parent:GetWidth()), 1, false)
+        else
+            contentFrame = CreateFrame("Frame", nil, parent)
+            contentFrame:SetSize(math.max(1, parent:GetWidth()), 1)
+        end
+
+        contentFrame:ClearAllPoints()
+        contentFrame:SetPoint("TOPLEFT", anchorHeader, "BOTTOMLEFT", -SIDE_MARGIN, 0)
+        contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", SIDE_MARGIN, 0)
+        contentFrame:SetHeight(0.1)
+        contentFrame._wnAccordionFullH = 0
+        return contentFrame
+    end
+
+    local function DrawCharactersIntoSection(contentFrame, list, isFavorite, listKey, emptyMessage)
+        local sectionYOffset = 0
+        if #list > 0 then
+            for i = 1, #list do
+                local char = list[i]
+                local ok, nextYOffset, rowFrame = pcall(
+                    self.DrawCharacterRow,
+                    self,
+                    contentFrame,
+                    char,
+                    i,
+                    width,
+                    sectionYOffset,
+                    isFavorite,
+                    currentSortKey == "manual",
+                    list,
+                    listKey,
+                    i,
+                    #list,
+                    currentPlayerKey
+                )
+                if ok and nextYOffset then
+                    sectionYOffset = nextYOffset
+                    if rowFrame then
+                        sectionRows[#sectionRows + 1] = rowFrame
+                    end
+                else
+                    sectionYOffset = sectionYOffset + (ROW_HEIGHT or 36)
+                end
+            end
+        elseif emptyMessage and emptyMessage ~= "" then
+            local emptyText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+            emptyText:SetPoint("TOP", contentFrame, "TOP", 0, -20)
+            emptyText:SetText("|cff999999" .. emptyMessage .. "|r")
+            emptyText:SetWidth(width - 40)
+            emptyText:SetJustifyH("CENTER")
+            sectionYOffset = sectionYOffset + 50
+        end
+
+        contentFrame._wnAccordionFullH = sectionYOffset
+        if sectionYOffset > 0 then
+            contentFrame:SetHeight(sectionYOffset)
+        else
+            contentFrame:SetHeight(0.1)
+        end
+        return sectionYOffset
+    end
+
+    local function AnchorSectionHeader(headerFrame)
+        headerFrame:SetHeight(SECTION_H)
+        if isFirstSection then
+            headerFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+            headerFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+            isFirstSection = false
+        elseif previousSectionContent then
+            headerFrame:SetPoint("TOPLEFT", previousSectionContent, "BOTTOMLEFT", SIDE_MARGIN, -SECTION_HEADER_GAP)
+            headerFrame:SetPoint("TOPRIGHT", previousSectionContent, "BOTTOMRIGHT", -SIDE_MARGIN, -SECTION_HEADER_GAP)
+        else
+            headerFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+            headerFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+        end
+    end
+
+    -- Favorites
+    local favoritesExpanded = self.charactersExpandAllActive or self.db.profile.ui.favoritesExpanded
+    local favoritesContent
     local favHeader, _, favIcon = CreateCollapsibleHeader(
         parent,
         ((ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites"),
         "favorites",
-        self.charactersExpandAllActive or self.db.profile.ui.favoritesExpanded,
+        favoritesExpanded,
         function(isExpanded)
             self.db.profile.ui.favoritesExpanded = isExpanded
-            if isExpanded then self.recentlyExpanded["favorites"] = GetTime() end
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+            if isExpanded then
+                self.recentlyExpanded["favorites"] = GetTime()
+                if favoritesContent then
+                    favoritesContent:Show()
+                    favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnAccordionFullH or 0.1))
+                end
+            elseif favoritesContent then
+                favoritesContent:Hide()
+                favoritesContent:SetHeight(0.1)
+            end
         end,
         "GM-icon-assistActive-hover",
         true,
         nil,
         nil,
-        { sectionPreset = "gold" }
+        {
+            sectionPreset = "gold",
+        }
     )
-    favHeader:SetHeight(SECTION_H)
-    favHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    favHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    AnchorSectionHeader(favHeader)
     if favIcon then favIcon:SetSize(28, 28) end
-    
+
     local favCount = FontManager:CreateFontString(favHeader, "body", "OVERLAY")
     favCount:SetPoint("RIGHT", -14, 0)
     favCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedFavorites) .. "|r")
-    
-    yOffset = yOffset + SECTION_H
-    
-    if self.db.profile.ui.favoritesExpanded then
-        if #trackedFavorites > 0 then
-            for i = 1, #trackedFavorites do
-                local char = trackedFavorites[i]
-                local ok, result = pcall(self.DrawCharacterRow, self, parent, char, i, width, yOffset, true, currentSortKey == "manual", trackedFavorites, "favorites", i, #trackedFavorites, currentPlayerKey)
-                if ok and result then
-                    yOffset = result
-                else
-                    yOffset = yOffset + (ROW_HEIGHT or 36)
-                end
-            end
-        else
-            -- Empty state - anchor to favorites header
-            local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-            emptyText:SetPoint("TOP", favHeader, "BOTTOM", 0, -20)  -- 20px padding from header
-            emptyText:SetText("|cff999999" .. ((ns.L and ns.L["NO_FAVORITES"]) or "No favorite characters yet. Click the star icon to favorite a character.") .. "|r")
-            emptyText:SetWidth(width - 40)
-            emptyText:SetJustifyH("CENTER")
-            
-            yOffset = yOffset + 50  -- Space for empty state message
-        end
-    end
 
-    yOffset = yOffset + SECTION_HEADER_GAP
-    
-    -- ===== REGULAR CHARACTERS SECTION (Always show header) =====
-    local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
+    favoritesContent = AcquireSectionContentFrame(favHeader)
+    local favoritesHeight = DrawCharactersIntoSection(
+        favoritesContent,
+        trackedFavorites,
+        true,
+        "favorites",
+        (ns.L and ns.L["NO_FAVORITES"]) or "No favorite characters yet. Click the star icon to favorite a character."
+    )
+    if favoritesExpanded then
+        favoritesContent:Show()
+        favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnAccordionFullH or 0.1))
+    else
+        favoritesContent:Hide()
+        favoritesContent:SetHeight(0.1)
+    end
+    previousSectionContent = favoritesContent
+    yOffset = yOffset + SECTION_H + (favoritesExpanded and favoritesHeight or 0) + SECTION_HEADER_GAP
+
+    -- Regular characters
+    local charactersExpanded = self.db.profile.ui.charactersExpanded
+    local charactersContent
     local charHeader, _, charIcon = CreateCollapsibleHeader(
         parent,
         ((ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters"),
         "characters",
-        self.db.profile.ui.charactersExpanded,
+        charactersExpanded,
         function(isExpanded)
             self.db.profile.ui.charactersExpanded = isExpanded
-            if isExpanded then self.recentlyExpanded["characters"] = GetTime() end
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+            if isExpanded then
+                self.recentlyExpanded["characters"] = GetTime()
+                if charactersContent then
+                    charactersContent:Show()
+                    charactersContent:SetHeight(math.max(0.1, charactersContent._wnAccordionFullH or 0.1))
+                end
+            elseif charactersContent then
+                charactersContent:Hide()
+                charactersContent:SetHeight(0.1)
+            end
         end,
         "GM-icon-headCount",
-        true
+        true,
+        nil,
+        nil,
+        nil
     )
-    charHeader:SetHeight(SECTION_H)
-    charHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    charHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    
+    AnchorSectionHeader(charHeader)
+    if charIcon then charIcon:SetSize(24, 24) end
+
     local charCount = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
     charCount:SetPoint("RIGHT", -14, 0)
     charCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedRegular) .. "|r")
-    
-    yOffset = yOffset + SECTION_H
-    
-    if self.db.profile.ui.charactersExpanded then
-        if #trackedRegular > 0 then
-            for i = 1, #trackedRegular do
-                local char = trackedRegular[i]
-                local ok, result = pcall(self.DrawCharacterRow, self, parent, char, i, width, yOffset, false, currentSortKey == "manual", trackedRegular, "regular", i, #trackedRegular, currentPlayerKey)
-                if ok and result then
-                    yOffset = result
-                else
-                    yOffset = yOffset + (ROW_HEIGHT or 36)
-                end
-            end
-        else
-            -- Empty state - anchor to characters header
-            local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-            emptyText:SetPoint("TOP", charHeader, "BOTTOM", 0, -20)  -- 20px padding from header
-            emptyText:SetText("|cff999999" .. ((ns.L and ns.L["ALL_FAVORITED"]) or "All characters are favorited!") .. "|r")
-            emptyText:SetWidth(width - 40)
-            emptyText:SetJustifyH("CENTER")
-            
-            yOffset = yOffset + 50  -- Space for empty state message
-        end
+
+    charactersContent = AcquireSectionContentFrame(charHeader)
+    local charactersHeight = DrawCharactersIntoSection(
+        charactersContent,
+        trackedRegular,
+        false,
+        "regular",
+        (ns.L and ns.L["ALL_FAVORITED"]) or "All characters are favorited!"
+    )
+    if charactersExpanded then
+        charactersContent:Show()
+        charactersContent:SetHeight(math.max(0.1, charactersContent._wnAccordionFullH or 0.1))
+    else
+        charactersContent:Hide()
+        charactersContent:SetHeight(0.1)
     end
-    
-    -- ===== UNTRACKED CHARACTERS SECTION (Only show if untracked characters exist) =====
+    previousSectionContent = charactersContent
+    yOffset = yOffset + SECTION_H + (charactersExpanded and charactersHeight or 0)
+
+    -- Untracked characters (only when there are entries)
     if #untracked > 0 then
         yOffset = yOffset + SECTION_HEADER_GAP
-        -- Initialize collapse state
         if self.db.profile.ui.untrackedExpanded == nil then
-            self.db.profile.ui.untrackedExpanded = false  -- Collapsed by default
+            self.db.profile.ui.untrackedExpanded = false
         end
-        
+
+        local untrackedExpanded = self.db.profile.ui.untrackedExpanded
+        local untrackedContent
         local untrackedHeader, _, untrackedIcon = CreateCollapsibleHeader(
             parent,
             ((ns.L and ns.L["UNTRACKED_CHARACTERS"]) or "Untracked Characters"),
             "untracked",
-            self.db.profile.ui.untrackedExpanded,
+            untrackedExpanded,
             function(isExpanded)
                 self.db.profile.ui.untrackedExpanded = isExpanded
-                if isExpanded then self.recentlyExpanded["untracked"] = GetTime() end
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+                if isExpanded then
+                    self.recentlyExpanded["untracked"] = GetTime()
+                    if untrackedContent then
+                        untrackedContent:Show()
+                        untrackedContent:SetHeight(math.max(0.1, untrackedContent._wnAccordionFullH or 0.1))
+                    end
+                elseif untrackedContent then
+                    untrackedContent:Hide()
+                    untrackedContent:SetHeight(0.1)
+                end
             end,
             "DungeonStoneCheckpointDeactivated",
             true,
             nil,
             nil,
-            { sectionPreset = "danger" }
+            {
+                sectionPreset = "danger",
+            }
         )
-        untrackedHeader:SetHeight(SECTION_H)
-        untrackedHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-        untrackedHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-        
+        AnchorSectionHeader(untrackedHeader)
+        if untrackedIcon then untrackedIcon:SetSize(24, 24) end
+
         local untrackedCount = FontManager:CreateFontString(untrackedHeader, "body", "OVERLAY")
         untrackedCount:SetPoint("RIGHT", -14, 0)
         untrackedCount:SetText("|cff888888" .. FormatNumber(#untracked) .. "|r")
-        
-        yOffset = yOffset + SECTION_H
-        
-        if self.db.profile.ui.untrackedExpanded then
-            for i = 1, #untracked do
-                local char = untracked[i]
-                local ok, result = pcall(self.DrawCharacterRow, self, parent, char, i, width, yOffset, false, currentSortKey == "manual", untracked, "untracked", i, #untracked, currentPlayerKey)
-                if ok and result then
-                    yOffset = result
-                else
-                    yOffset = yOffset + (ROW_HEIGHT or 36)
-                end
-            end
+
+        untrackedContent = AcquireSectionContentFrame(untrackedHeader)
+        local untrackedHeight = DrawCharactersIntoSection(
+            untrackedContent,
+            untracked,
+            false,
+            "untracked",
+            nil
+        )
+        if untrackedExpanded then
+            untrackedContent:Show()
+            untrackedContent:SetHeight(math.max(0.1, untrackedContent._wnAccordionFullH or 0.1))
+        else
+            untrackedContent:Hide()
+            untrackedContent:SetHeight(0.1)
         end
+        previousSectionContent = untrackedContent
+        yOffset = yOffset + SECTION_H + (untrackedExpanded and untrackedHeight or 0)
     end
     
     return yOffset
@@ -1823,7 +1939,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
 
     
     local betweenRows = GetLayout().betweenRows or 0
-    return yOffset + 46 + betweenRows  -- Row 46px + spacing (betweenRows from UI_LAYOUT)
+    return yOffset + 46 + betweenRows, row  -- Row 46px + spacing + row ref for pool tracking
 end
 
 

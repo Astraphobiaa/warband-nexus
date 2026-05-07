@@ -1557,6 +1557,21 @@ function WarbandNexus:CreateMainWindow()
         if payload and payload.skipCooldown == false then
             skipCooldown = false
         end
+        -- Bypass POPULATE_DEBOUNCE for explicit UI gestures (e.g. Storage section expand/collapse).
+        if payload and payload.instantPopulate then
+            if pendingPopulateTimer then
+                if pendingPopulateTimer.Cancel then
+                    pendingPopulateTimer:Cancel()
+                end
+            end
+            pendingPopulateTimer = nil
+            populateDebounceGen = populateDebounceGen + 1
+            pendingPopulateSkipCooldown = false
+            if not f or not f:IsShown() then return end
+            lastEventPopulateTime = GetTime()
+            WarbandNexus:PopulateContent()
+            return
+        end
         SchedulePopulateContent(skipCooldown)
     end)
 

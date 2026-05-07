@@ -32,6 +32,10 @@ end
 -- Unique AceEvent handler identity for PlansUI
 local PlansUIEvents = {}
 
+-- Expand state for the To-Do List rows (mirrors PlansTrackerWindow). Keyed by plan.id so
+-- the user's open/closed choices survive across PopulateContent rebuilds.
+local expandedPlans = {}
+
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 
@@ -1541,230 +1545,165 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             card:Show()
         
         else
-            -- === REGULAR PLANS (2-Column Layout) ===
-            
-            -- Use provided width (Parent - 20) for consistent margins
+            -- === REGULAR PLANS (2-column expandable rows, mirrors the floating tracker) ===
             local listCardWidth = (width - cardSpacing) / 2
-            
-            -- Determine column (alternate between 0 and 1); regularCountBefore[i] = regular plans in [1..i-1]
             local col = (regularCountBefore[i] or 0) % 2
-        
-        -- Per-type card height (achievements need more vertical space for collapsed content)
-        local cardHeight = (plan.type == "achievement") and CARD_HEIGHT_ACHIEVEMENT or CARD_HEIGHT_DEFAULT
-        
-        -- Use factory to create card
-        local card = nil
-        if PlanCardFactory then
-            card = PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, cardHeight, listCardWidth, {
-                tryCountClickableOptions = { popupOnRightClick = false },
-            })
-        else
-            -- Fallback to old method if factory not available
-            card = CreateCard(parent, cardHeight)
-        card:SetWidth(listCardWidth)
-        card:EnableMouse(true)
-        CardLayoutManager:AddCard(layoutManager, card, col, cardHeight)
-        card.originalHeight = cardHeight
+
+            local PCF = ns.UI_PlanCardFactory
+            local typeAtlas = PCF and PCF.TYPE_ICONS and PCF.TYPE_ICONS[plan.type]
+            local resolvedName = (self.GetResolvedPlanName and self:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+            local resolvedIcon = (self.GetResolvedPlanIcon and self:GetResolvedPlanIcon(plan)) or plan.iconAtlas or plan.icon
+            local iconIsAtlas = false
+            if plan.iconAtlas then iconIsAtlas = true
+            elseif plan.type == "custom" and plan.icon and plan.icon ~= "" then iconIsAtlas = true
+            elseif type(resolvedIcon) == "string" and ns.Utilities and ns.Utilities.IsAtlasName and ns.Utilities:IsAtlasName(resolvedIcon) then iconIsAtlas = true
+            end
+            if not resolvedIcon or resolvedIcon == "" then resolvedIcon = "Interface\\Icons\\INV_Misc_QuestionMark" end
+
+            -- Achievement title gets " - (X pts)" appended (matches tracker formatting)
+            local titleStr = FormatTextNumbers(resolvedName)
+            if plan.type == "achievement" then
+                local pts = plan.points
+                if (not pts or pts == 0) and plan.achievementID then
+                    local ok, _, _, p = pcall(GetAchievementInfo, plan.achievementID)
+                    if ok and p then pts = p end
+                end
+                if pts and pts > 0 then
+                    titleStr = titleStr .. string.format(" - |cffffd700(%d pts)|r", pts)
+                end
+            end
+
+            -- Build expanded body: information + criteria
+            local information, criteriaItems, criteriaHeader, criteriaText
+            if plan.type == "achievement" and plan.achievementID then
+                local _, _, _, _, _, _, _, achDesc = GetAchievementInfo(plan.achievementID)
+                if achDesc and achDesc ~= "" then information = "|cff99ccff" .. achDesc .. "|r" end
+                local numCriteria = (GetAchievementNumCriteria and GetAchievementNumCriteria(plan.achievementID)) or 0
+                if numCriteria > 0 then
+                    local completed = 0
+                    local items = {}
+                    for cidx = 1, numCriteria do
+                        local cName, _, cDone, qty, reqQty = GetAchievementCriteriaInfo(plan.achievementID, cidx)
+                        if cName and cName ~= "" then
+                            if cDone then completed = completed + 1 end
+                            local icon = cDone and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                            local progress = (qty and reqQty and reqQty > 1) and string.format(" (%s / %s)", FormatNumber(qty), FormatNumber(reqQty)) or ""
+                            items[#items + 1] = { text = icon .. " " .. cName .. progress, completed = cDone }
+                        end
+                    end
+                    criteriaItems = items
+                    local pct = math.floor((completed / numCriteria) * 100)
+                    local achFmt = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
+                    criteriaText = string.format(achFmt, FormatNumber(completed), FormatNumber(numCriteria), FormatNumber(pct))
+                end
+                criteriaHeader = true
+            else
+                if plan.type == "custom" then
+                    local d = plan.description or plan.note or ""
+                    if d ~= "" and d ~= "Custom plan" then information = d end
+                end
+                criteriaItems = ns.UI_BuildPlanCriteriaItems and ns.UI_BuildPlanCriteriaItems(plan) or {}
+                criteriaHeader = false
+            end
+
+            -- Right-side action stack: delete + (custom: complete) + (collectible: tries pill)
+            local ACTION_SIZE, ACTION_GAP = 16, 4
+            local titleRightInset = 6 + ACTION_SIZE + ACTION_GAP
+            if plan.type == "custom" then titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP end
+            local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
+            local idKey = tryCountTypes[plan.type]
+            local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
+            local hasTry = collectibleID and ns.UI.Factory and ns.UI.Factory.CreateTryCountClickable
+                and self.ShouldShowTryCountInUI and self:ShouldShowTryCountInUI(plan.type, collectibleID)
+            if hasTry then titleRightInset = titleRightInset + 78 + 4 end
+
+            local rowData = {
+                icon = resolvedIcon,
+                iconIsAtlas = iconIsAtlas,
+                iconSize = 41,
+                typeAtlas = typeAtlas,
+                typeBadgeSize = 24,
+                title = titleStr,
+                information = information,
+                criteria = criteriaText,
+                criteriaData = criteriaItems,
+                criteriaColumns = 2,
+                criteriaShowHeader = criteriaHeader,
+                titleRightInset = titleRightInset,
+                -- Per-frame reflow: keep the rest of the grid breathing with this row's tween.
+                onAccordionResize = function(rowFrame, currentH)
+                    CardLayoutManager:UpdateCardHeight(rowFrame, currentH)
+                end,
+            }
+
+            local isExpanded = expandedPlans[plan.id] or false
+            local row = CreateExpandableRow(parent, listCardWidth, 60, rowData, isExpanded, function(expanded)
+                -- Persist state only — the layout has been kept in sync per-frame already.
+                expandedPlans[plan.id] = expanded
+            end)
+
+            row:SetWidth(listCardWidth)
+            CardLayoutManager:AddCard(layoutManager, row, col, row:GetHeight())
+
+            if ApplyVisuals then
+                local borderColor = { COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4 }
+                ApplyVisuals(row, {0.08, 0.08, 0.10, 1}, borderColor)
+            end
+
+            -- Header right-side actions (Delete + optional Complete) sit above the headerFrame's
+            -- expand-toggle handler so clicks reach the action button, not the toggle.
+            local rightOffset = 6
+            local function makeAction(normalTex, highlightTex, onClick, tooltipKey, tooltipFallback)
+                local btn = ns.UI.Factory:CreateButton(row.headerFrame, ACTION_SIZE, ACTION_SIZE, true)
+                btn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
+                btn:SetFrameLevel(row.headerFrame:GetFrameLevel() + 10)
+                btn:SetNormalTexture(normalTex)
+                btn:SetHighlightTexture(highlightTex)
+                btn:SetScript("OnMouseDown", function() end)
+                btn:RegisterForClicks("AnyUp")
+                btn:SetScript("OnClick", onClick)
+                btn:SetScript("OnEnter", function(b)
+                    ns.TooltipService:Show(b, {
+                        type = "custom",
+                        title = (ns.L and ns.L[tooltipKey]) or tooltipFallback,
+                        icon = false, anchor = "ANCHOR_TOP", lines = {},
+                    })
+                end)
+                btn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
+                rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
+                return btn
+            end
+
+            makeAction(
+                "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
+                "Interface\\Buttons\\UI-GroupLoot-Pass-Highlight",
+                function() if plan.id then self:RemovePlan(plan.id) end end,
+                "PLAN_ACTION_DELETE", "Delete the Plan"
+            )
+            if plan.type == "custom" then
+                makeAction(
+                    "Interface\\RaidFrame\\ReadyCheck-Ready",
+                    "Interface\\RaidFrame\\ReadyCheck-Ready",
+                    function() if self.CompleteCustomPlan then self:CompleteCustomPlan(plan.id) end end,
+                    "PLAN_ACTION_COMPLETE", "Complete the Plan"
+                )
+            end
+
+            if hasTry then
+                local TRY_W, TRY_H = 78, 18
+                local tryRow = ns.UI.Factory:CreateTryCountClickable(row.headerFrame, {
+                    height = TRY_H, frameLevelOffset = 15, showTooltip = true, popupOnRightClick = false,
+                })
+                tryRow:SetSize(TRY_W, TRY_H)
+                tryRow:ClearAllPoints()
+                tryRow:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
+                tryRow:WnUpdateTryCount(plan.type, collectibleID, resolvedName)
+            end
+
+            row:Show()
         end
-        
-        if card then
-            -- Row actions on every visible card (To-Do / Weekly: Show Completed filter only).
-            do
-                local CBL = ns.UI_CARD_BUTTON_LAYOUT or {ACTION_SIZE = 20, ACTION_MARGIN = 8, ACTION_GAP = 4}
-                local actionSize = CBL.ACTION_SIZE
-                local actionMargin = CBL.ACTION_MARGIN
-                local actionGap = CBL.ACTION_GAP
-                
-                -- For custom plans, add a complete button (green checkmark) before the X
-                if plan.type == "custom" then
-                    local completeBtn = ns.UI.Factory:CreateButton(card, actionSize, actionSize, true)  -- noBorder=true
-                    completeBtn:SetPoint("TOPRIGHT", -(actionMargin + actionSize + actionGap), -actionMargin)
-                    completeBtn:SetNormalTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-                    completeBtn:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-                    completeBtn:GetHighlightTexture():SetAlpha(0.5)
-                    completeBtn:SetScript("OnClick", function()
-                        if self.CompleteCustomPlan then
-                            self:CompleteCustomPlan(plan.id)
-                        end
-                    end)
-                    completeBtn:SetScript("OnEnter", function(btn)
-                        ns.TooltipService:Show(
-                            btn,
-                            {
-                                type = "custom",
-                                title = (ns.L and ns.L["PLAN_ACTION_COMPLETE"]) or "Complete the Plan",
-                                icon = false,
-                                anchor = "ANCHOR_TOP",
-                                lines = {}
-                            }
-                        )
-                    end)
-                    completeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
-                end
-                
-                local removeBtn = ns.UI.Factory:CreateButton(card, actionSize, actionSize, true)  -- noBorder=true
-                removeBtn:SetPoint("TOPRIGHT", -actionMargin, -actionMargin)
-                removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-                removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
-                -- Mark that click was on remove button to prevent card expansion
-                removeBtn:SetScript("OnMouseDown", function(self, button)
-                    if card then
-                        card.clickedOnRemoveBtn = true
-                    end
-                end)
-                removeBtn:SetScript("OnClick", function()
-                    self:RemovePlan(plan.id)
-                end)
-                removeBtn:SetScript("OnEnter", function(btn)
-                    ns.TooltipService:Show(
-                        btn,
-                        {
-                            type = "custom",
-                            title = (ns.L and ns.L["PLAN_ACTION_DELETE"]) or "Delete the Plan",
-                            icon = false,
-                            anchor = "ANCHOR_TOP",
-                            lines = {}
-                        }
-                    )
-                end)
-                removeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
-                
-                local hasReminder = self.HasPlanReminder and self:HasPlanReminder(plan.id)
-                local alertBtnX = -(actionMargin + actionSize + actionGap)
-                if plan.type == "custom" then
-                    alertBtnX = -(actionMargin + (actionSize + actionGap) * 2)
-                end
-                local alertBtn = ns.UI.Factory:CreateButton(card, actionSize, actionSize, true)
-                alertBtn:SetPoint("TOPRIGHT", alertBtnX, -actionMargin)
-                local bellTex = alertBtn:CreateTexture(nil, "ARTWORK")
-                bellTex:SetSize(actionSize - 2, actionSize - 2)
-                bellTex:SetPoint("CENTER")
-                bellTex:SetAtlas("minimap-genericevent-hornicon-small", true)
-                if hasReminder then
-                    bellTex:SetVertexColor(1, 0.82, 0)
-                else
-                    bellTex:SetVertexColor(0.5, 0.5, 0.5)
-                end
-                alertBtn._bellTex = bellTex
-                alertBtn:SetScript("OnMouseDown", function(self, button)
-                    if card then card.clickedOnRemoveBtn = true end
-                end)
-                alertBtn:SetScript("OnClick", function()
-                    if self.ShowSetAlertDialog then
-                        self:ShowSetAlertDialog(plan.id)
-                    end
-                end)
-                alertBtn:SetScript("OnEnter", function(btn)
-                    if btn._bellTex then btn._bellTex:SetVertexColor(1, 0.9, 0.3) end
-                    local title = hasReminder and ((ns.L and ns.L["ALERT_ACTIVE"]) or "Alert Active") or ((ns.L and ns.L["SET_ALERT"]) or "Set Alert")
-                    ns.TooltipService:Show(btn, { type = "custom", title = title, icon = false, anchor = "ANCHOR_TOP", lines = {} })
-                end)
-                alertBtn:SetScript("OnLeave", function(btn)
-                    if btn._bellTex then
-                        local active = self.HasPlanReminder and self:HasPlanReminder(plan.id)
-                        btn._bellTex:SetVertexColor(active and 1 or 0.5, active and 0.82 or 0.5, active and 0 or 0.5)
-                    end
-                    ns.TooltipService:Hide()
-                end)
-
-                -- Name row: keep left anchor; right edge clears Wowhead (factory) + action row
-                if card.nameText then
-                    local pt1, rel1, relPt1, x1, y1 = card.nameText:GetPoint(1)
-                    card.nameText:ClearAllPoints()
-                    if pt1 and rel1 then
-                        card.nameText:SetPoint(pt1, rel1, relPt1, x1, y1)
-                    end
-                    local nameGap = (ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP) or 6
-                    local anchorNameRight = card.chatLinkBtn or card.wowheadBtn
-                    if anchorNameRight then
-                        card.nameText:SetPoint("RIGHT", anchorNameRight, "LEFT", -nameGap, 0)
-                    else
-                        local whInset = (ns.GetPlanCardWowheadRightInset and ns.GetPlanCardWowheadRightInset(plan.type)) or 56
-                        local whW = (ns.PLAN_CARD_WOWHEAD_SIZE) or 18
-                        card.nameText:SetPoint("RIGHT", card, "RIGHT", -(whInset + whW + nameGap), 0)
-                    end
-                end
-            end
-
-            -- To-Do List: try count is edited from the try row only (left-click); no card-level right-click popup.
-            local hasResetCycle = plan.type == "custom"
-
-            -- Custom plans: reset cycle still uses context menu when MenuUtil exists
-            if hasResetCycle then
-                do
-                    local cp = plan
-                    card:SetScript("OnMouseDown", function(_, button)
-                        if button ~= "RightButton" or card.clickedOnRemoveBtn then return end
-                        if MenuUtil and MenuUtil.CreateContextMenu then
-                            local contextPlan = cp
-                            MenuUtil.CreateContextMenu(card, function(_, rootDescription)
-                                local rc = contextPlan.resetCycle
-                                local resetSubmenu = rootDescription:CreateButton((ns.L and ns.L["SET_RESET_CYCLE"]) or "Set Reset Cycle")
-
-                                resetSubmenu:CreateRadio(
-                                    (ns.L and ns.L["DAILY_RESET"]) or "Daily Reset",
-                                    function() return rc and rc.enabled and rc.resetType == "daily" end,
-                                    function()
-                                        if contextPlan then
-                                            local oldTotal = (contextPlan.resetCycle and contextPlan.resetCycle.totalCycles) or 7
-                                            local oldRemaining = (contextPlan.resetCycle and contextPlan.resetCycle.remainingCycles) or oldTotal
-                                            contextPlan.resetCycle = { enabled = true, resetType = "daily", lastResetTime = time(), totalCycles = oldTotal, remainingCycles = oldRemaining }
-                                            WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "reset_cycle_updated", planID = contextPlan.id })
-                                        end
-                                    end
-                                )
-
-                                resetSubmenu:CreateRadio(
-                                    (ns.L and ns.L["WEEKLY_RESET"]) or "Weekly Reset",
-                                    function() return rc and rc.enabled and rc.resetType == "weekly" end,
-                                    function()
-                                        if contextPlan then
-                                            local oldTotal = (contextPlan.resetCycle and contextPlan.resetCycle.totalCycles) or 4
-                                            local oldRemaining = (contextPlan.resetCycle and contextPlan.resetCycle.remainingCycles) or oldTotal
-                                            contextPlan.resetCycle = { enabled = true, resetType = "weekly", lastResetTime = time(), totalCycles = oldTotal, remainingCycles = oldRemaining }
-                                            WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "reset_cycle_updated", planID = contextPlan.id })
-                                        end
-                                    end
-                                )
-
-                                resetSubmenu:CreateRadio(
-                                    (ns.L and ns.L["NONE_DISABLE"]) or "None (Disable)",
-                                    function() return not rc or not rc.enabled end,
-                                    function()
-                                        if contextPlan and contextPlan.resetCycle then
-                                            contextPlan.resetCycle.enabled = false
-                                            WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "reset_cycle_updated", planID = contextPlan.id })
-                                        end
-                                    end
-                                )
-
-                                if rc and rc.enabled and rc.totalCycles then
-                                    local extUnit = rc.resetType == "daily" and ((ns.L and ns.L["DAYS_LABEL"]) or "days") or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
-                                    local extendSubmenu = rootDescription:CreateButton((ns.L and ns.L["EXTEND_DURATION"]) or "Extend Duration")
-
-                                    for _, amount in ipairs({1, 3, 7, 14}) do
-                                        extendSubmenu:CreateButton(string.format("+%d %s", amount, extUnit), function()
-                                            if contextPlan and contextPlan.resetCycle then
-                                                contextPlan.resetCycle.totalCycles = (contextPlan.resetCycle.totalCycles or 0) + amount
-                                                contextPlan.resetCycle.remainingCycles = (contextPlan.resetCycle.remainingCycles or 0) + amount
-                                                WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "reset_cycle_updated", planID = contextPlan.id })
-                                            end
-                                        end)
-                                    end
-                                end
-                            end)
-                        end
-                        card.clickedOnRemoveBtn = nil
-                    end)
-                end
-            end
-            
-            -- CRITICAL: Show the regular plan card!
-            card:Show()
-        end  -- End if card check
-        end  -- End of regular plans (else block)
     end
-    
+
     -- Sync row offsets after all cards are added (prevents gaps from mixed-height cards)
     CardLayoutManager:RecalculateAllPositions(layoutManager)
     PlanCardFactory:ReflowAllPlanCards(layoutManager)
@@ -2187,6 +2126,12 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     -- Get expanded state
     local expandedGroups = ns.UI_GetExpandedGroups()
     
+    local achChainTail = nil
+    local achChainTailTopY = nil
+    local COLLAPSE_H_ACH = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
+    local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
+    local BASE_PLAN_INDENT = GetLayout().BASE_INDENT
+    
     -- Draw categories hierarchically
     for _, rootCategoryID in ipairs(rootCategories) do
         local rootCategory = categoryData[rootCategoryID]
@@ -2208,6 +2153,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         
         -- Only draw root category if it has achievements (hide empty categories during search)
         if totalAchievements > 0 then
+        local yRootTop = yOffset
         -- Draw root category header
         local rootKey = "achievement_cat_" .. rootCategoryID
         local rootExpanded = self.achievementsExpandAllActive or (expandedGroups[rootKey] == true)
@@ -2233,8 +2179,14 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             "Interface\\Icons\\Achievement_General",
             false
         )
-        rootHeader:SetPoint("TOPLEFT", 0, -yOffset)
-        rootHeader:SetWidth(width)
+        do
+            local gapR = achChainTail and (yRootTop - achChainTailTopY - COLLAPSE_H_ACH) or nil
+            if gapR and gapR < 0 then gapR = 0 end
+            ChainSectionFrameBelow(parent, rootHeader, achChainTail, 0, gapR, achChainTail and nil or yRootTop)
+            rootHeader:SetWidth(width)
+            achChainTail = rootHeader
+            achChainTailTopY = yRootTop
+        end
         
         yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
         
@@ -2280,6 +2232,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     childExpanded = true
                 end
                 
+                local yChildTop = yOffset
                 local childHeader = CreateCollapsibleHeader(
                     parent,
                     string.format("%s (%s)", childCategory.name, FormatNumber(childAchievementCount)),
@@ -2296,8 +2249,14 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     "Interface\\Icons\\Achievement_General",
                     false
                 )
-                childHeader:SetPoint("TOPLEFT", GetLayout().BASE_INDENT, -yOffset) -- Standard indent
-                childHeader:SetWidth(width - GetLayout().BASE_INDENT)
+                do
+                    local gapC = achChainTail and (yChildTop - achChainTailTopY - COLLAPSE_H_ACH) or nil
+                    if gapC and gapC < 0 then gapC = 0 end
+                    ChainSectionFrameBelow(parent, childHeader, achChainTail, BASE_PLAN_INDENT, gapC, achChainTail and nil or yChildTop)
+                    childHeader:SetWidth(width - BASE_PLAN_INDENT)
+                    achChainTail = childHeader
+                    achChainTailTopY = yChildTop
+                end
                 
                 yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
                 
@@ -2332,6 +2291,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                                 grandchildExpanded = true
                             end
                             
+                            local yGcTop = yOffset
                             local grandchildHeader = CreateCollapsibleHeader(
                                 parent,
                                 string.format("%s (%s)", grandchildCategory.name, FormatNumber(#grandchildCategory.achievements)),
@@ -2348,8 +2308,14 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                                 "Interface\\Icons\\Achievement_General",
                                 false
                             )
-                            grandchildHeader:SetPoint("TOPLEFT", GetLayout().BASE_INDENT * 2, -yOffset) -- Double indent (30px)
-                            grandchildHeader:SetWidth(width - (GetLayout().BASE_INDENT * 2))
+                            do
+                                local gapG = achChainTail and (yGcTop - achChainTailTopY - COLLAPSE_H_ACH) or nil
+                                if gapG and gapG < 0 then gapG = 0 end
+                                ChainSectionFrameBelow(parent, grandchildHeader, achChainTail, BASE_PLAN_INDENT * 2, gapG, achChainTail and nil or yGcTop)
+                                grandchildHeader:SetWidth(width - (BASE_PLAN_INDENT * 2))
+                                achChainTail = grandchildHeader
+                                achChainTailTopY = yGcTop
+                            end
                             
                             yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
                             
@@ -2396,6 +2362,8 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             end
         end
         
+        achChainTail = rootHeader
+        achChainTailTopY = yRootTop
         -- Spacing after root category (standard section spacing)
         yOffset = yOffset + SECTION_SPACING
         end  -- if totalAchievements > 0

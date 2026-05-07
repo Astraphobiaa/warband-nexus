@@ -376,6 +376,8 @@ local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, min
 end
 
 --- Build expanded-row criteria items (Drop / Vendor / Quest / Location lines as criteriaData entries).
+--- Exposed as ns.UI_BuildPlanCriteriaItems so the To-Do tab (PlansUI) can reuse the same parsed
+--- source pipeline — single source of truth for the tracker and the in-window list.
 local function BuildPlanCriteriaItems(plan)
     local items = {}
     local sources = ResolveTrackerPlanSources(plan)
@@ -410,6 +412,7 @@ local function BuildPlanCriteriaItems(plan)
     end
     return items
 end
+ns.UI_BuildPlanCriteriaItems = BuildPlanCriteriaItems
 
 --- Full tooltip for plan card hover (uses addon's custom TooltipService)
 local function ShowPlanTooltip(anchor, plan, isExpanded)
@@ -551,6 +554,30 @@ end
 -- ══════════════════════════════════════════
 local RefreshTrackerContent  -- forward declare so inner functions can reference it
 
+-- Track rows in vertical order so the accordion animation can reposition siblings per frame
+-- without rebuilding the list. Rebuilt fresh on each RefreshTrackerContentImmediate() call.
+local trackerRowOrder = {}
+local LIST_GAP_DEFAULT = 8
+
+--- Reposition every tracked row by walking the ordered list and stacking them top-down using
+--- their CURRENT GetHeight(). Cheap (O(n) y-anchor updates, no frame creation), called per
+--- animation frame so the surrounding rows breathe with the toggling one.
+local function RepositionTrackerRows()
+    local y = 0
+    for i = 1, #trackerRowOrder do
+        local r = trackerRowOrder[i]
+        if r and r:IsShown() then
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", 0, -y)
+            y = y + (r:GetHeight() or 0) + LIST_GAP_DEFAULT
+        end
+    end
+    local frame = GetTrackerFrame()
+    if frame and frame.contentScrollChild then
+        frame.contentScrollChild:SetHeight(math.max(1, y))
+    end
+end
+
 local function RefreshTrackerContentImmediate()
     local frame = GetTrackerFrame()
     if not frame or not frame.contentScrollChild then return end
@@ -559,6 +586,9 @@ local function RefreshTrackerContentImmediate()
     local contentWidth = GetContentWidth(frame)
     scrollChild:SetWidth(contentWidth)
     local width = contentWidth
+
+    -- Reset the ordered row tracker; the loop below appends each row as it's created.
+    wipe(trackerRowOrder)
 
     local plans = WarbandNexus:GetActivePlans() or {}
 
@@ -657,17 +687,19 @@ local function RefreshTrackerContentImmediate()
                     criteria = requirementsText,
                     criteriaColumns = 2,  -- Tracker uses 2 columns (compact layout)
                     titleRightInset = 70,  -- room for the Track button on the right
+                    onAccordionResize = RepositionTrackerRows,
                 }
                 local achHeaderH = math.max(60, math.min(68, math.floor(width * 0.10)))
                 local row = CreateExpandableRow(scrollChild, width, achHeaderH, rowData, isExpanded, function(expanded)
+                    -- Persist state only — the row's height is already final and siblings have
+                    -- been kept in sync per-frame by RepositionTrackerRows. No full rebuild here.
                     expandedAchievements[plan.achievementID] = expanded
-                    RefreshTrackerContentImmediate()
                 end)
                 row:SetPoint("TOPLEFT", 0, -yOffset)
                 if ApplyVisuals then
-                    ApplyVisuals(row.headerFrame, GetCardColors().bg, GetCardColors().border)
+                    ApplyVisuals(row, GetCardColors().bg, GetCardColors().border)
                 end
-                AddTrackerCardAccent(row.headerFrame)
+                AddTrackerCardAccent(row)
                 -- Add accent border to achievement icon (Factory creates it noBorder)
                 if row.iconFrame and ApplyVisuals then
                     ApplyVisuals(row.iconFrame, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
@@ -733,6 +765,7 @@ local function RefreshTrackerContentImmediate()
                     HidePlanTooltip()
                 end)
 
+                trackerRowOrder[#trackerRowOrder + 1] = row
                 yOffset = yOffset + row:GetHeight() + LIST_GAP
             elseif plan.type == "weekly_vault" then
                 -- ── Weekly Vault: expandable full-width card ──
@@ -914,6 +947,7 @@ local function RefreshTrackerContentImmediate()
                 end
                 
                 vaultCard:Show()
+                trackerRowOrder[#trackerRowOrder + 1] = vaultCard
                 yOffset = yOffset + cardHeight + LIST_GAP
             elseif plan.type == "daily_quests" then
                 -- ── Weekly / daily quest plan: same rich card as main To-Do tab ──
@@ -933,6 +967,7 @@ local function RefreshTrackerContentImmediate()
                 end
                 AddTrackerCardAccent(dqCard)
                 dqCard:Show()
+                trackerRowOrder[#trackerRowOrder + 1] = dqCard
                 yOffset = yOffset + dqH + LIST_GAP
             else
                 -- ── Standard plan: collapsible row matching the achievement layout ──
@@ -990,18 +1025,18 @@ local function RefreshTrackerContentImmediate()
                     criteriaColumns = 1,
                     criteriaShowHeader = false,  -- collectibles: bare Drop/Location rows, no "Requirements:" header
                     titleRightInset = titleRightInset,
+                    onAccordionResize = RepositionTrackerRows,
                 }
 
                 local headerH = math.max(60, math.min(68, math.floor(width * 0.10)))
                 local row = CreateExpandableRow(scrollChild, width, headerH, rowData, isExpanded, function(expanded)
                     expandedPlans[plan.id] = expanded
-                    RefreshTrackerContentImmediate()
                 end)
                 row:SetPoint("TOPLEFT", 0, -yOffset)
                 if ApplyVisuals then
-                    ApplyVisuals(row.headerFrame, GetCardColors().bg, GetCardColors().border)
+                    ApplyVisuals(row, GetCardColors().bg, GetCardColors().border)
                 end
-                AddTrackerCardAccent(row.headerFrame)
+                AddTrackerCardAccent(row)
                 if row.iconFrame and ApplyVisuals then
                     ApplyVisuals(row.iconFrame, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
                     if row.iconFrame.texture then
@@ -1093,6 +1128,7 @@ local function RefreshTrackerContentImmediate()
                     HidePlanTooltip()
                 end)
 
+                trackerRowOrder[#trackerRowOrder + 1] = row
                 yOffset = yOffset + row:GetHeight() + LIST_GAP
             end
         end

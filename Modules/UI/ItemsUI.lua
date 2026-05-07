@@ -596,6 +596,51 @@ function WarbandNexus:DrawItemList(parent)
     return 8 + (contentHeight or 0)
 end
 
+--- Redraw Items scroll results only (virtual list + group headers). Skips PopulateContent /
+--- scrollChild purge — same contract as RedrawStorageResultsOnly for expand/collapse perf.
+function WarbandNexus:RedrawItemsResultsOnly()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "items" then return end
+    local scrollChild = mf.scrollChild
+    if not scrollChild then return end
+    local rc = scrollChild.resultsContainer
+    if not rc or rc:GetParent() ~= scrollChild then return end
+    local width = scrollChild:GetWidth() - 20
+    if width < 1 then return end
+    local q = ""
+    if SearchStateManager and SearchStateManager.GetQuery then
+        q = SearchStateManager:GetQuery("items") or ""
+    end
+    local subTab = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or "personal"
+
+    if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
+        SearchResultsRenderer:PrepareContainer(rc)
+    end
+
+    local contentHeight = self:DrawItemsResults(rc, 0, width, subTab, q)
+    rc:SetHeight(math.max(contentHeight or 1, 1))
+
+    local CONTENT_BOTTOM_PADDING = 8
+    local tabBodyHeight = 8 + (contentHeight or 0)
+    scrollChild:SetHeight(math.max(tabBodyHeight + CONTENT_BOTTOM_PADDING, mf.scroll:GetHeight()))
+
+    if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
+    end
+    if ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
+        ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+    end
+
+    local sc = mf.scroll
+    if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+        local maxV = sc:GetVerticalScrollRange() or 0
+        local cur = sc:GetVerticalScroll() or 0
+        if cur > maxV then
+            sc:SetVerticalScroll(maxV)
+        end
+    end
+end
+
 --============================================================================
 -- ITEMS RESULTS RENDERING (Separated for search refresh)
 --============================================================================
@@ -690,7 +735,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     local HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
     local flatList = {}
     local rowIdx = 0
-    
+
     for _, typeName in ipairs(groupOrder) do
         local group = groups[typeName]
         local isExpanded = self.itemsExpandAllActive or expandedGroups[group.groupKey]
@@ -698,12 +743,12 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             isExpanded = true
             expandedGroups[group.groupKey] = true
         end
-        
+
         local typeIcon = nil
         if group.items[1] and group.items[1].classID then
             typeIcon = GetTypeIcon(group.items[1].classID)
         end
-        
+
         flatList[#flatList + 1] = {
             type = "header",
             yOffset = yOffset,
@@ -716,7 +761,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             },
         }
         yOffset = yOffset + HEADER_HEIGHT
-        
+
         if isExpanded then
             for _, item in ipairs(group.items) do
                 rowIdx = rowIdx + 1
@@ -730,28 +775,31 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 yOffset = yOffset + ROW_SPACING
             end
         end
-        
+
         yOffset = yOffset + SECTION_SPACING
     end
-    
+
     -- ===== VIRTUAL SCROLL SETUP =====
     local mainFrame = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local VLM = ns.VirtualListModule
-    
+    if mainFrame and VLM and VLM.ClearVirtualScroll then
+        VLM.ClearVirtualScroll(mainFrame)
+    end
+
     if mainFrame and VLM and #flatList > 0 then
-        
+
         local function PopulateRow(row, item, idx, rowNum)
             row:SetAlpha(1)
             if row.anim then row.anim:Stop() end
             row.idx = rowNum
             ns.UI.Factory:ApplyRowBackground(row, rowNum)
-            
+
             row.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
             row.icon:SetTexture(item.iconFileID or 134400)
-            
+
             local nameWidth = width - 350
             row.nameText:SetWidth(nameWidth)
-            
+
             local baseName = item.name
             if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
                 baseName = item.link:match("%[(.-)%]")
@@ -763,14 +811,14 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 baseName = C_Item.GetItemInfo(item.itemID)
             end
             baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
-            
+
             local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
             if item.pending then
                 row.nameText:SetText(format("|cff888888%s|r", displayName))
             else
                 row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
             end
-            
+
             local locText = ""
             if currentItemsSubTab == "warband" then
                 locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
@@ -790,7 +838,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             row.locationText:SetTextColor(1, 1, 1)
             row.locationText:SetWordWrap(false)
             row.locationText:SetNonSpaceWrap(false)
-            
+
             row:SetScript("OnEnter", function(self)
                 if not ShowTooltip then return end
                 local additionalLines = {}
@@ -821,8 +869,9 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 end
             end)
         end
-        
+
         local totalHeight = VLM.SetupVirtualList(mainFrame, parent, 0, flatList, {
+            chainCollapsibleHeaders = true,
             createHeaderFn = function(container, entry)
                 local d = entry.data
                 local gKey = d.group.groupKey
@@ -831,17 +880,21 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     format("%s (%s)", d.typeName, FormatNumber(#d.group.items)),
                     gKey,
                     d.isExpanded,
-                    function(exp)
-                        if type(exp) == "boolean" then
-                            expandedGroups[gKey] = exp
-                            if exp then self.recentlyExpanded[gKey] = GetTime() end
-                        else
-                            expandedGroups[gKey] = not expandedGroups[gKey]
-                            if expandedGroups[gKey] then self.recentlyExpanded[gKey] = GetTime() end
-                        end
-                        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
+                    function(_isExpanded)
+                        WarbandNexus:RedrawItemsResultsOnly()
                     end,
-                    d.typeIcon
+                    d.typeIcon,
+                    false,
+                    nil,
+                    nil,
+                    {
+                        persistToggle = function(exp)
+                            if type(exp) == "boolean" then
+                                expandedGroups[gKey] = exp
+                                if exp then self.recentlyExpanded[gKey] = GetTime() end
+                            end
+                        end,
+                    }
                 )
                 groupHeader:SetWidth(width)
                 return groupHeader
@@ -855,10 +908,10 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 ReleaseItemRow(frame)
             end,
         })
-        
+
         return math.max(totalHeight, yOffset) + GetLayout().minBottomSpacing
     end
-    
+
     return yOffset + GetLayout().minBottomSpacing
 end -- DrawItemsResults
 

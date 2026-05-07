@@ -17,6 +17,44 @@ local ADDON_NAME, ns = ...
 local BUFFER_ROWS = 2
 local DEFAULT_ROW_HEIGHT = 26
 
+local function EnsureVirtualUpdaterDispatcher(mainFrame)
+    if not mainFrame then return nil end
+    if not mainFrame._virtualScrollUpdaters then
+        mainFrame._virtualScrollUpdaters = {}
+    end
+    if not mainFrame._virtualScrollUpdate then
+        mainFrame._virtualScrollUpdate = function()
+            local updaters = mainFrame._virtualScrollUpdaters
+            if not updaters then return end
+            for i = 1, #updaters do
+                local fn = updaters[i]
+                if type(fn) == "function" then
+                    fn()
+                end
+            end
+        end
+    end
+    return mainFrame._virtualScrollUpdaters
+end
+
+local function RegisterVirtualUpdater(mainFrame, container, updateFn)
+    if not mainFrame or not container or type(updateFn) ~= "function" then return end
+    local updaters = EnsureVirtualUpdaterDispatcher(mainFrame)
+    if not updaters then return end
+
+    local previous = container._virtualUpdater
+    if previous then
+        for i = #updaters, 1, -1 do
+            if updaters[i] == previous then
+                table.remove(updaters, i)
+            end
+        end
+    end
+
+    container._virtualUpdater = updateFn
+    updaters[#updaters + 1] = updateFn
+end
+
 --[[
     Binary search: find first item whose (yOffset + height) > target.
     flatList must be sorted by yOffset (ascending).
@@ -47,6 +85,7 @@ end
         createHeaderFn(parent, item, index) -> frame,  -- optional
         releaseRowFn(frame),                    -- optional: custom release logic
         rowPool = {},                           -- optional: reuse table
+        chainCollapsibleHeaders = false,        -- optional: set true — BOTTOMLEFT chain + parent-relative X (Storage parity)
     }
 ]]
 local function SetupVirtualList(mainFrame, container, containerTopOffset, flatList, opts)
@@ -57,6 +96,9 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
     local createHeaderFn = opts.createHeaderFn
     local releaseRowFn = opts.releaseRowFn
     local rowPool = opts.rowPool
+    local chainCollapsibleHeaders = opts.chainCollapsibleHeaders == true
+    local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
+    local layoutCollapseH = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or DEFAULT_ROW_HEIGHT
 
     if not createRowFn or type(createRowFn) ~= "function" then return 0 end
 
@@ -113,13 +155,31 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
 
     -- Create headers upfront (headers are few; not virtualized)
     if createHeaderFn then
+        local prevHeaderFrame = nil
+        local prevHeaderYO = nil
+        local prevHeaderH = nil
         for i = 1, #flatList do
             local it = flatList[i]
             if it and it.type == "header" then
                 local ok, hf = pcall(createHeaderFn, container, it, i)
                 if ok and hf then
                     hf:ClearAllPoints()
-                    hf:SetPoint("TOPLEFT", container, "TOPLEFT", it.xOffset or 0, -(it.yOffset or 0))
+                    if chainCollapsibleHeaders and ChainSectionFrameBelow then
+                        local xOff = it.xOffset or 0
+                        local yTop = it.yOffset or 0
+                        local hfH = it.height or layoutCollapseH
+                        local gapBelow = nil
+                        if prevHeaderFrame and prevHeaderYO ~= nil then
+                            gapBelow = yTop - prevHeaderYO - (prevHeaderH or layoutCollapseH)
+                            if gapBelow < 0 then gapBelow = 0 end
+                        end
+                        ChainSectionFrameBelow(container, hf, prevHeaderFrame, xOff, gapBelow, prevHeaderFrame and nil or yTop)
+                        prevHeaderFrame = hf
+                        prevHeaderYO = yTop
+                        prevHeaderH = hfH
+                    else
+                        hf:SetPoint("TOPLEFT", container, "TOPLEFT", it.xOffset or 0, -(it.yOffset or 0))
+                    end
                     hf:Show()
                 end
             end
@@ -202,17 +262,17 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
         end
     end
 
-    mainFrame._virtualScrollUpdate = UpdateVisible
+    RegisterVirtualUpdater(mainFrame, container, UpdateVisible)
 
     -- Staggered layout passes (0 / 0.1 / 0.25s) in one chain to avoid three independent timer registrations.
     C_Timer.After(0, function()
-        if mainFrame._virtualScrollUpdate ~= UpdateVisible then return end
+        if container._virtualUpdater ~= UpdateVisible then return end
         UpdateVisible()
         C_Timer.After(0.1, function()
-            if mainFrame._virtualScrollUpdate ~= UpdateVisible then return end
+            if container._virtualUpdater ~= UpdateVisible then return end
             UpdateVisible()
             C_Timer.After(0.15, function()
-                if mainFrame._virtualScrollUpdate == UpdateVisible then
+                if container._virtualUpdater == UpdateVisible then
                     UpdateVisible()
                 end
             end)
@@ -224,6 +284,7 @@ end
 
 local function ClearVirtualScroll(mainFrame)
     if mainFrame then
+        mainFrame._virtualScrollUpdaters = nil
         mainFrame._virtualScrollUpdate = nil
     end
 end

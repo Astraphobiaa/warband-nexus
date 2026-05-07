@@ -34,36 +34,13 @@ local FontManager = ns.FontManager
 ]]
 local function CreateDetailsFrame(row, parentFrame, options)
     local data = options.data
-    local bgColor = options.bgColor or {row.bgColor[1] * 0.7, row.bgColor[2] * 0.7, row.bgColor[3] * 0.7, 1}
-    local borderColor = options.borderColor or {
-        COLORS.accent[1] * 0.4,
-        COLORS.accent[2] * 0.4,
-        COLORS.accent[3] * 0.4,
-        0.6
-    }
-    
+
     local detailsFrame = CreateFrame("Frame", nil, parentFrame)
-    detailsFrame:SetPoint("TOPLEFT", row.headerFrame, "BOTTOMLEFT", 0, -1)
-    detailsFrame:SetPoint("TOPRIGHT", row.headerFrame, "BOTTOMRIGHT", 0, -1)
-    
-    -- Background and border for expanded section
-    if ApplyVisuals then
-        ApplyVisuals(detailsFrame, bgColor, borderColor)
-    else
-        if detailsFrame.SetBackdrop then
-            detailsFrame:SetBackdrop({
-                bgFile = "Interface\\Buttons\\WHITE8X8",
-                edgeFile = "Interface\\Buttons\\WHITE8X8",
-                tile = false,
-                edgeSize = 1,
-                insets = { left = 0, right = 0, top = 0, bottom = 0 }
-            })
-            detailsFrame:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
-            detailsFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
-        end
-    end
-    
-    -- Divider line between header and details
+    detailsFrame:SetPoint("TOPLEFT", row.headerFrame, "BOTTOMLEFT", 0, 0)
+    detailsFrame:SetPoint("TOPRIGHT", row.headerFrame, "BOTTOMRIGHT", 0, 0)
+
+    -- Single-border layout: the row owns the backdrop, so the details panel inherits the
+    -- same frame and only paints a thin divider line at the seam between header and body.
     local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
     divider:SetTexture("Interface\\Buttons\\WHITE8X8")
     divider:SetHeight(1)
@@ -272,79 +249,106 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     headerFrame:SetHeight(rowHeight)
     row.headerFrame = headerFrame
     
-    -- Apply background and gradient border to header
+    -- Single unified backdrop on the row itself, not on header/details separately. This way the
+    -- collapsed and expanded states share one continuous border (no double-line at the seam).
     if ApplyVisuals then
-        -- Gradient border: brighter at top, darker at bottom
         local borderColor = {
             COLORS.accent[1] * 0.8,
             COLORS.accent[2] * 0.8,
             COLORS.accent[3] * 0.8,
             0.4
         }
-        ApplyVisuals(headerFrame, row.bgColor, borderColor)
+        ApplyVisuals(row, row.bgColor, borderColor)
     end
-    
-    -- Apply highlight effect
+
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
         ns.UI.Factory:ApplyHighlight(headerFrame)
-    else
-        -- Fallback: simple border
-        if headerFrame.SetBackdrop then
-            headerFrame:SetBackdrop({
-                bgFile = "Interface\\Buttons\\WHITE8X8",
-                edgeFile = "Interface\\Buttons\\WHITE8X8",
-                tile = false,
-                tileSize = 1,
-                edgeSize = 1,
-                insets = { left = 0, right = 0, top = 0, bottom = 0 }
-            })
-            headerFrame:SetBackdropColor(row.bgColor[1], row.bgColor[2], row.bgColor[3], row.bgColor[4])
-            headerFrame:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.5)
-        end
     end
     
-    -- Toggle function (header stays fixed, only details expand below)
-    local function ToggleExpand()
-        row.isExpanded = not row.isExpanded
-        
-        if row.isExpanded then
-            -- Use atlas for up arrow (collapse)
-            if row.expandBtnNormalTex then
-                row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+    -- Smooth accordion animation: centralized in SharedWidgets (Factory:AnimateAccordion).
+    -- Keep per-frame onAccordionResize callback so sibling rows reflow in lockstep.
+    local function AnimateRowHeight(fromDetailsH, toDetailsH, onComplete)
+        local headerH = headerFrame:GetHeight()
+        if not row.detailsFrame then
+            row:SetHeight(headerH + math.max(0, toDetailsH))
+            if data.onAccordionResize then
+                data.onAccordionResize(row, headerH + math.max(0, toDetailsH))
             end
-            if row.expandBtnHighlightTex then
-                row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-            end
-            
-            -- Create details frame if not exists (positioned BELOW header)
-            -- Phase 4.7: Use shared function to avoid code duplication
-            if not row.detailsFrame then
-                row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
-            end
-            
-            -- Show details and resize row (header may be taller than rowHeight when title wraps)
-            row.detailsFrame:Show()
-            local totalHeight = headerFrame:GetHeight() + row.detailsFrame:GetHeight()
-            row:SetHeight(totalHeight)
-        else
-            -- Use atlas for down arrow (expand)
-            if row.expandBtnNormalTex then
-                row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-            end
-            if row.expandBtnHighlightTex then
-                row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-            end
-            
-            -- Hide details and collapse row
-            if row.detailsFrame then
-                row.detailsFrame:Hide()
-            end
-            row:SetHeight(headerFrame:GetHeight())
+            if onComplete then onComplete() end
+            return
         end
-        
-        -- Callback
-        if row.onToggle then
-            row.onToggle(row.isExpanded)
+
+        local detailsFrame = row.detailsFrame
+        row:SetHeight(headerH + fromDetailsH)
+        if data.onAccordionResize then data.onAccordionResize(row, headerH + fromDetailsH) end
+        if ns.UI and ns.UI.Factory and ns.UI.Factory.AnimateAccordion then
+            ns.UI.Factory:AnimateAccordion(detailsFrame, fromDetailsH, toDetailsH, {
+                duration = 0.22,
+                fadeAlpha = true,
+                clipChildren = true,
+                onUpdate = function(currentH)
+                    local rowH = headerH + math.max(0, currentH or 0)
+                    row:SetHeight(rowH)
+                    if data.onAccordionResize then
+                        data.onAccordionResize(row, rowH)
+                    end
+                end,
+                onComplete = function()
+                    detailsFrame:SetHeight(math.max(0.1, toDetailsH))
+                    row:SetHeight(headerH + math.max(0, toDetailsH))
+                    if data.onAccordionResize then
+                        data.onAccordionResize(row, headerH + math.max(0, toDetailsH))
+                    end
+                    if onComplete then onComplete() end
+                end,
+            })
+            return
+        end
+
+        -- Fallback path when Factory isn't available yet.
+        detailsFrame:SetHeight(math.max(0.1, toDetailsH))
+        row:SetHeight(headerH + math.max(0, toDetailsH))
+        if data.onAccordionResize then
+            data.onAccordionResize(row, headerH + math.max(0, toDetailsH))
+        end
+        if onComplete then onComplete() end
+    end
+    row._animateRowHeight = AnimateRowHeight
+
+    -- Single in-place tween. We DO NOT trigger the parent refresh until the animation ends, so
+    -- siblings reflow smoothly via the per-frame onAccordionResize hook rather than snapping
+    -- at start. onToggle (which usually rebuilds the whole list) only fires once at the end as
+    -- the canonical "set this state" signal.
+    local function ToggleExpand()
+        local newExpanded = not row.isExpanded
+        row.isExpanded = newExpanded
+        local arrowAtlas = newExpanded and "UI-HUD-ActionBar-PageUpArrow-Mouseover" or "UI-HUD-ActionBar-PageDownArrow-Mouseover"
+        if row.expandBtnNormalTex then row.expandBtnNormalTex:SetAtlas(arrowAtlas, true) end
+        if row.expandBtnHighlightTex then row.expandBtnHighlightTex:SetAtlas(arrowAtlas, true) end
+
+        -- Lazily build the details panel and cache its natural height ONCE — querying it
+        -- mid-toggle returns whatever transient SetHeight value we set on a prior tween,
+        -- which is what was making the animation a no-op (fromH==toH).
+        if not row.detailsFrame then
+            row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
+            row._fullDetailsH = row.detailsFrame:GetHeight()
+            row.detailsFrame:Hide()
+        end
+        local fullDetailsH = row._fullDetailsH or row.detailsFrame:GetHeight()
+
+        if newExpanded then
+            row.detailsFrame:SetHeight(0.1)  -- start collapsed so the tween is visible
+            row.detailsFrame:SetAlpha(0)
+            row.detailsFrame:Show()
+            AnimateRowHeight(0, fullDetailsH, function()
+                if row.onToggle then row.onToggle(true) end
+            end)
+        else
+            local fromH = (row.detailsFrame and row.detailsFrame:IsShown()) and row.detailsFrame:GetHeight() or fullDetailsH
+            AnimateRowHeight(fromH, 0, function()
+                if row.detailsFrame then row.detailsFrame:Hide() end
+                if row.onToggle then row.onToggle(false) end
+            end)
         end
     end
     
@@ -513,14 +517,10 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
         end
         
-        -- Manually create and show details without calling ToggleExpand
-        -- (to avoid triggering onToggle callback during initialization)
-        -- Phase 4.7: Use shared function to avoid code duplication
         row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
+        row._fullDetailsH = row.detailsFrame:GetHeight()  -- cache before any transient resizes
         row.detailsFrame:Show()
-        
-        local totalHeight = headerFrame:GetHeight() + row.detailsFrame:GetHeight()
-        row:SetHeight(totalHeight)
+        row:SetHeight(headerFrame:GetHeight() + row._fullDetailsH)
     end
     
     return row

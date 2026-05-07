@@ -29,6 +29,7 @@ local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
 local CreateIcon = ns.UI_CreateIcon
 
 -- Single source for layout (matches CurrencyUI, PlansUI, SharedWidgets)
@@ -1223,6 +1224,10 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
     scrollChild:SetHeight(totalHeight)
 
     -- Create collapsible headers (Plans-style factory); rows are virtualized in UpdateMountListVisibleRange
+    local collHdrChainTail = nil
+    local collHdrTopY = nil
+    local collHdrPrevH = nil
+    local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
@@ -1242,9 +1247,16 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
             end
             local header = CreateCollapsibleHeader(scrollChild, it.label, key, not it.isCollapsed, onToggle, GetMountCategoryIcon(key), true, 0)
             header:ClearAllPoints()
-            header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -it.yOffset)
+            local yTop = it.yOffset or 0
+            local prevH = collHdrPrevH or COLLAPSE_H_COLL
+            local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
+            if gap and gap < 0 then gap = 0 end
+            ChainSectionFrameBelow(scrollChild, header, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
             header:SetWidth(listWidth)
             header:SetHeight(it.height)
+            collHdrChainTail = header
+            collHdrTopY = it.yOffset or 0
+            collHdrPrevH = it.height or COLLAPSE_H_COLL
         end
     end
 
@@ -1361,6 +1373,10 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
     scrollChild:SetHeight(totalHeight)
 
     -- Create collapsible headers (Plans-style factory)
+    local collHdrChainTail = nil
+    local collHdrTopY = nil
+    local collHdrPrevH = nil
+    local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
@@ -1380,9 +1396,16 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
             end
             local header = CreateCollapsibleHeader(scrollChild, it.label, key, not it.isCollapsed, onToggle, GetPetCategoryIcon(key), true, 0)
             header:ClearAllPoints()
-            header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -it.yOffset)
+            local yTop = it.yOffset or 0
+            local prevH = collHdrPrevH or COLLAPSE_H_COLL
+            local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
+            if gap and gap < 0 then gap = 0 end
+            ChainSectionFrameBelow(scrollChild, header, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
             header:SetWidth(listWidth)
             header:SetHeight(it.height)
+            collHdrChainTail = header
+            collHdrTopY = it.yOffset or 0
+            collHdrPrevH = it.height or COLLAPSE_H_COLL
         end
     end
 
@@ -1497,6 +1520,10 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
     local flatList, totalHeight = BuildFlatToyList(groupedData, collapsedHeaders, TOY_SOURCE_CATEGORIES)
     scrollChild:SetHeight(totalHeight)
 
+    local collHdrChainTail = nil
+    local collHdrTopY = nil
+    local collHdrPrevH = nil
+    local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
@@ -1516,9 +1543,16 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
             end
             local header = CreateCollapsibleHeader(scrollChild, it.label, key, not it.isCollapsed, onToggle, GetToyCategoryIcon(key), true, 0)
             header:ClearAllPoints()
-            header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -it.yOffset)
+            local yTop = it.yOffset or 0
+            local prevH = collHdrPrevH or COLLAPSE_H_COLL
+            local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
+            if gap and gap < 0 then gap = 0 end
+            ChainSectionFrameBelow(scrollChild, header, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
             header:SetWidth(listWidth)
             header:SetHeight(it.height)
+            collHdrChainTail = header
+            collHdrTopY = it.yOffset or 0
+            collHdrPrevH = it.height or COLLAPSE_H_COLL
         end
     end
 
@@ -1630,6 +1664,10 @@ local function PopulateAchievementList(scrollChild, listWidth, categoryData, roo
 
     -- Create collapsible headers (Plans-style factory; indent for hierarchy)
     local achBaseIndent = (ns.UI_LAYOUT and ns.UI_LAYOUT.BASE_INDENT) or 15
+    local collHdrChainTail = nil
+    local collHdrTopY = nil
+    local collHdrPrevH = nil
+    local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
@@ -1649,9 +1687,16 @@ local function PopulateAchievementList(scrollChild, listWidth, categoryData, roo
             end
             local header = CreateCollapsibleHeader(scrollChild, it.label, key, not it.isCollapsed, onToggle, "UI-Achievement-Shield-NoPoints", true, indentLevel)
             header:ClearAllPoints()
-            header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", indentPx, -it.yOffset)
+            local yTop = it.yOffset or 0
+            local prevH = collHdrPrevH or COLLAPSE_H_COLL
+            local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
+            if gap and gap < 0 then gap = 0 end
+            ChainSectionFrameBelow(scrollChild, header, collHdrChainTail, indentPx, gap, collHdrChainTail and nil or yTop)
             header:SetWidth(listWidth - indentPx)
             header:SetHeight(it.height)
+            collHdrChainTail = header
+            collHdrTopY = it.yOffset or 0
+            collHdrPrevH = it.height or COLLAPSE_H_COLL
         end
     end
 
