@@ -77,6 +77,8 @@ function DebugService:TestCommand(addon, input)
         addon:Print("  |cff00ccff/wntest achievement [id]|r - Test achievement (default: 60981)")
         addon:Print("  |cff00ccff/wntest plan [id]|r - Test plan completion (default: 60981)")
         addon:Print("  |cff00ccff/wntest currency [id] [gain]|r - Simulate [WN-Currency] chat (default: Hero Dawncrest 3345, +1)")
+        addon:Print("  |cff00ccff/wntest vault fill|r - Fill current character vault slots for layout testing")
+        addon:Print("  |cff00ccff/wntest vault clear|r - Clear current character test vault slots")
         addon:Print("|cff888888Examples:|r")
         addon:Print("|cff888888  /wntest achievement 60981|r")
         addon:Print("|cff888888  /wntest plan 60981|r")
@@ -161,6 +163,73 @@ function DebugService:TestCommand(addon, input)
             gainAmount = gain,
             gainSource = "quantity",
         })
+    elseif cmd == "vault" then
+        local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        if not charKey then
+            addon:Print("|cffff0000Could not determine current character key.|r")
+            return
+        end
+        if not addon.db or not addon.db.global then
+            addon:Print("|cffff0000Database not ready.|r")
+            return
+        end
+
+        addon.db.global.pveCache = addon.db.global.pveCache or {}
+        addon.db.global.pveCache.greatVault = addon.db.global.pveCache.greatVault or {}
+        addon.db.global.pveCache.greatVault.activities = addon.db.global.pveCache.greatVault.activities or {}
+        addon.db.global.pveCache.greatVault.rewards = addon.db.global.pveCache.greatVault.rewards or {}
+
+        if subcmd == "fill" then
+            local weeklyResetTime = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset
+                and (GetServerTime() + C_DateAndTime.GetSecondsUntilWeeklyReset()) or 0
+            addon.db.global.pveCache.greatVault.activities[charKey] = {
+                raids = {
+                    { progress = 2, threshold = 2, rewardItemLevel = 260 },
+                    { progress = 4, threshold = 4, rewardItemLevel = 260 },
+                    { progress = 6, threshold = 6, rewardItemLevel = 260 },
+                },
+                mythicPlus = {
+                    { progress = 1, threshold = 1, rewardItemLevel = 260 },
+                    { progress = 4, threshold = 4, rewardItemLevel = 260 },
+                    { progress = 8, threshold = 8, rewardItemLevel = 260 },
+                },
+                world = {
+                    { progress = 2, threshold = 2, rewardItemLevel = 259 },
+                    { progress = 4, threshold = 4, rewardItemLevel = 259 },
+                    { progress = 8, threshold = 8, rewardItemLevel = 259 },
+                },
+                pvp = {},
+                lastUpdate = time(),
+                weeklyResetTime = weeklyResetTime,
+                isTestData = true,
+            }
+            addon.db.global.pveCache.greatVault.rewards[charKey] = {
+                hasAvailableRewards = false,
+                lastUpdate = time(),
+                isTestData = true,
+            }
+            if addon.SavePvECache then addon:SavePvECache() end
+            if addon.SendMessage and Constants.EVENTS and Constants.EVENTS.PVE_UPDATED then
+                addon:SendMessage(Constants.EVENTS.PVE_UPDATED)
+            end
+            addon:Print("|cff00ff00Filled current character vault slots for layout testing.|r")
+        elseif subcmd == "clear" then
+            local activities = addon.db.global.pveCache.greatVault.activities[charKey]
+            local rewards = addon.db.global.pveCache.greatVault.rewards[charKey]
+            if activities and activities.isTestData then
+                addon.db.global.pveCache.greatVault.activities[charKey] = nil
+            end
+            if rewards and rewards.isTestData then
+                addon.db.global.pveCache.greatVault.rewards[charKey] = nil
+            end
+            if addon.SavePvECache then addon:SavePvECache() end
+            if addon.SendMessage and Constants.EVENTS and Constants.EVENTS.PVE_UPDATED then
+                addon:SendMessage(Constants.EVENTS.PVE_UPDATED)
+            end
+            addon:Print("|cff00ff00Cleared current character test vault slots.|r")
+        else
+            addon:Print("|cffff0000Unknown vault test command.|r Use |cff00ccff/wntest vault fill|r or |cff00ccff/wntest vault clear|r")
+        end
     else
         addon:Print("|cffff0000Unknown test command:|r " .. cmd)
         addon:Print("Use /wntest to see available commands")

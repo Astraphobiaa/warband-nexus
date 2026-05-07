@@ -362,6 +362,7 @@ end
 local Constants = ns.Constants
 local CACHE_VERSION = Constants.PVE_CACHE_VERSION
 local UPDATE_THROTTLE = Constants.THROTTLE.SHARED_RARE
+local GreatVaultActivityHasCompletedRows
 
 ---Midnight-safe quest completion check (pcall + secret guard).
 ---@param questID number
@@ -873,6 +874,31 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
     if not self.db.global.pveCache.greatVault.activities then
         self.db.global.pveCache.greatVault.activities = {}
     end
+
+    local rewardData = self.db.global.pveCache.greatVault.rewards
+        and self.db.global.pveCache.greatVault.rewards[charKey]
+    local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
+    local previousActivities = self.db.global.pveCache.greatVault.activities[charKey]
+    local hadCompletedVaultRows = GreatVaultActivityHasCompletedRows(previousActivities)
+    local previousResetTime = GetCurrentWeeklyResetStartTime()
+    local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime and rewardClaimedResetTime >= previousResetTime
+    local storedBeforeReset = previousResetTime and previousActivities and (tonumber(previousActivities.lastUpdate) or 0) < previousResetTime
+    local incomingCompletedRows = false
+    for i = 1, #activities do
+        local activity = activities[i]
+        local progress = activity and tonumber(activity.progress) or 0
+        local threshold = activity and tonumber(activity.threshold) or 0
+        if threshold > 0 and progress >= threshold then
+            incomingCompletedRows = true
+            break
+        end
+    end
+    if hadCompletedVaultRows and storedBeforeReset and not rewardClaimedThisReset and not incomingCompletedRows then
+        PvECacheUserDebug(
+            "greatVault: preserve pre-reset completed rows key=%s incomingComplete=no",
+            tostring(charKey))
+        return
+    end
     
     -- Calculate weekly reset time for metadata
     local weeklyResetTime = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and (GetServerTime() + C_DateAndTime.GetSecondsUntilWeeklyReset()) or 0
@@ -1021,7 +1047,8 @@ end
 ---Only sets hasAvailableRewards when rewards are for current period and claimable
 ---(uses AreRewardsForCurrentRewardPeriod/CanClaimRewards when available; avoids post-season stale true).
 ---@param charKey string Character key (name-realm)
-function WarbandNexus:UpdateGreatVaultRewards(charKey)
+---@param allowClaimTransition boolean|nil Allow a true -> false reward change after an explicit vault item event
+function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -1057,10 +1084,26 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey)
     if not self.db.global.pveCache.greatVault.rewards then
         self.db.global.pveCache.greatVault.rewards = {}
     end
-    
+
+    local previousRewardData = self.db.global.pveCache.greatVault.rewards[charKey]
+    local previousResetTime = GetCurrentWeeklyResetStartTime()
+    local claimedResetTime = previousRewardData and tonumber(previousRewardData.claimedResetTime) or nil
+    local claimedAt = previousRewardData and tonumber(previousRewardData.claimedAt) or nil
+    if previousRewardData and previousRewardData.hasAvailableRewards == true and hasAvailable == false then
+        local vaultFrameShown = WeeklyRewardsFrame and WeeklyRewardsFrame.IsShown and WeeklyRewardsFrame:IsShown()
+        if vaultFrameShown or allowClaimTransition == true then
+            claimedResetTime = previousResetTime
+            claimedAt = time()
+        else
+            hasAvailable = true
+        end
+    end
+
     self.db.global.pveCache.greatVault.rewards[charKey] = {
         hasAvailableRewards = hasAvailable,
         lastUpdate = time(),
+        claimedAt = claimedAt,
+        claimedResetTime = claimedResetTime,
     }
 end
 
@@ -1568,6 +1611,24 @@ local function GreatVaultActivityHasRows(bucket)
     return false
 end
 
+GreatVaultActivityHasCompletedRows = function(bucket)
+    if not bucket or type(bucket) ~= "table" then return false end
+    for _, category in ipairs({ "raids", "mythicPlus", "world", "pvp" }) do
+        local rows = bucket[category]
+        if type(rows) == "table" then
+            for i = 1, #rows do
+                local row = rows[i]
+                local progress = row and tonumber(row.progress) or 0
+                local threshold = row and tonumber(row.threshold) or 0
+                if threshold > 0 and progress >= threshold then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
 ---Import legacy PvE data for a specific character into pveCache.
 ---Used by DatabaseOptimizer migration and UpdatePvEDataV2 fallback.
 ---Maps the old DataService progress format → PvECacheService structure.
@@ -1865,6 +1926,28 @@ function WarbandNexus:RegisterPvECacheEvents()
             pveUpdateTimer = nil
         end)
     end
+
+    local function RefreshVaultRewardsAfterItemChange(delay)
+        C_Timer.After(delay or 0.5, function()
+            if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+                return
+            end
+
+            local charKey = CanonicalizePvEKey(ns.Utilities:GetCharacterKey())
+            if not charKey then
+                return
+            end
+
+            local beforeSig = BuildPvESignature(WarbandNexus.db.global and WarbandNexus.db.global.pveCache, charKey)
+            WarbandNexus:UpdateGreatVaultRewards(charKey, true)
+            WarbandNexus:SavePvECache()
+
+            local afterSig = BuildPvESignature(WarbandNexus.db.global and WarbandNexus.db.global.pveCache, charKey)
+            if beforeSig ~= afterSig then
+                WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED)
+            end
+        end)
+    end
     
     -- Mythic+ events
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", function()
@@ -1927,6 +2010,8 @@ function WarbandNexus:RegisterPvECacheEvents()
     
     self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_ITEM_CHANGED triggered")
+        RefreshVaultRewardsAfterItemChange(0.3)
+        RefreshVaultRewardsAfterItemChange(1.5)
         ThrottledPvEUpdate()
     end)
     
@@ -2057,6 +2142,29 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
         or (backupMythicPlus and #backupMythicPlus > 0)
         or (backupPvp and #backupPvp > 0)
         or (backupWorld and #backupWorld > 0)
+    local hadCompletedVaultRows = GreatVaultActivityHasCompletedRows(activities)
+    local previousResetTime = GetCurrentWeeklyResetStartTime()
+    local rewardData = self.db.global.pveCache.greatVault.rewards
+        and self.db.global.pveCache.greatVault.rewards[charKey]
+    local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
+    local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime and rewardClaimedResetTime >= previousResetTime
+    local storedBeforeReset = previousResetTime and (tonumber(activities.lastUpdate) or 0) < previousResetTime
+    local incomingCompletedRows = false
+    for i = 1, #vaultSlots do
+        local slot = vaultSlots[i]
+        local progress = slot and tonumber(slot.progress) or 0
+        local threshold = slot and tonumber(slot.threshold) or 0
+        if threshold > 0 and progress >= threshold then
+            incomingCompletedRows = true
+            break
+        end
+    end
+    if hadCompletedVaultRows and storedBeforeReset and not rewardClaimedThisReset and not incomingCompletedRows then
+        PvECacheUserDebug(
+            "scanner: preserve pre-reset completed vault rows key=%s incomingComplete=no",
+            tostring(charKey))
+        return
+    end
     
     -- Clear and re-populate from VaultScanner
     activities.raids = {}

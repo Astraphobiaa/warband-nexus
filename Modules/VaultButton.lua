@@ -27,12 +27,12 @@ local BOUNTY_ITEM_ID = 252415
 
 local COL_NAME      = 140
 local COL_ILVL      = 50
-local COL_RAID      = 62
-local COL_DUNGEON   = 62
-local COL_WORLD     = 62
-local COL_REWARD_ILVL = 94
-local COL_PROGRESS  = 90
-local COL_REWARD_PROGRESS = 136
+local COL_RAID      = 72
+local COL_DUNGEON   = 72
+local COL_WORLD     = 72
+local COL_REWARD_ILVL = 106
+local COL_PROGRESS  = 108
+local COL_REWARD_PROGRESS = 144
 local COL_BOUNTY    = 46   -- Trovehunter's Bounty (done/not)
 local COL_VOIDCORE  = 58   -- Nebulous Voidcore (current/seasonMax)
 local COL_MANAFLUX  = 58   -- Dawnlight Manaflux (current held)
@@ -342,6 +342,12 @@ local function VaultResetCrossedFor(charKey)
     if not activities then return false end
     local resetT = tonumber(activities.weeklyResetTime) or 0
     if resetT <= 0 then return false end
+    local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
+    local rewardData = rewards and rewards[charKey]
+    local claimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
+    if claimedResetTime and claimedResetTime >= resetT then
+        return false
+    end
     return GetServerTime() >= resetT
 end
 
@@ -1348,7 +1354,7 @@ local function ShowHoverTooltip(anchor)
             for _, e in ipairs(list) do
                 local bountyOnly = GetSettings().includeBountyOnly == true and e.bounty == true and (e.slots or 0) == 0 and not e.isReady
                 if e.isReady then readyN = readyN + 1 elseif not bountyOnly then pendingN = pendingN + 1 end
-                local status = e.isReady and "|cff33dd33[Ready]|r" or (bountyOnly and "|cff33dd33[Bounty Only]|r" or "|cffffff00[Pending]|r")
+                local status = e.isReady and "|cff33dd33[Ready]|r" or (bountyOnly and "|cff33dd33[Bounty Only]|r" or "|cff66ddff[Earned]|r")
                 local slotStr = e.slots > 0
                     and (" |cffaaaaaa("..e.slots.." slot"..(e.slots==1 and "" or "s")..")|r")
                     or ""
