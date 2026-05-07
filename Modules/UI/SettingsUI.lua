@@ -1013,59 +1013,27 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
     
     UpdateLabel()
     
-    -- Slider
-    local slider = CreateFrame("Slider", nil, parent, "BackdropTemplate")
-    slider:SetHeight(20)
+    -- Slider (single source of truth: Factory:CreateThemedSlider)
+    local slider = ns.UI.Factory:CreateThemedSlider(parent, {
+        min = option.min or 0,
+        max = option.max or 1,
+        step = option.step or 0.1,
+        value = option.get and option.get() or nil,
+        height = 20,
+        onChange = function(value)
+            if option.set then
+                option.set(nil, value)  -- AceConfig pattern: (info, value)
+                UpdateLabel()
+            end
+        end,
+    })
     slider:SetPoint("TOPLEFT", 0, yOffset - 25)
     slider:SetPoint("TOPRIGHT", 0, yOffset - 25)
-    slider:SetOrientation("HORIZONTAL")
-    slider:SetMinMaxValues(option.min or 0, option.max or 1)
-    slider:SetValueStep(option.step or 0.1)
-    
-    -- Backdrop with border (more visible)
-    slider:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 2,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 }
-    })
-    slider:SetBackdropColor(0.1, 0.1, 0.12, 1)
-    slider:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)  -- Accent color border
-    
-    -- Thumb (smaller, fits within bar)
-    local thumb = slider:CreateTexture(nil, "OVERLAY")
-    thumb:SetSize(14, 18)  -- Smaller thumb (was 16x24)
-    thumb:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-    slider:SetThumbTexture(thumb)
-    
+
     -- Track slider for theme refresh (if tracking table provided)
     if sliderTrackingTable then
         table.insert(sliderTrackingTable, slider)
     end
-    
-    -- Set value
-    if option.get then
-        slider:SetValue(option.get())
-    end
-    
-    -- OnValueChanged
-    slider:SetScript("OnValueChanged", function(self, value)
-        -- Round to step precision
-        local step = option.step or 0.1
-        value = math.floor(value / step + 0.5) * step
-        
-        if math.abs(self:GetValue() - value) > 0.001 then
-            self:SetValue(value)
-            return
-        end
-        
-        if option.set then
-            option.set(nil, value)  -- AceConfig pattern: (info, value)
-            UpdateLabel()
-        end
-    end)
     
     -- Tooltip
     if option.desc then

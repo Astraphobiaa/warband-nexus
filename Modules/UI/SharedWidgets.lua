@@ -5560,6 +5560,57 @@ function ns.UI.Factory:CreateButton(parent, width, height, noBorder)
     return CreateButton(parent, width, height, nil, nil, noBorder)
 end
 
+--- Create a themed horizontal slider (accent-colored thumb + border).
+--- Single source of truth for slider styling; SettingsUI and tracker popups both use this
+--- so the look stays consistent and we don't reinvent the widget for each call site.
+---@param parent Frame
+---@param opts table { min, max, step, value, onChange(function(v)), height(number) }
+---@return Slider slider
+function ns.UI.Factory:CreateThemedSlider(parent, opts)
+    if not parent then return nil end
+    opts = opts or {}
+    local slider = CreateFrame("Slider", nil, parent, "BackdropTemplate")
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetHeight(opts.height or 20)
+    slider:SetMinMaxValues(opts.min or 0, opts.max or 1)
+    slider:SetValueStep(opts.step or 0.1)
+    slider:SetObeyStepOnDrag(true)
+
+    if slider.SetBackdrop then
+        slider:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            tile = false, tileSize = 1, edgeSize = 2,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        slider:SetBackdropColor(0.1, 0.1, 0.12, 1)
+        local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
+        slider:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.6)
+    end
+
+    local thumb = slider:CreateTexture(nil, "OVERLAY")
+    thumb:SetSize(14, 18)
+    local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
+    thumb:SetColorTexture(accent[1], accent[2], accent[3], 1)
+    slider:SetThumbTexture(thumb)
+
+    if opts.value ~= nil then slider:SetValue(opts.value) end
+
+    if opts.onChange then
+        slider:SetScript("OnValueChanged", function(self, value)
+            local step = opts.step or 0.1
+            value = math.floor(value / step + 0.5) * step
+            if math.abs(self:GetValue() - value) > 0.001 then
+                self:SetValue(value)
+                return
+            end
+            opts.onChange(value)
+        end)
+    end
+
+    return slider
+end
+
 --- Create an EditBox
 ---@param parent Frame - Parent frame
 ---@return EditBox editbox

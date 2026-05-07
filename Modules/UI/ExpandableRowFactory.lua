@@ -108,7 +108,7 @@ local function CreateDetailsFrame(row, parentFrame, options)
         -- Build criteria items: prefer structured data, fallback to legacy text
         local criteriaItems = {}  -- { text, linkedAchievementID?, completed? }
         local progressLine = nil
-        
+
         if hasCriteriaData then
             criteriaItems = data.criteriaData
             -- Extract progress line from legacy text (first line)
@@ -127,28 +127,32 @@ local function CreateDetailsFrame(row, parentFrame, options)
                 end
             end
         end
-        
-        -- Section header with inline progress (left-anchored, same margin as Description)
-        local P = ns.PLAN_UI_COLORS or {}
-        local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
-        local headerText = (P.progressLabel or "|cffffcc00") .. reqLabel .. "|r"
-        if progressLine then
-            headerText = headerText .. " " .. progressLine
-        end
-        
-        local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-        criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-        criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-        criteriaHeader:SetJustifyH("LEFT")
-        criteriaHeader:SetWordWrap(true)
-        criteriaHeader:SetNonSpaceWrap(false)
-        criteriaHeader:SetText(headerText)
 
-        local crowW = (row and row:GetWidth()) or (parentFrame and parentFrame:GetWidth()) or 380
-        criteriaHeader:SetWidth(math.max(60, crowW - leftMargin - rightMargin))
-        local headerH = criteriaHeader:GetStringHeight()
-        if not headerH or headerH < 16 then headerH = 16 end
-        yOffset = yOffset - headerH - 4
+        -- Section header with inline progress. Callers that don't have a true requirement
+        -- (e.g. collectible Drop/Location rows) pass criteriaShowHeader = false to keep the
+        -- expanded body clean and avoid a misleading "Requirements:" label.
+        if data.criteriaShowHeader ~= false then
+            local P = ns.PLAN_UI_COLORS or {}
+            local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
+            local headerText = (P.progressLabel or "|cffffcc00") .. reqLabel .. "|r"
+            if progressLine then
+                headerText = headerText .. " " .. progressLine
+            end
+
+            local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+            criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
+            criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+            criteriaHeader:SetJustifyH("LEFT")
+            criteriaHeader:SetWordWrap(true)
+            criteriaHeader:SetNonSpaceWrap(false)
+            criteriaHeader:SetText(headerText)
+
+            local crowW = (row and row:GetWidth()) or (parentFrame and parentFrame:GetWidth()) or 380
+            criteriaHeader:SetWidth(math.max(60, crowW - leftMargin - rightMargin))
+            local headerH = criteriaHeader:GetStringHeight()
+            if not headerH or headerH < 16 then headerH = 16 end
+            yOffset = yOffset - headerH - 4
+        end
         
         -- Render criteria grid (fixed line height for even two-column alignment, no wrap to avoid "0 / \n1)")
         if #criteriaItems > 0 then
@@ -386,39 +390,48 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         end
     end)
     
-    -- Item Icon (after expand button) - WoW-like smaller. Supports atlas icons via data.iconIsAtlas.
+    -- Item Icon (after expand button). data.iconSize overrides the default for callers that
+    -- want a chunkier portrait. Title and type badge anchor to this frame so they stay aligned
+    -- regardless of icon size. Supports atlas icons via data.iconIsAtlas.
+    local ICON_SIZE = data.iconSize or (UI_SPACING.HEADER_ICON_SIZE + 4)
+    local ICON_LEFT = 32
+    local iconFrame
     if data.icon then
-        local iconFrame = CreateIcon(headerFrame, data.icon, UI_SPACING.HEADER_ICON_SIZE + 4, data.iconIsAtlas == true, nil, true)
-        iconFrame:SetPoint("LEFT", 32, 0)
+        iconFrame = CreateIcon(headerFrame, data.icon, ICON_SIZE, data.iconIsAtlas == true, nil, true)
+        iconFrame:SetPoint("LEFT", ICON_LEFT, 0)
         iconFrame:Show()  -- CRITICAL: Show the row icon!
         row.iconFrame = iconFrame
     end
 
-    -- Optional small TYPE atlas badge rendered immediately to the LEFT of the title
+    -- Optional small TYPE atlas badge rendered immediately to the RIGHT of the icon
     -- (e.g. shield atlas for achievements, dragon-rostrum for mounts). Uses data.typeAtlas.
-    local TYPE_BADGE_SIZE = 14
+    local TYPE_BADGE_SIZE = data.typeBadgeSize or 14
     local TYPE_BADGE_GAP = 4
-    local typeBadgeXOffset = 0
+    local typeBadgeFrame
     if data.typeAtlas then
-        local typeBadge = CreateFrame("Frame", nil, headerFrame)
-        typeBadge:SetSize(TYPE_BADGE_SIZE, TYPE_BADGE_SIZE)
-        typeBadge:SetPoint("LEFT", headerFrame, "LEFT", 64, 0)
-        local typeTex = typeBadge:CreateTexture(nil, "OVERLAY")
+        typeBadgeFrame = CreateFrame("Frame", nil, headerFrame)
+        typeBadgeFrame:SetSize(TYPE_BADGE_SIZE, TYPE_BADGE_SIZE)
+        if iconFrame then
+            typeBadgeFrame:SetPoint("LEFT", iconFrame, "RIGHT", TYPE_BADGE_GAP, 0)
+        else
+            typeBadgeFrame:SetPoint("LEFT", headerFrame, "LEFT", ICON_LEFT + ICON_SIZE + TYPE_BADGE_GAP, 0)
+        end
+        local typeTex = typeBadgeFrame:CreateTexture(nil, "OVERLAY")
         typeTex:SetAllPoints()
         local ok = pcall(function() typeTex:SetAtlas(data.typeAtlas, false) end)
         if ok then
-            typeBadge:Show()
-            typeBadgeXOffset = TYPE_BADGE_SIZE + TYPE_BADGE_GAP
-            row.typeBadge = typeBadge
+            typeBadgeFrame:Show()
+            row.typeBadge = typeBadgeFrame
         else
-            typeBadge:Hide()
+            typeBadgeFrame:Hide()
+            typeBadgeFrame = nil
         end
     end
 
     -- Score: either inline (legacy) or below the title (data.scoreBelow = true).
     if data.score and not data.scoreBelow then
         local scoreText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
-        scoreText:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", 68, -6)
+        scoreText:SetPoint("LEFT", iconFrame or headerFrame, iconFrame and "RIGHT" or "LEFT", iconFrame and (TYPE_BADGE_GAP + 2) or (ICON_LEFT + ICON_SIZE + TYPE_BADGE_GAP + 2), 6)
         scoreText:SetWidth(60)
         scoreText:SetJustifyH("LEFT")
         scoreText:SetJustifyV("TOP")
@@ -427,20 +440,27 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         row.scoreText = scoreText
     end
 
-    -- Title: allow 2 lines so long achievement names do not overlap the Track button area
+    -- Title: anchored to the right of icon (or type badge if present) so it always lines up.
     local titleText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
-    local titleLeft
-    if data.scoreBelow then
-        -- Title sits next to the type badge (or icon when no badge); score moves under it.
-        titleLeft = 64 + typeBadgeXOffset
-    elseif data.score then
-        -- Legacy layout: inline score occupies 68..128, title starts after.
-        titleLeft = 134
-    else
-        titleLeft = 64 + typeBadgeXOffset
+    local titleAnchorFrame, titleAnchorGap
+    if data.score and not data.scoreBelow then
+        titleAnchorFrame = row.scoreText
+        titleAnchorGap = 4
+    elseif typeBadgeFrame then
+        titleAnchorFrame = typeBadgeFrame
+        titleAnchorGap = TYPE_BADGE_GAP
+    elseif iconFrame then
+        titleAnchorFrame = iconFrame
+        titleAnchorGap = TYPE_BADGE_GAP
     end
-    titleText:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", titleLeft, -6)
-    titleText:SetPoint("RIGHT", headerFrame, "RIGHT", -90, 0)
+    -- Title shares the icon's vertical center (so single-line titles sit on the icon mid-line),
+    -- and grows downward when wrapped. LEFT anchors to icon/badge RIGHT for horizontal lock-step.
+    if titleAnchorFrame then
+        titleText:SetPoint("LEFT", titleAnchorFrame, "RIGHT", titleAnchorGap, 0)
+    else
+        titleText:SetPoint("LEFT", headerFrame, "LEFT", ICON_LEFT + ICON_SIZE + TYPE_BADGE_GAP, 0)
+    end
+    titleText:SetPoint("RIGHT", headerFrame, "RIGHT", -(data.titleRightInset or 90), 0)
     titleText:SetJustifyH("LEFT")
     titleText:SetJustifyV("TOP")
     titleText:SetWordWrap(true)
