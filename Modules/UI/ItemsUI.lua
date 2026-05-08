@@ -677,7 +677,8 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
     local groups = {}
     local groupOrder = {}
     local hasSearchFilter = itemsSearchActive
-    local yOffset = startYOffset
+    -- Keep first group visually separated from section/title header area.
+    local yOffset = startYOffset + SECTION_SPACING
 
     for _, item in ipairs(items) do
         local typeName = item.itemType or ((ns.L and ns.L["GROUP_MISC"]) or "Miscellaneous")

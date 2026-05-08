@@ -1313,25 +1313,33 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
 
             local sectionBody
             local secH = mountSectionContentH[key] or 0
-            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function() end, GetMountCategoryIcon(key), true, 0, nil, {
+            local function RefreshMountSectionList()
+                local cached = collectionsState._lastGroupedMountData
+                local sch = collectionsState.mountListScrollChild
+                if cached and sch and cf and cf:IsVisible() then
+                    PopulateMountList(sch, listWidth, cached, collapsedHeaders, selectedMountID, onSelectMount, cf, redraw)
+                    if Factory.UpdateScrollBarVisibility and collectionsState.mountListScrollFrame then
+                        Factory:UpdateScrollBarVisibility(collectionsState.mountListScrollFrame)
+                    end
+                elseif redraw and cf and cf:IsVisible() then
+                    redraw(cf)
+                end
+            end
+            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
+                if not isExpanded then
+                    RefreshMountSectionList()
+                end
+            end, GetMountCategoryIcon(key), true, 0, nil, {
                 animatedContent = function() return sectionBody end,
                 persistToggle = function(exp)
                     collapsedHeaders[key] = not exp
                 end,
+                applyToggleBeforeCollapseAnimate = true,
                 accordionOnUpdate = function(drawH)
                     sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
                 end,
                 accordionComplete = function()
-                    local cached = collectionsState._lastGroupedMountData
-                    local sch = collectionsState.mountListScrollChild
-                    if cached and sch and cf and cf:IsVisible() then
-                        PopulateMountList(sch, listWidth, cached, collapsedHeaders, selectedMountID, onSelectMount, cf, redraw)
-                        if Factory.UpdateScrollBarVisibility and collectionsState.mountListScrollFrame then
-                            Factory:UpdateScrollBarVisibility(collectionsState.mountListScrollFrame)
-                        end
-                    elseif redraw and cf and cf:IsVisible() then
-                        redraw(cf)
-                    end
+                    RefreshMountSectionList()
                 end,
             })
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
@@ -1522,25 +1530,33 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
 
             local sectionBody
             local secH = petSectionContentH[key] or 0
-            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function() end, GetPetCategoryIcon(key), true, 0, nil, {
+            local function RefreshPetSectionList()
+                local cached = collectionsState._lastGroupedPetData
+                local sch = collectionsState.petListScrollChild
+                if cached and sch and cf and cf:IsVisible() then
+                    PopulatePetList(sch, listWidth, cached, collapsedHeaders, selectedPetID, onSelectPet, cf, redraw)
+                    if Factory.UpdateScrollBarVisibility and collectionsState.petListScrollFrame then
+                        Factory:UpdateScrollBarVisibility(collectionsState.petListScrollFrame)
+                    end
+                elseif redraw and cf and cf:IsVisible() then
+                    redraw(cf)
+                end
+            end
+            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
+                if not isExpanded then
+                    RefreshPetSectionList()
+                end
+            end, GetPetCategoryIcon(key), true, 0, nil, {
                 animatedContent = function() return sectionBody end,
                 persistToggle = function(exp)
                     collapsedHeaders[key] = not exp
                 end,
+                applyToggleBeforeCollapseAnimate = true,
                 accordionOnUpdate = function(drawH)
                     sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
                 end,
                 accordionComplete = function()
-                    local cached = collectionsState._lastGroupedPetData
-                    local sch = collectionsState.petListScrollChild
-                    if cached and sch and cf and cf:IsVisible() then
-                        PopulatePetList(sch, listWidth, cached, collapsedHeaders, selectedPetID, onSelectPet, cf, redraw)
-                        if Factory.UpdateScrollBarVisibility and collectionsState.petListScrollFrame then
-                            Factory:UpdateScrollBarVisibility(collectionsState.petListScrollFrame)
-                        end
-                    elseif redraw and cf and cf:IsVisible() then
-                        redraw(cf)
-                    end
+                    RefreshPetSectionList()
                 end,
             })
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
@@ -1730,25 +1746,33 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
 
             local sectionBody
             local secH = toySectionContentH[key] or 0
-            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function() end, GetToyCategoryIcon(key), true, 0, nil, {
+            local function RefreshToySectionList()
+                local cached = collectionsState._lastGroupedToyData
+                local sch = collectionsState.toyListScrollChild
+                if cached and sch and cf and cf:IsVisible() then
+                    PopulateToyList(sch, listWidth, cached, collapsedHeaders, selectedToyID, onSelectToy, cf, redraw)
+                    if Factory.UpdateScrollBarVisibility and collectionsState.toyListScrollFrame then
+                        Factory:UpdateScrollBarVisibility(collectionsState.toyListScrollFrame)
+                    end
+                elseif redraw and cf and cf:IsVisible() then
+                    redraw(cf)
+                end
+            end
+            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
+                if not isExpanded then
+                    RefreshToySectionList()
+                end
+            end, GetToyCategoryIcon(key), true, 0, nil, {
                 animatedContent = function() return sectionBody end,
                 persistToggle = function(exp)
                     collapsedHeaders[key] = not exp
                 end,
+                applyToggleBeforeCollapseAnimate = true,
                 accordionOnUpdate = function(drawH)
                     sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
                 end,
                 accordionComplete = function()
-                    local cached = collectionsState._lastGroupedToyData
-                    local sch = collectionsState.toyListScrollChild
-                    if cached and sch and cf and cf:IsVisible() then
-                        PopulateToyList(sch, listWidth, cached, collapsedHeaders, selectedToyID, onSelectToy, cf, redraw)
-                        if Factory.UpdateScrollBarVisibility and collectionsState.toyListScrollFrame then
-                            Factory:UpdateScrollBarVisibility(collectionsState.toyListScrollFrame)
-                        end
-                    elseif redraw and cf and cf:IsVisible() then
-                        redraw(cf)
-                    end
+                    RefreshToySectionList()
                 end,
             })
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
@@ -1937,23 +1961,31 @@ local function PopulateAchievementList(scrollChild, listWidth, categoryData, roo
 
             local sectionBody
             local secH = achSectionContentH[key] or 0
-            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function() end, "UI-Achievement-Shield-NoPoints", true, indentLevel, nil, {
+            local function RefreshAchievementSectionList()
+                local cachedCat = collectionsState._lastAchievementCategoryData
+                local cachedRoot = collectionsState._lastAchievementRootCategories
+                local achScrollChild = collectionsState.achievementListScrollChild
+                if cachedCat and cachedRoot and achScrollChild and cf and cf:IsVisible() then
+                    PopulateAchievementList(achScrollChild, listWidth, cachedCat, cachedRoot, collapsedHeaders, selectedAchievementID, onSelectAchievement, cf, redraw)
+                elseif redraw and cf and cf:IsVisible() then
+                    redraw(cf)
+                end
+            end
+            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
+                if not isExpanded then
+                    RefreshAchievementSectionList()
+                end
+            end, "UI-Achievement-Shield-NoPoints", true, indentLevel, nil, {
                 animatedContent = function() return sectionBody end,
                 persistToggle = function(exp)
                     collapsedHeaders[key] = not exp
                 end,
+                applyToggleBeforeCollapseAnimate = true,
                 accordionOnUpdate = function(drawH)
                     sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
                 end,
                 accordionComplete = function()
-                    local cachedCat = collectionsState._lastAchievementCategoryData
-                    local cachedRoot = collectionsState._lastAchievementRootCategories
-                    local achScrollChild = collectionsState.achievementListScrollChild
-                    if cachedCat and cachedRoot and achScrollChild and cf and cf:IsVisible() then
-                        PopulateAchievementList(achScrollChild, listWidth, cachedCat, cachedRoot, collapsedHeaders, selectedAchievementID, onSelectAchievement, cf, redraw)
-                    elseif redraw and cf and cf:IsVisible() then
-                        redraw(cf)
-                    end
+                    RefreshAchievementSectionList()
                 end,
             })
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)

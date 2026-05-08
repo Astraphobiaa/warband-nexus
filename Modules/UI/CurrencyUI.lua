@@ -538,8 +538,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
     
     local parent = container
-    local yOffset = 0
-    local flatList = {}
     local globalRowIdx = 0
 
     local showZero = self.db.profile.currencyShowZero
@@ -577,12 +575,11 @@ function WarbandNexus:DrawCurrencyList(container, width)
         return expanded[key]
     end
     
-    local function ToggleExpand(key, isExpanded)
+    local function PersistExpand(key, isExpanded)
         if not self.db.profile.currencyExpanded then
             self.db.profile.currencyExpanded = {}
         end
         self.db.profile.currencyExpanded[key] = isExpanded
-        WarbandNexus:RedrawCurrencyResultsOnly()
     end
     
     -- Build currency data from global storage (Direct DB architecture)
@@ -672,269 +669,369 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     -- ===== SHOW ALL MODE (ONLY) =====
     local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
+    local Factory = ns.UI.Factory
     local COLLAPSE_H_CUR = SECTION_COLLAPSE_HEADER_HEIGHT
-    local currencyShowAllChainTail = nil
-    local currencyShowAllChainTailTopY = nil
+    local betweenRows = GetLayout().betweenRows or 0
+    local topChainTail = nil
+
+    local function MeasureChildrenHeight(frame)
+        if not frame then return 0.1 end
+        local top = frame:GetTop()
+        if not top then
+            return math.max(0.1, frame._wnAccordionFullH or frame:GetHeight() or 0.1)
+        end
+        local lowest = top
+        local children = {frame:GetChildren()}
+        for i = 1, #children do
+            local child = children[i]
+            if child and child:IsShown() then
+                local bottom = child:GetBottom()
+                if bottom and bottom < lowest then
+                    lowest = bottom
+                end
+            end
+        end
+        return math.max(0.1, top - lowest)
+    end
+
+    local function SyncScrollMetrics()
+        local totalH = MeasureChildrenHeight(parent)
+        parent:SetHeight(math.max(1, totalH))
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        local scrollChild = parent and parent:GetParent()
+        if not (mf and scrollChild and mf.scroll and scrollChild == mf.scrollChild) then
+            return
+        end
+        local targetTabBodyH = 8 + totalH
+        local targetScrollChildH = math.max(targetTabBodyH + 8, mf.scroll:GetHeight())
+        scrollChild:SetHeight(targetScrollChildH)
+        if Factory and Factory.UpdateScrollBarVisibility then
+            Factory:UpdateScrollBarVisibility(mf.scroll)
+        end
+        if Factory and Factory.UpdateHorizontalScrollBarVisibility then
+            Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+        end
+    end
+
+    local function CreateWrap(parentFrame, wrapWidth)
+        local wrap = Factory and Factory.CreateContainer and Factory:CreateContainer(parentFrame) or nil
+        if not wrap then return nil end
+        wrap:SetWidth(math.max(1, wrapWidth))
+        wrap:SetHeight(COLLAPSE_H_CUR + 0.1)
+        if wrap.SetClipsChildren then
+            wrap:SetClipsChildren(true)
+        end
+        return wrap
+    end
+
+    local function CreateBody(wrap, bodyWidth)
+        local body = Factory and Factory.CreateContainer and Factory:CreateContainer(wrap) or nil
+        if not body then return nil end
+        body:ClearAllPoints()
+        body:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, -COLLAPSE_H_CUR)
+        body:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, -COLLAPSE_H_CUR)
+        body:SetWidth(math.max(1, bodyWidth))
+        body:SetHeight(0.1)
+        body:Hide()
+        return body
+    end
+
+    local function FinalizeBodyHeight(body)
+        if not body then return 0.1 end
+        local fullH = MeasureChildrenHeight(body)
+        body._wnAccordionFullH = fullH
+        return fullH
+    end
+
+    local function ChainTopFrame(frame, gap)
+        if not frame then return end
+        ChainSectionFrameBelow(parent, frame, topChainTail, 0, gap, topChainTail and nil or 0)
+        topChainTail = frame
+    end
+
+    local function BuildHeaderBody(rootCtx, headerDataList, keyPrefix, defaultExpanded, bodyFrame, bodyWidth, makeDisplayData)
+        if not bodyFrame then return end
+
+        local function ReflowAncestors(nodeCtx)
+            if not nodeCtx then return end
+            if nodeCtx.body and nodeCtx.wrap then
+                local bodyH = FinalizeBodyHeight(nodeCtx.body)
+                if nodeCtx.body:IsShown() then
+                    nodeCtx.body:SetHeight(math.max(0.1, bodyH))
+                    nodeCtx.wrap:SetHeight(COLLAPSE_H_CUR + nodeCtx.body:GetHeight())
+                else
+                    nodeCtx.wrap:SetHeight(COLLAPSE_H_CUR + 0.1)
+                end
+            end
+            ReflowAncestors(nodeCtx.parentCtx)
+        end
+
+        local function AppendRows(targetBody, rows, rowWidth)
+            if not targetBody or not rows then return nil end
+            local localTail = nil
+            for i = 1, #rows do
+                local curr = rows[i]
+                globalRowIdx = globalRowIdx + 1
+                local row = AcquireCurrencyRow(targetBody, rowWidth, ROW_HEIGHT)
+                if localTail then
+                    row:ClearAllPoints()
+                    row:SetPoint("TOPLEFT", localTail, "BOTTOMLEFT", 0, -betweenRows)
+                else
+                    row:ClearAllPoints()
+                    row:SetPoint("TOPLEFT", targetBody, "TOPLEFT", 0, 0)
+                end
+                local displayData = makeDisplayData(curr)
+                PopulateCurrencyRowFrame(row, displayData, curr.id, globalRowIdx, rowWidth, true)
+                row:Show()
+                localTail = row
+            end
+            return localTail
+        end
+
+        local function RenderTree(headers, renderBody, renderWidth, depth, parentCtx)
+            if not headers then return end
+            local localTail = nil
+            for i = 1, #headers do
+                local headerData = headers[i]
+                local totalCount = headerData and headerData.count or 0
+                if totalCount > 0 then
+                    -- Nested rendering already introduces hierarchy via parent body;
+                    -- keep a fixed per-level indent to avoid cumulative right drift.
+                    local indent = BASE_INDENT
+                    local wrapWidth = math.max(1, renderWidth - indent)
+                    local wrap = CreateWrap(renderBody, wrapWidth)
+                    if wrap then
+                        ChainSectionFrameBelow(renderBody, wrap, localTail, indent, localTail and SECTION_SPACING or nil, localTail and nil or SECTION_SPACING)
+                        localTail = wrap
+
+                        local headerKey = keyPrefix .. (headerData.name or tostring(i))
+                        local expandedNow = IsExpanded(headerKey, defaultExpanded)
+                        local headerBody = CreateBody(wrap, wrapWidth)
+                        local nodeCtx = { body = headerBody, wrap = wrap, parentCtx = parentCtx }
+                        local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
+                        local headerIcon = GetCurrencyHeaderIcon and GetCurrencyHeaderIcon(headerData.name) or nil
+
+                        local header = CreateCollapsibleHeader(
+                            wrap,
+                            (headerData.name or "") .. " (" .. FormatNumber(totalCount) .. ")",
+                            headerKey,
+                            expandedNow,
+                            function() end,
+                            headerIcon,
+                            nil,
+                            nil,
+                            nil,
+                            {
+                                animatedContent = function() return headerBody end,
+                                persistToggle = function(exp)
+                                    PersistExpand(headerKey, exp)
+                                end,
+                                accordionOnUpdate = function(drawH)
+                                    wrap:SetHeight(COLLAPSE_H_CUR + math.max(0.1, drawH or 0))
+                                    ReflowAncestors(parentCtx)
+                                    SyncScrollMetrics()
+                                end,
+                                accordionComplete = function(exp)
+                                    if not exp and headerBody then
+                                        headerBody:Hide()
+                                        headerBody:SetHeight(0.1)
+                                    end
+                                    ReflowAncestors(nodeCtx)
+                                    SyncScrollMetrics()
+                                end,
+                            }
+                        )
+                        header:ClearAllPoints()
+                        header:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, 0)
+                        header:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
+                        header:SetHeight(COLLAPSE_H_CUR)
+
+                        local rowTail = AppendRows(headerBody, headerData.currencies or {}, wrapWidth)
+                        local childHeaders = headerData.children or {}
+                        if #childHeaders > 0 then
+                            RenderTree(childHeaders, headerBody, wrapWidth, (depth or 1) + 1, nodeCtx)
+                        end
+
+                        local fullH = FinalizeBodyHeight(headerBody)
+                        if expandedNow then
+                            headerBody:Show()
+                            headerBody:SetHeight(math.max(0.1, fullH))
+                            wrap:SetHeight(COLLAPSE_H_CUR + headerBody:GetHeight())
+                        else
+                            headerBody:Hide()
+                            headerBody:SetHeight(0.1)
+                            wrap:SetHeight(COLLAPSE_H_CUR + 0.1)
+                        end
+                    end
+                end
+            end
+        end
+
+        RenderTree(headerDataList, bodyFrame, bodyWidth, 1, rootCtx)
+    end
 
     local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
-        
-        -- Section 1: Warband Transferable
-        if #aggregated.warbandTransferable > 0 then
-            local sectionKey = "currency-warband"
-            local sectionExpanded = IsExpanded(sectionKey, true)
-            
+
+    -- Section 1: Warband Transferable
+    if #aggregated.warbandTransferable > 0 then
+        local sectionKey = "currency-warband"
+        local sectionExpanded = IsExpanded(sectionKey, true)
+        local sectionWrap = CreateWrap(parent, width)
+        local sectionBody = CreateBody(sectionWrap, width)
+        if sectionWrap and sectionBody then
+            ChainTopFrame(sectionWrap, nil)
             local sectionHeader, _, warbandIcon = CreateCollapsibleHeader(
-                parent,
+                sectionWrap,
                 (ns.L and ns.L["CURRENCY_WARBAND_TRANSFERABLE"]) or "All Warband Transferable",
                 sectionKey,
                 sectionExpanded,
-                function(isExpanded) ToggleExpand(sectionKey, isExpanded) end,
-                "dummy"  -- Dummy to trigger icon creation
+                function() end,
+                "dummy",
+                nil,
+                nil,
+                nil,
+                {
+                    animatedContent = function() return sectionBody end,
+                    persistToggle = function(exp)
+                        PersistExpand(sectionKey, exp)
+                    end,
+                    accordionOnUpdate = function(drawH)
+                        sectionWrap:SetHeight(COLLAPSE_H_CUR + math.max(0.1, drawH or 0))
+                        SyncScrollMetrics()
+                    end,
+                    accordionComplete = function(exp)
+                        if not exp then
+                            sectionBody:Hide()
+                            sectionBody:SetHeight(0.1)
+                        end
+                        sectionBody._wnAccordionFullH = FinalizeBodyHeight(sectionBody)
+                        sectionWrap:SetHeight(COLLAPSE_H_CUR + (exp and sectionBody._wnAccordionFullH or 0.1))
+                        SyncScrollMetrics()
+                    end,
+                }
             )
-            
-            -- Set proper Warband icon (atlas) with correct size
+            sectionHeader:ClearAllPoints()
+            sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
+            sectionHeader:SetPoint("TOPRIGHT", sectionWrap, "TOPRIGHT", 0, 0)
+            sectionHeader:SetHeight(COLLAPSE_H_CUR)
             if warbandIcon then
                 warbandIcon:SetTexture(nil)
                 warbandIcon:SetAtlas("warbands-icon")
-                warbandIcon:SetSize(27, 36)  -- Native atlas proportions
+                warbandIcon:SetSize(27, 36)
             end
-            
-            -- Sync Transfer button hidden (manual transfer via in-game currency frame)
-            -- local syncBtn = CreateFrame("Button", ...) syncBtn:Hide()
-            
-            do
-                local ySec = yOffset
-                local gapS = currencyShowAllChainTail and (ySec - currencyShowAllChainTailTopY - COLLAPSE_H_CUR) or nil
-                if gapS and gapS < 0 then gapS = 0 end
-                ChainSectionFrameBelow(parent, sectionHeader, currencyShowAllChainTail, 0, gapS, currencyShowAllChainTail and nil or ySec)
-                sectionHeader:SetWidth(width)
-                currencyShowAllChainTail = sectionHeader
-                currencyShowAllChainTailTopY = ySec
+
+            local roots = {}
+            for i = 1, #aggregated.warbandTransferable do
+                local node = aggregated.warbandTransferable[i]
+                if (node.depth or 0) == 0 then
+                    roots[#roots + 1] = node
+                end
             end
-            yOffset = yOffset + HEADER_SPACING
-            
+            local sectionCtx = { body = sectionBody, wrap = sectionWrap, parentCtx = nil }
+            BuildHeaderBody(sectionCtx, roots, "all-warband-", true, sectionBody, width, function(curr)
+                local displayData = {}
+                for k, v in pairs(curr.data or {}) do displayData[k] = v end
+                displayData.quantity = curr.quantity
+                displayData.viewCharKey = currentCharKey
+                return displayData
+            end)
+
+            local sectionFullH = FinalizeBodyHeight(sectionBody)
+            sectionBody._wnAccordionFullH = sectionFullH
             if sectionExpanded then
-                -- Recursive function to render header tree for Show All mode
-                local function RenderShowAllTree(headerData, baseDepth, prefix)
-                    -- Use original depth for indent calculation (ignore baseDepth for indent)
-                    local actualDepth = headerData.depth or 0
-                    local headerIndent = BASE_INDENT * (actualDepth + 1)  -- Same as Character View
-                    local headerKey = prefix .. headerData.name
-                    local headerExpanded = IsExpanded(headerKey, true)
-                    
-                    -- Use baseDepth only for root comparison
-                    local depthForComparison = actualDepth + baseDepth
-                    
-                    -- Use pre-computed count from data preparation (Phase 4.3 performance fix)
-                    local totalCount = headerData.count or 0
-                    
-                    -- Render header only if it has actual currencies (hide empty headers)
-                    if totalCount > 0 then
-                        local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
-                        local headerIcon = GetCurrencyHeaderIcon(headerData.name)
-                        local blizHeader = CreateCollapsibleHeader(
-                            parent,
-                            headerData.name .. " (" .. FormatNumber(totalCount) .. ")",
-                            headerKey,
-                            headerExpanded,
-                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
-                            headerIcon  -- Add icon
-                        )
-                        local yHeaderTop = yOffset
-                        local gapH = currencyShowAllChainTail and (yHeaderTop - currencyShowAllChainTailTopY - COLLAPSE_H_CUR) or nil
-                        if gapH and gapH < 0 then gapH = 0 end
-                        ChainSectionFrameBelow(parent, blizHeader, currencyShowAllChainTail, headerIndent, gapH, currencyShowAllChainTail and nil or yHeaderTop)
-                        blizHeader:SetWidth(width - headerIndent)
-                        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT
-                        
-                        if headerExpanded then
-                            -- Render direct currency rows (build flat list for virtual scroll)
-                            if #headerData.currencies > 0 then
-                                for _, curr in ipairs(headerData.currencies) do
-                                    globalRowIdx = globalRowIdx + 1
-                                    local displayData = {}
-                                    for k, v in pairs(curr.data) do displayData[k] = v end
-                                    displayData.quantity = curr.quantity
-                                    displayData.viewCharKey = currentCharKey
-
-                                    flatList[#flatList + 1] = {
-                                        type = "row",
-                                        yOffset = yOffset,
-                                        height = ROW_HEIGHT + (GetLayout().betweenRows or 0),
-                                        xOffset = headerIndent,
-                                        data = displayData,
-                                        currencyID = curr.id,
-                                        rowIdx = globalRowIdx,
-                                        rowWidth = width - headerIndent,
-                                        indent = headerIndent,
-                                        isShowAll = true,
-                                        sectionKey = headerKey,
-                                    }
-                                    yOffset = yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
-                                end
-                            end
-                            
-                            -- Add spacing before children (always if children exist)
-                            if #(headerData.children or {}) > 0 then
-                                yOffset = yOffset + SECTION_SPACING
-                            end
-                            
-                            -- Recursively render children
-                            for childIdx, childHeader in ipairs(headerData.children or {}) do
-                                RenderShowAllTree(childHeader, baseDepth, prefix)
-                                -- Add spacing between sibling children
-                                if childIdx < #headerData.children then
-                                    yOffset = yOffset + SECTION_SPACING
-                                end
-                            end
-                        end
-                        
-                        -- Add spacing only after root headers
-                        if depthForComparison == baseDepth then
-                            yOffset = yOffset + SECTION_SPACING
-                        end
-
-                        currencyShowAllChainTail = blizHeader
-                        currencyShowAllChainTailTopY = yHeaderTop
-                    end
-                end
-                
-                -- Render only root headers (depth 0)
-                for _, headerData in ipairs(aggregated.warbandTransferable) do
-                    if (headerData.depth or 0) == 0 then
-                        RenderShowAllTree(headerData, 1, "all-warband-")  -- baseDepth=1 for section indent
-                    end
-                end
+                sectionBody:Show()
+                sectionBody:SetHeight(math.max(0.1, sectionFullH))
+                sectionWrap:SetHeight(COLLAPSE_H_CUR + sectionBody:GetHeight())
+            else
+                sectionBody:Hide()
+                sectionBody:SetHeight(0.1)
+                sectionWrap:SetHeight(COLLAPSE_H_CUR + 0.1)
             end
         end
-        
-        -- Section 2: Character-Specific
-        if #aggregated.characterSpecific > 0 then
-            local sectionKey = "currency-char-specific"
-            local sectionExpanded = IsExpanded(sectionKey, true)
-            
+    end
+
+    -- Section 2: Character-Specific
+    if #aggregated.characterSpecific > 0 then
+        local sectionKey = "currency-char-specific"
+        local sectionExpanded = IsExpanded(sectionKey, true)
+        local sectionWrap = CreateWrap(parent, width)
+        local sectionBody = CreateBody(sectionWrap, width)
+        if sectionWrap and sectionBody then
+            ChainTopFrame(sectionWrap, SECTION_SPACING)
             local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
             local sectionHeader = CreateCollapsibleHeader(
-                parent,
+                sectionWrap,
                 (ns.L and ns.L["CURRENCY_CHARACTER_SPECIFIC"]) or "Character-Specific Currencies",
                 sectionKey,
                 sectionExpanded,
-                function(isExpanded) ToggleExpand(sectionKey, isExpanded) end,
-                GetCharacterSpecificIcon(),
-                true  -- isAtlas
+                function() end,
+                GetCharacterSpecificIcon and GetCharacterSpecificIcon() or nil,
+                true,
+                nil,
+                nil,
+                {
+                    animatedContent = function() return sectionBody end,
+                    persistToggle = function(exp)
+                        PersistExpand(sectionKey, exp)
+                    end,
+                    accordionOnUpdate = function(drawH)
+                        sectionWrap:SetHeight(COLLAPSE_H_CUR + math.max(0.1, drawH or 0))
+                        SyncScrollMetrics()
+                    end,
+                    accordionComplete = function(exp)
+                        if not exp then
+                            sectionBody:Hide()
+                            sectionBody:SetHeight(0.1)
+                        end
+                        sectionBody._wnAccordionFullH = FinalizeBodyHeight(sectionBody)
+                        sectionWrap:SetHeight(COLLAPSE_H_CUR + (exp and sectionBody._wnAccordionFullH or 0.1))
+                        SyncScrollMetrics()
+                    end,
+                }
             )
-            do
-                local ySec = yOffset
-                local gapS = currencyShowAllChainTail and (ySec - currencyShowAllChainTailTopY - COLLAPSE_H_CUR) or nil
-                if gapS and gapS < 0 then gapS = 0 end
-                ChainSectionFrameBelow(parent, sectionHeader, currencyShowAllChainTail, 0, gapS, currencyShowAllChainTail and nil or ySec)
-                sectionHeader:SetWidth(width)
-                currencyShowAllChainTail = sectionHeader
-                currencyShowAllChainTailTopY = ySec
+            sectionHeader:ClearAllPoints()
+            sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
+            sectionHeader:SetPoint("TOPRIGHT", sectionWrap, "TOPRIGHT", 0, 0)
+            sectionHeader:SetHeight(COLLAPSE_H_CUR)
+
+            local roots = {}
+            for i = 1, #aggregated.characterSpecific do
+                local node = aggregated.characterSpecific[i]
+                if (node.depth or 0) == 0 then
+                    roots[#roots + 1] = node
+                end
             end
-            yOffset = yOffset + HEADER_SPACING
-            
+            local sectionCtx = { body = sectionBody, wrap = sectionWrap, parentCtx = nil }
+            BuildHeaderBody(sectionCtx, roots, "all-char-", true, sectionBody, width, function(curr)
+                local displayData = {}
+                for k, v in pairs(curr.data or {}) do displayData[k] = v end
+                local bestCharacter = curr.bestCharacter or {}
+                local classFile = bestCharacter.classFile
+                local classColor = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] or { r = 1, g = 1, b = 1 }
+                local bestRealm = ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(bestCharacter.realm) or (bestCharacter.realm or "")
+                local charName = format("|c%s%s  -  %s|r",
+                    format("%02x%02x%02x%02x", 255, classColor.r * 255, classColor.g * 255, classColor.b * 255),
+                    bestCharacter.name or "",
+                    bestRealm)
+                displayData.characterName = format("|cff666666(|r%s|cff666666)|r", charName)
+                displayData.quantity = curr.quantity
+                displayData.viewCharKey = curr.bestCharacterKey
+                return displayData
+            end)
+
+            local sectionFullH = FinalizeBodyHeight(sectionBody)
+            sectionBody._wnAccordionFullH = sectionFullH
             if sectionExpanded then
-                -- Recursive function for character-specific headers
-                local function RenderCharSpecificTree(headerData, baseDepth)
-                    -- Use original depth for indent (same as Character View)
-                    local actualDepth = headerData.depth or 0
-                    local headerIndent = BASE_INDENT * (actualDepth + 1)
-                    local headerKey = "all-char-" .. headerData.name
-                    local headerExpanded = IsExpanded(headerKey, true)
-                    
-                    -- Use baseDepth only for root comparison
-                    local depthForComparison = actualDepth + baseDepth
-                    
-                    -- Use pre-computed count from data preparation (Phase 4.3 performance fix)
-                    local totalCount = headerData.count or 0
-                    
-                    -- Render header only if it has actual currencies (hide empty headers)
-                    if totalCount > 0 then
-                        local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
-                        local headerIcon = GetCurrencyHeaderIcon(headerData.name)
-                        local blizHeader = CreateCollapsibleHeader(
-                            parent,
-                            headerData.name .. " (" .. FormatNumber(totalCount) .. ")",
-                            headerKey,
-                            headerExpanded,
-                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
-                            headerIcon  -- Add icon
-                        )
-                        local yHeaderTop = yOffset
-                        local gapH = currencyShowAllChainTail and (yHeaderTop - currencyShowAllChainTailTopY - COLLAPSE_H_CUR) or nil
-                        if gapH and gapH < 0 then gapH = 0 end
-                        ChainSectionFrameBelow(parent, blizHeader, currencyShowAllChainTail, headerIndent, gapH, currencyShowAllChainTail and nil or yHeaderTop)
-                        blizHeader:SetWidth(width - headerIndent)
-                        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT
-                        
-                        if headerExpanded then
-                            -- Render rows with "Best: CharName" suffix (build flat list for virtual scroll)
-                            if #headerData.currencies > 0 then
-                                for _, curr in ipairs(headerData.currencies) do
-                                    globalRowIdx = globalRowIdx + 1
-                                    local displayData = {}
-                                    for k, v in pairs(curr.data) do displayData[k] = v end
-                                    local classColor = RAID_CLASS_COLORS[curr.bestCharacter.classFile] or {r=1, g=1, b=1}
-                                    local bestRealm = ns.Utilities and ns.Utilities:FormatRealmName(curr.bestCharacter.realm) or curr.bestCharacter.realm or ""
-                                    local charName = format("|c%s%s  -  %s|r",
-                                        format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
-                                        curr.bestCharacter.name,
-                                        bestRealm)
-                                    displayData.characterName = format("|cff666666(|r%s|cff666666)|r", charName)
-                                    displayData.quantity = curr.quantity
-                                    displayData.viewCharKey = curr.bestCharacterKey
-
-                                    flatList[#flatList + 1] = {
-                                        type = "row",
-                                        yOffset = yOffset,
-                                        height = ROW_HEIGHT + (GetLayout().betweenRows or 0),
-                                        xOffset = headerIndent,
-                                        data = displayData,
-                                        currencyID = curr.id,
-                                        rowIdx = globalRowIdx,
-                                        rowWidth = width - headerIndent,
-                                        indent = headerIndent,
-                                        isShowAll = true,
-                                        sectionKey = headerKey,
-                                    }
-                                    yOffset = yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
-                                end
-                            end
-                            
-                            -- Add spacing before children (always if children exist)
-                            if #(headerData.children or {}) > 0 then
-                                yOffset = yOffset + SECTION_SPACING
-                            end
-                            
-                            -- Recursively render children
-                            for childIdx, childHeader in ipairs(headerData.children or {}) do
-                                RenderCharSpecificTree(childHeader, baseDepth)
-                                -- Add spacing between siblings
-                                if childIdx < #headerData.children then
-                                    yOffset = yOffset + SECTION_SPACING
-                                end
-                            end
-                        end
-                        
-                        -- Add spacing only after root headers
-                        if depthForComparison == baseDepth then
-                            yOffset = yOffset + SECTION_SPACING
-                        end
-
-                        currencyShowAllChainTail = blizHeader
-                        currencyShowAllChainTailTopY = yHeaderTop
-                    end
-                end
-                
-                -- Render only root headers
-                for _, headerData in ipairs(aggregated.characterSpecific) do
-                    if (headerData.depth or 0) == 0 then
-                        RenderCharSpecificTree(headerData, 1)  -- baseDepth=1 for section indent
-                    end
-                end
+                sectionBody:Show()
+                sectionBody:SetHeight(math.max(0.1, sectionFullH))
+                sectionWrap:SetHeight(COLLAPSE_H_CUR + sectionBody:GetHeight())
+            else
+                sectionBody:Hide()
+                sectionBody:SetHeight(0.1)
+                sectionWrap:SetHeight(COLLAPSE_H_CUR + 0.1)
             end
         end
+    end
         
     if #aggregated.warbandTransferable == 0 and #aggregated.characterSpecific == 0 then
         -- Check if this is a search result or general "no data" state
@@ -953,8 +1050,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
     
     -- ===== API LIMITATION NOTICE =====
-    yOffset = yOffset + (SECTION_SPACING * 2)
-    
     local noticeFrame = CreateNoticeFrame(
         parent,
         (ns.L and ns.L["CURRENCY_TRANSFER_NOTICE_TITLE"]) or "Currency Transfer Limitation",
@@ -963,9 +1058,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         width - 20,
         60
     )
-    noticeFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    
-    yOffset = yOffset + GetLayout().afterHeader
+    ChainTopFrame(noticeFrame, SECTION_SPACING * 2)
     
     -- Update SearchStateManager with result count (track total rendered currencies)
     local totalCurrencies = 0
@@ -974,29 +1067,63 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
     SearchStateManager:UpdateResults("currency", totalCurrencies)
 
-    -- ===== VIRTUAL SCROLL SETUP =====
-    local mainFrame = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    local VLM = ns.VirtualListModule
-
-    if mainFrame and VLM and #flatList > 0 then
-        local totalHeight = VLM.SetupVirtualList(mainFrame, parent, 0, flatList, {
-            createRowFn = function(container, entry)
-                local row = AcquireCurrencyRow(container, entry.rowWidth, ROW_HEIGHT)
-                PopulateCurrencyRowFrame(row, entry.data, entry.currencyID, entry.rowIdx, entry.rowWidth, entry.isShowAll)
-                return row
-            end,
-            releaseRowFn = function(frame)
-                if ReleaseCurrencyRow then ReleaseCurrencyRow(frame) end
-            end,
-        })
-        return math.max(totalHeight, yOffset) + GetLayout().minBottomSpacing
-    end
-
-    return yOffset
+    SyncScrollMetrics()
+    local finalHeight = MeasureChildrenHeight(parent) + (GetLayout().minBottomSpacing or 0)
+    parent:SetHeight(math.max(1, finalHeight))
+    return finalHeight
 end
 
 --- Redraw Currency scroll results only. Skips PopulateContent — matches Items/Storage partial redraw.
-function WarbandNexus:RedrawCurrencyResultsOnly()
+local function ApplyCurrencyResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, animate, fromResultsH, fromScrollChildH)
+    if not mainFrame or not scrollChild or not resultsContainer then return end
+    local targetResultsH = math.max(listHeight or 1, 1)
+    local oldResultsH = fromResultsH or resultsContainer:GetHeight() or targetResultsH
+    local CONTENT_BOTTOM_PADDING = 8
+    local targetTabBodyH = 8 + (listHeight or 0)
+    local targetScrollChildH = math.max(targetTabBodyH + CONTENT_BOTTOM_PADDING, mainFrame.scroll:GetHeight())
+    local oldScrollChildH = fromScrollChildH or scrollChild:GetHeight() or targetScrollChildH
+
+    local Factory = ns.UI.Factory
+    if animate and Factory and Factory.AnimateAccordion and math.abs(targetResultsH - oldResultsH) > 1 then
+        Factory:AnimateAccordion(resultsContainer, oldResultsH, targetResultsH, {
+            duration = 0.24,
+            fadeAlpha = false,
+            clipChildren = true,
+            onUpdate = function(curH)
+                local t = 0
+                if math.abs(targetResultsH - oldResultsH) > 0.001 then
+                    t = (curH - oldResultsH) / (targetResultsH - oldResultsH)
+                end
+                if t < 0 then t = 0 elseif t > 1 then t = 1 end
+                local curScrollH = oldScrollChildH + (targetScrollChildH - oldScrollChildH) * t
+                scrollChild:SetHeight(math.max(curScrollH, mainFrame.scroll:GetHeight()))
+                if Factory.UpdateScrollBarVisibility then
+                    Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+                end
+            end,
+            onComplete = function()
+                scrollChild:SetHeight(targetScrollChildH)
+                if Factory.UpdateScrollBarVisibility then
+                    Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+                end
+                if Factory.UpdateHorizontalScrollBarVisibility then
+                    Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
+                end
+            end,
+        })
+    else
+        resultsContainer:SetHeight(targetResultsH)
+        scrollChild:SetHeight(targetScrollChildH)
+        if Factory and Factory.UpdateScrollBarVisibility then
+            Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+        end
+        if Factory and Factory.UpdateHorizontalScrollBarVisibility then
+            Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
+        end
+    end
+end
+
+function WarbandNexus:RedrawCurrencyResultsOnly(animateHeight)
     local mf = self.UI and self.UI.mainFrame
     if not mf or not mf:IsShown() or mf.currentTab ~= "currency" then return end
     local scrollChild = mf.scrollChild
@@ -1006,19 +1133,10 @@ function WarbandNexus:RedrawCurrencyResultsOnly()
     local width = scrollChild:GetWidth() - 20
     if width < 1 then return end
 
+    local oldResultsH = rc:GetHeight() or 1
+    local oldScrollChildH = scrollChild:GetHeight() or mf.scroll:GetHeight()
     local listHeight = self:DrawCurrencyList(rc, width)
-    rc:SetHeight(math.max(listHeight or 1, 1))
-
-    local CONTENT_BOTTOM_PADDING = 8
-    local tabBodyHeight = 8 + (listHeight or 0)
-    scrollChild:SetHeight(math.max(tabBodyHeight + CONTENT_BOTTOM_PADDING, mf.scroll:GetHeight()))
-
-    if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
-        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
-    end
-    if ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
-        ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
-    end
+    ApplyCurrencyResultsHeight(mf, scrollChild, rc, listHeight, animateHeight == true, oldResultsH, oldScrollChildH)
 
     local sc = mf.scroll
     if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
@@ -1176,7 +1294,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         SearchStateManager:SetSearchQuery("currency", text)
         if parent.resultsContainer then
             SearchResultsRenderer:PrepareContainer(parent.resultsContainer)
-            self:DrawCurrencyList(parent.resultsContainer, width)
+            self:RedrawCurrencyResultsOnly(false)
         end
     end, 0.4, currencySearchText)
     
@@ -1207,7 +1325,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     container:Show()
     
     local listHeight = self:DrawCurrencyList(container, width)
-    container:SetHeight(math.max(listHeight, 1))
+    ApplyCurrencyResultsHeight(WarbandNexus.UI and WarbandNexus.UI.mainFrame, parent, container, listHeight, false)
     
     return 8 + listHeight
 end

@@ -935,7 +935,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                     if personalInnerTail then
                         ChainSectionFrameBelow(personalBody, charWrap, personalInnerTail, charIndent, SECTION_SPACING, nil)
                     else
-                        ChainSectionFrameBelow(personalBody, charWrap, nil, charIndent, nil, 0)
+                        ChainSectionFrameBelow(personalBody, charWrap, nil, charIndent, nil, SECTION_SPACING)
                     end
 
                     local charBody

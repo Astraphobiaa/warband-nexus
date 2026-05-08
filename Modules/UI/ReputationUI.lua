@@ -1651,7 +1651,6 @@ function WarbandNexus:DrawReputationList(container, width)
     local parent = container
     local yOffset = 0
     local repChainTail = nil
-    local repChainTailTopY = nil
     local COLLAPSE_H_REP = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
     
     -- ===== TITLE CARD (Always shown) =====
@@ -1709,25 +1708,17 @@ function WarbandNexus:DrawReputationList(container, width)
         return expanded[key]
     end
     
-    local function ToggleExpand(key, isExpanded)
+    local function PersistExpand(key, isExpanded)
         if not self.db.profile.reputationExpanded then
             self.db.profile.reputationExpanded = {}
         end
         self.db.profile.reputationExpanded[key] = isExpanded
-        -- PERFORMANCE: Debounce refresh to batch rapid toggle clicks (16ms ≈ 1 frame)
-        -- Prevents multiple full rebuilds when user clicks headers quickly
-        if self._repToggleTimer then
-            self._repToggleTimer:Cancel()
-        end
-        self._repToggleTimer = C_Timer.NewTimer(0.016, function()
-            self._repToggleTimer = nil
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "reputations", skipCooldown = true })
-        end)
     end
-    
-    -- ===== RENDER CHARACTERS =====
-    local hasAnyData = false
-    local charactersWithReputations = {}
+
+    local function ToggleExpand(key, isExpanded)
+        PersistExpand(key, isExpanded)
+        WarbandNexus:RedrawReputationResultsOnly(true)
+    end
     
     -- ===== FILTERED VIEW: Show highest reputation from any character =====
     
@@ -1855,497 +1846,357 @@ function WarbandNexus:DrawReputationList(container, width)
         end
     end
     
-    -- ===== ACCOUNT-WIDE REPUTATIONS SECTION =====
-    local awSectionKey = "filtered-section-accountwide"
-    local awSectionExpanded = IsExpanded(awSectionKey, true)  -- Default EXPANDED
-    
-    local awSectionHeader, awExpandBtn, awSectionIcon = CreateCollapsibleHeader(
-        parent,
-        format((ns.L and ns.L["REP_SECTION_ACCOUNT_WIDE"]) or "Account-Wide Reputations (%s)", FormatNumber(totalAccountWide)),
-        awSectionKey,
-        awSectionExpanded,
-        function(isExpanded) ToggleExpand(awSectionKey, isExpanded) end,
-        "dummy"  -- Dummy value to trigger icon creation
-    )
-    
-    -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
-    if awSectionIcon then
-        awSectionIcon:SetTexture(nil)  -- Clear dummy texture
-        awSectionIcon:SetAtlas("warbands-icon")
-        awSectionIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
-    end
-    
-    -- Show expand/collapse button
-    if awExpandBtn then
-        awExpandBtn:Show()
-    end
-    
-    do
-        local ySec = yOffset
-        local gapAw = repChainTail and (ySec - repChainTailTopY - COLLAPSE_H_REP) or nil
-        if gapAw and gapAw < 0 then gapAw = 0 end
-        ChainSectionFrameBelow(parent, awSectionHeader, repChainTail, 0, gapAw, repChainTail and nil or ySec)
-        awSectionHeader:SetWidth(width)
-        repChainTail = awSectionHeader
-        repChainTailTopY = ySec
-    end
-    -- Removing custom tint to match other tabs/headers
-    -- awSectionHeader:SetBackdropColor(0.15, 0.08, 0.20, 1)  -- Purple-ish
-    -- awSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-    
-    yOffset = yOffset + HEADER_SPACING  -- Section header + spacing before content
-
-    local flatList = {}
-    local globalRowIdx = 0
+    local Factory = ns.UI.Factory
     local betweenRows = GetLayout().betweenRows or 0
-    local rowHeightWithSpacing = ROW_HEIGHT + betweenRows
+    local globalRowIdx = 0
 
-    if awSectionExpanded then
-        if totalAccountWide == 0 then
-            -- Empty state
-            local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-            emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
-            emptyText:SetTextColor(1, 1, 1)  -- White
-            emptyText:SetText((ns.L and ns.L["NO_ACCOUNT_WIDE_REPS"]) or "No account-wide reputations")
-            yOffset = yOffset + 60  -- Empty state spacing
-        else
-            -- Render each expansion header (Account-Wide)
-            for _, headerData in ipairs(accountWideHeaders) do
-                -- Skip header if it has no factions (hide empty headers)
-                if #headerData.factions > 0 then
-                
-                -- PRE-FILTER: Build faction list and apply search BEFORE rendering header
-                -- This ensures we skip expansion headers with zero matching results
-                local headerIndent = BASE_INDENT
-                local factionList = {}
-                
-                for _, faction in ipairs(headerData.factions) do
-                    if not faction or not faction.data then
-                        -- Skip invalid faction
-                    elseif not faction.data.parentFactionID then
-                        table.insert(factionList, {
-                            faction = faction,
-                            subfactions = faction.subfactions,
-                            originalIndex = faction.factionID
-                        })
+    local function MeasureChildrenHeight(frame)
+        if not frame then return 0.1 end
+        local top = frame:GetTop()
+        if not top then
+            return math.max(0.1, frame._wnAccordionFullH or frame:GetHeight() or 0.1)
+        end
+        local lowest = top
+        local children = {frame:GetChildren()}
+        for i = 1, #children do
+            local child = children[i]
+            if child and child:IsShown() then
+                local bottom = child:GetBottom()
+                if bottom and bottom < lowest then
+                    lowest = bottom
+                end
+            end
+        end
+        return math.max(0.1, top - lowest)
+    end
+
+    local function SyncScrollMetrics()
+        local totalH = MeasureChildrenHeight(parent)
+        parent:SetHeight(math.max(1, totalH))
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        local scrollChild = parent and parent:GetParent()
+        if not (mf and scrollChild and mf.scroll and scrollChild == mf.scrollChild) then
+            return
+        end
+        local targetTabBodyH = 8 + totalH
+        local targetScrollChildH = math.max(targetTabBodyH + 8, mf.scroll:GetHeight())
+        scrollChild:SetHeight(targetScrollChildH)
+        if Factory and Factory.UpdateScrollBarVisibility then
+            Factory:UpdateScrollBarVisibility(mf.scroll)
+        end
+        if Factory and Factory.UpdateHorizontalScrollBarVisibility then
+            Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+        end
+    end
+
+    local function CreateWrap(parentFrame, wrapWidth)
+        local wrap = Factory and Factory.CreateContainer and Factory:CreateContainer(parentFrame) or nil
+        if not wrap then return nil end
+        wrap:SetWidth(math.max(1, wrapWidth))
+        wrap:SetHeight(COLLAPSE_H_REP + 0.1)
+        if wrap.SetClipsChildren then
+            wrap:SetClipsChildren(true)
+        end
+        return wrap
+    end
+
+    local function CreateBody(wrap, bodyWidth)
+        local body = Factory and Factory.CreateContainer and Factory:CreateContainer(wrap) or nil
+        if not body then return nil end
+        body:ClearAllPoints()
+        body:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, -COLLAPSE_H_REP)
+        body:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, -COLLAPSE_H_REP)
+        body:SetWidth(math.max(1, bodyWidth))
+        body:SetHeight(0.1)
+        body:Hide()
+        return body
+    end
+
+    local function FinalizeBodyHeight(body)
+        if not body then return 0.1 end
+        local fullH = MeasureChildrenHeight(body)
+        body._wnAccordionFullH = fullH
+        return fullH
+    end
+
+    local function ChainTopFrame(frame, gap)
+        if not frame then return end
+        ChainSectionFrameBelow(parent, frame, repChainTail, 0, gap, repChainTail and nil or 0)
+        repChainTail = frame
+    end
+
+    local function BuildFilteredList(headerData, scopeTag)
+        local factionList = {}
+        for _, faction in ipairs(headerData.factions or {}) do
+            if faction and faction.data and not faction.data.parentFactionID then
+                table.insert(factionList, {
+                    faction = faction,
+                    subfactions = faction.subfactions,
+                    originalIndex = faction.factionID
+                })
+            end
+        end
+
+        local rawSearch = reputationSearchText or ""
+        local isSecret = rawSearch and issecretvalue and issecretvalue(rawSearch)
+        local searchTextKey = isSecret and "" or rawSearch
+        local isSearching = not isSecret and rawSearch ~= ""
+        local cacheKey = (headerData.name or "") .. "|" .. scopeTag .. "|" .. searchTextKey
+        local cached = cachedFilteredResults[cacheKey]
+        if cached and cached.searchText == searchTextKey then
+            return factionList, cached.filteredList, isSearching
+        end
+
+        local filtered = {}
+        for _, item in ipairs(factionList) do
+            local itemName = SafeLower(item.faction.data.name)
+            local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
+            local filteredSubs = nil
+            local hasMatchingSub = false
+            if isSearching and item.subfactions and not parentMatches then
+                filteredSubs = {}
+                for _, sub in ipairs(item.subfactions) do
+                    local subName = SafeLower(sub.data.name)
+                    if subName:find(reputationSearchText, 1, true) then
+                        table.insert(filteredSubs, sub)
+                        hasMatchingSub = true
                     end
                 end
-                
-                -- Phase 2.4: Check cache for filtered results
-                local rawRepSearch = reputationSearchText or ""
-                local repSearchIsSecret = rawRepSearch and issecretvalue and issecretvalue(rawRepSearch)
-                local searchTextKey = repSearchIsSecret and "" or rawRepSearch
-                local isSearching = not repSearchIsSecret and rawRepSearch ~= ""  -- Scoped OUTSIDE cache check
-                local cacheKey = headerData.name .. "|AW|" .. searchTextKey
-                local cachedResult = cachedFilteredResults[cacheKey]
-                
-                local filteredFactionList
-                if cachedResult and cachedResult.searchText == searchTextKey then
-                    -- Cache hit: reuse filtered results
-                    filteredFactionList = cachedResult.filteredList
-                else
-                    -- Cache miss: apply search filter
-                    filteredFactionList = {}
-                    for _, item in ipairs(factionList) do
-                        local itemName = SafeLower(item.faction.data.name)
-                        local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
-                        
-                        local filteredSubs = nil
-                        local hasMatchingSub = false
-                        if isSearching and item.subfactions and not parentMatches then
-                            filteredSubs = {}
-                            for _, sub in ipairs(item.subfactions) do
-                                local subName = SafeLower(sub.data.name)
-                                if subName:find(reputationSearchText, 1, true) then
-                                    table.insert(filteredSubs, sub)
-                                    hasMatchingSub = true
-                                end
-                            end
-                        end
-                        
-                        if parentMatches then
-                            table.insert(filteredFactionList, item)
-                        elseif hasMatchingSub then
-                            table.insert(filteredFactionList, {
-                                faction = item.faction,
-                                subfactions = filteredSubs,
-                                originalIndex = item.originalIndex,
-                                _forceExpand = true,
-                            })
-                        end
-                    end
-                    
-                    -- Cache the result
-                    cachedFilteredResults[cacheKey] = {
-                        searchText = searchTextKey,
-                        filteredList = filteredFactionList
-                    }
-                end
-                
-                -- Skip rendering this expansion header entirely if search yields no results
-                if not isSearching or #filteredFactionList > 0 then
-                
-                    local headerKey = "filtered-header-" .. headerData.name
-                    local headerExpanded = IsExpanded(headerKey, true)
-                    
-                    if isSearching then
-                        headerExpanded = true
-                    end
-                    
-                    -- Count: use factionList (top-level only) not headerData.factions (includes children)
-                    -- This ensures the count matches what the user actually sees
-                    local filteredCount = isSearching and #filteredFactionList or #factionList
-                    local header, headerBtn = CreateCollapsibleHeader(
-                        parent,
-                        headerData.name .. " (" .. FormatNumber(filteredCount) .. ")",
-                        headerKey,
-                        headerExpanded,
-                        function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
-                        GetHeaderIcon(headerData.name)
-                    )
-                    
-                    if headerBtn then
-                        headerBtn:Show()
-                    end
-                    
-                    do
-                        local yH = yOffset
-                        local gapH = repChainTail and (yH - repChainTailTopY - COLLAPSE_H_REP) or nil
-                        if gapH and gapH < 0 then gapH = 0 end
-                        ChainSectionFrameBelow(parent, header, repChainTail, BASE_INDENT, gapH, repChainTail and nil or yH)
-                        header:SetWidth(width - BASE_INDENT)
-                        repChainTail = header
-                        repChainTailTopY = yH
-                    end
-                    
-                    yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
-                    
-                    if headerExpanded then
-                
-                -- Build flat list entries for factions (virtualized)
-                local rowIdx = 0
-                for _, item in ipairs(filteredFactionList) do
-                    rowIdx = rowIdx + 1
+            end
+            if parentMatches then
+                table.insert(filtered, item)
+            elseif hasMatchingSub then
+                table.insert(filtered, {
+                    faction = item.faction,
+                    subfactions = filteredSubs,
+                    originalIndex = item.originalIndex,
+                    _forceExpand = true,
+                })
+            end
+        end
+
+        cachedFilteredResults[cacheKey] = {
+            searchText = searchTextKey,
+            filteredList = filtered
+        }
+        return factionList, filtered, isSearching
+    end
+
+    local function RenderRowsIntoBody(body, bodyWidth, filteredFactionList)
+        local rowY = 0
+        for _, item in ipairs(filteredFactionList) do
+            globalRowIdx = globalRowIdx + 1
+            local charInfo = {
+                name = item.faction.characterName,
+                class = item.faction.characterClass,
+                level = item.faction.characterLevel,
+                isAccountWide = item.faction.isAccountWide,
+                realm = item.faction.characterRealm,
+                allCharData = item.faction.allCharData or {}
+            }
+            local collapseKey = "rep-subfactions-" .. tostring(item.faction.factionID or 0)
+            local subExpanded = IsExpanded(collapseKey, true)
+            local subsToRender = item.subfactions
+            local showSubs = subExpanded or item._forceExpand
+
+            local row = AcquireReputationRow(body, bodyWidth, ROW_HEIGHT)
+            row._isVirtualRow = true
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", body, "TOPLEFT", 0, -rowY)
+            PopulateReputationRow(row, {
+                data = item.faction.data,
+                factionID = item.faction.factionID,
+                rowIdx = globalRowIdx,
+                rowWidth = bodyWidth,
+                isSubfaction = false,
+                subfactions = subsToRender,
+                characterInfo = charInfo,
+                IsExpanded = IsExpanded,
+                ToggleExpand = ToggleExpand,
+            })
+            row:Show()
+            rowY = rowY + ROW_HEIGHT + betweenRows
+
+            if showSubs and subsToRender and #subsToRender > 0 then
+                local subIndent = BASE_INDENT + SUBROW_EXTRA_INDENT
+                local subRowWidth = math.max(1, bodyWidth - subIndent)
+                for _, subFaction in ipairs(subsToRender) do
                     globalRowIdx = globalRowIdx + 1
-
-                    local charInfo = {
-                        name = item.faction.characterName,
-                        class = item.faction.characterClass,
-                        level = item.faction.characterLevel,
-                        isAccountWide = item.faction.isAccountWide,
-                        realm = item.faction.characterRealm,
-                        allCharData = item.faction.allCharData or {}
-                    }
-
-                    local rowWidth = width - headerIndent
-                    local subsToRender = item.subfactions
-                    local collapseKey = "rep-subfactions-" .. item.faction.factionID
-                    local isExpanded = IsExpanded(collapseKey, true)
-                    local showSubs = isExpanded or item._forceExpand
-
-                    flatList[#flatList + 1] = {
-                        type = "row",
-                        yOffset = yOffset,
-                        height = rowHeightWithSpacing,
-                        xOffset = headerIndent,
-                        data = item.faction.data,
-                        factionID = item.faction.factionID,
+                    local subRow = AcquireReputationRow(body, subRowWidth, ROW_HEIGHT)
+                    subRow._isVirtualRow = true
+                    subRow:ClearAllPoints()
+                    subRow:SetPoint("TOPLEFT", body, "TOPLEFT", subIndent, -rowY)
+                    PopulateReputationRow(subRow, {
+                        data = subFaction.data,
+                        factionID = subFaction.factionID,
                         rowIdx = globalRowIdx,
-                        rowWidth = rowWidth,
-                        isSubfaction = false,
-                        subfactions = subsToRender,
-                        characterInfo = charInfo,
+                        rowWidth = subRowWidth,
+                        isSubfaction = true,
+                        subfactions = nil,
+                        characterInfo = {
+                            name = subFaction.characterName,
+                            class = subFaction.characterClass,
+                            level = subFaction.characterLevel,
+                            isAccountWide = subFaction.isAccountWide,
+                            realm = subFaction.characterRealm,
+                            allCharData = subFaction.allCharData or {}
+                        },
                         IsExpanded = IsExpanded,
                         ToggleExpand = ToggleExpand,
-                    }
-                    yOffset = yOffset + rowHeightWithSpacing
-
-                    if showSubs and subsToRender and #subsToRender > 0 then
-                        local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT
-                        for _, subFaction in ipairs(subsToRender) do
-                            globalRowIdx = globalRowIdx + 1
-
-                            local subCharInfo = {
-                                name = subFaction.characterName,
-                                class = subFaction.characterClass,
-                                level = subFaction.characterLevel,
-                                isAccountWide = subFaction.isAccountWide,
-                                realm = subFaction.characterRealm,
-                                allCharData = subFaction.allCharData or {}
-                            }
-
-                            local subRowWidth = width - subIndent
-                            flatList[#flatList + 1] = {
-                                type = "row",
-                                yOffset = yOffset,
-                                height = rowHeightWithSpacing,
-                                xOffset = subIndent,
-                                data = subFaction.data,
-                                factionID = subFaction.factionID,
-                                rowIdx = globalRowIdx,
-                                rowWidth = subRowWidth,
-                                isSubfaction = true,
-                                subfactions = nil,
-                                characterInfo = subCharInfo,
-                                IsExpanded = IsExpanded,
-                                ToggleExpand = ToggleExpand,
-                            }
-                            yOffset = yOffset + rowHeightWithSpacing
-                        end
-                    end
+                    })
+                    subRow:Show()
+                    rowY = rowY + ROW_HEIGHT + betweenRows
                 end
-                end
-                
-                -- Add spacing after each expansion section (whether expanded or not)
-                yOffset = yOffset + SECTION_SPACING
-                
-                end  -- if not isSearching or #filteredFactionList > 0
-            end  -- if #headerData.factions > 0
+            end
         end
-        end  -- End Account-Wide section expanded
-        end  -- End Account-Wide section
-        
-        -- ===== CHARACTER-BASED REPUTATIONS SECTION =====
-        local cbSectionKey = "filtered-section-characterbased"
-        local cbSectionExpanded = IsExpanded(cbSectionKey, true)  -- Default EXPANDED
-        
-        local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-        local cbSectionHeader, cbExpandBtn = CreateCollapsibleHeader(
-            parent,
-            format((ns.L and ns.L["REP_SECTION_CHARACTER_BASED"]) or "Character-Based Reputations (%s)", FormatNumber(totalCharacterBased)),
-            cbSectionKey,
-            cbSectionExpanded,
-            function(isExpanded) ToggleExpand(cbSectionKey, isExpanded) end,
-            GetCharacterSpecificIcon(),
-            true  -- isAtlas = true
+    end
+
+    local function RenderSection(sectionKey, sectionTitle, iconTexture, isAtlas, headers, scopeTag)
+        local sectionExpanded = IsExpanded(sectionKey, true)
+        local sectionWrap = CreateWrap(parent, width)
+        local sectionBody = CreateBody(sectionWrap, width)
+        if not (sectionWrap and sectionBody) then return end
+
+        ChainTopFrame(sectionWrap, repChainTail and SECTION_SPACING or nil)
+        local sectionHeader, _, sectionIcon = CreateCollapsibleHeader(
+            sectionWrap,
+            sectionTitle,
+            sectionKey,
+            sectionExpanded,
+            function() end,
+            iconTexture,
+            isAtlas,
+            nil,
+            nil,
+            {
+                animatedContent = function() return sectionBody end,
+                persistToggle = function(exp)
+                    PersistExpand(sectionKey, exp)
+                end,
+                accordionOnUpdate = function(drawH)
+                    sectionWrap:SetHeight(COLLAPSE_H_REP + math.max(0.1, drawH or 0))
+                    SyncScrollMetrics()
+                end,
+                accordionComplete = function(exp)
+                    if not exp then
+                        sectionBody:Hide()
+                        sectionBody:SetHeight(0.1)
+                    end
+                    sectionBody._wnAccordionFullH = FinalizeBodyHeight(sectionBody)
+                    sectionWrap:SetHeight(COLLAPSE_H_REP + (exp and sectionBody._wnAccordionFullH or 0.1))
+                    SyncScrollMetrics()
+                end,
+            }
         )
-        
-        -- Show expand/collapse button
-        if cbExpandBtn then
-            cbExpandBtn:Show()
+        sectionHeader:ClearAllPoints()
+        sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
+        sectionHeader:SetPoint("TOPRIGHT", sectionWrap, "TOPRIGHT", 0, 0)
+        sectionHeader:SetHeight(COLLAPSE_H_REP)
+        if sectionIcon and scopeTag == "AW" then
+            sectionIcon:SetTexture(nil)
+            sectionIcon:SetAtlas("warbands-icon")
+            sectionIcon:SetSize(27, 36)
         end
-        
-        do
-            local ySec = yOffset
-            local gapCb = repChainTail and (ySec - repChainTailTopY - COLLAPSE_H_REP) or nil
-            if gapCb and gapCb < 0 then gapCb = 0 end
-            ChainSectionFrameBelow(parent, cbSectionHeader, repChainTail, 0, gapCb, repChainTail and nil or ySec)
-            cbSectionHeader:SetWidth(width)
-            repChainTail = cbSectionHeader
-            repChainTailTopY = ySec
-        end
-        -- Removing custom tint to match other tabs/headers
-        -- cbSectionHeader:SetBackdropColor(0.08, 0.12, 0.15, 1)  -- Blue-ish
-        -- cbSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-        
-        yOffset = yOffset + HEADER_SPACING  -- Section header + spacing before content
-        
-        if cbSectionExpanded then
-            if totalCharacterBased == 0 then
-                -- Empty state
-                local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-                emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
-                emptyText:SetTextColor(1, 1, 1)  -- White
-                emptyText:SetText((ns.L and ns.L["NO_CHARACTER_REPS"]) or "No character-based reputations")
-                yOffset = yOffset + SECTION_SPACING
-            else
-                -- Render each expansion header (Character-Based)
-                for _, headerData in ipairs(characterBasedHeaders) do
-                    -- Skip header if it has no factions (hide empty headers)
-                    if #headerData.factions > 0 then
-                    
-                    -- PRE-FILTER: Build faction list and apply search BEFORE rendering header
-                    local headerIndent = BASE_INDENT
-                    local factionList = {}
-                    
-                    for _, faction in ipairs(headerData.factions) do
-                        if not faction or not faction.data then
-                            -- Skip invalid
-                        elseif not faction.data.parentFactionID then
-                            table.insert(factionList, {
-                                faction = faction,
-                                subfactions = faction.subfactions,
-                                originalIndex = faction.factionID
-                            })
-                        end
-                    end
-                    
-                    -- Phase 2.4: Check cache for filtered results
-                    local rawRepSearch2 = reputationSearchText or ""
-                    local repSearchIsSecret2 = rawRepSearch2 and issecretvalue and issecretvalue(rawRepSearch2)
-                    local searchTextKey = repSearchIsSecret2 and "" or rawRepSearch2
-                    local isSearching = not repSearchIsSecret2 and rawRepSearch2 ~= ""  -- Scoped OUTSIDE cache check
-                    local cacheKey = headerData.name .. "|CB|" .. searchTextKey
-                    local cachedResult = cachedFilteredResults[cacheKey]
-                    
-                    local filteredFactionList
-                    if cachedResult and cachedResult.searchText == searchTextKey then
-                        -- Cache hit: reuse filtered results
-                        filteredFactionList = cachedResult.filteredList
-                    else
-                        -- Cache miss: apply search filter
-                        filteredFactionList = {}
-                        for _, item in ipairs(factionList) do
-                            local itemName = SafeLower(item.faction.data.name)
-                            local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
-                            
-                            local filteredSubs = nil
-                            local hasMatchingSub = false
-                            if isSearching and item.subfactions and not parentMatches then
-                                filteredSubs = {}
-                                for _, sub in ipairs(item.subfactions) do
-                                    local subName = SafeLower(sub.data.name)
-                                    if subName:find(reputationSearchText, 1, true) then
-                                        table.insert(filteredSubs, sub)
-                                        hasMatchingSub = true
-                                    end
-                                end
-                            end
-                            
-                            if parentMatches then
-                                table.insert(filteredFactionList, item)
-                            elseif hasMatchingSub then
-                                table.insert(filteredFactionList, {
-                                    faction = item.faction,
-                                    subfactions = filteredSubs,
-                                    originalIndex = item.originalIndex,
-                                    _forceExpand = true,
-                                })
-                            end
-                        end
-                        
-                        -- Cache the result
-                        cachedFilteredResults[cacheKey] = {
-                            searchText = searchTextKey,
-                            filteredList = filteredFactionList
-                        }
-                    end
-                    
-                    -- Skip expansion header entirely if search yields no results
-                    if not isSearching or #filteredFactionList > 0 then
-                    
-                        local headerKey = "filtered-cb-header-" .. headerData.name
-                        local headerExpanded = IsExpanded(headerKey, true)
-                        
-                        if isSearching then
-                            headerExpanded = true
-                        end
-                        
-                        -- Count: use factionList (top-level only) not headerData.factions (includes children)
+
+        local headerTail = nil
+        for _, headerData in ipairs(headers or {}) do
+            if #headerData.factions > 0 then
+                local factionList, filteredFactionList, isSearching = BuildFilteredList(headerData, scopeTag)
+                if not isSearching or #filteredFactionList > 0 then
+                    local headerKey = (scopeTag == "AW" and "filtered-header-" or "filtered-cb-header-") .. (headerData.name or "")
+                    local headerExpanded = isSearching and true or IsExpanded(headerKey, true)
+                    local headerWrap = CreateWrap(sectionBody, width - BASE_INDENT)
+                    local headerBody = CreateBody(headerWrap, width - BASE_INDENT)
+                    if headerWrap and headerBody then
+                        ChainSectionFrameBelow(sectionBody, headerWrap, headerTail, BASE_INDENT, headerTail and SECTION_SPACING or nil, headerTail and nil or SECTION_SPACING)
+                        headerTail = headerWrap
+
                         local filteredCount = isSearching and #filteredFactionList or #factionList
-                        local header, headerBtn = CreateCollapsibleHeader(
-                            parent,
-                            headerData.name .. " (" .. filteredCount .. ")",
+                        local header = CreateCollapsibleHeader(
+                            headerWrap,
+                            (headerData.name or "") .. " (" .. FormatNumber(filteredCount) .. ")",
                             headerKey,
                             headerExpanded,
-                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
-                            GetHeaderIcon(headerData.name)
+                            function() end,
+                            GetHeaderIcon(headerData.name),
+                            nil,
+                            nil,
+                            nil,
+                            {
+                                animatedContent = function() return headerBody end,
+                                persistToggle = function(exp)
+                                    PersistExpand(headerKey, exp)
+                                end,
+                                accordionOnUpdate = function(drawH)
+                                    headerWrap:SetHeight(COLLAPSE_H_REP + math.max(0.1, drawH or 0))
+                                    sectionBody:SetHeight(math.max(0.1, FinalizeBodyHeight(sectionBody)))
+                                    sectionWrap:SetHeight(COLLAPSE_H_REP + sectionBody:GetHeight())
+                                    SyncScrollMetrics()
+                                end,
+                                accordionComplete = function(exp)
+                                    if not exp then
+                                        headerBody:Hide()
+                                        headerBody:SetHeight(0.1)
+                                    end
+                                    headerBody._wnAccordionFullH = FinalizeBodyHeight(headerBody)
+                                    headerWrap:SetHeight(COLLAPSE_H_REP + (exp and headerBody._wnAccordionFullH or 0.1))
+                                    sectionBody:SetHeight(math.max(0.1, FinalizeBodyHeight(sectionBody)))
+                                    sectionWrap:SetHeight(COLLAPSE_H_REP + sectionBody:GetHeight())
+                                    SyncScrollMetrics()
+                                end,
+                            }
                         )
-                    
-                        if headerBtn then
-                            headerBtn:Show()
-                        end
-                    
-                        do
-                            local yH = yOffset
-                            local gapH = repChainTail and (yH - repChainTailTopY - COLLAPSE_H_REP) or nil
-                            if gapH and gapH < 0 then gapH = 0 end
-                            ChainSectionFrameBelow(parent, header, repChainTail, BASE_INDENT, gapH, repChainTail and nil or yH)
-                            header:SetWidth(width - BASE_INDENT)
-                            repChainTail = header
-                            repChainTailTopY = yH
-                        end
-                    
-                        yOffset = yOffset + (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36)
-                    
-                    if headerExpanded then
-                        
-                        -- Build flat list entries for factions (virtualized)
-                        local rowIdx = 0
-                        for _, item in ipairs(filteredFactionList) do
-                            rowIdx = rowIdx + 1
-                            globalRowIdx = globalRowIdx + 1
+                        header:ClearAllPoints()
+                        header:SetPoint("TOPLEFT", headerWrap, "TOPLEFT", 0, 0)
+                        header:SetPoint("TOPRIGHT", headerWrap, "TOPRIGHT", 0, 0)
+                        header:SetHeight(COLLAPSE_H_REP)
 
-                            local charInfo = {
-                                name = item.faction.characterName,
-                                class = item.faction.characterClass,
-                                level = item.faction.characterLevel,
-                                isAccountWide = item.faction.isAccountWide,
-                                realm = item.faction.characterRealm,
-                                allCharData = item.faction.allCharData or {}
-                            }
-
-                            local rowWidth = width - headerIndent
-                            local subsToRender = item.subfactions
-                            local collapseKey = "rep-subfactions-" .. item.faction.factionID
-                            local isExpanded = IsExpanded(collapseKey, true)
-                            local showSubs = isExpanded or item._forceExpand
-
-                            flatList[#flatList + 1] = {
-                                type = "row",
-                                yOffset = yOffset,
-                                height = rowHeightWithSpacing,
-                                xOffset = headerIndent,
-                                data = item.faction.data,
-                                factionID = item.faction.factionID,
-                                rowIdx = globalRowIdx,
-                                rowWidth = rowWidth,
-                                isSubfaction = false,
-                                subfactions = subsToRender,
-                                characterInfo = charInfo,
-                                IsExpanded = IsExpanded,
-                                ToggleExpand = ToggleExpand,
-                            }
-                            yOffset = yOffset + rowHeightWithSpacing
-
-                            if showSubs and subsToRender and #subsToRender > 0 then
-                                local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT
-                                for _, subFaction in ipairs(subsToRender) do
-                                    globalRowIdx = globalRowIdx + 1
-
-                                    local subCharInfo = {
-                                        name = subFaction.characterName,
-                                        class = subFaction.characterClass,
-                                        level = subFaction.characterLevel,
-                                        isAccountWide = subFaction.isAccountWide,
-                                        realm = subFaction.characterRealm,
-                                        allCharData = subFaction.allCharData or {}
-                                    }
-
-                                    local subRowWidth = width - subIndent
-                                    flatList[#flatList + 1] = {
-                                        type = "row",
-                                        yOffset = yOffset,
-                                        height = rowHeightWithSpacing,
-                                        xOffset = subIndent,
-                                        data = subFaction.data,
-                                        factionID = subFaction.factionID,
-                                        rowIdx = globalRowIdx,
-                                        rowWidth = subRowWidth,
-                                        isSubfaction = true,
-                                        subfactions = nil,
-                                        characterInfo = subCharInfo,
-                                        IsExpanded = IsExpanded,
-                                        ToggleExpand = ToggleExpand,
-                                    }
-                                    yOffset = yOffset + rowHeightWithSpacing
-                                end
-                            end
+                        RenderRowsIntoBody(headerBody, width - BASE_INDENT, filteredFactionList)
+                        headerBody._wnAccordionFullH = FinalizeBodyHeight(headerBody)
+                        if headerExpanded then
+                            headerBody:Show()
+                            headerBody:SetHeight(math.max(0.1, headerBody._wnAccordionFullH))
+                            headerWrap:SetHeight(COLLAPSE_H_REP + headerBody:GetHeight())
+                        else
+                            headerBody:Hide()
+                            headerBody:SetHeight(0.1)
+                            headerWrap:SetHeight(COLLAPSE_H_REP + 0.1)
                         end
                     end
-                    
-                    -- Add spacing after each expansion section (whether expanded or not)
-                    yOffset = yOffset + SECTION_SPACING
-                    
-                    end  -- if not isSearching or #filteredFactionList > 0
-                end  -- if #headerData.factions > 0
-            end  -- for headerData
-            end  -- else (totalCharacterBased > 0)
-        end  -- End Character-Based section expanded
-    
-    -- ===== FOOTER NOTE =====
-    yOffset = yOffset + (SECTION_SPACING * 2)  -- Double spacing before footer
-    
+                end
+            end
+        end
+
+        sectionBody._wnAccordionFullH = FinalizeBodyHeight(sectionBody)
+        if sectionExpanded then
+            sectionBody:Show()
+            sectionBody:SetHeight(math.max(0.1, sectionBody._wnAccordionFullH))
+            sectionWrap:SetHeight(COLLAPSE_H_REP + sectionBody:GetHeight())
+        else
+            sectionBody:Hide()
+            sectionBody:SetHeight(0.1)
+            sectionWrap:SetHeight(COLLAPSE_H_REP + 0.1)
+        end
+    end
+
+    RenderSection(
+        "filtered-section-accountwide",
+        format((ns.L and ns.L["REP_SECTION_ACCOUNT_WIDE"]) or "Account-Wide Reputations (%s)", FormatNumber(totalAccountWide)),
+        "dummy",
+        nil,
+        accountWideHeaders,
+        "AW"
+    )
+    local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
+    RenderSection(
+        "filtered-section-characterbased",
+        format((ns.L and ns.L["REP_SECTION_CHARACTER_BASED"]) or "Character-Based Reputations (%s)", FormatNumber(totalCharacterBased)),
+        GetCharacterSpecificIcon and GetCharacterSpecificIcon() or nil,
+        true,
+        characterBasedHeaders,
+        "CB"
+    )
+
     local noticeFrame = CreateNoticeFrame(
         parent,
         (ns.L and ns.L["REP_FOOTER_TITLE"]) or "Reputation Tracking",
@@ -2354,44 +2205,103 @@ function WarbandNexus:DrawReputationList(container, width)
         width - 20,
         60
     )
-    noticeFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    ChainTopFrame(noticeFrame, SECTION_SPACING * 2)
 
-    yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after notice
-
-    -- Update SearchStateManager with result count
     local totalReputations = 0
-    if aggregatedHeaders then
-        for _, headerGroup in ipairs(aggregatedHeaders) do
-            if headerGroup and headerGroup.factions then
-                totalReputations = totalReputations + #headerGroup.factions
-            end
+    for _, headerGroup in ipairs(aggregatedHeaders or {}) do
+        if headerGroup and headerGroup.factions then
+            totalReputations = totalReputations + #headerGroup.factions
         end
     end
     SearchStateManager:UpdateResults("reputation", totalReputations)
 
-    -- ===== RENDER ROWS DIRECTLY (Bypass VLM to fix invisible rows) =====
-    if #flatList > 0 then
-        for i, entry in ipairs(flatList) do
-            local row = AcquireReputationRow(parent, entry.rowWidth, ROW_HEIGHT)
-            row._isVirtualRow = true -- Mark for cleanup exclusion (handled by pool)
-            row:SetParent(parent)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", parent, "TOPLEFT", entry.xOffset or 0, -(entry.yOffset or 0))
-            PopulateReputationRow(row, entry)
-            row:Show()
-        end
-        
-        local lastEntry = flatList[#flatList]
-        local totalHeight = (lastEntry.yOffset or 0) + (lastEntry.height or ROW_HEIGHT)
-        return math.max(totalHeight, yOffset) + GetLayout().minBottomSpacing
-    end
-
-    return yOffset + GetLayout().minBottomSpacing
+    SyncScrollMetrics()
+    local finalHeight = MeasureChildrenHeight(parent) + (GetLayout().minBottomSpacing or 0)
+    parent:SetHeight(math.max(1, finalHeight))
+    return finalHeight
 end
 
 --============================================================================
 -- REPUTATION TAB WRAPPER (Fixes focus issue)
 --============================================================================
+
+local function ApplyReputationResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, animate, fromResultsH, fromScrollChildH)
+    if not mainFrame or not scrollChild or not resultsContainer then return end
+    local targetResultsH = math.max(listHeight or 1, 1)
+    local oldResultsH = fromResultsH or resultsContainer:GetHeight() or targetResultsH
+    local CONTENT_BOTTOM_PADDING = 8
+    local targetTabBodyH = 8 + (listHeight or 0)
+    local targetScrollChildH = math.max(targetTabBodyH + CONTENT_BOTTOM_PADDING, mainFrame.scroll:GetHeight())
+    local oldScrollChildH = fromScrollChildH or scrollChild:GetHeight() or targetScrollChildH
+
+    local Factory = ns.UI.Factory
+    if animate and Factory and Factory.AnimateAccordion and math.abs(targetResultsH - oldResultsH) > 1 then
+        Factory:AnimateAccordion(resultsContainer, oldResultsH, targetResultsH, {
+            duration = 0.24,
+            fadeAlpha = false,
+            clipChildren = true,
+            onUpdate = function(curH)
+                local t = 0
+                if math.abs(targetResultsH - oldResultsH) > 0.001 then
+                    t = (curH - oldResultsH) / (targetResultsH - oldResultsH)
+                end
+                if t < 0 then t = 0 elseif t > 1 then t = 1 end
+                local curScrollH = oldScrollChildH + (targetScrollChildH - oldScrollChildH) * t
+                scrollChild:SetHeight(math.max(curScrollH, mainFrame.scroll:GetHeight()))
+                if Factory.UpdateScrollBarVisibility then
+                    Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+                end
+            end,
+            onComplete = function()
+                scrollChild:SetHeight(targetScrollChildH)
+                if Factory.UpdateScrollBarVisibility then
+                    Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+                end
+                if Factory.UpdateHorizontalScrollBarVisibility then
+                    Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
+                end
+            end,
+        })
+    else
+        resultsContainer:SetHeight(targetResultsH)
+        scrollChild:SetHeight(targetScrollChildH)
+        if Factory and Factory.UpdateScrollBarVisibility then
+            Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+        end
+        if Factory and Factory.UpdateHorizontalScrollBarVisibility then
+            Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
+        end
+    end
+end
+
+function WarbandNexus:RedrawReputationResultsOnly(animateHeight)
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "reputations" then return end
+    local scrollChild = mf.scrollChild
+    if not scrollChild then return end
+    local rc = scrollChild.resultsContainer
+    if not rc or rc:GetParent() ~= scrollChild then return end
+    local width = scrollChild:GetWidth() - 20
+    if width < 1 then return end
+
+    if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
+        SearchResultsRenderer:PrepareContainer(rc)
+    end
+
+    local oldResultsH = rc:GetHeight() or 1
+    local oldScrollChildH = scrollChild:GetHeight() or mf.scroll:GetHeight()
+    local listHeight = self:DrawReputationList(rc, width)
+    ApplyReputationResultsHeight(mf, scrollChild, rc, listHeight, animateHeight == true, oldResultsH, oldScrollChildH)
+
+    local sc = mf.scroll
+    if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+        local maxV = sc:GetVerticalScrollRange() or 0
+        local cur = sc:GetVerticalScroll() or 0
+        if cur > maxV then
+            sc:SetVerticalScroll(maxV)
+        end
+    end
+end
 
 function WarbandNexus:DrawReputationTab(parent)
     if not parent then
@@ -2568,8 +2478,7 @@ function WarbandNexus:DrawReputationTab(parent)
     local searchBox = CreateSearchBox(headerParent, width, (ns.L and ns.L["REP_SEARCH"]) or "Search reputations...", function(text)
         SearchStateManager:SetSearchQuery("reputation", text)
         if parent.resultsContainer then
-            SearchResultsRenderer:PrepareContainer(parent.resultsContainer)
-            self:DrawReputationList(parent.resultsContainer, width)
+            self:RedrawReputationResultsOnly(false)
         end
     end, 0.4, reputationSearchText)
     
@@ -2596,6 +2505,7 @@ function WarbandNexus:DrawReputationTab(parent)
     container:Show()
     
     local listHeight = self:DrawReputationList(container, width)
+    ApplyReputationResultsHeight(WarbandNexus.UI and WarbandNexus.UI.mainFrame, parent, container, listHeight, false)
     
     return 8 + listHeight
 end
