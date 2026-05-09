@@ -39,6 +39,8 @@ local SETTINGS_SECTION_GAP = math.max((UI_SPACING.SECTION_SPACING or 8) + 12, 20
 local SETTINGS_DIVIDER_PAD = 8
 local CONTENT_PADDING_TOP = 40  -- Title height (from CreateSection standard, settings-specific)
 local CONTENT_PADDING_BOTTOM = UI_SPACING.MIN_BOTTOM_SPACING  -- Bottom padding within section
+-- Tighter foot room under section.content than generic MIN_BOTTOM_SPACING (avoids huge empty card bottoms)
+local SETTINGS_CARD_OUTER_BOTTOM_PAD = math.min(CONTENT_PADDING_BOTTOM or 20, 10)
 
 local UI_CONSTANTS = ns.UI_CONSTANTS or {}
 local SETTINGS_BTN_H = UI_CONSTANTS.BUTTON_HEIGHT or 32
@@ -51,14 +53,22 @@ local SETTINGS_SUBSECTION_GAP_AFTER_EXTRA = 6
 local SETTINGS_STACKED_SUBPANEL_GAP_EXTRA = 8
 -- Checkbox grids: align with tab row indent; slightly taller rows reduce wrap collisions
 local SETTINGS_CHECKBOX_GRID_INDENT = UI_SPACING.BASE_INDENT or 15
+-- Extra X indent for rows with parentKey (single-column stacks like Advanced)
+local SETTINGS_CHECKBOX_CHILD_INDENT = 22
 local SETTINGS_CHECKBOX_MIN_COL_W = 268
+-- Legacy minimum; checkbox rows now size to content (see CELL_MIN_H / dynamic packing).
 local SETTINGS_CHECKBOX_MIN_ROW_H = 40
 local SETTINGS_CHECKBOX_COL_GAP = UI_SPACING.CARD_GAP or UI_SPACING.AFTER_ELEMENT or 8
 -- Dropdown rows: label column vs control (prevents long titles overlapping the control)
 local SETTINGS_DROPDOWN_LABEL_COL_MIN = 176
 local SETTINGS_DROPDOWN_LABEL_COL_MAX = 310
 local SETTINGS_DROPDOWN_CONTROL_MIN_W = 136
-
+-- Content frame height follows layout math.abs(stackY) exactly (card chrome uses CONTENT_PADDING_*).
+local SETTINGS_CARD_CONTENT_BOTTOM_PAD = 0
+-- Height for secondary controls (notification actions, try-counter helper, track lookup)
+local SETTINGS_COMPACT_BTN_H = 30
+-- Minimum block height for notification anchor summary (two logical lines)
+local SETTINGS_ANCHOR_DESC_MIN_HEIGHT = 44
 local function GetHeaderToolbarGap()
     local L = ns.UI_LAYOUT or UI_SPACING
     return (L and L.HEADER_TOOLBAR_CONTROL_GAP) or UI_SPACING.AFTER_ELEMENT or 8
@@ -66,6 +76,18 @@ end
 
 local function GetStackedSubPanelTrailingGap()
     return GetHeaderToolbarGap() + SETTINGS_STACKED_SUBPANEL_GAP_EXTRA
+end
+
+local function SettingsMeasuredSectionContentHeight(stackY)
+    return math.abs(stackY) + SETTINGS_CARD_CONTENT_BOTTOM_PAD
+end
+
+---Advance layout cy past a TOPLEFT-anchored wrapped FontString plus trailing gap.
+local function AdvancePastWrappedFontString(fs, cy, gapAfter)
+    if not fs then return cy end
+    gapAfter = gapAfter or GetHeaderToolbarGap()
+    local sh = (fs.GetStringHeight and fs:GetStringHeight()) or 18
+    return cy - math.max(18, sh) - gapAfter
 end
 
 -- Scroll area vertical inset (matches SharedWidgets scroll content padding)
@@ -320,8 +342,12 @@ end
 ---@param options table Array of {key, label, tooltip, get, set, parentKey?}
 ---@param yOffset number Starting Y offset
 ---@param explicitWidth number Optional explicit width (bypasses GetWidth)
+---@param gridOpts table|nil Optional { maxColumns, minColumns, childIndent, indentChildren, gridTailPad }
+---  Nested indent: parentKey + indentChildren (default: only when numCols == 1); indentChildren=false disables.
+---  Rows stack by measured checkbox/label height (no fixed 40px slab).
 ---@return number newYOffset, table widgets (keyed by option.key → {checkbox, label})
-local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
+local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridOpts)
+    gridOpts = gridOpts or {}
     -- Responsive fixed-column grid: column count grows with available width.
     -- All items in a given column share the same X anchor → perfect alignment.
     local containerWidth = explicitWidth or parent:GetWidth() or 640
@@ -332,39 +358,73 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     local COL_SPACING = SETTINGS_CHECKBOX_COL_GAP
     local rowIndent = SETTINGS_CHECKBOX_GRID_INDENT
     local usableWidth = math.max(120, containerWidth - rowIndent)
-    local maxCols = 2
+    local layoutMaxCols = gridOpts.maxColumns
+    if layoutMaxCols then
+        layoutMaxCols = math.max(1, math.min(2, math.floor(tonumber(layoutMaxCols) or 1)))
+    else
+        layoutMaxCols = 2
+    end
     local numCols = math.floor((usableWidth + COL_SPACING) / (MIN_COL_WIDTH + COL_SPACING))
-    numCols = math.max(1, math.min(maxCols, numCols))
+    numCols = math.max(1, math.min(layoutMaxCols, numCols))
+    local minColsReq = tonumber(gridOpts.minColumns)
+    if minColsReq and minColsReq > 1 then
+        numCols = math.max(numCols, math.min(layoutMaxCols, math.floor(minColsReq)))
+    end
     local colWidth = (usableWidth - (COL_SPACING * (numCols - 1))) / numCols
+    local defaultChildIndent = SETTINGS_CHECKBOX_CHILD_INDENT
 
-    local ROW_HEIGHT = SETTINGS_CHECKBOX_MIN_ROW_H
+    local CELL_MIN_H = math.max(20, (ns.UI_TOGGLE_SIZE or 22))
+    local ROW_GAP = math.max(4, math.floor(((UI_SPACING.AFTER_ELEMENT or 8)) * 0.75))
+
     local widgets = {}       -- key → {checkbox, label}
     local optionByKey = {}   -- key → option
     local childKeys = {}     -- parentKey → {childKey1, childKey2, ...}
     local parentKeyMap = {}  -- childKey → parentKey
 
-    local totalRows = 0
+    local packRow = -1
+    local rowTopY = yOffset
+    local rowMaxH = CELL_MIN_H
+    local yCursor = yOffset
 
     for i = 1, #options do
         local option = options[i]
         local col = (i - 1) % numCols
         local row = math.floor((i - 1) / numCols)
-        if row > totalRows then totalRows = row end
 
-        local xPos = rowIndent + col * (colWidth + COL_SPACING)
-        local yPos  = yOffset + (row * -ROW_HEIGHT)
+        if row ~= packRow then
+            if packRow >= 0 then
+                yCursor = rowTopY - rowMaxH - ROW_GAP
+            end
+            packRow = row
+            rowTopY = yCursor
+            rowMaxH = CELL_MIN_H
+        end
+
+        local indentExtra = 0
+        local wantChildIndent = gridOpts.indentChildren
+        if wantChildIndent == nil then
+            wantChildIndent = (numCols == 1)
+        end
+        if option.parentKey and wantChildIndent then
+            indentExtra = (gridOpts.childIndent ~= nil) and gridOpts.childIndent or defaultChildIndent
+        end
+        local xPos = rowIndent + indentExtra + col * (colWidth + COL_SPACING)
+        xPos = math.floor(xPos + 0.5)
+        local yPos = rowTopY
 
         local checkbox = CreateThemedCheckbox(parent)
         checkbox:SetPoint("TOPLEFT", xPos, yPos)
 
-        -- Label (to the right of checkbox)
+        -- Label: TOPLEFT from toggle TOPRIGHT so multi-line wraps predictably and aligns with 16px toggles
         local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
         label:SetJustifyH("LEFT")
         label:SetText(option.label)
         label:SetTextColor(1, 1, 1, 1)
-        label:SetPoint("LEFT", checkbox, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
-        -- Constrain label width so it never bleeds into the next column
-        label:SetWidth(colWidth - (ns.UI_TOGGLE_SIZE or 16) - UI_SPACING.AFTER_ELEMENT)
+        label:SetPoint("TOPLEFT", checkbox, "TOPRIGHT", UI_SPACING.AFTER_ELEMENT, 1)
+        -- Constrain label width (reserve nested indent so text stays inside the card)
+        local toggleW = (ns.UI_TOGGLE_SIZE or 16)
+        local labelW = colWidth - toggleW - UI_SPACING.AFTER_ELEMENT - indentExtra
+        label:SetWidth(math.max(80, labelW))
         label:SetWordWrap(true)
 
         -- Set initial value
@@ -400,6 +460,11 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
             end)
             label:SetScript("OnLeave", function() GameTooltip:Hide() end)
         end
+
+        local ch = checkbox:GetHeight() or CELL_MIN_H
+        local lh = label:GetStringHeight() or CELL_MIN_H
+        -- +1 matches TOPRIGHT/TOPLEFT vertical nudge so wrapped labels don’t clip the next row
+        rowMaxH = math.max(rowMaxH, math.max(ch, lh + 1))
     end
     
     -- Check if a key has any ancestor that is unchecked (recursive)
@@ -510,12 +575,15 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     -- Also handle children whose parent is in the same grid but not a root
     -- (already handled by recursive cascade from roots above)
 
-    -- Calculate total height used. totalRows is 0-indexed (last row index).
-    -- So total rows = totalRows + 1 (if any options were placed).
-    local usedRows = (#options > 0) and (totalRows + 1) or 0
-
-    local gridTailPad = (UI_SPACING.AFTER_ELEMENT or 8) + 10
-    return yOffset - (usedRows * ROW_HEIGHT) - gridTailPad, widgets
+    local gridTailPad = gridOpts.gridTailPad or (UI_SPACING.AFTER_ELEMENT or 8)
+    if #options == 0 then
+        return yOffset - gridTailPad, widgets
+    end
+    if packRow >= 0 then
+        yCursor = rowTopY - rowMaxH - ROW_GAP
+    end
+    -- No trailing ROW_GAP after last row (ROW_GAP already accounted before last yCursor advance)
+    return yCursor + ROW_GAP - gridTailPad, widgets
 end
 
 ---Create button grid (RESPONSIVE - auto-adjusts columns)
@@ -619,14 +687,55 @@ local function CloseOtherSettingsDropdownForClick(currentDropdown)
     end
 end
 
+-- Settings controls that use accent borders (dropdown triggers, chrome buttons, inputs).
+-- Declared before CreateDropdownWidget / CreateInputWidget: Lua locals are not visible before their line.
+local settingsAccentChrome = {}
+
+local function ApplySettingsAccentChromeIdle(btn)
+    if not btn or not ApplyVisuals then return end
+    local C = ns.UI_COLORS or COLORS
+    local a = C.accent or COLORS.accent
+    ApplyVisuals(btn, { 0.08, 0.08, 0.10, 1 }, { a[1], a[2], a[3], 0.75 })
+end
+
+local function WireSettingsAccentButtonHover(btn)
+    if not btn then return end
+    btn:SetScript("OnEnter", function(self)
+        if not ApplyVisuals then return end
+        local C = ns.UI_COLORS or COLORS
+        local a = C.accent or COLORS.accent
+        ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { a[1], a[2], a[3], 1 })
+    end)
+    btn:SetScript("OnLeave", function(self)
+        ApplySettingsAccentChromeIdle(self)
+    end)
+end
+
+local function RegisterSettingsAccentChrome(btn)
+    if btn then
+        settingsAccentChrome[#settingsAccentChrome + 1] = btn
+    end
+end
+
+local function RefreshSettingsAccentChrome()
+    for i = 1, #settingsAccentChrome do
+        local f = settingsAccentChrome[i]
+        if f and f:IsShown() then
+            ApplySettingsAccentChromeIdle(f)
+        end
+    end
+end
+
 ---Create dropdown widget
+---@param option table may include stackBelowLabel (force label row + control row)
 local function CreateDropdownWidget(parent, option, yOffset)
     local pw = parent:GetWidth() or 400
     local gap = GetHeaderToolbarGap()
     local labelColW = math.min(SETTINGS_DROPDOWN_LABEL_COL_MAX,
         math.max(SETTINGS_DROPDOWN_LABEL_COL_MIN, math.floor(pw * 0.40)))
     local controlW = pw - labelColW - gap
-    local useStacked = controlW < SETTINGS_DROPDOWN_CONTROL_MIN_W
+    -- stackBelowLabel: label full width on first row, dropdown below (avoids wide settings rows).
+    local useStacked = option.stackBelowLabel == true or controlW < SETTINGS_DROPDOWN_CONTROL_MIN_W
     if useStacked then
         controlW = pw
     end
@@ -1119,43 +1228,6 @@ end
 -- Track subtitle elements for theme refresh
 local subtitleElements = {}
 local sliderElements = {}
--- Settings controls that use accent borders (dropdown triggers, chrome buttons, inputs)
-local settingsAccentChrome = {}
-
-local function ApplySettingsAccentChromeIdle(btn)
-    if not btn or not ApplyVisuals then return end
-    local C = ns.UI_COLORS or COLORS
-    local a = C.accent or COLORS.accent
-    ApplyVisuals(btn, { 0.08, 0.08, 0.10, 1 }, { a[1], a[2], a[3], 0.75 })
-end
-
-local function WireSettingsAccentButtonHover(btn)
-    if not btn then return end
-    btn:SetScript("OnEnter", function(self)
-        if not ApplyVisuals then return end
-        local C = ns.UI_COLORS or COLORS
-        local a = C.accent or COLORS.accent
-        ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { a[1], a[2], a[3], 1 })
-    end)
-    btn:SetScript("OnLeave", function(self)
-        ApplySettingsAccentChromeIdle(self)
-    end)
-end
-
-local function RegisterSettingsAccentChrome(btn)
-    if btn then
-        settingsAccentChrome[#settingsAccentChrome + 1] = btn
-    end
-end
-
-local function RefreshSettingsAccentChrome()
-    for i = 1, #settingsAccentChrome do
-        local f = settingsAccentChrome[i]
-        if f and f:IsShown() then
-            ApplySettingsAccentChromeIdle(f)
-        end
-    end
-end
 
 ---Subsection title row: thin accent bar + title (FontManager). Updates with RefreshSubtitles unless opts.muted / subtitleBright.
 local function AppendSettingsSubSectionHeader(parent, titleText, innerWidth, yOffset, opts)
@@ -1196,9 +1268,23 @@ local function AppendSettingsSubSectionHeader(parent, titleText, innerWidth, yOf
     return rowTop - rowH - gapAfter, titleFs
 end
 
----Stack a bordered sub-panel inside section.content (Factory container + border).
+---Stack a sub-panel inside section.content.
+---opts.flat: layout only — no bordered inner card (single main CreateSection shell).
+---opts.noTrailingGap: omit trailing spacer after this block (legacy; flat stacks default to 0 gap).
+---opts.blockTrailingGap: optional px between stacked flat blocks (default 0 — avoid cumulative dead space).
 local function StackSettingsSubPanel(hostContent, panelWidth, stackY, buildInner, opts)
     opts = opts or {}
+    if opts.flat then
+        local anchor = CreateFrame("Frame", nil, hostContent)
+        anchor:SetSize(panelWidth, 1)
+        anchor:SetPoint("TOPLEFT", hostContent, "TOPLEFT", 0, stackY)
+        local iw = panelWidth
+        local cy = buildInner(anchor, iw)
+        local blockH = math.max(1, math.abs(cy))
+        anchor:SetHeight(blockH)
+        local gap = opts.noTrailingGap and 0 or (opts.blockTrailingGap or 0)
+        return stackY - anchor:GetHeight() - gap
+    end
     local pad = SETTINGS_SUBPANEL_PAD
     local panel = ns.UI.Factory:CreateContainer(hostContent, panelWidth, 1, true)
     if not panel then return stackY end
@@ -1367,21 +1453,16 @@ local function BuildSettings(parent, containerWidth)
 
     local generalContentW = effectiveWidth - 30
     local generalStackY = 0
-    generalStackY = StackSettingsSubPanel(generalSection.content, generalContentW, generalStackY, function(inner, iw)
+    generalStackY = StackSettingsSubPanel(generalSection.content, generalContentW, 0, function(inner, iw)
+        local hdrGap = GetHeaderToolbarGap()
         local cy = 0
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_GENERAL_FEATURES"]) or "Features",
             iw, cy, { skipGapBefore = true })
         cy = CreateCheckboxGrid(inner, generalOptions, cy, iw)
-        return cy
-    end)
-
-    generalStackY = StackSettingsSubPanel(generalSection.content, generalContentW, generalStackY, function(inner, iw)
-        local hdrGap = GetHeaderToolbarGap()
-        local cy = 0
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_GENERAL_CONTROLS"]) or "Controls & scaling",
-            iw, cy, { skipGapBefore = true })
+            iw, cy, {})
         cy = cy - hdrGap
 
         -- Current Language (label + tooltip)
@@ -1400,7 +1481,7 @@ local function BuildSettings(parent, containerWidth)
         end)
         langLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-        cy = cy - 30
+        cy = AdvancePastWrappedFontString(langLabel, cy, hdrGap)
 
         -- Keybinding row (fixed label column + controls)
         local labelColW = math.min(170, math.floor(iw * 0.34))
@@ -1637,10 +1718,10 @@ local function BuildSettings(parent, containerWidth)
         }, cy, sliderElements)
 
         return cy
-    end, { noTrailingGap = true })
+    end, { flat = true, noTrailingGap = true })
 
-    local generalContentHeight = math.abs(generalStackY) + 10
-    generalSection:SetHeight(generalContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    local generalContentHeight = SettingsMeasuredSectionContentHeight(generalStackY)
+    generalSection:SetHeight(generalContentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
     generalSection.content:SetHeight(generalContentHeight)
     
     -- Move to next section
@@ -1669,7 +1750,7 @@ local function BuildSettings(parent, containerWidth)
         moduleDesc:SetWordWrap(true)
         moduleDesc:SetText((ns.L and ns.L["MODULE_MANAGEMENT_DESC"]) or "Enable or disable specific data collection modules. Disabling a module will stop its data updates and hide its tab from the UI.")
         moduleDesc:SetTextColor(COLORS.textDim[1], COLORS.textDim[2], COLORS.textDim[3])
-        cy = cy - 42
+        cy = AdvancePastWrappedFontString(moduleDesc, cy, GetHeaderToolbarGap())
 
         local moduleOptions = {
         {
@@ -1792,10 +1873,10 @@ local function BuildSettings(parent, containerWidth)
 
         cy = CreateCheckboxGrid(inner, moduleOptions, cy, iw)
         return cy
-    end, { noTrailingGap = true })
+    end, { flat = true, noTrailingGap = true })
 
-    local moduleContentHeight = math.abs(moduleStackY) + 10
-    moduleSection:SetHeight(moduleContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    local moduleContentHeight = SettingsMeasuredSectionContentHeight(moduleStackY)
+    moduleSection:SetHeight(moduleContentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
     moduleSection.content:SetHeight(moduleContentHeight)
     
     -- Move to next section
@@ -1897,15 +1978,6 @@ local function BuildSettings(parent, containerWidth)
     local vaultStackY = 0
     local leftClickWidgets
 
-    vaultStackY = StackSettingsSubPanel(vaultSection.content, vaultContentW, vaultStackY, function(inner, iw)
-        local cy = 0
-        cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_VAULT_GENERAL"]) or "Shortcut behavior",
-            iw, cy, { skipGapBefore = true })
-        cy = CreateCheckboxGrid(inner, vaultOptions, cy, iw)
-        return cy
-    end)
-
     local leftClickOptions = {
         {
             key = "vaultButtonLeftClickPve",
@@ -1944,12 +2016,17 @@ local function BuildSettings(parent, containerWidth)
         },
     }
 
-    vaultStackY = StackSettingsSubPanel(vaultSection.content, vaultContentW, vaultStackY, function(inner, iw)
+    vaultStackY = StackSettingsSubPanel(vaultSection.content, vaultContentW, 0, function(inner, iw)
         local cy = 0
         cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_HEADER"]) or "Left Click",
+            (ns.L and ns.L["SETTINGS_SECTION_VAULT_GENERAL"]) or "Shortcut behavior",
             iw, cy, { skipGapBefore = true })
-        cy = cy - 30
+        cy = CreateCheckboxGrid(inner, vaultOptions, cy, iw)
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_HEADER"]) or "Left Click",
+            iw, cy, {})
+        cy = cy - GetHeaderToolbarGap()
         local leftClickYOffset
         leftClickYOffset, leftClickWidgets = CreateCheckboxGrid(inner, leftClickOptions, cy, iw)
 
@@ -1990,14 +2067,11 @@ local function BuildSettings(parent, containerWidth)
             end
         end
 
-        return leftClickYOffset - 12
-    end)
+        cy = leftClickYOffset
 
-    vaultStackY = StackSettingsSubPanel(vaultSection.content, vaultContentW, vaultStackY, function(inner, iw)
-        local cy = 0
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_VAULT_LOOK"]) or "Look & opacity",
-            iw, cy, { skipGapBefore = true })
+            iw, cy, {})
         cy = CreateSliderWidget(inner, {
             name = (ns.L and ns.L["CONFIG_VAULT_BUTTON_OPACITY"]) or "Button Opacity",
             desc = (ns.L and ns.L["CONFIG_VAULT_BUTTON_OPACITY_DESC"]) or "Adjust Easy Access opacity when it is visible.",
@@ -2013,10 +2087,10 @@ local function BuildSettings(parent, containerWidth)
             valueFormat = function(v) return string.format("%d%%", v * 100) end,
         }, cy, sliderElements)
         return cy
-    end, { noTrailingGap = true })
+    end, { flat = true, noTrailingGap = true })
 
-    local vaultContentHeight = math.abs(vaultStackY) + 10
-    vaultSection:SetHeight(vaultContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    local vaultContentHeight = SettingsMeasuredSectionContentHeight(vaultStackY)
+    vaultSection:SetHeight(vaultContentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
     vaultSection.content:SetHeight(vaultContentHeight)
 
     yOffset = yOffset - vaultSection:GetHeight() - SETTINGS_SECTION_GAP
@@ -2050,7 +2124,6 @@ local function BuildSettings(parent, containerWidth)
     end
     
     tabGridYOffset = CreateCheckboxGrid(tabSection.content, warbandOptions, tabGridYOffset, tabInnerW)
-    tabGridYOffset = tabGridYOffset - 10
 
     tabGridYOffset = AppendSettingsSubSectionHeader(tabSection.content,
         (ns.L and ns.L["SETTINGS_SECTION_TAB_PERSONAL_BANK"]) or "Personal Bank",
@@ -2085,7 +2158,6 @@ local function BuildSettings(parent, containerWidth)
     end
     
     tabGridYOffset = CreateCheckboxGrid(tabSection.content, personalBankOptions, tabGridYOffset, tabInnerW)
-    tabGridYOffset = tabGridYOffset - 10
 
     tabGridYOffset = AppendSettingsSubSectionHeader(tabSection.content,
         (ns.L and ns.L["SETTINGS_SECTION_TAB_INVENTORY"]) or "Inventory",
@@ -2123,8 +2195,8 @@ local function BuildSettings(parent, containerWidth)
     tabGridYOffset = CreateCheckboxGrid(tabSection.content, inventoryOptions, tabGridYOffset, tabInnerW)
 
     -- Calculate section height
-    local contentHeight = math.abs(tabGridYOffset)
-    tabSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    local contentHeight = SettingsMeasuredSectionContentHeight(tabGridYOffset)
+    tabSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
     tabSection.content:SetHeight(contentHeight)
     
     -- Move to next section
@@ -2354,16 +2426,14 @@ local function BuildSettings(parent, containerWidth)
     local notifStackY = 0
     local notifWidgets
     local tcChatRouteDropdown, tcChatRouteLabel
+    local addTcChatBtn
 
-    notifStackY = StackSettingsSubPanel(notifSection.content, notifInnerW, notifStackY, function(inner, iw)
-        local cy, w = CreateCheckboxGrid(inner, notifOptions, 0, iw)
+    notifStackY = StackSettingsSubPanel(notifSection.content, notifInnerW, 0, function(inner, iw)
+        local cy, w = CreateCheckboxGrid(inner, notifOptions, 0, iw, { indentChildren = false, minColumns = 2 })
         notifWidgets = w
-        return cy
-    end)
-
-    notifStackY = StackSettingsSubPanel(notifSection.content, notifInnerW, notifStackY, function(inner, iw)
-        local cy
+        cy = cy - GetHeaderToolbarGap()
         cy, tcChatRouteDropdown, tcChatRouteLabel = CreateDropdownWidget(inner, {
+            stackBelowLabel = true,
             name = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LABEL"]) or "Try counter chat output",
             desc = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DESC"])
                 or "Default uses the same tabs as Loot messages. “Warband Nexus” is a separate filter you can enable per tab (often listed in the chat tab settings). “All tabs” prints to every standard chat window.",
@@ -2383,11 +2453,10 @@ local function BuildSettings(parent, containerWidth)
                     ns.ChatOutput.OnTryCounterChatRouteChanged(value)
                 end
             end,
-        }, 0)
-        local padBetween = GetHeaderToolbarGap()
-        cy = cy - padBetween
-        local addTcChatBtn = ns.UI.Factory:CreateButton(inner)
-        addTcChatBtn:SetSize(math.min(iw, 320), 30)
+        }, cy)
+        cy = cy - GetHeaderToolbarGap()
+        addTcChatBtn = ns.UI.Factory:CreateButton(inner)
+        addTcChatBtn:SetSize(math.min(iw, 320), SETTINGS_COMPACT_BTN_H)
         addTcChatBtn:SetPoint("TOPLEFT", 0, cy)
         local addTcChatBtnText = addTcChatBtn:GetFontString() or FontManager:CreateFontString(addTcChatBtn, "body", "OVERLAY")
         addTcChatBtnText:SetPoint("CENTER")
@@ -2419,8 +2488,8 @@ local function BuildSettings(parent, containerWidth)
             end
         end)
         local btnTrail = GetHeaderToolbarGap()
-        return cy - 30 - btnTrail
-    end)
+        return cy - SETTINGS_COMPACT_BTN_H - btnTrail
+    end, { flat = true, noTrailingGap = true })
 
     local notifGridYOffset = notifStackY
 
@@ -2495,7 +2564,7 @@ local function BuildSettings(parent, containerWidth)
     ApplyHideTryCounterChatCascade()
 
     -- ---- Notification Duration ----
-    notifGridYOffset = notifGridYOffset - (GetHeaderToolbarGap() + 7)
+    notifGridYOffset = notifGridYOffset - GetHeaderToolbarGap()
     local durationLabel
     notifGridYOffset, durationLabel = AppendSettingsSubSectionHeader(notifSection.content,
         (ns.L and ns.L["SETTINGS_SECTION_NOTIF_TIMING"]) or "Timing",
@@ -2554,8 +2623,9 @@ local function BuildSettings(parent, containerWidth)
         end
     end
     UpdateAnchorDesc()
-    -- Reserve space for two lines (main + criteria) so buttons never overlap the anchor text
-    notifGridYOffset = notifGridYOffset - 44
+    -- Reserve space for wrapped anchor lines so buttons never overlap the anchor text
+    local anchorBlockH = math.max(SETTINGS_ANCHOR_DESC_MIN_HEIGHT, anchorDesc:GetStringHeight())
+    notifGridYOffset = notifGridYOffset - anchorBlockH
 
     -- Forward declaration for shared handlers below.
     local useAlertFrameCheck
@@ -2563,7 +2633,7 @@ local function BuildSettings(parent, containerWidth)
     local btnGap = GetHeaderToolbarGap()
     local btnWidth = math.floor((notifInnerW - 3 * btnGap) / 4)
     local setPosBtn = ns.UI.Factory:CreateButton(notifSection.content)
-    setPosBtn:SetSize(btnWidth, 30)
+    setPosBtn:SetSize(btnWidth, SETTINGS_COMPACT_BTN_H)
     setPosBtn:SetPoint("TOPLEFT", 0, notifGridYOffset)
     local setPosBtnText = setPosBtn:GetFontString() or FontManager:CreateFontString(setPosBtn, "body", "OVERLAY")
     setPosBtnText:SetPoint("CENTER")
@@ -2713,7 +2783,7 @@ local function BuildSettings(parent, containerWidth)
     end)
 
     local setBothPosBtn = ns.UI.Factory:CreateButton(notifSection.content)
-    setBothPosBtn:SetSize(btnWidth, 30)
+    setBothPosBtn:SetSize(btnWidth, SETTINGS_COMPACT_BTN_H)
     setBothPosBtn:SetPoint("LEFT", setPosBtn, "RIGHT", btnGap, 0)
     local setBothPosBtnText = setBothPosBtn:GetFontString() or FontManager:CreateFontString(setBothPosBtn, "body", "OVERLAY")
     setBothPosBtnText:SetPoint("CENTER")
@@ -2758,7 +2828,7 @@ local function BuildSettings(parent, containerWidth)
     end)
 
     local resetBtn = ns.UI.Factory:CreateButton(notifSection.content)
-    resetBtn:SetSize(btnWidth, 30)
+    resetBtn:SetSize(btnWidth, SETTINGS_COMPACT_BTN_H)
     resetBtn:SetPoint("LEFT", setBothPosBtn, "RIGHT", btnGap, 0)
     local resetBtnText = resetBtn:GetFontString() or FontManager:CreateFontString(resetBtn, "body", "OVERLAY")
     resetBtnText:SetPoint("CENTER")
@@ -2783,7 +2853,7 @@ local function BuildSettings(parent, containerWidth)
     end)
 
     local testBtn = ns.UI.Factory:CreateButton(notifSection.content)
-    testBtn:SetSize(btnWidth, 30)
+    testBtn:SetSize(btnWidth, SETTINGS_COMPACT_BTN_H)
     testBtn:SetPoint("LEFT", resetBtn, "RIGHT", btnGap, 0)
     local testBtnText = testBtn:GetFontString() or FontManager:CreateFontString(testBtn, "body", "OVERLAY")
     testBtnText:SetPoint("CENTER")
@@ -2798,7 +2868,7 @@ local function BuildSettings(parent, containerWidth)
             WarbandNexus:Notify("achievement", (ns.L and ns.L["TEST_NOTIFICATION_TITLE"]) or "Test Notification", nil, { action = (ns.L and ns.L["TEST_NOTIFICATION_MSG"]) or "Position test" })
         end
     end)
-    notifGridYOffset = notifGridYOffset - 40
+    notifGridYOffset = notifGridYOffset - SETTINGS_COMPACT_BTN_H - GetHeaderToolbarGap()
 
     useAlertFrameCheck = CreateThemedCheckbox(notifSection.content)
     useAlertFrameCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
@@ -2817,7 +2887,7 @@ local function BuildSettings(parent, containerWidth)
         UpdateAnchorDesc()
     end)
     if WarbandNexus.db.profile.notifications.useAlertFramePosition then setPosBtn:Disable() setPosBtn:SetAlpha(0.5) setBothPosBtn:Disable() setBothPosBtn:SetAlpha(0.5) resetBtn:Disable() resetBtn:SetAlpha(0.5) else setPosBtn:Enable() setBothPosBtn:Enable() resetBtn:Enable() end
-    notifGridYOffset = notifGridYOffset - 30
+    notifGridYOffset = notifGridYOffset - math.max(22, ns.UI_TOGGLE_SIZE or 22) - GetHeaderToolbarGap()
 
     if durationLabel then
         table.insert(notifExternalDependents, { type = "label", widget = durationLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
@@ -2855,8 +2925,8 @@ local function BuildSettings(parent, containerWidth)
     end
     
     -- Calculate section height
-    local contentHeight = math.abs(notifGridYOffset)
-    notifSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    local contentHeight = SettingsMeasuredSectionContentHeight(notifGridYOffset)
+    notifSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
     notifSection.content:SetHeight(contentHeight)
     
     -- Move to next section
@@ -2874,7 +2944,7 @@ local function BuildSettings(parent, containerWidth)
     local themeStackY = 0
     local warningText  -- typography panel (slider callback)
 
-    themeStackY = StackSettingsSubPanel(themeSection.content, themeContentW, themeStackY, function(inner, iw)
+    themeStackY = StackSettingsSubPanel(themeSection.content, themeContentW, 0, function(inner, iw)
         local cy = 0
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_THEME_COLORS"]) or "Colors & accent",
@@ -3119,14 +3189,10 @@ local function BuildSettings(parent, containerWidth)
 
         local classRowH = math.max(ns.UI_TOGGLE_SIZE or 22, classAccentLbl:GetStringHeight(), SETTINGS_BTN_H - 6)
         cy = cy - classRowH - GetHeaderToolbarGap()
-        return cy
-    end)
 
-    themeStackY = StackSettingsSubPanel(themeSection.content, themeContentW, themeStackY, function(inner, iw)
-        local cy = 0
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_THEME_TYPOGRAPHY"]) or "Fonts & readability",
-            iw, cy, { skipGapBefore = true })
+            iw, cy, {})
         cy = cy - GetHeaderToolbarGap()
 
         cy = CreateDropdownWidget(inner, {
@@ -3190,18 +3256,11 @@ local function BuildSettings(parent, containerWidth)
         }, cy)
 
         warningText = FontManager:CreateFontString(inner, "small", "OVERLAY")
-        warningText:SetPoint("TOPLEFT", 0, cy - 72)
         warningText:SetWidth(iw)
         warningText:SetJustifyH("LEFT")
         warningText:SetWordWrap(true)
         warningText:SetText("|cffff8800" .. ((ns.L and ns.L["FONT_SCALE_WARNING"]) or "Warning: Higher font scale may cause text overflow in some UI elements.") .. "|r")
-
-        local currentScale = WarbandNexus.db.profile.fonts.scaleCustom or 1.0
-        if currentScale > 1.0 then
-            warningText:Show()
-        else
-            warningText:Hide()
-        end
+        warningText:Hide()
 
         cy = CreateSliderWidget(inner, {
             name = (ns.L and ns.L["FONT_SCALE"]) or "Font Scale",
@@ -3224,8 +3283,20 @@ local function BuildSettings(parent, containerWidth)
             end,
         }, cy, sliderElements)
 
-        cy = cy - 20
-        cy = cy - 10
+        local gapTypo = GetHeaderToolbarGap()
+        local warnTop = cy - gapTypo
+        warningText:SetPoint("TOPLEFT", 0, warnTop)
+
+        local currentScale = WarbandNexus.db.profile.fonts.scaleCustom or 1.0
+        if currentScale > 1.0 then
+            warningText:Show()
+        else
+            warningText:Hide()
+        end
+
+        local warnH = (warningText:IsShown() and math.max(14, warningText:GetStringHeight())) or 0
+        cy = warnTop - warnH - (warnH > 0 and gapTypo or math.floor(gapTypo / 2))
+
         cy = CreateCheckboxGrid(inner, {
             {
                 key = "usePixelNormalization",
@@ -3249,13 +3320,13 @@ local function BuildSettings(parent, containerWidth)
                     end)
                 end,
             },
-        }, cy, iw)
+        }, cy, iw, { gridTailPad = 4 })
 
         return cy
-    end, { noTrailingGap = true })
+    end, { flat = true, noTrailingGap = true })
 
-    local themeSectionHeight = math.abs(themeStackY) + 10
-    themeSection:SetHeight(themeSectionHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    local themeSectionHeight = SettingsMeasuredSectionContentHeight(themeStackY)
+    themeSection:SetHeight(themeSectionHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
     themeSection.content:SetHeight(themeSectionHeight)
     
     -- Move to next section
@@ -3661,7 +3732,7 @@ local function BuildSettings(parent, containerWidth)
     
     -- Lookup button (inline, right of editbox)
     local lookupBtn = ns.UI.Factory:CreateButton(trackSection.content)
-    lookupBtn:SetSize(lookupBtnWidth, 30)
+    lookupBtn:SetSize(lookupBtnWidth, SETTINGS_COMPACT_BTN_H)
     lookupBtn:SetPoint("LEFT", itemIDBox, "RIGHT", inlineGap, 0)
     local lookupBtnColor = { 0.20, 0.50, 0.70 }
     if ApplyVisuals then
@@ -3811,8 +3882,8 @@ local function BuildSettings(parent, containerWidth)
     }, trackYOffset)
     
     -- Final section height (expanded)
-    local trackContentHeight = math.abs(trackYOffset)
-    local trackExpandedHeight = trackContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM
+    local trackContentHeight = SettingsMeasuredSectionContentHeight(trackYOffset)
+    local trackExpandedHeight = trackContentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD
     trackSection.content:SetHeight(trackContentHeight)
     
     -- Default collapsed: hide content, use collapsed height
@@ -3830,7 +3901,8 @@ local function BuildSettings(parent, containerWidth)
     advSection:SetPoint("TOPLEFT", 0, yOffset)
     advSection:SetPoint("TOPRIGHT", 0, yOffset)
     
-    -- Debug Mode checkboxes
+    -- Debug checkboxes: same 2-column row-major grid as other settings cards.
+    -- Order fills [autoOptimize | debug] then [tryCounter | debugVerbose] so Verbose sits under Debug.
     local debugOptions = {
         {
             key = "autoOptimize",
@@ -3844,7 +3916,20 @@ local function BuildSettings(parent, containerWidth)
             label = (ns.L and ns.L["DEBUG_MODE"]) or "Debug Logging",
             tooltip = (ns.L and ns.L["DEBUG_MODE_DESC"]) or "Output verbose debug messages to chat for troubleshooting",
             get = function() return WarbandNexus.db.profile.debugMode end,
-            set = function(value) WarbandNexus.db.profile.debugMode = value end,
+            set = function(value)
+                WarbandNexus.db.profile.debugMode = value
+                local mf = WarbandNexus.mainFrame
+                if mf and mf.SyncMainHeaderDebugReloadLayout then
+                    mf:SyncMainHeaderDebugReloadLayout()
+                end
+            end,
+        },
+        {
+            key = "debugTryCounterLoot",
+            label = (ns.L and ns.L["DEBUG_TRYCOUNTER_LOOT"]) or "Try Counter Loot Debug",
+            tooltip = (ns.L and ns.L["DEBUG_TRYCOUNTER_LOOT_DESC"]) or "Log loot flow only (LOOT_OPENED, source resolution, zone fallback). Rep/currency cache logs are suppressed.",
+            get = function() return WarbandNexus.db.profile.debugTryCounterLoot end,
+            set = function(value) WarbandNexus.db.profile.debugTryCounterLoot = value end,
         },
         {
             key = "debugVerbose",
@@ -3854,23 +3939,14 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.debugVerbose end,
             set = function(value) WarbandNexus.db.profile.debugVerbose = value end,
         },
-        {
-            key = "debugTryCounterLoot",
-            label = (ns.L and ns.L["DEBUG_TRYCOUNTER_LOOT"]) or "Try Counter Loot Debug",
-            tooltip = (ns.L and ns.L["DEBUG_TRYCOUNTER_LOOT_DESC"]) or "Log loot flow only (LOOT_OPENED, source resolution, zone fallback). Rep/currency cache logs are suppressed.",
-            get = function() return WarbandNexus.db.profile.debugTryCounterLoot end,
-            set = function(value) WarbandNexus.db.profile.debugTryCounterLoot = value end,
-        },
     }
 
     local advInnerW = effectiveWidth - 30
-    local advGridYOffset = StackSettingsSubPanel(advSection.content, advInnerW, 0, function(inner, iw)
-        return CreateCheckboxGrid(inner, debugOptions, 0, iw)
-    end)
+    local advGridYOffset = CreateCheckboxGrid(advSection.content, debugOptions, 0, advInnerW)
 
     -- Calculate section height
-    local advContentHeight = math.abs(advGridYOffset)
-    advSection:SetHeight(advContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    local advContentHeight = SettingsMeasuredSectionContentHeight(advGridYOffset)
+    advSection:SetHeight(advContentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
     advSection.content:SetHeight(advContentHeight)
     
     -- Collapsible toggle handler for Track Item DB
@@ -3891,7 +3967,7 @@ local function BuildSettings(parent, containerWidth)
         advSection:SetPoint("TOPLEFT", 0, advY)
         advSection:SetPoint("TOPRIGHT", 0, advY)
         -- Recalculate total parent height
-        local totalY = math.abs(advY) + advSection:GetHeight() + 20
+        local totalY = math.abs(advY) + advSection:GetHeight() + SETTINGS_SCROLL_INSET_BOTTOM
         parent:SetHeight(totalY)
     end
     collapseBtn:SetScript("OnClick", ToggleTrackSection)
@@ -3900,7 +3976,7 @@ local function BuildSettings(parent, containerWidth)
     
     -- Set total parent height (default collapsed state)
     local totalHeight = math.abs(yOffset) + advSection:GetHeight()
-    parent:SetHeight(totalHeight + 20)
+    parent:SetHeight(totalHeight + SETTINGS_SCROLL_INSET_BOTTOM)
 end
 
 --============================================================================

@@ -879,6 +879,10 @@ local options = {
                 else
                     WarbandNexus:Print("|cffff9900Debug mode disabled|r")
                 end
+                local mf = WarbandNexus.mainFrame
+                if mf and mf.SyncMainHeaderDebugReloadLayout then
+                    mf:SyncMainHeaderDebugReloadLayout()
+                end
             end,
         },
         debugVerbose = {

@@ -3467,7 +3467,9 @@ local function ApplyToggleVisuals(frame)
     local dot = frame:CreateTexture(nil, "OVERLAY")
     dot:SetDrawLayer("OVERLAY", 7)
     dot:SetSize(TOGGLE_DOT_SIZE, TOGGLE_DOT_SIZE)
-    dot:SetPoint("CENTER")
+    -- TOPLEFT inset avoids subpixel CENTER rounding (right-column toggles looked shifted vs border).
+    local inset = math.floor((TOGGLE_SIZE - TOGGLE_DOT_SIZE) / 2 + 0.5)
+    dot:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
     dot:SetColorTexture(unpack(TOGGLE_DOT_COLOR))
 
     frame.innerDot = dot

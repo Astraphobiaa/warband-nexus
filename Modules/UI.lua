@@ -799,15 +799,67 @@ function WarbandNexus:CreateMainWindow()
             ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
         end
     end)
+    f.closeBtn = closeBtn
+
+    -- Debug-only: quick /reload (WoW has no Lua hot-reload; saves typing during addon dev)
+    local reloadDebugBtn = CreateFrame("Button", nil, header)
+    reloadDebugBtn:SetSize(28, 28)
+    reloadDebugBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(reloadDebugBtn, {0.12, 0.14, 0.18, 0.92}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75})
+    end
+    local reloadIcon = reloadDebugBtn:CreateTexture(nil, "ARTWORK")
+    reloadIcon:SetSize(16, 16)
+    reloadIcon:SetPoint("CENTER")
+    do
+        local picked = false
+        if C_Texture and C_Texture.GetAtlasInfo then
+            local atlases = { "StreamCinematic-Restart-button", "common-icon-rotateleft" }
+            for ai = 1, #atlases do
+                local ok, info = pcall(C_Texture.GetAtlasInfo, atlases[ai])
+                if ok and info then
+                    reloadIcon:SetAtlas(atlases[ai])
+                    picked = true
+                    break
+                end
+            end
+        end
+        if not picked then
+            reloadIcon:SetTexture("Interface\\COMMON\\StreamRestart")
+        end
+    end
+    reloadIcon:SetVertexColor(0.75, 0.92, 1)
+    reloadDebugBtn:SetScript("OnClick", function()
+        ReloadUI()
+    end)
+    reloadDebugBtn:SetScript("OnEnter", function(self)
+        reloadIcon:SetVertexColor(1, 1, 1)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(self, {0.18, 0.22, 0.28, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText((ns.L and ns.L["DEBUG_RELOAD_UI_BTN"]) or "Reload UI", 1, 1, 1)
+        GameTooltip:AddLine((ns.L and ns.L["DEBUG_RELOAD_UI_TOOLTIP"]) or "Reload the entire interface (/reload). WoW cannot hot-reload addon Lua; use this after saving files.", 0.65, 0.65, 0.65, true)
+        GameTooltip:Show()
+    end)
+    reloadDebugBtn:SetScript("OnLeave", function(self)
+        reloadIcon:SetVertexColor(0.75, 0.92, 1)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(self, {0.12, 0.14, 0.18, 0.92}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75})
+        end
+        GameTooltip:Hide()
+    end)
+    f.reloadDebugBtn = reloadDebugBtn
 
     -- Utility buttons in header (left of Close) so nav row is tabs-only and never overlaps when minimized
     local DISCORD_URL = "https://discord.gg/warbandnexus"
     local settingsBtn = CreateFrame("Button", nil, header)
     settingsBtn:SetSize(28, 28)
-    settingsBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
+    settingsBtn:SetPoint("RIGHT", reloadDebugBtn, "LEFT", -6, 0)
     settingsBtn:SetNormalAtlas("mechagon-projects")
     settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
     settingsBtn:SetScript("OnClick", function() WarbandNexus:OpenOptions() end)
+    f.settingsBtn = settingsBtn
 
     local infoBtn = CreateFrame("Button", nil, header)
     infoBtn:SetSize(28, 28)
@@ -1761,6 +1813,24 @@ function WarbandNexus:CreateMainWindow()
         if WarbandNexus.ClearItemMetadataCache then WarbandNexus:ClearItemMetadataCache() end
         if WarbandNexus.ClearCollectionMetadataCache then WarbandNexus:ClearCollectionMetadataCache() end
     end)
+
+    --- Show/hide header Reload button when debug mode is on (boolean or legacy SavedVars `1`; matches ProfileFlagOn / Settings toggles).
+    function f:SyncMainHeaderDebugReloadLayout()
+        local reloadBtn = self.reloadDebugBtn
+        local settBtn = self.settingsBtn
+        local clsBtn = self.closeBtn
+        if not reloadBtn or not settBtn or not clsBtn then return end
+        local p = WarbandNexus.db and WarbandNexus.db.profile
+        local show = p and ProfileFlagOn(p.debugMode)
+        reloadBtn:SetShown(show)
+        settBtn:ClearAllPoints()
+        if show then
+            settBtn:SetPoint("RIGHT", reloadBtn, "LEFT", -6, 0)
+        else
+            settBtn:SetPoint("RIGHT", clsBtn, "LEFT", -6, 0)
+        end
+    end
+    f:SyncMainHeaderDebugReloadLayout()
     
     -- Frame is already hidden (Hide() called immediately after CreateFrame)
     return f
@@ -1771,6 +1841,10 @@ end
 --============================================================================
 function WarbandNexus:PopulateContent()
     if not mainFrame then return end
+
+    if mainFrame.SyncMainHeaderDebugReloadLayout then
+        mainFrame:SyncMainHeaderDebugReloadLayout()
+    end
 
     local pendingPerfGen = IsTabPerfMonitorEnabled() and mainFrame._wnPerfTabSwitchPendingLog or nil
 
