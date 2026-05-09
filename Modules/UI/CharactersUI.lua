@@ -52,6 +52,14 @@ local FormatNumber = ns.UI_FormatNumber
 local AcquireCharacterRow = ns.UI_AcquireCharacterRow
 local ReleaseCharacterRow = ns.UI_ReleaseCharacterRow
 
+--- Virtual-scroll tabs: refresh row culling after accordion tweens / layout (ReputationUI parity).
+local function CharactersVirtualScrollBump()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mf and mf._virtualScrollUpdate then
+        mf._virtualScrollUpdate()
+    end
+end
+
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
 
 local GetCharKey = ns.UI_GetCharKey
@@ -175,6 +183,33 @@ local function RegisterCharacterEvents(parent)
     -- WN_CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
 end
 
+--- Accordion defaults for Favorites / Characters / Untracked (nil handling matches PopulateContent).
+local function CharactersUISectionExpandedTriplet(ui)
+    ui = ui or {}
+    local fav = ui.favoritesExpanded
+    if fav == nil then fav = true end
+    local ch = ui.charactersExpanded
+    if ch == nil then ch = true end
+    local unt = ui.untrackedExpanded
+    if unt == nil then unt = false end
+    return fav, ch, unt
+end
+
+local function CharactersUISectionAllExpanded(ui)
+    local fav, ch, unt = CharactersUISectionExpandedTriplet(ui)
+    return fav and ch and unt
+end
+
+local function UpdateCharactersSectionToggle(btn)
+    if not btn or not btn._wnEcIcon then return end
+    local ui = WarbandNexus.db.profile.ui
+    if CharactersUISectionAllExpanded(ui) then
+        btn._wnEcIcon:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
+    else
+        btn._wnEcIcon:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
+    end
+end
+
 --============================================================================
 -- DRAW CHARACTER LIST
 --============================================================================
@@ -207,20 +242,13 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Hide empty state card (will be shown again if needed)
     HideEmptyStateCard(parent, "characters")
 
-    -- Characters tab now renders rows inside animated section containers.
-    -- Release previously tracked nested rows before rebuilding to keep pool state correct.
-    if parent._wnCharactersNestedRows and ReleaseCharacterRow then
-        for i = 1, #parent._wnCharactersNestedRows do
-            local row = parent._wnCharactersNestedRows[i]
-            if row and row.rowType == "character" then
-                ReleaseCharacterRow(row)
-            end
-        end
+    -- Paths always reach PopulateContent today; still mirror Storage/Reputation so future callers stay safe.
+    local mfForVirtual = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mfForVirtual and ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
+        ns.VirtualListModule.ClearVirtualScroll(mfForVirtual)
     end
-    parent._wnCharactersNestedRows = {}
 
-    -- Pooled character rows: released in UI.lua PopulateContent (ReleaseAllPooledChildren) before
-    -- this runs — do not call again here (double-release duplicated pool entries / shared frames).
+    -- Nested character rows: PopulateContent walks subtrees via UI_ReleaseCharacterRowsFromSubtree before recycle.
     
     local currentPlayerKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     local sessionTableKey = ResolveSessionCharactersTableKey() or currentPlayerKey
@@ -241,8 +269,14 @@ function WarbandNexus:DrawCharacterList(parent)
     })
     titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
     titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    
-    -- Sort Dropdown on the Title Card (Header)
+
+    local titleControlInset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
+
+    -- Sort dropdown anchors at card top-right; expand/collapse sit to its left (no overlap).
+    local sortAnchorFrame = titleCard
+    local sortAnchorPoint = "RIGHT"
+    local sortAnchorX = -titleControlInset
+
     if ns.UI_CreateCharacterSortDropdown then
         local sortOptions = {
             {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},
@@ -256,8 +290,67 @@ function WarbandNexus:DrawCharacterList(parent)
         local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.characterSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
         end)
-        sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -(GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20), 0)
+        sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleControlInset, 0)
         sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
+        sortAnchorFrame = sortBtn
+        sortAnchorPoint = "LEFT"
+        sortAnchorX = -10
+    end
+
+    -- Single toolbar toggle: expand/collapse all accordion sections (Favorites, Characters, Untracked).
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
+        local btnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
+        local accentLoc = COLORS.accent or { 0.6, 0.4, 1 }
+        local ownerFrame = parent
+        local toggleBtn = ownerFrame._wnCharactersExpandCollapseToggleBtn
+        if not toggleBtn then
+            toggleBtn = ns.UI.Factory:CreateButton(titleCard, btnH, btnH, false)
+            if ApplyVisuals then
+                ApplyVisuals(toggleBtn, { 0.12, 0.12, 0.15, 1 }, { accentLoc[1], accentLoc[2], accentLoc[3], 0.6 })
+            end
+            if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+                ns.UI.Factory:ApplyHighlight(toggleBtn)
+            end
+            toggleBtn._wnEcIcon = toggleBtn:CreateTexture(nil, "OVERLAY")
+            toggleBtn._wnEcIcon:SetAllPoints(toggleBtn)
+            if toggleBtn.RegisterForClicks then
+                toggleBtn:RegisterForClicks("LeftButtonUp")
+            end
+            toggleBtn:SetScript("OnEnter", function(btnFrame)
+                GameTooltip:SetOwner(btnFrame, "ANCHOR_BOTTOMRIGHT")
+                local ui = WarbandNexus.db.profile.ui
+                local collapseMode = CharactersUISectionAllExpanded(ui)
+                local tipKey = collapseMode and "CHARACTERS_SECTION_TOGGLE_COLLAPSE_TOOLTIP" or "CHARACTERS_SECTION_TOGGLE_EXPAND_TOOLTIP"
+                local fb = collapseMode
+                    and "Collapse Favorites, Characters, and Untracked sections."
+                    or "Expand Favorites, Characters, and Untracked sections."
+                GameTooltip:SetText((ns.L and ns.L[tipKey]) or fb, 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            toggleBtn:SetScript("OnLeave", GameTooltip_Hide)
+            toggleBtn:SetScript("OnClick", function()
+                if not WarbandNexus.db.profile.ui then WarbandNexus.db.profile.ui = {} end
+                local ui = WarbandNexus.db.profile.ui
+                if CharactersUISectionAllExpanded(ui) then
+                    ui.favoritesExpanded = false
+                    ui.charactersExpanded = false
+                    ui.untrackedExpanded = false
+                else
+                    ui.favoritesExpanded = true
+                    ui.charactersExpanded = true
+                    ui.untrackedExpanded = true
+                end
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+            end)
+            ownerFrame._wnCharactersExpandCollapseToggleBtn = toggleBtn
+        end
+        toggleBtn:SetParent(titleCard)
+        toggleBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
+        toggleBtn:SetSize(btnH, btnH)
+        UpdateCharactersSectionToggle(toggleBtn)
+        toggleBtn:ClearAllPoints()
+        toggleBtn:SetPoint("RIGHT", sortAnchorFrame, sortAnchorPoint, sortAnchorX, 0)
+        toggleBtn:Show()
     end
     
     -- NO TRACKING: Static text, never overflows
@@ -542,6 +635,9 @@ function WarbandNexus:DrawCharacterList(parent)
         (sk == "default" or sk == "manual" or sk == "name" or sk == "level" or sk == "ilvl" or sk == "gold"))
         and sk or "default"
     
+    local favoriteKeySet = (ns.CharacterService and ns.CharacterService.BuildFavoriteKeySet)
+        and ns.CharacterService:BuildFavoriteKeySet(self) or {}
+    
     -- ===== SORT CHARACTERS: FAVORITES -> REGULAR =====
     local trackedFavorites = {}
     local trackedRegular = {}
@@ -555,10 +651,14 @@ function WarbandNexus:DrawCharacterList(parent)
         -- Separate by tracking status first, then favorites
         if not isTracked then
             tinsert(untracked, char)
-        elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey) then
-            tinsert(trackedFavorites, char)
-        else
-            tinsert(trackedRegular, char)
+        elseif ns.CharacterService then
+            local isFav = (ns.CharacterService.IsFavoriteFromKeySet and ns.CharacterService:IsFavoriteFromKeySet(favoriteKeySet, charKey))
+                or ns.CharacterService:IsFavoriteCharacter(self, charKey)
+            if isFav then
+                tinsert(trackedFavorites, char)
+            else
+                tinsert(trackedRegular, char)
+            end
         end
     end
     
@@ -709,6 +809,10 @@ function WarbandNexus:DrawCharacterList(parent)
         end
         local fs = parent.guildMeasureFs
         local maxW = 0
+        local GUILD_PADDING = 20
+        local GUILD_MIN = 60
+        local GUILD_MAX = 280
+        local rawCap = GUILD_MAX - GUILD_PADDING
         local listsToMeasure = { trackedFavorites, trackedRegular, untracked }
         for li = 1, #listsToMeasure do
             local list = listsToMeasure[li]
@@ -718,11 +822,14 @@ function WarbandNexus:DrawCharacterList(parent)
                 fs:SetText(BuildGuildText(char, isCurrent))
                 local w = fs:GetStringWidth()
                 if w > maxW then maxW = w end
+                if maxW >= rawCap then
+                    break
+                end
+            end
+            if maxW >= rawCap then
+                break
             end
         end
-        local GUILD_PADDING = 20
-        local GUILD_MIN = 60
-        local GUILD_MAX = 280
         self._charListMaxGuildWidth = math.min(math.max(maxW + GUILD_PADDING, GUILD_MIN), GUILD_MAX)
     end
     
@@ -746,7 +853,6 @@ function WarbandNexus:DrawCharacterList(parent)
     -- ===== COLLAPSIBLE CHARACTER SECTIONS (accordion animated) =====
     local SECTION_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     local SECTION_HEADER_GAP = 12
-    local sectionRows = parent._wnCharactersNestedRows
     local previousSectionContent = nil
     local isFirstSection = true
 
@@ -764,37 +870,105 @@ function WarbandNexus:DrawCharacterList(parent)
         contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", SIDE_MARGIN, 0)
         contentFrame:SetHeight(0.1)
         contentFrame._wnAccordionFullH = 0
+        contentFrame._wnVirtualContentHeight = nil
         return contentFrame
     end
 
+    -- Leaf rows only are virtualized; headers/cards stay real.
+    -- Row stripes (ApplyRowBackground index): still **per-section** 1..n — not one merged index across Favorites + Characters + Untracked.
     local function DrawCharactersIntoSection(contentFrame, list, isFavorite, listKey, emptyMessage)
+        contentFrame._wnVirtualContentHeight = nil
         local sectionYOffset = 0
         if #list > 0 then
-            for i = 1, #list do
-                local char = list[i]
-                local ok, nextYOffset, rowFrame = pcall(
-                    self.DrawCharacterRow,
-                    self,
-                    contentFrame,
-                    char,
-                    i,
-                    width,
-                    sectionYOffset,
-                    isFavorite,
-                    currentSortKey == "manual",
-                    list,
-                    listKey,
-                    i,
-                    #list,
-                    currentPlayerKey
-                )
-                if ok and nextYOffset then
-                    sectionYOffset = nextYOffset
-                    if rowFrame then
-                        sectionRows[#sectionRows + 1] = rowFrame
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            local VLM = ns.VirtualListModule
+            local betweenRows = GetLayout().betweenRows or 0
+            local stride = 46 + betweenRows
+            local showReorder = currentSortKey == "manual"
+
+            if mf and mf.scroll and contentFrame and VLM and VLM.SetupVirtualList then
+                local flatList = {}
+                local rowY = 0
+                for i = 1, #list do
+                    flatList[#flatList + 1] = {
+                        type = "row",
+                        yOffset = rowY,
+                        height = stride,
+                        xOffset = SIDE_MARGIN,
+                        populateEntry = {
+                            char = list[i],
+                            index = i,
+                            rowWidth = width,
+                            isFavorite = isFavorite,
+                            showReorder = showReorder,
+                            charList = list,
+                            listKey = listKey,
+                            positionInList = i,
+                            totalInList = #list,
+                            currentPlayerKey = currentPlayerKey,
+                        },
+                    }
+                    rowY = rowY + stride
+                end
+
+                local totalHeight = VLM.SetupVirtualList(mf, contentFrame, nil, flatList, {
+                    createRowFn = function(container, it, _idx)
+                        local pe = it.populateEntry
+                        local row = AcquireCharacterRow(container)
+                        pcall(function()
+                            -- Pass pooled row in: DrawCharacterRow must not Acquire again (was double-acquire → overlapping duplicates).
+                            WarbandNexus:DrawCharacterRow(container, pe.char, pe.index, pe.rowWidth, 0,
+                                pe.isFavorite, pe.showReorder, pe.charList, pe.listKey,
+                                pe.positionInList, pe.totalInList, pe.currentPlayerKey, row)
+                        end)
+                        return row
+                    end,
+                    populateRowFn = function(row, it, _idx)
+                        local pe = it.populateEntry
+                        local container = row:GetParent()
+                        pcall(function()
+                            WarbandNexus:DrawCharacterRow(container, pe.char, pe.index, pe.rowWidth, 0,
+                                pe.isFavorite, pe.showReorder, pe.charList, pe.listKey,
+                                pe.positionInList, pe.totalInList, pe.currentPlayerKey, row)
+                        end)
+                    end,
+                    releaseRowFn = ReleaseCharacterRow,
+                })
+                contentFrame._wnVirtualContentHeight = totalHeight
+                sectionYOffset = totalHeight
+                contentFrame:SetHeight(math.max(0.1, totalHeight))
+            else
+                local yAcc = 0
+                for i = 1, #list do
+                    local char = list[i]
+                    local ok, nextYOffset = pcall(
+                        self.DrawCharacterRow,
+                        self,
+                        contentFrame,
+                        char,
+                        i,
+                        width,
+                        yAcc,
+                        isFavorite,
+                        showReorder,
+                        list,
+                        listKey,
+                        i,
+                        #list,
+                        currentPlayerKey
+                    )
+                    if ok and nextYOffset then
+                        yAcc = nextYOffset
+                    else
+                        yAcc = yAcc + (ROW_HEIGHT or 36)
                     end
+                end
+                sectionYOffset = yAcc
+                contentFrame._wnAccordionFullH = sectionYOffset
+                if sectionYOffset > 0 then
+                    contentFrame:SetHeight(sectionYOffset)
                 else
-                    sectionYOffset = sectionYOffset + (ROW_HEIGHT or 36)
+                    contentFrame:SetHeight(0.1)
                 end
             end
         elseif emptyMessage and emptyMessage ~= "" then
@@ -804,14 +978,10 @@ function WarbandNexus:DrawCharacterList(parent)
             emptyText:SetWidth(width - 40)
             emptyText:SetJustifyH("CENTER")
             sectionYOffset = sectionYOffset + 50
+            contentFrame:SetHeight(math.max(0.1, sectionYOffset))
         end
 
-        contentFrame._wnAccordionFullH = sectionYOffset
-        if sectionYOffset > 0 then
-            contentFrame:SetHeight(sectionYOffset)
-        else
-            contentFrame:SetHeight(0.1)
-        end
+        contentFrame._wnAccordionFullH = math.max(0.1, sectionYOffset)
         return sectionYOffset
     end
 
@@ -831,10 +1001,11 @@ function WarbandNexus:DrawCharacterList(parent)
     end
 
     -- Favorites
-    local favoritesExpanded = self.charactersExpandAllActive or self.db.profile.ui.favoritesExpanded
+    local favoritesExpanded = self.db.profile.ui.favoritesExpanded
     local favoritesContent
     local favoritesVisualOpts = BuildAccordionVisualOpts({
         bodyGetter = function() return favoritesContent end,
+        updateVisibleFn = CharactersVirtualScrollBump,
     }) or {
         animatedContent = function() return favoritesContent end,
     }
@@ -913,6 +1084,7 @@ function WarbandNexus:DrawCharacterList(parent)
         nil,
         BuildAccordionVisualOpts({
             bodyGetter = function() return charactersContent end,
+            updateVisibleFn = CharactersVirtualScrollBump,
         }) or { animatedContent = function() return charactersContent end }
     )
     AnchorSectionHeader(charHeader)
@@ -951,6 +1123,7 @@ function WarbandNexus:DrawCharacterList(parent)
         local untrackedContent
         local untrackedVisualOpts = BuildAccordionVisualOpts({
             bodyGetter = function() return untrackedContent end,
+            updateVisibleFn = CharactersVirtualScrollBump,
         }) or {
             animatedContent = function() return untrackedContent end,
         }
@@ -1011,17 +1184,21 @@ end
 -- DRAW SINGLE CHARACTER ROW
 --============================================================================
 
-function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey)
-    -- PERFORMANCE: Acquire from pool
-    local row = AcquireCharacterRow(parent)
+---@param existingRow Frame|nil When set (virtual list), draw into this pooled row instead of acquiring a second frame.
+function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey, existingRow)
+    local row = existingRow
+    if not row then
+        row = AcquireCharacterRow(parent)
+    else
+        row:SetParent(parent)
+        row:Show()
+        row:SetAlpha(1)
+        if row.anim then row.anim:Stop() end
+    end
     row:ClearAllPoints()
     row:SetSize(width, 46)  -- Increased 20% (38 → 46)
     row:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     row:EnableMouse(true)
-    
-    -- Ensure alpha is reset (pooling safety)
-    row:SetAlpha(1)
-    
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
 
@@ -1970,6 +2147,8 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     end
     
     local charKey = GetCharKey(char)
+    local favoriteKeySet = (ns.CharacterService and ns.CharacterService.BuildFavoriteKeySet)
+        and ns.CharacterService:BuildFavoriteKeySet(self) or {}
     
     -- Don't update lastSeen when reordering (keep current timestamps)
     local currentPlayerKey = ns.Utilities:GetCharacterKey()
@@ -1998,7 +2177,11 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
             local key = GetCharKey(c)
             if key then
                 local isTracked = c.isTracked ~= false
-                local isFav = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, key)
+                local isFav = false
+                if ns.CharacterService then
+                    isFav = (ns.CharacterService.IsFavoriteFromKeySet and ns.CharacterService:IsFavoriteFromKeySet(favoriteKeySet, key))
+                        or ns.CharacterService:IsFavoriteCharacter(self, key)
+                end
                 local inCategory = false
                 if listKey == "favorites" then
                     inCategory = isTracked and isFav

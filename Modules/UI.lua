@@ -46,6 +46,8 @@ end
 local COLORS = ns.UI_COLORS
 local CreateCard = ns.UI_CreateCard
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
+local ReleaseCharacterRowsFromSubtree = ns.UI_ReleaseCharacterRowsFromSubtree
+local ReleaseReputationRowsFromSubtree = ns.UI_ReleaseReputationRowsFromSubtree
 local CreateThemedButton = ns.UI_CreateThemedButton
 local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
@@ -1505,7 +1507,11 @@ function WarbandNexus:CreateMainWindow()
     -- rapid WN_CHARACTER_UPDATED (e.g. item level ticks at 0.3s, DataService) or models appear to "flicker".
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function()
         if not f or not f:IsShown() then return end
-        if f.currentTab == "chars" or f.currentTab == "stats" then
+        -- Characters tab: avoid skipCooldown here — ilvl/zone/gold batching fires this often and full
+        -- PopulateContent every ~100ms feels like a constant refresh (virtual rows make it more noticeable).
+        if f.currentTab == "chars" then
+            SchedulePopulateContent()
+        elseif f.currentTab == "stats" then
             SchedulePopulateContent(true)
         elseif f.currentTab == "gear" then
             SchedulePopulateContent()
@@ -1586,14 +1592,20 @@ function WarbandNexus:CreateMainWindow()
     
     -- Profession tab: skip cooldown so concentration/knowledge/recipe updates always refresh (no stale data)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, function()
-        if f and f:IsShown() and (f.currentTab == "professions" or f.currentTab == "chars") then
+        if not f or not f:IsShown() then return end
+        if f.currentTab == "professions" then
             SchedulePopulateContent(true)
+        elseif f.currentTab == "chars" then
+            SchedulePopulateContent()
         end
     end)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.KNOWLEDGE_UPDATED, function()
-        if f and f:IsShown() and (f.currentTab == "professions" or f.currentTab == "chars") then
+        if not f or not f:IsShown() then return end
+        if f.currentTab == "professions" then
             SchedulePopulateContent(true)
+        elseif f.currentTab == "chars" then
+            SchedulePopulateContent()
         end
     end)
     
@@ -1623,8 +1635,11 @@ function WarbandNexus:CreateMainWindow()
     end)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_EQUIPMENT_UPDATED, function()
-        if f and f:IsShown() and (f.currentTab == "professions" or f.currentTab == "chars") then
+        if not f or not f:IsShown() then return end
+        if f.currentTab == "professions" then
             SchedulePopulateContent(true)
+        elseif f.currentTab == "chars" then
+            SchedulePopulateContent()
         end
     end)
     
@@ -1650,7 +1665,8 @@ function WarbandNexus:CreateMainWindow()
         if f.currentTab == "currency" or f.currentTab == "gear" then
             SchedulePopulateContent()
         elseif f.currentTab == "chars" then
-            SchedulePopulateContent(true)
+            -- Token card on Characters: coalesce with standard cooldown (was skipCooldown → rapid rebuilds).
+            SchedulePopulateContent()
         else
             WarbandNexus:UpdateTabCountBadges("currency")
         end
@@ -1920,6 +1936,12 @@ function WarbandNexus:PopulateContent()
         local nc3 = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
         for i = 1, nc3 do
             local child = _uiChildEnumScratch[i]
+            if ReleaseCharacterRowsFromSubtree then
+                ReleaseCharacterRowsFromSubtree(child)
+            end
+            if ReleaseReputationRowsFromSubtree then
+                ReleaseReputationRowsFromSubtree(child)
+            end
             if child._virtualVisibleFrames then
                 child._virtualVisibleFrames = nil
             end
@@ -2037,6 +2059,10 @@ function WarbandNexus:PopulateContent()
         if mainFrame.hScroll then
             mainFrame.hScroll:SetValue(restoreH)
         end
+    end
+
+    if mainFrame._virtualScrollUpdate then
+        mainFrame._virtualScrollUpdate()
     end
     
     self:UpdateTabCountBadges()

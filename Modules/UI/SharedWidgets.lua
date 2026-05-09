@@ -3127,6 +3127,84 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     return btn
 end
 
+--- Compact expand-all / collapse-all icon buttons for tab title cards (square, BUTTON_HEIGHT).
+--- Frames persist on ownerFrame and are reparented to titleCard each layout pass.
+--- @param ownerFrame Frame Stable owner for button refs (e.g. scroll child parent)
+--- @param titleCard Frame Title card the buttons sit on
+--- @param anchorFrame Frame Anchor for collapse button (e.g. sort dropdown or titleCard)
+--- @param anchorPoint string collapse:SetPoint("RIGHT", anchorFrame, anchorPoint, ...)
+--- @param opts table collapseTooltip, expandTooltip, onCollapseClick, onExpandClick
+function ns.UI_EnsureTitleCardExpandCollapseButtons(ownerFrame, titleCard, anchorFrame, anchorPoint, anchorOffsetX, anchorOffsetY, opts)
+    if not ownerFrame or not titleCard or not anchorFrame or not opts then return end
+    local hdrGap = (UI_SPACING and UI_SPACING.HEADER_TOOLBAR_CONTROL_GAP) or 8
+    local btnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
+    local COLORS = ns.UI_COLORS or { accent = { 0.6, 0.4, 1 } }
+    local accent = COLORS.accent or { 0.6, 0.4, 1 }
+
+    local collapseBtn = ownerFrame._wnExpandCollapseCollapseBtn
+    local expandBtn = ownerFrame._wnExpandCollapseExpandBtn
+
+    local function ensureToolbarIconBtn(existing)
+        local btn = existing
+        if not btn then
+            btn = ns.UI.Factory:CreateButton(titleCard, btnH, btnH, false)
+            if ns.UI_ApplyVisuals then
+                ns.UI_ApplyVisuals(btn, { 0.12, 0.12, 0.15, 1 }, { accent[1], accent[2], accent[3], 0.6 })
+            end
+            if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+                ns.UI.Factory:ApplyHighlight(btn)
+            end
+            btn._wnEcIcon = btn:CreateTexture(nil, "OVERLAY")
+            btn._wnEcIcon:SetAllPoints(btn)
+            if btn.RegisterForClicks then
+                btn:RegisterForClicks("LeftButtonUp")
+            end
+        end
+        btn:SetParent(titleCard)
+        btn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
+        btn:SetSize(btnH, btnH)
+        btn:Show()
+        return btn
+    end
+
+    collapseBtn = ensureToolbarIconBtn(collapseBtn)
+    expandBtn = ensureToolbarIconBtn(expandBtn)
+    ownerFrame._wnExpandCollapseCollapseBtn = collapseBtn
+    ownerFrame._wnExpandCollapseExpandBtn = expandBtn
+
+    collapseBtn._wnEcIcon:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
+    expandBtn._wnEcIcon:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
+
+    collapseBtn:ClearAllPoints()
+    collapseBtn:SetPoint("RIGHT", anchorFrame, anchorPoint, anchorOffsetX or 0, anchorOffsetY or 0)
+    expandBtn:ClearAllPoints()
+    expandBtn:SetPoint("RIGHT", collapseBtn, "LEFT", -hdrGap, 0)
+
+    local collapseTip = opts.collapseTooltip or ""
+    local expandTip = opts.expandTooltip or ""
+
+    collapseBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+        GameTooltip:SetText(collapseTip, 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    collapseBtn:SetScript("OnLeave", GameTooltip_Hide)
+
+    expandBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+        GameTooltip:SetText(expandTip, 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    expandBtn:SetScript("OnLeave", GameTooltip_Hide)
+
+    if opts.onCollapseClick then
+        collapseBtn:SetScript("OnClick", opts.onCollapseClick)
+    end
+    if opts.onExpandClick then
+        expandBtn:SetScript("OnClick", opts.onExpandClick)
+    end
+end
+
 -- Exports
 ns.UI_CHAR_ROW_COLUMNS = CHAR_ROW_COLUMNS
 ns.UI_GetColumnOffset = GetColumnOffset

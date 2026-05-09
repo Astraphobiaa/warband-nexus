@@ -55,6 +55,8 @@ local COLORS = ns.UI_COLORS
 -- Import pooling functions (performance: reuse frames instead of creating new ones)
 local AcquireReputationRow = ns.UI_AcquireReputationRow
 local ReleaseReputationRow = ns.UI_ReleaseReputationRow
+
+local ReleaseReputationRowsFromSubtree = ns.UI_ReleaseReputationRowsFromSubtree
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
 -- Performance: Local function references
@@ -1652,6 +1654,11 @@ function WarbandNexus:DrawReputationList(container, width)
     
     -- Hide empty state container (will be shown again if needed)
     HideEmptyStateCard(container, "reputation")
+
+    local mfForVirtual = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mfForVirtual and ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
+        ns.VirtualListModule.ClearVirtualScroll(mfForVirtual)
+    end
     
     -- PERFORMANCE: Release pooled frames back to pool (prevents frame leaks)
     if ReleaseAllPooledChildren then
@@ -1662,6 +1669,9 @@ function WarbandNexus:DrawReputationList(container, width)
     -- from previous render. VLM handles its own _isVirtualRow frames.
     local recycleBin = ns.UI_RecycleBin
     local oldChildren = {container:GetChildren()}
+    for i = 1, #oldChildren do
+        ReleaseReputationRowsFromSubtree(oldChildren[i])
+    end
     for i = 1, #oldChildren do
         local child = oldChildren[i]
         if not child._isVirtualRow then
@@ -1733,6 +1743,9 @@ function WarbandNexus:DrawReputationList(container, width)
     
     -- Helper functions for expand/collapse
     local function IsExpanded(key, default)
+        if self.db.profile.reputationExpandOverride == "all_collapsed" then
+            return false
+        end
         if expanded[key] == nil then
             return default or false
         end
@@ -1740,6 +1753,9 @@ function WarbandNexus:DrawReputationList(container, width)
     end
     
     local function PersistExpand(key, isExpanded)
+        if self.db.profile.reputationExpandOverride then
+            self.db.profile.reputationExpandOverride = nil
+        end
         if not self.db.profile.reputationExpanded then
             self.db.profile.reputationExpanded = {}
         end
@@ -1927,6 +1943,9 @@ function WarbandNexus:DrawReputationList(container, width)
         if Factory and Factory.UpdateHorizontalScrollBarVisibility then
             Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
         end
+        if mf._virtualScrollUpdate then
+            mf._virtualScrollUpdate()
+        end
     end
 
     local function CreateWrap(parentFrame, wrapWidth)
@@ -1954,6 +1973,11 @@ function WarbandNexus:DrawReputationList(container, width)
 
     local function FinalizeBodyHeight(body)
         if not body then return 0.1 end
+        if body._wnVirtualContentHeight then
+            local fullH = body._wnVirtualContentHeight
+            body._wnAccordionFullH = fullH
+            return fullH
+        end
         local fullH = MeasureChildrenHeight(body)
         body._wnAccordionFullH = fullH
         return fullH
@@ -2028,7 +2052,17 @@ function WarbandNexus:DrawReputationList(container, width)
     end
 
     local function RenderRowsIntoBody(body, bodyWidth, filteredFactionList)
+        body._wnVirtualContentHeight = nil
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        local VLM = ns.VirtualListModule
+        if not mf or not mf.scroll or not body or not VLM or not VLM.SetupVirtualList then
+            return
+        end
+
+        local stride = ROW_HEIGHT + betweenRows
+        local flatList = {}
         local rowY = 0
+
         for ri = 1, #filteredFactionList do
             local item = filteredFactionList[ri]
             globalRowIdx = globalRowIdx + 1
@@ -2045,23 +2079,25 @@ function WarbandNexus:DrawReputationList(container, width)
             local subsToRender = item.subfactions
             local showSubs = subExpanded or item._forceExpand
 
-            local row = AcquireReputationRow(body, bodyWidth, ROW_HEIGHT)
-            row._isVirtualRow = true
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", body, "TOPLEFT", 0, -rowY)
-            PopulateReputationRow(row, {
-                data = item.faction.data,
-                factionID = item.faction.factionID,
-                rowIdx = globalRowIdx,
+            flatList[#flatList + 1] = {
+                type = "row",
+                yOffset = rowY,
+                height = stride,
+                xOffset = 0,
                 rowWidth = bodyWidth,
-                isSubfaction = false,
-                subfactions = subsToRender,
-                characterInfo = charInfo,
-                IsExpanded = IsExpanded,
-                ToggleExpand = ToggleExpand,
-            })
-            row:Show()
-            rowY = rowY + ROW_HEIGHT + betweenRows
+                populateEntry = {
+                    data = item.faction.data,
+                    factionID = item.faction.factionID,
+                    rowIdx = globalRowIdx,
+                    rowWidth = bodyWidth,
+                    isSubfaction = false,
+                    subfactions = subsToRender,
+                    characterInfo = charInfo,
+                    IsExpanded = IsExpanded,
+                    ToggleExpand = ToggleExpand,
+                },
+            }
+            rowY = rowY + stride
 
             if showSubs and subsToRender and #subsToRender > 0 then
                 local subIndent = BASE_INDENT + SUBROW_EXTRA_INDENT
@@ -2069,33 +2105,61 @@ function WarbandNexus:DrawReputationList(container, width)
                 for si = 1, #subsToRender do
                     local subFaction = subsToRender[si]
                     globalRowIdx = globalRowIdx + 1
-                    local subRow = AcquireReputationRow(body, subRowWidth, ROW_HEIGHT)
-                    subRow._isVirtualRow = true
-                    subRow:ClearAllPoints()
-                    subRow:SetPoint("TOPLEFT", body, "TOPLEFT", subIndent, -rowY)
-                    PopulateReputationRow(subRow, {
-                        data = subFaction.data,
-                        factionID = subFaction.factionID,
-                        rowIdx = globalRowIdx,
+                    flatList[#flatList + 1] = {
+                        type = "row",
+                        yOffset = rowY,
+                        height = stride,
+                        xOffset = subIndent,
                         rowWidth = subRowWidth,
-                        isSubfaction = true,
-                        subfactions = nil,
-                        characterInfo = {
-                            name = subFaction.characterName,
-                            class = subFaction.characterClass,
-                            level = subFaction.characterLevel,
-                            isAccountWide = subFaction.isAccountWide,
-                            realm = subFaction.characterRealm,
-                            allCharData = subFaction.allCharData or {}
+                        populateEntry = {
+                            data = subFaction.data,
+                            factionID = subFaction.factionID,
+                            rowIdx = globalRowIdx,
+                            rowWidth = subRowWidth,
+                            isSubfaction = true,
+                            subfactions = nil,
+                            characterInfo = {
+                                name = subFaction.characterName,
+                                class = subFaction.characterClass,
+                                level = subFaction.characterLevel,
+                                isAccountWide = subFaction.isAccountWide,
+                                realm = subFaction.characterRealm,
+                                allCharData = subFaction.allCharData or {}
+                            },
+                            IsExpanded = IsExpanded,
+                            ToggleExpand = ToggleExpand,
                         },
-                        IsExpanded = IsExpanded,
-                        ToggleExpand = ToggleExpand,
-                    })
-                    subRow:Show()
-                    rowY = rowY + ROW_HEIGHT + betweenRows
+                    }
+                    rowY = rowY + stride
                 end
             end
         end
+
+        if #flatList == 0 then
+            body:SetHeight(0.1)
+            return
+        end
+
+        local totalHeight = VLM.SetupVirtualList(mf, body, nil, flatList, {
+            createRowFn = function(container, it, _idx)
+                local row = AcquireReputationRow(container, it.rowWidth, ROW_HEIGHT)
+                local ok, err = pcall(PopulateReputationRow, row, it.populateEntry)
+                if not ok and IsDebugModeEnabled and IsDebugModeEnabled() then
+                    DebugPrint("|cffff0000[RepUI VLM]|r createRowFn: " .. tostring(err))
+                end
+                return row
+            end,
+            populateRowFn = function(row, it, _idx)
+                local ok, err = pcall(PopulateReputationRow, row, it.populateEntry)
+                if not ok and IsDebugModeEnabled and IsDebugModeEnabled() then
+                    DebugPrint("|cffff0000[RepUI VLM]|r populateRowFn: " .. tostring(err))
+                end
+            end,
+            releaseRowFn = ReleaseReputationRow,
+        })
+
+        body._wnVirtualContentHeight = totalHeight
+        body:SetHeight(math.max(0.1, totalHeight or rowY))
     end
 
     local function RenderSection(sectionKey, sectionTitle, iconTexture, isAtlas, headers, scopeTag)
@@ -2490,10 +2554,14 @@ function WarbandNexus:DrawReputationTab(parent)
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    local repHdrBtnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
+    local repHdrGap = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
+    local repRightReserve = repHdrBtnH * 2 + repHdrGap * 2 + (GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20)
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "reputation",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["REP_TITLE"]) or "Reputation Overview") .. "|r",
         subtitleText = (ns.L and ns.L["REP_SUBTITLE"]) or "Track factions and renown across your warband",
+        textRightInset = repRightReserve,
     }))
     titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
     titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
@@ -2501,11 +2569,35 @@ function WarbandNexus:DrawReputationTab(parent)
     -- View Mode: Always use Filtered View (All Characters view removed)
     
     titleCard:Show()
+
+    if moduleEnabled and ns.UI_EnsureTitleCardExpandCollapseButtons then
+        local inset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
+        ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, titleCard, "RIGHT", -inset, 0, {
+            expandTooltip = (ns.L and ns.L["REP_EXPAND_ALL_TOOLTIP"]) or "Expand all reputation sections and category headers.",
+            collapseTooltip = (ns.L and ns.L["REP_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all reputation sections and category headers.",
+            onExpandClick = function()
+                self.db.profile.reputationExpandOverride = nil
+                self.db.profile.reputationExpanded = {}
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "reputation", skipCooldown = true })
+            end,
+            onCollapseClick = function()
+                self.db.profile.reputationExpandOverride = "all_collapsed"
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "reputation", skipCooldown = true })
+            end,
+        })
+    elseif parent._wnExpandCollapseCollapseBtn then
+        parent._wnExpandCollapseCollapseBtn:Hide()
+        parent._wnExpandCollapseExpandBtn:Hide()
+    end
     
     headerYOffset = headerYOffset + GetLayout().afterHeader
     
     -- If module is disabled, show disabled state card in scroll area
     if not moduleEnabled then
+        if parent._wnExpandCollapseCollapseBtn then
+            parent._wnExpandCollapseCollapseBtn:Hide()
+            parent._wnExpandCollapseExpandBtn:Hide()
+        end
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")

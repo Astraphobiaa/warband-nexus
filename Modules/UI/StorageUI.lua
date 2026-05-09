@@ -79,6 +79,7 @@ local _wnStorTopScratch = {}
 local _wnStorChildScratch = {}
 local _wnStorCancelStack = {}
 local _wnStorReflowScratch = {}
+local _wnStorReleaseStack = {}
 
 local function PackChildrenInto(dest, frame)
     wipe(dest)
@@ -87,6 +88,33 @@ local function PackChildrenInto(dest, frame)
         dest[i] = select(i, frame:GetChildren())
     end
     return n
+end
+
+--- Release pooled storage rows under a frame tree before recycling section wrappers (parity with ReputationUI).
+local function ReleaseStorageRowsFromSubtree(root)
+    if not root then return end
+    local stack = _wnStorReleaseStack
+    wipe(stack)
+    stack[1] = root
+    local sp = 1
+    while sp > 0 do
+        local f = stack[sp]
+        stack[sp] = nil
+        sp = sp - 1
+        if f then
+            local nc = PackChildrenInto(_wnStorChildScratch, f)
+            for j = 1, nc do
+                local ch = _wnStorChildScratch[j]
+                if not ch then
+                elseif ch.isPooled and ch.rowType == "storage" then
+                    ReleaseStorageRow(ch)
+                else
+                    sp = sp + 1
+                    stack[sp] = ch
+                end
+            end
+        end
+    end
 end
 
 --============================================================================
@@ -194,10 +222,15 @@ function WarbandNexus:DrawStorageTab(parent)
     if not parent._storageTitleCard then
         local r0, g0, b0 = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
         local hex0 = string.format("%02x%02x%02x", r0 * 255, g0 * 255, b0 * 255)
+        local storHdrBtnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
+        local storHdrGap = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
+        local storSortW = 90
+        local storRightReserve = storSortW + storHdrBtnH * 2 + storHdrGap * 2 + (GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20)
         local titleCard, headerIcon, textContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
             tabKey = "storage",
             titleText = "|cff" .. hex0 .. ((ns.L and ns.L["STORAGE_HEADER"]) or "Storage Browser") .. "|r",
             subtitleText = (ns.L and ns.L["STORAGE_HEADER_DESC"]) or "Browse all items organized by type",
+            textRightInset = storRightReserve,
         })
 
         -- Sort Dropdown on the Title Card (Header)
@@ -215,6 +248,7 @@ function WarbandNexus:DrawStorageTab(parent)
         end)
             sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -(GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20), 0)
             sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
+            parent._storageSortBtn = sortBtn
         end
 
         -- Store references for reuse
@@ -246,11 +280,49 @@ function WarbandNexus:DrawStorageTab(parent)
         ns.UI_ReanchorStandardTabTitleLayout(parent._storageHeaderIcon, titleCard, parent._storageTextContainer, 70)
     end
     titleCard:Show()
+
+    if ns.Utilities:IsModuleEnabled("storage") and ns.UI_EnsureTitleCardExpandCollapseButtons then
+        local sortRef = parent._storageSortBtn
+        local anchorF = sortRef or titleCard
+        local anchorPt = sortRef and "LEFT" or "RIGHT"
+        local anchorX = sortRef and -10 or -(GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20)
+        ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, anchorF, anchorPt, anchorX, 0, {
+            expandTooltip = (ns.L and ns.L["STORAGE_EXPAND_ALL_TOOLTIP"]) or "Expand all major sections and nested groups.",
+            collapseTooltip = (ns.L and ns.L["STORAGE_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all major sections and nested groups.",
+            onExpandClick = function()
+                if not self.db.profile.storageExpanded then self.db.profile.storageExpanded = {} end
+                local ex = self.db.profile.storageExpanded
+                if not ex.categories then ex.categories = {} end
+                wipe(ex.categories)
+                ex.personal = true
+                ex.warband = true
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true, instantPopulate = true })
+            end,
+            onCollapseClick = function()
+                if not self.db.profile.storageExpanded then self.db.profile.storageExpanded = {} end
+                local ex = self.db.profile.storageExpanded
+                if not ex.categories then ex.categories = {} end
+                for k in pairs(ex.categories) do
+                    ex.categories[k] = false
+                end
+                ex.personal = false
+                ex.warband = false
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true, instantPopulate = true })
+            end,
+        })
+    elseif parent._wnExpandCollapseCollapseBtn then
+        parent._wnExpandCollapseCollapseBtn:Hide()
+        parent._wnExpandCollapseExpandBtn:Hide()
+    end
     
     headerYOffset = headerYOffset + GetLayout().afterHeader
     
     -- Check if module is disabled
     if not ns.Utilities:IsModuleEnabled("storage") then
+        if parent._wnExpandCollapseCollapseBtn then
+            parent._wnExpandCollapseCollapseBtn:Hide()
+            parent._wnExpandCollapseExpandBtn:Hide()
+        end
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["STORAGE_DISABLED_TITLE"]) or "Character Storage")
@@ -353,6 +425,9 @@ function WarbandNexus:SyncStorageResultsLayoutFromTail(resultsContainer)
             sc:SetVerticalScroll(maxV)
         end
     end
+    if mf and mf._virtualScrollUpdate then
+        mf._virtualScrollUpdate()
+    end
 end
 
 --============================================================================
@@ -363,6 +438,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     local storageSearchActive = storageSearchText
         and not (issecretvalue and issecretvalue(storageSearchText))
         and storageSearchText ~= ""
+
+    local mfForVirtual = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mfForVirtual and ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
+        ns.VirtualListModule.ClearVirtualScroll(mfForVirtual)
+    end
 
     -- Clean up rows created for subheader accordion containers in previous render.
     if parent._wnStorageAnimatedRows and ReleaseStorageRow then
@@ -405,6 +485,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     for i = 1, nTop do
         local child = _wnStorTopScratch[i]
         if not child._isVirtualRow then
+            ReleaseStorageRowsFromSubtree(child)
             CancelAccordionSubtreeIter(child)
             child:Hide()
             child:ClearAllPoints()
@@ -642,6 +723,58 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         local itemName = SafeLower(item.name)
         local itemLink = SafeLower(item.itemLink)
         return itemName:find(storageSearchText, 1, true) or itemLink:find(storageSearchText, 1, true)
+    end
+
+    --- Virtual leaf rows only (`rowsContainer`); accordion chrome stays real (ReputationUI parity).
+    local function RenderStorageLeafVirtual(rowsContainer, mf, rowWidth, typeItemsForRows, locTextForItem)
+        rowsContainer._wnVirtualContentHeight = nil
+        local VLM = ns.VirtualListModule
+        if not mf or not mf.scroll or not rowsContainer or not VLM or not VLM.SetupVirtualList then
+            return 0
+        end
+        local betweenRows = GetLayout().betweenRows or 0
+        local stride = ROW_HEIGHT + betweenRows
+        local flatList = {}
+        local rowY = 0
+        for ti = 1, #typeItemsForRows do
+            local item = typeItemsForRows[ti]
+            if ItemMatchesSearch(item) then
+                globalRowIdxAll = globalRowIdxAll + 1
+                flatList[#flatList + 1] = {
+                    type = "row",
+                    yOffset = rowY,
+                    height = stride,
+                    xOffset = 0,
+                    populateEntry = {
+                        item = item,
+                        rowIdx = globalRowIdxAll,
+                        rowWidth = rowWidth,
+                        locText = locTextForItem(item),
+                    },
+                }
+                rowY = rowY + stride
+            end
+        end
+        if #flatList == 0 then
+            rowsContainer:SetHeight(0.1)
+            return 0
+        end
+        local totalHeight = VLM.SetupVirtualList(mf, rowsContainer, nil, flatList, {
+            createRowFn = function(container, it, _idx)
+                local row = AcquireStorageRow(container, it.populateEntry.rowWidth, ROW_HEIGHT)
+                pcall(PopulateStorageRowDirect, row, it.populateEntry.item, it.populateEntry.rowIdx,
+                    it.populateEntry.rowWidth, it.populateEntry.locText)
+                return row
+            end,
+            populateRowFn = function(row, it, _idx)
+                pcall(PopulateStorageRowDirect, row, it.populateEntry.item, it.populateEntry.rowIdx,
+                    it.populateEntry.rowWidth, it.populateEntry.locText)
+            end,
+            releaseRowFn = ReleaseStorageRow,
+        })
+        rowsContainer._wnVirtualContentHeight = totalHeight
+        rowsContainer:SetHeight(math.max(0.1, totalHeight))
+        return totalHeight
     end
     
     -- PRE-SCAN: If search is active, find which categories have matches
@@ -1183,33 +1316,21 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             typeHeader2:SetPoint("TOPLEFT", typeSectionWrap, "TOPLEFT", 0, 0)
                             typeHeader2:SetWidth(typeSectionWrap:GetWidth())
                             rowsContainer = CreateStorageRowsContainer(typeSectionWrap, typeHeader2, 0, 0)
-                            local rowsYOffset = 0
-                            local rowStaggerIdx = 0
+                            local rowWidthPersonal = width - BASE_INDENT * 2
                             local typeItemsForRows = charItems[typeName]
-                            for ti = 1, #typeItemsForRows do
-                                local item = typeItemsForRows[ti]
-                                local shouldShow = ItemMatchesSearch(item)
-                                if shouldShow then
-                                    globalRowIdxAll = globalRowIdxAll + 1
-                                    local locText = ""
-                                    if item.actualBagID then
-                                        if item.actualBagID == -1 then
-                                            locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
-                                        elseif item.actualBagID >= 0 and item.actualBagID <= 5 then
-                                            locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
-                                        else
-                                            locText = format((ns.L and ns.L["BANK_BAG_FORMAT"]) or "Bank Bag %d", item.actualBagID - 5)
-                                        end
+                            local rowsYOffset = RenderStorageLeafVirtual(rowsContainer, mfForVirtual, rowWidthPersonal, typeItemsForRows, function(item)
+                                local locText = ""
+                                if item.actualBagID then
+                                    if item.actualBagID == -1 then
+                                        locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
+                                    elseif item.actualBagID >= 0 and item.actualBagID <= 5 then
+                                        locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
+                                    else
+                                        locText = format((ns.L and ns.L["BANK_BAG_FORMAT"]) or "Bank Bag %d", item.actualBagID - 5)
                                     end
-                                    local row = AcquireStorageRow(rowsContainer, width - BASE_INDENT * 2, ROW_HEIGHT)
-                                    row:ClearAllPoints()
-                                    row:SetPoint("TOPLEFT", 0, -rowsYOffset)
-                                    PopulateStorageRowDirect(row, item, globalRowIdxAll, width - BASE_INDENT * 2, locText)
-                                    animatedRows[#animatedRows + 1] = row
-                                    rowStaggerIdx = rowStaggerIdx + 1
-                                    rowsYOffset = rowsYOffset + ROW_HEIGHT + GetLayout().betweenRows
                                 end
-                            end
+                                return locText
+                            end)
                             rowsContainer._wnAccordionFullH = rowsYOffset
                             if isTypeExpanded then
                                 rowsContainer:Show()
@@ -1446,24 +1567,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 typeHeader:SetPoint("TOPLEFT", typeSectionWrapWB, "TOPLEFT", 0, 0)
                 typeHeader:SetWidth(typeSectionWrapWB:GetWidth())
                     rowsContainer = CreateStorageRowsContainer(typeSectionWrapWB, typeHeader, 0, 0)
-                    local rowsYOffset = 0
-                    local rowStaggerIdxWB = 0
+                    local rowWidthWB = width - BASE_INDENT
                     local wbTypeItems3 = warbandItems[typeName]
-                    for wi = 1, #wbTypeItems3 do
-                        local item = wbTypeItems3[wi]
-                        local shouldShow = ItemMatchesSearch(item)
-                        if shouldShow then
-                            globalRowIdxAll = globalRowIdxAll + 1
-                            local locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
-                            local row = AcquireStorageRow(rowsContainer, width - BASE_INDENT, ROW_HEIGHT)
-                            row:ClearAllPoints()
-                            row:SetPoint("TOPLEFT", 0, -rowsYOffset)
-                            PopulateStorageRowDirect(row, item, globalRowIdxAll, width - BASE_INDENT, locText)
-                            animatedRows[#animatedRows + 1] = row
-                            rowStaggerIdxWB = rowStaggerIdxWB + 1
-                            rowsYOffset = rowsYOffset + ROW_HEIGHT + GetLayout().betweenRows
-                        end
-                    end
+                    local rowsYOffset = RenderStorageLeafVirtual(rowsContainer, mfForVirtual, rowWidthWB, wbTypeItems3, function(item)
+                        return item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
+                    end)
                     rowsContainer._wnAccordionFullH = rowsYOffset
                     if isTypeExpanded then
                         rowsContainer:Show()
@@ -1741,24 +1849,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         typeHeader:SetPoint("TOPLEFT", typeSectionWrapG, "TOPLEFT", 0, 0)
                         typeHeader:SetWidth(typeSectionWrapG:GetWidth())
                         rowsContainer = CreateStorageRowsContainer(typeSectionWrapG, typeHeader, 0, 0)
-                        local rowsYOffset = 0
-                        local rowStaggerIdxG = 0
+                        local rowWidthG = width - BASE_INDENT
                         local gTypeItems3 = guildItems[typeName]
-                        for gi = 1, #gTypeItems3 do
-                            local item = gTypeItems3[gi]
-                            local shouldShow = ItemMatchesSearch(item)
-                            if shouldShow then
-                                globalRowIdxAll = globalRowIdxAll + 1
-                                local locText = item.tabName or (item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex)) or ""
-                                local row = AcquireStorageRow(rowsContainer, width - BASE_INDENT, ROW_HEIGHT)
-                                row:ClearAllPoints()
-                                row:SetPoint("TOPLEFT", 0, -rowsYOffset)
-                                PopulateStorageRowDirect(row, item, globalRowIdxAll, width - BASE_INDENT, locText)
-                                animatedRows[#animatedRows + 1] = row
-                                rowStaggerIdxG = rowStaggerIdxG + 1
-                                rowsYOffset = rowsYOffset + ROW_HEIGHT + GetLayout().betweenRows
-                            end
-                        end
+                        local rowsYOffset = RenderStorageLeafVirtual(rowsContainer, mfForVirtual, rowWidthG, gTypeItems3, function(item)
+                            return item.tabName or (item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex)) or ""
+                        end)
                         rowsContainer._wnAccordionFullH = rowsYOffset
                         if isTypeExpanded then
                             rowsContainer:Show()
@@ -1786,24 +1881,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end  -- if guildMatches > 0
     end  -- for guildName (all guilds loop)
     
-    -- Legacy virtual-list hook: flat list path was never wired; clear any stale VLM state from older builds.
-    local mainFrame = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    local VLM = ns.VirtualListModule
-    if mainFrame and VLM then
-        VLM.ClearVirtualScroll(mainFrame)
-    end
-    local recycleBin = ns.UI_RecycleBin
-    local remainingChildren = { parent:GetChildren() }
-    for i = 1, #remainingChildren do
-        local child = remainingChildren[i]
-        if child and child._isVirtualRow then
-            child._isVirtualRow = nil
-            child:Hide()
-            child:ClearAllPoints()
-            child:SetParent(recycleBin or UIParent)
-        end
-    end
-
     local pad = GetLayout().minBottomSpacing or 0
     parent._wnStorageLayoutTail = storageStackAnchor
     if storageStackAnchor and parent.GetTop and storageStackAnchor.GetBottom then

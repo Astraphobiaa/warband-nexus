@@ -2349,22 +2349,28 @@ function WarbandNexus:GetAllReputations()
         end
     end
     
-    -- Add character-specific reputations (from ALL characters, hydrated)
-    -- CRITICAL: Skip any factionID that already exists in accountWide
-    for charKey, charFactions in pairs(db.characters) do
-        -- Get character class
-        local charClass = "WARRIOR"
-        if WarbandNexus.db.global.characters and ns.Utilities and ns.Utilities.GetCharacterKey then
-            for _, char in pairs(WarbandNexus.db.global.characters) do
-                local cKey = ns.Utilities:GetCharacterKey(char.name, char.realm)
-                if cKey and cKey == charKey then
-                    charClass = char.class or char.classFile or "WARRIOR"
-                    charClass = string.upper(charClass)
-                    break
+    -- Map rep-cache character keys → class (single pass over roster; avoids O(n²) scan per charKey).
+    local classByCharKey = {}
+    local globChars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+    if globChars and ns.Utilities and ns.Utilities.GetCharacterKey then
+        for dbKey, char in pairs(globChars) do
+            if type(char) == "table" then
+                local cls = string.upper(char.class or char.classFile or "WARRIOR")
+                classByCharKey[dbKey] = cls
+                if char.name and char.realm then
+                    local canon = ns.Utilities:GetCharacterKey(char.name, char.realm)
+                    if canon and canon ~= "" then
+                        classByCharKey[canon] = cls
+                    end
                 end
             end
         end
-        
+    end
+    
+    -- Add character-specific reputations (from ALL characters, hydrated)
+    -- CRITICAL: Skip any factionID that already exists in accountWide
+    for charKey, charFactions in pairs(db.characters) do
+        local charClass = classByCharKey[charKey] or "WARRIOR"
         for factionID, compact in pairs(charFactions) do
             local numID = tonumber(factionID) or factionID
             -- DEDUP: Skip if in accountWide OR already emitted for this character

@@ -1015,6 +1015,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
     local expBadgeWidth = 100
     local filterBtnW = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH_DEFAULT) or 80
+    local btnHH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
+    local hdrGapEc = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
+    local ecReserve = btnHH * 2 + hdrGapEc * 2
 
     -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout (wider subtitle area for Professions) =====
     local titleCardH = showWideHint and 88 or 70
@@ -1030,7 +1033,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         atlasName = (ns.UI_GetTabIcon and ns.UI_GetTabIcon("professions")) or "Vehicle-HammerGold",
         titleText = "|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["YOUR_PROFESSIONS"]) or "Warband Professions") .. "|r",
         subtitleText = subLine,
-        textRightInset = expBadgeWidth + filterBtnW + 40,
+        textRightInset = expBadgeWidth + filterBtnW + 40 + ecReserve,
     }))
     titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
     titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
@@ -1218,6 +1221,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end)
     end)
 
+    local sortBtn
     if ns.UI_CreateCharacterSortDropdown then
         local sortOptions = {
             {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
@@ -1227,10 +1231,32 @@ function WarbandNexus:DrawProfessionsTab(parent)
             {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
         }
         if not self.db.profile.professionSort then self.db.profile.professionSort = {} end
-        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function()
+        sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
         end)
         sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -(GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8), 0)
+    end
+
+    local ecAnchor = sortBtn or filterBtn
+    if ns.UI_EnsureTitleCardExpandCollapseButtons and ecAnchor then
+        ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, ecAnchor, "LEFT", -((GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)), 0, {
+            expandTooltip = (ns.L and ns.L["PROFESSIONS_EXPAND_ALL_TOOLTIP"]) or "Expand Favorites, Characters, and Untracked sections.",
+            collapseTooltip = (ns.L and ns.L["PROFESSIONS_COLLAPSE_ALL_TOOLTIP"]) or "Collapse Favorites, Characters, and Untracked sections.",
+            onExpandClick = function()
+                if not self.db.profile.ui then self.db.profile.ui = {} end
+                self.db.profile.ui.profFavoritesExpanded = true
+                self.db.profile.ui.profCharactersExpanded = true
+                self.db.profile.ui.profUntrackedExpanded = true
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+            end,
+            onCollapseClick = function()
+                if not self.db.profile.ui then self.db.profile.ui = {} end
+                self.db.profile.ui.profFavoritesExpanded = false
+                self.db.profile.ui.profCharactersExpanded = false
+                self.db.profile.ui.profUntrackedExpanded = false
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+            end,
+        })
     end
     
     titleCard:Show()

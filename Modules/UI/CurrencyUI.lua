@@ -291,19 +291,22 @@ end
 ---@param searchText string Search filter
 ---@return table { warbandTransferable = {headerData}, characterSpecific = {headerData} }
 
-local function AggregateCurrencies(self, characters, currencyHeaders, searchText, showZero)
+---@param globalCurrenciesPrebuilt table|nil If provided, skips a second GetCurrenciesForUI() merge pass (same snapshot as DrawCurrencyList).
+local function AggregateCurrencies(self, characters, currencyHeaders, searchText, showZero, globalCurrenciesPrebuilt)
     local result = {
         warbandTransferable = {},  -- Account-wide currencies
         characterSpecific = {},     -- Character-specific (with total across all chars)
     }
     
     -- Get currency data from new Direct DB architecture
-    local globalCurrencies = {}
-    if self.GetCurrenciesForUI then
-        globalCurrencies = self:GetCurrenciesForUI()
-    else
-        DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: GetCurrenciesForUI not found")
-        return result
+    local globalCurrencies = globalCurrenciesPrebuilt
+    if not globalCurrencies then
+        if self.GetCurrenciesForUI then
+            globalCurrencies = self:GetCurrenciesForUI()
+        else
+            DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: GetCurrenciesForUI not found")
+            return result
+        end
     end
     
     -- Build character lookup
@@ -572,12 +575,18 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local expanded = self.db.profile.currencyExpanded or {}
     
     local function IsExpanded(key, default)
+        if self.db.profile.currencyExpandOverride == "all_collapsed" then
+            return false
+        end
         if self.currencyExpandAllActive then return true end
         if expanded[key] == nil then return default or false end
         return expanded[key]
     end
     
     local function PersistExpand(key, isExpanded)
+        if self.db.profile.currencyExpandOverride then
+            self.db.profile.currencyExpandOverride = nil
+        end
         if not self.db.profile.currencyExpanded then
             self.db.profile.currencyExpanded = {}
         end
@@ -598,7 +607,23 @@ function WarbandNexus:DrawCurrencyList(container, width)
         globalHeaders = self.db.global.currencyData.headers
     end
     
-    -- Collect characters with currencies
+    -- Search-only: currency rows here only carry name (no category); pre-filter IDs once instead of chars × currencies × string find.
+    local currencyIDsForCharScan = nil
+    if currencySearchText and currencySearchText ~= ""
+        and not (issecretvalue and issecretvalue(currencySearchText)) then
+        local stLower = SafeLower(currencySearchText)
+        currencyIDsForCharScan = {}
+        for currencyID, currData in pairs(globalCurrencies) do
+            local cname = currData and currData.name
+            if cname and not (issecretvalue and issecretvalue(cname)) then
+                if cname:lower():find(stLower, 1, true) then
+                    currencyIDsForCharScan[currencyID] = true
+                end
+            end
+        end
+    end
+    
+    -- Collect characters with currencies (drive empty-state + search count; main grid uses AggregateCurrencies + headers).
     local charactersWithCurrencies = {}
     local hasAnyData = false
     
@@ -611,21 +636,25 @@ function WarbandNexus:DrawCurrencyList(container, width)
             local isOnline = (charKey == currentCharKey)
             local matchingCurrencies = {}
             for currencyID, currData in pairs(globalCurrencies) do
-                local quantity = 0
-                if currData.isAccountWide then
-                    quantity = currData.value or 0
+                if currencyIDsForCharScan and not currencyIDsForCharScan[currencyID] then
+                    -- Already failed name search (matches AggregateCurrencies header path).
                 else
-                    quantity = currData.chars and currData.chars[charKey] or 0
-                end
-                local currency = {
-                    name = currData.name,
-                    quantity = quantity,
-                    maxQuantity = currData.maxQuantity or 0,
-                    iconFileID = currData.icon,
-                }
-                local passesZeroFilter = showZero or (quantity > 0)
-                if passesZeroFilter and CurrencyMatchesSearch(currency, currencySearchText) then
-                    table.insert(matchingCurrencies, { id = currencyID, data = currency })
+                    local quantity = 0
+                    if currData.isAccountWide then
+                        quantity = currData.value or 0
+                    else
+                        quantity = currData.chars and currData.chars[charKey] or 0
+                    end
+                    local currency = {
+                        name = currData.name,
+                        quantity = quantity,
+                        maxQuantity = currData.maxQuantity or 0,
+                        iconFileID = currData.icon,
+                    }
+                    local passesZeroFilter = showZero or (quantity > 0)
+                    if passesZeroFilter and CurrencyMatchesSearch(currency, currencySearchText) then
+                        table.insert(matchingCurrencies, { id = currencyID, data = currency })
+                    end
                 end
             end
             if #matchingCurrencies > 0 then
@@ -867,7 +896,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         RenderTree(headerDataList, bodyFrame, bodyWidth, 1, rootCtx)
     end
 
-    local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
+    local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero, globalCurrencies)
 
     -- Section 1: Warband Transferable
     if #aggregated.warbandTransferable > 0 then
@@ -1240,11 +1269,12 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local subtitle = (ns.L and ns.L["CURRENCY_SUBTITLE"]) or "Track all currencies across your characters"
     local shiftHintText = (ns.L and ns.L["SHIFT_HINT_SEASON_PROGRESS"]) or "Hold Shift for season progress"
     subtitle = subtitle .. "  |cff666666\194\183|r  |cff888888" .. shiftHintText .. "|r"
+    local currencyEcReserve = ((ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32) * 2 + ((GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8) * 2
     local titleCard, _, _, _, _ = ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "currency",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["CURRENCY_TITLE"]) or "Currency Tracker") .. "|r",
         subtitleText = subtitle,
-        textRightInset = 118,
+        textRightInset = 118 + currencyEcReserve,
     })
     titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
     titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
@@ -1259,12 +1289,37 @@ function WarbandNexus:DrawCurrencyTab(parent)
         btn.text:SetText(showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"))
         WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "currency", skipCooldown = true })
     end)
+
+    if moduleEnabled and ns.UI_EnsureTitleCardExpandCollapseButtons then
+        local hdrGapEc = GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8
+        ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, showZeroBtn, "LEFT", -hdrGapEc, 0, {
+            expandTooltip = (ns.L and ns.L["CURRENCY_EXPAND_ALL_TOOLTIP"]) or "Expand all currency category headers.",
+            collapseTooltip = (ns.L and ns.L["CURRENCY_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all currency category headers.",
+            onExpandClick = function()
+                self.db.profile.currencyExpandOverride = nil
+                self.db.profile.currencyExpanded = {}
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "currency", skipCooldown = true })
+            end,
+            onCollapseClick = function()
+                self.db.profile.currencyExpandOverride = "all_collapsed"
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "currency", skipCooldown = true })
+            end,
+        })
+    elseif parent._wnExpandCollapseCollapseBtn then
+        parent._wnExpandCollapseCollapseBtn:Hide()
+        parent._wnExpandCollapseExpandBtn:Hide()
+    end
+
     titleCard:Show()
     
     headerYOffset = headerYOffset + GetLayout().afterHeader
     
     -- If module is disabled, show disabled state card (in scroll area)
     if not moduleEnabled then
+        if parent._wnExpandCollapseCollapseBtn then
+            parent._wnExpandCollapseCollapseBtn:Hide()
+            parent._wnExpandCollapseExpandBtn:Hide()
+        end
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["CURRENCY_DISABLED_TITLE"]) or "Currency Tracking")

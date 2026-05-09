@@ -50,6 +50,9 @@ local CharacterRowPool = {}
 local ReputationRowPool = {}
 local ProfessionRowPool = {}
 
+--- Iterative stack walk (avoids deep recursion); reused across subtree releases.
+local _poolSubtreeStack = {}
+
 -- True while row is queued in its pool table (not yet acquired). Prevents double-insert when
 -- ReleaseAllPooledChildren runs twice on the same parent (e.g. PopulateContent + DrawCharacterList),
 -- which used to duplicate pool entries and hand the same frame to two layout slots.
@@ -115,6 +118,33 @@ local function ReleaseCharacterRow(row)
 
     row._wnInFramePool = true
     tinsert(CharacterRowPool, row)
+end
+
+--- Release pooled character rows under a subtree before recycling section wrappers
+--- (PopulateContent only visits direct scrollChild children; nested rows must be freed explicitly).
+local function ReleaseCharacterRowsFromSubtree(root)
+    if not root then return end
+    local stack = _poolSubtreeStack
+    wipe(stack)
+    stack[1] = root
+    local sp = 1
+    while sp > 0 do
+        local f = stack[sp]
+        stack[sp] = nil
+        sp = sp - 1
+        if f then
+            local n = PackVariadicInto(_poolChildScratch, f:GetChildren())
+            for j = 1, n do
+                local ch = _poolChildScratch[j]
+                if ch and ch.isPooled and ch.rowType == "character" then
+                    ReleaseCharacterRow(ch)
+                elseif ch then
+                    sp = sp + 1
+                    stack[sp] = ch
+                end
+            end
+        end
+    end
 end
 
 --============================================================================
@@ -216,6 +246,32 @@ local function ReleaseReputationRow(row)
 
     row._wnInFramePool = true
     tinsert(ReputationRowPool, row)
+end
+
+--- Same pattern as ReleaseCharacterRowsFromSubtree for reputation rows nested under accordions.
+local function ReleaseReputationRowsFromSubtree(root)
+    if not root then return end
+    local stack = _poolSubtreeStack
+    wipe(stack)
+    stack[1] = root
+    local sp = 1
+    while sp > 0 do
+        local f = stack[sp]
+        stack[sp] = nil
+        sp = sp - 1
+        if f then
+            local n = PackVariadicInto(_poolChildScratch, f:GetChildren())
+            for j = 1, n do
+                local ch = _poolChildScratch[j]
+                if ch and ch.isPooled and ch.rowType == "reputation" then
+                    ReleaseReputationRow(ch)
+                elseif ch then
+                    sp = sp + 1
+                    stack[sp] = ch
+                end
+            end
+        end
+    end
 end
 
 --============================================================================
@@ -676,7 +732,9 @@ ns.UI_AcquireStorageRow = AcquireStorageRow
 
 -- Export Release functions
 ns.UI_ReleaseCharacterRow = ReleaseCharacterRow
+ns.UI_ReleaseCharacterRowsFromSubtree = ReleaseCharacterRowsFromSubtree
 ns.UI_ReleaseReputationRow = ReleaseReputationRow
+ns.UI_ReleaseReputationRowsFromSubtree = ReleaseReputationRowsFromSubtree
 ns.UI_ReleaseProfessionRow = ReleaseProfessionRow
 ns.UI_ReleaseCurrencyRow = ReleaseCurrencyRow
 ns.UI_ReleaseItemRow = ReleaseItemRow

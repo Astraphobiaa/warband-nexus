@@ -741,6 +741,52 @@ function CharacterService:IsFavoriteCharacter(addon, characterKey)
     return false
 end
 
+---Build a set of favorite keys for O(1) lookups during roster paint (raw + canonical aliases).
+---@param addon table WarbandNexus
+---@return table<string, boolean>
+function CharacterService:BuildFavoriteKeySet(addon)
+    local set = {}
+    if not addon or not addon.db or not addon.db.global or not addon.db.global.favoriteCharacters then
+        return set
+    end
+    local favs = addon.db.global.favoriteCharacters
+    local GetCanon = ns.Utilities and ns.Utilities.GetCanonicalCharacterKey
+    for fi = 1, #favs do
+        local k = favs[fi]
+        if k and k ~= "" then
+            set[k] = true
+            if GetCanon then
+                local c = ns.Utilities:GetCanonicalCharacterKey(k)
+                if c and c ~= "" then
+                    set[c] = true
+                end
+            end
+        end
+    end
+    return set
+end
+
+---True if characterKey is favorite using a set from BuildFavoriteKeySet (matches alias normalization).
+---@param favoriteSet table<string, boolean>|nil
+---@param characterKey string|nil
+---@return boolean
+function CharacterService:IsFavoriteFromKeySet(favoriteSet, characterKey)
+    if not favoriteSet or not characterKey or characterKey == "" then
+        return false
+    end
+    if favoriteSet[characterKey] then
+        return true
+    end
+    local GetCanon = ns.Utilities and ns.Utilities.GetCanonicalCharacterKey
+    if GetCanon then
+        local c = ns.Utilities:GetCanonicalCharacterKey(characterKey)
+        if c and favoriteSet[c] then
+            return true
+        end
+    end
+    return false
+end
+
 ---Toggle favorite status for a character
 ---@param addon table The WarbandNexus addon instance
 ---@param characterKey string Character key ("Name-Realm")
