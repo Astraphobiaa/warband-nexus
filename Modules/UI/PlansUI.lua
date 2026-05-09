@@ -2145,9 +2145,32 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     end
     local rootCategories = cachedCategoryTree.rootCategories
 
+    local profileAchBrowse = WarbandNexus.db and WarbandNexus.db.profile
+    local showCompletedAchBrowse = ProfileBool(profileAchBrowse, "plansShowCompleted", false)
+    local showPlannedAchBrowse = ProfileBool(profileAchBrowse, "plansShowPlanned", false)
+    -- Full uncollected browse only: mix of planned / not — suffix helps. Any filter that restricts to "on To-Do" makes (Planned) redundant noise.
+    local showAchievementPlannedSuffix = (not showCompletedAchBrowse) and (not showPlannedAchBrowse)
+
     for ri = 1, #results do
         local achievement = results[ri]
         local categoryID = achievement.categoryID
+        if not categoryID and GetAchievementCategory then
+            categoryID = GetAchievementCategory(achievement.id)
+            achievement.categoryID = categoryID
+        end
+        if categoryID and not categoryData[categoryID] and GetCategoryInfo then
+            local walked = categoryID
+            for _ = 1, 12 do
+                local _, parentID = GetCategoryInfo(walked)
+                if not parentID or parentID <= 0 then break end
+                if categoryData[parentID] then
+                    categoryID = parentID
+                    achievement.categoryID = categoryID
+                    break
+                end
+                walked = parentID
+            end
+        end
         if categoryData[categoryID] then
             achievement.isPlanned = self:IsAchievementPlanned(achievement.id)
             table.insert(categoryData[categoryID].achievements, achievement)
@@ -2323,7 +2346,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         row:SetHeight(ROW_H)
 
         local title = FormatTextNumbers(ach.name or "")
-        if ach.isPlanned then
+        if ach.isPlanned and showAchievementPlannedSuffix then
             title = title .. " |cffffcc00(" .. ((ns.L and ns.L["PLANNED"]) or "Planned") .. ")|r"
         end
         local pointsStr = (ach.points and ach.points > 0) and (" (" .. ach.points .. " pts)") or ""

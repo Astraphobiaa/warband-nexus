@@ -24,6 +24,8 @@ local SIDE_MARGIN = LAYOUT.SIDE_MARGIN or 10
 local PADDING = SIDE_MARGIN
 local ROW_HEIGHT = LAYOUT.ROW_HEIGHT or 26
 local HEADER_HEIGHT = LAYOUT.HEADER_HEIGHT or 32
+-- Must match CreateCollapsibleHeader / accordion wraps (same bug class as Collections mount lists).
+local COLLAPSE_HEADER_HEIGHT_ACH = LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT or 36
 local BASE_INDENT = LAYOUT.BASE_INDENT or 15
 local SECTION_SPACING = LAYOUT.SECTION_SPACING or LAYOUT.betweenSections or 8
 local MINI_SPACING = LAYOUT.MINI_SPACING or LAYOUT.miniSpacing or 4
@@ -89,105 +91,75 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
         return total
     end
 
+    -- Flat Y must match ChainSectionFrameBelow: only SECTION_SPACING between consecutive *rendered*
+    -- subsection wraps. The old loop added spacing after every child index (including empty API slots),
+    -- inflating yOffset / relY vs real frames — nested headers and rows overlapped the next category.
+    local function AppendCategorySubtree(catID, headerIndentPx)
+        local cat = categoryData[catID]
+        if not cat then return end
+        local totalAchievements = CountCategoryAchievements(catID)
+        if totalAchievements <= 0 then return end
+
+        local catKey = "achievement_cat_" .. catID
+        local catExpanded = (collapsedHeaders[catKey] == false)
+        flat[#flat + 1] = {
+            type = "header",
+            key = catKey,
+            label = titleColor .. (cat.name or "") .. "|r " .. countColor .. "(" .. FormatNumber(totalAchievements) .. ")|r",
+            rightStr = countColor .. FormatNumber(totalAchievements) .. "|r",
+            itemCount = totalAchievements,
+            isCollapsed = not catExpanded,
+            yOffset = yOffset,
+            height = COLLAPSE_HEADER_HEIGHT_ACH,
+            indent = headerIndentPx,
+        }
+        yOffset = yOffset + COLLAPSE_HEADER_HEIGHT_ACH + MINI_SPACING
+
+        local achievements = cat.achievements or {}
+        local rowIndent = headerIndentPx + BASE_INDENT
+        for i = 1, #achievements do
+            local ach = achievements[i]
+            rowCounter = rowCounter + 1
+            flat[#flat + 1] = {
+                type = "row",
+                achievement = ach,
+                rowIndex = rowCounter,
+                yOffset = yOffset,
+                height = ROW_HEIGHT,
+                indent = rowIndent,
+            }
+            yOffset = yOffset + ROW_HEIGHT
+        end
+
+        local children = cat.children or {}
+        if #children > 0 and #achievements > 0 then
+            yOffset = yOffset + SECTION_SPACING
+        end
+
+        local firstEmittedChild = true
+        for cidx = 1, #children do
+            local childID = children[cidx]
+            local childCat = categoryData[childID]
+            if childCat and CountCategoryAchievements(childID) > 0 then
+                if not firstEmittedChild then
+                    yOffset = yOffset + SECTION_SPACING
+                end
+                firstEmittedChild = false
+                AppendCategorySubtree(childID, headerIndentPx + BASE_INDENT)
+            end
+        end
+    end
+
+    local firstRoot = true
     for rootIndex = 1, #rootCategories do
         local rootID = rootCategories[rootIndex]
         local rootCat = categoryData[rootID]
-        local totalAchievements = CountCategoryAchievements(rootID)
-        if rootCat and totalAchievements > 0 then
-            local rootKey = "achievement_cat_" .. rootID
-            local rootExpanded = (collapsedHeaders[rootKey] == false)
-            flat[#flat + 1] = {
-                type = "header",
-                key = rootKey,
-                label = titleColor .. (rootCat.name or "") .. "|r " .. countColor .. "(" .. FormatNumber(totalAchievements) .. ")|r",
-                rightStr = countColor .. FormatNumber(totalAchievements) .. "|r",
-                itemCount = totalAchievements,
-                isCollapsed = not rootExpanded,
-                yOffset = yOffset,
-                height = HEADER_HEIGHT,
-                indent = 0,
-            }
-            yOffset = yOffset + HEADER_HEIGHT + MINI_SPACING
-
-            for i = 1, #rootCat.achievements do
-                local ach = rootCat.achievements[i]
-                rowCounter = rowCounter + 1
-                flat[#flat + 1] = { type = "row", achievement = ach, rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT, indent = BASE_INDENT }
-                yOffset = yOffset + ROW_HEIGHT
-            end
-            if #(rootCat.children or {}) > 0 and #rootCat.achievements > 0 then
+        if rootCat and CountCategoryAchievements(rootID) > 0 then
+            if not firstRoot then
                 yOffset = yOffset + SECTION_SPACING
             end
-
-            for childIdx = 1, #rootCat.children do
-                local childID = rootCat.children[childIdx]
-                local childCat = categoryData[childID]
-                local childAchievementCount = CountCategoryAchievements(childID)
-                if childCat and childAchievementCount > 0 then
-                    local childKey = "achievement_cat_" .. childID
-                    local childExpanded = (collapsedHeaders[childKey] == false)
-                    flat[#flat + 1] = {
-                        type = "header",
-                        key = childKey,
-                        label = titleColor .. (childCat.name or "") .. "|r " .. countColor .. "(" .. FormatNumber(childAchievementCount) .. ")|r",
-                        rightStr = countColor .. FormatNumber(childAchievementCount) .. "|r",
-                        itemCount = childAchievementCount,
-                        isCollapsed = not childExpanded,
-                        yOffset = yOffset,
-                        height = HEADER_HEIGHT,
-                        indent = BASE_INDENT,
-                    }
-                    yOffset = yOffset + HEADER_HEIGHT + MINI_SPACING
-
-                    for i = 1, #childCat.achievements do
-                        local ach = childCat.achievements[i]
-                        rowCounter = rowCounter + 1
-                        flat[#flat + 1] = { type = "row", achievement = ach, rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT, indent = BASE_INDENT * 2 }
-                        yOffset = yOffset + ROW_HEIGHT
-                    end
-                    if #(childCat.children or {}) > 0 and #childCat.achievements > 0 then
-                        yOffset = yOffset + SECTION_SPACING
-                    end
-
-                    local childChildren = childCat.children or {}
-                    for grandchildIdx = 1, #childChildren do
-                        local grandchildID = childChildren[grandchildIdx]
-                        local grandchildCat = categoryData[grandchildID]
-                        local grandchildCount = CountCategoryAchievements(grandchildID)
-                        if grandchildCat and grandchildCount > 0 then
-                            local gcKey = "achievement_cat_" .. grandchildID
-                            local gcExpanded = (collapsedHeaders[gcKey] == false)
-                            flat[#flat + 1] = {
-                                type = "header",
-                                key = gcKey,
-                                label = titleColor .. (grandchildCat.name or "") .. "|r " .. countColor .. "(" .. FormatNumber(grandchildCount) .. ")|r",
-                                rightStr = countColor .. FormatNumber(grandchildCount) .. "|r",
-                                itemCount = grandchildCount,
-                                isCollapsed = not gcExpanded,
-                                yOffset = yOffset,
-                                height = HEADER_HEIGHT,
-                                indent = BASE_INDENT * 2,
-                            }
-                            yOffset = yOffset + HEADER_HEIGHT + MINI_SPACING
-
-                            for i = 1, #grandchildCat.achievements do
-                                local ach = grandchildCat.achievements[i]
-                                rowCounter = rowCounter + 1
-                                flat[#flat + 1] = { type = "row", achievement = ach, rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT, indent = BASE_INDENT * 3 }
-                                yOffset = yOffset + ROW_HEIGHT
-                            end
-                        end
-                        if grandchildIdx < #childChildren then
-                            yOffset = yOffset + SECTION_SPACING
-                        end
-                    end
-                end
-                if childIdx < #(rootCat.children or {}) then
-                    yOffset = yOffset + SECTION_SPACING
-                end
-            end
-
-            yOffset = yOffset + SECTION_SPACING
+            firstRoot = false
+            AppendCategorySubtree(rootID, 0)
         end
     end
 
@@ -289,7 +261,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
         for fi = 1, #flatList do
             local fit = flatList[fi]
             local yTop = fit.yOffset or 0
-            local yBottom = yTop + (fit.height or ROW_HEIGHT)
+            local yBottom = yTop + (fit.height or (fit.type == "header" and COLLAPSE_HEADER_HEIGHT_ACH or ROW_HEIGHT))
 
             if fit.type == "header" then
                 local indent = fit.indent or 0
@@ -303,7 +275,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
                     end
                 end
                 local parent = stack[#stack]
-                local contentTopY = yTop + (fit.height or HEADER_HEIGHT)
+                local contentTopY = yTop + (fit.height or COLLAPSE_HEADER_HEIGHT_ACH)
                 local categoryID = tonumber((fit.key or ""):match("^achievement_cat_(%-?%d+)$"))
                 achHeaderMeta[fit.key] = {
                     parentKey = parent and parent.key or nil,
@@ -369,12 +341,17 @@ function ns.UI_AchievementBrowse_Populate(opts)
         if #children > 0 and #(cat.achievements or {}) > 0 then
             bodyH = bodyH + SECTION_SPACING
         end
+        local firstEmittedChild = true
         for childIdx = 1, #children do
             local childID = children[childIdx]
             local childCount = CountAchievementTree(childID)
             if childCount > 0 then
+                if not firstEmittedChild then
+                    bodyH = bodyH + SECTION_SPACING
+                end
+                firstEmittedChild = false
                 local childKey = "achievement_cat_" .. childID
-                bodyH = bodyH + HEADER_HEIGHT
+                bodyH = bodyH + COLLAPSE_H_COLL
                 local childExpanded = (collapsedHeaders[childKey] == false) or (activeAnimKey and childKey == activeAnimKey and activeAnimBodyH ~= nil)
                 if childExpanded then
                     local childBodyH
@@ -389,9 +366,6 @@ function ns.UI_AchievementBrowse_Populate(opts)
                         end
                     end
                     bodyH = bodyH + math.max(0.1, childBodyH or 0)
-                end
-                if childIdx < #children then
-                    bodyH = bodyH + SECTION_SPACING
                 end
             end
         end
@@ -459,8 +433,11 @@ function ns.UI_AchievementBrowse_Populate(opts)
                 headerHeight = COLLAPSE_H_COLL,
                 hideOnCollapse = true,
                 applyToggleBeforeCollapseAnimate = true,
+                -- Defer marking collapsed until tween ends — virtual rows stay until animation completes (large sections).
                 persistFn = function(exp)
-                    collapsedHeaders[key] = not exp
+                    if exp then
+                        collapsedHeaders[key] = false
+                    end
                 end,
                 onUpdate = function(drawH)
                     ReflowAchievementAccordionHeights(key, drawH)
@@ -469,10 +446,11 @@ function ns.UI_AchievementBrowse_Populate(opts)
                     refreshVisibleInternal()
                 end,
                 onComplete = function(exp)
-                    ReflowAchievementAccordionHeights()
                     if not exp then
-                        refreshVisibleInternal()
+                        collapsedHeaders[key] = true
                     end
+                    ReflowAchievementAccordionHeights()
+                    refreshVisibleInternal()
                 end,
             }))
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
