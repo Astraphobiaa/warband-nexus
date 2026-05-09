@@ -297,9 +297,8 @@ local collectionsState = {
     selectedToyID = nil,
     initialized = false,
     recentTabPanel = nil,
-    recentScrollFrame = nil,
-    recentScrollChild = nil,
-    recentOuterScrollBarColumn = nil,
+    --- Last viewport height cap for Recent layout (rows fill vs main-window scroll); refreshed in DrawCollectionsTab.
+    recentViewportCap = nil,
     _recentEmptyFs = nil,
 }
 
@@ -4220,13 +4219,12 @@ local function HideAllCollectionsResultFrames()
     if collectionsState.toyDetailContainer then collectionsState.toyDetailContainer:Hide() end
     if collectionsState.toyDetailScrollBarContainer then collectionsState.toyDetailScrollBarContainer:Hide() end
     if collectionsState.recentTabPanel then collectionsState.recentTabPanel:Hide() end
-    if collectionsState.recentOuterScrollBarColumn then collectionsState.recentOuterScrollBarColumn:Hide() end
     if collectionsState.collectionRightColumn then collectionsState.collectionRightColumn:Hide() end
     if collectionsState.collectionProgressFrame then collectionsState.collectionProgressFrame:Hide() end
     if collectionsState._collectionsContentSubHeader then collectionsState._collectionsContentSubHeader:Hide() end
 end
 
----Recent sub-tab: four equal cards (Achievements, Mounts, Pets, Toys), each listing recent obtains for that type only (newest-first in DB).
+---Recent sub-tab: four equal cards (Achievements, Mounts, Pets, Toys), recent obtains per column; tall lists extend tab height and use the main window vertical scroll (no nested scrollbars).
 local function RecentEntryNameMatches(e, qlower)
     if not e or type(e.name) ~= "string" or e.name == "" then return false end
     if not qlower then return true end
@@ -4266,9 +4264,9 @@ local function RecentPickForType(db, typ, qlower, maxN)
     return out
 end
 
-local function ClearRecentScrollChildren(scrollChild)
-    if not scrollChild then return end
-    local ch = { scrollChild:GetChildren() }
+local function ClearRecentPanelChildren(panel)
+    if not panel then return end
+    local ch = { panel:GetChildren() }
     for i = 1, #ch do
         ch[i]:SetParent(nil)
         ch[i]:Hide()
@@ -4341,62 +4339,20 @@ local function DrawRecentContent(contentFrame)
         ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
     end
 
-    local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "recent", ch)
+    local viewCap = collectionsState.recentViewportCap or ch
 
-    local scrollFrame = collectionsState.recentScrollFrame
-    if scrollFrame and not scrollFrame._wnScrollBarColumn then
-        collectionsState.recentTabPanel = nil
-        collectionsState.recentScrollFrame = nil
-        collectionsState.recentScrollChild = nil
-        collectionsState.recentOuterScrollBarColumn = nil
-    end
+    local headerBlockH = select(1, ApplyCollectionsContentHeader(contentFrame, "recent", viewCap))
 
     local panel = collectionsState.recentTabPanel
     if not panel then
-        panel = Factory:CreateContainer(contentFrame, cw, innerCh, false)
-        panel:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
-        panel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
-        local scrollBarColumn = Factory:CreateScrollBarColumn(panel, SCROLLBAR_GAP, 0, 0)
-        collectionsState.recentOuterScrollBarColumn = scrollBarColumn
-        scrollFrame = Factory:CreateScrollFrame(panel, "UIPanelScrollFrameTemplate", true)
-        scrollFrame:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
-        scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", -2, 0)
-        EnableStandardScrollWheel(scrollFrame)
-        scrollFrame._wnScrollBarColumn = scrollBarColumn
-        scrollFrame._wnScrollHost = panel
-        scrollFrame._wnScrollAnchorTL = { frame = panel, a1 = "TOPLEFT", a2 = "TOPLEFT", x = 0, y = 0 }
-        scrollFrame._wnScrollAnchorBRHidden = { frame = panel, a1 = "BOTTOMRIGHT", a2 = "BOTTOMRIGHT", x = 0, y = 0 }
-        scrollFrame._wnScrollAnchorBRShown = { frame = scrollBarColumn, a1 = "BOTTOMRIGHT", a2 = "BOTTOMLEFT", x = -2, y = 0 }
-        local innerW = math.max(1, cw - SCROLLBAR_GAP - 2)
-        local scrollChild = CreateStandardScrollChild(scrollFrame, innerW, 1)
-        if scrollFrame.ScrollBar then
-            Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 2)
-        end
+        panel = Factory:CreateContainer(contentFrame, cw, innerChViewport, false)
         collectionsState.recentTabPanel = panel
-        collectionsState.recentScrollFrame = scrollFrame
-        collectionsState.recentScrollChild = scrollChild
     end
     panel:SetParent(contentFrame)
     panel:ClearAllPoints()
     panel:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
     panel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
     panel:Show()
-    if panel.SetSize then
-        panel:SetSize(cw, innerCh)
-    end
-
-    scrollFrame = collectionsState.recentScrollFrame
-    local sch = collectionsState.recentScrollChild
-    local outerBarCol = collectionsState.recentOuterScrollBarColumn
-    if scrollFrame and sch and outerBarCol and panel then
-        scrollFrame._wnScrollBarColumn = outerBarCol
-        scrollFrame._wnScrollHost = panel
-        scrollFrame._wnScrollAnchorTL = { frame = panel, a1 = "TOPLEFT", a2 = "TOPLEFT", x = 0, y = 0 }
-        scrollFrame._wnScrollAnchorBRHidden = { frame = panel, a1 = "BOTTOMRIGHT", a2 = "BOTTOMRIGHT", x = 0, y = 0 }
-        scrollFrame._wnScrollAnchorBRShown = { frame = outerBarCol, a1 = "BOTTOMRIGHT", a2 = "BOTTOMLEFT", x = -2, y = 0 }
-    end
-
-    if not sch then return end
 
     if WarbandNexus.PruneCollectionsRecentObtained then
         WarbandNexus:PruneCollectionsRecentObtained()
@@ -4415,33 +4371,9 @@ local function DrawRecentContent(contentFrame)
     local inset = CONTENT_INSET or 8
     local gap = CARD_GAP
 
-    if collectionsState._recentEmptyFs then
-        collectionsState._recentEmptyFs:Hide()
-        collectionsState._recentEmptyFs:SetParent(sch)
-    end
+    ClearRecentPanelChildren(panel)
 
-    local function finishRecentScroll(totalY)
-        sch:SetHeight(math.max(totalY + inset, 1))
-        if scrollFrame and scrollFrame._wnScrollBarColumn and sch then
-            local frameH = scrollFrame:GetHeight() or 0
-            local needsOuterScroll = (sch:GetHeight() or 0) > frameH + 1
-            if needsOuterScroll then
-                sch:SetWidth(math.max(1, cw - SCROLLBAR_GAP - 2))
-            else
-                sch:SetWidth(math.max(1, cw))
-            end
-        elseif sch then
-            sch:SetWidth(math.max(1, cw))
-        end
-        if scrollFrame and Factory.UpdateScrollBarVisibility then
-            Factory:UpdateScrollBarVisibility(scrollFrame)
-        end
-    end
-
-    ClearRecentScrollChildren(sch)
-
-    local schW = sch:GetWidth() or cw
-    local innerW = math.max(1, schW - 2 * inset)
+    local innerW = math.max(1, cw - 2 * inset)
     local cardW = (innerW - 3 * gap) / 4
     local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 6
     local listTopPad = headerBand + 4
@@ -4452,11 +4384,7 @@ local function DrawRecentContent(contentFrame)
         pickedLists[si] = RecentPickForType(db, RECENT_SECTION_ORDER[si], qlower, nil)
     end
 
-    -- Cards fill the full available panel height; each card has its own internal scroll.
-    local availableH = math.max(160, (innerCh or ch) - 2 * inset)
-    local cardH = availableH
-
-    -- Resolve class color for a character name by scanning the warband DB. Returns hex prefix or default gray.
+    --- Resolve class color for a character name by scanning the warband DB. Returns hex prefix or default gray.
     local function ResolveCharacterClassColor(name)
         if not name or name == "" then return "|cffaaaaaa" end
         local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
@@ -4481,6 +4409,45 @@ local function DrawRecentContent(contentFrame)
         return completed == true and wasEarnedByMe == false
     end
 
+    --- Pixel height of the scrollable list block inside one Recent card (rows only; excludes header band).
+    local function RecentColumnListPixelHeight(typ, picked)
+        local yList = 0
+        if qlower and #picked == 0 then
+            return ROW_HEIGHT + 2
+        elseif #picked == 0 then
+            return ROW_HEIGHT + 2
+        end
+        for j = 1, #picked do
+            local e = picked[j]
+            local ob = RecentCharacterLabelForDisplay(e.obtainedBy)
+            local suppressEarner = (typ == "achievement" and e.id and RecentAchievementSuppressEarner(e.id))
+            local rowH = ROW_HEIGHT
+            if ob and ob ~= "" and not suppressEarner then
+                rowH = RECENT_ROW_H_SUB
+            end
+            yList = yList + rowH + 2
+        end
+        return yList
+    end
+
+    local maxColContent = 0
+    for si = 1, #RECENT_SECTION_ORDER do
+        local typ = RECENT_SECTION_ORDER[si]
+        local picked = pickedLists[si]
+        local colTotal = listTopPad + RecentColumnListPixelHeight(typ, picked) + RECENT_CARD_HEADER_PAD
+        if colTotal > maxColContent then
+            maxColContent = colTotal
+        end
+    end
+
+    local inner_viewport = math.max(1, viewCap - headerBlockH)
+    local minCardFill = math.max(160, inner_viewport - 2 * inset)
+    local cardH = math.max(minCardFill, maxColContent)
+    local finalContentH = math.max(viewCap, headerBlockH + inset + cardH + inset)
+
+    contentFrame:SetHeight(finalContentH)
+    ApplyCollectionsContentHeader(contentFrame, "recent", finalContentH)
+
     local rowVisualIndex = 0
     for si = 1, #RECENT_SECTION_ORDER do
         local typ = RECENT_SECTION_ORDER[si]
@@ -4492,10 +4459,10 @@ local function DrawRecentContent(contentFrame)
             or (typ == "pet" and DEFAULT_ICON_PET)
             or DEFAULT_ICON_TOY
 
-        local card = CreateCard(sch, cardH)
-        card:SetParent(sch)
+        local card = CreateCard(panel, cardH)
+        card:SetParent(panel)
         card:SetSize(cardW, cardH)
-        card:SetPoint("TOPLEFT", sch, "TOPLEFT", inset + (si - 1) * (cardW + gap), -inset)
+        card:SetPoint("TOPLEFT", panel, "TOPLEFT", inset + (si - 1) * (cardW + gap), -inset)
         card:Show()
 
         local iconFr = CreateIcon(card, iconTex, RECENT_CARD_ICON, iconIsAtlas, nil, true)
@@ -4537,55 +4504,19 @@ local function DrawRecentContent(contentFrame)
         titleFs:SetText(cat)
         titleFs:SetTextColor(1, 0.85, 0.45, 1)
 
-        local cardScrollBarCol = Factory:CreateScrollBarColumn(card, SCROLLBAR_GAP, listTopPad, RECENT_CARD_HEADER_PAD)
-        local cardScroll = Factory:CreateScrollFrame(card, "UIPanelScrollFrameTemplate", true)
-        cardScroll:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD, -listTopPad)
-        cardScroll:SetPoint("BOTTOMRIGHT", cardScrollBarCol, "BOTTOMLEFT", -2, RECENT_CARD_HEADER_PAD)
-        EnableStandardScrollWheel(cardScroll)
-        cardScroll._wnScrollBarColumn = cardScrollBarCol
-        cardScroll._wnScrollHost = card
-        cardScroll._wnScrollAnchorTL = {
-            frame = card,
-            a1 = "TOPLEFT",
-            a2 = "TOPLEFT",
-            x = RECENT_CARD_HEADER_PAD,
-            y = -listTopPad,
-        }
-        cardScroll._wnScrollAnchorBRHidden = {
-            frame = card,
-            a1 = "BOTTOMRIGHT",
-            a2 = "BOTTOMRIGHT",
-            x = -RECENT_CARD_HEADER_PAD,
-            y = RECENT_CARD_HEADER_PAD,
-        }
-        cardScroll._wnScrollAnchorBRShown = {
-            frame = cardScrollBarCol,
-            a1 = "BOTTOMRIGHT",
-            a2 = "BOTTOMLEFT",
-            x = -2,
-            y = 0,
-        }
-        local listWInner = math.max(1, cardW - RECENT_CARD_HEADER_PAD * 2 - SCROLLBAR_GAP - 2)
-        local cardScrollChild = CreateStandardScrollChild(cardScroll, listWInner, 1)
-        if cardScroll.ScrollBar then
-            Factory:PositionScrollBarInContainer(cardScroll.ScrollBar, cardScrollBarCol, 2)
-        end
+        local listWInner = math.max(1, cardW - RECENT_CARD_HEADER_PAD * 2)
+        local listHost = Factory:CreateContainer(card, listWInner, 1, false)
+        listHost:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD, -listTopPad)
+        listHost:Show()
 
         local yList = 0
-        local function finishCardScrollBar()
-            cardScrollChild:SetHeight(math.max(yList, 1))
-            if Factory.UpdateScrollBarVisibility then
-                Factory:UpdateScrollBarVisibility(cardScroll)
-            end
-        end
-
         local function addRow(iconPath, nameRich, rightTime, clickable, onClick, tooltipBuilder, subtitleRich, rowH)
             rowVisualIndex = rowVisualIndex + 1
             rowH = rowH or ROW_HEIGHT
-            local row = Factory:CreateCollectionListRow(cardScrollChild, rowH)
-            row:SetParent(cardScrollChild)
+            local row = Factory:CreateCollectionListRow(listHost, rowH)
+            row:SetParent(listHost)
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", cardScrollChild, "TOPLEFT", 0, -yList)
+            row:SetPoint("TOPLEFT", listHost, "TOPLEFT", 0, -yList)
             row:SetWidth(listWInner)
             Factory:ApplyCollectionListRowContent(row, rowVisualIndex, iconPath, nameRich, clickable, false, onClick, rightTime, subtitleRich)
             if tooltipBuilder then
@@ -4667,10 +4598,8 @@ local function DrawRecentContent(contentFrame)
             end
         end
 
-        finishCardScrollBar()
+        listHost:SetHeight(math.max(yList, 1))
     end
-
-    finishRecentScroll(inset + cardH + inset)
 end
 
 local function SetCollectionProgress(current, total)
@@ -6548,15 +6477,15 @@ function WarbandNexus:DrawCollectionsTab(parent)
         collectionsState._achVisibleRowFrames = nil
         collectionsState._achListContentFrame = nil
         collectionsState.recentTabPanel = nil
-        collectionsState.recentScrollFrame = nil
-        collectionsState.recentScrollChild = nil
-        collectionsState.recentOuterScrollBarColumn = nil
+        collectionsState.recentViewportCap = nil
         collectionsState._recentEmptyFs = nil
     end
 
     -- Draw current sub-tab content
     if collectionsState.currentSubTab == "recent" then
+        collectionsState.recentViewportCap = contentHeight
         DrawRecentContent(contentFrame)
+        contentHeight = contentFrame:GetHeight() or contentHeight
     elseif collectionsState.currentSubTab == "mounts" then
         DrawMountsContent(contentFrame)
     elseif collectionsState.currentSubTab == "pets" then

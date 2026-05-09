@@ -674,6 +674,15 @@ function WarbandNexus:CreateMainWindow()
         if self.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
             ns.UI.Factory:UpdateHorizontalScrollBarVisibility(self.scroll)
         end
+        -- Collections tab: scrollChild width updates live but tab renderers size from last PopulateContent.
+        -- Debounced full refresh keeps Recent cards / split layouts aligned during resize (mouse-up still repaints too).
+        if self.currentTab == "collections" then
+            local C = ns.Constants
+            local ev = C and C.EVENTS and C.EVENTS.UI_MAIN_REFRESH_REQUESTED
+            if ev and WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage(ev, { tab = "collections", skipCooldown = true })
+            end
+        end
     end)
     
     -- Resize handle — anchored exactly at BOTTOMRIGHT to prevent size jump on click
