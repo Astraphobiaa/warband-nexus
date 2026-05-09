@@ -512,7 +512,7 @@ L["MYTHIC_PLUS_LABEL"] = "Mythisch+"
 L["FACTION_LABEL"] = "Fraktion:"
 L["FRIENDSHIP_LABEL"] = "Freundschaft"
 L["RENOWN_TYPE_LABEL"] = "Ruhm"
-L["ADD_BUTTON"] = "+ Hinzufügen"
+L["ADD_BUTTON"] = "To-Do"
 L["ADDED_LABEL"] = "Hinzugefügt"
 L["ACHIEVEMENT_PROGRESS_FORMAT"] = "%s von %s (%s%%)"
 

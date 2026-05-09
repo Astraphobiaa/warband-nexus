@@ -753,18 +753,55 @@ local DEFAULT_ICON_PET = "Interface\\Icons\\INV_Box_PetCarrier_01"
 local DEFAULT_ICON_TOY = "Interface\\Icons\\INV_Misc_Toy_07"
 local DEFAULT_ICON_ACHIEVEMENT = "Interface\\Icons\\Achievement_General"
 
+local function RemoveFirstMatchingPlan(pred)
+    local WN = WarbandNexus
+    if not WN or not WN.RemovePlan then return false end
+    local plans = WN.db and WN.db.global and WN.db.global.plans
+    if not plans then return false end
+    for i = 1, #plans do
+        local p = plans[i]
+        if p and p.id and pred(p) then
+            return WN:RemovePlan(p.id) and true or false
+        end
+    end
+    return false
+end
+
+local function CollectionRowTodoSlotTooltip(onTodo, canInteract)
+    local L = ns.L
+    if onTodo then
+        return (L and L["TODO_SLOT_TOOLTIP_REMOVE"]) or "Click to remove from your To-Do list."
+    end
+    if canInteract then
+        return (L and L["TODO_SLOT_TOOLTIP_ADD"]) or "Click to add to your To-Do list."
+    end
+    return ""
+end
+
+local function CollectionRowTrackSlotTooltip(achCollected, onTrack)
+    local L = ns.L
+    if achCollected then
+        return (L and L["TRACK_SLOT_DISABLED_COMPLETED"]) or "Completed achievements cannot be tracked in objectives."
+    end
+    if onTrack then
+        return (L and L["TRACK_SLOT_TOOLTIP_UNTRACK"]) or "Click to stop tracking in Blizzard objectives."
+    end
+    return (L and L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)"
+end
+
 -- Acquire a collection list row (SharedWidgets layout: status icon + icon + label). Used by Mounts, Pets, Achievements.
-local function AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn)
+local function AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn, planSlotState)
     if not rowParent then return nil end
+    local rowH = (item and type(item.height) == "number" and item.height > 0) and item.height or ROW_HEIGHT
     local f = table.remove(CollectionRowPool)
     if not f then
-        f = Factory:CreateCollectionListRow(rowParent, ROW_HEIGHT)
+        f = Factory:CreateCollectionListRow(rowParent, rowH)
         f:ClearAllPoints()
     end
     f:SetParent(rowParent)
     f:SetPoint("TOPLEFT", rowParent, "TOPLEFT", leftIndent or 0, -(item.yOffset or 0))
     f:SetPoint("TOPRIGHT", rowParent, "TOPRIGHT", 0, -(item.yOffset or 0))
-    f:SetHeight(ROW_HEIGHT)
+    f:SetHeight(rowH)
     local onClick
     if onSelect or refreshFn then
         onClick = function()
@@ -772,7 +809,7 @@ local function AcquireCollectionRow(rowParent, item, leftIndent, iconPath, label
             if refreshFn then refreshFn() end
         end
     end
-    Factory:ApplyCollectionListRowContent(f, item.rowIndex, iconPath, labelText, isCollected, (selectedID == itemID), onClick)
+    Factory:ApplyCollectionListRowContent(f, item.rowIndex, iconPath, labelText, isCollected, (selectedID == itemID), onClick, nil, nil, planSlotState)
     f:Show()
     return f
 end
@@ -789,17 +826,44 @@ local function AcquireMountRow(scrollChild, listWidth, item, selectedMountID, on
     if item._collRelY then
         rowItem = { mount = item.mount, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height }
     end
-    return AcquireCollectionRow(rowParent, rowItem, 0, mount.icon or DEFAULT_ICON_MOUNT, labelText, mount.isCollected, selectedMountID, mount.id, function()
-        if onSelectMount then
-            onSelectMount(mount.id, mount.name, mount.icon, mount.source, mount.creatureDisplayID, mount.description, mount.isCollected)
-        end
-    end, function()
+    local WN = WarbandNexus
+    local onTodo = WN and WN.IsMountPlanned and WN:IsMountPlanned(mount.id) or false
+    local function refreshMountListVisible()
         if collectionsState._mountFlatList and collectionsState.mountListScrollFrame then
             collectionsState._mountListSelectedID = mount.id
             local r = collectionsState._mountListRefreshVisible
             if r then r() end
         end
-    end)
+    end
+    local planSlotState = {
+        onTodo = onTodo,
+        onTrack = false,
+        achievementRow = false,
+        showTrackSlot = false,
+        todoTooltip = CollectionRowTodoSlotTooltip(onTodo, onTodo or not mount.isCollected),
+        onTodoClick = (onTodo or not mount.isCollected) and function()
+            if not WN then return end
+            if WN.IsMountPlanned and WN:IsMountPlanned(mount.id) then
+                RemoveFirstMatchingPlan(function(p)
+                    return p.type == "mount" and p.mountID == mount.id
+                end)
+            elseif not mount.isCollected and WN.AddPlan then
+                WN:AddPlan({
+                    type = "mount",
+                    mountID = mount.id,
+                    name = mount.name,
+                    icon = mount.icon,
+                    source = mount.source or "",
+                })
+            end
+            refreshMountListVisible()
+        end or nil,
+    }
+    return AcquireCollectionRow(rowParent, rowItem, 0, mount.icon or DEFAULT_ICON_MOUNT, labelText, mount.isCollected, selectedMountID, mount.id, function()
+        if onSelectMount then
+            onSelectMount(mount.id, mount.name, mount.icon, mount.source, mount.creatureDisplayID, mount.description, mount.isCollected)
+        end
+    end, refreshMountListVisible, planSlotState)
 end
 
 local function AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSelectPet, redraw, cf)
@@ -814,17 +878,44 @@ local function AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSele
     if item._collRelY then
         rowItem = { pet = item.pet, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height }
     end
-    return AcquireCollectionRow(rowParent, rowItem, 0, pet.icon or DEFAULT_ICON_PET, labelText, pet.isCollected, selectedPetID, pet.id, function()
-        if onSelectPet then
-            onSelectPet(pet.id, pet.name, pet.icon, pet.source, pet.creatureDisplayID, pet.description, pet.isCollected)
-        end
-    end, function()
+    local WN = WarbandNexus
+    local onTodo = WN and WN.IsPetPlanned and WN:IsPetPlanned(pet.id) or false
+    local function refreshPetListVisible()
         if collectionsState._petFlatList and collectionsState.petListScrollFrame then
             collectionsState._petListSelectedID = pet.id
             local r = collectionsState._petListRefreshVisible
             if r then r() end
         end
-    end)
+    end
+    local planSlotState = {
+        onTodo = onTodo,
+        onTrack = false,
+        achievementRow = false,
+        showTrackSlot = false,
+        todoTooltip = CollectionRowTodoSlotTooltip(onTodo, onTodo or not pet.isCollected),
+        onTodoClick = (onTodo or not pet.isCollected) and function()
+            if not WN then return end
+            if WN.IsPetPlanned and WN:IsPetPlanned(pet.id) then
+                RemoveFirstMatchingPlan(function(p)
+                    return p.type == "pet" and p.speciesID == pet.id
+                end)
+            elseif not pet.isCollected and WN.AddPlan then
+                WN:AddPlan({
+                    type = "pet",
+                    speciesID = pet.id,
+                    name = pet.name,
+                    icon = pet.icon,
+                    source = pet.source or "",
+                })
+            end
+            refreshPetListVisible()
+        end or nil,
+    }
+    return AcquireCollectionRow(rowParent, rowItem, 0, pet.icon or DEFAULT_ICON_PET, labelText, pet.isCollected, selectedPetID, pet.id, function()
+        if onSelectPet then
+            onSelectPet(pet.id, pet.name, pet.icon, pet.source, pet.creatureDisplayID, pet.description, pet.isCollected)
+        end
+    end, refreshPetListVisible, planSlotState)
 end
 
 local function AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSelectToy, redraw, cf)
@@ -839,17 +930,45 @@ local function AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSele
     if item._collRelY then
         rowItem = { toy = item.toy, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height }
     end
-    return AcquireCollectionRow(rowParent, rowItem, 0, toy.icon or DEFAULT_ICON_TOY, labelText, (toy.isCollected == true) or (toy.collected == true), selectedToyID, toy.id, function()
-        if onSelectToy then
-            onSelectToy(toy.id, toy.name, toy.icon, toy.source, toy.description, (toy.isCollected == true) or (toy.collected == true), toy.sourceTypeName)
-        end
-    end, function()
+    local WN = WarbandNexus
+    local onTodo = WN and WN.IsItemPlanned and WN:IsItemPlanned("toy", toy.id) or false
+    local toyCollected = (toy.isCollected == true) or (toy.collected == true)
+    local function refreshToyListVisible()
         if collectionsState._toyFlatList and collectionsState.toyListScrollFrame then
             collectionsState._toyListSelectedID = toy.id
             local r = collectionsState._toyListRefreshVisible
             if r then r() end
         end
-    end)
+    end
+    local planSlotState = {
+        onTodo = onTodo,
+        onTrack = false,
+        achievementRow = false,
+        showTrackSlot = false,
+        todoTooltip = CollectionRowTodoSlotTooltip(onTodo, onTodo or not toyCollected),
+        onTodoClick = (onTodo or not toyCollected) and function()
+            if not WN then return end
+            if WN.IsItemPlanned and WN:IsItemPlanned("toy", toy.id) then
+                RemoveFirstMatchingPlan(function(p)
+                    return p.type == "toy" and p.itemID == toy.id
+                end)
+            elseif not toyCollected and WN.AddPlan then
+                WN:AddPlan({
+                    type = "toy",
+                    itemID = toy.id,
+                    name = toy.name,
+                    icon = toy.icon,
+                    source = toy.sourceTypeName or "",
+                })
+            end
+            refreshToyListVisible()
+        end or nil,
+    }
+    return AcquireCollectionRow(rowParent, rowItem, 0, toy.icon or DEFAULT_ICON_TOY, labelText, toyCollected, selectedToyID, toy.id, function()
+        if onSelectToy then
+            onSelectToy(toy.id, toy.name, toy.icon, toy.source, toy.description, toyCollected, toy.sourceTypeName)
+        end
+    end, refreshToyListVisible, planSlotState)
 end
 
 local function AcquireAchievementRow(scrollChild, listWidth, item, selectedAchievementID, onSelectAchievement, redraw, cf)
@@ -872,15 +991,59 @@ local function AcquireAchievementRow(scrollChild, listWidth, item, selectedAchie
             indent = item.indent,
         }
     end
-    return AcquireCollectionRow(rowParent, rowItem, indent, ach.icon or DEFAULT_ICON_ACHIEVEMENT, labelText, ach.isCollected, selectedAchievementID, ach.id, function()
-        if onSelectAchievement then onSelectAchievement(ach) end
-    end, function()
+    local WN = WarbandNexus
+    local onTodo = WN and WN.IsAchievementPlanned and WN:IsAchievementPlanned(ach.id) or false
+    local onTrack = WN and WN.IsAchievementTracked and WN:IsAchievementTracked(ach.id) or false
+    local achCollected = ach.isCollected == true
+    local function refreshAchListVisible()
         if collectionsState._achFlatList and collectionsState.achievementListScrollFrame then
             collectionsState._achListSelectedID = ach.id
             local r = collectionsState._achListRefreshVisible
             if r then r() end
         end
-    end)
+    end
+    local planSlotState = {
+        onTodo = onTodo,
+        onTrack = onTrack,
+        achievementRow = true,
+        achievementCollected = achCollected,
+        todoTooltip = CollectionRowTodoSlotTooltip(onTodo, onTodo or not achCollected),
+        trackTooltip = CollectionRowTrackSlotTooltip(achCollected, onTrack),
+        onTodoClick = (onTodo or not achCollected) and function()
+            if not WN or not ach.id then return end
+            local planned = WN.IsAchievementPlanned and WN:IsAchievementPlanned(ach.id)
+            if planned then
+                RemoveFirstMatchingPlan(function(p)
+                    return p.type == "achievement" and p.achievementID == ach.id
+                end)
+            elseif not achCollected and WN.AddPlan then
+                local rewardInfo = WN.GetAchievementRewardInfo and WN:GetAchievementRewardInfo(ach.id)
+                local rewardText = rewardInfo and (rewardInfo.title or rewardInfo.itemName) or nil
+                if not rewardText or rewardText == "" then
+                    rewardText = ach.rewardText or ach.rewardTitle
+                end
+                WN:AddPlan({
+                    type = "achievement",
+                    achievementID = ach.id,
+                    name = ach.name,
+                    icon = ach.icon,
+                    points = ach.points,
+                    source = ach.source,
+                    rewardText = rewardText,
+                })
+            end
+            refreshAchListVisible()
+        end or nil,
+        onTrackClick = (not achCollected) and function()
+            if WN and WN.ToggleAchievementTracking and ach.id then
+                WN:ToggleAchievementTracking(ach.id)
+            end
+            refreshAchListVisible()
+        end or nil,
+    }
+    return AcquireCollectionRow(rowParent, rowItem, indent, ach.icon or DEFAULT_ICON_ACHIEVEMENT, labelText, ach.isCollected, selectedAchievementID, ach.id, function()
+        if onSelectAchievement then onSelectAchievement(ach) end
+    end, refreshAchListVisible, planSlotState)
 end
 
 -- Update visible row frames only (virtual scroll). Headers are created in PopulateMountList.
@@ -1611,6 +1774,7 @@ local function PopulateAchievementList(scrollChild, listWidth, categoryData, roo
         scheduleVisibleSync = function(fn)
             ScheduleCollectionsVisibleSync("achievements", fn)
         end,
+        rowHeightScale = ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE or 1.1,
     })
 end
 
@@ -2964,11 +3128,11 @@ end
 -- ============================================================================
 -- ACHIEVEMENT DETAIL PANEL — Parent/Children, Description, Criteria (replaces model viewer)
 -- ============================================================================
--- Plans-style row button sizes (match PlanCardFactory row + Track 52x20)
-local ACH_ROW_ADD_WIDTH = 70
-local ACH_ROW_ADD_HEIGHT = 28
-local ACH_TRACK_WIDTH = 52
-local ACH_TRACK_HEIGHT = 20
+-- Achievement detail header: matched heights so To-Do + Track align; width fits localized labels.
+local ACH_ROW_ADD_WIDTH = 84
+local ACH_ROW_ADD_HEIGHT = 30
+local ACH_TRACK_WIDTH = 64
+local ACH_TRACK_HEIGHT = 30
 local ACH_ACTION_GAP = 6
 
 -- Build full achievement series (e.g. Level 10, 20, 30... 80): walk to root via GetPreviousAchievement, then collect all via GetSupercedingAchievements.
@@ -3176,23 +3340,31 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
             headerWowheadBtn:Hide()
         end
 
-        -- Track: Add ile aynı köşesiz stil (border/background yok, sadece metin)
-        local trackBtn = Factory:CreateButton(achControls, ACH_TRACK_WIDTH, ACH_TRACK_HEIGHT, true)
+        local trackBtn = Factory:CreateButton(achControls, ACH_TRACK_WIDTH, ACH_TRACK_HEIGHT, false)
         trackBtn:SetPoint("TOPRIGHT", achControls, "TOPRIGHT", 0, 0)
-        trackBtn:SetFrameLevel(headerRow:GetFrameLevel() + 10)
-        trackBtn:SetScript("OnMouseDown", function() end)
-        trackBtn:RegisterForClicks("AnyUp")
+        trackBtn:SetFrameLevel(headerRow:GetFrameLevel() + 25)
+        trackBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         local trackLabel = FontManager:CreateFontString(trackBtn, "body", "OVERLAY")
         trackLabel:SetPoint("CENTER")
-        local trackedText = "|cff44ff44" .. ((ns.L and ns.L["TRACKED"]) or "Tracked") .. "|r"
-        local trackText = "|cffffcc00" .. ((ns.L and ns.L["TRACK"]) or "Track") .. "|r"
+        if trackLabel.EnableMouse then
+            trackLabel:EnableMouse(false)
+        end
+        local trackedStr = (ns.L and ns.L["TRACKED"]) or "Tracked"
+        local trackStr = (ns.L and ns.L["TRACK"]) or "Track"
         local function UpdateTrackButton()
             if achievement.isCollected then
-                trackLabel:SetText("|cff888888" .. ((ns.L and ns.L["TRACK"]) or "Track") .. "|r")
-                trackBtn:SetAlpha(0.45)
+                trackLabel:SetText(trackStr)
+                trackLabel:SetTextColor(0.52, 0.54, 0.58, 0.72)
+                trackBtn:SetAlpha(0.4)
                 trackBtn:EnableMouse(false)
+            elseif IsAchievementTracked(achievement.id) then
+                trackLabel:SetText(trackedStr)
+                trackLabel:SetTextColor(0.42, 0.68, 0.52, 0.78)
+                trackBtn:SetAlpha(0.68)
+                trackBtn:EnableMouse(true)
             else
-                trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText)
+                trackLabel:SetText(trackStr)
+                trackLabel:SetTextColor(1, 0.84, 0.28, 1)
                 trackBtn:SetAlpha(1)
                 trackBtn:EnableMouse(true)
             end
@@ -3205,7 +3377,7 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         end)
         trackBtn:SetScript("OnEnter", function()
             if trackBtn:IsMouseEnabled() then
-                if trackLabel then trackLabel:SetTextColor(0.6, 0.9, 1, 1) end
+                if trackLabel then trackLabel:SetTextColor(1, 1, 1, 1) end
                 GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")
                 GameTooltip:SetText((ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)")
                 GameTooltip:Show()
@@ -3213,18 +3385,18 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         end)
         trackBtn:SetScript("OnLeave", function()
             GameTooltip:Hide()
-            if trackLabel then
-                trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText)
-            end
+            UpdateTrackButton()
         end)
 
-        local addLabelText = (ns.L and ns.L["ADD_PLAN"]) or "+ Add"
+        local addLabelText = (ns.L and ns.L["ADD_BUTTON"]) or "To-Do"
         local addedLabelText = (ns.L and ns.L["ADDED"]) or "Added"
         local isPlanned = WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(achievement.id)
         local addBtn, addedIndicator
         if achievement.isCollected then
             addedIndicator = PlanCardFactory and PlanCardFactory.CreateAddedIndicator(achControls, {
                 buttonType = "row",
+                width = ACH_ROW_ADD_WIDTH,
+                height = ACH_ROW_ADD_HEIGHT,
                 label = addedLabelText,
                 fontCategory = "body",
                 anchorPoint = "RIGHT",
@@ -3239,6 +3411,8 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         elseif isPlanned then
             addedIndicator = PlanCardFactory and PlanCardFactory.CreateAddedIndicator(achControls, {
                 buttonType = "row",
+                width = ACH_ROW_ADD_WIDTH,
+                height = ACH_ROW_ADD_HEIGHT,
                 label = addedLabelText,
                 fontCategory = "body",
                 anchorPoint = "RIGHT",
@@ -3252,6 +3426,8 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         else
             addBtn = PlanCardFactory and PlanCardFactory.CreateAddButton(achControls, {
                 buttonType = "row",
+                width = ACH_ROW_ADD_WIDTH,
+                height = ACH_ROW_ADD_HEIGHT,
                 label = addLabelText,
                 anchorPoint = "RIGHT",
                 x = 0,
@@ -3277,6 +3453,10 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
             if addBtn then
                 addBtn:ClearAllPoints()
                 addBtn:SetPoint("RIGHT", trackBtn, "LEFT", -ACH_ACTION_GAP, 0)
+                addBtn:SetFrameLevel(headerRow:GetFrameLevel() + 25)
+                if addBtn.text then
+                    addBtn.text:SetTextColor(0.98, 0.94, 0.72, 1)
+                end
             end
         end
 

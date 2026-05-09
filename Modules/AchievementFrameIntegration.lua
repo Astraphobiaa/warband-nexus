@@ -234,7 +234,7 @@ local function EnsureWNButton(parent, achievementID)
                 if aid and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(aid) then
                     GameTooltip:SetText(L and L["ACHIEVEMENT_FRAME_WN_TOOLTIP_REMOVE"] or "|cffccaa00Warband Nexus|r\nClick to remove this achievement from your To-Do List.")
                 else
-                    GameTooltip:SetText(L and L["ACHIEVEMENT_FRAME_WN_TOOLTIP"] or "|cffccaa00Warband Nexus|r\nClick to add this achievement to your To-Do List (same as + Add).")
+                    GameTooltip:SetText(L and L["ACHIEVEMENT_FRAME_WN_TOOLTIP"] or "|cffccaa00Warband Nexus|r\nClick to add this achievement to your To-Do List (same as the To-Do button).")
                 end
             end
         end

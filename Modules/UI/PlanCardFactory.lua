@@ -3474,7 +3474,7 @@ end
     @param options table - Configuration options:
         - width: number (default from BUTTON_SIZES)
         - height: number (default from BUTTON_SIZES)
-        - label: string (default "+ Add")
+        - label: string (default from L["ADD_BUTTON"], e.g. To-Do)
         - anchorPoint: string (default "BOTTOMRIGHT")
         - x: number (default -10)
         - y: number (default 10)
@@ -3500,41 +3500,39 @@ function PlanCardFactory.CreateAddButton(parent, options)
     local x = options.x or (buttonType == "row" and -8 or -CBL.ADD_MARGIN_X)
     local y = options.y or (buttonType == "row" and 0 or CBL.ADD_MARGIN_Y)
     
-    -- Create borderless button (using Factory pattern, just text with hover)
-    local addBtn = ns.UI.Factory:CreateButton(parent, width, height, true)  -- noBorder=true
+    -- Themed button frame (border on) so To-Do reads as a control, not plain text.
+    local addBtn = ns.UI.Factory:CreateButton(parent, width, height, false)
     addBtn:SetPoint(anchorPoint, x, y)
     addBtn:SetFrameLevel(parent:GetFrameLevel() + 10)
     addBtn:EnableMouse(true)
     addBtn:RegisterForClicks("LeftButtonUp")
+    -- Wide hit insets steal clicks from adjacent row buttons (Track); keep tight on list rows.
+    if buttonType == "row" then
+        addBtn:SetHitRectInsets(0, 0, 0, 0)
+    else
+        addBtn:SetHitRectInsets(-8, -8, -8, -8)
+    end
     
-    -- Extend hit rect insets for even easier clicking (8px padding on all sides)
-    addBtn:SetHitRectInsets(-8, -8, -8, -8)
-    
-    -- Create text (no background, no border)
     local FontManager = ns.FontManager
     local btnText = FontManager:CreateFontString(addBtn, "body", "OVERLAY")
-    -- CENTER text in wider button for better UX
     if buttonType == "card" then
-        btnText:SetPoint("CENTER", 0, 0)  -- Centered in wider button (easier to click)
+        btnText:SetPoint("CENTER", 0, 0)
     else
-        btnText:SetPoint("CENTER")  -- Row type: also centered
+        btnText:SetPoint("CENTER")
     end
     btnText:SetText(label)
-    btnText:SetTextColor(0.4, 0.8, 1, 1)  -- Accent color (blue)
+    btnText:SetTextColor(0.92, 0.94, 0.98, 1)
+    if btnText.EnableMouse then
+        btnText:EnableMouse(false)
+    end
     addBtn.text = btnText
     
-    -- Hover effect (text color change only)
     addBtn:SetScript("OnEnter", function(self)
-        self.text:SetTextColor(0.6, 0.9, 1, 1)  -- Lighter blue on hover
+        self.text:SetTextColor(1, 1, 1, 1)
     end)
     
     addBtn:SetScript("OnLeave", function(self)
-        self.text:SetTextColor(0.4, 0.8, 1, 1)  -- Back to normal
-    end)
-    
-    -- Prevent click propagation
-    addBtn:SetScript("OnMouseDown", function(self, button)
-        -- Stop propagation
+        self.text:SetTextColor(0.92, 0.94, 0.98, 1)
     end)
     
     if options.onClick then
@@ -3579,23 +3577,30 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     -- CARD: Match Add button position with symmetrical padding
     local x = options.x or (buttonType == "row" and -8 or -CBL.ADD_MARGIN_X)
     local y = options.y or (buttonType == "row" and 0 or CBL.ADD_MARGIN_Y)
-    
+
+    if buttonType == "row" then
+        local addedBtn = ns.UI.Factory:CreateButton(parent, width, height, false)
+        addedBtn:SetPoint(anchorPoint, x, y)
+        addedBtn:SetFrameLevel((parent:GetFrameLevel() or 0) + 10)
+        -- Display-only: do not eat clicks meant for Track / To-Do beside it.
+        addedBtn:EnableMouse(false)
+        local addedText = FontManager:CreateFontString(addedBtn, fontCategory, "OVERLAY")
+        addedText:SetPoint("CENTER")
+        addedText:SetText(label)
+        addedText:SetTextColor(0.38, 0.72, 0.48, 0.78)
+        addedBtn._wnAddedText = addedText
+        return addedBtn
+    end
+
     local ICON_CHECK = "common-icon-checkmark"
-    
-    -- Create frame (using Factory pattern)
     local addedFrame = ns.UI.Factory:CreateContainer(parent, width, height)
     addedFrame:SetPoint(anchorPoint, x, y)
-    
-    -- Create text first (centered in frame, offset right for icon room)
     local addedText = FontManager:CreateFontString(addedFrame, fontCategory, "OVERLAY")
-    addedText:SetPoint("CENTER", addedFrame, "CENTER", 9, 0)  -- offset right by ~half icon width
+    addedText:SetPoint("CENTER", addedFrame, "CENTER", 9, 0)
     addedText:SetText("|cff44ff44" .. label .. "|r")
-    
-    -- Create checkmark icon (14px size, isAtlas=true, noBorder=true), anchored left of text
     local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, true, nil, true)
     addedIcon:SetPoint("RIGHT", addedText, "LEFT", -2, 0)
     addedIcon:Show()
-    
     return addedFrame
 end
 

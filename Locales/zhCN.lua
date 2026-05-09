@@ -603,7 +603,7 @@ L["MYTHIC_PLUS_LABEL"] = "史诗钥石"
 L["FACTION_LABEL"] = "阵营："
 L["FRIENDSHIP_LABEL"] = "友谊"
 L["RENOWN_TYPE_LABEL"] = "名望"
-L["ADD_BUTTON"] = "+ 添加"
+L["ADD_BUTTON"] = "待办"
 L["ADDED_LABEL"] = "已添加"
 
 -- PlansTrackerWindow

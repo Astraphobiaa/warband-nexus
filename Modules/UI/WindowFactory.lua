@@ -504,7 +504,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     -- Add button
     local WarbandNexus = ns.WarbandNexus
     if completed then
-        popup._addLabel:SetText("|cff888888" .. (L["ADD_PLAN"] or "Add") .. "|r")
+        popup._addLabel:SetText("|cff888888" .. (L["ADD_BUTTON"] or "To-Do") .. "|r")
         popup._addBtn:SetScript("OnClick", nil)
         popup._addBtn:SetAlpha(0.4)
         popup._addBtn:SetScript("OnEnter", nil)
@@ -516,7 +516,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
             popup._addLabel:SetText("|cff44ff44" .. (L["ADDED"] or "Added") .. "|r")
             popup._addBtn:SetScript("OnClick", nil)
         else
-            popup._addLabel:SetText("|cffffcc00+ " .. (L["ADD_PLAN"] or "Add") .. "|r")
+            popup._addLabel:SetText("|cffffcc00" .. (L["ADD_BUTTON"] or "To-Do") .. "|r")
             popup._addBtn:SetScript("OnClick", function()
                 if WarbandNexus and WarbandNexus.AddPlan then
                     local planRewardText

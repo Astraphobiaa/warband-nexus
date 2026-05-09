@@ -107,7 +107,7 @@ L["SHOW_PLANNED_DISABLED_HERE"] = "Not used on To-Do List or Weekly Progress. Op
 L["SHOW_PLANNED_HELP"] = "Browse tabs only (hidden on To-Do List and Weekly Progress): when checked, only items you put on your To-Do for that category. With Show Completed off, planned items you still need; with Show Completed on, planned items you already finished; both on: all planned items in that category; both off: full uncollected browse."
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "No achievements to display"
 L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "Add achievements from this list to your To-Do, or change Show Planned / Show Completed. The list fills as achievements are scanned; try /reload if nothing appears."
-L["ACHIEVEMENT_FRAME_WN_TOOLTIP"] = "|cffccaa00Warband Nexus|r\nClick to add this achievement to your To-Do List (same as + Add)."
+L["ACHIEVEMENT_FRAME_WN_TOOLTIP"] = "|cffccaa00Warband Nexus|r\nClick to add this achievement to your To-Do List (same as the To-Do button)."
 L["ACHIEVEMENT_FRAME_WN_TOOLTIP_REMOVE"] = "|cffccaa00Warband Nexus|r\nClick to remove this achievement from your To-Do List."
 L["RECENT_TOOLTIP_OBTAINED_BY"] = "Obtained by:"
 L["RECENT_TOOLTIP_ACHIEVEMENT_EARNED_BY"] = "This achievement was earned by %s"
@@ -633,8 +633,12 @@ L["MYTHIC_PLUS_LABEL"] = "Mythic+"
 L["FACTION_LABEL"] = "Faction:"
 L["FRIENDSHIP_LABEL"] = "Friendship"
 L["RENOWN_TYPE_LABEL"] = "Renown"
-L["ADD_BUTTON"] = "+ Add"
+L["ADD_BUTTON"] = "To-Do"
 L["ADDED_LABEL"] = "Added"
+L["TODO_SLOT_TOOLTIP_ADD"] = "Click to add to your To-Do list."
+L["TODO_SLOT_TOOLTIP_REMOVE"] = "Click to remove from your To-Do list."
+L["TRACK_SLOT_TOOLTIP_UNTRACK"] = "Click to stop tracking in Blizzard objectives."
+L["TRACK_SLOT_DISABLED_COMPLETED"] = "Completed achievements cannot be tracked in objectives."
 
 -- PlansTrackerWindow
 L["ACHIEVEMENT_PROGRESS_FORMAT"] = "%s of %s (%s%%)"
@@ -1208,7 +1212,7 @@ L["DAILY_QUEST_TRACKER"] = "Daily Quest Tracker"
 -- Achievement Popup
 L["ACHIEVEMENT_NOT_COMPLETED"] = "Not Completed"
 L["ACHIEVEMENT_POINTS_FORMAT"] = "%d pts"
-L["ADD_PLAN"] = "Add"
+L["ADD_PLAN"] = "To-Do"
 L["PLANNED"] = "Planned"
 
 -- PlanCardFactory Vault Slots

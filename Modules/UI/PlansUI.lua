@@ -2197,7 +2197,9 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     })
 
     local layout = GetLayout()
-    local ROW_H = layout.rowHeight or 26
+    local achRowScale = ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE or 1.1
+    local baseRowH = layout.rowHeight or layout.ROW_HEIGHT or 26
+    local ROW_H = math.max(18, math.floor(baseRowH * achRowScale + 0.5))
     local innerPad = 8
     local listInnerW = math.max(40, width - innerPad * 2)
 
@@ -2287,7 +2289,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
 
     local scrollFrame = st.achievementListScrollFrame
 
-    local _, totalPrev = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders)
+    local _, totalPrev = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, { rowHeightScale = achRowScale })
     rootFrame:SetHeight(math.max(1, totalPrev))
     if parent.SetHeight then
         parent:SetHeight(math.max(1, (yOffset or 0) + totalPrev + innerPad))
@@ -2312,7 +2314,6 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         end
     end
 
-    local PlanCardFactory = ns.UI_PlanCardFactory
     local Factory = ns.UI.Factory
 
     local function acquireRow(scChild, listW, item, selectedID, onSelect, redraw, cf)
@@ -2353,89 +2354,94 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         local nameColor = ach.isCollected and COLLECTED_COLOR_PLANS_ACH or "|cffffffff"
         local labelText = nameColor .. title .. "|r" .. pointsStr
 
-        Factory:ApplyCollectionListRowContent(row, item.rowIndex or 1, ach.icon or DEFAULT_ICON_PLANS_ACHIEVEMENT, labelText, ach.isCollected == true, false, nil)
-        if row.label then
-            row.label:SetPoint("RIGHT", row, "RIGHT", -108, 0)
-        end
-
-        if not row._wnPlansTrackBtn then
-            row._wnPlansTrackBtn = Factory:CreateButton(row, 44, 18, true)
-            row._wnPlansTrackBtn:SetFrameLevel(row:GetFrameLevel() + 10)
-            row._wnPlansTrackBtn:SetScript("OnMouseDown", function() end)
-            row._wnPlansTrackBtn:RegisterForClicks("AnyUp")
-            local tl = FontManager:CreateFontString(row._wnPlansTrackBtn, "body", "OVERLAY")
-            tl:SetPoint("CENTER")
-            row._wnPlansTrackBtn._wnTrackLabel = tl
-        end
-        row._wnPlansTrackBtn:ClearAllPoints()
-        row._wnPlansTrackBtn:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-        local trackedText = "|cff44ff44" .. ((ns.L and ns.L["TRACKED"]) or "Tracked") .. "|r"
-        local trackText = "|cffffcc00" .. ((ns.L and ns.L["TRACK"]) or "Track") .. "|r"
-        local trackLabel = row._wnPlansTrackBtn._wnTrackLabel
         local function IsTracked(id)
             return WarbandNexus.IsAchievementTracked and WarbandNexus:IsAchievementTracked(id)
         end
-        trackLabel:SetText(IsTracked(ach.id) and trackedText or trackText)
-        row._wnPlansTrackBtn:SetScript("OnEnter", function()
-            trackLabel:SetTextColor(0.6, 0.9, 1, 1)
-            GameTooltip:SetOwner(row._wnPlansTrackBtn, "ANCHOR_TOP")
-            GameTooltip:SetText((ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)")
-            GameTooltip:Show()
-        end)
-        row._wnPlansTrackBtn:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-            trackLabel:SetText(IsTracked(ach.id) and trackedText or trackText)
-        end)
-        row._wnPlansTrackBtn:SetScript("OnClick", function()
-            if WarbandNexus.ToggleAchievementTracking then
-                WarbandNexus:ToggleAchievementTracking(ach.id)
-            end
-            trackLabel:SetText(IsTracked(ach.id) and trackedText or trackText)
-        end)
 
-        if ach.isPlanned then
-            if row._wnPlansAddBtn then row._wnPlansAddBtn:Hide() end
-            if not row._wnPlansAddedFs then
-                row._wnPlansAddedFs = FontManager:CreateFontString(row, "body", "OVERLAY")
-            end
-            row._wnPlansAddedFs:ClearAllPoints()
-            row._wnPlansAddedFs:SetPoint("RIGHT", row._wnPlansTrackBtn, "LEFT", -6, 0)
-            row._wnPlansAddedFs:SetText("|cff88ff88" .. ((ns.L and ns.L["ADDED"]) or "Added") .. "|r")
-            row._wnPlansAddedFs:Show()
-        else
-            if row._wnPlansAddedFs then row._wnPlansAddedFs:Hide() end
-            if not row._wnPlansAddBtn then
-                row._wnPlansAddBtn = PlanCardFactory.CreateAddButton(row, {
-                    buttonType = "row",
-                    onClick = function(btn)
-                        local a = btn._wnAchievement
-                        if not a then return end
+        local applyAchRowPlanSlots
+        applyAchRowPlanSlots = function()
+            local L = ns.L
+            local col = ach.isCollected == true
+            local tracked = IsTracked(ach.id)
+            local plannedNow = WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(ach.id) or false
+            local todoTip = plannedNow and ((L and L["TODO_SLOT_TOOLTIP_REMOVE"]) or "Click to remove from your To-Do list.")
+                or (not col and ((L and L["TODO_SLOT_TOOLTIP_ADD"]) or "Click to add to your To-Do list.") or "")
+            local trackTip = col and ((L and L["TRACK_SLOT_DISABLED_COMPLETED"]) or "Completed achievements cannot be tracked in objectives.")
+                or (tracked and ((L and L["TRACK_SLOT_TOOLTIP_UNTRACK"]) or "Click to stop tracking in Blizzard objectives."))
+                or ((L and L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)")
+            Factory:ApplyCollectionListRowContent(row, item.rowIndex or 1, ach.icon or DEFAULT_ICON_PLANS_ACHIEVEMENT, labelText, col, false, nil, nil, nil, {
+                onTodo = plannedNow,
+                onTrack = tracked,
+                achievementRow = true,
+                achievementCollected = col,
+                todoTooltip = todoTip,
+                trackTooltip = trackTip,
+                onTodoClick = (plannedNow or not col) and function()
+                    if not WarbandNexus then return end
+                    if WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(ach.id) then
+                        local plans = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.plans
+                        if plans then
+                            for pi = 1, #plans do
+                                local p = plans[pi]
+                                if p and p.id and p.type == PLAN_TYPES.ACHIEVEMENT and p.achievementID == ach.id then
+                                    WarbandNexus:RemovePlan(p.id)
+                                    break
+                                end
+                            end
+                        end
+                        ach.isPlanned = false
+                        refreshVisible()
+                    elseif not col and WarbandNexus.AddPlan then
                         WarbandNexus:AddPlan({
                             type = PLAN_TYPES.ACHIEVEMENT,
-                            achievementID = a.id,
-                            name = a.name,
-                            icon = a.icon,
-                            points = a.points,
-                            source = a.source,
+                            achievementID = ach.id,
+                            name = ach.name,
+                            icon = ach.icon,
+                            points = ach.points,
+                            source = ach.source,
                         })
-                        a.isPlanned = true
+                        ach.isPlanned = true
                         refreshVisible()
-                    end,
-                })
-                row._wnPlansAddBtn:SetFrameLevel(row:GetFrameLevel() + 10)
+                    end
+                end or nil,
+                onTrackClick = (not col) and function()
+                    if WarbandNexus.ToggleAchievementTracking then
+                        WarbandNexus:ToggleAchievementTracking(ach.id)
+                    end
+                    applyAchRowPlanSlots()
+                end or nil,
+            })
+            if row.label then
+                local labelPad = layout.SIDE_MARGIN or (ns.UI_LAYOUT and ns.UI_LAYOUT.SIDE_MARGIN) or 10
+                row.label:SetPoint("RIGHT", row, "RIGHT", -labelPad, 0)
+                if row.label.SetMouseClickEnabled then
+                    row.label:SetMouseClickEnabled(false)
+                end
             end
-            row._wnPlansAddBtn._wnAchievement = ach
-            row._wnPlansAddBtn:ClearAllPoints()
-            row._wnPlansAddBtn:SetPoint("RIGHT", row._wnPlansTrackBtn, "LEFT", -6, 0)
-            row._wnPlansAddBtn:Show()
+        end
+        applyAchRowPlanSlots()
+
+        if row._wnPlansTrackBtn then
+            row._wnPlansTrackBtn:Hide()
+            row._wnPlansTrackBtn:SetScript("OnEnter", nil)
+            row._wnPlansTrackBtn:SetScript("OnLeave", nil)
+            row._wnPlansTrackBtn:SetScript("OnClick", nil)
+        end
+        if row._wnPlansAddBtn then
+            row._wnPlansAddBtn:Hide()
+        end
+        if row._wnPlansAddedFs then
+            row._wnPlansAddedFs:Hide()
         end
 
-        row:SetScript("OnEnter", function()
-            GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_NONE")
+            GameTooltip:ClearAllPoints()
+            GameTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", 6, 0)
             if GameTooltip.SetAchievementByID then
                 GameTooltip:SetAchievementByID(ach.id)
             elseif ach.name then
-                GameTooltip:SetText(ach.name)
+                GameTooltip:SetText(ach.name, 1, 1, 1)
             end
             GameTooltip:Show()
         end)
@@ -2461,6 +2467,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         acquireRow = acquireRow,
         releaseRowFrame = releaseRowFrame,
         scheduleVisibleSync = nil,
+        rowHeightScale = achRowScale,
     })
 
     if Factory.UpdateScrollBarVisibility and scrollFrame and not st._achUseOuterScroll then

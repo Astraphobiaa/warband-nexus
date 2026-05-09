@@ -20,6 +20,8 @@ local function GetLayout()
 end
 
 local LAYOUT = GetLayout()
+--- Shared by Plans (To-Do ▸ Achievements) and Collections ▸ Achievements virtual rows.
+ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE = 1.1
 local SIDE_MARGIN = LAYOUT.SIDE_MARGIN or 10
 local PADDING = SIDE_MARGIN
 local ROW_HEIGHT = LAYOUT.ROW_HEIGHT or 26
@@ -71,10 +73,14 @@ local function ListTopOffsetDownFromScrollContent(listFrame, scrollContent)
 end
 
 --- Flat list for virtual scrolling (headers + rows). Mirrors Collections achievement grouping.
-function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders)
+---@param listOpts table|nil Optional `{ rowHeightScale = number }` (default 1; Plans/Collections pass `ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE`).
+function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, listOpts)
     local flat = {}
     local yOffset = 0
     local rowCounter = 0
+    local baseRowH = LAYOUT.ROW_HEIGHT or 26
+    local scale = (listOpts and type(listOpts.rowHeightScale) == "number") and listOpts.rowHeightScale or 1
+    local achRowH = math.max(18, math.floor(baseRowH * scale + 0.5))
     local rD, gD, bD = (COLORS.textDim[1] or 0.55), (COLORS.textDim[2] or 0.55), (COLORS.textDim[3] or 0.55)
     local countColor = format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
     local rB, gB, bB = (COLORS.textBright[1] or 1), (COLORS.textBright[2] or 1), (COLORS.textBright[3] or 1)
@@ -125,10 +131,10 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
                 achievement = ach,
                 rowIndex = rowCounter,
                 yOffset = yOffset,
-                height = ROW_HEIGHT,
+                height = achRowH,
                 indent = rowIndent,
             }
-            yOffset = yOffset + ROW_HEIGHT
+            yOffset = yOffset + achRowH
         end
 
         local children = cat.children or {}
@@ -178,6 +184,7 @@ end
     opts.acquireRow(scrollChild, listWidth, item, selectedID, onSelect, redraw, cf) -> frame
     opts.releaseRowFrame(frame)
     opts.scheduleVisibleSync(function(refreshFn)) — optional; Collections passes ScheduleCollectionsVisibleSync
+    opts.rowHeightScale — optional number passed to BuildFlatList (Plans & Collections achievements use `ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE`).
 ]]
 function ns.UI_AchievementBrowse_Populate(opts)
     if not opts or not opts.scrollChild or not Factory then return end
@@ -231,8 +238,18 @@ function ns.UI_AchievementBrowse_Populate(opts)
         _achRegionEnumScratch[i]:Hide()
     end
 
-    local flatList, totalHeight = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders)
+    local listBuildOpts = (opts.rowHeightScale and type(opts.rowHeightScale) == "number") and { rowHeightScale = opts.rowHeightScale } or nil
+    local flatList, totalHeight = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, listBuildOpts)
     scrollChild:SetHeight(totalHeight)
+
+    state._achRowHeightUsed = ROW_HEIGHT
+    for _fi = 1, #flatList do
+        local _it = flatList[_fi]
+        if _it.type == "row" and _it.height then
+            state._achRowHeightUsed = _it.height
+            break
+        end
+    end
 
     state._achSectionBodies = {}
     local achSectionContentH = {}
@@ -333,10 +350,11 @@ function ns.UI_AchievementBrowse_Populate(opts)
         return total
     end
 
+    local rowHAcc = state._achRowHeightUsed or ROW_HEIGHT
     local function ComputeAchievementContentHeight(catID, activeAnimKey, activeAnimBodyH)
         local cat = categoryData and categoryData[catID]
         if not cat then return 0 end
-        local bodyH = MINI_SPACING + (#(cat.achievements or {}) * ROW_HEIGHT)
+        local bodyH = MINI_SPACING + (#(cat.achievements or {}) * rowHAcc)
         local children = cat.children or {}
         if #children > 0 and #(cat.achievements or {}) > 0 then
             bodyH = bodyH + SECTION_SPACING
@@ -421,7 +439,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
             local sectionBody
             local secH = achSectionContentH[key] or 0
             if secH <= 0 then
-                secH = ((it.itemCount or 0) * ROW_HEIGHT) or 0
+                secH = ((it.itemCount or 0) * rowHAcc) or 0
             end
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
                 if isExpanded then

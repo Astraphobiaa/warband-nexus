@@ -308,8 +308,14 @@ local UI_SPACING = {
     CHAR_ROW_HEIGHT = 36,      -- Character row height (+20% from 30)
     HEADER_HEIGHT = 32,        -- Legacy row strip (Collections virtual rows); collapsible sections use SECTION_COLLAPSE_HEADER_HEIGHT
     SECTION_COLLAPSE_HEADER_HEIGHT = 36, -- CreateCollapsibleHeader (compact; was 44)
-    -- Section accordion height tween (CreateCollapsibleHeader + Factory:AnimateAccordion); optional per BuildAccordionVisualOpts
-    accordionSectionDuration = 0.16,
+    -- Section accordion height tween (AnimateAccordion when opts.duration is nil):
+    -- Duration scales with pixel delta vs ref height, clamped — large bodies never crawl for >1s.
+    ACCORDION_TWEEN_TARGET_SECONDS = 0.28,
+    ACCORDION_TWEEN_REF_HEIGHT = 720,
+    ACCORDION_TWEEN_MIN_SECONDS = 0.10,
+    ACCORDION_TWEEN_MAX_SECONDS = 0.36,
+    ---@deprecated use ACCORDION_TWEEN_TARGET_SECONDS; kept as alias
+    accordionSectionDuration = 0.28,
     
     -- Icon standardization
     HEADER_ICON_SIZE = 24,     -- Header icon size (reduced from 28 for better balance)
@@ -1145,6 +1151,7 @@ local function CreateButton(parent, width, height, bgColor, borderColor, noBorde
     if width and height then
         button:SetSize(width, height)
     end
+    button:EnableMouse(true)
     
     -- Apply pixel-perfect border (unless noBorder is true)
     if not noBorder then
@@ -1828,7 +1835,7 @@ ns.UI_ApplyCharacterRowClassGradientAccent = ApplyCharacterRowClassGradientAccen
 ---  - updateVisibleFn() + scheduleVisibleUpdate (default true)
 ---  - hideOnCollapse (default false), showOnExpand (default false)
 ---  - applyToggleBeforeCollapseAnimate / deferOnToggleUntilComplete passthrough
----  - accordionTweenDuration (number, optional): passed to Factory:AnimateAccordion as opts.duration
+---  - accordionTweenDuration (number, optional): passed to Factory:AnimateAccordion as opts.duration (overrides UI_LAYOUT defaults)
 ---  - accordionClipChildren (default true): set false for nested section bodies so inner headers/rows
 ---    are not clipped while the parent height tween runs (Plans achievements hierarchy).
 ---  - accordionInstant (default false): skip height tween; apply target height + wrap once (heavy nested UIs).
@@ -6003,16 +6010,25 @@ function ns.UI.Factory:AnimateAccordion(frame, fromH, toH, opts)
     local deltaH = math.abs((toH or 0) - (fromH or 0))
     local duration = opts.duration
     if duration == nil then
-        -- Pixel-distance easing: short sections stay snappy; tall bodies (many rows) get a higher duration cap
-        -- so the tween reads as motion instead of an instant jump (was capped at 0.42s regardless of height).
-        local pxPerSecond = 1100
-        local minDuration = 0.16
-        local maxDuration = math.min(1.45, 0.36 + (deltaH / 8200))
-        duration = deltaH / pxPerSecond
-        if duration < minDuration then
-            duration = minDuration
-        elseif duration > maxDuration then
-            duration = maxDuration
+        local L = ns.UI_LAYOUT or {}
+        if L.ACCORDION_TWEEN_LEGACY_PIXEL_MODE then
+            local pxPerSecond = 1100
+            local minDuration = 0.16
+            local maxDuration = math.min(1.45, 0.36 + (deltaH / 8200))
+            duration = deltaH / pxPerSecond
+            if duration < minDuration then
+                duration = minDuration
+            elseif duration > maxDuration then
+                duration = maxDuration
+            end
+        else
+            local minS = (type(L.ACCORDION_TWEEN_MIN_SECONDS) == "number" and L.ACCORDION_TWEEN_MIN_SECONDS > 0) and L.ACCORDION_TWEEN_MIN_SECONDS or 0.10
+            local maxS = (type(L.ACCORDION_TWEEN_MAX_SECONDS) == "number" and L.ACCORDION_TWEEN_MAX_SECONDS > 0) and L.ACCORDION_TWEEN_MAX_SECONDS or 0.36
+            local target = (type(L.ACCORDION_TWEEN_TARGET_SECONDS) == "number" and L.ACCORDION_TWEEN_TARGET_SECONDS > 0) and L.ACCORDION_TWEEN_TARGET_SECONDS
+                or ((type(L.accordionSectionDuration) == "number" and L.accordionSectionDuration > 0) and L.accordionSectionDuration or 0.28)
+            local refH = (type(L.ACCORDION_TWEEN_REF_HEIGHT) == "number" and L.ACCORDION_TWEEN_REF_HEIGHT > 0) and L.ACCORDION_TWEEN_REF_HEIGHT or 720
+            local scaled = target * (deltaH / refH)
+            duration = math.max(minS, math.min(maxS, scaled))
         end
     end
     local fadeAlpha = opts.fadeAlpha ~= false  -- default ON
@@ -6306,6 +6322,53 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     return yOffset + h
 end
 
+local COLLECTION_PLAN_SLOT_SIZE = 19
+
+local function SetCollectionPlanSlotTooltip(btn, text)
+    if not btn then return end
+    if not text or text == "" then
+        btn:SetScript("OnEnter", nil)
+        btn:SetScript("OnLeave", nil)
+        return
+    end
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_NONE")
+        GameTooltip:ClearAllPoints()
+        GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", 4, 6)
+        GameTooltip:SetText(text, 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+end
+
+local function CreateCollectionPlanSlotButton(row)
+    local b = CreateFrame("Button", nil, row)
+    b:SetSize(COLLECTION_PLAN_SLOT_SIZE, COLLECTION_PLAN_SLOT_SIZE)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b:Hide()
+    b:SetFrameLevel((row:GetFrameLevel() or 0) + 12)
+    local tex = b:CreateTexture(nil, "ARTWORK")
+    tex:SetAllPoints()
+    b._wnIcon = tex
+    b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    return b
+end
+
+local function EnsureCollectionRowPlanSlotButtons(row)
+    if not row then return end
+    if row.todoSlotBtn and row.trackSlotBtn then return end
+    if row.rowTodoIcon then
+        row.rowTodoIcon:Hide()
+    end
+    if row.rowTrackIcon then
+        row.rowTrackIcon:Hide()
+    end
+    row.todoSlotBtn = row.todoSlotBtn or CreateCollectionPlanSlotButton(row)
+    row.trackSlotBtn = row.trackSlotBtn or CreateCollectionPlanSlotButton(row)
+end
+
 --- Collection list row: status icon (check/cross) + item icon + label. Same layout for Mounts, Pets, Achievements.
 --- Caller sets position (virtual scroll). Use ApplyCollectionListRowContent to set content and selection.
 ---@param parent Frame - Parent (e.g. scrollChild)
@@ -6327,6 +6390,9 @@ function ns.UI.Factory:CreateCollectionListRow(parent, height)
     statusIcon:SetSize(statusSize, statusSize)
     statusIcon:SetPoint("LEFT", pad, 0)
     row.statusIcon = statusIcon
+
+    row.todoSlotBtn = CreateCollectionPlanSlotButton(row)
+    row.trackSlotBtn = CreateCollectionPlanSlotButton(row)
 
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetSize(iconSize, iconSize)
@@ -6354,6 +6420,136 @@ end
 local COLLECTION_ROW_ICON_READY = "Interface\\RaidFrame\\ReadyCheck-Ready"
 local COLLECTION_ROW_ICON_NOT_READY = "Interface\\RaidFrame\\ReadyCheck-NotReady"
 
+--- To-Do / Track column beside collected check (Collections + To-Do browse). `planSlotState` nil = hidden (e.g. Recent cards).
+--- planSlotState: `onTodo`, `onTrack`, optional `achievementRow`, `achievementCollected`, optional `showTrackSlot`, optional `onTodoClick` / `onTrackClick` (toggle supported by caller), optional `todoTooltip` / `trackTooltip` (hover; non-interactive slots still show tooltip when text set and mouse enabled).
+local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotGap)
+    EnsureCollectionRowPlanSlotButtons(row)
+    local todoBtn = row.todoSlotBtn
+    local trackBtn = row.trackSlotBtn
+    local icon = row and row.icon
+    local statusIcon = row and row.statusIcon
+    if not todoBtn or not trackBtn or not icon or not statusIcon then return end
+    gap = gap or 4
+    slotGap = slotGap or 3
+    if not planSlotState then
+        todoBtn:Hide()
+        trackBtn:Hide()
+        todoBtn:SetScript("OnClick", nil)
+        trackBtn:SetScript("OnClick", nil)
+        SetCollectionPlanSlotTooltip(todoBtn, nil)
+        SetCollectionPlanSlotTooltip(trackBtn, nil)
+        todoBtn:EnableMouse(false)
+        trackBtn:EnableMouse(false)
+        todoBtn:ClearAllPoints()
+        trackBtn:ClearAllPoints()
+        icon:ClearAllPoints()
+        icon:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
+        return
+    end
+    local onTodo = planSlotState.onTodo == true
+    local onTrack = planSlotState.onTrack == true
+    local achRow = planSlotState.achievementRow == true
+    local achCollected = planSlotState.achievementCollected == true
+    local showTrackSlot
+    if planSlotState.showTrackSlot == false then
+        showTrackSlot = false
+    elseif planSlotState.showTrackSlot == true then
+        showTrackSlot = true
+    else
+        showTrackSlot = achRow
+    end
+
+    local todoTex = todoBtn._wnIcon
+    local trackTex = trackBtn._wnIcon
+    if not todoTex or not trackTex then return end
+
+    todoBtn:ClearAllPoints()
+    trackBtn:ClearAllPoints()
+    todoBtn:SetSize(COLLECTION_PLAN_SLOT_SIZE, COLLECTION_PLAN_SLOT_SIZE)
+    trackBtn:SetSize(COLLECTION_PLAN_SLOT_SIZE, COLLECTION_PLAN_SLOT_SIZE)
+    todoBtn:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
+    todoBtn:Show()
+
+    local plansTodoAtlas = (ns.UI_GetTabIcon and ns.UI_GetTabIcon("plans")) or "poi-workorders"
+    todoTex:SetDesaturated(false)
+    if not pcall(todoTex.SetAtlas, todoTex, plansTodoAtlas, true) then
+        todoTex:SetTexture("Interface\\Icons\\INV_Inscription_Scroll")
+        todoTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    else
+        todoTex:SetTexCoord(0, 1, 0, 1)
+    end
+    -- To-Do slot: vivid only when addable (not completed and not already on list); grey otherwise — same idea as track pin.
+    local todoGrey = achCollected or onTodo
+    if todoGrey then
+        todoTex:SetDesaturated(true)
+        todoTex:SetVertexColor(0.52, 0.54, 0.58, 0.48)
+    else
+        todoTex:SetDesaturated(false)
+        todoTex:SetVertexColor(1, 0.95, 0.55, 1)
+    end
+
+    local todoClickable = (type(planSlotState.onTodoClick) == "function") and (onTodo or not achCollected)
+    local todoTip = planSlotState.todoTooltip
+    local todoTipStr = (type(todoTip) == "string") and todoTip or ""
+    local todoMouse = todoClickable or (todoTipStr ~= "")
+    todoBtn:EnableMouse(todoMouse)
+    if todoClickable then
+        todoBtn:SetScript("OnClick", function()
+            planSlotState.onTodoClick()
+        end)
+    else
+        todoBtn:SetScript("OnClick", nil)
+    end
+    SetCollectionPlanSlotTooltip(todoBtn, todoMouse and todoTipStr ~= "" and todoTipStr or nil)
+
+    icon:ClearAllPoints()
+    if showTrackSlot then
+        trackBtn:SetPoint("LEFT", todoBtn, "RIGHT", slotGap, 0)
+        trackBtn:Show()
+        local pinAtlas = onTrack and "Waypoint-MapPin-Tracked" or "Waypoint-MapPin-Untracked"
+        trackTex:SetDesaturated(false)
+        if not pcall(trackTex.SetAtlas, trackTex, pinAtlas, true) then
+            if not pcall(trackTex.SetAtlas, trackTex, onTrack and "Objective-Nub" or "Waypoint-MapPin-Untracked", true) then
+                trackTex:SetTexture("Interface\\Icons\\INV_Misc_Map_01")
+                trackTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            else
+                trackTex:SetTexCoord(0, 1, 0, 1)
+            end
+        else
+            trackTex:SetTexCoord(0, 1, 0, 1)
+        end
+        -- Track pin: vivid only when track can be turned on (incomplete + not tracking); grey if completed or already tracking.
+        local trackGrey = achCollected or onTrack
+        if trackGrey then
+            trackTex:SetDesaturated(true)
+            trackTex:SetVertexColor(0.55, 0.58, 0.62, 0.5)
+        else
+            trackTex:SetDesaturated(false)
+            trackTex:SetVertexColor(1, 0.82, 0.18, 1)
+        end
+        local trackClickable = (type(planSlotState.onTrackClick) == "function") and (not achCollected)
+        local trackTip = planSlotState.trackTooltip
+        local trackTipStr = (type(trackTip) == "string") and trackTip or ""
+        local trackMouse = trackClickable or (trackTipStr ~= "")
+        trackBtn:EnableMouse(trackMouse)
+        if trackClickable then
+            trackBtn:SetScript("OnClick", function()
+                planSlotState.onTrackClick()
+            end)
+        else
+            trackBtn:SetScript("OnClick", nil)
+        end
+        SetCollectionPlanSlotTooltip(trackBtn, trackMouse and trackTipStr ~= "" and trackTipStr or nil)
+        icon:SetPoint("LEFT", trackBtn, "RIGHT", gap, 0)
+    else
+        trackBtn:Hide()
+        trackBtn:SetScript("OnClick", nil)
+        SetCollectionPlanSlotTooltip(trackBtn, nil)
+        trackBtn:EnableMouse(false)
+        icon:SetPoint("LEFT", todoBtn, "RIGHT", gap, 0)
+    end
+end
+
 --- Apply content and selection to a collection list row (from CreateCollectionListRow). Use for virtual scroll.
 ---@param row Frame - Row from CreateCollectionListRow
 ---@param rowIndex number - For alternating background (1-based)
@@ -6364,15 +6560,21 @@ local COLLECTION_ROW_ICON_NOT_READY = "Interface\\RaidFrame\\ReadyCheck-NotReady
 ---@param onClick function|nil - OnMouseDown script
 ---@param rightAlignedText string|nil Optional right column (e.g. relative time); main label stops before it.
 ---@param subtitleText string|nil Optional second line (small) under title; row height should be set by caller.
-function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick, rightAlignedText, subtitleText)
+---@param planSlotState table|nil Optional `{ onTodo, onTrack, achievementRow?, achievementCollected?, showTrackSlot?, onTodoClick?, onTrackClick?, todoTooltip?, trackTooltip? }` — `achievementCollected` defaults from `isCollected` when omitted (mount/pet/toy). To-Do/pin grey when completed, on list, or (pin) already tracking.
+function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick, rightAlignedText, subtitleText, planSlotState)
     if not row then return end
     local pad = UI_SPACING.SIDE_MARGIN or 10
     local gap = 4
+    local slotGap = 3
     self:ApplyRowBackground(row, rowIndex or 1)
     if row.statusIcon then
         row.statusIcon:SetTexture(isCollected and COLLECTION_ROW_ICON_READY or COLLECTION_ROW_ICON_NOT_READY)
         row.statusIcon:Show()
     end
+    if planSlotState and rawget(planSlotState, "achievementCollected") == nil then
+        planSlotState.achievementCollected = isCollected == true
+    end
+    ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotGap)
     if row.icon then
         local iconTex = (iconPath and iconPath ~= "") and iconPath or "Interface\\Icons\\Achievement_General"
         row.icon:SetTexture(iconTex)

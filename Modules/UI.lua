@@ -1586,9 +1586,10 @@ function WarbandNexus:CreateMainWindow()
     
     -- WN_REPUTATION_* refresh: ReputationUI.lua registers DrawReputationTab (avoid double PopulateContent here)
     
+    -- Plans / To-Do list must redraw immediately after add/remove (800ms POPULATE_COOLDOWN would drop the refresh).
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PLANS_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "plans" then
-            SchedulePopulateContent()
+            SchedulePopulateContent(true)
         end
     end)
     
