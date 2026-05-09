@@ -36,6 +36,7 @@ local SearchResultsRenderer = ns.SearchResultsRenderer
 
 -- Import shared UI components
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local UI_SPACING = ns.UI_SPACING
 local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
@@ -595,30 +596,17 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         
         -- Lazy create collapse button (reused across pool cycles)
         if not row.collapseBtn then
-            row.collapseBtn = CreateFrame("Button", nil, row)
-            row.collapseBtn:SetSize(20, 20)
-            row.collapseBtnTexture = row.collapseBtn:CreateTexture(nil, "ARTWORK")
-            row.collapseBtnTexture:SetAllPoints()
+            row.collapseBtn = ns.UI_CreateCollapseExpandControl(row, isExpanded, { enableMouse = true })
         end
-        
+
         row.collapseBtn:ClearAllPoints()
         row.collapseBtn:SetPoint("LEFT", 6, 0)
-        
-        -- Update arrow texture
-        if isExpanded then
-            row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-        else
-            row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-        end
-        
+        ns.UI_CollapseExpandSetState(row.collapseBtn, isExpanded)
+
         -- Click handlers (toggle subfaction visibility)
         local function onSubfactionToggle()
             isExpanded = not isExpanded
-            if isExpanded then
-                row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-            else
-                row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-            end
+            ns.UI_CollapseExpandSetState(row.collapseBtn, isExpanded)
             ToggleExpand(collapseKey, isExpanded)
         end
         
@@ -662,8 +650,9 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     end
     
     -- ===== TEXT ELEMENTS (lazy-created, reused across pool cycles) =====
-    local textStartOffset = hasSubfactions and 32 or 10
-    
+    local repChevronW = (UI_SPACING and UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE) or 22
+    local textStartOffset = hasSubfactions and (6 + repChevronW + 4) or 10
+
     if standingWord ~= "" then
         -- Standing text
         if not row.standingText then
@@ -1149,28 +1138,16 @@ local function PopulateReputationRow(row, entry)
         isExpanded = IsExpanded(collapseKey, true)
 
         if not row.collapseBtn then
-            row.collapseBtn = CreateFrame("Button", nil, row)
-            row.collapseBtn:SetSize(20, 20)
-            row.collapseBtnTexture = row.collapseBtn:CreateTexture(nil, "ARTWORK")
-            row.collapseBtnTexture:SetAllPoints()
+            row.collapseBtn = ns.UI_CreateCollapseExpandControl(row, isExpanded, { enableMouse = true })
         end
 
         row.collapseBtn:ClearAllPoints()
         row.collapseBtn:SetPoint("LEFT", 6, 0)
-
-        if isExpanded then
-            row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-        else
-            row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-        end
+        ns.UI_CollapseExpandSetState(row.collapseBtn, isExpanded)
 
         local function onSubfactionToggle()
             isExpanded = not isExpanded
-            if isExpanded then
-                row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-            else
-                row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-            end
+            ns.UI_CollapseExpandSetState(row.collapseBtn, isExpanded)
             ToggleExpand(collapseKey, isExpanded)
         end
 
@@ -1185,6 +1162,9 @@ local function PopulateReputationRow(row, entry)
     local standingWord = ""
     local standingNumber = ""
     local standingColorCode = ""
+
+    local repChevronW2 = (UI_SPACING and UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE) or 22
+    local textStartOffset = hasSubfactions and (6 + repChevronW2 + 4) or 10
 
     if reputation.friendship and reputation.friendship.reactionText then
         standingWord = reputation.friendship.reactionText
@@ -1209,8 +1189,6 @@ local function PopulateReputationRow(row, entry)
         standingWord = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
         standingColorCode = "|cffff0000"
     end
-
-    local textStartOffset = hasSubfactions and 32 or 10
 
     if standingWord ~= "" then
         if not row.standingText then
@@ -2556,7 +2534,7 @@ function WarbandNexus:DrawReputationTab(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local repHdrBtnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
     local repHdrGap = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
-    local repRightReserve = repHdrBtnH * 2 + repHdrGap * 2 + (GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20)
+    local repRightReserve = repHdrBtnH + repHdrGap + (GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20)
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "reputation",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["REP_TITLE"]) or "Reputation Overview") .. "|r",
@@ -2573,6 +2551,9 @@ function WarbandNexus:DrawReputationTab(parent)
     if moduleEnabled and ns.UI_EnsureTitleCardExpandCollapseButtons then
         local inset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
         ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, titleCard, "RIGHT", -inset, 0, {
+            getIsCollapseMode = function()
+                return WarbandNexus.db.profile.reputationExpandOverride ~= "all_collapsed"
+            end,
             expandTooltip = (ns.L and ns.L["REP_EXPAND_ALL_TOOLTIP"]) or "Expand all reputation sections and category headers.",
             collapseTooltip = (ns.L and ns.L["REP_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all reputation sections and category headers.",
             onExpandClick = function()
@@ -2585,19 +2566,19 @@ function WarbandNexus:DrawReputationTab(parent)
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "reputation", skipCooldown = true })
             end,
         })
-    elseif parent._wnExpandCollapseCollapseBtn then
-        parent._wnExpandCollapseCollapseBtn:Hide()
-        parent._wnExpandCollapseExpandBtn:Hide()
+    elseif parent._wnExpandCollapseToggleBtn then
+        parent._wnExpandCollapseToggleBtn:Hide()
     end
+    if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
+    if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
     
     headerYOffset = headerYOffset + GetLayout().afterHeader
     
     -- If module is disabled, show disabled state card in scroll area
     if not moduleEnabled then
-        if parent._wnExpandCollapseCollapseBtn then
-            parent._wnExpandCollapseCollapseBtn:Hide()
-            parent._wnExpandCollapseExpandBtn:Hide()
-        end
+        if parent._wnExpandCollapseToggleBtn then parent._wnExpandCollapseToggleBtn:Hide() end
+        if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
+        if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")

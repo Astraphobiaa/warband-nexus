@@ -3410,7 +3410,10 @@ local function CreateGearHeaderHideButton(parent)
     btn:SetParent(parent)
     btn:ClearAllPoints()
     btn:SetBackdropColor(0.08, 0.08, 0.11, 0.9)
-    btn:SetBackdropBorderColor(0.45, 0.45, 0.55, 0.8)
+    do
+        local a = (COLORS and COLORS.accent) or { 0.5, 0.3, 0.8 }
+        btn:SetBackdropBorderColor(a[1] * 0.6, a[2] * 0.6, a[3] * 0.6, 0.8)
+    end
 
     btn._text:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"))
 
@@ -3514,7 +3517,8 @@ local function CreateGearHeaderHideButton(parent)
         catcher:Show()
     end)
     btn:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(0.7, 0.7, 0.85, 1)
+        local a = (COLORS and COLORS.accent) or { 0.5, 0.3, 0.8 }
+        self:SetBackdropBorderColor(a[1], a[2], a[3], 1)
         if not GameTooltip then return end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"), 1, 1, 1)
@@ -3525,7 +3529,8 @@ local function CreateGearHeaderHideButton(parent)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(0.45, 0.45, 0.55, 0.8)
+        local a = (COLORS and COLORS.accent) or { 0.5, 0.3, 0.8 }
+        self:SetBackdropBorderColor(a[1] * 0.6, a[2] * 0.6, a[3] * 0.6, 0.8)
         if GameTooltip then GameTooltip:Hide() end
     end)
 

@@ -329,9 +329,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     local function ToggleExpand()
         local newExpanded = not row.isExpanded
         row.isExpanded = newExpanded
-        local arrowAtlas = newExpanded and "UI-HUD-ActionBar-PageUpArrow-Mouseover" or "UI-HUD-ActionBar-PageDownArrow-Mouseover"
-        if row.expandBtnNormalTex then row.expandBtnNormalTex:SetAtlas(arrowAtlas, true) end
-        if row.expandBtnHighlightTex then row.expandBtnHighlightTex:SetAtlas(arrowAtlas, true) end
+        ns.UI_CollapseExpandSetState(row.expandBtn, newExpanded)
 
         -- Lazily build the details panel and cache its natural height ONCE — querying it
         -- mid-toggle returns whatever transient SetHeight value we set on a prior tween,
@@ -364,35 +362,10 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         end
     end
     
-    -- Expand/Collapse button (inside header) - Using atlas arrows
-    local expandBtn = CreateFrame("Button", nil, headerFrame)
-    expandBtn:SetSize(20, 20)
+    -- Expand/collapse: same chevron control as section headers (single texture, fixed size)
+    local expandBtn = ns.UI_CreateCollapseExpandControl(headerFrame, isExpanded, { enableMouse = true })
     expandBtn:SetPoint("LEFT", 6, 0)
-    
-    -- Create textures and set atlas
-    local normalTex = expandBtn:CreateTexture(nil, "ARTWORK")
-    normalTex:SetAllPoints()
-    if isExpanded then
-        normalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-    else
-        normalTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-    end
-    expandBtn:SetNormalTexture(normalTex)
-    
-    local highlightTex = expandBtn:CreateTexture(nil, "HIGHLIGHT")
-    highlightTex:SetAllPoints()
-    if isExpanded then
-        highlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-    else
-        highlightTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-    end
-    highlightTex:SetAlpha(0.3)
-    expandBtn:SetHighlightTexture(highlightTex)
-    
-    -- Store texture references for toggle updates
-    row.expandBtnNormalTex = normalTex
-    row.expandBtnHighlightTex = highlightTex
-    
+
     expandBtn:RegisterForClicks("LeftButtonUp")
     expandBtn:SetScript("OnClick", function(_, button)
         if button ~= "LeftButton" then return end
@@ -413,7 +386,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     -- want a chunkier portrait. Title and type badge anchor to this frame so they stay aligned
     -- regardless of icon size. Supports atlas icons via data.iconIsAtlas.
     local ICON_SIZE = data.iconSize or (UI_SPACING.HEADER_ICON_SIZE + 4)
-    local ICON_LEFT = 32
+    local ICON_LEFT = 6 + (UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE or 22) + 4
     local iconFrame
     if data.icon then
         iconFrame = CreateIcon(headerFrame, data.icon, ICON_SIZE, data.iconIsAtlas == true, nil, true)
@@ -524,14 +497,8 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         -- Initialize expanded state (without triggering callbacks - CRITICAL for preventing infinite loops)
         if isExpanded then
             row.isExpanded = true
-            -- Update textures to expanded state (up arrow)
-            if row.expandBtnNormalTex then
-                row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-            end
-            if row.expandBtnHighlightTex then
-                row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-            end
-            
+            ns.UI_CollapseExpandSetState(row.expandBtn, true)
+
             if data.onExpandPopulate then
                 data.onExpandPopulate(data, row)
             end

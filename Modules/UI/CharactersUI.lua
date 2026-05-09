@@ -200,16 +200,6 @@ local function CharactersUISectionAllExpanded(ui)
     return fav and ch and unt
 end
 
-local function UpdateCharactersSectionToggle(btn)
-    if not btn or not btn._wnEcIcon then return end
-    local ui = WarbandNexus.db.profile.ui
-    if CharactersUISectionAllExpanded(ui) then
-        btn._wnEcIcon:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
-    else
-        btn._wnEcIcon:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
-    end
-end
-
 --============================================================================
 -- DRAW CHARACTER LIST
 --============================================================================
@@ -297,29 +287,20 @@ function WarbandNexus:DrawCharacterList(parent)
         sortAnchorX = -10
     end
 
-    -- Single toolbar toggle: expand/collapse all accordion sections (Favorites, Characters, Untracked).
-    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
-        local btnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
-        local accentLoc = COLORS.accent or { 0.6, 0.4, 1 }
+    -- Single toolbar toggle: shared helper (same shell as Storage/Currency/Reputation title toggles).
+    if ns.UI_CreateOrAcquireTitleToolbarExpandCollapseToggle and ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas then
         local ownerFrame = parent
-        local toggleBtn = ownerFrame._wnCharactersExpandCollapseToggleBtn
-        if not toggleBtn then
-            toggleBtn = ns.UI.Factory:CreateButton(titleCard, btnH, btnH, false)
-            if ApplyVisuals then
-                ApplyVisuals(toggleBtn, { 0.12, 0.12, 0.15, 1 }, { accentLoc[1], accentLoc[2], accentLoc[3], 0.6 })
+        local toggleBtn = ns.UI_CreateOrAcquireTitleToolbarExpandCollapseToggle(ownerFrame, titleCard)
+        if toggleBtn then
+            local function charSectionCollapseMode()
+                return CharactersUISectionAllExpanded(WarbandNexus.db.profile.ui or {})
             end
-            if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-                ns.UI.Factory:ApplyHighlight(toggleBtn)
-            end
-            toggleBtn._wnEcIcon = toggleBtn:CreateTexture(nil, "OVERLAY")
-            toggleBtn._wnEcIcon:SetAllPoints(toggleBtn)
-            if toggleBtn.RegisterForClicks then
-                toggleBtn:RegisterForClicks("LeftButtonUp")
-            end
+            toggleBtn:ClearAllPoints()
+            toggleBtn:SetPoint("RIGHT", sortAnchorFrame, sortAnchorPoint, sortAnchorX, 0)
+            ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas(toggleBtn, charSectionCollapseMode)
             toggleBtn:SetScript("OnEnter", function(btnFrame)
                 GameTooltip:SetOwner(btnFrame, "ANCHOR_BOTTOMRIGHT")
-                local ui = WarbandNexus.db.profile.ui
-                local collapseMode = CharactersUISectionAllExpanded(ui)
+                local collapseMode = charSectionCollapseMode()
                 local tipKey = collapseMode and "CHARACTERS_SECTION_TOGGLE_COLLAPSE_TOOLTIP" or "CHARACTERS_SECTION_TOGGLE_EXPAND_TOOLTIP"
                 local fb = collapseMode
                     and "Collapse Favorites, Characters, and Untracked sections."
@@ -340,17 +321,11 @@ function WarbandNexus:DrawCharacterList(parent)
                     ui.charactersExpanded = true
                     ui.untrackedExpanded = true
                 end
+                ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas(toggleBtn, charSectionCollapseMode)
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
             end)
-            ownerFrame._wnCharactersExpandCollapseToggleBtn = toggleBtn
+            toggleBtn:Show()
         end
-        toggleBtn:SetParent(titleCard)
-        toggleBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
-        toggleBtn:SetSize(btnH, btnH)
-        UpdateCharactersSectionToggle(toggleBtn)
-        toggleBtn:ClearAllPoints()
-        toggleBtn:SetPoint("RIGHT", sortAnchorFrame, sortAnchorPoint, sortAnchorX, 0)
-        toggleBtn:Show()
     end
     
     -- NO TRACKING: Static text, never overflows

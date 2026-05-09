@@ -321,6 +321,16 @@ local UI_SPACING = {
     HEADER_ICON_SIZE = 24,     -- Header icon size (reduced from 28 for better balance)
     ROW_ICON_SIZE = 20,        -- Row icon size (reduced from 22 for better balance)
     ICON_VERTICAL_ALIGN = 0,   -- CENTER vertical alignment offset
+
+    --- Collapse/expand chevron: one `Button` + single inner texture (`_wnCollapseTex`), same size everywhere.
+    COLLAPSE_EXPAND_BUTTON_SIZE = 22,
+    COLLAPSE_EXPAND_ATLAS_EXPANDED = "UI-HUD-ActionBar-PageUpArrow-Mouseover",
+    COLLAPSE_EXPAND_ATLAS_COLLAPSED = "UI-HUD-ActionBar-PageDownArrow-Mouseover",
+
+    --- Storage / Bank item rows: location label inset from row edge (scrollbar + padding)
+    LIST_ROW_LOCATION_RIGHT_INSET = 28,
+    --- Max width for "Bag N" / "Tab N" / localized bank strings; name column ends at `LEFT` of this.
+    LIST_ROW_LOCATION_MAX_WIDTH = 120,
     
     -- Row colors (alternating backgrounds)
     ROW_COLOR_EVEN = {0.08, 0.08, 0.10, 1},  -- Even rows (slightly lighter)
@@ -373,6 +383,55 @@ ns.UI_LAYOUT = UI_SPACING  -- Alias for backward compatibility
 
 -- Keep old reference
 local UI_LAYOUT = UI_SPACING
+
+--============================================================================
+-- COLLAPSE / EXPAND CHEVRON (shared control — single Button, one texture, state = atlas)
+--============================================================================
+
+local function WnCollapseExpandApply(tex, isExpanded)
+    if not tex then return end
+    local sp = UI_SPACING
+    local up = sp.COLLAPSE_EXPAND_ATLAS_EXPANDED
+    local down = sp.COLLAPSE_EXPAND_ATLAS_COLLAPSED
+    tex:SetAtlas(isExpanded and up or down, false)
+end
+
+function ns.UI_CollapseExpandSetState(btn, isExpanded)
+    if not btn or not btn._wnCollapseTex then return end
+    WnCollapseExpandApply(btn._wnCollapseTex, isExpanded)
+    local c = btn._wnCollapseVertexColor
+    if c then
+        btn._wnCollapseTex:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
+    end
+end
+
+---@param parent Frame
+---@param isExpanded boolean When true, section is expanded (up chevron = collapse affordance).
+---@param opts table|nil `{ enableMouse = false|true, vertexColor = {r,g,b,a?} }`
+---@return Button btn Child has `_wnCollapseTex` (Texture). Mouse defaults to enabled; pass `enableMouse = false` when the parent header handles clicks.
+function ns.UI_CreateCollapseExpandControl(parent, isExpanded, opts)
+    opts = type(opts) == "table" and opts or {}
+    local sz = UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE or 22
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(sz, sz)
+    local tex = btn:CreateTexture(nil, "ARTWORK")
+    tex:SetAllPoints()
+    btn._wnCollapseTex = tex
+    WnCollapseExpandApply(tex, isExpanded)
+    local vc = opts.vertexColor
+    if vc then
+        btn._wnCollapseVertexColor = { vc[1], vc[2], vc[3], vc[4] or 1 }
+        tex:SetVertexColor(vc[1], vc[2], vc[3], vc[4] or 1)
+    else
+        tex:SetVertexColor(1, 1, 1, 1)
+    end
+    tex:SetSnapToPixelGrid(false)
+    tex:SetTexelSnappingBias(0)
+    if opts.enableMouse == false then
+        btn:EnableMouse(false)
+    end
+    return btn
+end
 
 --============================================================================
 -- PLANS TAB (To-Do List expandable rows + Browse grid cards): single source of truth
@@ -1412,21 +1471,24 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.icon:SetSnapToPixelGrid(false)
         row.icon:SetTexelSnappingBias(0)
         
-        -- Name text
+        -- Name text (pinned between icon column and location column)
         row.nameText = FontManager:CreateFontString(row, UIFontRole("listRowLabel"), "OVERLAY")
         row.nameText:SetPoint("LEFT", 98, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
         row.nameText:SetNonSpaceWrap(false)
-        
-        -- Location text
+
+        -- Location text (inset from scrollbar; keep in sync with FramePoolFactory AcquireItemRow)
         row.locationText = FontManager:CreateFontString(row, UIFontRole("listRowLocation"), "OVERLAY")
-        row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(0)  -- Auto-width (no truncation)
+        local locInset = (UI_SPACING and UI_SPACING.LIST_ROW_LOCATION_RIGHT_INSET) or 28
+        local locMaxW = (UI_SPACING and UI_SPACING.LIST_ROW_LOCATION_MAX_WIDTH) or 120
+        row.locationText:SetPoint("RIGHT", row, "RIGHT", -locInset, 0)
+        row.locationText:SetWidth(locMaxW)
         row.locationText:SetJustifyH("RIGHT")
         row.locationText:SetWordWrap(false)
         row.locationText:SetNonSpaceWrap(false)
         row.locationText:SetMaxLines(1)
+        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
 
         row.isPooled = true
         row.rowType = "item"  -- Mark as ItemRow
@@ -1495,22 +1557,25 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.icon:SetSnapToPixelGrid(false)
         row.icon:SetTexelSnappingBias(0)
         
-        -- Name text
+        -- Name text (pinned between icon column and location column)
         row.nameText = FontManager:CreateFontString(row, UIFontRole("listRowLabel"), "OVERLAY")
         row.nameText:SetPoint("LEFT", 98, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
         row.nameText:SetNonSpaceWrap(false)
-        
-        -- Location text
+
+        -- Location text (inset from scrollbar; keep in sync with FramePoolFactory AcquireStorageRow)
         row.locationText = FontManager:CreateFontString(row, UIFontRole("listRowLocation"), "OVERLAY")
-        row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(0)  -- Auto-width (no truncation)
+        local locInsetS = (UI_SPACING and UI_SPACING.LIST_ROW_LOCATION_RIGHT_INSET) or 28
+        local locMaxWS = (UI_SPACING and UI_SPACING.LIST_ROW_LOCATION_MAX_WIDTH) or 120
+        row.locationText:SetPoint("RIGHT", row, "RIGHT", -locInsetS, 0)
+        row.locationText:SetWidth(locMaxWS)
         row.locationText:SetJustifyH("RIGHT")
         row.locationText:SetWordWrap(false)
         row.locationText:SetNonSpaceWrap(false)
         row.locationText:SetMaxLines(1)
-        
+        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
+
         row.isPooled = true
         row.rowType = "storage"  -- Mark as StorageRow
         
@@ -1958,25 +2023,14 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     stripe:SetColorTexture(sr, sg, sb, sa)
     header._wnSectionStripe = stripe
     
-    -- Expand/Collapse icon (atlas-based arrows) - STANDARDIZED SIZE
-    local expandIcon = header:CreateTexture(nil, "ARTWORK")
-    local expandIconSize = 20  -- Standardized: 20x20px for all headers
-    expandIcon:SetSize(expandIconSize, expandIconSize)
-    expandIcon:SetPoint("LEFT", 12 + indent, 0)
-    
-    -- Use WoW's action bar arrow atlases (false = use our SetSize, not atlas default)
-    if isExpanded then
-        expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)  -- Collapse: up arrow
-    else
-        expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)  -- Expand: down arrow
-    end
-    -- Dynamic theme color tint
+    -- Expand/collapse: shared Button + single texture (parent header handles click)
     local iconTint = COLORS.accent
-    expandIcon:SetVertexColor(iconTint[1] * 1.5, iconTint[2] * 1.5, iconTint[3] * 1.5)
-    -- Anti-flicker optimization
-    expandIcon:SetSnapToPixelGrid(false)
-    expandIcon:SetTexelSnappingBias(0)
-    
+    local expandIcon = ns.UI_CreateCollapseExpandControl(header, isExpanded, {
+        enableMouse = false,
+        vertexColor = { iconTint[1] * 1.5, iconTint[2] * 1.5, iconTint[3] * 1.5, 1 },
+    })
+    expandIcon:SetPoint("LEFT", 12 + indent, 0)
+
     local textAnchor = expandIcon
     local textOffset = 12  -- Increased spacing between icon and text
     
@@ -2030,11 +2084,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     -- shared accordion tween BEFORE handing off to onToggle (which typically rebuilds layout).
     header:SetScript("OnClick", function()
         isExpanded = not isExpanded
-        if isExpanded then
-            expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)
-        else
-            expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
-        end
+        ns.UI_CollapseExpandSetState(expandIcon, isExpanded)
 
         local persistToggleFn = visualOpts and visualOpts.persistToggle
         if persistToggleFn then
@@ -3134,82 +3184,101 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     return btn
 end
 
---- Compact expand-all / collapse-all icon buttons for tab title cards (square, BUTTON_HEIGHT).
---- Frames persist on ownerFrame and are reparented to titleCard each layout pass.
---- @param ownerFrame Frame Stable owner for button refs (e.g. scroll child parent)
---- @param titleCard Frame Title card the buttons sit on
---- @param anchorFrame Frame Anchor for collapse button (e.g. sort dropdown or titleCard)
---- @param anchorPoint string collapse:SetPoint("RIGHT", anchorFrame, anchorPoint, ...)
---- @param opts table collapseTooltip, expandTooltip, onCollapseClick, onExpandClick
-function ns.UI_EnsureTitleCardExpandCollapseButtons(ownerFrame, titleCard, anchorFrame, anchorPoint, anchorOffsetX, anchorOffsetY, opts)
-    if not ownerFrame or not titleCard or not anchorFrame or not opts then return end
-    local hdrGap = (UI_SPACING and UI_SPACING.HEADER_TOOLBAR_CONTROL_GAP) or 8
+-- Title-card toolbar: same glues arrow atlases as Characters tab section toggle.
+local TITLE_TOOLBAR_EC_ATLAS_UP = "glues-characterSelect-icon-arrowUp-small-hover"
+local TITLE_TOOLBAR_EC_ATLAS_DOWN = "glues-characterSelect-icon-arrowDown-small-hover"
+
+--- Characters-parity title toolbar toggle shell (themed square + `_wnEcIcon`). Persists `ownerFrame._wnExpandCollapseToggleBtn`.
+--- Migrates legacy `ownerFrame._wnCharactersExpandCollapseToggleBtn` if present.
+---@return Button|nil
+function ns.UI_CreateOrAcquireTitleToolbarExpandCollapseToggle(ownerFrame, titleCard)
+    if not ownerFrame or not titleCard or not ns.UI.Factory or not ns.UI.Factory.CreateButton then
+        return nil
+    end
+    if ownerFrame._wnCharactersExpandCollapseToggleBtn and not ownerFrame._wnExpandCollapseToggleBtn then
+        ownerFrame._wnExpandCollapseToggleBtn = ownerFrame._wnCharactersExpandCollapseToggleBtn
+        ownerFrame._wnCharactersExpandCollapseToggleBtn = nil
+    end
     local btnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
     local COLORS = ns.UI_COLORS or { accent = { 0.6, 0.4, 1 } }
     local accent = COLORS.accent or { 0.6, 0.4, 1 }
-
-    local collapseBtn = ownerFrame._wnExpandCollapseCollapseBtn
-    local expandBtn = ownerFrame._wnExpandCollapseExpandBtn
-
-    local function ensureToolbarIconBtn(existing)
-        local btn = existing
-        if not btn then
-            btn = ns.UI.Factory:CreateButton(titleCard, btnH, btnH, false)
-            if ns.UI_ApplyVisuals then
-                ns.UI_ApplyVisuals(btn, { 0.12, 0.12, 0.15, 1 }, { accent[1], accent[2], accent[3], 0.6 })
-            end
-            if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-                ns.UI.Factory:ApplyHighlight(btn)
-            end
-            btn._wnEcIcon = btn:CreateTexture(nil, "OVERLAY")
-            btn._wnEcIcon:SetAllPoints(btn)
-            if btn.RegisterForClicks then
-                btn:RegisterForClicks("LeftButtonUp")
-            end
+    local btn = ownerFrame._wnExpandCollapseToggleBtn
+    if not btn then
+        btn = ns.UI.Factory:CreateButton(titleCard, btnH, btnH, false)
+        ApplyVisuals(btn, { 0.12, 0.12, 0.15, 1 }, { accent[1], accent[2], accent[3], 0.6 })
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(btn)
         end
-        btn:SetParent(titleCard)
-        btn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
-        btn:SetSize(btnH, btnH)
-        btn:Show()
-        return btn
+        btn._wnEcIcon = btn:CreateTexture(nil, "OVERLAY")
+        btn._wnEcIcon:SetAllPoints(btn)
+        if btn.RegisterForClicks then
+            btn:RegisterForClicks("LeftButtonUp")
+        end
+        ownerFrame._wnExpandCollapseToggleBtn = btn
+    end
+    btn:SetParent(titleCard)
+    btn:SetFrameLevel((titleCard:GetFrameLevel() or 0) + 5)
+    btn:SetSize(btnH, btnH)
+    btn:Show()
+    return btn
+end
+
+--- `getIsCollapseMode()` → true when the next click should collapse (up arrow).
+function ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas(btn, getIsCollapseMode)
+    if not btn or not btn._wnEcIcon then return end
+    local cm = getIsCollapseMode and getIsCollapseMode() == true
+    btn._wnEcIcon:SetAtlas(cm and TITLE_TOOLBAR_EC_ATLAS_UP or TITLE_TOOLBAR_EC_ATLAS_DOWN, false)
+end
+
+--- Single expand/collapse-all toggle on tab title cards (Characters-style button via `CreateOrAcquire` + atlas helper).
+--- Legacy `_wnExpandCollapseCollapseBtn` / `_wnExpandCollapseExpandBtn` are hidden if present.
+--- @param opts table `{ collapseTooltip, expandTooltip, onCollapseClick, onExpandClick, getIsCollapseMode }`
+---        `getIsCollapseMode()` → true when the tree is “fully expanded” (next click should collapse).
+function ns.UI_EnsureTitleCardExpandCollapseButtons(ownerFrame, titleCard, anchorFrame, anchorPoint, anchorOffsetX, anchorOffsetY, opts)
+    if not ownerFrame or not titleCard or not anchorFrame or not opts then return end
+
+    local legCol = ownerFrame._wnExpandCollapseCollapseBtn
+    local legExp = ownerFrame._wnExpandCollapseExpandBtn
+    if legCol then legCol:Hide() end
+    if legExp then legExp:Hide() end
+
+    local toggle = ns.UI_CreateOrAcquireTitleToolbarExpandCollapseToggle(ownerFrame, titleCard)
+    if not toggle then return end
+    toggle:ClearAllPoints()
+    toggle:SetPoint("RIGHT", anchorFrame, anchorPoint, anchorOffsetX or 0, anchorOffsetY or 0)
+
+    local function collapseModeNow()
+        if opts.getIsCollapseMode then
+            return opts.getIsCollapseMode() == true
+        end
+        return false
     end
 
-    collapseBtn = ensureToolbarIconBtn(collapseBtn)
-    expandBtn = ensureToolbarIconBtn(expandBtn)
-    ownerFrame._wnExpandCollapseCollapseBtn = collapseBtn
-    ownerFrame._wnExpandCollapseExpandBtn = expandBtn
-
-    collapseBtn._wnEcIcon:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
-    expandBtn._wnEcIcon:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
-
-    collapseBtn:ClearAllPoints()
-    collapseBtn:SetPoint("RIGHT", anchorFrame, anchorPoint, anchorOffsetX or 0, anchorOffsetY or 0)
-    expandBtn:ClearAllPoints()
-    expandBtn:SetPoint("RIGHT", collapseBtn, "LEFT", -hdrGap, 0)
+    local function applyAtlas()
+        ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas(toggle, function()
+            return collapseModeNow()
+        end)
+    end
+    applyAtlas()
 
     local collapseTip = opts.collapseTooltip or ""
     local expandTip = opts.expandTooltip or ""
 
-    collapseBtn:SetScript("OnEnter", function(self)
+    toggle:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
-        GameTooltip:SetText(collapseTip, 1, 1, 1)
+        GameTooltip:SetText(collapseModeNow() and collapseTip or expandTip, 1, 1, 1)
         GameTooltip:Show()
     end)
-    collapseBtn:SetScript("OnLeave", GameTooltip_Hide)
+    toggle:SetScript("OnLeave", GameTooltip_Hide)
 
-    expandBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
-        GameTooltip:SetText(expandTip, 1, 1, 1)
-        GameTooltip:Show()
+    toggle:SetScript("OnClick", function()
+        if collapseModeNow() then
+            if opts.onCollapseClick then opts.onCollapseClick() end
+        else
+            if opts.onExpandClick then opts.onExpandClick() end
+        end
+        applyAtlas()
     end)
-    expandBtn:SetScript("OnLeave", GameTooltip_Hide)
-
-    if opts.onCollapseClick then
-        collapseBtn:SetScript("OnClick", opts.onCollapseClick)
-    end
-    if opts.onExpandClick then
-        expandBtn:SetScript("OnClick", opts.onExpandClick)
-    end
 end
 
 -- Exports
@@ -6274,16 +6343,9 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     -- Opaque background (1.0) so row text does not show through behind header
     ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
 
-    -- Collapse/expand arrow
-    local collapseBtn = ns.UI.Factory:CreateButton(header, 16, 16, true)
+    -- Collapse/expand chevron (same control as tab section headers)
+    local collapseBtn = ns.UI_CreateCollapseExpandControl(header, not isCollapsed, { enableMouse = true })
     collapseBtn:SetPoint("LEFT", UI_SPACING.SIDE_MARGIN - 2, 0)
-    local arrowTex = collapseBtn:CreateTexture(nil, "ARTWORK")
-    arrowTex:SetAllPoints()
-    if isCollapsed then
-        arrowTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-    else
-        arrowTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-    end
 
     -- Title text
     local title = FontManager:CreateFontString(header, UIFontRole("factorySectionHeaderTitle"), "OVERLAY")

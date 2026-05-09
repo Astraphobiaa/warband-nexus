@@ -1301,12 +1301,12 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         if charHeader._wnSectionStripe then
             charHeader._wnSectionStripe:SetColorTexture(classColor.r, classColor.g, classColor.b, 0.9)
         end
-        if charHdrExpandIcon then
-            charHdrExpandIcon:SetVertexColor(
-                math.min(1, classColor.r * 1.5),
-                math.min(1, classColor.g * 1.5),
-                math.min(1, classColor.b * 1.5)
-            )
+        if charHdrExpandIcon and charHdrExpandIcon._wnCollapseTex then
+            local r = math.min(1, classColor.r * 1.5)
+            local g = math.min(1, classColor.g * 1.5)
+            local b = math.min(1, classColor.b * 1.5)
+            charHdrExpandIcon._wnCollapseTex:SetVertexColor(r, g, b)
+            charHdrExpandIcon._wnCollapseVertexColor = { r, g, b, 1 }
         end
 
         local removeBtn = Factory:CreateButton(charHeader, 24, 24, true)
@@ -1436,12 +1436,12 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                 if catHeader._wnSectionStripe then
                     catHeader._wnSectionStripe:SetColorTexture(catColor[1], catColor[2], catColor[3], 0.9)
                 end
-                if hdrExpandIcon then
-                    hdrExpandIcon:SetVertexColor(
-                        math.min(1, catColor[1] * 1.5),
-                        math.min(1, catColor[2] * 1.5),
-                        math.min(1, catColor[3] * 1.5)
-                    )
+                if hdrExpandIcon and hdrExpandIcon._wnCollapseTex then
+                    local r2 = math.min(1, catColor[1] * 1.5)
+                    local g2 = math.min(1, catColor[2] * 1.5)
+                    local b2 = math.min(1, catColor[3] * 1.5)
+                    hdrExpandIcon._wnCollapseTex:SetVertexColor(r2, g2, b2)
+                    hdrExpandIcon._wnCollapseVertexColor = { r2, g2, b2, 1 }
                 end
                 if hdrCategoryIcon then
                     hdrCategoryIcon:SetVertexColor(catColor[1], catColor[2], catColor[3])

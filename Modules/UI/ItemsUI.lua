@@ -333,7 +333,7 @@ function WarbandNexus:DrawItemList(parent)
     local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local accentColor = COLORS.accent
     local headerBtnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
-    local itemsEcReserve = headerBtnH * 2 + ((GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8) * 2
+    local itemsEcReserve = headerBtnH + ((GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8)
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "items",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["ITEMS_HEADER"]) or "Bank Items") .. "|r",
@@ -416,6 +416,17 @@ function WarbandNexus:DrawItemList(parent)
     local hdrGapEc = GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8
     if ns.UI_EnsureTitleCardExpandCollapseButtons then
         ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, moneyLogsBtn, "LEFT", -hdrGapEc, 0, {
+            getIsCollapseMode = function()
+                if WarbandNexus.itemsExpandAllActive then return true end
+                local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
+                local prefix = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal") .. "_"
+                for k, v in pairs(eg) do
+                    if type(k) == "string" and k:sub(1, #prefix) == prefix and v ~= false then
+                        return true
+                    end
+                end
+                return false
+            end,
             expandTooltip = (ns.L and ns.L["ITEMS_EXPAND_ALL_TOOLTIP"]) or "Expand all item type groups for this bank view.",
             collapseTooltip = (ns.L and ns.L["ITEMS_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all item type groups for this bank view.",
             onExpandClick = function()
@@ -451,10 +462,9 @@ function WarbandNexus:DrawItemList(parent)
     
     -- Check if module is disabled - show beautiful disabled state card
     if not ns.Utilities:IsModuleEnabled("items") then
-        if parent._wnExpandCollapseCollapseBtn then
-            parent._wnExpandCollapseCollapseBtn:Hide()
-            parent._wnExpandCollapseExpandBtn:Hide()
-        end
+        if parent._wnExpandCollapseToggleBtn then parent._wnExpandCollapseToggleBtn:Hide() end
+        if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
+        if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
         if fixedHeader then fixedHeader:SetHeight(yOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["ITEMS_DISABLED_TITLE"]) or "Warband Bank Items")
@@ -933,9 +943,6 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             row.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
             row.icon:SetTexture(item.iconFileID or 134400)
 
-            local nameWidth = width - 350
-            row.nameText:SetWidth(nameWidth)
-
             local baseName = item.name
             if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
                 baseName = item.link:match("%[(.-)%]")
@@ -969,7 +976,6 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     end
                 end
             end
-            row.locationText:SetWidth(0)
             row.locationText:SetText(locText)
             row.locationText:SetTextColor(1, 1, 1)
             row.locationText:SetWordWrap(false)

@@ -225,7 +225,7 @@ function WarbandNexus:DrawStorageTab(parent)
         local storHdrBtnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
         local storHdrGap = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
         local storSortW = 90
-        local storRightReserve = storSortW + storHdrBtnH * 2 + storHdrGap * 2 + (GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20)
+        local storRightReserve = storSortW + storHdrBtnH + storHdrGap + (GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20)
         local titleCard, headerIcon, textContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
             tabKey = "storage",
             titleText = "|cff" .. hex0 .. ((ns.L and ns.L["STORAGE_HEADER"]) or "Storage Browser") .. "|r",
@@ -287,6 +287,15 @@ function WarbandNexus:DrawStorageTab(parent)
         local anchorPt = sortRef and "LEFT" or "RIGHT"
         local anchorX = sortRef and -10 or -(GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20)
         ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, anchorF, anchorPt, anchorX, 0, {
+            getIsCollapseMode = function()
+                local ex = WarbandNexus.db.profile.storageExpanded or {}
+                local cats = ex.categories or {}
+                if ex.personal ~= false or ex.warband ~= false then return true end
+                for _, v in pairs(cats) do
+                    if v then return true end
+                end
+                return false
+            end,
             expandTooltip = (ns.L and ns.L["STORAGE_EXPAND_ALL_TOOLTIP"]) or "Expand all major sections and nested groups.",
             collapseTooltip = (ns.L and ns.L["STORAGE_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all major sections and nested groups.",
             onExpandClick = function()
@@ -310,19 +319,19 @@ function WarbandNexus:DrawStorageTab(parent)
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true, instantPopulate = true })
             end,
         })
-    elseif parent._wnExpandCollapseCollapseBtn then
-        parent._wnExpandCollapseCollapseBtn:Hide()
-        parent._wnExpandCollapseExpandBtn:Hide()
+    elseif parent._wnExpandCollapseToggleBtn then
+        parent._wnExpandCollapseToggleBtn:Hide()
     end
+    if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
+    if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
     
     headerYOffset = headerYOffset + GetLayout().afterHeader
     
     -- Check if module is disabled
     if not ns.Utilities:IsModuleEnabled("storage") then
-        if parent._wnExpandCollapseCollapseBtn then
-            parent._wnExpandCollapseCollapseBtn:Hide()
-            parent._wnExpandCollapseExpandBtn:Hide()
-        end
+        if parent._wnExpandCollapseToggleBtn then parent._wnExpandCollapseToggleBtn:Hide() end
+        if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
+        if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["STORAGE_DISABLED_TITLE"]) or "Character Storage")
@@ -665,9 +674,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         row.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
         row.icon:SetTexture(item.iconFileID or 134400)
 
-        local nameWidth = rowWidth - 350
-        row.nameText:SetWidth(nameWidth)
-
         local baseName = item.name
         if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
             baseName = item.link:match("%[(.-)%]")
@@ -695,7 +701,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
         end
 
-        row.locationText:SetWidth(0)
         row.locationText:SetText(locText or "")
         row.locationText:SetTextColor(1, 1, 1)
         row.locationText:SetWordWrap(false)

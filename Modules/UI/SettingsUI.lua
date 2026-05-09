@@ -3347,21 +3347,19 @@ local function BuildSettings(parent, containerWidth)
     local HEADER_LEFT_INDENT = 15
     local ARROW_TITLE_GAP = 6
     
-    local collapseArrow = trackSection:CreateTexture(nil, "OVERLAY")
-    collapseArrow:SetSize(14, 14)
-    collapseArrow:SetPoint("TOPLEFT", trackSection, "TOPLEFT", HEADER_LEFT_INDENT, -12)
-    collapseArrow:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
-    
+    local trackChevronBtn = ns.UI_CreateCollapseExpandControl(trackSection, not trackIsCollapsed, { enableMouse = false })
+    trackChevronBtn:SetPoint("TOPLEFT", trackSection, "TOPLEFT", HEADER_LEFT_INDENT, -12)
+
     local titleText = trackSection.titleText
     titleText:ClearAllPoints()
-    titleText:SetPoint("LEFT", collapseArrow, "RIGHT", ARROW_TITLE_GAP, 0)
+    titleText:SetPoint("LEFT", trackChevronBtn, "RIGHT", ARROW_TITLE_GAP, 0)
     titleText:SetPoint("RIGHT", trackSection, "RIGHT", -HEADER_LEFT_INDENT, 0)
-    titleText:SetPoint("TOP", collapseArrow, "TOP")
-    titleText:SetPoint("BOTTOM", collapseArrow, "BOTTOM")
+    titleText:SetPoint("TOP", trackChevronBtn, "TOP")
+    titleText:SetPoint("BOTTOM", trackChevronBtn, "BOTTOM")
     
     local collapseBtn = ns.UI.Factory:CreateButton(trackSection, 1, 24, true)
     if collapseBtn then
-        collapseBtn:SetPoint("TOPLEFT", collapseArrow, "TOPLEFT")
+        collapseBtn:SetPoint("TOPLEFT", trackChevronBtn, "TOPLEFT")
         collapseBtn:SetPoint("BOTTOMRIGHT", titleText, "BOTTOMRIGHT")
     end
     
@@ -3955,11 +3953,11 @@ local function BuildSettings(parent, containerWidth)
         if trackIsCollapsed then
             trackSection.content:Hide()
             trackSection:SetHeight(COLLAPSED_HEIGHT)
-            collapseArrow:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
+            ns.UI_CollapseExpandSetState(trackChevronBtn, false)
         else
             trackSection.content:Show()
             trackSection:SetHeight(trackExpandedHeight)
-            collapseArrow:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)
+            ns.UI_CollapseExpandSetState(trackChevronBtn, true)
         end
         -- Reposition Advanced section
         local advY = trackSectionYBase - trackSection:GetHeight() - SETTINGS_SECTION_GAP

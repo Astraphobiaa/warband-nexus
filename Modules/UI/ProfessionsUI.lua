@@ -1017,7 +1017,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local filterBtnW = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH_DEFAULT) or 80
     local btnHH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
     local hdrGapEc = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
-    local ecReserve = btnHH * 2 + hdrGapEc * 2
+    local ecReserve = btnHH + hdrGapEc
 
     -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout (wider subtitle area for Professions) =====
     local titleCardH = showWideHint and 88 or 70
@@ -1240,6 +1240,16 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local ecAnchor = sortBtn or filterBtn
     if ns.UI_EnsureTitleCardExpandCollapseButtons and ecAnchor then
         ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, ecAnchor, "LEFT", -((GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)), 0, {
+            getIsCollapseMode = function()
+                local ui = WarbandNexus.db.profile.ui or {}
+                local fav = ui.profFavoritesExpanded
+                if fav == nil then fav = true end
+                local ch = ui.profCharactersExpanded
+                if ch == nil then ch = true end
+                local unt = ui.profUntrackedExpanded
+                if unt == nil then unt = false end
+                return fav and ch and unt
+            end,
             expandTooltip = (ns.L and ns.L["PROFESSIONS_EXPAND_ALL_TOOLTIP"]) or "Expand Favorites, Characters, and Untracked sections.",
             collapseTooltip = (ns.L and ns.L["PROFESSIONS_COLLAPSE_ALL_TOOLTIP"]) or "Collapse Favorites, Characters, and Untracked sections.",
             onExpandClick = function()

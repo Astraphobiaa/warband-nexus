@@ -494,17 +494,20 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.icon:SetSnapToPixelGrid(false)
         row.icon:SetTexelSnappingBias(0)
         
-        -- Name text
+        -- Name text (pinned between icon column and location column)
         row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.nameText:SetPoint("LEFT", 98, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
-        
-        -- Location text
+
+        -- Location text (inset from scrollbar / scroll child right edge)
         row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(80)
+        local locInset = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_RIGHT_INSET) or 28
+        local locMaxW = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_MAX_WIDTH) or 120
+        row.locationText:SetPoint("RIGHT", row, "RIGHT", -locInset, 0)
+        row.locationText:SetWidth(locMaxW)
         row.locationText:SetJustifyH("RIGHT")
+        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
 
         row.isPooled = true
         row.rowType = "item"  -- Mark as ItemRow
@@ -524,7 +527,21 @@ local function AcquireItemRow(parent, width, rowHeight)
     -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
-    
+
+    -- Refresh name/location anchors every acquire (width changes + pooled rows from older layouts)
+    if row.locationText and row.nameText then
+        local li = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_RIGHT_INSET) or 28
+        local lw = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_MAX_WIDTH) or 120
+        row.locationText:ClearAllPoints()
+        row.locationText:SetPoint("RIGHT", row, "RIGHT", -li, 0)
+        row.locationText:SetWidth(lw)
+        row.locationText:SetJustifyH("RIGHT")
+        row.nameText:ClearAllPoints()
+        row.nameText:SetPoint("LEFT", row, "LEFT", 98, 0)
+        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
+        row.nameText:SetJustifyH("LEFT")
+    end
+
     return row
 end
 
@@ -588,18 +605,21 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.icon:SetSnapToPixelGrid(false)
         row.icon:SetTexelSnappingBias(0)
         
-        -- Name text
+        -- Name text (pinned between icon column and location column)
         row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.nameText:SetPoint("LEFT", 98, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
-        
-        -- Location text
+
+        -- Location text (inset from scrollbar / scroll child right edge)
         row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(80)
+        local locInset2 = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_RIGHT_INSET) or 28
+        local locMaxW2 = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_MAX_WIDTH) or 120
+        row.locationText:SetPoint("RIGHT", row, "RIGHT", -locInset2, 0)
+        row.locationText:SetWidth(locMaxW2)
         row.locationText:SetJustifyH("RIGHT")
-        
+        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
+
         row.isPooled = true
         row.rowType = "storage"  -- Mark as StorageRow
         
@@ -619,7 +639,20 @@ local function AcquireStorageRow(parent, width, rowHeight)
     -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
-    
+
+    if row.locationText and row.nameText then
+        local li2 = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_RIGHT_INSET) or 28
+        local lw2 = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_MAX_WIDTH) or 120
+        row.locationText:ClearAllPoints()
+        row.locationText:SetPoint("RIGHT", row, "RIGHT", -li2, 0)
+        row.locationText:SetWidth(lw2)
+        row.locationText:SetJustifyH("RIGHT")
+        row.nameText:ClearAllPoints()
+        row.nameText:SetPoint("LEFT", row, "LEFT", 98, 0)
+        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
+        row.nameText:SetJustifyH("LEFT")
+    end
+
     return row
 end
 
