@@ -117,8 +117,7 @@ local COLLECTION_HEAVY_DELAY = 0.05
 local RUN_CHUNK_SIZE = 100
 -- Same row/header dimensions for all three sub-tabs (Mounts, Pets, Achievements); matches SharedWidgets/UI_SPACING
 local ROW_HEIGHT = LAYOUT.ROW_HEIGHT or 26
-local HEADER_HEIGHT = LAYOUT.HEADER_HEIGHT or 32
--- Accordion section header height (mount/pet/toy lists); flat-list bookkeeping may use HEADER_HEIGHT above.
+-- Mount/Pet/Toy category headers: must match CreateCollapsibleHeader + CollectionVirtual_FillRowScrollIndex (accordion + virtual rows).
 local COLLAPSE_HEADER_HEIGHT_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
 
 -- Detail container border: SharedWidgets 4-texture border system (accent)
@@ -374,9 +373,9 @@ local function BuildFlatMountList(groupedData, collapsedHeaders)
                 itemCount = itemCount,
                 isCollapsed = isCollapsed,
                 yOffset = yOffset,
-                height = HEADER_HEIGHT,
+                height = COLLAPSE_HEADER_HEIGHT_COLL,
             }
-            yOffset = yOffset + HEADER_HEIGHT
+            yOffset = yOffset + COLLAPSE_HEADER_HEIGHT_COLL
             local nItems = #items
             for ji = 1, nItems do
                 rowCounter = rowCounter + 1
@@ -420,9 +419,9 @@ local function BuildFlatPetList(groupedData, collapsedHeaders)
                 itemCount = itemCount,
                 isCollapsed = isCollapsed,
                 yOffset = yOffset,
-                height = HEADER_HEIGHT,
+                height = COLLAPSE_HEADER_HEIGHT_COLL,
             }
-            yOffset = yOffset + HEADER_HEIGHT
+            yOffset = yOffset + COLLAPSE_HEADER_HEIGHT_COLL
             local nItems = #items
             for ji = 1, nItems do
                 rowCounter = rowCounter + 1
@@ -469,9 +468,9 @@ local function BuildFlatToyList(groupedData, collapsedHeaders, categoriesOverrid
                 itemCount = itemCount,
                 isCollapsed = isCollapsed,
                 yOffset = yOffset,
-                height = HEADER_HEIGHT,
+                height = COLLAPSE_HEADER_HEIGHT_COLL,
             }
-            yOffset = yOffset + HEADER_HEIGHT
+            yOffset = yOffset + COLLAPSE_HEADER_HEIGHT_COLL
             local nItems = #items
             for ji = 1, nItems do
                 rowCounter = rowCounter + 1
@@ -577,7 +576,7 @@ local function AnnotateFlatRowsByNearestHeader(flatList)
         local it = flatList[i]
         if it.type == "header" then
             headerKey = it.key
-            headerTop = (it.yOffset or 0) + (it.height or HEADER_HEIGHT)
+            headerTop = (it.yOffset or 0) + (it.height or COLLAPSE_HEADER_HEIGHT_COLL)
         elseif it.type == "row" and headerKey then
             it._collSectionKey = headerKey
             it._collRelY = (it.yOffset or 0) - (headerTop or 0)
@@ -1053,8 +1052,12 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
                 headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
                 hideOnCollapse = true,
                 applyToggleBeforeCollapseAnimate = true,
+                -- Expand: persist immediately. Collapse: defer until accordion completes — otherwise virtual
+                -- scroll drops hundreds of rows on first frame while height still tweens (looks instant / broken).
                 persistFn = function(exp)
-                    collapsedHeaders[key] = not exp
+                    if exp then
+                        collapsedHeaders[key] = false
+                    end
                 end,
                 updateVisibleFn = function()
                     CollectionVirtual_RefreshMountRowScrollIndex()
@@ -1062,9 +1065,10 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
                 end,
                 onComplete = function(exp)
                     if not exp then
-                        CollectionVirtual_RefreshMountRowScrollIndex()
-                        UpdateMountListVisibleRange()
+                        collapsedHeaders[key] = true
                     end
+                    CollectionVirtual_RefreshMountRowScrollIndex()
+                    UpdateMountListVisibleRange()
                 end,
             }))
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
@@ -1283,7 +1287,9 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
                 hideOnCollapse = true,
                 applyToggleBeforeCollapseAnimate = true,
                 persistFn = function(exp)
-                    collapsedHeaders[key] = not exp
+                    if exp then
+                        collapsedHeaders[key] = false
+                    end
                 end,
                 updateVisibleFn = function()
                     CollectionVirtual_RefreshPetRowScrollIndex()
@@ -1291,9 +1297,10 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
                 end,
                 onComplete = function(exp)
                     if not exp then
-                        CollectionVirtual_RefreshPetRowScrollIndex()
-                        UpdatePetListVisibleRange()
+                        collapsedHeaders[key] = true
                     end
+                    CollectionVirtual_RefreshPetRowScrollIndex()
+                    UpdatePetListVisibleRange()
                 end,
             }))
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
@@ -1511,7 +1518,9 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
                 hideOnCollapse = true,
                 applyToggleBeforeCollapseAnimate = true,
                 persistFn = function(exp)
-                    collapsedHeaders[key] = not exp
+                    if exp then
+                        collapsedHeaders[key] = false
+                    end
                 end,
                 updateVisibleFn = function()
                     CollectionVirtual_RefreshToyRowScrollIndex()
@@ -1519,9 +1528,10 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
                 end,
                 onComplete = function(exp)
                     if not exp then
-                        CollectionVirtual_RefreshToyRowScrollIndex()
-                        UpdateToyListVisibleRange()
+                        collapsedHeaders[key] = true
                     end
+                    CollectionVirtual_RefreshToyRowScrollIndex()
+                    UpdateToyListVisibleRange()
                 end,
             }))
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)

@@ -6003,11 +6003,11 @@ function ns.UI.Factory:AnimateAccordion(frame, fromH, toH, opts)
     local deltaH = math.abs((toH or 0) - (fromH or 0))
     local duration = opts.duration
     if duration == nil then
-        -- Keep accordion feel consistent across tiny and very large sections.
-        -- Large content gets slightly longer tween so expand doesn't look instant.
-        local pxPerSecond = 1200
-        local minDuration = 0.18
-        local maxDuration = 0.42
+        -- Pixel-distance easing: short sections stay snappy; tall bodies (many rows) get a higher duration cap
+        -- so the tween reads as motion instead of an instant jump (was capped at 0.42s regardless of height).
+        local pxPerSecond = 1100
+        local minDuration = 0.16
+        local maxDuration = math.min(1.45, 0.36 + (deltaH / 8200))
         duration = deltaH / pxPerSecond
         if duration < minDuration then
             duration = minDuration
