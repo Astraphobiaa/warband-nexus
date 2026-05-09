@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - French Localization (frFR)
     
     French translations for Warband Nexus addon.
@@ -77,6 +77,7 @@ L["COLLECTION_PLANS"] = "Liste de tâches"
 L["SEARCH_PLANS"] = "Rechercher des plans..."
 L["SHOW_COMPLETED"] = "Afficher terminés"
 L["SHOW_PLANNED"] = "Afficher planifiés"
+L["SHOW_PLANNED_DISABLED_HERE"] = "Non utilisé dans la liste des tâches ni dans la progression hebdomadaire. Ouvrez Montures, Mascottes, Jouets ou un autre onglet Parcourir pour utiliser ce filtre."
 L["CATEGORY_MY_PLANS"] = "Liste des tâches"
 L["CATEGORY_DAILY_TASKS"] = "Progression hebdomadaire"
 L["CATEGORY_ILLUSIONS"] = "Illusions"
@@ -1083,24 +1084,31 @@ L["COLLECTIONS_SUBTAB_RECENT"] = "Récent"
 L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "Hauts faits"
 L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "Parcourez et recherchez vos hauts faits."
 L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "Montures"
-L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "Collection de montures de la bande de guerre, sources et aper�u."
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "Collection de montures de la bande de guerre, sources et aperçu."
 L["COLLECTIONS_CONTENT_TITLE_PETS"] = "Mascottes"
 L["COLLECTIONS_CONTENT_SUB_PETS"] = "Mascottes de combat et compagnons de tout votre compte."
-L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Bo�te � jouets"
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Boîte à jouets"
 L["COLLECTIONS_CONTENT_SUB_TOYS"] = "Jouets et objets de collection utilisables."
-L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Obtenus r�cemment"
-L["COLLECTIONS_CONTENT_SUB_RECENT"] = "Derniers hauts faits, montures, mascottes et jouets enregistr�s sur votre compte."
-L["COLLECTIONS_RECENT_JUST_NOW"] = "� l'instant"
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Obtenus récemment"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "Derniers hauts faits, montures, mascottes et jouets enregistrés sur votre compte."
+L["COLLECTIONS_RECENT_JUST_NOW"] = "À l'instant"
 L["COLLECTIONS_RECENT_MINUTES_AGO"] = "il y a %d min"
 L["COLLECTIONS_RECENT_HOURS_AGO"] = "il y a %d h"
 L["COLLECTIONS_RECENT_DAYS_AGO"] = "il y a %d jours"
-L["COLLECTIONS_ACQUIRED_LABEL"] = "Enregistr�"
+L["COLLECTIONS_ACQUIRED_LABEL"] = "Enregistré"
 L["COLLECTIONS_ACQUIRED_LINE"] = "%s : %s"
-L["COLLECTIONS_RECENT_TAB_EMPTY"] = "Rien d'enregistr� pour le moment."
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "Rien d'enregistré pour le moment."
 L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
-L["COLLECTIONS_RECENT_EMPTY"] = "Rien d'enregistr� pour le moment."
-L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "Aucune entr�e correspondante."
-L["COLLECTIONS_RECENT_SECTION_NONE"] = "Aucune entr�e pour le moment."
+L["COLLECTIONS_RECENT_EMPTY"] = "Rien d'enregistré pour le moment."
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "Aucune entrée correspondante."
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "Aucune entrée pour le moment."
+L["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"] = "Effacer les entrées récentes pour cette catégorie"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CATEGORY"] = "Catégorie"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"] = "Progression"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"] = "Personnage"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"] = "Enregistré"
+L["COLLECTIONS_RECENT_ROW_BY"] = "Par %s"
+L["COLLECTIONS_RECENT_ACH_HIDE_ALT_EARNED"] = "Terminé sur le compte avant ce personnage."
 L["COLLECTIONS_SUBTITLE"] = "Aperçu des montures, mascottes, jouets et transmog"
 L["CONFIG_DEBUG_VERBOSE"] = "Debug détaillé (logs cache/scan/tooltip)"
 L["CONFIG_DEBUG_VERBOSE_DESC"] = "En mode Debug, afficher aussi les logs de cache devise/réputation, scan des sacs, tooltip et métiers. Désactiver pour réduire le spam du chat."
@@ -1479,6 +1487,36 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limit� par faction ou classe"
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
+
+Bundled highlights (prior patch notes through 2.7.2)
+
+Saved Instances & lockouts
+- Account-wide Saved Instances window: raid + dungeon lockouts, themed Factory scroll, collapse/expand, symmetric header columns, FontManager typography, clearer borders and resize behavior.
+- Backend: dungeon rows with difficulty pills; secret-safe raid detection; lockout freshness; collapse persistence; DataService staggered PvE capture aligned with PvECacheService.
+
+Try Counter & sources
+- ENCOUNTER_END-driven counting (next-frame schedule); clearer miss/stat paths; rare-farm off-by-one fix; encounter-specific dedup; per-corpse GUID dedup; NEW_MOUNT_ADDED / NEW_PET_ADDED backup; safer multi-event registration.
+- CollectibleSourceDB / locale rows for Sylvanas SoD Mythic chest attribution across clients.
+
+Gear, Vault & currencies
+- Quick-access menu (Vault Tracker, Saved Instances, Plans, Settings).
+- PvE Vault Status column + per-slot vault tooltips; live C_WeeklyRewards.HasAvailableRewards for ready state; alt weekly-reset promotion fixes; Status column width for localized labels.
+- Dawncrest crest farming tooltips; Shift-expand currency rows (`<bag> · <earned> / <cap>`); tier-colored upgrade tracks; subtitle hints; `/wn maxonly` (hide alts below level 80).
+- Gear paperdoll height/columns; recommendations scrollbar auto-hide; full currency names; Vault Tracker on FontManager; character order from Characters tab; enchant rank glyphs (R1–R3); Voidcore / coffer display fixes.
+
+Plans & Collections
+- Achievement Journal circular WN badge (add/remove To-Do), localized.
+- Plans Tracker mirrors To-Do: ParseMultipleSources rows, type badges, portrait-aligned info rows, tries/delete alignment, ExpandableRow layout fixes, full achievement body text without MaxLines caps.
+- Collections › Recent Obtains: full-height cards, auto-hiding scrollbars, tooltip detail (earned/obtained-by wording); 2.7.2 polish — title/subtitle, per-category reset, labeled tooltip sections, Plans metrics (`UI_PLANS_CARD_METRICS`), Weekly Progress accordion tween + scroll resync, Show Planned always visible (disabled on To-Do/Weekly with tooltip), themed checkbox accent fixes, tighter plan source icons.
+
+Locales
+- `SHOW_PLANNED_DISABLED_HERE` and `COLLECTIONS_RECENT_*` for all shipped languages; restored collections strings (koKR / ruRU / zhTW) and mojibake fixes (deDE / es / fr).
+
+Full merged notes: repository CHANGES.md / CHANGES.txt · listing on CurseForge / Wago.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
 
 Saved Instances — layout + readability pass

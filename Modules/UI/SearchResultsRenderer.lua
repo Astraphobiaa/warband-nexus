@@ -47,12 +47,12 @@ function SearchResultsRenderer:PrepareContainer(container)
         ReleaseAllPooledChildren(container)
     end
     
-    -- Clear remaining children EXCEPT emptyStateContainer
+    -- Clear remaining children EXCEPT emptyStateContainer / Plans achievement browse root (virtual list scroll host)
     local bin = ns.UI_RecycleBin
     local children = {container:GetChildren()}
     for i = 1, #children do
         local child = children[i]
-        if child ~= container.emptyStateContainer then
+        if child ~= container.emptyStateContainer and child ~= container.plansAchBrowseRoot then
             child:Hide()
             if bin then child:SetParent(bin) else child:SetParent(nil) end
         end

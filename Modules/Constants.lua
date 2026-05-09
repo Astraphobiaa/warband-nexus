@@ -43,9 +43,9 @@ local Constants = {
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "2.7.0",
+    ADDON_VERSION = "3.0.0",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-05-05",
+    ADDON_RELEASE_DATE = "2026-05-09",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
@@ -75,7 +75,7 @@ local Constants = {
     -- Increment PATCH version (third number) when cache schema changes
     
     -- All versions reset to 1.0.0 — Schema v4 full wipe gives every user a clean slate.
-    COLLECTION_CACHE_VERSION = "2.0.2",  -- Cache refresh (Midnight encounter/achievement incremental invalidation)
+    COLLECTION_CACHE_VERSION = "3.0.0",  -- API-only categorization: store sourceType (mount) & sourceTypeIndex (pet/toy); drop UnobtainableFilters keyword/blocklist
     REPUTATION_CACHE_VERSION = "1.5.0",  -- Reputation (parse-first architecture + non-destructive rescan safety)
     CURRENCY_CACHE_VERSION = "2.0.0",    -- Currency (lean SV + on-demand metadata cache)
     PVE_CACHE_VERSION = "1.0.0",         -- PvE (lean IDs/scores; metadata on-demand)

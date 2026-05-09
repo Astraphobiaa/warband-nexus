@@ -340,7 +340,7 @@ local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, min
     -- Inline markup matches PlanCardFactory:CreateSourceInfo (Loot / Quest / Location atlases).
     local function addRow(iconMarkup, labelKey, fallback, value, valueColor)
         if not value or value == "" then return end
-        local label = (L and L[labelKey]) or fallback
+        local label = ns.UI_NormalizeColonLabelSpacing((L and L[labelKey]) or fallback)
         local fs = FontManager:CreateFontString(parent, "small", "OVERLAY")
         fs:SetPoint("LEFT", parent, "LEFT", leftX, 0)
         fs:SetPoint("RIGHT", parent, "RIGHT", -rightInset, 0)
@@ -398,7 +398,7 @@ local function BuildPlanCriteriaItems(plan)
     local body = (PLAN_COLORS.body or "|cffffffff")
     local function row(iconMarkup, key, fallback, value)
         if not value or value == "" then return end
-        local label = (L and L[key]) or fallback
+        local label = ns.UI_NormalizeColonLabelSpacing((L and L[key]) or fallback)
         items[#items + 1] = { text = (iconMarkup or "") .. " " .. labCol .. label .. "|r " .. body .. tostring(value) .. "|r" }
     end
     local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
@@ -443,8 +443,8 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
     if plan.type == "achievement" and plan.achievementID then
         local ok, _, _, points = pcall(GetAchievementInfo, plan.achievementID)
         if ok and points and points > 0 then
-            local pointsLabel = (ns.L and ns.L["POINTS_LABEL"]) or "Points"
-            lines[#lines + 1] = { left = pointsLabel .. ":", right = tostring(points), leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.85, 0.45} }
+            local pointsLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["POINTS_LABEL"]) or "Points")
+            lines[#lines + 1] = { left = pointsLabel, right = tostring(points), leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.85, 0.45} }
         end
     end
 
@@ -467,7 +467,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
             if ri then rewardDisplay = ri.title or ri.itemName end
         end
         if rewardDisplay and rewardDisplay ~= "" then
-            local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
+            local rewardLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["REWARD_LABEL"]) or "Reward:")
             lines[#lines + 1] = { left = rewardLabel, right = rewardDisplay, leftColor = {0.53, 1, 0.53}, rightColor = {0, 1, 0} }
         end
     end
@@ -476,23 +476,23 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
     if plan.source and plan.source ~= "" then
         local src = plan.source
         if WarbandNexus.CleanSourceText then src = WarbandNexus:CleanSourceText(src) end
-        local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
+        local sourceLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:")
         lines[#lines + 1] = { left = sourceLabel, right = src, leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.82, 0} }
     end
 
     -- Zone / Vendor
     if plan.zone and plan.zone ~= "" then
-        local zoneLabel = (ns.L and ns.L["ZONE_LABEL"]) or "Zone:"
+        local zoneLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["ZONE_LABEL"]) or "Zone:")
         lines[#lines + 1] = { left = zoneLabel, right = plan.zone, leftColor = {0.6, 0.6, 0.6}, rightColor = {0.5, 0.8, 0.5} }
     end
     if plan.vendor and plan.vendor ~= "" then
-        local vendorLabel = (ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:"
+        local vendorLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:")
         lines[#lines + 1] = { left = vendorLabel, right = plan.vendor, leftColor = {0.6, 0.6, 0.6}, rightColor = {0.5, 0.8, 0.5} }
     end
 
     -- Requirement
     if plan.requirement and plan.requirement ~= "" then
-        local reqLabel = (ns.L and ns.L["REQUIREMENT_LABEL"]) or "Requirement:"
+        local reqLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENT_LABEL"]) or "Requirement:")
         lines[#lines + 1] = { left = reqLabel, right = plan.requirement, leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.5, 0.5} }
     end
 
@@ -693,9 +693,9 @@ local function RefreshTrackerContentImmediate()
                 end
                 local rowData = {
                     icon = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.icon or "Interface\\Icons\\Achievement_Quests_Completed_08",
-                    iconSize = 41,
+                    iconSize = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoIconSize) or 41,
                     typeAtlas = achAtlas,
-                    typeBadgeSize = 24,
+                    typeBadgeSize = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoTypeBadgeSize) or 24,
                     title = titleWithPoints,
                     information = infoText,
                     criteria = requirementsText,
@@ -703,7 +703,8 @@ local function RefreshTrackerContentImmediate()
                     titleRightInset = 70,  -- room for the Track button on the right
                     onAccordionResize = RepositionTrackerRows,
                 }
-                local achHeaderH = math.max(60, math.min(68, math.floor(width * 0.10)))
+                local achHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(width)
+                    or math.max(60, math.min(68, math.floor(width * 0.10)))
                 local row = CreateExpandableRow(scrollChild, width, achHeaderH, rowData, isExpanded, function(expanded)
                     -- Persist state only — the row's height is already final and siblings have
                     -- been kept in sync per-frame by RepositionTrackerRows. No full rebuild here.
@@ -1029,10 +1030,10 @@ local function RefreshTrackerContentImmediate()
 
                 local rowData = {
                     icon = iconTexture,
-                    iconSize = 41,
+                    iconSize = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoIconSize) or 41,
                     iconIsAtlas = iconIsAtlas,
                     typeAtlas = typeAtlas,
-                    typeBadgeSize = 24,
+                    typeBadgeSize = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoTypeBadgeSize) or 24,
                     title = FormatTextNumbers(resolvedName),
                     information = information,
                     criteriaData = BuildPlanCriteriaItems(plan),
@@ -1042,7 +1043,8 @@ local function RefreshTrackerContentImmediate()
                     onAccordionResize = RepositionTrackerRows,
                 }
 
-                local headerH = math.max(60, math.min(68, math.floor(width * 0.10)))
+                local headerH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(width)
+                    or math.max(60, math.min(68, math.floor(width * 0.10)))
                 local row = CreateExpandableRow(scrollChild, width, headerH, rowData, isExpanded, function(expanded)
                     expandedPlans[plan.id] = expanded
                 end)

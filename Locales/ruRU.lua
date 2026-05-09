@@ -56,6 +56,7 @@ L["COLLECTION_PLANS"] = "Список задач"
 L["SEARCH_PLANS"] = "Поиск планов..."
 L["SHOW_COMPLETED"] = "Показывать выполненные"
 L["SHOW_PLANNED"] = "Показывать запланированные"
+L["SHOW_PLANNED_DISABLED_HERE"] = "Не используется в списке дел и в недельном прогрессе. Откройте вкладку средств передвижения, питомцев, игрушек или другую вкладку обзора, чтобы применить этот фильтр."
 L["CATEGORY_MY_PLANS"] = "Список дел"
 L["CATEGORY_DAILY_TASKS"] = "Еженедельный прогресс"
 L["CATEGORY_ILLUSIONS"] = "Иллюзии"
@@ -1021,27 +1022,34 @@ L["ZONE_DROP"] = "Дроп в локации"
 L["ACHIEVEMENT_PROGRESS_TITLE"] = "Прогресс достижений"
 L["CMD_FIRSTCRAFT"] = "Список рецептов бонуса первой изготовки по дополнениям (сначала откройте окно профессии)"
 L["COLLECTIONS_SUBTAB_RECENT"] = "Недавние"
-L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "??????????"
-L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "???????? ? ????? ??????????."
-L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "???????? ????????????"
-L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "????????? ??????? ???????????? ??????, ????????? ? ????????????."
-L["COLLECTIONS_CONTENT_TITLE_PETS"] = "???????"
-L["COLLECTIONS_CONTENT_SUB_PETS"] = "?????? ??????? ? ???????? ????? ??????? ??????."
-L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "??????? ? ?????????"
-L["COLLECTIONS_CONTENT_SUB_TOYS"] = "??????? ? ???????????? ????????????? ????????."
-L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "??????? ??????????"
-L["COLLECTIONS_CONTENT_SUB_RECENT"] = "????????? ??????????, ???????? ????????????, ??????? ? ???????, ??????????????? ?? ????? ??????? ??????."
-L["COLLECTIONS_RECENT_JUST_NOW"] = "?????? ???"
-L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d ??? ?????"
-L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d ? ?????"
-L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d ?? ?????"
-L["COLLECTIONS_ACQUIRED_LABEL"] = "?????????????"
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "Достижения"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "Просмотр и поиск ваших достижений."
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "Средства передвижения"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "Коллекция средств передвижения отряда, источники и предпросмотр."
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "Питомцы"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "Боевые питомцы и спутники со всего вашего аккаунта."
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Игрушки"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "Игрушки и используемые коллекционные предметы."
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Недавно получено"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "Новейшие достижения, средства передвижения, питомцы и игрушки, записанные на вашем аккаунте."
+L["COLLECTIONS_RECENT_JUST_NOW"] = "Только что"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d мин. назад"
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d ч назад"
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d дн. назад"
+L["COLLECTIONS_ACQUIRED_LABEL"] = "Получено"
 L["COLLECTIONS_ACQUIRED_LINE"] = "%s: %s"
-L["COLLECTIONS_RECENT_TAB_EMPTY"] = "???? ?????? ?? ?????????????."
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "Пока ничего не записано."
 L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
-L["COLLECTIONS_RECENT_EMPTY"] = "???? ?????? ?? ?????????????."
-L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "??? ?????????? ???????."
-L["COLLECTIONS_RECENT_SECTION_NONE"] = "??????? ???? ???."
+L["COLLECTIONS_RECENT_EMPTY"] = "Пока ничего не записано."
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "Нет подходящих записей."
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "Записей пока нет."
+L["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"] = "Очистить недавние записи этой категории"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CATEGORY"] = "Категория"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"] = "Прогресс"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"] = "Персонаж"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"] = "Записано"
+L["COLLECTIONS_RECENT_ROW_BY"] = "Игрок: %s"
+L["COLLECTIONS_RECENT_ACH_HIDE_ALT_EARNED"] = "Завершено на аккаунте до этого персонажа."
 L["COLLECTIONS_SUBTITLE"] = "Обзор транспорта, питомцев, игрушек и трансмога"
 L["CONFIG_DEBUG_VERBOSE"] = "Подробный отладка (логи кэша/сканирования/подсказок)"
 L["CONFIG_DEBUG_VERBOSE_DESC"] = "В режиме отладки также показывать логи кэша валют/репутации, сканирования сумок, подсказок и профессий. Отключите, чтобы уменьшить спам в чате."
@@ -1420,6 +1428,36 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "?????????? ???????? ??? ???????
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
+
+Bundled highlights (prior patch notes through 2.7.2)
+
+Saved Instances & lockouts
+- Account-wide Saved Instances window: raid + dungeon lockouts, themed Factory scroll, collapse/expand, symmetric header columns, FontManager typography, clearer borders and resize behavior.
+- Backend: dungeon rows with difficulty pills; secret-safe raid detection; lockout freshness; collapse persistence; DataService staggered PvE capture aligned with PvECacheService.
+
+Try Counter & sources
+- ENCOUNTER_END-driven counting (next-frame schedule); clearer miss/stat paths; rare-farm off-by-one fix; encounter-specific dedup; per-corpse GUID dedup; NEW_MOUNT_ADDED / NEW_PET_ADDED backup; safer multi-event registration.
+- CollectibleSourceDB / locale rows for Sylvanas SoD Mythic chest attribution across clients.
+
+Gear, Vault & currencies
+- Quick-access menu (Vault Tracker, Saved Instances, Plans, Settings).
+- PvE Vault Status column + per-slot vault tooltips; live C_WeeklyRewards.HasAvailableRewards for ready state; alt weekly-reset promotion fixes; Status column width for localized labels.
+- Dawncrest crest farming tooltips; Shift-expand currency rows (`<bag> · <earned> / <cap>`); tier-colored upgrade tracks; subtitle hints; `/wn maxonly` (hide alts below level 80).
+- Gear paperdoll height/columns; recommendations scrollbar auto-hide; full currency names; Vault Tracker on FontManager; character order from Characters tab; enchant rank glyphs (R1–R3); Voidcore / coffer display fixes.
+
+Plans & Collections
+- Achievement Journal circular WN badge (add/remove To-Do), localized.
+- Plans Tracker mirrors To-Do: ParseMultipleSources rows, type badges, portrait-aligned info rows, tries/delete alignment, ExpandableRow layout fixes, full achievement body text without MaxLines caps.
+- Collections › Recent Obtains: full-height cards, auto-hiding scrollbars, tooltip detail (earned/obtained-by wording); 2.7.2 polish — title/subtitle, per-category reset, labeled tooltip sections, Plans metrics (`UI_PLANS_CARD_METRICS`), Weekly Progress accordion tween + scroll resync, Show Planned always visible (disabled on To-Do/Weekly with tooltip), themed checkbox accent fixes, tighter plan source icons.
+
+Locales
+- `SHOW_PLANNED_DISABLED_HERE` and `COLLECTIONS_RECENT_*` for all shipped languages; restored collections strings (koKR / ruRU / zhTW) and mojibake fixes (deDE / es / fr).
+
+Full merged notes: repository CHANGES.md / CHANGES.txt · listing on CurseForge / Wago.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
 
 Saved Instances — layout + readability pass

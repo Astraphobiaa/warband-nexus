@@ -263,6 +263,8 @@ local UI_SPACING = {
     CHAR_ROW_HEIGHT = 36,      -- Character row height (+20% from 30)
     HEADER_HEIGHT = 32,        -- Legacy row strip (Collections virtual rows); collapsible sections use SECTION_COLLAPSE_HEADER_HEIGHT
     SECTION_COLLAPSE_HEADER_HEIGHT = 36, -- CreateCollapsibleHeader (compact; was 44)
+    -- Section accordion height tween (CreateCollapsibleHeader + Factory:AnimateAccordion); optional per BuildAccordionVisualOpts
+    accordionSectionDuration = 0.16,
     
     -- Icon standardization
     HEADER_ICON_SIZE = 24,     -- Header icon size (reduced from 28 for better balance)
@@ -277,6 +279,8 @@ local UI_SPACING = {
     afterHeader = 75,
     betweenSections = 8,
     betweenRows = 0,
+    --- Plans ▸ Achievements expandable rows: vertical gap below each row (betweenRows is 0 for tight lists).
+    achievementRowGapBelow = 8,
     headerSpacing = 44,
     afterElement = 8,
     cardGap = 8,
@@ -307,6 +311,42 @@ ns.UI_LAYOUT = UI_SPACING  -- Alias for backward compatibility
 
 -- Keep old reference
 local UI_LAYOUT = UI_SPACING
+
+--============================================================================
+-- PLANS TAB (To-Do List expandable rows + Browse grid cards): single source of truth
+--============================================================================
+local PLANS_GRID_SPACING = UI_SPACING.CARD_GAP or 8
+
+--- @class PlansCardMetrics
+ns.UI_PLANS_CARD_METRICS = {
+    gridSpacing = PLANS_GRID_SPACING,
+    --- CreateExpandableRow rowData (main To-Do tab + tracker): keep in sync with PlansUI rowData
+    todoIconSize = 41,
+    todoTypeBadgeSize = 24,
+    todoExpandableMinHeight = 60,
+    todoExpandableHeightCap = 68,
+    --- Browse mounts/pets/etc. grid: same icon/badge feel as To-Do; fixed card height for two-column grid
+    browseCardHeight = 105,
+    browseIconTopInset = 10,
+    browseIconLeftInset = 10,
+    browseIconContainerSize = 45,
+}
+
+--- Half-width column for Plans 2-column grids (`width` = scroll content inner width, e.g. parent:GetWidth() - 20).
+function ns.UI_PlansCardGridColumnWidth(contentInnerWidth)
+    local w = contentInnerWidth or 400
+    local sp = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.gridSpacing) or PLANS_GRID_SPACING
+    return math.max(100, (w - sp) / 2)
+end
+
+--- Collapsed expandable header height (To-Do List + tracker rows); scales slightly with panel width.
+function ns.UI_PlansTodoExpandableHeaderHeight(panelWidth)
+    local m = ns.UI_PLANS_CARD_METRICS
+    local minH = m and m.todoExpandableMinHeight or 60
+    local cap = m and m.todoExpandableHeightCap or 68
+    local w = panelWidth or 400
+    return math.max(minH, math.min(cap, math.floor(w * 0.10)))
+end
 
 --============================================================================
 -- BUTTON SIZE CONSTANTS
@@ -1860,6 +1900,106 @@ ns.UI_ApplyCharacterRowClassGradientAccent = ApplyCharacterRowClassGradientAccen
 --- at collapse start (before the height tween). Virtual-scroll tabs need this so flatList yOffsets
 --- match layout while content moves; deferring until onComplete leaves culling stale mid-animation.
 --- Without animatedContent, the header just toggles its arrow and fires onToggle (legacy behavior).
+--- Build centralized accordion visual options used by all tabs.
+--- config:
+---  - bodyGetter/frame/animatedContent (required)
+---  - persistToggle/persistFn(exp)
+---  - wrapFrame + headerHeight (auto wrapper resize on tween)
+---  - onUpdate(drawH), onComplete(exp), refreshFn(exp)
+---  - updateVisibleFn() + scheduleVisibleUpdate (default true)
+---  - hideOnCollapse (default false), showOnExpand (default false)
+---  - applyToggleBeforeCollapseAnimate / deferOnToggleUntilComplete passthrough
+---  - accordionTweenDuration (number, optional): passed to Factory:AnimateAccordion as opts.duration
+---  - accordionClipChildren (default true): set false for nested section bodies so inner headers/rows
+---    are not clipped while the parent height tween runs (Plans achievements hierarchy).
+---  - accordionInstant (default false): skip height tween; apply target height + wrap once (heavy nested UIs).
+---  - hideBodyBeforeCollapseAnimate (default false): Hide section body before collapse height tween so nested
+---    content does not paint over sibling headers while wrap shrinks (Plans achievements).
+local function BuildAccordionVisualOpts(config)
+    if type(config) ~= "table" then return nil end
+
+    local bodyGetter = config.bodyGetter or config.animatedContent or config.frame
+    if type(bodyGetter) ~= "function" then
+        local bodyFrame = bodyGetter
+        bodyGetter = function() return bodyFrame end
+    end
+    if not bodyGetter then return nil end
+
+    local minBodyHeight = config.minBodyHeight or 0.1
+    local updateVisibleFn = config.updateVisibleFn
+    local scheduleVisibleUpdate = config.scheduleVisibleUpdate ~= false
+    local updateScheduled = false
+    local function NotifyVisibleUpdate()
+        if type(updateVisibleFn) ~= "function" then return end
+        if not scheduleVisibleUpdate then
+            updateVisibleFn()
+            return
+        end
+        if updateScheduled then return end
+        updateScheduled = true
+        C_Timer.After(0, function()
+            updateScheduled = false
+            if type(updateVisibleFn) == "function" then
+                updateVisibleFn()
+            end
+        end)
+    end
+
+    local persistFn = config.persistToggle or config.persistFn
+    local onUpdateExtra = config.onUpdate
+    local onCompleteExtra = config.onComplete
+    local refreshFn = config.refreshFn
+    local hideOnCollapse = config.hideOnCollapse == true
+    local showOnExpand = config.showOnExpand == true
+    local accordionClipChildren = config.accordionClipChildren
+    local accordionInstant = config.accordionInstant == true
+    local hideBodyBeforeCollapseAnimate = config.hideBodyBeforeCollapseAnimate == true
+
+    return {
+        animatedContent = bodyGetter,
+        persistToggle = function(exp)
+            if type(persistFn) == "function" then
+                persistFn(exp)
+            end
+        end,
+        applyToggleBeforeCollapseAnimate = config.applyToggleBeforeCollapseAnimate == true,
+        deferOnToggleUntilComplete = config.deferOnToggleUntilComplete == true,
+        accordionTweenDuration = config.accordionTweenDuration,
+        accordionClipChildren = accordionClipChildren,
+        accordionInstant = accordionInstant,
+        hideBodyBeforeCollapseAnimate = hideBodyBeforeCollapseAnimate,
+        minBodyHeight = minBodyHeight,
+        accordionOnUpdate = function(drawH)
+            if config.wrapFrame and config.headerHeight then
+                config.wrapFrame:SetHeight(config.headerHeight + math.max(minBodyHeight, drawH or 0))
+            end
+            if type(onUpdateExtra) == "function" then
+                onUpdateExtra(drawH)
+            end
+            NotifyVisibleUpdate()
+        end,
+        accordionComplete = function(exp)
+            local body = bodyGetter()
+            if body then
+                if exp and showOnExpand then
+                    body:Show()
+                    body:SetAlpha(1)
+                elseif not exp and hideOnCollapse then
+                    body:Hide()
+                    body:SetHeight(minBodyHeight)
+                end
+            end
+            if type(onCompleteExtra) == "function" then
+                onCompleteExtra(exp)
+            end
+            if type(refreshFn) == "function" then
+                refreshFn(exp)
+            end
+            NotifyVisibleUpdate()
+        end,
+    }
+end
+
 local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas, indentLevel, noCategoryIcon, visualOpts)
     visualOpts = (type(visualOpts) == "table") and visualOpts or nil
     -- Support for nested headers (indentLevel: 0 = root, 1 = child, etc.)
@@ -1977,6 +2117,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
 
         local animContent = visualOpts and visualOpts.animatedContent
         local deferToggleUntilComplete = visualOpts and visualOpts.deferOnToggleUntilComplete == true
+        local accTweenDur = visualOpts and visualOpts.accordionTweenDuration
         local accordionOnUpdate = visualOpts and visualOpts.accordionOnUpdate
         local accordionCompleteFn = visualOpts and visualOpts.accordionComplete
         local function callAccordionComplete(expandedState)
@@ -1986,17 +2127,59 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         end
         if type(animContent) == "function" then animContent = animContent() end
         if animContent and ns.UI.Factory and ns.UI.Factory.AnimateAccordion then
+            local instantAcc = visualOpts and visualOpts.accordionInstant == true
+            if instantAcc and ns.UI.Factory.CancelAccordion then
+                ns.UI.Factory:CancelAccordion(animContent)
+            end
             local fullH = animContent._wnAccordionFullH
             if not fullH or fullH <= 0 then
                 fullH = animContent:GetHeight()
                 if fullH and fullH > 0 then animContent._wnAccordionFullH = fullH end
             end
-            if not isExpanded then
+
+            -- Instant expand/collapse: no OnUpdate driver (avoids orphan driver frames + nested tween fights).
+            if instantAcc then
+                local toggleBeforeCollapse = visualOpts and visualOpts.applyToggleBeforeCollapseAnimate == true
+                if not isExpanded then
+                    if toggleBeforeCollapse then
+                        onToggle(isExpanded)
+                    end
+                    if visualOpts and visualOpts.hideBodyBeforeCollapseAnimate then
+                        animContent:Hide()
+                    end
+                    local drawEnd = (visualOpts and visualOpts.minBodyHeight) or 0.1
+                    animContent:SetHeight(drawEnd)
+                    if accordionOnUpdate then accordionOnUpdate(drawEnd) end
+                    if not toggleBeforeCollapse then
+                        onToggle(isExpanded)
+                    end
+                    callAccordionComplete(isExpanded)
+                else
+                    animContent:Show()
+                    animContent:SetAlpha(1)
+                    local target = animContent._wnAccordionFullH or math.max(0.1, animContent:GetHeight() or 0.1)
+                    target = math.max(0.1, target)
+                    if deferToggleUntilComplete then
+                        animContent:SetHeight(target)
+                        if accordionOnUpdate then accordionOnUpdate(target) end
+                        onToggle(isExpanded)
+                        callAccordionComplete(isExpanded)
+                    else
+                        onToggle(isExpanded)
+                        animContent:SetHeight(target)
+                        if accordionOnUpdate then accordionOnUpdate(target) end
+                        callAccordionComplete(isExpanded)
+                    end
+                end
+            elseif not isExpanded then
                 local toggleBeforeCollapse = visualOpts and visualOpts.applyToggleBeforeCollapseAnimate == true
                 if toggleBeforeCollapse then
                     onToggle(isExpanded)
                 end
-                ns.UI.Factory:AnimateAccordion(animContent, animContent:GetHeight() or fullH or 0, 0, {
+                if visualOpts and visualOpts.hideBodyBeforeCollapseAnimate then
+                    animContent:Hide()
+                end
+                local collapseTween = {
                     fadeAlpha = false,
                     onUpdate = accordionOnUpdate,
                     onComplete = function()
@@ -2005,31 +2188,54 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
                         end
                         callAccordionComplete(isExpanded)
                     end,
-                })
+                }
+                if type(accTweenDur) == "number" and accTweenDur > 0 then
+                    collapseTween.duration = accTweenDur
+                end
+                if visualOpts and visualOpts.accordionClipChildren == false then
+                    collapseTween.clipChildren = false
+                end
+                ns.UI.Factory:AnimateAccordion(animContent, animContent:GetHeight() or fullH or 0, 0, collapseTween)
             else
                 animContent:Show()
+                animContent:SetAlpha(1)
+                local startH = math.max(0.1, animContent:GetHeight() or 0.1)
                 local target = animContent._wnAccordionFullH or animContent:GetHeight() or 0
+                local function applyAccordionClipOpts(opts)
+                    if visualOpts and visualOpts.accordionClipChildren == false then
+                        opts.clipChildren = false
+                    end
+                end
                 if deferToggleUntilComplete then
-                    ns.UI.Factory:AnimateAccordion(animContent, 0, target, {
+                    local expandDeferOpts = {
                         fadeAlpha = false,
                         onUpdate = accordionOnUpdate,
                         onComplete = function()
                             onToggle(isExpanded)
                             callAccordionComplete(isExpanded)
                         end,
-                    })
+                    }
+                    applyAccordionClipOpts(expandDeferOpts)
+                    if type(accTweenDur) == "number" and accTweenDur > 0 then
+                        expandDeferOpts.duration = accTweenDur
+                    end
+                    ns.UI.Factory:AnimateAccordion(animContent, startH, target, expandDeferOpts)
                 else
                     onToggle(isExpanded)
                     local expandOpts = {
                         fadeAlpha = false,
                         onUpdate = accordionOnUpdate,
                     }
+                    applyAccordionClipOpts(expandOpts)
+                    if type(accTweenDur) == "number" and accTweenDur > 0 then
+                        expandOpts.duration = accTweenDur
+                    end
                     if accordionCompleteFn then
                         expandOpts.onComplete = function()
                             callAccordionComplete(isExpanded)
                         end
                     end
-                    ns.UI.Factory:AnimateAccordion(animContent, 0, target, expandOpts)
+                    ns.UI.Factory:AnimateAccordion(animContent, startH, target, expandOpts)
                 end
             end
         else
@@ -3318,14 +3524,19 @@ local TOGGLE_SIZE = 16
 local TOGGLE_DOT_SIZE = 6
 local TOGGLE_DOT_COLOR = {1, 0.82, 0, 1}  -- yellow/gold = active
 local TOGGLE_BG = {0.08, 0.08, 0.10, 1}
-local TOGGLE_BORDER = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}
-local TOGGLE_BORDER_HOVER = {COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 1}
 
+--- Border uses **current** COLORS.accent (not load-time snapshot — avoids default purple theme leaking).
 local function ApplyToggleVisuals(frame)
     frame:SetSize(TOGGLE_SIZE, TOGGLE_SIZE)
-    ApplyVisuals(frame, TOGGLE_BG, TOGGLE_BORDER)
+    local ac = COLORS and COLORS.accent or { 0.5, 0.5, 0.5 }
+    local borderCol = { ac[1], ac[2], ac[3], 0.8 }
+    ApplyVisuals(frame, TOGGLE_BG, borderCol)
+    -- ApplyVisuals heuristic can classify dark accents as "border"; toggles must always track accent refresh.
+    frame._borderType = "accent"
+    frame._borderAlpha = borderCol[4] or 0.8
 
-    local dot = frame:CreateTexture(nil, "ARTWORK")
+    local dot = frame:CreateTexture(nil, "OVERLAY")
+    dot:SetDrawLayer("OVERLAY", 7)
     dot:SetSize(TOGGLE_DOT_SIZE, TOGGLE_DOT_SIZE)
     dot:SetPoint("CENTER")
     dot:SetColorTexture(unpack(TOGGLE_DOT_COLOR))
@@ -3333,10 +3544,30 @@ local function ApplyToggleVisuals(frame)
     frame.innerDot = dot
     frame.checkTexture = dot  -- alias so .checkTexture API keeps working
 
-    frame.defaultBorderColor = {unpack(TOGGLE_BORDER)}
-    frame.hoverBorderColor   = {unpack(TOGGLE_BORDER_HOVER)}
+    frame.defaultBorderColor = { borderCol[1], borderCol[2], borderCol[3], borderCol[4] }
+    frame.hoverBorderColor = {
+        math.min(1, ac[1] * 1.15),
+        math.min(1, ac[2] * 1.15),
+        math.min(1, ac[3] * 1.15),
+        1,
+    }
 
     return dot
+end
+
+local function ThemedToggleBorderHover(frame, hover)
+    if not frame or not UpdateBorderColor then return end
+    local ac = COLORS and COLORS.accent or { 0.5, 0.5, 0.5 }
+    if hover then
+        UpdateBorderColor(frame, {
+            math.min(1, ac[1] * 1.15),
+            math.min(1, ac[2] * 1.15),
+            math.min(1, ac[3] * 1.15),
+            1,
+        })
+    else
+        UpdateBorderColor(frame, { ac[1], ac[2], ac[3], 0.8 })
+    end
 end
 
 --[[
@@ -3352,6 +3583,14 @@ local function CreateThemedCheckbox(parent, initialState)
     end
 
     local checkbox = CreateFrame("CheckButton", nil, parent)
+    -- Strip inherited CheckButton artwork (Midnight often paints default checked atlas → magenta/purple over custom dot).
+    pcall(function()
+        checkbox:SetNormalTexture("")
+        checkbox:SetPushedTexture("")
+        checkbox:SetHighlightTexture("")
+        checkbox:SetDisabledTexture("")
+        checkbox:SetCheckedTexture("")
+    end)
     local dot = ApplyToggleVisuals(checkbox)
 
     if initialState then
@@ -3367,11 +3606,11 @@ local function CreateThemedCheckbox(parent, initialState)
     end)
 
     checkbox:SetScript("OnEnter", function(self)
-        if UpdateBorderColor then UpdateBorderColor(self, self.hoverBorderColor) end
+        ThemedToggleBorderHover(self, true)
     end)
 
     checkbox:SetScript("OnLeave", function(self)
-        if UpdateBorderColor then UpdateBorderColor(self, self.defaultBorderColor) end
+        ThemedToggleBorderHover(self, false)
     end)
 
     checkbox:RegisterForClicks("LeftButtonUp")
@@ -3490,6 +3729,7 @@ ns.UI_CreateCard = CreateCard
 -- FormatGold, FormatNumber, FormatTextNumbers, FormatMoney
 -- are exported by FormatHelpers.lua (authoritative source, loads after SharedWidgets)
 ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
+ns.UI_BuildAccordionVisualOpts = BuildAccordionVisualOpts
 ns.UI_ChainSectionFrameBelow = ChainSectionFrameBelow
 ns.UI_ForwardMouseWheelToScrollAncestor = ForwardMouseWheelToScrollAncestor
 ns.UI_GetItemTypeName = GetItemTypeName
@@ -5013,21 +5253,48 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     scrollFrame.UpdateScrollBarVisibility = function(self)
         if not self.ScrollBar then return end
         local bar = self.ScrollBar
-        local barInExternalContainer = (bar.GetParent and bar:GetParent() ~= self)
-
-        if barInExternalContainer then
-            bar:Show()
-            if bar.ScrollUpBtn then bar.ScrollUpBtn:Show() end
-            if bar.ScrollDownBtn then bar.ScrollDownBtn:Show() end
-            return
-        end
-
         local scrollChild = self:GetScrollChild()
         if not scrollChild then return end
         local contentHeight = scrollChild:GetHeight() or 0
         local frameHeight = self:GetHeight() or 0
+        local needsScroll = contentHeight > frameHeight + 1
 
-        if contentHeight > frameHeight + 1 then
+        local barInExternalContainer = (bar.GetParent and bar:GetParent() ~= self)
+        local col = self._wnScrollBarColumn
+        local host = self._wnScrollHost
+        local tl = self._wnScrollAnchorTL
+        local brHidden = self._wnScrollAnchorBRHidden
+        local brShown = self._wnScrollAnchorBRShown
+
+        if col and host and tl and brHidden and brShown then
+            self:ClearAllPoints()
+            self:SetPoint(tl.a1 or "TOPLEFT", tl.frame, tl.a2 or "TOPLEFT", tl.x or 0, tl.y or 0)
+            if needsScroll then
+                col:Show()
+                self:SetPoint(brShown.a1 or "BOTTOMRIGHT", brShown.frame, brShown.a2 or "BOTTOMLEFT", brShown.x or -2, brShown.y or 0)
+            else
+                col:Hide()
+                self:SetPoint(brHidden.a1 or "BOTTOMRIGHT", brHidden.frame, brHidden.a2 or "BOTTOMRIGHT", brHidden.x or 0, brHidden.y or 0)
+                if self.SetVerticalScroll then
+                    self:SetVerticalScroll(0)
+                end
+            end
+        end
+
+        if barInExternalContainer then
+            if needsScroll then
+                bar:Show()
+                if bar.ScrollUpBtn then bar.ScrollUpBtn:Show() end
+                if bar.ScrollDownBtn then bar.ScrollDownBtn:Show() end
+            else
+                bar:Hide()
+                if bar.ScrollUpBtn then bar.ScrollUpBtn:Hide() end
+                if bar.ScrollDownBtn then bar.ScrollDownBtn:Hide() end
+            end
+            return
+        end
+
+        if needsScroll then
             bar:Show()
             if bar.ScrollUpBtn then bar.ScrollUpBtn:Show() end
             if bar.ScrollDownBtn then bar.ScrollDownBtn:Show() end
@@ -5720,7 +5987,21 @@ end
 function ns.UI.Factory:AnimateAccordion(frame, fromH, toH, opts)
     if not frame then return end
     opts = opts or {}
-    local duration = opts.duration or 0.22
+    local deltaH = math.abs((toH or 0) - (fromH or 0))
+    local duration = opts.duration
+    if duration == nil then
+        -- Keep accordion feel consistent across tiny and very large sections.
+        -- Large content gets slightly longer tween so expand doesn't look instant.
+        local pxPerSecond = 1200
+        local minDuration = 0.18
+        local maxDuration = 0.42
+        duration = deltaH / pxPerSecond
+        if duration < minDuration then
+            duration = minDuration
+        elseif duration > maxDuration then
+            duration = maxDuration
+        end
+    end
     local fadeAlpha = opts.fadeAlpha ~= false  -- default ON
     local clipChildren = opts.clipChildren ~= false  -- default ON
     local snapHeight = opts.snapHeight ~= false  -- default ON: reduces atlas/icon shimmer during motion
@@ -5749,7 +6030,12 @@ function ns.UI.Factory:AnimateAccordion(frame, fromH, toH, opts)
     if fadeAlpha then frame:SetAlpha(toH > fromH and 0 or 1) end
 
     local startTime = GetTime()
-    local driver = CreateFrame("Frame")
+    -- Parent to the tweened frame so we never create a top-level frame that can cover the UI and eat clicks.
+    local driver = CreateFrame("Frame", nil, frame)
+    driver:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    driver:SetSize(1, 1)
+    driver:EnableMouse(false)
+    driver:EnableKeyboard(false)
     frame._wnAccordionDriver = driver
     driver:SetScript("OnUpdate", function(self)
         local t = (GetTime() - startTime) / duration
@@ -6064,7 +6350,8 @@ local COLLECTION_ROW_ICON_NOT_READY = "Interface\\RaidFrame\\ReadyCheck-NotReady
 ---@param isSelected boolean - Show selection highlight
 ---@param onClick function|nil - OnMouseDown script
 ---@param rightAlignedText string|nil Optional right column (e.g. relative time); main label stops before it.
-function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick, rightAlignedText)
+---@param subtitleText string|nil Optional second line (small) under title; row height should be set by caller.
+function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick, rightAlignedText, subtitleText)
     if not row then return end
     local pad = UI_SPACING.SIDE_MARGIN or 10
     local gap = 4
@@ -6078,17 +6365,40 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
         row.icon:SetTexture(iconTex)
         row.icon:Show()
     end
+    local hasSub = subtitleText and subtitleText ~= ""
     if row.label then
         row.label:ClearAllPoints()
-        row.label:SetPoint("LEFT", row.icon, "RIGHT", gap, 0)
+        if hasSub then
+            row.label:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", gap, 2)
+        else
+            row.label:SetPoint("LEFT", row.icon, "RIGHT", gap, 0)
+        end
         row.label:SetJustifyH("LEFT")
         row.label:SetWordWrap(false)
+    end
+    if hasSub then
+        if not row.subtitle then
+            row.subtitle = FontManager:CreateFontString(row, UIFontRole("small"), "OVERLAY")
+            row.subtitle:SetJustifyH("LEFT")
+            row.subtitle:SetWordWrap(false)
+            row.subtitle:SetTextColor(0.65, 0.68, 0.74, 1)
+        end
+        row.subtitle:ClearAllPoints()
+        row.subtitle:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -3)
+        row.subtitle:SetText(subtitleText)
+        row.subtitle:Show()
+    elseif row.subtitle then
+        row.subtitle:SetText("")
+        row.subtitle:Hide()
     end
     if row.rightLabel and rightAlignedText and rightAlignedText ~= "" then
         row.rightLabel:SetText(rightAlignedText)
         row.rightLabel:Show()
         if row.label then
             row.label:SetPoint("RIGHT", row.rightLabel, "LEFT", -6, 0)
+        end
+        if hasSub and row.subtitle then
+            row.subtitle:SetPoint("RIGHT", row.rightLabel, "LEFT", -6, 0)
         end
     else
         if row.rightLabel then
@@ -6097,6 +6407,9 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
         end
         if row.label then
             row.label:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
+        end
+        if hasSub and row.subtitle then
+            row.subtitle:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
         end
     end
     if row.label then row.label:SetText(labelText or "") end

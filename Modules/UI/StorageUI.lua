@@ -35,6 +35,7 @@ local DebugPrint = ns.DebugPrint
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
 local GetItemTypeName = ns.UI_GetItemTypeName
 local GetItemClassID = ns.UI_GetItemClassID
 local GetTypeIcon = ns.UI_GetTypeIcon
@@ -453,15 +454,17 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     --- Major section (Personal / Warband / Guild / character): wrapped header + body height tween.
     --- Optional `stackReflowCtx`: { stackParent, outerWrap, outerHeaderH } for nested stacks (Personal → characters).
     local function MajorStorageAccordionOpts(wrapFrame, bodyGetter, headerH, persistFn, stackReflowCtx)
-        return {
-            animatedContent = bodyGetter,
-            persistToggle = function(exp)
+        return BuildAccordionVisualOpts({
+            wrapFrame = wrapFrame,
+            bodyGetter = bodyGetter,
+            headerHeight = headerH,
+            hideOnCollapse = true,
+            persistFn = function(exp)
                 if type(exp) == "boolean" and persistFn then
                     persistFn(exp)
                 end
             end,
-            accordionOnUpdate = function(drawH)
-                wrapFrame:SetHeight(headerH + math.max(0.1, drawH or 0))
+            onUpdate = function(_drawH)
                 if stackReflowCtx and stackReflowCtx.stackParent then
                     ReflowStorageStackParentBody(
                         stackReflowCtx.stackParent,
@@ -471,7 +474,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 end
                 WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
             end,
-            accordionComplete = function(exp)
+            onComplete = function(exp)
                 if not exp then
                     local b = bodyGetter()
                     if b then
@@ -481,26 +484,28 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 end
                 WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
             end,
-        }
+        })
     end
 
     --- Leaf type rows live under `rowsContainer`; tween that frame (Characters-parity) without full tab redraw.
     --- Optional `ancestorReflowCtx`: reflow char/warband/guild section + Personal outer after height changes.
     local function LeafTypeAccordionVisualOpts(wrapFrame, rowsGetter, leafKey, ancestorReflowCtx)
-        return {
-            animatedContent = rowsGetter,
-            persistToggle = function(exp)
+        return BuildAccordionVisualOpts({
+            wrapFrame = wrapFrame,
+            bodyGetter = rowsGetter,
+            headerHeight = TYPE_SECTION_HEADER_H,
+            hideOnCollapse = true,
+            persistFn = function(exp)
                 if type(exp) == "boolean" then
                     expanded.categories[leafKey] = exp
                 end
             end,
-            accordionOnUpdate = function(drawH)
-                wrapFrame:SetHeight(TYPE_SECTION_HEADER_H + math.max(0.1, drawH or 0))
+            onUpdate = function(_drawH)
                 if ancestorReflowCtx then
                     ApplyStorageLeafAncestorReflow(ancestorReflowCtx)
                 end
             end,
-            accordionComplete = function(exp)
+            onComplete = function(exp)
                 if not exp then
                     local rc = rowsGetter()
                     if rc then
@@ -514,7 +519,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
                 end
             end,
-        }
+        })
     end
 
     local function PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)

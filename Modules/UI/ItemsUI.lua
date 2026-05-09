@@ -34,6 +34,7 @@ local COLORS = ns.UI_COLORS
 local GetQualityHex = ns.UI_GetQualityHex
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
 local GetTypeIcon = ns.UI_GetTypeIcon
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
@@ -47,6 +48,7 @@ local CreateResultsContainer = ns.UI_CreateResultsContainer
 local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local FormatNumber = ns.UI_FormatNumber
+local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
 
 -- Import shared UI layout constants
 local function GetLayout() return ns.UI_LAYOUT or {} end
@@ -911,12 +913,12 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 if not ShowTooltip then return end
                 local additionalLines = {}
                 if item.stackCount and item.stackCount > 1 then
-                    table.insert(additionalLines, {text = ((ns.L and ns.L["STACK_LABEL"]) or "Stack: ") .. FormatNumber(item.stackCount), color = {1, 1, 1}})
+                    table.insert(additionalLines, {text = NormalizeColonLabelSpacing((ns.L and ns.L["STACK_LABEL"]) or "Stack:") .. FormatNumber(item.stackCount), color = {1, 1, 1}})
                 end
                 if item.location then
-                    table.insert(additionalLines, {text = ((ns.L and ns.L["LOCATION_LABEL"]) or "Location: ") .. item.location, color = {0.7, 0.7, 0.7}})
+                    table.insert(additionalLines, {text = NormalizeColonLabelSpacing((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. item.location, color = {0.7, 0.7, 0.7}})
                 end
-                table.insert(additionalLines, {text = ((ns.L and ns.L["ITEM_ID_LABEL"]) or "Item ID: ") .. tostring(item.itemID or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")), color = {0.4, 0.8, 1}})
+                table.insert(additionalLines, {text = NormalizeColonLabelSpacing((ns.L and ns.L["ITEM_ID_LABEL"]) or "Item ID:") .. tostring(item.itemID or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")), color = {0.4, 0.8, 1}})
                 table.insert(additionalLines, {type = "spacer"})
                 if WarbandNexus.bankIsOpen then
                     table.insert(additionalLines, {text = "|cff00ff00Right-Click|r " .. ((ns.L and ns.L["RIGHT_CLICK_MOVE"]) or "Move to bag"), color = {1, 1, 1}})
@@ -973,28 +975,23 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     false,
                     nil,
                     nil,
-                    {
-                        persistToggle = function(exp)
+                    BuildAccordionVisualOpts({
+                        wrapFrame = groupWrap,
+                        bodyGetter = function() return groupShell end,
+                        headerHeight = headerStripH,
+                        hideOnCollapse = true,
+                        showOnExpand = true,
+                        -- Collapse: refresh flatList before height tween so VirtualListModule culling matches
+                        -- layout while rows shift (expand already calls onToggle before tween).
+                        applyToggleBeforeCollapseAnimate = true,
+                        persistFn = function(exp)
                             if type(exp) == "boolean" then
                                 expandedGroups[gKey] = exp
                             end
                         end,
-                        -- Collapse: refresh flatList before height tween so VirtualListModule culling matches
-                        -- layout while rows shift (expand already calls onToggle before tween).
-                        applyToggleBeforeCollapseAnimate = true,
-                        animatedContent = function() return groupShell end,
-                        accordionOnUpdate = function(drawH)
-                            groupWrap:SetHeight(headerStripH + math.max(0.1, drawH or 0))
-                        end,
-                        accordionComplete = function(exp)
-                            if groupShell then
-                                if not exp then
-                                    groupShell:Hide()
-                                    groupShell:SetHeight(0.1)
-                                    groupWrap:SetHeight(headerStripH + 0.1)
-                                else
-                                    groupShell:Show()
-                                end
+                        onComplete = function(exp)
+                            if groupShell and not exp then
+                                groupWrap:SetHeight(headerStripH + 0.1)
                             end
                             local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
                             if mf and mf.scroll and Factory and Factory.UpdateScrollBarVisibility then
@@ -1009,7 +1006,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                                 end
                             end
                         end,
-                    }
+                    })
                 )
                 headerBtn:SetPoint("TOPLEFT", groupWrap, "TOPLEFT", 0, 0)
                 headerBtn:SetWidth(math.max(1, width))

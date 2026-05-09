@@ -83,6 +83,7 @@ L["COLLECTION_PLANS"] = "Aufgabenliste"
 L["SEARCH_PLANS"] = "Pläne suchen..."
 L["SHOW_COMPLETED"] = "Abgeschlossene anzeigen"
 L["SHOW_PLANNED"] = "Geplante anzeigen"
+L["SHOW_PLANNED_DISABLED_HERE"] = "Wird in der To-Do-Liste und beim wöchentlichen Fortschritt nicht verwendet. Öffne Reittiere, Begleiter, Spielzeug oder eine andere Durchsuchen-Registerkarte, um diesen Filter zu nutzen."
 
 -- Plans Categories (Blizzard Globals where available)
 L["ACHIEVEMENT_SERIES"] = "Achievement-Serie"
@@ -1167,7 +1168,7 @@ L["COLLECTIONS_CONTENT_TITLE_PETS"] = "Begleiter"
 L["COLLECTIONS_CONTENT_SUB_PETS"] = "Kampfhaustiere und Begleiter deines gesamten Kontos."
 L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Spielzeugkiste"
 L["COLLECTIONS_CONTENT_SUB_TOYS"] = "Spielzeuge und nutzbare Sammelobjekte."
-L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "K�rzlich erhalten"
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Kürzlich erhalten"
 L["COLLECTIONS_CONTENT_SUB_RECENT"] = "Neueste Erfolge, Reittiere, Begleiter und Spielzeuge deines Kontos."
 L["COLLECTIONS_RECENT_JUST_NOW"] = "Gerade eben"
 L["COLLECTIONS_RECENT_MINUTES_AGO"] = "vor %d Min."
@@ -1178,8 +1179,15 @@ L["COLLECTIONS_ACQUIRED_LINE"] = "%s: %s"
 L["COLLECTIONS_RECENT_TAB_EMPTY"] = "Noch nichts aufgezeichnet."
 L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
 L["COLLECTIONS_RECENT_EMPTY"] = "Noch nichts aufgezeichnet."
-L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "Keine passenden Eintr�ge."
-L["COLLECTIONS_RECENT_SECTION_NONE"] = "Noch keine Eintr�ge."
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "Keine passenden Einträge."
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "Noch keine Einträge."
+L["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"] = "Letzte Einträge dieser Kategorie löschen"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CATEGORY"] = "Kategorie"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"] = "Fortschritt"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"] = "Charakter"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"] = "Erfasst"
+L["COLLECTIONS_RECENT_ROW_BY"] = "Von %s"
+L["COLLECTIONS_RECENT_ACH_HIDE_ALT_EARNED"] = "Auf dem Konto abgeschlossen, bevor dieser Charakter."
 L["CONFIG_DEBUG_VERBOSE"] = "Debug ausführlich (Cache-/Scan-/Tooltip-Logs)"
 L["CONFIG_DEBUG_VERBOSE_DESC"] = "Bei aktiviertem Debug-Modus auch Währungs-/Ruf-Cache-, Taschen-Scan-, Tooltip- und Berufs-Logs anzeigen. Aus lassen, um Chat-Spam zu reduzieren."
 L["CRITERIA_PROGRESS_CRITERION"] = "Kriterien"
@@ -1555,6 +1563,36 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Fraktions- oder klassenbeschr�
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
+
+Bundled highlights (prior patch notes through 2.7.2)
+
+Saved Instances & lockouts
+- Account-wide Saved Instances window: raid + dungeon lockouts, themed Factory scroll, collapse/expand, symmetric header columns, FontManager typography, clearer borders and resize behavior.
+- Backend: dungeon rows with difficulty pills; secret-safe raid detection; lockout freshness; collapse persistence; DataService staggered PvE capture aligned with PvECacheService.
+
+Try Counter & sources
+- ENCOUNTER_END-driven counting (next-frame schedule); clearer miss/stat paths; rare-farm off-by-one fix; encounter-specific dedup; per-corpse GUID dedup; NEW_MOUNT_ADDED / NEW_PET_ADDED backup; safer multi-event registration.
+- CollectibleSourceDB / locale rows for Sylvanas SoD Mythic chest attribution across clients.
+
+Gear, Vault & currencies
+- Quick-access menu (Vault Tracker, Saved Instances, Plans, Settings).
+- PvE Vault Status column + per-slot vault tooltips; live C_WeeklyRewards.HasAvailableRewards for ready state; alt weekly-reset promotion fixes; Status column width for localized labels.
+- Dawncrest crest farming tooltips; Shift-expand currency rows (`<bag> · <earned> / <cap>`); tier-colored upgrade tracks; subtitle hints; `/wn maxonly` (hide alts below level 80).
+- Gear paperdoll height/columns; recommendations scrollbar auto-hide; full currency names; Vault Tracker on FontManager; character order from Characters tab; enchant rank glyphs (R1–R3); Voidcore / coffer display fixes.
+
+Plans & Collections
+- Achievement Journal circular WN badge (add/remove To-Do), localized.
+- Plans Tracker mirrors To-Do: ParseMultipleSources rows, type badges, portrait-aligned info rows, tries/delete alignment, ExpandableRow layout fixes, full achievement body text without MaxLines caps.
+- Collections › Recent Obtains: full-height cards, auto-hiding scrollbars, tooltip detail (earned/obtained-by wording); 2.7.2 polish — title/subtitle, per-category reset, labeled tooltip sections, Plans metrics (`UI_PLANS_CARD_METRICS`), Weekly Progress accordion tween + scroll resync, Show Planned always visible (disabled on To-Do/Weekly with tooltip), themed checkbox accent fixes, tighter plan source icons.
+
+Locales
+- `SHOW_PLANNED_DISABLED_HERE` and `COLLECTIONS_RECENT_*` for all shipped languages; restored collections strings (koKR / ruRU / zhTW) and mojibake fixes (deDE / es / fr).
+
+Full merged notes: repository CHANGES.md / CHANGES.txt · listing on CurseForge / Wago.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
 
 Saved Instances — layout + readability pass

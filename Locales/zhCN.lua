@@ -76,6 +76,7 @@ L["SEARCH_PLANS"] = "搜索计划..."
 L["SHOW_COMPLETED"] = "显示已完成"
 L["SHOW_COMPLETED_HELP"] = "待办与周进度：未勾选=仍进行中的计划；勾选=仅已完成的计划。浏览标签：未勾选=未收藏（开启“显示已计划”时仅限列表内）；勾选=列表上已收藏的条目（“显示已计划”仍会限制列表）。"
 L["SHOW_PLANNED"] = "显示计划中"
+L["SHOW_PLANNED_DISABLED_HERE"] = "在待办清单和周进度中不使用。请打开坐骑、宠物、玩具或其他浏览标签以使用此筛选。"
 L["SHOW_PLANNED_HELP"] = "仅浏览标签（在待办与周进度中隐藏）：勾选=仅显示你加入待办的目标。“显示已完成”关=仍缺的；开=已完成的；两项都开=该分类全部已计划；两项都关=完整未收藏浏览。"
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "没有可显示的成就"
 L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "从此列表将成就加入待办，或更改“显示已计划/显示已完成”。列表随扫描填充；若为空可尝试 /reload。"
@@ -1040,6 +1041,13 @@ L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
 L["COLLECTIONS_RECENT_EMPTY"] = "未记录任何内容"
 L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "没有匹配的信息"
 L["COLLECTIONS_RECENT_SECTION_NONE"] = "暂无信息"
+L["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"] = "清除此类别的最近记录"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CATEGORY"] = "类别"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"] = "进度"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"] = "角色"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"] = "记录时间"
+L["COLLECTIONS_RECENT_ROW_BY"] = "来自 %s"
+L["COLLECTIONS_RECENT_ACH_HIDE_ALT_EARNED"] = "在此角色之前已在账号上完成。"
 L["SELECT_MOUNT_FROM_LIST"] = "从列表选择坐骑"
 L["SELECT_PET_FROM_LIST"] = "从列表选择宠物"
 L["SELECT_TO_SEE_DETAILS"] = "选择 %s 以查看详情。"
@@ -1637,6 +1645,36 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "阵营和职业限制"
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
+
+Bundled highlights (prior patch notes through 2.7.2)
+
+Saved Instances & lockouts
+- Account-wide Saved Instances window: raid + dungeon lockouts, themed Factory scroll, collapse/expand, symmetric header columns, FontManager typography, clearer borders and resize behavior.
+- Backend: dungeon rows with difficulty pills; secret-safe raid detection; lockout freshness; collapse persistence; DataService staggered PvE capture aligned with PvECacheService.
+
+Try Counter & sources
+- ENCOUNTER_END-driven counting (next-frame schedule); clearer miss/stat paths; rare-farm off-by-one fix; encounter-specific dedup; per-corpse GUID dedup; NEW_MOUNT_ADDED / NEW_PET_ADDED backup; safer multi-event registration.
+- CollectibleSourceDB / locale rows for Sylvanas SoD Mythic chest attribution across clients.
+
+Gear, Vault & currencies
+- Quick-access menu (Vault Tracker, Saved Instances, Plans, Settings).
+- PvE Vault Status column + per-slot vault tooltips; live C_WeeklyRewards.HasAvailableRewards for ready state; alt weekly-reset promotion fixes; Status column width for localized labels.
+- Dawncrest crest farming tooltips; Shift-expand currency rows (`<bag> · <earned> / <cap>`); tier-colored upgrade tracks; subtitle hints; `/wn maxonly` (hide alts below level 80).
+- Gear paperdoll height/columns; recommendations scrollbar auto-hide; full currency names; Vault Tracker on FontManager; character order from Characters tab; enchant rank glyphs (R1–R3); Voidcore / coffer display fixes.
+
+Plans & Collections
+- Achievement Journal circular WN badge (add/remove To-Do), localized.
+- Plans Tracker mirrors To-Do: ParseMultipleSources rows, type badges, portrait-aligned info rows, tries/delete alignment, ExpandableRow layout fixes, full achievement body text without MaxLines caps.
+- Collections › Recent Obtains: full-height cards, auto-hiding scrollbars, tooltip detail (earned/obtained-by wording); 2.7.2 polish — title/subtitle, per-category reset, labeled tooltip sections, Plans metrics (`UI_PLANS_CARD_METRICS`), Weekly Progress accordion tween + scroll resync, Show Planned always visible (disabled on To-Do/Weekly with tooltip), themed checkbox accent fixes, tighter plan source icons.
+
+Locales
+- `SHOW_PLANNED_DISABLED_HERE` and `COLLECTIONS_RECENT_*` for all shipped languages; restored collections strings (koKR / ruRU / zhTW) and mojibake fixes (deDE / es / fr).
+
+Full merged notes: repository CHANGES.md / CHANGES.txt · listing on CurseForge / Wago.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
 
 Saved Instances — layout + readability pass

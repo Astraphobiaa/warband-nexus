@@ -1527,13 +1527,39 @@ function TooltipService:RegisterSafetyEvents()
         end
     end
 
+    local function IsWarbandNexusOwner(owner)
+        if not owner then return false end
+        local mainFrame = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        local cur = owner
+        for _ = 1, 20 do
+            if not cur then break end
+            if cur == mainFrame then return true end
+            if type(cur.GetParent) == "function" then
+                cur = cur:GetParent()
+            else
+                break
+            end
+        end
+        local n = (type(owner.GetName) == "function") and owner:GetName() or nil
+        if n and n:find("WarbandNexus", 1, true) then
+            return true
+        end
+        return false
+    end
+
+    local ownerAdjustQueued = setmetatable({}, { __mode = "k" })
+
     if not self._gameTooltipOwnerHooked and hooksecurefunc and GameTooltip then
         self._gameTooltipOwnerHooked = true
         hooksecurefunc(GameTooltip, "SetOwner", function(tooltip, owner, anchor)
             if tooltip ~= GameTooltip then return end
             if not owner then return end
             if anchor == "ANCHOR_CURSOR" then return end
+            if not IsWarbandNexusOwner(owner) then return end
+            if ownerAdjustQueued[owner] then return end
+            ownerAdjustQueued[owner] = true
             SafeDefer(function()
+                ownerAdjustQueued[owner] = nil
                 if not GameTooltip or not GameTooltip:IsShown() then return end
                 if GameTooltip.GetOwner and GameTooltip:GetOwner() ~= owner then return end
                 if type(owner.GetLeft) ~= "function" or type(owner.GetRight) ~= "function" then return end

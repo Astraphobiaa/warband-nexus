@@ -56,6 +56,7 @@ L["COLLECTION_PLANS"] = "할 일 목록"
 L["SEARCH_PLANS"] = "계획 검색..."
 L["SHOW_COMPLETED"] = "완료 표시"
 L["SHOW_PLANNED"] = "계획 표시"
+L["SHOW_PLANNED_DISABLED_HERE"] = "할 일 목록이나 주간 진행에서는 사용되지 않습니다. 탈것, 소환수, 장난감 또는 다른 탐색 탭에서 이 필터를 사용하세요."
 L["CATEGORY_MY_PLANS"] = "할 일 목록"
 L["CATEGORY_DAILY_TASKS"] = "주간 진행"
 L["CATEGORY_ILLUSIONS"] = "환영"
@@ -1020,27 +1021,34 @@ L["ZONE_DROP"] = "지역 드롭"
 L["ACHIEVEMENT_PROGRESS_TITLE"] = "업적 진행"
 L["CMD_FIRSTCRAFT"] = "확장판별 첫 제작 보너스 제작법 목록 (먼저 전문 기술 열기)"
 L["COLLECTIONS_SUBTAB_RECENT"] = "최근"
-L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "??"
-L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "??? ???? ?????."
-L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "??"
-L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "??? ?? ??, ?? ? ????."
-L["COLLECTIONS_CONTENT_TITLE_PETS"] = "????"
-L["COLLECTIONS_CONTENT_SUB_PETS"] = "?? ??? ?? ????? ??."
-L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "??? ??"
-L["COLLECTIONS_CONTENT_SUB_TOYS"] = "???? ?? ??? ???."
-L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "?? ??"
-L["COLLECTIONS_CONTENT_SUB_RECENT"] = "??? ??? ?? ??, ??, ???? ? ???."
-L["COLLECTIONS_RECENT_JUST_NOW"] = "?? ?"
-L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d? ?"
-L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d?? ?"
-L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d? ?"
-L["COLLECTIONS_ACQUIRED_LABEL"] = "???"
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "업적"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "업적을 검색하고 둘러봅니다."
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "탈것"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "전쟁군단 탈것 컬렉션, 출처 및 미리보기."
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "소환수"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "계정 전체의 전투 펫과 동반자."
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "장난감"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "장난감과 사용 가능한 수집품."
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "최근 획득"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "계정에 기록된 최신 업적, 탈것, 소환수 및 장난감."
+L["COLLECTIONS_RECENT_JUST_NOW"] = "방금"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d분 전"
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d시간 전"
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d일 전"
+L["COLLECTIONS_ACQUIRED_LABEL"] = "획득"
 L["COLLECTIONS_ACQUIRED_LINE"] = "%s: %s"
-L["COLLECTIONS_RECENT_TAB_EMPTY"] = "?? ??? ??? ????."
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "아직 기록된 항목이 없습니다."
 L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
-L["COLLECTIONS_RECENT_EMPTY"] = "?? ??? ??? ????."
-L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "???? ??? ????."
-L["COLLECTIONS_RECENT_SECTION_NONE"] = "?? ??? ????."
+L["COLLECTIONS_RECENT_EMPTY"] = "아직 기록된 항목이 없습니다."
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "일치하는 항목이 없습니다."
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "아직 항목이 없습니다."
+L["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"] = "이 분류의 최근 기록 지우기"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CATEGORY"] = "분류"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"] = "진행도"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"] = "캐릭터"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"] = "기록 시각"
+L["COLLECTIONS_RECENT_ROW_BY"] = "획득: %s"
+L["COLLECTIONS_RECENT_ACH_HIDE_ALT_EARNED"] = "이 캐릭터보다 먼저 계정에서 완료됨."
 L["COLLECTIONS_SUBTITLE"] = "탈것, 소환수, 장난감 및 형상변환 요약"
 L["CONFIG_DEBUG_VERBOSE"] = "상세 디버그(캐시/스캔/툴팁 로그)"
 L["CONFIG_DEBUG_VERBOSE_DESC"] = "디버그 모드에서 통화/평판 캐시, 가방 스캔, 툴팁 및 전문 기술 로그도 표시합니다. 채팅 스팸을 줄이려면 끄세요."
@@ -1419,6 +1427,36 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "?? ?? ?? ??"
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
+
+Bundled highlights (prior patch notes through 2.7.2)
+
+Saved Instances & lockouts
+- Account-wide Saved Instances window: raid + dungeon lockouts, themed Factory scroll, collapse/expand, symmetric header columns, FontManager typography, clearer borders and resize behavior.
+- Backend: dungeon rows with difficulty pills; secret-safe raid detection; lockout freshness; collapse persistence; DataService staggered PvE capture aligned with PvECacheService.
+
+Try Counter & sources
+- ENCOUNTER_END-driven counting (next-frame schedule); clearer miss/stat paths; rare-farm off-by-one fix; encounter-specific dedup; per-corpse GUID dedup; NEW_MOUNT_ADDED / NEW_PET_ADDED backup; safer multi-event registration.
+- CollectibleSourceDB / locale rows for Sylvanas SoD Mythic chest attribution across clients.
+
+Gear, Vault & currencies
+- Quick-access menu (Vault Tracker, Saved Instances, Plans, Settings).
+- PvE Vault Status column + per-slot vault tooltips; live C_WeeklyRewards.HasAvailableRewards for ready state; alt weekly-reset promotion fixes; Status column width for localized labels.
+- Dawncrest crest farming tooltips; Shift-expand currency rows (`<bag> · <earned> / <cap>`); tier-colored upgrade tracks; subtitle hints; `/wn maxonly` (hide alts below level 80).
+- Gear paperdoll height/columns; recommendations scrollbar auto-hide; full currency names; Vault Tracker on FontManager; character order from Characters tab; enchant rank glyphs (R1–R3); Voidcore / coffer display fixes.
+
+Plans & Collections
+- Achievement Journal circular WN badge (add/remove To-Do), localized.
+- Plans Tracker mirrors To-Do: ParseMultipleSources rows, type badges, portrait-aligned info rows, tries/delete alignment, ExpandableRow layout fixes, full achievement body text without MaxLines caps.
+- Collections › Recent Obtains: full-height cards, auto-hiding scrollbars, tooltip detail (earned/obtained-by wording); 2.7.2 polish — title/subtitle, per-category reset, labeled tooltip sections, Plans metrics (`UI_PLANS_CARD_METRICS`), Weekly Progress accordion tween + scroll resync, Show Planned always visible (disabled on To-Do/Weekly with tooltip), themed checkbox accent fixes, tighter plan source icons.
+
+Locales
+- `SHOW_PLANNED_DISABLED_HERE` and `COLLECTIONS_RECENT_*` for all shipped languages; restored collections strings (koKR / ruRU / zhTW) and mojibake fixes (deDE / es / fr).
+
+Full merged notes: repository CHANGES.md / CHANGES.txt · listing on CurseForge / Wago.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
 
 Saved Instances — layout + readability pass

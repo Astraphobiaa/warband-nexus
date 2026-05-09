@@ -47,6 +47,7 @@ L["COLLECTION_PLANS"] = "待辦清單"
 L["SEARCH_PLANS"] = "搜尋計劃..."
 L["SHOW_COMPLETED"] = "顯示已完成"
 L["SHOW_PLANNED"] = "顯示計劃中"
+L["SHOW_PLANNED_DISABLED_HERE"] = "在待辦清單與每週進度中不使用。請開啟坐騎、寵物、玩具或其他瀏覽分頁以使用此篩選。"
 L["CATEGORY_MY_PLANS"] = "待辦清單"
 L["CATEGORY_DAILY_TASKS"] = "每週進度"
 L["CATEGORY_ILLUSIONS"] = "幻象"
@@ -1011,27 +1012,34 @@ L["ZONE_DROP"] = "區域掉落"
 L["ACHIEVEMENT_PROGRESS_TITLE"] = "成就進度"
 L["CMD_FIRSTCRAFT"] = "依資料片列出首次製作獎勵配方（請先開啟專業視窗）"
 L["COLLECTIONS_SUBTAB_RECENT"] = "最近"
-L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "??"
-L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "??????????"
-L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "??"
-L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "?????????????"
-L["COLLECTIONS_CONTENT_TITLE_PETS"] = "??"
-L["COLLECTIONS_CONTENT_SUB_PETS"] = "????????????"
-L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "???"
-L["COLLECTIONS_CONTENT_SUB_TOYS"] = "???????????"
-L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "????"
-L["COLLECTIONS_CONTENT_SUB_RECENT"] = "?????????????????????"
-L["COLLECTIONS_RECENT_JUST_NOW"] = "??"
-L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d ???"
-L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d ???"
-L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d ??"
-L["COLLECTIONS_ACQUIRED_LABEL"] = "??"
-L["COLLECTIONS_ACQUIRED_LINE"] = "%s:%s"
-L["COLLECTIONS_RECENT_TAB_EMPTY"] = "?????"
+L["COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS"] = "成就"
+L["COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS"] = "瀏覽並搜尋你的成就。"
+L["COLLECTIONS_CONTENT_TITLE_MOUNTS"] = "坐騎"
+L["COLLECTIONS_CONTENT_SUB_MOUNTS"] = "戰團坐騎收藏、來源與預覽。"
+L["COLLECTIONS_CONTENT_TITLE_PETS"] = "寵物"
+L["COLLECTIONS_CONTENT_SUB_PETS"] = "帳號共享的戰鬥寵物與夥伴。"
+L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "玩具"
+L["COLLECTIONS_CONTENT_SUB_TOYS"] = "玩具與可使用收藏品。"
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "最近獲取"
+L["COLLECTIONS_CONTENT_SUB_RECENT"] = "帳號上記錄的最新成就、坐騎、寵物與玩具。"
+L["COLLECTIONS_RECENT_JUST_NOW"] = "剛剛"
+L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d 分鐘前"
+L["COLLECTIONS_RECENT_HOURS_AGO"] = "%d 小時前"
+L["COLLECTIONS_RECENT_DAYS_AGO"] = "%d 天前"
+L["COLLECTIONS_ACQUIRED_LABEL"] = "已記錄"
+L["COLLECTIONS_ACQUIRED_LINE"] = "%s：%s"
+L["COLLECTIONS_RECENT_TAB_EMPTY"] = "尚無記錄。"
 L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
-L["COLLECTIONS_RECENT_EMPTY"] = "?????"
-L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "????????"
-L["COLLECTIONS_RECENT_SECTION_NONE"] = "?????"
+L["COLLECTIONS_RECENT_EMPTY"] = "尚無記錄。"
+L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "沒有符合的項目。"
+L["COLLECTIONS_RECENT_SECTION_NONE"] = "尚無項目。"
+L["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"] = "清除此類別的最近記錄"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CATEGORY"] = "類別"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"] = "進度"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"] = "角色"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"] = "記錄時間"
+L["COLLECTIONS_RECENT_ROW_BY"] = "來自 %s"
+L["COLLECTIONS_RECENT_ACH_HIDE_ALT_EARNED"] = "在建立此角色前已在帳號上完成。"
 L["COLLECTIONS_SUBTITLE"] = "坐騎、寵物、玩具與塑形總覽"
 L["CONFIG_DEBUG_VERBOSE"] = "詳細除錯（快取/掃描/提示日誌）"
 L["CONFIG_DEBUG_VERBOSE_DESC"] = "除錯模式下同時顯示貨幣/聲望快取、背包掃描、提示與專業日誌。關閉可減少聊天洗頻。"
@@ -1410,6 +1418,36 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "????????"
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
+
+Bundled highlights (prior patch notes through 2.7.2)
+
+Saved Instances & lockouts
+- Account-wide Saved Instances window: raid + dungeon lockouts, themed Factory scroll, collapse/expand, symmetric header columns, FontManager typography, clearer borders and resize behavior.
+- Backend: dungeon rows with difficulty pills; secret-safe raid detection; lockout freshness; collapse persistence; DataService staggered PvE capture aligned with PvECacheService.
+
+Try Counter & sources
+- ENCOUNTER_END-driven counting (next-frame schedule); clearer miss/stat paths; rare-farm off-by-one fix; encounter-specific dedup; per-corpse GUID dedup; NEW_MOUNT_ADDED / NEW_PET_ADDED backup; safer multi-event registration.
+- CollectibleSourceDB / locale rows for Sylvanas SoD Mythic chest attribution across clients.
+
+Gear, Vault & currencies
+- Quick-access menu (Vault Tracker, Saved Instances, Plans, Settings).
+- PvE Vault Status column + per-slot vault tooltips; live C_WeeklyRewards.HasAvailableRewards for ready state; alt weekly-reset promotion fixes; Status column width for localized labels.
+- Dawncrest crest farming tooltips; Shift-expand currency rows (`<bag> · <earned> / <cap>`); tier-colored upgrade tracks; subtitle hints; `/wn maxonly` (hide alts below level 80).
+- Gear paperdoll height/columns; recommendations scrollbar auto-hide; full currency names; Vault Tracker on FontManager; character order from Characters tab; enchant rank glyphs (R1–R3); Voidcore / coffer display fixes.
+
+Plans & Collections
+- Achievement Journal circular WN badge (add/remove To-Do), localized.
+- Plans Tracker mirrors To-Do: ParseMultipleSources rows, type badges, portrait-aligned info rows, tries/delete alignment, ExpandableRow layout fixes, full achievement body text without MaxLines caps.
+- Collections › Recent Obtains: full-height cards, auto-hiding scrollbars, tooltip detail (earned/obtained-by wording); 2.7.2 polish — title/subtitle, per-category reset, labeled tooltip sections, Plans metrics (`UI_PLANS_CARD_METRICS`), Weekly Progress accordion tween + scroll resync, Show Planned always visible (disabled on To-Do/Weekly with tooltip), themed checkbox accent fixes, tighter plan source icons.
+
+Locales
+- `SHOW_PLANNED_DISABLED_HERE` and `COLLECTIONS_RECENT_*` for all shipped languages; restored collections strings (koKR / ruRU / zhTW) and mojibake fixes (deDE / es / fr).
+
+Full merged notes: repository CHANGES.md / CHANGES.txt · listing on CurseForge / Wago.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
 
 Saved Instances — layout + readability pass

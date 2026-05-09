@@ -43,8 +43,9 @@ local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter(
 )) or function() end
 
 ---How many achievements to iterate in a category via GetAchievementInfo(categoryID, index).
----Must use includeAll=true: without it, GetCategoryNumAchievements only counts the UI "visible" subset (often 0–1),
----so full scans and Collections UI miss almost all earned achievements (only ACHIEVEMENT_EARNED increments would appear).
+---Must use includeAll=true: GetAchievementInfo(catID, index) can return subcategory achievements
+---when iterating a parent category. Without includeAll=true the count is too low and many
+---achievements (including Glory/meta achievements in deep subcategories) are silently skipped.
 local function GetCategoryAchievementListCount(categoryID)
     if not categoryID or not GetCategoryNumAchievements then return 0 end
     local ok, total = pcall(function()
@@ -453,9 +454,10 @@ function WarbandNexus:InitializeCollectionCache()
     collectionCache.lastScan = dbCache.lastScan or 0
     collectionCache.lastAchievementScan = dbCache.lastAchievementScan or 0
 
-    -- One-shot: old code used GetCategoryNumAchievements(cat) without includeAll — sparse achievement store + 5m scan cooldown
-    -- blocked EnsureCollectionData from ever re-queuing a full scan. Clear cooldown until wnAchievementIncludeAllScanV1 is set.
-    if self.db.global and not self.db.global.wnAchievementIncludeAllScanV1 then
+    -- One-shot: force a fresh achievement scan when switching from includeAll=true to includeAll=false.
+    -- includeAll=false is correct because GetCategoryList() returns all subcategories, and each
+    -- category should only scan its direct achievements. V2 flag triggers rescan for all users.
+    if self.db.global and not self.db.global.wnAchievementDirectScanV2 then
         collectionCache.lastAchievementScan = 0
     end
 
@@ -775,7 +777,7 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     local hasAchievements = collectionStore.achievement and next(collectionStore.achievement) ~= nil
     local hasTitles = collectionStore.title and next(collectionStore.title) ~= nil
     local hasIllusions = collectionStore.illusion and next(collectionStore.illusion) ~= nil
-    local needAchievementIncludeAllRescan = self.db.global and not self.db.global.wnAchievementIncludeAllScanV1
+    local needAchievementIncludeAllRescan = self.db.global and not self.db.global.wnAchievementDirectScanV2
 
     -- Sanity check: if toy store count is far below ToyBox total, force a rebuild
     if hasToys and C_ToyBox and C_ToyBox.GetNumToys then
@@ -1051,15 +1053,24 @@ end
 ---Caches itemID->sourceIndex from GetToysGroupedBySourceType so repeated lookups are cheap.
 function WarbandNexus:GetToySourceTypeNameForItem(itemID)
     if not itemID then return nil end
+    local idx = self:GetToySourceTypeIndexForItem(itemID)
+    if not idx then return nil end
+    return self:GetToySourceTypeName(idx)
+end
+
+---Pure-API toy source classifier: returns the BattlePetSources filter index (1-based).
+---Mirrors GetToySourceTypeNameForItem but exposes the raw integer for UI categorization.
+---@param itemID number Toy item ID
+---@return number|nil sourceIndex (1=Drop, 2=Quest, 3=Vendor, ...) or nil if untracked
+function WarbandNexus:GetToySourceTypeIndexForItem(itemID)
+    if not itemID then return nil end
     if not ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache = {} end
     local cache = ns._toyItemIDToSourceIndexCache
     if not cache.map then
         local _, itemIDToSource = self:GetToysGroupedBySourceType()
         cache.map = itemIDToSource or {}
     end
-    local idx = cache.map[itemID]
-    if not idx then return nil end
-    return self:GetToySourceTypeName(idx)
+    return cache.map[itemID]
 end
 
 ---Flat list of all toys for UI (no categories). Returns array of { id, name, icon, collected } sorted by name.
@@ -1253,15 +1264,28 @@ function WarbandNexus:GetCollectionCountsFromAPI()
     if C_MountJournal and C_MountJournal.GetMountIDs then
         local mountIDs = C_MountJournal.GetMountIDs()
         if mountIDs then
-            data.mounts.total = #mountIDs
+            local totalVisible = 0
+            local collectedCount = 0
             for i = 1, #mountIDs do
-                local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountIDs[i])
-                if issecretvalue and isCollected and issecretvalue(isCollected) then
-                    -- treat secret as collected for count
-                elseif isCollected == true then
-                    data.mounts.collected = data.mounts.collected + 1
+                local _, _, _, _, _, _, _, _, _, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountIDs[i])
+                -- Exclude mounts hidden on this character (faction/class restricted)
+                local hidden = false
+                if issecretvalue and shouldHideOnChar and issecretvalue(shouldHideOnChar) then
+                    -- secret = treat as visible
+                elseif shouldHideOnChar == true then
+                    hidden = true
+                end
+                if not hidden then
+                    totalVisible = totalVisible + 1
+                    if issecretvalue and isCollected and issecretvalue(isCollected) then
+                        collectedCount = collectedCount + 1
+                    elseif isCollected == true then
+                        collectedCount = collectedCount + 1
+                    end
                 end
             end
+            data.mounts.total = totalVisible
+            data.mounts.collected = collectedCount
         end
     end
 
@@ -1698,10 +1722,11 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
     if not mountID then return end
     retryCount = retryCount or 0
 
-    local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
+    local name, _, icon, _, _, sourceType = C_MountJournal.GetMountInfoByID(mountID)
     if issecretvalue then
         if name and issecretvalue(name) then name = nil end
         if icon and issecretvalue(icon) then icon = nil end
+        if sourceType and issecretvalue(sourceType) then sourceType = nil end
     end
     if not name then
         if retryCount < 3 then
@@ -1729,13 +1754,20 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
             if src and not (issecretvalue and issecretvalue(src)) then sourceText = src end
         end
         collectionStore.mount[mountID] = {
-            id = mountID, name = name, icon = icon, source = sourceText, description = "",
+            id = mountID, name = name, icon = icon, source = sourceText, sourceType = sourceType, description = "",
             creatureDisplayID = nil, collected = true,
         }
         storeChanged = true
-    elseif m.collected ~= true then
-        m.collected = true
-        storeChanged = true
+    else
+        if m.collected ~= true then
+            m.collected = true
+            storeChanged = true
+        end
+        -- Backfill sourceType if missing (DB migration from pre-3.0 store entries)
+        if sourceType and m.sourceType ~= sourceType then
+            m.sourceType = sourceType
+            storeChanged = true
+        end
     end
     if storeChanged then
         self:SaveCollectionStore()
@@ -1857,6 +1889,8 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     if not collectionStore.pet then collectionStore.pet = {} end
     local p = collectionStore.pet[speciesID]
     local storeChanged = false
+    -- Existing sourceTypeIndex from prior scan; backfilled if a fresh scan ran (rare on real-time path).
+    local sourceTypeIndex = ns._petSpeciesToSourceIndex and ns._petSpeciesToSourceIndex[speciesID] or (p and p.sourceTypeIndex)
     if not p then
         local sourceText = ""
         if C_PetJournal.GetPetInfoBySpeciesID then
@@ -1864,13 +1898,19 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
             if src and not (issecretvalue and issecretvalue(src)) then sourceText = src end
         end
         collectionStore.pet[speciesID] = {
-            id = speciesID, name = name, icon = icon, source = sourceText, description = "",
+            id = speciesID, name = name, icon = icon, source = sourceText, sourceTypeIndex = sourceTypeIndex, description = "",
             creatureDisplayID = displayID, collected = true,
         }
         storeChanged = true
-    elseif p.collected ~= true then
-        p.collected = true
-        storeChanged = true
+    else
+        if p.collected ~= true then
+            p.collected = true
+            storeChanged = true
+        end
+        if sourceTypeIndex and p.sourceTypeIndex ~= sourceTypeIndex then
+            p.sourceTypeIndex = sourceTypeIndex
+            storeChanged = true
+        end
     end
     if storeChanged then
         self:SaveCollectionStore()
@@ -2101,6 +2141,20 @@ function WarbandNexus:PruneCollectionsRecentObtained()
         local e = list[i]
         local et = e and e.t
         if type(et) ~= "number" or et < cutoff then
+            table.remove(list, i)
+        end
+    end
+end
+
+---Remove all Collections → Recent rows for one collectible type (Recent tab per-card reset).
+---@param collectibleType string achievement|mount|pet|toy
+function WarbandNexus:ClearCollectionsRecentObtainedForType(collectibleType)
+    if not collectibleType or not self.db or not self.db.global then return end
+    local list = self.db.global.collectionsRecentObtained
+    if type(list) ~= "table" then return end
+    for i = #list, 1, -1 do
+        local e = list[i]
+        if e and e.type == collectibleType then
             table.remove(list, i)
         end
     end
@@ -2732,14 +2786,23 @@ COLLECTION_CONFIGS = {
             return C_MountJournal.GetMountIDs() or {}
         end,
         extract = function(mountID)
-            local name, spellID, icon, _, _, sourceType, _, isFactionSpecific, faction, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+            -- 12.0.5: GetMountInfoByID returns 13 values (mountID at #12, isForDragonriding at #13)
+            local name, spellID, icon, _, _, sourceType, _, isFactionSpecific, faction, shouldHideOnChar, isCollected, _mountIDRet, isForDragonriding = C_MountJournal.GetMountInfoByID(mountID)
             if not name then return nil end
-            -- Midnight 12.0: isCollected may be a secret value; never assign it directly
+            -- Midnight 12.0: name or isCollected may be a secret value; guard against it
+            if issecretvalue and name and issecretvalue(name) then return nil end
             local collected = false
             if issecretvalue and isCollected and issecretvalue(isCollected) then
                 collected = true
             elseif isCollected == true then
                 collected = true
+            end
+            -- shouldHideOnChar may also be secret
+            local hideOnChar = false
+            if issecretvalue and shouldHideOnChar and issecretvalue(shouldHideOnChar) then
+                hideOnChar = false  -- If secret, assume visible (safe default)
+            elseif shouldHideOnChar == true then
+                hideOnChar = true
             end
 
             local creatureDisplayID, description, source = C_MountJournal.GetMountInfoExtraByID(mountID)
@@ -2754,23 +2817,37 @@ COLLECTION_CONFIGS = {
                 description = description,
                 creatureDisplayID = creatureDisplayID,
                 collected = collected,
-                shouldHideOnChar = shouldHideOnChar,
+                shouldHideOnChar = hideOnChar,
                 isFactionSpecific = isFactionSpecific,
                 faction = faction,
+                isForDragonriding = isForDragonriding,
             }
         end,
         shouldInclude = function(data)
-            if not data or data.collected or data.shouldHideOnChar then return false end
-            if ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and
-               ns.CollectionRules.UnobtainableFilters:IsUnobtainableMount(data) then
+            if not data or data.collected then return false end
+            -- Pure API hide rule: shouldHideOnChar (live re-query — flag is character-specific)
+            if data.id and C_MountJournal and C_MountJournal.GetMountInfoByID then
+                local _, _, _, _, _, _, _, _, _, liveHide = C_MountJournal.GetMountInfoByID(data.id)
+                if issecretvalue and liveHide and issecretvalue(liveHide) then
+                    -- secret = treat as visible
+                elseif liveHide == true then
+                    return false
+                end
+            elseif data.shouldHideOnChar then
                 return false
             end
             return true
         end,
         shouldIncludeInAll = function(data)
-            if not data or data.shouldHideOnChar then return false end
-            if ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and
-               ns.CollectionRules.UnobtainableFilters:IsUnobtainableMount(data) then
+            if not data then return false end
+            if data.id and C_MountJournal and C_MountJournal.GetMountInfoByID then
+                local _, _, _, _, _, _, _, _, _, liveHide = C_MountJournal.GetMountInfoByID(data.id)
+                if issecretvalue and liveHide and issecretvalue(liveHide) then
+                    -- secret = treat as visible
+                elseif liveHide == true then
+                    return false
+                end
+            elseif data.shouldHideOnChar then
                 return false
             end
             return true
@@ -2812,7 +2889,33 @@ COLLECTION_CONFIGS = {
                     end
                 end)
             end
-            
+
+            -- Capture per-source speciesID → sourceTypeIndex via filter trick (mirrors GetToysGroupedBySourceType).
+            -- Pure API: Blizzard's pet journal source filter is the authoritative classifier.
+            local speciesToSource = {}
+            local numSources = (C_PetJournal.GetNumPetSources and C_PetJournal.GetNumPetSources()) or 0
+            if numSources > 0 and C_PetJournal.SetPetSourceChecked and not InCombatLockdown() then
+                pcall(function()
+                    for srcIdx = 1, numSources do
+                        for i = 1, numSources do
+                            C_PetJournal.SetPetSourceChecked(i, i == srcIdx)
+                        end
+                        local nFiltered = C_PetJournal.GetNumPets() or 0
+                        for j = 1, nFiltered do
+                            local _, sID = C_PetJournal.GetPetInfoByIndex(j)
+                            if sID and not speciesToSource[sID] then
+                                speciesToSource[sID] = srcIdx
+                            end
+                        end
+                    end
+                    -- Restore "all sources visible" so the next GetNumPets/GetPetInfoByIndex pass sees every species
+                    for i = 1, numSources do
+                        C_PetJournal.SetPetSourceChecked(i, true)
+                    end
+                end)
+            end
+            ns._petSpeciesToSourceIndex = speciesToSource
+
             local numPets = C_PetJournal.GetNumPets() or 0
             
             -- CRITICAL: Resolve speciesIDs NOW while "show all" filters are active
@@ -2843,46 +2946,52 @@ COLLECTION_CONFIGS = {
             -- speciesID is now passed directly from iterator (not an index)
             if not speciesID then return nil end
             
-            local speciesName, icon, petType, _, source, description = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+            -- 12.0.5: GetPetInfoBySpeciesID returns 12 values; #11 is 'obtainable' boolean
+            local speciesName, icon, petType, companionID, source, description, isWild, canBattle, isTradeable, isUnique, obtainable, creatureDisplayID_extra = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
             if not speciesName then return nil end
+            -- Guard secret values (Midnight 12.0+)
+            if issecretvalue and speciesName and issecretvalue(speciesName) then return nil end
+            
+            -- Filter out unobtainable pets (NPC-only, dev/test, tamer pets, cut content)
+            -- obtainable == false means this pet species cannot be collected by players
+            if obtainable == false then return nil end
             
             -- Check if player owns this species
             local numCollected = C_PetJournal.GetNumCollectedInfo(speciesID)
             local owned = numCollected and numCollected > 0
             
-            local creatureDisplayID = nil
-            if C_PetJournal.GetNumDisplays and C_PetJournal.GetDisplayIDByIndex then
+            local creatureDisplayID = creatureDisplayID_extra
+            if not creatureDisplayID and C_PetJournal.GetNumDisplays and C_PetJournal.GetDisplayIDByIndex then
                 local numDisplays = C_PetJournal.GetNumDisplays(speciesID) or 0
                 if numDisplays > 0 then
                     creatureDisplayID = C_PetJournal.GetDisplayIDByIndex(speciesID, 1)
                 end
             end
             
+            local sourceTypeIndex = ns._petSpeciesToSourceIndex and ns._petSpeciesToSourceIndex[speciesID] or nil
+
             return {
                 id = speciesID,
                 name = speciesName,
                 icon = icon,
                 source = source or ((ns.L and ns.L["FALLBACK_PET_COLLECTION"]) or "Pet Collection"),
+                sourceTypeIndex = sourceTypeIndex,
                 description = description,
                 collected = owned,
                 petType = petType,
                 creatureDisplayID = creatureDisplayID,
+                obtainable = obtainable,
             }
         end,
         shouldInclude = function(data)
             if not data or data.collected then return false end
-            if ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and
-               ns.CollectionRules.UnobtainableFilters:IsUnobtainablePet(data) then
-                return false
-            end
+            -- Pure API hide rule: obtainable == false (Blizzard says species is unobtainable)
+            if data.obtainable == false then return false end
             return true
         end,
         shouldIncludeInAll = function(data)
             if not data then return false end
-            if ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and
-               ns.CollectionRules.UnobtainableFilters:IsUnobtainablePet(data) then
-                return false
-            end
+            if data.obtainable == false then return false end
             return true
         end,
     },
@@ -2900,7 +3009,18 @@ COLLECTION_CONFIGS = {
             local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
             local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
             local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
-            
+
+            -- Capture per-source itemID → sourceTypeIndex via filter trick (Blizzard ToyBox source filter).
+            -- Pure API: Blizzard's source filter is the authoritative classifier.
+            local toyToSource = {}
+            if WarbandNexus and WarbandNexus.GetToysGroupedBySourceType then
+                local _, itemIDToSource = WarbandNexus:GetToysGroupedBySourceType()
+                if itemIDToSource then
+                    for k, v in pairs(itemIDToSource) do toyToSource[k] = v end
+                end
+            end
+            ns._toyItemIDToSourceIndex = toyToSource
+
             -- Ensure all toys are visible for scanning (GetToyFromIndex uses filtered list)
             -- TAINT GUARD: ToyBox filter manipulation is protected; skip during combat
             if not InCombatLockdown() then
@@ -2952,8 +3072,24 @@ COLLECTION_CONFIGS = {
         end,
         extract = function(itemID)
             if not itemID or not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
-            local _, toyName = C_ToyBox.GetToyInfo(itemID)
+            -- 12.0.5: GetToyInfo returns itemID, toyName, icon, isFavorite, hasFanfare, itemQuality
+            local retItemID, toyName, toyIcon, _, _, itemQuality = C_ToyBox.GetToyInfo(itemID)
+            -- If GetToyInfo returns nil for the itemID, the toy doesn't exist in the ToyBox database
+            -- (internal/hidden/removed toy) — exclude it
+            if not retItemID then return nil end
             if issecretvalue and toyName and issecretvalue(toyName) then toyName = nil end
+            -- If name is nil/empty and retItemID is also nil, this is a ghost entry — skip
+            if not toyName or toyName == "" then
+                -- Try C_Item fallback for name
+                if C_Item and C_Item.GetItemInfo then
+                    local itemName = C_Item.GetItemInfo(itemID)
+                    if itemName and type(itemName) == "string" and itemName ~= "" then
+                        if not (issecretvalue and issecretvalue(itemName)) then
+                            toyName = itemName
+                        end
+                    end
+                end
+            end
             local name = (toyName and toyName ~= "") and toyName or tostring(itemID)
             local collected = false
             if PlayerHasToy then
@@ -2961,22 +3097,16 @@ COLLECTION_CONFIGS = {
                 if issecretvalue and raw and issecretvalue(raw) then collected = true
                 else collected = raw == true end
             end
-            return { id = itemID, name = name, collected = collected }
+            local sourceTypeIndex = ns._toyItemIDToSourceIndex and ns._toyItemIDToSourceIndex[itemID] or nil
+            return { id = itemID, name = name, collected = collected, icon = toyIcon, itemQuality = itemQuality, sourceTypeIndex = sourceTypeIndex }
         end,
         shouldInclude = function(data)
             if not data or data.collected then return false end
-            if ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and
-               ns.CollectionRules.UnobtainableFilters:IsUnobtainableToy(data) then
-                return false
-            end
+            -- Pure API: extract already returns nil for hidden/internal toys (GetToyInfo nil).
             return true
         end,
         shouldIncludeInAll = function(data)
             if not data then return false end
-            if ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and
-               ns.CollectionRules.UnobtainableFilters:IsUnobtainableToy(data) then
-                return false
-            end
             return true
         end,
     },
@@ -3019,6 +3149,15 @@ COLLECTION_CONFIGS = {
                 end
             end
             
+            -- Resolve actual category
+            local realCategoryID = item.categoryID
+            if GetAchievementCategory then
+                local actualCat = GetAchievementCategory(id)
+                if actualCat and actualCat > 0 then
+                    realCategoryID = actualCat
+                end
+            end
+            
             return {
                 id = id,
                 name = name,
@@ -3027,6 +3166,7 @@ COLLECTION_CONFIGS = {
                 description = description,
                 source = description or ((ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement"),
                 collected = completed,
+                categoryID = realCategoryID,
                 rewardItemID = rewardItemID,
                 rewardTitle = rewardTitle,
             }
@@ -3242,18 +3382,10 @@ COLLECTION_CONFIGS = {
         end,
         shouldInclude = function(data)
             if not data or data.collected then return false end
-            if ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and
-               ns.CollectionRules.UnobtainableFilters:IsUnobtainableIllusion(data) then
-                return false
-            end
             return true
         end,
         shouldIncludeInAll = function(data)
             if not data then return false end
-            if ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and
-               ns.CollectionRules.UnobtainableFilters:IsUnobtainableIllusion(data) then
-                return false
-            end
             return true
         end,
     },
@@ -3911,7 +4043,7 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
 
     if collectionType == "mount" then
         if not C_MountJournal or not C_MountJournal.GetMountInfoByID then return nil end
-        local name, spellID, icon, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(id)
+        local name, spellID, icon, _, _, sourceType, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(id)
         if name then
             icon = validIcon(icon)
             -- Fallback: spell texture
@@ -3924,7 +4056,8 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             end
             if not icon then usedFallbackIcon = true end
             local _, description, source = C_MountJournal.GetMountInfoExtraByID(id)
-            meta = { name = name, icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse", source = source or "", description = description or "" }
+            if issecretvalue and sourceType and issecretvalue(sourceType) then sourceType = nil end
+            meta = { name = name, icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse", source = source or "", sourceType = sourceType, description = description or "" }
             -- Current collected state (Midnight: isCollected may be secret)
             if issecretvalue and isCollected and issecretvalue(isCollected) then
                 meta.isCollected = true
@@ -3934,9 +4067,13 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
         end
     elseif collectionType == "pet" then
         if not C_PetJournal or not C_PetJournal.GetPetInfoBySpeciesID then return nil end
-        -- API: speciesName, speciesIcon, petType, companionID, tooltipSource, tooltipDescription
-        local name, icon, _, _, source, description = C_PetJournal.GetPetInfoBySpeciesID(id)
+        -- 12.0.5: GetPetInfoBySpeciesID returns 12 values; #11 is 'obtainable' boolean
+        local name, icon, _, _, source, description, _, _, _, _, obtainable = C_PetJournal.GetPetInfoBySpeciesID(id)
         if name then
+            -- Guard secret values (Midnight 12.0+)
+            if issecretvalue and name and issecretvalue(name) then return nil end
+            -- Filter unobtainable pets (pure API)
+            if obtainable == false then return nil end
             icon = validIcon(icon)
             if not icon then usedFallbackIcon = true end
             local creatureDisplayID = nil
@@ -3948,7 +4085,10 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             end
             local numCollected = C_PetJournal.GetNumCollectedInfo and C_PetJournal.GetNumCollectedInfo(id)
             local isCollected = numCollected and numCollected > 0
-            meta = { name = name, icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01", source = source or "", description = description or "", creatureDisplayID = creatureDisplayID, isCollected = isCollected }
+            local sourceTypeIndex = (collectionStore.pet and collectionStore.pet[id] and collectionStore.pet[id].sourceTypeIndex)
+                or (ns._petSpeciesToSourceIndex and ns._petSpeciesToSourceIndex[id])
+                or nil
+            meta = { name = name, icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01", source = source or "", sourceTypeIndex = sourceTypeIndex, description = description or "", creatureDisplayID = creatureDisplayID, isCollected = isCollected, obtainable = obtainable }
         end
     elseif collectionType == "toy" then
         local info = self:GetToySourceInfo(id)
@@ -3966,10 +4106,12 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             end
             local sourceLine = self:GetToySourceTypeNameForItem(id) or ((ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown")
             if sourceLine == "SOURCE_UNKNOWN" then sourceLine = "Unknown" end
+            local sourceTypeIndex = self:GetToySourceTypeIndexForItem(id)
             meta = {
                 name = info.name,
                 icon = icon or "Interface\\Icons\\INV_Misc_Toy_07",
                 source = sourceLine,
+                sourceTypeIndex = sourceTypeIndex,
                 description = info.description or "",
                 itemQuality = info.itemQuality,
                 isCollected = isCollected,
@@ -4098,23 +4240,16 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
                     end
                 else
                     local includeInPlans = true
-                    if d.shouldHideOnChar then
-                        includeInPlans = false
-                    end
-                    if includeInPlans and ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and ns.CollectionRules.UnobtainableFilters.IsUnobtainableMount then
-                        local unobtainableCandidate = {
-                            id = mountID,
-                            name = meta.name or d.name,
-                            source = meta.source or d.source,
-                            sourceType = d.sourceType,
-                            description = meta.description or d.description,
-                            shouldHideOnChar = d.shouldHideOnChar,
-                            isFactionSpecific = d.isFactionSpecific,
-                            faction = d.faction,
-                        }
-                        if ns.CollectionRules.UnobtainableFilters:IsUnobtainableMount(unobtainableCandidate) then
+                    -- Pure API hide rule: live-query shouldHideOnChar (character-specific)
+                    if C_MountJournal and C_MountJournal.GetMountInfoByID then
+                        local _, _, _, _, _, _, _, _, _, liveHide = C_MountJournal.GetMountInfoByID(mountID)
+                        if issecretvalue and liveHide and issecretvalue(liveHide) then
+                            -- secret = treat as visible
+                        elseif liveHide == true then
                             includeInPlans = false
                         end
+                    elseif d.shouldHideOnChar then
+                        includeInPlans = false
                     end
 
                     if includeInPlans then
@@ -4274,7 +4409,19 @@ function WarbandNexus:GetCollectedMounts(searchText, limit)
         if d then
             local meta = self:ResolveCollectionMetadata("mount", mountID)
             if meta and meta.isCollected then
-                if not d.shouldHideOnChar then
+                -- Live-query shouldHideOnChar: DB value may be stale from another character
+                local shouldHide = false
+                if C_MountJournal and C_MountJournal.GetMountInfoByID then
+                    local _, _, _, _, _, _, _, _, _, liveHide = C_MountJournal.GetMountInfoByID(mountID)
+                    if issecretvalue and liveHide and issecretvalue(liveHide) then
+                        -- secret = treat as visible
+                    elseif liveHide == true then
+                        shouldHide = true
+                    end
+                elseif d.shouldHideOnChar then
+                    shouldHide = true
+                end
+                if not shouldHide then
                     local name = meta.name or ("ID:" .. tostring(mountID))
                     if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
                         local row = {}
@@ -4318,7 +4465,7 @@ function WarbandNexus:GetCollectedPets(searchText, limit)
             if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
                 local meta
                 if d.icon or d.source then
-                    meta = { id = petID, name = d.name, icon = d.icon, source = d.source, description = d.description, creatureDisplayID = d.creatureDisplayID, isCollected = true, collected = true }
+                    meta = { id = petID, name = d.name, icon = d.icon, source = d.source, sourceTypeIndex = d.sourceTypeIndex, description = d.description, creatureDisplayID = d.creatureDisplayID, isCollected = true, collected = true }
                 else
                     meta = self:ResolveCollectionMetadata("pet", petID)
                     if meta then
@@ -4362,7 +4509,7 @@ function WarbandNexus:GetCollectedToys(searchText, limit)
                 local meta
                 local sourceOk = self:IsReliableToySource(d.source)
                 if (d.icon or d.source) and sourceOk then
-                    meta = { id = toyID, name = d.name, icon = d.icon, source = d.source, description = d.description, isCollected = true, collected = true }
+                    meta = { id = toyID, name = d.name, icon = d.icon, source = d.source, sourceTypeIndex = self:GetToySourceTypeIndexForItem(toyID), description = d.description, isCollected = true, collected = true }
                 else
                     meta = self:ResolveCollectionMetadata("toy", toyID)
                     if meta then
@@ -4582,6 +4729,14 @@ function WarbandNexus:ScanAchievementsAsync()
                         end
 
                         local displayName = (name and name ~= "") and name or ("ID:" .. tostring(id))
+                        -- Store the achievement's ACTUAL category (not the iterator's parent category)
+                        local realCategoryID = categoryID
+                        if GetAchievementCategory then
+                            local actualCat = GetAchievementCategory(id)
+                            if actualCat and actualCat > 0 then
+                                realCategoryID = actualCat
+                            end
+                        end
                         local record = {
                             id = id,
                             name = displayName,
@@ -4589,7 +4744,7 @@ function WarbandNexus:ScanAchievementsAsync()
                             points = points,
                             description = description,
                             collected = completed,
-                            categoryID = categoryID,
+                            categoryID = realCategoryID,
                             rewardItemID = rewardItemID,
                             rewardTitle = rewardTitle,
                         }
@@ -4633,7 +4788,7 @@ function WarbandNexus:ScanAchievementsAsync()
         self:SaveCollectionCache()
 
         if self.db and self.db.global then
-            self.db.global.wnAchievementIncludeAllScanV1 = true
+            self.db.global.wnAchievementDirectScanV2 = true
         end
         
         local elapsed = (debugprofilestop() - startTime) / 1000  -- Convert ms to seconds

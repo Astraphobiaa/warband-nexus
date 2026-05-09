@@ -50,6 +50,7 @@ local HideTooltip = ns.UI_HideTooltip
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
@@ -2897,16 +2898,16 @@ function WarbandNexus:DrawPvEProgress(parent)
                 end
             end,
             nil, nil, nil, true,
-            {
-                animatedContent = function() return charDetailContent end,
+            BuildAccordionVisualOpts({
+                bodyGetter = function() return charDetailContent end,
                 -- Runs before SharedWidgets reads _wnAccordionFullH for AnimateAccordion target (expand path).
-                persistToggle = function(exp)
+                persistFn = function(exp)
                     expandedStates[charExpandKey] = exp
                     if exp and charDetailContent and buildPvEDetailIfNeeded then
                         buildPvEDetailIfNeeded()
                     end
                 end,
-                accordionOnUpdate = function(drawH)
+                onUpdate = function(drawH)
                     if not charDetailContent then return end
                     if not charDetailContent._pveAnimScrollInit then
                         charDetailContent._pveAnimScrollInit = true
@@ -2921,7 +2922,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
                     end
                 end,
-                accordionComplete = function()
+                onComplete = function()
                     if charDetailContent then
                         charDetailContent._pveAnimScrollInit = nil
                         charDetailContent._pveScrollH0 = nil
@@ -2933,7 +2934,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
                     end
                 end,
-            }
+            })
         )
         if prevPvEDetailFrame == nil then
             charHeader:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -yOffset)

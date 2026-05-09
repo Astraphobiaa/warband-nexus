@@ -15,6 +15,26 @@
 
 local ADDON_NAME, ns = ...
 
+local issecretvalue = issecretvalue
+
+--- Trim trailing colon/spaces from a UI label and append a consistent ` … : ` separator.
+--- Used for plan/source lines (Drop / Location / Vendor) so colon has balanced spaces.
+---@param label string|nil
+---@return string
+local function NormalizeColonLabelSpacing(label)
+    if label == nil then return "" end
+    if type(label) ~= "string" then
+        label = tostring(label)
+    end
+    if label == "" then return "" end
+    if issecretvalue and issecretvalue(label) then
+        return label
+    end
+    local trimmed = label:match("^%s*(.-)%s*$") or label
+    trimmed = trimmed:gsub("%s*:%s*$", "")
+    return trimmed .. " : "
+end
+
 --============================================================================
 -- NUMBER FORMATTING
 --============================================================================
@@ -306,5 +326,6 @@ ns.UI_FormatMoney = FormatMoney
 ns.UI_FormatSeasonProgressCurrencyLine = FormatSeasonProgressCurrencyLine
 ns.UI_BindSeasonProgressAmount = BindSeasonProgressAmount
 ns.UI_RefreshSeasonProgressAmount = RefreshSeasonProgressAmount
+ns.UI_NormalizeColonLabelSpacing = NormalizeColonLabelSpacing
 
 -- Module loaded - verbose logging removed

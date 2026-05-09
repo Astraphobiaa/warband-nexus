@@ -56,6 +56,7 @@ L["COLLECTION_PLANS"] = "Lista attività"
 L["SEARCH_PLANS"] = "Cerca piani..."
 L["SHOW_COMPLETED"] = "Mostra completati"
 L["SHOW_PLANNED"] = "Mostra pianificati"
+L["SHOW_PLANNED_DISABLED_HERE"] = "Non usato nella lista attività né nel progresso settimanale. Apri Cavalcature, Mascotte, Giocattoli o un'altra scheda Sfoglia per usare questo filtro."
 L["CATEGORY_MY_PLANS"] = "Lista attività"
 L["CATEGORY_DAILY_TASKS"] = "Progresso settimanale"
 L["CATEGORY_ILLUSIONS"] = "Illusioni"
@@ -1041,6 +1042,13 @@ L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
 L["COLLECTIONS_RECENT_EMPTY"] = "Ancora nulla di registrato."
 L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "Nessuna voce corrispondente."
 L["COLLECTIONS_RECENT_SECTION_NONE"] = "Ancora nessuna voce."
+L["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"] = "Cancella le voci recenti per questa categoria"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CATEGORY"] = "Categoria"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"] = "Progresso"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"] = "Personaggio"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"] = "Registrato"
+L["COLLECTIONS_RECENT_ROW_BY"] = "Di %s"
+L["COLLECTIONS_RECENT_ACH_HIDE_ALT_EARNED"] = "Completato sull'account prima di questo personaggio."
 L["COLLECTIONS_SUBTITLE"] = "Panoramica cavalcature, mascotte, giocattoli e transmog"
 L["CONFIG_DEBUG_VERBOSE"] = "Debug dettagliato (log cache/scan/tooltip)"
 L["CONFIG_DEBUG_VERBOSE_DESC"] = "In modalità Debug, mostra anche log cache valuta/reputazione, scan sacche, tooltip e professioni. Disattiva per ridurre lo spam in chat."
@@ -1419,6 +1427,36 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limitato da fazione o classe"
 -- -----------------------------------------------------------------------------
 -- Parity sync from enUS.lua (auto-appended) — 228 keys
 -- -----------------------------------------------------------------------------
+L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
+
+Bundled highlights (prior patch notes through 2.7.2)
+
+Saved Instances & lockouts
+- Account-wide Saved Instances window: raid + dungeon lockouts, themed Factory scroll, collapse/expand, symmetric header columns, FontManager typography, clearer borders and resize behavior.
+- Backend: dungeon rows with difficulty pills; secret-safe raid detection; lockout freshness; collapse persistence; DataService staggered PvE capture aligned with PvECacheService.
+
+Try Counter & sources
+- ENCOUNTER_END-driven counting (next-frame schedule); clearer miss/stat paths; rare-farm off-by-one fix; encounter-specific dedup; per-corpse GUID dedup; NEW_MOUNT_ADDED / NEW_PET_ADDED backup; safer multi-event registration.
+- CollectibleSourceDB / locale rows for Sylvanas SoD Mythic chest attribution across clients.
+
+Gear, Vault & currencies
+- Quick-access menu (Vault Tracker, Saved Instances, Plans, Settings).
+- PvE Vault Status column + per-slot vault tooltips; live C_WeeklyRewards.HasAvailableRewards for ready state; alt weekly-reset promotion fixes; Status column width for localized labels.
+- Dawncrest crest farming tooltips; Shift-expand currency rows (`<bag> · <earned> / <cap>`); tier-colored upgrade tracks; subtitle hints; `/wn maxonly` (hide alts below level 80).
+- Gear paperdoll height/columns; recommendations scrollbar auto-hide; full currency names; Vault Tracker on FontManager; character order from Characters tab; enchant rank glyphs (R1–R3); Voidcore / coffer display fixes.
+
+Plans & Collections
+- Achievement Journal circular WN badge (add/remove To-Do), localized.
+- Plans Tracker mirrors To-Do: ParseMultipleSources rows, type badges, portrait-aligned info rows, tries/delete alignment, ExpandableRow layout fixes, full achievement body text without MaxLines caps.
+- Collections › Recent Obtains: full-height cards, auto-hiding scrollbars, tooltip detail (earned/obtained-by wording); 2.7.2 polish — title/subtitle, per-category reset, labeled tooltip sections, Plans metrics (`UI_PLANS_CARD_METRICS`), Weekly Progress accordion tween + scroll resync, Show Planned always visible (disabled on To-Do/Weekly with tooltip), themed checkbox accent fixes, tighter plan source icons.
+
+Locales
+- `SHOW_PLANNED_DISABLED_HERE` and `COLLECTIONS_RECENT_*` for all shipped languages; restored collections strings (koKR / ruRU / zhTW) and mojibake fixes (deDE / es / fr).
+
+Full merged notes: repository CHANGES.md / CHANGES.txt · listing on CurseForge / Wago.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
 
 Saved Instances — layout + readability pass

@@ -39,6 +39,7 @@ local SearchResultsRenderer = ns.SearchResultsRenderer
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
 local FormatGold = ns.UI_FormatGold
 local FormatNumber = ns.UI_FormatNumber
 local DrawEmptyState = ns.UI_DrawEmptyState
@@ -821,25 +822,23 @@ function WarbandNexus:DrawCurrencyList(container, width)
                             nil,
                             nil,
                             nil,
-                            {
-                                animatedContent = function() return headerBody end,
-                                persistToggle = function(exp)
+                            BuildAccordionVisualOpts({
+                                wrapFrame = wrap,
+                                bodyGetter = function() return headerBody end,
+                                headerHeight = COLLAPSE_H_CUR,
+                                hideOnCollapse = true,
+                                persistFn = function(exp)
                                     PersistExpand(headerKey, exp)
                                 end,
-                                accordionOnUpdate = function(drawH)
-                                    wrap:SetHeight(COLLAPSE_H_CUR + math.max(0.1, drawH or 0))
+                                onUpdate = function(_drawH)
                                     ReflowAncestors(parentCtx)
                                     SyncScrollMetrics()
                                 end,
-                                accordionComplete = function(exp)
-                                    if not exp and headerBody then
-                                        headerBody:Hide()
-                                        headerBody:SetHeight(0.1)
-                                    end
+                                onComplete = function(_exp)
                                     ReflowAncestors(nodeCtx)
                                     SyncScrollMetrics()
                                 end,
-                            }
+                            })
                         )
                         header:ClearAllPoints()
                         header:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, 0)
@@ -890,25 +889,23 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 nil,
                 nil,
                 nil,
-                {
-                    animatedContent = function() return sectionBody end,
-                    persistToggle = function(exp)
+                BuildAccordionVisualOpts({
+                    wrapFrame = sectionWrap,
+                    bodyGetter = function() return sectionBody end,
+                    headerHeight = COLLAPSE_H_CUR,
+                    hideOnCollapse = true,
+                    persistFn = function(exp)
                         PersistExpand(sectionKey, exp)
                     end,
-                    accordionOnUpdate = function(drawH)
-                        sectionWrap:SetHeight(COLLAPSE_H_CUR + math.max(0.1, drawH or 0))
+                    onUpdate = function(_drawH)
                         SyncScrollMetrics()
                     end,
-                    accordionComplete = function(exp)
-                        if not exp then
-                            sectionBody:Hide()
-                            sectionBody:SetHeight(0.1)
-                        end
+                    onComplete = function(exp)
                         sectionBody._wnAccordionFullH = FinalizeBodyHeight(sectionBody)
                         sectionWrap:SetHeight(COLLAPSE_H_CUR + (exp and sectionBody._wnAccordionFullH or 0.1))
                         SyncScrollMetrics()
                     end,
-                }
+                })
             )
             sectionHeader:ClearAllPoints()
             sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
@@ -969,25 +966,23 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 true,
                 nil,
                 nil,
-                {
-                    animatedContent = function() return sectionBody end,
-                    persistToggle = function(exp)
+                BuildAccordionVisualOpts({
+                    wrapFrame = sectionWrap,
+                    bodyGetter = function() return sectionBody end,
+                    headerHeight = COLLAPSE_H_CUR,
+                    hideOnCollapse = true,
+                    persistFn = function(exp)
                         PersistExpand(sectionKey, exp)
                     end,
-                    accordionOnUpdate = function(drawH)
-                        sectionWrap:SetHeight(COLLAPSE_H_CUR + math.max(0.1, drawH or 0))
+                    onUpdate = function(_drawH)
                         SyncScrollMetrics()
                     end,
-                    accordionComplete = function(exp)
-                        if not exp then
-                            sectionBody:Hide()
-                            sectionBody:SetHeight(0.1)
-                        end
+                    onComplete = function(exp)
                         sectionBody._wnAccordionFullH = FinalizeBodyHeight(sectionBody)
                         sectionWrap:SetHeight(COLLAPSE_H_CUR + (exp and sectionBody._wnAccordionFullH or 0.1))
                         SyncScrollMetrics()
                     end,
-                }
+                })
             )
             sectionHeader:ClearAllPoints()
             sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)

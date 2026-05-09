@@ -2,7 +2,7 @@
 ## Title: Warband Nexus
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Author: WarbandNexus Team
-## Version: 2.7.1
+## Version: 3.0.0
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
 ## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity, Blizzard_Collections, Blizzard_AchievementUI
@@ -84,6 +84,7 @@ Modules\GearService.lua
 
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua
+Modules\UI\AchievementBrowseVirtualList.lua
 Modules\UI\FormatHelpers.lua
 Modules\UI\FramePoolFactory.lua
 Modules\UI\WindowFactory.lua

@@ -100,24 +100,38 @@ local function FormatCollectionsAcquiredDetail(ts)
 end
 
 -- ============================================================================
--- MOUNT SOURCE CLASSIFICATION
+-- MOUNT / PET / TOY SOURCE CLASSIFICATION (Pure API)
 -- ============================================================================
+--[[
+    Categorization is driven exclusively by Blizzard's API source type integer.
+    No string parsing, no keyword heuristics.
 
--- Anlamca eşleşen, projede kullanıldığı bilinen Blizzard atlas'ları (kategori ile doğrudan ilişkili)
+    - Mount: C_MountJournal.GetMountInfoByID(id) → 6th return `sourceType`
+        Enum (0-based) per Wowpedia:
+            0 Other, 1 Drop, 2 Quest, 3 Vendor, 4 Profession, 5 PetBattle,
+            6 Achievement, 7 WorldEvent, 8 Promotion, 9 TCG, 10 Shop, 11 Discovery
+    - Pet:   C_PetJournal source filter index (BattlePetSources):
+            1 Drop, 2 Quest, 3 Vendor, 4 Profession, 5 PetBattle, 6 Achievement,
+            7 WorldEvent, 8 Promotion, 9 TCG, 10 Shop, 11 TradingPost, 12 PvP
+    - Toy:   C_ToyBox source filter index (BattlePetSources, same as pet above).
+]]
+
 local L = ns.L
+
+-- Mount categories (Blizzard mount-source enum order; "other" = sourceType 0).
 local SOURCE_CATEGORIES = {
-    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or "Drop",              iconAtlas = "ParagonReputation_Bag" },
-    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or "Vendor",          iconAtlas = "coin-gold" },
-    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or "Quest",            iconAtlas = "quest-legendary-turnin" },
-    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or "Achievement", iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or "Profession",  iconAtlas = "poi-workorders" },
-    { key = "reputation",  label = (L and L["PARSE_REPUTATION"]) or "Reputation",        iconAtlas = "MajorFactions_MapIcons_Centaur64" },
-    { key = "pvp",         label = (L and L["SOURCE_TYPE_PVP"]) or "PvP",                iconAtlas = "honorsystem-icon-prestige-9" },
-    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or "World Event", iconAtlas = "characterupdate_clock-icon" },
-    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or "Promotion",    iconAtlas = "Bonus-Objective-Star" },
-    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post", iconAtlas = "Auctioneer" },
-    { key = "treasure",    label = (L and L["SOURCE_TYPE_TREASURE"]) or "Treasure",      iconAtlas = "VignetteLoot" },
-    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                 iconAtlas = "poi-town" },
+    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconAtlas = "ParagonReputation_Bag" },
+    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconAtlas = "quest-legendary-turnin" },
+    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconAtlas = "coin-gold" },
+    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconAtlas = "poi-workorders" },
+    { key = "petbattle",   label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconAtlas = "WildBattlePetCapturable" },
+    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconAtlas = "UI-Achievement-Shield-NoPoints" },
+    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconAtlas = "characterupdate_clock-icon" },
+    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconAtlas = "Bonus-Objective-Star" },
+    { key = "tcg",         label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconAtlas = "Auctioneer" },
+    { key = "shop",        label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconAtlas = "coin-gold" },
+    { key = "discovery",   label = (L and L["PARSE_DISCOVERY"]) or "Discovery",                                     iconAtlas = "VignetteLoot" },
+    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconAtlas = "poi-town" },
 }
 
 local SOURCE_CATEGORY_ORDER = {}
@@ -125,22 +139,21 @@ for i, cat in ipairs(SOURCE_CATEGORIES) do
     SOURCE_CATEGORY_ORDER[cat.key] = i
 end
 
--- Pet-specific categories: Pet Battle, Puzzle added; Pet Battle is its own category (not achievement).
+-- Pet categories (Blizzard battle-pet source filter order, 1-indexed).
 local PET_SOURCE_CATEGORIES = {
-    { key = "petbattle",   label = (ns.L and ns.L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle", iconAtlas = "WildBattlePetCapturable" },
-    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or "Drop",              iconAtlas = "ParagonReputation_Bag" },
-    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or "Vendor",          iconAtlas = "coin-gold" },
-    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or "Quest",            iconAtlas = "quest-legendary-turnin" },
-    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or "Achievement", iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or "Profession",  iconAtlas = "poi-workorders" },
-    { key = "reputation",  label = (L and L["PARSE_REPUTATION"]) or "Reputation",        iconAtlas = "MajorFactions_MapIcons_Centaur64" },
-    { key = "pvp",         label = (L and L["SOURCE_TYPE_PVP"]) or "PvP",                iconAtlas = "honorsystem-icon-prestige-9" },
-    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or "World Event", iconAtlas = "characterupdate_clock-icon" },
-    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or "Promotion",    iconAtlas = "Bonus-Objective-Star" },
-    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post", iconAtlas = "Auctioneer" },
-    { key = "treasure",    label = (L and L["SOURCE_TYPE_TREASURE"]) or "Treasure",      iconAtlas = "VignetteLoot" },
-    { key = "puzzle",      label = (L and L["SOURCE_TYPE_PUZZLE"]) or "Puzzle",          iconAtlas = "UpgradeItem-32x32" },
-    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                 iconAtlas = "poi-town" },
+    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconAtlas = "ParagonReputation_Bag" },
+    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconAtlas = "quest-legendary-turnin" },
+    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconAtlas = "coin-gold" },
+    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconAtlas = "poi-workorders" },
+    { key = "petbattle",   label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconAtlas = "WildBattlePetCapturable" },
+    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconAtlas = "UI-Achievement-Shield-NoPoints" },
+    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconAtlas = "characterupdate_clock-icon" },
+    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconAtlas = "Bonus-Objective-Star" },
+    { key = "tcg",         label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconAtlas = "Auctioneer" },
+    { key = "shop",        label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconAtlas = "coin-gold" },
+    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconAtlas = "Auctioneer" },
+    { key = "pvp",         label = (L and L["SOURCE_TYPE_PVP"]) or "PvP",                                           iconAtlas = "honorsystem-icon-prestige-9" },
+    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconAtlas = "poi-town" },
 }
 
 local PET_SOURCE_CATEGORY_ORDER = {}
@@ -148,19 +161,20 @@ for i, cat in ipairs(PET_SOURCE_CATEGORIES) do
     PET_SOURCE_CATEGORY_ORDER[cat.key] = i
 end
 
--- Toy-specific categories: mapped from C_ToyBox source type filter indices (BattlePetSources DBC enum, 1-indexed in Lua)
+-- Toy categories (Blizzard ToyBox source filter, BattlePetSources, 1-indexed).
 local TOY_SOURCE_CATEGORIES = {
-    { key = "drop",        sourceIndex = 1,  label = (L and L["SOURCE_TYPE_DROP"]) or "Drop",                iconAtlas = "ParagonReputation_Bag" },
-    { key = "quest",       sourceIndex = 2,  label = (L and L["SOURCE_TYPE_QUEST"]) or "Quest",              iconAtlas = "quest-legendary-turnin" },
-    { key = "vendor",      sourceIndex = 3,  label = (L and L["SOURCE_TYPE_VENDOR"]) or "Vendor",            iconAtlas = "coin-gold" },
-    { key = "profession",  sourceIndex = 4,  label = (L and L["SOURCE_TYPE_PROFESSION"]) or "Profession",    iconAtlas = "poi-workorders" },
-    { key = "achievement", sourceIndex = 6,  label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or "Achievement",  iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "worldevent",  sourceIndex = 7,  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or "World Event",  iconAtlas = "characterupdate_clock-icon" },
-    { key = "promotion",   sourceIndex = 8,  label = (L and L["SOURCE_TYPE_PROMOTION"]) or "Promotion",      iconAtlas = "Bonus-Objective-Star" },
-    { key = "tcg",         sourceIndex = 9,  label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card", iconAtlas = "Auctioneer" },
-    { key = "petstore",    sourceIndex = 10, label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or "In-Game Shop", iconAtlas = "coin-gold" },
-    { key = "tradingpost", sourceIndex = 11, label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post", iconAtlas = "Auctioneer" },
-    { key = "unknown",     sourceIndex = 0,  label = (L and L["SOURCE_OTHER"]) or "Other",                   iconAtlas = "poi-town" },
+    { key = "drop",        sourceIndex = 1,  label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconAtlas = "ParagonReputation_Bag" },
+    { key = "quest",       sourceIndex = 2,  label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconAtlas = "quest-legendary-turnin" },
+    { key = "vendor",      sourceIndex = 3,  label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconAtlas = "coin-gold" },
+    { key = "profession",  sourceIndex = 4,  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconAtlas = "poi-workorders" },
+    { key = "petbattle",   sourceIndex = 5,  label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconAtlas = "WildBattlePetCapturable" },
+    { key = "achievement", sourceIndex = 6,  label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconAtlas = "UI-Achievement-Shield-NoPoints" },
+    { key = "worldevent",  sourceIndex = 7,  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconAtlas = "characterupdate_clock-icon" },
+    { key = "promotion",   sourceIndex = 8,  label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconAtlas = "Bonus-Objective-Star" },
+    { key = "tcg",         sourceIndex = 9,  label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconAtlas = "Auctioneer" },
+    { key = "shop",        sourceIndex = 10, label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconAtlas = "coin-gold" },
+    { key = "tradingpost", sourceIndex = 11, label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconAtlas = "Auctioneer" },
+    { key = "unknown",     sourceIndex = 0,  label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconAtlas = "poi-town" },
 }
 
 local TOY_SOURCE_CATEGORY_ORDER = {}
@@ -168,43 +182,38 @@ for i, cat in ipairs(TOY_SOURCE_CATEGORIES) do
     TOY_SOURCE_CATEGORY_ORDER[cat.key] = i
 end
 
-local SOURCE_INDEX_TO_TOY_CAT = {
-    [1] = "drop", [2] = "quest", [3] = "vendor", [4] = "profession",
-    [5] = "petbattle", [6] = "achievement", [7] = "worldevent",
-    [8] = "promotion", [9] = "tcg", [10] = "petstore", [11] = "tradingpost",
+-- API integer → category key tables.
+-- Mount uses the C_MountJournal sourceType enum (0..11 per Wowpedia).
+local MOUNT_SOURCETYPE_TO_CATEGORY = {
+    [0]  = "unknown",
+    [1]  = "drop",
+    [2]  = "quest",
+    [3]  = "vendor",
+    [4]  = "profession",
+    [5]  = "petbattle",
+    [6]  = "achievement",
+    [7]  = "worldevent",
+    [8]  = "promotion",
+    [9]  = "tcg",
+    [10] = "shop",
+    [11] = "discovery",
 }
-
--- Single parse system: ParseSourceText (PlansUI) → category key. Used for mount, pet, toy.
-local PARSE_SOURCE_TYPE_TO_CATEGORY = {
-    ["Vendor"] = "vendor",
-    ["Drop"] = "drop",
-    ["Quest"] = "quest",
-    ["Achievement"] = "achievement",
-    ["Crafted"] = "profession",
-    ["Promotion"] = "promotion",
-    ["Trading Post"] = "tradingpost",
-    ["Pet Battle"] = "achievement",
-    ["World Event"] = "worldevent",
-    ["Treasure"] = "treasure",
-    ["Reputation"] = "reputation",
-    ["PvP"] = "pvp",
-    ["Puzzle"] = "unknown",
+-- Pets/toys use the C_PetJournal / C_ToyBox source filter index (BattlePetSources, 1-indexed).
+local BATTLEPET_SOURCETYPE_TO_CATEGORY = {
+    [1]  = "drop",
+    [2]  = "quest",
+    [3]  = "vendor",
+    [4]  = "profession",
+    [5]  = "petbattle",
+    [6]  = "achievement",
+    [7]  = "worldevent",
+    [8]  = "promotion",
+    [9]  = "tcg",
+    [10] = "shop",
+    [11] = "tradingpost",
+    [12] = "pvp",
 }
-local PARSE_SOURCE_TYPE_TO_PET_CATEGORY = {
-    ["Vendor"] = "vendor",
-    ["Drop"] = "drop",
-    ["Quest"] = "quest",
-    ["Achievement"] = "achievement",
-    ["Crafted"] = "profession",
-    ["Promotion"] = "promotion",
-    ["Trading Post"] = "tradingpost",
-    ["Pet Battle"] = "petbattle",
-    ["World Event"] = "worldevent",
-    ["Treasure"] = "treasure",
-    ["Reputation"] = "reputation",
-    ["PvP"] = "pvp",
-    ["Puzzle"] = "puzzle",
-}
+local SOURCE_INDEX_TO_TOY_CAT = BATTLEPET_SOURCETYPE_TO_CATEGORY
 
 -- Category icon by key (atlas only; CreateCollapsibleHeader isAtlas=true)
 local DEFAULT_CATEGORY_ATLAS = "icons_64x64_important"
@@ -236,30 +245,25 @@ local function GetToyCategoryIcon(catKey)
     return DEFAULT_CATEGORY_ATLAS
 end
 
--- Single parse system: WarbandNexus:ParseSourceText (PlansUI) + mapping. kind = "mount" | "pet" | "toy".
-local function ClassifySource(cache, sourceText, kind)
-    kind = kind or "mount"
-    local key = (sourceText or "") .. "\0" .. kind
-    local c = cache[key]
-    if c ~= nil then return c end
-    local parts = WarbandNexus.ParseSourceText and WarbandNexus:ParseSourceText(sourceText or "") or {}
-    local st = parts and parts.sourceType
-    local map = (kind == "pet") and PARSE_SOURCE_TYPE_TO_PET_CATEGORY or PARSE_SOURCE_TYPE_TO_CATEGORY
-    c = (st and map[st]) or "unknown"
-    if c == "unknown" and sourceText and type(sourceText) == "string" and sourceText ~= "" then
-        local trimmed = sourceText:gsub("|n", "\n"):gsub("^%s+", ""):gsub("%s+$", "")
-        if trimmed ~= "" and trimmed ~= "Unknown" then
-            c = "drop"
-        end
-    end
-    cache[key] = c
-    return c
+-- Pure-API classifier: takes the API source-type integer; returns a stable category key.
+-- Backwards compat: still accepts a `cache` table arg (legacy callsites pass it) but
+-- caching is unnecessary for an O(1) integer lookup, so the table is simply ignored.
+local function ClassifyMountByAPI(_cache, sourceTypeInt)
+    if not sourceTypeInt then return "unknown" end
+    if issecretvalue and issecretvalue(sourceTypeInt) then return "unknown" end
+    return MOUNT_SOURCETYPE_TO_CATEGORY[sourceTypeInt] or "unknown"
 end
-local function ClassifyMountSourceCached(cache, sourceText)
-    return ClassifySource(cache, sourceText, "mount")
+local function ClassifyBattlePetByAPI(_cache, sourceTypeIndex)
+    if not sourceTypeIndex then return "unknown" end
+    if issecretvalue and issecretvalue(sourceTypeIndex) then return "unknown" end
+    return BATTLEPET_SOURCETYPE_TO_CATEGORY[sourceTypeIndex] or "unknown"
 end
-local function ClassifyPetSourceCached(cache, sourceText)
-    return ClassifySource(cache, sourceText, "pet")
+-- Aliases preserve existing function names used throughout the file.
+local ClassifyMountSourceCached = ClassifyMountByAPI
+local ClassifyPetSourceCached = ClassifyBattlePetByAPI
+local function ClassifySource(_cache, sourceTypeInt, kind)
+    if kind == "mount" then return ClassifyMountByAPI(nil, sourceTypeInt) end
+    return ClassifyBattlePetByAPI(nil, sourceTypeInt)
 end
 
 local function FormatMountPetToyListTrySuffix(collectibleType, id)
@@ -269,8 +273,109 @@ local function FormatMountPetToyListTrySuffix(collectibleType, id)
     return " |cff888888(" .. string.format(fmt, c) .. ")|r"
 end
 
--- Para birimi ikonu (altın); Cost/Amount satırlarında fiyat yanında gösterilir.
+-- Para birimi ikonu: cost/amount satırlarında fiyat yanında gösterilir.
+-- Default gold icon (fallback when currency cannot be identified)
 local CURRENCY_ICON_GOLD = "|TInterface\\Icons\\INV_Misc_Coin_01:14:14:0:0:64:64:4:60:4:60|t"
+
+-- Smart currency icon resolver: parse cost text to identify actual currency and return correct icon.
+-- Uses C_CurrencyInfo API for dynamic lookup; caches results to avoid repeated API calls.
+local _currencyIconCache = {}
+local function MakeCurrencyIconString(iconPath)
+    if not iconPath or iconPath == "" then return CURRENCY_ICON_GOLD end
+    return "|T" .. tostring(iconPath) .. ":14:14:0:0:64:64:4:60:4:60|t"
+end
+
+-- Known currency name → currencyID mappings (covers most common vendor currencies).
+-- These are stable IDs that don't change between patches.
+local KNOWN_CURRENCY_IDS = {
+    ["honor"] = 1792,
+    ["conquest"] = 1602,
+    ["timewarped badge"] = 1166,
+    ["timewarped badges"] = 1166,
+    ["mark of honor"] = 1901, -- technically an item, but treated as currency in UI
+    ["polished pet charm"] = 2032, -- item-based but common
+    ["shiny pet charm"] = 2032,
+    ["trader's tender"] = 2032, -- Trading Post currency
+    ["dragon isles supplies"] = 2003,
+    ["elemental overflow"] = 2118,
+    ["bloody tokens"] = 2123,
+    ["trophy of strife"] = 2123,
+    ["valor"] = 1191,
+    ["anima"] = 1813,
+    ["reservoir anima"] = 1813,
+    ["stygia"] = 1767,
+    ["cataloged research"] = 1931,
+    ["cosmic flux"] = 2009,
+    ["storm sigil"] = 2122,
+    ["flightstones"] = 2245,
+    ["paracausal flakes"] = 2594,
+    ["resonance crystals"] = 2815,
+    ["restored coffer key"] = 2803,
+    ["weathered harbinger crest"] = 2806,
+    ["carved harbinger crest"] = 2807,
+    ["runed harbinger crest"] = 2809,
+    ["gilded harbinger crest"] = 2812,
+    ["undercoin"] = 2803,
+}
+
+local function ResolveCurrencyIconFromText(costText)
+    if not costText or costText == "" then return CURRENCY_ICON_GOLD end
+    -- Strip WoW format codes and normalize
+    local clean = costText:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+    clean = clean:gsub("^%s+", ""):gsub("%s+$", "")
+    if clean == "" then return CURRENCY_ICON_GOLD end
+
+    -- Check cache first
+    local cacheKey = clean:lower()
+    if _currencyIconCache[cacheKey] then return _currencyIconCache[cacheKey] end
+
+    -- Pure gold amount (e.g. "50 Gold", "1,500 Gold", just a number)
+    if clean:match("^[%d%.,]+%s*[Gg]old") or clean:match("^[%d%.,]+$") then
+        _currencyIconCache[cacheKey] = CURRENCY_ICON_GOLD
+        return CURRENCY_ICON_GOLD
+    end
+
+    -- Try to extract currency name: "123 Currency Name" or "Currency Name x123"
+    local currencyName = clean:match("^%d[%d%.,]*%s+(.+)$") or clean:match("^(.+)%s+x%d+$") or clean
+    if currencyName then
+        currencyName = currencyName:gsub("^%s+", ""):gsub("%s+$", "")
+        local lowerName = currencyName:lower()
+
+        -- Check known currency table
+        local knownID = KNOWN_CURRENCY_IDS[lowerName]
+        if knownID and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+            local info = C_CurrencyInfo.GetCurrencyInfo(knownID)
+            if info and info.iconFileID then
+                local icon = MakeCurrencyIconString(info.iconFileID)
+                _currencyIconCache[cacheKey] = icon
+                return icon
+            end
+        end
+
+        -- Dynamic lookup: search through active currencies
+        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+            -- Try common currency ID ranges
+            for _, testID in ipairs({1792, 1602, 1166, 1901, 2032, 2003, 2118, 2122, 2123, 1191, 1813, 1767, 1931, 2009, 2245, 2594, 2815, 2803, 2806, 2807, 2809, 2812}) do
+                local info = C_CurrencyInfo.GetCurrencyInfo(testID)
+                if info and info.name and info.name:lower() == lowerName and info.iconFileID then
+                    local icon = MakeCurrencyIconString(info.iconFileID)
+                    _currencyIconCache[cacheKey] = icon
+                    return icon
+                end
+            end
+        end
+    end
+
+    -- Fallback: gold icon
+    _currencyIconCache[cacheKey] = CURRENCY_ICON_GOLD
+    return CURRENCY_ICON_GOLD
+end
+
+-- Resolve currency icon for a cost/amount line value (text after "Cost: " or "Amount: ")
+local function GetCurrencyIconForCostLine(costValue)
+    if not costValue or costValue == "" then return CURRENCY_ICON_GOLD end
+    return ResolveCurrencyIconFromText(costValue)
+end
 
 -- WoW format kodlarını metinden kaldır (renk, reset, newline vb.). Görünen "cFFFFD200", "r", "n" gibi artıkları önler.
 local function StripWoWFormatCodes(text)
@@ -433,7 +538,7 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
     end
 
     local function formatLine(label, value, isCostOrAmount)
-        local suffix = (isCostOrAmount and value ~= "") and (" " .. CURRENCY_ICON_GOLD) or ""
+        local suffix = (isCostOrAmount and value ~= "") and (" " .. GetCurrencyIconForCostLine(value)) or ""
         return goldHex .. label .. " : |r" .. whiteHex .. (value or "") .. "|r" .. suffix
     end
 
@@ -659,6 +764,7 @@ local collectionsState = {
     recentTabPanel = nil,
     recentScrollFrame = nil,
     recentScrollChild = nil,
+    recentOuterScrollBarColumn = nil,
     _recentEmptyFs = nil,
 }
 
@@ -680,8 +786,25 @@ function WarbandNexus:AbortCollectionsChunkedBuilds()
 end
 
 local _populateMountListBusy = false
-local _mountScrollUpdateScheduled = false
-local _petScrollUpdateScheduled = false
+
+local function ScheduleCollectionsVisibleSync(subTabKey, refreshFn)
+    if type(refreshFn) ~= "function" then return end
+    C_Timer.After(0, function()
+        if collectionsState.currentSubTab == subTabKey then
+            refreshFn()
+        end
+    end)
+    C_Timer.After(0.05, function()
+        if collectionsState.currentSubTab == subTabKey then
+            refreshFn()
+        end
+    end)
+    C_Timer.After(0.12, function()
+        if collectionsState.currentSubTab == subTabKey then
+            refreshFn()
+        end
+    end)
+end
 
 -- Build flat list for virtual scrolling: [{ type = "header", ... } | { type = "row", ... }], totalHeight
 -- Sayılar (Drop 669, Quest 87, vb.) grouped[key] uzunluğundan gelir; liste ile tutarlıdır.
@@ -714,18 +837,17 @@ local function BuildFlatMountList(groupedData, collapsedHeaders)
                 key = key,
                 label = titleColor .. catInfo.label .. "|r " .. countColor .. "(" .. itemCount .. ")|r",
                 rightStr = countColor .. itemCount .. "|r",
+                itemCount = itemCount,
                 isCollapsed = isCollapsed,
                 yOffset = yOffset,
                 height = HEADER_HEIGHT,
             }
             yOffset = yOffset + HEADER_HEIGHT
-            if not isCollapsed then
-                local nItems = #items
-                for ji = 1, nItems do
-                    rowCounter = rowCounter + 1
-                    flat[#flat + 1] = { type = "row", mount = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT }
-                    yOffset = yOffset + ROW_HEIGHT
-                end
+            local nItems = #items
+            for ji = 1, nItems do
+                rowCounter = rowCounter + 1
+                flat[#flat + 1] = { type = "row", mount = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT }
+                yOffset = yOffset + ROW_HEIGHT
             end
         end
     end
@@ -761,18 +883,17 @@ local function BuildFlatPetList(groupedData, collapsedHeaders)
                 key = key,
                 label = titleColor .. catInfo.label .. "|r " .. countColor .. "(" .. itemCount .. ")|r",
                 rightStr = countColor .. itemCount .. "|r",
+                itemCount = itemCount,
                 isCollapsed = isCollapsed,
                 yOffset = yOffset,
                 height = HEADER_HEIGHT,
             }
             yOffset = yOffset + HEADER_HEIGHT
-            if not isCollapsed then
-                local nItems = #items
-                for ji = 1, nItems do
-                    rowCounter = rowCounter + 1
-                    flat[#flat + 1] = { type = "row", pet = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT }
-                    yOffset = yOffset + ROW_HEIGHT
-                end
+            local nItems = #items
+            for ji = 1, nItems do
+                rowCounter = rowCounter + 1
+                flat[#flat + 1] = { type = "row", pet = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT }
+                yOffset = yOffset + ROW_HEIGHT
             end
         end
     end
@@ -811,18 +932,17 @@ local function BuildFlatToyList(groupedData, collapsedHeaders, categoriesOverrid
                 key = key,
                 label = titleColor .. labelText .. "|r " .. countColor .. "(" .. itemCount .. ")|r",
                 rightStr = countColor .. itemCount .. "|r",
+                itemCount = itemCount,
                 isCollapsed = isCollapsed,
                 yOffset = yOffset,
                 height = HEADER_HEIGHT,
             }
             yOffset = yOffset + HEADER_HEIGHT
-            if not isCollapsed then
-                local nItems = #items
-                for ji = 1, nItems do
-                    rowCounter = rowCounter + 1
-                    flat[#flat + 1] = { type = "row", toy = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT }
-                    yOffset = yOffset + ROW_HEIGHT
-                end
+            local nItems = #items
+            for ji = 1, nItems do
+                rowCounter = rowCounter + 1
+                flat[#flat + 1] = { type = "row", toy = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT }
+                yOffset = yOffset + ROW_HEIGHT
             end
         end
     end
@@ -889,6 +1009,19 @@ local function BuildGroupedAchievementData(searchText, showCollected, showUncoll
             if not categoryID and GetAchievementCategory then
                 categoryID = GetAchievementCategory(a.id)
             end
+            -- If category is not in our tree, walk up the parent chain until we find one that is
+            if categoryID and not categoryData[categoryID] and GetCategoryInfo then
+                local walked = categoryID
+                for _ = 1, 10 do  -- max depth guard
+                    local _, parentID = GetCategoryInfo(walked)
+                    if not parentID or parentID <= 0 then break end
+                    if categoryData[parentID] then
+                        categoryID = parentID
+                        break
+                    end
+                    walked = parentID
+                end
+            end
             if categoryID and categoryData[categoryID] then
                 table.insert(categoryData[categoryID].achievements, a)
                 totalCount = totalCount + 1
@@ -899,141 +1032,23 @@ local function BuildGroupedAchievementData(searchText, showCollected, showUncoll
     return categoryData, rootCategories, totalCount
 end
 
--- Build flat list from category hierarchy — birebir Plans DrawAchievementsTable yapısı (max 3 seviye: root > child > grandchild).
--- Child sadece root'un achievement'ı VE child'ı varsa; grandchild sadece child'ın achievement'ı VE child'ı varsa.
-local BASE_INDENT = (ns.UI_LAYOUT and ns.UI_LAYOUT.BASE_INDENT) or 15
+-- Achievement flat list: ns.UI_AchievementBrowse_BuildFlatList (AchievementBrowseVirtualList.lua).
 local SECTION_SPACING = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_SPACING) or (ns.UI_LAYOUT and ns.UI_LAYOUT.betweenSections) or 8
-local MINI_SPACING = 4
-local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(n) end
 
-local function BuildFlatAchievementList(categoryData, rootCategories, collapsedHeaders)
-    local flat = {}
-    local yOffset = 0
-    local rowCounter = 0
-    local rD, gD, bD = (COLORS.textDim[1] or 0.55), (COLORS.textDim[2] or 0.55), (COLORS.textDim[3] or 0.55)
-    local countColor = string.format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
-    local rB, gB, bB = (COLORS.textBright[1] or 1), (COLORS.textBright[2] or 1), (COLORS.textBright[3] or 1)
-    local titleColor = string.format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)
-
-    for _, rootID in ipairs(rootCategories) do
-        local rootCat = categoryData[rootID]
-        if rootCat then
-        local totalAchievements = #rootCat.achievements
-        for _, childID in ipairs(rootCat.children or {}) do
-            local childCat = categoryData[childID]
-            if childCat then
-                totalAchievements = totalAchievements + #childCat.achievements
-                for _, grandchildID in ipairs(childCat.children or {}) do
-                    local gcCat = categoryData[grandchildID]
-                    if gcCat then totalAchievements = totalAchievements + #gcCat.achievements end
-                end
-            end
-        end
-        if totalAchievements > 0 then
-        local rootKey = "achievement_cat_" .. rootID
-        -- Default collapsed when first opened (nil -> not expanded)
-        local rootExpanded = (collapsedHeaders[rootKey] == false)
-        flat[#flat + 1] = {
-            type = "header",
-            key = rootKey,
-            label = titleColor .. (rootCat.name or "") .. "|r " .. countColor .. "(" .. FormatNumber(totalAchievements) .. ")|r",
-            rightStr = countColor .. FormatNumber(totalAchievements) .. "|r",
-            isCollapsed = not rootExpanded,
-            yOffset = yOffset,
-            height = HEADER_HEIGHT,
-            indent = 0,
-        }
-        yOffset = yOffset + HEADER_HEIGHT
-
-        if rootExpanded then
-            yOffset = yOffset + MINI_SPACING
-            for _, ach in ipairs(rootCat.achievements) do
-                rowCounter = rowCounter + 1
-                flat[#flat + 1] = { type = "row", achievement = ach, rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT, indent = BASE_INDENT }
-                yOffset = yOffset + ROW_HEIGHT
-            end
-            if #(rootCat.children or {}) > 0 and #rootCat.achievements > 0 then
-                yOffset = yOffset + SECTION_SPACING
-            end
-
-            for childIdx, childID in ipairs(rootCat.children or {}) do
-                local childCat = categoryData[childID]
-                if childCat then
-                local childAchievementCount = #childCat.achievements
-                for _, grandchildID in ipairs(childCat.children or {}) do
-                    local gcCat = categoryData[grandchildID]
-                    if gcCat then childAchievementCount = childAchievementCount + #gcCat.achievements end
-                end
-                if childAchievementCount > 0 then
-                local childKey = "achievement_cat_" .. childID
-                local childExpanded = (collapsedHeaders[childKey] == false)
-                flat[#flat + 1] = {
-                    type = "header",
-                    key = childKey,
-                    label = titleColor .. (childCat.name or "") .. "|r " .. countColor .. "(" .. FormatNumber(childAchievementCount) .. ")|r",
-                    rightStr = countColor .. FormatNumber(childAchievementCount) .. "|r",
-                    isCollapsed = not childExpanded,
-                    yOffset = yOffset,
-                    height = HEADER_HEIGHT,
-                    indent = BASE_INDENT,
-                }
-                yOffset = yOffset + HEADER_HEIGHT
-
-                if childExpanded then
-                    yOffset = yOffset + MINI_SPACING
-                    for _, ach in ipairs(childCat.achievements) do
-                        rowCounter = rowCounter + 1
-                        flat[#flat + 1] = { type = "row", achievement = ach, rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT, indent = BASE_INDENT * 2 }
-                        yOffset = yOffset + ROW_HEIGHT
-                    end
-                    if #(childCat.children or {}) > 0 and #childCat.achievements > 0 then
-                        yOffset = yOffset + SECTION_SPACING
-                    end
-
-                    for grandchildIdx, grandchildID in ipairs(childCat.children or {}) do
-                        local grandchildCat = categoryData[grandchildID]
-                        if grandchildCat and #grandchildCat.achievements > 0 then
-                        local gcKey = "achievement_cat_" .. grandchildID
-                        local gcExpanded = (collapsedHeaders[gcKey] == false)
-                        flat[#flat + 1] = {
-                            type = "header",
-                            key = gcKey,
-                            label = titleColor .. (grandchildCat.name or "") .. "|r " .. countColor .. "(" .. FormatNumber(#grandchildCat.achievements) .. ")|r",
-                            rightStr = countColor .. FormatNumber(#grandchildCat.achievements) .. "|r",
-                            isCollapsed = not gcExpanded,
-                            yOffset = yOffset,
-                            height = HEADER_HEIGHT,
-                            indent = BASE_INDENT * 2,
-                        }
-                        yOffset = yOffset + HEADER_HEIGHT
-
-                        if gcExpanded then
-                            yOffset = yOffset + MINI_SPACING
-                            for _, ach in ipairs(grandchildCat.achievements) do
-                                rowCounter = rowCounter + 1
-                                flat[#flat + 1] = { type = "row", achievement = ach, rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT, indent = BASE_INDENT * 3 }
-                                yOffset = yOffset + ROW_HEIGHT
-                            end
-                        end
-                        if grandchildIdx < #(childCat.children or {}) then
-                            yOffset = yOffset + SECTION_SPACING
-                        end
-                        end
-                    end
-                end
-                if childIdx < #(rootCat.children or {}) then
-                    yOffset = yOffset + SECTION_SPACING
-                end
-                end
-                end
-            end
-        end
-        yOffset = yOffset + SECTION_SPACING
-        end
+local function AnnotateFlatRowsByNearestHeader(flatList)
+    local headerKey, headerTop = nil, nil
+    for i = 1, #flatList do
+        local it = flatList[i]
+        if it.type == "header" then
+            headerKey = it.key
+            headerTop = (it.yOffset or 0) + (it.height or HEADER_HEIGHT)
+        elseif it.type == "row" and headerKey then
+            it._collSectionKey = headerKey
+            it._collRelY = (it.yOffset or 0) - (headerTop or 0)
+            it.groupKey = headerKey
+            it.localY = it._collRelY
         end
     end
-
-    return flat, math.max(yOffset + PADDING, 1)
 end
 
 -- Shared row pool for all three collection lists (Mounts, Pets, Achievements). Row structure from SharedWidgets.
@@ -1201,19 +1216,32 @@ local function UpdateMountListVisibleRange()
     local selectedMountID = state._mountListSelectedID or state.selectedMountID
     local onSelectMount = state._mountListOnSelectMount
     local listWidth = state._mountListWidth or scrollChild:GetWidth()
+    local tinsert = table.insert
     local n = #flatList
-    local startIdx, endIdx = 1, n
     for i = 1, n do
         local it = flatList[i]
-        if startIdx == 1 and it.yOffset + it.height > scrollTop then startIdx = i end
-        if it.yOffset < bottom then endIdx = i else break end
-    end
-    local tinsert = table.insert
-    for i = startIdx, endIdx do
-        local it = flatList[i]
         if it.type == "row" then
-            local frame = AcquireMountRow(scrollChild, listWidth, it, selectedMountID, onSelectMount, redraw, cf)
-            tinsert(state._mountVisibleRowFrames, { frame = frame, flatIndex = i })
+            local rowTop = it.yOffset or 0
+            local rowHeight = it.height or ROW_HEIGHT
+            local rowBottom = rowTop + rowHeight
+            if it._collSectionKey and collectionsState._mountSectionBodies then
+                local body = collectionsState._mountSectionBodies[it._collSectionKey]
+                if not body or not body:IsShown() then
+                    rowTop, rowBottom = nil, nil
+                else
+                    local scTop = scrollChild:GetTop()
+                    local bodyTop = body:GetTop()
+                    if scTop and bodyTop then
+                        local relY = it._collRelY or 0
+                        rowTop = (scTop - bodyTop) + relY
+                        rowBottom = rowTop + rowHeight
+                    end
+                end
+            end
+            if rowTop and rowBottom and rowBottom > scrollTop and rowTop < bottom then
+                local frame = AcquireMountRow(scrollChild, listWidth, it, selectedMountID, onSelectMount, redraw, cf)
+                tinsert(state._mountVisibleRowFrames, { frame = frame, flatIndex = i })
+            end
         end
     end
 end
@@ -1277,71 +1305,51 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
             mountSectionContentH[sk] = sh
         end
     end
-    do
-        local ck, ctop = nil, nil
-        for fi = 1, #flatList do
-            local fit = flatList[fi]
-            if fit.type == "header" then
-                ck = fit.key
-                ctop = fit.yOffset + fit.height
-            elseif fit.type == "row" and ck then
-                fit._collSectionKey = ck
-                fit._collRelY = fit.yOffset - ctop
-            end
-        end
-    end
+    AnnotateFlatRowsByNearestHeader(flatList)
 
     local collHdrChainTail = nil
-    local collHdrTopY = nil
-    local collHdrPrevH = nil
     local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
             local key = it.key
-            local yTop = it.yOffset or 0
-            local prevH = collHdrPrevH or COLLAPSE_H_COLL
-            local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
-            if gap and gap < 0 then gap = 0 end
+            local gap = collHdrChainTail and SECTION_SPACING or nil
 
             local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_H_COLL + 0.1, false)
             sectionWrap:ClearAllPoints()
             if sectionWrap.SetClipsChildren then
                 sectionWrap:SetClipsChildren(true)
             end
-            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
+            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or 0)
 
             local sectionBody
             local secH = mountSectionContentH[key] or 0
-            local function RefreshMountSectionList()
-                local cached = collectionsState._lastGroupedMountData
-                local sch = collectionsState.mountListScrollChild
-                if cached and sch and cf and cf:IsVisible() then
-                    PopulateMountList(sch, listWidth, cached, collapsedHeaders, selectedMountID, onSelectMount, cf, redraw)
-                    if Factory.UpdateScrollBarVisibility and collectionsState.mountListScrollFrame then
-                        Factory:UpdateScrollBarVisibility(collectionsState.mountListScrollFrame)
-                    end
-                elseif redraw and cf and cf:IsVisible() then
-                    redraw(cf)
-                end
+            if secH <= 0 then
+                secH = ((it.itemCount or 0) * ROW_HEIGHT) or 0
             end
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
-                if not isExpanded then
-                    RefreshMountSectionList()
+                -- Pre-populate visible rows before expand tween so first open is animated with content.
+                if isExpanded then
+                    UpdateMountListVisibleRange()
                 end
-            end, GetMountCategoryIcon(key), true, 0, nil, {
-                animatedContent = function() return sectionBody end,
-                persistToggle = function(exp)
+            end, GetMountCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
+                wrapFrame = sectionWrap,
+                bodyGetter = function() return sectionBody end,
+                headerHeight = COLLAPSE_H_COLL,
+                hideOnCollapse = true,
+                applyToggleBeforeCollapseAnimate = true,
+                persistFn = function(exp)
                     collapsedHeaders[key] = not exp
                 end,
-                applyToggleBeforeCollapseAnimate = true,
-                accordionOnUpdate = function(drawH)
-                    sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
+                updateVisibleFn = function()
+                    UpdateMountListVisibleRange()
                 end,
-                accordionComplete = function()
-                    RefreshMountSectionList()
+                onComplete = function(exp)
+                    if not exp then
+                        UpdateMountListVisibleRange()
+                    end
                 end,
-            })
+            }))
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
             header:SetWidth(listWidth)
             header:SetHeight(it.height)
@@ -1362,8 +1370,6 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
             collectionsState._mountSectionBodies[key] = sectionBody
 
             collHdrChainTail = sectionWrap
-            collHdrTopY = it.yOffset or 0
-            collHdrPrevH = sectionWrap:GetHeight()
         end
     end
 
@@ -1377,20 +1383,14 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
     collectionsState._mountListRedrawFn = redraw
     collectionsState._mountListContentFrame = cf
     collectionsState._mountListRefreshVisible = UpdateMountListVisibleRange
-
     local scrollFrame = collectionsState.mountListScrollFrame
     if scrollFrame then
         scrollFrame:SetScript("OnVerticalScroll", function()
-            if _mountScrollUpdateScheduled then return end
-            _mountScrollUpdateScheduled = true
-            C_Timer.After(0, function()
-                _mountScrollUpdateScheduled = false
-                UpdateMountListVisibleRange()
-            end)
+            UpdateMountListVisibleRange()
         end)
     end
-    -- Defer row creation to next frame to reduce FPS spike when switching to Mounts
-    C_Timer.After(0, UpdateMountListVisibleRange)
+    UpdateMountListVisibleRange()
+    ScheduleCollectionsVisibleSync("mounts", UpdateMountListVisibleRange)
     _populateMountListBusy = false
 end
 
@@ -1422,19 +1422,32 @@ local function UpdatePetListVisibleRange()
     local selectedPetID = state._petListSelectedID or state.selectedPetID
     local onSelectPet = state._petListOnSelectPet
     local listWidth = state._petListWidth or scrollChild:GetWidth()
+    local tinsert = table.insert
     local n = #flatList
-    local startIdx, endIdx = 1, n
     for i = 1, n do
         local it = flatList[i]
-        if startIdx == 1 and it.yOffset + it.height > scrollTop then startIdx = i end
-        if it.yOffset < bottom then endIdx = i else break end
-    end
-    local tinsert = table.insert
-    for i = startIdx, endIdx do
-        local it = flatList[i]
         if it.type == "row" then
-            local frame = AcquirePetRow(scrollChild, listWidth, it, selectedPetID, onSelectPet, redraw, cf)
-            tinsert(state._petVisibleRowFrames, { frame = frame, flatIndex = i })
+            local rowTop = it.yOffset or 0
+            local rowHeight = it.height or ROW_HEIGHT
+            local rowBottom = rowTop + rowHeight
+            if it._collSectionKey and collectionsState._petSectionBodies then
+                local body = collectionsState._petSectionBodies[it._collSectionKey]
+                if not body or not body:IsShown() then
+                    rowTop, rowBottom = nil, nil
+                else
+                    local scTop = scrollChild:GetTop()
+                    local bodyTop = body:GetTop()
+                    if scTop and bodyTop then
+                        local relY = it._collRelY or 0
+                        rowTop = (scTop - bodyTop) + relY
+                        rowBottom = rowTop + rowHeight
+                    end
+                end
+            end
+            if rowTop and rowBottom and rowBottom > scrollTop and rowTop < bottom then
+                local frame = AcquirePetRow(scrollChild, listWidth, it, selectedPetID, onSelectPet, redraw, cf)
+                tinsert(state._petVisibleRowFrames, { frame = frame, flatIndex = i })
+            end
         end
     end
 end
@@ -1494,71 +1507,51 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
             petSectionContentH[sk] = sh
         end
     end
-    do
-        local ck, ctop = nil, nil
-        for fi = 1, #flatList do
-            local fit = flatList[fi]
-            if fit.type == "header" then
-                ck = fit.key
-                ctop = fit.yOffset + fit.height
-            elseif fit.type == "row" and ck then
-                fit._collSectionKey = ck
-                fit._collRelY = fit.yOffset - ctop
-            end
-        end
-    end
+    AnnotateFlatRowsByNearestHeader(flatList)
 
     local collHdrChainTail = nil
-    local collHdrTopY = nil
-    local collHdrPrevH = nil
     local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
             local key = it.key
-            local yTop = it.yOffset or 0
-            local prevH = collHdrPrevH or COLLAPSE_H_COLL
-            local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
-            if gap and gap < 0 then gap = 0 end
+            local gap = collHdrChainTail and SECTION_SPACING or nil
 
             local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_H_COLL + 0.1, false)
             sectionWrap:ClearAllPoints()
             if sectionWrap.SetClipsChildren then
                 sectionWrap:SetClipsChildren(true)
             end
-            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
+            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or 0)
 
             local sectionBody
             local secH = petSectionContentH[key] or 0
-            local function RefreshPetSectionList()
-                local cached = collectionsState._lastGroupedPetData
-                local sch = collectionsState.petListScrollChild
-                if cached and sch and cf and cf:IsVisible() then
-                    PopulatePetList(sch, listWidth, cached, collapsedHeaders, selectedPetID, onSelectPet, cf, redraw)
-                    if Factory.UpdateScrollBarVisibility and collectionsState.petListScrollFrame then
-                        Factory:UpdateScrollBarVisibility(collectionsState.petListScrollFrame)
-                    end
-                elseif redraw and cf and cf:IsVisible() then
-                    redraw(cf)
-                end
+            if secH <= 0 then
+                secH = ((it.itemCount or 0) * ROW_HEIGHT) or 0
             end
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
-                if not isExpanded then
-                    RefreshPetSectionList()
+                -- Pre-populate visible rows before expand tween so first open is animated with content.
+                if isExpanded then
+                    UpdatePetListVisibleRange()
                 end
-            end, GetPetCategoryIcon(key), true, 0, nil, {
-                animatedContent = function() return sectionBody end,
-                persistToggle = function(exp)
+            end, GetPetCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
+                wrapFrame = sectionWrap,
+                bodyGetter = function() return sectionBody end,
+                headerHeight = COLLAPSE_H_COLL,
+                hideOnCollapse = true,
+                applyToggleBeforeCollapseAnimate = true,
+                persistFn = function(exp)
                     collapsedHeaders[key] = not exp
                 end,
-                applyToggleBeforeCollapseAnimate = true,
-                accordionOnUpdate = function(drawH)
-                    sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
+                updateVisibleFn = function()
+                    UpdatePetListVisibleRange()
                 end,
-                accordionComplete = function()
-                    RefreshPetSectionList()
+                onComplete = function(exp)
+                    if not exp then
+                        UpdatePetListVisibleRange()
+                    end
                 end,
-            })
+            }))
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
             header:SetWidth(listWidth)
             header:SetHeight(it.height)
@@ -1579,8 +1572,6 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
             collectionsState._petSectionBodies[key] = sectionBody
 
             collHdrChainTail = sectionWrap
-            collHdrTopY = it.yOffset or 0
-            collHdrPrevH = sectionWrap:GetHeight()
         end
     end
 
@@ -1593,25 +1584,18 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
     collectionsState._petListRedrawFn = redraw
     collectionsState._petListContentFrame = cf
     collectionsState._petListRefreshVisible = UpdatePetListVisibleRange
-
     local scrollFrame = collectionsState.petListScrollFrame
     if scrollFrame then
         scrollFrame:SetScript("OnVerticalScroll", function()
-            if _petScrollUpdateScheduled then return end
-            _petScrollUpdateScheduled = true
-            C_Timer.After(0, function()
-                _petScrollUpdateScheduled = false
-                UpdatePetListVisibleRange()
-            end)
+            UpdatePetListVisibleRange()
         end)
     end
-    -- Defer row creation to next frame to reduce FPS spike when switching to Pets
-    C_Timer.After(0, UpdatePetListVisibleRange)
+    UpdatePetListVisibleRange()
+    ScheduleCollectionsVisibleSync("pets", UpdatePetListVisibleRange)
     _populatePetListBusy = false
 end
 
 local _populateToyListBusy = false
-local _toyScrollUpdateScheduled = false
 
 local function UpdateToyListVisibleRange()
     local state = collectionsState
@@ -1640,17 +1624,30 @@ local function UpdateToyListVisibleRange()
     local onSelectToy = state._toyListOnSelectToy
     local listWidth = state._toyListWidth or scrollChild:GetWidth()
     local n = #flatList
-    local startIdx, endIdx = 1, n
     for i = 1, n do
         local it = flatList[i]
-        if startIdx == 1 and it.yOffset + it.height > scrollTop then startIdx = i end
-        if it.yOffset < bottom then endIdx = i else break end
-    end
-    for i = startIdx, endIdx do
-        local it = flatList[i]
         if it.type == "row" then
-            local frame = AcquireToyRow(scrollChild, listWidth, it, selectedToyID, onSelectToy, nil, cf)
-            state._toyVisibleRowFrames[#state._toyVisibleRowFrames + 1] = { frame = frame, flatIndex = i }
+            local rowTop = it.yOffset or 0
+            local rowHeight = it.height or ROW_HEIGHT
+            local rowBottom = rowTop + rowHeight
+            if it._collSectionKey and collectionsState._toySectionBodies then
+                local body = collectionsState._toySectionBodies[it._collSectionKey]
+                if not body or not body:IsShown() then
+                    rowTop, rowBottom = nil, nil
+                else
+                    local scTop = scrollChild:GetTop()
+                    local bodyTop = body:GetTop()
+                    if scTop and bodyTop then
+                        local relY = it._collRelY or 0
+                        rowTop = (scTop - bodyTop) + relY
+                        rowBottom = rowTop + rowHeight
+                    end
+                end
+            end
+            if rowTop and rowBottom and rowBottom > scrollTop and rowTop < bottom then
+                local frame = AcquireToyRow(scrollChild, listWidth, it, selectedToyID, onSelectToy, nil, cf)
+                state._toyVisibleRowFrames[#state._toyVisibleRowFrames + 1] = { frame = frame, flatIndex = i }
+            end
         end
     end
 end
@@ -1710,71 +1707,51 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
             toySectionContentH[sk] = sh
         end
     end
-    do
-        local ck, ctop = nil, nil
-        for fi = 1, #flatList do
-            local fit = flatList[fi]
-            if fit.type == "header" then
-                ck = fit.key
-                ctop = fit.yOffset + fit.height
-            elseif fit.type == "row" and ck then
-                fit._collSectionKey = ck
-                fit._collRelY = fit.yOffset - ctop
-            end
-        end
-    end
+    AnnotateFlatRowsByNearestHeader(flatList)
 
     local collHdrChainTail = nil
-    local collHdrTopY = nil
-    local collHdrPrevH = nil
     local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
             local key = it.key
-            local yTop = it.yOffset or 0
-            local prevH = collHdrPrevH or COLLAPSE_H_COLL
-            local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
-            if gap and gap < 0 then gap = 0 end
+            local gap = collHdrChainTail and SECTION_SPACING or nil
 
             local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_H_COLL + 0.1, false)
             sectionWrap:ClearAllPoints()
             if sectionWrap.SetClipsChildren then
                 sectionWrap:SetClipsChildren(true)
             end
-            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or yTop)
+            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or 0)
 
             local sectionBody
             local secH = toySectionContentH[key] or 0
-            local function RefreshToySectionList()
-                local cached = collectionsState._lastGroupedToyData
-                local sch = collectionsState.toyListScrollChild
-                if cached and sch and cf and cf:IsVisible() then
-                    PopulateToyList(sch, listWidth, cached, collapsedHeaders, selectedToyID, onSelectToy, cf, redraw)
-                    if Factory.UpdateScrollBarVisibility and collectionsState.toyListScrollFrame then
-                        Factory:UpdateScrollBarVisibility(collectionsState.toyListScrollFrame)
-                    end
-                elseif redraw and cf and cf:IsVisible() then
-                    redraw(cf)
-                end
+            if secH <= 0 then
+                secH = ((it.itemCount or 0) * ROW_HEIGHT) or 0
             end
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
-                if not isExpanded then
-                    RefreshToySectionList()
+                -- Pre-populate visible rows before expand tween so first open is animated with content.
+                if isExpanded then
+                    UpdateToyListVisibleRange()
                 end
-            end, GetToyCategoryIcon(key), true, 0, nil, {
-                animatedContent = function() return sectionBody end,
-                persistToggle = function(exp)
+            end, GetToyCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
+                wrapFrame = sectionWrap,
+                bodyGetter = function() return sectionBody end,
+                headerHeight = COLLAPSE_H_COLL,
+                hideOnCollapse = true,
+                applyToggleBeforeCollapseAnimate = true,
+                persistFn = function(exp)
                     collapsedHeaders[key] = not exp
                 end,
-                applyToggleBeforeCollapseAnimate = true,
-                accordionOnUpdate = function(drawH)
-                    sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
+                updateVisibleFn = function()
+                    UpdateToyListVisibleRange()
                 end,
-                accordionComplete = function()
-                    RefreshToySectionList()
+                onComplete = function(exp)
+                    if not exp then
+                        UpdateToyListVisibleRange()
+                    end
                 end,
-            })
+            }))
             header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
             header:SetWidth(listWidth)
             header:SetHeight(it.height)
@@ -1795,8 +1772,6 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
             collectionsState._toySectionBodies[key] = sectionBody
 
             collHdrChainTail = sectionWrap
-            collHdrTopY = it.yOffset or 0
-            collHdrPrevH = sectionWrap:GetHeight()
         end
     end
 
@@ -1808,229 +1783,47 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
     collectionsState._toyListRedrawFn = redraw
     collectionsState._toyListContentFrame = cf
     collectionsState._toyListRefreshVisible = UpdateToyListVisibleRange
-
     local scrollFrame = collectionsState.toyListScrollFrame
     if scrollFrame then
         scrollFrame:SetScript("OnVerticalScroll", function()
-            if _toyScrollUpdateScheduled then return end
-            _toyScrollUpdateScheduled = true
-            C_Timer.After(0, function()
-                _toyScrollUpdateScheduled = false
-                UpdateToyListVisibleRange()
-            end)
+            UpdateToyListVisibleRange()
         end)
     end
-    C_Timer.After(0, UpdateToyListVisibleRange)
+    UpdateToyListVisibleRange()
+    ScheduleCollectionsVisibleSync("toys", UpdateToyListVisibleRange)
     _populateToyListBusy = false
 end
 
-local _populateAchievementListBusy = false
-
 local function UpdateAchievementListVisibleRange()
-    local state = collectionsState
-    local flatList = state._achFlatList
-    local scrollFrame = state.achievementListScrollFrame
-    local scrollChild = state.achievementListScrollChild
-    if not flatList or not scrollFrame or not scrollChild then return end
-    local scrollTop = scrollFrame:GetVerticalScroll()
-    local visibleHeight = scrollFrame:GetHeight()
-    local bottom = scrollTop + visibleHeight
-    local visible = state._achVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                CollectionRowPool[#CollectionRowPool + 1] = v.frame
-            end
-        end
-    end
-    state._achVisibleRowFrames = {}
-    local cf = state._achListContentFrame
-    local selectedID = state._achListSelectedID or state.selectedAchievementID
-    local onSelect = state._achListOnSelect
-    local listWidth = state._achListWidth or scrollChild:GetWidth()
-    local startIdx, endIdx = 1, #flatList
-    for i = 1, #flatList do
-        local it = flatList[i]
-        if it.yOffset + it.height > scrollTop and startIdx == 1 then startIdx = i end
-        if it.yOffset < bottom then endIdx = i end
-    end
-    for i = startIdx, endIdx do
-        local it = flatList[i]
-        if it.type == "row" then
-            local frame = AcquireAchievementRow(scrollChild, listWidth, it, selectedID, onSelect, nil, cf)
-            state._achVisibleRowFrames[#state._achVisibleRowFrames + 1] = { frame = frame, flatIndex = i }
-        end
-    end
+    ns.UI_AchievementBrowse_UpdateVisibleRange({
+        state = collectionsState,
+        acquireRow = AcquireAchievementRow,
+        releaseRowFrame = function(f)
+            CollectionRowPool[#CollectionRowPool + 1] = f
+        end,
+    })
 end
 
 local function PopulateAchievementList(scrollChild, listWidth, categoryData, rootCategories, collapsedHeaders, selectedAchievementID, onSelectAchievement, contentFrameForRefresh, redrawFn)
-    if not scrollChild or not Factory then return end
-    if _populateAchievementListBusy then return end
-    _populateAchievementListBusy = true
-    collapsedHeaders = collapsedHeaders or {}
-    local cf = contentFrameForRefresh
-    local redraw = redrawFn or function() end
-
-    listWidth = listWidth or 260
-    scrollChild:SetWidth(listWidth)
-
-    local visible = collectionsState._achVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                CollectionRowPool[#CollectionRowPool + 1] = v.frame
-            end
-        end
-        collectionsState._achVisibleRowFrames = {}
-    end
-
-    local children = { scrollChild:GetChildren() }
-    for i = 1, #children do
-        local c = children[i]
-        c:Hide()
-        c:ClearAllPoints()
-        local bin = ns.UI_RecycleBin
-        if bin then c:SetParent(bin) else c:SetParent(nil) end
-    end
-    local regions = { scrollChild:GetRegions() }
-    for i = 1, #regions do
-        regions[i]:Hide()
-    end
-
-    local flatList, totalHeight = BuildFlatAchievementList(categoryData, rootCategories, collapsedHeaders)
-    scrollChild:SetHeight(totalHeight)
-
-    collectionsState._achSectionBodies = {}
-    local achSectionContentH = {}
-    for fi = 1, #flatList do
-        local fit = flatList[fi]
-        if fit.type == "header" then
-            local sk = fit.key
-            local sh = 0
-            for fj = fi + 1, #flatList do
-                local r = flatList[fj]
-                if r.type == "header" then break end
-                if r.type == "row" then sh = sh + (r.height or ROW_HEIGHT) end
-            end
-            achSectionContentH[sk] = sh
-        end
-    end
-    do
-        local ck, ctop = nil, nil
-        for fi = 1, #flatList do
-            local fit = flatList[fi]
-            if fit.type == "header" then
-                ck = fit.key
-                ctop = fit.yOffset + fit.height
-            elseif fit.type == "row" and ck then
-                fit._collSectionKey = ck
-                fit._collRelY = fit.yOffset - ctop
-            end
-        end
-    end
-
-    local achBaseIndent = (ns.UI_LAYOUT and ns.UI_LAYOUT.BASE_INDENT) or 15
-    local collHdrChainTail = nil
-    local collHdrTopY = nil
-    local collHdrPrevH = nil
-    local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
-    for i = 1, #flatList do
-        local it = flatList[i]
-        if it.type == "header" then
-            local key = it.key
-            local indentPx = it.indent or 0
-            local indentLevel = (indentPx > 0 and math.floor(indentPx / achBaseIndent)) or 0
-            local yTop = it.yOffset or 0
-            local prevH = (collHdrChainTail and collHdrChainTail:GetHeight()) or collHdrPrevH or COLLAPSE_H_COLL
-            local gap = collHdrChainTail and ((it.yOffset or 0) - (collHdrTopY or 0) - prevH) or nil
-            if gap and gap < 0 then gap = 0 end
-
-            local wrapW = math.max(1, listWidth - indentPx)
-            local sectionWrap = Factory:CreateContainer(scrollChild, wrapW, COLLAPSE_H_COLL + 0.1, false)
-            sectionWrap:ClearAllPoints()
-            if sectionWrap.SetClipsChildren then
-                sectionWrap:SetClipsChildren(true)
-            end
-            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, indentPx, gap, collHdrChainTail and nil or yTop)
-
-            local sectionBody
-            local secH = achSectionContentH[key] or 0
-            local function RefreshAchievementSectionList()
-                local cachedCat = collectionsState._lastAchievementCategoryData
-                local cachedRoot = collectionsState._lastAchievementRootCategories
-                local achScrollChild = collectionsState.achievementListScrollChild
-                if cachedCat and cachedRoot and achScrollChild and cf and cf:IsVisible() then
-                    PopulateAchievementList(achScrollChild, listWidth, cachedCat, cachedRoot, collapsedHeaders, selectedAchievementID, onSelectAchievement, cf, redraw)
-                elseif redraw and cf and cf:IsVisible() then
-                    redraw(cf)
-                end
-            end
-            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
-                if not isExpanded then
-                    RefreshAchievementSectionList()
-                end
-            end, "UI-Achievement-Shield-NoPoints", true, indentLevel, nil, {
-                animatedContent = function() return sectionBody end,
-                persistToggle = function(exp)
-                    collapsedHeaders[key] = not exp
-                end,
-                applyToggleBeforeCollapseAnimate = true,
-                accordionOnUpdate = function(drawH)
-                    sectionWrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, drawH or 0))
-                end,
-                accordionComplete = function()
-                    RefreshAchievementSectionList()
-                end,
-            })
-            header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
-            header:SetWidth(wrapW)
-            header:SetHeight(it.height)
-
-            sectionBody = Factory:CreateContainer(sectionWrap, wrapW, 0.1, false)
-            sectionBody:ClearAllPoints()
-            sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
-            sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
-            sectionBody._wnAccordionFullH = secH
-            if not it.isCollapsed then
-                sectionBody:Show()
-                sectionBody:SetHeight(math.max(0.1, secH))
-            else
-                sectionBody:Hide()
-                sectionBody:SetHeight(0.1)
-            end
-            sectionWrap:SetHeight(COLLAPSE_H_COLL + sectionBody:GetHeight())
-            collectionsState._achSectionBodies[key] = sectionBody
-
-            collHdrChainTail = sectionWrap
-            collHdrTopY = it.yOffset or 0
-            collHdrPrevH = sectionWrap:GetHeight()
-        end
-    end
-
-    collectionsState._achFlatList = flatList
-    collectionsState._achFlatListTotalHeight = totalHeight
-    collectionsState._achListWidth = listWidth
-    collectionsState._achListSelectedID = selectedAchievementID
-    collectionsState._achListOnSelect = onSelectAchievement
-    collectionsState._achListCollapsedHeaders = collapsedHeaders
-    collectionsState._achListContentFrame = cf
-    collectionsState._achListRefreshVisible = UpdateAchievementListVisibleRange
-
-    local scrollFrame = collectionsState.achievementListScrollFrame
-    if scrollFrame then
-        scrollFrame:SetScript("OnVerticalScroll", function()
-            UpdateAchievementListVisibleRange()
-        end)
-    end
-    -- Defer row creation to next frame to reduce FPS spike when opening Achievements list
-    C_Timer.After(0, UpdateAchievementListVisibleRange)
-    _populateAchievementListBusy = false
+    ns.UI_AchievementBrowse_Populate({
+        state = collectionsState,
+        scrollChild = scrollChild,
+        listWidth = listWidth,
+        categoryData = categoryData,
+        rootCategories = rootCategories,
+        collapsedHeaders = collapsedHeaders,
+        selectedAchievementID = selectedAchievementID,
+        onSelectAchievement = onSelectAchievement,
+        contentFrameForRefresh = contentFrameForRefresh,
+        redrawFn = redrawFn,
+        acquireRow = AcquireAchievementRow,
+        releaseRowFrame = function(f)
+            CollectionRowPool[#CollectionRowPool + 1] = f
+        end,
+        scheduleVisibleSync = function(fn)
+            ScheduleCollectionsVisibleSync("achievements", fn)
+        end,
+    })
 end
 
 -- ============================================================================
@@ -3048,10 +2841,10 @@ local function CreateModelViewer(parent, width, height)
                 if colonPos and colonPos > 1 then
                     local label = line:sub(1, colonPos - 1):gsub("^%s+", ""):gsub("%s+$", "")
                     local value = line:sub(colonPos + 1):gsub("^%s+", ""):gsub("%s+$", "")
-                    local suffix = isCostOrAmountLine(line) and (" " .. CURRENCY_ICON_GOLD) or ""
+                    local suffix = isCostOrAmountLine(line) and (" " .. GetCurrencyIconForCostLine(value)) or ""
                     lines[#lines + 1] = goldHex .. label .. ": |r" .. whiteHex .. value .. "|r" .. suffix
                 else
-                    local suffix = isCostOrAmountLine(line) and (" " .. CURRENCY_ICON_GOLD) or ""
+                    local suffix = isCostOrAmountLine(line) and (" " .. GetCurrencyIconForCostLine(line)) or ""
                     lines[#lines + 1] = whiteHex .. line .. "|r" .. suffix
                 end
             end
@@ -3254,10 +3047,10 @@ local function CreateModelViewer(parent, width, height)
                 if colonPos and colonPos > 1 then
                     local label = line:sub(1, colonPos - 1):gsub("^%s+", ""):gsub("%s+$", "")
                     local value = line:sub(colonPos + 1):gsub("^%s+", ""):gsub("%s+$", "")
-                    local suffix = isCostOrAmountLine(line) and (" " .. CURRENCY_ICON_GOLD) or ""
+                    local suffix = isCostOrAmountLine(line) and (" " .. GetCurrencyIconForCostLine(value)) or ""
                     lines[#lines + 1] = goldHex .. label .. ": |r" .. whiteHex .. value .. "|r" .. suffix
                 else
-                    local suffix = isCostOrAmountLine(line) and (" " .. CURRENCY_ICON_GOLD) or ""
+                    local suffix = isCostOrAmountLine(line) and (" " .. GetCurrencyIconForCostLine(line)) or ""
                     lines[#lines + 1] = whiteHex .. line .. "|r" .. suffix
                 end
             end
@@ -3983,12 +3776,9 @@ end
 -- MOUNT DATA BUILDER (Source Grouped) — From global collection data (DB); fallback to API
 -- ============================================================================
 
--- API bazen yetenek/placeholder veya journal'da olmayan kayıt döndürür; liste dışı bırakıyoruz.
-local MOUNT_NAME_BLACKLIST = {
-    ["Soar"] = true,
-    ["Unstable Rocket"] = true,
-    ["Whelpling"] = true,
-}
+-- Pure API: hide-decision is delegated to C_MountJournal.GetMountInfoByID().shouldHideOnChar.
+-- Placeholder/ability mounts (e.g. "Soar", "Unstable Rocket") are flagged hidden by the API
+-- on characters that cannot use them, so no addon-side blacklist is required.
 
 local function BuildGroupedMountData(searchText, showCollected, showUncollected, optionalMounts)
     local grouped = {}
@@ -4040,21 +3830,28 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
     if useCache then
         for i = 1, #allMounts do
             local d = allMounts[i]
-            if not d or not d.id then
-                -- skip
-            elseif d.shouldHideOnChar then
-                -- skip hidden/unobtainable mount
-            else
-                local name = d.name or tostring(d.id)
-                if MOUNT_NAME_BLACKLIST[name] then
-                    -- skip (yetenek/placeholder)
-                else
-                    -- Sadece DB/cache: isCollected cache'den (API çağrısı yok).
+            if d and d.id then
+                -- Live-query shouldHideOnChar: DB value may be stale from another character
+                local shouldSkip = false
+                if d.shouldHideOnChar then
+                    shouldSkip = true  -- default to DB value
+                    if C_MountJournal and C_MountJournal.GetMountInfoByID then
+                        local _, _, _, _, _, _, _, _, _, sh = C_MountJournal.GetMountInfoByID(d.id)
+                        if issecretvalue and sh and issecretvalue(sh) then
+                            shouldSkip = false  -- secret = treat as visible
+                        elseif sh == false then
+                            shouldSkip = false  -- API says visible on this character
+                        end
+                    end
+                end
+                if not shouldSkip then
+                    local name = d.name or tostring(d.id)
+                    -- Pure API: isCollected from cache (no API call here).
                     local isCollected = (d.isCollected == true) or (d.collected == true)
                     if (showC and isCollected) or (showU and not isCollected) then
                         if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                             local sourceText = d.source or ""
-                            local catKey = classify(sourceText)
+                            local catKey = classify(d.sourceType)
                             if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                             if not nameAlreadyInCategory(catKey, name) then
                                 addToCategory(catKey, {
@@ -4062,6 +3859,7 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
                                     name = name,
                                     icon = d.icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
                                     source = sourceText,
+                                    sourceType = d.sourceType,
                                     description = d.description,
                                     creatureDisplayID = d.creatureDisplayID,
                                     isCollected = isCollected,
@@ -4080,11 +3878,17 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
         if #mountIDs == 0 then return grouped, 0 end
         for i = 1, #mountIDs do
             local mountID = mountIDs[i]
-            -- Skip hidden mounts (10th return value from GetMountInfoByID)
+            -- Skip hidden mounts: live-query shouldHideOnChar (10th return, API is character-specific)
             local shouldHide = false
+            local liveSourceType = nil
             if C_MountJournal and C_MountJournal.GetMountInfoByID then
-                local _, _, _, _, _, _, _, _, _, sh = C_MountJournal.GetMountInfoByID(mountID)
-                shouldHide = sh
+                local _, _, _, _, _, st, _, _, _, sh = C_MountJournal.GetMountInfoByID(mountID)
+                if issecretvalue and sh and issecretvalue(sh) then
+                    -- secret = treat as visible
+                elseif sh == true then
+                    shouldHide = true
+                end
+                if not (issecretvalue and st and issecretvalue(st)) then liveSourceType = st end
             end
             if not shouldHide then
             local isCollected = SafeGetMountCollected(mountID)
@@ -4096,9 +3900,7 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
                     if n and not (issecretvalue and issecretvalue(n)) then name = n end
                 end
                 if not name then name = tostring(mountID) end
-                if MOUNT_NAME_BLACKLIST[name] then
-                    -- skip (yetenek/placeholder)
-                elseif query == "" or SafeLower(name):find(query, 1, true) then
+                if query == "" or SafeLower(name):find(query, 1, true) then
                     local sourceText = meta and meta.source or ""
                     local creatureDisplayID, description, src = SafeGetMountInfoExtra(mountID)
                     if sourceText == "" then sourceText = src or "" end
@@ -4107,7 +3909,8 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
                         local _, _, ic = C_MountJournal.GetMountInfoByID(mountID)
                         if ic and not (issecretvalue and issecretvalue(ic)) then icon = ic end
                     end
-                    local catKey = classify(sourceText)
+                    local sourceTypeInt = (meta and meta.sourceType) or liveSourceType
+                    local catKey = classify(sourceTypeInt)
                     if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                     if not nameAlreadyInCategory(catKey, name) then
                         addToCategory(catKey, {
@@ -4115,6 +3918,7 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
                             name = name,
                             icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
                             source = sourceText,
+                            sourceType = sourceTypeInt,
                             description = (meta and meta.description) or description or "",
                             creatureDisplayID = creatureDisplayID,
                             isCollected = isCollected,
@@ -4175,32 +3979,46 @@ local function RunChunkedMountBuild(allMounts, searchText, showCollected, showUn
         local limit = math.min(startIdx + RUN_CHUNK_SIZE - 1, total)
         for i = startIdx, limit do
             local d = allMounts[i]
-            if d and d.id and not d.shouldHideOnChar then
+            if d and d.id then
+                -- Live-query shouldHideOnChar: DB value may be stale from another character
+                local shouldSkip = false
+                if d.shouldHideOnChar then
+                    shouldSkip = true
+                    if C_MountJournal and C_MountJournal.GetMountInfoByID then
+                        local _, _, _, _, _, _, _, _, _, sh = C_MountJournal.GetMountInfoByID(d.id)
+                        if issecretvalue and sh and issecretvalue(sh) then
+                            shouldSkip = false
+                        elseif sh == false then
+                            shouldSkip = false
+                        end
+                    end
+                end
+                if not shouldSkip then
                 local name = d.name or tostring(d.id)
-                if not MOUNT_NAME_BLACKLIST[name] then
-                    local isCollected = (d.isCollected == true) or (d.collected == true)
-                    if (showC and isCollected) or (showU and not isCollected) then
-                        if query == "" or (name and SafeLower(name):find(query, 1, true)) then
-                            local sourceText = d.source or ""
-                            local catKey = classify(sourceText)
-                            if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
-                            if not nameAlreadyInCategory(catKey, name) then
-                                addToCategory(catKey, {
-                                    id = d.id,
-                                    name = name,
-                                    icon = d.icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
-                                    source = sourceText,
-                                    description = d.description,
-                                    creatureDisplayID = d.creatureDisplayID,
-                                    isCollected = isCollected,
-                                })
-                            elseif isCollected then
-                                updateCollectedInCategory(catKey, name, true)
-                            end
+                local isCollected = (d.isCollected == true) or (d.collected == true)
+                if (showC and isCollected) or (showU and not isCollected) then
+                    if query == "" or (name and SafeLower(name):find(query, 1, true)) then
+                        local sourceText = d.source or ""
+                        local catKey = classify(d.sourceType)
+                        if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
+                        if not nameAlreadyInCategory(catKey, name) then
+                            addToCategory(catKey, {
+                                id = d.id,
+                                name = name,
+                                icon = d.icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
+                                source = sourceText,
+                                sourceType = d.sourceType,
+                                description = d.description,
+                                creatureDisplayID = d.creatureDisplayID,
+                                isCollected = isCollected,
+                            })
+                        elseif isCollected then
+                            updateCollectedInCategory(catKey, name, true)
                         end
                     end
                 end
             end
+        end
         end
         startIdx = limit + 1
         if startIdx > total then
@@ -4258,7 +4076,7 @@ local function RunChunkedPetBuild(allPets, searchText, showCollected, showUncoll
                 if (showC and isCollected) or (showU and not isCollected) then
                     if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                         local sourceText = d.source or ""
-                        local catKey = classify(sourceText)
+                        local catKey = classify(d.sourceTypeIndex)
                         if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                         if not nameAlreadyInCategory(catKey, name) then
                             addToCategory(catKey, {
@@ -4266,6 +4084,7 @@ local function RunChunkedPetBuild(allPets, searchText, showCollected, showUncoll
                                 name = name,
                                 icon = d.icon or "Interface\\Icons\\INV_Box_PetCarrier_01",
                                 source = sourceText,
+                                sourceTypeIndex = d.sourceTypeIndex,
                                 description = d.description,
                                 creatureDisplayID = d.creatureDisplayID,
                                 isCollected = isCollected,
@@ -4347,7 +4166,7 @@ local function BuildGroupedPetData(searchText, showCollected, showUncollected, o
                 if (showC and isCollected) or (showU and not isCollected) then
                     if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                         local sourceText = d.source or ""
-                        local catKey = classify(sourceText)
+                        local catKey = classify(d.sourceTypeIndex)
                         if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                         if not nameAlreadyInCategory(catKey, name) then
                             addToCategory(catKey, {
@@ -4355,6 +4174,7 @@ local function BuildGroupedPetData(searchText, showCollected, showUncollected, o
                                 name = name,
                                 icon = d.icon or "Interface\\Icons\\INV_Box_PetCarrier_01",
                                 source = sourceText,
+                                sourceTypeIndex = d.sourceTypeIndex,
                                 description = d.description,
                                 creatureDisplayID = d.creatureDisplayID,
                                 isCollected = isCollected,
@@ -4401,7 +4221,8 @@ local function BuildGroupedPetData(searchText, showCollected, showUncollected, o
                             local _, ic = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
                             if ic and not (issecretvalue and issecretvalue(ic)) then icon = ic end
                         end
-                        local catKey = classify(sourceText)
+                        local sourceTypeIndex = meta and meta.sourceTypeIndex or nil
+                        local catKey = classify(sourceTypeIndex)
                         if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                         if not nameAlreadyInCategory(catKey, name) then
                             addToCategory(catKey, {
@@ -4409,6 +4230,7 @@ local function BuildGroupedPetData(searchText, showCollected, showUncollected, o
                                 name = name,
                                 icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01",
                                 source = sourceText,
+                                sourceTypeIndex = sourceTypeIndex,
                                 description = (meta and meta.description) or description or "",
                                 creatureDisplayID = creatureDisplayID,
                                 isCollected = isCollected,
@@ -4462,13 +4284,9 @@ end
 local function BuildGroupedToyData(searchText, showCollected, showUncollected, optionalToys)
     local grouped = {}
     local nameIndex = {}
-    local classifyCache = {}
-    for _, cat in ipairs(SOURCE_CATEGORIES) do
+    for _, cat in ipairs(TOY_SOURCE_CATEGORIES) do
         grouped[cat.key] = {}
         nameIndex[cat.key] = {}
-    end
-    local function classify(src)
-        return ClassifySource(classifyCache, src, "toy")
     end
 
     local function nameAlreadyInCategory(catKey, name)
@@ -4487,9 +4305,10 @@ local function BuildGroupedToyData(searchText, showCollected, showUncollected, o
     local query = SafeLower(searchText)
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
-    local function isReliableToySource(src)
-        return WarbandNexus.IsReliableToySource and WarbandNexus:IsReliableToySource(src) or (src and src ~= "")
-    end
+
+    local resolveSourceIndex = (WarbandNexus.GetToySourceTypeIndexForItem and function(id)
+        return WarbandNexus:GetToySourceTypeIndexForItem(id)
+    end) or function() return nil end
 
     for i = 1, #allToys do
         local d = allToys[i]
@@ -4498,21 +4317,16 @@ local function BuildGroupedToyData(searchText, showCollected, showUncollected, o
             local isCollected = (d.isCollected == true) or (d.collected == true)
             if (showC and isCollected) or (showU and not isCollected) then
                 if query == "" or (name and SafeLower(name):find(query, 1, true)) then
-                    local sourceText = d.source or ""
-                    if not isReliableToySource(sourceText) then
-                        local meta = WarbandNexus.ResolveCollectionMetadata and WarbandNexus:ResolveCollectionMetadata("toy", d.id)
-                        if meta and isReliableToySource(meta.source) then
-                            sourceText = meta.source
-                        end
-                    end
-                    local catKey = classify(sourceText)
+                    local sourceTypeIndex = d.sourceTypeIndex or resolveSourceIndex(d.id)
+                    local catKey = ClassifyBattlePetByAPI(nil, sourceTypeIndex)
                     if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                     if not nameAlreadyInCategory(catKey, name) then
                         addToCategory(catKey, {
                             id = d.id,
                             name = name,
                             icon = d.icon or DEFAULT_ICON_TOY,
-                            source = sourceText,
+                            source = d.source or "",
+                            sourceTypeIndex = sourceTypeIndex,
                             description = d.description or "",
                             isCollected = isCollected,
                             collected = isCollected,
@@ -4614,6 +4428,7 @@ local function HideAllCollectionsResultFrames()
     if collectionsState.toyDetailContainer then collectionsState.toyDetailContainer:Hide() end
     if collectionsState.toyDetailScrollBarContainer then collectionsState.toyDetailScrollBarContainer:Hide() end
     if collectionsState.recentTabPanel then collectionsState.recentTabPanel:Hide() end
+    if collectionsState.recentOuterScrollBarColumn then collectionsState.recentOuterScrollBarColumn:Hide() end
     if collectionsState.collectionRightColumn then collectionsState.collectionRightColumn:Hide() end
     if collectionsState.collectionProgressFrame then collectionsState.collectionProgressFrame:Hide() end
     if collectionsState._collectionsContentSubHeader then collectionsState._collectionsContentSubHeader:Hide() end
@@ -4736,17 +4551,35 @@ local function DrawRecentContent(contentFrame)
 
     local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "recent", ch)
 
+    local scrollFrame = collectionsState.recentScrollFrame
+    if scrollFrame and not scrollFrame._wnScrollBarColumn then
+        collectionsState.recentTabPanel = nil
+        collectionsState.recentScrollFrame = nil
+        collectionsState.recentScrollChild = nil
+        collectionsState.recentOuterScrollBarColumn = nil
+    end
+
     local panel = collectionsState.recentTabPanel
     if not panel then
-        -- No outer bordered “detail” shell — matches Achievements list area (plain container + scroll).
         panel = Factory:CreateContainer(contentFrame, cw, innerCh, false)
         panel:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
         panel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
-        local scrollFrame = Factory:CreateScrollFrame(panel, "UIPanelScrollFrameTemplate", true)
-        scrollFrame:SetAllPoints()
+        local scrollBarColumn = Factory:CreateScrollBarColumn(panel, SCROLLBAR_GAP, 0, 0)
+        collectionsState.recentOuterScrollBarColumn = scrollBarColumn
+        scrollFrame = Factory:CreateScrollFrame(panel, "UIPanelScrollFrameTemplate", true)
+        scrollFrame:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
+        scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", -2, 0)
         EnableStandardScrollWheel(scrollFrame)
-        local innerW = math.max(1, cw)
+        scrollFrame._wnScrollBarColumn = scrollBarColumn
+        scrollFrame._wnScrollHost = panel
+        scrollFrame._wnScrollAnchorTL = { frame = panel, a1 = "TOPLEFT", a2 = "TOPLEFT", x = 0, y = 0 }
+        scrollFrame._wnScrollAnchorBRHidden = { frame = panel, a1 = "BOTTOMRIGHT", a2 = "BOTTOMRIGHT", x = 0, y = 0 }
+        scrollFrame._wnScrollAnchorBRShown = { frame = scrollBarColumn, a1 = "BOTTOMRIGHT", a2 = "BOTTOMLEFT", x = -2, y = 0 }
+        local innerW = math.max(1, cw - SCROLLBAR_GAP - 2)
         local scrollChild = CreateStandardScrollChild(scrollFrame, innerW, 1)
+        if scrollFrame.ScrollBar then
+            Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 2)
+        end
         collectionsState.recentTabPanel = panel
         collectionsState.recentScrollFrame = scrollFrame
         collectionsState.recentScrollChild = scrollChild
@@ -4760,12 +4593,15 @@ local function DrawRecentContent(contentFrame)
         panel:SetSize(cw, innerCh)
     end
 
-    local scrollFrame = collectionsState.recentScrollFrame
+    scrollFrame = collectionsState.recentScrollFrame
     local sch = collectionsState.recentScrollChild
-    if scrollFrame and sch then
-        scrollFrame:ClearAllPoints()
-        scrollFrame:SetAllPoints()
-        sch:SetWidth(math.max(1, cw))
+    local outerBarCol = collectionsState.recentOuterScrollBarColumn
+    if scrollFrame and sch and outerBarCol and panel then
+        scrollFrame._wnScrollBarColumn = outerBarCol
+        scrollFrame._wnScrollHost = panel
+        scrollFrame._wnScrollAnchorTL = { frame = panel, a1 = "TOPLEFT", a2 = "TOPLEFT", x = 0, y = 0 }
+        scrollFrame._wnScrollAnchorBRHidden = { frame = panel, a1 = "BOTTOMRIGHT", a2 = "BOTTOMRIGHT", x = 0, y = 0 }
+        scrollFrame._wnScrollAnchorBRShown = { frame = outerBarCol, a1 = "BOTTOMRIGHT", a2 = "BOTTOMLEFT", x = -2, y = 0 }
     end
 
     if not sch then return end
@@ -4782,7 +4618,6 @@ local function DrawRecentContent(contentFrame)
         qlower = qraw:lower()
     end
 
-    local emptyTxt = (loc and loc["COLLECTIONS_RECENT_TAB_EMPTY"]) or (loc and loc["COLLECTIONS_RECENT_EMPTY"]) or "Nothing recorded yet."
     local searchEmptyTxt = (loc and loc["COLLECTIONS_RECENT_SEARCH_EMPTY"]) or "No matching entries."
     local noneLine = (loc and loc["COLLECTIONS_RECENT_SECTION_NONE"]) or "No entries yet."
     local inset = CONTENT_INSET or 8
@@ -4795,57 +4630,30 @@ local function DrawRecentContent(contentFrame)
 
     local function finishRecentScroll(totalY)
         sch:SetHeight(math.max(totalY + inset, 1))
+        if scrollFrame and scrollFrame._wnScrollBarColumn and sch then
+            local frameH = scrollFrame:GetHeight() or 0
+            local needsOuterScroll = (sch:GetHeight() or 0) > frameH + 1
+            if needsOuterScroll then
+                sch:SetWidth(math.max(1, cw - SCROLLBAR_GAP - 2))
+            else
+                sch:SetWidth(math.max(1, cw))
+            end
+        elseif sch then
+            sch:SetWidth(math.max(1, cw))
+        end
         if scrollFrame and Factory.UpdateScrollBarVisibility then
             Factory:UpdateScrollBarVisibility(scrollFrame)
         end
     end
 
-    local function showRecentPlainMessage(msg)
-        ClearRecentScrollChildren(sch)
-        local fs = collectionsState._recentEmptyFs
-        if not fs then
-            fs = FontManager:CreateFontString(sch, "body", "OVERLAY")
-            collectionsState._recentEmptyFs = fs
-        end
-        fs:SetParent(sch)
-        fs:ClearAllPoints()
-        fs:SetPoint("TOPLEFT", sch, "TOPLEFT", inset, -inset)
-        fs:SetPoint("TOPRIGHT", sch, "TOPRIGHT", -inset, -inset)
-        fs:SetJustifyH("LEFT")
-        fs:SetJustifyV("TOP")
-        fs:SetWordWrap(true)
-        fs:SetTextColor(0.72, 0.72, 0.75, 1)
-        fs:SetText(msg or "")
-        fs:Show()
-        finishRecentScroll(inset + 72)
-    end
-
-    if not db or #db == 0 then
-        showRecentPlainMessage(qlower and searchEmptyTxt or emptyTxt)
-        return
-    end
-
-    if qlower then
-        local anyMatch = false
-        for si = 1, #RECENT_SECTION_ORDER do
-            local typ = RECENT_SECTION_ORDER[si]
-            if #RecentPickForType(db, typ, qlower, 1) > 0 then
-                anyMatch = true
-                break
-            end
-        end
-        if not anyMatch then
-            showRecentPlainMessage(searchEmptyTxt)
-            return
-        end
-    end
-
     ClearRecentScrollChildren(sch)
 
-    local innerW = math.max(1, (sch:GetWidth() or cw) - 2 * inset)
+    local schW = sch:GetWidth() or cw
+    local innerW = math.max(1, schW - 2 * inset)
     local cardW = (innerW - 3 * gap) / 4
     local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 6
     local listTopPad = headerBand + 4
+    local RECENT_ROW_H_SUB = ROW_HEIGHT + 14
 
     local pickedLists = {}
     for si = 1, #RECENT_SECTION_ORDER do
@@ -4873,6 +4681,14 @@ local function DrawRecentContent(contentFrame)
         return "|cffaaaaaa"
     end
 
+    --- Account-wide achievement completed but not flagged as earned by the current character (hide earner UI).
+    local function RecentAchievementSuppressEarner(achievementID)
+        if not achievementID then return false end
+        local ok, _, _, _, completed, _, _, _, _, _, _, _, wasEarnedByMe = pcall(GetAchievementInfo, achievementID)
+        if not ok then return false end
+        return completed == true and wasEarnedByMe == false
+    end
+
     local rowVisualIndex = 0
     for si = 1, #RECENT_SECTION_ORDER do
         local typ = RECENT_SECTION_ORDER[si]
@@ -4896,30 +4712,90 @@ local function DrawRecentContent(contentFrame)
             iconFr:Show()
         end
 
+        local resetBtn = Factory:CreateButton(card, 22, 22, true)
+        resetBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -RECENT_CARD_HEADER_PAD, -RECENT_CARD_HEADER_PAD + 1)
+        resetBtn:SetFrameLevel((card:GetFrameLevel() or 0) + 8)
+        local resetTex = resetBtn:CreateTexture(nil, "ARTWORK")
+        resetTex:SetAllPoints()
+        local resetAtlasOk = pcall(function() resetTex:SetAtlas("talents-button-reset", true) end)
+        if not resetAtlasOk then
+            resetTex:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+        end
+        resetBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText((loc and loc["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"]) or "Clear recent entries for this category", 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        resetBtn:SetScript("OnLeave", GameTooltip_Hide)
+        resetBtn:SetScript("OnClick", function()
+            if WarbandNexus.ClearCollectionsRecentObtainedForType then
+                WarbandNexus:ClearCollectionsRecentObtainedForType(typ)
+            end
+            WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, {
+                tab = "collections",
+                skipCooldown = true,
+                instantPopulate = true,
+            })
+        end)
+
         local titleFs = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
         titleFs:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 6, -RECENT_CARD_HEADER_PAD - 2)
-        titleFs:SetPoint("TOPRIGHT", card, "TOPRIGHT", -RECENT_CARD_HEADER_PAD, -RECENT_CARD_HEADER_PAD - 2)
+        titleFs:SetPoint("TOPRIGHT", resetBtn, "TOPLEFT", -6, -2)
         titleFs:SetJustifyH("LEFT")
         titleFs:SetText(cat)
         titleFs:SetTextColor(1, 0.85, 0.45, 1)
 
-        -- Per-card scroll: fills body area below the header; uses central themed scrollbar (Factory:CreateScrollFrame).
+        local cardScrollBarCol = Factory:CreateScrollBarColumn(card, SCROLLBAR_GAP, listTopPad, RECENT_CARD_HEADER_PAD)
         local cardScroll = Factory:CreateScrollFrame(card, "UIPanelScrollFrameTemplate", true)
         cardScroll:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD, -listTopPad)
-        cardScroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -RECENT_CARD_HEADER_PAD, RECENT_CARD_HEADER_PAD)
+        cardScroll:SetPoint("BOTTOMRIGHT", cardScrollBarCol, "BOTTOMLEFT", -2, RECENT_CARD_HEADER_PAD)
         EnableStandardScrollWheel(cardScroll)
-        local listWInner = math.max(1, cardW - RECENT_CARD_HEADER_PAD * 2)
+        cardScroll._wnScrollBarColumn = cardScrollBarCol
+        cardScroll._wnScrollHost = card
+        cardScroll._wnScrollAnchorTL = {
+            frame = card,
+            a1 = "TOPLEFT",
+            a2 = "TOPLEFT",
+            x = RECENT_CARD_HEADER_PAD,
+            y = -listTopPad,
+        }
+        cardScroll._wnScrollAnchorBRHidden = {
+            frame = card,
+            a1 = "BOTTOMRIGHT",
+            a2 = "BOTTOMRIGHT",
+            x = -RECENT_CARD_HEADER_PAD,
+            y = RECENT_CARD_HEADER_PAD,
+        }
+        cardScroll._wnScrollAnchorBRShown = {
+            frame = cardScrollBarCol,
+            a1 = "BOTTOMRIGHT",
+            a2 = "BOTTOMLEFT",
+            x = -2,
+            y = 0,
+        }
+        local listWInner = math.max(1, cardW - RECENT_CARD_HEADER_PAD * 2 - SCROLLBAR_GAP - 2)
         local cardScrollChild = CreateStandardScrollChild(cardScroll, listWInner, 1)
+        if cardScroll.ScrollBar then
+            Factory:PositionScrollBarInContainer(cardScroll.ScrollBar, cardScrollBarCol, 2)
+        end
 
         local yList = 0
-        local function addRow(iconPath, nameRich, rightTime, clickable, onClick, tooltipBuilder)
+        local function finishCardScrollBar()
+            cardScrollChild:SetHeight(math.max(yList, 1))
+            if Factory.UpdateScrollBarVisibility then
+                Factory:UpdateScrollBarVisibility(cardScroll)
+            end
+        end
+
+        local function addRow(iconPath, nameRich, rightTime, clickable, onClick, tooltipBuilder, subtitleRich, rowH)
             rowVisualIndex = rowVisualIndex + 1
-            local row = Factory:CreateCollectionListRow(cardScrollChild, ROW_HEIGHT)
+            rowH = rowH or ROW_HEIGHT
+            local row = Factory:CreateCollectionListRow(cardScrollChild, rowH)
             row:SetParent(cardScrollChild)
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", cardScrollChild, "TOPLEFT", 0, -yList)
             row:SetWidth(listWInner)
-            Factory:ApplyCollectionListRowContent(row, rowVisualIndex, iconPath, nameRich, clickable, false, onClick, rightTime)
+            Factory:ApplyCollectionListRowContent(row, rowVisualIndex, iconPath, nameRich, clickable, false, onClick, rightTime, subtitleRich)
             if tooltipBuilder then
                 row:SetScript("OnEnter", function(self)
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -4931,13 +4807,13 @@ local function DrawRecentContent(contentFrame)
                 row:SetScript("OnEnter", nil)
                 row:SetScript("OnLeave", nil)
             end
-            yList = yList + ROW_HEIGHT + 2
+            yList = yList + rowH + 2
         end
 
         if qlower and #picked == 0 then
-            addRow(defaultEmptyIcon, "|cff888888" .. searchEmptyTxt .. "|r", nil, false, nil, nil)
+            addRow(defaultEmptyIcon, "|cff888888" .. searchEmptyTxt .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
         elseif #picked == 0 then
-            addRow(defaultEmptyIcon, "|cff888888" .. noneLine .. "|r", nil, false, nil, nil)
+            addRow(defaultEmptyIcon, "|cff888888" .. noneLine .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
         else
             for j = 1, #picked do
                 local e = picked[j]
@@ -4949,46 +4825,57 @@ local function DrawRecentContent(contentFrame)
                 local iconPath = GetRecentEntryDisplayIcon(typ, e.id)
                 local idCopy, typCopy, tsCopy, nmCopy = e.id, typ, e.t, nm
                 local ob = RecentCharacterLabelForDisplay(e.obtainedBy)
+                local suppressEarner = (typCopy == "achievement" and idCopy and RecentAchievementSuppressEarner(idCopy))
+                local subLine = nil
+                local rowH = ROW_HEIGHT
+                if ob and ob ~= "" and not suppressEarner then
+                    local cc = ResolveCharacterClassColor(ob)
+                    subLine = string.format((loc and loc["COLLECTIONS_RECENT_ROW_BY"]) or "By %s", cc .. ob .. "|r")
+                    rowH = RECENT_ROW_H_SUB
+                end
                 local nameRich = COLLECTED_COLOR .. nm .. "|r"
 
                 local function buildTooltip(tt)
-                    -- Midnight: GameTooltip:SetText(text [, color, alpha, wrap]) — do not pass legacy r,g,b,wrap four floats.
+                    local hdrDim = 0.52
                     tt:SetText("|cffffd133" .. nmCopy .. "|r")
-                    tt:AddLine(cat, 0.7, 0.7, 0.7, false)
+                    tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_CATEGORY"]) or "Category", hdrDim, hdrDim, hdrDim)
+                    tt:AddLine(cat, 0.82, 0.82, 0.88)
                     if typCopy == "achievement" and idCopy then
+                        tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"]) or "Progress", hdrDim, hdrDim, hdrDim)
                         local ok, _, _, points, completed = pcall(GetAchievementInfo, idCopy)
                         if ok and points and points > 0 then
                             tt:AddLine(string.format("%d %s", points, (loc and loc["POINTS_LABEL"]) or "Points"), 1, 0.85, 0.45)
                         end
                         if ok and completed then
-                            tt:AddLine((loc and loc["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"]) or "Completed.", 0.4, 1, 0.4)
+                            tt:AddLine((loc and loc["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"]) or "Completed.", 0.35, 1, 0.45)
+                        end
+                        if suppressEarner then
+                            tt:AddLine((loc and loc["COLLECTIONS_RECENT_ACH_HIDE_ALT_EARNED"]) or "Completed on account before this character.", 0.62, 0.62, 0.68)
                         end
                     end
-                    if ob and ob ~= "" then
+                    if ob and ob ~= "" and not suppressEarner then
+                        tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"]) or "Character", hdrDim, hdrDim, hdrDim)
                         local cc = ResolveCharacterClassColor(ob)
-                        tt:AddLine(" ", 1, 1, 1)
                         local fmtKey = (typCopy == "achievement") and "RECENT_TOOLTIP_ACHIEVEMENT_EARNED_BY" or "RECENT_TOOLTIP_EARNED_BY"
-                        local fmt = (loc and loc[fmtKey]) or ((typCopy == "achievement") and "This achievement was earned by %s" or "Obtained by %s")
-                        tt:AddLine(string.format(fmt, cc .. ob .. "|r"), 0.85, 0.85, 0.85, false)
+                        local fmt = (loc and loc[fmtKey]) or ((typCopy == "achievement") and "Earned by %s" or "Obtained by %s")
+                        tt:AddLine(string.format(fmt, cc .. ob .. "|r"), 0.85, 0.85, 0.88)
                     end
+                    tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"]) or "Recorded", hdrDim, hdrDim, hdrDim)
                     if tsCopy and tsCopy > 0 then
                         local abs = date("%Y-%m-%d %H:%M", tsCopy)
-                        tt:AddLine(string.format("%s  |cff888888(%s)|r", abs, rel), 0.7, 0.7, 0.7, false)
+                        tt:AddLine(string.format("%s  |cff888888(%s)|r", abs, rel), 0.72, 0.72, 0.76)
                     elseif rel and rel ~= "" then
-                        tt:AddLine(rel, 0.7, 0.7, 0.7, false)
+                        tt:AddLine(rel, 0.72, 0.72, 0.76)
                     end
                 end
 
                 addRow(iconPath, nameRich, "|cff888888" .. rel .. "|r", true, function()
                     RecentRowNavigateToEntry(typCopy, idCopy)
-                end, buildTooltip)
+                end, buildTooltip, subLine, rowH)
             end
         end
 
-        cardScrollChild:SetHeight(math.max(yList, 1))
-        if Factory.UpdateScrollBarVisibility then
-            Factory:UpdateScrollBarVisibility(cardScroll)
-        end
+        finishCardScrollBar()
     end
 
     finishRecentScroll(inset + cardH + inset)
@@ -6871,6 +6758,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         collectionsState.recentTabPanel = nil
         collectionsState.recentScrollFrame = nil
         collectionsState.recentScrollChild = nil
+        collectionsState.recentOuterScrollBarColumn = nil
         collectionsState._recentEmptyFs = nil
     end
 

@@ -91,6 +91,7 @@ L["SEARCH_PLANS"] = "Search plans..."
 L["SHOW_COMPLETED"] = "Show Completed"
 L["SHOW_COMPLETED_HELP"] = "To-Do List and Weekly Progress: unchecked shows plans still in progress; checked shows completed plans only. Browse tabs (Mounts, Pets, etc.): unchecked browses uncollected items (only those on your To-Do if Show Planned is on); checked adds collected entries that are on your To-Do (Show Planned still limits to list items when on)."
 L["SHOW_PLANNED"] = "Show Planned"
+L["SHOW_PLANNED_DISABLED_HERE"] = "Not used on To-Do List or Weekly Progress. Open Mounts, Pets, Toys, or another browse tab to use this filter."
 L["SHOW_PLANNED_HELP"] = "Browse tabs only (hidden on To-Do List and Weekly Progress): when checked, only items you put on your To-Do for that category. With Show Completed off, planned items you still need; with Show Completed on, planned items you already finished; both on: all planned items in that category; both off: full uncollected browse."
 L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "No achievements to display"
 L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "Add achievements from this list to your To-Do, or change Show Planned / Show Completed. The list fills as achievements are scanned; try /reload if nothing appears."
@@ -875,6 +876,37 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.0.0 (key CHANGELOG_V300)
+L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
+
+Bundled highlights (prior patch notes through 2.7.2)
+
+Saved Instances & lockouts
+- Account-wide Saved Instances window: raid + dungeon lockouts, themed Factory scroll, collapse/expand, symmetric header columns, FontManager typography, clearer borders and resize behavior.
+- Backend: dungeon rows with difficulty pills; secret-safe raid detection; lockout freshness; collapse persistence; DataService staggered PvE capture aligned with PvECacheService.
+
+Try Counter & sources
+- ENCOUNTER_END-driven counting (next-frame schedule); clearer miss/stat paths; rare-farm off-by-one fix; encounter-specific dedup; per-corpse GUID dedup; NEW_MOUNT_ADDED / NEW_PET_ADDED backup; safer multi-event registration.
+- CollectibleSourceDB / locale rows for Sylvanas SoD Mythic chest attribution across clients.
+
+Gear, Vault & currencies
+- Quick-access menu (Vault Tracker, Saved Instances, Plans, Settings).
+- PvE Vault Status column + per-slot vault tooltips; live C_WeeklyRewards.HasAvailableRewards for ready state; alt weekly-reset promotion fixes; Status column width for localized labels.
+- Dawncrest crest farming tooltips; Shift-expand currency rows (`<bag> · <earned> / <cap>`); tier-colored upgrade tracks; subtitle hints; `/wn maxonly` (hide alts below level 80).
+- Gear paperdoll height/columns; recommendations scrollbar auto-hide; full currency names; Vault Tracker on FontManager; character order from Characters tab; enchant rank glyphs (R1–R3); Voidcore / coffer display fixes.
+
+Plans & Collections
+- Achievement Journal circular WN badge (add/remove To-Do), localized.
+- Plans Tracker mirrors To-Do: ParseMultipleSources rows, type badges, portrait-aligned info rows, tries/delete alignment, ExpandableRow layout fixes, full achievement body text without MaxLines caps.
+- Collections › Recent Obtains: full-height cards, auto-hiding scrollbars, tooltip detail (earned/obtained-by wording); 2.7.2 polish — title/subtitle, per-category reset, labeled tooltip sections, Plans metrics (`UI_PLANS_CARD_METRICS`), Weekly Progress accordion tween + scroll resync, Show Planned always visible (disabled on To-Do/Weekly with tooltip), themed checkbox accent fixes, tighter plan source icons.
+
+Locales
+- `SHOW_PLANNED_DISABLED_HERE` and `COLLECTIONS_RECENT_*` for all shipped languages; restored collections strings (koKR / ruRU / zhTW) and mojibake fixes (deDE / es / fr).
+
+Full merged notes: repository CHANGES.md / CHANGES.txt · listing on CurseForge / Wago.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 2.7.0 (key CHANGELOG_V270)
 L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
 
@@ -1214,7 +1246,7 @@ L["COLLECTIONS_CONTENT_TITLE_PETS"] = "Pets"
 L["COLLECTIONS_CONTENT_SUB_PETS"] = "Battle pets and companions across your account."
 L["COLLECTIONS_CONTENT_TITLE_TOYS"] = "Toy Box"
 L["COLLECTIONS_CONTENT_SUB_TOYS"] = "Toys and usable collectibles."
-L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Recent obtains"
+L["COLLECTIONS_CONTENT_TITLE_RECENT"] = "Recent Obtains"
 L["COLLECTIONS_CONTENT_SUB_RECENT"] = "Newest achievements, mounts, pets, and toys recorded on your account."
 L["COLLECTIONS_RECENT_JUST_NOW"] = "Just now"
 L["COLLECTIONS_RECENT_MINUTES_AGO"] = "%d min ago"
@@ -1227,6 +1259,13 @@ L["COLLECTIONS_RECENT_CHARACTER_SUFFIX"] = "|cff888888  ·  %s|r"
 L["COLLECTIONS_RECENT_EMPTY"] = "Nothing recorded yet."
 L["COLLECTIONS_RECENT_SEARCH_EMPTY"] = "No matching entries."
 L["COLLECTIONS_RECENT_SECTION_NONE"] = "No entries yet."
+L["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"] = "Clear recent entries for this category"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CATEGORY"] = "Category"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"] = "Progress"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"] = "Character"
+L["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"] = "Recorded"
+L["COLLECTIONS_RECENT_ROW_BY"] = "By %s"
+L["COLLECTIONS_RECENT_ACH_HIDE_ALT_EARNED"] = "Completed on account before this character."
 L["SELECT_MOUNT_FROM_LIST"] = "Select a mount from the list"
 L["SELECT_PET_FROM_LIST"] = "Select a pet from the list"
 L["SELECT_TO_SEE_DETAILS"] = "Select a %s to see details."

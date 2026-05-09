@@ -36,6 +36,7 @@ local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
 local FormatMoney = ns.UI_FormatMoney
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateFactionIcon = ns.UI_CreateFactionIcon
 local CreateRaceIcon = ns.UI_CreateRaceIcon
@@ -828,6 +829,12 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Favorites
     local favoritesExpanded = self.charactersExpandAllActive or self.db.profile.ui.favoritesExpanded
     local favoritesContent
+    local favoritesVisualOpts = BuildAccordionVisualOpts({
+        bodyGetter = function() return favoritesContent end,
+    }) or {
+        animatedContent = function() return favoritesContent end,
+    }
+    favoritesVisualOpts.sectionPreset = "gold"
     local favHeader, _, favIcon = CreateCollapsibleHeader(
         parent,
         ((ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites"),
@@ -849,10 +856,7 @@ function WarbandNexus:DrawCharacterList(parent)
         true,
         nil,
         nil,
-        {
-            sectionPreset = "gold",
-            animatedContent = function() return favoritesContent end,
-        }
+        favoritesVisualOpts
     )
     AnchorSectionHeader(favHeader)
     if favIcon then favIcon:SetSize(28, 28) end
@@ -903,7 +907,9 @@ function WarbandNexus:DrawCharacterList(parent)
         true,
         nil,
         nil,
-        { animatedContent = function() return charactersContent end }
+        BuildAccordionVisualOpts({
+            bodyGetter = function() return charactersContent end,
+        }) or { animatedContent = function() return charactersContent end }
     )
     AnchorSectionHeader(charHeader)
     if charIcon then charIcon:SetSize(24, 24) end
@@ -939,6 +945,12 @@ function WarbandNexus:DrawCharacterList(parent)
 
         local untrackedExpanded = self.db.profile.ui.untrackedExpanded
         local untrackedContent
+        local untrackedVisualOpts = BuildAccordionVisualOpts({
+            bodyGetter = function() return untrackedContent end,
+        }) or {
+            animatedContent = function() return untrackedContent end,
+        }
+        untrackedVisualOpts.sectionPreset = "danger"
         local untrackedHeader, _, untrackedIcon = CreateCollapsibleHeader(
             parent,
             ((ns.L and ns.L["UNTRACKED_CHARACTERS"]) or "Untracked Characters"),
@@ -960,10 +972,7 @@ function WarbandNexus:DrawCharacterList(parent)
             true,
             nil,
             nil,
-            {
-                sectionPreset = "danger",
-                animatedContent = function() return untrackedContent end,
-            }
+            untrackedVisualOpts
         )
         AnchorSectionHeader(untrackedHeader)
         if untrackedIcon then untrackedIcon:SetSize(24, 24) end

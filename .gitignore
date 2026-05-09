@@ -47,7 +47,6 @@ Locales/.tmp/
 *.zip
 *.rar
 *.7z
-.release/
 build/
 WarbandNexus/
 
