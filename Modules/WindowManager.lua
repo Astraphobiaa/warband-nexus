@@ -26,11 +26,12 @@ local ADDON_NAME, ns = ...
 local WindowManager = {}
 ns.WindowManager = WindowManager
 
----Chat debug (Lua 5.1): only when WarbandNexus.db.profile.debugMode is on.
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
+
+---Chat debug (Lua 5.1): only when profile debugMode is on (matches ns.DebugPrint / Modules/UI.lua).
 local function DebugWarbandEsc(msg, ...)
+    if not IsDebugModeEnabled or not IsDebugModeEnabled() then return end
     local W = rawget(_G, "WarbandNexus")
-    local db = W and W.db and W.db.profile
-    if not (db and db.debugMode) then return end
     if not (W and W.Print) then return end
     local text
     if select("#", ...) > 0 then
@@ -137,16 +138,6 @@ function WindowManager:CloseTopWindow()
         end
         return true
     end
-    -- #region agent log
-    do
-        local sp = _G.WarbandNexusSettingsPanel
-        local W = rawget(_G, "WarbandNexus")
-        local db = W and W.db and W.db.profile
-        if sp and sp.IsShown and sp:IsShown() and db and db.debugMode and W and W.Print then
-            W:Print("|cff00ffff[WN ESC H5]|r CloseTopWindow: no registry candidate but WarbandNexusSettingsPanel is still shown (hypothesis: unregistered).")
-        end
-    end
-    -- #endregion agent log
     return false
 end
 
@@ -166,32 +157,7 @@ function WindowManager:InstallESCHandler(frame)
         frame:SetPropagateKeyboardInput(true)
     end
     frame:SetScript("OnKeyDown", function(self, key)
-        -- #region agent log
-        do
-            local W = rawget(_G, "WarbandNexus")
-            local db = W and W.db and W.db.profile
-            local settingsShown = _G.WarbandNexusSettingsPanel and _G.WarbandNexusSettingsPanel:IsShown()
-            if db and db.debugMode and W and W.Print and settingsShown and self.GetName then
-                local n = self:GetName()
-                local interesting = (key == "ESCAPE" or key == "W" or key == "A" or key == "S" or key == "D" or key == "SPACE")
-                if n == "WarbandNexusFrame" and interesting then
-                    local prop = (self.IsPropagateKeyboardInput and self:IsPropagateKeyboardInput()) and "true" or "false"
-                    W:Print("|cff00ffff[WN ESC H9]|r Main OnKeyDown while Settings open: key=" .. tostring(key) .. " propagate=" .. prop)
-                end
-            end
-        end
-        -- #endregion agent log
         if key == "ESCAPE" then
-            -- #region agent log
-            do
-                local W = rawget(_G, "WarbandNexus")
-                local db = W and W.db and W.db.profile
-                if db and db.debugMode and W and W.Print and self.GetName
-                    and self:GetName() == "WarbandNexusSettingsPanel" then
-                    W:Print("|cff00ffff[WN ESC H6]|r InstallESCHandler: ESC reached WarbandNexusSettingsPanel OnKeyDown")
-                end
-            end
-            -- #endregion agent log
             -- Consume ESC first, then close. If nothing closed, re-propagate.
             if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
             local closed = ns.WindowManager:CloseTopWindow()
@@ -378,42 +344,9 @@ local function InstallToggleGameMenuEscPostHook()
     if type(_G.ToggleGameMenu) ~= "function" then return end
     toggleGameMenuEscHooked = true
     hooksecurefunc("ToggleGameMenu", function()
-        -- #region agent log
-        do
-            local W = rawget(_G, "WarbandNexus")
-            local db = W and W.db and W.db.profile
-            if db and db.debugMode and W and W.Print then
-                W:Print("|cff00ffff[WN ESC H1a]|r ToggleGameMenu post-hook ran (ESC/game menu path).")
-            end
-        end
-        -- #endregion agent log
         -- Settings panel: close explicitly first (registry / priority edge cases in some builds).
         local sp = _G.WarbandNexusSettingsPanel
         if sp and sp:IsShown() then
-            -- #region agent log
-            do
-                local W = rawget(_G, "WarbandNexus")
-                local db = W and W.db and W.db.profile
-                if db and db.debugMode and W and W.Print then
-                    local n, found = 0, false
-                    for i = 1, #registry do
-                        local fr = registry[i].frame
-                        if fr then
-                            n = n + 1
-                            if fr == sp then found = true end
-                        end
-                    end
-                    W:Print("|cff00ffff[WN ESC H1b]|r Settings open during ToggleGameMenu — registry_has_panel="
-                        .. tostring(found) .. " registry_count=" .. tostring(n))
-                end
-            end
-            -- #endregion agent log
-            do
-                local W = rawget(_G, "WarbandNexus")
-                if W and W.Print then
-                    W:Print("|cff00ccff[WN DIAG]|r ESC → ToggleGameMenu: closing Warband Nexus Settings")
-                end
-            end
             DebugWarbandEsc("ToggleGameMenu post-hook: Hide WarbandNexusSettingsPanel")
             sp:Hide()
             DismissGameMenuIfOpen()
@@ -442,21 +375,16 @@ end
 local closeAllWindowsEscHooked = false
 local closeWindowsEscHooked = false
 
+local function EscBootstrapHooksComplete()
+    return toggleGameMenuEscHooked and closeAllWindowsEscHooked and closeWindowsEscHooked
+end
+
 local function InstallCloseStackEscHooks()
     if type(hooksecurefunc) ~= "function" then return end
     local function afterCloseStack()
         if ns._wnEscJustHandled then return end
         local sp = _G.WarbandNexusSettingsPanel
         if sp and sp:IsShown() then
-            -- #region agent log
-            do
-                local W = rawget(_G, "WarbandNexus")
-                local db = W and W.db and W.db.profile
-                if db and db.debugMode and W and W.Print then
-                    W:Print("|cff00ffff[WN ESC H4]|r CloseAllWindows/CloseWindows post-hook ran while Settings visible → Hide")
-                end
-            end
-            -- #endregion agent log
             DebugWarbandEsc("CloseAllWindows/CloseWindows post-hook: Hide WarbandNexusSettingsPanel")
             sp:Hide()
             DismissGameMenuIfOpen()
@@ -489,6 +417,11 @@ escHookBootstrap:RegisterEvent("PLAYER_LOGIN")
 escHookBootstrap:RegisterEvent("PLAYER_ENTERING_WORLD")
 escHookBootstrap:RegisterEvent("ADDON_LOADED")
 escHookBootstrap:SetScript("OnEvent", function()
+    -- If load-order timers already installed everything, skip redundant work on PEW
+    if EscBootstrapHooksComplete() then
+        escHookBootstrap:UnregisterAllEvents()
+        return
+    end
     InstallCloseStackEscHooks()
     if TryInstallToggleGameMenuHook() then
         escHookBootstrap:UnregisterAllEvents()

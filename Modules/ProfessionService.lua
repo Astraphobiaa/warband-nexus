@@ -22,6 +22,8 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
+local DebugPrint = ns.DebugPrint
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 local function IsCurrentCharacterTracked()
     return ns.CharacterService and WarbandNexus and ns.CharacterService:IsCharacterTracked(WarbandNexus)
@@ -187,8 +189,8 @@ local function CollectConcentrationData()
     if not WarbandNexus or not WarbandNexus.db then return end
     if not C_TradeSkillUI then return end
     if not C_TradeSkillUI.GetConcentrationCurrencyID then
-        if WarbandNexus.Debug then
-            WarbandNexus:Debug("[Concentration] GetConcentrationCurrencyID API not available")
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint("[Concentration] GetConcentrationCurrencyID API not available")
         end
         return
     end
@@ -231,8 +233,8 @@ local function CollectConcentrationData()
         end
     end
 
-    if WarbandNexus.Debug then
-        WarbandNexus:Debug("[Concentration] childSkillLineID=" .. tostring(skillLineID) .. " baseProfName=" .. tostring(baseProfName))
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint("[Concentration] childSkillLineID=" .. tostring(skillLineID) .. " baseProfName=" .. tostring(baseProfName))
     end
 
     -- Build skill-line-to-try list with per-entry profession tracking.
@@ -247,7 +249,8 @@ local function CollectConcentrationData()
     end
     if charData.discoveredSkillLines then
         for profName, lines in pairs(charData.discoveredSkillLines) do
-            for _, sl in ipairs(lines) do
+            for li = 1, #lines do
+                local sl = lines[li]
                 local id = (type(sl) == "table" and sl.id) or sl
                 if id and not skillLineSeen[id] then
                     skillLineSeen[id] = true
@@ -261,12 +264,13 @@ local function CollectConcentrationData()
     -- Later entries = from discoveredSkillLines; only set if not already set (avoid overwriting
     -- with wrong expansion or swapping between professions when opening different windows).
     local found = 0
-    for idx, entry in ipairs(skillLinesToTry) do
+    for idx = 1, #skillLinesToTry do
+        local entry = skillLinesToTry[idx]
         local slID = entry.id
         local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
 
-        if WarbandNexus.Debug then
-            WarbandNexus:Debug("[Concentration] Trying skillLineID=" .. tostring(slID) .. " -> currencyID=" .. tostring(currencyID))
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint("[Concentration] Trying skillLineID=" .. tostring(slID) .. " -> currencyID=" .. tostring(currencyID))
         end
 
         if concOk and currencyID and currencyID > 0 then
@@ -304,8 +308,8 @@ local function CollectConcentrationData()
                         }
                     end
                     found = found + 1
-                    if WarbandNexus.Debug then
-                        WarbandNexus:Debug("[Concentration] Stored: skillLineID=" .. tostring(slID) .. " " .. tostring(professionName) .. " = "
+                    if IsDebugModeEnabled and IsDebugModeEnabled() then
+                        DebugPrint("[Concentration] Stored: skillLineID=" .. tostring(slID) .. " " .. tostring(professionName) .. " = "
                             .. tostring(currInfo.quantity) .. "/" .. tostring(currInfo.maxQuantity))
                     end
                 end
@@ -313,8 +317,8 @@ local function CollectConcentrationData()
         end
     end
 
-    if WarbandNexus.Debug then
-        WarbandNexus:Debug("[Concentration] Collection complete, found " .. found .. " concentration currencies")
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint("[Concentration] Collection complete, found " .. found .. " concentration currencies")
     end
 
     -- Rebuild reverse lookup map for real-time currency matching
@@ -548,7 +552,8 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
                 if C_Traits.GetTreeCurrencyInfo then
                     local tcOk, treeCurrencies = pcall(C_Traits.GetTreeCurrencyInfo, configID, tabID, false)
                     if tcOk and treeCurrencies then
-                        for _, ci in ipairs(treeCurrencies) do
+                        for cii = 1, #treeCurrencies do
+                            local ci = treeCurrencies[cii]
                             if ci.traitCurrencyID == spendCurrency then
                                 -- Only count from the FIRST tab that has this currency
                                 -- (all tabs share the same knowledge pool)
@@ -606,8 +611,8 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
         lastUpdate       = time(),
     }
 
-    if WarbandNexus and WarbandNexus.Debug then
-        WarbandNexus:Debug("[Knowledge] " .. (profName or "?")
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint("[Knowledge] " .. (profName or "?")
             .. ": unspent=" .. unspentTotal
             .. ", spent=" .. spentTotal
             .. ", max=" .. maxTotal
@@ -741,7 +746,8 @@ local function CollectEquipmentFromSlots(slotIDs)
     local slotKeys = { "tool", "accessory1", "accessory2" }
     local equipment = { lastUpdate = time() }
     local hasAny = false
-    for i, slotID in ipairs(slotIDs) do
+    for i = 1, #slotIDs do
+        local slotID = slotIDs[i]
         local key = slotKeys[i] or ("slot" .. i)
         local itemID = GetInventoryItemID("player", slotID)
         if itemID then
@@ -798,7 +804,9 @@ local function CollectEquipmentDataForCurrentProfession()
     if not slotIDs then
         local p1, p2, _, pFish, pCook = GetProfessions()
         local normalized = NormalizeProfessionNameForEquipment(profName)
-        for _, idx in ipairs({ p1, p2, pCook, pFish }) do
+        local profIdxTry = { p1, p2, pCook, pFish }
+        for ii = 1, #profIdxTry do
+            local idx = profIdxTry[ii]
             if idx then
                 local n, _, _, _, _, _, sl = GetProfessionInfo(idx)
                 if n and NormalizeProfessionNameForEquipment(n) == normalized then
@@ -833,7 +841,9 @@ local function CollectEquipmentByDetection()
     EnsureEquipmentTable(charData)
 
     local prof1, prof2, _, fish, cook = GetProfessions()
-    for _, profIndex in ipairs({ prof1, prof2, cook, fish }) do
+    local profIndicesAll = { prof1, prof2, cook, fish }
+    for ii = 1, #profIndicesAll do
+        local profIndex = profIndicesAll[ii]
         if profIndex then
             local profName, _, _, _, _, _, skillLine = GetProfessionInfo(profIndex)
             if profName and profName ~= "" then
@@ -972,12 +982,12 @@ local function InstallRecipeHook()
 
     if ok then
         hooksInstalled = true
-        if WarbandNexus.Debug then
-            WarbandNexus:Debug("[ProfessionService] SchematicForm:Init hook installed")
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint("[ProfessionService] SchematicForm:Init hook installed")
         end
     else
-        if WarbandNexus.Debug then
-            WarbandNexus:Debug("[ProfessionService] Hook install failed: " .. tostring(err))
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint("[ProfessionService] Hook install failed: " .. tostring(err))
         end
     end
 end
@@ -1082,7 +1092,8 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
 
             -- Persist discovered skillLineIDs for future login refreshes
             local discovered = {}
-            for _, exp in ipairs(expansions) do
+            for ei = 1, #expansions do
+                local exp = expansions[ei]
                 if exp.skillLineID then
                     discovered[#discovered + 1] = {
                         id   = exp.skillLineID,
@@ -1112,7 +1123,8 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
         if skillLines and #skillLines > 0 then
             local expansions = {}
             local hasValidSkill = false
-            for _, sl in ipairs(skillLines) do
+            for sli = 1, #skillLines do
+                local sl = skillLines[sli]
                 local profOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, sl.id)
                 if profOk and profInfo then
                     local skillLevel    = profInfo.skillLevel or 0
@@ -1622,8 +1634,8 @@ local function CollectRecipeSummaryData()
     -- Keep weekly knowledge counters in sync after recipe scans.
     CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName)
 
-    if WarbandNexus.Debug then
-        WarbandNexus:Debug("[Recipes] source=GetAllRecipeIDs raw=" .. tostring(rawRecipeCount)
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint("[Recipes] source=GetAllRecipeIDs raw=" .. tostring(rawRecipeCount)
             .. " filteredMidnight=" .. tostring(totalCount)
             .. " prof=" .. tostring(professionName) .. " slID=" .. tostring(skillLineID)
             .. " known/total=" .. tostring(knownCount) .. "/" .. tostring(totalCount)
@@ -1733,7 +1745,8 @@ local function CollectCooldownData()
     local knownCooldownIDs = {}
     local found = 0
 
-    for _, recipeID in ipairs(recipeIDsToCheck) do
+    for ri = 1, #recipeIDsToCheck do
+        local recipeID = recipeIDsToCheck[ri]
         if C_TradeSkillUI.GetRecipeCooldown then
             local cdOk, cooldown, isDayCooldown, charges, maxCharges = pcall(C_TradeSkillUI.GetRecipeCooldown, recipeID)
             if cdOk then
@@ -1785,7 +1798,9 @@ local function CollectCooldownData()
     -- Only on full scan to avoid accidentally removing recipes during targeted scan
     if needFullScan then
         local validSet = {}
-        for _, id in ipairs(recipeIDsToCheck) do validSet[id] = true end
+        for vi = 1, #recipeIDsToCheck do
+            validSet[recipeIDsToCheck[vi]] = true
+        end
         for recipeID in pairs(cooldownEntries) do
             if not validSet[recipeID] then
                 cooldownEntries[recipeID] = nil
@@ -1793,8 +1808,8 @@ local function CollectCooldownData()
         end
     end
 
-    if WarbandNexus.Debug then
-        WarbandNexus:Debug("[Cooldowns] Collected " .. found .. " cooldown(s) for skillLineID=" .. tostring(skillLineID) .. " (fullScan=" .. tostring(needFullScan) .. ")")
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint("[Cooldowns] Collected " .. found .. " cooldown(s) for skillLineID=" .. tostring(skillLineID) .. " (fullScan=" .. tostring(needFullScan) .. ")")
     end
 
     local bucket = EnsureSkillLineBucket(charData, skillLineID, baseProfName, nil)
@@ -1895,8 +1910,8 @@ local function CollectCraftingOrdersData()
         }
     end
 
-    if WarbandNexus.Debug then
-        WarbandNexus:Debug("[Orders] Collected for skillLineID=" .. tostring(skillLineID) .. " personal=" .. personalCount .. " guild=" .. guildCount)
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint("[Orders] Collected for skillLineID=" .. tostring(skillLineID) .. " personal=" .. personalCount .. " guild=" .. guildCount)
     end
 
     if WarbandNexus.SendMessage then
@@ -2744,7 +2759,8 @@ function WarbandNexus:CollectConcentrationOnLogin()
 
         if charData.discoveredSkillLines then
             for profName, skillLines in pairs(charData.discoveredSkillLines) do
-                for _, sl in ipairs(skillLines) do
+                for sli = 1, #skillLines do
+                    local sl = skillLines[sli]
                     local slID = (type(sl) == "table" and sl.id) or sl
                     if slID and not charData.concentration[slID] then
                         local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
@@ -2786,7 +2802,9 @@ function WarbandNexus:CollectConcentrationOnLogin()
 
         -- Phase 2b: Fallback via GetProfessions + GetProfessionInfo (base profession skill line)
         local prof1, prof2 = GetProfessions and GetProfessions()
-        for _, index in ipairs({ prof1, prof2 }) do
+        local profIdxPair = { prof1, prof2 }
+        for ii = 1, #profIdxPair do
+            local index = profIdxPair[ii]
             if index then
                 local ok, name, _, _, _, _, skillLine = pcall(GetProfessionInfo, index)
                 if ok and name and name ~= "" and skillLine and skillLine > 0 and not charData.concentration[skillLine] then
@@ -2868,7 +2886,8 @@ function WarbandNexus:CollectKnowledgeOnLogin()
 
     for profName, skillLines in pairs(charData.discoveredSkillLines) do
         if skillLines and #skillLines > 0 then
-            for _, sl in ipairs(skillLines) do
+            for sli = 1, #skillLines do
+                local sl = skillLines[sli]
                 local slID = sl.id or sl
                 local expansionName = (type(sl) == "table" and sl.name) or nil
 
@@ -2967,8 +2986,8 @@ function WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
         entry.current    = currInfo.quantity or entry.current or 0
         entry.max        = currInfo.maxQuantity or entry.max or 0
         entry.lastUpdate = time()
-        if self.Debug then
-            self:Debug("[Concentration] Real-time update: key=" .. tostring(key) .. " = " .. tostring(entry.current) .. "/" .. tostring(entry.max))
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint("[Concentration] Real-time update: key=" .. tostring(key) .. " = " .. tostring(entry.current) .. "/" .. tostring(entry.max))
         end
         
         -- Notify consumers (tooltip, UI)
@@ -3014,8 +3033,8 @@ function WarbandNexus:OnKnowledgeChanged()
             WarbandNexus:CollectKnowledgeOnLogin()
         end)
         
-        if WarbandNexus.Debug then
-            WarbandNexus:Debug("[Knowledge] Real-time refresh triggered by spec change")
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint("[Knowledge] Real-time refresh triggered by spec change")
         end
     end)
 end
@@ -3058,8 +3077,8 @@ function WarbandNexus:StartRechargeTimer()
         end
     end)
     
-    if self.Debug then
-        self:Debug("[Recharge Timer] Started (60s interval)")
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint("[Recharge Timer] Started (60s interval)")
     end
 end
 
@@ -3068,8 +3087,8 @@ function WarbandNexus:StopRechargeTimer()
         rechargeTickerHandle:Cancel()
         rechargeTickerHandle = nil
         
-        if self.Debug then
-            self:Debug("[Recharge Timer] Stopped")
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint("[Recharge Timer] Stopped")
         end
     end
 end

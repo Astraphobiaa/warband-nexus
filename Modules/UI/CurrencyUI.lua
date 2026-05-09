@@ -23,7 +23,6 @@ end
 -- Unique AceEvent handler identity for CurrencyUI
 local CurrencyUIEvents = {}
 
--- Debug print helper
 local DebugPrint = ns.DebugPrint
 
 -- Services
@@ -58,7 +57,6 @@ local COLORS = ns.UI_COLORS
 -- Performance: Local function references
 local format = string.format
 local floor = math.floor
-local ipairs = ipairs
 local pairs = pairs
 local next = next
 
@@ -135,9 +133,7 @@ end
 ---@param hideMax boolean Unused (kept for API compatibility)
 local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, rowWidth, hideMax)
     row:SetSize(rowWidth, ROW_HEIGHT)
-    -- Set alternating background colors
-    local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-    local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+    -- Set alternating background colors (module-level ROW_COLOR_* — avoid GetLayout() per row)
     local bgColor = (rowIndex % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
     
     if not row.bg then
@@ -305,9 +301,6 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     local globalCurrencies = {}
     if self.GetCurrenciesForUI then
         globalCurrencies = self:GetCurrenciesForUI()
-        
-        DebugPrint(string.format("[AggregateCurrencies] Processing %d currencies with headers", 
-            (function() local c = 0 for _ in pairs(globalCurrencies) do c = c + 1 end return c end)()))
     else
         DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: GetCurrenciesForUI not found")
         return result
@@ -316,7 +309,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     -- Build character lookup
     -- CRITICAL: Use GetCharacterKey() normalization (strips spaces) to match currency DB keys
     local charLookup = {}
-    for _, char in ipairs(characters) do
+    for ci = 1, #characters do
+        local char = characters[ci]
         local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
         if charKey then charLookup[charKey] = char end
     end
@@ -327,7 +321,9 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         local charHeaderCurrencies = {}
         
         -- Process direct currencies
-        for _, currencyID in ipairs(header.currencies or {}) do
+        local hdrCurrencies = header.currencies or {}
+        for hci = 1, #hdrCurrencies do
+            local currencyID = hdrCurrencies[hci]
             currencyID = tonumber(currencyID) or currencyID
             local currData = globalCurrencies[currencyID]
             
@@ -387,7 +383,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                         
                         -- Ensure current character exists in charLookup
                         if not charLookup[displayChar] then
-                            for _, char in ipairs(characters) do
+                            for ci = 1, #characters do
+                                local char = characters[ci]
                                 local ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
                                 if ck and charLookup[ck] then
                                     displayChar = ck
@@ -417,7 +414,9 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         local processedWarbandChildren = {}
         local processedCharChildren = {}
         
-        for _, child in ipairs(header.children or {}) do
+        local hdrChildren = header.children or {}
+        for chi = 1, #hdrChildren do
+            local child = hdrChildren[chi]
             local warbandChild, charChild = ProcessHeader(child)
             if warbandChild then
                 table.insert(processedWarbandChildren, warbandChild)
@@ -430,13 +429,16 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         -- Helper function to count currencies recursively
         local function CountCurrenciesRecursive(hdr)
             local count = 0
-            for _, curr in ipairs(hdr.currencies or {}) do
+            local hc = hdr.currencies or {}
+            for i = 1, #hc do
+                local curr = hc[i]
                 if type(curr) == "table" and curr.data then
                     count = count + 1
                 end
             end
-            for _, ch in ipairs(hdr.children or {}) do
-                count = count + CountCurrenciesRecursive(ch)
+            local hch = hdr.children or {}
+            for i = 1, #hch do
+                count = count + CountCurrenciesRecursive(hch[i])
             end
             return count
         end
@@ -451,8 +453,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         if hasWarbandContent then
             -- Pre-compute count during data preparation
             local totalCount = #warbandHeaderCurrencies
-            for _, child in ipairs(processedWarbandChildren) do
-                totalCount = totalCount + CountCurrenciesRecursive(child)
+            for wi = 1, #processedWarbandChildren do
+                totalCount = totalCount + CountCurrenciesRecursive(processedWarbandChildren[wi])
             end
             
             warbandHeader = {
@@ -468,8 +470,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         if hasCharContent then
             -- Pre-compute count during data preparation
             local totalCount = #charHeaderCurrencies
-            for _, child in ipairs(processedCharChildren) do
-                totalCount = totalCount + CountCurrenciesRecursive(child)
+            for ci = 1, #processedCharChildren do
+                totalCount = totalCount + CountCurrenciesRecursive(processedCharChildren[ci])
             end
             
             charHeader = {
@@ -488,7 +490,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     -- Process only root headers (depth 0)
     local processedHeaders = 0
     if currencyHeaders and type(currencyHeaders) == "table" then
-        for _, header in ipairs(currencyHeaders) do
+        for hi = 1, #currencyHeaders do
+            local header = currencyHeaders[hi]
             if (header.depth or 0) == 0 then
                 processedHeaders = processedHeaders + 1
                 local warbandHeader, charHeader = ProcessHeader(header)
@@ -503,10 +506,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     else
         DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: currencyHeaders is nil or not a table!")
     end
-    
-    DebugPrint(string.format("[AggregateCurrencies] Result: %d warband headers, %d char-specific headers", 
-        #result.warbandTransferable, #result.characterSpecific))
-    
+
     return result
 end
 
@@ -551,7 +551,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local allCharacters = self:GetAllCharacters()
     local characters = {}
     if allCharacters then
-        for _, char in ipairs(allCharacters) do
+        for ai = 1, #allCharacters do
+            local char = allCharacters[ai]
             if char.isTracked ~= false then  -- Only tracked characters
                 table.insert(characters, char)
             end
@@ -587,25 +588,22 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local globalCurrencies = {}
     if self.GetCurrenciesForUI then
         globalCurrencies = self:GetCurrenciesForUI()
-        DebugPrint("[CurrencyUI] Loaded currency data from CurrencyCacheService")
     else
         DebugPrint("|cffff0000[CurrencyUI]|r ERROR: GetCurrenciesForUI not found")
     end
-    
+
     -- Get headers from Direct DB (tree built by CurrencyCacheService v2.0)
     local globalHeaders = {}
     if self.db.global.currencyData and self.db.global.currencyData.headers then
         globalHeaders = self.db.global.currencyData.headers
-        DebugPrint(string.format("[CurrencyUI] Loaded %d root headers from DB", #globalHeaders))
-    else
-        DebugPrint("[CurrencyUI] WARNING: No headers in DB")
     end
     
     -- Collect characters with currencies
     local charactersWithCurrencies = {}
     local hasAnyData = false
     
-    for _, char in ipairs(characters) do
+    for ci = 1, #characters do
+        local char = characters[ci]
         local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
         if not charKey then
             -- Skip if canonical key unavailable (should not happen when Utilities loaded)
@@ -1057,7 +1055,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     -- Update SearchStateManager with result count (track total rendered currencies)
     local totalCurrencies = 0
-    for _, charData in ipairs(charactersWithCurrencies) do
+    for cwi = 1, #charactersWithCurrencies do
+        local charData = charactersWithCurrencies[cwi]
         totalCurrencies = totalCurrencies + #(charData.currencies or {})
     end
     SearchStateManager:UpdateResults("currency", totalCurrencies)
@@ -1251,7 +1250,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
     titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
     local showZeroBtn = CreateThemedButton(titleCard, showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"), 100)
-    showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
+    local titleCardRightInset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
+    showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleCardRightInset, 0)
     if not moduleEnabled then showZeroBtn:Hide() end
     showZeroBtn:SetScript("OnClick", function(btn)
         showZero = not showZero
@@ -1296,7 +1296,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
     searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
-    headerYOffset = headerYOffset + 32 + GetLayout().afterElement
+    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+    headerYOffset = headerYOffset + searchH + GetLayout().afterElement
     
     -- Set fixedHeader height so scroll area starts below it
     if fixedHeader then fixedHeader:SetHeight(headerYOffset) end

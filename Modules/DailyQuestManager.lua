@@ -176,8 +176,9 @@ for i = 1, #KNOWN_WEEKLY_QUESTS do
     local entry = KNOWN_WEEKLY_QUESTS[i]
     KNOWN_QUEST_LOOKUP[entry.questID] = entry
     if entry.alternateIDs then
-        for _, altID in ipairs(entry.alternateIDs) do
-            KNOWN_QUEST_LOOKUP[altID] = entry
+        local alts = entry.alternateIDs
+        for ai = 1, #alts do
+            KNOWN_QUEST_LOOKUP[alts[ai]] = entry
         end
     end
 end
@@ -275,8 +276,9 @@ local function IsQuestDone(questID)
 
     local known = KNOWN_QUEST_LOOKUP[questID]
     if known and known.alternateIDs then
-        for _, altID in ipairs(known.alternateIDs) do
-            if CheckSingleQuestDone(altID) then return true end
+        local alts = known.alternateIDs
+        for ai = 1, #alts do
+            if CheckSingleQuestDone(alts[ai]) then return true end
         end
     end
 
@@ -815,7 +817,8 @@ function WarbandNexus:ScanMidnightQuests()
     end
 
     -- Sort each category
-    for _, catInfo in ipairs(QUEST_CATEGORIES) do
+    for ci = 1, #QUEST_CATEGORIES do
+        local catInfo = QUEST_CATEGORIES[ci]
         local list = quests[catInfo.key]
         if list then
             if catInfo.key == "events" then
@@ -943,7 +946,9 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
     if oldQuests then
         local hasReset = (self.HasWeeklyResetOccurredSince and self:HasWeeklyResetOccurredSince(plan.lastUpdate))
 
-        for _, catKey in ipairs({"worldQuests", "dailyQuests"}) do
+        local mergeDynamicCats = { "worldQuests", "dailyQuests" }
+        for mci = 1, #mergeDynamicCats do
+            local catKey = mergeDynamicCats[mci]
             local oldList = oldQuests[catKey]
             local newList = newQuests[catKey] or {}
             if oldList then
@@ -969,7 +974,9 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
         -- Weekly/Events: hardcoded quests auto-refresh via Phase 1
         -- Dynamic weekly/events that completed but vanished: preserve until weekly reset
         if not hasReset then
-            for _, catKey in ipairs({"weeklyQuests", "events"}) do
+            local mergeWeeklyCats = { "weeklyQuests", "events" }
+            for mci = 1, #mergeWeeklyCats do
+                local catKey = mergeWeeklyCats[mci]
                 local oldList = oldQuests[catKey]
                 local newList = newQuests[catKey]
                 if oldList and newList then

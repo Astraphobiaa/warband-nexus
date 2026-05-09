@@ -28,6 +28,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 -- Midnight 12.0+: GUIDs from APIs may be secret — never compare or substring without guarding.
 local issecretvalue = issecretvalue
@@ -119,6 +120,8 @@ local CurrencyCache = {
     -- Login: CURRENCY_DISPLAY_UPDATE spam runs UpdateSingleCurrency before the delayed FullScan seeds SV;
     -- without this, every ID looks like a fresh gain. Cleared after the first successful PerformFullScan (needsScan path).
     suppressCurrencyGainChatUntilScan = false,
+    -- Init/Clear already broadcast LOADING_STARTED; skip duplicate when deferred PerformFullScan runs.
+    skipNextCurrencyLoadingStartedBroadcast = false,
 }
 
 -- Loading state for UI (similar to ReputationLoadingState pattern)
@@ -507,6 +510,7 @@ function WarbandNexus:InitializeCurrencyCache()
         if WarbandNexus.SendMessage then
             WarbandNexus:SendMessage(E.CURRENCY_LOADING_STARTED)
         end
+        CurrencyCache.skipNextCurrencyLoadingStartedBroadcast = true
         
         -- Suppress event-driven FullScans until the init scan completes
         -- (CURRENCY_DISPLAY_UPDATE fires on login with nil/0 currencyType, triggering redundant scans)
@@ -1086,7 +1090,9 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     ns.CurrencyLoadingState.loadingProgress = 0
     ns.CurrencyLoadingState.currentStage = "Fetching currency data..."
 
-    if WarbandNexus.SendMessage then
+    local skipLoadingStarted = CurrencyCache.skipNextCurrencyLoadingStartedBroadcast
+    CurrencyCache.skipNextCurrencyLoadingStartedBroadcast = false
+    if WarbandNexus.SendMessage and not skipLoadingStarted then
         WarbandNexus:SendMessage(E.CURRENCY_LOADING_STARTED)
     end
 
@@ -1096,9 +1102,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
         self.isScanning = false
         ns._fullScanInProgress = false
         ns.CurrencyLoadingState.currentStage = "Waiting for API... (retrying)"
-        if WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage(E.CURRENCY_LOADING_STARTED)
-        end
+        -- LOADING_STARTED already sent above when entering PerformFullScan
         C_Timer.After(5, function()
             if CurrencyCache then
                 CurrencyCache:PerformFullScan(true)
@@ -1244,22 +1248,32 @@ local function DrainCurrencyQueue()
     if CurrencyCache.isDraining then return end
     CurrencyCache.isDraining = true
 
+    local currencyBroadcastCount = 0
+    local singleCurrencyID = nil
+
     while #CurrencyCache.updateQueue > 0 do
         local entry = table.remove(CurrencyCache.updateQueue, 1)
         if entry == 0 then
             CurrencyCache:PerformFullScan()
         elseif type(entry) == "table" and entry.currencyID then
             if UpdateSingleCurrency(entry.currencyID, entry) then
-                if WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage(E.CURRENCY_UPDATED, entry.currencyID)
-                end
+                currencyBroadcastCount = currencyBroadcastCount + 1
+                singleCurrencyID = entry.currencyID
             end
         elseif type(entry) == "number" and entry > 0 then
             if UpdateSingleCurrency(entry) then
-                if WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage(E.CURRENCY_UPDATED, entry)
-                end
+                currencyBroadcastCount = currencyBroadcastCount + 1
+                singleCurrencyID = entry
             end
+        end
+    end
+
+    if currencyBroadcastCount > 0 and WarbandNexus.SendMessage then
+        -- One message per drain: multi-currency bursts were N× handler churn (UI + GearService timers + EventManager).
+        if currencyBroadcastCount == 1 and singleCurrencyID then
+            WarbandNexus:SendMessage(E.CURRENCY_UPDATED, singleCurrencyID)
+        else
+            WarbandNexus:SendMessage(E.CURRENCY_UPDATED)
         end
     end
 
@@ -1666,6 +1680,7 @@ function CurrencyCache:Clear(clearDB)
         if WarbandNexus.SendMessage then
             WarbandNexus:SendMessage(E.CURRENCY_LOADING_STARTED)
         end
+        CurrencyCache.skipNextCurrencyLoadingStartedBroadcast = true
         
         C_Timer.After(1, function()
             if CurrencyCache then
@@ -1771,7 +1786,9 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
                             CurrencyCache.recentTransfers[charKey] = CurrencyCache.recentTransfers[charKey] or {}
                             CurrencyCache.recentTransfers[charKey][currencyID] = GetTime()
                             
-                            ns.DebugPrint(string.format("[WN Hook] Deducted %d of currency %d from %s (%d -> %d)", quantity, currencyID, charKey, oldQty, newQty))
+                            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                                ns.DebugPrint(string.format("[WN Hook] Deducted %d of currency %d from %s (%d -> %d)", quantity, currencyID, charKey, oldQty, newQty))
+                            end
                             
                             if WarbandNexus.SendMessage then
                                 WarbandNexus:SendMessage(E.CURRENCY_UPDATED)
@@ -1894,7 +1911,9 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
     
     local updatedAny = false
     
-    DebugPrint(string.format("SyncAccountCurrencies started for %d currencies.", #currenciesToSync))
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint(string.format("SyncAccountCurrencies started for %d currencies.", #currenciesToSync))
+    end
     
     -- Process each currency
     for i = 1, #currenciesToSync do

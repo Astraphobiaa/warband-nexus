@@ -212,7 +212,8 @@ function WarbandNexus:PrintRecentErrors(count)
     
     self:Print(string.format("===== Last %d Errors =====", math.min(count, #errors)))
     
-    for i, err in ipairs(errors) do
+    for i = 1, #errors do
+        local err = errors[i]
         local timeStr = date("%H:%M:%S", err.timestamp)
         local countStr = err.count > 1 and string.format(" (x%d)", err.count) or ""
         self:Print(string.format("[%s] %s: %s%s", timeStr, err.context, err.message, countStr))
@@ -255,7 +256,8 @@ function WarbandNexus:ShowErrorDetails(errorIndex)
     if err.stack then
         self:Print("Stack Trace:")
         local stackLines = {strsplit("\n", err.stack)}
-        for i, line in ipairs(stackLines) do
+        for li = 1, #stackLines do
+            local line = stackLines[li]
             if line and line ~= "" then
                 self:Print("  " .. line)
             end
@@ -298,7 +300,8 @@ function WarbandNexus:WrapCriticalFunctions()
     }
     
     -- Wrap each function
-    for _, funcName in ipairs(criticalFunctions) do
+    for fi = 1, #criticalFunctions do
+        local funcName = criticalFunctions[fi]
         if self[funcName] and type(self[funcName]) == "function" then
             local originalFunc = self[funcName]
             self[funcName] = function(...)
@@ -361,7 +364,8 @@ function WarbandNexus:ExportErrorLog()
     table.insert(export, string.format("Total Errors: %d", errorStats.total))
     table.insert(export, "")
     
-    for i, err in ipairs(errorLog) do
+    for i = 1, #errorLog do
+        local err = errorLog[i]
         table.insert(export, string.format("--- Error #%d ---", i))
         table.insert(export, string.format("Time: %s", date("%Y-%m-%d %H:%M:%S", err.timestamp)))
         table.insert(export, string.format("Context: %s", err.context))

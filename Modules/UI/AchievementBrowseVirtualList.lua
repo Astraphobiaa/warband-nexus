@@ -5,6 +5,10 @@
 
 local ADDON_NAME, ns = ...
 
+local wipe = wipe
+local format = string.format
+local tonumber = tonumber
+
 local COLORS = ns.UI_COLORS
 local Factory = ns.UI.Factory
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -25,6 +29,17 @@ local SECTION_SPACING = LAYOUT.SECTION_SPACING or LAYOUT.betweenSections or 8
 local MINI_SPACING = LAYOUT.MINI_SPACING or LAYOUT.miniSpacing or 4
 
 local _populateAchievementBrowseBusy = false
+
+local _achChildEnumScratch = {}
+local _achRegionEnumScratch = {}
+local function PackVariadicInto(dest, ...)
+    wipe(dest)
+    local n = select("#", ...)
+    for i = 1, n do
+        dest[i] = select(i, ...)
+    end
+    return n
+end
 
 --- Pixels from scroll content top down to `listFrame` top (TOP→TOP anchor chain). Fallback nil if ambiguous.
 local function ListTopOffsetDownFromScrollContent(listFrame, scrollContent)
@@ -59,21 +74,23 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
     local yOffset = 0
     local rowCounter = 0
     local rD, gD, bD = (COLORS.textDim[1] or 0.55), (COLORS.textDim[2] or 0.55), (COLORS.textDim[3] or 0.55)
-    local countColor = string.format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
+    local countColor = format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
     local rB, gB, bB = (COLORS.textBright[1] or 1), (COLORS.textBright[2] or 1), (COLORS.textBright[3] or 1)
-    local titleColor = string.format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)
+    local titleColor = format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)
 
     local function CountCategoryAchievements(catID)
         local cat = categoryData[catID]
         if not cat then return 0 end
         local total = #cat.achievements
-        for _, childID in ipairs(cat.children or {}) do
-            total = total + CountCategoryAchievements(childID)
+        local children = cat.children or {}
+        for i = 1, #children do
+            total = total + CountCategoryAchievements(children[i])
         end
         return total
     end
 
-    for _, rootID in ipairs(rootCategories) do
+    for rootIndex = 1, #rootCategories do
+        local rootID = rootCategories[rootIndex]
         local rootCat = categoryData[rootID]
         local totalAchievements = CountCategoryAchievements(rootID)
         if rootCat and totalAchievements > 0 then
@@ -92,7 +109,8 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
             }
             yOffset = yOffset + HEADER_HEIGHT + MINI_SPACING
 
-            for _, ach in ipairs(rootCat.achievements) do
+            for i = 1, #rootCat.achievements do
+                local ach = rootCat.achievements[i]
                 rowCounter = rowCounter + 1
                 flat[#flat + 1] = { type = "row", achievement = ach, rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT, indent = BASE_INDENT }
                 yOffset = yOffset + ROW_HEIGHT
@@ -101,7 +119,8 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
                 yOffset = yOffset + SECTION_SPACING
             end
 
-            for childIdx, childID in ipairs(rootCat.children) do
+            for childIdx = 1, #rootCat.children do
+                local childID = rootCat.children[childIdx]
                 local childCat = categoryData[childID]
                 local childAchievementCount = CountCategoryAchievements(childID)
                 if childCat and childAchievementCount > 0 then
@@ -120,7 +139,8 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
                     }
                     yOffset = yOffset + HEADER_HEIGHT + MINI_SPACING
 
-                    for _, ach in ipairs(childCat.achievements) do
+                    for i = 1, #childCat.achievements do
+                        local ach = childCat.achievements[i]
                         rowCounter = rowCounter + 1
                         flat[#flat + 1] = { type = "row", achievement = ach, rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT, indent = BASE_INDENT * 2 }
                         yOffset = yOffset + ROW_HEIGHT
@@ -129,7 +149,9 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
                         yOffset = yOffset + SECTION_SPACING
                     end
 
-                    for grandchildIdx, grandchildID in ipairs(childCat.children or {}) do
+                    local childChildren = childCat.children or {}
+                    for grandchildIdx = 1, #childChildren do
+                        local grandchildID = childChildren[grandchildIdx]
                         local grandchildCat = categoryData[grandchildID]
                         local grandchildCount = CountCategoryAchievements(grandchildID)
                         if grandchildCat and grandchildCount > 0 then
@@ -148,13 +170,14 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
                             }
                             yOffset = yOffset + HEADER_HEIGHT + MINI_SPACING
 
-                            for _, ach in ipairs(grandchildCat.achievements) do
+                            for i = 1, #grandchildCat.achievements do
+                                local ach = grandchildCat.achievements[i]
                                 rowCounter = rowCounter + 1
                                 flat[#flat + 1] = { type = "row", achievement = ach, rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT, indent = BASE_INDENT * 3 }
                                 yOffset = yOffset + ROW_HEIGHT
                             end
                         end
-                        if grandchildIdx < #(childCat.children or {}) then
+                        if grandchildIdx < #childChildren then
                             yOffset = yOffset + SECTION_SPACING
                         end
                     end
@@ -223,17 +246,17 @@ function ns.UI_AchievementBrowse_Populate(opts)
         state._achVisibleRowFrames = {}
     end
 
-    local children = { scrollChild:GetChildren() }
-    for i = 1, #children do
-        local c = children[i]
+    local nch = PackVariadicInto(_achChildEnumScratch, scrollChild:GetChildren())
+    for i = 1, nch do
+        local c = _achChildEnumScratch[i]
         c:Hide()
         c:ClearAllPoints()
         local bin = ns.UI_RecycleBin
         if bin then c:SetParent(bin) else c:SetParent(nil) end
     end
-    local regions = { scrollChild:GetRegions() }
-    for i = 1, #regions do
-        regions[i]:Hide()
+    local nrg = PackVariadicInto(_achRegionEnumScratch, scrollChild:GetRegions())
+    for i = 1, nrg do
+        _achRegionEnumScratch[i]:Hide()
     end
 
     local flatList, totalHeight = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders)
@@ -281,7 +304,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
                 end
                 local parent = stack[#stack]
                 local contentTopY = yTop + (fit.height or HEADER_HEIGHT)
-                local categoryID = tonumber(string.match(fit.key or "", "^achievement_cat_(%-?%d+)$"))
+                local categoryID = tonumber((fit.key or ""):match("^achievement_cat_(%-?%d+)$"))
                 achHeaderMeta[fit.key] = {
                     parentKey = parent and parent.key or nil,
                     parentIndent = parent and parent.indent or 0,

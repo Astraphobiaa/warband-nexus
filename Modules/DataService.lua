@@ -44,8 +44,6 @@ local LibSerialize = LibStub("AceSerializer-3.0")
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
 -- Debug print helper
-local DebugPrint = ns.DebugPrint
-
 -- Rested XP accumulation constants (Blizzard behavior in resting areas).
 -- Pandaren "Inner Peace" racial doubles both the cap and accumulation rate.
 local RESTED_XP_GAIN_PER_8H = 0.05
@@ -123,22 +121,34 @@ end
 --- @param totalTimePlayed number Total seconds played on this character
 --- @param timePlayedThisLevel number Seconds played at current level
 function WarbandNexus:OnTimePlayedReceived(event, totalTimePlayed, timePlayedThisLevel)
-    if not totalTimePlayed or totalTimePlayed <= 0 then return end
+    if totalTimePlayed == nil then return end
+    if issecretvalue and issecretvalue(totalTimePlayed) then return end
+    local played = tonumber(totalTimePlayed)
+    if not played or played <= 0 then return end
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
     if not self.db or not self.db.global or not self.db.global.characters then return end
 
-    local charKey = ns.Utilities:GetCharacterKey()
-    if not charKey then return end
+    local rawKey = ns.Utilities:GetCharacterKey()
+    if not rawKey then return end
 
-    local charData = self.db.global.characters[charKey]
+    local tableKey = rawKey
+    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+        local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
+        if resolved then tableKey = resolved end
+    end
+
+    local charData = self.db.global.characters[tableKey]
     if not charData then return end
 
-    charData.timePlayed = totalTimePlayed
-    DebugPrint("|cff9370DB[WN DataService]|r Played time stored for " .. charKey .. ": " .. totalTimePlayed .. "s")
+    charData.timePlayed = played
 
+    local msgKey = rawKey
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        msgKey = ns.Utilities:GetCanonicalCharacterKey(rawKey) or rawKey
+    end
     -- Fire event so UI refreshes
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
-        charKey = charKey,
+        charKey = msgKey,
     })
 end
 
@@ -399,14 +409,12 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     
     -- Level changes
     self:RegisterEvent("PLAYER_LEVEL_UP", function(event)
-        ns.DebugPrint("|cff9370DB[DataService]|r [Character Event] PLAYER_LEVEL_UP triggered")
         self:UpdateCharacterCache("level")
         self:UpdateCharacterCache("rested")
     end)
     
     -- Specialization changes
     self:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", function(event)
-        ns.DebugPrint("|cff9370DB[DataService]|r [Character Event] PLAYER_SPECIALIZATION_CHANGED triggered")
         self:UpdateCharacterCache("spec")
     end)
     
@@ -438,12 +446,10 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     end
     
     self:RegisterEvent("ZONE_CHANGED", function(event)
-        ns.DebugPrint("|cff9370DB[DataService]|r [Zone Event] ZONE_CHANGED triggered")
         DebouncedZoneUpdate()
     end)
     
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", function(event)
-        ns.DebugPrint("|cff9370DB[DataService]|r [Zone Event] ZONE_CHANGED_NEW_AREA triggered")
         DebouncedZoneUpdate()
     end)
 
@@ -3544,10 +3550,6 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
         end
     end
     
-    if removed > 0 then
-        ns.DebugPrint(string.format("|cff9370DB[WN DataService]|r Cleaned up %d stale character(s)", removed))
-    end
-    
     return removed
 end
 
@@ -3648,7 +3650,10 @@ function WarbandNexus:ScanMythicKeystone()
     end
     
     local mapName = C_ChallengeMode and C_ChallengeMode.GetMapUIInfo(mapID)
-    
+    if mapName and issecretvalue and issecretvalue(mapName) then
+        mapName = nil
+    end
+
     return {
         level = keystoneLevel,
         dungeonID = mapID,

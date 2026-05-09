@@ -185,6 +185,8 @@ local defaults = {
             tabActive = {0.20, 0.12, 0.30},   -- Active tab background (0.5x)
             tabHover = {0.24, 0.14, 0.35},    -- Hover tab background (0.6x)
         },
+        -- When true, UI accent (and derived tab/border tones) follows the logged-in character's class color; falls back to themeColors.accent if class is unavailable.
+        useClassColorAccent = false,
         showItemCount = true,
         showTooltipItemCount = true,
         recipeCompanionEnabled = true,
@@ -706,9 +708,7 @@ function WarbandNexus:OnInitialize()
     -- Setup slash commands
     self:RegisterChatCommand("wn", "SlashCommand")
     self:RegisterChatCommand("warbandnexus", "SlashCommand")
-    -- Dev/test utilities (DebugService:TestCommand — rep ui, rep event, overflow, etc.)
-    self:RegisterChatCommand("wntest", "WntestSlashCommand")
-    
+
     -- Register PLAYER_LOGOUT event for SessionCache compression
     self:RegisterEvent("PLAYER_LOGOUT", "OnPlayerLogout")
     
@@ -880,7 +880,7 @@ function WarbandNexus:OnEnable()
     if self.CleanupDatabase then
         C_Timer.After(10, function()
             if not self or not self.db or not self.CleanupDatabase then return end
-            local result = self:CleanupDatabase()
+            self:CleanupDatabase()
         end)
     end
     
@@ -1022,6 +1022,7 @@ function WarbandNexus:OnDisable()
     -- Unregister all events
     self:UnregisterAllEvents()
     self:UnregisterAllBuckets()
+    self._wnEventManagerInitialized = nil
 end
 
 --[[
@@ -1091,15 +1092,6 @@ function WarbandNexus:SlashCommand(input)
     ns.CommandService:HandleSlashCommand(self, input)
 end
 
---- Standalone slash: /wntest <args> (same as /wn test <args>)
-function WarbandNexus:WntestSlashCommand(input)
-    if ns.DebugService and ns.DebugService.TestCommand then
-        ns.DebugService:TestCommand(self, input or "")
-    else
-        self:Print("|cffff0000[WN] DebugService not loaded.|r")
-    end
-end
-
 function WarbandNexus:PrintCharacterList()
     ns.DebugService:PrintCharacterList(self)
 end
@@ -1167,7 +1159,6 @@ function WarbandNexus:HookGuildBankUI()
         end)
         
         self.guildBankHooked = true
-        ns.DebugPrint("|cff00ff00[Guild Bank]|r UI hooks installed successfully")
     end
 end
 
@@ -1181,14 +1172,10 @@ end
 
 --- Guild Bank Update handler (GUILDBANKBAGSLOTS_CHANGED)
 function WarbandNexus:OnGuildBankUpdate()
-    -- This event fires when guild bank opens or slots change
-    ns.DebugPrint("|cff888888[Guild Bank]|r GUILDBANKBAGSLOTS_CHANGED event fired (guildBankIsOpen=" .. tostring(self.guildBankIsOpen) .. ")")
-    
     -- If bank wasn't open before, this is the open event
     if not self.guildBankIsOpen then
         self:OnGuildBankOpened()
     else
-        ns.DebugPrint("|cffffff00[Guild Bank]|r Slot change detected, scheduling re-scan in 2.5s...")
         -- Debounce re-scan to batch rapid changes (2.5s window)
         if self._guildBankRescanTimer then
             self:CancelTimer(self._guildBankRescanTimer)
@@ -1200,18 +1187,14 @@ end
 
 function WarbandNexus:OnGuildBankOpened()
     self.guildBankIsOpen = true
-    
-    ns.DebugPrint("|cff00ff00[Guild Bank]|r Window opened, preparing scan...")
-    
+
     -- Scan guild bank
     if self.ScanGuildBank then
         C_Timer.After(0.5, function()
             if WarbandNexus and WarbandNexus.ScanGuildBank then
                 local success = WarbandNexus:ScanGuildBank()
-                if success then
-                    ns.DebugPrint("|cff00ff00[Guild Bank]|r Scan completed successfully!")
-                else
-                    ns.DebugPrint("|cffff6600[Guild Bank]|r Scan failed - character may not be tracked or no guild access.")
+                if not success then
+                    WarbandNexus:Print("|cffff6600[Guild Bank]|r Scan failed (not tracked or no guild access).|r")
                 end
             end
         end)
@@ -1221,24 +1204,17 @@ end
 --- Throttled guild bank re-scan (called via ScheduleTimer)
 function WarbandNexus:ThrottledGuildBankScan()
     self._guildBankRescanTimer = nil
-    ns.DebugPrint("|cff888888[Guild Bank]|r ThrottledGuildBankScan called (guildBankIsOpen=" .. tostring(self.guildBankIsOpen) .. ")")
-    
+
     -- Only scan if guild bank is still open
-    if not self.guildBankIsOpen then 
-        ns.DebugPrint("|cffff6600[Guild Bank]|r Re-scan cancelled: bank closed")
-        return 
+    if not self.guildBankIsOpen then
+        return
     end
-    
+
     -- Perform re-scan
     if self.ScanGuildBank then
-        local success = self:ScanGuildBank()
-        if success then
-            ns.DebugPrint("|cff00ff00[Guild Bank]|r Re-scan completed (slot change detected)")
-        else
-            ns.DebugPrint("|cffff6600[Guild Bank]|r Re-scan failed")
-        end
+        self:ScanGuildBank()
     else
-        ns.DebugPrint("|cffff0000[Guild Bank]|r ERROR: ScanGuildBank function not found!")
+        self:Print("|cffff0000[Guild Bank]|r ERROR: ScanGuildBank not available.|r")
     end
 end
 
@@ -1252,15 +1228,17 @@ function WarbandNexus:OnGuildBankClosed()
         self:CancelTimer(self._guildBankRescanTimer)
         self._guildBankRescanTimer = nil
     end
-    ns.DebugPrint("|cff888888[Guild Bank]|r Window closed")
 end
 
 --[[
     Called when player enters the world (login or reload)
 ]]
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
-    ns.DebugPrint("|cff9370DB[WN Core]|r [World Event] PLAYER_ENTERING_WORLD triggered (login=" .. tostring(isInitialLogin) .. ", reload=" .. tostring(isReloadingUi) .. ")")
-    
+    -- Class-colored accent may need UnitClass("player") — refresh theme once world is ready (login/reload).
+    if (isInitialLogin or isReloadingUi) and self.db and self.db.profile and self.db.profile.useClassColorAccent and ns.UI_RefreshColors then
+        ns.UI_RefreshColors()
+    end
+
     -- GUILD TRACKING: Check for guild changes on login (T+0s, high priority)
     -- Character may have been kicked, left guild, or joined new guild while offline
     if isInitialLogin or isReloadingUi then
@@ -1282,7 +1260,6 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
                 elseif rawGuild then
                     local currentGuildName = rawGuild
                     if currentGuildName ~= storedGuildName then
-                        ns.DebugPrint("|cff9370DB[WN Core]|r Guild change detected: " .. tostring(storedGuildName) .. " -> " .. tostring(currentGuildName))
                         charData.guildName = currentGuildName
                         self:Print("|cff00ff00" .. string.format((ns.L and ns.L["GUILD_JOINED_FORMAT"]) or "Guild updated: %s", currentGuildName) .. "|r")
                     end
@@ -1430,31 +1407,28 @@ local EPHEMERAL_WINDOWS = {
 }
 
 function WarbandNexus:OnCombatStart()
-    ns.DebugPrint("|cff9370DB[WN Core]|r [Combat Event] PLAYER_REGEN_DISABLED triggered")
-    
-    local anythingHidden = false
     self._windowsHiddenByCombat = self._windowsHiddenByCombat or {}
     wipe(self._windowsHiddenByCombat)
-    
+
     -- Hide main UI during combat (taint protection)
     if self.mainFrame and self.mainFrame:IsShown() then
         self.mainFrame:Hide()
         self._windowsHiddenByCombat["mainFrame"] = true
-        anythingHidden = true
     end
-    
+
     -- Hide restorable windows (will be re-shown after combat)
-    for _, globalName in ipairs(RESTORABLE_WINDOWS) do
+    for wi = 1, #RESTORABLE_WINDOWS do
+        local globalName = RESTORABLE_WINDOWS[wi]
         local frame = _G[globalName]
         if frame and frame:IsShown() then
             frame:Hide()
             self._windowsHiddenByCombat[globalName] = true
-            anythingHidden = true
         end
     end
     
     -- Hide ephemeral windows (NOT restored after combat)
-    for _, globalName in ipairs(EPHEMERAL_WINDOWS) do
+    for wi = 1, #EPHEMERAL_WINDOWS do
+        local globalName = EPHEMERAL_WINDOWS[wi]
         local frame = _G[globalName]
         if frame and frame:IsShown() then
             if frame.Close then
@@ -1475,9 +1449,6 @@ function WarbandNexus:OnCombatStart()
         ns.TooltipService:Hide()
     end
     
-    if anythingHidden then
-        ns.DebugPrint("|cffff6600[WN Core]|r UI hidden during combat.")
-    end
 end
 
 --[[
@@ -1485,8 +1456,6 @@ end
     Restores windows that were hidden by combat.
 ]]
 function WarbandNexus:OnCombatEnd()
-    ns.DebugPrint("|cff9370DB[WN Core]|r [Combat Event] PLAYER_REGEN_ENABLED triggered")
-    
     local hidden = self._windowsHiddenByCombat
     if hidden then
         -- Restore main frame
@@ -1495,7 +1464,8 @@ function WarbandNexus:OnCombatEnd()
         end
         
         -- Restore restorable windows
-        for _, globalName in ipairs(RESTORABLE_WINDOWS) do
+        for wi = 1, #RESTORABLE_WINDOWS do
+            local globalName = RESTORABLE_WINDOWS[wi]
             if hidden[globalName] then
                 local frame = _G[globalName]
                 if frame then

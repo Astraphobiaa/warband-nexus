@@ -68,7 +68,8 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     
     -- Container frame
     local container = CreateFrame("Frame", nil, parent)
-    container:SetSize(width, 32)
+    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+    container:SetSize(width, searchH)
     
     -- Background frame with pixel-perfect border
     local searchFrame = CreateFrame("Frame", nil, container)

@@ -25,6 +25,16 @@ L["KEYBINDING_COMBAT"] = "战斗中无法更改快捷键。"
 
 -- Options Panel - General
 L["GENERAL_SETTINGS"] = "常规设置"
+L["SETTINGS_SECTION_GENERAL_FEATURES"] = "Features"
+L["SETTINGS_SECTION_GENERAL_CONTROLS"] = "Controls & scaling"
+L["SETTINGS_SECTION_MODULES_LIST"] = "Enabled modules"
+L["SETTINGS_SECTION_VAULT_GENERAL"] = "Shortcut behavior"
+L["SETTINGS_SECTION_VAULT_LOOK"] = "Look & opacity"
+L["SETTINGS_SECTION_TAB_WARBAND"] = "Warband Bank"
+L["SETTINGS_SECTION_TAB_PERSONAL_BANK"] = "Personal Bank"
+L["SETTINGS_SECTION_TAB_INVENTORY"] = "Inventory"
+L["SETTINGS_SECTION_NOTIF_TIMING"] = "Timing"
+L["SETTINGS_SECTION_NOTIF_POSITION"] = "Position"
 L["DEBUG_MODE"] = "调试日志"
 L["DEBUG_MODE_DESC"] = "在聊天框输出详细调试信息以便排查问题"
 L["DEBUG_TRYCOUNTER_LOOT"] = "尝试计数战利品调试"
@@ -82,6 +92,10 @@ L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"] = "没有可显示的成就"
 L["PLANS_ACHIEVEMENTS_EMPTY_HINT"] = "从此列表将成就加入待办，或更改“显示已计划/显示已完成”。列表随扫描填充；若为空可尝试 /reload。"
 L["ACHIEVEMENT_FRAME_WN_TOOLTIP"] = "|cffccaa00Warband Nexus|r\n点击将此成就加入待办列表（与 + 添加相同）。"
 L["ACHIEVEMENT_FRAME_WN_TOOLTIP_REMOVE"] = "|cffccaa00Warband Nexus|r\n点击将此成就从待办列表中移除。"
+L["RECENT_TOOLTIP_OBTAINED_BY"] = "Obtained by:" -- fallback enUS
+L["RECENT_TOOLTIP_ACHIEVEMENT_EARNED_BY"] = "This achievement was earned by %s" -- fallback enUS
+L["RECENT_TOOLTIP_EARNED_BY"] = "Obtained by %s" -- fallback enUS
+L["POINTS_LABEL"] = "Points" -- fallback enUS
 L["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMBAT"] = "战斗中不可用。"
 L["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"] = "此成就已完成。"
 L["ACHIEVEMENT_FRAME_WN_TOOLTIP_IN_PLANS"] = "已在待办列表中。"
@@ -674,6 +688,8 @@ L["NOTIFICATION_DEFAULT_TITLE"] = "通知"
 
 -- Settings - Theme & Appearance
 L["THEME_APPEARANCE"] = "主题与外观"
+L["SETTINGS_SECTION_THEME_COLORS"] = "Colors & accent"
+L["SETTINGS_SECTION_THEME_TYPOGRAPHY"] = "Fonts & readability"
 L["COLOR_PURPLE"] = "紫色主题"
 L["COLOR_PURPLE_DESC"] = "经典紫色主题（默认）"
 L["COLOR_BLUE"] = "蓝色主题"
@@ -686,6 +702,8 @@ L["COLOR_ORANGE"] = "橙色主题"
 L["COLOR_ORANGE_DESC"] = "温暖橙主题"
 L["COLOR_CYAN"] = "青色主题"
 L["COLOR_CYAN_DESC"] = "明亮青主题"
+L["USE_CLASS_COLOR_ACCENT"] = "Use class color as accent" -- fallback enUS
+L["USE_CLASS_COLOR_ACCENT_TOOLTIP"] = "Use your current character's class color for accents, borders, and tabs. Falls back to your saved theme color when the class cannot be resolved." -- fallback enUS
 
 -- Settings - Font
 L["FONT_FAMILY"] = "字体"
@@ -766,7 +784,7 @@ L["MINIMAP_CHARS_GOLD"] = "角色金币："
 L["LEFT_CLICK_TOGGLE"] = "左键：切换窗口"
 L["RIGHT_CLICK_PLANS"] = "右键：打开计划"
 L["MINIMAP_SHOWN_MSG"] = "小地图按钮已显示"
-L["MINIMAP_HIDDEN_MSG"] = "小地图按钮已隐藏（使用 /wn minimap 显示）"
+L["MINIMAP_HIDDEN_MSG"] = "小地图按钮已隐藏（在 Warband Nexus → 设置 → 小地图 中重新启用）。"
 L["TOGGLE_WINDOW"] = "切换窗口"
 L["SCAN_BANK_MENU"] = "扫描银行"
 L["TRACKING_DISABLED_SCAN_MSG"] = "角色追踪已禁用。请在设置中启用追踪以扫描银行。"
@@ -1458,6 +1476,12 @@ L["GEAR_CRAFTED_NO_CRESTS"] = "没有可用于再造的纹章"
 L["GEAR_TRACK_CRAFTED_FALLBACK"] = "制造"
 L["GEAR_CRAFTED_MAX_ILVL_LINE"] = "%s（最高装等 %d）"
 L["GEAR_CRAFTED_RECAST_TO_LINE"] = "再造至 %s（装等 %d）"
+L["GEAR_DAWNCREST_PLAYBOOK_TITLE"] = "Dawncrest upgrade playbook" -- fallback enUS
+L["GEAR_DAWNCREST_PLAYBOOK_SUMMARY"] = "Each upgrade step: %s Dawncrests + gold. Earn via delves, dungeons, Mythic+, and raids — hover header for tier sources." -- fallback enUS
+L["GEAR_DAWNCREST_PLAYBOOK_TOOLTIP_LEAD"] = "Item upgrades spend %s Dawncrests per tier step (plus gold) at the upgrade vendor." -- fallback enUS
+L["GEAR_DAWNCREST_PLAYBOOK_CAP_HINT"] = "Season and weekly caps apply — amounts are shown on each currency row (Shift: season progress)." -- fallback enUS
+L["GEAR_DAWNCREST_PLAYBOOK_BY_TIER"] = "Sources by Dawncrest tier:" -- fallback enUS
+L["GEAR_DAWNCREST_PLAYBOOK_NO_SOURCES"] = "Earn via seasonal PvE rewards matching this crest tier." -- fallback enUS
 L["GEAR_CRAFTED_COST_DAWNCREST"] = "消耗：%d %s 黎明纹章"
 L["GEAR_CRAFTED_NEXT_TIER_CRESTS"] = "%s（装等 %d）：纹章 %d/%d（还需 %d）"
 L["GEAR_TAB_TITLE"] = "装备管理"

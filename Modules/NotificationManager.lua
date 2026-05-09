@@ -9,6 +9,7 @@ local Utilities = ns.Utilities
 local FontManager = ns.FontManager  -- Centralized font management
 local DebugPrint = ns.DebugPrint or function() end
 local DebugVerbosePrint = ns.DebugVerbosePrint or DebugPrint
+local issecretvalue = issecretvalue
 
 -- Unique AceEvent handler identity for NotificationManager
 local NotificationEvents = {}
@@ -1889,8 +1890,9 @@ function WarbandNexus:InitializeNotificationListeners()
             WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
         end
     end)
-    self:RegisterEvent("ADDON_LOADED", function(_, event, addonName)
-        if addonName == "Blizzard_SharedXML" or addonName == "Blizzard_AchievementUI" then
+    -- AceEvent: callback is (eventName, ...wowArgs); ADDON_LOADED's sole payload is the loaded addon name.
+    self:RegisterEvent("ADDON_LOADED", function(_, loadedAddon)
+        if loadedAddon == "Blizzard_SharedXML" or loadedAddon == "Blizzard_AchievementUI" then
             if self.ApplyBlizzardAchievementAlertSuppression then
                 self:ApplyBlizzardAchievementAlertSuppression()
             end
@@ -2226,6 +2228,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     if not data or not data.type then return end
     -- Achievement can have nil/empty name (hidden achievements); use fallback for display
     local displayName = data.name
+    if displayName and issecretvalue and issecretvalue(displayName) then return end
     if (not displayName or displayName == "") and data.type == "achievement" then
         displayName = (ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement"
     end

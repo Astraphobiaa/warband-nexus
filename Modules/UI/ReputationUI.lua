@@ -28,6 +28,7 @@ end
 local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00ff00[RepUI]|r"))
     or ns.DebugPrint
     or function() end
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 -- Services
 local SearchStateManager = ns.SearchStateManager
@@ -59,7 +60,6 @@ local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 -- Performance: Local function references
 local format = string.format
 local floor = math.floor
-local ipairs = ipairs
 
 local pairs = pairs
 local next = next
@@ -233,7 +233,8 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     -- Build character lookup table
     -- CRITICAL: Use GetCharacterKey() normalization (strips spaces) to match reputation DB keys
     local charLookup = {}
-    for _, char in ipairs(characters) do
+    for ci = 1, #characters do
+        local char = characters[ci]
         local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
         if charKey then charLookup[charKey] = char end
     end
@@ -294,7 +295,8 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     -- Build: factionID -> {charKey -> {reputation, char}}
     local factionCharacterMap = {}
     
-    for _, cachedData in ipairs(cachedFactions) do
+    for cfi = 1, #cachedFactions do
+        local cachedData = cachedFactions[cfi]
         local factionID = cachedData.factionID
         
         -- Only process factions with rep (skip pure organizational headers)
@@ -448,7 +450,8 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     local globalHeaders = (#cacheHeaders > 0) and cacheHeaders or (WarbandNexus.db.global.reputationHeaders or {})
     
     
-    for _, headerData in ipairs(globalHeaders) do
+    for ghi = 1, #globalHeaders do
+        local headerData = globalHeaders[ghi]
         if headerData and headerData.name then
             
                 if not seenHeaders[headerData.name] then
@@ -459,13 +462,17 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 
                 -- Add factions in ORDER, avoiding duplicates
                 local existingFactions = {}
-                for _, fid in ipairs(headerFactionLists[headerData.name]) do
-                -- Convert to number for consistent comparison
-                local numFid = tonumber(fid) or fid
-                existingFactions[numFid] = true
+                local hflExisting = headerFactionLists[headerData.name]
+                for fii = 1, #hflExisting do
+                    local fid = hflExisting[fii]
+                    -- Convert to number for consistent comparison
+                    local numFid = tonumber(fid) or fid
+                    existingFactions[numFid] = true
                 end
                 
-            for _, factionID in ipairs(headerData.factions or {}) do
+            local hdrFactions = headerData.factions or {}
+            for fai = 1, #hdrFactions do
+                local factionID = hdrFactions[fai]
                 -- Convert to number for consistent comparison
                 local numFactionID = tonumber(factionID) or factionID
                 if not existingFactions[numFactionID] then
@@ -477,11 +484,14 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     end
     
     -- Build header groups (preserve order from factionLists)
-    for _, headerName in ipairs(headerOrder) do
+    for hoi = 1, #headerOrder do
+        local headerName = headerOrder[hoi]
         local headerFactions = {}
         
         -- Iterate in ORDER (not random key-value pairs)
-        for _, factionID in ipairs(headerFactionLists[headerName]) do
+        local hflOrdered = headerFactionLists[headerName]
+        for fii = 1, #hflOrdered do
+            local factionID = hflOrdered[fii]
             -- Ensure consistent type for lookup
             local numFactionID = tonumber(factionID) or factionID
             local factionData = factionMap[numFactionID]
@@ -522,7 +532,8 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     
     -- Convert to ordered list
     local result = {}
-    for _, headerName in ipairs(headerOrder) do
+    for hoi = 1, #headerOrder do
+        local headerName = headerOrder[hoi]
         if headerGroups[headerName] then
             table.insert(result, headerGroups[headerName])
         end
@@ -980,8 +991,13 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             end
         end
         
-        if not iconCreated and WarbandNexus.db.profile.debugMode then
-            DebugPrint(string.format("|cffff0000[RepUI ERROR]|r Failed to create paragon icon for %s", reputation.name or "Unknown"))
+        if not iconCreated and IsDebugModeEnabled and IsDebugModeEnabled() then
+            local repLabel = "Unknown"
+            local n = reputation.name
+            if n and type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
+                repLabel = n
+            end
+            DebugPrint("|cffff0000[RepUI ERROR]|r Failed to create paragon icon for " .. repLabel)
         end
     end
     
@@ -1043,7 +1059,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 table.insert(lines, {type = "spacer", height = 8})
                 table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {1, 0.82, 0}})
                 
-                for _, charData in ipairs(allCharData) do
+                for aci = 1, #allCharData do
+                    local charData = allCharData[aci]
                     local charName = charData.characterName
                     local charReputation = charData.reputation
                     local classFile = string.upper(charData.characterClass or "WARRIOR")
@@ -1085,7 +1102,13 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end)
         
         if not success then
-            DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. tostring(err))
+            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                local errMsg = "(error)"
+                if type(err) == "string" and err ~= "" and not (issecretvalue and issecretvalue(err)) then
+                    errMsg = err
+                end
+                DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. errMsg)
+            end
         end
     end)
     
@@ -1560,7 +1583,8 @@ local function PopulateReputationRow(row, entry)
                 table.insert(lines, {type = "spacer", height = 8})
                 table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {1, 0.82, 0}})
 
-                for _, charData in ipairs(allCharData) do
+                for aci = 1, #allCharData do
+                    local charData = allCharData[aci]
                     local charName = charData.characterName
                     local charReputation = charData.reputation
                     local classFile = string.upper(charData.characterClass or "WARRIOR")
@@ -1602,7 +1626,13 @@ local function PopulateReputationRow(row, entry)
         end)
 
         if not success then
-            DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. tostring(err))
+            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                local errMsg = "(error)"
+                if type(err) == "string" and err ~= "" and not (issecretvalue and issecretvalue(err)) then
+                    errMsg = err
+                end
+                DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. errMsg)
+            end
         end
     end)
 
@@ -1678,7 +1708,8 @@ function WarbandNexus:DrawReputationList(container, width)
     local allCharacters = self:GetAllCharacters()
     local characters = {}
     if allCharacters then
-        for _, char in ipairs(allCharacters) do
+        for ai = 1, #allCharacters do
+            local char = allCharacters[ai]
             if char.isTracked ~= false then  -- Only tracked characters
                 table.insert(characters, char)
             end
@@ -1788,11 +1819,14 @@ function WarbandNexus:DrawReputationList(container, width)
     local characterBasedHeaders = {}
     local seenInAccountWide = {}  -- [factionID] = true; ensure no faction appears in both sections
     
-    for _, headerData in ipairs(aggregatedHeaders) do
+    for ahi = 1, #aggregatedHeaders do
+        local headerData = aggregatedHeaders[ahi]
         local awFactions = {}
         local cbFactions = {}
         
-        for _, faction in ipairs(headerData.factions) do
+        local hdrFacs = headerData.factions
+        for fi = 1, #hdrFacs do
+            local faction = hdrFacs[fi]
             -- Use aggregated entry flag first; API fallback only when stored flag is nil (edge case)
             local isAW = faction.isAccountWide or (faction.data and faction.data.isAccountWide)
             if isAW == nil and faction.factionID and C_Reputation and C_Reputation.IsAccountWideReputation then
@@ -1829,8 +1863,11 @@ function WarbandNexus:DrawReputationList(container, width)
     
     -- Count total factions (TOP-LEVEL only — excludes children/subfactions)
     local totalAccountWide = 0
-    for _, h in ipairs(accountWideHeaders) do
-        for _, faction in ipairs(h.factions) do
+    for hi = 1, #accountWideHeaders do
+        local h = accountWideHeaders[hi]
+        local hf = h.factions
+        for fi = 1, #hf do
+            local faction = hf[fi]
             if faction and faction.data and not faction.data.parentFactionID then
                 totalAccountWide = totalAccountWide + 1
             end
@@ -1838,8 +1875,11 @@ function WarbandNexus:DrawReputationList(container, width)
     end
     
     local totalCharacterBased = 0
-    for _, h in ipairs(characterBasedHeaders) do
-        for _, faction in ipairs(h.factions) do
+    for hi = 1, #characterBasedHeaders do
+        local h = characterBasedHeaders[hi]
+        local hf = h.factions
+        for fi = 1, #hf do
+            local faction = hf[fi]
             if faction and faction.data and not faction.data.parentFactionID then
                 totalCharacterBased = totalCharacterBased + 1
             end
@@ -1927,7 +1967,9 @@ function WarbandNexus:DrawReputationList(container, width)
 
     local function BuildFilteredList(headerData, scopeTag)
         local factionList = {}
-        for _, faction in ipairs(headerData.factions or {}) do
+        local bff = headerData.factions or {}
+        for fi = 1, #bff do
+            local faction = bff[fi]
             if faction and faction.data and not faction.data.parentFactionID then
                 table.insert(factionList, {
                     faction = faction,
@@ -1948,14 +1990,17 @@ function WarbandNexus:DrawReputationList(container, width)
         end
 
         local filtered = {}
-        for _, item in ipairs(factionList) do
+        for ii = 1, #factionList do
+            local item = factionList[ii]
             local itemName = SafeLower(item.faction.data.name)
             local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
             local filteredSubs = nil
             local hasMatchingSub = false
             if isSearching and item.subfactions and not parentMatches then
                 filteredSubs = {}
-                for _, sub in ipairs(item.subfactions) do
+                local subs = item.subfactions
+                for si = 1, #subs do
+                    local sub = subs[si]
                     local subName = SafeLower(sub.data.name)
                     if subName:find(reputationSearchText, 1, true) then
                         table.insert(filteredSubs, sub)
@@ -1984,7 +2029,8 @@ function WarbandNexus:DrawReputationList(container, width)
 
     local function RenderRowsIntoBody(body, bodyWidth, filteredFactionList)
         local rowY = 0
-        for _, item in ipairs(filteredFactionList) do
+        for ri = 1, #filteredFactionList do
+            local item = filteredFactionList[ri]
             globalRowIdx = globalRowIdx + 1
             local charInfo = {
                 name = item.faction.characterName,
@@ -2020,7 +2066,8 @@ function WarbandNexus:DrawReputationList(container, width)
             if showSubs and subsToRender and #subsToRender > 0 then
                 local subIndent = BASE_INDENT + SUBROW_EXTRA_INDENT
                 local subRowWidth = math.max(1, bodyWidth - subIndent)
-                for _, subFaction in ipairs(subsToRender) do
+                for si = 1, #subsToRender do
+                    local subFaction = subsToRender[si]
                     globalRowIdx = globalRowIdx + 1
                     local subRow = AcquireReputationRow(body, subRowWidth, ROW_HEIGHT)
                     subRow._isVirtualRow = true
@@ -2099,7 +2146,9 @@ function WarbandNexus:DrawReputationList(container, width)
         end
 
         local headerTail = nil
-        for _, headerData in ipairs(headers or {}) do
+        local sectionHeaders = headers or {}
+        for shi = 1, #sectionHeaders do
+            local headerData = sectionHeaders[shi]
             if #headerData.factions > 0 then
                 local factionList, filteredFactionList, isSearching = BuildFilteredList(headerData, scopeTag)
                 if not isSearching or #filteredFactionList > 0 then
@@ -2208,7 +2257,9 @@ function WarbandNexus:DrawReputationList(container, width)
     ChainTopFrame(noticeFrame, SECTION_SPACING * 2)
 
     local totalReputations = 0
-    for _, headerGroup in ipairs(aggregatedHeaders or {}) do
+    local aggHdrs = aggregatedHeaders or {}
+    for agi = 1, #aggHdrs do
+        local headerGroup = aggHdrs[agi]
         if headerGroup and headerGroup.factions then
             totalReputations = totalReputations + #headerGroup.factions
         end
@@ -2485,7 +2536,8 @@ function WarbandNexus:DrawReputationTab(parent)
     searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     
-    headerYOffset = headerYOffset + 32 + GetLayout().afterElement
+    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+    headerYOffset = headerYOffset + searchH + GetLayout().afterElement
 
     -- Set fixedHeader height so scroll area starts below it
     if fixedHeader then fixedHeader:SetHeight(headerYOffset) end

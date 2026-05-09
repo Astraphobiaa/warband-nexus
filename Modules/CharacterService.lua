@@ -25,8 +25,6 @@ ns.CharacterService = CharacterService
 function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     if not addon.db or not addon.db.global then return end
     
-    DebugPrint("|cff9370DB[WN CharacterService]|r ConfirmCharacterTracking: " .. charKey .. " = " .. tostring(isTracked))
-    
     -- Initialize character entry if it doesn't exist
     if not addon.db.global.characters then
         addon.db.global.characters = {}
@@ -290,7 +288,6 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         end)
     end
     
-    DebugPrint("|cff00ff00[WN CharacterService]|r Tracking status updated")
 end
 
 ---Find db.global.characters index for the logged-in player (raw vs canonical key mismatch breaks lookups).
@@ -347,11 +344,8 @@ end
 ---@param addon table The WarbandNexus addon instance
 ---@param charKey string Character key ("Name-Realm")
 function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
-    DebugPrint("|cff9370DB[WN CharacterService]|r ShowCharacterTrackingConfirmation for " .. charKey)
-    
     -- CRITICAL: If dialog already exists and is visible, don't create a new one
     if addon.trackingDialog and addon.trackingDialog:IsVisible() then
-        DebugPrint("|cffffcc00[WN CharacterService]|r Tracking dialog already visible, skipping...")
         return
     end
     
@@ -736,7 +730,9 @@ function CharacterService:IsFavoriteCharacter(addon, characterKey)
         return false
     end
     
-    for _, favKey in ipairs(addon.db.global.favoriteCharacters) do
+    local favs = addon.db.global.favoriteCharacters
+    for fi = 1, #favs do
+        local favKey = favs[fi]
         if favKey == characterKey then
             return true
         end
@@ -754,8 +750,6 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
         return false
     end
     
-    DebugPrint("|cff9370DB[WN CharacterService]|r ToggleFavoriteCharacter: " .. characterKey)
-    
     -- Initialize if needed
     if not addon.db.global.favoriteCharacters then
         addon.db.global.favoriteCharacters = {}
@@ -766,11 +760,11 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
     
     if isFavorite then
         -- Remove from favorites
-        for i, favKey in ipairs(favorites) do
+        for i = 1, #favorites do
+            local favKey = favorites[i]
             if favKey == characterKey then
                 table.remove(favorites, i)
                 addon:Print("|cffffff00" .. ((ns.L and ns.L["REMOVED_FROM_FAVORITES"]) or "Removed from favorites:") .. "|r " .. characterKey)
-                DebugPrint("|cff00ff00[WN CharacterService]|r Favorite removed")
                 if addon.SendMessage then
                     addon:SendMessage(E.CHARACTER_UPDATED, { charKey = characterKey, dataType = "favorite" })
                 end
@@ -782,7 +776,6 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
         -- Add to favorites
         table.insert(favorites, characterKey)
         addon:Print("|cffffd700" .. ((ns.L and ns.L["ADDED_TO_FAVORITES"]) or "Added to favorites:") .. "|r " .. characterKey)
-        DebugPrint("|cff00ff00[WN CharacterService]|r Favorite added")
         if addon.SendMessage then
             addon:SendMessage(E.CHARACTER_UPDATED, { charKey = characterKey, dataType = "favorite" })
         end

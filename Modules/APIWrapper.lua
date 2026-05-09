@@ -20,7 +20,12 @@ local WarbandNexus = ns.WarbandNexus
 function WarbandNexus:API_FormatMoney(amount)
     amount = tonumber(amount) or 0
     if amount < 0 then amount = 0 end
-    
+
+    local uiFmt = ns.UI_FormatMoney
+    if uiFmt then
+        return uiFmt(amount, 14)
+    end
+
     if GetCoinTextureString then
         local success, result = pcall(GetCoinTextureString, amount)
         if success and result then

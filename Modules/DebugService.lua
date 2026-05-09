@@ -4,7 +4,6 @@
     
     Handles:
     - Debug logging with profile-based control
-    - Test commands for development
     - Bank debugging utilities
     - Force scanning and data wiping
     
@@ -15,11 +14,9 @@
 ============================================================================]]
 
 local addonName, ns = ...
-local Constants = ns.Constants
 local issecretvalue = issecretvalue
 local DebugService = {}
 ns.DebugService = DebugService
-local DebugPrint = ns.DebugPrint or function() end
 local IsDebugModeEnabled = ns.IsDebugModeEnabled or function() return false end
 local IsDebugVerboseEnabled = ns.IsDebugVerboseEnabled or function() return false end
 
@@ -54,191 +51,6 @@ function DebugService:Debug(addon, message)
 end
 
 --============================================================================
--- TEST COMMANDS
---============================================================================
-
---- Handle test commands for development and debugging
----@param addon table WarbandNexus addon instance
----@param input string Command input from slash command
-function DebugService:TestCommand(addon, input)
-    DebugPrint("|cff9370DB[WN DebugService]|r TestCommand triggered: " .. tostring(input))
-    
-    local cmd, subcmd = addon:GetArgs(input, 2)
-    if cmd then cmd = cmd:lower() end
-    if subcmd then subcmd = subcmd:lower() end
-    
-    if not cmd or cmd == "" then
-        addon:Print("|cff00ccffWarband Nexus Test Commands|r")
-        addon:Print("  |cff00ccff/wntest|r or |cff00ccff/wn test|r — same commands below")
-        addon:Print("  |cff00ccff/wntest overflow|r - Check font overflow status")
-        addon:Print("  |cff00ccff/wntest rep|r - Force reputation scan")
-        addon:Print("  |cff00ccff/wntest rep ui|r - Force reputation UI refresh")
-        addon:Print("  |cff00ccff/wntest rep event|r - Simulate reputation change")
-        addon:Print("  |cff00ccff/wntest achievement [id]|r - Test achievement (default: 60981)")
-        addon:Print("  |cff00ccff/wntest plan [id]|r - Test plan completion (default: 60981)")
-        addon:Print("  |cff00ccff/wntest currency [id] [gain]|r - Simulate [WN-Currency] chat (default: Hero Dawncrest 3345, +1)")
-        addon:Print("  |cff00ccff/wntest vault fill|r - Fill current character vault slots for layout testing")
-        addon:Print("  |cff00ccff/wntest vault clear|r - Clear current character test vault slots")
-        addon:Print("|cff888888Examples:|r")
-        addon:Print("|cff888888  /wntest achievement 60981|r")
-        addon:Print("|cff888888  /wntest plan 60981|r")
-        addon:Print("|cff888888  /wntest currency 2803 50|r")
-        return
-    end
-    
-    if cmd == "overflow" then
-        if not ns.OverflowMonitor then
-            addon:Print("|cffff0000OverflowMonitor not loaded!|r")
-            return
-        end
-        
-        local hasOverflow = ns.OverflowMonitor:CheckAll()
-        
-        if not hasOverflow then
-            addon:Print("|cff00ff00No font overflow detected!|r")
-        else
-            addon:Print("|cffffcc00Font overflow detected in visible UI elements!|r")
-            addon:Print("Try reducing font scale in settings.")
-        end
-    elseif cmd == "rep" then
-        if not subcmd or subcmd == "" then
-            -- Force reputation scan
-            if addon.ScanReputations then
-                addon:Print("|cff00ccffForcing reputation scan...|r")
-                addon.currentTrigger = "TEST_COMMAND"
-                addon:ScanReputations()
-                addon:Print("|cff00ff00Reputation scan complete!|r")
-            else
-                addon:Print("|cffff0000ScanReputations not available!|r")
-            end
-        elseif subcmd == "ui" then
-            -- Trigger refresh through the standard event chain.
-            if addon.SendMessage then
-                addon:Print("|cff00ccffSending WN_REPUTATION_UPDATED...|r")
-                addon:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
-                addon:Print("|cff00ff00Event sent!|r")
-            else
-                addon:Print("|cffff0000SendMessage not available!|r")
-            end
-        elseif subcmd == "event" then
-            -- Simulate reputation change event
-            addon:Print("|cff00ccffSimulating UPDATE_FACTION event...|r")
-            addon:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
-            addon:Print("|cff00ff00Event sent!|r")
-        else
-            addon:Print("|cffff0000Unknown rep subcommand:|r " .. subcmd)
-            addon:Print("Use: /wntest rep [ui|event]")
-        end
-    elseif cmd == "achievement" then
-        -- Test achievement notification with ID
-        local achievementID = tonumber(subcmd) or 60981
-        if addon.TestLootNotification then
-            addon:Print("|cff00ccffTesting achievement notification (ID: " .. achievementID .. ")...|r")
-            addon:TestLootNotification("achievement", achievementID)
-        else
-            addon:Print("|cffff0000TestLootNotification not available!|r")
-        end
-    elseif cmd == "plan" then
-        -- Test plan completion notification with achievement ID
-        local achievementID = tonumber(subcmd) or 60981
-        if addon.TestLootNotification then
-            addon:Print("|cff00ccffTesting plan completion (Achievement ID: " .. achievementID .. ")...|r")
-            addon:TestLootNotification("plan", achievementID)
-        else
-            addon:Print("|cffff0000TestLootNotification not available!|r")
-        end
-    elseif cmd == "currency" then
-        -- Simulate internal currency gain → ChatMessageService (no loot required). Uses live GetCurrencyData for totals in the line.
-        local _, idStr, gainStr = addon:GetArgs(input, 3)
-        local currencyID = tonumber(idStr) or 3345
-        local gain = tonumber(gainStr) or 1
-        if gain < 1 then gain = 1 end
-        if not addon.SendMessage then
-            addon:Print("|cffff0000SendMessage not available.|r")
-            return
-        end
-        addon:Print("|cff00ccffSimulating WN_CURRENCY_GAINED: currencyID=" .. tostring(currencyID) .. " +" .. tostring(gain) .. "|r")
-        addon:SendMessage(Constants.EVENTS.CURRENCY_GAINED, {
-            currencyID = currencyID,
-            gainAmount = gain,
-            gainSource = "quantity",
-        })
-    elseif cmd == "vault" then
-        local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-        if not charKey then
-            addon:Print("|cffff0000Could not determine current character key.|r")
-            return
-        end
-        if not addon.db or not addon.db.global then
-            addon:Print("|cffff0000Database not ready.|r")
-            return
-        end
-
-        addon.db.global.pveCache = addon.db.global.pveCache or {}
-        addon.db.global.pveCache.greatVault = addon.db.global.pveCache.greatVault or {}
-        addon.db.global.pveCache.greatVault.activities = addon.db.global.pveCache.greatVault.activities or {}
-        addon.db.global.pveCache.greatVault.rewards = addon.db.global.pveCache.greatVault.rewards or {}
-
-        if subcmd == "fill" then
-            local weeklyResetTime = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset
-                and (GetServerTime() + C_DateAndTime.GetSecondsUntilWeeklyReset()) or 0
-            addon.db.global.pveCache.greatVault.activities[charKey] = {
-                raids = {
-                    { progress = 2, threshold = 2, rewardItemLevel = 260 },
-                    { progress = 4, threshold = 4, rewardItemLevel = 260 },
-                    { progress = 6, threshold = 6, rewardItemLevel = 260 },
-                },
-                mythicPlus = {
-                    { progress = 1, threshold = 1, rewardItemLevel = 260 },
-                    { progress = 4, threshold = 4, rewardItemLevel = 260 },
-                    { progress = 8, threshold = 8, rewardItemLevel = 260 },
-                },
-                world = {
-                    { progress = 2, threshold = 2, rewardItemLevel = 259 },
-                    { progress = 4, threshold = 4, rewardItemLevel = 259 },
-                    { progress = 8, threshold = 8, rewardItemLevel = 259 },
-                },
-                pvp = {},
-                lastUpdate = time(),
-                weeklyResetTime = weeklyResetTime,
-                isTestData = true,
-            }
-            addon.db.global.pveCache.greatVault.rewards[charKey] = {
-                hasAvailableRewards = false,
-                lastUpdate = time(),
-                isTestData = true,
-            }
-            if addon.SavePvECache then addon:SavePvECache() end
-            if addon.SendMessage and Constants.EVENTS and Constants.EVENTS.PVE_UPDATED then
-                addon:SendMessage(Constants.EVENTS.PVE_UPDATED)
-            end
-            addon:Print("|cff00ff00Filled current character vault slots for layout testing.|r")
-        elseif subcmd == "clear" then
-            local activities = addon.db.global.pveCache.greatVault.activities[charKey]
-            local rewards = addon.db.global.pveCache.greatVault.rewards[charKey]
-            if activities and activities.isTestData then
-                addon.db.global.pveCache.greatVault.activities[charKey] = nil
-            end
-            if rewards and rewards.isTestData then
-                addon.db.global.pveCache.greatVault.rewards[charKey] = nil
-            end
-            if addon.SavePvECache then addon:SavePvECache() end
-            if addon.SendMessage and Constants.EVENTS and Constants.EVENTS.PVE_UPDATED then
-                addon:SendMessage(Constants.EVENTS.PVE_UPDATED)
-            end
-            addon:Print("|cff00ff00Cleared current character test vault slots.|r")
-        else
-            addon:Print("|cffff0000Unknown vault test command.|r Use |cff00ccff/wntest vault fill|r or |cff00ccff/wntest vault clear|r")
-        end
-    else
-        addon:Print("|cffff0000Unknown test command:|r " .. cmd)
-        addon:Print("Use /wntest to see available commands")
-    end
-    
-    DebugPrint("|cff00ff00[WN DebugService]|r TestCommand complete")
-end
-
---============================================================================
 -- BANK DEBUGGING
 --============================================================================
 
@@ -246,8 +58,6 @@ end
 --- Helps diagnose Warband Bank detection issues
 ---@param addon table WarbandNexus addon instance
 function DebugService:PrintBankDebugInfo(addon)
-    DebugPrint("|cff9370DB[WN DebugService]|r PrintBankDebugInfo triggered")
-    
     addon:Print("=== Bank Debug Info ===")
     
     -- Internal state flags
@@ -284,15 +94,11 @@ function DebugService:PrintBankDebugInfo(addon)
     -- Final result
     addon:Print("IsWarbandBankOpen(): " .. tostring(ns.Utilities:IsWarbandBankOpen(addon)))
     addon:Print("======================")
-    
-    DebugPrint("|cff00ff00[WN DebugService]|r PrintBankDebugInfo complete")
 end
 
 --- Force scan Warband Bank without checking if it's open (for debugging)
 ---@param addon table WarbandNexus addon instance
 function DebugService:ForceScanWarbandBank(addon)
-    DebugPrint("|cff9370DB[WN DebugService]|r ForceScanWarbandBank triggered")
-    
     addon:Print("Force scanning Warband Bank (bypassing open check)...")
     
     -- Temporarily mark bank as open for scan
@@ -307,10 +113,8 @@ function DebugService:ForceScanWarbandBank(addon)
     
     if success then
         addon:Print("Force scan complete!")
-        DebugPrint("|cff00ff00[WN DebugService]|r Force scan succeeded")
     else
         addon:Print("|cffff0000Force scan failed. Bank might not be accessible.|r")
-        DebugPrint("|cffff0000[WN DebugService]|r Force scan failed")
     end
 end
 
@@ -321,8 +125,6 @@ end
 --- Print list of all tracked characters with their info
 ---@param addon table WarbandNexus addon instance
 function DebugService:PrintCharacterList(addon)
-    DebugPrint("|cff9370DB[WN DebugService]|r PrintCharacterList triggered")
-    
     addon:Print("=== Tracked Characters ===")
     
     local chars = addon:GetAllCharacters()
@@ -331,7 +133,8 @@ function DebugService:PrintCharacterList(addon)
         return
     end
     
-    for _, char in ipairs(chars) do
+    for ci = 1, #chars do
+        local char = chars[ci]
         local lastSeenText = ""
         if char.lastSeen then
             local diff = time() - char.lastSeen
@@ -356,14 +159,11 @@ function DebugService:PrintCharacterList(addon)
     
     addon:Print("Total: " .. #chars .. " characters")
     addon:Print("==========================")
-    
-    DebugPrint("|cff00ff00[WN DebugService]|r PrintCharacterList complete")
 end
 
 --- Print current character's PvE data (vault, M+, lockouts) for debugging
 ---@param addon table WarbandNexus addon instance
 function DebugService:PrintPvEData(addon)
-    DebugPrint("|cff9370DB[WN DebugService]|r PrintPvEData triggered")
     local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not key then return end
     local name = UnitName("player")
@@ -375,7 +175,9 @@ function DebugService:PrintPvEData(addon)
     -- Great Vault
     addon:Print("|cffffd700Great Vault:|r")
     if pveData.greatVault and #pveData.greatVault > 0 then
-        for i, activity in ipairs(pveData.greatVault) do
+        local gv = pveData.greatVault
+        for i = 1, #gv do
+            local activity = gv[i]
             local typeName = "Unknown"
             local typeNum = activity.type
             
@@ -424,7 +226,9 @@ function DebugService:PrintPvEData(addon)
     -- Lockouts
     addon:Print("|cff0070ddRaid Lockouts:|r")
     if pveData.lockouts and #pveData.lockouts > 0 then
-        for i, lockout in ipairs(pveData.lockouts) do
+        local lockouts = pveData.lockouts
+        for i = 1, #lockouts do
+            local lockout = lockouts[i]
             addon:Print(string.format("  %s (%s): %d/%d", 
                 lockout.name or "Unknown",
                 lockout.difficultyName or "Normal",
@@ -441,10 +245,8 @@ function DebugService:PrintPvEData(addon)
     if addon.db.global.characters and addon.db.global.characters[key] then
         addon.db.global.characters[key].pve = pveData
         addon.db.global.characters[key].lastSeen = time()
-        addon:Print("|cff00ff00Data saved! Use /wn pve to view in UI|r")
+        addon:Print("|cff00ff00Data saved! Open the PvE tab to view.|r")
     end
-    
-    DebugPrint("|cff00ff00[WN DebugService]|r PrintPvEData complete")
 end
 
 --============================================================================
@@ -455,8 +257,6 @@ end
 --- WARNING: This is a destructive operation that cannot be undone
 ---@param addon table WarbandNexus addon instance
 function DebugService:WipeAllData(addon)
-    DebugPrint("|cffff9900[WN DebugService]|r WipeAllData triggered - DESTRUCTIVE OPERATION")
-    
     addon:Print("|cffff9900Wiping all addon data...|r")
     
     -- Close UI first
@@ -475,8 +275,7 @@ function DebugService:WipeAllData(addon)
     end
     
     addon:Print("|cff00ff00All data wiped! Reloading UI...|r")
-    DebugPrint("|cffff0000[WN DebugService]|r Database wiped, reloading UI")
-    
+
     -- Reload UI after a short delay
     C_Timer.After(1, function()
         if C_UI and C_UI.Reload then

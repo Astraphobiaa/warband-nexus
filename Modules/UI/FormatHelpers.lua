@@ -9,13 +9,19 @@
     - Text number auto-formatting
     - Legacy gold formatting
     
-    Extracted from SharedWidgets.lua (176 lines)
-    Location: Lines 1145-1320
+    SharedWidgets no longer duplicates these; load order: FormatHelpers → SharedWidgets (.toc).
 ]]
 
 local ADDON_NAME, ns = ...
 
 local issecretvalue = issecretvalue
+local floor = math.floor
+local format = string.format
+local gsub = string.gsub
+local find = string.find
+local sub = string.sub
+local insert = table.insert
+local gmatch = string.gmatch
 
 --- Trim trailing colon/spaces from a UI label and append a consistent ` … : ` separator.
 --- Used for plan/source lines (Drop / Location / Vendor) so colon has balanced spaces.
@@ -43,11 +49,11 @@ end
 ---@param copper number Total copper amount
 ---@return string Formatted gold string with icon
 local function FormatGold(copper)
-    local gold = math.floor((copper or 0) / 10000)
+    local gold = floor((copper or 0) / 10000)
     local goldStr = tostring(gold)
     local k
     while true do
-        goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
+        goldStr, k = gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
         if k == 0 then break end
     end
     return goldStr .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t"
@@ -60,18 +66,18 @@ local function FormatNumber(number)
     if not number or number == 0 then return "0" end
     
     -- Convert to string and handle negative numbers
-    local formatted = tostring(math.floor(number))
+    local formatted = tostring(floor(number))
     local negative = false
     
-    if string.sub(formatted, 1, 1) == "-" then
+    if sub(formatted, 1, 1) == "-" then
         negative = true
-        formatted = string.sub(formatted, 2)
+        formatted = sub(formatted, 2)
     end
     
     -- Add thousand separators (dots for Turkish locale)
     local k
     while true do
-        formatted, k = string.gsub(formatted, "^(%d+)(%d%d%d)", '%1.%2')
+        formatted, k = gsub(formatted, "^(%d+)(%d%d%d)", '%1.%2')
         if k == 0 then break end
     end
     
@@ -95,19 +101,19 @@ local function FormatTextNumbers(text)
     
     -- Process numbers in descending order of length to avoid partial replacements
     local numbers = {}
-    for num in string.gmatch(text, "%d%d%d%d+") do
+    for num in gmatch(text, "%d%d%d%d+") do
         -- Check if number is already formatted (contains dots)
         local alreadyFormatted = false
-        local numStart, numEnd = string.find(result, num, 1, true)
+        local numStart, numEnd = find(result, num, 1, true)
         if numStart and numStart > 1 then
             -- Check if there's a dot before this number
-            if string.sub(result, numStart - 1, numStart - 1) == "." then
+            if sub(result, numStart - 1, numStart - 1) == "." then
                 alreadyFormatted = true
             end
         end
         
         if not alreadyFormatted then
-            table.insert(numbers, {value = num, length = #num})
+            insert(numbers, {value = num, length = #num})
         end
     end
     
@@ -115,13 +121,14 @@ local function FormatTextNumbers(text)
     table.sort(numbers, function(a, b) return a.length > b.length end)
     
     -- Replace each number with its formatted version
-    for _, numData in ipairs(numbers) do
+    for i = 1, #numbers do
+        local numData = numbers[i]
         local formatted = FormatNumber(tonumber(numData.value))
         -- Use pattern to match whole number (not part of a longer number)
-        result = string.gsub(result, "(%D)" .. numData.value .. "(%D)", "%1" .. formatted .. "%2")
-        result = string.gsub(result, "^" .. numData.value .. "(%D)", formatted .. "%1")
-        result = string.gsub(result, "(%D)" .. numData.value .. "$", "%1" .. formatted)
-        result = string.gsub(result, "^" .. numData.value .. "$", formatted)
+        result = gsub(result, "(%D)" .. numData.value .. "(%D)", "%1" .. formatted .. "%2")
+        result = gsub(result, "^" .. numData.value .. "(%D)", formatted .. "%1")
+        result = gsub(result, "(%D)" .. numData.value .. "$", "%1" .. formatted)
+        result = gsub(result, "^" .. numData.value .. "$", formatted)
     end
     
     return result
@@ -147,9 +154,9 @@ local function FormatMoney(copper, iconSize, showZero)
     showZero = showZero or false
     
     -- Calculate gold, silver, copper with explicit floor operations
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local copperAmount = math.floor(copper % 100)
+    local gold = floor(copper / 10000)
+    local silver = floor((copper % 10000) / 100)
+    local copperAmount = floor(copper % 100)
     
     -- Build formatted string
     local parts = {}
@@ -160,22 +167,22 @@ local function FormatMoney(copper, iconSize, showZero)
         local goldStr = tostring(gold)
         local k
         while true do
-            goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
+            goldStr, k = gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
             if k == 0 then break end
         end
-        table.insert(parts, string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", goldStr, iconSize, iconSize))
+        insert(parts, format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", goldStr, iconSize, iconSize))
     end
     
     -- Silver (silver/gray) - Only pad if gold exists
     if silver > 0 or (showZero and gold > 0) then
         local fmt = (gold > 0) and "%02d" or "%d"
-        table.insert(parts, string.format("|cffc7c7cf" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:0:0|t", silver, iconSize, iconSize))
+        insert(parts, format("|cffc7c7cf" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:0:0|t", silver, iconSize, iconSize))
     end
     
     -- Copper (bronze/copper) - Only pad if silver or gold exists
     if copperAmount > 0 or showZero or (gold == 0 and silver == 0) then
         local fmt = (gold > 0 or silver > 0) and "%02d" or "%d"
-        table.insert(parts, string.format("|cffeda55f" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:0:0|t", copperAmount, iconSize, iconSize))
+        insert(parts, format("|cffeda55f" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:0:0|t", copperAmount, iconSize, iconSize))
     end
     
     return table.concat(parts, " ")
@@ -295,6 +302,11 @@ local function BindSeasonProgressAmount(fs, cd)
     fs:SetText(FormatSeasonProgressShiftAware(cd, IsShiftKeyDown() and true or false))
 end
 
+---Remove shift-aware binding so a reused FontString stops tracking stale currency data.
+local function UnbindSeasonProgressAmount(fs)
+    if fs then _seasonAmountBindings[fs] = nil end
+end
+
 ---Update binding (e.g. on data refresh) and re-render with current shift state.
 local function RefreshSeasonProgressAmount(fs, cd)
     if not fs or not fs.SetText then return end
@@ -325,6 +337,7 @@ ns.UI_FormatGold = FormatGold
 ns.UI_FormatMoney = FormatMoney
 ns.UI_FormatSeasonProgressCurrencyLine = FormatSeasonProgressCurrencyLine
 ns.UI_BindSeasonProgressAmount = BindSeasonProgressAmount
+ns.UI_UnbindSeasonProgressAmount = UnbindSeasonProgressAmount
 ns.UI_RefreshSeasonProgressAmount = RefreshSeasonProgressAmount
 ns.UI_NormalizeColonLabelSpacing = NormalizeColonLabelSpacing
 

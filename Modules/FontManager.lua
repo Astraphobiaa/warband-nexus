@@ -359,7 +359,6 @@ local function WarmupAllFonts()
             warmupFrame:Hide()
         end
     end)
-    DebugPrint("|cff00aaff[WN FontManager]|r Font warm-up complete: " .. tostring(slot) .. " fonts warmed")
 end
 
 -- PLAYER_LOGIN handler: warm up fonts early, before any UI opens
@@ -670,7 +669,6 @@ local function ApplyToAllRegistered()
             updated = updated + 1
         end
     end
-    DebugPrint(string.format("|cff00aaff[WN FontManager]|r RefreshAllFonts: updated %d, removed %d dead entries", updated, removed))
 end
 
 --[[
@@ -749,7 +747,8 @@ function FontManager:GetPreviewText()
     local lines = {}
     local categories = {"header", "title", "subtitle", "body", "small"}
     
-    for _, cat in ipairs(categories) do
+    for ci = 1, #categories do
+        local cat = categories[ci]
         local size = self:GetFontSize(cat)
         table.insert(lines, string.format("%s: %dpx", cat:gsub("^%l", string.upper), math.floor(size)))
     end

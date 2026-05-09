@@ -1069,10 +1069,6 @@ function WarbandNexus:InitializeRecipeCompanion()
             RefreshCompanion()
         end
     end)
-
-    if self.Debug then
-        self:Debug("[RecipeCompanion] Initialized")
-    end
 end
 
 -- ============================================================================

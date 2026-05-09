@@ -331,7 +331,8 @@ function Profiler:PrintSummary()
     
     -- Rows
     local grandTotal = 0
-    for _, entry in ipairs(sorted) do
+    for ei = 1, #sorted do
+        local entry = sorted[ei]
         local d = entry.data
         local avgMs = d.calls > 0 and (d.totalMs / d.calls) or 0
         grandTotal = grandTotal + d.totalMs

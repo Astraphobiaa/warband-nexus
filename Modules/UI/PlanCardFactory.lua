@@ -19,6 +19,8 @@ local FormatTextNumbers = ns.UI_FormatTextNumbers
 local FormatNumber = ns.UI_FormatNumber
 local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
 
+local format = string.format
+
 local PlanCardFactory = {}
 
 -- Type colors
@@ -82,13 +84,13 @@ end
 local function PlanSourceIconMarkup(kind, size)
     size = size or PLAN_SRC_ICON_LG
     if kind == "loot" then
-        return string.format("|A:Banker:%d:%d|a", size, size)
+        return format("|A:Banker:%d:%d|a", size, size)
     elseif kind == "quest" then
-        return string.format("|A:Islands-QuestTurnin:%d:%d|a", size, size)
+        return format("|A:Islands-QuestTurnin:%d:%d|a", size, size)
     elseif kind == "location" then
-        return string.format("|A:poi-islands-table:%d:%d|a", size, size)
+        return format("|A:poi-islands-table:%d:%d|a", size, size)
     end
-    return string.format("|A:Class:%d:%d|a", size, size)
+    return format("|A:Class:%d:%d|a", size, size)
 end
 
 ns.UI_PlanSourceIconMarkup = PlanSourceIconMarkup
@@ -422,7 +424,7 @@ function PlanCardFactory:CreateTypeBadge(card, plan, nameText)
     typeBadge:SetJustifyH("LEFT")
     typeBadge:SetWordWrap(false)
     typeBadge:SetMaxLines(1)
-    typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
+    typeBadge:SetText(format("|cff%02x%02x%02x%s|r", 
         typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
         typeName))
     typeBadge:EnableMouse(false)
@@ -463,7 +465,7 @@ function PlanCardFactory:CreateAchievementPointsBadge(card, plan, nameText)
     pointsText:SetWordWrap(false)
     pointsText:SetMaxLines(1)
     if plan.points then
-        pointsText:SetText(string.format("|cff%02x%02x%02x" .. ((ns.L and ns.L["POINTS_FORMAT"]) or "%d Points") .. "|r", 
+        pointsText:SetText(format("|cff%02x%02x%02x" .. ((ns.L and ns.L["POINTS_FORMAT"]) or "%d Points") .. "|r", 
             typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
             plan.points))
     end
@@ -549,7 +551,8 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     if #sources > 0 then
         -- Estimate height needed for all sources
         local estRow = math.max(22, PLAN_SRC_ICON_LG + 8)
-        for i, source in ipairs(sources) do
+        for i = 1, #sources do
+            local source = sources[i]
             if source.vendor or source.npc or source.quest then
                 estimatedContentHeight = estimatedContentHeight + estRow
             end
@@ -653,7 +656,8 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         local containerY = 0
         
         
-        for i, source in ipairs(sourcesToShow) do
+        for i = 1, #sourcesToShow do
+            local source = sourcesToShow[i]
             -- Vendor or Drop
             if source.vendor then
                 local vendorText = FontManager:CreateFontString(card._sourceContainer, "body", "OVERLAY")
@@ -1399,11 +1403,11 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             local progressColor = (completedCount == numCriteria) and (P2.progressFull or "|cff00ff00") or (P2.incomplete or "|cffffffff")
             if hasProgressBased and totalReqQuantity > 0 then
                 local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
-                local progressText = (P2.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
+                local progressText = (P2.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
                 progressLabel:SetText(FormatTextNumbers(progressText))
             else
                 local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
-                local progressText = (P2.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(reqFmt, completedCount, numCriteria) .. "|r"
+                local progressText = (P2.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(reqFmt, completedCount, numCriteria) .. "|r"
                 progressLabel:SetText(FormatTextNumbers(progressText))
             end
         else
@@ -1536,12 +1540,12 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
             local progressColor = (completedCount == numCriteria) and (P.progressFull or "|cff00ff00") or (P.incomplete or "|cffffffff")
             if hasProgressBased and totalReqQuantity > 0 then
                 local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
-                local progressText = (P.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
+                local progressText = (P.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
                         cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
                     else
                         -- Criteria-based: "You completed X of Y total requirements"
                         local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
-                        local progressText = "|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(reqFmt, completedCount, numCriteria) .. "|r"
+                        local progressText = "|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(reqFmt, completedCount, numCriteria) .. "|r"
                         cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
                     end
                 else
@@ -1640,7 +1644,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                 hasProgressBased = true
                 -- Only show (x/y) on line when reqQuantity > 1; skip 0/1 and 1/1 for kill objectives
                 if reqQuantity > 1 then
-                    progressText = string.format(" |cffffffff(%s / %s)|r", FormatNumber(quantity), FormatNumber(reqQuantity))
+                    progressText = format(" |cffffffff(%s / %s)|r", FormatNumber(quantity), FormatNumber(reqQuantity))
                 end
             end
             
@@ -1684,11 +1688,11 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     if card.progressLabel then
         if hasProgressBased and totalReqQuantity > 0 then
             local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
-            local progressText = (P4.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
+            local progressText = (P4.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
             card.progressLabel:SetText(FormatTextNumbers(progressText))
         else
             local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
-            local progressText = (P4.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(reqFmt, completedCount, numCriteria) .. "|r"
+            local progressText = (P4.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(reqFmt, completedCount, numCriteria) .. "|r"
             card.progressLabel:SetText(FormatTextNumbers(progressText))
         end
     end
@@ -1710,11 +1714,13 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     
     local ShowAchievementPopup = ns.UI_ShowAchievementPopup
     
-    for i, criteriaData in ipairs(criteriaDetails) do
+    for i = 1, #criteriaDetails do
+        local criteriaData = criteriaDetails[i]
         table.insert(currentRow, criteriaData)
         
         if #currentRow == numCols or i == #criteriaDetails then
-            for colIdx, data in ipairs(currentRow) do
+            for colIdx = 1, #currentRow do
+                local data = currentRow[colIdx]
                 local xPos = (colIdx - 1) * colWidth
                 local linkedID = data.linkedAchievementID
                 
@@ -2010,7 +2016,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                             or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
                         local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
                         cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
-                        cycleText:SetText(string.format("|cffaaaaaa%d / %d %s|r", elapsed, total, unitText))
+                        cycleText:SetText(format("|cffaaaaaa%d / %d %s|r", elapsed, total, unitText))
                         cycleText:SetJustifyH("RIGHT")
                         card.cycleText = cycleText
                     end
@@ -2035,7 +2041,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                             or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
                         local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
                         cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
-                        cycleText:SetText(string.format("|cffaaaaaa%d / %d %s|r", elapsed, total, unitText))
+                        cycleText:SetText(format("|cffaaaaaa%d / %d %s|r", elapsed, total, unitText))
                         cycleText:SetJustifyH("RIGHT")
                         card.cycleText = cycleText
                     end
@@ -2581,7 +2587,8 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
         
         if success and sources and #sources > 0 then
             -- Show each source with full details
-            for i, source in ipairs(sources) do
+            for i = 1, #sources do
+                local source = sources[i]
                 -- Vendor or Drop
                 if source.vendor then
                     local vendorText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
@@ -2936,7 +2943,8 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         if activeReminders then
             tooltipTitle = (ns.L and ns.L["REMINDER_PREFIX"]) or "Reminder"
             tooltipLines = {}
-            for _, label in ipairs(activeReminders) do
+            for li = 1, #activeReminders do
+                local label = activeReminders[li]
                 tooltipLines[#tooltipLines + 1] = { text = "|cffffd100" .. label .. "|r" }
             end
             tooltipLines[#tooltipLines + 1] = { text = " " }
@@ -3033,7 +3041,8 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     }
     
     local slots = {}
-    for _, s in ipairs(allSlots) do
+    for si = 1, #allSlots do
+        local s = allSlots[si]
         if tracked[s.key] then
             slots[#slots + 1] = s
         end
@@ -3045,7 +3054,8 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         slotWidth = (availableWidth - slotSpacing * math.max(0, visibleCount - 1)) / visibleCount
     end
     
-    for slotIndex, slot in ipairs(slots) do
+    for slotIndex = 1, #slots do
+        local slot = slots[slotIndex]
         local slotX = 10 + (slotIndex - 1) * (slotWidth + slotSpacing)
         
         local slotFrame = ns.UI.Factory:CreateContainer(card, slotWidth, slotHeight)
@@ -3085,7 +3095,8 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         
         -- Checkpoint Markers (positioned relative to inner bar width)
         local readyShort = (ns.L and ns.L["VAULT_LOOT_READY_SHORT"]) or "Ready!"
-        for i, threshold in ipairs(slot.thresholds) do
+        for i = 1, #slot.thresholds do
+            local threshold = slot.thresholds[i]
             local checkpointSlot = slot.slotData[i]
             local slotProgress = math.min(slot.current, threshold)
             local completed = slot.current >= threshold
@@ -3123,7 +3134,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
                     local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
                     label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
                     label:SetTextColor(1, 1, 1)
-                    local progressText = string.format("%d / %d", slotProgress, threshold)
+                    local progressText = format("%d / %d", slotProgress, threshold)
                     label:SetText(FormatTextNumbers(progressText))
                 end
             end
@@ -3194,9 +3205,12 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     local allComplete = true
     local totalAll, completedAll = 0, 0
     local categoryOrder = {"weeklyQuests", "worldQuests", "dailyQuests", "events"}
-    for _, catKey in ipairs(categoryOrder) do
+    for cki = 1, #categoryOrder do
+        local catKey = categoryOrder[cki]
         if plan.questTypes and plan.questTypes[catKey] then
-            for _, quest in ipairs(plan.quests and plan.quests[catKey] or {}) do
+            local questsForCat = plan.quests and plan.quests[catKey] or {}
+            for qi = 1, #questsForCat do
+                local quest = questsForCat[qi]
                 if not quest.isSubQuest then
                     totalAll = totalAll + 1
                     if quest.isComplete then
@@ -3290,7 +3304,8 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         if activeReminders then
             tooltipTitle = (ns.L and ns.L["REMINDER_PREFIX"]) or "Reminder"
             tooltipLines = {}
-            for _, label in ipairs(activeReminders) do
+            for li = 1, #activeReminders do
+                local label = activeReminders[li]
                 tooltipLines[#tooltipLines + 1] = { text = "|cffffd100" .. label .. "|r" }
             end
             tooltipLines[#tooltipLines + 1] = { text = " " }
@@ -3342,11 +3357,13 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     end
     
     local visibleSlots = {}
-    for _, catKey in ipairs(categoryOrder) do
+    for cki = 1, #categoryOrder do
+        local catKey = categoryOrder[cki]
         if plan.questTypes and plan.questTypes[catKey] then
             local questList = plan.quests and plan.quests[catKey] or {}
             local completed, total = 0, 0
-            for _, q in ipairs(questList) do
+            for qi = 1, #questList do
+                local q = questList[qi]
                 if not q.isSubQuest then
                     total = total + 1
                     if q.isComplete then completed = completed + 1 end
@@ -3371,7 +3388,8 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     local slotWidth = (availableWidth - slotSpacing * math.max(0, visibleCount - 1)) / visibleCount
     local slotHeight = 92
     
-    for slotIndex, slot in ipairs(visibleSlots) do
+    for slotIndex = 1, #visibleSlots do
+        local slot = visibleSlots[slotIndex]
         local slotX = 10 + (slotIndex - 1) * (slotWidth + slotSpacing)
         local ci = slot.info
         
@@ -3442,10 +3460,10 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
             progressLabel:SetText("—")
         elseif slot.completed == slot.total and slot.total > 0 then
             progressLabel:SetTextColor(0.3, 1, 0.3)
-            progressLabel:SetText(string.format("%d / %d", slot.completed, slot.total))
+            progressLabel:SetText(format("%d / %d", slot.completed, slot.total))
         else
             progressLabel:SetTextColor(1, 1, 1)
-            progressLabel:SetText(string.format("%d / %d", slot.completed, slot.total))
+            progressLabel:SetText(format("%d / %d", slot.completed, slot.total))
         end
     end
 end
@@ -3637,7 +3655,7 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
         if lowerType:match("quest") then
             iconAtlas = PlanSourceIconMarkup("quest") .. " "
         elseif lowerType:match("profession") or lowerType:match("crafted") then
-            iconAtlas = string.format("|A:Repair:%d:%d|a ", PLAN_SRC_ICON_LG, PLAN_SRC_ICON_LG)
+            iconAtlas = format("|A:Repair:%d:%d|a ", PLAN_SRC_ICON_LG, PLAN_SRC_ICON_LG)
         elseif lowerType:match("drop") or lowerType:match("loot") then
             iconAtlas = PlanSourceIconMarkup("loot") .. " "
         elseif lowerType:match("location") or lowerType:match("zone") then

@@ -13,8 +13,8 @@
 local ADDON_NAME, ns = ...
 
 -- Debug print helper
-local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 -- ============================================================================
 -- CACHE MANAGEMENT
@@ -57,7 +57,6 @@ function WarbandNexus:InvalidateCache(name, reason)
     BackupCache(self, name)
     cache.version = nil
     if cache.lastScan ~= nil then cache.lastScan = 0 end
-    DebugPrint("|cff9370DB[WN]|r Invalidated cache '" .. name .. "' (" .. tostring(reason or "manual") .. ", non-destructive; backup saved)")
 end
 
 --- Restore a cache from its most recent backup. Manual recovery hook.
@@ -66,7 +65,6 @@ function WarbandNexus:RestoreCacheBackup(name)
     local backups = self.db.global.cacheBackups
     if not key or not backups or not backups[name] then return false end
     self.db.global[key] = backups[name].data
-    DebugPrint("|cff9370DB[WN]|r Restored cache '" .. name .. "' from backup")
     return true
 end
 
@@ -259,7 +257,9 @@ function WarbandNexus:DeleteCharacter(characterKey)
     
     -- Remove from favorites if present
     if self.db.global.favoriteCharacters then
-        for i, favKey in ipairs(self.db.global.favoriteCharacters) do
+        local favs = self.db.global.favoriteCharacters
+        for i = 1, #favs do
+            local favKey = favs[i]
             if favKey == characterKey then
                 table.remove(self.db.global.favoriteCharacters, i)
                 break
@@ -270,7 +270,9 @@ function WarbandNexus:DeleteCharacter(characterKey)
     -- Remove from character order lists
     if self.db.profile.characterOrder then
         if self.db.profile.characterOrder.favorites then
-            for i, key in ipairs(self.db.profile.characterOrder.favorites) do
+            local favOrder = self.db.profile.characterOrder.favorites
+            for i = 1, #favOrder do
+                local key = favOrder[i]
                 if key == characterKey then
                     table.remove(self.db.profile.characterOrder.favorites, i)
                     break
@@ -278,7 +280,9 @@ function WarbandNexus:DeleteCharacter(characterKey)
             end
         end
         if self.db.profile.characterOrder.regular then
-            for i, key in ipairs(self.db.profile.characterOrder.regular) do
+            local regOrder = self.db.profile.characterOrder.regular
+            for i = 1, #regOrder do
+                local key = regOrder[i]
                 if key == characterKey then
                     table.remove(self.db.profile.characterOrder.regular, i)
                     break
@@ -413,14 +417,7 @@ function WarbandNexus:CheckAutoOptimization()
     local daysSince = (time() - lastOptimize) / (24 * 60 * 60)
     
     if daysSince >= 7 then
-        local results = self:OptimizeDatabase()
-        
-        -- Only notify if something was cleaned
-        local totalCleaned = results.staleCharacters + results.invalidItems + results.invalidCharacters
-        if totalCleaned > 0 then
-            ns.DebugPrint(string.format("|cff00ff00[WN DatabaseOptimizer]|r Auto-optimized database: Removed %d items", totalCleaned))
-        end
-        
+        self:OptimizeDatabase()
         self.db.profile.lastOptimize = time()
     end
 end
@@ -455,7 +452,7 @@ function WarbandNexus:MigrateToV2()
     end
     
     -- Silent migration - no user notification unless debug mode
-    if self.db.profile.debugMode then
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
         self:Print("|cff00ccffMigrating database to v2 (optimized structure)...|r")
     end
     
@@ -614,7 +611,7 @@ function WarbandNexus:MigrateToV2()
         -- Mark as migrated
         self.db.global.dataVersion = CURRENT_DB_VERSION
         
-        if self.db.profile.debugMode then
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
             self:Print(string.format("|cff00ff00Migration complete:|r %d currencies, %d reputations from %d characters", 
                 currenciesMigrated, reputationsMigrated, charactersMigrated))
         end
@@ -640,7 +637,7 @@ function WarbandNexus:MigrateToV2()
         self.db.global.personalBanks = nil
         
         self:Print("|cffff0000Database migration failed. Data restored.|r")
-        if self.db.profile.debugMode then
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
             self:Print("Error: " .. tostring(err))
         end
         return false
@@ -665,7 +662,8 @@ function WarbandNexus:EnforceCharacterLimit(limit)
     local charList = {}
     for charKey, charData in pairs(characters) do
         local isFavorite = false
-        for _, favKey in ipairs(favorites) do
+        for fi = 1, #favorites do
+            local favKey = favorites[fi]
             if favKey == charKey then
                 isFavorite = true
                 break
@@ -709,7 +707,9 @@ function WarbandNexus:EnforceCharacterLimit(limit)
         -- Remove from character order lists
         if self.db.profile.characterOrder then
             if self.db.profile.characterOrder.regular then
-                for j, key in ipairs(self.db.profile.characterOrder.regular) do
+                local regOrderRm = self.db.profile.characterOrder.regular
+                for j = 1, #regOrderRm do
+                    local key = regOrderRm[j]
                     if key == charKey then
                         table.remove(self.db.profile.characterOrder.regular, j)
                         break
@@ -722,13 +722,9 @@ function WarbandNexus:EnforceCharacterLimit(limit)
         characters[charKey] = nil
         removed = removed + 1
         
-        if self.db.profile.debugMode then
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
             self:Print(string.format("Removed old character: %s", charName))
         end
-    end
-    
-    if removed > 0 then
-        ns.DebugPrint(string.format("|cffff9900[WN DatabaseOptimizer]|r Removed %d old characters (limit: %d)", removed, limit))
     end
     
     return removed
@@ -781,30 +777,36 @@ function WarbandNexus:InitializeDatabaseOptimizer()
     if self.db.profile.autoOptimize == nil then
         self.db.profile.autoOptimize = true
     end
-    
+
+    -- Yield one frame before migration/limit/orphan work so we don't extend the T+5s timer callback
+    -- (same scheduled delays relative to login; slightly smoother frame pacing).
+    local addon = self
+    C_Timer.After(0, function()
+        if not addon or not addon.db then return end
+
     -- Run migration if needed (silent, automatic)
-    if self:NeedsMigration() then
-        self:MigrateToV2()
+    if addon:NeedsMigration() then
+        addon:MigrateToV2()
     end
     
     -- Enforce character limit
-    self:EnforceCharacterLimit(MAX_CHARACTERS)
+    addon:EnforceCharacterLimit(MAX_CHARACTERS)
     
     -- Clean up orphaned data
-    self:CleanupOrphanedData()
+    addon:CleanupOrphanedData()
     
     -- Check if global data needs to be rebuilt (empty after migration)
-    local needsRepScan = not self.db.global.reputationData or not next(self.db.global.reputationData.characters or {})
+    local needsRepScan = not addon.db.global.reputationData or not next(addon.db.global.reputationData.characters or {})
     local needsRepHeaderRebuild = false -- Reputation headers not used in v2.0
-    local needsCurrScan = not self.db.global.currencyData or not next(self.db.global.currencyData.currencies or {})
+    local needsCurrScan = not addon.db.global.currencyData or not next(addon.db.global.currencyData.currencies or {})
     local needsCurrHeaderRebuild = false -- Currency headers stored in currencyData.headers
     
     if needsRepScan or needsRepHeaderRebuild then
         -- Trigger a reputation scan after a short delay to rebuild global data
         C_Timer.After(2, function()
             if WarbandNexus and WarbandNexus.ScanReputations then
-                if self.db.profile.debugMode then
-                    self:Print("|cff00ccffRebuilding reputation data...|r")
+                if IsDebugModeEnabled and IsDebugModeEnabled() then
+                    addon:Print("|cff00ccffRebuilding reputation data...|r")
                 end
                 WarbandNexus.currentTrigger = "POST_MIGRATION"
                 WarbandNexus:ScanReputations()
@@ -814,8 +816,8 @@ function WarbandNexus:InitializeDatabaseOptimizer()
     
     -- Check if currency data needs rebuild (v2.0: Check version)
     local needsCurrRebuild = false
-    if self.db.global.currencyData then
-        local dbVersion = self.db.global.currencyData.version or "1.0.0"
+    if addon.db.global.currencyData then
+        local dbVersion = addon.db.global.currencyData.version or "1.0.0"
         local currentVersion = "1.0.0"
         if dbVersion ~= currentVersion then
             needsCurrRebuild = true
@@ -826,8 +828,8 @@ function WarbandNexus:InitializeDatabaseOptimizer()
         -- Trigger a currency update after a short delay to rebuild global data
         C_Timer.After(3, function()
             if WarbandNexus and WarbandNexus.UpdateCurrencyData then
-                if self.db.profile.debugMode then
-                    self:Print("|cff00ccffRebuilding currency data...|r")
+                if IsDebugModeEnabled and IsDebugModeEnabled() then
+                    addon:Print("|cff00ccffRebuilding currency data...|r")
                 end
                 WarbandNexus.currentTrigger = "POST_MIGRATION"
                 WarbandNexus:UpdateCurrencyData()
@@ -839,7 +841,7 @@ function WarbandNexus:InitializeDatabaseOptimizer()
     local needsPveMigration = false
     local needsBankMigration = false
     
-    for charKey, charData in pairs(self.db.global.characters or {}) do
+    for charKey, charData in pairs(addon.db.global.characters or {}) do
         if charData.pve then
             needsPveMigration = true
         end
@@ -855,11 +857,11 @@ function WarbandNexus:InitializeDatabaseOptimizer()
         -- Migrate remaining per-character data to global storage
         C_Timer.After(4, function()
             if WarbandNexus then
-                if self.db.profile.debugMode then
-                    self:Print("|cff00ccffMigrating PvE and bank data to v2 format...|r")
+                if IsDebugModeEnabled and IsDebugModeEnabled() then
+                    addon:Print("|cff00ccffMigrating PvE and bank data to v2 format...|r")
                 end
                 
-                for charKey, charData in pairs(self.db.global.characters or {}) do
+                for charKey, charData in pairs(addon.db.global.characters or {}) do
                     -- Migrate PvE
                     if charData.pve and WarbandNexus.UpdatePvEDataV2 then
                         WarbandNexus:UpdatePvEDataV2(charKey, charData.pve)
@@ -873,25 +875,25 @@ function WarbandNexus:InitializeDatabaseOptimizer()
                     end
                 end
                 
-                if self.db.profile.debugMode then
-                    self:Print("|cff00ff00PvE and bank data migration complete!|r")
+                if IsDebugModeEnabled and IsDebugModeEnabled() then
+                    addon:Print("|cff00ff00PvE and bank data migration complete!|r")
                 end
             end
         end)
     end
     
     -- Check if Warband Bank needs migration to v2 (compressed)
-    local needsWarbandMigration = self.db.global.warbandBank 
-        and self.db.global.warbandBank.items 
-        and next(self.db.global.warbandBank.items)
-        and not self.db.global.warbandBankV2
+    local needsWarbandMigration = addon.db.global.warbandBank 
+        and addon.db.global.warbandBank.items 
+        and next(addon.db.global.warbandBank.items)
+        and not addon.db.global.warbandBankV2
     
     if needsWarbandMigration then
         C_Timer.After(4.5, function()
             if WarbandNexus and WarbandNexus.UpdateWarbandBankV2 then
                 WarbandNexus:UpdateWarbandBankV2(WarbandNexus.db.global.warbandBank)
-                if self.db.profile.debugMode then
-                    self:Print("|cff00ff00Warband bank migrated to v2 format!|r")
+                if IsDebugModeEnabled and IsDebugModeEnabled() then
+                    addon:Print("|cff00ff00Warband bank migrated to v2 format!|r")
                 end
             end
         end)
@@ -902,5 +904,6 @@ function WarbandNexus:InitializeDatabaseOptimizer()
         if WarbandNexus and WarbandNexus.CheckAutoOptimization then
             WarbandNexus:CheckAutoOptimization()
         end
+    end)
     end)
 end

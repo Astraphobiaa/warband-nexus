@@ -295,8 +295,8 @@ local function CleanStaleReminderKeys(plan)
             end
         end
     end
-    for _, key in ipairs(toRemove) do
-        plan.reminder.lastShown[key] = nil
+    for ri = 1, #toRemove do
+        plan.reminder.lastShown[toRemove[ri]] = nil
     end
 end
 
@@ -400,7 +400,8 @@ local function CheckDaysBeforeResetReminders()
             if plan and plan.reminder and plan.reminder.enabled then
                 local daysList = plan.reminder.daysBeforeReset
                 if daysList and #daysList > 0 and not plan.completed then
-                    for _, dayThreshold in ipairs(daysList) do
+                    for di = 1, #daysList do
+                        local dayThreshold = daysList[di]
                         if daysUntilReset <= dayThreshold then
                             local triggerKey = "days_" .. dayThreshold .. "_" .. tostring(date("%Y%m%d"))
                             if CanShowReminder(plan, triggerKey) then
@@ -714,7 +715,9 @@ function WarbandNexus:ShowSetAlertDialog(planID)
     
     local has5, has3, has1 = false, false, false
     if r.daysBeforeReset then
-        for _, d in ipairs(r.daysBeforeReset) do
+        local dbr = r.daysBeforeReset
+        for di = 1, #dbr do
+            local d = dbr[di]
             if d == 5 then has5 = true end
             if d == 3 then has3 = true end
             if d == 1 then has1 = true end

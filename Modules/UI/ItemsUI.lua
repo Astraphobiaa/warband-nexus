@@ -260,6 +260,7 @@ local function RegisterItemsEvents(parent)
     
     -- Debug print helper
     local DebugPrint = ns.DebugPrint
+    local IsDebugModeEnabled = ns.IsDebugModeEnabled
     
     -- Debounced DrawItemList: coalesces rapid WN_ITEMS_UPDATED + WN_ITEM_METADATA_READY
     -- into a single redraw (e.g., bank open fires both within milliseconds)
@@ -291,12 +292,16 @@ local function RegisterItemsEvents(parent)
     -- Keep: UI.lua does NOT handle WN_ITEM_METADATA_READY.
     WarbandNexus.RegisterMessage(ItemsUIEvents, E.ITEM_METADATA_READY, function()
         if IsItemsTabActive() then
-            DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
+            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
+            end
             ScheduleDrawItemList()
         end
     end)
     
-    DebugPrint("|cff9370DB[ItemsUI]|r Event listeners registered: WN_ITEM_METADATA_READY")
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint("|cff9370DB[ItemsUI]|r Event listeners registered: WN_ITEM_METADATA_READY")
+    end
 end
 
 --============================================================================
@@ -325,7 +330,7 @@ function WarbandNexus:DrawItemList(parent)
     
     -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local accentColor = COLORS.accent
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "items",
@@ -337,8 +342,10 @@ function WarbandNexus:DrawItemList(parent)
     titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- ===== GOLD MANAGER BUTTON (Header - ALWAYS visible) =====
-    local goldMgrBtn = ns.UI.Factory:CreateButton(titleCard, 100, 32)  -- Initial width, will auto-size
-    goldMgrBtn:SetPoint("RIGHT", titleCard, "RIGHT", -12, 0)
+    local headerBtnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
+    local titleCardRightInset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
+    local goldMgrBtn = ns.UI.Factory:CreateButton(titleCard, 100, headerBtnH)  -- Initial width, will auto-size
+    goldMgrBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleCardRightInset, 0)
     
     -- Apply border and background
     if ApplyVisuals then
@@ -373,8 +380,9 @@ function WarbandNexus:DrawItemList(parent)
     end)
 
     -- ===== MONEY LOGS BUTTON (Left of Gold Target) =====
-    local moneyLogsBtn = ns.UI.Factory:CreateButton(titleCard, 100, 32)
-    moneyLogsBtn:SetPoint("RIGHT", goldMgrBtn, "LEFT", -8, 0)
+    local moneyLogsBtn = ns.UI.Factory:CreateButton(titleCard, 100, headerBtnH)
+    local hdrGap = GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8
+    moneyLogsBtn:SetPoint("RIGHT", goldMgrBtn, "LEFT", -hdrGap, 0)
 
     if ApplyVisuals then
         ApplyVisuals(moneyLogsBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
@@ -481,7 +489,7 @@ function WarbandNexus:DrawItemList(parent)
         end
     elseif currentItemsSubTab == "inventory" then
         -- Character inventory gold (current character only)
-        local charGold = GetMoney()
+        local charGold = ns.Utilities:GetLiveCharacterMoneyCopper(0)
         if FormatMoney then
             goldDisplay:SetText(FormatMoney(charGold, 14))
         else
@@ -510,7 +518,8 @@ function WarbandNexus:DrawItemList(parent)
     searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
-    yOffset = yOffset + 32 + GetLayout().afterElement
+    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+    yOffset = yOffset + searchH + GetLayout().afterElement
     
     -- ===== STATS BAR (in fixedHeader) =====
     -- Get items for stats (before results container)
@@ -537,7 +546,7 @@ function WarbandNexus:DrawItemList(parent)
         local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
         local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
         local neverText = (ns.L and ns.L["NEVER"]) or "Never"
-        statsText:SetText(string.format("|cffa335ee" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
+        statsText:SetText(format("|cffa335ee" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
             FormatNumber(#items), FormatNumber(wb.usedSlots or 0), FormatNumber(wb.totalSlots or 0),
             (wb.lastScan or 0) > 0 and date("%H:%M", wb.lastScan) or neverText))
     elseif currentItemsSubTab == "guild" then
@@ -546,7 +555,7 @@ function WarbandNexus:DrawItemList(parent)
         local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
         local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
         local neverText = (ns.L and ns.L["NEVER"]) or "Never"
-        statsText:SetText(string.format("|cff00ff00" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
+        statsText:SetText(format("|cff00ff00" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
             FormatNumber(#items), FormatNumber(gb.usedSlots or 0), FormatNumber(gb.totalSlots or 0),
             (gb.lastScan or 0) > 0 and date("%H:%M", gb.lastScan) or neverText))
     elseif currentItemsSubTab == "inventory" then
@@ -556,7 +565,7 @@ function WarbandNexus:DrawItemList(parent)
         local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
         local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
         local neverText = (ns.L and ns.L["NEVER"]) or "Never"
-        statsText:SetText(string.format("|cff88ccff" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
+        statsText:SetText(format("|cff88ccff" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
             FormatNumber(#items), FormatNumber(bagsData.usedSlots or 0), FormatNumber(bagsData.totalSlots or 0),
             (bagsData.lastScan or 0) > 0 and date("%H:%M", bagsData.lastScan) or neverText))
     elseif currentItemsSubTab == "personal" then
@@ -566,7 +575,7 @@ function WarbandNexus:DrawItemList(parent)
         local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
         local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
         local neverText = (ns.L and ns.L["NEVER"]) or "Never"
-        statsText:SetText(string.format("|cff88ff88" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
+        statsText:SetText(format("|cff88ff88" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
             FormatNumber(#items), FormatNumber(pb.usedSlots or 0), FormatNumber(pb.totalSlots or 0),
             (pb.lastScan or 0) > 0 and date("%H:%M", pb.lastScan) or neverText))
     end
@@ -654,7 +663,8 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
 
     if itemsSearchActive then
         local filtered = {}
-        for _, item in ipairs(items) do
+        for i = 1, #items do
+            local item = items[i]
             local itemName = SafeLower(item.name)
             local itemLink = SafeLower(item.itemLink)
             if itemName:find(itemsSearchText, 1, true) or itemLink:find(itemsSearchText, 1, true) then
@@ -664,11 +674,27 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
         items = filtered
     end
 
-    table.sort(items, function(a, b)
-        local nameA = SafeLower(a.name)
-        local nameB = SafeLower(b.name)
-        return nameA < nameB
-    end)
+    do
+        local n = #items
+        if n > 1 then
+            local order = {}
+            local keys = {}
+            for i = 1, n do
+                order[i] = i
+                keys[i] = SafeLower(items[i].name)
+            end
+            table.sort(order, function(ia, ib)
+                local ka, kb = keys[ia], keys[ib]
+                if ka ~= kb then return ka < kb end
+                return ia < ib
+            end)
+            local sorted = {}
+            for i = 1, n do
+                sorted[i] = items[order[i]]
+            end
+            items = sorted
+        end
+    end
 
     if #items == 0 then
         return nil, startYOffset, 0, itemsSearchActive
@@ -682,7 +708,8 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
     -- Keep first group visually separated from section/title header area.
     local yOffset = startYOffset + SECTION_SPACING
 
-    for _, item in ipairs(items) do
+    for i = 1, #items do
+        local item = items[i]
         local typeName = item.itemType or ((ns.L and ns.L["GROUP_MISC"]) or "Miscellaneous")
         if not groups[typeName] then
             local groupKey = currentItemsSubTab .. "_" .. typeName
@@ -703,7 +730,8 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
     local flatList = {}
     local rowIdx = 0
 
-    for _, typeName in ipairs(groupOrder) do
+    for typeIndex = 1, #groupOrder do
+        local typeName = groupOrder[typeIndex]
         local group = groups[typeName]
         local isExpanded = self.itemsExpandAllActive or expandedGroups[group.groupKey]
         if isExpanded == nil then
@@ -731,7 +759,8 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
 
         if isExpanded then
             local localY = 0
-            for _, item in ipairs(group.items) do
+            for itemIndex = 1, #group.items do
+                local item = group.items[itemIndex]
                 rowIdx = rowIdx + 1
                 -- Stable identity for virtual row reuse (accordion / Refresh without repopulating textures & text).
                 local rowReuseSig = (group.groupKey or "")

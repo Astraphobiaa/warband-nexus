@@ -79,6 +79,7 @@ local ReputationCache = {
     isInitialized = false,
     isScanning = false,
     initScanPending = false,  -- True while waiting for the initial delayed scan; suppresses event-driven FullScans
+    skipNextReputationLoadingStartedBroadcast = false,
 }
 
 -- WoW 12.0+ Delve companions: chat may use short name; API uses full name.
@@ -586,6 +587,8 @@ function ReputationCache:Initialize()
         if isTracked then
             local LT = ns.LoadingTracker
             if LT then LT:Register("reputations", (ns.L and ns.L["LT_REPUTATIONS"]) or "Reputations") end
+            -- Deferred PerformFullScan will broadcast LOADING_STARTED again unless suppressed.
+            ReputationCache.skipNextReputationLoadingStartedBroadcast = true
             
             -- Delayed 6s to avoid competing with DataServices (T+0.5..3s) and Core (T+4..5.5s)
             C_Timer.After(6, function()
@@ -1206,7 +1209,8 @@ function ReputationCache:RegisterEventListeners()
         if issecretvalue and issecretvalue(message) then return false end
         local name = message:match("%[(.-)%]")
         if not name or name == "" then return false end
-        for _, pat in ipairs(COMPANION_XP_NAME_PATTERNS) do
+        for pi = 1, #COMPANION_XP_NAME_PATTERNS do
+            local pat = COMPANION_XP_NAME_PATTERNS[pi]
             if name:find(pat, 1, true) then return true end
         end
         return false
@@ -1559,7 +1563,7 @@ function ReputationCache:RegisterEventListeners()
     end)
     
     -- ============================================================
-    -- FULL FLOW SIMULATION (for /wn testrepflow command)
+    -- FULL FLOW SIMULATION (developer / internal testing)
     -- Defined inside RegisterEventListeners for closure access to:
     --   QueueChatNotification, ScheduleFullScanForChat, pendingGains
     -- Simulates the REAL pipeline: Queue → 0.5s → FullScan → DB → Chat
@@ -1700,7 +1704,8 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     local awCount = 0
     local charCount = 0
     
-    for _, data in ipairs(normalizedDataArray) do
+    for ni = 1, #normalizedDataArray do
+        local data = normalizedDataArray[ni]
         if data.factionID then
             local numFactionID = tonumber(data.factionID) or data.factionID  -- Normalize to number
             local compact = CompactFactionData(data)
@@ -1760,8 +1765,8 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     -- Build headers
     self:BuildHeaders()
     
-    -- Fire UI refresh immediately (full scan always shows results)
-    ScheduleUIRefresh(true)
+    -- UI refresh: PerformFullScan sends WN_REPUTATION_CACHE_READY + WN_REPUTATION_UPDATED
+    -- immediately after UpdateAll returns (avoid duplicate ScheduleUIRefresh pair here).
     
     return true
 end
@@ -1822,7 +1827,9 @@ function ReputationCache:BuildHeaders()
     -- Calculate MinIndex for each header (for sorting)
     for _, headerData in pairs(headerMap) do
         local minIndex = 99999
-        for _, factionID in ipairs(headerData.factions) do
+        local facList = headerData.factions
+        for fi = 1, #facList do
+            local factionID = facList[fi]
             local data = FindCompactData(factionID)
             if data and data._scanIndex and data._scanIndex < minIndex then
                 minIndex = data._scanIndex
@@ -1932,6 +1939,7 @@ function ReputationCache:Clear(clearDB)
         if WarbandNexus.SendMessage then
             WarbandNexus:SendMessage(E.REPUTATION_LOADING_STARTED)
         end
+        ReputationCache.skipNextReputationLoadingStartedBroadcast = true
         
         C_Timer.After(1, function()
             if ReputationCache then
@@ -2015,7 +2023,9 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     ns.ReputationLoadingState.loadingProgress = 0
     ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_FETCHING"]) or "Fetching reputation data..."
     
-    if WarbandNexus.SendMessage then
+    local skipRepLoadingStarted = ReputationCache.skipNextReputationLoadingStartedBroadcast
+    ReputationCache.skipNextReputationLoadingStartedBroadcast = false
+    if WarbandNexus.SendMessage and not skipRepLoadingStarted then
         WarbandNexus:SendMessage(E.REPUTATION_LOADING_STARTED)
     end
     
@@ -2041,7 +2051,8 @@ function ReputationCache:PerformFullScan(bypassThrottle)
         -- Phase 2 (next frame): Process + normalize data
         C_Timer.After(0, function()
             local normalizedData = {}
-            for _, raw in ipairs(rawData) do
+            for ri = 1, #rawData do
+                local raw = rawData[ri]
                 local normalized = Processor:Process(raw)
                 if normalized then
                     normalizedData[#normalizedData + 1] = normalized

@@ -55,7 +55,6 @@ function InitializationService:SetupCombatSafety()
                 return
             end
             for i = 1, #queue do
-                DebugPrint("|cff00ff00[Init]|r Combat ended - executing: " .. (queue[i].label or "?"))
                 local ok, err = pcall(queue[i].fn)
                 if not ok then
                     local msg = string.format("|cffff4444[Init ERROR]|r %s failed: %s", queue[i].label or "?", tostring(err))
@@ -77,7 +76,6 @@ function InitializationService:SetupCombatSafety()
             local queue = pendingInits
             pendingInits = {}
             for i = 1, #queue do
-                DebugPrint("|cff00ff00[Init]|r Lockdown lifted - executing: " .. (queue[i].label or "?"))
                 local ok, err = pcall(queue[i].fn)
                 if not ok then
                     local msg = string.format("|cffff4444[Init ERROR]|r %s failed: %s", queue[i].label or "?", tostring(err))
@@ -107,7 +105,6 @@ local function SafeInit(fn, label)
             DebugPrint(msg)
         end
     else
-        DebugPrint("|cffff9900[Init]|r Deferred (combat): " .. (label or "?"))
         table.insert(pendingInits, { fn = fn, label = label })
     end
 end
@@ -148,8 +145,8 @@ end
 ]]
 function InitializationService:InitializeCoreInfrastructure(addon)
     
-    -- T+0.5s: Batch lightweight event registrations (<2ms total)
-    -- LootNotifications + EventManager — both are just event hookups
+    -- T+0.5s: Single timer — Core event setup + tracking popup probe share one wake-up
+    -- (avoids duplicate 0.5s callbacks and redundant scheduler bookkeeping).
     C_Timer.After(0.5, function()
         SafeInit(function()
             if addon and addon.InitializeLootNotifications then
@@ -159,12 +156,10 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                 addon:InitializeEventManager()
             end
         end, "CoreEventSetup")
-    end)
-    
-    -- Character Tracking Confirmation: Check for new characters (0.5s + retry)
-    -- After /reload, GetNormalizedRealmName() can be empty briefly; deciding then used GetRealmName-only
-    -- keys and missed db.global.characters[...] (trackingConfirmed), so the dialog reappeared.
-    C_Timer.After(0.5, function()
+
+        -- Character Tracking Confirmation: Check for new characters (same delay + retry)
+        -- After /reload, GetNormalizedRealmName() can be empty briefly; deciding then used GetRealmName-only
+        -- keys and missed db.global.characters[...] (trackingConfirmed), so the dialog reappeared.
         local attempts = 0
         local maxAttempts = 20 -- up to ~2s extra polling (0.1s steps)
 
@@ -183,24 +178,12 @@ function InitializationService:InitializeCoreInfrastructure(addon)
             local charKey = ns.Utilities:GetCharacterKey()
             local charData = addon.db.global.characters and addon.db.global.characters[charKey]
 
-            -- Debug: Show character tracking status
-            if charData then
-                DebugPrint(string.format("[Init] Character exists: %s, isTracked=%s, trackingConfirmed=%s",
-                    charKey,
-                    tostring(charData.isTracked),
-                    tostring(charData.trackingConfirmed)))
-            else
-                DebugPrint(string.format("[Init] Character NOT in DB: %s", charKey))
-            end
-
             -- Only show popup if user has never completed the dialog (trackingConfirmed ~= true).
             -- NOTE: Do not use "not trackingConfirmed" alone: SaveMinimalCharacterData used to persist
             -- false for unconfirmed chars, and (not false) is true in Lua → infinite popup every login.
             local shouldShowPopup = not charData or charData.trackingConfirmed ~= true
 
             if shouldShowPopup then
-                DebugPrint("[Init] Character needs tracking confirmation - showing popup")
-
                 -- CRITICAL: DON'T set trackingConfirmed here!
                 -- The flag will be set by ConfirmCharacterTracking() when user makes a choice
                 -- This prevents the popup from appearing again
@@ -218,7 +201,8 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                     if un and type(un) == "string" and not (issecretvalue and issecretvalue(un)) then
                         stub.name = un
                     end
-                    local realm = GetNormalizedRealmName and GetNormalizedRealmName()
+                    -- Reuse norm from realm-ready probe (avoids redundant GetNormalizedRealmName call)
+                    local realm = norm
                     if not realm or (issecretvalue and issecretvalue(realm)) then
                         realm = GetRealmName and GetRealmName()
                     end
@@ -239,8 +223,6 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                     end, "CharacterTrackingPopup")
                 end)
             else
-                DebugPrint("[Init] Character tracking already confirmed, skipping popup")
-
                 -- Returning user (already tracked): show What's New on first login after update
                 -- Trigger with 1.5s delay to ensure DB and UI are ready
                 C_Timer.After(1.5, function()
@@ -375,7 +357,9 @@ function InitializationService:InitializeDataServices(addon)
                     end
                 end)
                 if not ok then
-                    DebugPrint(string.format("|cffff4444[Init]|r P4 ItemsCache failed: %s", tostring(err)))
+                    if IsDebugModeEnabled and IsDebugModeEnabled() then
+                        DebugPrint(string.format("|cffff4444[Init]|r P4 ItemsCache failed: %s", tostring(err)))
+                    end
                 end
                 local LT = ns.LoadingTracker
                 if LT then LT:Complete("caches") end
@@ -455,11 +439,13 @@ function InitializationService:InitializeBackgroundServices(addon)
         end, "BankMoneyServices")
     end)
     
-    -- Database Optimizer: Auto-cleanup and optimization (5s)
+    -- Database Optimizer: Auto-cleanup and optimization (5s); SafeInit defers if combat lockdown
     C_Timer.After(5, function()
-        if addon and addon.InitializeDatabaseOptimizer then
-            addon:InitializeDatabaseOptimizer()
-        end
+        SafeInit(function()
+            if addon and addon.InitializeDatabaseOptimizer then
+                addon:InitializeDatabaseOptimizer()
+            end
+        end, "DatabaseOptimizer")
     end)
 end
 

@@ -304,7 +304,7 @@ end
     One-time per revision: clear informational legacyMountTrackerSeedComplete (preview / bookkeeping).
     SyncRarityMountAttemptsMax does NOT read this flag — merge already runs on a timer after login
     and after Statistics seed. Bump RARITY_MOUNT_SYNC_RESEED_REVISION after policy changes if you
-    want users to see "seed done: false" once; for a manual re-merge use /wn raritysync.
+    want users to see "seed done: false" once; for a manual re-merge run Rarity sync from Try Counter settings (Rarity enabled).
 ]]
 local RARITY_MOUNT_SYNC_RESEED_REVISION = 1
 
@@ -600,7 +600,9 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
     -- favoriteCharacters (array): replace keys, then dedupe
     if db.global.favoriteCharacters and type(db.global.favoriteCharacters) == "table" then
         local seen = {}
-        for i, key in ipairs(db.global.favoriteCharacters) do
+        local favs = db.global.favoriteCharacters
+        for i = 1, #favs do
+            local key = favs[i]
             local canonical = renames[key] or key
             db.global.favoriteCharacters[i] = canonical
             seen[canonical] = true
@@ -618,10 +620,13 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
 
     -- profile.characterOrder (favorites, regular, untracked arrays)
     if db.profile and db.profile.characterOrder then
-        for _, orderKey in ipairs({"favorites", "regular", "untracked"}) do
+        local orderKeys = { "favorites", "regular", "untracked" }
+        for oki = 1, #orderKeys do
+            local orderKey = orderKeys[oki]
             local arr = db.profile.characterOrder[orderKey]
             if type(arr) == "table" then
-                for i, key in ipairs(arr) do
+                for i = 1, #arr do
+                    local key = arr[i]
                     arr[i] = renames[key] or key
                 end
             end

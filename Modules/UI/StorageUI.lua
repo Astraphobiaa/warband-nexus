@@ -30,7 +30,6 @@ local SearchResultsRenderer = ns.SearchResultsRenderer
 -- Tooltip API
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
-local DebugPrint = ns.DebugPrint
 
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
@@ -73,6 +72,22 @@ local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 
 -- Performance: Local function references
 local format = string.format
+local wipe = wipe
+
+-- Reused buffers: avoid `{frame:GetChildren()}` allocations on every Storage full redraw (large trees).
+local _wnStorTopScratch = {}
+local _wnStorChildScratch = {}
+local _wnStorCancelStack = {}
+local _wnStorReflowScratch = {}
+
+local function PackChildrenInto(dest, frame)
+    wipe(dest)
+    local n = select("#", frame:GetChildren())
+    for i = 1, n do
+        dest[i] = select(i, frame:GetChildren())
+    end
+    return n
+end
 
 --============================================================================
 -- EVENT LISTENERS (Real-time Updates)
@@ -130,12 +145,9 @@ local function RegisterStorageEvents(parent)
             local now = GetTime()
             if now - lastMetadataRefreshDraw < METADATA_REFRESH_COOLDOWN then return end
             lastMetadataRefreshDraw = now
-            DebugPrint("|cff00ff00[StorageUI]|r WN_ITEM_METADATA_READY received, refreshing names")
             ScheduleStorageRefresh()
         end
     end)
-    
-    DebugPrint("|cff9370DB[StorageUI]|r Event listeners registered: WN_ITEM_METADATA_READY")
 end
 
 --============================================================================
@@ -201,7 +213,7 @@ function WarbandNexus:DrawStorageTab(parent)
             local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.storageSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "storage", skipCooldown = true, instantPopulate = true })
         end)
-            sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
+            sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -(GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20), 0)
             sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
         end
 
@@ -270,7 +282,8 @@ function WarbandNexus:DrawStorageTab(parent)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     searchBox:Show()
 
-    headerYOffset = headerYOffset + 32 + GetLayout().afterElement
+    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+    headerYOffset = headerYOffset + searchH + GetLayout().afterElement
 
     -- Set fixedHeader height so scroll area starts below it
     if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
@@ -364,21 +377,35 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
 
     -- Clean up old children (headers, accordion containers, rows) from previous render.
     local recycleBin = ns.UI_RecycleBin
-    local function CancelSubtreeAccordion(f)
-        if not f then return end
-        if ns.UI.Factory and ns.UI.Factory.CancelAccordion then
-            ns.UI.Factory:CancelAccordion(f)
-        end
-        local ch = { f:GetChildren() }
-        for j = 1, #ch do
-            CancelSubtreeAccordion(ch[j])
+    --- Iterative cancel: same tree walk as recursion without per-node `{GetChildren()}` tables.
+    local function CancelAccordionSubtreeIter(rootFrame)
+        if not rootFrame then return end
+        local stack = _wnStorCancelStack
+        wipe(stack)
+        stack[1] = rootFrame
+        local sp = 1
+        while sp > 0 do
+            local f = stack[sp]
+            stack[sp] = nil
+            sp = sp - 1
+            if f then
+                if ns.UI.Factory and ns.UI.Factory.CancelAccordion then
+                    ns.UI.Factory:CancelAccordion(f)
+                end
+                local nc = PackChildrenInto(_wnStorChildScratch, f)
+                for j = 1, nc do
+                    local ch = _wnStorChildScratch[j]
+                    sp = sp + 1
+                    stack[sp] = ch
+                end
+            end
         end
     end
-    local oldChildren = {parent:GetChildren()}
-    for i = 1, #oldChildren do
-        local child = oldChildren[i]
+    local nTop = PackChildrenInto(_wnStorTopScratch, parent)
+    for i = 1, nTop do
+        local child = _wnStorTopScratch[i]
         if not child._isVirtualRow then
-            CancelSubtreeAccordion(child)
+            CancelAccordionSubtreeIter(child)
             child:Hide()
             child:ClearAllPoints()
             child:SetParent(recycleBin or UIParent)
@@ -417,9 +444,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         local pTop = stackParent:GetTop()
         if not pTop then return end
         local lowest = pTop
-        local children = { stackParent:GetChildren() }
-        for i = 1, #children do
-            local c = children[i]
+        local nc = PackChildrenInto(_wnStorReflowScratch, stackParent)
+        for i = 1, nc do
+            local c = _wnStorReflowScratch[i]
             if c and c:IsShown() then
                 local cb = c:GetBottom()
                 if cb and cb < lowest then
@@ -522,6 +549,33 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         })
     end
 
+    -- Per-draw caches: class/type work repeats per slot; rows duplicate C_Item.GetItemInfo for shared itemIDs (cold chars→storage path).
+    local storageDrawClassIDByItemID = {}
+    local storageDrawTypeNameByClassID = {}
+    local storageDrawItemInfoNameByItemID = {}
+
+    local function ResolvedStorageClassID(entry)
+        if entry.classID then return entry.classID end
+        local id = entry.itemID
+        if not id then return 15 end
+        local c = storageDrawClassIDByItemID[id]
+        if not c then
+            c = GetItemClassID(id)
+            storageDrawClassIDByItemID[id] = c
+        end
+        entry.classID = c
+        return c
+    end
+
+    local function ResolvedStorageTypeName(classID)
+        local t = storageDrawTypeNameByClassID[classID]
+        if not t then
+            t = GetItemTypeName(classID)
+            storageDrawTypeNameByClassID[classID] = t
+        end
+        return t
+    end
+
     local function PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
         row:SetAlpha(1)
         if row.anim then row.anim:Stop() end
@@ -541,7 +595,15 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
         end
         if not baseName and item.itemID then
-            baseName = C_Item.GetItemInfo(item.itemID)
+            local iid = item.itemID
+            local cachedName = storageDrawItemInfoNameByItemID[iid]
+            if cachedName == nil then
+                cachedName = C_Item.GetItemInfo(iid) or false
+                storageDrawItemInfoNameByItemID[iid] = cachedName
+            end
+            if cachedName and cachedName ~= false then
+                baseName = cachedName
+            end
         end
         baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
 
@@ -585,15 +647,25 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     -- PRE-SCAN: If search is active, find which categories have matches
     local categoriesWithMatches = {}
     local hasAnyMatches = false
+    local allCharacters = self:GetAllCharacters() or {}
+    local trackedCharacters = {}
+    for i = 1, #allCharacters do
+        local char = allCharacters[i]
+        if char.isTracked ~= false then
+            trackedCharacters[#trackedCharacters + 1] = char
+        end
+    end
     
     if storageSearchActive then
         -- Scan Warband Bank (NEW ItemsCacheService API)
         local warbandData = self:GetWarbandBankData()
         if warbandData and warbandData.items then
-            for _, item in ipairs(warbandData.items) do
+            local wbItems = warbandData.items
+            for ii = 1, #wbItems do
+                local item = wbItems[ii]
                 if item.itemID and ItemMatchesSearch(item) then
-                    local classID = item.classID or GetItemClassID(item.itemID)
-                    local typeName = GetItemTypeName(classID)
+                    local classID = ResolvedStorageClassID(item)
+                    local typeName = ResolvedStorageTypeName(classID)
                     local categoryKey = "warband_" .. typeName
                     categoriesWithMatches[categoryKey] = true
                     categoriesWithMatches["warband"] = true
@@ -604,24 +676,21 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         
         -- Scan Personal Items (Bank + Bags) (NEW ItemsCacheService API)
         -- Direct DB access (DB-First pattern)
-        local allCharacters = self:GetAllCharacters() or {}
-        local characters = {}
-        for _, char in ipairs(allCharacters) do
-            if char.isTracked ~= false then  -- Only tracked characters
-                table.insert(characters, char)
-            end
-        end
+        local characters = trackedCharacters
         
-        for _, char in ipairs(characters) do
+        for ci = 1, #characters do
+            local char = characters[ci]
             local charKey = char._key
             local itemsData = self:GetItemsData(charKey)
             if itemsData then
                 -- Scan bags
                 if itemsData.bags then
-                    for _, item in ipairs(itemsData.bags) do
+                    local bags = itemsData.bags
+                    for bi = 1, #bags do
+                        local item = bags[bi]
                         if item.itemID and ItemMatchesSearch(item) then
-                            local classID = item.classID or GetItemClassID(item.itemID)
-                            local typeName = GetItemTypeName(classID)
+                            local classID = ResolvedStorageClassID(item)
+                            local typeName = ResolvedStorageTypeName(classID)
                             local charCategoryKey = "personal_" .. charKey
                             local typeKey = charCategoryKey .. "_" .. typeName
                             categoriesWithMatches[typeKey] = true
@@ -634,10 +703,12 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 
                 -- Scan bank
                 if itemsData.bank then
-                    for _, item in ipairs(itemsData.bank) do
+                    local bankItems = itemsData.bank
+                    for bi = 1, #bankItems do
+                        local item = bankItems[bi]
                         if item.itemID and ItemMatchesSearch(item) then
-                            local classID = item.classID or GetItemClassID(item.itemID)
-                            local typeName = GetItemTypeName(classID)
+                            local classID = ResolvedStorageClassID(item)
+                            local typeName = ResolvedStorageTypeName(classID)
                             local charCategoryKey = "personal_" .. charKey
                             local typeKey = charCategoryKey .. "_" .. typeName
                             categoriesWithMatches[typeKey] = true
@@ -660,8 +731,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         if tabData.items then
                             for slotID, itemData in pairs(tabData.items) do
                                 if itemData.itemID and ItemMatchesSearch(itemData) then
-                                    local classID = itemData.classID or GetItemClassID(itemData.itemID)
-                                    local typeName = GetItemTypeName(classID)
+                                    local classID = ResolvedStorageClassID(itemData)
+                                    local typeName = ResolvedStorageTypeName(classID)
                                     local categoryKey = guildKey .. "_" .. typeName
                                     categoriesWithMatches[categoryKey] = true
                                     categoriesWithMatches[guildKey] = true
@@ -696,16 +767,14 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         
         -- Check personal items if warband is empty
         if not hasAnyData then
-            local allCharacters = self:GetAllCharacters() or {}
-            for _, char in ipairs(allCharacters) do
-                if char.isTracked ~= false then
-                    local charKey = char._key
-                    local itemsData = self:GetItemsData(charKey)
-                    if itemsData then
-                        if (itemsData.bags and #itemsData.bags > 0) or (itemsData.bank and #itemsData.bank > 0) then
-                            hasAnyData = true
-                            break
-                        end
+            for i = 1, #trackedCharacters do
+                local char = trackedCharacters[i]
+                local charKey = char._key
+                local itemsData = self:GetItemsData(charKey)
+                if itemsData then
+                    if (itemsData.bags and #itemsData.bags > 0) or (itemsData.bank and #itemsData.bank > 0) then
+                        hasAnyData = true
+                        break
                     end
                 end
             end
@@ -741,23 +810,20 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     -- Count total matches in personal section (for search filtering)
     local personalTotalMatches = 0
     
-    -- DB-First: Use GetAllCharacters() for direct DB access (tracked only)
-    local allCharacters = self:GetAllCharacters() or {}
-    local characters = {}
-    for _, char in ipairs(allCharacters) do
-        if char.isTracked ~= false then  -- Only tracked characters
-            table.insert(characters, char)
-        end
-    end
+    -- DB-First: Use tracked characters list built once for this draw pass.
+    local characters = trackedCharacters
     
     if storageSearchActive then
-        for _, char in ipairs(characters) do
+        for ci = 1, #characters do
+            local char = characters[ci]
             local charKey = char._key
             local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
             if itemsData then
                 -- Count bags
                 if itemsData.bags then
-                    for _, item in ipairs(itemsData.bags) do
+                    local bags = itemsData.bags
+                    for bi = 1, #bags do
+                        local item = bags[bi]
                         if ItemMatchesSearch(item) then
                             personalTotalMatches = personalTotalMatches + 1
                         end
@@ -765,7 +831,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 end
                 -- Count bank
                 if itemsData.bank then
-                    for _, item in ipairs(itemsData.bank) do
+                    local bankItems = itemsData.bank
+                    for bi = 1, #bankItems do
+                        local item = bankItems[bi]
                         if ItemMatchesSearch(item) then
                             personalTotalMatches = personalTotalMatches + 1
                         end
@@ -775,7 +843,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
     else
         -- No search active, count all items
-        for _, char in ipairs(characters) do
+        for ci = 1, #characters do
+            local char = characters[ci]
             local charKey = char._key
             local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
             if itemsData then
@@ -837,12 +906,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         local hasAnyPersonalItems = false
 
         -- Direct DB access (DB-First pattern) (tracked only)
-        local allCharacters = self:GetAllCharacters() or {}
         local characters = {}
-        for _, char in ipairs(allCharacters) do
-            if char.isTracked ~= false then  -- Only tracked characters
-                table.insert(characters, char)
-            end
+        for i = 1, #trackedCharacters do
+            characters[i] = trackedCharacters[i]
         end
         
         -- Sort Characters
@@ -870,11 +936,13 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             local customOrder = self.db.profile.characterOrder and self.db.profile.characterOrder.regular or {}
             if #customOrder > 0 then
                 local ordered, charMap = {}, {}
-                for _, c in ipairs(characters) do
+                for ci = 1, #characters do
+                    local c = characters[ci]
                     local ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(c.name, c.realm)
                     if ck then charMap[ck] = c end
                 end
-                for _, ck in ipairs(customOrder) do
+                for coi = 1, #customOrder do
+                    local ck = customOrder[coi]
                     if charMap[ck] then table.insert(ordered, charMap[ck]); charMap[ck] = nil end
                 end
                 local remaining = {}
@@ -883,7 +951,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
                     return CompareCharNameLower(a, b)
                 end)
-                for _, c in ipairs(remaining) do table.insert(ordered, c) end
+                for ri = 1, #remaining do table.insert(ordered, remaining[ri]) end
                 characters = ordered
             else
                 table.sort(characters, function(a, b)
@@ -893,9 +961,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             end
         end
         
-        for _, char in ipairs(characters) do
+        for ci = 1, #characters do
+            local char = characters[ci]
             local charKey = char._key
-local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
+            local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
             if itemsData and (itemsData.bags or itemsData.bank) then
                 -- Extract name and realm from character data
                 local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
@@ -977,18 +1046,15 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                     
                     -- Process bags
                     if itemsData.bags then
-                        for _, item in ipairs(itemsData.bags) do
+                        local bags = itemsData.bags
+                        for bi = 1, #bags do
+                            local item = bags[bi]
                             if item.itemID then
-                                -- Use stored classID or get it from API
-                                local classID = item.classID or GetItemClassID(item.itemID)
-                                local typeName = GetItemTypeName(classID)
-                                
+                                local classID = ResolvedStorageClassID(item)
+                                local typeName = ResolvedStorageTypeName(classID)
+
                                 if not charItems[typeName] then
                                     charItems[typeName] = {}
-                                end
-                                -- Store classID in item for icon lookup
-                                if not item.classID then
-                                    item.classID = classID
                                 end
                                 table.insert(charItems[typeName], item)
                             end
@@ -997,18 +1063,15 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                     
                     -- Process bank
                     if itemsData.bank then
-                        for _, item in ipairs(itemsData.bank) do
+                        local bankItems = itemsData.bank
+                        for bi = 1, #bankItems do
+                            local item = bankItems[bi]
                             if item.itemID then
-                                -- Use stored classID or get it from API
-                                local classID = item.classID or GetItemClassID(item.itemID)
-                                local typeName = GetItemTypeName(classID)
-                                
+                                local classID = ResolvedStorageClassID(item)
+                                local typeName = ResolvedStorageTypeName(classID)
+
                                 if not charItems[typeName] then
                                     charItems[typeName] = {}
-                                end
-                                -- Store classID in item for icon lookup
-                                if not item.classID then
-                                    item.classID = classID
                                 end
                                 table.insert(charItems[typeName], item)
                             end
@@ -1021,7 +1084,9 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                         -- Only include types that have matching items
                         local hasMatchingItems = false
                         if storageSearchActive then
-                            for _, item in ipairs(charItems[typeName]) do
+                            local typeItems = charItems[typeName]
+                            for ti = 1, #typeItems do
+                                local item = typeItems[ti]
                                 if ItemMatchesSearch(item) then
                                     hasMatchingItems = true
                                     break
@@ -1038,7 +1103,8 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                     table.sort(charSortedTypes)
                     local charBodyAdvance = SECTION_SPACING
 -- Draw each type category for this character
-                    for _, typeName in ipairs(charSortedTypes) do
+                    for sti = 1, #charSortedTypes do
+                        local typeName = charSortedTypes[sti]
                         local typeKey = "personal_" .. charKey .. "_" .. typeName
                         
                         -- Skip category if search active and no matches
@@ -1058,7 +1124,9 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                             
                             -- Count items that match search (for display)
                             local matchCount = 0
-                            for _, item in ipairs(charItems[typeName]) do
+                            local typeItemsForCount = charItems[typeName]
+                            for ti = 1, #typeItemsForCount do
+                                local item = typeItemsForCount[ti]
                                 if ItemMatchesSearch(item) then
                                     matchCount = matchCount + 1
                                 end
@@ -1117,7 +1185,9 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                             rowsContainer = CreateStorageRowsContainer(typeSectionWrap, typeHeader2, 0, 0)
                             local rowsYOffset = 0
                             local rowStaggerIdx = 0
-                            for _, item in ipairs(charItems[typeName]) do
+                            local typeItemsForRows = charItems[typeName]
+                            for ti = 1, #typeItemsForRows do
+                                local item = typeItemsForRows[ti]
                                 local shouldShow = ItemMatchesSearch(item)
                                 if shouldShow then
                                     globalRowIdxAll = globalRowIdxAll + 1
@@ -1190,18 +1260,15 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
     local warbandData = self:GetWarbandBankData()  -- NEW ItemsCacheService API
     
     if warbandData and warbandData.items then
-        for _, item in ipairs(warbandData.items) do
+        local wbItems2 = warbandData.items
+        for ii = 1, #wbItems2 do
+            local item = wbItems2[ii]
             if item.itemID then
-                -- Use stored classID or get it from API
-                local classID = item.classID or GetItemClassID(item.itemID)
-                local typeName = GetItemTypeName(classID)
-                
+                local classID = ResolvedStorageClassID(item)
+                local typeName = ResolvedStorageTypeName(classID)
+
                 if not warbandItems[typeName] then
                     warbandItems[typeName] = {}
-                end
-                -- Store classID in item for icon lookup
-                if not item.classID then
-                    item.classID = classID
                 end
                 table.insert(warbandItems[typeName], item)
             end
@@ -1212,7 +1279,8 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
     local warbandTotalMatches = 0
     if storageSearchActive then
         for typeName, items in pairs(warbandItems) do
-            for _, item in ipairs(items) do
+            for ii = 1, #items do
+                local item = items[ii]
                 if ItemMatchesSearch(item) then
                     warbandTotalMatches = warbandTotalMatches + 1
                 end
@@ -1283,7 +1351,9 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                 -- Only include types that have matching items
                 local hasMatchingItems = false
                 if storageSearchActive then
-                    for _, item in ipairs(warbandItems[typeName]) do
+                    local wbTypeItems = warbandItems[typeName]
+                    for wi = 1, #wbTypeItems do
+                        local item = wbTypeItems[wi]
                         if ItemMatchesSearch(item) then
                             hasMatchingItems = true
                             break
@@ -1300,7 +1370,8 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
             table.sort(sortedTypes)
 
         -- Draw each type category
-        for _, typeName in ipairs(sortedTypes) do
+        for sti = 1, #sortedTypes do
+            local typeName = sortedTypes[sti]
             local categoryKey = "warband_" .. typeName
             
             -- Skip category if search active and no matches
@@ -1320,7 +1391,9 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                 
                 -- Count items that match search (for display)
                 local matchCount = 0
-                for _, item in ipairs(warbandItems[typeName]) do
+                local wbTypeItems2 = warbandItems[typeName]
+                for wi = 1, #wbTypeItems2 do
+                    local item = wbTypeItems2[wi]
                     if ItemMatchesSearch(item) then
                         matchCount = matchCount + 1
                     end
@@ -1375,7 +1448,9 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                     rowsContainer = CreateStorageRowsContainer(typeSectionWrapWB, typeHeader, 0, 0)
                     local rowsYOffset = 0
                     local rowStaggerIdxWB = 0
-                    for _, item in ipairs(warbandItems[typeName]) do
+                    local wbTypeItems3 = warbandItems[typeName]
+                    for wi = 1, #wbTypeItems3 do
+                        local item = wbTypeItems3[wi]
                         local shouldShow = ItemMatchesSearch(item)
                         if shouldShow then
                             globalRowIdxAll = globalRowIdxAll + 1
@@ -1421,12 +1496,10 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
     
     -- Collect all guild bank items from all cached guilds
     local allGuildItems = {}  -- Format: { [guildName] = { [typeName] = {items} } }
-    
+
     if self.db and self.db.global and self.db.global.guildBank then
         for guildName, guildData in pairs(self.db.global.guildBank) do
             if guildData and guildData.tabs then
-                if DebugPrint then DebugPrint("[StorageUI] Found cached guild bank:", guildName) end
-                
                 -- Flatten all items from all tabs for this guild
                 local guildItems = {}
                 for tabIndex, tabData in pairs(guildData.tabs) do
@@ -1443,21 +1516,14 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                                 item.source = "guild"
                                 item.tabName = tabData.name
                                 item.guildName = guildName  -- Track which guild this belongs to
-                                
-                                -- Use stored classID or get it from API
-                                local classID = item.classID or GetItemClassID(item.itemID)
-                                local typeName = GetItemTypeName(classID)
-                                
+
+                                local classID = ResolvedStorageClassID(item)
+                                local typeName = ResolvedStorageTypeName(classID)
+
                                 if not guildItems[typeName] then
                                     guildItems[typeName] = {}
                                 end
-                                -- Store classID in item for icon lookup
-                                if not item.classID then
-                                    item.classID = classID
-                                end
                                 table.insert(guildItems[typeName], item)
-                                
-                                if DebugPrint then DebugPrint("[StorageUI] Item", item.itemID, "from", guildName, "-> typeName:", typeName) end
                             end
                         end
                     end
@@ -1476,7 +1542,8 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
     if storageSearchActive then
         for guildName, guildItems in pairs(allGuildItems) do
             for typeName, items in pairs(guildItems) do
-                for _, item in ipairs(items) do
+                for ii = 1, #items do
+                    local item = items[ii]
                     if ItemMatchesSearch(item) then
                         guildTotalMatches = guildTotalMatches + 1
                     end
@@ -1491,15 +1558,7 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
             end
         end
     end
-    
-    if DebugPrint then
-        DebugPrint("[StorageUI] Total guild bank items:", guildTotalMatches, "from", (function()
-            local count = 0
-            for _ in pairs(allGuildItems) do count = count + 1 end
-            return count
-        end)(), "guilds")
-    end
-    
+
     -- Render each guild's bank separately
     for guildName, guildItems in pairs(allGuildItems) do
         -- Create unique key for each guild
@@ -1509,7 +1568,8 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
         local guildMatches = 0
         if storageSearchActive then
             for typeName, items in pairs(guildItems) do
-                for _, item in ipairs(items) do
+                for ii = 1, #items do
+                    local item = items[ii]
                     if ItemMatchesSearch(item) then
                         guildMatches = guildMatches + 1
                     end
@@ -1586,7 +1646,9 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                 -- Only include types that have matching items
                 local hasMatchingItems = false
                 if storageSearchActive then
-                    for _, item in ipairs(guildItems[typeName]) do
+                    local gTypeItems = guildItems[typeName]
+                    for gi = 1, #gTypeItems do
+                        local item = gTypeItems[gi]
                         if ItemMatchesSearch(item) then
                             hasMatchingItems = true
                             break
@@ -1603,7 +1665,8 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
             table.sort(sortedTypes)
 
             -- Draw each type category for this guild
-            for _, typeName in ipairs(sortedTypes) do
+            for sti = 1, #sortedTypes do
+                local typeName = sortedTypes[sti]
                 local categoryKey = guildKey .. "_" .. typeName  -- Changed: unique per guild
                 
                 -- Skip category if search active and no matches
@@ -1623,7 +1686,9 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                     
                     -- Count items that match search (for display)
                     local matchCount = 0
-                    for _, item in ipairs(guildItems[typeName]) do
+                    local gTypeItems2 = guildItems[typeName]
+                    for gi = 1, #gTypeItems2 do
+                        local item = gTypeItems2[gi]
                         if ItemMatchesSearch(item) then
                             matchCount = matchCount + 1
                         end
@@ -1678,7 +1743,9 @@ local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
                         rowsContainer = CreateStorageRowsContainer(typeSectionWrapG, typeHeader, 0, 0)
                         local rowsYOffset = 0
                         local rowStaggerIdxG = 0
-                        for _, item in ipairs(guildItems[typeName]) do
+                        local gTypeItems3 = guildItems[typeName]
+                        for gi = 1, #gTypeItems3 do
+                            local item = gTypeItems3[gi]
                             local shouldShow = ItemMatchesSearch(item)
                             if shouldShow then
                                 globalRowIdxAll = globalRowIdxAll + 1

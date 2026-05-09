@@ -18,6 +18,18 @@ local UIEvents = {}
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
+
+--- SavedVars may use strict booleans or legacy `1`; match Settings checkboxes reliably.
+local function ProfileFlagOn(v)
+    return v == true or v == 1
+end
+
+--- Main-tab perf timings: Debug + Verbose both on (any legacy truthy). `/wn debug` alone does not spam chat.
+local function IsTabPerfMonitorEnabled()
+    local p = WarbandNexus.db and WarbandNexus.db.profile
+    return p and ProfileFlagOn(p.debugMode) and ProfileFlagOn(p.debugVerbose)
+end
 
 -- Lazy-load FontManager (prevent race conditions)
 local function GetFontManager()
@@ -39,6 +51,21 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 
 local format = string.format
+local wipe = wipe
+local debugprofilestart = debugprofilestart
+local debugprofilestop = debugprofilestop
+
+-- Reused buffers for frame child/region enumeration (one WoW API call per pack; avoids fresh tables each PopulateContent).
+local _uiChildEnumScratch = {}
+local _uiRegionEnumScratch = {}
+local function PackVariadicInto(dest, ...)
+    wipe(dest)
+    local n = select("#", ...)
+    for i = 1, n do
+        dest[i] = select(i, ...)
+    end
+    return n
+end
 
 -- Layout Constants (computed dynamically)
 local CONTENT_MIN_WIDTH = 1280   -- Minimum to fit Statistics 3-card row + character/gear layouts without overflow
@@ -358,7 +385,7 @@ function WarbandNexus:ShowMainWindow()
         
         -- GUARD: Check if CreateMainWindow succeeded
         if not mainFrame then
-            DebugPrint("|cffff0000[WN UI]|r ERROR: Failed to create main window. See /wn errors for details.")
+            DebugPrint("|cffff0000[WN UI]|r ERROR: Failed to create main window. See /wn help.")
             return
         end
     end
@@ -527,11 +554,9 @@ function WarbandNexus:CreateMainWindow()
         -- Check if we already have a valid reference to this frame
         if mainFrame and mainFrame == existingGlobalFrame then
             -- Frame is valid and already created, just return it
-            DebugPrint("|cff00ff00[WN UI]|r Main window already exists, reusing.")
             return mainFrame
         else
             -- Zombie frame detected - cleanup and recreate
-            DebugPrint("|cffffff00[WN UI]|r WARNING: Zombie frame detected, cleaning up...")
             existingGlobalFrame:Hide()
             existingGlobalFrame:ClearAllPoints()
             if recycleBin then existingGlobalFrame:SetParent(recycleBin) else existingGlobalFrame:SetParent(nil) end
@@ -1000,7 +1025,24 @@ function WarbandNexus:CreateMainWindow()
             -- Skip if this tab is already selected (avoid redundant refresh)
             if f.currentTab == self.key then return end
 
+            -- Invalidate any in-flight tab-switch timers (rapid clicks); paired with checks inside C_Timer callbacks.
+            f._tabSwitchGen = (f._tabSwitchGen or 0) + 1
+            local tabSwitchGen = f._tabSwitchGen
+            local targetTab = self.key
+
             local previousTab = f.currentTab
+
+            -- Dev-only: main tab switch timings (debugprofilestop ms); see IsTabPerfMonitorEnabled (see pool/populate hooks below).
+            if IsTabPerfMonitorEnabled() then
+                f._wnPerfMainTabSwitch = {
+                    gen = tabSwitchGen,
+                    fromTab = previousTab,
+                    toTab = targetTab,
+                }
+                debugprofilestart()
+            else
+                f._wnPerfMainTabSwitch = nil
+            end
 
             -- Save scroll position of the tab we're leaving
             if previousTab and f.scroll then
@@ -1042,16 +1084,31 @@ function WarbandNexus:CreateMainWindow()
             if WarbandNexus.CloseAllPlanDialogs then
                 WarbandNexus:CloseAllPlanDialogs()
             end
-            -- PERFORMANCE: Single deferred pass (one frame) — pre-clear then PopulateContent (avoids double C_Timer chain)
-            local targetTab = self.key
+            -- PERFORMANCE: Frame 1 — pool release + detach old tab content; Frame 2 — PopulateContent.
+            -- Keeps teardown and full redraw off the same frame (reduces hitch on heavy tabs).
             C_Timer.After(0, function()
-                if f.currentTab ~= targetTab then return end -- User switched again; skip to avoid wasted work
+                if tabSwitchGen ~= f._tabSwitchGen then
+                    local pStale = f._wnPerfMainTabSwitch
+                    if pStale and pStale.gen == tabSwitchGen then
+                        f._wnPerfMainTabSwitch = nil
+                        debugprofilestop()
+                    end
+                    return
+                end
+                if f.currentTab ~= targetTab then
+                    local pStale = f._wnPerfMainTabSwitch
+                    if pStale and pStale.gen == tabSwitchGen then
+                        f._wnPerfMainTabSwitch = nil
+                        debugprofilestop()
+                    end
+                    return
+                end
                 local scrollChild = f.scrollChild
                 if scrollChild then
                     if ReleaseAllPooledChildren then ReleaseAllPooledChildren(scrollChild) end
-                    local children = {scrollChild:GetChildren()}
-                    for i = 1, #children do
-                        local child = children[i]
+                    local nc = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
+                    for i = 1, nc do
+                        local child = _uiChildEnumScratch[i]
                         if not (child.isPooled and child.rowType) and not child.isPersistentRowElement then
                             child:Hide()
                             child:SetParent(recycleBin)
@@ -1064,9 +1121,47 @@ function WarbandNexus:CreateMainWindow()
                     end
                     f._contentPreCleared = true
                 end
-                if f.currentTab ~= targetTab then return end
-                WarbandNexus:PopulateContent()
-                f.isMainTabSwitch = false
+                local pAfterPool = f._wnPerfMainTabSwitch
+                if pAfterPool and pAfterPool.gen == tabSwitchGen and f.currentTab == targetTab then
+                    if IsTabPerfMonitorEnabled() then
+                        pAfterPool.msClickToPoolEnd = debugprofilestop()
+                        debugprofilestart()
+                    else
+                        f._wnPerfMainTabSwitch = nil
+                        debugprofilestop()
+                    end
+                end
+                C_Timer.After(0, function()
+                    if tabSwitchGen ~= f._tabSwitchGen then
+                        local pStale = f._wnPerfMainTabSwitch
+                        if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
+                            f._wnPerfMainTabSwitch = nil
+                            f._wnPerfTabSwitchPendingLog = nil
+                            debugprofilestop()
+                        end
+                        return
+                    end
+                    if f.currentTab ~= targetTab then
+                        local pStale = f._wnPerfMainTabSwitch
+                        if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
+                            f._wnPerfMainTabSwitch = nil
+                            f._wnPerfTabSwitchPendingLog = nil
+                            debugprofilestop()
+                        end
+                        return
+                    end
+                    local pBeforePop = f._wnPerfMainTabSwitch
+                    if pBeforePop and pBeforePop.gen == tabSwitchGen and pBeforePop.msClickToPoolEnd then
+                        if IsTabPerfMonitorEnabled() then
+                            f._wnPerfTabSwitchPendingLog = tabSwitchGen
+                        else
+                            f._wnPerfMainTabSwitch = nil
+                            debugprofilestop()
+                        end
+                    end
+                    WarbandNexus:PopulateContent()
+                    f.isMainTabSwitch = false
+                end)
             end)
         end)
 
@@ -1677,6 +1772,8 @@ end
 function WarbandNexus:PopulateContent()
     if not mainFrame then return end
 
+    local pendingPerfGen = IsTabPerfMonitorEnabled() and mainFrame._wnPerfTabSwitchPendingLog or nil
+
     -- Detect tab switch vs same-tab refresh
     local isTabSwitch = (mainFrame._prevPopulatedTab ~= mainFrame.currentTab)
     mainFrame._prevPopulatedTab = mainFrame.currentTab
@@ -1687,19 +1784,26 @@ function WarbandNexus:PopulateContent()
         ns.VirtualListModule.ClearVirtualScroll(mainFrame)
     end
 
-    if not scrollChild then return end
+    if not scrollChild then
+        if pendingPerfGen then
+            debugprofilestop()
+            mainFrame._wnPerfMainTabSwitch = nil
+            mainFrame._wnPerfTabSwitchPendingLog = nil
+        end
+        return
+    end
 
     -- Clear fixed header area and reset to minimal height
     local fixedHeader = mainFrame.fixedHeader
     if fixedHeader then
-        local fhChildren = {fixedHeader:GetChildren()}
-        for i = 1, #fhChildren do
-            fhChildren[i]:Hide()
-            fhChildren[i]:SetParent(recycleBin)
+        local nch = PackVariadicInto(_uiChildEnumScratch, fixedHeader:GetChildren())
+        for i = 1, nch do
+            _uiChildEnumScratch[i]:Hide()
+            _uiChildEnumScratch[i]:SetParent(recycleBin)
         end
-        local fhRegions = {fixedHeader:GetRegions()}
-        for i = 1, #fhRegions do
-            fhRegions[i]:Hide()
+        local nrg = PackVariadicInto(_uiRegionEnumScratch, fixedHeader:GetRegions())
+        for i = 1, nrg do
+            _uiRegionEnumScratch[i]:Hide()
         end
         fixedHeader:SetHeight(1)
     end
@@ -1713,10 +1817,10 @@ function WarbandNexus:PopulateContent()
         columnHeaderClip:SetHeight(1)
     end
     if columnHeaderInner then
-        local chChildren = {columnHeaderInner:GetChildren()}
-        for i = 1, #chChildren do
-            chChildren[i]:Hide()
-            chChildren[i]:SetParent(recycleBin)
+        local nch2 = PackVariadicInto(_uiChildEnumScratch, columnHeaderInner:GetChildren())
+        for i = 1, nch2 do
+            _uiChildEnumScratch[i]:Hide()
+            _uiChildEnumScratch[i]:SetParent(recycleBin)
         end
         columnHeaderInner:SetWidth(1)
         columnHeaderInner:ClearAllPoints()
@@ -1739,9 +1843,9 @@ function WarbandNexus:PopulateContent()
         -- Move old non-pooled tab content (headers, cards, etc.) to the recycleBin to prevent
         -- overlap/stacking. Pooled frames are already released to their pools above — skip them.
         -- Persistent frames (3D models, reused placeholders) are also skipped.
-        local children = {scrollChild:GetChildren()}
-        for i = 1, #children do
-            local child = children[i]
+        local nc3 = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
+        for i = 1, nc3 do
+            local child = _uiChildEnumScratch[i]
             if child._virtualVisibleFrames then
                 child._virtualVisibleFrames = nil
             end
@@ -1862,6 +1966,38 @@ function WarbandNexus:PopulateContent()
     end
     
     self:UpdateTabCountBadges()
+
+    -- Dev-only: one-line main tab switch timing after deferred PopulateContent (see tab OnClick).
+    if pendingPerfGen and IsTabPerfMonitorEnabled() then
+        local perf = mainFrame._wnPerfMainTabSwitch
+        local ok = perf and perf.gen == pendingPerfGen and perf.msClickToPoolEnd and perf.gen == mainFrame._tabSwitchGen
+            and mainFrame.currentTab == perf.toTab
+        if ok then
+            local msPopulate = debugprofilestop()
+            local msg = format(
+                "[WN Perf] main tab %s → %s | click→pool=%.2fms pool→populate=%.2fms sum=%.2fms",
+                tostring(perf.fromTab),
+                tostring(perf.toTab),
+                perf.msClickToPoolEnd,
+                msPopulate,
+                perf.msClickToPoolEnd + msPopulate
+            )
+            -- Prefer addon chat pipeline (same as /wn messages); DebugPrint uses raw print and can be easy to miss.
+            if WarbandNexus.Print then
+                WarbandNexus:Print("|cff9e9e9e" .. msg .. "|r")
+            else
+                DebugPrint(msg)
+            end
+        else
+            debugprofilestop()
+        end
+        mainFrame._wnPerfMainTabSwitch = nil
+        mainFrame._wnPerfTabSwitchPendingLog = nil
+    elseif pendingPerfGen then
+        debugprofilestop()
+        mainFrame._wnPerfMainTabSwitch = nil
+        mainFrame._wnPerfTabSwitchPendingLog = nil
+    end
 end
 
 --============================================================================
@@ -2148,7 +2284,7 @@ function WarbandNexus:RefreshUI()
     
     self.isRefreshing = false
     
-    if not success and self.Debug then
+    if not success and IsDebugModeEnabled and IsDebugModeEnabled() then
         self:Debug("|cffff0000[RefreshUI] PopulateContent error: " .. tostring(err) .. "|r")
     end
 end
@@ -2189,14 +2325,17 @@ end
     Moved from Core.lua to UI.lua (proper separation of concerns)
 ]]
 function WarbandNexus:RefreshPvEUI()
-    DebugPrint("|cff9370DB[WN UI]|r RefreshPvEUI triggered")
+    local dbg = IsDebugModeEnabled and IsDebugModeEnabled()
+    if dbg then
+    end
     if self.UI and self.UI.mainFrame then
         local mainFrame = self.UI.mainFrame
         if mainFrame:IsShown() and mainFrame.currentTab == "pve" then
             -- Instant refresh for responsive UI
             if self.RefreshUI then
                 self:RefreshUI()
-                DebugPrint("|cff00ff00[WN UI]|r PvE tab refreshed")
+                if dbg then
+                end
             end
         end
     end
@@ -2208,7 +2347,8 @@ end
     Moved from Core.lua to UI.lua (proper separation of concerns)
 ]]
 function WarbandNexus:OpenOptions()
-    DebugPrint("|cff9370DB[WN UI]|r OpenOptions triggered")
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+    end
     -- Show custom settings UI (renders AceConfig with themed widgets)
     if self.ShowSettings then
         self:ShowSettings()

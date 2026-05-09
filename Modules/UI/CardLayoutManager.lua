@@ -8,8 +8,13 @@
 
 local ADDON_NAME, ns = ...
 
+local wipe = wipe
+local tinsert = table.insert
+local sort = table.sort
+
 -- Verbose-only: layout creation is noisy in normal debug mode.
 local DebugVerbosePrint = ns.DebugVerbosePrint
+local IsDebugVerboseEnabled = ns.IsDebugVerboseEnabled
 
 --============================================================================
 -- DYNAMIC CARD LAYOUT MANAGER
@@ -60,8 +65,8 @@ function CardLayoutManager:Create(parent, columns, cardSpacing, startYOffset)
         end)
     end
     
-    if DebugVerbosePrint then
-        DebugVerbosePrint("|cff9d5cff[WN CardLayoutManager]|r Layout instance created: " .. 
+    if DebugVerbosePrint and IsDebugVerboseEnabled and IsDebugVerboseEnabled() then
+        DebugVerbosePrint("|cff9d5cff[WN CardLayoutManager]|r Layout instance created: " ..
               columns .. " columns, " .. cardSpacing .. "px spacing")
     end
     
@@ -101,7 +106,7 @@ function CardLayoutManager:AddCard(instance, card, col, baseHeight)
         yOffset = yOffset,
         rowIndex = #instance.cards,
     }
-    table.insert(instance.cards, cardInfo)
+    tinsert(instance.cards, cardInfo)
     
     -- Update column Y offset
     instance.currentYOffsets[col] = yOffset + baseHeight + instance.cardSpacing
@@ -178,12 +183,17 @@ function CardLayoutManager:RecalculateAllPositions(instance)
         instance.currentYOffsets[col] = instance.startYOffset
     end
     
-    -- Sort cards by their original row index to maintain order
-    local sortedCards = {}
-    for i, cardInfo in ipairs(instance.cards) do
-        table.insert(sortedCards, cardInfo)
+    -- Sort cards by their original row index to maintain order (reuse scratch — avoids a new table per reflow)
+    local sortedCards = instance._wnSortedScratch
+    if not sortedCards then
+        sortedCards = {}
+        instance._wnSortedScratch = sortedCards
     end
-    table.sort(sortedCards, function(a, b)
+    wipe(sortedCards)
+    for i = 1, #instance.cards do
+        sortedCards[i] = instance.cards[i]
+    end
+    sort(sortedCards, function(a, b)
         return a.rowIndex < b.rowIndex
     end)
     
@@ -199,7 +209,8 @@ function CardLayoutManager:RecalculateAllPositions(instance)
     end
     
     -- Reposition all cards (masonry: each column independent)
-    for i, cardInfo in ipairs(sortedCards) do
+    for i = 1, #sortedCards do
+        local cardInfo = sortedCards[i]
         local col = cardInfo.col
         local currentHeight = cardInfo.currentHeight or cardInfo.baseHeight
         

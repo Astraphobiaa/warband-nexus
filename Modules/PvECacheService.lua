@@ -16,14 +16,15 @@ local ADDON_NAME, ns = ...
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local WarbandNexus = ns.WarbandNexus
 local Utilities = ns.Utilities
 
 ---Chat-visible diagnostics when Config → Debug Mode is on (SavedVariables-safe summaries only).
+---Uses strict IsDebugModeEnabled() so legacy truthy non-boolean profile.debugMode cannot spam chat.
 local function PvECacheUserDebug(msg, ...)
+    if not (IsDebugModeEnabled and IsDebugModeEnabled()) then return end
     local W = rawget(_G, "WarbandNexus") or WarbandNexus
-    local db = W and W.db and W.db.profile
-    if not db or not db.debugMode then return end
     if not (W and W.Print) then return end
     local text
     if select("#", ...) > 0 then
@@ -1678,7 +1679,9 @@ end
 
 GreatVaultActivityHasCompletedRows = function(bucket)
     if not bucket or type(bucket) ~= "table" then return false end
-    for _, category in ipairs({ "raids", "mythicPlus", "world", "pvp" }) do
+    local gvCategories = { "raids", "mythicPlus", "world", "pvp" }
+    for ci = 1, #gvCategories do
+        local category = gvCategories[ci]
         local rows = bucket[category]
         if type(rows) == "table" then
             for i = 1, #rows do
@@ -1728,7 +1731,9 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
         -- SaveCharacter can run before Challenge Mode APIs hydrate; do not replace good SV with zeros.
         if hadCachedMythic and not LegacyMythicSnapshotHasData(mp) then
             local prevOverall = existingScores and type(existingScores.overallScore) == "number" and existingScores.overallScore or 0
-            DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip mythic for %s (stale/empty snapshot)", charKey))
+            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip mythic for %s (stale/empty snapshot)", charKey))
+            end
             PvECacheUserDebug(
                 "import: SKIP mythic (empty snapshot, cache kept) key=%s prevOverall=%s snapshotOverall=%s nonzero=%s",
                 tostring(charKey), tostring(prevOverall), tostring(mp and mp.overallScore or 0),
@@ -1818,7 +1823,9 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
     if legacyData.greatVault then
         local prevVault = pc.greatVault.activities and pc.greatVault.activities[charKey]
         if #legacyData.greatVault == 0 and GreatVaultActivityHasRows(prevVault) then
-            DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip empty greatVault for %s (keeping cache)", charKey))
+            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip empty greatVault for %s (keeping cache)", charKey))
+            end
             PvECacheUserDebug(
                 "import: SKIP greatVault (legacy [] but cache had rows) key=%s — vault preserved",
                 tostring(charKey))
@@ -1872,7 +1879,9 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
         local hadPrevLockouts = (type(prevRaids) == "table" and next(prevRaids))
             or (type(prevDungeons) == "table" and next(prevDungeons))
         if legacyData.lockouts and #legacyData.lockouts == 0 and hadPrevLockouts then
-            DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip empty lockouts for %s (keeping cache)", charKey))
+            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip empty lockouts for %s (keeping cache)", charKey))
+            end
             PvECacheUserDebug(
                 "import: SKIP lockouts (legacy [] but cache had rows) key=%s",
                 tostring(charKey))
@@ -1926,7 +1935,9 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
     end
     
     self:SavePvECache()
-    DebugPrint(string.format("|cff9370DB[PvECache]|r Imported legacy PvE data for %s", charKey))
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint(string.format("|cff9370DB[PvECache]|r Imported legacy PvE data for %s", charKey))
+    end
     PvECacheUserDebug("import: DONE key=%s (SavedVariables write)", tostring(charKey))
 end
 
@@ -2075,8 +2086,8 @@ function WarbandNexus:RegisterPvECacheEvents()
     
     self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_ITEM_CHANGED triggered")
-        RefreshVaultRewardsAfterItemChange(0.3)
-        RefreshVaultRewardsAfterItemChange(1.5)
+        -- Single deferred refresh: dual timers duplicated vault reads + PVE_UPDATED paths.
+        RefreshVaultRewardsAfterItemChange(1.0)
         ThrottledPvEUpdate()
     end)
     

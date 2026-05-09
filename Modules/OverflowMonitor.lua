@@ -56,7 +56,8 @@ function OverflowMonitor:CheckCharacterRows()
     local children = {scrollChild:GetChildren()}
     
     local checkedCount = 0
-    for i, child in ipairs(children) do
+    for i = 1, #children do
+        local child = children[i]
         if child:IsShown() and child.nameText then
             checkedCount = checkedCount + 1
             
@@ -89,7 +90,8 @@ function OverflowMonitor:CheckPlanCards()
     local children = {scrollChild:GetChildren()}
     
     local checkedCount = 0
-    for i, child in ipairs(children) do
+    for i = 1, #children do
+        local child = children[i]
         if child:IsShown() and child.planNameText then
             checkedCount = checkedCount + 1
             if IsTextOverflowing(child.planNameText) then

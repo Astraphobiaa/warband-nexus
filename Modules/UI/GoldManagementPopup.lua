@@ -41,22 +41,12 @@ local MODE_SHORT = {
 
 local MAX_GOLD = 9999999
 
--- Format number with thousand separators: 1234567 → "1.234.567"
-local function FormatGoldNumber(n)
-    local s = tostring(math.floor(n))
-    local formatted = s:reverse():gsub("(%d%d%d)", "%1."):reverse()
-    if formatted:sub(1, 1) == "." then formatted = formatted:sub(2) end
-    return formatted
-end
+local FormatGoldDisplay = ns.UI_FormatGold
+local FormatNumberSep = ns.UI_FormatNumber
 
 -- Strip dots/spaces/commas → pure digit string
 local function StripFormatting(str)
     return (str or ""):gsub("[^%d]", "")
-end
-
-local function CopperToGoldDisplay(copper)
-    local gold = math.floor((copper or 0) / 10000)
-    return FormatGoldNumber(gold) .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t"
 end
 
 --============================================================================
@@ -306,7 +296,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     inputBox:SetTextColor(1, 1, 1)
     
     local function CopperToGoldString(copper)
-        return FormatGoldNumber(math.floor(copper / 10000))
+        return FormatNumberSep(math.floor((copper or 0) / 10000))
     end
     
     local function GoldStringToCopper(str)
@@ -363,7 +353,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         if digits == "" then return end
         local num = tonumber(digits) or 0
         if num > MAX_GOLD then num = MAX_GOLD end
-        local formatted = FormatGoldNumber(num)
+        local formatted = FormatNumberSep(num)
         
         -- Restore cursor: advance through formatted string until we pass the same digit count
         local newCursor = 0
@@ -438,7 +428,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         
         local profMode = MODE_SHORT[profSettings.mode or "both"]
         local profModeStr = profMode and profMode() or "Both"
-        local profGold = CopperToGoldDisplay(profSettings.targetAmount or 0)
+        local profGold = FormatGoldDisplay(profSettings.targetAmount or 0)
         profileInfo:SetText("|cffffffff" .. profModeStr .. "  " .. profGold .. "|r")
         
         -- Character column
@@ -448,7 +438,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
             
             local charMode = MODE_SHORT[charSettings.mode or "both"]
             local charModeStr = charMode and charMode() or "Both"
-            local charGold = CopperToGoldDisplay(charSettings.targetAmount or 0)
+            local charGold = FormatGoldDisplay(charSettings.targetAmount or 0)
             charInfo:SetText("|cffffffff" .. charModeStr .. "  " .. charGold .. "|r")
         else
             charTitle:SetText(crossMark .. "|cff" .. hexColor .. charName .. "|r")

@@ -9,8 +9,6 @@ local E = ns.Constants.EVENTS
 -- Unique AceEvent handler identity for StatisticsUI
 local StatisticsUIEvents = {}
 
--- Debug print helper
-local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
@@ -36,17 +34,12 @@ local InvalidateStatsCache
 function WarbandNexus:InitializeStatisticsUI()
     -- Register for collection update events
     -- NOTE: Uses StatisticsUIEvents as 'self' key to avoid overwriting other modules' handlers.
-    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.COLLECTION_UPDATED, function(event, charKey)
-        DebugPrint("|cff9370DB[WN StatisticsUI]|r Collection updated event received for " .. tostring(charKey))
-        
-        -- Invalidate stats cache so fresh counts are computed on next draw
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.COLLECTION_UPDATED, function()
         InvalidateStatsCache()
-        
-        -- Only refresh if Statistics tab is currently active
+
         if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
             if self.SendMessage then
                 self:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
-                DebugPrint("|cff00ff00[WN StatisticsUI]|r UI refreshed after collection update")
             end
         end
     end)

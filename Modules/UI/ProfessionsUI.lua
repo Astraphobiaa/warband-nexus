@@ -34,6 +34,8 @@ local issecretvalue = issecretvalue
 local ProfessionsUIEvents = {}
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
+local DebugPrint = ns.DebugPrint
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 -- Tooltip API
 local ShowTooltip = ns.UI_ShowTooltip
@@ -83,7 +85,8 @@ local EXPANSION_ORDER = {
 local function ExtractExpansionKey(expName)
     if not expName or expName == "" then return nil end
     if issecretvalue and issecretvalue(expName) then return nil end
-    for _, known in ipairs(EXPANSION_ORDER) do
+    for ei = 1, #EXPANSION_ORDER do
+        local known = EXPANSION_ORDER[ei]
         if expName:find(known, 1, true) == 1 then return known end
     end
     return expName:match("^(.+)%s+%u%a+$") or expName
@@ -101,7 +104,8 @@ local function BuildDynamicExpansionOptions()
             if charData.professionExpansions then
                 for _, expList in pairs(charData.professionExpansions) do
                     if type(expList) == "table" then
-                        for _, exp in ipairs(expList) do
+                        for exi = 1, #expList do
+                            local exp = expList[exi]
                             local key = exp.name and ExtractExpansionKey(exp.name)
                             if key and not seen[key] then
                                 seen[key] = true
@@ -115,9 +119,10 @@ local function BuildDynamicExpansionOptions()
     end
     table.sort(keys, function(a, b)
         local pa, pb = 99, 99
-        for i, name in ipairs(EXPANSION_ORDER) do
-            if a == name then pa = i end
-            if b == name then pb = i end
+        for ei = 1, #EXPANSION_ORDER do
+            local name = EXPANSION_ORDER[ei]
+            if a == name then pa = ei end
+            if b == name then pb = ei end
         end
         return pa < pb
     end)
@@ -125,7 +130,8 @@ local function BuildDynamicExpansionOptions()
         keys[#keys + 1] = "Midnight"
     end
     local options = {{key = "All", label = (ns.L and ns.L["PROF_FILTER_ALL"]) or "All"}}
-    for _, key in ipairs(keys) do
+    for ki = 1, #keys do
+        local key = keys[ki]
         options[#options + 1] = {key = key, label = key}
     end
     return options
@@ -277,7 +283,8 @@ function ns.ComputeProfessionsGridWidth()
     end
 
     local total = 0
-    for _, k in ipairs(COLUMN_ORDER) do
+    for ki = 1, #COLUMN_ORDER do
+        local k = COLUMN_ORDER[ki]
         if IsColumnVisible(k) then
             local w = COLUMNS[k].width
             if SCALABLE_COLUMNS[k] then
@@ -310,7 +317,8 @@ local function GetColumnScaleFactor()
     if cachedRowWidth and cachedRowWidth > 0 then
         local baseTotal = LEFT_PAD
         local scalableBase = 0
-        for _, k in ipairs(COLUMN_ORDER) do
+        for ki = 1, #COLUMN_ORDER do
+            local k = COLUMN_ORDER[ki]
             if IsColumnVisible(k) then
                 baseTotal = baseTotal + COLUMNS[k].width + COLUMNS[k].spacing
                 if SCALABLE_COLUMNS[k] then
@@ -343,7 +351,8 @@ end
 local function ColOffset(key)
     local offset = LEFT_PAD
     local scaleFactor = GetColumnScaleFactor()
-    for _, k in ipairs(COLUMN_ORDER) do
+    for ki = 1, #COLUMN_ORDER do
+        local k = COLUMN_ORDER[ki]
         if k == key then return offset end
         if IsColumnVisible(k) then
             local w = COLUMNS[k].width
@@ -573,8 +582,12 @@ local function SortCharacters(list, orderKey)
     local customOrder = WarbandNexus.db.profile.characterOrder[orderKey] or {}
     if #customOrder > 0 then
         local ordered, charMap = {}, {}
-        for _, c in ipairs(list) do charMap[GetCharKey(c)] = c end
-        for _, ck in ipairs(customOrder) do
+        for li = 1, #list do
+            local c = list[li]
+            charMap[GetCharKey(c)] = c
+        end
+        for coi = 1, #customOrder do
+            local ck = customOrder[coi]
             if charMap[ck] then table.insert(ordered, charMap[ck]); charMap[ck] = nil end
         end
         local remaining = {}
@@ -583,7 +596,7 @@ local function SortCharacters(list, orderKey)
             if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
             return CompareCharNameLower(a, b)
         end)
-        for _, c in ipairs(remaining) do table.insert(ordered, c) end
+        for ri = 1, #remaining do table.insert(ordered, remaining[ri]) end
         return ordered
     else
         table.sort(list, function(a, b)
@@ -596,7 +609,8 @@ end
 
 local function CategorizeCharacters(characters)
     local favorites, regular, untracked = {}, {}, {}
-    for _, char in ipairs(characters) do
+    for chi = 1, #characters do
+        local char = characters[chi]
         -- Include ALL tracked characters, even those with no professions.
         -- DrawProfessionLine already handles empty slots with "No Profession" text.
         local isTracked = char.isTracked ~= false
@@ -614,6 +628,7 @@ local function FormatRealmName(realm)
         return ns.Utilities:FormatRealmName(realm)
     end
     if not realm or realm == "" then return "" end
+    if issecretvalue and issecretvalue(realm) then return "" end
     return realm:gsub("(%l)(%u)", "%1 %2")
 end
 
@@ -628,6 +643,7 @@ end
 local function ExpansionNameMatchesFilter(expansionName, filterKey)
     if not expansionName or expansionName == "" then return false end
     if filterKey == "All" then return true end
+    if issecretvalue and issecretvalue(expansionName) then return false end
     -- Match by prefix (e.g. "Midnight Tailoring" vs "Midnight") or by extracted key
     if expansionName == filterKey or expansionName:sub(1, #filterKey) == filterKey then return true end
     local key = ExtractExpansionKey(expansionName)
@@ -692,13 +708,15 @@ local function GetSkillLineIDForFilter(char, profName)
         else
             -- Locale-safe fast path: Midnight skill lines are fixed IDs.
             if filter == "Midnight" then
-                for _, exp in ipairs(expansions) do
+                for exi = 1, #expansions do
+                    local exp = expansions[exi]
                     if exp and exp.skillLineID and IsMidnightSkillLineID(exp.skillLineID) then
                         return exp.skillLineID
                     end
                 end
             end
-            for _, exp in ipairs(expansions) do
+            for exi = 1, #expansions do
+                local exp = expansions[exi]
                 if exp.name and exp.skillLineID and ExpansionNameMatchesFilter(exp.name, filter) then
                     return exp.skillLineID
                 end
@@ -748,7 +766,8 @@ local function GetCurrentExpansionSkill(char, profName)
         end
         return nil, nil, nil
     end
-    for _, exp in ipairs(expansions) do
+    for exi = 1, #expansions do
+        local exp = expansions[exi]
         if exp.skillLevel and exp.skillLevel > 0 then
             return exp.skillLevel, exp.maxSkillLevel or 0, exp.name
         end
@@ -995,7 +1014,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local totalProfChars = #trackedFavorites + #trackedRegular + #untrackedChars
 
     local expBadgeWidth = 100
-    local filterBtnW = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH or 80
+    local filterBtnW = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH_DEFAULT) or 80
 
     -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout (wider subtitle area for Professions) =====
     local titleCardH = showWideHint and 88 or 70
@@ -1031,7 +1050,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
     expBadge:SetScript("OnClick", nil)
     expBadge:SetScript("OnEnter", nil)
     expBadge:SetScript("OnLeave", nil)
-    expBadge:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
+    local titleCardRightInset = (GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET) or 20
+    expBadge:SetPoint("RIGHT", titleCard, "RIGHT", -titleCardRightInset, 0)
     
     -- ===== COLUMNS BUTTON (column visibility toggle) =====
     local filterBtnH = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
@@ -1045,7 +1065,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
     filterBtnText:SetText((ns.L and ns.L["COLUMNS_BUTTON"]) or "Columns")
     filterBtnText:SetTextColor(0.9, 0.9, 0.9)
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(filterBtn) end
-    filterBtn:SetPoint("RIGHT", expBadge, "LEFT", -8, 0)
+    local hdrGap = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
+    filterBtn:SetPoint("RIGHT", expBadge, "LEFT", -hdrGap, 0)
 
     filterBtn:SetScript("OnClick", function(btn)
         -- Toggle dropdown: close if already open, open if not
@@ -1089,13 +1110,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
         if not self.db.profile.professionVisibleColumns then
             self.db.profile.professionVisibleColumns = {}
-            for _, tc in ipairs(TOGGLEABLE_COLUMNS) do
+            for tci = 1, #TOGGLEABLE_COLUMNS do
+                local tc = TOGGLEABLE_COLUMNS[tci]
                 local def = COLUMN_DEFAULT_VISIBLE[tc.key]
                 self.db.profile.professionVisibleColumns[tc.key] = (def == nil) and true or def
             end
         end
 
-        local ROW_H = 22
+        local ROW_H = (GetLayout().DROPDOWN_MENU_ROW_HEIGHT) or (GetLayout().ROW_HEIGHT) or 26
         local PAD = 6
         local contentH = #TOGGLEABLE_COLUMNS * ROW_H + PAD * 2 + ROW_H
         dropdown:SetSize(170, contentH)
@@ -1111,7 +1133,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
 
         local yOff = -PAD
-        for _, tc in ipairs(TOGGLEABLE_COLUMNS) do
+        for tci = 1, #TOGGLEABLE_COLUMNS do
+            local tc = TOGGLEABLE_COLUMNS[tci]
             local isVisible = self.db.profile.professionVisibleColumns[tc.key] ~= false
             local checkRow = CreateFrame("Button", nil, dropdown)
             checkRow:SetSize(160, ROW_H)
@@ -1155,8 +1178,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
         resetLbl:SetText("|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["SHOW_ALL"]) or "Show All") .. "|r")
         resetLbl:SetJustifyH("CENTER")
         resetRow:SetScript("OnClick", function()
-            for _, tc2 in ipairs(TOGGLEABLE_COLUMNS) do
-                self.db.profile.professionVisibleColumns[tc2.key] = true
+            for tci = 1, #TOGGLEABLE_COLUMNS do
+                self.db.profile.professionVisibleColumns[TOGGLEABLE_COLUMNS[tci].key] = true
             end
             dropdown:Hide()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
@@ -1207,7 +1230,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
         end)
-        sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -8, 0)
+        sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -(GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8), 0)
     end
     
     titleCard:Show()
@@ -1260,7 +1283,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
     local SORT_ARROW_SIZE = 10
     local sortState = GetColumnSortState()
-    for _, hdef in ipairs(HEADER_DEFS) do
+    for hdi = 1, #HEADER_DEFS do
+        local hdef = HEADER_DEFS[hdi]
         local col = hdef.col
         if IsColumnVisible(col) then
             local w = (hdef.getWidth and hdef.getWidth()) or ColWidth(col)
@@ -1469,7 +1493,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
         sectionContent = AcquireSectionContentFrame(header)
         local sectionYOffset = 0
-        for _, char in ipairs(chars) do
+        for chi = 1, #chars do
+            local char = chars[chi]
             rowIndex = rowIndex + 1
             local ok, nextYOffset, rowFrame = pcall(self.DrawProfessionRow, self, sectionContent, char, rowIndex, width, sectionYOffset, currentPlayerKey)
             if ok and nextYOffset then
@@ -1479,8 +1504,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 end
             else
                 sectionYOffset = sectionYOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
-                if WarbandNexus.Debug then
-                    WarbandNexus:Debug("|cffff0000[ProfessionsUI] DrawProfessionRow error for " .. tostring(char.name) .. ": " .. tostring(nextYOffset) .. "|r")
+                if IsDebugModeEnabled and IsDebugModeEnabled() then
+                    DebugPrint("|cffff0000[ProfessionsUI] DrawProfessionRow error for " .. tostring(char.name) .. ": " .. tostring(nextYOffset) .. "|r")
                 end
             end
         end
@@ -1682,7 +1707,11 @@ local function SetEquipCell(cell, eqData, slotKey)
             if item.itemLink then
                 GameTooltip:SetHyperlink(item.itemLink)
             else
-                GameTooltip:AddLine(item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 1, 1, 1)
+                local nm = item.name
+                if nm and issecretvalue and issecretvalue(nm) then
+                    nm = nil
+                end
+                GameTooltip:AddLine(nm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 1, 1, 1)
             end
             GameTooltip:Show()
         end)
@@ -2054,10 +2083,14 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         end
 
         -- First Craft: only show when data is from Midnight (avoid TWW/DF recipe counts mixing in).
+        local recipeExpName = recipeData and recipeData.expansionName
+        local recipeExpMidnight = recipeExpName and type(recipeExpName) == "string"
+            and not (issecretvalue and issecretvalue(recipeExpName))
+            and recipeExpName:find("Midnight", 1, true)
         local isMidnightRecipeData =
             (slID and IsMidnightSkillLineID(slID))
             or (recipeData and recipeData.skillLineID and IsMidnightSkillLineID(recipeData.skillLineID))
-            or (recipeData and recipeData.expansionName and recipeData.expansionName:find("Midnight", 1, true))
+            or recipeExpMidnight
         local firstCraftProgress = progressData and progressData.firstCraft
         if isMidnightRecipeData then
             local doneCount = recipeData.firstCraftDoneCount
@@ -2140,7 +2173,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                     local sorted = {}
                     for _, info in pairs(tbl) do sorted[#sorted+1] = info end
                     table.sort(sorted, function(a,b) return (a.cooldownEnd or 0) < (b.cooldownEnd or 0) end)
-                    for _, info in ipairs(sorted) do
+                    for si = 1, #sorted do
+                        local info = sorted[si]
                         local remaining = (info.cooldownEnd or 0) - now
                         local iconStr = info.recipeIcon and format("|T%s:0|t ", tostring(info.recipeIcon)) or ""
                         local rName = iconStr .. (info.recipeName or "?")
@@ -2198,7 +2232,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             local lines = {}
             local expansions = char.professionExpansions and char.professionExpansions[profName]
             if expansions and #expansions > 0 then
-                for _, exp in ipairs(expansions) do
+                for exi = 1, #expansions do
+                    local exp = expansions[exi]
                     local maxS = exp.maxSkillLevel or 0
                     local curS = exp.skillLevel or 0
                     local sc = (maxS > 0 and curS >= maxS) and {0.3,0.9,0.3} or (curS > 0 and {1,0.82,0} or {1,1,1})
@@ -2280,7 +2315,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             local lines = {}
             local expansions = char.professionExpansions and char.professionExpansions[rowProfName]
             if expansions and #expansions > 0 then
-                for _, exp in ipairs(expansions) do
+                for exi = 1, #expansions do
+                    local exp = expansions[exi]
                     local maxS = exp.maxSkillLevel or 0
                     local curS = exp.skillLevel or 0
                     local sc = (maxS > 0 and curS >= maxS) and {0.3,0.9,0.3} or (curS > 0 and {1,0.82,0} or {1,1,1})
@@ -2307,17 +2343,23 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                     if tsOk and ts and ts ~= "" and ts ~= "Full" then lines[#lines+1] = { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = ts, leftColor = {1,1,1}, rightColor = {1,0.82,0} } end
                 end
             end
-            -- Equipment: show per-profession gear; fallback lookup by base name if key differs.
+            -- Equipment: show per-profession gear; fallback lookup by base name if key differs (secret-safe string ops).
             local eqByProf = char.professionEquipment
-            local eqKey = rowProfName and rowProfName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "") or rowProfName
-            local eqData = eqByProf and (eqByProf[rowProfName] or eqByProf[eqKey]) or nil
-            if not eqData and eqByProf and (rowProfName or eqKey) then
-                for k, v in pairs(eqByProf) do
-                    if k ~= "_legacy" and type(v) == "table" and (v.tool or v.accessory1 or v.accessory2) then
-                        local norm = k:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
-                        if norm == eqKey or norm == (rowProfName and rowProfName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "") or nil) or (eqKey and k:find(eqKey, 1, true)) then
-                            eqData = v
-                            break
+            local eqData = nil
+            if eqByProf and rowProfName and type(rowProfName) == "string" and not (issecretvalue and issecretvalue(rowProfName)) then
+                local eqKey = rowProfName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
+                eqData = eqByProf[rowProfName] or eqByProf[eqKey]
+                if not eqData then
+                    local rowNorm = rowProfName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
+                    for k, v in pairs(eqByProf) do
+                        if k ~= "_legacy" and type(k) == "string" and not (issecretvalue and issecretvalue(k))
+                            and type(v) == "table" and (v.tool or v.accessory1 or v.accessory2) then
+                            local norm = k:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
+                            local eqSafe = eqKey and not (issecretvalue and issecretvalue(eqKey))
+                            if norm == eqKey or norm == rowNorm or (eqSafe and k:find(eqKey, 1, true)) then
+                                eqData = v
+                                break
+                            end
                         end
                     end
                 end
@@ -2325,7 +2367,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
                 local slotKeys = { "tool", "accessory1", "accessory2" }
                 local tooltipSvc = ns.TooltipService
-                for _, slotKey in ipairs(slotKeys) do
+                for ski = 1, #slotKeys do
+                    local slotKey = slotKeys[ski]
                     local item = eqData[slotKey]
                     if item then
                         local iconStr = item.icon and format("|T%s:0|t ", tostring(item.icon)) or ""

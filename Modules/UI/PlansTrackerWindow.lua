@@ -26,6 +26,7 @@ local FormatTextNumbers = ns.UI_FormatTextNumbers
 local PLAN_TYPES = ns.PLAN_TYPES
 local Factory = ns.UI.Factory
 local issecretvalue = issecretvalue
+local format = string.format
 
 -- Import UI spacing constants
 local UI_SPACING = ns.UI_SPACING or {
@@ -186,14 +187,14 @@ local function GetAchievementRequirementsText(achievementID)
             local progress = ""
             -- Only show progress when reqQuantity > 1 (e.g. 3/10); skip 0/1 and 1/1 for kill objectives
             if quantity and reqQuantity and reqQuantity > 1 then
-                progress = string.format(" (%s / %s)", FormatNumber(quantity), FormatNumber(reqQuantity))
+                progress = format(" (%s / %s)", FormatNumber(quantity), FormatNumber(reqQuantity))
             end
             parts[#parts + 1] = icon .. " " .. color .. FormatTextNumbers(criteriaName) .. "|r" .. progress
         end
     end
     local pct = numCriteria > 0 and math.floor((completedCount / numCriteria) * 100) or 0
     local achieveFmt = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
-    local header = string.format("|cff00ff00" .. achieveFmt .. "|r\n", FormatNumber(completedCount), FormatNumber(numCriteria), FormatNumber(pct))
+    local header = format("|cff00ff00" .. achieveFmt .. "|r\n", FormatNumber(completedCount), FormatNumber(numCriteria), FormatNumber(pct))
     return header .. table.concat(parts, "\n")
 end
 
@@ -237,7 +238,8 @@ local function GetPlanDescription(plan)
     end
     if #parts == 0 then
         local typeLabel = plan.type or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-        for _, cat in ipairs(CATEGORY_KEYS) do
+        for ci = 1, #CATEGORY_KEYS do
+            local cat = CATEGORY_KEYS[ci]
             if cat.key == plan.type then typeLabel = cat.label; break end
         end
         parts[#parts + 1] = typeLabel
@@ -333,10 +335,10 @@ local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, min
     local rows = {}
     local szLg = (ns.UI_PLAN_SOURCE_ICON_LG) or math.floor(16 * 1.3 + 0.5)
     local IconMk = ns.UI_PlanSourceIconMarkup
-    local classMk = IconMk and IconMk("class", szLg) or string.format("|A:Class:%d:%d|a", szLg, szLg)
-    local lootMk = IconMk and IconMk("loot", szLg) or string.format("|A:Banker:%d:%d|a", szLg, szLg)
-    local questMk = IconMk and IconMk("quest", szLg) or string.format("|A:Islands-QuestTurnin:%d:%d|a", szLg, szLg)
-    local locMk = IconMk and IconMk("location", szLg) or string.format("|A:poi-islands-table:%d:%d|a", szLg, szLg)
+    local classMk = IconMk and IconMk("class", szLg) or format("|A:Class:%d:%d|a", szLg, szLg)
+    local lootMk = IconMk and IconMk("loot", szLg) or format("|A:Banker:%d:%d|a", szLg, szLg)
+    local questMk = IconMk and IconMk("quest", szLg) or format("|A:Islands-QuestTurnin:%d:%d|a", szLg, szLg)
+    local locMk = IconMk and IconMk("location", szLg) or format("|A:poi-islands-table:%d:%d|a", szLg, szLg)
     -- Inline markup matches PlanCardFactory:CreateSourceInfo (Loot / Quest / Location atlases).
     local function addRow(iconMarkup, labelKey, fallback, value, valueColor)
         if not value or value == "" then return end
@@ -403,10 +405,10 @@ local function BuildPlanCriteriaItems(plan)
     end
     local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
     local IconMk = ns.UI_PlanSourceIconMarkup
-    local classMk14 = IconMk and IconMk("class", szMd) or string.format("|A:Class:%d:%d|a", szMd, szMd)
-    local lootMk14 = IconMk and IconMk("loot", szMd) or string.format("|A:Banker:%d:%d|a", szMd, szMd)
-    local questMk14 = IconMk and IconMk("quest", szMd) or string.format("|A:Islands-QuestTurnin:%d:%d|a", szMd, szMd)
-    local locMk14 = IconMk and IconMk("location", szMd) or string.format("|A:poi-islands-table:%d:%d|a", szMd, szMd)
+    local classMk14 = IconMk and IconMk("class", szMd) or format("|A:Class:%d:%d|a", szMd, szMd)
+    local lootMk14 = IconMk and IconMk("loot", szMd) or format("|A:Banker:%d:%d|a", szMd, szMd)
+    local questMk14 = IconMk and IconMk("quest", szMd) or format("|A:Islands-QuestTurnin:%d:%d|a", szMd, szMd)
+    local locMk14 = IconMk and IconMk("location", szMd) or format("|A:poi-islands-table:%d:%d|a", szMd, szMd)
     if first.vendor then
         row(classMk14, "VENDOR_LABEL", "Vendor:", first.vendor)
     elseif first.npc then
@@ -511,7 +513,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
                     local color = completed and (PLAN_COLORS.completedRgb or {0.27, 1, 0.27}) or (PLAN_COLORS.incompleteRgb or {1, 1, 1})
                     local progress = ""
                     if quantity and reqQuantity and reqQuantity > 1 then
-                        progress = string.format(" (%s / %s)", FormatNumber(quantity), FormatNumber(reqQuantity))
+                        progress = format(" (%s / %s)", FormatNumber(quantity), FormatNumber(reqQuantity))
                     end
                     criteriaLines[#criteriaLines + 1] = { text = icon .. " " .. criteriaName .. progress, color = color }
                 end
@@ -520,7 +522,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
             -- Header: "X of Y (Z%)"
             local pct = numCriteria > 0 and math.floor((completedCount / numCriteria) * 100) or 0
             local achieveFmt = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
-            local header = string.format(achieveFmt, FormatNumber(completedCount), FormatNumber(numCriteria), FormatNumber(pct))
+            local header = format(achieveFmt, FormatNumber(completedCount), FormatNumber(numCriteria), FormatNumber(pct))
             lines[#lines + 1] = { text = header, color = {0.3, 1, 0.3} }
 
             -- 3-column layout: group criteria into rows of 3
@@ -531,7 +533,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
                 for c = 0, cols - 1 do
                     local entry = criteriaLines[startIdx + c]
                     if entry then
-                        local colorCode = string.format("|cff%02x%02x%02x", math.floor(entry.color[1]*255), math.floor(entry.color[2]*255), math.floor(entry.color[3]*255))
+                        local colorCode = format("|cff%02x%02x%02x", math.floor(entry.color[1]*255), math.floor(entry.color[2]*255), math.floor(entry.color[3]*255))
                         rowParts[#rowParts + 1] = colorCode .. entry.text .. "|r"
                     end
                 end
@@ -636,12 +638,15 @@ local function RefreshTrackerContentImmediate()
     -- Clear existing children (frames AND their FontStrings)
     local bin = ns.UI_RecycleBin
     local children = { scrollChild:GetChildren() }
-    for _, c in ipairs(children) do
+    for ci = 1, #children do
+        local c = children[ci]
         c:Hide()
         if bin then c:SetParent(bin) else c:SetParent(nil) end
     end
     -- Also clear any orphan regions (FontStrings created directly on scrollChild)
-    for _, r in ipairs({ scrollChild:GetRegions() }) do
+    local regions = { scrollChild:GetRegions() }
+    for ri = 1, #regions do
+        local r = regions[ri]
         r:Hide()
         r:ClearAllPoints()
     end
@@ -689,7 +694,7 @@ local function RefreshTrackerContentImmediate()
                 end
                 local titleWithPoints = resolvedTitle
                 if pts and pts > 0 then
-                    titleWithPoints = resolvedTitle .. string.format(" - |cffffd700(%d pts)|r", pts)
+                    titleWithPoints = resolvedTitle .. format(" - |cffffd700(%d pts)|r", pts)
                 end
                 local rowData = {
                     icon = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.icon or "Interface\\Icons\\Achievement_Quests_Completed_08",
@@ -835,7 +840,7 @@ local function RefreshTrackerContentImmediate()
                     local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(plan.characterRealm)) or plan.characterRealm
                     charDisplay = charDisplay .. "-" .. rShown
                 end
-                nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
+                nameText:SetText(format("|cff%02x%02x%02x%s|r", 
                     math.floor(classColor[1]*255), math.floor(classColor[2]*255), math.floor(classColor[3]*255), 
                     charDisplay))
                 
@@ -902,7 +907,8 @@ local function RefreshTrackerContentImmediate()
                     local labelWidth = 55
                     local barWidth = barAreaWidth - labelWidth - 8
                     
-                    for ri, row in ipairs(progressRows) do
+                    for ri = 1, #progressRows do
+                        local row = progressRows[ri]
                         local rowY = contentY - ((ri - 1) * VAULT_ROW_HEIGHT)
                         
                         -- Row label
@@ -932,7 +938,8 @@ local function RefreshTrackerContentImmediate()
                         
                         -- Threshold markers — or "Ready!" at each slot when vault loot is claimable
                         local readyLabel = (ns.L and ns.L["VAULT_LOOT_READY_SHORT"]) or "Ready!"
-                        for _, threshold in ipairs(row.thresholds) do
+                        for ti = 1, #row.thresholds do
+                            local threshold = row.thresholds[ti]
                             local markerPct = threshold / row.max
                             local markerX = (markerPct * (barWidth - 2)) + 1
                             if vaultLootReady then
@@ -1234,7 +1241,8 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
 
     local function UpdateLabel(key)
         local label = (ns.L and ns.L["CATEGORY_ALL"]) or "All"
-        for _, c in ipairs(CATEGORY_KEYS) do
+        for ci = 1, #CATEGORY_KEYS do
+            local c = CATEGORY_KEYS[ci]
             if c.key == key then label = c.label; break end
         end
         valueText:SetText(label)
@@ -1311,7 +1319,8 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         -- Create option buttons
         local yPos = 0
         local btnWidth = menuWidth - UI_SPACING.SIDE_MARGIN
-        for _, cat in ipairs(CATEGORY_KEYS) do
+        for ci = 1, #CATEGORY_KEYS do
+            local cat = CATEGORY_KEYS[ci]
             local btn = Factory:CreateButton(scrollChild, btnWidth, itemHeight, true)
             btn:SetPoint("TOPLEFT", 0, -yPos)
 
@@ -1606,8 +1615,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
 
         local current = (GetDB() and GetDB().opacity) or 1.0
         local function FormatLabel(v)
-            label:SetText(string.format("|cffcccccc%s|r", opacityLabel))
-            valueText:SetText(string.format("|cffffffff%d%%|r", math.floor(v * 100 + 0.5)))
+            label:SetText(format("|cffcccccc%s|r", opacityLabel))
+            valueText:SetText(format("|cffffffff%d%%|r", math.floor(v * 100 + 0.5)))
         end
 
         local slider = Factory:CreateThemedSlider(popup, {

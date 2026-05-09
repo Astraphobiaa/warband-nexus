@@ -22,7 +22,8 @@ local function GetIllusionCache()
     local illusions = C_TransmogCollection.GetIllusions()
     if not illusions then return nil end
     illusionCache = {}
-    for _, info in ipairs(illusions) do
+    for ii = 1, #illusions do
+        local info = illusions[ii]
         if info.visualID then illusionCache[info.visualID] = info end
         if info.sourceID then illusionCache[info.sourceID] = info end
     end
@@ -169,7 +170,8 @@ CollectionRules.MOUNT = {
         -- Cross-reference against mount journal: find if any mount's spell matches
         local mountIDs = C_MountJournal.GetMountIDs()
         if not mountIDs then return false end
-        for _, mountID in ipairs(mountIDs) do
+        for mi = 1, #mountIDs do
+            local mountID = mountIDs[mi]
             local _, spellID = C_MountJournal.GetMountInfoByID(mountID)
             if spellID and spellID == itemSpellID then
                 return true

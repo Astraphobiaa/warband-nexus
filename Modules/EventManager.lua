@@ -42,9 +42,8 @@ local activeTimers = {}    -- Active throttle/debounce timers
     @param key string - Unique throttle key
     @param interval number - Throttle interval (seconds)
     @param func function - Function to call
-    @param ... any - Arguments to pass to function
 ]]
-local function Throttle(key, interval, func, ...)
+local function Throttle(key, interval, func)
     -- If already throttled, skip
     if activeTimers[key] then
         return false
@@ -56,7 +55,7 @@ local function Throttle(key, interval, func, ...)
     end)
     
     -- Execute immediately
-    func(...)
+    func()
     
     return true
 end
@@ -67,11 +66,8 @@ end
     @param key string - Unique debounce key
     @param interval number - Debounce interval (seconds)
     @param func function - Function to call
-    @param ... any - Arguments to pass to function
 ]]
-local function Debounce(key, interval, func, ...)
-    local args = {...}
-    
+local function Debounce(key, interval, func)
     -- Cancel existing timer
     if activeTimers[key] then
         activeTimers[key]:Cancel()
@@ -80,7 +76,7 @@ local function Debounce(key, interval, func, ...)
     -- Set new timer
     activeTimers[key] = C_Timer.NewTimer(interval, function()
         activeTimers[key] = nil
-        func(unpack(args))
+        func()
     end)
 end
 
@@ -132,7 +128,6 @@ function WarbandNexus:OnSkillLinesChanged()
         end
 
         -- CHARACTER_UPDATED always fires (basic character data, not profession-specific)
-        local Constants = ns.Constants
         local key = ns.Utilities:GetCharacterKey()
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
             charKey = key,
@@ -165,7 +160,6 @@ function WarbandNexus:OnItemLevelChanged()
             self.db.global.characters[tableKey].lastSeen = time()
             
             -- Fire event for UI update (DB-First pattern)
-            local Constants = ns.Constants
             local msgKey = key
             if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
                 msgKey = ns.Utilities:GetCanonicalCharacterKey(key) or key
@@ -214,8 +208,15 @@ function WarbandNexus:OnMoneyChanged()
     end
 
     -- Tracked-only: session char gold + currency-tab style refresh coalescing
+    -- GetMoney() may be a secret value (Midnight+); never persist opaque/compare without guard.
     if self.db and self.db.char then
-        self.db.char.lastKnownGold = GetMoney()
+        local m = GetMoney()
+        if m ~= nil and not (issecretvalue and issecretvalue(m)) then
+            local n = tonumber(m)
+            if n then
+                self.db.char.lastKnownGold = n
+            end
+        end
     end
 
     if not self.moneyRefreshPending then
@@ -359,6 +360,13 @@ end
     Called during OnEnable
 ]]
 function WarbandNexus:InitializeEventManager()
+    -- Idempotent: InitializationService may theoretically reschedule startup; AceEvent last-register-wins
+    -- would drop handlers — bail after first successful setup.
+    if self._wnEventManagerInitialized then
+        return
+    end
+    self._wnEventManagerInitialized = true
+
     -- UI Scale/Resolution Events (immediate refresh for consistent rendering)
     self:RegisterEvent("UI_SCALE_CHANGED", "OnUIScaleChanged")
     self:RegisterEvent("DISPLAY_SIZE_CHANGED", "OnUIScaleChanged")

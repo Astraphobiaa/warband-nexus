@@ -34,10 +34,58 @@ local UI_SPACING = ns.UI_SPACING or {
 
 local MIN_ITEM_WIDTH = 180  -- Minimum width for grid items
 local GRID_SPACING = UI_SPACING.SIDE_MARGIN  -- Horizontal spacing between grid items
-local ROW_HEIGHT = 32       -- Height per grid row (settings rows are intentionally larger)
-local SECTION_SPACING = UI_SPACING.SECTION_SPACING  -- Spacing between sections
+-- Vertical gap between major settings cards (slightly larger than UI_SPACING for clearer hierarchy)
+local SETTINGS_SECTION_GAP = math.max((UI_SPACING.SECTION_SPACING or 8) + 12, 20)
+local SETTINGS_DIVIDER_PAD = 8
 local CONTENT_PADDING_TOP = 40  -- Title height (from CreateSection standard, settings-specific)
 local CONTENT_PADDING_BOTTOM = UI_SPACING.MIN_BOTTOM_SPACING  -- Bottom padding within section
+
+local UI_CONSTANTS = ns.UI_CONSTANTS or {}
+local SETTINGS_BTN_H = UI_CONSTANTS.BUTTON_HEIGHT or 32
+local SETTINGS_SUBSECTION_ROW_H = 24
+-- Inner padding for bordered settings sub-panels (Factory container + border)
+local SETTINGS_SUBPANEL_PAD = 14
+-- Extra px below subsection title row before first control (added to HEADER_TOOLBAR_CONTROL_GAP / AFTER_ELEMENT)
+local SETTINGS_SUBSECTION_GAP_AFTER_EXTRA = 6
+-- Extra px between stacked bordered sub-panels (added to toolbar gap)
+local SETTINGS_STACKED_SUBPANEL_GAP_EXTRA = 8
+-- Checkbox grids: align with tab row indent; slightly taller rows reduce wrap collisions
+local SETTINGS_CHECKBOX_GRID_INDENT = UI_SPACING.BASE_INDENT or 15
+local SETTINGS_CHECKBOX_MIN_COL_W = 268
+local SETTINGS_CHECKBOX_MIN_ROW_H = 40
+local SETTINGS_CHECKBOX_COL_GAP = UI_SPACING.CARD_GAP or UI_SPACING.AFTER_ELEMENT or 8
+-- Dropdown rows: label column vs control (prevents long titles overlapping the control)
+local SETTINGS_DROPDOWN_LABEL_COL_MIN = 176
+local SETTINGS_DROPDOWN_LABEL_COL_MAX = 310
+local SETTINGS_DROPDOWN_CONTROL_MIN_W = 136
+
+local function GetHeaderToolbarGap()
+    local L = ns.UI_LAYOUT or UI_SPACING
+    return (L and L.HEADER_TOOLBAR_CONTROL_GAP) or UI_SPACING.AFTER_ELEMENT or 8
+end
+
+local function GetStackedSubPanelTrailingGap()
+    return GetHeaderToolbarGap() + SETTINGS_STACKED_SUBPANEL_GAP_EXTRA
+end
+
+-- Scroll area vertical inset (matches SharedWidgets scroll content padding)
+local SETTINGS_SCROLL_INSET_TOP = UI_SPACING.SCROLL_CONTENT_TOP_PADDING or UI_SPACING.TOP_MARGIN
+local SETTINGS_SCROLL_INSET_BOTTOM = UI_SPACING.SCROLL_CONTENT_BOTTOM_PADDING or UI_SPACING.TOP_MARGIN
+
+---Thin horizontal rule between logical settings groups (Factory container + ApplyVisuals).
+local function AppendSettingsGroupDivider(parent, width, yOffset)
+    yOffset = yOffset - SETTINGS_DIVIDER_PAD
+    local bar = ns.UI.Factory:CreateContainer(parent, width, 2, false)
+    if bar then
+        bar:SetPoint("TOPLEFT", 0, yOffset)
+        if ApplyVisuals then
+            ApplyVisuals(bar,
+                { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.22 },
+                { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.10 })
+        end
+    end
+    return yOffset - 2 - SETTINGS_DIVIDER_PAD
+end
 
 -- Forward declaration: BuildSettings and ShowSettings share this reference.
 local settingsFrame = nil
@@ -46,18 +94,10 @@ local settingsKeybindIsListening = false
 local settingsKeybindButton = nil
 local settingsKeybindCaptureFrame = nil
 
-local function GetLocalizedText(key, fallback)
-    local L = ns.L
-    local value = L and L[key]
-    if type(value) == "string" and value ~= "" and value ~= key then
-        return value
-    end
-    return fallback
-end
-
 ---Same output channel as welcome message — not Lua print() (often only in System / default chat).
 local function WnDiagSettings(msg)
-    if WarbandNexus and WarbandNexus.Print then
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    if db and db.debugMode and WarbandNexus and WarbandNexus.Print then
         WarbandNexus:Print("|cff00ccff[WN DIAG]|r " .. tostring(msg))
     end
 end
@@ -284,18 +324,20 @@ end
 local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     -- Responsive fixed-column grid: column count grows with available width.
     -- All items in a given column share the same X anchor → perfect alignment.
-    local containerWidth = explicitWidth or parent:GetWidth() or 620
+    local containerWidth = explicitWidth or parent:GetWidth() or 640
 
     -- Determine column count based on width (prefer readability over density).
     -- 1-2 columns keeps long labels from looking cramped in Settings.
-    local MIN_COL_WIDTH = 260
-    local COL_SPACING = 12
+    local MIN_COL_WIDTH = SETTINGS_CHECKBOX_MIN_COL_W
+    local COL_SPACING = SETTINGS_CHECKBOX_COL_GAP
+    local rowIndent = SETTINGS_CHECKBOX_GRID_INDENT
+    local usableWidth = math.max(120, containerWidth - rowIndent)
     local maxCols = 2
-    local numCols = math.floor((containerWidth + COL_SPACING) / (MIN_COL_WIDTH + COL_SPACING))
+    local numCols = math.floor((usableWidth + COL_SPACING) / (MIN_COL_WIDTH + COL_SPACING))
     numCols = math.max(1, math.min(maxCols, numCols))
-    local colWidth = (containerWidth - (COL_SPACING * (numCols - 1))) / numCols
+    local colWidth = (usableWidth - (COL_SPACING * (numCols - 1))) / numCols
 
-    local ROW_HEIGHT = 36
+    local ROW_HEIGHT = SETTINGS_CHECKBOX_MIN_ROW_H
     local widgets = {}       -- key → {checkbox, label}
     local optionByKey = {}   -- key → option
     local childKeys = {}     -- parentKey → {childKey1, childKey2, ...}
@@ -303,12 +345,13 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
 
     local totalRows = 0
 
-    for i, option in ipairs(options) do
+    for i = 1, #options do
+        local option = options[i]
         local col = (i - 1) % numCols
         local row = math.floor((i - 1) / numCols)
         if row > totalRows then totalRows = row end
 
-        local xPos = col * (colWidth + COL_SPACING)
+        local xPos = rowIndent + col * (colWidth + COL_SPACING)
         local yPos  = yOffset + (row * -ROW_HEIGHT)
 
         local checkbox = CreateThemedCheckbox(parent)
@@ -322,6 +365,7 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
         label:SetPoint("LEFT", checkbox, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
         -- Constrain label width so it never bleeds into the next column
         label:SetWidth(colWidth - (ns.UI_TOGGLE_SIZE or 16) - UI_SPACING.AFTER_ELEMENT)
+        label:SetWordWrap(true)
 
         -- Set initial value
         if option.get then
@@ -370,7 +414,8 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     local function CascadeDescendants(key, forceDisable)
         local kids = childKeys[key]
         if not kids then return end
-        for _, childKey in ipairs(kids) do
+        for ki = 1, #kids do
+            local childKey = kids[ki]
             local w = widgets[childKey]
             if w then
                 if forceDisable then
@@ -396,7 +441,8 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
         local kids = childKeys[key]
         if not kids then return end
 
-        for _, childKey in ipairs(kids) do
+        for ki = 1, #kids do
+            local childKey = kids[ki]
             local w = widgets[childKey]
             local childOption = optionByKey[childKey]
             if w then
@@ -420,7 +466,8 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     end
     
     -- Set OnClick handlers (needs CascadeDescendants to be defined)
-    for i, option in ipairs(options) do
+    for i = 1, #options do
+        local option = options[i]
         if option.key and widgets[option.key] then
             local cb = widgets[option.key].checkbox
             cb:SetScript("OnClick", function(self)
@@ -449,7 +496,8 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     
     -- Apply initial disabled state: walk the tree top-down
     -- Process root options first, then cascade
-    for _, option in ipairs(options) do
+    for oi = 1, #options do
+        local option = options[oi]
         if option.key and not option.parentKey then
             -- Root node: cascade if unchecked
             if not widgets[option.key].checkbox:GetChecked() then
@@ -466,7 +514,8 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     -- So total rows = totalRows + 1 (if any options were placed).
     local usedRows = (#options > 0) and (totalRows + 1) or 0
 
-    return yOffset - (usedRows * ROW_HEIGHT) - 15, widgets  -- Reduced spacing
+    local gridTailPad = (UI_SPACING.AFTER_ELEMENT or 8) + 10
+    return yOffset - (usedRows * ROW_HEIGHT) - gridTailPad, widgets
 end
 
 ---Create button grid (RESPONSIVE - auto-adjusts columns)
@@ -478,16 +527,17 @@ end
 ---@return number New Y offset after grid
 local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButtonWidth)
     -- Calculate dynamic columns
-    local containerWidth = explicitWidth or parent:GetWidth() or 620
+    local containerWidth = explicitWidth or parent:GetWidth() or 640
     local minWidth = minButtonWidth or MIN_ITEM_WIDTH  -- Use custom min width if provided
     local itemsPerRow = math.max(2, math.floor((containerWidth + GRID_SPACING) / (minWidth + GRID_SPACING)))
     local buttonWidth = (containerWidth - (GRID_SPACING * (itemsPerRow - 1))) / itemsPerRow
-    local buttonHeight = 36
+    local buttonHeight = SETTINGS_BTN_H
     
     local row = 0
     local col = 0
     
-    for i, btnData in ipairs(buttons) do
+    for i = 1, #buttons do
+        local btnData = buttons[i]
         -- Create button
         local button = ns.UI.Factory:CreateButton(parent)
         button:SetSize(buttonWidth, buttonHeight)
@@ -571,13 +621,47 @@ end
 
 ---Create dropdown widget
 local function CreateDropdownWidget(parent, option, yOffset)
+    local pw = parent:GetWidth() or 400
+    local gap = GetHeaderToolbarGap()
+    local labelColW = math.min(SETTINGS_DROPDOWN_LABEL_COL_MAX,
+        math.max(SETTINGS_DROPDOWN_LABEL_COL_MIN, math.floor(pw * 0.40)))
+    local controlW = pw - labelColW - gap
+    local useStacked = controlW < SETTINGS_DROPDOWN_CONTROL_MIN_W
+    if useStacked then
+        controlW = pw
+    end
+
     -- Label
     local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
-    label:SetPoint("TOPLEFT", 0, yOffset)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(true)
     local optionName = type(option.name) == "function" and option.name() or option.name
     label:SetText(optionName)
     label:SetTextColor(1, 1, 1, 1)
-    
+
+    -- Dropdown button
+    local dropdown = ns.UI.Factory:CreateButton(parent)
+    dropdown:SetHeight(SETTINGS_BTN_H)
+    dropdown:SetWidth(math.max(SETTINGS_DROPDOWN_CONTROL_MIN_W, controlW))
+
+    local labelH = 18
+    if useStacked then
+        label:SetPoint("TOPLEFT", 0, yOffset)
+        label:SetWidth(pw)
+        labelH = math.max(18, label:GetStringHeight())
+        dropdown:SetPoint("TOPLEFT", 0, yOffset - labelH - gap)
+        dropdown:SetWidth(pw)
+    else
+        label:SetPoint("TOPLEFT", 0, yOffset)
+        label:SetWidth(labelColW)
+        labelH = math.max(18, label:GetStringHeight())
+        dropdown:SetPoint("TOPLEFT", labelColW + gap, yOffset)
+    end
+
+    ApplySettingsAccentChromeIdle(dropdown)
+    WireSettingsAccentButtonHover(dropdown)
+    RegisterSettingsAccentChrome(dropdown)
+
     -- Tooltip
     if option.desc then
         label:SetScript("OnEnter", function(self)
@@ -586,16 +670,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
         end)
         label:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
-    
-    -- Dropdown button
-    local dropdown = ns.UI.Factory:CreateButton(parent)
-    dropdown:SetHeight(32)
-    dropdown:SetPoint("TOPLEFT", 0, yOffset - 25)
-    dropdown:SetPoint("TOPRIGHT", 0, yOffset - 25)
-    
-    if ApplyVisuals then
-        ApplyVisuals(dropdown, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
-    end
+
     dropdown:EnableMouse(true)
     -- LeftButtonUp only: avoids double OnClick and stops the click-catcher from seeing a paired down/up in the same open action.
     if dropdown.RegisterForClicks then
@@ -745,7 +820,8 @@ local function CreateDropdownWidget(parent, option, yOffset)
         -- Clear existing children (scrollFrame and buttons)
         local bin = ns.UI_RecycleBin
         local children = { menu:GetChildren() }
-        for _, child in ipairs(children) do
+        for chi = 1, #children do
+            local child = children[chi]
             child:Hide()
             if bin then child:SetParent(bin) else child:SetParent(nil) end
         end
@@ -778,7 +854,8 @@ local function CreateDropdownWidget(parent, option, yOffset)
         -- Create option buttons (standardized: ApplyVisuals, consistent height, highlight current)
         local currentValue = option.get and option.get()
         local yPos = 0
-        for _, data in ipairs(sortedOptions) do
+        for oi = 1, #sortedOptions do
+            local data = sortedOptions[oi]
             local btn = ns.UI.Factory:CreateButton(scrollChild, btnWidth, itemHeight, true)
             if not btn then break end
             btn:EnableMouse(true)
@@ -908,9 +985,9 @@ local function CreateDropdownWidget(parent, option, yOffset)
             end)
         end
     end)
-    
-    -- Label + gap + 32px control + margin before next row
-    return yOffset - 82, dropdown, label
+
+    local rowCore = useStacked and (labelH + gap + SETTINGS_BTN_H) or math.max(SETTINGS_BTN_H, labelH + 4)
+    return yOffset - rowCore - gap, dropdown, label
 end
 
 ---Create styled input (EditBox) widget
@@ -950,9 +1027,9 @@ local function CreateInputWidget(parent, option, yOffset)
         editBox:SetNumeric(false) -- We handle numeric validation ourselves
     end
 
-    if ApplyVisuals then
-        ApplyVisuals(editBox, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
-    end
+    ApplySettingsAccentChromeIdle(editBox)
+    WireSettingsAccentButtonHover(editBox)
+    RegisterSettingsAccentChrome(editBox)
 
     -- Set initial value
     if option.get then
@@ -976,18 +1053,6 @@ local function CreateInputWidget(parent, option, yOffset)
     editBox:SetScript("OnEnterPressed", CommitValue)
     editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     editBox:SetScript("OnEditFocusLost", CommitValue)
-
-    -- Hover effect
-    editBox:SetScript("OnEnter", function(self)
-        if ApplyVisuals then
-            ApplyVisuals(self, {0.10, 0.10, 0.12, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-        end
-    end)
-    editBox:SetScript("OnLeave", function(self)
-        if ApplyVisuals then
-            ApplyVisuals(self, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
-        end
-    end)
 
     return yOffset - 68, editBox
 end
@@ -1054,15 +1119,111 @@ end
 -- Track subtitle elements for theme refresh
 local subtitleElements = {}
 local sliderElements = {}
+-- Settings controls that use accent borders (dropdown triggers, chrome buttons, inputs)
+local settingsAccentChrome = {}
+
+local function ApplySettingsAccentChromeIdle(btn)
+    if not btn or not ApplyVisuals then return end
+    local C = ns.UI_COLORS or COLORS
+    local a = C.accent or COLORS.accent
+    ApplyVisuals(btn, { 0.08, 0.08, 0.10, 1 }, { a[1], a[2], a[3], 0.75 })
+end
+
+local function WireSettingsAccentButtonHover(btn)
+    if not btn then return end
+    btn:SetScript("OnEnter", function(self)
+        if not ApplyVisuals then return end
+        local C = ns.UI_COLORS or COLORS
+        local a = C.accent or COLORS.accent
+        ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { a[1], a[2], a[3], 1 })
+    end)
+    btn:SetScript("OnLeave", function(self)
+        ApplySettingsAccentChromeIdle(self)
+    end)
+end
+
+local function RegisterSettingsAccentChrome(btn)
+    if btn then
+        settingsAccentChrome[#settingsAccentChrome + 1] = btn
+    end
+end
+
+local function RefreshSettingsAccentChrome()
+    for i = 1, #settingsAccentChrome do
+        local f = settingsAccentChrome[i]
+        if f and f:IsShown() then
+            ApplySettingsAccentChromeIdle(f)
+        end
+    end
+end
+
+---Subsection title row: thin accent bar + title (FontManager). Updates with RefreshSubtitles unless opts.muted / subtitleBright.
+local function AppendSettingsSubSectionHeader(parent, titleText, innerWidth, yOffset, opts)
+    if not parent or not titleText then return yOffset end
+    opts = opts or {}
+    local gapBefore = opts.skipGapBefore and 0 or GetHeaderToolbarGap()
+    local gapAfter = opts.skipGapAfter and 0 or (GetHeaderToolbarGap() + SETTINGS_SUBSECTION_GAP_AFTER_EXTRA)
+    local rowH = SETTINGS_SUBSECTION_ROW_H
+    local rowTop = yOffset - gapBefore
+    local row = ns.UI.Factory:CreateContainer(parent, innerWidth, rowH, false)
+    if not row then return yOffset, nil end
+    row:SetPoint("TOPLEFT", 0, rowTop)
+    local barW = 3
+    local accentBar = row:CreateTexture(nil, "ARTWORK")
+    accentBar:SetSize(barW, rowH - 8)
+    accentBar:SetPoint("LEFT", 6, 0)
+    local ac = COLORS.accent
+    if opts.muted and not opts.subtitleBright then
+        accentBar:SetColorTexture(ac[1], ac[2], ac[3], 0.35)
+    else
+        accentBar:SetColorTexture(ac[1], ac[2], ac[3], 0.92)
+    end
+    local titleFs = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
+    titleFs:SetPoint("LEFT", accentBar, "RIGHT", 10, 0)
+    titleFs:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+    titleFs:SetJustifyH("LEFT")
+    titleFs:SetWordWrap(false)
+    titleFs:SetMaxLines(1)
+    titleFs:SetText(titleText)
+    if opts.subtitleBright and COLORS.textBright then
+        titleFs:SetTextColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
+    elseif opts.muted and COLORS.textDim then
+        titleFs:SetTextColor(COLORS.textDim[1], COLORS.textDim[2], COLORS.textDim[3])
+    else
+        titleFs:SetTextColor(ac[1], ac[2], ac[3])
+        table.insert(subtitleElements, titleFs)
+    end
+    return rowTop - rowH - gapAfter, titleFs
+end
+
+---Stack a bordered sub-panel inside section.content (Factory container + border).
+local function StackSettingsSubPanel(hostContent, panelWidth, stackY, buildInner, opts)
+    opts = opts or {}
+    local pad = SETTINGS_SUBPANEL_PAD
+    local panel = ns.UI.Factory:CreateContainer(hostContent, panelWidth, 1, true)
+    if not panel then return stackY end
+    panel:SetPoint("TOPLEFT", 0, stackY)
+    local inner = ns.UI.Factory:CreateContainer(panel, panelWidth - 2 * pad, 1, false)
+    inner:SetPoint("TOPLEFT", pad, -pad)
+    local iw = inner:GetWidth()
+    local cy = buildInner(inner, iw)
+    local innerH = math.abs(cy) + pad
+    inner:SetHeight(innerH)
+    panel:SetHeight(innerH + 2 * pad)
+    local gap = opts.noTrailingGap and 0 or GetStackedSubPanelTrailingGap()
+    return stackY - panel:GetHeight() - gap
+end
 
 -- Helper: Refresh subtitle colors after theme change
 local function RefreshSubtitles()
-    for _, subtitle in ipairs(subtitleElements) do
+    for si = 1, #subtitleElements do
+        local subtitle = subtitleElements[si]
         if subtitle and subtitle:IsShown() then
             subtitle:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         end
     end
-    for _, slider in ipairs(sliderElements) do
+    for sli = 1, #sliderElements do
+        local slider = sliderElements[sli]
         if slider and slider:IsShown() then
             local thumb = slider:GetThumbTexture()
             if thumb then
@@ -1087,9 +1248,10 @@ local function BuildSettings(parent, containerWidth)
     -- Clear tracking tables
     wipe(subtitleElements)
     wipe(sliderElements)
+    wipe(settingsAccentChrome)
     
     -- Ensure we have a valid width
-    local effectiveWidth = containerWidth or parent:GetWidth() or 620
+    local effectiveWidth = containerWidth or parent:GetWidth() or 640
     
     local yOffset = 0  -- Start at 0, sections handle their own top spacing
     
@@ -1202,34 +1364,58 @@ local function BuildSettings(parent, containerWidth)
             end,
         },
     }
-    
-    local generalGridYOffset = CreateCheckboxGrid(generalSection.content, generalOptions, 0, effectiveWidth - 30)
-    
-    -- Current Language (label + tooltip) - Below checkboxes
-    local langLabel = FontManager:CreateFontString(generalSection.content, "body", "OVERLAY")
-    langLabel:SetPoint("TOPLEFT", 0, generalGridYOffset - 15)
-    local currentLangLabel = (ns.L and ns.L["CURRENT_LANGUAGE"]) or "Current Language:"
-    langLabel:SetText(currentLangLabel .. " " .. (GetLocale() or "enUS"))
-    langLabel:SetTextColor(1, 1, 1, 1)
-    
-    langLabel:SetScript("OnEnter", function(self)
-        local langTooltip = (ns.L and ns.L["LANGUAGE_TOOLTIP"]) or "Addon uses your WoW game client's language automatically. To change, update your Battle.net settings."
-        Settings_ShowWrappedTooltip(self, langTooltip)
+
+    local generalContentW = effectiveWidth - 30
+    local generalStackY = 0
+    generalStackY = StackSettingsSubPanel(generalSection.content, generalContentW, generalStackY, function(inner, iw)
+        local cy = 0
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_FEATURES"]) or "Features",
+            iw, cy, { skipGapBefore = true })
+        cy = CreateCheckboxGrid(inner, generalOptions, cy, iw)
+        return cy
     end)
-    langLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Keybinding row (label + capture button + clear button)
-    local keybindTitle = (ns.L and ns.L["KEYBINDING"]) or "Keybinding"
-    local keybindLabel = FontManager:CreateFontString(generalSection.content, "body", "OVERLAY")
-    keybindLabel:SetPoint("TOPLEFT", 0, generalGridYOffset - 45)
-    keybindLabel:SetJustifyH("LEFT")
-    keybindLabel:SetText(keybindTitle .. ":")
-    keybindLabel:SetTextColor(1, 1, 1, 1)
+    generalStackY = StackSettingsSubPanel(generalSection.content, generalContentW, generalStackY, function(inner, iw)
+        local hdrGap = GetHeaderToolbarGap()
+        local cy = 0
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_CONTROLS"]) or "Controls & scaling",
+            iw, cy, { skipGapBefore = true })
+        cy = cy - hdrGap
 
-    local keybindBtn = CreateFrame("Button", nil, generalSection.content, "BackdropTemplate")
-    settingsKeybindButton = keybindBtn
-    keybindBtn:SetSize(160, 26)
-    keybindBtn:SetPoint("LEFT", keybindLabel, "RIGHT", 10, 0)
+        -- Current Language (label + tooltip)
+        local langLabel = FontManager:CreateFontString(inner, "body", "OVERLAY")
+        langLabel:SetPoint("TOPLEFT", 0, cy)
+        langLabel:SetWidth(iw)
+        langLabel:SetJustifyH("LEFT")
+        langLabel:SetWordWrap(true)
+        local currentLangLabel = (ns.L and ns.L["CURRENT_LANGUAGE"]) or "Current Language:"
+        langLabel:SetText(currentLangLabel .. " " .. (GetLocale() or "enUS"))
+        langLabel:SetTextColor(1, 1, 1, 1)
+
+        langLabel:SetScript("OnEnter", function(self)
+            local langTooltip = (ns.L and ns.L["LANGUAGE_TOOLTIP"]) or "Addon uses your WoW game client's language automatically. To change, update your Battle.net settings."
+            Settings_ShowWrappedTooltip(self, langTooltip)
+        end)
+        langLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        cy = cy - 30
+
+        -- Keybinding row (fixed label column + controls)
+        local labelColW = math.min(170, math.floor(iw * 0.34))
+        local keybindTitle = (ns.L and ns.L["KEYBINDING"]) or "Keybinding"
+        local keybindLabel = FontManager:CreateFontString(inner, "body", "OVERLAY")
+        keybindLabel:SetPoint("TOPLEFT", 0, cy)
+        keybindLabel:SetWidth(labelColW)
+        keybindLabel:SetJustifyH("LEFT")
+        keybindLabel:SetWordWrap(false)
+        keybindLabel:SetText(keybindTitle .. ":")
+        keybindLabel:SetTextColor(1, 1, 1, 1)
+
+        local keybindBtn = ns.UI.Factory:CreateButton(inner, 168, SETTINGS_BTN_H, false)
+        settingsKeybindButton = keybindBtn
+        keybindBtn:SetPoint("LEFT", keybindLabel, "RIGHT", hdrGap, 0)
     if ApplyVisuals then
         ApplyVisuals(keybindBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
@@ -1391,15 +1577,14 @@ local function BuildSettings(parent, containerWidth)
     end)
     keybindBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Clear binding button
-    local clearBtn = CreateFrame("Button", nil, generalSection.content, "BackdropTemplate")
-    clearBtn:SetSize(24, 24)
-    clearBtn:SetPoint("LEFT", keybindBtn, "RIGHT", 6, 0)
-    if ApplyVisuals then
-        ApplyVisuals(clearBtn, {0.15, 0.08, 0.08, 1}, {0.6, 0.2, 0.2, 0.8})
-    end
+        -- Clear binding button
+        local clearBtn = ns.UI.Factory:CreateButton(inner, SETTINGS_BTN_H, SETTINGS_BTN_H, false)
+        clearBtn:SetPoint("LEFT", keybindBtn, "RIGHT", hdrGap, 0)
+        if ApplyVisuals then
+            ApplyVisuals(clearBtn, {0.15, 0.08, 0.08, 1}, {0.6, 0.2, 0.2, 0.8})
+        end
 
-    local clearIcon = clearBtn:CreateTexture(nil, "ARTWORK")
+        local clearIcon = clearBtn:CreateTexture(nil, "ARTWORK")
     clearIcon:SetSize(12, 12)
     clearIcon:SetPoint("CENTER")
     clearIcon:SetAtlas("uitools-icon-close")
@@ -1414,52 +1599,52 @@ local function BuildSettings(parent, containerWidth)
         clearIcon:SetVertexColor(1, 0.2, 0.2)
         Settings_ShowWrappedTooltip(self, (ns.L and ns.L["KEYBINDING_CLEAR"]) or "Clear keybinding")
     end)
-    clearBtn:SetScript("OnLeave", function()
-        clearIcon:SetVertexColor(0.9, 0.3, 0.3)
-        GameTooltip:Hide()
-    end)
+        clearBtn:SetScript("OnLeave", function()
+            clearIcon:SetVertexColor(0.9, 0.3, 0.3)
+            GameTooltip:Hide()
+        end)
 
-    -- Scroll speed slider (below keybinding row) – scale multiplier
-    local scrollSpeedYOffset = generalGridYOffset - 80
-    scrollSpeedYOffset = CreateSliderWidget(generalSection.content, {
-        name = (ns.L and ns.L["SCROLL_SPEED"]) or "Scroll Speed",
-        desc = (ns.L and ns.L["SCROLL_SPEED_TOOLTIP"]) or "Multiplier for scroll speed (1.0x = 28 px per step)",
-        min = 0.5,
-        max = 2.0,
-        step = 0.1,
-        get = function() return WarbandNexus.db.profile.scrollSpeed or 1.0 end,
-        set = function(_, value)
-            -- Round to 1 decimal to avoid floating-point drift
-            WarbandNexus.db.profile.scrollSpeed = math.floor(value * 10 + 0.5) / 10
-        end,
-        valueFormat = function(v) return string.format("%.1fx", v) end,
-    }, scrollSpeedYOffset, sliderElements)
-    
-    -- UI Scale slider (below scroll speed) – scales entire addon window
-    local uiScaleYOffset = CreateSliderWidget(generalSection.content, {
-        name = (ns.L and ns.L["UI_SCALE"]) or "UI Scale",
-        desc = (ns.L and ns.L["UI_SCALE_TOOLTIP"]) or "Scale the entire addon window. Reduce if the window takes up too much screen space.",
-        min = 0.6,
-        max = 1.5,
-        step = 0.05,
-        get = function() return WarbandNexus.db.profile.uiScale or 1.0 end,
-        set = function(_, value)
-            value = math.floor(value * 20 + 0.5) / 20
-            WarbandNexus.db.profile.uiScale = value
-            if WarbandNexus.ApplyUIScale then
-                WarbandNexus:ApplyUIScale(value)
-            end
-        end,
-        valueFormat = function(v) return string.format("%d%%", v * 100) end,
-    }, scrollSpeedYOffset, sliderElements)
-    
-    -- Calculate section height (content height + title + bottom padding)
-    local contentHeight = math.abs(uiScaleYOffset) + 10
-    generalSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
-    generalSection.content:SetHeight(contentHeight)
+        cy = cy - SETTINGS_BTN_H - hdrGap
+
+        cy = CreateSliderWidget(inner, {
+            name = (ns.L and ns.L["SCROLL_SPEED"]) or "Scroll Speed",
+            desc = (ns.L and ns.L["SCROLL_SPEED_TOOLTIP"]) or "Multiplier for scroll speed (1.0x = 28 px per step)",
+            min = 0.5,
+            max = 2.0,
+            step = 0.1,
+            get = function() return WarbandNexus.db.profile.scrollSpeed or 1.0 end,
+            set = function(_, value)
+                WarbandNexus.db.profile.scrollSpeed = math.floor(value * 10 + 0.5) / 10
+            end,
+            valueFormat = function(v) return string.format("%.1fx", v) end,
+        }, cy, sliderElements)
+
+        cy = CreateSliderWidget(inner, {
+            name = (ns.L and ns.L["UI_SCALE"]) or "UI Scale",
+            desc = (ns.L and ns.L["UI_SCALE_TOOLTIP"]) or "Scale the entire addon window. Reduce if the window takes up too much screen space.",
+            min = 0.6,
+            max = 1.5,
+            step = 0.05,
+            get = function() return WarbandNexus.db.profile.uiScale or 1.0 end,
+            set = function(_, value)
+                value = math.floor(value * 20 + 0.5) / 20
+                WarbandNexus.db.profile.uiScale = value
+                if WarbandNexus.ApplyUIScale then
+                    WarbandNexus:ApplyUIScale(value)
+                end
+            end,
+            valueFormat = function(v) return string.format("%d%%", v * 100) end,
+        }, cy, sliderElements)
+
+        return cy
+    end, { noTrailingGap = true })
+
+    local generalContentHeight = math.abs(generalStackY) + 10
+    generalSection:SetHeight(generalContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    generalSection.content:SetHeight(generalContentHeight)
     
     -- Move to next section
-    yOffset = yOffset - generalSection:GetHeight() - SECTION_SPACING
+    yOffset = yOffset - generalSection:GetHeight() - SETTINGS_SECTION_GAP
 
     --========================================================================
     -- MODULE MANAGEMENT
@@ -1468,18 +1653,25 @@ local function BuildSettings(parent, containerWidth)
     local moduleSection = CreateSection(parent, (ns.L and ns.L["MODULE_MANAGEMENT"]) or "Module Management", effectiveWidth)
     moduleSection:SetPoint("TOPLEFT", 0, yOffset)
     moduleSection:SetPoint("TOPRIGHT", 0, yOffset)
-    
-    -- Description label
-    local moduleDesc = FontManager:CreateFontString(moduleSection.content, "body", "OVERLAY")
-    moduleDesc:SetPoint("TOPLEFT", 0, 0)
-    moduleDesc:SetWidth(effectiveWidth - 30)
-    moduleDesc:SetJustifyH("LEFT")
-    moduleDesc:SetText((ns.L and ns.L["MODULE_MANAGEMENT_DESC"]) or "Enable or disable specific data collection modules. Disabling a module will stop its data updates and hide its tab from the UI.")
-    moduleDesc:SetTextColor(COLORS.textDim[1], COLORS.textDim[2], COLORS.textDim[3])
-    
-    local moduleGridYOffset = -45
-    
-    local moduleOptions = {
+
+    local moduleContentW = effectiveWidth - 30
+    local moduleStackY = 0
+    moduleStackY = StackSettingsSubPanel(moduleSection.content, moduleContentW, moduleStackY, function(inner, iw)
+        local cy = 0
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_MODULES_LIST"]) or "Enabled modules",
+            iw, cy, { skipGapBefore = true })
+        cy = cy - GetHeaderToolbarGap()
+        local moduleDesc = FontManager:CreateFontString(inner, "body", "OVERLAY")
+        moduleDesc:SetPoint("TOPLEFT", 0, cy)
+        moduleDesc:SetWidth(iw)
+        moduleDesc:SetJustifyH("LEFT")
+        moduleDesc:SetWordWrap(true)
+        moduleDesc:SetText((ns.L and ns.L["MODULE_MANAGEMENT_DESC"]) or "Enable or disable specific data collection modules. Disabling a module will stop its data updates and hide its tab from the UI.")
+        moduleDesc:SetTextColor(COLORS.textDim[1], COLORS.textDim[2], COLORS.textDim[3])
+        cy = cy - 42
+
+        local moduleOptions = {
         {
             key = "currencies",
             label = (ns.L and ns.L["MODULE_CURRENCIES"]) or "Currencies",
@@ -1596,17 +1788,19 @@ local function BuildSettings(parent, containerWidth)
                 end
             end,
         },
-    }
-    
-    moduleGridYOffset = CreateCheckboxGrid(moduleSection.content, moduleOptions, moduleGridYOffset, effectiveWidth - 30)
-    
-    -- Calculate section height
-    local moduleContentHeight = math.abs(moduleGridYOffset)
+        }
+
+        cy = CreateCheckboxGrid(inner, moduleOptions, cy, iw)
+        return cy
+    end, { noTrailingGap = true })
+
+    local moduleContentHeight = math.abs(moduleStackY) + 10
     moduleSection:SetHeight(moduleContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
     moduleSection.content:SetHeight(moduleContentHeight)
     
     -- Move to next section
-    yOffset = yOffset - moduleSection:GetHeight() - SECTION_SPACING
+    yOffset = yOffset - moduleSection:GetHeight() - SETTINGS_SECTION_GAP
+    yOffset = AppendSettingsGroupDivider(parent, effectiveWidth, yOffset)
 
     --========================================================================
     -- EASY ACCESS (floating shortcut)
@@ -1699,13 +1893,18 @@ local function BuildSettings(parent, containerWidth)
         },
     }
 
-    local vaultYOffset, vaultWidgets = CreateCheckboxGrid(vaultSection.content, vaultOptions, 0, effectiveWidth - 30)
+    local vaultContentW = effectiveWidth - 30
+    local vaultStackY = 0
+    local leftClickWidgets
 
-    local leftClickLabel = FontManager:CreateFontString(vaultSection.content, "subtitle", "OVERLAY")
-    leftClickLabel:SetPoint("TOPLEFT", 0, vaultYOffset - 5)
-    leftClickLabel:SetText((ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_HEADER"]) or "Left Click")
-    leftClickLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-    table.insert(subtitleElements, leftClickLabel)
+    vaultStackY = StackSettingsSubPanel(vaultSection.content, vaultContentW, vaultStackY, function(inner, iw)
+        local cy = 0
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_VAULT_GENERAL"]) or "Shortcut behavior",
+            iw, cy, { skipGapBefore = true })
+        cy = CreateCheckboxGrid(inner, vaultOptions, cy, iw)
+        return cy
+    end)
 
     local leftClickOptions = {
         {
@@ -1745,66 +1944,82 @@ local function BuildSettings(parent, containerWidth)
         },
     }
 
-    vaultYOffset = vaultYOffset - 30
-    local leftClickYOffset, leftClickWidgets = CreateCheckboxGrid(vaultSection.content, leftClickOptions, vaultYOffset, effectiveWidth - 30)
-    local function SyncLeftClickWidgets()
-        if not leftClickWidgets then return end
-        local keys = {
-            pve = "vaultButtonLeftClickPve",
-            chars = "vaultButtonLeftClickChars",
-            vault = "vaultButtonLeftClickVault",
-            saved = "vaultButtonLeftClickSaved",
-            plans = "vaultButtonLeftClickPlans",
-        }
-        for action, key in pairs(keys) do
-            local widget = leftClickWidgets[key]
-            if widget and widget.checkbox then
-                local checked = IsLeftClickAction(action)
-                widget.checkbox:SetChecked(checked)
-                if widget.checkbox.checkTexture then
-                    widget.checkbox.checkTexture:SetShown(checked)
+    vaultStackY = StackSettingsSubPanel(vaultSection.content, vaultContentW, vaultStackY, function(inner, iw)
+        local cy = 0
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_HEADER"]) or "Left Click",
+            iw, cy, { skipGapBefore = true })
+        cy = cy - 30
+        local leftClickYOffset
+        leftClickYOffset, leftClickWidgets = CreateCheckboxGrid(inner, leftClickOptions, cy, iw)
+
+        local function SyncLeftClickWidgets()
+            if not leftClickWidgets then return end
+            local keys = {
+                pve = "vaultButtonLeftClickPve",
+                chars = "vaultButtonLeftClickChars",
+                vault = "vaultButtonLeftClickVault",
+                saved = "vaultButtonLeftClickSaved",
+                plans = "vaultButtonLeftClickPlans",
+            }
+            for action, key in pairs(keys) do
+                local widget = leftClickWidgets[key]
+                if widget and widget.checkbox then
+                    local checked = IsLeftClickAction(action)
+                    widget.checkbox:SetChecked(checked)
+                    if widget.checkbox.checkTexture then
+                        widget.checkbox.checkTexture:SetShown(checked)
+                    end
                 end
             end
         end
-    end
-    local leftClickScripts = {
-        vaultButtonLeftClickPve = "pve",
-        vaultButtonLeftClickChars = "chars",
-        vaultButtonLeftClickVault = "vault",
-        vaultButtonLeftClickSaved = "saved",
-        vaultButtonLeftClickPlans = "plans",
-    }
-    for key, action in pairs(leftClickScripts) do
-        local widget = leftClickWidgets and leftClickWidgets[key]
-        if widget and widget.checkbox then
-            widget.checkbox:SetScript("OnClick", function(self)
-                SetLeftClickAction(action, self:GetChecked())
-                SyncLeftClickWidgets()
-            end)
+        local leftClickScripts = {
+            vaultButtonLeftClickPve = "pve",
+            vaultButtonLeftClickChars = "chars",
+            vaultButtonLeftClickVault = "vault",
+            vaultButtonLeftClickSaved = "saved",
+            vaultButtonLeftClickPlans = "plans",
+        }
+        for key, action in pairs(leftClickScripts) do
+            local widget = leftClickWidgets and leftClickWidgets[key]
+            if widget and widget.checkbox then
+                widget.checkbox:SetScript("OnClick", function(self)
+                    SetLeftClickAction(action, self:GetChecked())
+                    SyncLeftClickWidgets()
+                end)
+            end
         end
-    end
 
-    vaultYOffset = leftClickYOffset - 12
-    vaultYOffset = CreateSliderWidget(vaultSection.content, {
-        name = (ns.L and ns.L["CONFIG_VAULT_BUTTON_OPACITY"]) or "Button Opacity",
-        desc = (ns.L and ns.L["CONFIG_VAULT_BUTTON_OPACITY_DESC"]) or "Adjust Easy Access opacity when it is visible.",
-        min = 0.2,
-        max = 1.0,
-        step = 0.05,
-        get = function() return GetVaultButtonSettings().opacity or 1.0 end,
-        set = function(_, value)
-            value = math.floor(value * 20 + 0.5) / 20
-            GetVaultButtonSettings().opacity = value
-            RefreshVaultButton()
-        end,
-        valueFormat = function(v) return string.format("%d%%", v * 100) end,
-    }, vaultYOffset, sliderElements)
+        return leftClickYOffset - 12
+    end)
 
-    local vaultContentHeight = math.abs(vaultYOffset) + 10
+    vaultStackY = StackSettingsSubPanel(vaultSection.content, vaultContentW, vaultStackY, function(inner, iw)
+        local cy = 0
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_VAULT_LOOK"]) or "Look & opacity",
+            iw, cy, { skipGapBefore = true })
+        cy = CreateSliderWidget(inner, {
+            name = (ns.L and ns.L["CONFIG_VAULT_BUTTON_OPACITY"]) or "Button Opacity",
+            desc = (ns.L and ns.L["CONFIG_VAULT_BUTTON_OPACITY_DESC"]) or "Adjust Easy Access opacity when it is visible.",
+            min = 0.2,
+            max = 1.0,
+            step = 0.05,
+            get = function() return GetVaultButtonSettings().opacity or 1.0 end,
+            set = function(_, value)
+                value = math.floor(value * 20 + 0.5) / 20
+                GetVaultButtonSettings().opacity = value
+                RefreshVaultButton()
+            end,
+            valueFormat = function(v) return string.format("%d%%", v * 100) end,
+        }, cy, sliderElements)
+        return cy
+    end, { noTrailingGap = true })
+
+    local vaultContentHeight = math.abs(vaultStackY) + 10
     vaultSection:SetHeight(vaultContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
     vaultSection.content:SetHeight(vaultContentHeight)
 
-    yOffset = yOffset - vaultSection:GetHeight() - SECTION_SPACING
+    yOffset = yOffset - vaultSection:GetHeight() - SETTINGS_SECTION_GAP
     
     --========================================================================
     -- TAB FILTERING
@@ -1815,15 +2030,12 @@ local function BuildSettings(parent, containerWidth)
     tabSection:SetPoint("TOPRIGHT", 0, yOffset)
     
     local tabGridYOffset = 0
-    
-    -- WARBAND BANK GROUP
-    local warbandLabel = FontManager:CreateFontString(tabSection.content, "subtitle", "OVERLAY")
-    warbandLabel:SetPoint("TOPLEFT", 0, tabGridYOffset)
-    warbandLabel:SetText((ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank")
-    warbandLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-    table.insert(subtitleElements, warbandLabel)
-    tabGridYOffset = tabGridYOffset - 25  -- Consistent subtitle → checkbox spacing
-    
+    local tabInnerW = effectiveWidth - 30
+
+    tabGridYOffset = AppendSettingsSubSectionHeader(tabSection.content,
+        (ns.L and ns.L["SETTINGS_SECTION_TAB_WARBAND"]) or "Warband Bank",
+        tabInnerW, tabGridYOffset, { skipGapBefore = true })
+
     local warbandOptions = {}
     local tabFmt = (ns.L and ns.L["TAB_FORMAT"]) or "Tab %d"
     local ignoreTabFmt = (ns.L and ns.L["IGNORE_WARBAND_TAB_FORMAT"]) or "Ignore Warband Bank Tab %d from automatic scanning"
@@ -1837,23 +2049,21 @@ local function BuildSettings(parent, containerWidth)
         })
     end
     
-    tabGridYOffset = CreateCheckboxGrid(tabSection.content, warbandOptions, tabGridYOffset, effectiveWidth - 30)
-    tabGridYOffset = tabGridYOffset - 10  -- Space between groups
-    
-    -- PERSONAL BANK GROUP
-    local personalLabel = FontManager:CreateFontString(tabSection.content, "subtitle", "OVERLAY")
-    personalLabel:SetPoint("TOPLEFT", 0, tabGridYOffset)
-    personalLabel:SetText((ns.L and ns.L["ITEMS_PLAYER_BANK"]) or "Personal Bank")
-    personalLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-    table.insert(subtitleElements, personalLabel)
-    tabGridYOffset = tabGridYOffset - 25  -- Consistent subtitle → checkbox spacing
-    
+    tabGridYOffset = CreateCheckboxGrid(tabSection.content, warbandOptions, tabGridYOffset, tabInnerW)
+    tabGridYOffset = tabGridYOffset - 10
+
+    tabGridYOffset = AppendSettingsSubSectionHeader(tabSection.content,
+        (ns.L and ns.L["SETTINGS_SECTION_TAB_PERSONAL_BANK"]) or "Personal Bank",
+        tabInnerW, tabGridYOffset)
+
     local personalBankOptions = {}
     local bankLbl = (ns.L and ns.L["BANK_LABEL"]) or "Bank"
     local bagFmt = (ns.L and ns.L["BAG_FORMAT"]) or "Bag %d"
     local ignoreScanFmt = (ns.L and ns.L["IGNORE_SCAN_FORMAT"]) or "Ignore %s from automatic scanning"
     local personalBankLabels = {bankLbl, string.format(bagFmt, 6), string.format(bagFmt, 7), string.format(bagFmt, 8), string.format(bagFmt, 9), string.format(bagFmt, 10), string.format(bagFmt, 11)}
-    for i, bagID in ipairs(ns.PERSONAL_BANK_BAGS) do
+    local personalBankBags = ns.PERSONAL_BANK_BAGS
+    for i = 1, #personalBankBags do
+        local bagID = personalBankBags[i]
         local label = personalBankLabels[i] or string.format(bagFmt, bagID)
         table.insert(personalBankOptions, {
             key = "pbank" .. bagID,
@@ -1874,24 +2084,22 @@ local function BuildSettings(parent, containerWidth)
         })
     end
     
-    tabGridYOffset = CreateCheckboxGrid(tabSection.content, personalBankOptions, tabGridYOffset, effectiveWidth - 30)
-    tabGridYOffset = tabGridYOffset - 10  -- Space between groups
-    
-    -- INVENTORY GROUP
-    local inventoryLabel = FontManager:CreateFontString(tabSection.content, "subtitle", "OVERLAY")
-    inventoryLabel:SetPoint("TOPLEFT", 0, tabGridYOffset)
-    inventoryLabel:SetText((ns.L and ns.L["CHARACTER_INVENTORY"]) or "Inventory")
-    inventoryLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-    table.insert(subtitleElements, inventoryLabel)
-    tabGridYOffset = tabGridYOffset - 25  -- Consistent subtitle → checkbox spacing
-    
+    tabGridYOffset = CreateCheckboxGrid(tabSection.content, personalBankOptions, tabGridYOffset, tabInnerW)
+    tabGridYOffset = tabGridYOffset - 10
+
+    tabGridYOffset = AppendSettingsSubSectionHeader(tabSection.content,
+        (ns.L and ns.L["SETTINGS_SECTION_TAB_INVENTORY"]) or "Inventory",
+        tabInnerW, tabGridYOffset)
+
     local inventoryOptions = {}
     local backpackLabel = (ns.L and ns.L["BACKPACK_LABEL"]) or "Backpack"
     local reagentLabel = (ns.L and ns.L["REAGENT_LABEL"]) or "Reagent"
     local invBagFmt = (ns.L and ns.L["BAG_FORMAT"]) or "Bag %d"
     local invIgnoreFmt = (ns.L and ns.L["IGNORE_SCAN_FORMAT"]) or "Ignore %s from automatic scanning"
     local inventoryLabels = {backpackLabel, string.format(invBagFmt, 1), string.format(invBagFmt, 2), string.format(invBagFmt, 3), string.format(invBagFmt, 4), reagentLabel}
-    for i, bagID in ipairs(ns.INVENTORY_BAGS) do
+    local inventoryBags = ns.INVENTORY_BAGS
+    for i = 1, #inventoryBags do
+        local bagID = inventoryBags[i]
         local label = inventoryLabels[i] or string.format(invBagFmt, bagID)
         table.insert(inventoryOptions, {
             key = "inv" .. bagID,
@@ -1912,15 +2120,16 @@ local function BuildSettings(parent, containerWidth)
         })
     end
     
-    tabGridYOffset = CreateCheckboxGrid(tabSection.content, inventoryOptions, tabGridYOffset, effectiveWidth - 30)
-    
+    tabGridYOffset = CreateCheckboxGrid(tabSection.content, inventoryOptions, tabGridYOffset, tabInnerW)
+
     -- Calculate section height
     local contentHeight = math.abs(tabGridYOffset)
     tabSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
     tabSection.content:SetHeight(contentHeight)
     
     -- Move to next section
-    yOffset = yOffset - tabSection:GetHeight() - SECTION_SPACING
+    yOffset = yOffset - tabSection:GetHeight() - SETTINGS_SECTION_GAP
+    yOffset = AppendSettingsGroupDivider(parent, effectiveWidth, yOffset)
     
     --========================================================================
     -- NOTIFICATIONS
@@ -2140,64 +2349,81 @@ local function BuildSettings(parent, containerWidth)
             set = function(value) WarbandNexus.db.profile.notifications.tryCounterDropScreenshot = value end,
         },
     }
-    
-    local notifGridYOffset, notifWidgets = CreateCheckboxGrid(notifSection.content, notifOptions, 0, effectiveWidth - 30)
 
-    -- Try counter: where chat lines go (Loot vs own group vs all tabs)
-    notifGridYOffset = notifGridYOffset - 8
+    local notifInnerW = effectiveWidth - 30
+    local notifStackY = 0
+    local notifWidgets
     local tcChatRouteDropdown, tcChatRouteLabel
-    notifGridYOffset, tcChatRouteDropdown, tcChatRouteLabel = CreateDropdownWidget(notifSection.content, {
-        name = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LABEL"]) or "Try counter chat output",
-        desc = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DESC"])
-            or "Default uses the same tabs as Loot messages. “Warband Nexus” is a separate filter you can enable per tab (often listed in the chat tab settings). “All tabs” prints to every standard chat window.",
-        -- Open downward like other dropdowns (avoids confusing “flip”; layout gap trimmed separately).
-        menuOpensUpward = false,
-        valueOrder = { "loot", "dedicated", "all_tabs" },
-        values = {
-            loot = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LOOT"]) or "1) Same tabs as Loot (default)",
-            dedicated = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"]) or "2) Warband Nexus (separate filter)",
-            all_tabs = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_ALL_TABS"]) or "3) All standard chat tabs",
-        },
-        get = function()
-            return WarbandNexus.db.profile.notifications.tryCounterChatRoute or "loot"
-        end,
-        set = function(_, value)
-            WarbandNexus.db.profile.notifications.tryCounterChatRoute = value
-            if ns.ChatOutput and ns.ChatOutput.OnTryCounterChatRouteChanged then
-                ns.ChatOutput.OnTryCounterChatRouteChanged(value)
-            end
-        end,
-    }, notifGridYOffset)
 
-    -- Tight spacing under try-counter route control
-    notifGridYOffset = notifGridYOffset - 4
-    local addTcChatBtn = ns.UI.Factory:CreateButton(notifSection.content)
-    addTcChatBtn:SetSize(math.min(effectiveWidth - 30, 320), 30)
-    addTcChatBtn:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    local addTcChatBtnText = addTcChatBtn:GetFontString() or FontManager:CreateFontString(addTcChatBtn, "body", "OVERLAY")
-    addTcChatBtnText:SetPoint("CENTER")
-    addTcChatBtnText:SetText((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_BTN"]) or "Add try counter to selected chat tab")
-    addTcChatBtn:SetFontString(addTcChatBtnText)
-    if ApplyVisuals then
-        ApplyVisuals(addTcChatBtn, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
-    end
-    addTcChatBtn:SetScript("OnEnter", function(self)
-        Settings_ShowWrappedTooltip(self, (ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"])
-            or "Select the chat tab you want, then click. Use with “Warband Nexus (separate filter)” mode so try lines are not tied to Loot.")
+    notifStackY = StackSettingsSubPanel(notifSection.content, notifInnerW, notifStackY, function(inner, iw)
+        local cy, w = CreateCheckboxGrid(inner, notifOptions, 0, iw)
+        notifWidgets = w
+        return cy
     end)
-    addTcChatBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    addTcChatBtn:SetScript("OnClick", function()
-        if ns.ChatOutput and ns.ChatOutput.AddTryCounterGroupToSelectedChatFrame then
-            local ok, err = ns.ChatOutput.AddTryCounterGroupToSelectedChatFrame()
-            if ok and WarbandNexus.Print then
-                WarbandNexus:Print((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"]) or "|cff9966ff[Warband Nexus]|r Try counter enabled on the selected chat tab.")
-            elseif WarbandNexus.Print then
-                WarbandNexus:Print((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"]) or "|cffff6600[Warband Nexus]|r Could not update the chat tab (no chat frame or API blocked).")
+
+    notifStackY = StackSettingsSubPanel(notifSection.content, notifInnerW, notifStackY, function(inner, iw)
+        local cy
+        cy, tcChatRouteDropdown, tcChatRouteLabel = CreateDropdownWidget(inner, {
+            name = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LABEL"]) or "Try counter chat output",
+            desc = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DESC"])
+                or "Default uses the same tabs as Loot messages. “Warband Nexus” is a separate filter you can enable per tab (often listed in the chat tab settings). “All tabs” prints to every standard chat window.",
+            menuOpensUpward = false,
+            valueOrder = { "loot", "dedicated", "all_tabs" },
+            values = {
+                loot = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_LOOT"]) or "1) Same tabs as Loot (default)",
+                dedicated = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_DEDICATED"]) or "2) Warband Nexus (separate filter)",
+                all_tabs = (ns.L and ns.L["TRYCOUNTER_CHAT_ROUTE_ALL_TABS"]) or "3) All standard chat tabs",
+            },
+            get = function()
+                return WarbandNexus.db.profile.notifications.tryCounterChatRoute or "loot"
+            end,
+            set = function(_, value)
+                WarbandNexus.db.profile.notifications.tryCounterChatRoute = value
+                if ns.ChatOutput and ns.ChatOutput.OnTryCounterChatRouteChanged then
+                    ns.ChatOutput.OnTryCounterChatRouteChanged(value)
+                end
+            end,
+        }, 0)
+        local padBetween = GetHeaderToolbarGap()
+        cy = cy - padBetween
+        local addTcChatBtn = ns.UI.Factory:CreateButton(inner)
+        addTcChatBtn:SetSize(math.min(iw, 320), 30)
+        addTcChatBtn:SetPoint("TOPLEFT", 0, cy)
+        local addTcChatBtnText = addTcChatBtn:GetFontString() or FontManager:CreateFontString(addTcChatBtn, "body", "OVERLAY")
+        addTcChatBtnText:SetPoint("CENTER")
+        addTcChatBtnText:SetText((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_BTN"]) or "Add try counter to selected chat tab")
+        addTcChatBtn:SetFontString(addTcChatBtnText)
+        ApplySettingsAccentChromeIdle(addTcChatBtn)
+        RegisterSettingsAccentChrome(addTcChatBtn)
+        addTcChatBtn:SetScript("OnEnter", function(self)
+            if ApplyVisuals then
+                local C = ns.UI_COLORS or COLORS
+                local a = C.accent or COLORS.accent
+                ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { a[1], a[2], a[3], 1 })
             end
-        end
+            Settings_ShowWrappedTooltip(self, (ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"])
+                or "Select the chat tab you want, then click. Use with “Warband Nexus (separate filter)” mode so try lines are not tied to Loot.")
+        end)
+        addTcChatBtn:SetScript("OnLeave", function(self)
+            ApplySettingsAccentChromeIdle(self)
+            GameTooltip:Hide()
+        end)
+        addTcChatBtn:SetScript("OnClick", function()
+            if ns.ChatOutput and ns.ChatOutput.AddTryCounterGroupToSelectedChatFrame then
+                local ok, err = ns.ChatOutput.AddTryCounterGroupToSelectedChatFrame()
+                if ok and WarbandNexus.Print then
+                    WarbandNexus:Print((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"]) or "|cff9966ff[Warband Nexus]|r Try counter enabled on the selected chat tab.")
+                elseif WarbandNexus.Print then
+                    WarbandNexus:Print((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"]) or "|cffff6600[Warband Nexus]|r Could not update the chat tab (no chat frame or API blocked).")
+                end
+            end
+        end)
+        local btnTrail = GetHeaderToolbarGap()
+        return cy - 30 - btnTrail
     end)
-    notifGridYOffset = notifGridYOffset - 40
-    
+
+    local notifGridYOffset = notifStackY
+
     -- Track external dependents (sliders, buttons) that should disable when notifications are OFF
     local notifExternalDependents = {}
 
@@ -2211,7 +2437,8 @@ local function BuildSettings(parent, containerWidth)
             and WarbandNexus.db.profile.notifications
             and WarbandNexus.db.profile.notifications.autoTryCounter)
         local shouldDisable = chatHidden or autoOff
-        for _, w in ipairs(tcChatDependents) do
+        for wi = 1, #tcChatDependents do
+            local w = tcChatDependents[wi]
             if w then
                 if shouldDisable then
                     if w.Disable then w:Disable() end
@@ -2230,7 +2457,8 @@ local function BuildSettings(parent, containerWidth)
 
     notifWidgets._onParentToggle = function(key, isEnabled)
         if key == "enabled" then
-            for _, dep in ipairs(notifExternalDependents) do
+            for di = 1, #notifExternalDependents do
+                local dep = notifExternalDependents[di]
                 if dep.type == "slider" then
                     if isEnabled then
                         dep.widget:Enable()
@@ -2265,16 +2493,15 @@ local function BuildSettings(parent, containerWidth)
         end
     end
     ApplyHideTryCounterChatCascade()
-    
+
     -- ---- Notification Duration ----
-    notifGridYOffset = notifGridYOffset - 15
-    local durationLabel = FontManager:CreateFontString(notifSection.content, "subtitle", "OVERLAY")
-    durationLabel:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    durationLabel:SetText((ns.L and ns.L["NOTIFICATION_DURATION"]) or "Notification Duration")
-    durationLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-    table.insert(subtitleElements, durationLabel)
-    notifGridYOffset = notifGridYOffset - 20
-    
+    notifGridYOffset = notifGridYOffset - (GetHeaderToolbarGap() + 7)
+    local durationLabel
+    notifGridYOffset, durationLabel = AppendSettingsSubSectionHeader(notifSection.content,
+        (ns.L and ns.L["SETTINGS_SECTION_NOTIF_TIMING"]) or "Timing",
+        notifInnerW, notifGridYOffset)
+    notifGridYOffset = notifGridYOffset - GetHeaderToolbarGap()
+
     local durationSlider = nil  -- Will capture from sliderElements
     local sliderCountBefore = #sliderElements
     notifGridYOffset = CreateSliderWidget(notifSection.content, {
@@ -2295,18 +2522,17 @@ local function BuildSettings(parent, containerWidth)
     end
     
     -- ---- Notification Position ----
-    notifGridYOffset = notifGridYOffset - 10
-    local posLabel = FontManager:CreateFontString(notifSection.content, "subtitle", "OVERLAY")
-    posLabel:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    posLabel:SetText((ns.L and ns.L["NOTIFICATION_POSITION"]) or "Notification Position")
-    posLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-    table.insert(subtitleElements, posLabel)
-    notifGridYOffset = notifGridYOffset - 22
+    notifGridYOffset = notifGridYOffset - GetHeaderToolbarGap()
+    local posLabel
+    notifGridYOffset, posLabel = AppendSettingsSubSectionHeader(notifSection.content,
+        (ns.L and ns.L["SETTINGS_SECTION_NOTIF_POSITION"]) or "Position",
+        notifInnerW, notifGridYOffset)
+    notifGridYOffset = notifGridYOffset - GetHeaderToolbarGap()
 
     local anchorFormat = (ns.L and ns.L["ANCHOR_FORMAT"]) or "Anchor: %s  |  X: %d  |  Y: %d"
     local anchorDesc = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
     anchorDesc:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    anchorDesc:SetPoint("TOPRIGHT", -10, notifGridYOffset)
+    anchorDesc:SetPoint("TOPRIGHT", -UI_SPACING.SIDE_MARGIN, notifGridYOffset)
     anchorDesc:SetJustifyH("LEFT")
     anchorDesc:SetTextColor(0.7, 0.7, 0.7, 1)
 
@@ -2334,7 +2560,8 @@ local function BuildSettings(parent, containerWidth)
     -- Forward declaration for shared handlers below.
     local useAlertFrameCheck
 
-    local btnWidth = math.floor((effectiveWidth - 45) / 4)
+    local btnGap = GetHeaderToolbarGap()
+    local btnWidth = math.floor((notifInnerW - 3 * btnGap) / 4)
     local setPosBtn = ns.UI.Factory:CreateButton(notifSection.content)
     setPosBtn:SetSize(btnWidth, 30)
     setPosBtn:SetPoint("TOPLEFT", 0, notifGridYOffset)
@@ -2342,6 +2569,9 @@ local function BuildSettings(parent, containerWidth)
     setPosBtnText:SetPoint("CENTER")
     setPosBtnText:SetText((ns.L and ns.L["SET_POSITION"]) or "Set Position")
     setPosBtn:SetFontString(setPosBtnText)
+    ApplySettingsAccentChromeIdle(setPosBtn)
+    WireSettingsAccentButtonHover(setPosBtn)
+    RegisterSettingsAccentChrome(setPosBtn)
     local function saveGhostPosition(ghost, forCriteria)
         ghost:StopMovingOrSizing()
         local screenW, screenH = UIParent:GetWidth(), UIParent:GetHeight()
@@ -2484,11 +2714,14 @@ local function BuildSettings(parent, containerWidth)
 
     local setBothPosBtn = ns.UI.Factory:CreateButton(notifSection.content)
     setBothPosBtn:SetSize(btnWidth, 30)
-    setBothPosBtn:SetPoint("LEFT", setPosBtn, "RIGHT", 5, 0)
+    setBothPosBtn:SetPoint("LEFT", setPosBtn, "RIGHT", btnGap, 0)
     local setBothPosBtnText = setBothPosBtn:GetFontString() or FontManager:CreateFontString(setBothPosBtn, "body", "OVERLAY")
     setBothPosBtnText:SetPoint("CENTER")
     setBothPosBtnText:SetText((ns.L and ns.L["SET_BOTH_POSITION"]) or "Set Both Position")
     setBothPosBtn:SetFontString(setBothPosBtnText)
+    ApplySettingsAccentChromeIdle(setBothPosBtn)
+    WireSettingsAccentButtonHover(setBothPosBtn)
+    RegisterSettingsAccentChrome(setBothPosBtn)
     setBothPosBtn:SetScript("OnClick", function()
         if WarbandNexus.db.profile.notifications.useAlertFramePosition then return end
         if WarbandNexus._positionGhost or WarbandNexus._positionGhostCriteria then closePositionGhosts() return end
@@ -2526,11 +2759,14 @@ local function BuildSettings(parent, containerWidth)
 
     local resetBtn = ns.UI.Factory:CreateButton(notifSection.content)
     resetBtn:SetSize(btnWidth, 30)
-    resetBtn:SetPoint("LEFT", setBothPosBtn, "RIGHT", 5, 0)
+    resetBtn:SetPoint("LEFT", setBothPosBtn, "RIGHT", btnGap, 0)
     local resetBtnText = resetBtn:GetFontString() or FontManager:CreateFontString(resetBtn, "body", "OVERLAY")
     resetBtnText:SetPoint("CENTER")
     resetBtnText:SetText((ns.L and ns.L["RESET_POSITION"]) or "Reset Position")
     resetBtn:SetFontString(resetBtnText)
+    ApplySettingsAccentChromeIdle(resetBtn)
+    WireSettingsAccentButtonHover(resetBtn)
+    RegisterSettingsAccentChrome(resetBtn)
     resetBtn:SetScript("OnClick", function()
         if WarbandNexus.db.profile.notifications.useAlertFramePosition then return end
         local db = WarbandNexus.db.profile.notifications
@@ -2548,11 +2784,14 @@ local function BuildSettings(parent, containerWidth)
 
     local testBtn = ns.UI.Factory:CreateButton(notifSection.content)
     testBtn:SetSize(btnWidth, 30)
-    testBtn:SetPoint("LEFT", resetBtn, "RIGHT", 5, 0)
+    testBtn:SetPoint("LEFT", resetBtn, "RIGHT", btnGap, 0)
     local testBtnText = testBtn:GetFontString() or FontManager:CreateFontString(testBtn, "body", "OVERLAY")
     testBtnText:SetPoint("CENTER")
     testBtnText:SetText((ns.L and ns.L["TEST_NOTIFICATION"]) or "Test Notification")
     testBtn:SetFontString(testBtnText)
+    ApplySettingsAccentChromeIdle(testBtn)
+    WireSettingsAccentButtonHover(testBtn)
+    RegisterSettingsAccentChrome(testBtn)
     testBtn:SetScript("OnClick", function()
         if WarbandNexus.Notify then
             -- Always use current DB position (Notify reads from db at show time)
@@ -2567,7 +2806,7 @@ local function BuildSettings(parent, containerWidth)
     useAlertFrameLabel:SetJustifyH("LEFT")
     useAlertFrameLabel:SetText((ns.L and ns.L["USE_ALERTFRAME_POSITION"]) or "Use AlertFrame position")
     useAlertFrameLabel:SetTextColor(1, 1, 1, 1)
-    useAlertFrameLabel:SetPoint("LEFT", useAlertFrameCheck, "RIGHT", (ns.UI_SPACING and ns.UI_SPACING.AFTER_ELEMENT) or 8, 0)
+    useAlertFrameLabel:SetPoint("LEFT", useAlertFrameCheck, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
     useAlertFrameCheck:SetChecked(WarbandNexus.db.profile.notifications.useAlertFramePosition)
     if useAlertFrameCheck.checkTexture then useAlertFrameCheck.checkTexture:SetShown(WarbandNexus.db.profile.notifications.useAlertFramePosition) end
     useAlertFrameCheck:SetScript("OnClick", function(self)
@@ -2580,11 +2819,15 @@ local function BuildSettings(parent, containerWidth)
     if WarbandNexus.db.profile.notifications.useAlertFramePosition then setPosBtn:Disable() setPosBtn:SetAlpha(0.5) setBothPosBtn:Disable() setBothPosBtn:SetAlpha(0.5) resetBtn:Disable() resetBtn:SetAlpha(0.5) else setPosBtn:Enable() setBothPosBtn:Enable() resetBtn:Enable() end
     notifGridYOffset = notifGridYOffset - 30
 
-    table.insert(notifExternalDependents, { type = "label", widget = durationLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
+    if durationLabel then
+        table.insert(notifExternalDependents, { type = "label", widget = durationLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
+    end
     if durationSlider then
         table.insert(notifExternalDependents, { type = "slider", widget = durationSlider, label = durationLabel })
     end
-    table.insert(notifExternalDependents, { type = "label", widget = posLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
+    if posLabel then
+        table.insert(notifExternalDependents, { type = "label", widget = posLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
+    end
     table.insert(notifExternalDependents, { type = "label", widget = anchorDesc, color = {0.7, 0.7, 0.7} })
     table.insert(notifExternalDependents, { type = "button", widget = setPosBtn })
     table.insert(notifExternalDependents, { type = "button", widget = setBothPosBtn })
@@ -2596,7 +2839,8 @@ local function BuildSettings(parent, containerWidth)
     -- Apply initial disabled state if notifications are OFF
     local notifInitialEnabled = WarbandNexus.db.profile.notifications.enabled
     if not notifInitialEnabled then
-        for _, dep in ipairs(notifExternalDependents) do
+        for di = 1, #notifExternalDependents do
+            local dep = notifExternalDependents[di]
             if dep.type == "slider" then
                 dep.widget:Disable()
                 dep.widget:SetAlpha(0.35)
@@ -2616,7 +2860,7 @@ local function BuildSettings(parent, containerWidth)
     notifSection.content:SetHeight(contentHeight)
     
     -- Move to next section
-    yOffset = yOffset - notifSection:GetHeight() - SECTION_SPACING
+    yOffset = yOffset - notifSection:GetHeight() - SETTINGS_SECTION_GAP
     
     --========================================================================
     -- THEME & APPEARANCE
@@ -2625,21 +2869,21 @@ local function BuildSettings(parent, containerWidth)
     local themeSection = CreateSection(parent, (ns.L and ns.L["THEME_APPEARANCE"]) or "Theme & Appearance", effectiveWidth)
     themeSection:SetPoint("TOPLEFT", 0, yOffset)
     themeSection:SetPoint("TOPRIGHT", 0, yOffset)
-    
-    local themeYOffset = 0
-    
-    -- Color Picker Button
-    local colorPickerLabel = FontManager:CreateFontString(themeSection.content, "subtitle", "OVERLAY")
-    colorPickerLabel:SetPoint("TOPLEFT", 0, themeYOffset)
-    colorPickerLabel:SetText((ns.L and ns.L["CUSTOM_COLOR"]) or "Custom Color")
-    colorPickerLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-    table.insert(subtitleElements, colorPickerLabel)
-    themeYOffset = themeYOffset - 25
-    
-    -- Simple button to open color picker
-    local colorPickerBtn = ns.UI.Factory:CreateButton(themeSection.content)
-    colorPickerBtn:SetSize(240, 40)
-    colorPickerBtn:SetPoint("TOPLEFT", 0, themeYOffset)
+
+    local themeContentW = effectiveWidth - 30
+    local themeStackY = 0
+    local warningText  -- typography panel (slider callback)
+
+    themeStackY = StackSettingsSubPanel(themeSection.content, themeContentW, themeStackY, function(inner, iw)
+        local cy = 0
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_THEME_COLORS"]) or "Colors & accent",
+            iw, cy, { skipGapBefore = true })
+        cy = cy - GetHeaderToolbarGap()
+
+        local pickerH = math.max(SETTINGS_BTN_H + 6, 38)
+        local colorPickerBtn = ns.UI.Factory:CreateButton(inner, math.min(280, iw), pickerH, false)
+        colorPickerBtn:SetPoint("TOPLEFT", 0, cy)
     colorPickerBtn:Enable()
     
     if ApplyVisuals then
@@ -2746,37 +2990,32 @@ local function BuildSettings(parent, containerWidth)
         
         ColorPickerFrame:Raise()
     end)
-    
-    -- Hover effects
-    colorPickerBtn:SetScript("OnEnter", function(self)
-        if ApplyVisuals then
-            ApplyVisuals(colorPickerBtn, {0.12, 0.12, 0.14, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
-        end
-        btnText:SetTextColor(1, 1, 1)
-        
-        Settings_ShowWrappedTooltip(self, (ns.L and ns.L["COLOR_PICKER_TOOLTIP"]) or "Open WoW's native color picker wheel to choose a custom theme color")
-    end)
-    
-    colorPickerBtn:SetScript("OnLeave", function(self)
-        if ApplyVisuals then
-            ApplyVisuals(colorPickerBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-        end
-        btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-        GameTooltip:Hide()
-    end)
-    
-    themeYOffset = themeYOffset - 50  -- Space after button
-    
-    -- Preset Theme Buttons
-    local presetLabel = FontManager:CreateFontString(themeSection.content, "subtitle", "OVERLAY")
-    presetLabel:SetPoint("TOPLEFT", 0, themeYOffset)
-    presetLabel:SetText((ns.L and ns.L["PRESET_THEMES"]) or "Preset Themes")
-    presetLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-    table.insert(subtitleElements, presetLabel)
-    themeYOffset = themeYOffset - 25
-    
-    -- Theme preset buttons (with colors)
-    local themeButtons = {
+
+        -- Hover effects
+        colorPickerBtn:SetScript("OnEnter", function(self)
+            if ApplyVisuals then
+                ApplyVisuals(colorPickerBtn, {0.12, 0.12, 0.14, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+            end
+            btnText:SetTextColor(1, 1, 1)
+
+            Settings_ShowWrappedTooltip(self, (ns.L and ns.L["COLOR_PICKER_TOOLTIP"]) or "Open WoW's native color picker wheel to choose a custom theme color")
+        end)
+
+        colorPickerBtn:SetScript("OnLeave", function(self)
+            if ApplyVisuals then
+                ApplyVisuals(colorPickerBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+            end
+            btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+            GameTooltip:Hide()
+        end)
+
+        cy = cy - pickerH - GetHeaderToolbarGap()
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["PRESET_THEMES"]) or "Preset Themes",
+            iw, cy, { subtitleBright = true })
+
+        local themeButtons = {
         {
             label = (ns.L and ns.L["COLOR_PURPLE"]) or "Purple",
             tooltip = (ns.L and ns.L["COLOR_PURPLE_DESC"]) or "Classic purple theme (default)",
@@ -2843,14 +3082,54 @@ local function BuildSettings(parent, containerWidth)
                 RefreshSubtitles()
             end,
         },
-    }
-    
-    -- Use content width (section width - 30px for left/right insets)
-    themeYOffset = CreateButtonGrid(themeSection.content, themeButtons, themeYOffset, effectiveWidth - 30, 120)
-    themeYOffset = themeYOffset - 10  -- Space after preset buttons
-    
-    -- Font Family Dropdown
-    themeYOffset = CreateDropdownWidget(themeSection.content, {
+        }
+
+        cy = CreateButtonGrid(inner, themeButtons, cy, iw, 120)
+        cy = cy - GetHeaderToolbarGap()
+
+        local classAccentCb = CreateThemedCheckbox(inner)
+        classAccentCb:SetPoint("TOPLEFT", SETTINGS_CHECKBOX_GRID_INDENT, cy)
+        local classAccentTip = (ns.L and ns.L["USE_CLASS_COLOR_ACCENT_TOOLTIP"]) or "Use your current character's class color for accents, borders, and tabs. Falls back to your saved theme color when the class cannot be resolved."
+        local classAccentLbl = FontManager:CreateFontString(inner, "body", "OVERLAY")
+        classAccentLbl:SetPoint("TOPLEFT", classAccentCb, "TOPRIGHT", UI_SPACING.AFTER_ELEMENT, 1)
+        classAccentLbl:SetWidth(math.max(120, iw - SETTINGS_CHECKBOX_GRID_INDENT - (ns.UI_TOGGLE_SIZE or 16) - UI_SPACING.AFTER_ELEMENT))
+        classAccentLbl:SetJustifyH("LEFT")
+        classAccentLbl:SetWordWrap(true)
+        classAccentLbl:SetText((ns.L and ns.L["USE_CLASS_COLOR_ACCENT"]) or "Use class color as accent")
+        classAccentLbl:SetTextColor(1, 1, 1, 1)
+        classAccentCb:SetChecked(WarbandNexus.db.profile.useClassColorAccent)
+        if classAccentCb.checkTexture then
+            classAccentCb.checkTexture:SetShown(WarbandNexus.db.profile.useClassColorAccent)
+        end
+        classAccentCb:SetScript("OnClick", function(self)
+            local v = self:GetChecked()
+            WarbandNexus.db.profile.useClassColorAccent = v
+            if self.checkTexture then self.checkTexture:SetShown(v) end
+            if ns.UI_RefreshColors then ns.UI_RefreshColors() end
+            RefreshSubtitles()
+        end)
+        classAccentCb:SetScript("OnEnter", function(self)
+            Settings_ShowWrappedTooltip(self, classAccentTip)
+        end)
+        classAccentCb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        classAccentLbl:SetScript("OnEnter", function(self)
+            Settings_ShowWrappedTooltip(self, classAccentTip)
+        end)
+        classAccentLbl:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        local classRowH = math.max(ns.UI_TOGGLE_SIZE or 22, classAccentLbl:GetStringHeight(), SETTINGS_BTN_H - 6)
+        cy = cy - classRowH - GetHeaderToolbarGap()
+        return cy
+    end)
+
+    themeStackY = StackSettingsSubPanel(themeSection.content, themeContentW, themeStackY, function(inner, iw)
+        local cy = 0
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_THEME_TYPOGRAPHY"]) or "Fonts & readability",
+            iw, cy, { skipGapBefore = true })
+        cy = cy - GetHeaderToolbarGap()
+
+        cy = CreateDropdownWidget(inner, {
         name = (ns.L and ns.L["FONT_FAMILY"]) or "Font Family",
         desc = (ns.L and ns.L["FONT_FAMILY_TOOLTIP"]) or "Choose the font used throughout the addon UI",
         values = function()
@@ -2891,103 +3170,97 @@ local function BuildSettings(parent, containerWidth)
                 end)
             end)
         end,
-    }, themeYOffset)
+        }, cy)
 
-    -- Font anti-aliasing mode
-    themeYOffset = CreateDropdownWidget(themeSection.content, {
-        name = (ns.L and ns.L["ANTI_ALIASING"]) or "Anti-Aliasing",
-        desc = (ns.L and ns.L["ANTI_ALIASING_DESC"]) or "Font edge rendering style (affects readability)",
-        values = {
-            none = "None (Smooth)",
-            OUTLINE = "Outline (Default)",
-            THICKOUTLINE = "Thick Outline (Bold)",
-        },
-        get = function() return WarbandNexus.db.profile.fonts.antiAliasing end,
-        set = function(_, value)
-            WarbandNexus.db.profile.fonts.antiAliasing = value
-            if ns.FontManager and ns.FontManager.RefreshAllFonts then
-                ns.FontManager:RefreshAllFonts()
-            end
-        end,
-    }, themeYOffset)
-    
-    -- Font scale warning text (created first so slider callback can reference it)
-    -- Positioned below where the slider will be (slider takes ~65px height)
-    local warningYPos = themeYOffset - 65 - 5
-    local warningText = FontManager:CreateFontString(themeSection.content, "small", "OVERLAY")
-    warningText:SetPoint("TOPLEFT", 0, warningYPos)
-    warningText:SetWidth(effectiveWidth - 30)
-    warningText:SetJustifyH("LEFT")
-    warningText:SetText("|cffff8800" .. ((ns.L and ns.L["FONT_SCALE_WARNING"]) or "Warning: Higher font scale may cause text overflow in some UI elements.") .. "|r")
-    
-    -- Set initial visibility based on current scale
-    local currentScale = WarbandNexus.db.profile.fonts.scaleCustom or 1.0
-    if currentScale > 1.0 then
-        warningText:Show()
-    else
-        warningText:Hide()
-    end
-    
-    -- Font scale slider
-    themeYOffset = CreateSliderWidget(themeSection.content, {
-        name = (ns.L and ns.L["FONT_SCALE"]) or "Font Scale",
-        desc = (ns.L and ns.L["FONT_SCALE_TOOLTIP"]) or "Adjust font size across all UI elements",
-        min = 0.8,
-        max = 1.5,
-        step = 0.1,
-        get = function() return WarbandNexus.db.profile.fonts.scaleCustom or 1.0 end,
-        set = function(_, value)
-            WarbandNexus.db.profile.fonts.scaleCustom = value
-            WarbandNexus.db.profile.fonts.useCustomScale = true
-            -- Update warning visibility immediately (no rebuild needed)
-            if value > 1.0 then
-                warningText:Show()
-            else
-                warningText:Hide()
-            end
-            if ns.FontManager and ns.FontManager.RefreshAllFonts then
-                ns.FontManager:RefreshAllFonts()
-            end
-        end,
-    }, themeYOffset, sliderElements)  -- Pass sliderElements for tracking
-    
-    -- Account for warning text height in layout
-    themeYOffset = themeYOffset - 20
-    
-    -- Resolution Normalization toggle (below Font Scale)
-    themeYOffset = themeYOffset - 10
-    themeYOffset = CreateCheckboxGrid(themeSection.content, {
-        {
-            key = "usePixelNormalization",
-            label = (ns.L and ns.L["RESOLUTION_NORMALIZATION"]) or "Auto-Scale for Resolution",
-            tooltip = (ns.L and ns.L["RESOLUTION_NORMALIZATION_TOOLTIP"]) or "Adjust font sizes for your monitor resolution (4K vs 1080p). WoW UI Scale still scales text with the rest of the interface.",
-            get = function() return WarbandNexus.db.profile.fonts.usePixelNormalization end,
-            set = function(value)
-                WarbandNexus.db.profile.fonts.usePixelNormalization = value
+        cy = CreateDropdownWidget(inner, {
+            name = (ns.L and ns.L["ANTI_ALIASING"]) or "Anti-Aliasing",
+            desc = (ns.L and ns.L["ANTI_ALIASING_DESC"]) or "Font edge rendering style (affects readability)",
+            values = {
+                none = "None (Smooth)",
+                OUTLINE = "Outline (Default)",
+                THICKOUTLINE = "Thick Outline (Bold)",
+            },
+            get = function() return WarbandNexus.db.profile.fonts.antiAliasing end,
+            set = function(_, value)
+                WarbandNexus.db.profile.fonts.antiAliasing = value
                 if ns.FontManager and ns.FontManager.RefreshAllFonts then
                     ns.FontManager:RefreshAllFonts()
                 end
-                -- Rebuild settings window if open (after font change)
-                C_Timer.After(0.1, function()
-                    if settingsFrame and settingsFrame:IsShown() then
-                        if ns.WindowManager then
-                            ns.WindowManager:Unregister(settingsFrame)
-                        end
-                        settingsFrame:Hide()
-                        settingsFrame = nil
-                        WarbandNexus:ShowSettings()
-                    end
-                end)
             end,
-        },
-    }, themeYOffset, effectiveWidth - 30)
-    
-    local themeSectionHeight = math.abs(themeYOffset)
+        }, cy)
+
+        warningText = FontManager:CreateFontString(inner, "small", "OVERLAY")
+        warningText:SetPoint("TOPLEFT", 0, cy - 72)
+        warningText:SetWidth(iw)
+        warningText:SetJustifyH("LEFT")
+        warningText:SetWordWrap(true)
+        warningText:SetText("|cffff8800" .. ((ns.L and ns.L["FONT_SCALE_WARNING"]) or "Warning: Higher font scale may cause text overflow in some UI elements.") .. "|r")
+
+        local currentScale = WarbandNexus.db.profile.fonts.scaleCustom or 1.0
+        if currentScale > 1.0 then
+            warningText:Show()
+        else
+            warningText:Hide()
+        end
+
+        cy = CreateSliderWidget(inner, {
+            name = (ns.L and ns.L["FONT_SCALE"]) or "Font Scale",
+            desc = (ns.L and ns.L["FONT_SCALE_TOOLTIP"]) or "Adjust font size across all UI elements",
+            min = 0.8,
+            max = 1.5,
+            step = 0.1,
+            get = function() return WarbandNexus.db.profile.fonts.scaleCustom or 1.0 end,
+            set = function(_, value)
+                WarbandNexus.db.profile.fonts.scaleCustom = value
+                WarbandNexus.db.profile.fonts.useCustomScale = true
+                if value > 1.0 then
+                    warningText:Show()
+                else
+                    warningText:Hide()
+                end
+                if ns.FontManager and ns.FontManager.RefreshAllFonts then
+                    ns.FontManager:RefreshAllFonts()
+                end
+            end,
+        }, cy, sliderElements)
+
+        cy = cy - 20
+        cy = cy - 10
+        cy = CreateCheckboxGrid(inner, {
+            {
+                key = "usePixelNormalization",
+                label = (ns.L and ns.L["RESOLUTION_NORMALIZATION"]) or "Auto-Scale for Resolution",
+                tooltip = (ns.L and ns.L["RESOLUTION_NORMALIZATION_TOOLTIP"]) or "Adjust font sizes for your monitor resolution (4K vs 1080p). WoW UI Scale still scales text with the rest of the interface.",
+                get = function() return WarbandNexus.db.profile.fonts.usePixelNormalization end,
+                set = function(value)
+                    WarbandNexus.db.profile.fonts.usePixelNormalization = value
+                    if ns.FontManager and ns.FontManager.RefreshAllFonts then
+                        ns.FontManager:RefreshAllFonts()
+                    end
+                    C_Timer.After(0.1, function()
+                        if settingsFrame and settingsFrame:IsShown() then
+                            if ns.WindowManager then
+                                ns.WindowManager:Unregister(settingsFrame)
+                            end
+                            settingsFrame:Hide()
+                            settingsFrame = nil
+                            WarbandNexus:ShowSettings()
+                        end
+                    end)
+                end,
+            },
+        }, cy, iw)
+
+        return cy
+    end, { noTrailingGap = true })
+
+    local themeSectionHeight = math.abs(themeStackY) + 10
     themeSection:SetHeight(themeSectionHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
     themeSection.content:SetHeight(themeSectionHeight)
     
     -- Move to next section
-    yOffset = yOffset - themeSection:GetHeight() - SECTION_SPACING
+    yOffset = yOffset - themeSection:GetHeight() - SETTINGS_SECTION_GAP
+    yOffset = AppendSettingsGroupDivider(parent, effectiveWidth, yOffset)
     
     --========================================================================
     -- TRACK ITEM DB
@@ -3065,7 +3338,8 @@ local function BuildSettings(parent, containerWidth)
         end
         local sources = itemRegistry[key].sources
         local found = false
-        for _, s in ipairs(sources) do
+        for si = 1, #sources do
+            local s = sources[si]
             if s.sourceType == sourceType and s.sourceID == sourceID then
                 found = true
                 break
@@ -3152,7 +3426,9 @@ local function BuildSettings(parent, containerWidth)
         if not sel or not sel.key then return end
         local info = itemRegistry[sel.key]
         if not info then return end
-        for _, src in ipairs(info.sources) do
+        local srcList = info.sources
+        for si = 1, #srcList do
+            local src = srcList[si]
             WarbandNexus:SetBuiltinTracked(src.sourceType, src.sourceID, info.itemID, isChecked)
         end
         local statusStr = isChecked
@@ -3179,7 +3455,9 @@ local function BuildSettings(parent, containerWidth)
     
     local function IsItemFullyTracked(info)
         if not info or not info.sources then return true end
-        for _, src in ipairs(info.sources) do
+        local srcList2 = info.sources
+        for si = 1, #srcList2 do
+            local src = srcList2[si]
             if not WarbandNexus:IsBuiltinTracked(src.sourceType, src.sourceID, info.itemID) then
                 return false
             end
@@ -3542,7 +3820,7 @@ local function BuildSettings(parent, containerWidth)
     trackSection:SetHeight(COLLAPSED_HEIGHT)
     
     local trackSectionYBase = yOffset  -- yOffset before track section
-    yOffset = yOffset - COLLAPSED_HEIGHT - SECTION_SPACING  -- default collapsed offset
+    yOffset = yOffset - COLLAPSED_HEIGHT - SETTINGS_SECTION_GAP  -- default collapsed offset
     
     --========================================================================
     -- ADVANCED
@@ -3584,9 +3862,12 @@ local function BuildSettings(parent, containerWidth)
             set = function(value) WarbandNexus.db.profile.debugTryCounterLoot = value end,
         },
     }
-    
-    local advGridYOffset = CreateCheckboxGrid(advSection.content, debugOptions, 0, effectiveWidth - 30)
-    
+
+    local advInnerW = effectiveWidth - 30
+    local advGridYOffset = StackSettingsSubPanel(advSection.content, advInnerW, 0, function(inner, iw)
+        return CreateCheckboxGrid(inner, debugOptions, 0, iw)
+    end)
+
     -- Calculate section height
     local advContentHeight = math.abs(advGridYOffset)
     advSection:SetHeight(advContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
@@ -3605,7 +3886,7 @@ local function BuildSettings(parent, containerWidth)
             collapseArrow:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)
         end
         -- Reposition Advanced section
-        local advY = trackSectionYBase - trackSection:GetHeight() - SECTION_SPACING
+        local advY = trackSectionYBase - trackSection:GetHeight() - SETTINGS_SECTION_GAP
         advSection:ClearAllPoints()
         advSection:SetPoint("TOPLEFT", 0, advY)
         advSection:SetPoint("TOPRIGHT", 0, advY)
@@ -3676,16 +3957,16 @@ function WarbandNexus:ShowSettings()
     -- Main frame: no addon FrameXML — same pattern as InformationDialog / WindowFactory.CreateExternalWindow
     -- (pure Lua CreateFrame("Frame", globalName, UIParent)). ESC: UISpecialFrames + WindowManager + hooks.
     local SETTINGS_FRAME_NAME = "WarbandNexusSettingsPanel"
-    local f = ns.UI.Factory:CreateContainer(UIParent, 700, 650, false, SETTINGS_FRAME_NAME)
+    local f = ns.UI.Factory:CreateContainer(UIParent, 720, 680, false, SETTINGS_FRAME_NAME)
     if not f then return end
-    f:SetSize(700, 650)
+    f:SetSize(720, 680)
     f:SetPoint("CENTER")
     f:SetMovable(true)
     f:SetResizable(true)
     f:EnableMouse(true)
     if f.SetToplevel then f:SetToplevel(true) end
     f:SetClampedToScreen(true)
-    f:SetResizeBounds(600, 500, 1000, 800)
+    f:SetResizeBounds(640, 520, 1000, 800)
     
     if ApplyVisuals then
         ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
@@ -3875,7 +4156,7 @@ function WarbandNexus:ShowSettings()
     resizer:SetScript("OnMouseUp", function()
         f:StopMovingOrSizing()
         if scrollChild and scrollFrame then
-            local newScrollWidth = scrollFrame:GetWidth() or 620
+            local newScrollWidth = scrollFrame:GetWidth() or 640
             scrollChild:SetWidth(newScrollWidth)
             BuildSettings(scrollChild, newScrollWidth)
             if ns.UI.Factory.UpdateScrollBarVisibility then
@@ -3892,11 +4173,11 @@ function WarbandNexus:ShowSettings()
     contentArea:SetPoint("BOTTOMRIGHT", -UI_SPACING.SIDE_MARGIN, UI_SPACING.TOP_MARGIN)
     
     -- ScrollFrame (Collections pattern: bar column + PositionScrollBarInContainer)
-    local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(contentArea, 22, UI_SPACING.TOP_MARGIN, UI_SPACING.TOP_MARGIN)
+    local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(contentArea, 22, SETTINGS_SCROLL_INSET_TOP, SETTINGS_SCROLL_INSET_BOTTOM)
     scrollFrame = ns.UI.Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
     scrollFrame:ClearAllPoints()
-    scrollFrame:SetPoint("TOPLEFT", UI_SPACING.SIDE_MARGIN, -UI_SPACING.TOP_MARGIN)
-    scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", 0, UI_SPACING.TOP_MARGIN)
+    scrollFrame:SetPoint("TOPLEFT", UI_SPACING.SIDE_MARGIN, -SETTINGS_SCROLL_INSET_TOP)
+    scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", 0, SETTINGS_SCROLL_INSET_BOTTOM)
     scrollFrame:EnableMouseWheel(true)
     if scrollFrame.EnableMouse then scrollFrame:EnableMouse(true) end
     if scrollFrame.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
@@ -3912,7 +4193,7 @@ function WarbandNexus:ShowSettings()
     
     -- Resize: only update scroll width during drag; full rebuild on mouse release (no continuous render)
     f:SetScript("OnSizeChanged", function(self, width, height)
-        local newScrollWidth = scrollFrame:GetWidth() or 620
+        local newScrollWidth = scrollFrame:GetWidth() or 640
         scrollChild:SetWidth(newScrollWidth)
     end)
     
@@ -3930,7 +4211,7 @@ function WarbandNexus:ShowSettings()
     C_Timer.After(0.05, function()
         if not scrollFrame or not scrollChild then return end
         
-        local initialWidth = scrollFrame:GetWidth() or 620
+        local initialWidth = scrollFrame:GetWidth() or 640
         scrollChild:SetWidth(initialWidth)
         BuildSettings(scrollChild, initialWidth)
         lastWidth = initialWidth  -- Track initial width
@@ -3938,7 +4219,7 @@ function WarbandNexus:ShowSettings()
         -- Final adjustment after content is built
         C_Timer.After(0.1, function()
             if scrollFrame and scrollChild then
-                local newScrollWidth = scrollFrame:GetWidth() or 620
+                local newScrollWidth = scrollFrame:GetWidth() or 640
                 scrollChild:SetWidth(newScrollWidth)
                 
                 -- Rebuild with correct width if it changed significantly
@@ -3963,6 +4244,18 @@ end
 
 -- Export
 ns.ShowSettings = function() WarbandNexus:ShowSettings() end
+
+-- After theme refresh (chains with VaultButton wrapper on ADDON_LOADED), re-apply settings control borders.
+do
+    if ns.UI_RefreshColors and not ns._wnSettingsUIAccentChromeHooked then
+        ns._wnSettingsUIAccentChromeHooked = true
+        local prevRefresh = ns.UI_RefreshColors
+        ns.UI_RefreshColors = function(...)
+            prevRefresh(...)
+            RefreshSettingsAccentChrome()
+        end
+    end
+end
 
 -- CloseSpecialWindows path for ESC (do not rely on ShowSettings having run first).
 EnsureSettingsCloseSpecialHook()

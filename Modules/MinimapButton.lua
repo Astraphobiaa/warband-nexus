@@ -82,7 +82,7 @@ function WarbandNexus:InitializeMinimapButton()
             for charKey, charData in pairs(addon.db.global.characters) do
                 local copper
                 if charKey == currentCharKey then
-                    copper = GetMoney() or 0
+                    copper = ns.Utilities:GetLiveCharacterMoneyCopper(ns.Utilities:GetCharTotalCopper(charData))
                 else
                     copper = ns.Utilities:GetCharTotalCopper(charData)
                 end
@@ -215,7 +215,7 @@ function WarbandNexus:ToggleMinimapButton()
         self:Print((ns.L and ns.L["MINIMAP_SHOWN_MSG"]) or "Minimap button shown")
     else
         self:SetMinimapButtonVisible(false)
-        self:Print((ns.L and ns.L["MINIMAP_HIDDEN_MSG"]) or "Minimap button hidden (use /wn minimap to show)")
+        self:Print((ns.L and ns.L["MINIMAP_HIDDEN_MSG"]) or "Minimap button hidden (re-enable under Warband Nexus → Settings → Minimap).")
     end
 end
 
@@ -331,7 +331,7 @@ function WarbandNexus:ShowMinimapMenu(anchorFrame)
             -- Hide Minimap Button
             rootDescription:CreateButton((ns.L and ns.L["HIDE_MINIMAP_BUTTON"]) or "Hide Minimap Button", function()
                 self:SetMinimapButtonVisible(false)
-                self:Print((ns.L and ns.L["MINIMAP_HIDDEN_MSG"]) or "Minimap button hidden (use /wn minimap to show)")
+                self:Print((ns.L and ns.L["MINIMAP_HIDDEN_MSG"]) or "Minimap button hidden (re-enable under Warband Nexus → Settings → Minimap).")
             end)
         end)
     else
@@ -346,8 +346,7 @@ end
 -- ============================================================================
 
 --[[
-    Slash command for minimap button
-    /wn minimap - Toggle minimap button visibility
+    Legacy hook: minimap visibility is toggled from Settings → Minimap (no slash command).
 ]]
 function WarbandNexus:MinimapSlashCommand()
     self:ToggleMinimapButton()

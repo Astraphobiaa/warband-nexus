@@ -144,7 +144,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             self.descLine:ClearAllPoints()
         end
 
-        for _, tLine in ipairs(self.titleAffixLines) do
+        for i = 1, #self.titleAffixLines do
+            local tLine = self.titleAffixLines[i]
             tLine:Hide()
             tLine:SetText("")
             tLine:ClearAllPoints()
@@ -153,7 +154,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         table.wipe(self.titleAffixLines)
         
         -- Return all lines to pool
-        for _, line in ipairs(self.lines) do
+        for i = 1, #self.lines do
+            local line = self.lines[i]
             line:Hide()
             line:SetText("")
             line:ClearAllPoints()
@@ -162,7 +164,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         table.wipe(self.lines)
         
         -- Return double lines to pool
-        for _, dLine in ipairs(self.doubleLines) do
+        for i = 1, #self.doubleLines do
+            local dLine = self.doubleLines[i]
             dLine.left:Hide()
             dLine.right:Hide()
             dLine.left:SetText("")
@@ -173,7 +176,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         table.wipe(self.doubleLines)
 
-        for _, vr in ipairs(self.vaultGridRows) do
+        for i = 1, #self.vaultGridRows do
+            local vr = self.vaultGridRows[i]
             vr.nameFs:Hide()
             vr.realmFs:Hide()
             vr.raidFs:Hide()
@@ -488,13 +492,14 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             self.descLine:SetWidth(0)
             local dw = self.descLine:GetStringWidth() or 0
             local descHeaderW = dw + (self.hasIcon and (ICON_SIZE + ICON_PADDING) or 0)
-            if descHeaderW > maxContentW then descHeaderW = descHeaderW end
+            if descHeaderW > maxContentW then maxContentW = descHeaderW end
             if dw > maxContentW then maxContentW = dw end
         end
 
         -- Measure title affixes (lines under the item name, right of icon)
         if self.titleAffixLines then
-            for _, aLine in ipairs(self.titleAffixLines) do
+            for i = 1, #self.titleAffixLines do
+                local aLine = self.titleAffixLines[i]
                 aLine:SetWidth(0)
                 local w = aLine:GetStringWidth() or 0
                 local withIcon = w + (self.hasIcon and (ICON_SIZE + ICON_PADDING) or 0)
@@ -503,7 +508,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         
         -- Measure body lines
-        for _, lineData in ipairs(self.allLines) do
+        for i = 1, #self.allLines do
+            local lineData = self.allLines[i]
             if lineData.type == "single" then
                 lineData.element:SetWidth(0)
                 local lw = lineData.element:GetStringWidth() or 0
@@ -530,7 +536,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         
         -- Re-constrain wrapping lines to the new width
         local contentWidth = computedWidth - padding * 2
-        for _, lineData in ipairs(self.allLines) do
+        for i = 1, #self.allLines do
+            local lineData = self.allLines[i]
             if lineData.type == "single" then
                 lineData.element:SetWidth(contentWidth)
             end
@@ -545,7 +552,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         if self.titleAffixLines and #self.titleAffixLines > 0 then
             local tlx = self.hasIcon and (padding + ICON_SIZE + ICON_PADDING) or padding
-            for _, aLine in ipairs(self.titleAffixLines) do
+            for i = 1, #self.titleAffixLines do
+                local aLine = self.titleAffixLines[i]
                 aLine:SetWidth(computedWidth - tlx - padding)
             end
         end
@@ -577,7 +585,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         local afterHeaderText = titleBottom
         if self.titleAffixLines and #self.titleAffixLines > 0 then
             local yTop = titleBottom
-            for _, aLine in ipairs(self.titleAffixLines) do
+            for i = 1, #self.titleAffixLines do
+                local aLine = self.titleAffixLines[i]
                 yTop = yTop - 2
                 aLine:ClearAllPoints()
                 aLine:SetPoint("TOPLEFT", self, "TOPLEFT", textLeftX, yTop)
@@ -612,7 +621,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         local showSeparator = false
         if self.titleLine and self.titleLine:IsShown() and #self.allLines > 0 then
             -- Only show separator if there's both header and body content
-            for _, lineData in ipairs(self.allLines) do
+            for i = 1, #self.allLines do
+                local lineData = self.allLines[i]
                 if lineData.type ~= "spacer" then
                     showSeparator = true
                     break
@@ -635,7 +645,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         yOffset = bodyStartY
         local prevElement = nil
         
-        for i, lineData in ipairs(self.allLines) do
+        for i = 1, #self.allLines do
+            local lineData = self.allLines[i]
             if lineData.type == "single" or lineData.type == "spacer" then
                 local line = lineData.element
                 line:ClearAllPoints()

@@ -133,7 +133,7 @@ local HEADER_H       = UI_LAYOUT.HEADER_HEIGHT or 32
 -- Character strip + dropdown: match header controls elsewhere (SharedWidgets sort dropdown = 32px row, 26px menu entries).
 local GEAR_CHAR_SELECTOR_WIDTH = 292
 local GEAR_CHAR_SELECTOR_HEIGHT = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or HEADER_H or 32
-local GEAR_CHAR_DROPDOWN_ENTRY_H = 26
+local GEAR_CHAR_DROPDOWN_ENTRY_H = (ns.UI_LAYOUT and ns.UI_LAYOUT.DROPDOWN_MENU_ROW_HEIGHT) or (ns.UI_LAYOUT and ns.UI_LAYOUT.ROW_HEIGHT) or 26
 local GEAR_HIDE_FILTER_BUTTON_W = 84
 
 -- Paper doll: sol panel | orta panel | sağ panel | alt panel (fixed widths); %10 büyütme
@@ -146,6 +146,11 @@ local SLOT_TO_ARROW_GAP = P(4)   -- slot ile upgrade ikonu arası
 local ARROW_TO_TEXT_GAP = P(6)   -- ok ile yazı arası boşluk (artık yaslamalı olduğu için pozitif olmalı)
 local TRACK_TEXT_W   = P(136)  -- Track metin taşmasını engellemek için genişletildi
 local UPGRADE_ARROW_W = P(16)
+-- Inline ilvl separator in recommendation FontStrings (Unicode → renders as tofu); matches DrawStorageRecommendationsCard arrowTex.
+local GEAR_ILVL_ARROW_ATLAS = "common-dropdown-icon-play"
+local GEAR_ILVL_ARROW_INLINE_SZ = 14
+local GEAR_ILVL_ARROW_INLINE_MARKUP = (CreateAtlasMarkup and CreateAtlasMarkup(GEAR_ILVL_ARROW_ATLAS, GEAR_ILVL_ARROW_INLINE_SZ, GEAR_ILVL_ARROW_INLINE_SZ))
+    or ("|A:" .. GEAR_ILVL_ARROW_ATLAS .. ":" .. GEAR_ILVL_ARROW_INLINE_SZ .. ":" .. GEAR_ILVL_ARROW_INLINE_SZ .. "|a")
 local CURRENCY_PANEL_W = 248
 local GEAR_STAT_PANEL_W = 292
 local CENTER_GAP     = P(10)
@@ -292,8 +297,11 @@ local function GetTrackedCharacters()
     local rankOf, nextRank = {}, 1
     local order = profile.characterOrder
     if order then
-        for _, list in ipairs({ order.favorites or {}, order.regular or {} }) do
-            for _, k in ipairs(list) do
+        local lists = { order.favorites or {}, order.regular or {} }
+        for li = 1, #lists do
+            local list = lists[li]
+            for i = 1, #list do
+                local k = list[i]
                 if rankOf[k] == nil then
                     rankOf[k] = nextRank
                     nextRank = nextRank + 1
@@ -611,8 +619,10 @@ end
 ---@param upgradeInfo table|nil optional; when set, tooltip shows next upgrade tier and cost for this slot
 ---@param currencyAmounts table|nil optional; map currencyID -> amount (for "you have X" in tooltip if needed)
 ---@param itemTooltipContext table|nil optional { level, specID } — rewrite item link for C_TooltipInfo primary-stat lines (Gear tab / viewed character)
+---@param charKey string|nil canonical character key for persisted upgrade tooltip append
+---@param isCurrentChar boolean|nil live player — enables tooltip scan fallback in GearService
 ---@return Frame btn
-local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext)
+local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar)
     -- Slot her zaman aynı boyutta; ikon görünmese bile boşluk rezerve (empty texture)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(SLOT_SIZE, SLOT_SIZE)
@@ -903,15 +913,24 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
                             }
                         end
                     end
-                else
-                    underTitleLines = {
-                        {
-                            text = format((ns.L and ns.L["GEAR_NEED_MORE_CRESTS_FORMAT"]) or "%s %d/%d — need more crests", LocalizeUpgradeTrackName(up.trackName or ""), up.currUpgrade or 0, up.maxUpgrade or 0),
-                            color = { 0.8, 0.5, 0.2 }
-                        }
-                    }
                 end
             end
+
+            if slotData.itemLink and WarbandNexus.GetGearItemUpgradeTooltipAppend then
+                local appendLines = WarbandNexus:GetGearItemUpgradeTooltipAppend(slotData.itemLink, {
+                    slotID = slotID,
+                    charKey = charKey,
+                    upgradeInfo = up,
+                    itemLevel = slotData.itemLevel,
+                    isCurrentChar = isCurrentChar == true,
+                })
+                if appendLines then
+                    for ai = 1, #appendLines do
+                        additionalLines[#additionalLines + 1] = appendLines[ai]
+                    end
+                end
+            end
+
             if ShowTooltip then
                 ShowTooltip(self, {
                     type = "item",
@@ -1199,16 +1218,18 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
 
     -- Left column: 6 armor slots — text left of icon (Icon - Text), right-aligned text
     local leftSlots = { 1, 2, 3, 15, 5, 9 }
-    for i, slotID in ipairs(leftSlots) do
+    for i = 1, #leftSlots do
+        local slotID = leftSlots[i]
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        CreateSlotButton(card, slotID, GetSlotData(slotID), leftX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), leftX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar)
     end
 
     -- Right column: 6 armor + 2 trinkets — slot | ikon | yazı
     local rightSlots = { 10, 6, 7, 8, 11, 12, 13, 14 }
-    for i, slotID in ipairs(rightSlots) do
+    for i = 1, #rightSlots do
+        local slotID = rightSlots[i]
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        CreateSlotButton(card, slotID, GetSlotData(slotID), rightX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), rightX, startY - (i - 1) * rowStep, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar)
     end
 
     -- Alt panel: slot üstte, altında ikon + yazı (yazılar aşağı); silahlar birbirine yakın
@@ -1219,11 +1240,12 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local weaponStartX = baseX + LEFT_PANEL_W + (MODEL_W + CENTER_GAP - weaponRowW) / 2
     local maxRows = math.max(#leftSlots, #rightSlots)
     local bottomY = startY - maxRows * rowStep - 8
-    for i, slotID in ipairs(weaponSlots) do
+    for i = 1, #weaponSlots do
+        local slotID = weaponSlots[i]
         local quality = (slots[slotID] and slots[slotID].quality) or 0
         local wx = (i == 1) and weaponStartX or (weaponStartX + SLOT_SIZE + WEAPON_GAP)
         local weaponSide = (i == 1) and "bottom_left" or "bottom_right"  -- Main Hand solunda, Off Hand sağında
-        CreateSlotButton(card, slotID, GetSlotData(slotID), wx, bottomY, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext)
+        CreateSlotButton(card, slotID, GetSlotData(slotID), wx, bottomY, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar)
     end
 
     -- Orta panel: model frame alt ucu trinket satırının altına denk gelecek şekilde uzatıldı
@@ -1969,14 +1991,23 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     -- ── Crest / gold block heights (drawn under character stats in main column) ──
     local crestCurrencies = {}
     local goldCurrency = nil
-    for _, cur in ipairs(currencies) do
+    for i = 1, #currencies do
+        local cur = currencies[i]
         if cur.isGold then goldCurrency = cur else crestCurrencies[#crestCurrencies + 1] = cur end
     end
 
-    -- Currency panel height: header + crest rows + divider + gold + footer hint + bottom pad
+    local playbookTooltipPayload = nil
+    if WarbandNexus.GetGearUpgradePlaybookText then
+        _, playbookTooltipPayload = WarbandNexus:GetGearUpgradePlaybookText(charKey)
+    end
+
+    local currencyPanelFooterHint = GetLocalizedText("GEAR_CURRENCY_PANEL_HOVER_HINT", "Hover equipped items for crest costs and sources.")
+
+    -- Currency panel height: header + crest rows + divider + gold + short footer + shift hint + bottom pad
     local CREST_ROW_H = 36
     local FOOTER_HINT_H = 14
-    local currenciesH = GEAR_SUBPANEL_HDR + #crestCurrencies * CREST_ROW_H + 12 + 28 + FOOTER_HINT_H + 8
+    local FOOTER_PLAYBOOK_H = 22
+    local currenciesH = GEAR_SUBPANEL_HDR + #crestCurrencies * CREST_ROW_H + 12 + 28 + FOOTER_PLAYBOOK_H + FOOTER_HINT_H + 8
 
     local parentW = (card and card.GetWidth) and card:GetWidth() or ((parent and parent.GetWidth) and parent:GetWidth() or 0)
     local CARD_PAD_X = 12
@@ -2261,16 +2292,56 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     panelTitle:SetShadowOffset(1, -1)
     panelTitle:SetShadowColor(0, 0, 0, 1)
 
+    do
+        local titleHit = CreateFrame("Frame", nil, currencyPanel)
+        titleHit:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, -2)
+        titleHit:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, -2)
+        titleHit:SetHeight(GEAR_SUBPANEL_HDR + 4)
+        if titleHit.SetFrameLevel and currencyPanel.GetFrameLevel then
+            titleHit:SetFrameLevel((currencyPanel:GetFrameLevel() or 0) + 12)
+        end
+        titleHit:EnableMouse(true)
+        titleHit:SetScript("OnEnter", function(self)
+            if not playbookTooltipPayload then return end
+            local payload = playbookTooltipPayload
+            if ShowTooltip then
+                ShowTooltip(self, {
+                    type = "custom",
+                    title = payload.title,
+                    lines = payload.lines,
+                    anchor = "ANCHOR_RIGHT",
+                    maxWidth = 420,
+                })
+            elseif ns.TooltipService then
+                ns.TooltipService:Show(self, {
+                    type = "custom",
+                    title = payload.title,
+                    lines = payload.lines,
+                    anchor = "ANCHOR_RIGHT",
+                    maxWidth = 420,
+                })
+            end
+        end)
+        titleHit:SetScript("OnLeave", function()
+            if HideTooltip then
+                HideTooltip()
+            elseif ns.TooltipService then
+                ns.TooltipService:Hide()
+            end
+        end)
+    end
+
     -- Crest rows: icon | name (clipped) | fixed-width amount column (symmetric insets with stats panel).
     local curY = -GEAR_SUBPANEL_HDR
     local iconSize = 24
-    for _, cur in ipairs(crestCurrencies) do
+    for i = 1, #crestCurrencies do
+        local cur = crestCurrencies[i]
         -- Alternating row bg
         local rowBg = currencyPanel:CreateTexture(nil, "BACKGROUND")
         rowBg:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY + 1)
         rowBg:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY + 1)
         rowBg:SetHeight(CREST_ROW_H)
-        rowBg:SetColorTexture(1, 1, 1, (_ % 2 == 0) and 0.03 or 0)
+        rowBg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.03 or 0)
 
         local ico = currencyPanel:CreateTexture(nil, "ARTWORK")
         ico:SetSize(iconSize, iconSize)
@@ -2399,10 +2470,10 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         goldAmt:SetShadowOffset(1, -1)
         goldAmt:SetShadowColor(0, 0, 0, 0.8)
         local copper = (goldCurrency.amount or 0) * 10000 + (goldCurrency.silver or 0) * 100 + (goldCurrency.copper or 0)
-        goldAmt:SetText("|cffffff00" .. (FormatGold and FormatGold(copper) or (tostring(goldCurrency.amount or 0) .. "g")) .. "|r")
+        goldAmt:SetText("|cffffff00" .. FormatGold(copper) .. "|r")
     end
 
-    -- Footer hint: Shift info belongs to panel footer, not title region.
+    -- Short neutral hint under gold; header hover still opens full tier playbook tooltip.
     local shiftHint = FontManager:CreateFontString(currencyPanel, "small", "OVERLAY")
     shiftHint:SetPoint("BOTTOMLEFT", currencyPanel, "BOTTOMLEFT", currPad, 4)
     shiftHint:SetPoint("BOTTOMRIGHT", currencyPanel, "BOTTOMRIGHT", -currPad, 4)
@@ -2410,6 +2481,19 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     shiftHint:SetText("|cff777777" .. GetLocalizedText("SHIFT_HINT_SEASON_PROGRESS_SHORT", "Shift: Season progress") .. "|r")
     shiftHint:SetShadowOffset(1, -1)
     shiftHint:SetShadowColor(0, 0, 0, 0.8)
+
+    local playbookFs = FontManager:CreateFontString(currencyPanel, "small", "OVERLAY")
+    playbookFs:SetPoint("BOTTOMLEFT", shiftHint, "TOPLEFT", 0, 6)
+    playbookFs:SetPoint("BOTTOMRIGHT", shiftHint, "TOPRIGHT", 0, 6)
+    playbookFs:SetHeight(FOOTER_PLAYBOOK_H)
+    playbookFs:SetJustifyH("LEFT")
+    playbookFs:SetJustifyV("BOTTOM")
+    playbookFs:SetWordWrap(true)
+    if playbookFs.SetMaxLines then playbookFs:SetMaxLines(2) end
+    playbookFs:SetTextColor(0.58, 0.62, 0.66)
+    playbookFs:SetShadowOffset(1, -1)
+    playbookFs:SetShadowColor(0, 0, 0, 0.75)
+    playbookFs:SetText(type(currencyPanelFooterHint) == "string" and currencyPanelFooterHint ~= "" and currencyPanelFooterHint or "")
 
     -- ── RIGHT PANEL: Item Upgrade Recommendations (scrollable, bordered) ───────
     local storagePanel = CreateFrame("Frame", nil, card, "BackdropTemplate")
@@ -2430,6 +2514,45 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     storageTitle:SetPoint("TOPRIGHT", -12, -8)
     storageTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1] * 255), math.floor(accent[2] * 255), math.floor(accent[3] * 255))
         .. GetLocalizedText("GEAR_ITEM_UPGRADE_RECOMMENDATIONS_TITLE", "Item Upgrade Recommendations") .. "|r")
+
+    do
+        local recHit = CreateFrame("Frame", nil, storagePanel)
+        recHit:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", 8, -6)
+        recHit:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", -8, -6)
+        recHit:SetHeight(26)
+        if recHit.SetFrameLevel and storagePanel.GetFrameLevel then
+            recHit:SetFrameLevel((storagePanel:GetFrameLevel() or 0) + 12)
+        end
+        recHit:EnableMouse(true)
+        recHit:SetScript("OnEnter", function(self)
+            if not playbookTooltipPayload then return end
+            local payload = playbookTooltipPayload
+            if ShowTooltip then
+                ShowTooltip(self, {
+                    type = "custom",
+                    title = payload.title,
+                    lines = payload.lines,
+                    anchor = "ANCHOR_LEFT",
+                    maxWidth = 420,
+                })
+            elseif ns.TooltipService then
+                ns.TooltipService:Show(self, {
+                    type = "custom",
+                    title = payload.title,
+                    lines = payload.lines,
+                    anchor = "ANCHOR_LEFT",
+                    maxWidth = 420,
+                })
+            end
+        end)
+        recHit:SetScript("OnLeave", function()
+            if HideTooltip then
+                HideTooltip()
+            elseif ns.TooltipService then
+                ns.TooltipService:Hide()
+            end
+        end)
+    end
 
     -- Subtitle removed to declutter; scrollable rows alone communicate "transferable upgrades from Storage".
 
@@ -2536,9 +2659,10 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                     local deltaTxt = (delta > 0) and ("|cff80ff80+" .. delta .. "|r") or ""
                     local src = row.source or ""
                     if src ~= "" then src = " |cff888888\194\183|r |cffb0b6c4" .. src .. "|r" end
-                    txt:SetText(string.format("|cffd6dae6%s|r  %d \194\160\226\134\146\194\160 %d  %s%s",
+                    txt:SetText(format("|cffd6dae6%s|r  %d %s %d  %s%s",
                         row.slotName or "Slot",
                         row.currentIlvl or 0,
+                        GEAR_ILVL_ARROW_INLINE_MARKUP,
                         row.targetIlvl or 0,
                         deltaTxt,
                         src))
@@ -3469,8 +3593,10 @@ function WarbandNexus:DrawGearTab(parent)
     local hexAcc  = format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
     local titleTextContent = "|cff" .. hexAcc .. ((ns.L and ns.L["GEAR_TAB_TITLE"]) or "Gear Management") .. "|r"
     local subtitleTextContent = (ns.L and ns.L["GEAR_TAB_DESC"]) or "Equipped gear, upgrade analysis, and crest tracking"
-    -- Reserve space for [Hide filter][Character ▼] aligned with other tabs' -20 right inset + 8px gap between controls.
-    local gearHeaderRightReserve = GEAR_CHAR_SELECTOR_WIDTH + GEAR_HIDE_FILTER_BUTTON_W + 8 + 20 + 4
+    -- Reserve space for [Hide filter][Character ▼] using shared title-card toolbar inset + gap.
+    local layoutInset = (ns.UI_LAYOUT and ns.UI_LAYOUT.TITLE_CARD_CONTROL_RIGHT_INSET) or 20
+    local layoutGap = (ns.UI_LAYOUT and ns.UI_LAYOUT.HEADER_TOOLBAR_CONTROL_GAP) or 8
+    local gearHeaderRightReserve = GEAR_CHAR_SELECTOR_WIDTH + GEAR_HIDE_FILTER_BUTTON_W + layoutGap + layoutInset + 4
 
     local headerCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "gear",
@@ -3484,9 +3610,9 @@ function WarbandNexus:DrawGearTab(parent)
     local gearCharSel = CreateCharacterSelector(headerCard, charKey, 0)
     local hideBtn = CreateGearHeaderHideButton(headerCard)
     if hideBtn and gearCharSel then
-        hideBtn:SetPoint("RIGHT", gearCharSel, "LEFT", -8, 0)
+        hideBtn:SetPoint("RIGHT", gearCharSel, "LEFT", -(ns.UI_LAYOUT and ns.UI_LAYOUT.HEADER_TOOLBAR_CONTROL_GAP or 8), 0)
     elseif hideBtn then
-        hideBtn:SetPoint("RIGHT", headerCard, "RIGHT", -20, 0)
+        hideBtn:SetPoint("RIGHT", headerCard, "RIGHT", -layoutInset, 0)
     end
     headerCard:Show()
     if gearCharSel and gearCharSel._refreshGearCharColumns then

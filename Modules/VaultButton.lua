@@ -3020,14 +3020,15 @@ local function BuildMenu()
     end
 
     -- Auto-hide on focus loss: close when mouse leaves and not over a child
-    f:SetScript("OnUpdate", function(self)
-        if not self:IsMouseOver() then
-            self._hideTimer = (self._hideTimer or 0) + 1
-            if self._hideTimer > 150 then  -- ~2.5s @ 60fps
+    f:SetScript("OnUpdate", function(self, elapsed)
+        elapsed = elapsed or 0
+        if self:IsMouseOver() then
+            self._hideElapsed = 0
+        else
+            self._hideElapsed = (self._hideElapsed or 0) + elapsed
+            if self._hideElapsed > 2.5 then
                 self:Hide()
             end
-        else
-            self._hideTimer = 0
         end
     end)
 
@@ -3099,7 +3100,7 @@ ToggleMenu = function(anchor, atCursor)
             S.menuFrame:SetPoint("CENTER")
         end
     end
-    S.menuFrame._hideTimer = 0
+    S.menuFrame._hideElapsed = 0
     S.menuFrame:Show()
 end
 
@@ -3327,9 +3328,7 @@ local function HookWNMessages()
         WarbandNexus:RegisterMessage(E.VAULT_SLOT_COMPLETED, OnDataChanged)
     end
     if E.CURRENCY_UPDATED then
-        WarbandNexus:RegisterMessage(E.CURRENCY_UPDATED, function()
-            if S.tableFrame and S.tableFrame:IsShown() then RefreshTable() end
-        end)
+        WarbandNexus:RegisterMessage(E.CURRENCY_UPDATED, OnDataChanged)
     end
 end
 

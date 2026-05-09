@@ -82,10 +82,10 @@ Modules\DailyQuestManager.lua
 Modules\ReminderService.lua
 Modules\GearService.lua
 
-# UI Modules (SharedWidgets must load first!)
+# UI Modules (FormatHelpers before SharedWidgets — ns.UI_Format* / money helpers)
+Modules\UI\FormatHelpers.lua
 Modules\UI\SharedWidgets.lua
 Modules\UI\AchievementBrowseVirtualList.lua
-Modules\UI\FormatHelpers.lua
 Modules\UI\FramePoolFactory.lua
 Modules\UI\WindowFactory.lua
 Modules\UI\SearchBoxComponent.lua
@@ -105,6 +105,7 @@ Modules\UI\StorageUI.lua
 Modules\UI\PveUI.lua
 Modules\UI\ReputationUI.lua
 Modules\UI\StatisticsUI.lua
+Modules\UI\CollectionsUI_SourceData.lua
 Modules\UI\CollectionsUI.lua
 Modules\UI\PlansUI.lua
 Modules\UI\PlansTrackerWindow.lua

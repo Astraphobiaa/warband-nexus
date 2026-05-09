@@ -23,7 +23,6 @@ end
 -- Unique AceEvent handler identity for CharactersUI
 local CharactersUIEvents = {}
 
--- Debug print helper
 local DebugPrint = ns.DebugPrint
 
 -- Tooltip API
@@ -56,6 +55,8 @@ local ReleaseCharacterRow = ns.UI_ReleaseCharacterRow
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
 
 local GetCharKey = ns.UI_GetCharKey
+local tinsert = table.insert
+local tremove = table.remove
 
 --- DB row key for the logged-in player (raw GetCharacterKey vs canonical SavedVariables key).
 local function ResolveSessionCharactersTableKey()
@@ -108,6 +109,7 @@ local BASE_INDENT = GetLayout().BASE_INDENT or 15
 local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
+local SECONDARY_PROF_KEYS = { "cooking" }
 
 local function BuildGuildText(char, isCurrentCharacter)
     local guildName = (char and char.guildName) or nil
@@ -131,7 +133,8 @@ local function ApplyPendingMailIconTexture(tex)
     tex:SetTexCoord(0, 1, 0, 1)
     if C_Texture and C_Texture.GetAtlasInfo then
         local atlasTry = { "Mail-Icon", "minimap-tracking-mailbox", "Mailbox-Tracking" }
-        for _, name in ipairs(atlasTry) do
+        for i = 1, #atlasTry do
+            local name = atlasTry[i]
             local ok, info = pcall(C_Texture.GetAtlasInfo, name)
             if ok and info then
                 tex:SetAtlas(name)
@@ -141,7 +144,8 @@ local function ApplyPendingMailIconTexture(tex)
     end
     if C_Texture and C_Texture.GetFileIDFromPath then
         local paths = { "interface/minimap/tracking/mailbox", "Interface/Minimap/Tracking/Mailbox" }
-        for _, p in ipairs(paths) do
+        for i = 1, #paths do
+            local p = paths[i]
             local ok, fid = pcall(C_Texture.GetFileIDFromPath, p)
             if ok and fid and type(fid) == "number" and fid > 0 then
                 tex:SetTexture(fid)
@@ -169,8 +173,6 @@ local function RegisterCharacterEvents(parent)
     -- chars tab refresh via PopulateContent → DrawCharacterList. Having both caused double rebuild.
     
     -- WN_CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
-    
-    DebugPrint("|cff00ff00[WN CharactersUI]|r Event listeners registered")
 end
 
 --============================================================================
@@ -227,12 +229,7 @@ function WarbandNexus:DrawCharacterList(parent)
     end
     
     local characters = self:GetAllCharacters()
-    if self.db.profile.debugMode and self.db.global.characters then
-        local nDb = 0
-        for _ in pairs(self.db.global.characters) do nDb = nDb + 1 end
-        DebugPrint(string.format("[CharactersUI] db.global.characters count=%d GetAllCharacters count=%d", nDb, #characters))
-    end
-    
+
     -- ===== TITLE CARD (in fixedHeader - non-scrolling) — shared Characters-tab layout =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -259,7 +256,7 @@ function WarbandNexus:DrawCharacterList(parent)
         local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.characterSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
         end)
-        sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
+        sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -(GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20), 0)
         sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
     end
     
@@ -280,8 +277,8 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Check if character data is being loaded (SaveCharacter in progress)
     if isTracked then
-        currentCharGold = GetMoney() or 0
-        
+        currentCharGold = ns.Utilities:GetLiveCharacterMoneyCopper(0)
+
         -- Check if character exists in DB (if not, data is being collected)
         local dbKey = sessionTableKey or currentPlayerKey
         if not dbKey or not self.db.global.characters[dbKey] then
@@ -295,7 +292,8 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local totalCharGold = 0
     
-    for _, char in ipairs(characters) do
+    for i = 1, #characters do
+        local char = characters[i]
         local charGold = ns.Utilities:GetCharTotalCopper(char)
         
         if IsCharLoggedInSession(char) then
@@ -549,17 +547,18 @@ function WarbandNexus:DrawCharacterList(parent)
     local trackedRegular = {}
     local untracked = {}
     
-    for _, char in ipairs(characters) do
+    for i = 1, #characters do
+        local char = characters[i]
         local charKey = GetCharKey(char)
         local isTracked = char.isTracked ~= false  -- Default to true if not set
         
         -- Separate by tracking status first, then favorites
         if not isTracked then
-            table.insert(untracked, char)
+            tinsert(untracked, char)
         elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey) then
-            table.insert(trackedFavorites, char)
+            tinsert(trackedFavorites, char)
         else
-            table.insert(trackedRegular, char)
+            tinsert(trackedRegular, char)
         end
     end
     
@@ -634,15 +633,17 @@ function WarbandNexus:DrawCharacterList(parent)
             local charMap = {}
             
             -- Create a map for quick lookup
-            for _, char in ipairs(list) do
+            for i = 1, #list do
+                local char = list[i]
                 local key = GetCharKey(char)
                 charMap[key] = char
             end
             
             -- Add characters in custom order
-            for _, charKey in ipairs(customOrder) do
+            for i = 1, #customOrder do
+                local charKey = customOrder[i]
                 if charMap[charKey] then
-                    table.insert(ordered, charMap[charKey])
+                    tinsert(ordered, charMap[charKey])
                     charMap[charKey] = nil  -- Remove to track remaining
                 end
             end
@@ -650,7 +651,7 @@ function WarbandNexus:DrawCharacterList(parent)
             -- Add any new characters not in custom order (at the end, sorted)
             local remaining = {}
             for _, char in pairs(charMap) do
-                table.insert(remaining, char)
+                tinsert(remaining, char)
             end
             table.sort(remaining, function(a, b)
                 if (a.level or 0) ~= (b.level or 0) then
@@ -659,8 +660,9 @@ function WarbandNexus:DrawCharacterList(parent)
                     return CompareCharNameLower(a, b)
                 end
             end)
-            for _, char in ipairs(remaining) do
-                table.insert(ordered, char)
+            for i = 1, #remaining do
+                local char = remaining[i]
+                tinsert(ordered, char)
             end
             
             return ordered
@@ -688,8 +690,8 @@ function WarbandNexus:DrawCharacterList(parent)
         for i = 1, #list do
             if IsCharLoggedInSession(list[i]) then
                 if i > 1 then
-                    local c = table.remove(list, i)
-                    table.insert(list, 1, c)
+                    local c = tremove(list, i)
+                    tinsert(list, 1, c)
                 end
                 break
             end
@@ -707,7 +709,9 @@ function WarbandNexus:DrawCharacterList(parent)
         end
         local fs = parent.guildMeasureFs
         local maxW = 0
-        for _, list in ipairs({trackedFavorites, trackedRegular, untracked}) do
+        local listsToMeasure = { trackedFavorites, trackedRegular, untracked }
+        for li = 1, #listsToMeasure do
+            local list = listsToMeasure[li]
             for i = 1, #list do
                 local char = list[i]
                 local isCurrent = IsCharLoggedInSession(char)
@@ -1303,7 +1307,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if not row.profIcons then row.profIcons = {} end
     
     -- Hide all existing profession icons first
-    for _, icon in ipairs(row.profIcons) do icon:Hide() end
+    for i = 1, #row.profIcons do
+        row.profIcons[i]:Hide()
+    end
     
     if char.professions then
         local iconSize = 39  -- Increased 15% (34 → 39)
@@ -1313,8 +1319,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         local numProfs = 0
         if char.professions[1] then numProfs = numProfs + 1 end
         if char.professions[2] then numProfs = numProfs + 1 end
-        local secondaries = {"cooking"}
-        for _, sec in ipairs(secondaries) do
+        for i = 1, #SECONDARY_PROF_KEYS do
+            local sec = SECONDARY_PROF_KEYS[i]
             if char.professions[sec] then numProfs = numProfs + 1 end
         end
         
@@ -1392,7 +1398,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 -- ====== SECTION 1: Expansion sub-professions (skill levels) ======
                 local expansions = char.professionExpansions and char.professionExpansions[profName]
                 if expansions and #expansions > 0 then
-                    for _, exp in ipairs(expansions) do
+                    for i = 1, #expansions do
+                        local exp = expansions[i]
                         local skillColor
                         local maxSkill = exp.maxSkillLevel or 0
                         local curSkill = exp.skillLevel or 0
@@ -1524,7 +1531,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
                     local slotKeys = { "tool", "accessory1", "accessory2" }
                     local tooltipSvc = ns.TooltipService
-                    for _, slotKey in ipairs(slotKeys) do
+                    for i = 1, #slotKeys do
+                        local slotKey = slotKeys[i]
                         local item = eqData[slotKey]
                         if item then
                             local iconStr = item.icon and string.format("|T%s:0|t ", tostring(item.icon)) or ""
@@ -1556,7 +1564,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 if not ShowTooltip then
                     -- Fallback: Use TooltipService
                     local tooltipLines = {}
-                    for _, line in ipairs(lines) do
+                    for i = 1, #lines do
+                        local line = lines[i]
                         if line.right then
                             tooltipLines[#tooltipLines + 1] = {
                                 text = (line.left or "") .. "  " .. (line.right or ""),
@@ -1610,7 +1619,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             currentProfX = currentProfX + iconSize + iconSpacing
         end
         -- Secondary
-        for _, sec in ipairs(secondaries) do
+        for i = 1, #SECONDARY_PROF_KEYS do
+            local sec = SECONDARY_PROF_KEYS[i]
             if char.professions[sec] then
                 SetupProfIcon(char.professions[sec], pIdx, sec)
                 pIdx = pIdx + 1
@@ -1983,7 +1993,8 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     if #customOrder == 0 then
         local allChars = self:GetAllCharacters()
         local keysInCategory = {}
-        for _, c in ipairs(allChars) do
+        for i = 1, #allChars do
+            local c = allChars[i]
             local key = GetCharKey(c)
             if key then
                 local isTracked = c.isTracked ~= false
@@ -2022,7 +2033,8 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     
     -- Find current index in custom order
     local currentIndex = nil
-    for i, key in ipairs(customOrder) do
+    for i = 1, #customOrder do
+        local key = customOrder[i]
         if key == charKey then
             currentIndex = i
             break
@@ -2031,7 +2043,7 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     
     if not currentIndex then 
         -- Character not in custom order, add it
-        table.insert(customOrder, charKey)
+        tinsert(customOrder, charKey)
         currentIndex = #customOrder
     end
     
@@ -2050,8 +2062,8 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
         for i = 1, #customOrder do
             if OrderKeyIsSessionChar(customOrder[i]) then
                 if i > 1 then
-                    local c = table.remove(customOrder, i)
-                    table.insert(customOrder, 1, c)
+                    local c = tremove(customOrder, i)
+                    tinsert(customOrder, 1, c)
                 end
                 break
             end

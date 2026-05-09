@@ -11,6 +11,7 @@ local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local E = Constants.EVENTS
 local issecretvalue = issecretvalue
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 -- Unique AceEvent handler identity for PlansManager
 local PlansManagerEvents = {}
@@ -621,7 +622,8 @@ function WarbandNexus:GetPlanDisplayName(plan)
         if C_TransmogCollection and C_TransmogCollection.GetIllusions then
             local illusions = C_TransmogCollection.GetIllusions()
             if illusions then
-                for _, illusionInfo in ipairs(illusions) do
+                for ii = 1, #illusions do
+                    local illusionInfo = illusions[ii]
                     if illusionInfo.sourceID == plan.illusionID then
                         if illusionInfo.name and illusionInfo.name ~= "" then
                             return illusionInfo.name
@@ -812,7 +814,8 @@ function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
     end
     
     -- Parse activities and get slot-level data
-    for _, activity in ipairs(activities) do
+    for ai = 1, #activities do
+        local activity = activities[ai]
         local activityProgress = activity.progress or 0
         local activityThreshold = activity.threshold or 0
         local slotCompleted = activityProgress >= activityThreshold
@@ -854,10 +857,12 @@ function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
     local saMaps = ns.MIDNIGHT_MAPS_FOR_SA
     if saMaps and C_QuestLog and C_QuestLog.GetBountiesForMapID then
         local seenQuests = {}
-        for _, mapID in ipairs(saMaps) do
+        for mi = 1, #saMaps do
+            local mapID = saMaps[mi]
             local ok, bounties = pcall(C_QuestLog.GetBountiesForMapID, mapID)
             if ok and type(bounties) == "table" then
-                for _, bi in ipairs(bounties) do
+                for bj = 1, #bounties do
+                    local bi = bounties[bj]
                     if bi and bi.questID and not seenQuests[bi.questID] then
                         seenQuests[bi.questID] = true
                         saTotal = saTotal + 1
@@ -1006,8 +1011,10 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
         return
     end
     
-    self:Debug(string.format("Current progress: M+=%d, Raid=%d, World=%d", 
-        currentProgress.dungeonCount, currentProgress.raidBossCount, currentProgress.worldActivityCount))
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        self:Debug(string.format("Current progress: M+=%d, Raid=%d, World=%d",
+            currentProgress.dungeonCount, currentProgress.raidBossCount, currentProgress.worldActivityCount))
+    end
     
     -- Store old progress for comparison
     local oldProgress = {
@@ -1017,8 +1024,10 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
         specialAssignmentCount = plan.progress and plan.progress.specialAssignmentCount or 0
     }
     
-    self:Debug(string.format("Old progress: M+=%d, Raid=%d, World=%d, SA=%d", 
-        oldProgress.dungeonCount, oldProgress.raidBossCount, oldProgress.worldActivityCount, oldProgress.specialAssignmentCount))
+    if IsDebugModeEnabled and IsDebugModeEnabled() then
+        self:Debug(string.format("Old progress: M+=%d, Raid=%d, World=%d, SA=%d",
+            oldProgress.dungeonCount, oldProgress.raidBossCount, oldProgress.worldActivityCount, oldProgress.specialAssignmentCount))
+    end
     
     -- Update progress
     plan.progress = plan.progress or {}
@@ -1148,7 +1157,8 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     
     -- Show notifications for newly completed checkpoints (individual progress gains)
     if not skipNotifications then
-        for _, checkpoint in ipairs(newlyCompletedCheckpoints) do
+        for cpi = 1, #newlyCompletedCheckpoints do
+            local checkpoint = newlyCompletedCheckpoints[cpi]
             self:Debug("Checkpoint completed: " .. checkpoint.category .. " " .. checkpoint.oldProgress .. " -> " .. checkpoint.progress)
             self:ShowWeeklyCheckpointNotification(plan.characterName, checkpoint.category, checkpoint.progress)
         end
@@ -1159,7 +1169,8 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
         if #newlyCompletedSlots > 0 then
             self:Debug("Showing " .. #newlyCompletedSlots .. " slot completion notifications")
         end
-        for _, slotInfo in ipairs(newlyCompletedSlots) do
+        for si = 1, #newlyCompletedSlots do
+            local slotInfo = newlyCompletedSlots[si]
             self:Debug("Slot completed: " .. slotInfo.category .. " #" .. slotInfo.index)
             self:ShowWeeklySlotNotification(plan.characterName, slotInfo.category, slotInfo.index, slotInfo.threshold)
         end
@@ -1171,7 +1182,8 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     local slotMap = { dungeon = plan.slots.dungeon, raid = plan.slots.raid, world = plan.slots.world }
     for slotKey, slotList in pairs(slotMap) do
         if tracked[slotKey] then
-            for _, slot in ipairs(slotList) do
+            for sli = 1, #slotList do
+                local slot = slotList[sli]
                 if not slot.completed then allCompleted = false break end
             end
             if not allCompleted then break end
@@ -2234,7 +2246,8 @@ local function HasSourceKeyword(text)
     if not SOURCE_KEYWORDS then
         SOURCE_KEYWORDS = BuildSourceKeywords()
     end
-    for _, keyword in ipairs(SOURCE_KEYWORDS) do
+    for ki = 1, #SOURCE_KEYWORDS do
+        local keyword = SOURCE_KEYWORDS[ki]
         if text:find(keyword, 1, true) then
             return true
         end
@@ -2282,8 +2295,10 @@ function WarbandNexus:GetRecipeReagents(recipeID)
     end
     
     local reagents = {}
+    local slotSchematics = schematic.reagentSlotSchematics
     
-    for _, slot in ipairs(schematic.reagentSlotSchematics) do
+    for rsi = 1, #slotSchematics do
+        local slot = slotSchematics[rsi]
         if slot.reagents and #slot.reagents > 0 then
             local reagent = slot.reagents[1]  -- Primary reagent
             table.insert(reagents, {
@@ -2306,7 +2321,8 @@ function WarbandNexus:CheckMaterialsAcrossWarband(reagents)
     
     local results = {}
     
-    for _, reagent in ipairs(reagents) do
+    for ri = 1, #reagents do
+        local reagent = reagents[ri]
         local itemID = reagent.itemID
         local needed = reagent.quantity
         local found = 0
@@ -2447,7 +2463,8 @@ function WarbandNexus:CheckPlanProgress(plan)
             progress.materials = materialCheck
             
             local allComplete = true
-            for _, mat in ipairs(materialCheck) do
+            for mi = 1, #materialCheck do
+                local mat = materialCheck[mi]
                 if not mat.complete then
                     allComplete = false
                     break
@@ -2472,7 +2489,8 @@ function WarbandNexus:CheckPlanProgress(plan)
         if plan.illusionID and C_TransmogCollection then
             local illusionList = C_TransmogCollection.GetIllusions()
             if illusionList then
-                for _, illusionInfo in ipairs(illusionList) do
+                for ii = 1, #illusionList do
+                    local illusionInfo = illusionList[ii]
                     -- Check both sourceID and illusionID for compatibility
                     if illusionInfo.sourceID == plan.illusionID or illusionInfo.visualID == plan.illusionID then
                         progress.collected = illusionInfo.isCollected or false
@@ -2517,7 +2535,8 @@ function WarbandNexus:IsActivePlanComplete(plan)
         local totalQuests, completedQuests = 0, 0
         for cat, questList in pairs(plan.quests or {}) do
             if plan.questTypes and plan.questTypes[cat] then
-                for _, quest in ipairs(questList) do
+                for qi = 1, #questList do
+                    local quest = questList[qi]
                     if quest and not quest.isSubQuest then
                         totalQuests = totalQuests + 1
                         if quest.isComplete then
@@ -2725,7 +2744,8 @@ function WarbandNexus:ParseMultipleSources(sourceText)
         }
         
         singleSource.sourceType = (L and L["SOURCE_TYPE_UNKNOWN"]) or UNKNOWN or "Unknown"
-        for _, entry in ipairs(sourceTypePatterns) do
+        for ei = 1, #sourceTypePatterns do
+            local entry = sourceTypePatterns[ei]
             if entry.pattern and sourceText:find(entry.pattern, 1, true) then
                 singleSource.sourceType = entry.type
                 break

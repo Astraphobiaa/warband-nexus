@@ -467,6 +467,11 @@ local ITEM_BIND_BNET_UNTIL_EQUIPPED = (Enum and Enum.ItemBind and type(Enum.Item
 ---@type number
 local ITEM_BIND_TO_WOW_ACCOUNT = (Enum and Enum.ItemBind and type(Enum.ItemBind.ToWoWAccount) == "number" and Enum.ItemBind.ToWoWAccount) or 7
 
+---@type number
+local ITEM_BIND_ON_USE = (Enum and Enum.ItemBind and type(Enum.ItemBind.OnUse) == "number" and Enum.ItemBind.OnUse)
+    or (type(LE_ITEM_BIND_ON_USE) == "number" and LE_ITEM_BIND_ON_USE)
+    or 3
+
 --- Read bindType (14th return) without relying on a long pcall multi-assign (pcall failure can mis-align locals).
 ---@param itemInfo number|string|nil itemID, link, or name
 ---@return number|nil bindType Enum.ItemBind numeric, or nil if not cached / error
@@ -580,6 +585,29 @@ local function GetBindingType(item)
     return CategoryFromRawBind(GetRawItemBindType(item))
 end
 
+--- Transmog/cosmetic gear has valid equip slots + ilvl but is not an upgrade target here.
+local function IsCosmeticGearCandidate(itemID, itemLink)
+    if not itemID or not C_Item or not C_Item.IsCosmeticItem then return false end
+    local ok, isCosmetic = pcall(function()
+        if itemLink and type(itemLink) == "string" and itemLink ~= "" and not (issecretvalue and issecretvalue(itemLink)) then
+            return C_Item.IsCosmeticItem(itemLink)
+        end
+        return C_Item.IsCosmeticItem(itemID)
+    end)
+    return ok and isCosmetic == true
+end
+
+--- Item Upgrade / storage recommendations only surface own bags+bank or transferable BoE / warband binds.
+local function IsAllowedStorageRecommendationBindLabel(sourceType)
+    if sourceType == "self_bag" or sourceType == "self_bank" then
+        return true
+    end
+    if sourceType == "boe" or sourceType == "warbound" or sourceType == "warbound_until_equipped" then
+        return true
+    end
+    return false
+end
+
 local GEAR_DATA_VERSION = "1.1.0"
 
 local WEAPON_ENCHANT_EQUIP_LOCS = {
@@ -648,7 +676,8 @@ local function BuildCharacterModelSnapshot()
     end)
     if ok and type(list) == "table" then
         local serialised = {}
-        for i, t in ipairs(list) do
+        for i = 1, #list do
+            local t = list[i]
             if type(t) == "table" then
                 serialised[i] = {
                     app = t.appearanceID or 0,
@@ -928,8 +957,14 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
 
         -- Track name: name (e.g. Veteran, Champion); fallback customUpgradeString (10.1.0+)
         local trackName = (info.name and info.name ~= "") and info.name or nil
+        if trackName and issecretvalue and issecretvalue(trackName) then
+            trackName = nil
+        end
         if not trackName and info.customUpgradeString and info.customUpgradeString ~= "" then
             trackName = info.customUpgradeString
+            if trackName and issecretvalue and issecretvalue(trackName) then
+                trackName = nil
+            end
         end
         slotEntry.upgradeTrack = trackName
         slotEntry.currUpgrade  = currUpgrade
@@ -1122,12 +1157,6 @@ function WarbandNexus:ScanEquippedGear()
     }
     if type(preservedModelView) == "table" then
         db[charKey].modelView = preservedModelView
-    end
-
-    do
-        local n = 0
-        for _ in pairs(slots) do n = n + 1 end
-        DebugPrint("Gear scan: " .. tostring(charKey) .. " — " .. tostring(n) .. " slots")
     end
 
     if Constants and Constants.EVENTS and Constants.EVENTS.GEAR_UPDATED then
@@ -1352,6 +1381,336 @@ local function GetAffordableCountAndNextCrestNeed(upInfo, currencyAmounts)
     return totalAffordable, effectiveCrestNeed
 end
 
+-- Dawncrest tooltip append (Gear tab): costs + Constants.DAWNCREST_UI sources for the matching tier.
+-- Track name -> currency column assumes the same mapping as TRACK_NAME_TO_CURRENCY_ID / upgrade vendor tiers
+-- (not re-derived from ilvl columns here — aligns with persisted Gear tab upgrade row).
+
+local function SafeTrimTrackName(name)
+    if not name or name == "" then return nil end
+    if issecretvalue and issecretvalue(name) then return nil end
+    return name:match("^%s*(.-)%s*$") or name
+end
+
+local function LocalizeUpgradeTrackNameForTooltip(name)
+    if not name or name == "" then return name end
+    if issecretvalue and issecretvalue(name) then return name end
+    local L = ns.L
+    if not L then return name end
+    local trimmed = name:match("^%s*(.-)%s*$") or name
+    local key = ({
+        Adventurer = "PVE_CREST_ADV",
+        Veteran = "PVE_CREST_VET",
+        Champion = "PVE_CREST_CHAMP",
+        Hero = "PVE_CREST_HERO",
+        Myth = "PVE_CREST_MYTH",
+        Explorer = "PVE_CREST_EXPLORER",
+        Crafted = "GEAR_TRACK_CRAFTED_FALLBACK",
+    })[trimmed]
+    if key and L[key] then return L[key] end
+    return name
+end
+
+local function CrestCurrencyDisplayName(currencyID)
+    if not currencyID or currencyID == 0 then return "Dawncrest" end
+    local dc = Constants and Constants.DAWNCREST_UI
+    local L = ns.L
+    local lk = dc and dc.PVE_LABEL_KEYS and dc.PVE_LABEL_KEYS[currencyID]
+    if lk and L and L[lk] then
+        local suffix = (L and L["GEAR_TT_DAWNCREST_WORD"]) or "Dawncrest"
+        return (L[lk] .. " " .. suffix)
+    end
+    local en = dc and dc.DISPLAY_NAMES and dc.DISPLAY_NAMES[currencyID]
+    if type(en) == "string" and en ~= "" then
+        if issecretvalue and issecretvalue(en) then return "Dawncrest" end
+        local fw = en:match("^(%S+)") or en
+        return LocalizeDawncrestTierShortName(fw) .. " Dawncrest"
+    end
+    return "Dawncrest"
+end
+
+local function BuildDawncrestSourceBulletLines(currencyID)
+    local out = {}
+    local dc = Constants and Constants.DAWNCREST_UI
+    local srcList = dc and dc.SOURCES and currencyID and dc.SOURCES[currencyID]
+    if srcList then
+        for si = 1, #srcList do
+            local bullet = srcList[si]
+            if type(bullet) == "string" and bullet ~= "" then
+                if not (issecretvalue and issecretvalue(bullet)) then
+                    out[#out + 1] = { text = "\194\183 " .. bullet, color = { 0.78, 0.82, 0.9 }, wrap = true }
+                end
+            end
+        end
+    end
+    if #out == 0 then
+        out[1] = {
+            text = (ns.L and ns.L["GEAR_DAWNCREST_PLAYBOOK_NO_SOURCES"]) or "Earn via seasonal PvE rewards matching this crest tier.",
+            color = { 0.75, 0.78, 0.85 },
+            wrap = true,
+        }
+    end
+    return out
+end
+
+local function CountCrestStepsRemaining(upInfo)
+    if not upInfo or upInfo.isCrafted then return 0 end
+    local curr = upInfo.currUpgrade or 0
+    local maxT = upInfo.maxUpgrade or 0
+    local wm = upInfo.watermarkIlvl or 0
+    local tiers = TRACK_ILVLS and TRACK_ILVLS[upInfo.trackName]
+    if not tiers then return 0 end
+    local count = 0
+    for nextTier = curr + 1, maxT do
+        local nIlvl = tiers[nextTier]
+        if not nIlvl then break end
+        if nIlvl > wm then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function SumRemainingCrestCosts(upInfo)
+    return CountCrestStepsRemaining(upInfo) * (upInfo.crestCost or ns.UPGRADE_CREST_PER_LEVEL or 20)
+end
+
+local function GetEffectiveNextStepCrestCost(upInfo)
+    if not upInfo or upInfo.isCrafted then return nil end
+    if not upInfo.canUpgrade then return nil end
+    local currTier = upInfo.currUpgrade or 0
+    local maxTier = upInfo.maxUpgrade or 0
+    if currTier >= maxTier then return nil end
+    local tiers = TRACK_ILVLS and TRACK_ILVLS[upInfo.trackName]
+    if not tiers then return nil end
+    local wmIlvl = upInfo.watermarkIlvl or 0
+    local nextIlvl = tiers[currTier + 1]
+    if not nextIlvl then return nil end
+    if nextIlvl <= wmIlvl then return 0 end
+    return upInfo.crestCost or ns.UPGRADE_CREST_PER_LEVEL or 20
+end
+
+local function ResolveUpgradeInfoForTooltip(self, ctx)
+    local charKey = ctx.charKey
+    local slotID = ctx.slotID
+    local up = ctx.upgradeInfo
+
+    if not up and charKey and slotID and self.GetPersistedUpgradeInfo then
+        local all = self:GetPersistedUpgradeInfo(charKey)
+        up = all and all[slotID]
+    end
+
+    local needTipScan = false
+    if not up then
+        needTipScan = true
+    elseif not up.notUpgradeable and (not up.maxUpgrade or up.maxUpgrade == 0) then
+        needTipScan = true
+    end
+    if needTipScan and ctx.isCurrentChar and slotID then
+        local tip = ScanUpgradeFromTooltip(slotID)
+        if tip and tip.maxUpgrade and tip.maxUpgrade > 0 and tip.currUpgrade then
+            local gearData = charKey and self:GetEquippedGear(charKey)
+            local slot = gearData and gearData.slots and gearData.slots[slotID]
+            local ilvl = (slot and slot.itemLevel) or tonumber(ctx.itemLevel) or 0
+            local rawWm = (gearData and gearData.watermarks and gearData.watermarks[slotID]) or 0
+            local perSlotWm = SLOT_PAIRS[slotID] and (ilvl < rawWm and ilvl or rawWm) or rawWm
+            local tn = SafeTrimTrackName(tip.trackName)
+            local isCrafted = tip.isCrafted == true
+            local currencyID = (tn and TRACK_NAME_TO_CURRENCY_ID[tn]) or 0
+            up = {
+                canUpgrade = (tip.currUpgrade < tip.maxUpgrade),
+                notUpgradeable = false,
+                currentIlvl = ilvl,
+                currUpgrade = tip.currUpgrade,
+                maxUpgrade = tip.maxUpgrade,
+                trackName = tn or "",
+                currencyID = currencyID,
+                crestCost = ns.UPGRADE_CREST_PER_LEVEL or 20,
+                moneyCost = ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000,
+                watermarkIlvl = perSlotWm,
+                isCrafted = isCrafted,
+            }
+        end
+    end
+
+    return up
+end
+
+local function BuildFallbackDawncrestTooltipLines()
+    local L = ns.L
+    local lines = {}
+    lines[#lines + 1] = { type = "spacer", height = 6 }
+    lines[#lines + 1] = {
+        text = (L and L["GEAR_TT_UPGRADE_FALLBACK_LEAD"]) or "Upgrades use Dawncrest (amounts on the currency panel). Examples by tier:",
+        color = { 0.78, 0.82, 0.9 },
+        wrap = true,
+    }
+    local dc = Constants and Constants.DAWNCREST_UI
+    local colIds = dc and dc.COLUMN_IDS
+    if colIds then
+        for i = 1, #colIds do
+            local cid = colIds[i]
+            local src = dc.SOURCES and dc.SOURCES[cid]
+            local first = src and src[1]
+            if type(first) == "string" and first ~= "" and not (issecretvalue and issecretvalue(first)) then
+                local tierLbl = CrestCurrencyDisplayName(cid)
+                lines[#lines + 1] = {
+                    text = "\194\183 " .. tierLbl .. ": " .. first,
+                    color = { 0.72, 0.76, 0.82 },
+                    wrap = true,
+                }
+            end
+        end
+    end
+    return lines
+end
+
+local function BuildCraftedUpgradeAppendLines(up)
+    local ilvl = up.currentIlvl or 0
+    local tiers = CRAFTED_CREST_TIERS
+    if not tiers then return {} end
+    local nextTier = nil
+    for i = 1, #tiers do
+        local t = tiers[i]
+        if t.maxIlvl > ilvl then
+            nextTier = t
+            break
+        end
+    end
+    if not nextTier then return {} end
+
+    local L = ns.L
+    local cid = nextTier.crestID
+    local crestName = CrestCurrencyDisplayName(cid)
+    local lines = {}
+    lines[#lines + 1] = { type = "spacer", height = 6 }
+    lines[#lines + 1] = {
+        text = (L and L["GEAR_TT_SECTION_DAWNCREST"]) or "Dawncrest",
+        color = { 1, 0.82, 0 },
+        wrap = false,
+    }
+    lines[#lines + 1] = {
+        text = string.format(
+            (L and L["GEAR_TT_CRAFTED_NEXT_RECAST"]) or "Next recraft target: %s (item level %d), %d %s.",
+            LocalizeUpgradeTrackNameForTooltip(nextTier.name),
+            nextTier.maxIlvl,
+            nextTier.cost,
+            crestName
+        ),
+        color = { 0.78, 0.84, 0.92 },
+        wrap = true,
+    }
+    lines[#lines + 1] = { type = "spacer", height = 4 }
+    lines[#lines + 1] = {
+        text = (L and L["GEAR_TT_SECTION_SOURCES"]) or "Sources",
+        color = { 1, 0.82, 0 },
+        wrap = false,
+    }
+    local bullets = BuildDawncrestSourceBulletLines(cid)
+    for i = 1, #bullets do
+        lines[#lines + 1] = bullets[i]
+    end
+    return lines
+end
+
+local function BuildTrackUpgradeAppendLines(up)
+    local L = ns.L
+    local cid = up.currencyID or 0
+    local crestName = CrestCurrencyDisplayName(cid)
+    local nextCost = GetEffectiveNextStepCrestCost(up)
+    local totalRemain = SumRemainingCrestCosts(up)
+    local stepsNeed = CountCrestStepsRemaining(up)
+
+    local lines = {}
+    lines[#lines + 1] = { type = "spacer", height = 6 }
+    lines[#lines + 1] = {
+        text = (L and L["GEAR_TT_SECTION_DAWNCREST"]) or "Dawncrest",
+        color = { 1, 0.82, 0 },
+        wrap = false,
+    }
+    local trackDisp = LocalizeUpgradeTrackNameForTooltip(up.trackName)
+    lines[#lines + 1] = {
+        text = string.format((L and L["GEAR_TT_TRACK_RANK_FORMAT"]) or "%s %d/%d", trackDisp, up.currUpgrade or 0, up.maxUpgrade or 0),
+        color = { 0.75, 0.78, 0.85 },
+        wrap = false,
+    }
+
+    if nextCost == nil then
+        -- maxed / inconsistent
+    elseif nextCost == 0 then
+        lines[#lines + 1] = {
+            text = (L and L["GEAR_TT_NEXT_STEP_GOLD_ONLY"]) or "Next step: gold only (you already reached this item level on this slot).",
+            color = { 1, 0.85, 0.45 },
+            wrap = true,
+        }
+    else
+        lines[#lines + 1] = {
+            text = string.format((L and L["GEAR_TT_NEXT_STEP_CRESTS"]) or "Next step: %d %s.", nextCost, crestName),
+            color = { 0.78, 0.84, 0.92 },
+            wrap = true,
+        }
+    end
+
+    if totalRemain > 0 then
+        lines[#lines + 1] = {
+            text = string.format(
+                (L and L["GEAR_TT_REMAINING_TRACK_CRESTS"]) or "Remaining crest steps on track: %d (%d %s total).",
+                stepsNeed,
+                totalRemain,
+                crestName
+            ),
+            color = { 0.72, 0.76, 0.82 },
+            wrap = true,
+        }
+    end
+
+    lines[#lines + 1] = { type = "spacer", height = 4 }
+    lines[#lines + 1] = {
+        text = (L and L["GEAR_TT_SECTION_SOURCES"]) or "Sources",
+        color = { 1, 0.82, 0 },
+        wrap = false,
+    }
+    local bullets = BuildDawncrestSourceBulletLines(cid)
+    for i = 1, #bullets do
+        lines[#lines + 1] = bullets[i]
+    end
+    return lines
+end
+
+--- Tooltip lines for Gear tab item hover: Dawncrest cost summary + tier sources (Constants.DAWNCREST_UI).
+---@param itemLink string|nil
+---@param slotContext table|nil { slotID, charKey, upgradeInfo?, itemLevel?, isCurrentChar? }
+---@return table lines TooltipService line descriptors
+function WarbandNexus:GetGearItemUpgradeTooltipAppend(itemLink, slotContext)
+    if itemLink and issecretvalue and issecretvalue(itemLink) then
+        itemLink = nil
+    end
+    local ctx = slotContext or {}
+    local up = ResolveUpgradeInfoForTooltip(self, ctx)
+
+    if not up then
+        if ctx.slotID or itemLink then
+            return BuildFallbackDawncrestTooltipLines()
+        end
+        return {}
+    end
+
+    if up.notUpgradeable then
+        return {}
+    end
+
+    if up.isCrafted then
+        return BuildCraftedUpgradeAppendLines(up)
+    end
+
+    local maxU = up.maxUpgrade or 0
+    local curU = up.currUpgrade or 0
+    if maxU <= 0 or curU >= maxU then
+        return {}
+    end
+
+    return BuildTrackUpgradeAppendLines(up)
+end
+
 --- Internal diagnostic: upgrade info per slot (current character). No slash — dev: /run WarbandNexus:GearUpgradeDebugReport()
 --- Uses same currency source as Gear tab (FromDB, normalized). Crest need = 20 or 0 (gold-only/maxed).
 function WarbandNexus:GearUpgradeDebugReport()
@@ -1519,16 +1878,21 @@ local function ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageT
     local charName = (charData and charData.name) or sourceCharKey
 
     if storageType == "warband" then
-        -- Warband Bank items are by definition accessible to every warband character.
-        -- We do not need a bindType check to confirm transferability — storage location
-        -- already implies it. We still try to derive a bind label for UI display.
-        -- Tooltip scan takes precedence over GetItemInfo's bindType (which is unreliable
-        -- for WuE items in TWW Midnight — see GetBindingType).
+        -- Warband Bank: storage is account-wide, but recommendations stay BoE / warband-bound only.
         local rawWB = GetRawItemBindType(item)
-        if rawWB == LE_ITEM_BIND_QUEST or rawWB == 4 then
+        if rawWB == LE_ITEM_BIND_ON_ACQUIRE or rawWB == 1 or rawWB == LE_ITEM_BIND_QUEST or rawWB == 4 then
             return nil, nil
         end
-        local wbCat = GetBindingType(item) or "warbound"
+        if rawWB == ITEM_BIND_ON_USE then
+            return nil, nil
+        end
+        local wbCat = GetBindingType(item)
+        if not wbCat then
+            wbCat = CategoryFromRawBind(rawWB)
+        end
+        if not wbCat then
+            wbCat = "warbound"
+        end
         return "Warband Bank", wbCat
     end
 
@@ -1607,7 +1971,9 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     do
         local equippedGear = self:GetEquippedGear(selectedCharKey)
         local slots = equippedGear and equippedGear.slots or {}
-        for _, slotID in ipairs({ 11, 12, 13, 14 }) do
+        local pairedSlots = { 11, 12, 13, 14 }
+        for si = 1, #pairedSlots do
+            local slotID = pairedSlots[si]
             local s = slots[slotID]
             if s and s.itemID then
                 equippedItemIDBySlot[slotID] = tonumber(s.itemID)
@@ -1731,6 +2097,9 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     local function EvaluateItem(item, sourceCharKey, storageType)
         if not item or not item.itemID then return end
 
+        local linkEarly = item.itemLink or item.link
+        if IsCosmeticGearCandidate(item.itemID, linkEarly) then return end
+
         local equipLoc = ""
         local itemClassID = item.classID
         local itemSubclassID = item.subclassID
@@ -1794,7 +2163,11 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                 local currentIlvl = equippedMap[slotID] or 0
                 if ilvl > currentIlvl then
                     local source, sourceType = ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageType)
-                    if source then
+                    if source and sourceType == "boe" and item.isBound == true then
+                        dbg("  --- REJECTED(boe+soulbound): " .. itemName .. " ilvl=" .. tostring(ilvl) .. " src=" .. tostring(sourceCharKey) .. "/" .. tostring(storageType))
+                    elseif source and not IsAllowedStorageRecommendationBindLabel(sourceType) then
+                        dbg("  --- REJECTED(bind-label): " .. itemName .. " label=" .. tostring(sourceType))
+                    elseif source then
                         AddCandidate(slotID, {
                             itemID     = item.itemID,
                             itemLink   = link,
@@ -1916,6 +2289,9 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                 elseif _sameInPartner then
                     -- Same itemID already equipped in the paired slot on the selected character.
                 elseif slotData and slotData.itemID and (slotData.itemLink or slotData.itemLevel) then
+                    if IsCosmeticGearCandidate(slotData.itemID, slotData.itemLink) then
+                        -- skip cosmetic appearances worn by another character
+                    else
                     local currentIlvl = equippedMap[slotID] or 0
                     local itemLevel = ResolveStorageItemIlvl(slotData)
                     if itemLevel > currentIlvl then
@@ -1983,6 +2359,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                             end
                         end
                         end
+                    end
                     end
                 end
             end
@@ -2151,7 +2528,9 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
             gold = (charEntry.gold or 0) * 10000 + (charEntry.silver or 0) * 100 + (charEntry.copper or 0)
         end
     end
-    if isCurrentChar and GetMoney then gold = GetMoney() or 0 end
+    if isCurrentChar and ns.Utilities and ns.Utilities.GetLiveCharacterMoneyCopper then
+        gold = ns.Utilities:GetLiveCharacterMoneyCopper(gold)
+    end
     result[#result + 1] = {
         currencyID = 0,
         amount     = math.floor(gold / 10000),
@@ -2170,6 +2549,129 @@ end
 ---@return table currencies Array of { currencyID, amount, name, icon, isGold? }
 function WarbandNexus:GetGearUpgradeCurrencies(charKey)
     return self:GetGearUpgradeCurrenciesFromDB(charKey)
+end
+
+-- ============================================================================
+-- GEAR UPGRADE PLAYBOOK (Dawncrest — compact summary + tooltip lines)
+-- ============================================================================
+
+local function LocalizeDawncrestTierShortName(englishFirstWord)
+    if not englishFirstWord or englishFirstWord == "" then return englishFirstWord end
+    local L = ns.L
+    if not L then return englishFirstWord end
+    local key = ({
+        Adventurer = "PVE_CREST_ADV",
+        Veteran = "PVE_CREST_VET",
+        Champion = "PVE_CREST_CHAMP",
+        Hero = "PVE_CREST_HERO",
+        Myth = "PVE_CREST_MYTH",
+        Explorer = "PVE_CREST_EXPLORER",
+    })[englishFirstWord]
+    if key and L[key] then return L[key] end
+    return englishFirstWord
+end
+
+--- Compact Dawncrest / upgrade hint for Gear tab + structured tooltip (Sources from Constants.DAWNCREST_UI).
+--- Computed in service layer (Constants + locale); UI only displays.
+---@param charKey string|nil Reserved for future per-character lines; informational playbook is global.
+---@return string summary Single-line (or short) summary for the currency panel.
+---@return table|nil tooltipPayload fields: type, title, lines — pass to ShowTooltip as custom (UI supplies anchor).
+function WarbandNexus:GetGearUpgradePlaybookText(charKey)
+    local dc = Constants and Constants.DAWNCREST_UI
+    if not dc or not dc.COLUMN_IDS then
+        return "", nil
+    end
+
+    local crestPer = ns.UPGRADE_CREST_PER_LEVEL or 20
+    local fmtNum = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
+    local crestFmt = fmtNum(crestPer)
+    local L = ns.L
+
+    local summaryTemplate = L and L["GEAR_DAWNCREST_PLAYBOOK_SUMMARY"]
+    local summary
+    if type(summaryTemplate) == "string" and summaryTemplate ~= "" then
+        summary = string.format(summaryTemplate, crestFmt)
+    else
+        summary = string.format(
+            "Each upgrade step: %s Dawncrests + gold. Earn via delves, dungeons, Mythic+, and raids — hover header for tier sources.",
+            crestFmt
+        )
+    end
+
+    local lines = {}
+
+    local leadTemplate = L and L["GEAR_DAWNCREST_PLAYBOOK_TOOLTIP_LEAD"]
+    if type(leadTemplate) == "string" and leadTemplate ~= "" then
+        lines[#lines + 1] = { text = string.format(leadTemplate, crestFmt), color = { 0.82, 0.86, 0.95 }, wrap = true }
+    else
+        lines[#lines + 1] = {
+            text = string.format(
+                "Item upgrades spend %s Dawncrests per tier step (plus gold) at the upgrade vendor.",
+                crestFmt
+            ),
+            color = { 0.82, 0.86, 0.95 },
+            wrap = true,
+        }
+    end
+
+    local capHint = L and L["GEAR_DAWNCREST_PLAYBOOK_CAP_HINT"]
+    if type(capHint) == "string" and capHint ~= "" then
+        lines[#lines + 1] = { type = "spacer", height = 6 }
+        lines[#lines + 1] = { text = capHint, color = { 0.72, 0.76, 0.82 }, wrap = true }
+    end
+
+    lines[#lines + 1] = { type = "spacer", height = 8 }
+    lines[#lines + 1] = {
+        text = (L and L["GEAR_DAWNCREST_PLAYBOOK_BY_TIER"]) or "Sources by Dawncrest tier:",
+        color = { 1, 0.82, 0 },
+        wrap = false,
+    }
+
+    local colIds = dc.COLUMN_IDS
+    local sourcesMap = dc.SOURCES
+    local displayNames = dc.DISPLAY_NAMES
+    local labelKeys = dc.PVE_LABEL_KEYS
+
+    for i = 1, #colIds do
+        local cid = colIds[i]
+        local tierLabel
+        local lk = labelKeys and labelKeys[cid]
+        if lk and L and L[lk] then
+            tierLabel = L[lk]
+        else
+            local enName = displayNames and displayNames[cid] or ""
+            local fw = enName
+            if type(enName) == "string" and enName ~= "" then
+                fw = enName:match("^(%S+)") or enName
+            end
+            tierLabel = LocalizeDawncrestTierShortName(fw)
+        end
+
+        lines[#lines + 1] = { text = (tierLabel or "?") .. ":", color = { 1, 0.85, 0.45 }, wrap = false }
+
+        local srcList = sourcesMap and sourcesMap[cid]
+        if srcList and #srcList > 0 then
+            for si = 1, #srcList do
+                local bullet = srcList[si]
+                if type(bullet) == "string" and bullet ~= "" then
+                    lines[#lines + 1] = { text = "\194\183 " .. bullet, color = { 0.78, 0.82, 0.9 }, wrap = true }
+                end
+            end
+        else
+            lines[#lines + 1] = {
+                text = (L and L["GEAR_DAWNCREST_PLAYBOOK_NO_SOURCES"]) or "Earn via seasonal PvE rewards matching this crest tier.",
+                color = { 0.75, 0.78, 0.85 },
+                wrap = true,
+            }
+        end
+
+        if i < #colIds then
+            lines[#lines + 1] = { type = "spacer", height = 4 }
+        end
+    end
+
+    local title = (L and L["GEAR_DAWNCREST_PLAYBOOK_TITLE"]) or "Dawncrest upgrade playbook"
+    return summary, { type = "custom", title = title, lines = lines }
 end
 
 -- After currency changes (e.g. crests spent on upgrade), re-scan gear so item ilvl/tier and watermarks stay in sync.

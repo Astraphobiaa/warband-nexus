@@ -642,7 +642,8 @@ function ReputationProcessor:ProcessBatch(rawFactions)
     
     local normalized = {}
     
-    for _, rawData in ipairs(rawFactions) do
+    for ri = 1, #rawFactions do
+        local rawData = rawFactions[ri]
         local result = self:Process(rawData)
         if result then
             table.insert(normalized, result)
@@ -698,7 +699,8 @@ function ReputationProcessor:ToSpecFormatBatch(normalizedFactions)
     end
     
     local results = {}
-    for _, normalized in ipairs(normalizedFactions) do
+    for ni = 1, #normalizedFactions do
+        local normalized = normalizedFactions[ni]
         local specFormat = self:ToSpecFormat(normalized)
         if specFormat then
             table.insert(results, specFormat)

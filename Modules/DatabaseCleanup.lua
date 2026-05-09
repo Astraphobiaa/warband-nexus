@@ -7,6 +7,7 @@ local ADDON_NAME, ns = ...
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local WarbandNexus = ns.WarbandNexus
 
 --============================================================================
@@ -157,8 +158,10 @@ function WarbandNexus:ForceCleanupDatabase()
     if result.duplicates == 0 and result.invalidEntries == 0 and result.deprecatedStorage == 0 then
         DebugPrint("|cff00ff00[WN Cleanup]|r Database is already clean!")
     else
-        DebugPrint(string.format("|cff00ff00[WN Cleanup]|r Removed %d duplicate(s), %d invalid(s), %d deprecated storage(s)", 
-            result.duplicates, result.invalidEntries, result.deprecatedStorage))
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint(string.format("|cff00ff00[WN Cleanup]|r Removed %d duplicate(s), %d invalid(s), %d deprecated storage(s)",
+                result.duplicates, result.invalidEntries, result.deprecatedStorage))
+        end
         DebugPrint("|cff00ff00[WN Cleanup]|r Please /reload to see changes.")
     end
 end

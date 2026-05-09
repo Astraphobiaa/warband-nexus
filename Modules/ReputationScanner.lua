@@ -296,8 +296,8 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
             headerStack[#headerStack + 1] = { factionID = completeData.factionID, name = completeData.name }
             completeData.parentFactionID = nil
             completeData.parentHeaders = {}
-            for _, header in ipairs(expansionHeaders) do
-                completeData.parentHeaders[#completeData.parentHeaders + 1] = header
+            for hi = 1, #expansionHeaders do
+                completeData.parentHeaders[#completeData.parentHeaders + 1] = expansionHeaders[hi]
             end
         elseif completeData.isHeader and not completeData.isHeaderWithRep then
             if #headerStack > 0 then table.remove(headerStack) end
@@ -311,8 +311,8 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
                 completeData.parentFactionID = nil
             end
             completeData.parentHeaders = {}
-            for _, header in ipairs(expansionHeaders) do
-                completeData.parentHeaders[#completeData.parentHeaders + 1] = header
+            for hi = 1, #expansionHeaders do
+                completeData.parentHeaders[#completeData.parentHeaders + 1] = expansionHeaders[hi]
             end
         end
         

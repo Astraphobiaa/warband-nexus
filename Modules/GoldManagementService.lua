@@ -32,8 +32,14 @@ end
 local function PerformGoldManagement()
     local settings = GetEffectiveGoldSettings()
     if not settings or not settings.enabled then return end
-    
-    local charGold = GetMoney() or 0
+
+    local dbGold = 0
+    local ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local ch = ck and WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[ck]
+    if ch and ns.Utilities and ns.Utilities.GetCharTotalCopper then
+        dbGold = ns.Utilities:GetCharTotalCopper(ch)
+    end
+    local charGold = (ns.Utilities and ns.Utilities.GetLiveCharacterMoneyCopper and ns.Utilities:GetLiveCharacterMoneyCopper(dbGold)) or dbGold
     local warbandGold = (C_Bank and C_Bank.FetchDepositedMoney and C_Bank.FetchDepositedMoney(Enum.BankType.Account)) or 0
     local target = settings.targetAmount or 0
     local mode = settings.mode or "both"

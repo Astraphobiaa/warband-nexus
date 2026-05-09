@@ -117,6 +117,8 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local Utilities = ns.Utilities
 local E = ns.Constants.EVENTS
+local DebugPrint = ns.DebugPrint
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 -- Packed internal funcs: Lua 5.1 / WoW ~200 locals per function scope.
 local Fns = {}
 
@@ -348,8 +350,8 @@ function Fns.RegisterTryCounterEvents()
         local ok, err = pcall(tryCounterFrame.RegisterEvent, tryCounterFrame, ev)
         if ok then
             anyRegistered = true
-        elseif WarbandNexus and WarbandNexus.Debug then
-            WarbandNexus:Debug("[TryCounter] RegisterEvent failed for %s: %s", tostring(ev), tostring(err))
+        elseif IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint(format("[TryCounter] RegisterEvent failed for %s: %s", tostring(ev), tostring(err)))
         end
     end
     tryCounterEventsRegistered = anyRegistered
@@ -8216,7 +8218,7 @@ function Fns.ApplyRarityMountAttemptsMaxToWN(self, itemId, extAttempts)
     return false
 end
 
---- Persist Rarity itemID → attempts in SavedVariables so users can disable Rarity and still restore via /wn rarityrestore.
+--- Persist Rarity itemID → attempts in SavedVariables so users can disable Rarity and still restore from Try Counter settings (backup restore).
 function Fns.MergeRarityProfileMountsIntoWnBackup(mounts)
     if not Fns.EnsureDB() or type(mounts) ~= "table" then
         return
@@ -8276,7 +8278,7 @@ function WarbandNexus:ImportRarityMountHandoff()
         return
     end
     if InCombatLockdown() then
-        self:Print("|cffff6600[WN]|r Exit combat, then run |cff00ccff/wn rarityimport|r again.")
+        self:Print("|cffff6600[WN]|r Exit combat, then run Rarity handoff again from Warband Nexus → Settings → Try Counter.")
         return
     end
     if Utilities and Utilities.SafeLoadAddOn then
@@ -8304,11 +8306,11 @@ function WarbandNexus:ImportRarityMountHandoff()
                 end
                 if bn > 0 then
                     self:Print(string.format(
-                        "|cff00ff00[WN]|r Rarity handoff complete. |cffffffff%d|r mount itemID(s) copied into WN backup + try counts (max). You can disable Rarity. If a count looks wrong: |cff00ccff/wn rarityrestore|r.|r",
+                        "|cff00ff00[WN]|r Rarity handoff complete. |cffffffff%d|r mount itemID(s) copied into WN backup + try counts (max). You can disable Rarity. If a count looks wrong: use Restore from backup in Try Counter settings.|r",
                         bn
                     ))
                 else
-                    self:Print("|cffff6600[WN]|r No Rarity mount data found. Enable the |cffffcc00Rarity|r addon in Esc → AddOns, |cff00ccff/reload|r, then |cff00ccff/wn rarityimport|r.|r")
+                    self:Print("|cffff6600[WN]|r No Rarity mount data found. Enable the |cffffcc00Rarity|r addon in Esc → AddOns, |cff00ccff/reload|r, then run Rarity handoff from Try Counter settings.|r")
                 end
             end
         end)
@@ -8370,7 +8372,7 @@ function WarbandNexus:SyncRarityMountAttemptsMax()
     return updated, scanned
 end
 
----@deprecated Use SyncRarityMountAttemptsMax; kept for slash/API compatibility.
+---@deprecated Use SyncRarityMountAttemptsMax; kept for API compatibility.
 function WarbandNexus:ImportLegacyMountTrackerAttempts()
     return self:SyncRarityMountAttemptsMax()
 end
@@ -8384,7 +8386,7 @@ function WarbandNexus:DebugResetLegacyMountTrackerSeed()
         return
     end
     WarbandNexus.db.global.tryCounts.legacyMountTrackerSeedComplete = false
-    self:Print("|cff00ff00[WN]|r Seed flag cleared (informational). Rarity merge does not use this flag — use |cff00ccff/wn raritysync|r with Rarity enabled, or wait for post-login sync.")
+    self:Print("|cff00ff00[WN]|r Seed flag cleared (informational). Rarity merge does not use this flag — with Rarity enabled, wait for post-login sync or trigger merge from Try Counter settings.")
 end
 
 function WarbandNexus:DebugLegacyMountTrackerImportPreview()

@@ -8,6 +8,8 @@
 
 local ADDON_NAME, ns = ...
 
+local wipe = wipe
+local criteriaRowScratch = {}
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
@@ -141,15 +143,19 @@ local function CreateDetailsFrame(row, parentFrame, options)
             end
             columnsPerRow = math.min(columnsPerRow, 2)
             local columnWidth = availableWidth / columnsPerRow
-            local currentRow = {}
+            wipe(criteriaRowScratch)
+            local crn = 0
             
             local ShowAchievementPopup = ns.UI_ShowAchievementPopup
             
-            for i, item in ipairs(criteriaItems) do
-                table.insert(currentRow, item)
+            for i = 1, #criteriaItems do
+                local item = criteriaItems[i]
+                crn = crn + 1
+                criteriaRowScratch[crn] = item
                 
-                if #currentRow == columnsPerRow or i == #criteriaItems then
-                    for colIndex, criteriaItem in ipairs(currentRow) do
+                if crn == columnsPerRow or i == #criteriaItems then
+                    for colIndex = 1, crn do
+                        local criteriaItem = criteriaRowScratch[colIndex]
                         local xPos = leftMargin + (colIndex - 1) * columnWidth
                         local criteriaText = criteriaItem.text or criteriaItem
                         local linkedID = criteriaItem.linkedAchievementID
@@ -192,7 +198,7 @@ local function CreateDetailsFrame(row, parentFrame, options)
                     end
                     
                     yOffset = yOffset - CRITERIA_LINE_HEIGHT - 4
-                    currentRow = {}
+                    crn = 0
                 end
             end
             
@@ -332,7 +338,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         -- which is what was making the animation a no-op (fromH==toH).
         if not row.detailsFrame then
             if data.onExpandPopulate then
-                data.onExpandPopulate(data)
+                data.onExpandPopulate(data, row)
             end
             row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
             row._fullDetailsH = row.detailsFrame:GetHeight()
@@ -527,7 +533,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             end
             
             if data.onExpandPopulate then
-                data.onExpandPopulate(data)
+                data.onExpandPopulate(data, row)
             end
             row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
         row._fullDetailsH = row.detailsFrame:GetHeight()  -- cache before any transient resizes

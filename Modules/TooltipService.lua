@@ -1541,7 +1541,8 @@ function TooltipService:RegisterSafetyEvents()
             end
         end
         local n = (type(owner.GetName) == "function") and owner:GetName() or nil
-        if n and n:find("WarbandNexus", 1, true) then
+        if n and type(n) == "string" and not (issecretvalue and issecretvalue(n))
+            and n:find("WarbandNexus", 1, true) then
             return true
         end
         return false
@@ -1996,167 +1997,161 @@ function TooltipService:InitializeGameTooltipHook()
     end
 
     -- ================================================================
-    -- ITEM TOOLTIP HANDLER — WN Search counts per character
+    -- ITEM TOOLTIP — single post-call (counts + planned + container drops)
+    -- One TooltipDataProcessor registration avoids triple invocation per hover.
     -- ================================================================
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile) then
-            return
-        end
-        local showTooltipItemCount = WarbandNexus.db.profile.showTooltipItemCount
-        if showTooltipItemCount == nil then
-            -- Backward compatibility for older profiles that only had showItemCount.
-            showTooltipItemCount = WarbandNexus.db.profile.showItemCount
-        end
-        if not showTooltipItemCount then
-            return
-        end
-        if not tooltip or not tooltip.AddLine or not tooltip.AddDoubleLine then return end
-
         local itemID = data and data.id
-        if not itemID then return end
 
-        local ok, err = pcall(function()
-            local details = WarbandNexus:GetDetailedItemCountsFast(itemID)
-            if not details then return end
-
-            local total = details.warbandBank or 0
-            for i = 1, #details.characters do
-                total = total + details.characters[i].bagCount + details.characters[i].bankCount
+        -- WN Search counts per character
+        if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
+            local showTooltipItemCount = WarbandNexus.db.profile.showTooltipItemCount
+            if showTooltipItemCount == nil then
+                showTooltipItemCount = WarbandNexus.db.profile.showItemCount
             end
-            if total == 0 then return end
+            if showTooltipItemCount and tooltip and tooltip.AddLine and tooltip.AddDoubleLine and itemID then
+                local ok, err = pcall(function()
+                    local details = WarbandNexus:GetDetailedItemCountsFast(itemID)
+                    if not details then return end
 
-            tooltip:AddLine(" ")
-            tooltip:AddLine((ns.L and ns.L["WN_SEARCH"]) or "WN Search", 0.4, 0.8, 1, 1)
-
-            -- Atlas markup for storage type icons (uniform 16x16)
-            local bagIcon     = CreateAtlasMarkup and CreateAtlasMarkup("Banker", 16, 16) or ""
-            local bankIcon    = CreateAtlasMarkup and CreateAtlasMarkup("VignetteLoot", 16, 16) or ""
-            local warbandIcon = CreateAtlasMarkup and CreateAtlasMarkup("warbands-icon", 16, 16) or ""
-
-            if details.warbandBank > 0 then
-                tooltip:AddDoubleLine(
-                    warbandIcon .. " " .. ((ns.L and ns.L["TOOLTIP_WARBAND_BANK"]) or "Warband Bank"),
-                    "x" .. details.warbandBank,
-                    0.8, 0.8, 0.8, 0.3, 0.9, 0.3
-                )
-            end
-
-            if #details.characters > 0 then
-                local isShift = IsShiftKeyDown()
-                local maxShow = isShift and 999 or 5
-                local shown = 0
-
-                for i = 1, #details.characters do
-                    if shown >= maxShow then break end
-                    local char = details.characters[i]
-                    -- Only show characters that actually have this item
-                    if char.bankCount > 0 or char.bagCount > 0 then
-                        local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
-                        if char.bankCount > 0 then
-                            tooltip:AddDoubleLine(
-                                bankIcon .. " " .. char.charName,
-                                "x" .. char.bankCount,
-                                cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
-                            )
-                        end
-                        if char.bagCount > 0 then
-                            tooltip:AddDoubleLine(
-                                bagIcon .. " " .. char.charName,
-                                "x" .. char.bagCount,
-                                cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
-                            )
-                        end
-                        shown = shown + 1
+                    local total = details.warbandBank or 0
+                    for i = 1, #details.characters do
+                        total = total + details.characters[i].bagCount + details.characters[i].bankCount
                     end
-                end
+                    if total == 0 then return end
 
-                if not isShift and #details.characters > 5 then
-                    tooltip:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
+                    tooltip:AddLine(" ")
+                    tooltip:AddLine((ns.L and ns.L["WN_SEARCH"]) or "WN Search", 0.4, 0.8, 1, 1)
+
+                    local bagIcon     = CreateAtlasMarkup and CreateAtlasMarkup("Banker", 16, 16) or ""
+                    local bankIcon    = CreateAtlasMarkup and CreateAtlasMarkup("VignetteLoot", 16, 16) or ""
+                    local warbandIcon = CreateAtlasMarkup and CreateAtlasMarkup("warbands-icon", 16, 16) or ""
+
+                    if details.warbandBank > 0 then
+                        tooltip:AddDoubleLine(
+                            warbandIcon .. " " .. ((ns.L and ns.L["TOOLTIP_WARBAND_BANK"]) or "Warband Bank"),
+                            "x" .. details.warbandBank,
+                            0.8, 0.8, 0.8, 0.3, 0.9, 0.3
+                        )
+                    end
+
+                    if #details.characters > 0 then
+                        local isShift = IsShiftKeyDown()
+                        local maxShow = isShift and 999 or 5
+                        local shown = 0
+
+                        for i = 1, #details.characters do
+                            if shown >= maxShow then break end
+                            local char = details.characters[i]
+                            if char.bankCount > 0 or char.bagCount > 0 then
+                                local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
+                                if char.bankCount > 0 then
+                                    tooltip:AddDoubleLine(
+                                        bankIcon .. " " .. char.charName,
+                                        "x" .. char.bankCount,
+                                        cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
+                                    )
+                                end
+                                if char.bagCount > 0 then
+                                    tooltip:AddDoubleLine(
+                                        bagIcon .. " " .. char.charName,
+                                        "x" .. char.bagCount,
+                                        cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
+                                    )
+                                end
+                                shown = shown + 1
+                            end
+                        end
+
+                        if not isShift and #details.characters > 5 then
+                            tooltip:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
+                        end
+                    end
+
+                    local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
+                    tooltip:AddDoubleLine(totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1)
+                    tooltip:Show()
+                end)
+
+                if not ok and WarbandNexus.Debug then
+                    WarbandNexus:Debug("[Tooltip] Item PostCall error for itemID " .. tostring(itemID) .. ": " .. tostring(err))
                 end
             end
-
-            local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
-            tooltip:AddDoubleLine(totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1)
-            tooltip:Show()
-        end)
-
-        if not ok and WarbandNexus.Debug then
-            WarbandNexus:Debug("[Tooltip] Item PostCall error for itemID " .. tostring(itemID) .. ": " .. tostring(err))
         end
-    end)
 
-    -- ================================================================
-    -- ITEM TOOLTIP: "(Planned)" indicator for items in the Plans list
-    -- Checks mount/pet/toy/item plans and appends yellow text
-    -- ================================================================
-    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        if not WarbandNexus then return end
-        if not tooltip or not tooltip.AddLine then return end
-
-        local itemID = data and data.id
-        if not itemID then return end
-
-        -- True if this item grants a toy/mount/pet the player already owns (hide "(Planned)" when complete)
-        local function ItemTooltipCollectibleOwned(id)
-            if not id then return false end
-            if PlayerHasToy then
-                local okToy, hasToy = pcall(PlayerHasToy, id)
-                if okToy and hasToy == true and not (issecretvalue and issecretvalue(hasToy)) then
-                    return true
-                end
-            end
-            if C_MountJournal and C_MountJournal.GetMountFromItem then
-                local ok1, mountID = pcall(C_MountJournal.GetMountFromItem, id)
-                if ok1 and mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
-                    local ok2, _, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, mountID)
-                    if ok2 and isCollected == true and not (issecretvalue and issecretvalue(isCollected)) then
+        -- "(Planned)" indicator
+        if WarbandNexus and tooltip and tooltip.AddLine and itemID then
+            local function ItemTooltipCollectibleOwned(id)
+                if not id then return false end
+                if PlayerHasToy then
+                    local okToy, hasToy = pcall(PlayerHasToy, id)
+                    if okToy and hasToy == true and not (issecretvalue and issecretvalue(hasToy)) then
                         return true
                     end
                 end
+                if C_MountJournal and C_MountJournal.GetMountFromItem then
+                    local ok1, mountID = pcall(C_MountJournal.GetMountFromItem, id)
+                    if ok1 and mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
+                        local ok2, _, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, mountID)
+                        if ok2 and isCollected == true and not (issecretvalue and issecretvalue(isCollected)) then
+                            return true
+                        end
+                    end
+                end
+                if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                    local ok1, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, id)
+                    if ok1 and specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
+                        local ok2, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, specID)
+                        if ok2 and numCollected and not (issecretvalue and issecretvalue(numCollected)) and numCollected > 0 then
+                            return true
+                        end
+                    end
+                end
+                return false
             end
-            if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-                local ok1, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, id)
-                if ok1 and specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
-                    local ok2, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, specID)
-                    if ok2 and numCollected and not (issecretvalue and issecretvalue(numCollected)) and numCollected > 0 then
-                        return true
+
+            local planned = false
+            if WarbandNexus.IsItemPlanned then
+                planned = WarbandNexus:IsItemPlanned(nil, itemID)
+            end
+            if not planned and WarbandNexus.IsMountPlanned
+                and C_MountJournal and C_MountJournal.GetMountFromItem then
+                local mountID = C_MountJournal.GetMountFromItem(itemID)
+                if mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
+                    planned = WarbandNexus:IsMountPlanned(mountID)
+                end
+            end
+            if not planned and WarbandNexus.IsPetPlanned
+                and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(itemID)
+                if specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
+                    planned = WarbandNexus:IsPetPlanned(specID)
+                end
+            end
+
+            if planned and not ItemTooltipCollectibleOwned(itemID) then
+                local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+                tooltip:AddLine("|cffffcc00(" .. plannedWord .. ")|r")
+                tooltip:Show()
+            end
+        end
+
+        -- Container collectible drops (paragon caches, etc.)
+        if itemID and (tooltip == GameTooltip or tooltip == ItemRefTooltip) then
+            local sourceDB = ns.CollectibleSourceDB
+            if sourceDB and sourceDB.containers then
+                local containerData = sourceDB.containers[itemID]
+                if containerData then
+                    local drops = containerData.drops or containerData
+                    if drops and type(drops) == "table" and #drops > 0 then
+                        InjectCollectibleDropLines(tooltip, drops)
                     end
                 end
             end
-            return false
-        end
-
-        local planned = false
-
-        -- Check direct itemID (covers toys, generic items, any plan with itemID)
-        if not planned and WarbandNexus.IsItemPlanned then
-            planned = WarbandNexus:IsItemPlanned(nil, itemID)
-        end
-
-        -- Check mount (itemID → mountID)
-        if not planned and WarbandNexus.IsMountPlanned
-            and C_MountJournal and C_MountJournal.GetMountFromItem then
-            local mountID = C_MountJournal.GetMountFromItem(itemID)
-            if mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
-                planned = WarbandNexus:IsMountPlanned(mountID)
-            end
-        end
-
-        -- Check pet (itemID → speciesID)
-        if not planned and WarbandNexus.IsPetPlanned
-            and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-            local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(itemID)
-            if specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
-                planned = WarbandNexus:IsPetPlanned(specID)
-            end
-        end
-
-        if planned and not ItemTooltipCollectibleOwned(itemID) then
-            local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
-            tooltip:AddLine("|cffffcc00(" .. plannedWord .. ")|r")
-            tooltip:Show()
         end
     end)
+
+    self:Debug("Item tooltip hook initialized (counts + planned + container drops)")
     
     -- ----------------------------------------------------------------
     -- UNIT TOOLTIP: Collectible drop info from CollectibleSourceDB
@@ -2626,33 +2621,6 @@ function TooltipService:InitializeGameTooltipHook()
         end
 
         self:Debug("Unit tooltip hook initialized (collectible drops)")
-    end
-
-    -- ----------------------------------------------------------------
-    -- ITEM TOOLTIP: Container collectible drops (paragon caches, bags, etc.)
-    -- Checks CollectibleSourceDB.containers for the hovered item and injects
-    -- collectible drop lines if found.
-    -- ----------------------------------------------------------------
-    if Enum.TooltipDataType and Enum.TooltipDataType.Item then
-        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-            if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
-
-            local sourceDB = ns.CollectibleSourceDB
-            if not sourceDB or not sourceDB.containers then return end
-
-            local itemID = data and data.id
-            if not itemID then return end
-
-            local containerData = sourceDB.containers[itemID]
-            if not containerData then return end
-
-            local drops = containerData.drops or containerData
-            if not drops or type(drops) ~= "table" or #drops == 0 then return end
-
-            InjectCollectibleDropLines(tooltip, drops)
-        end)
-
-        self:Debug("Container item tooltip hook initialized (collectible drops)")
     end
 
     self:Debug("GameTooltip hook initialized (TooltipDataProcessor)")

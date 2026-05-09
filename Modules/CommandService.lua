@@ -4,36 +4,19 @@
     
     Handles:
     - Main slash command routing (/wn, /warbandnexus)
-    - Public commands (show, options, help, todo, etc.)
-    - Debug toggle and profiler
+    - Public commands (window toggles, settings, help)
+    - Optional debug-mode diagnostics (/wn debug)
 ============================================================================]]
 
 local addonName, ns = ...
 local CommandService = {}
 ns.CommandService = CommandService
 
+local tinsert = table.insert
+
 local issecretvalue = issecretvalue
 
--- Debug print helper (only shows when debug mode is enabled)
-local DebugPrint = ns.DebugPrint
-
-local function NormalizeLowLevelThreshold(profile)
-    if not profile then return 0 end
-    local threshold = tonumber(profile.hideLowLevelThreshold) or 0
-    if threshold >= 90 then return 90 end
-    if threshold >= 80 then return 80 end
-    if profile.hideLowLevelCharacters == true then
-        return 80
-    end
-    return 0
-end
-
-local function FormatLowLevelThresholdLabel(threshold)
-    local L = ns.L
-    if threshold == 90 then return (L and L["HIDE_FILTER_LEVEL_90"]) or "Level 90" end
-    if threshold == 80 then return (L and L["HIDE_FILTER_LEVEL_80"]) or "Level 80" end
-    return (L and L["HIDE_FILTER_STATE_OFF"]) or "OFF"
-end
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 --============================================================================
 -- MAIN SLASH COMMAND HANDLER
@@ -44,8 +27,6 @@ end
 ---@param addon table WarbandNexus addon instance
 ---@param input string Command input from slash command
 function CommandService:HandleSlashCommand(addon, input)
-    DebugPrint("|cff9370DB[WN CommandService]|r HandleSlashCommand: " .. tostring(input))
-    
     local cmd = addon:GetArgs(input, 1)
     if cmd then
         if issecretvalue and issecretvalue(cmd) then
@@ -65,45 +46,15 @@ function CommandService:HandleSlashCommand(addon, input)
     if cmd == "help" then
         addon:Print("|cff00ccffWarband Nexus|r — " .. ((ns.L and ns.L["AVAILABLE_COMMANDS"]) or "Available commands:"))
         addon:Print("  |cff00ccff/wn|r — " .. ((ns.L and ns.L["CMD_OPEN"]) or "Open addon window"))
-        addon:Print("  |cff00ccff/wn vt|r — Toggle Vault Tracker window")
-        addon:Print("  |cff00ccff/wn qt|r — " .. ((ns.L and ns.L["CMD_QT"]) or "Open Easy Access menu"))
-        addon:Print("  |cff00ccff/wn vault|r — Toggle Vault Tracker window")
-        addon:Print("  |cff00ccff/wn saved|r — Toggle Saved Instances window")
-        addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "Toggle To-Do Tracker window"))
-        addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Open settings"))
-        addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones to party chat")
-        addon:Print("  |cff00ccff/wn maxonly [off|80|90]|r — Low-level character filter for PvE/Gear lists")
-        addon:Print("  |cff00ccff/wn minimap|r — " .. ((ns.L and ns.L["CMD_MINIMAP"]) or "Toggle minimap button"))
-        addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
-        addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
-        addon:Print("  |cff00ccff/wn rarityimport|r — Copy Rarity mount attempts into WN + saved backup (use before disabling Rarity)")
-        addon:Print("  |cff00ccff/wn rarityrestore|r — Re-apply WN backup (no Rarity needed)")
-        addon:Print("  |cff00ccff/wn raritysync|r — One immediate max-merge while Rarity is loaded")
-        if addon.db and addon.db.profile and addon.db.profile.debugMode then
-            -- Literal English: avoids AceLocale returning missing keys as "CMD_*" in non-enUS clients
-            addon:Print("|cff888888— Debug mode ON — advanced / diagnostic:|r")
-            addon:Print("  |cff00ccff/wn trycounterdebug|r — Toggle try counter loot debug (verbose chat)")
-            addon:Print("  |cff00ccff/wn markobtained <itemID>|r — Mark drop obtained (stops try counter)")
-            addon:Print("  |cff00ccff/wn clearobtained <itemID>|r — Clear obtained marker (resume try counter)")
-            addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
-            addon:Print("  |cff00ccff/wn toydebug <itemID>|r — Toy tooltip/source dump (chat)")
-            addon:Print("  |cff00ccff/wn firstcraft|r — " .. ((ns.L and ns.L["CMD_FIRSTCRAFT"]) or "First-craft recipes (open profession first)"))
-            addon:Print("  |cff00ccff/wn profverify|r — Profession Knowledge/Recipes/Equipment dump")
-            addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
-            addon:Print("  |cff00ccff/wn trydebug|r — Try counter state / source simulation")
-            addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Try count for item|mount|pet|toy")
-            addon:Print("  |cff00ccff/wn legacymountpreview|r — Compare Rarity vs WN try counts (|cff00ccff/wn raritysync|r to merge now)")
-            addon:Print("  |cff00ccff/wn legacyseedreset|r — Clear informational seed flag (does not block Rarity merge)")
-            addon:Print("  |cff00ccff/wn trycounteraudit|r — List mount Statistics merge buckets (IDs per mount)")
-            addon:Print("  |cff00ccff/wn check|r — Drops from target/mouseover")
-            addon:Print("  |cff00ccff/wn test ...|r — Same as |cff00ccff/wntest ...|r (rep ui, rep event, overflow, …)")
-            addon:Print("  |cff00ccff/wn testevents [type] [id]|r — Test notification events")
-            addon:Print("  |cff00ccff/wn testloot [type] [id]|r — Test notification popups")
-            addon:Print("  |cff00ccff/wn cleanup|r — Remove stale characters (90+ days inactive)")
-            addon:Print("  |cff00ccff/wn track|r — enable | disable | status")
-            addon:Print("  |cff00ccff/wn recover|r — Emergency recovery")
-        else
-            addon:Print("|cff888888More try-counter tools with |cff00ccff/wn debug|r|cff888888 then |cff00ccff/wn help|r.|r")
+        addon:Print("  |cff00ccff/wn saved|r — Saved Instances")
+        addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "To-Do Tracker"))
+        addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Settings"))
+        addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
+        addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
+        addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode (extra diagnostics)"))
+        addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn dumpitem|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r")
         end
         return
     end
@@ -112,24 +63,6 @@ function CommandService:HandleSlashCommand(addon, input)
     
     if cmd == "show" or cmd == "toggle" or cmd == "open" then
         addon:ShowMainWindow()
-        return
-
-    elseif cmd == "vault" or cmd == "vaulttracker" or cmd == "vt" then
-        if addon.ToggleVaultTrackerWindow then
-            addon:ToggleVaultTrackerWindow()
-        else
-            addon:Print("|cffff6600[WN]|r Vault Tracker is not available yet.")
-        end
-        return
-
-    elseif cmd == "quicktracker" or cmd == "qt" then
-        if addon.OpenVaultButtonQuickMenuAtCursor then
-            addon:OpenVaultButtonQuickMenuAtCursor()
-        elseif addon.OpenVaultButtonQuickMenu then
-            addon:OpenVaultButtonQuickMenu()
-        else
-            addon:Print("|cffff6600[WN]|r " .. ((ns.L and ns.L["CONFIG_VAULT_QT_UNAVAILABLE"]) or "Easy Access is not available yet."))
-        end
         return
 
     elseif cmd == "saved" or cmd == "savedinstances" or cmd == "raids" then
@@ -152,61 +85,21 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:OpenOptions()
         return
         
-    elseif cmd == "minimap" then
-        if addon.ToggleMinimapButton then
-            addon:ToggleMinimapButton()
-        else
-            addon:Print("|cffff6600" .. ((ns.L and ns.L["MINIMAP_NOT_AVAILABLE"]) or "Minimap button module not loaded.") .. "|r")
-        end
-        return
-
-    elseif cmd == "maxonly" or cmd == "hidealts" then
-        if addon.db and addon.db.profile then
-            local _, arg = addon:GetArgs(input, 2)
-            if arg and issecretvalue and issecretvalue(arg) then
-                arg = nil
-            end
-            arg = arg and arg:lower() or nil
-
-            local profile = addon.db.profile
-            local current = NormalizeLowLevelThreshold(profile)
-            local nextThreshold = current
-
-            if not arg or arg == "" then
-                -- Cycle: OFF -> <80 -> <90 -> OFF
-                if current == 0 then
-                    nextThreshold = 80
-                elseif current == 80 then
-                    nextThreshold = 90
-                else
-                    nextThreshold = 0
-                end
-            elseif arg == "off" or arg == "0" then
-                nextThreshold = 0
-            elseif arg == "80" or arg == "<80" then
-                nextThreshold = 80
-            elseif arg == "90" or arg == "<90" then
-                nextThreshold = 90
-            else
-                addon:Print("|cff00ccffUsage:|r /wn maxonly [off|80|90]")
-                addon:Print("|cff888888Current filter:|r " .. FormatLowLevelThresholdLabel(current))
-                return
-            end
-
-            profile.hideLowLevelThreshold = nextThreshold
-            -- Keep legacy boolean synchronized for older modules.
-            profile.hideLowLevelCharacters = (nextThreshold >= 80)
-            addon:Print("|cff00ccff[WN]|r Low-level filter (PvE/Gear): |cff80ff80" .. FormatLowLevelThresholdLabel(nextThreshold) .. "|r")
-            local events = ns.Constants and ns.Constants.EVENTS
-            if addon.SendMessage and events and events.CHARACTER_TRACKING_CHANGED then
-                addon:SendMessage(events.CHARACTER_TRACKING_CHANGED, {
-                    source = "SlashCommand",
-                    threshold = nextThreshold,
+    elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" then
+        if addon.ShowUpdateNotification and ns.CHANGELOG then
+            local ok, err = pcall(function()
+                addon:ShowUpdateNotification({
+                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "3.0.0",
+                    date = ns.CHANGELOG.date or "",
+                    changes = ns.CHANGELOG.changes or {"No changelog available"}
                 })
+            end)
+            if not ok then
+                addon:Print("|cffff0000[WN] Changelog error:|r " .. tostring(err))
             end
         end
         return
-        
+
     elseif cmd == "keys" or cmd == "keystones" then
         if not addon.GetAllCharacters then
             addon:Print("|cffff6600[WN] Character data not available.|r")
@@ -245,12 +138,12 @@ function CommandService:HandleSlashCommand(addon, input)
                 -- Construct Clickable Keystone Link for Local Print
                 local keystoneLink = string.format("|cffa335ee|Hitem:180653::::::::80:253::::::|h[%s (+%d)]|h|r", dungeonName, keystone.level)
                 
-                table.insert(reportLinesLocal, string.format("%s - %s", coloredName, keystoneLink))
+                tinsert(reportLinesLocal, string.format("%s - %s", coloredName, keystoneLink))
                 
                 -- Use plain text for Party to prevent WoW Server from dropping unverified item links
                 -- Format: Name [+Level Dungeon]
                 local shortDungeonName = dungeonName:gsub("The ", ""):sub(1, 15) -- shorten dungeon names slightly if needed
-                table.insert(reportLinesParty, string.format("%s [+%d %s]", char.name, keystone.level, shortDungeonName))
+                tinsert(reportLinesParty, string.format("%s [+%d %s]", char.name, keystone.level, shortDungeonName))
                 keysFound = keysFound + 1
             end
         end
@@ -305,23 +198,6 @@ function CommandService:HandleSlashCommand(addon, input)
         CommandService:HandleDebugToggle(addon)
         return
 
-    elseif cmd == "test" then
-        -- Same as /wntest — routes to DebugService:TestCommand (rep ui, rep event, overflow, …)
-        local _, nextPos = addon:GetArgs(input, 1)
-        local rest = ""
-        if type(nextPos) == "number" and nextPos < 1e9 then
-            local tail = string.sub(input, nextPos)
-            if tail and tail ~= "" then
-                rest = string.gsub(tail, "^%s+", "") or ""
-            end
-        end
-        if ns.DebugService and ns.DebugService.TestCommand then
-            ns.DebugService:TestCommand(addon, rest)
-        else
-            addon:Print("|cffff0000[WN] DebugService not available.|r")
-        end
-        return
-
     elseif cmd == "trycounterdebug" or cmd == "lootdebug" then
         if not addon.db or not addon.db.profile then
             addon:Print("|cffff6600[WN] Could not toggle: profile not ready.|r")
@@ -335,81 +211,11 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "markobtained" then
-        local _, arg1 = addon:GetArgs(input, 2)
-        local itemID = arg1 and tonumber(arg1)
-        if not itemID or itemID < 1 then
-            addon:Print("|cff00ccff/wn markobtained <itemID>|r — Mark a drop item as obtained so the try counter stops tracking it.")
-            addon:Print("Example: |cff888888/wn markobtained 268730|r (Nether-Warped Egg)")
-            return
-        end
-        if addon.MarkItemObtained then
-            addon:MarkItemObtained(itemID)
-            local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
-            local itemName = GetItemInfoFn and GetItemInfoFn(itemID)
-            addon:Print("|cff00ff00[WN]|r Marked " .. (itemName and ("|cffffd100" .. itemName .. "|r") or ("itemID " .. itemID)) .. " as obtained. Try counter will stop tracking it.")
-        else
-            addon:Print("|cffff6600[WN]|r TryCounter module not loaded.")
-        end
-        return
-
-    elseif cmd == "clearobtained" then
-        local _, arg1 = addon:GetArgs(input, 2)
-        local itemID = arg1 and tonumber(arg1)
-        if not itemID or itemID < 1 then
-            addon:Print("|cff00ccff/wn clearobtained <itemID>|r — Clear the obtained marker so the try counter resumes tracking.")
-            return
-        end
-        if addon.ClearItemObtained then
-            addon:ClearItemObtained(itemID)
-            local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
-            local itemName = GetItemInfoFn and GetItemInfoFn(itemID)
-            addon:Print("|cff00ff00[WN]|r Cleared obtained marker for " .. (itemName and ("|cffffd100" .. itemName .. "|r") or ("itemID " .. itemID)) .. ". Try counter will resume tracking.")
-        else
-            addon:Print("|cffff6600[WN]|r TryCounter module not loaded.")
-        end
-        return
-
-    elseif cmd == "rarityimport" or cmd == "rarityhandoff" then
-        if addon.ImportRarityMountHandoff then
-            addon:ImportRarityMountHandoff()
-        else
-            addon:Print("|cffff6600[WN]|r Try counter module not loaded.")
-        end
-        return
-
-    elseif cmd == "rarityrestore" or cmd == "rarityrestorebackup" then
-        if addon.RestoreRarityImportBackup then
-            local updated, scanned = addon:RestoreRarityImportBackup()
-            updated = tonumber(updated) or 0
-            scanned = tonumber(scanned) or 0
-            addon:Print(string.format(
-                "|cff00ff00[WN]|r Restored from WN backup: %d row(s) raised, %d backup row(s) applied (max vs WN).|r",
-                updated, scanned
-            ))
-        else
-            addon:Print("|cffff6600[WN]|r Try counter module not loaded.")
-        end
-        return
-
-    elseif cmd == "raritysync" or cmd == "raritymerge" then
-        if addon.SyncRarityMountAttemptsMax then
-            local updated, scanned = addon:SyncRarityMountAttemptsMax()
-            updated = tonumber(updated) or 0
-            scanned = tonumber(scanned) or 0
-            addon:Print(string.format(
-                "|cff00ff00[WN]|r Rarity max-merge: %d mount row(s) raised vs stored WN, %d row(s) read with attempts > 0 (enable Rarity if 0).|r",
-                updated, scanned
-            ))
-        else
-            addon:Print("|cffff6600[WN]|r Try counter module not loaded.")
-        end
-        return
     end
 
     -- ── Debug commands (require debug mode) ──
     
-    local isDebug = addon.db and addon.db.profile and addon.db.profile.debugMode
+    local isDebug = IsDebugModeEnabled and IsDebugModeEnabled()
     if not isDebug then
         addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_COMMAND"]) or "Unknown command.") .. "|r " ..
             ((ns.L and ns.L["TYPE_HELP"]) or "Type") .. " |cff00ccff/wn help|r " ..
@@ -428,19 +234,6 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "profiler" or cmd == "prof" or cmd == "perf" then
-        if ns.Profiler then
-            local _, subCmd, arg3 = addon:GetArgs(input, 3)
-            ns.Profiler:HandleCommand(addon, subCmd, arg3)
-        else
-            addon:Print("|cffff6600" .. ((ns.L and ns.L["PROFILER_NOT_LOADED"]) or "Profiler module not loaded.") .. "|r")
-        end
-        return
-
-    elseif cmd == "toydebug" or cmd == "toyinfo" then
-        CommandService:ToyDebugReport(addon, input)
-        return
-
     elseif cmd == "dumpitem" or cmd == "iteminfo" then
         local _, idArg = addon:GetArgs(input, 2)
         local itemID = tonumber(idArg)
@@ -451,37 +244,6 @@ function CommandService:HandleSlashCommand(addon, input)
         CommandService:DumpItemReport(addon, itemID)
         return
 
-    elseif cmd == "firstcraft" or cmd == "fc" then
-        if ns.ProfessionService and addon.PrintFirstCraftRecipesByContent then
-            addon:PrintFirstCraftRecipesByContent()
-        else
-            addon:Print("|cffff6600[WN]|r " .. (ns.L and ns.L["PROF_FIRSTCRAFT_NO_DATA"] or "Professions module not available."))
-        end
-        return
-
-    elseif cmd == "profverify" or cmd == "pv" then
-        if addon.PrintProfessionVerify then
-            addon:PrintProfessionVerify()
-        else
-            addon:Print("|cffff6600[WN]|r Profession verify not available.")
-        end
-        return
-        
-    elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" then
-        if addon.ShowUpdateNotification and ns.CHANGELOG then
-            local ok, err = pcall(function()
-                addon:ShowUpdateNotification({
-                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "3.0.0",
-                    date = ns.CHANGELOG.date or "",
-                    changes = ns.CHANGELOG.changes or {"No changelog available"}
-                })
-            end)
-            if not ok then
-                addon:Print("|cffff0000[WN] Changelog error:|r " .. tostring(err))
-            end
-        end
-        return
-        
     elseif cmd == "trackchar" or cmd == "track" then
         local subCmd = select(2, addon:GetArgs(input, 2))
         if subCmd == "enable" or subCmd == "on" then
@@ -513,38 +275,6 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "recover" or cmd == "emergency" then
         if addon.EmergencyRecovery then
             addon:EmergencyRecovery()
-        end
-        return
-
-    elseif cmd == "trydebug" then
-        if addon.TryCounterDebugReport then
-            addon:TryCounterDebugReport()
-        else
-            addon:Print("|cffff6600Try counter module not loaded.|r")
-        end
-        return
-
-    elseif cmd == "legacymountpreview" or cmd == "legacypreview" then
-        if addon.DebugLegacyMountTrackerImportPreview then
-            addon:DebugLegacyMountTrackerImportPreview()
-        else
-            addon:Print("|cffff6600Try counter module not loaded.|r")
-        end
-        return
-
-    elseif cmd == "legacyseedreset" then
-        if addon.DebugResetLegacyMountTrackerSeed then
-            addon:DebugResetLegacyMountTrackerSeed()
-        else
-            addon:Print("|cffff6600Try counter module not loaded.|r")
-        end
-        return
-
-    elseif cmd == "trycounteraudit" or cmd == "tcaudit" then
-        if addon.TryCounterAuditMountStatisticBuckets then
-            addon:TryCounterAuditMountStatisticBuckets()
-        else
-            addon:Print("|cffff6600Try counter module not loaded.|r")
         end
         return
 
@@ -587,42 +317,16 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "testevents" then
-        local _, typeArg, idArg = addon:GetArgs(input, 3)
-        if addon.TestNotificationEvents then
-            addon:TestNotificationEvents(typeArg, idArg)
-        else
-            addon:Print("|cffff6600Test events module not loaded.|r")
-        end
-        return
-
-    elseif cmd == "testloot" then
-        local _, typeArg, idArg, stepArg = addon:GetArgs(input, 4)
-        if addon.TestLootNotification then
-            addon:TestLootNotification(typeArg, idArg, stepArg)
-        else
-            addon:Print("|cffff6600Test loot notification module not loaded.|r")
-        end
-        return
-        
     else
         addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_DEBUG_CMD"]) or "Unknown debug command:") .. "|r " .. cmd)
     end
 end
 
 --============================================================================
--- TOY SOURCE DEBUG
+-- ITEM DUMP (debug)
 --============================================================================
 
---- Dump tooltip lines and source resolution for a toy (which line becomes "source").
---- If tooltip is still "Retrieving item information", retries once after 2s.
---- Usage: /wn toydebug <itemID>
----@param addon table WarbandNexus addon instance
----@param input string Full slash command input
----@param skipRetry boolean If true, do not schedule a delayed retry (used for the 2s retry)
---- Dump everything we can read about an item: GetItemInfo, GetItemInfoInstant,
---- GetDetailedItemLevelInfo, GetItemStats, GetItemQualityByID, bind-type chain,
---- and a search through all stored bag/bank/warband-bank data for instances of this item.
+--- Dump persisted/API item data for support (/wn dumpitem). Chat output is the product.
 ---@param addon table WarbandNexus addon table
 ---@param itemID number Item ID to dump
 function CommandService:DumpItemReport(addon, itemID)
@@ -725,161 +429,6 @@ function CommandService:DumpItemReport(addon, itemID)
     local selData = selKey and db and db.characters and db.characters[selKey]
     if selData then
         p(string.format("Logged-in: name=%s class=%s specID=%s level=%s", tostring(selData.name), tostring(selData.classFile), tostring(selData.specID), tostring(selData.level)))
-    end
-end
-
-function CommandService:ToyDebugReport(addon, input, skipRetry)
-    local _, arg1 = addon:GetArgs(input, 2)
-    local itemID = arg1 and tonumber(arg1)
-    if not itemID or itemID < 1 then
-        addon:Print("|cff00ccff/wn toydebug <itemID>|r — Show tooltip lines and which line is used as source")
-        addon:Print("Example: |cff888888/wn toydebug 158078|r (Timewalker's Hearthstone)")
-        if C_ToyBox and C_ToyBox.GetNumFilteredToys then
-            local n = C_ToyBox.GetNumFilteredToys() or 0
-            if n > 0 then
-                local firstID = C_ToyBox.GetToyFromIndex(1)
-                if firstID then
-                    addon:Print("First toy in ToyBox itemID: |cff888888" .. tostring(firstID) .. "|r")
-                end
-            end
-        end
-        return
-    end
-
-    local _issecretvalue = issecretvalue
-    local function safeStr(s)
-        if s == nil then return "(nil)" end
-        if type(s) ~= "string" then return tostring(s) end
-        if _issecretvalue and _issecretvalue(s) then return "(secret)" end
-        return s
-    end
-
-    addon:Print("|cff9370DB[WN ToyDebug]|r itemID = |cff00ccff" .. tostring(itemID) .. "|r")
-    if not C_TooltipInfo then
-        addon:Print("|cffff6600C_TooltipInfo not available.|r")
-        return
-    end
-
-    -- Dump both APIs; same order as GetToySourceInfo: prefer GetToyByItemID (toy tooltip has Source/category)
-    local byItem = C_TooltipInfo.GetItemByID and C_TooltipInfo.GetItemByID(itemID)
-    local byToy = C_TooltipInfo.GetToyByItemID and C_TooltipInfo.GetToyByItemID(itemID)
-    local tooltipData = (byToy and byToy.lines and #byToy.lines > 0) and byToy or (byItem and byItem.lines and #byItem.lines > 0) and byItem or nil
-    local sourceName = (byToy and byToy.lines and #byToy.lines > 0) and "GetToyByItemID" or "GetItemByID"
-
-    -- WoW loads tooltip data asynchronously; often we get "Retrieving item information" (type 41) first
-    local function isPlaceholderTooltip(data)
-        if not data or not data.lines or #data.lines ~= 1 then return false end
-        local left = data.lines[1] and data.lines[1].leftText
-        if not left or type(left) ~= "string" then return false end
-        if _issecretvalue and _issecretvalue(left) then return false end
-        return left:find("Retrieving", 1, true) ~= nil or left:find("information", 1, true) ~= nil
-    end
-    if not skipRetry and (isPlaceholderTooltip(byItem) or isPlaceholderTooltip(byToy)) then
-        addon:Print("|cffffcc00[WN ToyDebug]|r Tooltip still loading (Retrieving item information). Retrying in 2s...")
-        if C_Timer and C_Timer.After then
-            C_Timer.After(2, function()
-                CommandService:ToyDebugReport(addon, input, true)
-            end)
-        end
-        return
-    end
-
-    local function dumpLines(label, data)
-        if not data or not data.lines or #data.lines == 0 then
-            addon:Print("|cff888888" .. label .. ": no lines|r")
-            return
-        end
-        addon:Print("|cff888888" .. label .. " (#lines = " .. #data.lines .. ")|r")
-        for i = 1, #data.lines do
-            local line = data.lines[i]
-            local lt = safeStr(line and line.leftText)
-            local rt = safeStr(line and line.rightText)
-            local ty = (line and line.type ~= nil) and tostring(line.type) or "?"
-            addon:Print(string.format("  [%d] type=%s left=%s right=%s", i, ty, lt, rt))
-        end
-    end
-    dumpLines("GetItemByID", byItem)
-    dumpLines("GetToyByItemID", byToy)
-
-    if not tooltipData or not tooltipData.lines then
-        addon:Print("|cffff6600No tooltip lines from either API.|r")
-    else
-        addon:Print("|cff888888GetToySourceInfo uses: " .. sourceName .. "|r")
-        -- Which line would GetToySourceInfo use? (same logic as CollectionService)
-        local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
-        local sourceLabelClean = sourceLabel:gsub("[:%s]+$", "")
-        local pickedLine = nil
-        local pickReason = ""
-        for i = 1, #tooltipData.lines do
-            local line = tooltipData.lines[i]
-            local left = line and line.leftText
-            if left and type(left) == "string" and not (_issecretvalue and _issecretvalue(left)) and left ~= "" and line.type == 2 then
-                pickedLine = i
-                pickReason = "first line with type=2"
-                break
-            end
-        end
-        if not pickedLine then
-            for i = 1, #tooltipData.lines do
-                local line = tooltipData.lines[i]
-                local left = line and line.leftText
-                local right = line and line.rightText
-                if left and type(left) == "string" and not (_issecretvalue and _issecretvalue(left)) and left:find(sourceLabelClean, 1, true) then
-                    pickedLine = i
-                    pickReason = "left contains Source label"
-                    break
-                end
-                if right and type(right) == "string" and not (_issecretvalue and _issecretvalue(right)) and right:find(sourceLabelClean, 1, true) then
-                    pickedLine = i
-                    pickReason = "right contains Source label"
-                    break
-                end
-            end
-        end
-        if not pickedLine then
-            local sourceKeywords = {
-                BATTLE_PET_SOURCE_1 or "Drop",
-                BATTLE_PET_SOURCE_3 or "Vendor",
-                BATTLE_PET_SOURCE_2 or "Quest",
-            }
-            for i = 1, #tooltipData.lines do
-                local line = tooltipData.lines[i]
-                local left = line and line.leftText
-                local right = line and line.rightText
-                local leftOk = left and type(left) == "string" and not (_issecretvalue and _issecretvalue(left))
-                local rightOk = right and type(right) == "string" and not (_issecretvalue and _issecretvalue(right))
-                for _, kw in ipairs(sourceKeywords) do
-                    if (leftOk and left:find(kw, 1, true)) or (rightOk and right:find(kw, 1, true)) then
-                        pickedLine = i
-                        pickReason = "keyword match"
-                        break
-                    end
-                end
-                if pickedLine then break end
-            end
-        end
-        if pickedLine then
-            addon:Print("|cff00ff00SOURCE PICKED FROM: line " .. tostring(pickedLine) .. " (" .. pickReason .. ")|r")
-        else
-            addon:Print("|cffff6600SOURCE PICKED FROM: none (fallback to CollectibleSourceDB or \"Toy Collection\")|r")
-        end
-    end
-
-    -- GetToySourceInfo result
-    if addon.GetToySourceInfo then
-        local info = addon:GetToySourceInfo(itemID)
-        if info then
-            addon:Print("|cff9370DB[GetToySourceInfo]|r source = |cffffffff" .. safeStr(info.source) .. "|r")
-            addon:Print("|cff9370DB[GetToySourceInfo]|r description = |cff888888" .. safeStr(info.description) .. "|r")
-        else
-            addon:Print("|cffff6600GetToySourceInfo returned nil.|r")
-        end
-    end
-
-    -- CollectibleSourceDB
-    if ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetSourceStringForToy then
-        local dbSrc = ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
-        addon:Print("|cff9370DB[GetSourceStringForToy]|r " .. (dbSrc and ("|cffffffff" .. safeStr(dbSrc) .. "|r") or "|cff888888nil (not in DB)|r"))
     end
 end
 

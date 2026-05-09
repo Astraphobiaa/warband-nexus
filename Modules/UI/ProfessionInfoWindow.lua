@@ -275,12 +275,14 @@ local function AddProgressBar(scrollChild, yOffset, current, maximum, barColor, 
     end
 
     -- Border lines (top, bottom, left, right)
-    for _, edge in ipairs({
+    local progressBarEdges = {
         { "TOPLEFT", "TOPRIGHT", barWidth, 1, 0, 0 },
         { "BOTTOMLEFT", "BOTTOMRIGHT", barWidth, 1, 0, 0 },
         { "TOPLEFT", "BOTTOMLEFT", 1, PROGRESS_BAR_HEIGHT, 0, 0 },
         { "TOPRIGHT", "BOTTOMRIGHT", 1, PROGRESS_BAR_HEIGHT, 0, 0 },
-    }) do
+    }
+    for ei = 1, #progressBarEdges do
+        local edge = progressBarEdges[ei]
         local line = scrollChild:CreateTexture(nil, "OVERLAY")
         line:SetPoint(edge[1], bg, edge[1], edge[5], edge[6])
         line:SetSize(edge[3], edge[4])
@@ -436,15 +438,19 @@ local function BuildTierLayout(nodes)
     table.sort(tierKeys)
 
     -- Sort nodes within each tier by X
-    for _, y in ipairs(tierKeys) do
+    for tki = 1, #tierKeys do
+        local y = tierKeys[tki]
         table.sort(tiers[y], function(a, b) return (a.posX or 0) < (b.posX or 0) end)
     end
 
     -- Flatten with depth based on tier index
     local result = {}
-    for tierIdx, y in ipairs(tierKeys) do
+    for tierIdx = 1, #tierKeys do
+        local y = tierKeys[tierIdx]
         local depth = tierIdx - 1
-        for _, node in ipairs(tiers[y]) do
+        local tierNodes = tiers[y]
+        for ni = 1, #tierNodes do
+            local node = tierNodes[ni]
             result[#result + 1] = { node = node, depth = depth }
         end
     end
@@ -519,11 +525,13 @@ local function AddTreeNodeRow(scrollChild, yOffset, node, depth, isLastInGroup, 
 
     -- Subtle border
     local borderColor = isMaxed and NODE_MAXED_BORDER or (isAllocated and NODE_PARTIAL_BORDER or NODE_EMPTY_BORDER)
-    for _, edge in ipairs({
+    local treeRowEdges = {
         { "TOPLEFT", rowWidth, 1 },
         { "BOTTOMLEFT", rowWidth, 1 },
         { "TOPLEFT", 1, TREE_NODE_HEIGHT },
-    }) do
+    }
+    for ei = 1, #treeRowEdges do
+        local edge = treeRowEdges[ei]
         local bline = scrollChild:CreateTexture(nil, "OVERLAY")
         bline:SetPoint(edge[1], bg, edge[1], 0, 0)
         bline:SetSize(edge[2], edge[3])
@@ -573,7 +581,8 @@ local function AddTalentTree(scrollChild, yOffset, nodes)
     end
 
     -- Render each node
-    for i, entry in ipairs(displayList) do
+    for i = 1, #displayList do
+        local entry = displayList[i]
         local isLast = not displayList[i + 1] or displayList[i + 1].depth <= entry.depth
         yOffset = AddTreeNodeRow(scrollChild, yOffset, entry.node, entry.depth, isLast, hasChildAtDepth[i])
     end
@@ -599,12 +608,14 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     -- Clear previous content
     local bin = ns.UI_RecycleBin
     local regions = { scrollChild:GetRegions() }
-    for _, region in ipairs(regions) do
+    for ri = 1, #regions do
+        local region = regions[ri]
         region:Hide()
         if bin then region:SetParent(bin) else region:SetParent(nil) end
     end
     local children = { scrollChild:GetChildren() }
-    for _, child in ipairs(children) do
+    for ci = 1, #children do
+        local child = children[ci]
         child:Hide()
         if bin then child:SetParent(bin) else child:SetParent(nil) end
     end
@@ -615,7 +626,9 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     local relevantSkillLines = {}
     local midnightExpansions = {}
     if charData.professionExpansions and charData.professionExpansions[profName] then
-        for _, exp in ipairs(charData.professionExpansions[profName]) do
+        local profExpansions = charData.professionExpansions[profName]
+        for exi = 1, #profExpansions do
+            local exp = profExpansions[exi]
             if IsMidnightExpansion(exp.name, exp.skillLineID) then
                 if exp.skillLineID then
                     relevantSkillLines[#relevantSkillLines + 1] = exp.skillLineID
@@ -635,17 +648,20 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
 
     -- Check data availability
     if charData.concentration then
-        for _, slID in ipairs(relevantSkillLines) do
+        for sli = 1, #relevantSkillLines do
+            local slID = relevantSkillLines[sli]
             if charData.concentration[slID] then hasConcentration = true; break end
         end
     end
     if charData.knowledgeData then
-        for _, slID in ipairs(relevantSkillLines) do
+        for sli = 1, #relevantSkillLines do
+            local slID = relevantSkillLines[sli]
             if charData.knowledgeData[slID] then hasKnowledge = true; break end
         end
     end
     if charData.recipes then
-        for _, slID in ipairs(relevantSkillLines) do
+        for sli = 1, #relevantSkillLines do
+            local slID = relevantSkillLines[sli]
             if charData.recipes[slID] then hasRecipes = true; break end
         end
     end
@@ -654,7 +670,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     hasEquipment = eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) or false
 
     if charData.professionCooldowns then
-        for _, slID in ipairs(relevantSkillLines) do
+        for sli = 1, #relevantSkillLines do
+            local slID = relevantSkillLines[sli]
             if charData.professionCooldowns[slID] and next(charData.professionCooldowns[slID]) then
                 hasCooldowns = true; break
             end
@@ -673,7 +690,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     -- ===== EXPANSION SKILLS (Midnight only) =====
     if hasExpansions then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["PROF_INFO_SKILLS"]) or "Expansion Skills")
-        for _, exp in ipairs(midnightExpansions) do
+        for exi = 1, #midnightExpansions do
+            local exp = midnightExpansions[exi]
             local cur = exp.skillLevel or 0
             local mx = exp.maxSkillLevel or 0
             local color = ProgressColor(cur, mx)
@@ -684,7 +702,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     -- ===== CONCENTRATION =====
     if hasConcentration then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["CONCENTRATION"]) or "Concentration")
-        for _, slID in ipairs(relevantSkillLines) do
+        for sli = 1, #relevantSkillLines do
+            local slID = relevantSkillLines[sli]
             local concData = charData.concentration[slID]
             if concData and concData.max and concData.max > 0 then
                 local current = concData.current or 0
@@ -711,7 +730,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     -- ===== KNOWLEDGE & TALENT TREES =====
     if hasKnowledge then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["KNOWLEDGE"]) or "Knowledge")
-        for _, slID in ipairs(relevantSkillLines) do
+        for sli = 1, #relevantSkillLines do
+            local slID = relevantSkillLines[sli]
             local kd = charData.knowledgeData[slID]
             if kd then
                 local spent = kd.spentPoints or 0
@@ -732,7 +752,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                 -- Specialization Tabs: only tab-level summary (spent/total pts), no inner node list
                 if kd.specTabs and #kd.specTabs > 0 then
                     yOffset = yOffset + 4
-                    for _, tab in ipairs(kd.specTabs) do
+                    for sti = 1, #kd.specTabs do
+                        local tab = kd.specTabs[sti]
                         local stateTxt = tab.state or "?"
                         local stateLower = (type(stateTxt) == "string" and not (issecretvalue and issecretvalue(stateTxt)))
                             and stateTxt:lower() or ""
@@ -771,7 +792,9 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
             accessory1 = (ns.L and ns.L["PROF_INFO_ACC1"]) or "Accessory 1",
             accessory2 = (ns.L and ns.L["PROF_INFO_ACC2"]) or "Accessory 2",
         }
-        for _, slotKey in ipairs({ "tool", "accessory1", "accessory2" }) do
+        local equipSlotKeys = { "tool", "accessory1", "accessory2" }
+        for ski = 1, #equipSlotKeys do
+            local slotKey = equipSlotKeys[ski]
             local item = eqData[slotKey]
             if item then
                 local iconStr = item.icon and format("|T%s:0|t ", tostring(item.icon)) or ""
@@ -783,7 +806,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     -- ===== RECIPES =====
     if hasRecipes then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["RECIPES"]) or "Recipes")
-        for _, slID in ipairs(relevantSkillLines) do
+        for sli = 1, #relevantSkillLines do
+            local slID = relevantSkillLines[sli]
             local rd = charData.recipes[slID]
             if rd then
                 -- Summary line
@@ -811,7 +835,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                         return SafeLower(a.name) < SafeLower(b.name)
                     end)
 
-                    for _, recipe in ipairs(sorted) do
+                    for ri = 1, #sorted do
+                        local recipe = sorted[ri]
                         local iconStr = recipe.icon and format("|T%s:14:14:0:0|t ", tostring(recipe.icon)) or ""
                         local nameColor = recipe.learned and VALUE_COLOR or DIM
                         local statusStr = recipe.learned and "" or ("  " .. ColorText("(" .. ((ns.L and ns.L["PROF_INFO_UNLEARNED"]) or "Unlearned") .. ")", DIM))
@@ -825,7 +850,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     -- ===== WEEKLY KNOWLEDGE PROGRESS (Midnight) =====
     local hasWeeklyProgress = false
     local weeklyData = {}
-    for _, slID in ipairs(relevantSkillLines) do
+    for sli = 1, #relevantSkillLines do
+        local slID = relevantSkillLines[sli]
         local bucket = charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[slID]
         local progress = bucket and bucket.weeklyKnowledge
         if not progress and charData.professionWeeklyKnowledge then
@@ -849,7 +875,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
             catchUp = (ns.L and ns.L["CATCH_UP"]) or "Catch Up",
         }
         for _, progress in pairs(weeklyData) do
-            for _, key in ipairs(sourceKeys) do
+            for ski = 1, #sourceKeys do
+                local key = sourceKeys[ski]
                 local entry = progress[key]
                 if entry and entry.total and entry.total > 0 then
                     local color = ProgressColor(entry.current or 0, entry.total)
@@ -865,7 +892,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     if hasCooldowns then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["PROF_INFO_COOLDOWNS"]) or "Cooldowns")
         local now = time()
-        for _, slID in ipairs(relevantSkillLines) do
+        for sli = 1, #relevantSkillLines do
+            local slID = relevantSkillLines[sli]
             local cdTable = charData.professionCooldowns[slID]
             if cdTable then
                 for recipeID, cd in pairs(cdTable) do

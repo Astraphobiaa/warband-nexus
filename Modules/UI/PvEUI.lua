@@ -173,6 +173,202 @@ local function GetPvEDawnCrestColumnDefinitions()
     return crests
 end
 
+--- Session caches: DrawPvEProgress runs on every PopulateContent — skip repeated pairs(all currencies) and duplicate GetCurrencyInfo.
+local _pveDelveCurrencyCache = {
+    finishedScan = false,
+    shardsID = nil,
+    keyID = nil,
+    shardsIcon = nil,
+    keyIcon = nil,
+}
+local _pveCurrencyInfoDisplayCache = {}
+
+--- DrawPvEProgress runs often; reuse FontStrings / measurement for column headers and per-character summary cells.
+local _pveDrawPool = {
+    holder = nil,
+    rosterSig = nil,
+    colSig = nil,
+    nameWidths = {},
+    measureFs = nil,
+    headerLabels = {},
+    inline = {}, -- [charKey] = { [colKey] = { fs = FontString, hit = Frame? } }
+}
+
+local function PvE_EnsureDrawPoolHolder()
+    local h = _pveDrawPool.holder
+    if not h then
+        h = CreateFrame("Frame", nil, UIParent)
+        h:Hide()
+        _pveDrawPool.holder = h
+    end
+    return h
+end
+
+local function PvESyncPvEPools(rosterSig, colSig, currentKeySet, visibleColKeys)
+    local pool = _pveDrawPool
+    local holder = PvE_EnsureDrawPoolHolder()
+    if pool.rosterSig ~= rosterSig then
+        for charKey, byCol in pairs(pool.inline) do
+            if not currentKeySet[charKey] then
+                if byCol then
+                    for _, cell in pairs(byCol) do
+                        if cell.fs then
+                            cell.fs:Hide()
+                            cell.fs:SetParent(holder)
+                        end
+                        if cell.hit then
+                            cell.hit:Hide()
+                            cell.hit:SetParent(holder)
+                            cell.hit:SetScript("OnEnter", nil)
+                            cell.hit:SetScript("OnLeave", nil)
+                            cell.hit:SetScript("OnMouseUp", nil)
+                        end
+                    end
+                end
+                pool.inline[charKey] = nil
+            end
+        end
+        for k in pairs(pool.nameWidths) do
+            if not currentKeySet[k] then
+                pool.nameWidths[k] = nil
+            end
+        end
+        pool.rosterSig = rosterSig
+    end
+    if pool.colSig ~= colSig then
+        for colKey, fs in pairs(pool.headerLabels) do
+            if not visibleColKeys[colKey] then
+                fs:Hide()
+                fs:SetParent(holder)
+            end
+        end
+        for _, byCol in pairs(pool.inline) do
+            if byCol then
+                for colKey, cell in pairs(byCol) do
+                    if not visibleColKeys[colKey] then
+                        if cell.fs then
+                            cell.fs:Hide()
+                            cell.fs:SetParent(holder)
+                        end
+                        if cell.hit then
+                            cell.hit:Hide()
+                            cell.hit:SetParent(holder)
+                            cell.hit:SetScript("OnEnter", nil)
+                            cell.hit:SetScript("OnLeave", nil)
+                            cell.hit:SetScript("OnMouseUp", nil)
+                        end
+                        byCol[colKey] = nil
+                    end
+                end
+            end
+        end
+        pool.colSig = colSig
+    end
+end
+
+local function PvE_GetDrawPoolMeasureFS()
+    local pool = _pveDrawPool
+    if not pool.measureFs then
+        pool.measureFs = FontManager:CreateFontString(PvE_EnsureDrawPoolHolder(), "body", "OVERLAY")
+        pool.measureFs:Hide()
+    end
+    return pool.measureFs
+end
+
+local function PvEAcquireColHeaderLabel(colHeaderRow, colKey, hitFrame, compactLabel, compactHex, colWidth)
+    local pool = _pveDrawPool
+    local fs = pool.headerLabels[colKey]
+    if not fs then
+        fs = FontManager:CreateFontString(colHeaderRow, "bodySmall", "OVERLAY")
+        pool.headerLabels[colKey] = fs
+        fs._pvePooledHeaderLabel = true
+    else
+        fs:SetParent(colHeaderRow)
+        fs:Show()
+    end
+    fs:SetPoint("TOP", hitFrame, "BOTTOM", 0, 0)
+    fs:SetWidth(math.max(24, colWidth - 4))
+    fs:SetJustifyH("CENTER")
+    fs:SetWordWrap(false)
+    fs:SetText("|cff" .. (compactHex or "ffffff") .. compactLabel .. "|r")
+    fs:SetShadowOffset(1, -1)
+    fs:SetShadowColor(0, 0, 0, 0.9)
+    return fs
+end
+
+local function PvEAcquireInlineCell(charHeader, charKey, colKey)
+    local pool = _pveDrawPool
+    local byCol = pool.inline[charKey]
+    if not byCol then
+        byCol = {}
+        pool.inline[charKey] = byCol
+    end
+    local cell = byCol[colKey]
+    if not cell then
+        cell = {}
+        cell.fs = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
+        cell.fs._pvePooledInline = true
+        byCol[colKey] = cell
+    else
+        cell.fs:SetParent(charHeader)
+        cell.fs:Show()
+    end
+    return cell
+end
+
+local function GetPvECachedCurrencyDisplay(id)
+    if not id then return nil end
+    local hit = _pveCurrencyInfoDisplayCache[id]
+    if hit ~= nil then
+        if hit == false then return nil end
+        return hit
+    end
+    if not (C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo) then
+        _pveCurrencyInfoDisplayCache[id] = false
+        return nil
+    end
+    local info = C_CurrencyInfo.GetCurrencyInfo(id)
+    if not info then
+        _pveCurrencyInfoDisplayCache[id] = false
+        return nil
+    end
+    local t = { iconFileID = info.iconFileID, name = info.name }
+    _pveCurrencyInfoDisplayCache[id] = t
+    return t
+end
+
+local function ResolvePveDelveCurrencyColumns(addon)
+    local c = _pveDelveCurrencyCache
+    if c.finishedScan then return end
+    if not addon or not addon.GetCurrenciesForUI then
+        c.finishedScan = true
+        return
+    end
+    local allCurrencies = addon:GetCurrenciesForUI()
+    local anyEntry = false
+    for currencyID, entry in pairs(allCurrencies) do
+        anyEntry = true
+        local rawName = entry and entry.name
+        local lowerName = ""
+        if rawName and not (issecretvalue and issecretvalue(rawName)) then
+            lowerName = string.lower(rawName)
+        end
+        if lowerName ~= "" then
+            if not c.shardsID and lowerName:find("coffer") and lowerName:find("shard") then
+                c.shardsID = currencyID
+                if entry.icon then c.shardsIcon = entry.icon end
+            end
+            if not c.keyID and lowerName:find("coffer") and lowerName:find("key") and lowerName:find("restored") then
+                c.keyID = currencyID
+                if entry.icon then c.keyIcon = entry.icon end
+            end
+        end
+    end
+    if anyEntry then
+        c.finishedScan = true
+    end
+end
+
 --- One-time merge: legacy profile.pveVisibleColumns.{bountiful,voidcore,manaflux} -> vaultButton.columns
 local function MigrateLegacyPvEColumnsToVault(profile)
     if not profile or not profile.pveVisibleColumns then return end
@@ -1392,7 +1588,8 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
     -- Table Rows (3 ROWS - perfect grid alignment)
     local sortedTypes = {"Raid", "Dungeon", "World"}
 
-    for rowIndex, typeName in ipairs(sortedTypes) do
+    for rowIndex = 1, #sortedTypes do
+        local typeName = sortedTypes[rowIndex]
         -- Map display name to actual data key
         local dataKey = typeName
         if typeName == "Dungeon" then
@@ -2141,10 +2338,11 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     -- Weekly reset timer (standardized widget)
     local CreateResetTimer = ns.UI_CreateResetTimer
+    local titleCardRightInset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
     local resetTimer = CreateResetTimer(
         titleCard,
         "RIGHT",
-        -20,  -- 20px from right edge
+        -titleCardRightInset,
         0,
         function()
             -- Use centralized GetWeeklyResetTime from PlansManager
@@ -2192,33 +2390,12 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- All Midnight Dawncrest tiers — IDs from Constants.MIDNIGHT_S1 (same as Gear / Currency cache)
     local PVE_DAWNCRESTS = GetPvEDawnCrestColumnDefinitions()
     local PVE_RESTORED_KEY_FALLBACK_ID = 3089
-    local PVE_SHARDS_ID = nil
-    local PVE_RESTORED_KEY_ID = nil
-    local PVE_SHARDS_ICON = "Interface\\Icons\\INV_Misc_Gem_Variety_01"
-    local PVE_RESTORED_KEY_ICON = "Interface\\Icons\\INV_Misc_Key_13"
+    ResolvePveDelveCurrencyColumns(self)
+    local PVE_SHARDS_ID = _pveDelveCurrencyCache.shardsID
+    local PVE_RESTORED_KEY_ID = _pveDelveCurrencyCache.keyID
+    local PVE_SHARDS_ICON = _pveDelveCurrencyCache.shardsIcon or "Interface\\Icons\\INV_Misc_Gem_Variety_01"
+    local PVE_RESTORED_KEY_ICON = _pveDelveCurrencyCache.keyIcon or "Interface\\Icons\\INV_Misc_Key_13"
 
-    -- Resolve dynamic Delve currency IDs by name so this works with changing IDs.
-    if self.GetCurrenciesForUI then
-        local allCurrencies = self:GetCurrenciesForUI()
-        for currencyID, entry in pairs(allCurrencies) do
-            local rawName = entry and entry.name
-            local lowerName = ""
-            if rawName and not (issecretvalue and issecretvalue(rawName)) then
-                lowerName = string.lower(rawName)
-            end
-            if lowerName ~= "" then
-                if not PVE_SHARDS_ID and lowerName:find("coffer") and lowerName:find("shard") then
-                    PVE_SHARDS_ID = currencyID
-                    if entry.icon then PVE_SHARDS_ICON = entry.icon end
-                end
-                if not PVE_RESTORED_KEY_ID and lowerName:find("coffer") and lowerName:find("key") and lowerName:find("restored") then
-                    PVE_RESTORED_KEY_ID = currencyID
-                    if entry.icon then PVE_RESTORED_KEY_ICON = entry.icon end
-                end
-            end
-        end
-    end
-    
     -- Fallback for Restored Coffer Key when dynamic lookup doesn't resolve.
     if not PVE_RESTORED_KEY_ID then
         PVE_RESTORED_KEY_ID = PVE_RESTORED_KEY_FALLBACK_ID
@@ -2234,13 +2411,13 @@ function WarbandNexus:DrawPvEProgress(parent)
         if pveExtraCols[ck] ~= false then
             local crestIcon = 134400
             local crestLabel = ""
-            if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-                local info = C_CurrencyInfo.GetCurrencyInfo(crestEntry.id)
-                if info and info.iconFileID then
-                    crestIcon = info.iconFileID
+            local disp = GetPvECachedCurrencyDisplay(crestEntry.id)
+            if disp then
+                if disp.iconFileID then
+                    crestIcon = disp.iconFileID
                 end
-                if info and info.name and not (issecretvalue and issecretvalue(info.name)) then
-                    crestLabel = info.name
+                if disp.name and disp.name ~= "" and not (issecretvalue and issecretvalue(disp.name)) then
+                    crestLabel = disp.name
                 end
             end
             if crestLabel == "" and crestEntry.labelKey then
@@ -2288,11 +2465,9 @@ function WarbandNexus:DrawPvEProgress(parent)
     end
     if vaultCols.manaflux == true then
         local manafluxIcon = "Interface\\Icons\\INV_Enchant_DustArcane"
-        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-            local mfMeta = C_CurrencyInfo.GetCurrencyInfo(PVE_MANAFLUX_ID)
-            if mfMeta and mfMeta.iconFileID then
-                manafluxIcon = mfMeta.iconFileID
-            end
+        local mfDisp = GetPvECachedCurrencyDisplay(PVE_MANAFLUX_ID)
+        if mfDisp and mfDisp.iconFileID then
+            manafluxIcon = mfDisp.iconFileID
         end
         PVE_COLUMNS[#PVE_COLUMNS + 1] = {
             key = "manaflux",
@@ -2361,9 +2536,13 @@ function WarbandNexus:DrawPvEProgress(parent)
     local COL_ICON_SIZE = 24
     local COL_HEADER_HEIGHT = 48
     local visiblePveColumnKeys = {}
+    local colSigParts = {}
     for i = 1, #PVE_COLUMNS do
-        visiblePveColumnKeys[PVE_COLUMNS[i].key] = true
+        local ck = PVE_COLUMNS[i].key
+        visiblePveColumnKeys[ck] = true
+        colSigParts[i] = ck
     end
+    local colSig = table.concat(colSigParts, "\1")
     local function GapBetweenColumns(leftIdx)
         local leftCol = PVE_COLUMNS[leftIdx]
         if not leftCol then return PVE_COL_SPACING end
@@ -2394,7 +2573,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     local characters = {}
     local profile = self.db and self.db.profile
     local minLevel = GetLowLevelHideThreshold(profile)
-    for _, char in ipairs(allCharacters) do
+    for i = 1, #allCharacters do
+        local char = allCharacters[i]
         local lvl = tonumber(char.level) or 0
         if char.isTracked ~= false and (minLevel == 0 or lvl >= minLevel) then
             table.insert(characters, char)
@@ -2434,7 +2614,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     local favorites = {}
     local regular = {}
     
-    for _, char in ipairs(characters) do
+    for i = 1, #characters do
+        local char = characters[i]
         -- CRITICAL: Same canonical key as PvECacheService + row loop below (vault/M+ are per-key in pveCache)
         local charKey = GetRowCanonicalPvEKey(char)
         
@@ -2495,13 +2676,15 @@ function WarbandNexus:DrawPvEProgress(parent)
             local charMap = {}
             
             -- Create a map for quick lookup
-            for _, char in ipairs(list) do
+            for i = 1, #list do
+                local char = list[i]
                 local key = GetRowCanonicalPvEKey(char)
                 if key then charMap[key] = char end
             end
             
             -- Add characters in custom order
-            for _, charKey in ipairs(customOrder) do
+            for i = 1, #customOrder do
+                local charKey = customOrder[i]
                 if charMap[charKey] then
                     table.insert(ordered, charMap[charKey])
                     charMap[charKey] = nil  -- Remove to track remaining
@@ -2520,7 +2703,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                     return CompareCharNameLower(a, b)
                 end
             end)
-            for _, char in ipairs(remaining) do
+            for i = 1, #remaining do
+                local char = remaining[i]
                 table.insert(ordered, char)
             end
             
@@ -2547,10 +2731,12 @@ function WarbandNexus:DrawPvEProgress(parent)
     if currentChar then
         table.insert(sortedCharacters, currentChar)
     end
-    for _, char in ipairs(favorites) do
+    for i = 1, #favorites do
+        local char = favorites[i]
         table.insert(sortedCharacters, char)
     end
-    for _, char in ipairs(regular) do
+    for i = 1, #regular do
+        local char = regular[i]
         table.insert(sortedCharacters, char)
     end
     characters = sortedCharacters
@@ -2561,6 +2747,20 @@ function WarbandNexus:DrawPvEProgress(parent)
         end
         WarbandNexus._pveVaultTooltipCharsSnapshot = snap
     end
+
+    local rosterSigParts = {}
+    local currentKeySet = {}
+    for i = 1, #characters do
+        local rk = GetRowCanonicalPvEKey(characters[i])
+        if rk then
+            rosterSigParts[#rosterSigParts + 1] = rk
+            currentKeySet[rk] = true
+        end
+    end
+    table.sort(rosterSigParts)
+    local rosterSig = tostring(#rosterSigParts) .. "\0" .. table.concat(rosterSigParts, "\1")
+    local rosterChanged = (_pveDrawPool.rosterSig ~= rosterSig)
+    PvESyncPvEPools(rosterSig, colSig, currentKeySet, visiblePveColumnKeys)
 
     if vaultTrackerMode then
         --- Slots meeting vault threshold (Raid / M+ / World / PvP tracks), same rules as inline grid.
@@ -2673,17 +2873,37 @@ function WarbandNexus:DrawPvEProgress(parent)
     end
     
     -- ===== NAME WIDTH (measured from longest name; no compression — scroll handles overflow) =====
-    local tempMeasure = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    local tempMeasure = PvE_GetDrawPoolMeasureFS()
     tempMeasure:Hide()
     local maxNameRealmWidth = 0
-    for _, c in ipairs(characters) do
-        local realmStr = ns.Utilities and ns.Utilities:FormatRealmName(c.realm) or c.realm or ""
-        tempMeasure:SetText((c.name or "Unknown") .. "  -  " .. realmStr)
-        local w = tempMeasure:GetStringWidth()
-        if w and w > maxNameRealmWidth then maxNameRealmWidth = w end
+    if rosterChanged then
+        for i = 1, #characters do
+            local c = characters[i]
+            local k = GetRowCanonicalPvEKey(c)
+            if k then
+                local nameStr = c.name or "Unknown"
+                if issecretvalue and issecretvalue(nameStr) then
+                    nameStr = "Unknown"
+                end
+                local realmStr = ns.Utilities and ns.Utilities:FormatRealmName(c.realm) or c.realm or ""
+                if realmStr ~= "" and issecretvalue and issecretvalue(realmStr) then
+                    realmStr = ""
+                end
+                tempMeasure:SetText(nameStr .. "  -  " .. realmStr)
+                local w = tempMeasure:GetStringWidth() or 0
+                _pveDrawPool.nameWidths[k] = w
+                if w > maxNameRealmWidth then maxNameRealmWidth = w end
+            end
+        end
+    else
+        for i = 1, #characters do
+            local k = GetRowCanonicalPvEKey(characters[i])
+            if k then
+                local w = _pveDrawPool.nameWidths[k]
+                if w and w > maxNameRealmWidth then maxNameRealmWidth = w end
+            end
+        end
     end
-    local bin = ns.UI_RecycleBin
-    if bin then tempMeasure:SetParent(bin) else tempMeasure:SetParent(nil) end
     local nameWidth = math.max(200, math.ceil(maxNameRealmWidth) + 8)
 
     -- Wide enough for left cluster + name + level/ilvl + inline columns → horizontal scrollbar when needed
@@ -2798,14 +3018,7 @@ function WarbandNexus:DrawPvEProgress(parent)
 
             local compactLabel, compactHex = BuildCompactHeaderLabel(col)
             if compactLabel ~= "" then
-                local labelFs = FontManager:CreateFontString(colHeaderRow, "bodySmall", "OVERLAY")
-                labelFs:SetPoint("TOP", hitFrame, "BOTTOM", 0, 0)
-                labelFs:SetWidth(math.max(24, col.width - 4))
-                labelFs:SetJustifyH("CENTER")
-                labelFs:SetWordWrap(false)
-                labelFs:SetText("|cff" .. (compactHex or "ffffff") .. compactLabel .. "|r")
-                labelFs:SetShadowOffset(1, -1)
-                labelFs:SetShadowColor(0, 0, 0, 0.9)
+                PvEAcquireColHeaderLabel(colHeaderRow, col.key, hitFrame, compactLabel, compactHex, col.width)
             end
 
             if ShowTooltip then
@@ -2813,7 +3026,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local tooltipTitle = col.tooltipTitle
                 if not tooltipTitle then
                     if col.crestCurrencyId then
-                        local meta = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(col.crestCurrencyId)
+                        local meta = GetPvECachedCurrencyDisplay(col.crestCurrencyId)
                         tooltipTitle = meta and meta.name
                     end
                     tooltipTitle = tooltipTitle or col.key or ""
@@ -2851,7 +3064,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     local scrollFrameRef = parent:GetParent()
 
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====
-    for i, char in ipairs(characters) do
+    for i = 1, #characters do
+        local char = characters[i]
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
         -- CRITICAL: Match DB keys (currency + PvE cache) — prefer characters table index via _key for canonical resolution.
         local charKey = GetRowCanonicalPvEKey(char)
@@ -2991,9 +3205,16 @@ function WarbandNexus:DrawPvEProgress(parent)
         charNameText:SetWidth(nameWidth)
         charNameText:SetJustifyH("LEFT")
         local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ""
-        charNameText:SetText(string.format("|cff%02x%02x%02x%s  -  %s|r", 
-            classColor.r * 255, classColor.g * 255, classColor.b * 255, 
-            char.name,
+        local dispName = char.name or "Unknown"
+        if issecretvalue and issecretvalue(dispName) then
+            dispName = "Unknown"
+        end
+        if displayRealm ~= "" and issecretvalue and issecretvalue(displayRealm) then
+            displayRealm = ""
+        end
+        charNameText:SetText(string.format("|cff%02x%02x%02x%s  -  %s|r",
+            classColor.r * 255, classColor.g * 255, classColor.b * 255,
+            dispName,
             displayRealm))
         xOffset = xOffset + nameWidth
         
@@ -3379,22 +3600,24 @@ function WarbandNexus:DrawPvEProgress(parent)
                 currencyID = PVE_MANAFLUX_ID,
             }
 
+            local UnbindSeason = ns.UI_UnbindSeasonProgressAmount
             for ci = #PVE_COLUMNS, 1, -1 do
                 local col = PVE_COLUMNS[ci]
                 local val = colValuesByKey[col.key]
                 if val then
                     local cw = col.width
                     inlineX = inlineX - cw
-                    local colText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
+                    local cell = PvEAcquireInlineCell(charHeader, charKey, col.key)
+                    local colText = cell.fs
                     colText:SetPoint("RIGHT", charHeader, "RIGHT", inlineX + cw, 0)
                     colText:SetWidth(cw)
                     colText:SetJustifyH("CENTER")
                     colText:SetWordWrap(false)
                     if val.seasonProgressData and ns.UI_BindSeasonProgressAmount then
-                        -- Shift-aware live binding (default = current only, Shift = current\194\183earned/cap).
                         ns.UI_BindSeasonProgressAmount(colText, val.seasonProgressData)
                         colText:SetTextColor(1, 1, 1)
                     else
+                        if UnbindSeason then UnbindSeason(colText) end
                         colText:SetText(val.text)
                         if not val.richText and val.color then
                             colText:SetTextColor(val.color[1], val.color[2], val.color[3])
@@ -3403,10 +3626,17 @@ function WarbandNexus:DrawPvEProgress(parent)
                         end
                     end
                     if val.tooltip and ShowTooltip then
-                        local hit = CreateFrame("Frame", nil, charHeader)
+                        local hit = cell.hit
+                        if not hit then
+                            hit = CreateFrame("Frame", nil, charHeader)
+                            cell.hit = hit
+                            hit:EnableMouse(true)
+                            BindForwardScrollWheel(hit)
+                        end
+                        hit:SetParent(charHeader)
                         hit:SetPoint("RIGHT", charHeader, "RIGHT", inlineX + cw, 0)
                         hit:SetSize(cw, ROW_HEIGHT)
-                        hit:EnableMouse(true)
+                        hit:Show()
                         hit:SetScript("OnEnter", function(self)
                             if val.currencyID then
                                 ShowTooltip(self, {
@@ -3433,7 +3663,11 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 charHeader:Click()
                             end
                         end)
-                        BindForwardScrollWheel(hit)
+                    elseif cell.hit then
+                        cell.hit:Hide()
+                        cell.hit:SetScript("OnEnter", nil)
+                        cell.hit:SetScript("OnLeave", nil)
+                        cell.hit:SetScript("OnMouseUp", nil)
                     end
                     if ci > 1 then
                         inlineX = inlineX - GapBetweenColumns(ci - 1)
@@ -3522,7 +3756,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local numRows = math.ceil(totalDungeons / maxIconsPerRow)
                 
                 local highestKeyLevel = 0
-                for _, dungeon in ipairs(pve.mythicPlus.dungeons) do
+                for i = 1, #pve.mythicPlus.dungeons do
+                    local dungeon = pve.mythicPlus.dungeons[i]
                     if dungeon.bestLevel and dungeon.bestLevel > highestKeyLevel then
                         highestKeyLevel = dungeon.bestLevel
                     end
@@ -3538,8 +3773,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                     dungeonsByRow[i] = {}
                 end
                 
-                for i, dungeon in ipairs(pve.mythicPlus.dungeons) do
-                    local row = math.floor((i - 1) / maxIconsPerRow) + 1
+                local mplusDungeons = pve.mythicPlus.dungeons
+                for di = 1, #mplusDungeons do
+                    local dungeon = mplusDungeons[di]
+                    local row = math.floor((di - 1) / maxIconsPerRow) + 1
                     table.insert(dungeonsByRow[row], dungeon)
                 end
                 
@@ -3548,7 +3785,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local availableWidth = cardWidthInner - (2 * (borderPadding + sidePadding))
                 local consistentSpacing = (availableWidth - (firstRowIcons * iconSize)) / (firstRowIcons - 1)
                 
-                for rowIndex, dungeons in ipairs(dungeonsByRow) do
+                for rowIndex = 1, #dungeonsByRow do
+                    local dungeons = dungeonsByRow[rowIndex]
                     local iconsInThisRow = #dungeons
                     local rowY = gridY + ((rowIndex - 1) * (iconSize + rowSpacing))
                     
@@ -3561,7 +3799,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                         startX = (cardWidthInner - totalRowWidth) / 2
                     end
                     
-                    for colIndex, dungeon in ipairs(dungeons) do
+                    for colIndex = 1, #dungeons do
+                        local dungeon = dungeons[colIndex]
                         local iconX = startX + ((colIndex - 1) * (iconSize + consistentSpacing))
                         
                         local iconFrame = CreateIcon(mplusCard, dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark", iconSize, false, nil, false)
@@ -3786,7 +4025,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local aStartX = col2X + (topColumnWidth - aTotalWidth) / 2
                 local aStartY = col2Y + 23
                 
-                for i, affixData in ipairs(currentAffixes) do
+                for i = 1, #currentAffixes do
+                    local affixData = currentAffixes[i]
                     if i <= maxAffixes then
                         local name = affixData.name
                         local description = affixData.description
@@ -3945,22 +4185,26 @@ function WarbandNexus:DrawPvEProgress(parent)
         -- Flatten vault activities (raids, mythicPlus, pvp, world) into single array
         if vaultActivitiesData then
             if vaultActivitiesData.raids then
-                for _, activity in ipairs(vaultActivitiesData.raids) do
+                for i = 1, #vaultActivitiesData.raids do
+                    local activity = vaultActivitiesData.raids[i]
                     table.insert(vaultActivities, activity)
                 end
             end
             if vaultActivitiesData.mythicPlus then
-                for _, activity in ipairs(vaultActivitiesData.mythicPlus) do
+                for i = 1, #vaultActivitiesData.mythicPlus do
+                    local activity = vaultActivitiesData.mythicPlus[i]
                     table.insert(vaultActivities, activity)
                 end
             end
             if vaultActivitiesData.pvp then
-                for _, activity in ipairs(vaultActivitiesData.pvp) do
+                for i = 1, #vaultActivitiesData.pvp do
+                    local activity = vaultActivitiesData.pvp[i]
                     table.insert(vaultActivities, activity)
                 end
             end
             if vaultActivitiesData.world then
-                for _, activity in ipairs(vaultActivitiesData.world) do
+                for i = 1, #vaultActivitiesData.world do
+                    local activity = vaultActivitiesData.world[i]
                     table.insert(vaultActivities, activity)
                 end
             end
@@ -3968,7 +4212,8 @@ function WarbandNexus:DrawPvEProgress(parent)
         
         if #vaultActivities > 0 then
             local vaultByType = {}
-            for _, activity in ipairs(vaultActivities) do
+            for i = 1, #vaultActivities do
+                local activity = vaultActivities[i]
                 -- CRITICAL: Use locale-independent internal keys for vaultByType.
                 -- Helper functions (IsVaultSlotAtMax, GetVaultActivityDisplayText, etc.)
                 -- expect "Raid", "M+", "World", "PvP" — NOT locale strings.

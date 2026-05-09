@@ -211,6 +211,16 @@ function Utilities:SafeLower(s)
     return s:lower()
 end
 
+--- Current character bag gold in copper. GetMoney() may be secret (Midnight); uses SafeNumber.
+---@param fallbackCopper number|nil When unavailable or secret (default 0)
+---@return number
+function Utilities:GetLiveCharacterMoneyCopper(fallbackCopper)
+    fallbackCopper = tonumber(fallbackCopper) or 0
+    if not GetMoney then return fallbackCopper end
+    local n = self:SafeNumber(GetMoney(), fallbackCopper)
+    return (type(n) == "number") and n or fallbackCopper
+end
+
 --============================================================================
 -- GOLD/CURRENCY HELPERS
 --============================================================================
@@ -286,7 +296,9 @@ end
 ---@param bagID number The bag ID to check
 ---@return boolean Whether the bag is a Warband bag
 function Utilities:IsWarbandBag(bagID)
-    for _, warbandBagID in ipairs(ns.WARBAND_BAGS) do
+    local wbBags = ns.WARBAND_BAGS
+    for bi = 1, #wbBags do
+        local warbandBagID = wbBags[bi]
         if bagID == warbandBagID then
             return true
         end
@@ -433,7 +445,8 @@ function Utilities:GetPetNameFromTooltip(itemID)
                 local isBadLine = false
                 
                 -- Check against known bad patterns
-                for _, pattern in ipairs(knownBadPatterns) do
+                for pi = 1, #knownBadPatterns do
+                    local pattern = knownBadPatterns[pi]
                     if cleanText:match(pattern) then
                         isBadLine = true
                         break

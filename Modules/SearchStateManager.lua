@@ -223,22 +223,9 @@ function SearchStateManager:GetQuery(tabId)
     return q
 end
 
---[[
-    Debug: Print current state for all tabs
-]]
-function SearchStateManager:DebugPrintStates()
-    DebugPrint("[SearchStateManager] Current States:")
-    for tabId, state in pairs(searchStates) do
-        DebugPrint(string.format("  %s: query='%s', count=%d, empty=%s",
-            tabId, state.query, state.resultCount, tostring(state.isEmpty)))
-    end
-end
-
 --============================================================================
 -- INITIALIZATION
 --============================================================================
 
 -- Expose to namespace
 ns.SearchStateManager = SearchStateManager
-
--- Debug command removed for production build.

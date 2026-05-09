@@ -13,6 +13,7 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 -- ============================================================================
 -- CONSTANTS AND CONFIGURATION
@@ -21,6 +22,11 @@ local issecretvalue = issecretvalue
 local FRAME_BUDGET_MS = 16  -- Maximum processing time per frame (16ms = ~60 FPS)
 local BATCH_SIZE = 10       -- Number of items to process before checking frame budget (reduced for more frequent yields)
 local MAX_RESULTS_PER_CATEGORY = 50  -- Limit results per category to prevent freezing (user can search for more)
+
+local function TrimString(text)
+    if not text then return "" end
+    return (text:gsub("^%s*(.-)%s*$", "%1"))
+end
 
 -- Transmog Category Mappings (from Enum.TransmogCollectionType)
 -- https://wowpedia.fandom.com/wiki/Enum.TransmogCollectionType
@@ -94,7 +100,9 @@ end
     @return table|nil - Category definition or nil
 ]]
 function WarbandNexus:GetTransmogCategoryByKey(categoryKey)
-    for _, category in ipairs(GetTransmogCategories()) do
+    local cats = GetTransmogCategories()
+    for ci = 1, #cats do
+        local category = cats[ci]
         if category.key == categoryKey then
             return category
         end
@@ -108,7 +116,9 @@ end
     @return table|nil - Category definition or nil
 ]]
 function WarbandNexus:GetTransmogCategoryByID(categoryID)
-    for _, category in ipairs(GetTransmogCategories()) do
+    local cats = GetTransmogCategories()
+    for ci = 1, #cats do
+        local category = cats[ci]
         if category.id == categoryID then
             return category
         end
@@ -153,51 +163,33 @@ function WarbandNexus:ProcessTransmogCoroutine(categoryID, callback, progressCal
         local processedCount = 0
         local startTime = debugprofilestop()
         
-        -- #region agent log
-        local countUncollected = 0
-        local countWithSources = 0
-        local countValidSourceID = 0
-        local countSuccessSourceInfo = 0
-        local countAdded = 0
         local reachedLimit = false  -- Flag for early exit
-        -- #endregion
         
         self:Debug("Processing " .. totalCount .. " transmog items for category " .. categoryID)
         
-        for i, appearanceInfo in ipairs(appearances) do
+        for i = 1, #appearances do
+            local appearanceInfo = appearances[i]
             -- Early exit if we've hit the limit
             if reachedLimit then
                 break
             end
             -- Skip collected items (Warband-compatible filtering)
             if not appearanceInfo.isCollected then
-                -- #region agent log
-                countUncollected = countUncollected + 1
-                
                 -- Get sources for this appearance
                 local sources = C_TransmogCollection.GetAppearanceSources(appearanceInfo.visualID)
                 
                 if sources and #sources > 0 then
-                    countWithSources = countWithSources + 1
-                    
                     -- Process ALL sources for this appearance (multiple items can have same visual)
-                    for _, sourceData in ipairs(sources) do
+                    for sourceIndex = 1, #sources do
+                        local sourceData = sources[sourceIndex]
                         local sourceID = sourceData.sourceID  -- sources is array of {sourceID=X, ...}
                         
                         -- Validate sourceID is a valid number
                         if type(sourceID) == "number" and sourceID > 0 then
-                            -- #region agent log
-                            countValidSourceID = countValidSourceID + 1
-                            -- #endregion
-                            
                             -- Get source info (with protected call to catch errors)
                             local success, sourceInfo = pcall(C_TransmogCollection.GetSourceInfo, sourceID)
                             
                             if success and sourceInfo then
-                            -- #region agent log
-                            countSuccessSourceInfo = countSuccessSourceInfo + 1
-                            -- #endregion
-                            
                             -- TWW 11.0 compatibility: canDisplayOnPlayer (backward compatible)
                             local canDisplayOnPlayer = appearanceInfo.canDisplayOnPlayer
                             if canDisplayOnPlayer == nil then
@@ -230,9 +222,6 @@ function WarbandNexus:ProcessTransmogCoroutine(categoryID, callback, progressCal
                                 sourceText = nil,
                             })
                             
-                            -- #region agent log
-                            countAdded = countAdded + 1
-                            
                             -- Stop if we've hit the limit (prevent freezing with huge datasets)
                             if #results >= MAX_RESULTS_PER_CATEGORY then
                                 reachedLimit = true
@@ -262,7 +251,9 @@ function WarbandNexus:ProcessTransmogCoroutine(categoryID, callback, progressCal
         end
         
         local totalElapsed = debugprofilestop() - startTimeTotal
-        self:Debug(string.format("Transmog processing complete: %d items in %.2fms", #results, totalElapsed))
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            self:Debug(string.format("Transmog processing complete: %d items in %.2fms", #results, totalElapsed))
+        end
         
         -- Final progress update
         if progressCallback then
@@ -353,7 +344,8 @@ function WarbandNexus:LoadTransmogItemsBatch(transmogItems, onItemLoaded, onComp
     local totalItems = #transmogItems
     local loadedCount = 0
     
-    for i, item in ipairs(transmogItems) do
+    for ii = 1, #transmogItems do
+        local item = transmogItems[ii]
         self:LoadTransmogItemAsync(item.sourceID, function(itemData)
             loadedCount = loadedCount + 1
             
@@ -439,7 +431,9 @@ function WarbandNexus:GetSourceFromTooltip(sourceID)
         "Treasure:", "Reputation:", "Garrison:", "Covenant:"
     }
     
-    for _, line in ipairs(tooltipData.lines) do
+    local tooltipLines = tooltipData.lines
+    for li = 1, #tooltipLines do
+        local line = tooltipLines[li]
         if line.leftText then
             local text = line.leftText
             if issecretvalue and issecretvalue(text) then
@@ -448,7 +442,8 @@ function WarbandNexus:GetSourceFromTooltip(sourceID)
             if text then
             
             -- Check if line contains source keywords
-            for _, keyword in ipairs(sourceKeywords) do
+            for ki = 1, #sourceKeywords do
+                local keyword = sourceKeywords[ki]
                 if text:find(keyword, 1, true) then
                     -- Clean escape sequences
                     text = text:gsub("|c%x%x%x%x%x%x%x%x", "")  -- Color codes
@@ -457,7 +452,7 @@ function WarbandNexus:GetSourceFromTooltip(sourceID)
                     text = text:gsub("|H.-|h", "")  -- Hyperlinks
                     text = text:gsub("|h", "")
                     
-                    return text:trim()
+                    return TrimString(text)
                 end
             end
             end
@@ -505,7 +500,8 @@ function WarbandNexus:ProcessTransmogSources(transmogItems, onComplete)
     end
     
     -- Process sources synchronously (source text parsing is fast)
-    for _, item in ipairs(transmogItems) do
+    for ii = 1, #transmogItems do
+        local item = transmogItems[ii]
         if item.sourceID then
             item.sourceText = self:GetTransmogSourceText(item.sourceID)
         end
@@ -579,7 +575,8 @@ function WarbandNexus:GetMixedUncollectedTransmog(callback, progressCallback)
     local originalMax = MAX_RESULTS_PER_CATEGORY
     MAX_RESULTS_PER_CATEGORY = ITEMS_PER_CATEGORY
     
-    for _, category in ipairs(categories) do
+    for ci = 1, #categories do
+        local category = categories[ci]
         self:ProcessTransmogCoroutine(category.id, function(results)
             -- Add category results to all results (limited to ITEMS_PER_CATEGORY)
             for i = 1, math.min(#results, ITEMS_PER_CATEGORY) do
@@ -619,11 +616,12 @@ function WarbandNexus:GetAllUncollectedTransmog(callback, progressCallback)
     local categories = GetTransmogCategories()
     local totalCategories = #categories
     
-    for _, category in ipairs(categories) do
+    for ci = 1, #categories do
+        local category = categories[ci]
         self:ProcessTransmogCoroutine(category.id, function(results)
             -- Add category results to all results
-            for _, item in ipairs(results) do
-                table.insert(allResults, item)
+            for ri = 1, #results do
+                table.insert(allResults, results[ri])
             end
             
             categoriesProcessed = categoriesProcessed + 1
@@ -717,20 +715,16 @@ function WarbandNexus:SearchUncollectedTransmog(categoryKey, searchText, callbac
         local filtered = {}
         local searchLower = string.lower(searchText)
         
-        for _, item in ipairs(results) do
-            if item.name and string.find(string.lower(item.name), searchLower, 1, true) then
+        for ri = 1, #results do
+            local item = results[ri]
+            local itemName = item and item.name
+            if itemName and not (issecretvalue and issecretvalue(itemName))
+                and string.find(string.lower(itemName), searchLower, 1, true) then
                 table.insert(filtered, item)
             end
         end
         
         callback(filtered)
     end, progressCallback)
-end
-
--- String trim utility
-if not string.trim then
-    function string.trim(s)
-        return s:match("^%s*(.-)%s*$")
-    end
 end
 

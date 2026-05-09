@@ -82,12 +82,12 @@ local function FormatCollectionsRecentRelativeTime(ts)
         return (loc and loc["COLLECTIONS_RECENT_JUST_NOW"]) or "Just now"
     end
     if sec < 3600 then
-        return string.format((loc and loc["COLLECTIONS_RECENT_MINUTES_AGO"]) or "%d min ago", math.floor(sec / 60))
+        return format((loc and loc["COLLECTIONS_RECENT_MINUTES_AGO"]) or "%d min ago", math.floor(sec / 60))
     end
     if sec < 86400 then
-        return string.format((loc and loc["COLLECTIONS_RECENT_HOURS_AGO"]) or "%d hr ago", math.floor(sec / 3600))
+        return format((loc and loc["COLLECTIONS_RECENT_HOURS_AGO"]) or "%d hr ago", math.floor(sec / 3600))
     end
-    return string.format((loc and loc["COLLECTIONS_RECENT_DAYS_AGO"]) or "%d days ago", math.floor(sec / 86400))
+    return format((loc and loc["COLLECTIONS_RECENT_DAYS_AGO"]) or "%d days ago", math.floor(sec / 86400))
 end
 
 -- Detail panel: when the addon last logged this collectible (same source as the recent strip).
@@ -96,478 +96,11 @@ local function FormatCollectionsAcquiredDetail(ts)
     local loc = ns.L
     local rel = FormatCollectionsRecentRelativeTime(ts)
     local label = (loc and loc["COLLECTIONS_ACQUIRED_LABEL"]) or "Recorded"
-    return string.format((loc and loc["COLLECTIONS_ACQUIRED_LINE"]) or "%s: %s", label, rel)
+    return format((loc and loc["COLLECTIONS_ACQUIRED_LINE"]) or "%s: %s", label, rel)
 end
 
--- ============================================================================
--- MOUNT / PET / TOY SOURCE CLASSIFICATION (Pure API)
--- ============================================================================
---[[
-    Categorization is driven exclusively by Blizzard's API source type integer.
-    No string parsing, no keyword heuristics.
-
-    - Mount: C_MountJournal.GetMountInfoByID(id) → 6th return `sourceType`
-        Enum (0-based) per Wowpedia:
-            0 Other, 1 Drop, 2 Quest, 3 Vendor, 4 Profession, 5 PetBattle,
-            6 Achievement, 7 WorldEvent, 8 Promotion, 9 TCG, 10 Shop, 11 Discovery
-    - Pet:   C_PetJournal source filter index (BattlePetSources):
-            1 Drop, 2 Quest, 3 Vendor, 4 Profession, 5 PetBattle, 6 Achievement,
-            7 WorldEvent, 8 Promotion, 9 TCG, 10 Shop, 11 TradingPost, 12 PvP
-    - Toy:   C_ToyBox source filter index (BattlePetSources, same as pet above).
-]]
-
-local L = ns.L
-
--- Mount categories (Blizzard mount-source enum order; "other" = sourceType 0).
-local SOURCE_CATEGORIES = {
-    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconAtlas = "ParagonReputation_Bag" },
-    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconAtlas = "quest-legendary-turnin" },
-    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconAtlas = "coin-gold" },
-    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconAtlas = "poi-workorders" },
-    { key = "petbattle",   label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconAtlas = "WildBattlePetCapturable" },
-    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconAtlas = "characterupdate_clock-icon" },
-    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconAtlas = "Bonus-Objective-Star" },
-    { key = "tcg",         label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconAtlas = "Auctioneer" },
-    { key = "shop",        label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconAtlas = "coin-gold" },
-    { key = "discovery",   label = (L and L["PARSE_DISCOVERY"]) or "Discovery",                                     iconAtlas = "VignetteLoot" },
-    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconAtlas = "poi-town" },
-}
-
-local SOURCE_CATEGORY_ORDER = {}
-for i, cat in ipairs(SOURCE_CATEGORIES) do
-    SOURCE_CATEGORY_ORDER[cat.key] = i
-end
-
--- Pet categories (Blizzard battle-pet source filter order, 1-indexed).
-local PET_SOURCE_CATEGORIES = {
-    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconAtlas = "ParagonReputation_Bag" },
-    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconAtlas = "quest-legendary-turnin" },
-    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconAtlas = "coin-gold" },
-    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconAtlas = "poi-workorders" },
-    { key = "petbattle",   label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconAtlas = "WildBattlePetCapturable" },
-    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconAtlas = "characterupdate_clock-icon" },
-    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconAtlas = "Bonus-Objective-Star" },
-    { key = "tcg",         label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconAtlas = "Auctioneer" },
-    { key = "shop",        label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconAtlas = "coin-gold" },
-    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconAtlas = "Auctioneer" },
-    { key = "pvp",         label = (L and L["SOURCE_TYPE_PVP"]) or "PvP",                                           iconAtlas = "honorsystem-icon-prestige-9" },
-    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconAtlas = "poi-town" },
-}
-
-local PET_SOURCE_CATEGORY_ORDER = {}
-for i, cat in ipairs(PET_SOURCE_CATEGORIES) do
-    PET_SOURCE_CATEGORY_ORDER[cat.key] = i
-end
-
--- Toy categories (Blizzard ToyBox source filter, BattlePetSources, 1-indexed).
-local TOY_SOURCE_CATEGORIES = {
-    { key = "drop",        sourceIndex = 1,  label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconAtlas = "ParagonReputation_Bag" },
-    { key = "quest",       sourceIndex = 2,  label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconAtlas = "quest-legendary-turnin" },
-    { key = "vendor",      sourceIndex = 3,  label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconAtlas = "coin-gold" },
-    { key = "profession",  sourceIndex = 4,  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconAtlas = "poi-workorders" },
-    { key = "petbattle",   sourceIndex = 5,  label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconAtlas = "WildBattlePetCapturable" },
-    { key = "achievement", sourceIndex = 6,  label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "worldevent",  sourceIndex = 7,  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconAtlas = "characterupdate_clock-icon" },
-    { key = "promotion",   sourceIndex = 8,  label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconAtlas = "Bonus-Objective-Star" },
-    { key = "tcg",         sourceIndex = 9,  label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconAtlas = "Auctioneer" },
-    { key = "shop",        sourceIndex = 10, label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconAtlas = "coin-gold" },
-    { key = "tradingpost", sourceIndex = 11, label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconAtlas = "Auctioneer" },
-    { key = "unknown",     sourceIndex = 0,  label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconAtlas = "poi-town" },
-}
-
-local TOY_SOURCE_CATEGORY_ORDER = {}
-for i, cat in ipairs(TOY_SOURCE_CATEGORIES) do
-    TOY_SOURCE_CATEGORY_ORDER[cat.key] = i
-end
-
--- API integer → category key tables.
--- Mount uses the C_MountJournal sourceType enum (0..11 per Wowpedia).
-local MOUNT_SOURCETYPE_TO_CATEGORY = {
-    [0]  = "unknown",
-    [1]  = "drop",
-    [2]  = "quest",
-    [3]  = "vendor",
-    [4]  = "profession",
-    [5]  = "petbattle",
-    [6]  = "achievement",
-    [7]  = "worldevent",
-    [8]  = "promotion",
-    [9]  = "tcg",
-    [10] = "shop",
-    [11] = "discovery",
-}
--- Pets/toys use the C_PetJournal / C_ToyBox source filter index (BattlePetSources, 1-indexed).
-local BATTLEPET_SOURCETYPE_TO_CATEGORY = {
-    [1]  = "drop",
-    [2]  = "quest",
-    [3]  = "vendor",
-    [4]  = "profession",
-    [5]  = "petbattle",
-    [6]  = "achievement",
-    [7]  = "worldevent",
-    [8]  = "promotion",
-    [9]  = "tcg",
-    [10] = "shop",
-    [11] = "tradingpost",
-    [12] = "pvp",
-}
-local SOURCE_INDEX_TO_TOY_CAT = BATTLEPET_SOURCETYPE_TO_CATEGORY
-
--- Category icon by key (atlas only; CreateCollapsibleHeader isAtlas=true)
-local DEFAULT_CATEGORY_ATLAS = "icons_64x64_important"
-local function GetMountCategoryIcon(catKey)
-    for i = 1, #SOURCE_CATEGORIES do
-        if SOURCE_CATEGORIES[i].key == catKey then
-            local a = SOURCE_CATEGORIES[i].iconAtlas
-            return (a and a ~= "") and a or DEFAULT_CATEGORY_ATLAS
-        end
-    end
-    return DEFAULT_CATEGORY_ATLAS
-end
-local function GetPetCategoryIcon(catKey)
-    for i = 1, #PET_SOURCE_CATEGORIES do
-        if PET_SOURCE_CATEGORIES[i].key == catKey then
-            local a = PET_SOURCE_CATEGORIES[i].iconAtlas
-            return (a and a ~= "") and a or DEFAULT_CATEGORY_ATLAS
-        end
-    end
-    return DEFAULT_CATEGORY_ATLAS
-end
-local function GetToyCategoryIcon(catKey)
-    for i = 1, #TOY_SOURCE_CATEGORIES do
-        if TOY_SOURCE_CATEGORIES[i].key == catKey then
-            local a = TOY_SOURCE_CATEGORIES[i].iconAtlas
-            return (a and a ~= "") and a or DEFAULT_CATEGORY_ATLAS
-        end
-    end
-    return DEFAULT_CATEGORY_ATLAS
-end
-
--- Pure-API classifier: takes the API source-type integer; returns a stable category key.
--- Backwards compat: still accepts a `cache` table arg (legacy callsites pass it) but
--- caching is unnecessary for an O(1) integer lookup, so the table is simply ignored.
-local function ClassifyMountByAPI(_cache, sourceTypeInt)
-    if not sourceTypeInt then return "unknown" end
-    if issecretvalue and issecretvalue(sourceTypeInt) then return "unknown" end
-    return MOUNT_SOURCETYPE_TO_CATEGORY[sourceTypeInt] or "unknown"
-end
-local function ClassifyBattlePetByAPI(_cache, sourceTypeIndex)
-    if not sourceTypeIndex then return "unknown" end
-    if issecretvalue and issecretvalue(sourceTypeIndex) then return "unknown" end
-    return BATTLEPET_SOURCETYPE_TO_CATEGORY[sourceTypeIndex] or "unknown"
-end
--- Aliases preserve existing function names used throughout the file.
-local ClassifyMountSourceCached = ClassifyMountByAPI
-local ClassifyPetSourceCached = ClassifyBattlePetByAPI
-local function ClassifySource(_cache, sourceTypeInt, kind)
-    if kind == "mount" then return ClassifyMountByAPI(nil, sourceTypeInt) end
-    return ClassifyBattlePetByAPI(nil, sourceTypeInt)
-end
-
-local function FormatMountPetToyListTrySuffix(collectibleType, id)
-    if not id or not WarbandNexus or not WarbandNexus.ShouldShowTryCountInUI or not WarbandNexus:ShouldShowTryCountInUI(collectibleType, id) then return "" end
-    local c = WarbandNexus:GetTryCount(collectibleType, id) or 0
-    local fmt = (ns.L and ns.L["COLLECTION_LIST_ATTEMPTS_FMT"]) or "%d Attempts"
-    return " |cff888888(" .. string.format(fmt, c) .. ")|r"
-end
-
--- Para birimi ikonu: cost/amount satırlarında fiyat yanında gösterilir.
--- Default gold icon (fallback when currency cannot be identified)
-local CURRENCY_ICON_GOLD = "|TInterface\\Icons\\INV_Misc_Coin_01:14:14:0:0:64:64:4:60:4:60|t"
-
--- Smart currency icon resolver: parse cost text to identify actual currency and return correct icon.
--- Uses C_CurrencyInfo API for dynamic lookup; caches results to avoid repeated API calls.
-local _currencyIconCache = {}
-local function MakeCurrencyIconString(iconPath)
-    if not iconPath or iconPath == "" then return CURRENCY_ICON_GOLD end
-    return "|T" .. tostring(iconPath) .. ":14:14:0:0:64:64:4:60:4:60|t"
-end
-
--- Known currency name → currencyID mappings (covers most common vendor currencies).
--- These are stable IDs that don't change between patches.
-local KNOWN_CURRENCY_IDS = {
-    ["honor"] = 1792,
-    ["conquest"] = 1602,
-    ["timewarped badge"] = 1166,
-    ["timewarped badges"] = 1166,
-    ["mark of honor"] = 1901, -- technically an item, but treated as currency in UI
-    ["polished pet charm"] = 2032, -- item-based but common
-    ["shiny pet charm"] = 2032,
-    ["trader's tender"] = 2032, -- Trading Post currency
-    ["dragon isles supplies"] = 2003,
-    ["elemental overflow"] = 2118,
-    ["bloody tokens"] = 2123,
-    ["trophy of strife"] = 2123,
-    ["valor"] = 1191,
-    ["anima"] = 1813,
-    ["reservoir anima"] = 1813,
-    ["stygia"] = 1767,
-    ["cataloged research"] = 1931,
-    ["cosmic flux"] = 2009,
-    ["storm sigil"] = 2122,
-    ["flightstones"] = 2245,
-    ["paracausal flakes"] = 2594,
-    ["resonance crystals"] = 2815,
-    ["restored coffer key"] = 2803,
-    ["weathered harbinger crest"] = 2806,
-    ["carved harbinger crest"] = 2807,
-    ["runed harbinger crest"] = 2809,
-    ["gilded harbinger crest"] = 2812,
-    ["undercoin"] = 2803,
-}
-
-local function ResolveCurrencyIconFromText(costText)
-    if not costText or costText == "" then return CURRENCY_ICON_GOLD end
-    -- Strip WoW format codes and normalize
-    local clean = costText:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
-    clean = clean:gsub("^%s+", ""):gsub("%s+$", "")
-    if clean == "" then return CURRENCY_ICON_GOLD end
-
-    -- Check cache first
-    local cacheKey = clean:lower()
-    if _currencyIconCache[cacheKey] then return _currencyIconCache[cacheKey] end
-
-    -- Pure gold amount (e.g. "50 Gold", "1,500 Gold", just a number)
-    if clean:match("^[%d%.,]+%s*[Gg]old") or clean:match("^[%d%.,]+$") then
-        _currencyIconCache[cacheKey] = CURRENCY_ICON_GOLD
-        return CURRENCY_ICON_GOLD
-    end
-
-    -- Try to extract currency name: "123 Currency Name" or "Currency Name x123"
-    local currencyName = clean:match("^%d[%d%.,]*%s+(.+)$") or clean:match("^(.+)%s+x%d+$") or clean
-    if currencyName then
-        currencyName = currencyName:gsub("^%s+", ""):gsub("%s+$", "")
-        local lowerName = currencyName:lower()
-
-        -- Check known currency table
-        local knownID = KNOWN_CURRENCY_IDS[lowerName]
-        if knownID and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-            local info = C_CurrencyInfo.GetCurrencyInfo(knownID)
-            if info and info.iconFileID then
-                local icon = MakeCurrencyIconString(info.iconFileID)
-                _currencyIconCache[cacheKey] = icon
-                return icon
-            end
-        end
-
-        -- Dynamic lookup: search through active currencies
-        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-            -- Try common currency ID ranges
-            for _, testID in ipairs({1792, 1602, 1166, 1901, 2032, 2003, 2118, 2122, 2123, 1191, 1813, 1767, 1931, 2009, 2245, 2594, 2815, 2803, 2806, 2807, 2809, 2812}) do
-                local info = C_CurrencyInfo.GetCurrencyInfo(testID)
-                if info and info.name and info.name:lower() == lowerName and info.iconFileID then
-                    local icon = MakeCurrencyIconString(info.iconFileID)
-                    _currencyIconCache[cacheKey] = icon
-                    return icon
-                end
-            end
-        end
-    end
-
-    -- Fallback: gold icon
-    _currencyIconCache[cacheKey] = CURRENCY_ICON_GOLD
-    return CURRENCY_ICON_GOLD
-end
-
--- Resolve currency icon for a cost/amount line value (text after "Cost: " or "Amount: ")
-local function GetCurrencyIconForCostLine(costValue)
-    if not costValue or costValue == "" then return CURRENCY_ICON_GOLD end
-    return ResolveCurrencyIconFromText(costValue)
-end
-
--- WoW format kodlarını metinden kaldır (renk, reset, newline vb.). Görünen "cFFFFD200", "r", "n" gibi artıkları önler.
-local function StripWoWFormatCodes(text)
-    if not text or text == "" then return "" end
-    local s = text
-    s = s:gsub("|n", "\n")
-    s = s:gsub("|T.-|t", "")
-    s = s:gsub("|c%x%x%x%x%x%x%x%x", "")
-    s = s:gsub("|c%x%x%x%x%x%x", "")
-    s = s:gsub("|r", "")
-    s = s:gsub("|H.-|h", "")
-    s = s:gsub("|h", "")
-    s = s:gsub("|%a", "")
-    return s
-end
-
--- Source metnini satır satır göster: her kaynak tipi (Drop, Location, Vendor, vb.) ayrı satır.
--- Format: Sarı "Label : " Beyaz "Value". Cost/Amount yanında currency icon.
-local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
-    if not rawSource or rawSource == "" then return "" end
-    rawSource = StripWoWFormatCodes(rawSource)
-    if rawSource == "" then return "" end
-    local L = ns.L
-    local dropKey = BATTLE_PET_SOURCE_1 or (L and L["SOURCE_TYPE_DROP"]) or "Drop"
-    local vendorKey = BATTLE_PET_SOURCE_3 or (L and L["SOURCE_TYPE_VENDOR"]) or "Vendor"
-    local questKey = BATTLE_PET_SOURCE_2 or (L and L["SOURCE_TYPE_QUEST"]) or "Quest"
-    local achievementKey = BATTLE_PET_SOURCE_6 or (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or "Achievement"
-    local professionKey = BATTLE_PET_SOURCE_4 or (L and L["SOURCE_TYPE_PROFESSION"]) or "Profession"
-    local worldEventKey = BATTLE_PET_SOURCE_7 or (L and L["SOURCE_TYPE_WORLD_EVENT"]) or "World Event"
-    local promotionKey = BATTLE_PET_SOURCE_8 or (L and L["SOURCE_TYPE_PROMOTION"]) or "Promotion"
-    local tradingPostKey = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post"
-    local treasureKey = (L and L["SOURCE_TYPE_TREASURE"]) or "Treasure"
-    local renownKey = (L and L["SOURCE_TYPE_RENOWN"]) or REPUTATION or "Renown"
-    local pvpKey = (L and L["SOURCE_TYPE_PVP"]) or PVP or "PvP"
-    local locationKey = (L and L["PARSE_LOCATION"]) or (L and L["LOCATION_LABEL"] and L["LOCATION_LABEL"]:gsub(":%s*$", "")) or "Location"
-    local zoneKey = (L and L["PARSE_ZONE"]) or ZONE or "Zone"
-    local costKey = (L and L["PARSE_COST"]) or "Cost"
-    local amountKey = (L and L["PARSE_AMOUNT"]) or "Amount"
-    local factionKey = FACTION or (L and L["PARSE_FACTION"]) or "Faction"
-    local reputationKey = REPUTATION or (L and L["PARSE_REPUTATION"]) or "Reputation"
-    local soldByKey = (L and L["PARSE_SOLD_BY"]) or "Sold by"
-    local containedInKey = (L and L["PARSE_CONTAINED_IN"]) or "Contained in"
-    local discoveryKey = (L and L["PARSE_DISCOVERY"]) or "Discovery"
-
-    -- Tüm kaynak etiketleri: satır kırma ve blok başlangıcı için (her biri ayrı veri = ayrı satır)
-    local lineStartKeys = {
-        dropKey, vendorKey, questKey, achievementKey, professionKey, worldEventKey, promotionKey,
-        tradingPostKey, treasureKey, renownKey, pvpKey, locationKey, zoneKey, costKey, amountKey,
-        factionKey, reputationKey, soldByKey, containedInKey, discoveryKey,
-    }
-    -- Ön adım: " Key:" veya " Key :" geçen her yerde satır kır (API formatına bağlı kalmadan)
-    for ki = 1, #lineStartKeys do
-        local key = lineStartKeys[ki]
-        if key and key ~= "" and type(key) == "string" then
-            local needle = " " .. key
-            local pos = 1
-            while true do
-                local idx = rawSource:find(needle, pos, true)
-                if not idx then break end
-                local afterKey = idx + 1 + #key
-                local rest = rawSource:sub(afterKey)
-                local skip = 0
-                while skip < #rest and rest:sub(skip + 1, skip + 1) == " " do skip = skip + 1 end
-                if rest:sub(skip + 1, skip + 1) == ":" then
-                    local valueStart = afterKey + skip + 1
-                    local value = rawSource:sub(valueStart):gsub("^%s+", "")
-                    rawSource = rawSource:sub(1, idx - 1) .. "|n" .. key .. ": " .. value
-                    pos = 1
-                else
-                    pos = idx + 1
-                end
-            end
-        end
-    end
-    -- |n'ı \n yap ki aşağıdaki parçalama çalışsın
-    rawSource = rawSource:gsub("|n", "\n")
-
-    local blockStartPrefixes = {}
-    for _, key in ipairs(lineStartKeys) do
-        if key and key ~= "" and type(key) == "string" then
-            blockStartPrefixes[#blockStartPrefixes + 1] = key .. ":"
-        end
-    end
-
-    local function startsNewBlock(text)
-        for _, prefix in ipairs(blockStartPrefixes) do
-            if text:sub(1, #prefix) == prefix then return true end
-        end
-        return false
-    end
-
-    -- " | " ve " . " ile parçalara böl; her "Type: value" kendi blokunda
-    local parts = {}
-    for p in (rawSource:gsub("|%s*", "\n"):gsub("%.%s+", "\n") .. "\n"):gmatch("([^\n]*)\n") do
-        p = p:gsub("^%s+", ""):gsub("%s+$", "")
-        if p ~= "" then parts[#parts + 1] = p end
-    end
-    if #parts == 0 then parts[#parts + 1] = rawSource:gsub("^%s+", ""):gsub("%s+$", "") end
-
-    local blocks = {}
-    local current = {}
-    for i = 1, #parts do
-        local p = parts[i]
-        if startsNewBlock(p) and #current > 0 then
-            blocks[#blocks + 1] = table.concat(current, " ")
-            current = { p }
-        else
-            current[#current + 1] = p
-        end
-    end
-    if #current > 0 then blocks[#blocks + 1] = table.concat(current, " ") end
-    if #blocks == 0 then blocks[#blocks + 1] = rawSource:gsub("^%s+", ""):gsub("%s+$", "") end
-
-    -- Her "Label:" veya "Label :" geçişinde satır kır (API bazen boşluklu "Location :" döner).
-    local function splitBlockIntoLines(s)
-        for _, key in ipairs(lineStartKeys) do
-            if not key or key == "" or type(key) ~= "string" then
-                -- skip
-            else
-                local needle = " " .. key
-                local pos = 1
-                while true do
-                    local startIdx = s:find(needle, pos, true)
-                    if not startIdx then break end
-                    local afterKey = startIdx + 1 + #key
-                    local colonIdx = s:find(":", afterKey - 1, true)
-                    if colonIdx and colonIdx <= afterKey + 2 then
-                        local valueStart = colonIdx + 1
-                        local value = s:sub(valueStart):gsub("^%s+", "")
-                        s = s:sub(1, startIdx - 1) .. "\n" .. key .. ": " .. value
-                        pos = 1
-                    else
-                        pos = startIdx + 1
-                    end
-                end
-                -- Satır başında olmayan "Key:" (örn. "X Location: Y")
-                pos = 1
-                local needle2 = key .. ":"
-                while true do
-                    local idx = s:find(needle2, pos, true)
-                    if not idx or idx <= 1 then break end
-                    local prev = s:sub(idx - 1, idx - 1)
-                    if prev == " " then
-                        local valueStart = idx + #needle2
-                        local value = s:sub(valueStart):gsub("^%s+", "")
-                        s = s:sub(1, idx - 2) .. "\n" .. key .. ": " .. value
-                        pos = 1
-                    elseif prev ~= "\n" then
-                        local valueStart = idx + #needle2
-                        local value = s:sub(valueStart):gsub("^%s+", "")
-                        s = s:sub(1, idx - 1) .. "\n" .. key .. ": " .. value
-                        pos = 1
-                    else
-                        pos = idx + 1
-                    end
-                end
-            end
-        end
-        return s
-    end
-
-    local function formatLine(label, value, isCostOrAmount)
-        local suffix = (isCostOrAmount and value ~= "") and (" " .. GetCurrencyIconForCostLine(value)) or ""
-        return goldHex .. label .. " : |r" .. whiteHex .. (value or "") .. "|r" .. suffix
-    end
-
-    local allBlocksOut = {}
-    for b = 1, #blocks do
-        local s = splitBlockIntoLines(blocks[b])
-        local lines = {}
-        for line in (s .. "\n"):gmatch("([^\n]*)\n") do
-            line = line:gsub("^%s+", ""):gsub("%s+$", "")
-            if line ~= "" then
-                local colon = line:find(":", 1, true)
-                if colon and colon > 1 then
-                    local label = line:sub(1, colon - 1):gsub("^%s+", ""):gsub("%s+$", "")
-                    local value = line:sub(colon + 1):gsub("^%s+", ""):gsub("%s+$", "")
-                    local isCostOrAmount = (label == costKey or label == amountKey)
-                    lines[#lines + 1] = formatLine(label, value, isCostOrAmount)
-                else
-                    lines[#lines + 1] = whiteHex .. line .. "|r"
-                end
-            end
-        end
-        if #lines > 0 then
-            allBlocksOut[#allBlocksOut + 1] = table.concat(lines, "|n")
-        end
-    end
-    local result = table.concat(allBlocksOut, "|n")
-    -- WoW'da satır kırma: |n kullan (FontString bazen \n'i tek satır gösterebiliyor)
-    return result
-end
+local format = string.format
+local SD = ns.CollectionsUI_SourceData
 
 -- ============================================================================
 -- MOUNT LIST (Factory layout: ScrollFrame + SectionHeader + DataRow)
@@ -585,6 +118,8 @@ local RUN_CHUNK_SIZE = 100
 -- Same row/header dimensions for all three sub-tabs (Mounts, Pets, Achievements); matches SharedWidgets/UI_SPACING
 local ROW_HEIGHT = LAYOUT.ROW_HEIGHT or 26
 local HEADER_HEIGHT = LAYOUT.HEADER_HEIGHT or 32
+-- Accordion section header height (mount/pet/toy lists); flat-list bookkeeping may use HEADER_HEIGHT above.
+local COLLAPSE_HEADER_HEIGHT_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
 
 -- Detail container border: SharedWidgets 4-texture border system (accent)
 local function ApplyDetailAccentVisuals(frame)
@@ -702,7 +237,7 @@ local function CreateDetailEmptyOverlay(parent, typeKey)
     if typeName == "TYPE_PET" then typeName = "pet" end
     if typeName == "TYPE_TOY" then typeName = "toy" end
     if typeName == "ACHIEVEMENT" then typeName = "achievement" end
-    local text = string.format(fmt, typeName)
+    local text = format(fmt, typeName)
     local fs = FontManager:CreateFontString(overlay, "body", "OVERLAY")
     fs:SetPoint("CENTER", overlay, "CENTER", 0, 0)
     fs:SetJustifyH("CENTER")
@@ -815,15 +350,15 @@ local function BuildFlatMountList(groupedData, collapsedHeaders)
     local rD = COLORS.textDim[1] or 0.55
     local gD = COLORS.textDim[2] or 0.55
     local bD = COLORS.textDim[3] or 0.55
-    local countColor = string.format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
+    local countColor = format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
     local rB = COLORS.textBright[1] or 1
     local gB = COLORS.textBright[2] or 1
     local bB = COLORS.textBright[3] or 1
-    local titleColor = string.format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)
+    local titleColor = format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)
     local sectionGap = (LAYOUT.betweenSections or LAYOUT.SECTION_SPACING or 8)
-    local nCats = #SOURCE_CATEGORIES
+    local nCats = #SD.SOURCE_CATEGORIES
     for ci = 1, nCats do
-        local catInfo = SOURCE_CATEGORIES[ci]
+        local catInfo = SD.SOURCE_CATEGORIES[ci]
         local key = catInfo.key
         local items = groupedData and groupedData[key]
         if items and #items > 0 then
@@ -861,15 +396,15 @@ local function BuildFlatPetList(groupedData, collapsedHeaders)
     local rD = COLORS.textDim[1] or 0.55
     local gD = COLORS.textDim[2] or 0.55
     local bD = COLORS.textDim[3] or 0.55
-    local countColor = string.format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
+    local countColor = format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
     local rB = COLORS.textBright[1] or 1
     local gB = COLORS.textBright[2] or 1
     local bB = COLORS.textBright[3] or 1
-    local titleColor = string.format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)
+    local titleColor = format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)
     local sectionGap = (LAYOUT.betweenSections or LAYOUT.SECTION_SPACING or 8)
-    local nCats = #PET_SOURCE_CATEGORIES
+    local nCats = #SD.PET_SOURCE_CATEGORIES
     for ci = 1, nCats do
-        local catInfo = PET_SOURCE_CATEGORIES[ci]
+        local catInfo = SD.PET_SOURCE_CATEGORIES[ci]
         local key = catInfo.key
         local items = groupedData and groupedData[key]
         if items and #items > 0 then
@@ -900,7 +435,7 @@ local function BuildFlatPetList(groupedData, collapsedHeaders)
     return flat, math.max(yOffset + PADDING, 1)
 end
 
----categoriesOverride: optional list of { key, label } for toys (C_ToyBox source type). If nil, uses SOURCE_CATEGORIES.
+---categoriesOverride: optional list of { key, label } for toys (C_ToyBox source type). If nil, uses SD.SOURCE_CATEGORIES.
 local function BuildFlatToyList(groupedData, collapsedHeaders, categoriesOverride)
     local flat = {}
     local yOffset = 0
@@ -908,13 +443,13 @@ local function BuildFlatToyList(groupedData, collapsedHeaders, categoriesOverrid
     local rD = COLORS.textDim[1] or 0.55
     local gD = COLORS.textDim[2] or 0.55
     local bD = COLORS.textDim[3] or 0.55
-    local countColor = string.format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
+    local countColor = format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
     local rB = COLORS.textBright[1] or 1
     local gB = COLORS.textBright[2] or 1
     local bB = COLORS.textBright[3] or 1
-    local titleColor = string.format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)
+    local titleColor = format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)
     local sectionGap = (LAYOUT.betweenSections or LAYOUT.SECTION_SPACING or 8)
-    local categories = (categoriesOverride and #categoriesOverride > 0) and categoriesOverride or SOURCE_CATEGORIES
+    local categories = (categoriesOverride and #categoriesOverride > 0) and categoriesOverride or SD.SOURCE_CATEGORIES
     local nCats = #categories
     for ci = 1, nCats do
         local catInfo = categories[ci]
@@ -968,7 +503,8 @@ local function BuildGroupedAchievementData(searchText, showCollected, showUncoll
     local categoryData = {}
     local rootCategories = {}
 
-    for index, categoryID in ipairs(allCategoryIDs) do
+    for index = 1, #allCategoryIDs do
+        local categoryID = allCategoryIDs[index]
         local categoryName, parentCategoryID = GetCategoryInfo(categoryID)
         categoryData[categoryID] = {
             id = categoryID,
@@ -980,7 +516,8 @@ local function BuildGroupedAchievementData(searchText, showCollected, showUncoll
         }
     end
 
-    for _, categoryID in ipairs(allCategoryIDs) do
+    for ai = 1, #allCategoryIDs do
+        local categoryID = allCategoryIDs[ai]
         local data = categoryData[categoryID]
         if data then
             if data.parentID and data.parentID > 0 then
@@ -1051,6 +588,165 @@ local function AnnotateFlatRowsByNearestHeader(flatList)
     end
 end
 
+-- ============================================================================
+-- Mount/Pet/Toy virtual list: scroll-layout index + visible-range binary search
+-- ============================================================================
+-- Scroll pixel Y for each row matches ChainSectionFrameBelow stacking: per section,
+-- wrap height = COLLAPSE_HEADER_HEIGHT_COLL + (expanded and bodyContentHeight or 0.1).
+-- Data rows use fixed ROW_HEIGHT within an expanded section; headers are not virtualized.
+-- Binary search runs on parallel arrays built when the flat list is populated or section collapse changes.
+local wipe = table.wipe
+
+local function CollectionVirtual_FillRowScrollIndex(flatList, sectionContentH, collapsedHeaders, sectionSpacing, outFlatIdx, outTops, outHeights)
+    wipe(outFlatIdx)
+    wipe(outTops)
+    wipe(outHeights)
+    if not flatList then return end
+    local y = 0
+    local firstSec = true
+    local bodyTopByKey = {}
+    for i = 1, #flatList do
+        local it = flatList[i]
+        if it.type == "header" then
+            if not firstSec then
+                y = y + sectionSpacing
+            end
+            firstSec = false
+            local key = it.key
+            local secH = (sectionContentH and sectionContentH[key]) or 0
+            if secH <= 0 and it.itemCount then
+                secH = (it.itemCount * ROW_HEIGHT)
+            end
+            local expanded = collapsedHeaders and (collapsedHeaders[key] == false)
+            local bodyH = expanded and math.max(0.1, secH) or 0.1
+            bodyTopByKey[key] = y + COLLAPSE_HEADER_HEIGHT_COLL
+            y = y + COLLAPSE_HEADER_HEIGHT_COLL + bodyH
+        elseif it.type == "row" and it._collSectionKey then
+            local key = it._collSectionKey
+            local expanded = collapsedHeaders and (collapsedHeaders[key] == false)
+            if expanded then
+                local bt = bodyTopByKey[key]
+                if bt then
+                    outFlatIdx[#outFlatIdx + 1] = i
+                    outTops[#outTops + 1] = bt + (it._collRelY or 0)
+                    outHeights[#outHeights + 1] = it.height or ROW_HEIGHT
+                end
+            end
+        end
+    end
+end
+
+local function CollectionVirtual_FindFirstVisibleRow(rowTops, rowHeights, n, scrollTop)
+    local lo, hi = 1, n
+    while lo <= hi do
+        local mid = math.floor((lo + hi) * 0.5)
+        local rb = rowTops[mid] + rowHeights[mid]
+        if rb <= scrollTop then
+            lo = mid + 1
+        else
+            hi = mid - 1
+        end
+    end
+    return lo
+end
+
+local function CollectionVirtual_FindLastVisibleRow(rowTops, rowHeights, n, bottom)
+    local lo, hi = 1, n
+    while lo <= hi do
+        local mid = math.floor((lo + hi) * 0.5)
+        if rowTops[mid] < bottom then
+            lo = mid + 1
+        else
+            hi = mid - 1
+        end
+    end
+    return hi
+end
+
+local function CollectionVirtual_GetVisibleRowIndexRange(rowTops, rowHeights, scrollTop, bottom)
+    local n = rowTops and #rowTops or 0
+    if n == 0 then return 1, 0 end
+    local firstK = CollectionVirtual_FindFirstVisibleRow(rowTops, rowHeights, n, scrollTop)
+    local lastK = CollectionVirtual_FindLastVisibleRow(rowTops, rowHeights, n, bottom)
+    if firstK > lastK then return 1, 0 end
+    return firstK, lastK
+end
+
+local function CollectionVirtual_RefreshMountRowScrollIndex()
+    local state = collectionsState
+    CollectionVirtual_FillRowScrollIndex(
+        state._mountFlatList,
+        state._mountSectionContentH,
+        state._mountListCollapsedHeaders or {},
+        SECTION_SPACING,
+        state._mountRowScrollFlatIdx or {},
+        state._mountRowScrollTops or {},
+        state._mountRowScrollHeights or {}
+    )
+end
+
+local function CollectionVirtual_RefreshPetRowScrollIndex()
+    local state = collectionsState
+    CollectionVirtual_FillRowScrollIndex(
+        state._petFlatList,
+        state._petSectionContentH,
+        state._petListCollapsedHeaders or {},
+        SECTION_SPACING,
+        state._petRowScrollFlatIdx or {},
+        state._petRowScrollTops or {},
+        state._petRowScrollHeights or {}
+    )
+end
+
+local function CollectionVirtual_RefreshToyRowScrollIndex()
+    local state = collectionsState
+    CollectionVirtual_FillRowScrollIndex(
+        state._toyFlatList,
+        state._toySectionContentH,
+        state._toyListCollapsedHeaders or {},
+        SECTION_SPACING,
+        state._toyRowScrollFlatIdx or {},
+        state._toyRowScrollTops or {},
+        state._toyRowScrollHeights or {}
+    )
+end
+
+-- Forward declarations: scroll handlers schedule next-frame refresh via C_Timer.After(0).
+local UpdateMountListVisibleRange
+local UpdatePetListVisibleRange
+local UpdateToyListVisibleRange
+
+local mountListScrollVisibleCoalesce = false
+local petListScrollVisibleCoalesce = false
+local toyListScrollVisibleCoalesce = false
+
+local function RequestMountListVisibleRangeAfterScroll()
+    if mountListScrollVisibleCoalesce then return end
+    mountListScrollVisibleCoalesce = true
+    C_Timer.After(0, function()
+        mountListScrollVisibleCoalesce = false
+        UpdateMountListVisibleRange()
+    end)
+end
+
+local function RequestPetListVisibleRangeAfterScroll()
+    if petListScrollVisibleCoalesce then return end
+    petListScrollVisibleCoalesce = true
+    C_Timer.After(0, function()
+        petListScrollVisibleCoalesce = false
+        UpdatePetListVisibleRange()
+    end)
+end
+
+local function RequestToyListVisibleRangeAfterScroll()
+    if toyListScrollVisibleCoalesce then return end
+    toyListScrollVisibleCoalesce = true
+    C_Timer.After(0, function()
+        toyListScrollVisibleCoalesce = false
+        UpdateToyListVisibleRange()
+    end)
+end
+
 -- Shared row pool for all three collection lists (Mounts, Pets, Achievements). Row structure from SharedWidgets.
 local CollectionRowPool = {}
 local COLLECTED_COLOR = "|cff33e533"
@@ -1086,7 +782,7 @@ end
 local function AcquireMountRow(scrollChild, listWidth, item, selectedMountID, onSelectMount, redraw, cf)
     local mount = item.mount
     local nameColor = mount.isCollected and COLLECTED_COLOR or "|cffffffff"
-    local labelText = nameColor .. (mount.name or "") .. "|r" .. FormatMountPetToyListTrySuffix("mount", mount.id)
+    local labelText = nameColor .. (mount.name or "") .. "|r" .. SD.FormatMountPetToyListTrySuffix("mount", mount.id)
     local rowParent = scrollChild
     if item._collSectionKey and collectionsState._mountSectionBodies and collectionsState._mountSectionBodies[item._collSectionKey] then
         rowParent = collectionsState._mountSectionBodies[item._collSectionKey]
@@ -1111,7 +807,7 @@ end
 local function AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSelectPet, redraw, cf)
     local pet = item.pet
     local nameColor = pet.isCollected and COLLECTED_COLOR or "|cffffffff"
-    local labelText = nameColor .. (pet.name or "") .. "|r" .. FormatMountPetToyListTrySuffix("pet", pet.id)
+    local labelText = nameColor .. (pet.name or "") .. "|r" .. SD.FormatMountPetToyListTrySuffix("pet", pet.id)
     local rowParent = scrollChild
     if item._collSectionKey and collectionsState._petSectionBodies and collectionsState._petSectionBodies[item._collSectionKey] then
         rowParent = collectionsState._petSectionBodies[item._collSectionKey]
@@ -1136,7 +832,7 @@ end
 local function AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSelectToy, redraw, cf)
     local toy = item.toy
     local nameColor = (toy.isCollected or toy.collected) and COLLECTED_COLOR or "|cffffffff"
-    local labelText = nameColor .. (toy.name or "") .. "|r" .. FormatMountPetToyListTrySuffix("toy", toy.id)
+    local labelText = nameColor .. (toy.name or "") .. "|r" .. SD.FormatMountPetToyListTrySuffix("toy", toy.id)
     local rowParent = scrollChild
     if item._collSectionKey and collectionsState._toySectionBodies and collectionsState._toySectionBodies[item._collSectionKey] then
         rowParent = collectionsState._toySectionBodies[item._collSectionKey]
@@ -1190,7 +886,7 @@ local function AcquireAchievementRow(scrollChild, listWidth, item, selectedAchie
 end
 
 -- Update visible row frames only (virtual scroll). Headers are created in PopulateMountList.
-local function UpdateMountListVisibleRange()
+UpdateMountListVisibleRange = function()
     local state = collectionsState
     local flatList = state._mountFlatList
     local scrollFrame = state.mountListScrollFrame
@@ -1217,6 +913,26 @@ local function UpdateMountListVisibleRange()
     local onSelectMount = state._mountListOnSelectMount
     local listWidth = state._mountListWidth or scrollChild:GetWidth()
     local tinsert = table.insert
+
+    local rowFlatIdx = state._mountRowScrollFlatIdx
+    local rowTops = state._mountRowScrollTops
+    local rowHeights = state._mountRowScrollHeights
+    if rowFlatIdx and rowTops and rowHeights then
+        local firstK, lastK = CollectionVirtual_GetVisibleRowIndexRange(rowTops, rowHeights, scrollTop, bottom)
+        for k = firstK, lastK do
+            local i = rowFlatIdx[k]
+            local it = flatList[i]
+            if it and it.type == "row" then
+                local body = state._mountSectionBodies and state._mountSectionBodies[it._collSectionKey]
+                if body and body:IsShown() then
+                    local frame = AcquireMountRow(scrollChild, listWidth, it, selectedMountID, onSelectMount, redraw, cf)
+                    tinsert(state._mountVisibleRowFrames, { frame = frame, flatIndex = i })
+                end
+            end
+        end
+        return
+    end
+
     local n = #flatList
     for i = 1, n do
         local it = flatList[i]
@@ -1308,14 +1024,13 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
     AnnotateFlatRowsByNearestHeader(flatList)
 
     local collHdrChainTail = nil
-    local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
             local key = it.key
             local gap = collHdrChainTail and SECTION_SPACING or nil
 
-            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_H_COLL + 0.1, false)
+            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_HEADER_HEIGHT_COLL + 0.1, false)
             sectionWrap:ClearAllPoints()
             if sectionWrap.SetClipsChildren then
                 sectionWrap:SetClipsChildren(true)
@@ -1330,22 +1045,25 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
                 -- Pre-populate visible rows before expand tween so first open is animated with content.
                 if isExpanded then
+                    CollectionVirtual_RefreshMountRowScrollIndex()
                     UpdateMountListVisibleRange()
                 end
-            end, GetMountCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
+            end, SD.GetMountCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
-                headerHeight = COLLAPSE_H_COLL,
+                headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
                 hideOnCollapse = true,
                 applyToggleBeforeCollapseAnimate = true,
                 persistFn = function(exp)
                     collapsedHeaders[key] = not exp
                 end,
                 updateVisibleFn = function()
+                    CollectionVirtual_RefreshMountRowScrollIndex()
                     UpdateMountListVisibleRange()
                 end,
                 onComplete = function(exp)
                     if not exp then
+                        CollectionVirtual_RefreshMountRowScrollIndex()
                         UpdateMountListVisibleRange()
                     end
                 end,
@@ -1366,7 +1084,7 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
                 sectionBody:Hide()
                 sectionBody:SetHeight(0.1)
             end
-            sectionWrap:SetHeight(COLLAPSE_H_COLL + sectionBody:GetHeight())
+            sectionWrap:SetHeight(COLLAPSE_HEADER_HEIGHT_COLL + sectionBody:GetHeight())
             collectionsState._mountSectionBodies[key] = sectionBody
 
             collHdrChainTail = sectionWrap
@@ -1376,6 +1094,10 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
     -- Store state for virtual scroll callback (refreshVisible: row tıklanınca sadece seçim vurgusunu günceller)
     collectionsState._mountFlatList = flatList
     collectionsState._mountFlatListTotalHeight = totalHeight
+    collectionsState._mountSectionContentH = mountSectionContentH
+    collectionsState._mountRowScrollFlatIdx = collectionsState._mountRowScrollFlatIdx or {}
+    collectionsState._mountRowScrollTops = collectionsState._mountRowScrollTops or {}
+    collectionsState._mountRowScrollHeights = collectionsState._mountRowScrollHeights or {}
     collectionsState._mountListWidth = listWidth
     collectionsState._mountListSelectedID = selectedMountID
     collectionsState._mountListOnSelectMount = onSelectMount
@@ -1383,10 +1105,11 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
     collectionsState._mountListRedrawFn = redraw
     collectionsState._mountListContentFrame = cf
     collectionsState._mountListRefreshVisible = UpdateMountListVisibleRange
+    CollectionVirtual_RefreshMountRowScrollIndex()
     local scrollFrame = collectionsState.mountListScrollFrame
     if scrollFrame then
         scrollFrame:SetScript("OnVerticalScroll", function()
-            UpdateMountListVisibleRange()
+            RequestMountListVisibleRangeAfterScroll()
         end)
     end
     UpdateMountListVisibleRange()
@@ -1396,7 +1119,7 @@ end
 
 local _populatePetListBusy = false
 
-local function UpdatePetListVisibleRange()
+UpdatePetListVisibleRange = function()
     local state = collectionsState
     local flatList = state._petFlatList
     local scrollFrame = state.petListScrollFrame
@@ -1423,6 +1146,26 @@ local function UpdatePetListVisibleRange()
     local onSelectPet = state._petListOnSelectPet
     local listWidth = state._petListWidth or scrollChild:GetWidth()
     local tinsert = table.insert
+
+    local rowFlatIdx = state._petRowScrollFlatIdx
+    local rowTops = state._petRowScrollTops
+    local rowHeights = state._petRowScrollHeights
+    if rowFlatIdx and rowTops and rowHeights then
+        local firstK, lastK = CollectionVirtual_GetVisibleRowIndexRange(rowTops, rowHeights, scrollTop, bottom)
+        for k = firstK, lastK do
+            local i = rowFlatIdx[k]
+            local it = flatList[i]
+            if it and it.type == "row" then
+                local body = state._petSectionBodies and state._petSectionBodies[it._collSectionKey]
+                if body and body:IsShown() then
+                    local frame = AcquirePetRow(scrollChild, listWidth, it, selectedPetID, onSelectPet, redraw, cf)
+                    tinsert(state._petVisibleRowFrames, { frame = frame, flatIndex = i })
+                end
+            end
+        end
+        return
+    end
+
     local n = #flatList
     for i = 1, n do
         local it = flatList[i]
@@ -1510,14 +1253,13 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
     AnnotateFlatRowsByNearestHeader(flatList)
 
     local collHdrChainTail = nil
-    local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
             local key = it.key
             local gap = collHdrChainTail and SECTION_SPACING or nil
 
-            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_H_COLL + 0.1, false)
+            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_HEADER_HEIGHT_COLL + 0.1, false)
             sectionWrap:ClearAllPoints()
             if sectionWrap.SetClipsChildren then
                 sectionWrap:SetClipsChildren(true)
@@ -1532,22 +1274,25 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
                 -- Pre-populate visible rows before expand tween so first open is animated with content.
                 if isExpanded then
+                    CollectionVirtual_RefreshPetRowScrollIndex()
                     UpdatePetListVisibleRange()
                 end
-            end, GetPetCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
+            end, SD.GetPetCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
-                headerHeight = COLLAPSE_H_COLL,
+                headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
                 hideOnCollapse = true,
                 applyToggleBeforeCollapseAnimate = true,
                 persistFn = function(exp)
                     collapsedHeaders[key] = not exp
                 end,
                 updateVisibleFn = function()
+                    CollectionVirtual_RefreshPetRowScrollIndex()
                     UpdatePetListVisibleRange()
                 end,
                 onComplete = function(exp)
                     if not exp then
+                        CollectionVirtual_RefreshPetRowScrollIndex()
                         UpdatePetListVisibleRange()
                     end
                 end,
@@ -1568,7 +1313,7 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
                 sectionBody:Hide()
                 sectionBody:SetHeight(0.1)
             end
-            sectionWrap:SetHeight(COLLAPSE_H_COLL + sectionBody:GetHeight())
+            sectionWrap:SetHeight(COLLAPSE_HEADER_HEIGHT_COLL + sectionBody:GetHeight())
             collectionsState._petSectionBodies[key] = sectionBody
 
             collHdrChainTail = sectionWrap
@@ -1577,6 +1322,10 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
 
     collectionsState._petFlatList = flatList
     collectionsState._petFlatListTotalHeight = totalHeight
+    collectionsState._petSectionContentH = petSectionContentH
+    collectionsState._petRowScrollFlatIdx = collectionsState._petRowScrollFlatIdx or {}
+    collectionsState._petRowScrollTops = collectionsState._petRowScrollTops or {}
+    collectionsState._petRowScrollHeights = collectionsState._petRowScrollHeights or {}
     collectionsState._petListWidth = listWidth
     collectionsState._petListSelectedID = selectedPetID
     collectionsState._petListOnSelectPet = onSelectPet
@@ -1584,10 +1333,11 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
     collectionsState._petListRedrawFn = redraw
     collectionsState._petListContentFrame = cf
     collectionsState._petListRefreshVisible = UpdatePetListVisibleRange
+    CollectionVirtual_RefreshPetRowScrollIndex()
     local scrollFrame = collectionsState.petListScrollFrame
     if scrollFrame then
         scrollFrame:SetScript("OnVerticalScroll", function()
-            UpdatePetListVisibleRange()
+            RequestPetListVisibleRangeAfterScroll()
         end)
     end
     UpdatePetListVisibleRange()
@@ -1597,7 +1347,7 @@ end
 
 local _populateToyListBusy = false
 
-local function UpdateToyListVisibleRange()
+UpdateToyListVisibleRange = function()
     local state = collectionsState
     local flatList = state._toyFlatList
     local scrollFrame = state.toyListScrollFrame
@@ -1623,6 +1373,27 @@ local function UpdateToyListVisibleRange()
     local selectedToyID = state._toyListSelectedID or state.selectedToyID
     local onSelectToy = state._toyListOnSelectToy
     local listWidth = state._toyListWidth or scrollChild:GetWidth()
+    local tinsert = table.insert
+
+    local rowFlatIdx = state._toyRowScrollFlatIdx
+    local rowTops = state._toyRowScrollTops
+    local rowHeights = state._toyRowScrollHeights
+    if rowFlatIdx and rowTops and rowHeights then
+        local firstK, lastK = CollectionVirtual_GetVisibleRowIndexRange(rowTops, rowHeights, scrollTop, bottom)
+        for k = firstK, lastK do
+            local i = rowFlatIdx[k]
+            local it = flatList[i]
+            if it and it.type == "row" then
+                local body = state._toySectionBodies and state._toySectionBodies[it._collSectionKey]
+                if body and body:IsShown() then
+                    local frame = AcquireToyRow(scrollChild, listWidth, it, selectedToyID, onSelectToy, nil, cf)
+                    tinsert(state._toyVisibleRowFrames, { frame = frame, flatIndex = i })
+                end
+            end
+        end
+        return
+    end
+
     local n = #flatList
     for i = 1, n do
         local it = flatList[i]
@@ -1646,7 +1417,7 @@ local function UpdateToyListVisibleRange()
             end
             if rowTop and rowBottom and rowBottom > scrollTop and rowTop < bottom then
                 local frame = AcquireToyRow(scrollChild, listWidth, it, selectedToyID, onSelectToy, nil, cf)
-                state._toyVisibleRowFrames[#state._toyVisibleRowFrames + 1] = { frame = frame, flatIndex = i }
+                tinsert(state._toyVisibleRowFrames, { frame = frame, flatIndex = i })
             end
         end
     end
@@ -1689,7 +1460,7 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
         regions[i]:Hide()
     end
 
-    local flatList, totalHeight = BuildFlatToyList(groupedData, collapsedHeaders, TOY_SOURCE_CATEGORIES)
+    local flatList, totalHeight = BuildFlatToyList(groupedData, collapsedHeaders, SD.TOY_SOURCE_CATEGORIES)
     scrollChild:SetHeight(totalHeight)
 
     collectionsState._toySectionBodies = {}
@@ -1710,14 +1481,13 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
     AnnotateFlatRowsByNearestHeader(flatList)
 
     local collHdrChainTail = nil
-    local COLLAPSE_H_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
             local key = it.key
             local gap = collHdrChainTail and SECTION_SPACING or nil
 
-            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_H_COLL + 0.1, false)
+            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_HEADER_HEIGHT_COLL + 0.1, false)
             sectionWrap:ClearAllPoints()
             if sectionWrap.SetClipsChildren then
                 sectionWrap:SetClipsChildren(true)
@@ -1732,22 +1502,25 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
                 -- Pre-populate visible rows before expand tween so first open is animated with content.
                 if isExpanded then
+                    CollectionVirtual_RefreshToyRowScrollIndex()
                     UpdateToyListVisibleRange()
                 end
-            end, GetToyCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
+            end, SD.GetToyCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
-                headerHeight = COLLAPSE_H_COLL,
+                headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
                 hideOnCollapse = true,
                 applyToggleBeforeCollapseAnimate = true,
                 persistFn = function(exp)
                     collapsedHeaders[key] = not exp
                 end,
                 updateVisibleFn = function()
+                    CollectionVirtual_RefreshToyRowScrollIndex()
                     UpdateToyListVisibleRange()
                 end,
                 onComplete = function(exp)
                     if not exp then
+                        CollectionVirtual_RefreshToyRowScrollIndex()
                         UpdateToyListVisibleRange()
                     end
                 end,
@@ -1768,7 +1541,7 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
                 sectionBody:Hide()
                 sectionBody:SetHeight(0.1)
             end
-            sectionWrap:SetHeight(COLLAPSE_H_COLL + sectionBody:GetHeight())
+            sectionWrap:SetHeight(COLLAPSE_HEADER_HEIGHT_COLL + sectionBody:GetHeight())
             collectionsState._toySectionBodies[key] = sectionBody
 
             collHdrChainTail = sectionWrap
@@ -1777,16 +1550,22 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
 
     collectionsState._toyFlatList = flatList
     collectionsState._toyFlatListTotalHeight = totalHeight
+    collectionsState._toySectionContentH = toySectionContentH
+    collectionsState._toyRowScrollFlatIdx = collectionsState._toyRowScrollFlatIdx or {}
+    collectionsState._toyRowScrollTops = collectionsState._toyRowScrollTops or {}
+    collectionsState._toyRowScrollHeights = collectionsState._toyRowScrollHeights or {}
     collectionsState._toyListWidth = listWidth
     collectionsState._toyListSelectedID = selectedToyID
     collectionsState._toyListOnSelectToy = onSelectToy
+    collectionsState._toyListCollapsedHeaders = collapsedHeaders
     collectionsState._toyListRedrawFn = redraw
     collectionsState._toyListContentFrame = cf
     collectionsState._toyListRefreshVisible = UpdateToyListVisibleRange
+    CollectionVirtual_RefreshToyRowScrollIndex()
     local scrollFrame = collectionsState.toyListScrollFrame
     if scrollFrame then
         scrollFrame:SetScript("OnVerticalScroll", function()
-            UpdateToyListVisibleRange()
+            RequestToyListVisibleRangeAfterScroll()
         end)
     end
     UpdateToyListVisibleRange()
@@ -2748,7 +2527,9 @@ local function CreateModelViewer(parent, width, height)
                 panel.detailIconTexture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
             sourceLabel:SetText("")
-            for _, line in ipairs(panel.sourceLines) do
+            local mountSrcLines = panel.sourceLines
+            for li = 1, #mountSrcLines do
+                local line = mountSrcLines[li]
                 line:SetText("")
                 line:Hide()
             end
@@ -2800,7 +2581,7 @@ local function CreateModelViewer(parent, width, height)
         local gR = (COLORS.gold and COLORS.gold[1]) or 1
         local gG = (COLORS.gold and COLORS.gold[2]) or 0.82
         local gB = (COLORS.gold and COLORS.gold[3]) or 0
-        local goldHex = string.format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
+        local goldHex = format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
         nameText:SetText(goldHex .. (name or "") .. "|r")
         local description, source = descriptionFromCache, sourceTextRaw
         if (not source or source == "") or (not description or description == "") then
@@ -2814,8 +2595,8 @@ local function CreateModelViewer(parent, width, height)
             source = WarbandNexus:CleanSourceText(source)
             description = WarbandNexus:CleanSourceText(description)
         else
-            source = StripWoWFormatCodes(source)
-            description = StripWoWFormatCodes(description)
+            source = SD.StripWoWFormatCodes(source)
+            description = SD.StripWoWFormatCodes(description)
         end
         local rawSource = (source or ""):gsub("^%s+", ""):gsub("%s+$", "")
         if rawSource == "" or rawSource == "Unknown" then
@@ -2841,10 +2622,10 @@ local function CreateModelViewer(parent, width, height)
                 if colonPos and colonPos > 1 then
                     local label = line:sub(1, colonPos - 1):gsub("^%s+", ""):gsub("%s+$", "")
                     local value = line:sub(colonPos + 1):gsub("^%s+", ""):gsub("%s+$", "")
-                    local suffix = isCostOrAmountLine(line) and (" " .. GetCurrencyIconForCostLine(value)) or ""
+                    local suffix = isCostOrAmountLine(line) and (" " .. SD.GetCurrencyIconForCostLine(value)) or ""
                     lines[#lines + 1] = goldHex .. label .. ": |r" .. whiteHex .. value .. "|r" .. suffix
                 else
-                    local suffix = isCostOrAmountLine(line) and (" " .. GetCurrencyIconForCostLine(line)) or ""
+                    local suffix = isCostOrAmountLine(line) and (" " .. SD.GetCurrencyIconForCostLine(line)) or ""
                     lines[#lines + 1] = whiteHex .. line .. "|r" .. suffix
                 end
             end
@@ -2956,7 +2737,9 @@ local function CreateModelViewer(parent, width, height)
                 panel.detailIconTexture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
             sourceLabel:SetText("")
-            for _, line in ipairs(panel.sourceLines) do
+            local petSrcLines = panel.sourceLines
+            for li = 1, #petSrcLines do
+                local line = petSrcLines[li]
                 line:SetText("")
                 line:Hide()
             end
@@ -3008,7 +2791,7 @@ local function CreateModelViewer(parent, width, height)
         local gR = (COLORS.gold and COLORS.gold[1]) or 1
         local gG = (COLORS.gold and COLORS.gold[2]) or 0.82
         local gB = (COLORS.gold and COLORS.gold[3]) or 0
-        local goldHex = string.format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
+        local goldHex = format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
         nameText:SetText(goldHex .. (name or "") .. "|r")
         local description, source = descriptionFromCache, sourceTextRaw
         if (not source or source == "") or (not description or description == "") then
@@ -3022,8 +2805,8 @@ local function CreateModelViewer(parent, width, height)
             source = WarbandNexus:CleanSourceText(source)
             description = WarbandNexus:CleanSourceText(description)
         else
-            source = StripWoWFormatCodes(source)
-            description = StripWoWFormatCodes(description)
+            source = SD.StripWoWFormatCodes(source)
+            description = SD.StripWoWFormatCodes(description)
         end
         local rawSource = (source or ""):gsub("^%s+", ""):gsub("%s+$", "")
         if rawSource == "" or rawSource == "Unknown" then
@@ -3047,10 +2830,10 @@ local function CreateModelViewer(parent, width, height)
                 if colonPos and colonPos > 1 then
                     local label = line:sub(1, colonPos - 1):gsub("^%s+", ""):gsub("%s+$", "")
                     local value = line:sub(colonPos + 1):gsub("^%s+", ""):gsub("%s+$", "")
-                    local suffix = isCostOrAmountLine(line) and (" " .. GetCurrencyIconForCostLine(value)) or ""
+                    local suffix = isCostOrAmountLine(line) and (" " .. SD.GetCurrencyIconForCostLine(value)) or ""
                     lines[#lines + 1] = goldHex .. label .. ": |r" .. whiteHex .. value .. "|r" .. suffix
                 else
-                    local suffix = isCostOrAmountLine(line) and (" " .. GetCurrencyIconForCostLine(line)) or ""
+                    local suffix = isCostOrAmountLine(line) and (" " .. SD.GetCurrencyIconForCostLine(line)) or ""
                     lines[#lines + 1] = whiteHex .. line .. "|r" .. suffix
                 end
             end
@@ -3246,7 +3029,9 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
 
     local function clearDetailElements()
         local bin = ns.UI_RecycleBin
-        for _, el in ipairs(panel._detailElements) do
+        local dels = panel._detailElements
+        for ei = 1, #dels do
+            local el = dels[ei]
             el:Hide()
             if bin then el:SetParent(bin) else el:SetParent(nil) end
         end
@@ -3528,7 +3313,7 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         if achievement.description and achievement.description ~= "" then
             local rawLabel = (ns.L and ns.L["DESCRIPTION"]) or "Description"
             local descLabel = (rawLabel and rawLabel ~= "" and (string.upper(string.sub(rawLabel, 1, 1)) .. string.lower(string.sub(rawLabel, 2)))) or "Description"
-            local goldHex = string.format("|cff%02x%02x%02x", goldR * 255, goldG * 255, goldB * 255)
+            local goldHex = format("|cff%02x%02x%02x", goldR * 255, goldG * 255, goldB * 255)
             local descFs = FontManager:CreateFontString(content, "body", "OVERLAY")
             descFs:SetPoint("TOP", lastAnchor, "BOTTOM", 0, lastY)
             descFs:SetPoint("LEFT", content, "LEFT", CONTENT_COLUMN_LEFT, 0)
@@ -3594,7 +3379,7 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                         local progressStr = ""
                         if quantity and reqQuantity and reqQuantity > 1 then
                             local fmt = ns.UI_FormatNumber or tostring
-                            progressStr = string.format(" (%s / %s)", fmt(quantity), fmt(reqQuantity))
+                            progressStr = format(" (%s / %s)", fmt(quantity), fmt(reqQuantity))
                         end
                         local P = ns.PLAN_UI_COLORS or {}
                         local color = completed and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
@@ -3654,7 +3439,8 @@ local function CreateSubTabBar(parent, onTabSelect)
 
     -- Plans gibi metne göre buton genişliği hesapla
     local btnWidths = {}
-    for i, tabInfo in ipairs(SUB_TABS) do
+    for i = 1, #SUB_TABS do
+        local tabInfo = SUB_TABS[i]
         local tempFs = FontManager:CreateFontString(bar, "body", "OVERLAY")
         tempFs:SetText(tabInfo.label)
         local textW = tempFs:GetStringWidth() or 0
@@ -3669,7 +3455,8 @@ local function CreateSubTabBar(parent, onTabSelect)
     local spacing = SUBTAB_BTN_SPACING
 
     local accentColor = COLORS.accent
-    for i, tabInfo in ipairs(SUB_TABS) do
+    for i = 1, #SUB_TABS do
+        local tabInfo = SUB_TABS[i]
         local btnWidth = btnWidths[i]
         local btn = ns.UI.Factory:CreateButton(bar, btnWidth, btnHeight)
         btn:SetPoint("TOPLEFT", xPos, 0)
@@ -3784,13 +3571,14 @@ local function BuildGroupedMountData(searchText, showCollected, showUncollected,
     local grouped = {}
     local nameIndex = {}
     local classifyCache = {}
-    for _, cat in ipairs(SOURCE_CATEGORIES) do
+    for ci = 1, #SD.SOURCE_CATEGORIES do
+        local cat = SD.SOURCE_CATEGORIES[ci]
         grouped[cat.key] = {}
         nameIndex[cat.key] = {}
     end
 
     local function classify(src)
-        return ClassifyMountSourceCached(classifyCache, src)
+        return SD.ClassifyMountSourceCached(classifyCache, src)
     end
 
     local function nameAlreadyInCategory(catKey, name)
@@ -3947,11 +3735,12 @@ local function RunChunkedMountBuild(allMounts, searchText, showCollected, showUn
     local grouped = {}
     local nameIndex = {}
     local classifyCache = {}
-    for _, cat in ipairs(SOURCE_CATEGORIES) do
+    for ci = 1, #SD.SOURCE_CATEGORIES do
+        local cat = SD.SOURCE_CATEGORIES[ci]
         grouped[cat.key] = {}
         nameIndex[cat.key] = {}
     end
-    local function classify(src) return ClassifyMountSourceCached(classifyCache, src) end
+    local function classify(src) return SD.ClassifyMountSourceCached(classifyCache, src) end
     local function nameAlreadyInCategory(catKey, name)
         if not name then return false end
         local idx = nameIndex[catKey]
@@ -4038,11 +3827,12 @@ local function RunChunkedPetBuild(allPets, searchText, showCollected, showUncoll
     local grouped = {}
     local nameIndex = {}
     local classifyCache = {}
-    for _, cat in ipairs(PET_SOURCE_CATEGORIES) do
+    for ci = 1, #SD.PET_SOURCE_CATEGORIES do
+        local cat = SD.PET_SOURCE_CATEGORIES[ci]
         grouped[cat.key] = {}
         nameIndex[cat.key] = {}
     end
-    local function classify(src) return ClassifyPetSourceCached(classifyCache, src) end
+    local function classify(src) return SD.ClassifyPetSourceCached(classifyCache, src) end
     local function nameAlreadyInCategory(catKey, name)
         if not name then return false end
         local idx = nameIndex[catKey]
@@ -4114,13 +3904,14 @@ local function BuildGroupedPetData(searchText, showCollected, showUncollected, o
     local grouped = {}
     local nameIndex = {}
     local classifyCache = {}
-    for _, cat in ipairs(PET_SOURCE_CATEGORIES) do
+    for ci = 1, #SD.PET_SOURCE_CATEGORIES do
+        local cat = SD.PET_SOURCE_CATEGORIES[ci]
         grouped[cat.key] = {}
         nameIndex[cat.key] = {}
     end
 
     local function classify(src)
-        return ClassifyPetSourceCached(classifyCache, src)
+        return SD.ClassifyPetSourceCached(classifyCache, src)
     end
 
     local function nameAlreadyInCategory(catKey, name)
@@ -4262,7 +4053,7 @@ local function GetFilteredToysGrouped(searchText, showCollected, showUncollected
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
     for sourceIndex, group in pairs(sourceGrouped) do
-        local catKey = SOURCE_INDEX_TO_TOY_CAT[sourceIndex] or "unknown"
+        local catKey = SD.SOURCE_INDEX_TO_TOY_CAT[sourceIndex] or "unknown"
         if not grouped[catKey] then grouped[catKey] = {} end
         local items = group.items or {}
         for i = 1, #items do
@@ -4284,7 +4075,8 @@ end
 local function BuildGroupedToyData(searchText, showCollected, showUncollected, optionalToys)
     local grouped = {}
     local nameIndex = {}
-    for _, cat in ipairs(TOY_SOURCE_CATEGORIES) do
+    for ci = 1, #SD.TOY_SOURCE_CATEGORIES do
+        local cat = SD.TOY_SOURCE_CATEGORIES[ci]
         grouped[cat.key] = {}
         nameIndex[cat.key] = {}
     end
@@ -4318,7 +4110,7 @@ local function BuildGroupedToyData(searchText, showCollected, showUncollected, o
             if (showC and isCollected) or (showU and not isCollected) then
                 if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                     local sourceTypeIndex = d.sourceTypeIndex or resolveSourceIndex(d.id)
-                    local catKey = ClassifyBattlePetByAPI(nil, sourceTypeIndex)
+                    local catKey = SD.ClassifyBattlePetByAPI(nil, sourceTypeIndex)
                     if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                     if not nameAlreadyInCategory(catKey, name) then
                         addToCategory(catKey, {
@@ -4393,7 +4185,7 @@ local function ApplyCollectionsContentHeader(contentFrame, tabKey, chFull)
     hdr:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", 0, 0)
     hdr:SetHeight(COLLECTIONS_SUBTAB_HEADER_H)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
     hdr._title:SetText("|cff" .. hexColor .. titlePlain .. "|r")
     hdr._subtitle:SetText(subPlain)
     hdr._subtitle:SetShown(subPlain ~= "")
@@ -4673,7 +4465,7 @@ local function DrawRecentContent(contentFrame)
                 if type(charData) == "table" and charData.name == name and charData.class then
                     local c = C_ClassColor and C_ClassColor.GetClassColor(charData.class)
                     if c then
-                        return string.format("|cff%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255)
+                        return format("|cff%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255)
                     end
                 end
             end
@@ -4830,7 +4622,7 @@ local function DrawRecentContent(contentFrame)
                 local rowH = ROW_HEIGHT
                 if ob and ob ~= "" and not suppressEarner then
                     local cc = ResolveCharacterClassColor(ob)
-                    subLine = string.format((loc and loc["COLLECTIONS_RECENT_ROW_BY"]) or "By %s", cc .. ob .. "|r")
+                    subLine = format((loc and loc["COLLECTIONS_RECENT_ROW_BY"]) or "By %s", cc .. ob .. "|r")
                     rowH = RECENT_ROW_H_SUB
                 end
                 local nameRich = COLLECTED_COLOR .. nm .. "|r"
@@ -4844,7 +4636,7 @@ local function DrawRecentContent(contentFrame)
                         tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"]) or "Progress", hdrDim, hdrDim, hdrDim)
                         local ok, _, _, points, completed = pcall(GetAchievementInfo, idCopy)
                         if ok and points and points > 0 then
-                            tt:AddLine(string.format("%d %s", points, (loc and loc["POINTS_LABEL"]) or "Points"), 1, 0.85, 0.45)
+                            tt:AddLine(format("%d %s", points, (loc and loc["POINTS_LABEL"]) or "Points"), 1, 0.85, 0.45)
                         end
                         if ok and completed then
                             tt:AddLine((loc and loc["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"]) or "Completed.", 0.35, 1, 0.45)
@@ -4858,12 +4650,12 @@ local function DrawRecentContent(contentFrame)
                         local cc = ResolveCharacterClassColor(ob)
                         local fmtKey = (typCopy == "achievement") and "RECENT_TOOLTIP_ACHIEVEMENT_EARNED_BY" or "RECENT_TOOLTIP_EARNED_BY"
                         local fmt = (loc and loc[fmtKey]) or ((typCopy == "achievement") and "Earned by %s" or "Obtained by %s")
-                        tt:AddLine(string.format(fmt, cc .. ob .. "|r"), 0.85, 0.85, 0.88)
+                        tt:AddLine(format(fmt, cc .. ob .. "|r"), 0.85, 0.85, 0.88)
                     end
                     tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"]) or "Recorded", hdrDim, hdrDim, hdrDim)
                     if tsCopy and tsCopy > 0 then
                         local abs = date("%Y-%m-%d %H:%M", tsCopy)
-                        tt:AddLine(string.format("%s  |cff888888(%s)|r", abs, rel), 0.72, 0.72, 0.76)
+                        tt:AddLine(format("%s  |cff888888(%s)|r", abs, rel), 0.72, 0.72, 0.76)
                     elseif rel and rel ~= "" then
                         tt:AddLine(rel, 0.72, 0.72, 0.76)
                     end
@@ -5956,7 +5748,7 @@ local function DrawToysContent(contentFrame)
             local gR = (COLORS.gold and COLORS.gold[1]) or 1
             local gG = (COLORS.gold and COLORS.gold[2]) or 0.82
             local gB = (COLORS.gold and COLORS.gold[3]) or 0
-            local goldHex = string.format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
+            local goldHex = format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
             srcLabel:SetText(goldHex .. sourceTitle .. ":|r |cffffffff" .. srcText .. "|r")
         end
         if collectionsState._toyDetailObtainedLine and collectionsState._toyDetailSourceLabel then
@@ -6471,7 +6263,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
         -- ===== HEADER CARD — Characters-tab standard title layout =====
         local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-        local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+        local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
         local titleCard, headerIcon, textContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
             cardHeight = COLLECTIONS_TITLE_CARD_HEIGHT,
             tabKey = "collections",

@@ -14,13 +14,30 @@
 
 local ADDON_NAME, ns = ...
 
+local wipe = wipe
+
 local BUFFER_ROWS = 2
 local DEFAULT_ROW_HEIGHT = 26
+
+--- Reused header-key buffer for FlatListHeaderSignature / RefreshVirtualListFlatList (avoid GC each refresh).
+local _flatListHeaderSigScratch = {}
+
+--- Pack `frame:GetChildren()` into one reused array (WoW returns variadic children).
+local _vlmOrphanChildScratch = {}
+local function PackVariadicInto(dest, ...)
+    wipe(dest)
+    local n = select("#", ...)
+    for i = 1, n do
+        dest[i] = select(i, ...)
+    end
+    return n
+end
 
 --- Stable signature of header keys (Items: data.group.groupKey; generic: it.key).
 local function FlatListHeaderSignature(flatList)
     if not flatList then return "" end
-    local parts = {}
+    local parts = _flatListHeaderSigScratch
+    wipe(parts)
     for i = 1, #flatList do
         local it = flatList[i]
         if it and it.type == "header" then
@@ -223,19 +240,31 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
             local entry = visible[i]
             ReleaseOneVirtualRow(entry and entry.frame)
         end
-        container._virtualVisibleFrames = {}
+        wipe(visible)
     end
 
     ReleaseVisible()
-    container._virtualVisibleFrames = {}
+    local visBufA = container._vlm_visBufA
+    local visBufB = container._vlm_visBufB
+    if not visBufA then
+        visBufA = {}
+        container._vlm_visBufA = visBufA
+    end
+    if not visBufB then
+        visBufB = {}
+        container._vlm_visBufB = visBufB
+    end
+    wipe(visBufA)
+    wipe(visBufB)
+    container._virtualVisibleFrames = visBufA
 
     -- Clean up orphaned virtual row frames from previous renders.
     -- PopulateContent clears _virtualVisibleFrames before tab redraw, so ReleaseVisible()
     -- can miss them. Only target frames tagged _isVirtualRow to avoid hiding inline headers
     -- that tabs create before calling SetupVirtualList (e.g. StorageUI).
-    local oldChildren = {container:GetChildren()}
-    for i = 1, #oldChildren do
-        local child = oldChildren[i]
+    local noc = PackVariadicInto(_vlmOrphanChildScratch, container:GetChildren())
+    for i = 1, noc do
+        local child = _vlmOrphanChildScratch[i]
         if child._isVirtualRow then
             child._isVirtualRow = nil
             if releaseRowFn then
@@ -355,7 +384,16 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
             ReleaseVisible()
         end
 
-        local newVis = {}
+        local visA = container._vlm_visBufA
+        local visB = container._vlm_visBufB
+        if not visA or not visB then
+            visA = visA or {}
+            visB = visB or {}
+            container._vlm_visBufA = visA
+            container._vlm_visBufB = visB
+        end
+        local newVis = (oldVis == visA) and visB or visA
+        wipe(newVis)
 
         local fl = container._vlm_flatList or flatList
         if not fl or #fl == 0 then

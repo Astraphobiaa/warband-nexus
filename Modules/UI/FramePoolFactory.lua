@@ -17,9 +17,24 @@
 
 local ADDON_NAME, ns = ...
 
+local wipe = wipe
+local tinsert = table.insert
+local tremove = table.remove
+
+--- Pack one WoW API multi-return (e.g. GetChildren) into a reused array; single API invocation.
+local _poolChildScratch = {}
+local function PackVariadicInto(dest, ...)
+    wipe(dest)
+    local n = select("#", ...)
+    for i = 1, n do
+        dest[i] = select(i, ...)
+    end
+    return n
+end
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 -- Import dependencies
 local UI_LAYOUT = ns.UI_LAYOUT
 local FontManager = ns.FontManager
@@ -50,7 +65,7 @@ end
 ---@param parent Frame Parent container
 ---@return Frame row Pooled or new character row
 local function AcquireCharacterRow(parent)
-    local row = table.remove(CharacterRowPool)
+    local row = tremove(CharacterRowPool)
     if row then
         MarkRowOutOfPool(row)
     end
@@ -99,7 +114,7 @@ local function ReleaseCharacterRow(row)
     -- Note: Child elements (favButton, etc.) are kept and reused
 
     row._wnInFramePool = true
-    table.insert(CharacterRowPool, row)
+    tinsert(CharacterRowPool, row)
 end
 
 --============================================================================
@@ -114,7 +129,7 @@ end
 ---@param rowHeight number|nil Row height (default 26)
 ---@return Frame row Pooled or new reputation row
 local function AcquireReputationRow(parent, width, rowHeight)
-    local row = table.remove(ReputationRowPool)
+    local row = tremove(ReputationRowPool)
     if row then
         MarkRowOutOfPool(row)
     end
@@ -200,7 +215,7 @@ local function ReleaseReputationRow(row)
     if row.progressText then row.progressText:SetText("") end
 
     row._wnInFramePool = true
-    table.insert(ReputationRowPool, row)
+    tinsert(ReputationRowPool, row)
 end
 
 --============================================================================
@@ -211,7 +226,7 @@ end
 ---@param parent Frame Parent container
 ---@return Frame row Pooled or new profession row
 local function AcquireProfessionRow(parent)
-    local row = table.remove(ProfessionRowPool)
+    local row = tremove(ProfessionRowPool)
     if row then
         MarkRowOutOfPool(row)
     end
@@ -243,7 +258,9 @@ local function ReleaseProfessionRow(row)
     if row.HasScript and row:HasScript("OnLeave") then row:SetScript("OnLeave", nil) end
 
     -- Reset concentration bars and hit-frames from previous use
-    for _, lineKey in ipairs({"l1", "l2"}) do
+    local lineKeys = {"l1", "l2"}
+    for lk = 1, #lineKeys do
+        local lineKey = lineKeys[lk]
         if row[lineKey .. "ConcBar"] then row[lineKey .. "ConcBar"]:Hide() end
         if row[lineKey .. "SkillHit"] then row[lineKey .. "SkillHit"]:Hide() end
         if row[lineKey .. "KnowWarn"] then row[lineKey .. "KnowWarn"]:Hide() end
@@ -258,7 +275,7 @@ local function ReleaseProfessionRow(row)
     end
 
     row._wnInFramePool = true
-    table.insert(ProfessionRowPool, row)
+    tinsert(ProfessionRowPool, row)
 end
 
 --============================================================================
@@ -271,7 +288,7 @@ end
 ---@param rowHeight number|nil Row height (default 26)
 ---@return Frame row Pooled or new currency row
 local function AcquireCurrencyRow(parent, width, rowHeight)
-    local row = table.remove(CurrencyRowPool)
+    local row = tremove(CurrencyRowPool)
     if row then
         MarkRowOutOfPool(row)
     end
@@ -374,7 +391,7 @@ local function ReleaseCurrencyRow(row)
     -- Reset background removed (no backdrop)
 
     row._wnInFramePool = true
-    table.insert(CurrencyRowPool, row)
+    tinsert(CurrencyRowPool, row)
 end
 
 --============================================================================
@@ -387,7 +404,7 @@ end
 ---@param rowHeight number Row height
 ---@return Frame row Pooled or new item row
 local function AcquireItemRow(parent, width, rowHeight)
-    local row = table.remove(ItemRowPool)
+    local row = tremove(ItemRowPool)
     if row then
         MarkRowOutOfPool(row)
     end
@@ -473,7 +490,7 @@ local function ReleaseItemRow(row)
     if row.locationText then row.locationText:SetText("") end
 
     row._wnInFramePool = true
-    table.insert(ItemRowPool, row)
+    tinsert(ItemRowPool, row)
 end
 
 --============================================================================
@@ -486,7 +503,7 @@ end
 ---@param rowHeight number|nil Row height (default 26)
 ---@return Frame row Pooled or new storage row
 local function AcquireStorageRow(parent, width, rowHeight)
-    local row = table.remove(StorageRowPool)
+    local row = tremove(StorageRowPool)
     if row then
         MarkRowOutOfPool(row)
     end
@@ -577,7 +594,7 @@ local function ReleaseStorageRow(row)
     if row.locationText then row.locationText:SetText("") end
 
     row._wnInFramePool = true
-    table.insert(StorageRowPool, row)
+    tinsert(StorageRowPool, row)
 end
 
 --============================================================================
@@ -587,9 +604,9 @@ end
 ---Release all pooled children of a frame (and hide non-pooled ones)
 ---@param parent Frame Parent container to clean up
 local function ReleaseAllPooledChildren(parent)
-    local children = {parent:GetChildren()}
-    for i = 1, #children do
-        local child = children[i]
+    local n = PackVariadicInto(_poolChildScratch, parent:GetChildren())
+    for i = 1, n do
+        local child = _poolChildScratch[i]
         if child.isPooled and child.rowType then
             -- Use rowType to determine which pool to release to
             if child.rowType == "item" then
@@ -620,11 +637,11 @@ local function ReleaseAllPooledChildren(parent)
             -- Clear scripts only for widgets that support them
             -- Use HasScript to check if the widget actually supports the script type
             if child.SetScript and child.HasScript then
-                local childType = child:GetObjectType()
                 -- Only clear scripts that the widget actually supports
                 if child:HasScript("OnClick") then
                     local success = pcall(function() child:SetScript("OnClick", nil) end)
-                    if not success then
+                    if not success and IsDebugModeEnabled and IsDebugModeEnabled() then
+                        local childType = child:GetObjectType()
                         DebugPrint("|cffff0000WN DEBUG: Failed to clear OnClick on", childType, "at index", i, "|r")
                     end
                 end

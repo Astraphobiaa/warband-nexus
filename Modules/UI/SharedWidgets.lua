@@ -19,6 +19,7 @@ end
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 --============================================================================
 -- PIXEL PERFECT HELPERS
@@ -170,6 +171,44 @@ local function GetThemeColors()
     }
 end
 
+--- Master accent RGB (0–1) for theme drawing: class color when available, else validated fallback from profile theme.
+--- @param fallbackAccent table|nil rgb triple from profile.themeColors.accent
+--- @return number r, number g, number b
+function ns.ResolveAccentColor(fallbackAccent)
+    local fr = fallbackAccent and fallbackAccent[1]
+    local fg = fallbackAccent and fallbackAccent[2]
+    local fb = fallbackAccent and fallbackAccent[3]
+    if type(fr) ~= "number" or type(fg) ~= "number" or type(fb) ~= "number" then
+        fr, fg, fb = DEFAULT_THEME.accent[1], DEFAULT_THEME.accent[2], DEFAULT_THEME.accent[3]
+    end
+
+    local _, classFile = UnitClass("player")
+    if not classFile or classFile == "" then
+        return fr, fg, fb
+    end
+
+    if C_ClassColor and C_ClassColor.GetClassColor then
+        local ok, cc = pcall(C_ClassColor.GetClassColor, classFile)
+        if ok and cc then
+            if cc.GetRGB then
+                local r, g, b = cc:GetRGB()
+                if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                    return r, g, b
+                end
+            elseif type(cc.r) == "number" and type(cc.g) == "number" and type(cc.b) == "number" then
+                return cc.r, cc.g, cc.b
+            end
+        end
+    end
+
+    local rc = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
+    if rc and type(rc.r) == "number" and type(rc.g) == "number" and type(rc.b) == "number" then
+        return rc.r, rc.g, rc.b
+    end
+
+    return fr, fg, fb
+end
+
 -- Master COLORS table (created once, updated in-place — zero allocation on refresh)
 local COLORS = {
     bg = {0.06, 0.06, 0.08, 0.98},
@@ -193,7 +232,13 @@ local COLORS = {
 
 -- Update COLORS in-place from theme (zero allocation)
 local function UpdateColorsFromTheme()
-    local theme = GetThemeColors()
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    local themeFromDb = GetThemeColors()
+    local theme = themeFromDb
+    if db and db.useClassColorAccent then
+        local r, g, b = ns.ResolveAccentColor(themeFromDb.accent)
+        theme = CalculateThemeColors(r, g, b)
+    end
     COLORS.border[1], COLORS.border[2], COLORS.border[3] = theme.border[1], theme.border[2], theme.border[3]
     COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] = theme.accent[1], theme.accent[2], theme.accent[3]
     COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3] = theme.accentDark[1], theme.accentDark[2], theme.accentDark[3]
@@ -303,6 +348,17 @@ local UI_SPACING = {
     SCROLLBAR_COLUMN_WIDTH = 26,
     -- Must match SCROLL_BAR_BUTTON_SIZE so track + thumb are not taller than arrow buttons
     HORIZONTAL_SCROLL_BAR_HEIGHT = 16,
+
+    --- Title card toolbar: inset from RIGHT edge for the rightmost control (sort, timer, primary button)
+    TITLE_CARD_CONTROL_RIGHT_INSET = 20,
+    --- Horizontal gap between adjacent controls on a title card toolbar row
+    HEADER_TOOLBAR_CONTROL_GAP = 8,
+    --- Sort-style dropdown menus: height of one option row (matches ROW_HEIGHT)
+    DROPDOWN_MENU_ROW_HEIGHT = 26,
+
+    titleCardControlRightInset = 20,
+    headerToolbarControlGap = 8,
+    dropdownMenuRowHeight = 26,
 }
 
 -- Export to namespace (both names for compatibility)
@@ -913,7 +969,12 @@ local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
             end)
             if not success then
                 -- Atlas failed, fallback to question mark texture
-                DebugPrint("|cffff0000[WN CreateIcon]|r Atlas '" .. tostring(texture) .. "' failed, using fallback")
+                if IsDebugModeEnabled and IsDebugModeEnabled() then
+                    local texName = texture
+                    if texName ~= nil and not (issecretvalue and issecretvalue(texName)) then
+                        DebugPrint("|cffff0000[WN CreateIcon]|r Atlas '" .. tostring(texName) .. "' failed, using fallback")
+                    end
+                end
                 tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
                 tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
@@ -1519,11 +1580,11 @@ local function ReleaseAllPooledChildren(parent)
             -- Clear scripts only for widgets that support them
             -- Use HasScript to check if the widget actually supports the script type
             if child.SetScript and child.HasScript then
-                local childType = child:GetObjectType()
                 -- Only clear scripts that the widget actually supports
                 if child:HasScript("OnClick") then
                     local success = pcall(function() child:SetScript("OnClick", nil) end)
-                    if not success then
+                    if not success and IsDebugModeEnabled and IsDebugModeEnabled() then
+                        local childType = child:GetObjectType()
                         DebugPrint("|cffff0000WN DEBUG: Failed to clear OnClick on", childType, "at index", i, "|r")
                     end
                 end
@@ -1635,148 +1696,6 @@ local function CreateCard(parent, height)
     
     -- Caller will Show() when fully setup
     return card
-end
-
--- Format gold amount with separators and icon (legacy - simple gold display)
-local function FormatGold(copper)
-    local gold = math.floor((copper or 0) / 10000)
-    local goldStr = tostring(gold)
-    local k
-    while true do
-        goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
-        if k == 0 then break end
-    end
-    return goldStr .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t"
-end
-
---[[
-    Format number with thousand separators (e.g., 1.234.567)
-    @param number number - Number to format
-    @return string - Formatted number string with dots as thousand separators
-]]
-local function FormatNumber(number)
-    if not number or number == 0 then return "0" end
-    
-    -- Convert to string and handle negative numbers
-    local formatted = tostring(math.floor(number))
-    local negative = false
-    
-    if string.sub(formatted, 1, 1) == "-" then
-        negative = true
-        formatted = string.sub(formatted, 2)
-    end
-    
-    -- Add thousand separators (dots for Turkish locale)
-    local k
-    while true do
-        formatted, k = string.gsub(formatted, "^(%d+)(%d%d%d)", '%1.%2')
-        if k == 0 then break end
-    end
-    
-    -- Re-add negative sign if needed
-    if negative then
-        formatted = "-" .. formatted
-    end
-    
-    return formatted
-end
-
---[[
-    Format all numbers in text with thousand separators (e.g., "Get 50000 kills" -> "Get 50.000 kills")
-    @param text string - Text containing numbers
-    @return string - Text with all numbers formatted
-]]
-local function FormatTextNumbers(text)
-    if not text or text == "" then return text end
-    
-    -- Find all numbers (4+ digits) and format them
-    -- Pattern matches whole numbers not already formatted (no dots inside)
-    local result = text
-    
-    -- Process numbers in descending order of length to avoid partial replacements
-    local numbers = {}
-    for num in string.gmatch(text, "%d%d%d%d+") do
-        -- Check if number is already formatted (contains dots)
-        local alreadyFormatted = false
-        local numStart, numEnd = string.find(result, num, 1, true)
-        if numStart and numStart > 1 then
-            -- Check if there's a dot before this number
-            if string.sub(result, numStart - 1, numStart - 1) == "." then
-                alreadyFormatted = true
-            end
-        end
-        
-        if not alreadyFormatted then
-            table.insert(numbers, {value = num, length = #num})
-        end
-    end
-    
-    -- Sort by length (descending) to replace longer numbers first
-    table.sort(numbers, function(a, b) return a.length > b.length end)
-    
-    -- Replace each number with its formatted version
-    for _, numData in ipairs(numbers) do
-        local formatted = FormatNumber(tonumber(numData.value))
-        -- Use pattern to match whole number (not part of a longer number)
-        result = string.gsub(result, "(%D)" .. numData.value .. "(%D)", "%1" .. formatted .. "%2")
-        result = string.gsub(result, "^" .. numData.value .. "(%D)", formatted .. "%1")
-        result = string.gsub(result, "(%D)" .. numData.value .. "$", "%1" .. formatted)
-        result = string.gsub(result, "^" .. numData.value .. "$", formatted)
-    end
-    
-    return result
-end
-
---[[
-    Format money with gold, silver, and copper
-    @param copper number - Total copper amount
-    @param iconSize number - Icon size (optional, default 14)
-    @param showZero boolean - Show zero values (optional, default false)
-    @return string - Formatted money string with colors and icons
-]]
-local function FormatMoney(copper, iconSize, showZero)
-    -- Validate and sanitize inputs
-    copper = tonumber(copper) or 0
-    if copper < 0 then copper = 0 end
-    iconSize = tonumber(iconSize) or 14
-    -- Clamp iconSize to safe range to prevent integer overflow in texture rendering
-    if iconSize < 8 then iconSize = 8 end
-    if iconSize > 32 then iconSize = 32 end
-    showZero = showZero or false
-    
-    -- Calculate gold, silver, copper with explicit floor operations
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local copperAmount = math.floor(copper % 100)
-    
-    -- Build formatted string
-    local parts = {}
-    
-    -- Gold (yellow/golden)
-    if gold > 0 or showZero then
-        -- Add thousand separators for gold (dots for Turkish locale)
-        local goldStr = tostring(gold)
-        local k
-        while true do
-            goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
-            if k == 0 then break end
-        end
-        table.insert(parts, string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", goldStr, iconSize, iconSize))
-    end
-    
-    -- Silver (silver/gray) - Only pad if gold exists
-    if silver > 0 or (showZero and gold > 0) then
-        local fmt = (gold > 0) and "%02d" or "%d"
-        table.insert(parts, string.format("|cffc7c7cf" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:0:0|t", silver, iconSize, iconSize))
-    end
-    
-    -- Copper (bronze/copper) - Only pad if silver or gold exists
-    if copperAmount > 0 or showZero or (gold == 0 and silver == 0) then
-        local fmt = (gold > 0 or silver > 0) and "%02d" or "%d"
-        table.insert(parts, string.format("|cffeda55f" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:0:0|t", copperAmount, iconSize, iconSize))
-    end
-    
-    return table.concat(parts, " ")
 end
 
 -- Forward mouse wheel to the nearest ancestor ScrollFrame (vertical; Shift+wheel horizontal when in range).
@@ -2965,7 +2884,8 @@ local function GetColumnOffset(columnKey)
     local offset = 10  -- Base left padding
     local order = {"favorite", "faction", "race", "class", "name", "guild", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "delete"}
     
-    for _, key in ipairs(order) do
+    for oi = 1, #order do
+        local key = order[oi]
         if key == columnKey then
             return offset
         end
@@ -2983,8 +2903,8 @@ local function GetCharRowTotalWidth()
     local width = 10  -- Base left padding
     local order = {"favorite", "faction", "race", "class", "name", "guild", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "delete"}
     
-    for _, key in ipairs(order) do
-        width = width + CHAR_ROW_COLUMNS[key].total
+    for oi = 1, #order do
+        width = width + CHAR_ROW_COLUMNS[order[oi]].total
     end
     
     width = width + 10  -- Right padding
@@ -3073,7 +2993,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         end
 
         local itemCount = #sortOptions
-        local itemHeight = 26
+        local itemHeight = (UI_SPACING and UI_SPACING.DROPDOWN_MENU_ROW_HEIGHT) or (UI_SPACING and UI_SPACING.ROW_HEIGHT) or 26
         local sideMargin = (UI_SPACING and UI_SPACING.SIDE_MARGIN) or 10
         local radioArea = 8 + 16 + 6  -- left pad + radio width + gap
         local minMenuWidth = math.max(btn:GetWidth(), 120)
@@ -3350,7 +3270,8 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     
     -- Container frame
     local container = CreateFrame("Frame", nil, parent)
-    container:SetSize(width, 32)
+    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+    container:SetSize(width, searchH)
     
     -- Background frame with pixel-perfect border
     local searchFrame = CreateFrame("Frame", nil, container)
@@ -3466,12 +3387,20 @@ end
 
 local UI_CONSTANTS = {
     BUTTON_HEIGHT = 32,  -- Standardized to match search boxes and header elements
+    SEARCH_BOX_HEIGHT = 32,
+    BUTTON_WIDTH_DEFAULT = 80,
     BORDER_SIZE = 1,
     BUTTON_BORDER_COLOR = function() return COLORS.accent end,
     BUTTON_BG_COLOR = {0.1, 0.1, 0.1, 1},
 }
 
 ns.UI_CONSTANTS = UI_CONSTANTS
+
+--- Match header toolbar buttons / sort triggers to BUTTON_HEIGHT (single call site for tab headers).
+function ns.UI_ApplyHeaderToolbarControlHeight(frame)
+    if not frame or not frame.SetHeight then return end
+    frame:SetHeight(UI_CONSTANTS.BUTTON_HEIGHT)
+end
 
 --============================================================================
 -- SHARED BUTTON WIDGET
@@ -3578,7 +3507,9 @@ end
 ]]
 local function CreateThemedCheckbox(parent, initialState)
     if not parent then
-        DebugPrint("WarbandNexus DEBUG: CreateThemedCheckbox called with nil parent!")
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint("WarbandNexus DEBUG: CreateThemedCheckbox called with nil parent!")
+        end
         return nil
     end
 
@@ -3626,7 +3557,9 @@ end
 ]]
 local function CreateThemedRadioButton(parent, isSelected)
     if not parent then
-        DebugPrint("WarbandNexus DEBUG: CreateThemedRadioButton called with nil parent!")
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint("WarbandNexus DEBUG: CreateThemedRadioButton called with nil parent!")
+        end
         return nil
     end
 
@@ -3663,8 +3596,9 @@ local function CreateTableRow(parent, width, height, columns)
     
     if columns then
         local xOffset = 0
-        for i, col in ipairs(columns) do
-            row.columns[i] = {
+        for ci = 1, #columns do
+            local col = columns[ci]
+            row.columns[ci] = {
                 x = xOffset,
                 width = col.width,
                 align = col.align or "LEFT"
@@ -3726,8 +3660,7 @@ ns.UI_GetAccentHexColor = GetAccentHexColor
 ns.UI_ApplyProfessionCraftingQualityAtlasToTexture = ApplyProfessionCraftingQualityAtlasToTexture
 ns.UI_GetProfessionCraftingQualityAtlasNameForTier = GetProfessionCraftingQualityAtlasNameForTier
 ns.UI_CreateCard = CreateCard
--- FormatGold, FormatNumber, FormatTextNumbers, FormatMoney
--- are exported by FormatHelpers.lua (authoritative source, loads after SharedWidgets)
+-- Money/number text formatting: Modules/UI/FormatHelpers.lua (loads before this file; ns.UI_Format*)
 ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
 ns.UI_BuildAccordionVisualOpts = BuildAccordionVisualOpts
 ns.UI_ChainSectionFrameBelow = ChainSectionFrameBelow

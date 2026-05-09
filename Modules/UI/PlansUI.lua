@@ -38,6 +38,7 @@ local expandedPlans = {}
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 -- Services
 local SearchStateManager = ns.SearchStateManager
@@ -73,7 +74,88 @@ local cachedCategoryTree = nil
 local PlanCardFactory = ns.UI_PlanCardFactory
 local FormatNumber = ns.UI_FormatNumber
 local FormatTextNumbers = ns.UI_FormatTextNumbers
+
+--- Session cache: achievementID -> { points, numCriteria, criteriaText, criteriaItems, information }
+local function PlansAchievementSessionCache()
+    local c = ns._plansAchievementExpandCache
+    if not c then
+        c = {}
+        ns._plansAchievementExpandCache = c
+    end
+    return c
+end
+
+--- Populate once per achievementID per session (Midnight: guard API strings before use).
+local function EnsurePlansAchievementExpandCache(achievementID)
+    if not achievementID or type(achievementID) ~= "number" then return nil end
+    if issecretvalue and issecretvalue(achievementID) then return nil end
+
+    local cache = PlansAchievementSessionCache()
+    local existing = cache[achievementID]
+    if existing then return existing end
+
+    local entry = {
+        points = nil,
+        numCriteria = 0,
+        criteriaText = nil,
+        criteriaItems = nil,
+        information = nil,
+    }
+
+    local ok, _, _, pointsRaw, _, _, _, achDesc = pcall(GetAchievementInfo, achievementID)
+    if not ok then
+        cache[achievementID] = entry
+        return entry
+    end
+
+    if achDesc and achDesc ~= "" then
+        if not (issecretvalue and issecretvalue(achDesc)) then
+            entry.information = "|cff99ccff" .. achDesc .. "|r"
+        end
+    end
+
+    local ptsNum = nil
+    if pointsRaw ~= nil and not (issecretvalue and issecretvalue(pointsRaw)) then
+        ptsNum = tonumber(pointsRaw)
+    end
+    entry.points = ptsNum or 0
+
+    local numCriteria = (GetAchievementNumCriteria and GetAchievementNumCriteria(achievementID)) or 0
+    if numCriteria ~= nil and issecretvalue and issecretvalue(numCriteria) then
+        numCriteria = 0
+    end
+    numCriteria = tonumber(numCriteria) or 0
+    entry.numCriteria = numCriteria
+
+    if numCriteria > 0 then
+        local completed = 0
+        local items = {}
+        for cidx = 1, numCriteria do
+            local cName, _, cDone, qty, reqQty = GetAchievementCriteriaInfo(achievementID, cidx)
+            if cName and cName ~= "" and not (issecretvalue and issecretvalue(cName)) then
+                if cDone then completed = completed + 1 end
+                local progress = ""
+                if qty and reqQty and not (issecretvalue and issecretvalue(qty)) and not (issecretvalue and issecretvalue(reqQty)) then
+                    local rq = tonumber(reqQty)
+                    if rq and rq > 1 then
+                        progress = format(" (%s / %s)", FormatNumber(qty), FormatNumber(reqQty))
+                    end
+                end
+                local icon = cDone and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                items[#items + 1] = { text = icon .. " " .. cName .. progress, completed = cDone }
+            end
+        end
+        entry.criteriaItems = items
+        local pct = numCriteria > 0 and math.floor((completed / numCriteria) * 100) or 0
+        local achFmt = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
+        entry.criteriaText = format(achFmt, FormatNumber(completed), FormatNumber(numCriteria), FormatNumber(pct))
+    end
+
+    cache[achievementID] = entry
+    return entry
+end
 local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
+local format = string.format
 
 -- Import shared UI layout constants
 local function GetLayout() return ns.UI_LAYOUT or {} end
@@ -255,7 +337,8 @@ function WarbandNexus:ParseSourceText(source)
         { pattern = ZONE or "Zone",                                          type = "Drop" },
     }
     
-    for _, entry in ipairs(sourcePatterns) do
+    for ei = 1, #sourcePatterns do
+        local entry = sourcePatterns[ei]
         if entry.pattern and cleanSource:find(entry.pattern, 1, true) then
             parts.sourceType = entry.type
             if entry.flagKey then
@@ -363,13 +446,13 @@ function WarbandNexus:DrawPlansTab(parent)
     -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for action buttons =====
     local activePlanCount = self:GetActiveNonDailyIncompleteCount()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List"
     local titleTextContent = "|cff" .. hexColor .. collectionPlansLabel .. "|r"
     local plansSubtitle = (ns.L and ns.L["PLANS_SUBTITLE_TEXT"]) or "Track your weekly goals & collections"
     local activePlanText = activePlanCount ~= 1
-        and string.format((ns.L and ns.L["ACTIVE_PLANS_FORMAT"]) or "%d active plans", activePlanCount)
-        or string.format((ns.L and ns.L["ACTIVE_PLAN_FORMAT"]) or "%d active plan", activePlanCount)
+        and format((ns.L and ns.L["ACTIVE_PLANS_FORMAT"]) or "%d active plans", activePlanCount)
+        or format((ns.L and ns.L["ACTIVE_PLAN_FORMAT"]) or "%d active plan", activePlanCount)
     local subtitleTextContent = plansSubtitle .. " • " .. activePlanText
     local PLANS_TITLE_RIGHT_RESERVE = 560
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
@@ -390,8 +473,10 @@ function WarbandNexus:DrawPlansTab(parent)
         end
 
         -- Add Custom button (using shared widget)
+        local titleCardRightInset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
+        local hdrToolbarGap = GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8
         local addCustomBtn = CreateThemedButton(titleCard, (ns.L and ns.L["ADD_CUSTOM"]) or "Add Custom", 100)
-        addCustomBtn:SetPoint("RIGHT", -15, 0)
+        addCustomBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleCardRightInset, 0)
         -- Store reference for state management
         self.addCustomBtn = addCustomBtn
         addCustomBtn:SetScript("OnClick", function()
@@ -400,14 +485,14 @@ function WarbandNexus:DrawPlansTab(parent)
         
         -- Add Vault button (using shared widget)
         local addWeeklyBtn = CreateThemedButton(titleCard, (ns.L and ns.L["ADD_VAULT"]) or "Add Vault", 100)
-        addWeeklyBtn:SetPoint("RIGHT", addCustomBtn, "LEFT", -8, 0)
+        addWeeklyBtn:SetPoint("RIGHT", addCustomBtn, "LEFT", -hdrToolbarGap, 0)
         addWeeklyBtn:SetScript("OnClick", function()
             self:ShowWeeklyPlanDialog()
         end)
         
         -- Add Quest button (opens Daily Plan dialog)
         local addDailyBtn = CreateThemedButton(titleCard, (ns.L and ns.L["ADD_QUEST"]) or "Add Quest", 100)
-        addDailyBtn:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -8, 0)
+        addDailyBtn:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -hdrToolbarGap, 0)
         addDailyBtn:SetScript("OnClick", function()
             self:ShowDailyPlanDialog()
         end)
@@ -418,22 +503,26 @@ function WarbandNexus:DrawPlansTab(parent)
             checkbox.innerDot:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
         end
         if not checkbox then
-            DebugPrint("|cffff0000WN DEBUG: CreateThemedCheckbox returned nil! titleCard:|r", titleCard)
+            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                DebugPrint("|cffff0000WN DEBUG: CreateThemedCheckbox returned nil! titleCard:|r", titleCard)
+            end
             return
         end
         
-        if not checkbox.HasScript then
-            DebugPrint("|cffff0000WN DEBUG: Checkbox missing HasScript method! Type:|r", checkbox:GetObjectType())
-        elseif not checkbox:HasScript("OnClick") then
-            DebugPrint("|cffffff00WN DEBUG: Checkbox type", checkbox:GetObjectType(), "doesn't support OnClick|r")
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            if not checkbox.HasScript then
+                DebugPrint("|cffff0000WN DEBUG: Checkbox missing HasScript method! Type:|r", checkbox:GetObjectType())
+            elseif not checkbox:HasScript("OnClick") then
+                DebugPrint("|cffffff00WN DEBUG: Checkbox type", checkbox:GetObjectType(), "doesn't support OnClick|r")
+            end
         end
         
         -- Reset Completed Plans button (left of Add Quest button)
         local resetBtn = CreateThemedButton(titleCard, (ns.L and ns.L["RESET_LABEL"]) or "Reset", 80)
-        resetBtn:SetPoint("RIGHT", addDailyBtn, "LEFT", -10, 0)
+        resetBtn:SetPoint("RIGHT", addDailyBtn, "LEFT", -hdrToolbarGap, 0)
         
         -- Checkbox (left of Reset button)
-        checkbox:SetPoint("RIGHT", resetBtn, "LEFT", -10, 0)
+        checkbox:SetPoint("RIGHT", resetBtn, "LEFT", -hdrToolbarGap, 0)
         resetBtn:SetScript("OnClick", function()
             -- Confirmation via StaticPopup
             StaticPopupDialogs["WN_RESET_COMPLETED_PLANS"] = {
@@ -443,7 +532,7 @@ function WarbandNexus:DrawPlansTab(parent)
                 OnAccept = function()
                     if WarbandNexus.ResetCompletedPlans then
                         local count = WarbandNexus:ResetCompletedPlans()
-                        WarbandNexus:Print(string.format((ns.L and ns.L["REMOVED_PLANS_FORMAT"]) or "Removed %d completed plan(s).", count))
+                        WarbandNexus:Print(format((ns.L and ns.L["REMOVED_PLANS_FORMAT"]) or "Removed %d completed plan(s).", count))
                     end
                 end,
                 timeout = 0,
@@ -464,7 +553,7 @@ function WarbandNexus:DrawPlansTab(parent)
         
         -- Add text label for "Show Completed" checkbox (left of checkbox)
         local checkboxLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
-        checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -8, 0)
+        checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -hdrToolbarGap, 0)
         checkboxLabel:SetText((ns.L and ns.L["SHOW_COMPLETED"]) or "Show Completed")
         checkboxLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         
@@ -474,7 +563,7 @@ function WarbandNexus:DrawPlansTab(parent)
             local success, result = pcall(function() return checkbox:GetScript("OnClick") end)
             if success then
                 originalOnClick = result
-            else
+            elseif IsDebugModeEnabled and IsDebugModeEnabled() then
                 DebugPrint("WarbandNexus DEBUG: GetScript('OnClick') failed for checkbox:", result)
             end
         end
@@ -527,7 +616,7 @@ function WarbandNexus:DrawPlansTab(parent)
             plannedCheckbox:SetPoint("RIGHT", checkboxLabel, "LEFT", -16, 0)
 
             local plannedLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
-            plannedLabel:SetPoint("RIGHT", plannedCheckbox, "LEFT", -8, 0)
+            plannedLabel:SetPoint("RIGHT", plannedCheckbox, "LEFT", -hdrToolbarGap, 0)
             plannedLabel:SetText((ns.L and ns.L["SHOW_PLANNED"]) or "Show Planned")
             plannedLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
 
@@ -644,7 +733,8 @@ function WarbandNexus:DrawPlansTab(parent)
     
     -- Pre-calculate button widths based on text (icon + padding + text + padding)
     local catBtnWidths = {}
-    for i, cat in ipairs(CATEGORIES) do
+    for i = 1, #CATEGORIES do
+        local cat = CATEGORIES[i]
         -- Measure text width using a temporary FontString
         local tempFs = FontManager:CreateFontString(categoryBar, "body", "OVERLAY")
         tempFs:SetText(cat.name)
@@ -657,7 +747,8 @@ function WarbandNexus:DrawPlansTab(parent)
     local currentX = 0
     local currentRow = 0
     
-    for i, cat in ipairs(CATEGORIES) do
+    for i = 1, #CATEGORIES do
+        local cat = CATEGORIES[i]
         local catBtnWidth = catBtnWidths[i]
         
         -- Check if button fits in current row
@@ -845,7 +936,8 @@ function WarbandNexus:DrawPlansTab(parent)
         searchBar:SetScript("OnMouseDown", function() searchInput:SetFocus() end)
         searchBar:Show()
 
-        yOffset = yOffset + 32 + GetLayout().afterElement
+        local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+        yOffset = yOffset + searchH + GetLayout().afterElement
     end
 
     -- ===== CONTENT AREA =====
@@ -891,18 +983,18 @@ local function FormatTimeLeft(minutes)
         local days = math.floor(minutes / 1440)
         local hours = math.floor((minutes % 1440) / 60)
         if hours > 0 then
-            return string.format("%d %s %d %s", days, days == 1 and Day or Days, hours, hours == 1 and Hour or Hours)
+            return format("%d %s %d %s", days, days == 1 and Day or Days, hours, hours == 1 and Hour or Hours)
         end
-        return string.format("%d %s", days, days == 1 and Day or Days)
+        return format("%d %s", days, days == 1 and Day or Days)
     elseif minutes >= 60 then
         local hours = math.floor(minutes / 60)
         local mins = minutes % 60
         if mins > 0 then
-            return string.format("%d %s %d %s", hours, hours == 1 and Hour or Hours, mins, mins == 1 and Minute or Minutes)
+            return format("%d %s %d %s", hours, hours == 1 and Hour or Hours, mins, mins == 1 and Minute or Minutes)
         end
-        return string.format("%d %s", hours, hours == 1 and Hour or Hours)
+        return format("%d %s", hours, hours == 1 and Hour or Hours)
     end
-    return string.format("%d %s", minutes, minutes == 1 and Minute or Minutes)
+    return format("%d %s", minutes, minutes == 1 and Minute or Minutes)
 end
 
 local EVENT_GROUP_NAMES = {
@@ -931,7 +1023,7 @@ local function AttachQuestRowTooltip(frame, quest)
         if quest.progress and not quest.isComplete then
             local pct = math.floor((quest.progress.percent or 0) * 100)
             lines[#lines + 1] = {
-                text = string.format(
+                text = format(
                     (ns.L and ns.L["QUEST_PROGRESS_FORMAT"]) or "Progress: %d/%d (%d%%)",
                     quest.progress.totalFulfilled or 0,
                     quest.progress.totalRequired or 0,
@@ -943,7 +1035,7 @@ local function AttachQuestRowTooltip(frame, quest)
         if quest.timeLeft and quest.timeLeft > 0 then
             local timeColor = quest.timeLeft < 60 and {1, 0.3, 0.3} or {0.7, 0.7, 0.7}
             lines[#lines + 1] = {
-                text = string.format(
+                text = format(
                     (ns.L and ns.L["QUEST_TIME_REMAINING_FORMAT"]) or "%s remaining",
                     FormatTimeLeft(quest.timeLeft)
                 ),
@@ -1142,7 +1234,8 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         local classColor = RAID_CLASS_COLORS[plan.characterClass or "PRIEST"] or {r = 1, g = 1, b = 1}
 
         local totalAll, completedAll = 0, 0
-        for _, catInfo in ipairs(CATEGORIES) do
+        for ci = 1, #CATEGORIES do
+            local catInfo = CATEGORIES[ci]
             if plan.questTypes and plan.questTypes[catInfo.key] then
                 local c, t = GetCategoryStats(plan, catInfo.key)
                 completedAll = completedAll + c
@@ -1165,7 +1258,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         if realmHdr ~= "" and ns.Utilities and ns.Utilities.FormatRealmName then
             realmHdr = ns.Utilities:FormatRealmName(realmHdr)
         end
-        local charTitlePlain = string.format(
+        local charTitlePlain = format(
             "|cff%02x%02x%02x%s|r |cff888888-%s|r",
             classColor.r * 255, classColor.g * 255, classColor.b * 255,
             plan.characterName or "Unknown",
@@ -1249,7 +1342,8 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         end
 
         local catX = 8
-        for _, catInfo in ipairs(CATEGORIES) do
+        for ci = 1, #CATEGORIES do
+            local catInfo = CATEGORIES[ci]
             if plan.questTypes and plan.questTypes[catInfo.key] then
                 local display = CAT_DISPLAY[catInfo.key] or {}
                 local catColor = display.color or {0.8, 0.8, 0.8}
@@ -1258,7 +1352,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                 if t > 0 then
                     local catFs = FontManager:CreateFontString(statsStrip, "small", "OVERLAY")
                     catFs:SetPoint("LEFT", statsStrip, "LEFT", catX, 0)
-                    local cColor = (c == t) and "|cff44ff44" or string.format("|cff%02x%02x%02x", catColor[1] * 255, catColor[2] * 255, catColor[3] * 255)
+                    local cColor = (c == t) and "|cff44ff44" or format("|cff%02x%02x%02x", catColor[1] * 255, catColor[2] * 255, catColor[3] * 255)
                     catFs:SetText(cColor .. catName .. " " .. c .. "/" .. t .. "|r")
                     catX = catX + catFs:GetStringWidth() + 12
                 end
@@ -1268,7 +1362,8 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         local catChainTail = statsStrip
         local weeklyRowList = { statsStrip }
 
-        for _, catInfo in ipairs(CATEGORIES) do
+        for ci = 1, #CATEGORIES do
+            local catInfo = CATEGORIES[ci]
             local catKey = catInfo.key
             if plan.questTypes and plan.questTypes[catKey] then
                 local questList = (plan.quests and plan.quests[catKey]) or {}
@@ -1282,7 +1377,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
                 local SECTION_HDR_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
                 local catAtlas = (display and display.atlas) or "questlog-questtypeicon-weekly"
-                local catTitleHex = string.format(
+                local catTitleHex = format(
                     "|cff%02x%02x%02x%s|r",
                     math.floor(catColor[1] * 255),
                     math.floor(catColor[2] * 255),
@@ -1447,7 +1542,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                     objIcon:SetVertexColor(0.5, 0.5, 0.5)
                                 end
 
-                                local objText = obj.text or string.format((ns.L and ns.L["OBJECTIVE_INDEX_FORMAT"]) or "Objective %d", oi)
+                                local objText = obj.text or format((ns.L and ns.L["OBJECTIVE_INDEX_FORMAT"]) or "Objective %d", oi)
                                 local objColor = obj.finished and "|cff44ff44" or "|cffaaaaaa"
                                 local objFs = FontManager:CreateFontString(row, "small", "OVERLAY")
                                 objFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20, objY + 2)
@@ -1460,7 +1555,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                 progFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20 + width * 0.46, objY + 2)
                                 progFs:SetJustifyH("LEFT")
                                 local progColor = obj.finished and "|cff44ff44" or "|cffffcc00"
-                                progFs:SetText(string.format("%s%d/%d|r", progColor, obj.numFulfilled, obj.numRequired))
+                                progFs:SetText(format("%s%d/%d|r", progColor, obj.numFulfilled, obj.numRequired))
                             end
 
                             if quest.zone and quest.zone ~= "" then
@@ -1668,7 +1763,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         parent._layoutManagerResizeHandler = true
     end
     
-    for i, plan in ipairs(plans) do
+    for i = 1, #plans do
+        local plan = plans[i]
         local progress = self:GetResolvedPlanProgress(plan)
         
         -- === WEEKLY VAULT PLANS (Full Width Card via Factory) ===
@@ -1752,43 +1848,58 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
             if not resolvedIcon or resolvedIcon == "" then resolvedIcon = "Interface\\Icons\\INV_Misc_QuestionMark" end
 
-            -- Achievement title gets " - (X pts)" appended (matches tracker formatting)
+            local isExpanded = expandedPlans[plan.id] or false
+
+            -- Achievement title: points from plan row, session cache after first expand, or API only when expanded at draw time.
             local titleStr = FormatTextNumbers(resolvedName)
-            if plan.type == "achievement" then
-                local pts = plan.points
-                if (not pts or pts == 0) and plan.achievementID then
-                    local ok, _, _, p = pcall(GetAchievementInfo, plan.achievementID)
-                    if ok and p then pts = p end
+            local achievementOnExpandPopulate = nil
+            if plan.type == "achievement" and plan.achievementID then
+                local achID = plan.achievementID
+                local sess = PlansAchievementSessionCache()[achID]
+                local pts = tonumber(plan.points) or 0
+                if pts <= 0 and sess then
+                    pts = tonumber(sess.points) or 0
                 end
-                if pts and pts > 0 then
-                    titleStr = titleStr .. string.format(" - |cffffd700(%d pts)|r", pts)
+                if isExpanded and pts <= 0 then
+                    local entry = EnsurePlansAchievementExpandCache(achID)
+                    pts = tonumber(entry and entry.points) or 0
+                end
+                if pts > 0 then
+                    titleStr = titleStr .. format(" - |cffffd700(%d pts)|r", pts)
+                end
+                if not isExpanded then
+                    achievementOnExpandPopulate = function(data, row)
+                        local entry = EnsurePlansAchievementExpandCache(achID)
+                        data.information = entry.information
+                        data.criteria = entry.criteriaText
+                        data.criteriaData = entry.criteriaItems
+                        data.criteriaShowHeader = true
+                        if row and row.titleText then
+                            local ptn = tonumber(plan.points) or 0
+                            if ptn <= 0 then ptn = tonumber(entry.points) or 0 end
+                            local ts = FormatTextNumbers(resolvedName)
+                            if ptn > 0 then
+                                ts = ts .. format(" - |cffffd700(%d pts)|r", ptn)
+                            end
+                            row.titleText:SetText("|cffffffff" .. ts .. "|r")
+                        end
+                        if row and row.SyncHeaderToTitle then
+                            row:SyncHeaderToTitle()
+                        end
+                    end
                 end
             end
 
-            -- Build expanded body: information + criteria
+            -- Build expanded body: information + criteria (achievement: APIs only when expanded or via onExpandPopulate)
             local information, criteriaItems, criteriaHeader, criteriaText
             if plan.type == "achievement" and plan.achievementID then
-                local _, _, _, _, _, _, _, achDesc = GetAchievementInfo(plan.achievementID)
-                if achDesc and achDesc ~= "" then information = "|cff99ccff" .. achDesc .. "|r" end
-                local numCriteria = (GetAchievementNumCriteria and GetAchievementNumCriteria(plan.achievementID)) or 0
-                if numCriteria > 0 then
-                    local completed = 0
-                    local items = {}
-                    for cidx = 1, numCriteria do
-                        local cName, _, cDone, qty, reqQty = GetAchievementCriteriaInfo(plan.achievementID, cidx)
-                        if cName and cName ~= "" then
-                            if cDone then completed = completed + 1 end
-                            local icon = cDone and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
-                            local progress = (qty and reqQty and reqQty > 1) and string.format(" (%s / %s)", FormatNumber(qty), FormatNumber(reqQty)) or ""
-                            items[#items + 1] = { text = icon .. " " .. cName .. progress, completed = cDone }
-                        end
-                    end
-                    criteriaItems = items
-                    local pct = math.floor((completed / numCriteria) * 100)
-                    local achFmt = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
-                    criteriaText = string.format(achFmt, FormatNumber(completed), FormatNumber(numCriteria), FormatNumber(pct))
-                end
                 criteriaHeader = true
+                if isExpanded then
+                    local entry = EnsurePlansAchievementExpandCache(plan.achievementID)
+                    information = entry.information
+                    criteriaText = entry.criteriaText
+                    criteriaItems = entry.criteriaItems
+                end
             else
                 if plan.type == "custom" then
                     local d = plan.description or plan.note or ""
@@ -1826,9 +1937,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 onAccordionResize = function(rowFrame, currentH)
                     CardLayoutManager:UpdateCardHeight(rowFrame, currentH)
                 end,
+                onExpandPopulate = achievementOnExpandPopulate,
             }
 
-            local isExpanded = expandedPlans[plan.id] or false
             local row = CreateExpandableRow(parent, listCardWidth, todoHeaderH, rowData, isExpanded, function(expanded)
                 -- Persist state only — the layout has been kept in sync per-frame already.
                 expandedPlans[plan.id] = expanded
@@ -1938,7 +2049,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     local searchId = "plans_" .. (category or "unknown"):lower()
     local initialSearchText = SearchStateManager:GetQuery(searchId)
     
-    local searchPlaceholder = string.format((ns.L and ns.L["SEARCH_CATEGORY_FORMAT"]) or "Search %s...", category)
+    local searchPlaceholder = format((ns.L and ns.L["SEARCH_CATEGORY_FORMAT"]) or "Search %s...", category)
     local searchContainer = CreateSearchBox(parent, width, searchPlaceholder, function(text)
         searchText = text
         
@@ -1997,7 +2108,8 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         local allCategoryIDs = GetCategoryList() or {}
         local catData = {}
         local roots = {}
-        for index, categoryID in ipairs(allCategoryIDs) do
+        for index = 1, #allCategoryIDs do
+            local categoryID = allCategoryIDs[index]
             local categoryName, parentCategoryID = GetCategoryInfo(categoryID)
             catData[categoryID] = {
                 id = categoryID,
@@ -2007,7 +2119,8 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                 order = index,
             }
         end
-        for _, categoryID in ipairs(allCategoryIDs) do
+        for ai = 1, #allCategoryIDs do
+            local categoryID = allCategoryIDs[ai]
             local data = catData[categoryID]
             if data then
                 if data.parentID and data.parentID > 0 then
@@ -2032,7 +2145,8 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     end
     local rootCategories = cachedCategoryTree.rootCategories
 
-    for _, achievement in ipairs(results) do
+    for ri = 1, #results do
+        local achievement = results[ri]
         local categoryID = achievement.categoryID
         if categoryData[categoryID] then
             achievement.isPlanned = self:IsAchievementPlanned(achievement.id)
@@ -2375,7 +2489,7 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
             or "Nothing on your To-Do List in this category is still uncollected. Turn on Show Completed to see finished ones, or add goals from this tab."
     else
         titleR, titleG, titleB = 0.3, 1, 0.3
-        titleStr = (L and L["ALL_COLLECTED_CATEGORY"] and string.format(L["ALL_COLLECTED_CATEGORY"], labelCat))
+        titleStr = (L and L["ALL_COLLECTED_CATEGORY"] and format(L["ALL_COLLECTED_CATEGORY"], labelCat))
             or ("All " .. labelCat .. "s collected!")
         descStr = (L and L["COLLECTED_EVERYTHING"]) or "You've collected everything in this category!"
     end
@@ -2406,7 +2520,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         SearchResultsRenderer:PrepareContainer(parent)
     elseif parent and parent.GetChildren then
         local children = { parent:GetChildren() }
-        for _, child in ipairs(children) do
+        for chi = 1, #children do
+            local child = children[chi]
             if child and child.Hide then
                 child:Hide()
             end
@@ -2465,11 +2580,13 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 parent, 
                 yOffset, 
                 loadingStateData, 
-                string.format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName)
+                format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName)
             )
             return newYOffset
         else
-            DebugPrint("|cffff0000[WN PlansUI]|r UI_CreateLoadingStateCard not found!")
+            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                DebugPrint("|cffff0000[WN PlansUI]|r UI_CreateLoadingStateCard not found!")
+            end
             return yOffset + 120
         end
     end
@@ -2482,18 +2599,22 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     local resultsUncollected = {}
     local resultsCollected = {}
 
+    local dbgPlansBrowse = IsDebugModeEnabled and IsDebugModeEnabled()
     if category == "mount" then
         if needUncollected then resultsUncollected = self:GetUncollectedMounts(searchText, 50) end
         if needCollected then resultsCollected = self.GetCollectedMounts and self:GetCollectedMounts(searchText, COLLECTED_BROWSE_FETCH_LIMIT) or {} end
-        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: mount unc=" .. #resultsUncollected .. " col=" .. #resultsCollected)
+        if dbgPlansBrowse then
+        end
     elseif category == "pet" then
         if needUncollected then resultsUncollected = self:GetUncollectedPets(searchText, 50) end
         if needCollected then resultsCollected = self.GetCollectedPets and self:GetCollectedPets(searchText, COLLECTED_BROWSE_FETCH_LIMIT) or {} end
-        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: pet unc=" .. #resultsUncollected .. " col=" .. #resultsCollected)
+        if dbgPlansBrowse then
+        end
     elseif category == "toy" then
         if needUncollected then resultsUncollected = self:GetUncollectedToys(searchText, 50) end
         if needCollected then resultsCollected = self.GetCollectedToys and self:GetCollectedToys(searchText, COLLECTED_BROWSE_FETCH_LIMIT) or {} end
-        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: toy unc=" .. #resultsUncollected .. " col=" .. #resultsCollected)
+        if dbgPlansBrowse then
+        end
     end
 
     -- Re-check loading: Core init (EnsureCollectionData) veya store boşken tetiklenen scan
@@ -2522,7 +2643,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
 
             local newYOffset = UI_CreateLoadingStateCard(
                 parent, yOffset, loadingStateData,
-                string.format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName)
+                format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName)
             )
             return newYOffset
         end
@@ -2558,7 +2679,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             if UI_CreateLoadingStateCard then
                 local displayName = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements"
                 return UI_CreateLoadingStateCard(parent, yOffset, loadingStateData,
-                    string.format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName))
+                    format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName))
             end
         end
 
@@ -2612,7 +2733,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             }
             local displayName = categoryNameMap[category] or (category:gsub("^%l", string.upper) .. "s")
             return UI_CreateLoadingStateCard(parent, yOffset, loadingStateData,
-                string.format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName))
+                format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName))
         end
     end
     
@@ -2667,7 +2788,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     local results = MergePlansBrowseResults(resultsCollected, resultsUncollected, showPlannedBrowse, showCompletedBrowse)
 
     if #results == 0 then
-        DebugPrint("|cffffcc00[WN PlansUI WARNING]|r No browse results for category: " .. tostring(category))
+        if dbgPlansBrowse then
+        end
         return DrawPlansBrowseEmptyCard(parent, yOffset, width, category, searchText, showPlannedBrowse, showCompletedBrowse)
     end
 
@@ -2699,7 +2821,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         truncationMsg:SetPoint("TOPRIGHT", -10, -yOffset)
         truncationMsg:SetJustifyH("CENTER")
         local showingFormat = (ns.L and ns.L["SHOWING_X_OF_Y"]) or "Showing %d of %d results"
-        truncationMsg:SetText("|cff888888" .. string.format(showingFormat, MAX_BROWSE_RESULTS, totalResults) .. "|r")
+        truncationMsg:SetText("|cff888888" .. format(showingFormat, MAX_BROWSE_RESULTS, totalResults) .. "|r")
         yOffset = yOffset + 24
     end
 
@@ -2811,7 +2933,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             
             local pointsText = FontManager:CreateFontString(card, "body", "OVERLAY")
             pointsText:SetPoint("LEFT", shieldFrame, "RIGHT", 4, 0)
-            pointsText:SetText(string.format("|cff%02x%02x%02x" .. ((ns.L and ns.L["POINTS_FORMAT"]) or "%d Points") .. "|r", 
+            pointsText:SetText(format("|cff%02x%02x%02x" .. ((ns.L and ns.L["POINTS_FORMAT"]) or "%d Points") .. "|r", 
                 255*255, 204*255, 51*255,  -- Gold color
                 item.points))
             pointsText:EnableMouse(false)  -- Allow clicks to pass through
@@ -2883,7 +3005,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 -- No icon, position like before
                 typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)
             end
-            typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
+            typeBadge:SetText(format("|cff%02x%02x%02x%s|r", 
                 typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
                 typeName))
             typeBadge:EnableMouse(false)  -- Allow clicks to pass through
@@ -2900,8 +3022,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             -- Use localized strings for Source label and Achievement type
             local sourceLabel = NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:")
             local achievementType = (ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or (BATTLE_PET_SOURCE_6 or "Achievement")
-            local sourceText = (ns.L and ns.L["SOURCE_ACHIEVEMENT_FORMAT"] and string.format(ns.L["SOURCE_ACHIEVEMENT_FORMAT"], sourceLabel, achievementType, item.sourceAchievement)) or (sourceLabel .. " |cff00ff00[" .. achievementType .. " " .. item.sourceAchievement .. "]|r")
-            achievementText:SetText(string.format("|TInterface\\Icons\\Achievement_General:%d:%d|t ", planBrowseSrcIconSz, planBrowseSrcIconSz) .. sourceText)
+            local sourceText = (ns.L and ns.L["SOURCE_ACHIEVEMENT_FORMAT"] and format(ns.L["SOURCE_ACHIEVEMENT_FORMAT"], sourceLabel, achievementType, item.sourceAchievement)) or (sourceLabel .. " |cff00ff00[" .. achievementType .. " " .. item.sourceAchievement .. "]|r")
+            achievementText:SetText(format("|TInterface\\Icons\\Achievement_General:%d:%d|t ", planBrowseSrcIconSz, planBrowseSrcIconSz) .. sourceText)
             achievementText:SetTextColor(1, 1, 1)
             achievementText:SetJustifyH("LEFT")
             achievementText:SetWordWrap(true)
@@ -2919,7 +3041,11 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     -- Store in namespace for achievement UI to pick up
                     ns.PendingAchievementHighlight = item.sourceAchievement
                     
-                    DebugPrint("|cff00ff00[WN PlansUI]|r Jumping to achievement: " .. item.sourceAchievement)
+                    if IsDebugModeEnabled and IsDebugModeEnabled() then
+                        local aid = item.sourceAchievement
+                        if aid ~= nil and not (issecretvalue and issecretvalue(aid)) then
+                        end
+                    end
                 end
             end)
             
@@ -2942,7 +3068,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local vendorText = FontManager:CreateFontString(card, "body", "OVERLAY")
             vendorText:SetPoint("TOPLEFT", 10, line3Y)
             vendorText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            vendorText:SetText((ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or string.format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " " .. NormalizeColonLabelSpacing((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. firstSource.vendor)
+            vendorText:SetText((ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " " .. NormalizeColonLabelSpacing((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. firstSource.vendor)
             vendorText:SetTextColor(1, 1, 1)
             vendorText:SetJustifyH("LEFT")
             vendorText:SetWordWrap(true)
@@ -2953,7 +3079,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             npcText:SetPoint("TOPLEFT", 10, line3Y)
             npcText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             local _srcIcon = ns.UI_PlanSourceIconMarkup
-            local _lootMark = _srcIcon and _srcIcon("loot", planBrowseSrcIconSz) or string.format("|A:Banker:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)
+            local _lootMark = _srcIcon and _srcIcon("loot", planBrowseSrcIconSz) or format("|A:Banker:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)
             npcText:SetText(_lootMark .. " " .. NormalizeColonLabelSpacing((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. firstSource.npc)
             npcText:SetTextColor(1, 1, 1)
             npcText:SetJustifyH("LEFT")
@@ -2965,7 +3091,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             factionText:SetPoint("TOPLEFT", 10, line3Y)
             factionText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             local factionLabel = NormalizeColonLabelSpacing((ns.L and ns.L["FACTION_LABEL"]) or "Faction:")
-            local displayText = (ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or string.format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " " .. factionLabel .. firstSource.faction
+            local displayText = (ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " " .. factionLabel .. firstSource.faction
             if firstSource.renown then
                 local repType = firstSource.isFriendship and ((ns.L and ns.L["FRIENDSHIP_LABEL"]) or "Friendship") or ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown")
                 displayText = displayText .. " |cffffcc00(" .. repType .. " " .. firstSource.renown .. ")|r"
@@ -2986,7 +3112,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             zoneText:SetPoint("TOPLEFT", 10, zoneY)
             zoneText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             local _srcIconZ = ns.UI_PlanSourceIconMarkup
-            local _locMark = _srcIconZ and _srcIconZ("location", planBrowseSrcIconSz) or string.format("|A:poi-islands-table:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)
+            local _locMark = _srcIconZ and _srcIconZ("location", planBrowseSrcIconSz) or format("|A:poi-islands-table:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)
             zoneText:SetText(_locMark .. " " .. NormalizeColonLabelSpacing((ns.L and ns.L["ZONE_LABEL"]) or "Zone:") .. firstSource.zone)
             zoneText:SetTextColor(1, 1, 1)
             zoneText:SetJustifyH("LEFT")
@@ -3100,7 +3226,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                         local sourceText = FontManager:CreateFontString(card, "body", "OVERLAY")
                         sourceText:SetPoint("TOPLEFT", 10, line3Y)
                         sourceText:SetPoint("RIGHT", card, "RIGHT", -80, 0)
-                        sourceText:SetText((ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or string.format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. (item.source or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r")
+                        sourceText:SetText((ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. (item.source or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r")
                         sourceText:SetJustifyH("LEFT")
                         sourceText:SetWordWrap(true)
                         sourceText:SetMaxLines(2)
@@ -3310,7 +3436,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Title label
     local titleLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     titleLabel:SetPoint("TOPLEFT", 12, -75)
-    titleLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. ((ns.L and ns.L["TITLE_LABEL"]) or "Title:") .. "|r")
+    titleLabel:SetText("|cff" .. format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. ((ns.L and ns.L["TITLE_LABEL"]) or "Title:") .. "|r")
     
     -- Title input container (using Factory pattern)
     local titleInputBg = ns.UI.Factory:CreateContainer(contentFrame, 410, 35)
@@ -3347,7 +3473,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Description label
     local descLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     descLabel:SetPoint("TOPLEFT", 12, -145)
-    descLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
+    descLabel:SetText("|cff" .. format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
     
     -- Description input container (scrollable, single line) (using Factory pattern)
     local descInputBg = ns.UI.Factory:CreateContainer(contentFrame, 410, 35)  -- Reduced height for single line
@@ -3433,7 +3559,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Reset Cycle selection
     local resetLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     resetLabel:SetPoint("TOPLEFT", 12, -215)
-    resetLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. ((ns.L and ns.L["RESET_CYCLE_LABEL"]) or "Reset Cycle:") .. "|r")
+    resetLabel:SetText("|cff" .. format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. ((ns.L and ns.L["RESET_CYCLE_LABEL"]) or "Reset Cycle:") .. "|r")
     
     -- Reset cycle toggle state
     local selectedResetType = "none"
@@ -3567,7 +3693,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Update button visuals based on selection
     local function UpdateResetButtons()
-        for _, btn in ipairs(resetButtons) do
+        for bi = 1, #resetButtons do
+            local btn = resetButtons[bi]
             if btn.value == selectedResetType then
                 btn:SetBackdropColor(COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1)
                 btn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
@@ -3595,7 +3722,8 @@ function WarbandNexus:ShowCustomPlanDialog()
         end
     end
     
-    for _, btn in ipairs(resetButtons) do
+    for bi = 1, #resetButtons do
+        local btn = resetButtons[bi]
         btn:SetScript("OnClick", function(self)
             selectedResetType = self.value
             -- Set sensible defaults when switching type
@@ -3695,12 +3823,14 @@ end
 function WarbandNexus:CompleteCustomPlan(planId)
     if not self.db.global.customPlans then return false end
 
-    for _, plan in ipairs(self.db.global.customPlans) do
+    local customPlansList = self.db.global.customPlans
+    for pi = 1, #customPlansList do
+        local plan = customPlansList[pi]
         if plan.id == planId then
             if plan.completed then return true end -- Already completed
             
             plan.completed = true
-            self:Print(string.format((ns.L and ns.L["CUSTOM_PLAN_COMPLETED"]) or "Custom plan '%s' |cff00ff00completed|r", FormatTextNumbers(plan.name)))
+            self:Print(format((ns.L and ns.L["CUSTOM_PLAN_COMPLETED"]) or "Custom plan '%s' |cff00ff00completed|r", FormatTextNumbers(plan.name)))
 
             -- Track completion time for recurring reset
             if plan.resetCycle and plan.resetCycle.enabled then
@@ -3733,7 +3863,8 @@ end
 function WarbandNexus:RemoveCustomPlan(planId)
     if not self.db.global.customPlans then return end
     
-    for i, plan in ipairs(self.db.global.customPlans) do
+    for i = 1, #self.db.global.customPlans do
+        local plan = self.db.global.customPlans[i]
         if plan.id == planId then
             table.remove(self.db.global.customPlans, i)
             break
@@ -3789,7 +3920,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         infoText:SetWidth(440)
         infoText:SetWordWrap(true)
         infoText:SetJustifyH("CENTER")
-        local descText = (ns.L and ns.L["WEEKLY_PLAN_EXISTS_DESC"] and string.format(ns.L["WEEKLY_PLAN_EXISTS_DESC"], currentName .. "-" .. currentRealm)) or (currentName .. "-" .. currentRealm .. " already has an active weekly vault plan. You can find it in the 'My Plans' category.")
+        local descText = (ns.L and ns.L["WEEKLY_PLAN_EXISTS_DESC"] and format(ns.L["WEEKLY_PLAN_EXISTS_DESC"], currentName .. "-" .. currentRealm)) or (currentName .. "-" .. currentRealm .. " already has an active weekly vault plan. You can find it in the 'My Plans' category.")
         infoText:SetText("|cffaaaaaa" .. descText .. "|r")
         
         -- Calculate text height to position button below
@@ -3943,7 +4074,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                     else
                         milestoneText:SetTextColor(0.6, 0.6, 0.6)  -- Gray
                     end
-                    milestoneText:SetText(string.format("%s / %s", FormatNumber(math.min(current, thresholds[i])), FormatNumber(thresholds[i])))
+                    milestoneText:SetText(format("%s / %s", FormatNumber(math.min(current, thresholds[i])), FormatNumber(thresholds[i])))
                 end
             end
             
@@ -3993,7 +4124,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         
         local slotCheckY = -320
         local slotCheckSpacing = 30
-        for si, opt in ipairs(slotOptions) do
+        for si = 1, #slotOptions do
+            local opt = slotOptions[si]
             local rowFrame = CreateFrame("Frame", nil, contentFrame)
             rowFrame:SetSize(300, 24)
             rowFrame:SetPoint("TOP", 0, slotCheckY + (si - 1) * -slotCheckSpacing)
@@ -4109,7 +4241,7 @@ function WarbandNexus:ShowDailyPlanDialog()
         infoText:SetJustifyH("CENTER")
         local charFullName = currentName .. "-" .. currentRealm
         local dailyExistsDesc = (ns.L and ns.L["DAILY_PLAN_EXISTS_DESC"]) or "%s already has an active weekly quest plan. You can find it in the 'Weekly Progress' category."
-        infoText:SetText("|cffaaaaaa" .. string.format(dailyExistsDesc, charFullName) .. "|r")
+        infoText:SetText("|cffaaaaaa" .. format(dailyExistsDesc, charFullName) .. "|r")
         
         local okBtn = CreateThemedButton(contentFrame, OKAY or "OK", 120)
         okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -16)
@@ -4169,7 +4301,8 @@ function WarbandNexus:ShowDailyPlanDialog()
         events       = (ns.L and ns.L["QUEST_CATEGORY_DESC_EVENTS"]) or "Bonus objectives, tasks, and activities",
     }
     
-    for i, catInfo in ipairs(CATEGORIES) do
+    for i = 1, #CATEGORIES do
+        local catInfo = CATEGORIES[i]
         local catKey = catInfo.key
         local display = CAT_DISPLAY[catKey] or {}
         local catColor = display.color or {0.8, 0.8, 0.8}

@@ -675,7 +675,8 @@ local options = {
                 local currentPlayerRealm = GetRealmName()
                 local currentPlayerKey = currentPlayerName .. "-" .. currentPlayerRealm
                 
-                for _, char in ipairs(allChars) do
+                for ci = 1, #allChars do
+                    local char = allChars[ci]
                     local key = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
                     if key ~= currentPlayerKey then
                         chars[key] = string.format("%s (%s) - Level %d", 
@@ -1231,7 +1232,8 @@ local options = {
                 if #results == 0 then return L["NO_RESULTS"] .. "\n" end
                 
                 local lines = {}
-                for _, r in ipairs(results) do
+                for ri = 1, #results do
+                    local r = results[ri]
                     local status = r.tracked and ("|cff00ff00" .. L["TRACKED"] .. "|r") or ("|cffff0000" .. L["UNTRACKED"] .. "|r")
                     lines[#lines + 1] = format("  %s %s: %s (Item %d) - %s",
                         r.sourceType == "npc" and "NPC" or "Object",
@@ -1289,7 +1291,9 @@ local options = {
                     if db and sourceID and itemID then
                         local sourceDB = sourceType == "npc" and db.npcs or db.objects
                         if sourceDB and sourceDB[sourceID] then
-                            for _, d in ipairs(sourceDB[sourceID]) do
+                            local dropList = sourceDB[sourceID]
+                            for di = 1, #dropList do
+                                local d = dropList[di]
                                 if d.itemID == itemID then
                                     dropName = d.name or dropName
                                     break
@@ -1328,10 +1332,11 @@ local options = {
             name = [[
 |cff00ccff/wn|r or |cff00ccff/wn show|r - Toggle the main window
 |cff00ccff/wn plan|r - Toggle Plans Tracker window
+|cff00ccff/wn saved|r - Saved Instances window
 |cff00ccff/wn options|r - Open this settings panel
-|cff00ccff/wn minimap|r - Toggle minimap button
+|cff00ccff/wn keys|r - Announce alt keystones (party)
 |cff00ccff/wn changelog|r - Show changelog
-|cff00ccff/wn help|r - Show all commands
+|cff00ccff/wn help|r - Full command list
 ]],
             fontSize = "medium",
         },
