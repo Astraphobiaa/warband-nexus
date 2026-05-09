@@ -449,14 +449,15 @@ function FontManager:GetAAFlags()
     return AA_OPTIONS[db.antiAliasing] or "OUTLINE"
 end
 
--- Default font path when LSM unavailable or key invalid
-local DEFAULT_FONT_PATH = "Fonts\\FRIZQT__.TTF"
-local DEFAULT_LSM_KEY = "Friz Quadrata TT"
+-- Default profile font (bundled); WoW built-in font as last resort when SetFont fails or key unknown
+local DEFAULT_PROFILE_FONT_PATH = "Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"
+local BUILTIN_FALLBACK_FONT_PATH = "Fonts\\FRIZQT__.TTF"
+local DEFAULT_LSM_KEY = "Expressway"
 
 -- Resolve DB fontFace (LSM key or legacy path) to file path; migrate path -> key in DB when possible
 local function ResolveFontFaceFromDB(db)
     if not db or type(db.fontFace) ~= "string" or db.fontFace == "" then
-        return DEFAULT_FONT_PATH
+        return DEFAULT_PROFILE_FONT_PATH
     end
     local value = db.fontFace
     local key = value
@@ -480,7 +481,7 @@ local function ResolveFontFaceFromDB(db)
     if value:find("\\") then
         return value
     end
-    return DEFAULT_FONT_PATH
+    return BUILTIN_FALLBACK_FONT_PATH
 end
 
 --[[
@@ -491,10 +492,10 @@ end
 ]]
 function FontManager:GetFontFace()
     if not ns or not ns.db then
-        return DEFAULT_FONT_PATH
+        return DEFAULT_PROFILE_FONT_PATH
     end
     local db = ns.db.profile and ns.db.profile.fonts
-    if not db then return DEFAULT_FONT_PATH end
+    if not db then return DEFAULT_PROFILE_FONT_PATH end
     local path = ResolveFontFaceFromDB(db)
     return path
 end
@@ -516,7 +517,7 @@ function FontManager:SafeSetFont(fontString, sizeCategory)
     local flags = FontManager:GetAAFlags()
     
     if type(fontPath) ~= "string" or fontPath == "" then
-        fontPath = DEFAULT_FONT_PATH
+        fontPath = BUILTIN_FALLBACK_FONT_PATH
     end
     if type(fontSize) ~= "number" or fontSize <= 0 then
         fontSize = 12
@@ -540,7 +541,7 @@ function FontManager:SafeSetFont(fontString, sizeCategory)
             end)
         else
             pcall(function()
-                fontString:SetFont(DEFAULT_FONT_PATH, fontSize, flags)
+                fontString:SetFont(BUILTIN_FALLBACK_FONT_PATH, fontSize, flags)
             end)
         end
         return false
@@ -606,7 +607,7 @@ function FontManager:ApplyFont(fontString, category)
     local flags = self:GetAAFlags()
     
     if type(fontFace) ~= "string" or fontFace == "" then
-        fontFace = DEFAULT_FONT_PATH
+        fontFace = BUILTIN_FALLBACK_FONT_PATH
     end
     if type(fontSize) ~= "number" or fontSize <= 0 then
         fontSize = 12
@@ -639,7 +640,7 @@ function FontManager:ApplyFont(fontString, category)
             -- Last resort: default WoW font
             local fallbackOk = false
             pcall(function()
-                fallbackOk = fontString:SetFont(DEFAULT_FONT_PATH, fontSize, flags)
+                fallbackOk = fontString:SetFont(BUILTIN_FALLBACK_FONT_PATH, fontSize, flags)
             end)
             if not fallbackOk then
                 if fontString.SetFontObject then

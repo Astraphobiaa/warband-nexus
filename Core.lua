@@ -313,7 +313,7 @@ local defaults = {
         
         -- Font Management (Resolution-aware scaling)
         fonts = {
-            fontFace = "Friz Quadrata TT",  -- LSM key; default font
+            fontFace = "Expressway",  -- LSM key; bundled default font
             scalePreset = "normal",            -- Preset: tiny/small/normal/large/xlarge
             scaleCustom = 1.0,                 -- Custom scale multiplier
             useCustomScale = false,            -- Use custom scale instead of preset
