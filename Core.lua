@@ -193,6 +193,8 @@ local defaults = {
         -- To-Do browse filters (Mounts, Pets, Achievements, …)
         plansShowCompleted = false,
         plansShowPlanned = false,
+        --- When set, only this plan ID receives zone/instance reminder triggers (nil = all plans).
+        plansReminderFocusPlanID = nil,
         
         -- Gold settings
         goldReserve = 0,           -- Minimum gold to keep when depositing
@@ -273,6 +275,7 @@ local defaults = {
             hidePlayedTimeInChat = true,       -- ChatFrameUtil + Chattynator.FilterTimePlayed + CHAT_MSG_SYSTEM backup
             showUpdateNotes = true,            -- Show changelog on new version
             showVaultReminder = true,          -- Show vault reminder
+            showPlanReminderToast = true,      -- Compact toast when a To-Do plan reminder activates
             showLootNotifications = true,      -- Show mount/pet/toy loot notifications
             showMountNotifications = true,     -- Show mount notifications
             showPetNotifications = true,       -- Show pet notifications
@@ -289,11 +292,17 @@ local defaults = {
             popupPoint = "TOP",                -- Anchor point on UIParent (TOP, BOTTOM, CENTER, etc.)
             popupX = 0,                        -- X offset from anchor point
             popupY = -100,                     -- Y offset from anchor point
-            popupPointCompact = nil,           -- When set, criteria/progress toasts use this (e.g. "TOPRIGHT")
-            popupXCompact = nil,               -- X for criteria position
+            popupPointCompact = nil,           -- Progress slot: criteria, vault progress, plan reminders (default TOPRIGHT if nil)
+            popupXCompact = nil,               -- X for progress slot (see Settings > Notifications)
             popupYCompact = nil,               -- Y for criteria position
             useAlertFramePosition = false,     -- If true, main position = Blizzard AchievementAlertFrame position
             useCriteriaAlertFramePosition = false, -- If true, criteria position = Blizzard CriteriaAlertFrame position
+            --- To-Do reminder toast lane (never uses Blizzard AchievementAlert/CriteriaAlert AddAlert hooks)
+            reminderToastPoint = "TOPRIGHT",
+            reminderToastX = -42,
+            reminderToastY = -172,
+            --- Legacy flag: reminder toasts always use the progress/criteria anchor; kept for SavedVariables compatibility.
+            reminderToastUseCriteriaLane = true,
             popupGrowth = "AUTO",              -- Growth direction: "AUTO" (smart), "DOWN", "UP"
             screenFlashEffect = true,          -- Screen flash effect on collectible obtained
             tryCounterDropScreenshot = true,   -- Auto Screenshot() on try-tracked collectible drop (mount/pet/toy/illusion)
@@ -394,6 +403,8 @@ local defaults = {
         reminderSettings = {
             enabled = true,
             throttleSeconds = 300,
+            -- When true, zone/instance reminders respect throttleSeconds between repeats (default: every entry toasts).
+            throttleLocationReminders = false,
         },
         
         -- Window size persistence (wider default so wide tabs e.g. Professions need less horizontal scroll)

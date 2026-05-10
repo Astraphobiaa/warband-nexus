@@ -1,11 +1,11 @@
-# ===========================================
-# Warband Nexus — WoW addon repository policy
-# ===========================================
-# Tracked content is allowlisted at the end: only the addon tree that ships
-# under Interface/AddOns/WarbandNexus. Everything else is ignored and must
-# not be committed.
+﻿# =============================================================================
+# Warband Nexus — Git tracks only the WoW addon runtime tree (Interface/AddOns).
+# Maintainer tooling, docs, and pack scripts live under _ignored/ (clone locally; not committed).
+# =============================================================================
 
-# Cursor / IDE / AI tooling
+_ignored/
+
+# IDE / local tooling
 .cursor/
 .claude/
 .vscode/
@@ -16,7 +16,6 @@
 debug.log
 *.debug
 
-# WoW SavedVariables (never commit user data)
 SavedVariables/
 
 # Backups
@@ -50,30 +49,12 @@ Locales/.tmp/
 build/
 WarbandNexus/
 
-# Dev / docs / tooling (not part of the in-game addon)
-*.md
-/CHANGES.txt
-/CHANGELOG.md
-tests/
-/test_*.lua
-/test2.lua
-build_addon.*
-update_locales.lua
-docs/
-_enc_w.html
-.pkgmeta
-.gitattributes
-# Local dev scripts (packaging, locale checks) — not part of Interface/AddOns payload
-/scripts/
-
-# Screenshots (listing assets, not addon runtime)
-Screenshots/*.png
-Screenshots/*.jpg
-Screenshots/*.jpeg
+# Python bytecode (if any script is run from a tracked path)
+**/__pycache__/
+*.pyc
 
 # ---------------------------------------------------------------------------
-# Allowlist: only these paths are tracked (WoW addon payload).
-# Later rules win; keep this block last except for fine-grained re-ignores.
+# Allowlist: tracked paths only (addon payload).
 # ---------------------------------------------------------------------------
 /*
 !.gitignore
@@ -85,20 +66,23 @@ Screenshots/*.jpeg
 !Bindings.xml
 !LICENSE
 
-!/Modules/
-!/Modules/**
+!Modules/
+!Modules/**
 
-!/Locales/
-!/Locales/**
+!Locales/
+!Locales/**
 
-!/libs/
-!/libs/**
+# Dev-only (under Locales/)
+Locales/.locale_translate_cache.json
 
-!/Fonts/
-!/Fonts/**
+!libs/
+!libs/**
 
-!/Media/
-!/Media/**
+!Fonts/
+!Fonts/**
+
+!Media/
+!Media/**
 
 # Vendor meta (upstream Ace/lib changelogs — not runtime)
 libs/changelog.txt

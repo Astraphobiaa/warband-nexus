@@ -1753,12 +1753,31 @@ end
 ]]
 function WarbandNexus:RemovePlan(planID)
     -- Helper: search and remove from a plan list
+    local function resetTryCountsForRemovedPlan(plan)
+        if not plan or not self.ResetTryCount then return end
+        local t = plan.type
+        if t == "mount" and plan.mountID then
+            self:ResetTryCount("mount", plan.mountID)
+        elseif t == "pet" and plan.speciesID then
+            self:ResetTryCount("pet", plan.speciesID)
+        elseif t == "toy" and plan.itemID then
+            self:ResetTryCount("toy", plan.itemID)
+        elseif t == "illusion" then
+            if plan.sourceID then self:ResetTryCount("illusion", plan.sourceID) end
+            if plan.illusionID and plan.illusionID ~= plan.sourceID then
+                self:ResetTryCount("illusion", plan.illusionID)
+            end
+        end
+    end
+
     local function removeFromList(list, id, label)
         if not list then return false end
         for i = 1, #list do
             if list[i].id == id then
-                local name = list[i].name
-                local planType = list[i].type
+                local plan = list[i]
+                resetTryCountsForRemovedPlan(plan)
+                local name = plan.name
+                local planType = plan.type
                 table.remove(list, i)
                 self:RefreshPlanCache()
                 self:SendMessage(E.PLANS_UPDATED, {

@@ -1,15 +1,30 @@
 --[[
     Warband Nexus - Reminder Service
     Provides time-based and location-based reminders for To-Do plans.
-    
-    Trigger types:
-      - onDailyLogin:    First login each day
-      - onWeeklyReset:   First login after weekly reset
-      - daysBeforeReset: N days before weekly reset (5, 3, 1)
-      - onZoneEnter:     Entering a zone relevant to the plan source
-    
-    Data lives in plan.reminder = { enabled, triggers, lastShown, ... }
-    Global settings in db.global.reminderSettings
+
+    Canonical reminder triggers live in plan.reminder.triggers.entries (versioned table).
+    Legacy flat booleans (onDailyLogin, onWeeklyReset, …) stay synced for backward compatibility.
+
+    Trigger kinds:
+      - daily_login / weekly_reset / monthly_login / days_before_reset
+      - zone_enter (manual uiMapIDs + optional name/source hints; Set Alert always allows enabling zone)
+      - instance_enter (optional Blizzard instance ID + optional difficulty filter)
+
+    Zone enter: raw GetBestMapForUnit + parent-chain ancestry — configured parent uiMapID (e.g. Stormwind 84)
+    matches child micro-maps without listing every district. Delve floors still use alternateUIMapIDs collapse
+    only (picker parent walk is not used for matching). Stable zone key = walk up until any configured
+    reminder map id is hit, so moving inside the same parent does not re-fire zone_enter spam.
+
+    Zone/instance reminders apply to all matching plans (no per-plan location focus).
+
+    Login burst: PLAYER_ENTERING_WORLD runs calendar checks before zone/instance so session-start
+    triggers (daily/monthly/weekly/days-before) take precedence; zone/instance are suppressed for the
+    same plan for a short window after any calendar reminder activates.
+
+    Global settings in db.global.reminderSettings (throttleLocationReminders: opt-in throttle for zone/instance)
+
+    Calendar toasts (daily / monthly / weekly / days-before) from one OnLoginRemindersCheck pass: if more than
+    CALENDAR_REMINDER_TOAST_AGGREGATE_THRESHOLD fire, a single aggregated toast is shown instead of N popups.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -24,22 +39,84 @@ local ReminderEvents = {}
 -- ============================================================================
 
 local REMINDER_THROTTLE_SECONDS = 300
-local REMINDER_ICON = "minimap-genericevent-hornicon-small"
 local MAX_REMINDERS_PER_LOGIN = 5
 
+--- Calendar toasts (daily / weekly / monthly / days-before) coalesced when many fire in one login check.
+local CALENDAR_REMINDER_TOAST_AGGREGATE_THRESHOLD = 5
+-- When non-nil, ActivateReminder queues non-location toasts here; flushed at end of OnLoginRemindersCheck.
+local calendarToastBatch = nil
+
+--- After PLAYER_ENTERING_WORLD, suppress zone/instance for a plan if a calendar reminder already activated.
+local REMINDER_LOGIN_BURST_SECONDS = 15
+local loginBurstUntil = nil
+local loginBurstCalendarActivated = {}
+
+local function BeginReminderLoginBurst()
+    loginBurstUntil = GetTime() + REMINDER_LOGIN_BURST_SECONDS
+    wipe(loginBurstCalendarActivated)
+end
+
+local function PlanKeyForLoginBurst(plan)
+    if not plan or plan.id == nil then return nil end
+    return tostring(plan.id)
+end
+
+local function LoginBurstSuppressLocationReminder(plan)
+    if not loginBurstUntil then return false end
+    if GetTime() >= loginBurstUntil then return false end
+    local k = PlanKeyForLoginBurst(plan)
+    if not k then return false end
+    return loginBurstCalendarActivated[k] == true
+end
+
+local function LoginBurstMarkCalendarActivated(plan)
+    if not loginBurstUntil then return end
+    if GetTime() >= loginBurstUntil then return end
+    local k = PlanKeyForLoginBurst(plan)
+    if k then loginBurstCalendarActivated[k] = true end
+end
+
+local function GetReminderToastIconTexture()
+    return "minimap-genericevent-hornicon-small"
+end
+
+--- Prefer plan journal icon (fileID); fallback horn atlas for toast.
+local function GetPlanReminderToastIcon(plan)
+    if plan then
+        local fid = tonumber(plan.resolvedIcon) or tonumber(plan.icon)
+        if fid and fid > 0 then
+            return fid
+        end
+    end
+    return GetReminderToastIconTexture()
+end
+
 local TRIGGER_TYPES = {
-    DAILY_LOGIN     = "onDailyLogin",
-    WEEKLY_RESET    = "onWeeklyReset",
-    DAYS_BEFORE     = "daysBeforeReset",
-    ZONE_ENTER      = "onZoneEnter",
+    DAILY_LOGIN = "onDailyLogin",
+    WEEKLY_RESET = "onWeeklyReset",
+    MONTHLY_LOGIN = "onMonthlyLogin",
+    DAYS_BEFORE = "daysBeforeReset",
+    ZONE_ENTER = "onZoneEnter",
+    INSTANCE_ENTER = "onInstanceEnter",
+}
+
+--- Canonical serialized trigger kinds (plan.reminder.triggers.entries[].kind)
+local KIND = {
+    DAILY_LOGIN = "daily_login",
+    WEEKLY_RESET = "weekly_reset",
+    MONTHLY_LOGIN = "monthly_login",
+    DAYS_BEFORE_RESET = "days_before_reset",
+    ZONE_ENTER = "zone_enter",
+    INSTANCE_ENTER = "instance_enter",
 }
 
 ns.REMINDER_TRIGGER_TYPES = TRIGGER_TYPES
+ns.REMINDER_TRIGGER_KINDS = KIND
+
+local REMINDER_TRIGGERS_VERSION = 1
 
 -- ============================================================================
 -- DYNAMIC ZONE DISCOVERY (C_Map API)
--- Builds a zoneName -> {mapID = true} lookup from the entire map tree at
--- runtime so every zone, dungeon, and raid is covered without hardcoding.
 -- ============================================================================
 
 local ZONE_LOOKUP = nil
@@ -81,11 +158,10 @@ local function BuildZoneLookup()
 end
 
 -- ============================================================================
--- UTILITY: EXTRACT MAP IDS FROM PLAN SOURCE TEXT
--- Matches zone/dungeon/raid names discovered by C_Map against the plan's
--- source description and name.  Also expands matched maps to include their
--- parent zone so entering the outer zone (e.g. Azj-Kahet) still triggers a
--- reminder for a plan that mentions a dungeon inside it (e.g. Ara-Kara).
+-- MAP IDS FROM PLAN SOURCE / NAME (hints only — no Blizzard “required zone” API)
+-- Do not inject parentMapID closures here: adding e.g. Eastern Kingdoms (13) after matching
+-- “Stormwind City” makes ancestor-based zone_enter match every EK sub-zone (Silvermoon, etc.).
+-- Dungeon name hints likewise pulled in Silvermoon when the dungeon’s parent is that city.
 -- ============================================================================
 
 local function GetMapIDsFromPlanSource(plan)
@@ -95,10 +171,10 @@ local function GetMapIDsFromPlanSource(plan)
     if not next(lookup) then return nil end
 
     local sourceText = plan.resolvedSource or plan.source or ""
-    local nameText   = plan.resolvedName   or plan.name   or ""
+    local nameText = plan.resolvedName or plan.name or ""
     if issecretvalue and issecretvalue(sourceText) then sourceText = "" end
     if issecretvalue and issecretvalue(nameText) then nameText = "" end
-    local combined   = (sourceText .. " " .. nameText):lower()
+    local combined = (sourceText .. " " .. nameText):lower()
 
     if combined:gsub("%s", "") == "" then return nil end
 
@@ -113,31 +189,201 @@ local function GetMapIDsFromPlanSource(plan)
 
     if not next(matchedMapIDs) then return nil end
 
-    -- Expand: include parent zones of matched maps so the reminder also
-    -- fires when entering the zone that contains the dungeon/raid.
-    if C_Map and C_Map.GetMapInfo then
-        local parents = {}
-        for mapID in pairs(matchedMapIDs) do
-            local info = C_Map.GetMapInfo(mapID)
-            if info and info.parentMapID and info.parentMapID > 0 then
-                parents[info.parentMapID] = true
-            end
-        end
-        for parentID in pairs(parents) do
-            matchedMapIDs[parentID] = true
-        end
-    end
-
     return matchedMapIDs
 end
 
 -- ============================================================================
--- REMINDER DATA HELPERS
+-- TRIGGER TABLE HELPERS
+-- ============================================================================
+
+local function EnsureTriggersStructure(r)
+    if not r.triggers or type(r.triggers) ~= "table" then
+        r.triggers = { version = REMINDER_TRIGGERS_VERSION, entries = {} }
+    end
+    r.triggers.version = r.triggers.version or REMINDER_TRIGGERS_VERSION
+    if type(r.triggers.entries) ~= "table" then
+        r.triggers.entries = {}
+    end
+end
+
+--- Merge manual uiMapIDs, optional serialized map hash, and optional plan source/name hints.
+local function CollectZoneMapIDsFromEntry(plan, entry)
+    local merged = {}
+    if not entry then return merged end
+    if entry.manualMapIDs then
+        for mi = 1, #entry.manualMapIDs do
+            local id = tonumber(entry.manualMapIDs[mi])
+            if id then merged[id] = true end
+        end
+    end
+    if entry.mapIDs and type(entry.mapIDs) == "table" then
+        for mid in pairs(entry.mapIDs) do
+            local id = tonumber(mid)
+            if id then merged[id] = true end
+        end
+    end
+    if plan and entry.useSourceHints ~= false then
+        local hinted = GetMapIDsFromPlanSource(plan)
+        if hinted then
+            for mid in pairs(hinted) do
+                merged[mid] = true
+            end
+        end
+    end
+    return merged
+end
+
+local function SortDaysCopy(days)
+    local out = {}
+    if not days then return out end
+    for i = 1, #days do
+        local d = tonumber(days[i])
+        if d then out[#out + 1] = d end
+    end
+    table.sort(out, function(a, b) return a > b end)
+    return out
+end
+
+local function MigrateReminderTriggersFromLegacy(plan)
+    local r = plan.reminder
+    if not r or r._reminderTriggersV1 then return end
+
+    EnsureTriggersStructure(r)
+
+    if #r.triggers.entries > 0 then
+        r._reminderTriggersV1 = true
+        return
+    end
+
+    local entries = {}
+
+    if r.onDailyLogin then
+        entries[#entries + 1] = { kind = KIND.DAILY_LOGIN, enabled = true }
+    end
+    if r.onWeeklyReset then
+        entries[#entries + 1] = { kind = KIND.WEEKLY_RESET, enabled = true }
+    end
+    if r.onMonthlyLogin then
+        entries[#entries + 1] = { kind = KIND.MONTHLY_LOGIN, enabled = true }
+    end
+
+    local dCopy = SortDaysCopy(r.daysBeforeReset)
+    if #dCopy > 0 then
+        entries[#entries + 1] = { kind = KIND.DAYS_BEFORE_RESET, enabled = true, days = dCopy }
+    end
+
+    if r.onZoneEnter then
+        local manual = {}
+        if r.mapIDs then
+            for mid in pairs(r.mapIDs) do
+                local n = tonumber(mid)
+                if n then manual[#manual + 1] = n end
+            end
+            table.sort(manual)
+        end
+        entries[#entries + 1] = {
+            kind = KIND.ZONE_ENTER,
+            enabled = true,
+            useSourceHints = true,
+            manualMapIDs = manual,
+        }
+    end
+
+    if r.onInstanceEnter and r.instanceReminder then
+        local ir = r.instanceReminder
+        local iid = ir.instanceID and tonumber(ir.instanceID)
+        if iid then
+            entries[#entries + 1] = {
+                kind = KIND.INSTANCE_ENTER,
+                enabled = true,
+                instanceID = iid,
+                difficultyID = ir.difficultyID ~= nil and tonumber(ir.difficultyID) or nil,
+            }
+        end
+    end
+
+    r.triggers.entries = entries
+    r._reminderTriggersV1 = true
+end
+
+local function SyncLegacyFromTriggers(plan)
+    local r = plan and plan.reminder
+    if not r then return end
+    EnsureTriggersStructure(r)
+    r.onDailyLogin = false
+    r.onWeeklyReset = false
+    r.onMonthlyLogin = false
+    r.onZoneEnter = false
+    r.onInstanceEnter = false
+    r.daysBeforeReset = {}
+    r.mapIDs = nil
+    r.instanceReminder = nil
+
+    for i = 1, #r.triggers.entries do
+        local e = r.triggers.entries[i]
+        if not e or not e.enabled then
+            -- skip
+        elseif e.kind == KIND.DAILY_LOGIN then
+            r.onDailyLogin = true
+        elseif e.kind == KIND.WEEKLY_RESET then
+            r.onWeeklyReset = true
+        elseif e.kind == KIND.MONTHLY_LOGIN then
+            r.onMonthlyLogin = true
+        elseif e.kind == KIND.ZONE_ENTER then
+            r.onZoneEnter = true
+            local merged = CollectZoneMapIDsFromEntry(plan, e)
+            if merged and next(merged) then
+                r.mapIDs = merged
+            end
+        elseif e.kind == KIND.INSTANCE_ENTER then
+            r.onInstanceEnter = true
+            r.instanceReminder = {
+                instanceID = tonumber(e.instanceID),
+                difficultyID = e.difficultyID ~= nil and tonumber(e.difficultyID) or nil,
+            }
+        elseif e.kind == KIND.DAYS_BEFORE_RESET and type(e.days) == "table" then
+            r.daysBeforeReset = SortDaysCopy(e.days)
+        end
+    end
+end
+
+local function FindTriggerEntry(r, kind)
+    EnsureTriggersStructure(r)
+    for i = 1, #r.triggers.entries do
+        local e = r.triggers.entries[i]
+        if e and e.kind == kind then return e end
+    end
+    return nil
+end
+
+local function UpsertTriggerEntry(r, entry)
+    EnsureTriggersStructure(r)
+    local idx = nil
+    for i = 1, #r.triggers.entries do
+        if r.triggers.entries[i].kind == entry.kind then
+            idx = i
+            break
+        end
+    end
+    if idx then
+        r.triggers.entries[idx] = entry
+    else
+        r.triggers.entries[#r.triggers.entries + 1] = entry
+    end
+end
+
+-- ============================================================================
+-- SETTINGS / DATA HELPERS
 -- ============================================================================
 
 local function GetReminderSettings()
     if not WarbandNexus.db or not WarbandNexus.db.global then return nil end
     return WarbandNexus.db.global.reminderSettings
+end
+
+local function PlanAllowsLocationReminder(plan)
+    if not plan then return false end
+    return true
 end
 
 local function EnsureReminderField(plan)
@@ -146,13 +392,17 @@ local function EnsureReminderField(plan)
             enabled = false,
             onDailyLogin = false,
             onWeeklyReset = false,
+            onMonthlyLogin = false,
             daysBeforeReset = {},
             onZoneEnter = false,
+            onInstanceEnter = false,
             lastShown = {},
         }
     end
     plan.reminder.lastShown = plan.reminder.lastShown or {}
     plan.reminder.daysBeforeReset = plan.reminder.daysBeforeReset or {}
+    MigrateReminderTriggersFromLegacy(plan)
+    SyncLegacyFromTriggers(plan)
     return plan.reminder
 end
 
@@ -163,20 +413,75 @@ end
 function WarbandNexus:SetPlanReminder(planID, settings)
     local plan = self:GetPlanByID(planID)
     if not plan then return false end
-    
+
     local r = EnsureReminderField(plan)
     r.enabled = true
-    
+
+    if settings and settings.replaceTriggers and type(settings.entries) == "table" then
+        EnsureTriggersStructure(r)
+        r.triggers.entries = settings.entries
+        r._reminderTriggersV1 = true
+        SyncLegacyFromTriggers(plan)
+        self:SendMessage(E.PLANS_UPDATED, { action = "reminder_changed", planID = planID })
+        return true
+    end
+
     if settings then
         if settings.onDailyLogin ~= nil then r.onDailyLogin = settings.onDailyLogin end
         if settings.onWeeklyReset ~= nil then r.onWeeklyReset = settings.onWeeklyReset end
+        if settings.onMonthlyLogin ~= nil then r.onMonthlyLogin = settings.onMonthlyLogin end
         if settings.daysBeforeReset then r.daysBeforeReset = settings.daysBeforeReset end
-        if settings.onZoneEnter ~= nil then
-            r.onZoneEnter = settings.onZoneEnter
+        if settings.onZoneEnter ~= nil then r.onZoneEnter = settings.onZoneEnter end
+        if settings.onInstanceEnter ~= nil then r.onInstanceEnter = settings.onInstanceEnter end
+        if settings.instanceReminder ~= nil then r.instanceReminder = settings.instanceReminder end
+        if settings.onZoneEnter ~= nil and settings.onZoneEnter == false then
             r.mapIDs = nil
         end
     end
-    
+
+    EnsureTriggersStructure(r)
+    r.triggers.entries = {}
+    if r.onDailyLogin then UpsertTriggerEntry(r, { kind = KIND.DAILY_LOGIN, enabled = true }) end
+    if r.onWeeklyReset then UpsertTriggerEntry(r, { kind = KIND.WEEKLY_RESET, enabled = true }) end
+    if r.onMonthlyLogin then UpsertTriggerEntry(r, { kind = KIND.MONTHLY_LOGIN, enabled = true }) end
+    local dSorted = SortDaysCopy(r.daysBeforeReset)
+    if #dSorted > 0 then
+        UpsertTriggerEntry(r, { kind = KIND.DAYS_BEFORE_RESET, enabled = true, days = dSorted })
+    end
+    if r.onZoneEnter then
+        local manual = {}
+        if settings and type(settings.zoneManualMapIDs) == "table" then
+            for i = 1, #settings.zoneManualMapIDs do
+                local id = tonumber(settings.zoneManualMapIDs[i])
+                if id then manual[#manual + 1] = id end
+            end
+            table.sort(manual)
+        elseif r.mapIDs then
+            for mid in pairs(r.mapIDs) do
+                local id = tonumber(mid)
+                if id then manual[#manual + 1] = id end
+            end
+            table.sort(manual)
+        end
+        UpsertTriggerEntry(r, {
+            kind = KIND.ZONE_ENTER,
+            enabled = true,
+            useSourceHints = settings and settings.zoneUseSourceHints ~= false,
+            manualMapIDs = manual,
+        })
+    end
+    if r.onInstanceEnter and r.instanceReminder and tonumber(r.instanceReminder.instanceID) then
+        UpsertTriggerEntry(r, {
+            kind = KIND.INSTANCE_ENTER,
+            enabled = true,
+            instanceID = tonumber(r.instanceReminder.instanceID),
+            difficultyID = r.instanceReminder.difficultyID ~= nil and tonumber(r.instanceReminder.difficultyID) or nil,
+        })
+    end
+
+    r._reminderTriggersV1 = true
+    SyncLegacyFromTriggers(plan)
+
     self:SendMessage(E.PLANS_UPDATED, { action = "reminder_changed", planID = planID })
     return true
 end
@@ -184,8 +489,29 @@ end
 function WarbandNexus:RemovePlanReminder(planID)
     local plan = self:GetPlanByID(planID)
     if not plan or not plan.reminder then return false end
-    
-    plan.reminder.enabled = false
+
+    local r = plan.reminder
+    r.enabled = false
+    r.activeReminders = nil
+    r.lastShown = {}
+    r.onDailyLogin = false
+    r.onWeeklyReset = false
+    r.onMonthlyLogin = false
+    r.daysBeforeReset = {}
+    r.onZoneEnter = false
+    r.onInstanceEnter = false
+    r.mapIDs = nil
+    r.instanceReminder = nil
+    EnsureTriggersStructure(r)
+    r.triggers.entries = {}
+    r._reminderTriggersV1 = true
+    SyncLegacyFromTriggers(plan)
+
+    local prof = self.db and self.db.profile
+    if prof and prof.plansReminderFocusPlanID == planID then
+        prof.plansReminderFocusPlanID = nil
+    end
+
     self:SendMessage(E.PLANS_UPDATED, { action = "reminder_changed", planID = planID })
     return true
 end
@@ -193,7 +519,7 @@ end
 function WarbandNexus:TogglePlanReminder(planID)
     local plan = self:GetPlanByID(planID)
     if not plan then return false end
-    
+
     local r = EnsureReminderField(plan)
     r.enabled = not r.enabled
     self:SendMessage(E.PLANS_UPDATED, { action = "reminder_changed", planID = planID })
@@ -203,12 +529,14 @@ end
 function WarbandNexus:HasPlanReminder(planID)
     local plan = self:GetPlanByID(planID)
     if not plan or not plan.reminder then return false end
+    EnsureReminderField(plan)
     return plan.reminder.enabled == true
 end
 
 function WarbandNexus:GetPlanReminderSettings(planID)
     local plan = self:GetPlanByID(planID)
     if not plan then return nil end
+    EnsureReminderField(plan)
     return plan.reminder
 end
 
@@ -231,27 +559,153 @@ function WarbandNexus:DismissReminders(planID)
 end
 
 -- ============================================================================
--- ACTIVE REMINDER STATE (progress-based, no popup notifications)
+-- ACTIVE REMINDER STATE
 -- ============================================================================
 
-local function ActivateReminder(plan, triggerLabel)
+local function SafePlanToastTitle(plan)
+    if not plan then
+        return (ns.L and ns.L["TAB_PLANS"]) or "To-Do"
+    end
+    local name = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan))
+        or plan.resolvedName
+        or plan.name
+    if not name or (issecretvalue and issecretvalue(name)) then
+        return (ns.L and ns.L["TAB_PLANS"]) or "To-Do"
+    end
+    return name
+end
+
+--- Single plan reminder toast (zone/instance or calendar). Respects notification settings.
+---@param fromLocation boolean When true, omit action line (zone/instance compact layout).
+local function SendPlanReminderToast(plan, triggerLabel, fromLocation)
+    local prof = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    if not prof or not prof.enabled or prof.showPlanReminderToast == false then return end
+    local planTitle = SafePlanToastTitle(plan)
+    local toastData = {
+        compact = true,
+        planReminderToast = true,
+        criteriaTitle = (ns.L and ns.L["REMINDER_TOAST_TITLE"]) or "To-Do reminder",
+        itemName = planTitle,
+        icon = GetPlanReminderToastIcon(plan),
+        playSound = true,
+        autoDismiss = 3,
+    }
+    if not fromLocation then
+        local safeMsg = triggerLabel
+        if safeMsg and issecretvalue and issecretvalue(safeMsg) then
+            safeMsg = nil
+        end
+        if safeMsg and safeMsg ~= "" then
+            toastData.action = safeMsg
+        end
+    end
+    WarbandNexus:SendMessage(E.SHOW_REMINDER_TOAST, { data = toastData })
+end
+
+local function BeginCalendarToastBatch()
+    calendarToastBatch = {}
+end
+
+local function FlushCalendarToastBatch()
+    if not calendarToastBatch or #calendarToastBatch == 0 then
+        calendarToastBatch = nil
+        return
+    end
+    local batch = calendarToastBatch
+    calendarToastBatch = nil
+
+    local prof = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    if not prof or not prof.enabled or prof.showPlanReminderToast == false then
+        return
+    end
+
+    if #batch <= CALENDAR_REMINDER_TOAST_AGGREGATE_THRESHOLD then
+        for i = 1, #batch do
+            SendPlanReminderToast(batch[i].plan, batch[i].triggerLabel, false)
+        end
+        return
+    end
+
+    local L = ns.L
+    local n = #batch
+    local bodyFmt = (L and L["REMINDER_AGGREGATE_CALENDAR_BODY"]) or "You have %d to-do reminders."
+    local body = string.format(bodyFmt, n)
+    local toastData = {
+        compact = true,
+        planReminderToast = true,
+        criteriaTitle = (L and L["REMINDER_TOAST_TITLE"]) or "To-Do reminder",
+        itemName = (L and L["REMINDER_AGGREGATE_CALENDAR_TITLE"]) or "Multiple reminders",
+        icon = GetReminderToastIconTexture(),
+        playSound = true,
+        autoDismiss = 4,
+        action = body,
+    }
+    WarbandNexus:SendMessage(E.SHOW_REMINDER_TOAST, { data = toastData })
+end
+
+---@param opts table|nil repeatLocationNotify: bypass active-reminder dedupe + max list cap so zone/instance can toast every entry; throttle still gated separately via reminderSettings.
+---@param opts.fromLocation boolean zone/instance triggers; suppressed during login burst if calendar already activated for this plan.
+local function ActivateReminder(plan, triggerLabel, opts)
+    opts = opts or {}
     if not plan or not plan.reminder then return end
+
+    local fromLocation = opts.fromLocation == true
+    if fromLocation and LoginBurstSuppressLocationReminder(plan) then
+        return
+    end
+
     plan.reminder.activeReminders = plan.reminder.activeReminders or {}
 
+    local repeatLoc = opts.repeatLocationNotify == true
+
+    local isDup = false
     for i = 1, #plan.reminder.activeReminders do
         if plan.reminder.activeReminders[i] == triggerLabel then
-            return
+            isDup = true
+            break
         end
     end
 
-    if #plan.reminder.activeReminders >= MAX_REMINDERS_PER_LOGIN then return end
+    if isDup and not repeatLoc then
+        return
+    end
 
-    plan.reminder.activeReminders[#plan.reminder.activeReminders + 1] = triggerLabel
+    if not isDup then
+        if #plan.reminder.activeReminders >= MAX_REMINDERS_PER_LOGIN then
+            if not repeatLoc then
+                return
+            end
+        else
+            plan.reminder.activeReminders[#plan.reminder.activeReminders + 1] = triggerLabel
+        end
+    end
+
+    if not fromLocation then
+        LoginBurstMarkCalendarActivated(plan)
+    end
 
     WarbandNexus:SendMessage(E.PLANS_UPDATED, {
         action = "reminder_activated",
         planID = plan.id,
     })
+
+    WarbandNexus:SendMessage(E.REMINDER_ACTIVATED, {
+        planID = plan.id,
+        triggerLabel = triggerLabel,
+    })
+
+    if fromLocation then
+        SendPlanReminderToast(plan, triggerLabel, true)
+    else
+        local prof = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+        if prof and prof.enabled and prof.showPlanReminderToast ~= false then
+            if calendarToastBatch then
+                calendarToastBatch[#calendarToastBatch + 1] = { plan = plan, triggerLabel = triggerLabel }
+            else
+                SendPlanReminderToast(plan, triggerLabel, false)
+            end
+        end
+    end
 end
 
 -- ============================================================================
@@ -260,18 +714,22 @@ end
 
 local function CanShowReminder(plan, triggerKey)
     if not plan or not plan.reminder or not plan.reminder.lastShown then return true end
-    
+
     local lastShown = plan.reminder.lastShown[triggerKey] or 0
     if lastShown == 0 then return true end
-    
-    -- Date-stamped keys (daily_YYYYMMDD, days_N_YYYYMMDD) are once-per-day flags:
-    -- if the key was ever set, it already fired today — block until the date rolls over
-    -- (the caller generates a new key each day, so stale entries are naturally skipped)
-    if triggerKey:find("^daily_") or triggerKey:find("^days_") then
+
+    if triggerKey:find("^daily_") or triggerKey:find("^days_") or triggerKey:find("^monthly_") then
         return false
     end
-    
-    -- Zone and other triggers use the configurable throttle
+
+    -- Zone / instance: show every matching entry unless user explicitly enables location throttling.
+    if triggerKey:find("^zone_") or triggerKey:find("^inst_") then
+        local settings = GetReminderSettings()
+        if not settings or settings.throttleLocationReminders ~= true then
+            return true
+        end
+    end
+
     local settings = GetReminderSettings()
     local throttle = (settings and settings.throttleSeconds) or REMINDER_THROTTLE_SECONDS
     return (time() - lastShown) >= throttle
@@ -286,11 +744,17 @@ end
 local function CleanStaleReminderKeys(plan)
     if not plan or not plan.reminder or not plan.reminder.lastShown then return end
     local today = date("%Y%m%d")
+    local thisMonth = date("%Y%m")
     local toRemove = {}
     for key in pairs(plan.reminder.lastShown) do
         if key:find("^daily_") or key:find("^days_") then
             local keyDate = key:match("(%d%d%d%d%d%d%d%d)$")
             if keyDate and keyDate ~= today then
+                toRemove[#toRemove + 1] = key
+            end
+        elseif key:find("^monthly_") then
+            local keyYm = key:match("^monthly_(%d%d%d%d%d%d)$")
+            if keyYm and keyYm ~= thisMonth then
                 toRemove[#toRemove + 1] = key
             end
         end
@@ -301,21 +765,21 @@ local function CleanStaleReminderKeys(plan)
 end
 
 -- ============================================================================
--- CHECK: DAILY LOGIN REMINDERS
+-- CHECK: DAILY / MONTHLY LOGIN REMINDERS
 -- ============================================================================
 
 local function CheckDailyLoginReminders()
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
-    
+
     local settings = GetReminderSettings()
     if settings and not settings.enabled then return end
-    
+
     local L = ns.L
     local triggerLabel = (L and L["REMINDER_DAILY_LOGIN"]) or "Daily Login"
-    
+
     local today = date("%Y%m%d")
     local triggerKey = "daily_" .. today
-    
+
     local function processPlans(planList)
         if not planList then return end
         for i = 1, #planList do
@@ -331,7 +795,40 @@ local function CheckDailyLoginReminders()
             end
         end
     end
-    
+
+    processPlans(WarbandNexus.db.global.plans)
+    processPlans(WarbandNexus.db.global.customPlans)
+end
+
+local function CheckMonthlyLoginReminders()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+
+    local settings = GetReminderSettings()
+    if settings and not settings.enabled then return end
+
+    local L = ns.L
+    local triggerLabel = (L and L["REMINDER_MONTHLY_LOGIN"]) or "Monthly login"
+
+    local ym = date("%Y%m")
+    local triggerKey = "monthly_" .. ym
+
+    local function processPlans(planList)
+        if not planList then return end
+        for i = 1, #planList do
+            local plan = planList[i]
+            EnsureReminderField(plan)
+            if plan.reminder and plan.reminder.enabled and plan.reminder.onMonthlyLogin then
+                CleanStaleReminderKeys(plan)
+                if not plan.completed then
+                    if CanShowReminder(plan, triggerKey) then
+                        MarkReminderShown(plan, triggerKey)
+                        ActivateReminder(plan, triggerLabel)
+                    end
+                end
+            end
+        end
+    end
+
     processPlans(WarbandNexus.db.global.plans)
     processPlans(WarbandNexus.db.global.customPlans)
 end
@@ -342,16 +839,16 @@ end
 
 local function CheckWeeklyResetReminders()
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
-    
+
     local settings = GetReminderSettings()
     if settings and not settings.enabled then return end
-    
+
     local L = ns.L
     local triggerLabel = (L and L["REMINDER_WEEKLY_RESET"]) or "Weekly Reset"
-    
+
     local hasWeeklyResetOccurred = WarbandNexus.HasWeeklyResetOccurredSince
     if not hasWeeklyResetOccurred then return end
-    
+
     local function processPlans(planList)
         if not planList then return end
         for i = 1, #planList do
@@ -367,7 +864,7 @@ local function CheckWeeklyResetReminders()
             end
         end
     end
-    
+
     processPlans(WarbandNexus.db.global.plans)
     processPlans(WarbandNexus.db.global.customPlans)
 end
@@ -378,21 +875,21 @@ end
 
 local function CheckDaysBeforeResetReminders()
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
-    
+
     local settings = GetReminderSettings()
     if settings and not settings.enabled then return end
-    
+
     local resetTime = WarbandNexus:GetWeeklyResetTime()
     if not resetTime then return end
-    
+
     local now = time()
     local secondsUntilReset = resetTime - now
     if secondsUntilReset <= 0 then return end
-    
+
     local daysUntilReset = math.ceil(secondsUntilReset / 86400)
-    
+
     local L = ns.L
-    
+
     local function processPlans(planList)
         if not planList then return end
         for i = 1, #planList do
@@ -419,54 +916,286 @@ local function CheckDaysBeforeResetReminders()
             end
         end
     end
-    
+
     processPlans(WarbandNexus.db.global.plans)
     processPlans(WarbandNexus.db.global.customPlans)
 end
 
 -- ============================================================================
--- CHECK: ZONE-BASED REMINDERS
+-- INSTANCE HELPERS (secret-safe)
 -- ============================================================================
 
-local lastCheckedMapID = nil
+local function SafeIsInInstance()
+    local ok, a = pcall(IsInInstance)
+    if not ok then return false end
+    if a ~= nil and issecretvalue and issecretvalue(a) then return false end
+    return a == true
+end
 
-local function CheckZoneReminders(currentMapID)
-    if not currentMapID or currentMapID == 0 then return end
-    if currentMapID == lastCheckedMapID then return end
-    lastCheckedMapID = currentMapID
+local function SafeGetInstanceInfo()
+    local ok, name, instType, difficultyID, difficultyName, maxPlayers, dynamicDifficulty, isDynamic, instanceID, instanceGUID, flags = pcall(GetInstanceInfo)
+    if not ok then return nil end
+    if name ~= nil and issecretvalue and issecretvalue(name) then
+        name = nil
+    end
+    if difficultyID ~= nil and issecretvalue and issecretvalue(difficultyID) then
+        difficultyID = nil
+    else
+        difficultyID = tonumber(difficultyID)
+    end
+    instanceID = tonumber(instanceID)
+    return {
+        name = name,
+        instanceType = tonumber(instType),
+        difficultyID = difficultyID,
+        instanceID = instanceID,
+    }
+end
 
+-- Zone uiMapID helpers before CheckZoneReminders (Lua 5.1: later `local function` is not visible above).
+
+--- uiMapID → localized map name (nil if unknown / secret).
+local function SafeUIMapDisplayName(mapID)
+    local id = tonumber(mapID)
+    if not id or id <= 0 then return nil end
+    if not C_Map or not C_Map.GetMapInfo then return nil end
+    local ok, info = pcall(C_Map.GetMapInfo, id)
+    if not ok or not info then return nil end
+    local name = info.name
+    if not name or name == "" then return nil end
+    if issecretvalue and issecretvalue(name) then return nil end
+    return name
+end
+
+--- Raw player uiMapID for zone reminders (no picker normalization — avoids district vs capital mismatch).
+local function SafeGetRawPlayerUIMapID()
+    if not C_Map or not C_Map.GetBestMapForUnit then return nil end
+    local ok, mapID = pcall(C_Map.GetBestMapForUnit, "player")
+    if not ok or mapID == nil then return nil end
+    if issecretvalue and issecretvalue(mapID) then return nil end
+    mapID = tonumber(mapID)
+    if not mapID or mapID <= 0 then return nil end
+    return mapID
+end
+
+local function SafeParentUIMapIDForReminders(mid)
+    if not mid or mid <= 0 then return nil end
+    if not C_Map or not C_Map.GetMapInfo then return nil end
+    local ok, info = pcall(C_Map.GetMapInfo, mid)
+    if not ok or not info then return nil end
+    local p = info.parentMapID
+    if p == nil or p == 0 then return nil end
+    if issecretvalue and issecretvalue(p) then return nil end
+    p = tonumber(p)
+    if not p or p <= 0 then return nil end
+    return p
+end
+
+--- True if descendantId equals ancestorId or ancestorId appears on parent walk from descendantId.
+local function MapIsUnderAncestor(descendantId, ancestorId)
+    local target = tonumber(ancestorId)
+    local cur = tonumber(descendantId)
+    if not target or not cur then return false end
+    local guard = 0
+    while cur and cur > 0 and guard < 64 do
+        guard = guard + 1
+        if cur == target then return true end
+        cur = SafeParentUIMapIDForReminders(cur)
+    end
+    return false
+end
+
+--- Union of all uiMapIDs on enabled zone_enter triggers (manual + serialized row maps + name hints only).
+--- Hint expansion intentionally excludes parent chains — see GetMapIDsFromPlanSource.
+local function BuildAllConfiguredZoneIdsUnion()
+    local u = {}
+    if not WarbandNexus.db or not WarbandNexus.db.global then return u end
+    local function scan(planList)
+        if not planList then return end
+        for i = 1, #planList do
+            local plan = planList[i]
+            EnsureReminderField(plan)
+            if plan.reminder and plan.reminder.enabled and plan.reminder.onZoneEnter and not plan.completed then
+                local ze = FindTriggerEntry(plan.reminder, KIND.ZONE_ENTER)
+                if ze and ze.enabled ~= false then
+                    local mapIDs = CollectZoneMapIDsFromEntry(plan, ze)
+                    if mapIDs then
+                        for mid, _ in pairs(mapIDs) do
+                            local id = tonumber(mid)
+                            if id then u[id] = true end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    scan(WarbandNexus.db.global.plans)
+    scan(WarbandNexus.db.global.customPlans)
+    return u
+end
+
+--- First configured reminder map encountered walking up from raw player map (alt-collapse only first).
+--- Constant while flying within the same configured parent (e.g. all Stormwind districts → stable 84).
+local function StableReminderZoneKey(rawMapID, configuredUnion)
+    local r = tonumber(rawMapID)
+    if not r or r <= 0 then return nil end
+    local RCI = ns.ReminderContentIndex
+    if RCI and RCI.CollapseAlternateUIMapOnly then
+        local cr = RCI.CollapseAlternateUIMapOnly(r)
+        if cr then r = cr end
+    end
+    if configuredUnion[r] then return r end
+    local cur = r
+    local guard = 0
+    while cur and cur > 0 and guard < 64 do
+        guard = guard + 1
+        if configuredUnion[cur] then return cur end
+        cur = SafeParentUIMapIDForReminders(cur)
+    end
+    return r
+end
+
+--- Zone reminders: alternate collapse (delves) + equality or configured map is strict ancestor of player map.
+local function ZoneConfiguredMatchesCurrentMap(mapIDs, rawCurrentMapID)
+    if not mapIDs or not rawCurrentMapID then return false end
+    local cur = tonumber(rawCurrentMapID)
+    if not cur or cur <= 0 then return false end
+    local RCI = ns.ReminderContentIndex
+    if RCI and RCI.CollapseAlternateUIMapOnly then
+        local cr = RCI.CollapseAlternateUIMapOnly(cur)
+        if cr then cur = cr end
+    end
+    for mid, _ in pairs(mapIDs) do
+        local s = tonumber(mid)
+        if s then
+            if RCI and RCI.CollapseAlternateUIMapOnly then
+                local cs = RCI.CollapseAlternateUIMapOnly(s)
+                if cs then s = cs end
+            end
+            if s == cur then return true end
+            if MapIsUnderAncestor(cur, s) then return true end
+        end
+    end
+    return false
+end
+
+local lastStableReminderZoneKey = nil
+local lastInstanceFingerprint = nil
+
+local function CheckZoneReminders(rawMapID)
+    if not rawMapID or rawMapID == 0 then return end
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
 
     local settings = GetReminderSettings()
-    if settings and not settings.enabled then return end
+    if settings and not settings.enabled then
+        lastStableReminderZoneKey = nil
+        return
+    end
+
+    local configuredUnion = BuildAllConfiguredZoneIdsUnion()
+    if not next(configuredUnion) then
+        lastStableReminderZoneKey = nil
+        return
+    end
+
+    local stable = StableReminderZoneKey(rawMapID, configuredUnion)
+    if not stable then return end
+    if stable == lastStableReminderZoneKey then return end
+    lastStableReminderZoneKey = stable
 
     local L = ns.L
-    local currentZoneInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(currentMapID)
-    local currentZoneName = currentZoneInfo and currentZoneInfo.name or tostring(currentMapID)
+    local displayZoneName = tostring(rawMapID)
+    if C_Map and C_Map.GetMapInfo then
+        local okZ, currentZoneInfo = pcall(C_Map.GetMapInfo, rawMapID)
+        if okZ and currentZoneInfo and currentZoneInfo.name
+            and not (issecretvalue and issecretvalue(currentZoneInfo.name)) then
+            displayZoneName = currentZoneInfo.name
+        end
+    end
 
     local function processPlans(planList)
         if not planList then return end
         for i = 1, #planList do
             local plan = planList[i]
-            if plan and plan.reminder and plan.reminder.enabled and plan.reminder.onZoneEnter then
-                if not plan.completed then
-                    local mapIDs = plan.reminder.mapIDs
-                    if not mapIDs then
-                        mapIDs = GetMapIDsFromPlanSource(plan)
-                        if mapIDs then
-                            plan.reminder.mapIDs = mapIDs
+            EnsureReminderField(plan)
+            if plan.reminder and plan.reminder.enabled and plan.reminder.onZoneEnter then
+                if not PlanAllowsLocationReminder(plan) then
+                    -- skip location triggers when focus is set to another plan
+                elseif not plan.completed then
+                    local ze = FindTriggerEntry(plan.reminder, KIND.ZONE_ENTER)
+                    if ze and ze.enabled ~= false then
+                        local mapIDs = CollectZoneMapIDsFromEntry(plan, ze)
+                        if mapIDs and next(mapIDs) ~= nil and ZoneConfiguredMatchesCurrentMap(mapIDs, rawMapID) then
+                            local triggerKey = "zone_" .. tostring(stable)
+                            if CanShowReminder(plan, triggerKey) then
+                                if not LoginBurstSuppressLocationReminder(plan) then
+                                    MarkReminderShown(plan, triggerKey)
+                                    local label = string.format(
+                                        (L and L["REMINDER_ZONE_ENTER"]) or "Entered %s",
+                                        displayZoneName
+                                    )
+                                    ActivateReminder(plan, label, { repeatLocationNotify = true, fromLocation = true })
+                                end
+                            end
                         end
                     end
+                end
+            end
+        end
+    end
 
-                    if mapIDs and mapIDs[currentMapID] then
-                        local triggerKey = "zone_" .. currentMapID
-                        if CanShowReminder(plan, triggerKey) then
-                            MarkReminderShown(plan, triggerKey)
-                            local label = string.format(
-                                (L and L["REMINDER_ZONE_ENTER"]) or "Entered %s",
-                                currentZoneName
-                            )
-                            ActivateReminder(plan, label)
+    processPlans(WarbandNexus.db.global.plans)
+    processPlans(WarbandNexus.db.global.customPlans)
+end
+
+local function CheckInstanceReminders()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+
+    local settings = GetReminderSettings()
+    if settings and not settings.enabled then return end
+
+    if not SafeIsInInstance() then
+        lastInstanceFingerprint = nil
+        return
+    end
+
+    local info = SafeGetInstanceInfo()
+    if not info or not info.instanceID then return end
+
+    local fingerprint = tostring(info.instanceID) .. "_" .. tostring(info.difficultyID or "any")
+    if fingerprint == lastInstanceFingerprint then return end
+    lastInstanceFingerprint = fingerprint
+
+    local L = ns.L
+    local displayName = info.name
+    if not displayName or displayName == "" then
+        displayName = (L and L["REMINDER_INSTANCE_GENERIC"]) or "Dungeon or raid"
+    end
+
+    local function processPlans(planList)
+        if not planList then return end
+        for i = 1, #planList do
+            local plan = planList[i]
+            EnsureReminderField(plan)
+            if plan.reminder and plan.reminder.enabled and plan.reminder.onInstanceEnter then
+                if not PlanAllowsLocationReminder(plan) then
+                    -- skip
+                elseif not plan.completed then
+                    local ie = FindTriggerEntry(plan.reminder, KIND.INSTANCE_ENTER)
+                    if ie and ie.enabled and tonumber(ie.instanceID) == info.instanceID then
+                        local wantDiff = ie.difficultyID ~= nil and tonumber(ie.difficultyID) or nil
+                        if wantDiff == nil or wantDiff == info.difficultyID then
+                            local triggerKey = "inst_" .. tostring(info.instanceID) .. "_" .. tostring(info.difficultyID or "any")
+                            if CanShowReminder(plan, triggerKey) then
+                                if not LoginBurstSuppressLocationReminder(plan) then
+                                    MarkReminderShown(plan, triggerKey)
+                                    local label = string.format(
+                                        (L and L["REMINDER_INSTANCE_ENTER"]) or "Entered instance (%s)",
+                                        displayName
+                                    )
+                                    ActivateReminder(plan, label, { repeatLocationNotify = true, fromLocation = true })
+                                end
+                            end
                         end
                     end
                 end
@@ -482,19 +1211,35 @@ end
 -- EVENT HANDLERS
 -- ============================================================================
 
-local function OnZoneChanged()
-    if not WarbandNexus.db then return end
-    
-    local mapID = C_Map.GetBestMapForUnit("player")
+local zoneChangeTimer = nil
+
+local function RunZoneOrInstanceChangedNow()
+    local mapID = SafeGetRawPlayerUIMapID()
     if mapID then
         CheckZoneReminders(mapID)
     end
+    CheckInstanceReminders()
+end
+
+--- Coalesce ZONE_CHANGED* bursts (several events fire per transition).
+local function OnZoneOrInstanceChanged()
+    if zoneChangeTimer then
+        zoneChangeTimer:Cancel()
+        zoneChangeTimer = nil
+    end
+    zoneChangeTimer = C_Timer.NewTimer(0.12, function()
+        zoneChangeTimer = nil
+        RunZoneOrInstanceChangedNow()
+    end)
 end
 
 local function OnLoginRemindersCheck()
+    BeginCalendarToastBatch()
     CheckDailyLoginReminders()
+    CheckMonthlyLoginReminders()
     CheckWeeklyResetReminders()
     CheckDaysBeforeResetReminders()
+    FlushCalendarToastBatch()
 end
 
 -- ============================================================================
@@ -503,268 +1248,91 @@ end
 
 function WarbandNexus:InitializeReminderService()
     if not self.db or not self.db.global then return end
-    
+
     self.db.global.reminderSettings = self.db.global.reminderSettings or {
         enabled = true,
         throttleSeconds = 300,
+        throttleLocationReminders = false,
     }
-    
-    WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED_NEW_AREA", OnZoneChanged)
-    WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED", OnZoneChanged)
-    
+    local rs = self.db.global.reminderSettings
+    if rs.throttleLocationReminders == nil then
+        rs.throttleLocationReminders = false
+    end
+
+    WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED_NEW_AREA", OnZoneOrInstanceChanged)
+    WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED", OnZoneOrInstanceChanged)
+    WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED_INDOORS", OnZoneOrInstanceChanged)
+    local function OnPlayerEnteringWorldReminders()
+        if ns.ReminderZoneCatalog and ns.ReminderZoneCatalog.InvalidateZoneApiCache then
+            ns.ReminderZoneCatalog.InvalidateZoneApiCache()
+        end
+        BeginReminderLoginBurst()
+        OnLoginRemindersCheck()
+        RunZoneOrInstanceChangedNow()
+    end
+
+    WarbandNexus.RegisterEvent(ReminderEvents, "PLAYER_ENTERING_WORLD", OnPlayerEnteringWorldReminders)
+
     C_Timer.After(3, function()
         OnLoginRemindersCheck()
     end)
-    
+
     C_Timer.After(5, function()
-        OnZoneChanged()
+        RunZoneOrInstanceChangedNow()
     end)
 end
 
--- ============================================================================
--- SET ALERT DIALOG
--- ============================================================================
 
-local reminderDialog = nil
+local function UniqueSortedInts(t)
+    local seen = {}
+    local out = {}
+    for i = 1, #t do
+        local n = tonumber(t[i])
+        if n and not seen[n] then
+            seen[n] = true
+            out[#out + 1] = n
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+--- True when plan name/source text yields at least one uiMapID from C_Map child index (optional merge).
+local function PlanHasZoneSourceHints(plan)
+    local hinted = GetMapIDsFromPlanSource(plan)
+    return hinted ~= nil and next(hinted) ~= nil
+end
+
+--- Set Alert always allows zone_enter: user checks the box then adds manual IDs / catalog / Get ID.
+--- (Previously returning false when hints were missing deadlocked the UI: zone off disables the map row.)
+local function ZoneTriggerAllowsConfigure(plan)
+    return true
+end
+
+ns.ReminderServiceBridge = {
+    EnsureReminderField = EnsureReminderField,
+    FindTriggerEntry = FindTriggerEntry,
+    KIND = KIND,
+    UniqueSortedInts = UniqueSortedInts,
+    ZoneTriggerAllowsConfigure = ZoneTriggerAllowsConfigure,
+    PlanHasZoneSourceHints = PlanHasZoneSourceHints,
+    SafeUIMapDisplayName = SafeUIMapDisplayName,
+    GetReminderToastIconTexture = GetReminderToastIconTexture,
+    --- Align GetBestMapForUnit child floors with ReminderContentIndex picker rows (Set Alert "Get ID").
+    NormalizeZoneReminderUIMapID = function(mapID)
+        local RCI = ns.ReminderContentIndex
+        if RCI and RCI.NormalizeToCanonicalPickerMap then
+            return RCI.NormalizeToCanonicalPickerMap(mapID)
+        end
+        return tonumber(mapID)
+    end,
+}
 
 function WarbandNexus:ShowSetAlertDialog(planID)
-    local plan = self:GetPlanByID(planID)
-    if not plan then return end
-    
-    local L = ns.L
-    local COLORS = ns.UI_COLORS or { accent = {0.40, 0.20, 0.58}, accentDark = {0.28, 0.14, 0.41} }
-    local ApplyVisuals = ns.UI_ApplyVisuals
-    local FontManager = ns.FontManager
-    local r = EnsureReminderField(plan)
-    
-    if reminderDialog and reminderDialog:IsShown() then
-        reminderDialog:Hide()
+    if InCombatLockdown() then return end
+    local D = ns.ReminderSetAlertDialog
+    if D and D.Show then
+        D.Show(self, planID)
     end
-    
-    if not reminderDialog then
-        local f = CreateFrame("Frame", "WarbandNexus_ReminderDialog", UIParent, "BackdropTemplate")
-        f:SetSize(340, 360)
-        f:SetPoint("CENTER")
-        f:EnableMouse(true)
-        f:SetMovable(true)
-        
-        if ns.WindowManager then
-            ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.POPUP)
-            ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP)
-            ns.WindowManager:InstallESCHandler(f)
-            ns.WindowManager:InstallDragHandler(f, f)
-        else
-            f:SetFrameStrata("FULLSCREEN_DIALOG")
-            f:SetFrameLevel(200)
-            f:RegisterForDrag("LeftButton")
-            f:SetScript("OnDragStart", f.StartMoving)
-            f:SetScript("OnDragStop", f.StopMovingOrSizing)
-        end
-        
-        if ApplyVisuals then
-            ApplyVisuals(f, {0.04, 0.04, 0.06, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})
-        end
-        
-        local header = CreateFrame("Frame", nil, f, "BackdropTemplate")
-        header:SetHeight(32)
-        header:SetPoint("TOPLEFT", 2, -2)
-        header:SetPoint("TOPRIGHT", -2, -2)
-        if ApplyVisuals then
-            ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-        end
-        
-        local headerTitle = FontManager:CreateFontString(header, "title", "OVERLAY")
-        headerTitle:SetPoint("CENTER")
-        headerTitle:SetText((L and L["SET_ALERT_TITLE"]) or "Set Alert")
-        headerTitle:SetTextColor(1, 1, 1)
-        f.headerTitle = headerTitle
-        
-        local closeBtn = CreateFrame("Button", nil, f)
-        closeBtn:SetSize(20, 20)
-        closeBtn:SetPoint("TOPRIGHT", -6, -6)
-        closeBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
-        closeBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
-        closeBtn:SetScript("OnClick", function() f:Hide() end)
-        
-        local planLabel = FontManager:CreateFontString(f, "body", "OVERLAY")
-        planLabel:SetPoint("TOPLEFT", 16, -44)
-        planLabel:SetPoint("RIGHT", f, "RIGHT", -16, 0)
-        planLabel:SetJustifyH("LEFT")
-        planLabel:SetWordWrap(true)
-        f.planLabel = planLabel
-        
-        local yOff = -72
-        
-        local dailyCheck = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-        dailyCheck:SetSize(26, 26)
-        dailyCheck:SetPoint("TOPLEFT", 16, yOff)
-        local dailyLabel = FontManager:CreateFontString(f, "body", "OVERLAY")
-        dailyLabel:SetPoint("LEFT", dailyCheck, "RIGHT", 6, 0)
-        dailyLabel:SetText((L and L["REMINDER_OPT_DAILY"]) or "Remind on daily login")
-        dailyLabel:SetTextColor(0.9, 0.9, 0.9)
-        f.dailyCheck = dailyCheck
-        yOff = yOff - 32
-        
-        local weeklyCheck = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-        weeklyCheck:SetSize(26, 26)
-        weeklyCheck:SetPoint("TOPLEFT", 16, yOff)
-        local weeklyLabel = FontManager:CreateFontString(f, "body", "OVERLAY")
-        weeklyLabel:SetPoint("LEFT", weeklyCheck, "RIGHT", 6, 0)
-        weeklyLabel:SetText((L and L["REMINDER_OPT_WEEKLY"]) or "Remind after weekly reset")
-        weeklyLabel:SetTextColor(0.9, 0.9, 0.9)
-        f.weeklyCheck = weeklyCheck
-        yOff = yOff - 32
-        
-        local days5Check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-        days5Check:SetSize(26, 26)
-        days5Check:SetPoint("TOPLEFT", 16, yOff)
-        local days5Label = FontManager:CreateFontString(f, "body", "OVERLAY")
-        days5Label:SetPoint("LEFT", days5Check, "RIGHT", 6, 0)
-        days5Label:SetText(string.format((L and L["REMINDER_OPT_DAYS_BEFORE"]) or "Remind %d days before reset", 5))
-        days5Label:SetTextColor(0.9, 0.9, 0.9)
-        f.days5Check = days5Check
-        yOff = yOff - 32
-        
-        local days3Check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-        days3Check:SetSize(26, 26)
-        days3Check:SetPoint("TOPLEFT", 16, yOff)
-        local days3Label = FontManager:CreateFontString(f, "body", "OVERLAY")
-        days3Label:SetPoint("LEFT", days3Check, "RIGHT", 6, 0)
-        days3Label:SetText(string.format((L and L["REMINDER_OPT_DAYS_BEFORE"]) or "Remind %d days before reset", 3))
-        days3Label:SetTextColor(0.9, 0.9, 0.9)
-        f.days3Check = days3Check
-        yOff = yOff - 32
-        
-        local days1Check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-        days1Check:SetSize(26, 26)
-        days1Check:SetPoint("TOPLEFT", 16, yOff)
-        local days1Label = FontManager:CreateFontString(f, "body", "OVERLAY")
-        days1Label:SetPoint("LEFT", days1Check, "RIGHT", 6, 0)
-        days1Label:SetText(string.format((L and L["REMINDER_OPT_DAYS_BEFORE"]) or "Remind %d days before reset", 1))
-        days1Label:SetTextColor(0.9, 0.9, 0.9)
-        f.days1Check = days1Check
-        yOff = yOff - 32
-        
-        local zoneCheck = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-        zoneCheck:SetSize(26, 26)
-        zoneCheck:SetPoint("TOPLEFT", 16, yOff)
-        local zoneLabel = FontManager:CreateFontString(f, "body", "OVERLAY")
-        zoneLabel:SetPoint("LEFT", zoneCheck, "RIGHT", 6, 0)
-        zoneLabel:SetText((L and L["REMINDER_OPT_ZONE"]) or "Remind when entering source zone")
-        zoneLabel:SetTextColor(0.9, 0.9, 0.9)
-        f.zoneCheck = zoneCheck
-        f.zoneLabel = zoneLabel
-        yOff = yOff - 40
-        
-        local saveBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
-        saveBtn:SetSize(140, 32)
-        saveBtn:SetPoint("BOTTOM", f, "BOTTOM", -75, 16)
-        saveBtn:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            tile = false, edgeSize = 1,
-            insets = { left = 0, right = 0, top = 0, bottom = 0 }
-        })
-        saveBtn:SetBackdropColor(COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1)
-        saveBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-        local saveTxt = FontManager:CreateFontString(saveBtn, "body", "OVERLAY")
-        saveTxt:SetPoint("CENTER")
-        saveTxt:SetText("|cffffffff" .. ((L and L["SAVE"]) or "Save") .. "|r")
-        saveBtn:SetScript("OnEnter", function(self)
-            self:SetBackdropColor(COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 1)
-        end)
-        saveBtn:SetScript("OnLeave", function(self)
-            self:SetBackdropColor(COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1)
-        end)
-        f.saveBtn = saveBtn
-        
-        local removeBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
-        removeBtn:SetSize(140, 32)
-        removeBtn:SetPoint("BOTTOM", f, "BOTTOM", 75, 16)
-        removeBtn:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            tile = false, edgeSize = 1,
-            insets = { left = 0, right = 0, top = 0, bottom = 0 }
-        })
-        removeBtn:SetBackdropColor(0.4, 0.1, 0.1, 1)
-        removeBtn:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
-        local removeTxt = FontManager:CreateFontString(removeBtn, "body", "OVERLAY")
-        removeTxt:SetPoint("CENTER")
-        removeTxt:SetText("|cffffffff" .. ((L and L["REMOVE_ALERT"]) or "Remove Alert") .. "|r")
-        removeBtn:SetScript("OnEnter", function(self)
-            self:SetBackdropColor(0.6, 0.15, 0.15, 1)
-        end)
-        removeBtn:SetScript("OnLeave", function(self)
-            self:SetBackdropColor(0.4, 0.1, 0.1, 1)
-        end)
-        f.removeBtn = removeBtn
-        
-        reminderDialog = f
-    end
-    
-    local f = reminderDialog
-    local displayName = (self.GetResolvedPlanName and self:GetResolvedPlanName(plan))
-        or plan.name
-        or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-    f.planLabel:SetText("|cffffffff" .. displayName .. "|r")
-    f._currentPlanID = planID
-    
-    f.dailyCheck:SetChecked(r.onDailyLogin or false)
-    f.weeklyCheck:SetChecked(r.onWeeklyReset or false)
-    
-    local has5, has3, has1 = false, false, false
-    if r.daysBeforeReset then
-        local dbr = r.daysBeforeReset
-        for di = 1, #dbr do
-            local d = dbr[di]
-            if d == 5 then has5 = true end
-            if d == 3 then has3 = true end
-            if d == 1 then has1 = true end
-        end
-    end
-    f.days5Check:SetChecked(has5)
-    f.days3Check:SetChecked(has3)
-    f.days1Check:SetChecked(has1)
-    -- Enable zone-enter only if we can resolve at least one map ID from the plan source/name.
-    -- Otherwise the reminder would never fire, so disabling the checkbox is honest.
-    local mapIDs = GetMapIDsFromPlanSource(plan)
-    if mapIDs and next(mapIDs) ~= nil then
-        f.zoneCheck:SetChecked(r.onZoneEnter == true)
-        f.zoneCheck:Enable()
-        f.zoneCheck:SetAlpha(1)
-        f.zoneLabel:SetTextColor(0.9, 0.9, 0.9)
-    else
-        f.zoneCheck:SetChecked(false)
-        f.zoneCheck:Disable()
-        f.zoneCheck:SetAlpha(0.4)
-        f.zoneLabel:SetTextColor(0.5, 0.5, 0.5)
-    end
-    
-    f.saveBtn:SetScript("OnClick", function()
-        local days = {}
-        if f.days5Check:GetChecked() then days[#days + 1] = 5 end
-        if f.days3Check:GetChecked() then days[#days + 1] = 3 end
-        if f.days1Check:GetChecked() then days[#days + 1] = 1 end
-        table.sort(days, function(a, b) return a > b end)
-        
-        local settings = {
-            onDailyLogin = f.dailyCheck:GetChecked() or false,
-            onWeeklyReset = f.weeklyCheck:GetChecked() or false,
-            daysBeforeReset = days,
-        }
-        if f.zoneCheck:IsEnabled() then
-            settings.onZoneEnter = f.zoneCheck:GetChecked() or false
-        end
-        self:SetPlanReminder(f._currentPlanID, settings)
-        
-        f:Hide()
-    end)
-    
-    f.removeBtn:SetScript("OnClick", function()
-        self:RemovePlanReminder(f._currentPlanID)
-        f:Hide()
-    end)
-    
-    f:Show()
 end
+

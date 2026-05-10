@@ -128,6 +128,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateCharacterKeyNormalize(db)
     self:MigrateRestedDataReset(db)
     self:MigrateRarityMountSyncReseed(db)
+    self:MigrateReminderToastAnchors(db)
     return false
 end
 
@@ -307,6 +308,24 @@ end
     want users to see "seed done: false" once; for a manual re-merge run Rarity sync from Try Counter settings (Rarity enabled).
 ]]
 local RARITY_MOUNT_SYNC_RESEED_REVISION = 1
+
+--- Seed dedicated To-Do reminder toast anchors from legacy criteria-slot keys (one-time per profile).
+function MigrationService:MigrateReminderToastAnchors(db)
+    if not db or not db.profile or not db.profile.notifications then return end
+    local n = db.profile.notifications
+    if n.reminderToastAnchorMigratedV1 then return end
+    local hasCritPos = (n.popupPointCompact and n.popupPointCompact ~= "")
+        or n.popupXCompact ~= nil
+        or n.popupYCompact ~= nil
+    if hasCritPos then
+        if not n.reminderToastPoint then n.reminderToastPoint = n.popupPointCompact or "TOPRIGHT" end
+        if n.reminderToastX == nil then n.reminderToastX = n.popupXCompact end
+        if n.reminderToastY == nil then n.reminderToastY = n.popupYCompact end
+    end
+    if n.reminderToastScale == nil then n.reminderToastScale = 1.0 end
+    if n.reminderToastUseCriteriaLane == nil then n.reminderToastUseCriteriaLane = false end
+    n.reminderToastAnchorMigratedV1 = true
+end
 
 function MigrationService:MigrateRarityMountSyncReseed(db)
     if not db or not db.global then

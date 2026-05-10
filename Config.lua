@@ -511,6 +511,16 @@ local options = {
             get = function() return WarbandNexus.db.profile.notifications.showVaultReminder end,
             set = function(_, value) WarbandNexus.db.profile.notifications.showVaultReminder = value end,
         },
+        showPlanReminderToast = {
+            order = 74.25,
+            type = "toggle",
+            name = function() return (ns.L and ns.L["CONFIG_PLAN_REMINDER_TOAST"]) or "To-Do reminder popups" end,
+            desc = function() return (ns.L and ns.L["CONFIG_PLAN_REMINDER_TOAST_DESC"]) or "Show a compact toast when a plan reminder fires (daily login, monthly login, weekly reset, zone or instance enter, etc.). Plan cards still show the horn badge." end,
+            width = 1.5,
+            disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
+            get = function() return WarbandNexus.db.profile.notifications.showPlanReminderToast ~= false end,
+            set = function(_, value) WarbandNexus.db.profile.notifications.showPlanReminderToast = value end,
+        },
         showLootNotifications = {
             order = 75,
             type = "toggle",

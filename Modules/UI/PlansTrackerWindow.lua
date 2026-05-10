@@ -1022,9 +1022,12 @@ local function RefreshTrackerContentImmediate()
                 local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
                 local showTryRow = collectibleID and Factory and Factory.CreateTryCountClickable and WarbandNexus and WarbandNexus.ShouldShowTryCountInUI
                     and WarbandNexus:ShouldShowTryCountInUI(plan.type, collectibleID)
-                local titleRightInset = 6 + 16 + 4  -- rightOffset (6) + delete button (16) + gap (4)
-                if plan.type == "custom" then titleRightInset = titleRightInset + 16 + 4 end
-                if showTryRow then titleRightInset = titleRightInset + 78 + 4 end
+                local typeBadgeSz = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoTypeBadgeSize) or 24
+                local tryW = 72
+                local titleRightInset = 6
+                titleRightInset = titleRightInset + typeBadgeSz + 4 -- delete (rightmost)
+                if plan.type == "custom" then titleRightInset = titleRightInset + typeBadgeSz + 4 end
+                if showTryRow then titleRightInset = titleRightInset + tryW + 4 end
 
                 -- Custom plans show their user-entered note as description; collectibles already
                 -- surface Drop/Vendor/Quest/Location through criteriaData, so don't duplicate
@@ -1072,7 +1075,7 @@ local function RefreshTrackerContentImmediate()
 
                 -- Right-side actions (delete + optional complete for custom). Frame level above headerFrame
                 -- so the buttons consume clicks before headerFrame's expand-toggle handler.
-                local ACTION_SIZE = 16
+                local ACTION_SIZE = typeBadgeSz
                 local ACTION_GAP = 4
                 local rightOffset = 6
                 local function makeAction(normalTex, highlightTex, onClick, tooltipKey, tooltipFallback)
@@ -1122,16 +1125,15 @@ local function RefreshTrackerContentImmediate()
                     )
                 end
 
-                -- Try counter pill (mount/pet/toy/illusion only) — sits on the right, left of the action buttons.
                 if showTryRow then
-                    local TRY_W, TRY_H = 78, 18
                     local tryRow = Factory:CreateTryCountClickable(row.headerFrame, {
-                        height = TRY_H, frameLevelOffset = 15, showTooltip = true, popupOnRightClick = false,
+                        height = ACTION_SIZE, frameLevelOffset = 15, showTooltip = true, popupOnRightClick = false,
                     })
-                    tryRow:SetSize(TRY_W, TRY_H)
+                    tryRow:SetSize(tryW, ACTION_SIZE)
                     tryRow:ClearAllPoints()
                     tryRow:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
                     tryRow:WnUpdateTryCount(plan.type, collectibleID, resolvedName)
+                    rightOffset = rightOffset + tryW + ACTION_GAP
                 end
 
                 -- Tooltip on header hover (preserve any prior OnEnter/OnLeave for hover highlight)

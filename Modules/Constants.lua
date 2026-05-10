@@ -43,9 +43,9 @@ local Constants = {
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "3.0.0",
+    ADDON_VERSION = "3.0.2",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-05-09",
+    ADDON_RELEASE_DATE = "2026-05-10",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
@@ -156,6 +156,10 @@ local Constants = {
         
         -- Reminders (progress-based, shown on plan cards)
         REMINDER_ACTIVATED = "WN_REMINDER_ACTIVATED",
+        --- To-Do / plan reminder toast (distinct from achievement/criteria AlertFrame lane)
+        SHOW_REMINDER_TOAST = "WN_SHOW_REMINDER_TOAST",
+        --- Blizzard achievement progressive step → addon criteria toast (listener shows; hooks only emit)
+        SHOW_CRITERIA_PROGRESS = "WN_SHOW_CRITERIA_PROGRESS",
         
         -- Item metadata
         ITEM_METADATA_READY = "WN_ITEM_METADATA_READY",
@@ -350,6 +354,12 @@ local Constants = {
     },
 
     --==========================================================================
+    -- PLAN REMINDERS / ALERTS (card badge, Set Alert dialog, toasts)
+    -- Atlas minimap-genericevent-hornicon-small is unreliable on recent builds; use a classic horn icon texture.
+    --==========================================================================
+    REMINDER_ALERT_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_Horn_01",
+
+    --==========================================================================
     -- RACE ICON ATLAS (raceFile / clientFileString -> middle segment of atlas name)
     -- Used by SharedWidgets: string.format("raceicon128-%s-%s", prefix, gender)
     --==========================================================================
@@ -387,6 +397,14 @@ local Constants = {
     -- Renown: Each faction has different thresholds (2.5k, 5k, 7.5k, 10k, etc.)
     -- Friendship: Each faction has different rank systems (5, 6, 10 ranks with custom names)
     -- For these types: Trust API data, only validate for negatives/zero-division
+
+    --==========================================================================
+    -- NOTIFICATION SOUNDS (PlaySound kit IDs)
+    -- Progress / criteria lane: short objective-style cue — never READY_CHECK (raid horn).
+    -- Compact achievement-style lane: existing default for collector-style toasts.
+    --==========================================================================
+    NOTIFICATION_SOUND_PROGRESS = 44294,
+    NOTIFICATION_SOUND_COMPACT_DEFAULT = 44295,
 }
 
 -- Export to namespace

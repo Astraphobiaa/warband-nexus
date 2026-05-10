@@ -52,9 +52,10 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
         addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode (extra diagnostics)"))
+        addon:Print("  |cff00ccff/wn uimap here|r — " .. ((ns.L and ns.L["CMD_UIMAP_HERE"]) or "Current uiMapID + parent chain (no debug)"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
         if IsDebugModeEnabled and IsDebugModeEnabled() then
-            addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn dumpitem|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r")
+            addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn dumpitem|r, |cff00ccff/wn uimap catalog|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r")
         end
         return
     end
@@ -198,6 +199,10 @@ function CommandService:HandleSlashCommand(addon, input)
         CommandService:HandleDebugToggle(addon)
         return
 
+    elseif cmd == "uimap" then
+        CommandService:HandleUiMapDebug(addon, input)
+        return
+
     elseif cmd == "trycounterdebug" or cmd == "lootdebug" then
         if not addon.db or not addon.db.profile then
             addon:Print("|cffff6600[WN] Could not toggle: profile not ready.|r")
@@ -320,6 +325,184 @@ function CommandService:HandleSlashCommand(addon, input)
     else
         addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_DEBUG_CMD"]) or "Unknown debug command:") .. "|r " .. cmd)
     end
+end
+
+--============================================================================
+-- UI MAP DEBUG (reminder zone picker / C_Map)
+--============================================================================
+
+local function uiMapSafeName(info)
+    if not info then return nil end
+    local n = info.name
+    if not n or n == "" then return nil end
+    if issecretvalue and issecretvalue(n) then return "<secret>" end
+    return n
+end
+
+--- Throttled chat lines (long catalog dumps won’t drop silently).
+local function printLinesThrottled(addon, lines)
+    if not lines or #lines == 0 then return end
+    local idx = 1
+    local chunk = 14
+    local function step()
+        local last = math.min(idx + chunk - 1, #lines)
+        for j = idx, last do
+            addon:Print(lines[j])
+        end
+        idx = last + 1
+        if idx <= #lines then
+            C_Timer.After(0.06, step)
+        end
+    end
+    step()
+end
+
+--- /wn uimap here | catalog [section] | id <uiMapID>
+---@param addon table WarbandNexus
+---@param input string Raw slash payload (after /wn)
+function CommandService:HandleUiMapDebug(addon, input)
+    local _, sub, arg = addon:GetArgs(input, 3)
+    sub = sub and sub:lower() or ""
+
+    local function banner(msg)
+        addon:Print("|cff00ccff[WN uiMap]|r " .. msg)
+    end
+
+    if sub == "" or sub == "help" then
+        banner("Usage:")
+        addon:Print("  |cff00ccff/wn uimap here|r — player map + parents + optional instance (works without debug)")
+        addon:Print("  |cff888888(debug ON)|r |cff00ccff/wn uimap catalog [section]|r — rows from ReminderZoneCatalog (omit section = all)")
+        addon:Print("  |cff888888(debug ON)|r |cff00ccff/wn uimap id <uiMapID>|r — GetMapInfo + UIMapContentKind.Resolve")
+        return
+    end
+
+    if sub == "here" or sub == "current" then
+        if not C_Map or not C_Map.GetBestMapForUnit or not C_Map.GetMapInfo then
+            banner("|cffff6600C_Map API unavailable.|r")
+            return
+        end
+        local okm, mid = pcall(C_Map.GetBestMapForUnit, "player")
+        mid = okm and tonumber(mid) or nil
+        if not mid or mid <= 0 then
+            banner("|cffff6600Could not read player uiMapID.|r")
+            return
+        end
+        banner("Player uiMapID = " .. tostring(mid))
+        local chain = {}
+        local cur = mid
+        local guard = 0
+        while cur and cur > 0 and guard < 32 do
+            guard = guard + 1
+            local ok, info = pcall(C_Map.GetMapInfo, cur)
+            if not ok or not info then
+                chain[#chain + 1] = "  " .. tostring(cur) .. " | <no GetMapInfo>"
+                break
+            end
+            local nm = uiMapSafeName(info) or "?"
+            local pid = tonumber(info.parentMapID)
+            local mt = info.mapType
+            chain[#chain + 1] = string.format("  %d | %s | parent=%s | mapType=%s",
+                cur, nm, tostring(pid), tostring(mt))
+            if not pid or pid <= 0 or pid == cur then break end
+            cur = pid
+        end
+        for i = 1, #chain do addon:Print(chain[i]) end
+
+        local okI, name, instType, difficultyID, _, _, _, _, instanceID = pcall(GetInstanceInfo)
+        if okI and name and not (issecretvalue and issecretvalue(name)) then
+            addon:Print(string.format("  Instance: %s | type=%s | instanceID=%s | difficultyID=%s",
+                tostring(name), tostring(instType), tostring(instanceID), tostring(difficultyID)))
+        end
+        return
+    end
+
+    if not IsDebugModeEnabled or not IsDebugModeEnabled() then
+        addon:Print("|cffff6600[WN uiMap]|r Enable debug: |cff00ccff/wn debug|r — then retry catalog/id.")
+        return
+    end
+
+    if sub == "id" then
+        local mid = tonumber(arg)
+        if not mid or mid <= 0 then
+            banner("|cffff6600Usage:|r /wn uimap id <uiMapID>")
+            return
+        end
+        if not C_Map or not C_Map.GetMapInfo then
+            banner("|cffff6600C_Map.GetMapInfo unavailable.|r")
+            return
+        end
+        local UICK = ns.UIMapContentKind
+        if UICK and UICK.InvalidateCache then UICK.InvalidateCache() end
+        if UICK and UICK.EnsureJournalLoaded then UICK.EnsureJournalLoaded() end
+        local ok, info = pcall(C_Map.GetMapInfo, mid)
+        if not ok or not info then
+            banner("id=" .. mid .. " | GetMapInfo failed")
+            return
+        end
+        local nm = uiMapSafeName(info) or "?"
+        local kind = UICK and UICK.Resolve and UICK.Resolve(mid, info) or "?"
+        banner(string.format("id=%d | name=%s | parent=%s | mapType=%s | kind=%s",
+            mid, nm, tostring(info.parentMapID), tostring(info.mapType), tostring(kind)))
+        return
+    end
+
+    if sub == "catalog" then
+        local cat = ns.ReminderZoneCatalog
+        if not cat or not cat.sections or not cat.GetDisplayRowsForSection then
+            banner("|cffff6600ReminderZoneCatalog not loaded.|r")
+            return
+        end
+        if cat.InvalidateZoneApiCache then cat.InvalidateZoneApiCache() end
+        local UICK = ns.UIMapContentKind
+        if UICK and UICK.EnsureJournalLoaded then UICK.EnsureJournalLoaded() end
+
+        local secIdx = tonumber(arg)
+        local L = ns.L
+        local lines = {}
+        local nSec = #cat.sections
+        local function appendSection(si)
+            local sec = cat.sections[si]
+            if not sec then return end
+            local key = sec.localeKey or ("section_" .. si)
+            local title = (L and L[key]) or key
+            lines[#lines + 1] = "|cff00ccff=== [" .. si .. "/" .. nSec .. "] " .. title .. " ===|r"
+            local rows = cat.GetDisplayRowsForSection(si) or {}
+            if #rows == 0 then
+                lines[#lines + 1] = "  |cff888888(no rows — API filtered all ids or empty section)|r"
+                return
+            end
+            for ri = 1, #rows do
+                local r = rows[ri]
+                if r.headerKey then
+                    local hk = r.headerKey
+                    local ht = (L and hk ~= "" and L[hk]) or hk
+                    lines[#lines + 1] = "|cffaaaaaa--- " .. ht .. "|r"
+                elseif r.id then
+                    local nm = r.displayName or ""
+                    local kind = r.kind or "?"
+                    lines[#lines + 1] = string.format("  [%s] %d | %s", kind, r.id, nm)
+                end
+            end
+        end
+
+        if secIdx and secIdx > 0 then
+            if secIdx > nSec then
+                banner("|cffff6600Invalid section (1–" .. nSec .. ").|r")
+                return
+            end
+            appendSection(secIdx)
+        else
+            for si = 1, nSec do
+                appendSection(si)
+            end
+        end
+
+        banner("ReminderZoneCatalog.GetDisplayRowsForSection — " .. #lines .. " lines (throttled)")
+        printLinesThrottled(addon, lines)
+        return
+    end
+
+    banner("|cffff6600Unknown subcommand.|r Try |cff00ccff/wn uimap help|r")
 end
 
 --============================================================================

@@ -21,6 +21,148 @@ local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
 
 local format = string.format
 
+local REMINDER_ALERT_TEX = (ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TEXTURE) or "Interface\\Icons\\INV_Misc_Horn_01"
+local REMINDER_ALERT_ATLAS = "minimap-genericevent-hornicon-small"
+
+local function ApplyReminderCardButtonIcon(tex)
+    if not tex then return end
+    local ok = pcall(function()
+        tex:SetAtlas(REMINDER_ALERT_ATLAS, false)
+    end)
+    if ok then
+        tex:SetTexCoord(0, 1, 0, 1)
+    else
+        tex:SetTexture(REMINDER_ALERT_TEX)
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+end
+
+--- Tooltip lines when an alert is configured (plan card horn button).
+local function AppendPlanReminderSummaryTooltipLines(planID, tooltipLines)
+    if not planID or not tooltipLines then return end
+    local settings = WarbandNexus.GetPlanReminderSettings and WarbandNexus:GetPlanReminderSettings(planID)
+    if not settings or not settings.enabled then return end
+    local L = ns.L
+    local chunks = {}
+    if settings.onDailyLogin then chunks[#chunks + 1] = (L and L["REMINDER_SHORT_DAILY"]) or "Daily login" end
+    if settings.onWeeklyReset then chunks[#chunks + 1] = (L and L["REMINDER_SHORT_WEEKLY"]) or "Weekly reset" end
+    if settings.onMonthlyLogin then chunks[#chunks + 1] = (L and L["REMINDER_SHORT_MONTHLY"]) or "Monthly login" end
+    local dbr = settings.daysBeforeReset
+    if dbr then
+        for i = 1, #dbr do
+            local d = tonumber(dbr[i])
+            if d then
+                chunks[#chunks + 1] = format((L and L["REMINDER_SHORT_BEFORE_RESET"]) or "%dd before reset", d)
+            end
+        end
+    end
+    if settings.onZoneEnter then chunks[#chunks + 1] = (L and L["REMINDER_SHORT_ZONE"]) or "Zone enter" end
+    if settings.onInstanceEnter then chunks[#chunks + 1] = (L and L["REMINDER_SHORT_INSTANCE"]) or "Instance" end
+    if #chunks > 0 then
+        tooltipLines[#tooltipLines + 1] = { text = "|cffaaaaaa" .. table.concat(chunks, ", ") .. "|r" }
+    end
+    local tipPlan = WarbandNexus.GetPlanByID and WarbandNexus:GetPlanByID(planID)
+    if tipPlan and ns.PlanGeography and ns.PlanGeography.AppendReminderTerritoryTooltipLine then
+        ns.PlanGeography.AppendReminderTerritoryTooltipLine(tipPlan, tooltipLines)
+    end
+    tooltipLines[#tooltipLines + 1] = {
+        text = "|cff888888" .. ((L and L["REMINDER_CARD_CLICK_CONFIGURE"]) or "Click to configure reminders.") .. "|r",
+    }
+end
+
+--- Reminder horn button for plan cards (achievement, mount, vault, etc.). Caller must SetPoint.
+--- Uses OVERLAY so the icon stays visible on Factory noBorder buttons.
+local function CreatePlanReminderAlertButton(card, plan)
+    if not card or not plan or not plan.id then
+        return nil
+    end
+    local hasReminder = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
+    local PCM = ns.UI_PLANS_CARD_METRICS or {}
+    local alertSz = (PCM.todoTypeBadgeSize) or 24
+    local bellInner = math.max(14, math.floor(alertSz * 0.88))
+    local alertBtn = ns.UI.Factory:CreateButton(card, alertSz, alertSz, true)
+    alertBtn:SetFrameLevel(card:GetFrameLevel() + 18)
+    alertBtn:RegisterForClicks("LeftButtonUp")
+    alertBtn._planID = plan.id
+    -- Active reminder: Lighttrait-glow behind horn (ARTWORK under OVERLAY); sized to frame the icon, not full-card.
+    if hasReminder then
+        local glowSz = math.max(math.floor(alertSz * 1.62 + 0.5), 36)
+        local glowTex = alertBtn:CreateTexture(nil, "ARTWORK", nil, -8)
+        glowTex:SetSize(glowSz, glowSz)
+        glowTex:SetPoint("CENTER", alertBtn, "CENTER", 0, 0)
+        local okGlow = pcall(function()
+            glowTex:SetAtlas("Lighttrait-glow", false)
+        end)
+        if okGlow then
+            glowTex:SetBlendMode("ADD")
+            glowTex:SetVertexColor(0.52, 0.58, 0.88, 0.55)
+            glowTex:Show()
+            alertBtn._alertFlashTex = glowTex
+        else
+            glowTex:Hide()
+        end
+    end
+    local bellTex = alertBtn:CreateTexture(nil, "OVERLAY")
+    bellTex:SetSize(bellInner, bellInner)
+    bellTex:SetPoint("CENTER", alertBtn, "CENTER", 0, 0)
+    ApplyReminderCardButtonIcon(bellTex)
+    bellTex:Show()
+    -- Single neutral treatment: no orange/yellow state tint, no alpha pulse (reset/dismiss stay calm).
+    local bellIdle = hasReminder and 0.78 or 0.68
+    bellTex:SetVertexColor(bellIdle, bellIdle, bellIdle + 0.02)
+    alertBtn._bellTex = bellTex
+
+    alertBtn:SetScript("OnClick", function()
+        if WarbandNexus.ShowSetAlertDialog then
+            WarbandNexus:ShowSetAlertDialog(plan.id)
+        end
+    end)
+    alertBtn:SetScript("OnEnter", function(btn)
+        if btn._bellTex then
+            btn._bellTex:SetVertexColor(0.92, 0.92, 0.95)
+        end
+        local tooltipTitle, tooltipLines
+        local activeReminders = WarbandNexus.GetActiveReminders and WarbandNexus:GetActiveReminders(plan.id)
+        if activeReminders then
+            tooltipTitle = (ns.L and ns.L["REMINDER_PREFIX"]) or "Reminder"
+            tooltipLines = {}
+            for li = 1, #activeReminders do
+                local label = activeReminders[li]
+                tooltipLines[#tooltipLines + 1] = { text = "|cffcccccc" .. label .. "|r" }
+            end
+            tooltipLines[#tooltipLines + 1] = { text = " " }
+            tooltipLines[#tooltipLines + 1] = {
+                text = "|cff888888" .. ((ns.L and ns.L["REMINDER_CARD_CLICK_OPEN_SETTINGS"]) or "Click the horn to open reminder settings.") .. "|r",
+            }
+        else
+            local reminderNow = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
+            tooltipTitle = reminderNow and ((ns.L and ns.L["ALERT_ACTIVE"]) or "Alert Active") or ((ns.L and ns.L["SET_ALERT"]) or "Set Alert")
+            tooltipLines = {}
+            if reminderNow then
+                AppendPlanReminderSummaryTooltipLines(plan.id, tooltipLines)
+            end
+        end
+        if ns.TooltipService then
+            ns.TooltipService:Show(btn, { type = "custom", title = tooltipTitle, icon = false, anchor = "ANCHOR_TOP", lines = tooltipLines })
+        end
+    end)
+    alertBtn:SetScript("OnLeave", function(btn)
+        if btn._bellTex then
+            local reminderSet = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
+            local idle = reminderSet and 0.78 or 0.68
+            btn._bellTex:SetVertexColor(idle, idle, idle + 0.02)
+        end
+        if btn._alertFlashTex and btn._planID and WarbandNexus.HasPlanReminder then
+            btn._alertFlashTex:SetShown(WarbandNexus:HasPlanReminder(btn._planID))
+        end
+        if ns.TooltipService then
+            ns.TooltipService:Hide()
+        end
+    end)
+
+    return alertBtn
+end
+
 local PlanCardFactory = {}
 
 -- Type colors
@@ -339,11 +481,24 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         card.chatLinkBtn = linkBtn
     end
 
-    local anchorNameRight = card.chatLinkBtn or card.wowheadBtn
-    if anchorNameRight then
-        nameText:SetPoint("RIGHT", anchorNameRight, "LEFT", -nameGap, 0)
+    -- Reminder horn (all standard collection cards — vault/DQ use same helper with different anchors)
+    local reminderBtn = CreatePlanReminderAlertButton(card, plan)
+    card.reminderAlertBtn = reminderBtn
+    if reminderBtn then
+        local anchorForReminder = card.chatLinkBtn or card.wowheadBtn
+        if anchorForReminder then
+            reminderBtn:SetPoint("TOPRIGHT", anchorForReminder, "TOPLEFT", -LINK_GAP, 0)
+        else
+            reminderBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -whInset, -whTop)
+        end
+        nameText:SetPoint("RIGHT", reminderBtn, "LEFT", -nameGap, 0)
     else
-        nameText:SetPoint("RIGHT", card, "RIGHT", -(whInset + whW + nameGap), 0)
+        local anchorNameRight = card.chatLinkBtn or card.wowheadBtn
+        if anchorNameRight then
+            nameText:SetPoint("RIGHT", anchorNameRight, "LEFT", -nameGap, 0)
+        else
+            nameText:SetPoint("RIGHT", card, "RIGHT", -(whInset + whW + nameGap), 0)
+        end
     end
 
     -- Show icon and card after full setup (prevents flickering)
@@ -866,7 +1021,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
             local gap = 8
             local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
             local whW = ns.PLAN_CARD_WOWHEAD_SIZE or 18
-            local anchorForTry = card.chatLinkBtn or card.wowheadBtn
+            local anchorForTry = card.reminderAlertBtn or card.chatLinkBtn or card.wowheadBtn
             if anchorForTry then
                 row:SetPoint("TOPRIGHT", anchorForTry, "TOPLEFT", -gap, 0)
             else
@@ -884,7 +1039,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         card.tryCountClickable:Hide()
         if card.nameText then
             local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
-            local anchorNameRight = card.chatLinkBtn or card.wowheadBtn
+            local anchorNameRight = card.reminderAlertBtn or card.chatLinkBtn or card.wowheadBtn
             if anchorNameRight then
                 card.nameText:SetPoint("RIGHT", anchorNameRight, "LEFT", -nameGap, 0)
             else
@@ -1071,8 +1226,12 @@ function PlanCardFactory:ReflowAchievementCard(card, opts)
         local whInset = (ns.GetPlanCardWowheadRightInset and card.plan and ns.GetPlanCardWowheadRightInset(card.plan.type)) or 56
         local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
         local LINK_GAP = 4
-        local rightReserve = whInset + whW + nameGap
-        if card.chatLinkBtn then rightReserve = rightReserve + whW + LINK_GAP end
+        local REMINDER_BTN_W = 20
+        -- Header controls right-to-left: wowhead, [chat], [reminder], nameGap — reserve width for wrapped title.
+        local rightReserve = whInset + whW
+        if card.chatLinkBtn then rightReserve = rightReserve + LINK_GAP + whW end
+        if card.reminderAlertBtn then rightReserve = rightReserve + LINK_GAP + REMINDER_BTN_W end
+        rightReserve = rightReserve + nameGap
         -- nameText TOPLEFT is at iconBorder TOPRIGHT(+10) → x ~= iconBorderX(10) + iconW(46) + 10 = 66
         local nameLeftX = 66
         local cw = card:GetWidth() or 200
@@ -2896,82 +3055,11 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         WarbandNexus:RemovePlan(plan.id)
     end)
     
-    -- Alert button
-    local hasReminder = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
-    local hasActiveReminder = WarbandNexus.HasActiveReminder and WarbandNexus:HasActiveReminder(plan.id)
-    local alertBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)
-    alertBtn:SetPoint("TOPRIGHT", -60, -8)
-    local bellTex = alertBtn:CreateTexture(nil, "ARTWORK")
-    bellTex:SetSize(18, 18)
-    bellTex:SetPoint("CENTER")
-    bellTex:SetAtlas("minimap-genericevent-hornicon-small", true)
-    if hasActiveReminder then
-        bellTex:SetVertexColor(1, 0.6, 0)
-    elseif hasReminder then
-        bellTex:SetVertexColor(1, 0.82, 0)
-    else
-        bellTex:SetVertexColor(0.5, 0.5, 0.5)
+    local vaultAlertBtn = CreatePlanReminderAlertButton(card, plan)
+    card.reminderAlertBtn = vaultAlertBtn
+    if vaultAlertBtn then
+        vaultAlertBtn:SetPoint("TOPRIGHT", -60, -8)
     end
-    alertBtn._bellTex = bellTex
-
-    if hasActiveReminder then
-        local pulseAG = alertBtn:CreateAnimationGroup()
-        pulseAG:SetLooping("BOUNCE")
-        local pulseAnim = pulseAG:CreateAnimation("Alpha")
-        pulseAnim:SetFromAlpha(1)
-        pulseAnim:SetToAlpha(0.3)
-        pulseAnim:SetDuration(0.8)
-        pulseAnim:SetSmoothing("IN_OUT")
-        pulseAG:Play()
-        alertBtn._pulseAG = pulseAG
-    end
-
-    alertBtn:SetScript("OnClick", function()
-        if hasActiveReminder and WarbandNexus.DismissReminders then
-            WarbandNexus:DismissReminders(plan.id)
-            return
-        end
-        if WarbandNexus.ShowSetAlertDialog then
-            WarbandNexus:ShowSetAlertDialog(plan.id)
-        end
-    end)
-    alertBtn:SetScript("OnEnter", function(btn)
-        if btn._bellTex then btn._bellTex:SetVertexColor(1, 0.9, 0.3) end
-        if btn._pulseAG then btn._pulseAG:Stop(); btn:SetAlpha(1) end
-        local tooltipTitle, tooltipLines
-        local activeReminders = WarbandNexus.GetActiveReminders and WarbandNexus:GetActiveReminders(plan.id)
-        if activeReminders then
-            tooltipTitle = (ns.L and ns.L["REMINDER_PREFIX"]) or "Reminder"
-            tooltipLines = {}
-            for li = 1, #activeReminders do
-                local label = activeReminders[li]
-                tooltipLines[#tooltipLines + 1] = { text = "|cffffd100" .. label .. "|r" }
-            end
-            tooltipLines[#tooltipLines + 1] = { text = " " }
-            tooltipLines[#tooltipLines + 1] = { text = "|cff888888" .. ((ns.L and ns.L["CLICK_TO_DISMISS"]) or "Click to dismiss") .. "|r" }
-        else
-            tooltipTitle = hasReminder and ((ns.L and ns.L["ALERT_ACTIVE"]) or "Alert Active") or ((ns.L and ns.L["SET_ALERT"]) or "Set Alert")
-            tooltipLines = {}
-        end
-        if ns.TooltipService then
-            ns.TooltipService:Show(btn, { type = "custom", title = tooltipTitle, icon = false, anchor = "ANCHOR_TOP", lines = tooltipLines })
-        end
-    end)
-    alertBtn:SetScript("OnLeave", function(btn)
-        if btn._pulseAG then btn._pulseAG:Play() end
-        if btn._bellTex then
-            local activeNow = WarbandNexus.HasActiveReminder and WarbandNexus:HasActiveReminder(plan.id)
-            local reminderSet = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
-            if activeNow then
-                btn._bellTex:SetVertexColor(1, 0.6, 0)
-            elseif reminderSet then
-                btn._bellTex:SetVertexColor(1, 0.82, 0)
-            else
-                btn._bellTex:SetVertexColor(0.5, 0.5, 0.5)
-            end
-        end
-        if ns.TooltipService then ns.TooltipService:Hide() end
-    end)
     
     -- === 3 PROGRESS SLOTS ===
     local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
@@ -3257,82 +3345,11 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         WarbandNexus:RemovePlan(plan.id)
     end)
     
-    -- Alert button
-    local hasReminderDQ = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
-    local hasActiveReminderDQ = WarbandNexus.HasActiveReminder and WarbandNexus:HasActiveReminder(plan.id)
-    local alertBtnDQ = ns.UI.Factory:CreateButton(card, 20, 20, true)
-    alertBtnDQ:SetPoint("TOPRIGHT", -60, -8)
-    local bellTexDQ = alertBtnDQ:CreateTexture(nil, "ARTWORK")
-    bellTexDQ:SetSize(18, 18)
-    bellTexDQ:SetPoint("CENTER")
-    bellTexDQ:SetAtlas("minimap-genericevent-hornicon-small", true)
-    if hasActiveReminderDQ then
-        bellTexDQ:SetVertexColor(1, 0.6, 0)
-    elseif hasReminderDQ then
-        bellTexDQ:SetVertexColor(1, 0.82, 0)
-    else
-        bellTexDQ:SetVertexColor(0.5, 0.5, 0.5)
+    local dqAlertBtn = CreatePlanReminderAlertButton(card, plan)
+    card.reminderAlertBtn = dqAlertBtn
+    if dqAlertBtn then
+        dqAlertBtn:SetPoint("TOPRIGHT", -60, -8)
     end
-    alertBtnDQ._bellTex = bellTexDQ
-
-    if hasActiveReminderDQ then
-        local pulseAG = alertBtnDQ:CreateAnimationGroup()
-        pulseAG:SetLooping("BOUNCE")
-        local pulseAnim = pulseAG:CreateAnimation("Alpha")
-        pulseAnim:SetFromAlpha(1)
-        pulseAnim:SetToAlpha(0.3)
-        pulseAnim:SetDuration(0.8)
-        pulseAnim:SetSmoothing("IN_OUT")
-        pulseAG:Play()
-        alertBtnDQ._pulseAG = pulseAG
-    end
-
-    alertBtnDQ:SetScript("OnClick", function()
-        if hasActiveReminderDQ and WarbandNexus.DismissReminders then
-            WarbandNexus:DismissReminders(plan.id)
-            return
-        end
-        if WarbandNexus.ShowSetAlertDialog then
-            WarbandNexus:ShowSetAlertDialog(plan.id)
-        end
-    end)
-    alertBtnDQ:SetScript("OnEnter", function(btn)
-        if btn._bellTex then btn._bellTex:SetVertexColor(1, 0.9, 0.3) end
-        if btn._pulseAG then btn._pulseAG:Stop(); btn:SetAlpha(1) end
-        local tooltipTitle, tooltipLines
-        local activeReminders = WarbandNexus.GetActiveReminders and WarbandNexus:GetActiveReminders(plan.id)
-        if activeReminders then
-            tooltipTitle = (ns.L and ns.L["REMINDER_PREFIX"]) or "Reminder"
-            tooltipLines = {}
-            for li = 1, #activeReminders do
-                local label = activeReminders[li]
-                tooltipLines[#tooltipLines + 1] = { text = "|cffffd100" .. label .. "|r" }
-            end
-            tooltipLines[#tooltipLines + 1] = { text = " " }
-            tooltipLines[#tooltipLines + 1] = { text = "|cff888888" .. ((ns.L and ns.L["CLICK_TO_DISMISS"]) or "Click to dismiss") .. "|r" }
-        else
-            tooltipTitle = hasReminderDQ and ((ns.L and ns.L["ALERT_ACTIVE"]) or "Alert Active") or ((ns.L and ns.L["SET_ALERT"]) or "Set Alert")
-            tooltipLines = {}
-        end
-        if ns.TooltipService then
-            ns.TooltipService:Show(btn, { type = "custom", title = tooltipTitle, icon = false, anchor = "ANCHOR_TOP", lines = tooltipLines })
-        end
-    end)
-    alertBtnDQ:SetScript("OnLeave", function(btn)
-        if btn._pulseAG then btn._pulseAG:Play() end
-        if btn._bellTex then
-            local activeNow = WarbandNexus.HasActiveReminder and WarbandNexus:HasActiveReminder(plan.id)
-            local reminderSet = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
-            if activeNow then
-                btn._bellTex:SetVertexColor(1, 0.6, 0)
-            elseif reminderSet then
-                btn._bellTex:SetVertexColor(1, 0.82, 0)
-            else
-                btn._bellTex:SetVertexColor(0.5, 0.5, 0.5)
-            end
-        end
-        if ns.TooltipService then ns.TooltipService:Hide() end
-    end)
     
     -- === CATEGORY PROGRESS SLOTS ===
     local contentY = -70
@@ -3677,6 +3694,11 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
     sourceText:SetNonSpaceWrap(false)
     
     return sourceText
+end
+
+--- Reminder horn for any parent (e.g. PlansUI expandable row header). Caller sets position.
+function PlanCardFactory.CreateReminderAlertButton(parent, plan)
+    return CreatePlanReminderAlertButton(parent, plan)
 end
 
 -- Export

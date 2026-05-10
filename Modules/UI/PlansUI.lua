@@ -1909,16 +1909,20 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 criteriaHeader = false
             end
 
-            -- Right-side action stack: delete + (custom: complete) + (collectible: tries pill)
-            local ACTION_SIZE, ACTION_GAP = 16, 4
-            local titleRightInset = 6 + ACTION_SIZE + ACTION_GAP
-            if plan.type == "custom" then titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP end
+            -- Right-side actions (R→L: Delete, Alert, Complete?, Tries). Sizes match type badge (todoTypeBadgeSize).
+            local typeBadgeSz = (PCM and PCM.todoTypeBadgeSize) or 24
+            local ACTION_SIZE, ACTION_GAP = typeBadgeSz, 4
+            local tryW = 72
             local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
             local idKey = tryCountTypes[plan.type]
             local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
             local hasTry = collectibleID and ns.UI.Factory and ns.UI.Factory.CreateTryCountClickable
                 and self.ShouldShowTryCountInUI and self:ShouldShowTryCountInUI(plan.type, collectibleID)
-            if hasTry then titleRightInset = titleRightInset + 78 + 4 end
+            local titleRightInset = 6
+            titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP -- delete (rightmost)
+            titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP -- alert
+            if plan.type == "custom" then titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP end
+            if hasTry then titleRightInset = titleRightInset + tryW + ACTION_GAP end
 
             local rowData = {
                 icon = resolvedIcon,
@@ -1983,6 +1987,16 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 function() if plan.id then self:RemovePlan(plan.id) end end,
                 "PLAN_ACTION_DELETE", "Delete the Plan"
             )
+
+            if PlanCardFactory.CreateReminderAlertButton then
+                local remBtn = PlanCardFactory.CreateReminderAlertButton(row.headerFrame, plan)
+                if remBtn then
+                    remBtn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
+                    remBtn:SetFrameLevel((row.headerFrame:GetFrameLevel() or 0) + 12)
+                    rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
+                end
+            end
+
             if plan.type == "custom" then
                 makeAction(
                     "Interface\\RaidFrame\\ReadyCheck-Ready",
@@ -1993,14 +2007,14 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
 
             if hasTry then
-                local TRY_W, TRY_H = 78, 18
                 local tryRow = ns.UI.Factory:CreateTryCountClickable(row.headerFrame, {
-                    height = TRY_H, frameLevelOffset = 15, showTooltip = true, popupOnRightClick = false,
+                    height = ACTION_SIZE, frameLevelOffset = 15, showTooltip = true, popupOnRightClick = false,
                 })
-                tryRow:SetSize(TRY_W, TRY_H)
+                tryRow:SetSize(tryW, ACTION_SIZE)
                 tryRow:ClearAllPoints()
                 tryRow:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
                 tryRow:WnUpdateTryCount(plan.type, collectibleID, resolvedName)
+                rightOffset = rightOffset + tryW + ACTION_GAP
             end
 
             row:Show()

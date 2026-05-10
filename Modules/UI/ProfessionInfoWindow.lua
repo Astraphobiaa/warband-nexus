@@ -118,7 +118,7 @@ local MIDNIGHT_SKILLLINE_IDS = {
     [2914] = true, [2915] = true, [2916] = true, [2917] = true, [2918] = true,
 }
 
--- Midnight-only filter (per midnight-version-policy.mdc)
+-- Midnight-only filter (per WN-VERSION-midnight-policy.mdc)
 -- Prefer skillLineID matching to avoid locale-dependent name checks.
 local function IsMidnightExpansion(name, skillLineID)
     if skillLineID and MIDNIGHT_SKILLLINE_IDS[skillLineID] then

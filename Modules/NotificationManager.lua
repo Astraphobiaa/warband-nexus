@@ -19,6 +19,10 @@ local Constants = ns.Constants
 local E = Constants.EVENTS
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
+-- Dedupe Blizzard progressive criteria: AchievementAlertSystem / CriteriaAlertSystem may both enqueue.
+local lastCriteriaProgressEmitKey = nil
+local lastCriteriaProgressEmitTime = nil
+
 -- Changelog for current version only: locale key CHANGELOG_V + numeric x.y.z triple (e.g. 2.5.15-beta1 -> CHANGELOG_V2515)
 local FALLBACK_CHANGELOG = "v" .. tostring(CURRENT_VERSION) .. "\n- See Locales for CHANGELOG_V key matching this version.\n\nCurseForge: Warband Nexus"
 
@@ -456,7 +460,7 @@ local CATEGORY_ICONS = {
     reputation = "Interface\\Icons\\INV_Scroll_11",
     quest = "Interface\\Icons\\INV_Misc_Map_01",
     item = "Interface\\Icons\\INV_Misc_Bag_10",
-    reminder = "minimap-genericevent-hornicon-small",
+    reminder = "Interface\\Icons\\INV_Misc_Horn_01",
 }
 
 -- Action text mapping (subtitle line)
@@ -511,6 +515,42 @@ function WarbandNexus:Notify(notifType, name, icon, overrides)
     self:ShowModalNotification(config)
 end
 
+--- Settings / QA: achievement + criteria-style + To-Do reminder in quick succession (same anchor stack).
+function WarbandNexus:TestNotificationStack()
+    local L = ns.L
+    local db = self.db and self.db.profile and self.db.profile.notifications
+    if not db or not db.enabled then return end
+    self:Notify(
+        "achievement",
+        (L and L["TEST_NOTIFICATION_TITLE"]) or "Test Notification",
+        nil,
+        { action = (L and L["TEST_NOTIFICATION_MSG"]) or "Achievement lane", playSound = false, autoDismiss = 4 }
+    )
+    C_Timer.After(0.12, function()
+        if not self.ShowModalNotification then return end
+        self:ShowModalNotification({
+            compact = true,
+            criteriaTitle = (L and L["ACHIEVEMENT_PROGRESS_TITLE"]) or "Achievement Progress",
+            itemName = (L and L["TEST_STACK_CRITERIA"]) or "Criteria progress (test)",
+            icon = "Interface\\Icons\\Achievement_Quests_Completed_08",
+            playSound = false,
+            autoDismiss = 4,
+        })
+    end)
+    C_Timer.After(0.24, function()
+        if not self.ShowModalNotification then return end
+        self:ShowModalNotification({
+            compact = true,
+            planReminderToast = true,
+            criteriaTitle = (L and L["REMINDER_TOAST_TITLE"]) or "To-Do reminder",
+            itemName = (L and L["TEST_STACK_REMINDER"]) or "Plan reminder (test)",
+            icon = "minimap-genericevent-hornicon-small",
+            playSound = false,
+            autoDismiss = 4,
+        })
+    end)
+end
+
 --[[============================================================================
     ACHIEVEMENT-STYLE ALERT FRAME SYSTEM (WOW-STYLE)
 ============================================================================]]
@@ -558,12 +598,22 @@ local function DequeueAlert()
 end
 
 -- Alert positioning constants
-local ALERT_HEIGHT = 88       -- Full toast height (fixed for all variants)
-local ALERT_HEIGHT_COMPACT = 88  -- Same as full: fixed stack geometry and no height jump between types
+local ALERT_HEIGHT = 88       -- Full achievement toast height
+local ALERT_HEIGHT_COMPACT = 88  -- Compact notification lane (collectibles, etc.) — wide frame
 local ALERT_GAP = 10          -- Pixel gap between stacked alerts
 local ALERT_SPACING = ALERT_HEIGHT + ALERT_GAP  -- Legacy: total slot spacing (98px)
--- Fixed outer width for all toast variants (text wraps/clamps inside; avoids shrink-wrap layout jumps)
+-- Full + compact notification width (achievement / collector lane)
 local ALERT_WIDTH_FIXED = 400
+-- Progress / criteria / To-Do reminder: outer width resolved at show time via GetBlizzardProgressAlertToastWidth().
+-- Height is fitted per toast (stacked header / title / detail) between min and max.
+local ALERT_HEIGHT_PROGRESS_MIN = 68
+-- Allow wrapped title + up to 3-line body + optional detail without clipping (dynamic height from GetStringHeight).
+local ALERT_HEIGHT_PROGRESS_MAX = 120
+local ALERT_HEIGHT_PROGRESS = 74
+-- Reference width used to scale progress-lane icon column when matching a narrower Blizzard criteria bar.
+local ALERT_PROGRESS_LAYOUT_REF_WIDTH = 400
+-- Left inset inside the toast so the icon column matches full compact lane breathing room (criteria felt flush to border).
+local ALERT_PROGRESS_ICON_LEADING_PAD = 10
 
 ---Get Blizzard's alert frame position so we can match it when "Use AlertFrame Position" is on.
 ---Tries AchievementAlertFrame1, CriteriaAlertFrame1, AlertFrameHolder, then any visible AlertFrame child.
@@ -602,27 +652,53 @@ local function GetBlizzardAlertFramePosition()
     return "TOP", offsetX, offsetY
 end
 
----Get saved notification position from DB. When useAlertFramePosition is set, returns Blizzard's frame position.
----When compact is true but compact position equals main position, returns main so all notifications share one anchor and stack (no overlap).
----@param compact boolean|nil If true and separate criteria position is set, return that; else return main position.
+---Single saved anchor for achievement (full), criteria progress, compact collectibles, vault checkpoints, To-Do reminders.
+---They stack vertically via GetCumulativeOffsetForNewAlert sharing the same anchorKey.
 ---@return string point, number x, number y
-local function GetSavedPosition(compact)
+local function GetUnifiedSavedAnchor()
     local db = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
     if not db then return "TOP", 0, -100 end
     if db.useAlertFramePosition then
         local pt, px, py = GetBlizzardAlertFramePosition()
-        if pt and px and py then return pt, px, py end
+        if pt and px ~= nil and py ~= nil then return pt, px, py end
     end
-    local mainPt, mainX, mainY = db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
-    if compact and db.popupPointCompact then
-        local cX, cY = db.popupXCompact or 0, db.popupYCompact or -100
-        -- Same position for all: use single anchor so achievement/criteria/collectible stack without overlapping
-        if db.popupPointCompact == mainPt and cX == mainX and cY == mainY then
-            return mainPt, mainX, mainY
+    return db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
+end
+
+---Progress lane (criteria / reminders / vault progress): same anchor as main achievement lane.
+---@return string point, number x, number y
+local function GetProgressToastAnchor()
+    return GetUnifiedSavedAnchor()
+end
+
+---@return string point, number x, number y
+local function GetReminderToastAnchor()
+    return GetUnifiedSavedAnchor()
+end
+
+---Outer width for progress-lane toasts (criteria, vault checkpoints, To-Do reminders): match live Blizzard CriteriaAlertFrame* when loaded.
+---Fallback 300 matches AchievementAlertFrameTemplate (FrameXML alert lane) before CriteriaAlert frames exist.
+---@return number
+local function GetBlizzardProgressAlertToastWidth()
+    for i = 1, 10 do
+        local f = _G["CriteriaAlertFrame" .. i]
+        if f and type(f.GetWidth) == "function" and not (f.IsForbidden and f:IsForbidden()) then
+            local ok, w = pcall(function()
+                return f:GetWidth()
+            end)
+            if ok and type(w) == "number" and w >= 160 and w <= 900 then
+                return math.floor(w + 0.5)
+            end
         end
-        return db.popupPointCompact, cX, cY
     end
-    return mainPt, mainX, mainY
+    return 300
+end
+
+---Get saved notification position from DB (compact flag ignored — one anchor stacks all types).
+---@param compact boolean|nil Legacy parameter; unused.
+---@return string point, number x, number y
+local function GetSavedPosition(compact)
+    return GetUnifiedSavedAnchor()
 end
 
 ---Determine growth direction based on anchor position on screen (always AUTO)
@@ -876,21 +952,49 @@ function WarbandNexus:ShowModalNotification(config)
         and self.db.profile.notifications.popupDuration
     local autoDismissDelay = config.autoDismiss or dbDuration or 5
     
-    -- Calculate alert position (direction-aware, screen-safe). Same anchor = same stack; offset by cumulative height so achievement and criteria never overlap.
+    -- Calculate alert position (direction-aware, screen-safe).
     local isCompact = not not config.compact
-    local point, baseX, baseY = GetSavedPosition(isCompact)
+    local isPlanReminderToast = config.planReminderToast == true
+    local criteriaTitleStr = config.criteriaTitle
+    local useProgressSlot = not isPlanReminderToast and (
+        config.progressAnchor == true
+            or (isCompact and type(criteriaTitleStr) == "string" and criteriaTitleStr ~= "")
+    )
+    local useReminderSlot = isPlanReminderToast
+    local point, baseX, baseY
+    if useReminderSlot then
+        point, baseX, baseY = GetReminderToastAnchor()
+    elseif useProgressSlot then
+        point, baseX, baseY = GetProgressToastAnchor()
+    elseif isCompact then
+        point, baseX, baseY = GetSavedPosition(true)
+    else
+        point, baseX, baseY = GetSavedPosition(false)
+    end
     local direction = GetGrowthDirection(point, baseX, baseY)
     local anchorKey = point .. "|" .. tostring(baseX) .. "|" .. tostring(baseY)
     local yOffset = baseY + GetCumulativeOffsetForNewAlert(anchorKey, direction)
     
-    -- Compact toast: icon left, content (backdrop + ornaments + text) right — same layout as full achievement
+    -- Compact toast: icon left, content (backdrop + ornaments + text) right.
+    -- Progress lane (criteria / vault / To-Do reminders): Blizzard criteria-bar width scaling.
     if config.compact then
-        local COMPACT_HEIGHT = ALERT_HEIGHT_COMPACT
-        local ICON_SLOT_WIDTH_COMPACT = 62
-        local iconSizeCompact = 40
-        local contentFrameCompactW = ALERT_WIDTH_FIXED - ICON_SLOT_WIDTH_COMPACT
+        local dbN = self.db and self.db.profile and self.db.profile.notifications
+        local laneUsesProgressSizing = useProgressSlot or useReminderSlot
+
+        local COMPACT_HEIGHT = laneUsesProgressSizing and ALERT_HEIGHT_PROGRESS or ALERT_HEIGHT_COMPACT
+        local popupWidthCompact = laneUsesProgressSizing and GetBlizzardProgressAlertToastWidth() or ALERT_WIDTH_FIXED
+        -- Progress lane: icon column scales with Blizzard criteria bar width (ref = wide compact at 400px).
+        local refW = ALERT_PROGRESS_LAYOUT_REF_WIDTH
+        local ICON_SLOT_WIDTH_COMPACT = laneUsesProgressSizing
+            and math.max(52, math.floor(72 * popupWidthCompact / refW + 0.5))
+            or 62
+        local iconSizeCompact = laneUsesProgressSizing
+            and math.max(36, math.floor(54 * popupWidthCompact / refW + 0.5))
+            or 42
+        local laneIconLeadingPad = laneUsesProgressSizing and ALERT_PROGRESS_ICON_LEADING_PAD or 0
+        local contentFrameCompactW = popupWidthCompact - ICON_SLOT_WIDTH_COMPACT - laneIconLeadingPad
         local compactPopup = CreateFrame("Frame", nil, UIParent)
-        compactPopup:SetSize(ALERT_WIDTH_FIXED, COMPACT_HEIGHT)
+        compactPopup:SetSize(popupWidthCompact, COMPACT_HEIGHT)
         compactPopup:SetFrameStrata("HIGH")
         compactPopup:SetFrameLevel(1000)
         compactPopup:SetClampedToScreen(true)
@@ -900,17 +1004,16 @@ function WarbandNexus:ShowModalNotification(config)
         compactPopup._anchorPoint = point
         compactPopup._baseX = baseX
         compactPopup._baseY = baseY
-        compactPopup._alertHeight = ALERT_HEIGHT_COMPACT
+        compactPopup._alertHeight = COMPACT_HEIGHT
         table.insert(self.activeAlerts, compactPopup)
         compactPopup.isEntering = true
-        RepositionAlerts(true)
         
         -- Layer 0: effects (glow lines) behind the black frame
         local effectsFrameCompact = CreateFrame("Frame", nil, compactPopup)
         effectsFrameCompact:SetFrameLevel(0)
         effectsFrameCompact:SetAllPoints(compactPopup)
         local contentEffectsFrameCompact = CreateFrame("Frame", nil, effectsFrameCompact)
-        contentEffectsFrameCompact:SetPoint("LEFT", effectsFrameCompact, "LEFT", ICON_SLOT_WIDTH_COMPACT, 0)
+        contentEffectsFrameCompact:SetPoint("LEFT", effectsFrameCompact, "LEFT", laneIconLeadingPad + ICON_SLOT_WIDTH_COMPACT, 0)
         contentEffectsFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
         -- Layer 1: black background on top of effects
         local backdropFrameCompact = CreateFrame("Frame", nil, compactPopup, "BackdropTemplate")
@@ -925,44 +1028,58 @@ function WarbandNexus:ShowModalNotification(config)
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
         backdropFrameCompact:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
-        backdropFrameCompact:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
+        if laneUsesProgressSizing then
+            backdropFrameCompact:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 0.58)
+        else
+            backdropFrameCompact:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
+        end
         
         -- Layer 2: icon slot (icon + bling only)
         local iconSlotCompact = CreateFrame("Frame", nil, compactPopup)
         iconSlotCompact:SetFrameLevel(2)
         iconSlotCompact:SetSize(ICON_SLOT_WIDTH_COMPACT, COMPACT_HEIGHT)
-        iconSlotCompact:SetPoint("LEFT", compactPopup, "LEFT", 0, 0)
+        iconSlotCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad, 0)
         
         local iconCompact = iconSlotCompact:CreateTexture(nil, "ARTWORK")
         iconCompact:SetSize(iconSizeCompact, iconSizeCompact)
-        iconCompact:SetPoint("LEFT", iconSlotCompact, "LEFT", (ICON_SLOT_WIDTH_COMPACT - iconSizeCompact) / 2, 0)
-        if config.iconAtlas and config.iconAtlas ~= "" then
-            iconCompact:SetAtlas(config.iconAtlas)
+        iconCompact:SetPoint("CENTER", iconSlotCompact, "CENTER", 0, 0)
+        -- Use resolved atlas/fileID locals (IsAtlasName promotes config.icon → iconAtlas; compact must not read config.iconAtlas only).
+        if iconAtlas and iconAtlas ~= "" then
+            iconCompact:SetAtlas(iconAtlas)
         else
             iconCompact:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-            local tex = config.iconFileID or config.icon or CATEGORY_ICONS.achievement
-            if type(tex) == "number" then
-                iconCompact:SetTexture(tex)
+            if type(iconTexture) == "number" then
+                iconCompact:SetTexture(iconTexture)
+            elseif iconTexture and iconTexture ~= "" then
+                iconCompact:SetTexture(iconTexture:gsub("\\", "/"))
             else
-                iconCompact:SetTexture(tex and tex:gsub("\\", "/") or "Interface/Icons/INV_Misc_QuestionMark")
+                iconCompact:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
             end
         end
         local iconBlingCompact = iconSlotCompact:CreateTexture(nil, "OVERLAY", nil, 7)
-        iconBlingCompact:SetSize(iconSizeCompact + 8, iconSizeCompact + 8)
+        iconBlingCompact:SetSize(iconSizeCompact + 10, iconSizeCompact + 10)
         iconBlingCompact:SetPoint("CENTER", iconCompact, "CENTER", 0, 0)
         iconBlingCompact:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
         iconBlingCompact:SetTexCoord(0, 0.5625, 0, 0.5625)
         iconBlingCompact:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
         iconBlingCompact:SetBlendMode("BLEND")
+        -- Match achievement toast icon chrome (UI-Achievement-IconFrame). Progress lane showed “naked” icons before.
+        if laneUsesProgressSizing and config.progressAchievementFrame == false then
+            iconBlingCompact:Hide()
+        end
         
         -- Content frame (right): text only (ornaments in contentEffectsFrameCompact)
         local contentFrameCompact = CreateFrame("Frame", nil, compactPopup)
         contentFrameCompact:SetFrameLevel(2)
-        contentFrameCompact:SetPoint("LEFT", compactPopup, "LEFT", ICON_SLOT_WIDTH_COMPACT, 0)
+        contentFrameCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad + ICON_SLOT_WIDTH_COMPACT, 0)
         
-        -- Theme: TopBottom glow in effects layer (behind black)
-        if glowAtlas and glowAtlas:find("TopBottom:") then
-            local baseAtlas = glowAtlas:gsub("TopBottom:", "")
+        -- Theme: TopBottom glow in effects layer (behind black). Progress slot defaults to no glow (helper/criteria-like).
+        local compactGlowAtlas = glowAtlas
+        if laneUsesProgressSizing and config.progressGlow ~= true then
+            compactGlowAtlas = nil
+        end
+        if compactGlowAtlas and type(compactGlowAtlas) == "string" and compactGlowAtlas:find("TopBottom:") then
+            local baseAtlas = compactGlowAtlas:gsub("TopBottom:", "")
             local topLine = contentEffectsFrameCompact:CreateTexture(nil, "BACKGROUND", nil, 0)
             topLine:SetPoint("TOPLEFT", contentEffectsFrameCompact, "TOPLEFT", 0, 2)
             topLine:SetPoint("TOPRIGHT", contentEffectsFrameCompact, "TOPRIGHT", 0, 2)
@@ -978,10 +1095,16 @@ function WarbandNexus:ShowModalNotification(config)
             bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
             bottomLine:SetBlendMode("ADD")
         end
-        -- Criteria progress toast: "Achievement Progress" (centered, theme) + criteria name only. Other compact: progress line + name.
+        -- Progress lane (criteria + To-Do reminder): one layout — accent header, white body, optional gray detail; symmetric padding in the text column (icon column separate).
         local criteriaTitle = config.criteriaTitle
         local progressStr = (messageText or actionText or "")
+        if type(progressStr) == "string" and issecretvalue and issecretvalue(progressStr) then progressStr = "" end
         local nameStr = (itemName or "")
+        if type(nameStr) == "string" and issecretvalue and issecretvalue(nameStr) then nameStr = "" end
+        local detailStr = actionText or ""
+        if type(detailStr) == "string" and issecretvalue and issecretvalue(detailStr) then detailStr = "" end
+        local critTitleSafe = criteriaTitle
+        if type(critTitleSafe) == "string" and issecretvalue and issecretvalue(critTitleSafe) then critTitleSafe = "" end
         local tr = math.floor(math.min(255, titleColor[1] * 255 * 1.35))
         local tg = math.floor(math.min(255, titleColor[2] * 255 * 1.35))
         local tb = math.floor(math.min(255, titleColor[3] * 255 * 1.35))
@@ -989,16 +1112,16 @@ function WarbandNexus:ShowModalNotification(config)
         local progressLine, nameLine
         if criteriaTitle then
             progressLine = FontManager:CreateFontString(contentFrameCompact, "subtitle", "OVERLAY")
-            progressLine:SetJustifyH("CENTER")
+            progressLine:SetJustifyH("LEFT")
             progressLine:SetWordWrap(true)
             progressLine:SetMaxLines(2)
-            progressLine:SetText(accentHex .. (criteriaTitle or "") .. "|r")
+            progressLine:SetText(accentHex .. (critTitleSafe or "") .. "|r")
             progressLine:SetShadowOffset(1, -1)
             progressLine:SetShadowColor(0, 0, 0, 0.9)
             nameLine = FontManager:CreateFontString(contentFrameCompact, "body", "OVERLAY")
-            nameLine:SetJustifyH("CENTER")
+            nameLine:SetJustifyH("LEFT")
             nameLine:SetWordWrap(true)
-            nameLine:SetMaxLines(2)
+            nameLine:SetMaxLines(3)
             nameLine:SetText("|cffffffff" .. (nameStr or "") .. "|r")
             nameLine:SetShadowOffset(1, -1)
             nameLine:SetShadowColor(0, 0, 0, 0.6)
@@ -1017,25 +1140,73 @@ function WarbandNexus:ShowModalNotification(config)
         end
         contentFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
         contentEffectsFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
-        compactPopup:SetSize(ALERT_WIDTH_FIXED, COMPACT_HEIGHT)
+        compactPopup:SetSize(popupWidthCompact, COMPACT_HEIGHT)
 
-        local textPad = 10
-        local textUseW = contentFrameCompactW - textPad * 2
-        -- Vertically balanced for ALERT_HEIGHT_COMPACT (88px): two-line block below top padding
-        local line1Y, line2Y = -20, -42
-        progressLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, line1Y)
-        progressLine:SetWidth(textUseW)
-        nameLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, line2Y)
-        nameLine:SetWidth(textUseW)
-        nameLine:SetWordWrap(true)
-        nameLine:SetMaxLines(2)
-        if not criteriaTitle then
+        local textPad = laneUsesProgressSizing and 12 or 10
+        local textUseW = math.max(40, contentFrameCompactW - textPad * 2)
+
+        local detailLine = nil
+        if criteriaTitle then
+            progressLine:SetWidth(textUseW)
+            nameLine:SetWidth(textUseW)
+            if detailStr ~= "" then
+                detailLine = FontManager:CreateFontString(contentFrameCompact, "small", "OVERLAY")
+                detailLine:SetWidth(textUseW)
+                detailLine:SetJustifyH("LEFT")
+                detailLine:SetWordWrap(true)
+                detailLine:SetMaxLines(2)
+                detailLine:SetText("|cffc8c8c8" .. detailStr .. "|r")
+                detailLine:SetShadowOffset(1, -1)
+                detailLine:SetShadowColor(0, 0, 0, 0.55)
+            end
+
+            local gapMid = 4
+            local gapDetail = 3
+            local h1 = progressLine:GetStringHeight()
+            local h2 = nameLine:GetStringHeight()
+            local h3 = detailLine and detailLine:GetStringHeight() or 0
+            local stackH = h1 + gapMid + h2 + (detailLine and (gapDetail + h3) or 0)
+            local padV = 8
+            local newH = math.min(ALERT_HEIGHT_PROGRESS_MAX, math.max(ALERT_HEIGHT_PROGRESS_MIN, math.ceil(stackH + padV * 2)))
+
+            compactPopup:SetHeight(newH)
+            iconSlotCompact:SetHeight(newH)
+            contentFrameCompact:SetHeight(newH)
+            contentEffectsFrameCompact:SetHeight(newH)
+            compactPopup._alertHeight = newH
+
+            local padTop = math.max(6, (newH - stackH) / 2)
+            progressLine:ClearAllPoints()
+            nameLine:ClearAllPoints()
+            progressLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, -padTop)
+            nameLine:SetPoint("TOPLEFT", progressLine, "BOTTOMLEFT", 0, -gapMid)
+            if detailLine then
+                detailLine:ClearAllPoints()
+                detailLine:SetPoint("TOPLEFT", nameLine, "BOTTOMLEFT", 0, -gapDetail)
+            end
+        else
+            local line1Y, line2Y = -20, -42
+            progressLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, line1Y)
+            progressLine:SetWidth(textUseW)
+            nameLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, line2Y)
+            nameLine:SetWidth(textUseW)
+            nameLine:SetWordWrap(true)
+            nameLine:SetMaxLines(2)
             progressLine:SetWordWrap(true)
             progressLine:SetMaxLines(2)
         end
         
         if config.playSound then
-            PlaySound(config.soundID or 44295)
+            local Constants = ns.Constants
+            local defaultSound
+            if laneUsesProgressSizing then
+                defaultSound = (SOUNDKIT and (SOUNDKIT.UI_AUTO_QUEST_COMPLETE or SOUNDKIT.AUTO_QUEST_COMPLETE))
+                    or (Constants and Constants.NOTIFICATION_SOUND_PROGRESS)
+                    or 44294
+            else
+                defaultSound = (Constants and Constants.NOTIFICATION_SOUND_COMPACT_DEFAULT) or 44295
+            end
+            PlaySound(config.soundID or defaultSound)
         end
         
         compactPopup:SetScript("OnMouseDown", function(self, button)
@@ -1065,6 +1236,7 @@ function WarbandNexus:ShowModalNotification(config)
         compactPopup._baseX = baseX
         compactPopup._direction = direction
         local _pt, _bx = point, baseX
+        RepositionAlerts(true)
         compactPopup:Show()
         compactPopup:SetScript("OnUpdate", function(self, elapsed)
             local prog = math.min(1, (GetTime() - (self._entranceStartTime or 0)) / 0.3)
@@ -1469,7 +1641,8 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- === PLAY SOUND ===
     if playSound then
-        PlaySound(config.soundID or 44295)
+        local Constants = ns.Constants
+        PlaySound(config.soundID or (Constants and Constants.NOTIFICATION_SOUND_COMPACT_DEFAULT) or 44295)
     end
     
     -- === ANIMATIONS (WoW-STYLE SLIDE DOWN) ===
@@ -1814,6 +1987,8 @@ end
 function WarbandNexus:InitializeNotificationListeners()
     -- Register for custom notification events
     self:RegisterMessage(E.SHOW_NOTIFICATION, "OnShowNotification")
+    self:RegisterMessage(E.SHOW_REMINDER_TOAST, "OnShowReminderToast")
+    self:RegisterMessage(E.SHOW_CRITERIA_PROGRESS, "OnShowCriteriaProgressMessage")
     
     -- ── BULLETPROOF COLLECTIBLE DISPATCH ──────────────────────────────────────
     -- WN_COLLECTIBLE_OBTAINED has MULTIPLE consumers on WarbandNexus:
@@ -1874,7 +2049,7 @@ function WarbandNexus:InitializeNotificationListeners()
     self:RegisterMessage(E.QUEST_COMPLETED, "OnQuestCompleted")
     -- WN_REPUTATION_GAINED is handled in Core.lua (chat notifications)
     self:RegisterMessage(E.VAULT_REWARD_AVAILABLE, "OnVaultRewardAvailable")
-    -- Reminders now use progress-based indicators on plan cards (no popup)
+    -- Plan reminders: optional compact toast via WN_SHOW_REMINDER_TOAST (not Blizzard AddAlert hooks)
     
     -- Font change listener (low-impact: active notifications auto-dismiss quickly, new ones will use updated font)
     -- NOTE: Uses NotificationEvents as 'self' key to avoid overwriting PlansTrackerWindow's handler.
@@ -2091,7 +2266,7 @@ function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
                         if completed and WarbandNexus.ShowAchievementNotification then
                             WarbandNexus:ShowAchievementNotification(aid)
                         else
-                            WarbandNexus:ShowCriteriaProgressNotification(aid, a2copy)
+                            WarbandNexus:SendMessage(E.SHOW_CRITERIA_PROGRESS, { achievementID = aid, criteriaIndex = a2copy })
                         end
                         HideVisibleBlizzardCriteriaFramesOnly()
                     end)
@@ -2118,8 +2293,9 @@ function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
                         if completed and WarbandNexus.ShowAchievementNotification then
                             WarbandNexus:ShowAchievementNotification(aid)
                         else
-                            WarbandNexus:ShowCriteriaProgressNotification(aid, a2copy)
+                            WarbandNexus:SendMessage(E.SHOW_CRITERIA_PROGRESS, { achievementID = aid, criteriaIndex = a2copy })
                         end
+                        HideVisibleBlizzardCriteriaFramesOnly()
                     end)
                     return
                 end
@@ -2138,7 +2314,39 @@ function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
     end
 end
 
----Generic notification handler
+---Blizzard hooked progressive achievement / criteria AddAlert routes here (never calls ShowCriteriaProgressNotification directly — avoids stacking duplicate Alerts with WN_REMINDER lane).
+---@param _ string AceEvent prefix
+---@param payload table|nil { achievementID, criteriaIndex }
+function WarbandNexus:OnShowCriteriaProgressMessage(_, payload)
+    if not payload then return end
+    local aid = payload.achievementID
+    local crit = payload.criteriaIndex
+    -- aid guarded inside ShowCriteriaProgressNotification; criterion may be numeric index OR string criteria text from Blizzard
+    if aid == nil or type(aid) ~= "number" then return end
+
+    local key = tostring(aid) .. "|" .. tostring(crit == nil and "nil" or crit)
+    local now = GetTime()
+    if lastCriteriaProgressEmitKey == key and lastCriteriaProgressEmitTime
+        and (now - lastCriteriaProgressEmitTime) < 0.45 then
+        return
+    end
+    lastCriteriaProgressEmitKey = key
+    lastCriteriaProgressEmitTime = now
+
+    if WarbandNexus.ShowCriteriaProgressNotification then
+        WarbandNexus:ShowCriteriaProgressNotification(aid, crit)
+    end
+end
+
+---Dedicated To-Do reminder toast lane (ReminderService ActivateReminder → WN_SHOW_REMINDER_TOAST).
+---@param _ string AceEvent prefix
+---@param payload table|nil { data = ShowModalNotification config }
+function WarbandNexus:OnShowReminderToast(_, payload)
+    if not payload or not payload.data then return end
+    self:ShowModalNotification(payload.data)
+end
+
+---Generic notification handler (non–reminder modals — legacy / external callers)
 ---@param event string Event name
 ---@param payload table Notification payload
 function WarbandNexus:OnShowNotification(event, payload)
@@ -2435,9 +2643,10 @@ function WarbandNexus:OnVaultSlotCompleted(event, data)
     if db and db.showCriteriaProgressNotifications and threshold and threshold > 0 then
         self:ShowModalNotification({
             compact = true,
+            progressAnchor = true,
             iconAtlas = cat.atlas,
+            criteriaTitle = string.format((ns.L and ns.L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", threshold, threshold),
             itemName = cat.name,
-            action = string.format((ns.L and ns.L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", threshold, threshold),
             playSound = false,
             autoDismiss = 3,
         })
@@ -2722,9 +2931,10 @@ function WarbandNexus:TestLootNotification(type, id, step)
         local progressStr = string.format((ns.L and ns.L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", completed, numCriteria)
         self:ShowModalNotification({
             compact = true,
+            progressAnchor = true,
             icon = achIcon or CATEGORY_ICONS.achievement,
+            criteriaTitle = progressStr,
             itemName = criteriaName,
-            action = progressStr,
             achievementID = achievementID,
             playSound = false,
             autoDismiss = 3,
@@ -2742,9 +2952,10 @@ function WarbandNexus:TestLootNotification(type, id, step)
         local cat = VAULT_CATEGORIES.dungeon or {name = "Dungeon", atlas = "questlog-questtypeicon-heroic"}
         self:ShowModalNotification({
             compact = true,
+            progressAnchor = true,
             iconAtlas = cat.atlas,
+            criteriaTitle = string.format((ns.L and ns.L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", 4, 4),
             itemName = cat.name,
-            action = string.format((ns.L and ns.L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", 4, 4),
             playSound = false,
             autoDismiss = 3,
         })

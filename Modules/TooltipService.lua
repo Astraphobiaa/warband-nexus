@@ -2558,7 +2558,7 @@ function TooltipService:InitializeGameTooltipHook()
         -- ENCOUNTER_END feed: Injects localized encounter name into tooltip caches.
         -- Called from TryCounterService when a boss is killed in an instance.
         -- Midnight 12.0+: treat encounterName / encounterID as potentially secret — no ==, no table keys
-        -- until cleared (wow-taint-security). npcIDsOverride allows ID-secret kills to still cache by name
+        -- until cleared (WN-SECURITY-taint). npcIDsOverride allows ID-secret kills to still cache by name
         -- when the name is non-secret.
         self._feedEncounterKill = function(encounterName, encounterID, npcIDsOverride)
             if not encounterName or (issecretvalue and issecretvalue(encounterName)) then return end
