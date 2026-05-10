@@ -465,6 +465,7 @@ function WarbandNexus:DrawItemList(parent)
         if parent._wnExpandCollapseToggleBtn then parent._wnExpandCollapseToggleBtn:Hide() end
         if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
         if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
+        if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
         if fixedHeader then fixedHeader:SetHeight(yOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["ITEMS_DISABLED_TITLE"]) or "Warband Bank Items")
@@ -473,6 +474,7 @@ function WarbandNexus:DrawItemList(parent)
     
     -- ===== LOADING STATE (INITIAL SCAN) =====
     if ns.ItemsLoadingState and ns.ItemsLoadingState.isLoading then
+        if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
         if fixedHeader then fixedHeader:SetHeight(yOffset) end
         local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
         if UI_CreateLoadingStateCard then
@@ -559,6 +561,9 @@ function WarbandNexus:DrawItemList(parent)
             SearchResultsRenderer:PrepareContainer(resultsContainer)
             local contentHeight = WarbandNexus:DrawItemsResults(resultsContainer, 0, width, ns.UI_GetItemsSubTab(), text)
             resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
+            if ns.UI_AnnexResultsToScrollBottom and parent then
+                ns.UI_AnnexResultsToScrollBottom(resultsContainer, parent, SIDE_MARGIN, 8)
+            end
         end
     end, 0.4, itemsSearchText)
     
@@ -639,7 +644,10 @@ function WarbandNexus:DrawItemList(parent)
     
     local contentHeight = self:DrawItemsResults(resultsContainer, 0, width, currentItemsSubTab, itemsSearchText)
     resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
-    
+    if ns.UI_AnnexResultsToScrollBottom then
+        ns.UI_AnnexResultsToScrollBottom(resultsContainer, parent, SIDE_MARGIN, 8)
+    end
+
     return 8 + (contentHeight or 0)
 end
 
@@ -666,6 +674,9 @@ function WarbandNexus:RedrawItemsResultsOnly()
 
     local contentHeight = self:DrawItemsResults(rc, 0, width, subTab, q)
     rc:SetHeight(math.max(contentHeight or 1, 1))
+    if ns.UI_AnnexResultsToScrollBottom then
+        ns.UI_AnnexResultsToScrollBottom(rc, scrollChild, SIDE_MARGIN, 8)
+    end
 
     local CONTENT_BOTTOM_PADDING = 8
     local tabBodyHeight = 8 + (contentHeight or 0)

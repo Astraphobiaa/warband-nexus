@@ -938,6 +938,36 @@ local function CreateResultsContainer(parent, yOffset, sideMargin)
     return container
 end
 
+--- Fills the band from `resultsContainer` bottom to `scrollParent` bottom (same tone as scroll chrome).
+--- Use when list height is intrinsic but the scroll viewport is taller (avoids a dead strip above the footer).
+---@param resultsContainer Frame
+---@param scrollParent Frame
+---@param sideMargin number|nil
+---@param bottomInset number|nil
+function ns.UI_AnnexResultsToScrollBottom(resultsContainer, scrollParent, sideMargin, bottomInset)
+    if not resultsContainer or not scrollParent then return end
+    sideMargin = sideMargin or 10
+    bottomInset = bottomInset or 8
+    local key = "_wnResultsAnnexSheet"
+    local annex = scrollParent[key]
+    if not annex then
+        annex = CreateFrame("Frame", nil, scrollParent)
+        scrollParent[key] = annex
+        annex._wnKeepOnTabSwitch = true
+        annex:EnableMouse(false)
+        local tex = annex:CreateTexture(nil, "BACKGROUND", nil, -6)
+        tex:SetAllPoints()
+        tex:SetColorTexture(0.06, 0.06, 0.072, 0.94)
+    end
+    annex:SetFrameLevel(math.max(0, (resultsContainer:GetFrameLevel() or 0) - 3))
+    annex:ClearAllPoints()
+    annex:SetPoint("TOPLEFT", resultsContainer, "BOTTOMLEFT", 0, 0)
+    annex:SetPoint("TOPRIGHT", resultsContainer, "BOTTOMRIGHT", 0, 0)
+    annex:SetPoint("BOTTOMLEFT", scrollParent, "BOTTOMLEFT", sideMargin, bottomInset)
+    annex:SetPoint("BOTTOMRIGHT", scrollParent, "BOTTOMRIGHT", -sideMargin, bottomInset)
+    annex:Show()
+end
+
 --[[
     Create a stats bar with text display
     @param parent frame - Parent frame

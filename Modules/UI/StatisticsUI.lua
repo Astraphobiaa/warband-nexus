@@ -131,6 +131,7 @@ function WarbandNexus:DrawStatistics(parent)
     -- Check for data availability
     local characters = self.db and self.db.global and self.db.global.characters
     if not characters or not next(characters) then
+        if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local _, height = CreateEmptyStateCard(parent, "statistics", headerYOffset)
         return headerYOffset + (height or 120)
@@ -798,7 +799,11 @@ function WarbandNexus:DrawStatistics(parent)
     
     storageCard:Show()
     yOffset = yOffset + 110
-    
+
+    if ns.UI_AnnexResultsToScrollBottom then
+        ns.UI_AnnexResultsToScrollBottom(storageCard, parent, SIDE_MARGIN, 8)
+    end
+
     return yOffset
 end
 

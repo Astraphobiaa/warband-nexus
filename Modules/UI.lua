@@ -1245,7 +1245,7 @@ function WarbandNexus:CreateMainWindow()
                     local nc = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
                     for i = 1, nc do
                         local child = _uiChildEnumScratch[i]
-                        if not (child.isPooled and child.rowType) and not child.isPersistentRowElement then
+                        if not (child.isPooled and child.rowType) and not child.isPersistentRowElement and not child._wnKeepOnTabSwitch then
                             child:Hide()
                             child:SetParent(recycleBin)
                         elseif child.isPersistentRowElement then
@@ -1355,10 +1355,17 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     
+    -- Footer strip (text + version): bottom offset 5, height MAIN_FOOTER_H. Content must end just above it —
+    -- using a fixed ~45px inset left a dead band (~10px) between footer top and content bottom.
+    local MAIN_FOOTER_H = 26
+    local FOOTER_BOTTOM_OFFSET = 5
+    local CONTENT_GAP_ABOVE_FOOTER = 4
+    local CONTENT_BOTTOM_OFFSET = FOOTER_BOTTOM_OFFSET + MAIN_FOOTER_H + CONTENT_GAP_ABOVE_FOOTER
+
     -- ===== CONTENT AREA =====
     local content = CreateFrame("Frame", nil, f)
     content:SetPoint("TOPLEFT", nav, "BOTTOMLEFT", 8, -8)
-    content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 45)
+    content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, CONTENT_BOTTOM_OFFSET)
     f.content = content
 
     -- Background only on content (no border); border will be on viewport frame so scrollbars sit outside it
@@ -1374,10 +1381,11 @@ function WarbandNexus:CreateMainWindow()
     -- Scroll layout: UI_LAYOUT; 2–3px gap between viewport and scrollbars so they don’t sit too close
     local LAYOUT = ns.UI_LAYOUT or ns.UI_SPACING or {}
     local SCROLL_COLUMN_W = LAYOUT.SCROLLBAR_COLUMN_WIDTH or 22
-    local SCROLL_GAP = 3
+    local SCROLL_GAP = 2
     local SCROLL_INSET_TOP = LAYOUT.SCROLL_CONTENT_TOP_PADDING or 12
     local H_BAR_H = LAYOUT.SCROLL_BAR_WIDTH or 16
-    local H_BAR_BOTTOM = LAYOUT.SIDE_MARGIN or 10
+    -- Tight strip above window bottom: h-bar row + small margin (was SIDE_MARGIN 10 → excess empty padding).
+    local H_BAR_BOTTOM = 6
     local H_ROW_H = SCROLL_COLUMN_W
     local SCROLL_INSET_BOTTOM = H_BAR_BOTTOM + H_ROW_H + SCROLL_GAP
     local SCROLL_INSET_LEFT = 4
@@ -1881,6 +1889,56 @@ function WarbandNexus:CreateMainWindow()
     end)
 
     -- Loading bar is now a standalone floating frame (see CreateLoadingOverlay below)
+
+    -- Footer: left disclaimer / hints, right add-on version (TOC metadata).
+    do
+        local footerBar = CreateFrame("Frame", nil, f)
+        footerBar:SetHeight(MAIN_FOOTER_H)
+        footerBar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 8, 5)
+        footerBar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -22, 5)
+        footerBar:SetFrameLevel((f:GetFrameLevel() or 0) + 4)
+        footerBar:EnableMouse(false)
+        f.footerBar = footerBar
+
+        local footerTop = footerBar:CreateTexture(nil, "ARTWORK")
+        footerTop:SetHeight(1)
+        footerTop:SetPoint("TOPLEFT", footerBar, "TOPLEFT", 0, 0)
+        footerTop:SetPoint("TOPRIGHT", footerBar, "TOPRIGHT", 0, 0)
+        if COLORS then
+            footerTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.28)
+        else
+            footerTop:SetColorTexture(0.45, 0.25, 0.75, 0.35)
+        end
+
+        local metaVer = nil
+        if C_AddOns and C_AddOns.GetAddOnMetadata then
+            metaVer = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
+        end
+        if (not metaVer or metaVer == "") and GetAddOnMetadata then
+            metaVer = GetAddOnMetadata(ADDON_NAME, "Version")
+        end
+        if not metaVer or metaVer == "" then
+            metaVer = "?"
+        end
+
+        local footerVersion = FontManager:CreateFontString(footerBar, "small", "OVERLAY")
+        footerVersion:SetPoint("RIGHT", footerBar, "RIGHT", -8, 0)
+        footerVersion:SetJustifyH("RIGHT")
+        footerVersion:SetTextColor(0.72, 0.74, 0.8, 0.95)
+        local verFmt = (L and L["MAIN_FOOTER_VERSION_FMT"]) or "v%s"
+        footerVersion:SetText(string.format(verFmt, metaVer))
+        f.footerVersionText = footerVersion
+
+        local footerLeft = FontManager:CreateFontString(footerBar, "small", "OVERLAY")
+        footerLeft:SetPoint("LEFT", footerBar, "LEFT", 8, 0)
+        footerLeft:SetPoint("RIGHT", footerVersion, "LEFT", -14, 0)
+        footerLeft:SetJustifyH("LEFT")
+        footerLeft:SetWordWrap(false)
+        footerLeft:SetNonSpaceWrap(true)
+        footerLeft:SetTextColor(0.5, 0.52, 0.56, 0.92)
+        footerLeft:SetText((L and L["MAIN_FOOTER_LEFT"]) or "Crafted with care, for everyone who plays.")
+        f.footerLeftText = footerLeft
+    end
     
     -- Master OnHide: cleanup when addon window closes
     f:SetScript("OnHide", function(self)
@@ -2031,7 +2089,7 @@ function WarbandNexus:PopulateContent()
             if isTabSwitch then
                 child._hasRenderedOnce = nil
             end
-            if not (child.isPooled and child.rowType) and not child.isPersistentRowElement then
+            if not (child.isPooled and child.rowType) and not child.isPersistentRowElement and not child._wnKeepOnTabSwitch then
                 child:Hide()
                 child:SetParent(recycleBin)
             end
@@ -2058,6 +2116,11 @@ function WarbandNexus:PopulateContent()
     
     -- Set scrollChild width once (ComputeScrollChildWidth handles tab-specific minimums)
     scrollChild:SetWidth(ComputeScrollChildWidth(mainFrame))
+
+    -- Bottom annex sheet (Storage / Items / Stats): hide until the active tab redraw anchors it.
+    if scrollChild._wnResultsAnnexSheet then
+        scrollChild._wnResultsAnnexSheet:Hide()
+    end
 
     -- Mark that pooled rows were already released in PopulateContent.
     -- Tab renderers can skip redundant ReleaseAllPooledChildren() calls in this pass.
@@ -2106,7 +2169,44 @@ function WarbandNexus:PopulateContent()
     local CONTENT_BOTTOM_PADDING = 8
     local contentBottom = height + CONTENT_BOTTOM_PADDING
     -- Gear tab: extend scrollChild to viewport so the gear card can fill downward (see DrawPaperDollCard fill).
-    scrollChild:SetHeight(math.max(contentBottom, mainFrame.scroll:GetHeight()))
+    local viewportH = mainFrame.scroll and mainFrame.scroll:GetHeight() or 0
+    -- First layout frame: GetHeight() can be 0 while anchors are valid — derive from geometry so scrollChild fills the viewport.
+    if viewportH < 2 and mainFrame.scroll and mainFrame.fixedHeader then
+        local fhBot = mainFrame.fixedHeader:GetBottom()
+        local sb = mainFrame.scroll:GetBottom()
+        if fhBot and sb and fhBot > sb then
+            viewportH = fhBot - sb
+        end
+    end
+    local totalScrollH = math.max(contentBottom, viewportH)
+    scrollChild:SetHeight(totalScrollH)
+
+    -- When content is shorter than the viewport, paint a subtle bottom band so the scroll area matches
+    -- the main panel tone (avoids a tall empty strip above the window footer across tabs).
+    do
+        local fill = scrollChild._wnScrollBottomFill
+        if not fill then
+            fill = CreateFrame("Frame", nil, scrollChild)
+            fill._wnKeepOnTabSwitch = true
+            fill:SetFrameLevel(math.max(0, (scrollChild:GetFrameLevel() or 0) - 5))
+            local tex = fill:CreateTexture(nil, "BACKGROUND", nil, -8)
+            tex:SetAllPoints()
+            tex:SetColorTexture(0.055, 0.055, 0.065, 0.92)
+            scrollChild._wnScrollBottomFill = fill
+        end
+        local slack = totalScrollH - contentBottom
+        -- Storage / Items attach a dedicated sheet from results to scroll bottom (see UI_AnnexResultsToScrollBottom).
+        local skipGlobalFill = (tab == "storage" or tab == "items" or tab == "stats")
+        if not skipGlobalFill and slack > 1 then
+            fill:ClearAllPoints()
+            fill:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 6, -contentBottom)
+            fill:SetPoint("BOTTOMRIGHT", scrollChild, "BOTTOMRIGHT", -6, 0)
+            fill:Show()
+        else
+            fill:ClearAllPoints()
+            fill:Hide()
+        end
+    end
 
     -- After content height changes, clamp vertical scroll (avoids empty band when range shrinks or layout jumps)
     do

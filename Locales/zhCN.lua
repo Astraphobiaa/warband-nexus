@@ -1511,6 +1511,8 @@ L["SHOW_ALL"] = "显示全部"
 -- Social
 L["DISCORD_TOOLTIP"] = "WarbandNexus的Discord"
 L["PATREON_TOOLTIP"] = "Warband Nexus Patreon"
+L["MAIN_FOOTER_LEFT"] = "用心打磨，献给每一位玩家。"
+L["MAIN_FOOTER_VERSION_FMT"] = "v%s"
 
 -- Collection Source Filters
 L["SOURCE_OTHER"] = "其他"

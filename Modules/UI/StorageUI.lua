@@ -332,6 +332,7 @@ function WarbandNexus:DrawStorageTab(parent)
         if parent._wnExpandCollapseToggleBtn then parent._wnExpandCollapseToggleBtn:Hide() end
         if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
         if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
+        if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["STORAGE_DISABLED_TITLE"]) or "Character Storage")
@@ -350,6 +351,9 @@ function WarbandNexus:DrawStorageTab(parent)
                 local contentWidth = parent:GetWidth() - 20
                 local contentHeight = self:DrawStorageResults(resultsContainer, 0, contentWidth, text)
                 resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
+                if ns.UI_AnnexResultsToScrollBottom and parent then
+                    ns.UI_AnnexResultsToScrollBottom(resultsContainer, parent, SIDE_MARGIN, 8)
+                end
             end
         end, 0.4, storageSearchText)
     end
@@ -386,7 +390,10 @@ function WarbandNexus:DrawStorageTab(parent)
     
     local contentHeight = self:DrawStorageResults(resultsContainer, 0, width, storageSearchText)
     resultsContainer:SetHeight(math.max(contentHeight, 1))
-    
+    if ns.UI_AnnexResultsToScrollBottom then
+        ns.UI_AnnexResultsToScrollBottom(resultsContainer, parent, SIDE_MARGIN, 8)
+    end
+
     return 8 + contentHeight
 end
 
@@ -407,6 +414,9 @@ function WarbandNexus:RedrawStorageResultsOnly()
     end
     local contentHeight = self:DrawStorageResults(rc, 0, width, q)
     rc:SetHeight(math.max(contentHeight or 1, 1))
+    if ns.UI_AnnexResultsToScrollBottom then
+        ns.UI_AnnexResultsToScrollBottom(rc, scrollChild, SIDE_MARGIN, 8)
+    end
 end
 
 --- After leaf type accordion tweens (no full DrawStorageResults), resize results container from layout tail.
@@ -436,6 +446,12 @@ function WarbandNexus:SyncStorageResultsLayoutFromTail(resultsContainer)
     end
     if mf and mf._virtualScrollUpdate then
         mf._virtualScrollUpdate()
+    end
+    if resultsContainer and ns.UI_AnnexResultsToScrollBottom then
+        local sc = resultsContainer:GetParent()
+        if sc then
+            ns.UI_AnnexResultsToScrollBottom(resultsContainer, sc, SIDE_MARGIN, 8)
+        end
     end
 end
 
