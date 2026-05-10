@@ -413,14 +413,12 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
         charRealm = ""
     end
     
-    -- Get character data for class color
-    local charData = addon.db and addon.db.global and addon.db.global.characters and addon.db.global.characters[charKey]
-    local classColor = "|cffffcc00"  -- Default gold
-    
-    if charData and charData.class then
-        local classColorTable = C_ClassColor and C_ClassColor.GetClassColor(charData.class)
-        if classColorTable then
-            classColor = string.format("|cff%02x%02x%02x", classColorTable.r * 255, classColorTable.g * 255, classColorTable.b * 255)
+    -- Class color from roster (classFile / classID / localized class → Blizzard token)
+    local classColor = "|cffffcc00"  -- Default gold when unknown
+    if charName and not (issecretvalue and issecretvalue(charName)) and ns.UI_GetClassColorHexForWarbandCharacter then
+        local hex = ns.UI_GetClassColorHexForWarbandCharacter(charName)
+        if hex and hex ~= "|cffaaaaaa" then
+            classColor = hex
         end
     end
     

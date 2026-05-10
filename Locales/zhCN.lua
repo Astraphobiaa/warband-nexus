@@ -1510,6 +1510,7 @@ L["SHOW_ALL"] = "显示全部"
 
 -- Social
 L["DISCORD_TOOLTIP"] = "WarbandNexus的Discord"
+L["PATREON_TOOLTIP"] = "Warband Nexus Patreon"
 
 -- Collection Source Filters
 L["SOURCE_OTHER"] = "其他"

@@ -864,6 +864,8 @@ function WarbandNexus:CreateMainWindow()
 
     -- Utility buttons in header (left of Close) so nav row is tabs-only and never overlaps when minimized
     local DISCORD_URL = "https://discord.gg/warbandnexus"
+    local PATREON_URL = "https://patreon.com/warbandnexus?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink"
+    local discordCopyFrame, discordCopyBox, patreonCopyFrame, patreonCopyBox
     local settingsBtn = CreateFrame("Button", nil, header)
     settingsBtn:SetSize(28, 28)
     settingsBtn:SetPoint("RIGHT", reloadDebugBtn, "LEFT", -6, 0)
@@ -888,15 +890,83 @@ function WarbandNexus:CreateMainWindow()
         GameTooltip:Hide()
     end)
 
+    -- Patreon (same copy-to-clipboard UX as Discord); sits left of Discord
+    local patreonBtn = CreateFrame("Button", nil, header)
+    patreonBtn:SetSize(30, 30)
+    patreonBtn:SetPoint("RIGHT", infoBtn, "LEFT", -6, 0)
+    local patreonIcon = patreonBtn:CreateTexture(nil, "ARTWORK")
+    patreonIcon:SetAllPoints()
+    patreonIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\donateicon.png")
+    patreonIcon:SetTexCoord(0, 1, 0, 1)
+    patreonCopyFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
+    patreonCopyFrame:SetSize(440, 28)
+    patreonCopyFrame:SetPoint("TOPRIGHT", patreonBtn, "BOTTOMRIGHT", 0, -4)
+    patreonCopyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    patreonCopyFrame:SetFrameLevel(500)
+    patreonCopyFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    patreonCopyFrame:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
+    patreonCopyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    patreonCopyFrame:Hide()
+    patreonCopyBox = CreateFrame("EditBox", nil, patreonCopyFrame)
+    patreonCopyBox:SetPoint("TOPLEFT", 6, -4)
+    patreonCopyBox:SetPoint("BOTTOMRIGHT", -6, 4)
+    patreonCopyBox:SetAutoFocus(false)
+    patreonCopyBox:SetFontObject(ChatFontNormal)
+    if ns.FontManager then
+        local p = ns.FontManager:GetFontFace()
+        local s = ns.FontManager:GetFontSize("body")
+        local f = ns.FontManager:GetAAFlags()
+        pcall(patreonCopyBox.SetFont, patreonCopyBox, p, s, f)
+    end
+    patreonCopyBox:SetText(PATREON_URL)
+    patreonCopyBox:SetCursorPosition(0)
+    patreonCopyBox:SetScript("OnEscapePressed", function() patreonCopyFrame:Hide() end)
+    patreonCopyBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    patreonCopyBox:SetScript("OnKeyDown", function(self, key)
+        if key == "C" and IsControlKeyDown() then
+            C_Timer.After(0.1, function() patreonCopyFrame:Hide() end)
+        end
+    end)
+    patreonBtn:SetScript("OnEnter", function()
+        patreonIcon:SetAlpha(0.75)
+        GameTooltip:SetOwner(patreonBtn, "ANCHOR_BOTTOM")
+        GameTooltip:SetText((ns.L and ns.L["PATREON_TOOLTIP"]) or "Warband Nexus on Patreon", 1, 1, 1)
+        GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY_LINK"]) or "Click to copy link", 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    patreonBtn:SetScript("OnLeave", function()
+        patreonIcon:SetAlpha(1.0)
+        GameTooltip:Hide()
+    end)
+    patreonBtn:SetScript("OnClick", function()
+        if patreonCopyFrame:IsShown() then
+            patreonCopyFrame:Hide()
+            return
+        end
+        if discordCopyFrame and discordCopyFrame:IsShown() then
+            discordCopyFrame:Hide()
+        end
+        patreonCopyBox:SetText(PATREON_URL)
+        patreonCopyFrame:Show()
+        patreonCopyBox:SetFocus()
+        patreonCopyBox:HighlightText()
+    end)
+    f.patreonBtn = patreonBtn
+
     -- Discord button (tracking status is to its left)
     local discordBtn = CreateFrame("Button", nil, header)
     discordBtn:SetSize(30, 30)
-    discordBtn:SetPoint("RIGHT", infoBtn, "LEFT", -6, 0)
+    discordBtn:SetPoint("RIGHT", patreonBtn, "LEFT", -6, 0)
     local discordIcon = discordBtn:CreateTexture(nil, "ARTWORK")
     discordIcon:SetAllPoints()
     discordIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\discord.tga")
     discordIcon:SetTexCoord(0, 1, 0, 1)
-    local discordCopyFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
+    discordCopyFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
     discordCopyFrame:SetSize(240, 28)
     discordCopyFrame:SetPoint("TOPRIGHT", discordBtn, "BOTTOMRIGHT", 0, -4)
     discordCopyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -910,7 +980,7 @@ function WarbandNexus:CreateMainWindow()
     discordCopyFrame:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
     discordCopyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
     discordCopyFrame:Hide()
-    local discordCopyBox = CreateFrame("EditBox", nil, discordCopyFrame)
+    discordCopyBox = CreateFrame("EditBox", nil, discordCopyFrame)
     discordCopyBox:SetPoint("TOPLEFT", 6, -4)
     discordCopyBox:SetPoint("BOTTOMRIGHT", -6, 4)
     discordCopyBox:SetAutoFocus(false)
@@ -945,6 +1015,9 @@ function WarbandNexus:CreateMainWindow()
         if discordCopyFrame:IsShown() then
             discordCopyFrame:Hide()
             return
+        end
+        if patreonCopyFrame and patreonCopyFrame:IsShown() then
+            patreonCopyFrame:Hide()
         end
         discordCopyBox:SetText(DISCORD_URL)
         discordCopyFrame:Show()

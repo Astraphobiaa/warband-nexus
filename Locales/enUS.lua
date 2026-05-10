@@ -1769,6 +1769,7 @@ L["SHOW_ALL"] = "Show All"
 
 -- Social
 L["DISCORD_TOOLTIP"] = "Warband Nexus Discord"
+L["PATREON_TOOLTIP"] = "Warband Nexus on Patreon"
 
 -- Collection Source Filters
 L["SOURCE_OTHER"] = "Other"

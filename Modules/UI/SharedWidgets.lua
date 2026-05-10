@@ -3808,6 +3808,117 @@ section container) so the clip region matches the accordion.
 ns.UI_ANIMATION_HEADER_ACCORDION = "header_accordion"
 
 --============================================================================
+-- GAME TOOLTIP + CLASS COLOR HELPERS (Collections Recent, etc.)
+--============================================================================
+
+local strupper = string.upper
+
+--- GameTooltip owner: horizontal flip so narrow columns (e.g. Collections Recent) open toward screen center.
+--- Does not call `GameTooltip_SetDefaultAnchor` (that path grows from owner top-right and often covers the next column).
+--- Call with `GameTooltip:ClearLines()` already done if you replace prior contents.
+---@param frame Frame
+---@param xOffset number|nil
+---@param yOffset number|nil
+function ns.UI_SetGameTooltipSmartOwner(frame, xOffset, yOffset)
+    if not frame or not GameTooltip then return end
+    xOffset = xOffset or 0
+    yOffset = yOffset or 0
+    local left = frame.GetLeft and frame:GetLeft()
+    local right = frame.GetRight and frame:GetRight()
+    if not left or not right then
+        GameTooltip:SetOwner(frame, "ANCHOR_RIGHT", xOffset, yOffset)
+        return
+    end
+    local mid = (left + right) / 2
+    local sw = GetScreenWidth and GetScreenWidth() or 1920
+    if mid > sw * 0.52 then
+        GameTooltip:SetOwner(frame, "ANCHOR_LEFT", xOffset, yOffset)
+    else
+        GameTooltip:SetOwner(frame, "ANCHOR_RIGHT", xOffset, yOffset)
+    end
+end
+
+--- English class token (WARRIOR, MAGE, …) from a `db.global.characters` entry.
+---@param charData table
+---@return string|nil
+local function ResolveClassFileTokenFromCharData(charData)
+    if type(charData) ~= "table" then return nil end
+    local cf = charData.classFile
+    if type(cf) == "string" and cf ~= "" then
+        return strupper(cf)
+    end
+    local cid = charData.classID
+    if type(cid) == "number" and cid > 0 and GetClassInfo then
+        local ok, _, file = pcall(GetClassInfo, cid)
+        if ok and type(file) == "string" and file ~= "" then
+            return strupper(file)
+        end
+    end
+    local localized = charData.class
+    if type(localized) ~= "string" or localized == "" then
+        return nil
+    end
+    local up = strupper(localized)
+    if RAID_CLASS_COLORS and RAID_CLASS_COLORS[up] then
+        return up
+    end
+    if not GetNumClasses or not GetClassInfo then
+        return nil
+    end
+    local want = localized:lower()
+    local n = GetNumClasses()
+    if type(n) ~= "number" or n < 1 then return nil end
+    for i = 1, n do
+        local ok, cname, cfile = pcall(GetClassInfo, i)
+        if ok and type(cname) == "string" and type(cfile) == "string" and cname ~= "" and cfile ~= "" then
+            if cname:lower() == want then
+                return strupper(cfile)
+            end
+        end
+    end
+    return nil
+end
+
+--- `|cffrrggbb` prefix for `displayName` using `db.global.characters` (case-insensitive name; `classFile`, `classID`, or localized `class`).
+---@param displayName string
+---@return string
+function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
+    if not displayName or displayName == "" or (issecretvalue and issecretvalue(displayName)) then
+        return "|cffaaaaaa"
+    end
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
+    local chars = db and db.characters
+    if type(chars) ~= "table" then
+        return "|cffaaaaaa"
+    end
+    local wantLower = displayName:lower()
+    for _, charData in pairs(chars) do
+        if type(charData) == "table" and charData.name and not (issecretvalue and issecretvalue(charData.name)) then
+            if charData.name:lower() == wantLower then
+                local token = ResolveClassFileTokenFromCharData(charData)
+                if token then
+                    local c = C_ClassColor and C_ClassColor.GetClassColor(token)
+                    if c then
+                        return format("|cff%02x%02x%02x", (c.r or 0) * 255, (c.g or 0) * 255, (c.b or 0) * 255)
+                    end
+                    local rc = RAID_CLASS_COLORS and RAID_CLASS_COLORS[token]
+                    if rc then
+                        return format(
+                            "|cff%02x%02x%02x",
+                            math.floor((rc.r or 1) * 255),
+                            math.floor((rc.g or 1) * 255),
+                            math.floor((rc.b or 1) * 255)
+                        )
+                    end
+                end
+                break
+            end
+        end
+    end
+    return "|cffaaaaaa"
+end
+
+--============================================================================
 -- NAMESPACE EXPORTS
 --============================================================================
 

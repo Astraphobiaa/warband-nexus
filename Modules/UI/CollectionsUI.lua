@@ -4574,23 +4574,6 @@ local function DrawRecentContent(contentFrame)
         pickedLists[si] = RecentPickForType(db, RECENT_SECTION_ORDER[si], qlower, nil)
     end
 
-    --- Resolve class color for a character name by scanning the warband DB. Returns hex prefix or default gray.
-    local function ResolveCharacterClassColor(name)
-        if not name or name == "" then return "|cffaaaaaa" end
-        local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
-        if type(chars) == "table" then
-            for _, charData in pairs(chars) do
-                if type(charData) == "table" and charData.name == name and charData.class then
-                    local c = C_ClassColor and C_ClassColor.GetClassColor(charData.class)
-                    if c then
-                        return format("|cff%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255)
-                    end
-                end
-            end
-        end
-        return "|cffaaaaaa"
-    end
-
     --- Account-wide achievement completed but not flagged as earned by the current character (hide earner UI).
     local function RecentAchievementSuppressEarner(achievementID)
         if not achievementID then return false end
@@ -4671,7 +4654,12 @@ local function DrawRecentContent(contentFrame)
             resetTex:SetTexture("Interface\\Buttons\\UI-RefreshButton")
         end
         resetBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:ClearLines()
+            if ns.UI_SetGameTooltipSmartOwner then
+                ns.UI_SetGameTooltipSmartOwner(self, 0, 0)
+            else
+                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            end
             GameTooltip:SetText((loc and loc["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"]) or "Clear recent entries for this category", 1, 1, 1)
             GameTooltip:Show()
         end)
@@ -4711,7 +4699,12 @@ local function DrawRecentContent(contentFrame)
             Factory:ApplyCollectionListRowContent(row, rowVisualIndex, iconPath, nameRich, clickable, false, onClick, rightTime, subtitleRich)
             if tooltipBuilder then
                 row:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:ClearLines()
+                    if ns.UI_SetGameTooltipSmartOwner then
+                        ns.UI_SetGameTooltipSmartOwner(self, 0, 0)
+                    else
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    end
                     tooltipBuilder(GameTooltip)
                     GameTooltip:Show()
                 end)
@@ -4742,7 +4735,8 @@ local function DrawRecentContent(contentFrame)
                 local subLine = nil
                 local rowH = ROW_HEIGHT
                 if ob and ob ~= "" and not suppressEarner then
-                    local cc = ResolveCharacterClassColor(ob)
+                    local cc = (ns.UI_GetClassColorHexForWarbandCharacter and ns.UI_GetClassColorHexForWarbandCharacter(ob))
+                        or "|cffaaaaaa"
                     subLine = format((loc and loc["COLLECTIONS_RECENT_ROW_BY"]) or "By %s", cc .. ob .. "|r")
                     rowH = RECENT_ROW_H_SUB
                 end
@@ -4768,10 +4762,11 @@ local function DrawRecentContent(contentFrame)
                     end
                     if ob and ob ~= "" and not suppressEarner then
                         tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"]) or "Character", hdrDim, hdrDim, hdrDim)
-                        local cc = ResolveCharacterClassColor(ob)
+                        local cc = (ns.UI_GetClassColorHexForWarbandCharacter and ns.UI_GetClassColorHexForWarbandCharacter(ob))
+                            or "|cffaaaaaa"
                         local fmtKey = (typCopy == "achievement") and "RECENT_TOOLTIP_ACHIEVEMENT_EARNED_BY" or "RECENT_TOOLTIP_EARNED_BY"
                         local fmt = (loc and loc[fmtKey]) or ((typCopy == "achievement") and "Earned by %s" or "Obtained by %s")
-                        tt:AddLine(format(fmt, cc .. ob .. "|r"), 0.85, 0.85, 0.88)
+                        tt:AddLine(format(fmt, cc .. ob .. "|r"))
                     end
                     tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"]) or "Recorded", hdrDim, hdrDim, hdrDim)
                     if tsCopy and tsCopy > 0 then
