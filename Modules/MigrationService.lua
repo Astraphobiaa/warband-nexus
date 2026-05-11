@@ -129,7 +129,20 @@ function MigrationService:RunMigrations(db)
     self:MigrateRestedDataReset(db)
     self:MigrateRarityMountSyncReseed(db)
     self:MigrateReminderToastAnchors(db)
+    self:MigrateNotificationToastLaneDefaults(db)
+    self:MigrateCustomSectionChangelogLog(db)
     return false
+end
+
+--- One-time chat log for Custom Section system updates (profile normalization lives in CharacterService:EnsureCustomCharacterSectionsProfile).
+function MigrationService:MigrateCustomSectionChangelogLog(db)
+    if not db or not db.global then return end
+    if db.global._wnChangelogCustomSectionsV1 then return end
+    db.global._wnChangelogCustomSectionsV1 = true
+    local L = ns.L
+    local body = (L and L["CHANGELOG_CUSTOM_SECTIONS_V1"])
+        or "Custom sections: multiple gold-highlighted headers, favorites-first ordering, canonical assignment in roster/Characters list, and a simpler tab subtitle."
+    PrintUserMessage("|cff6a0dad" .. ((L and L["ADDON_NAME"]) or "Warband Nexus") .. "|r: " .. body)
 end
 
 --[[
@@ -325,6 +338,26 @@ function MigrationService:MigrateReminderToastAnchors(db)
     if n.reminderToastScale == nil then n.reminderToastScale = 1.0 end
     if n.reminderToastUseCriteriaLane == nil then n.reminderToastUseCriteriaLane = false end
     n.reminderToastAnchorMigratedV1 = true
+end
+
+--- Seed per-lane try-counter anchor + unified layout flag from legacy single-anchor keys.
+function MigrationService:MigrateNotificationToastLaneDefaults(db)
+    if not db or not db.profile or not db.profile.notifications then return end
+    local n = db.profile.notifications
+    if n._notificationToastLanesMigratedV1 then return end
+    if n.unifiedToastLayout == nil then
+        n.unifiedToastLayout = true
+    end
+    if not n.tryCounterToastPoint then
+        n.tryCounterToastPoint = n.popupPoint or "TOP"
+    end
+    if n.tryCounterToastX == nil then
+        n.tryCounterToastX = n.popupX or 0
+    end
+    if n.tryCounterToastY == nil then
+        n.tryCounterToastY = n.popupY or -100
+    end
+    n._notificationToastLanesMigratedV1 = true
 end
 
 function MigrationService:MigrateRarityMountSyncReseed(db)
@@ -635,6 +668,17 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
             end
         end
         db.global.favoriteCharacters = deduped
+    end
+
+    -- profile.characterGroupAssignments: map charKey -> groupId (keys follow character renames)
+    if db.profile and db.profile.characterGroupAssignments and type(db.profile.characterGroupAssignments) == "table" then
+        local assign = db.profile.characterGroupAssignments
+        local newAssign = {}
+        for oldKey, groupId in pairs(assign) do
+            local nk = renames[oldKey] or oldKey
+            newAssign[nk] = groupId
+        end
+        db.profile.characterGroupAssignments = newAssign
     end
 
     -- profile.characterOrder (favorites, regular, untracked arrays)

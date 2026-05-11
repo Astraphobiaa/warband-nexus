@@ -7,12 +7,36 @@
 local ADDON_NAME, ns = ...
 local issecretvalue = issecretvalue
 local E = ns.Constants.EVENTS
+local tremove = table.remove
+local wipe = table.wipe
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 ---@class CharacterService
 local CharacterService = {}
 ns.CharacterService = CharacterService
+
+--- Key used in `profile.characterGroupAssignments` (canonical when Utilities is available).
+local function AssignKeyFromCharKey(charKey)
+    if not charKey or charKey == "" then return nil end
+    local GetCanon = ns.Utilities and ns.Utilities.GetCanonicalCharacterKey
+    if not GetCanon then return charKey end
+    local c = GetCanon(charKey)
+    if c and c ~= "" then
+        return c
+    end
+    return charKey
+end
+
+local function ClearBothAssignKeys(assign, charKey)
+    if not assign or not charKey or charKey == "" then return end
+    local k1 = charKey
+    local k2 = AssignKeyFromCharKey(charKey)
+    assign[k1] = nil
+    if k2 and k2 ~= k1 then
+        assign[k2] = nil
+    end
+end
 
 --============================================================================
 -- CHARACTER TRACKING
@@ -819,12 +843,304 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
     else
         -- Add to favorites
         table.insert(favorites, characterKey)
+        if addon.db and addon.db.profile and addon.db.profile.characterGroupAssignments then
+            ClearBothAssignKeys(addon.db.profile.characterGroupAssignments, characterKey)
+        end
         addon:Print("|cffffd700" .. ((ns.L and ns.L["ADDED_TO_FAVORITES"]) or "Added to favorites:") .. "|r " .. characterKey)
         if addon.SendMessage then
             addon:SendMessage(E.CHARACTER_UPDATED, { charKey = characterKey, dataType = "favorite" })
         end
         return true
     end
+end
+
+--============================================================================
+-- CUSTOM CHARACTER SECTIONS (profile: user-defined headers / buckets)
+-- Tracked, non-favorite characters may be assigned to one custom section.
+-- Favorites always render in the Favorites block; assignments for favorited keys are ignored.
+--============================================================================
+
+local CUSTOM_GROUP_LIST_KEY_PREFIX = "group_"
+
+function CharacterService:GetCustomGroupListKey(groupId)
+    if not groupId or groupId == "" then return nil end
+    return CUSTOM_GROUP_LIST_KEY_PREFIX .. tostring(groupId)
+end
+
+function CharacterService:ParseCustomGroupIdFromListKey(listKey)
+    if type(listKey) ~= "string" then return nil end
+    if listKey:sub(1, #CUSTOM_GROUP_LIST_KEY_PREFIX) ~= CUSTOM_GROUP_LIST_KEY_PREFIX then return nil end
+    return listKey:sub(#CUSTOM_GROUP_LIST_KEY_PREFIX + 1)
+end
+
+function CharacterService:EnsureCustomCharacterSectionsProfile(profile)
+    if not profile then return end
+    if type(profile.characterCustomGroups) ~= "table" then
+        profile.characterCustomGroups = {}
+    end
+    if type(profile.characterGroupAssignments) ~= "table" then
+        profile.characterGroupAssignments = {}
+    end
+    if type(profile.characterGroupExpanded) ~= "table" then
+        profile.characterGroupExpanded = {}
+    end
+    if type(profile.characterSectionFilter) ~= "table" then
+        profile.characterSectionFilter = { sectionKey = "all" }
+    end
+    if profile.characterSectionFilter.sectionKey == nil or profile.characterSectionFilter.sectionKey == "" then
+        profile.characterSectionFilter.sectionKey = "all"
+    end
+    -- Gold-style highlights for any number of custom headers: set[groupId] = true
+    if type(profile.characterFavoriteCustomGroupIds) ~= "table" then
+        profile.characterFavoriteCustomGroupIds = {}
+    end
+    local legacy = profile.characterFavoriteCustomGroupId
+    if legacy and legacy ~= "" and not profile.characterFavoriteCustomGroupIds[legacy] then
+        profile.characterFavoriteCustomGroupIds[legacy] = true
+    end
+    profile.characterFavoriteCustomGroupId = nil
+    local groups = profile.characterCustomGroups or {}
+    local valid = {}
+    for i = 1, #groups do
+        local gid = groups[i].id
+        if gid then valid[gid] = true end
+    end
+    for gid, _ in pairs(profile.characterFavoriteCustomGroupIds) do
+        if not valid[gid] then
+            profile.characterFavoriteCustomGroupIds[gid] = nil
+        end
+    end
+end
+
+--- Whether a custom section uses the gold header preset (Characters / Professions).
+function CharacterService:IsProfileCustomSectionHighlighted(profile, groupId)
+    if not profile or not groupId or groupId == "" then return false end
+    if type(profile.characterFavoriteCustomGroupIds) == "table" and profile.characterFavoriteCustomGroupIds[groupId] then
+        return true
+    end
+    return profile.characterFavoriteCustomGroupId == groupId
+end
+
+--- Toggle gold highlight for one custom section. Returns new highlighted state, or nil if groupId is invalid.
+function CharacterService:ToggleFavoriteCustomHeaderHighlight(addon, groupId)
+    if not addon or not addon.db or not addon.db.profile or not groupId or groupId == "" then return nil end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local groups = profile.characterCustomGroups or {}
+    local found = false
+    for i = 1, #groups do
+        if groups[i].id == groupId then found = true break end
+    end
+    if not found then return nil end
+    local set = profile.characterFavoriteCustomGroupIds
+    local now = not (set[groupId] and true or false)
+    if now then
+        set[groupId] = true
+    else
+        set[groupId] = nil
+    end
+    profile.characterFavoriteCustomGroupId = nil
+    if addon.SendMessage then
+        addon:SendMessage(E.CHARACTER_UPDATED, { charKey = nil, dataType = "customSections" })
+    end
+    return now
+end
+
+--- Clear all gold highlights, or toggle one section (compat: non-nil groupId calls toggle).
+function CharacterService:SetFavoriteCustomSectionGroupId(addon, groupId)
+    if not addon or not addon.db or not addon.db.profile then return false end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    if groupId == nil or groupId == "" then
+        wipe(profile.characterFavoriteCustomGroupIds)
+        profile.characterFavoriteCustomGroupId = nil
+        if addon.SendMessage then
+            addon:SendMessage(E.CHARACTER_UPDATED, { charKey = nil, dataType = "customSections" })
+        end
+        return true
+    end
+    return self:ToggleFavoriteCustomHeaderHighlight(addon, groupId) ~= nil
+end
+
+--- Ordered custom groups: highlighted sections first, then others. Within each bucket: manual = profile array order, else alphabetical by display name.
+function CharacterService:BuildOrderedCustomCharacterGroups(profile, sortKey)
+    if not profile then return {} end
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local raw = profile.characterCustomGroups or {}
+    if #raw == 0 then return raw end
+    sortKey = (type(sortKey) == "string" and sortKey ~= "") and sortKey or "default"
+    local decorated = {}
+    for i = 1, #raw do
+        decorated[#decorated + 1] = { g = raw[i], idx = i }
+    end
+    local function labelLower(g)
+        local n = g and (g.name or g.id)
+        if not n or (issecretvalue and issecretvalue(n)) then return "" end
+        return string.lower(tostring(n))
+    end
+    table.sort(decorated, function(a, b)
+        local fa = self:IsProfileCustomSectionHighlighted(profile, a.g.id)
+        local fb = self:IsProfileCustomSectionHighlighted(profile, b.g.id)
+        if fa ~= fb then
+            return fa
+        end
+        if sortKey == "manual" then
+            return a.idx < b.idx
+        end
+        local la, lb = labelLower(a.g), labelLower(b.g)
+        if la ~= lb then
+            return la < lb
+        end
+        return tostring(a.g.id) < tostring(b.g.id)
+    end)
+    local out = {}
+    for i = 1, #decorated do
+        out[i] = decorated[i].g
+    end
+    return out
+end
+
+function CharacterService:GenerateCustomGroupId(profile)
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local n = tonumber(profile._characterCustomGroupSeq) or 0
+    n = n + 1
+    profile._characterCustomGroupSeq = n
+    return "cgh" .. tostring(n)
+end
+
+function CharacterService:AddCustomCharacterSection(addon, displayName)
+    if not addon or not addon.db or not addon.db.profile then return nil end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local name = displayName
+    if type(name) ~= "string" then return nil end
+    name = name:match("^%s*(.-)%s*$") or ""
+    if name == "" or (issecretvalue and issecretvalue(name)) then return nil end
+    local id = self:GenerateCustomGroupId(profile)
+    profile.characterCustomGroups[#profile.characterCustomGroups + 1] = { id = id, name = name }
+    local lk = self:GetCustomGroupListKey(id)
+    if lk and not profile.characterOrder then
+        profile.characterOrder = { favorites = {}, regular = {}, untracked = {} }
+    end
+    if lk and profile.characterOrder and not profile.characterOrder[lk] then
+        profile.characterOrder[lk] = {}
+    end
+    if addon.SendMessage then
+        addon:SendMessage(E.CHARACTER_UPDATED, { charKey = nil, dataType = "customSections" })
+    end
+    return id
+end
+
+function CharacterService:RenameCustomCharacterSection(addon, groupId, displayName)
+    if not addon or not addon.db or not addon.db.profile or not groupId then return false end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local name = displayName
+    if type(name) ~= "string" then return false end
+    name = name:match("^%s*(.-)%s*$") or ""
+    if name == "" or (issecretvalue and issecretvalue(name)) then return false end
+    local groups = profile.characterCustomGroups
+    for i = 1, #groups do
+        if groups[i].id == groupId then
+            groups[i].name = name
+            if addon.SendMessage then
+                addon:SendMessage(E.CHARACTER_UPDATED, { charKey = nil, dataType = "customSections" })
+            end
+            return true
+        end
+    end
+    return false
+end
+
+function CharacterService:RemoveCustomCharacterSection(addon, groupId)
+    if not addon or not addon.db or not addon.db.profile or not groupId then return false end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local groups = profile.characterCustomGroups
+    local lk = self:GetCustomGroupListKey(groupId)
+    for i = #groups, 1, -1 do
+        if groups[i].id == groupId then
+            tremove(groups, i)
+            break
+        end
+    end
+    local assign = profile.characterGroupAssignments
+    if assign then
+        for k, gid in pairs(assign) do
+            if gid == groupId then
+                assign[k] = nil
+            end
+        end
+    end
+    profile.characterGroupExpanded[groupId] = nil
+    if profile.characterFavoriteCustomGroupIds then
+        profile.characterFavoriteCustomGroupIds[groupId] = nil
+    end
+    if profile.characterFavoriteCustomGroupId == groupId then
+        profile.characterFavoriteCustomGroupId = nil
+    end
+    if profile.characterOrder and lk then
+        profile.characterOrder[lk] = nil
+    end
+    local sf = profile.characterSectionFilter
+    if sf and sf.sectionKey == lk then
+        sf.sectionKey = "all"
+    end
+    local psf = profile.professionSectionFilter
+    if psf and psf.sectionKey == lk then
+        psf.sectionKey = "all"
+    end
+    local pveSf = profile.pveSectionFilter
+    if pveSf and pveSf.sectionKey == lk then
+        pveSf.sectionKey = "all"
+    end
+    if addon.SendMessage then
+        addon:SendMessage(E.CHARACTER_UPDATED, { charKey = nil, dataType = "customSections" })
+    end
+    return true
+end
+
+--- Assign a tracked non-favorite character to a custom section (groupId nil = ungrouped / main list).
+function CharacterService:SetCharacterCustomSection(addon, charKey, groupId)
+    if not addon or not addon.db or not addon.db.profile or not charKey or charKey == "" then return false end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    if ns.CharacterService:IsFavoriteCharacter(addon, charKey) then
+        return false
+    end
+    local assign = profile.characterGroupAssignments
+    local storeKey = AssignKeyFromCharKey(charKey)
+    if not storeKey then return false end
+    if groupId and groupId ~= "" then
+        local found = false
+        local groups = profile.characterCustomGroups
+        for i = 1, #groups do
+            if groups[i].id == groupId then found = true break end
+        end
+        if not found then return false end
+        assign[storeKey] = groupId
+        if charKey ~= storeKey then
+            assign[charKey] = nil
+        end
+    else
+        ClearBothAssignKeys(assign, charKey)
+    end
+    if addon.SendMessage then
+        addon:SendMessage(E.CHARACTER_UPDATED, { charKey = storeKey, dataType = "customSection" })
+    end
+    return true
+end
+
+function CharacterService:GetCharacterCustomSectionId(addon, charKey)
+    if not addon or not addon.db or not addon.db.profile or not charKey then return nil end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local assign = profile.characterGroupAssignments
+    if not assign then return nil end
+    local storeKey = AssignKeyFromCharKey(charKey)
+    local gid = assign[storeKey]
+    if gid then return gid end
+    return assign[charKey]
 end
 
 --============================================================================

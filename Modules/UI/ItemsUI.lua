@@ -1113,9 +1113,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 return groupWrap
             end,
             createRowFn = function(container, entry)
-                local row = AcquireItemRow(container, width, ROW_HEIGHT)
-                PopulateRow(row, entry.data, entry.rowIdx, entry.rowIdx)
-                return row
+                return AcquireItemRow(container, width, ROW_HEIGHT)
             end,
             releaseRowFn = function(frame)
                 ReleaseItemRow(frame)

@@ -182,7 +182,7 @@ end
         chainCollapsibleHeaders = false,        -- optional: set true — BOTTOMLEFT chain + parent-relative X (Storage parity)
         chainAnimatedSections = false,          -- optional: chained frames are section wraps (header + tweened body); fixed SECTION_SPACING gap; rows parent under body shells
         skipChainRepositionOnRefresh = false,   -- optional: skip RepositionChainedHeaders on Refresh (animated sections — heights drive layout)
-        incrementalRowReuse = false,            -- optional: reuse visible row frames by flatList rowReuseSig (layout-only refresh skips populateRowFn)
+        incrementalRowReuse = false,            -- optional: reuse visible row frames by flatList rowReuseSig; populateRowFn still runs every paint when set
     }
 ]]
 local function SetupVirtualList(mainFrame, container, containerTopOffset, flatList, opts)
@@ -426,17 +426,15 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
                             frame = rowPool[#rowPool]
                             rowPool[#rowPool] = nil
                         end
-
-                        local ok, result
-                        if frame and populateRowFn then
-                            ok, result = pcall(populateRowFn, frame, it, i)
-                            if not ok then frame = nil end
-                        end
-
                         if not frame then
-                            ok, result = pcall(createRowFn, container, it, i)
+                            local ok, result = pcall(createRowFn, container, it, i)
                             if ok then frame = result end
                         end
+                    end
+
+                    -- Always repaint visible data (pooled / incremental-reuse rows otherwise keep stale text).
+                    if frame and populateRowFn then
+                        pcall(populateRowFn, frame, it, i)
                     end
 
                     if frame then

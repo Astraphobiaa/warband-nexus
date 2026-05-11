@@ -197,7 +197,18 @@ end
 
 local function CharactersUISectionAllExpanded(ui)
     local fav, ch, unt = CharactersUISectionExpandedTriplet(ui)
-    return fav and ch and unt
+    if not (fav and ch and unt) then return false end
+    local profile = WarbandNexus.db and WarbandNexus.db.profile
+    if not profile then return true end
+    local groups = profile.characterCustomGroups or {}
+    local ge = profile.characterGroupExpanded or {}
+    for gi = 1, #groups do
+        local gid = groups[gi].id
+        if ge[gid] == false then
+            return false
+        end
+    end
+    return true
 end
 
 --============================================================================
@@ -251,11 +262,14 @@ function WarbandNexus:DrawCharacterList(parent)
     -- ===== TITLE CARD (in fixedHeader - non-scrolling) — shared Characters-tab layout =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local trackedFormat = (ns.L and ns.L["CHARACTERS_TRACKED_FORMAT"]) or "%s characters tracked"
+    local CHAR_TITLE_RIGHT_RESERVE = 256
+    local subtitleLine = (ns.L and ns.L["CHARACTERS_SUBTITLE"])
+        or "A scrollable list of your characters with gold, level, gear, and key stats in one place."
     local titleCard, headerIcon, titleTextContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "characters",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["YOUR_CHARACTERS"]) or "Your Characters") .. "|r",
-        subtitleText = string.format(trackedFormat, FormatNumber(#characters)),
+        subtitleText = subtitleLine,
+        textRightInset = CHAR_TITLE_RIGHT_RESERVE,
     })
     titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
     titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
@@ -267,7 +281,10 @@ function WarbandNexus:DrawCharacterList(parent)
     local sortAnchorPoint = "RIGHT"
     local sortAnchorX = -titleControlInset
 
-    if ns.UI_CreateCharacterSortDropdown then
+    if ns.UI_CreateCharacterTabAdvancedFilterButton then
+        if ns.CharacterService and ns.CharacterService.EnsureCustomCharacterSectionsProfile then
+            ns.CharacterService:EnsureCustomCharacterSectionsProfile(self.db.profile)
+        end
         local sortOptions = {
             {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},
             {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
@@ -275,10 +292,95 @@ function WarbandNexus:DrawCharacterList(parent)
             {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
             {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
             {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+            {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
+        }
+        if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
+        if not self.db.profile.characterSectionFilter then self.db.profile.characterSectionFilter = { sectionKey = "all" } end
+        local sortBtn = ns.UI_CreateCharacterTabAdvancedFilterButton(titleCard, {
+            sortOptions = sortOptions,
+            dbSortTable = self.db.profile.characterSort,
+            dbSectionFilter = self.db.profile.characterSectionFilter,
+            getCustomSections = function()
+                return self.db.profile.characterCustomGroups or {}
+            end,
+            onRefresh = function()
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+            end,
+            onDeleteSection = function(groupId, groupName)
+                WarbandNexus:ConfirmDeleteCustomCharacterHeader(groupId, groupName)
+            end,
+        })
+        if sortBtn then
+            sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleControlInset, 0)
+            sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
+            -- Match Filter row height (Factory advanced filter uses BUTTON_HEIGHT).
+            local sectionToolbarBtnSize = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
+            -- Visible entry for custom sections: same footprint as Filter, left of it.
+            local secQuick = titleCard._wnCharCustomSectionBtn
+            if not secQuick and ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
+                secQuick = ns.UI.Factory:CreateButton(titleCard, sectionToolbarBtnSize, sectionToolbarBtnSize, false)
+                titleCard._wnCharCustomSectionBtn = secQuick
+                secQuick:SetFrameLevel(titleCard:GetFrameLevel() + 6)
+                if secQuick.RegisterForClicks then
+                    secQuick:RegisterForClicks("LeftButtonUp")
+                end
+                local okAtlas = false
+                if secQuick.SetNormalAtlas then
+                    okAtlas = pcall(function()
+                        secQuick:SetNormalAtlas("GM-icon-assistActive-hover")
+                    end)
+                end
+                if not okAtlas then
+                    local tex = (secQuick.GetNormalTexture and secQuick:GetNormalTexture())
+                    if tex then
+                        tex:SetTexture("Interface\\Icons\\Achievement_Reputation_08")
+                        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                    end
+                end
+                secQuick:SetScript("OnClick", function(btn)
+                    if ns.UI_ShowCharacterSectionsToolbarMenu then
+                        ns.UI_ShowCharacterSectionsToolbarMenu(btn, WarbandNexus.db.profile)
+                    elseif WarbandNexus.OpenCustomCharacterHeaderDialog then
+                        WarbandNexus:OpenCustomCharacterHeaderDialog()
+                    end
+                end)
+                secQuick:SetScript("OnEnter", function(btn)
+                    GameTooltip:SetOwner(btn, "ANCHOR_BOTTOMRIGHT")
+                    GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_TITLEBAR_BTN_TOOLTIP"]) or "Custom sections", 1, 1, 1)
+                    GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_TITLEBAR_BTN_TOOLTIP_BODY"]) or "Open the menu: new or delete headers, gold-style section, or use [+] on a header to add characters.", 0.85, 0.85, 0.9, true)
+                    GameTooltip:Show()
+                end)
+                secQuick:SetScript("OnLeave", GameTooltip_Hide)
+            elseif secQuick then
+                secQuick:SetSize(sectionToolbarBtnSize, sectionToolbarBtnSize)
+            end
+            if titleCard._wnCharCustomSectionBtn then
+                titleCard._wnCharCustomSectionBtn:ClearAllPoints()
+                titleCard._wnCharCustomSectionBtn:SetPoint("RIGHT", sortBtn, "LEFT", -8, 0)
+                titleCard._wnCharCustomSectionBtn:Show()
+                sortAnchorFrame = titleCard._wnCharCustomSectionBtn
+            else
+                sortAnchorFrame = sortBtn
+            end
+            sortAnchorPoint = "LEFT"
+            sortAnchorX = -10
+        end
+    elseif ns.UI_CreateCharacterSortDropdown then
+        if titleCard._wnCharCustomSectionBtn then
+            titleCard._wnCharCustomSectionBtn:Hide()
+        end
+        local sortOptions = {
+            {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},
+            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+            {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
         }
         if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
         local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.characterSort, function()
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
         end)
         sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleControlInset, 0)
         sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
@@ -316,13 +418,23 @@ function WarbandNexus:DrawCharacterList(parent)
                     ui.favoritesExpanded = false
                     ui.charactersExpanded = false
                     ui.untrackedExpanded = false
+                    if not WarbandNexus.db.profile.characterGroupExpanded then WarbandNexus.db.profile.characterGroupExpanded = {} end
+                    local cg = WarbandNexus.db.profile.characterCustomGroups or {}
+                    for ei = 1, #cg do
+                        WarbandNexus.db.profile.characterGroupExpanded[cg[ei].id] = false
+                    end
                 else
                     ui.favoritesExpanded = true
                     ui.charactersExpanded = true
                     ui.untrackedExpanded = true
+                    if not WarbandNexus.db.profile.characterGroupExpanded then WarbandNexus.db.profile.characterGroupExpanded = {} end
+                    local cg2 = WarbandNexus.db.profile.characterCustomGroups or {}
+                    for ei = 1, #cg2 do
+                        WarbandNexus.db.profile.characterGroupExpanded[cg2[ei].id] = true
+                    end
                 end
                 ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas(toggleBtn, charSectionCollapseMode)
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
             end)
             toggleBtn:Show()
         end
@@ -602,14 +714,23 @@ function WarbandNexus:DrawCharacterList(parent)
         {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
         {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
         {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+        {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
     }
     
     if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
     local sk = self.db.profile.characterSort.key
     local currentSortKey = (type(sk) == "string" and sk ~= "" and
-        (sk == "default" or sk == "manual" or sk == "name" or sk == "level" or sk == "ilvl" or sk == "gold"))
+        (sk == "default" or sk == "manual" or sk == "name" or sk == "level" or sk == "ilvl" or sk == "gold" or sk == "realm"))
         and sk or "default"
-    
+
+    local sectionFilter = "all"
+    if self.db.profile.characterSectionFilter and type(self.db.profile.characterSectionFilter.sectionKey) == "string" then
+        sectionFilter = self.db.profile.characterSectionFilter.sectionKey
+    end
+    if ns.CharacterService and ns.CharacterService.EnsureCustomCharacterSectionsProfile then
+        ns.CharacterService:EnsureCustomCharacterSectionsProfile(self.db.profile)
+    end
+
     local favoriteKeySet = (ns.CharacterService and ns.CharacterService.BuildFavoriteKeySet)
         and ns.CharacterService:BuildFavoriteKeySet(self) or {}
     
@@ -636,6 +757,33 @@ function WarbandNexus:DrawCharacterList(parent)
             end
         end
     end
+
+    -- Split non-favorites into custom header buckets + ungrouped (must run after trackedRegular is built).
+    local customGroupsOrdered = (ns.CharacterService and ns.CharacterService.BuildOrderedCustomCharacterGroups)
+        and ns.CharacterService:BuildOrderedCustomCharacterGroups(self.db.profile, currentSortKey)
+        or (self.db.profile.characterCustomGroups or {})
+    local assignments = self.db.profile.characterGroupAssignments or {}
+    local groupedById = {}
+    for gi = 1, #customGroupsOrdered do
+        groupedById[customGroupsOrdered[gi].id] = {}
+    end
+    local trackedRegularUngrouped = {}
+    for ri = 1, #trackedRegular do
+        local char = trackedRegular[ri]
+        local ck = GetCharKey(char)
+        local gid = nil
+        if ck and ns.CharacterService and ns.CharacterService.GetCharacterCustomSectionId then
+            gid = ns.CharacterService:GetCharacterCustomSectionId(self, ck)
+        elseif ck then
+            gid = assignments[ck]
+        end
+        if gid and groupedById[gid] then
+            tinsert(groupedById[gid], char)
+        else
+            tinsert(trackedRegularUngrouped, char)
+        end
+    end
+    trackedRegular = trackedRegularUngrouped
     
     -- Load custom order from profile
     if not self.db.profile.characterOrder then
@@ -686,6 +834,14 @@ function WarbandNexus:DrawCharacterList(parent)
                     local goldB = ns.Utilities:GetCharTotalCopper(b)
                     if goldA ~= goldB then
                         return goldA > goldB
+                    else
+                        return CompareCharNameLower(a, b)
+                    end
+                elseif sortMode == "realm" then
+                    local ra = SafeLower(a.realm or "")
+                    local rb = SafeLower(b.realm or "")
+                    if ra ~= rb then
+                        return ra < rb
                     else
                         return CompareCharNameLower(a, b)
                     end
@@ -754,8 +910,16 @@ function WarbandNexus:DrawCharacterList(parent)
         end
     end
     
-    -- Sort all three groups with custom order
+    -- Sort favorites, each custom header bucket, ungrouped regular, then untracked
     trackedFavorites = sortCharacters(trackedFavorites, "favorites")
+    for gi = 1, #customGroupsOrdered do
+        local gid = customGroupsOrdered[gi].id
+        local list = groupedById[gid]
+        if list then
+            local lk = (ns.CharacterService and ns.CharacterService.GetCustomGroupListKey and ns.CharacterService:GetCustomGroupListKey(gid)) or ("group_" .. tostring(gid))
+            sortCharacters(list, lk)
+        end
+    end
     trackedRegular = sortCharacters(trackedRegular, "regular")
     untracked = sortCharacters(untracked, "untracked")
 
@@ -773,6 +937,10 @@ function WarbandNexus:DrawCharacterList(parent)
         end
     end
     pinOnlineCharacterFirst(trackedFavorites)
+    for gi = 1, #customGroupsOrdered do
+        local gid = customGroupsOrdered[gi].id
+        if groupedById[gid] then pinOnlineCharacterFirst(groupedById[gid]) end
+    end
     pinOnlineCharacterFirst(trackedRegular)
     pinOnlineCharacterFirst(untracked)
     
@@ -789,6 +957,10 @@ function WarbandNexus:DrawCharacterList(parent)
         local GUILD_MAX = 280
         local rawCap = GUILD_MAX - GUILD_PADDING
         local listsToMeasure = { trackedFavorites, trackedRegular, untracked }
+        for gmi = 1, #customGroupsOrdered do
+            local gmid = customGroupsOrdered[gmi].id
+            if groupedById[gmid] then tinsert(listsToMeasure, groupedById[gmid]) end
+        end
         for li = 1, #listsToMeasure do
             local list = listsToMeasure[li]
             for i = 1, #list do
@@ -887,16 +1059,8 @@ function WarbandNexus:DrawCharacterList(parent)
                 end
 
                 local totalHeight = VLM.SetupVirtualList(mf, contentFrame, nil, flatList, {
-                    createRowFn = function(container, it, _idx)
-                        local pe = it.populateEntry
-                        local row = AcquireCharacterRow(container)
-                        pcall(function()
-                            -- Pass pooled row in: DrawCharacterRow must not Acquire again (was double-acquire → overlapping duplicates).
-                            WarbandNexus:DrawCharacterRow(container, pe.char, pe.index, pe.rowWidth, 0,
-                                pe.isFavorite, pe.showReorder, pe.charList, pe.listKey,
-                                pe.positionInList, pe.totalInList, pe.currentPlayerKey, row)
-                        end)
-                        return row
+                    createRowFn = function(container, _it, _idx)
+                        return AcquireCharacterRow(container)
                     end,
                     populateRowFn = function(row, it, _idx)
                         local pe = it.populateEntry
@@ -975,121 +1139,219 @@ function WarbandNexus:DrawCharacterList(parent)
         end
     end
 
+    local drawFavorites = (sectionFilter == "all") or (sectionFilter == "favorites")
+    local drawRegular = (sectionFilter == "all") or (sectionFilter == "regular")
+    local drawUntracked = (sectionFilter == "untracked") or (sectionFilter == "all" and #untracked > 0)
+
+    -- Section stack (when filter is "all"): Favorites -> user-defined custom headers (gold favorites first, then name/sort) -> Characters -> inactive last.
+
     -- Favorites
-    local favoritesExpanded = self.db.profile.ui.favoritesExpanded
-    local favoritesContent
-    local favoritesVisualOpts = BuildAccordionVisualOpts({
-        bodyGetter = function() return favoritesContent end,
-        updateVisibleFn = CharactersVirtualScrollBump,
-    }) or {
-        animatedContent = function() return favoritesContent end,
-    }
-    favoritesVisualOpts.sectionPreset = "gold"
-    local favHeader, _, favIcon = CreateCollapsibleHeader(
-        parent,
-        ((ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites"),
-        "favorites",
-        favoritesExpanded,
-        function(isExpanded)
-            self.db.profile.ui.favoritesExpanded = isExpanded
-            if isExpanded then
-                if favoritesContent then
-                    favoritesContent:Show()
-                    favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnAccordionFullH or 0.1))
-                end
-            elseif favoritesContent then
-                favoritesContent:Hide()
-                favoritesContent:SetHeight(0.1)
-            end
-        end,
-        "GM-icon-assistActive-hover",
-        true,
-        nil,
-        nil,
-        favoritesVisualOpts
-    )
-    AnchorSectionHeader(favHeader)
-    if favIcon then favIcon:SetSize(28, 28) end
-
-    local favCount = FontManager:CreateFontString(favHeader, "body", "OVERLAY")
-    favCount:SetPoint("RIGHT", -14, 0)
-    favCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedFavorites) .. "|r")
-
-    favoritesContent = AcquireSectionContentFrame(favHeader)
-    local favoritesHeight = DrawCharactersIntoSection(
-        favoritesContent,
-        trackedFavorites,
-        true,
-        "favorites",
-        (ns.L and ns.L["NO_FAVORITES"]) or "No favorite characters yet. Click the star icon to favorite a character."
-    )
-    if favoritesExpanded then
-        favoritesContent:Show()
-        favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnAccordionFullH or 0.1))
-    else
-        favoritesContent:Hide()
-        favoritesContent:SetHeight(0.1)
-    end
-    previousSectionContent = favoritesContent
-    yOffset = yOffset + SECTION_H + (favoritesExpanded and favoritesHeight or 0) + SECTION_HEADER_GAP
-
-    -- Regular characters
-    local charactersExpanded = self.db.profile.ui.charactersExpanded
-    local charactersContent
-    local charHeader, _, charIcon = CreateCollapsibleHeader(
-        parent,
-        ((ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters"),
-        "characters",
-        charactersExpanded,
-        function(isExpanded)
-            self.db.profile.ui.charactersExpanded = isExpanded
-            if isExpanded then
-                if charactersContent then
-                    charactersContent:Show()
-                    charactersContent:SetHeight(math.max(0.1, charactersContent._wnAccordionFullH or 0.1))
-                end
-            elseif charactersContent then
-                charactersContent:Hide()
-                charactersContent:SetHeight(0.1)
-            end
-        end,
-        "GM-icon-headCount",
-        true,
-        nil,
-        nil,
-        BuildAccordionVisualOpts({
-            bodyGetter = function() return charactersContent end,
+    if drawFavorites then
+        local favoritesExpanded = self.db.profile.ui.favoritesExpanded
+        local favoritesContent
+        local favoritesVisualOpts = BuildAccordionVisualOpts({
+            bodyGetter = function() return favoritesContent end,
             updateVisibleFn = CharactersVirtualScrollBump,
-        }) or { animatedContent = function() return charactersContent end }
-    )
-    AnchorSectionHeader(charHeader)
-    if charIcon then charIcon:SetSize(24, 24) end
+        }) or {
+            animatedContent = function() return favoritesContent end,
+        }
+        favoritesVisualOpts.sectionPreset = "gold"
+        local favHeader, _, favIcon = CreateCollapsibleHeader(
+            parent,
+            ((ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites"),
+            "favorites",
+            favoritesExpanded,
+            function(isExpanded)
+                self.db.profile.ui.favoritesExpanded = isExpanded
+                if isExpanded then
+                    if favoritesContent then
+                        favoritesContent:Show()
+                        favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnAccordionFullH or 0.1))
+                    end
+                elseif favoritesContent then
+                    favoritesContent:Hide()
+                    favoritesContent:SetHeight(0.1)
+                end
+            end,
+            "GM-icon-assistActive-hover",
+            true,
+            nil,
+            nil,
+            favoritesVisualOpts
+        )
+        AnchorSectionHeader(favHeader)
+        if favIcon then favIcon:SetSize(28, 28) end
 
-    local charCount = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-    charCount:SetPoint("RIGHT", -14, 0)
-    charCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedRegular) .. "|r")
+        local favCount = FontManager:CreateFontString(favHeader, "header", "OVERLAY")
+        favCount:SetPoint("RIGHT", -14, 0)
+        favCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedFavorites) .. "|r")
 
-    charactersContent = AcquireSectionContentFrame(charHeader)
-    local charactersHeight = DrawCharactersIntoSection(
-        charactersContent,
-        trackedRegular,
-        false,
-        "regular",
-        (ns.L and ns.L["ALL_FAVORITED"]) or "All characters are favorited!"
-    )
-    if charactersExpanded then
-        charactersContent:Show()
-        charactersContent:SetHeight(math.max(0.1, charactersContent._wnAccordionFullH or 0.1))
-    else
-        charactersContent:Hide()
-        charactersContent:SetHeight(0.1)
+        favoritesContent = AcquireSectionContentFrame(favHeader)
+        local favoritesHeight = DrawCharactersIntoSection(
+            favoritesContent,
+            trackedFavorites,
+            true,
+            "favorites",
+            (ns.L and ns.L["NO_FAVORITES"]) or "No favorite characters yet. Click the star icon to favorite a character."
+        )
+        if favoritesExpanded then
+            favoritesContent:Show()
+            favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnAccordionFullH or 0.1))
+        else
+            favoritesContent:Hide()
+            favoritesContent:SetHeight(0.1)
+        end
+        previousSectionContent = favoritesContent
+        yOffset = yOffset + SECTION_H + (favoritesExpanded and favoritesHeight or 0) + SECTION_HEADER_GAP
     end
-    previousSectionContent = charactersContent
-    yOffset = yOffset + SECTION_H + (charactersExpanded and charactersHeight or 0)
 
-    -- Untracked characters (only when there are entries)
-    if #untracked > 0 then
-        yOffset = yOffset + SECTION_HEADER_GAP
+    -- User-defined custom headers (tracked, non-favorite characters)
+    for cgi = 1, #customGroupsOrdered do
+        local gMeta = customGroupsOrdered[cgi]
+        local gid = gMeta.id
+        local gList = groupedById[gid] or {}
+        local gListKey = (ns.CharacterService and ns.CharacterService.GetCustomGroupListKey and ns.CharacterService:GetCustomGroupListKey(gid)) or ("group_" .. tostring(gid))
+        -- "all": show every defined header (even empty) so users see where to assign; specific key: that section only.
+        local showThisGroup = (sectionFilter == "all") or (sectionFilter == gListKey)
+        if showThisGroup then
+            if self.db.profile.characterGroupExpanded[gid] == nil then
+                self.db.profile.characterGroupExpanded[gid] = true
+            end
+            local grpExpanded = self.db.profile.characterGroupExpanded[gid]
+            local grpContent
+            local isFavHeader = ns.CharacterService and ns.CharacterService.IsProfileCustomSectionHighlighted
+                and ns.CharacterService:IsProfileCustomSectionHighlighted(self.db.profile, gid)
+            local grpVisualOpts = BuildAccordionVisualOpts({
+                bodyGetter = function() return grpContent end,
+                updateVisibleFn = CharactersVirtualScrollBump,
+            }) or { animatedContent = function() return grpContent end }
+            grpVisualOpts.sectionPreset = isFavHeader and "gold" or "accent"
+            local grpTitle = gMeta.name or gid
+            local grpHeaderAtlas = isFavHeader and "GM-icon-assistActive-hover" or "GM-icon-headCount"
+            local grpHeader, grpExpandIcon, grpIcon, grpHeaderText = CreateCollapsibleHeader(
+                parent,
+                grpTitle,
+                "cgrp_" .. tostring(gid),
+                grpExpanded,
+                function(isExpanded)
+                    self.db.profile.characterGroupExpanded[gid] = isExpanded
+                    if isExpanded then
+                        if grpContent then
+                            grpContent:Show()
+                            grpContent:SetHeight(math.max(0.1, grpContent._wnAccordionFullH or 0.1))
+                        end
+                    elseif grpContent then
+                        grpContent:Hide()
+                        grpContent:SetHeight(0.1)
+                    end
+                end,
+                grpHeaderAtlas,
+                true,
+                nil,
+                nil,
+                grpVisualOpts
+            )
+            AnchorSectionHeader(grpHeader)
+            if grpIcon then grpIcon:SetSize(24, 24) end
+
+            -- Unified Custom Header chrome (count + [+] add button + gold star).
+            -- Layout: [chevron] [icon] [gold-star] [title] ........ [add-btn] [count]
+            if ns.UI_DecorateCustomHeader then
+                ns.UI_DecorateCustomHeader(grpHeader, {
+                    groupId = gid,
+                    memberCount = #gList,
+                    addon = WarbandNexus,
+                    profile = self.db.profile,
+                    expandIcon = grpExpandIcon,
+                    iconFrame = grpIcon,
+                    headerText = grpHeaderText,
+                    includeAddButton = true,
+                    addButtonRoster = characters,
+                    refreshTab = nil,
+                })
+            end
+
+            grpContent = AcquireSectionContentFrame(grpHeader)
+            local grpHeight = DrawCharactersIntoSection(
+                grpContent,
+                gList,
+                false,
+                gListKey,
+                (ns.L and ns.L["CUSTOM_HEADER_EMPTY"]) or "No characters in this header. Use the + button (next to Filter) or row note icon on non-favorites to assign."
+            )
+            if grpExpanded then
+                grpContent:Show()
+                grpContent:SetHeight(math.max(0.1, grpContent._wnAccordionFullH or 0.1))
+            else
+                grpContent:Hide()
+                grpContent:SetHeight(0.1)
+            end
+            previousSectionContent = grpContent
+            yOffset = yOffset + SECTION_H + (grpExpanded and grpHeight or 0) + SECTION_HEADER_GAP
+        end
+    end
+
+    -- Regular characters (ungrouped tracked, non-favorites)
+    if drawRegular then
+        local charactersExpanded = self.db.profile.ui.charactersExpanded
+        local charactersContent
+        local charHeader, _, charIcon = CreateCollapsibleHeader(
+            parent,
+            ((ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters"),
+            "characters",
+            charactersExpanded,
+            function(isExpanded)
+                self.db.profile.ui.charactersExpanded = isExpanded
+                if isExpanded then
+                    if charactersContent then
+                        charactersContent:Show()
+                        charactersContent:SetHeight(math.max(0.1, charactersContent._wnAccordionFullH or 0.1))
+                    end
+                elseif charactersContent then
+                    charactersContent:Hide()
+                    charactersContent:SetHeight(0.1)
+                end
+            end,
+            "GM-icon-headCount",
+            true,
+            nil,
+            nil,
+            BuildAccordionVisualOpts({
+                bodyGetter = function() return charactersContent end,
+                updateVisibleFn = CharactersVirtualScrollBump,
+            }) or { animatedContent = function() return charactersContent end }
+        )
+        AnchorSectionHeader(charHeader)
+        if charIcon then charIcon:SetSize(24, 24) end
+
+        local charCount = FontManager:CreateFontString(charHeader, "header", "OVERLAY")
+        charCount:SetPoint("RIGHT", -14, 0)
+        charCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedRegular) .. "|r")
+
+        charactersContent = AcquireSectionContentFrame(charHeader)
+        local charactersHeight = DrawCharactersIntoSection(
+            charactersContent,
+            trackedRegular,
+            false,
+            "regular",
+            (ns.L and ns.L["ALL_FAVORITED"]) or "All characters are favorited!"
+        )
+        if charactersExpanded then
+            charactersContent:Show()
+            charactersContent:SetHeight(math.max(0.1, charactersContent._wnAccordionFullH or 0.1))
+        else
+            charactersContent:Hide()
+            charactersContent:SetHeight(0.1)
+        end
+        previousSectionContent = charactersContent
+        yOffset = yOffset + SECTION_H + (charactersExpanded and charactersHeight or 0)
+    end
+
+    -- Untracked characters
+    if drawUntracked then
+        if not isFirstSection then
+            yOffset = yOffset + SECTION_HEADER_GAP
+        end
         if self.db.profile.ui.untrackedExpanded == nil then
             self.db.profile.ui.untrackedExpanded = false
         end
@@ -1129,7 +1391,7 @@ function WarbandNexus:DrawCharacterList(parent)
         AnchorSectionHeader(untrackedHeader)
         if untrackedIcon then untrackedIcon:SetSize(24, 24) end
 
-        local untrackedCount = FontManager:CreateFontString(untrackedHeader, "body", "OVERLAY")
+        local untrackedCount = FontManager:CreateFontString(untrackedHeader, "header", "OVERLAY")
         untrackedCount:SetPoint("RIGHT", -14, 0)
         untrackedCount:SetText("|cff888888" .. FormatNumber(#untracked) .. "|r")
 
@@ -1842,11 +2104,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.keystoneIcon:Show()
     row.keystoneText:Show()
     
-    -- RIGHT-ANCHORED COLUMNS: [Delete] [LastSeen] [Reorder] (track column removed)
+    -- RIGHT-ANCHORED COLUMNS: [Delete] [Header assign] [LastSeen] [Reorder]
     local R_MARGIN = 6
     local R_GAP = 6
     local deleteRight = R_MARGIN
-    local lastSeenRight = deleteRight + CHAR_ROW_COLUMNS.delete.width + R_GAP
+    local headerAssignRight = deleteRight + CHAR_ROW_COLUMNS.delete.width + R_GAP
+    local lastSeenRight = headerAssignRight + (CHAR_ROW_COLUMNS.headerAssign and CHAR_ROW_COLUMNS.headerAssign.total or 26) + R_GAP
     local reorderRight = lastSeenRight + CHAR_ROW_COLUMNS.lastSeen.width + R_GAP
     
     if row.trackingIcon then
@@ -1935,6 +2198,45 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     
     
+    -- COLUMN: Custom section assign (folder) — tracked non-favorites in regular or custom group lists
+    local showHeaderAssign = (char.isTracked ~= false) and (not isFavorite)
+        and (listKey == "regular" or (ns.CharacterService and ns.CharacterService.ParseCustomGroupIdFromListKey(listKey)))
+    if showHeaderAssign then
+        if not row.headerAssignBtn then
+            local hb = ns.UI.Factory:CreateButton(row, 22, 22, true)
+            hb.isPersistentRowElement = true
+            local htex = hb.GetNormalTexture and hb:GetNormalTexture()
+            if htex then
+                htex:SetTexture("Interface\\Icons\\INV_Misc_Note_01")
+                htex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+            row.headerAssignBtn = hb
+        end
+        row.headerAssignBtn:ClearAllPoints()
+        row.headerAssignBtn:SetPoint("CENTER", row, "RIGHT", -(headerAssignRight + 11), 0)
+        row.headerAssignBtn:Show()
+        row.headerAssignBtn:SetScript("OnClick", function(selfBtn)
+            if ns.UI_ShowCharacterSectionAssignMenu then
+                ns.UI_ShowCharacterSectionAssignMenu(selfBtn, charKey, WarbandNexus.db.profile, function()
+                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+                end)
+            end
+        end)
+        if ShowTooltip then
+            row.headerAssignBtn:SetScript("OnEnter", function(selfBtn)
+                ShowTooltip(selfBtn, {
+                    type = "custom",
+                    title = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_TITLE"]) or "Custom header",
+                    description = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_DESC"]) or "Move this character into a header. Use the + button (left of Filter) to create headers, or Filter → New custom header.",
+                    anchor = "ANCHOR_LEFT",
+                })
+            end)
+            row.headerAssignBtn:SetScript("OnLeave", HideTooltip)
+        end
+    elseif row.headerAssignBtn then
+        row.headerAssignBtn:Hide()
+    end
+
     -- COLUMN: Delete button (RIGHT-anchored, compact)
     if not isCurrent then
         if not row.deleteBtn then
@@ -2161,9 +2463,20 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
                 if listKey == "favorites" then
                     inCategory = isTracked and isFav
                 elseif listKey == "regular" then
-                    inCategory = isTracked and not isFav
+                    local gid = (ns.CharacterService and ns.CharacterService.GetCharacterCustomSectionId)
+                        and ns.CharacterService:GetCharacterCustomSectionId(self, key)
+                        or (self.db.profile.characterGroupAssignments or {})[key]
+                    inCategory = isTracked and not isFav and (gid == nil or gid == "")
                 elseif listKey == "untracked" then
                     inCategory = not isTracked
+                elseif ns.CharacterService and ns.CharacterService.ParseCustomGroupIdFromListKey then
+                    local grpId = ns.CharacterService:ParseCustomGroupIdFromListKey(listKey)
+                    if grpId then
+                        local gid = (ns.CharacterService and ns.CharacterService.GetCharacterCustomSectionId)
+                            and ns.CharacterService:GetCharacterCustomSectionId(self, key)
+                            or (self.db.profile.characterGroupAssignments or {})[key]
+                        inCategory = isTracked and not isFav and gid == grpId
+                    end
                 end
                 if inCategory then
                     keysInCategory[#keysInCategory + 1] = key
@@ -2236,5 +2549,252 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
         self.db.global.characters[tk].lastSeen = time()
     end
     
-    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+end
+
+--============================================================================
+-- CUSTOM CHARACTER HEADERS — dialogs (Filter menu entry points)
+--============================================================================
+
+function WarbandNexus:OpenCustomCharacterHeaderDialog()
+    local CreateExternalWindow = ns.UI_CreateExternalWindow
+    local CreateThemedButton = ns.UI_CreateThemedButton
+    local FontMgr = ns.FontManager
+    if not CreateExternalWindow or not ns.UI or not ns.UI.Factory or not ns.UI.Factory.CreateEditBox or not ns.UI_CreateCustomHeaderRosterPicker then
+        return
+    end
+    local L = ns.L
+    local profile = self.db and self.db.profile
+    local characters = (self.GetAllCharacters and self:GetAllCharacters()) or {}
+    local dialogW = 820
+    local innerW = dialogW - 36
+    local dialog, contentFrame = CreateExternalWindow({
+        name = "WnNewCustomHeaderDialog",
+        title = (L and L["CUSTOM_HEADER_NEW_DIALOG_TITLE"]) or "New custom section",
+        icon = "socialqueuing-icon-group",
+        iconIsAtlas = true,
+        width = dialogW,
+        height = 620,
+    })
+    if not dialog or not contentFrame or not profile then return end
+
+    local hint = FontMgr:CreateFontString(contentFrame, "body", "OVERLAY")
+    hint:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 16, -10)
+    hint:SetWidth(innerW)
+    hint:SetJustifyH("LEFT")
+    hint:SetJustifyV("TOP")
+    if hint.SetWordWrap then hint:SetWordWrap(true) end
+    hint:SetTextColor(0.78, 0.80, 0.84)
+    hint:SetText((L and L["CUSTOM_HEADER_NEW_DIALOG_HINT"]) or "Name (max 32). Search and tick optional. Enter in name saves.")
+
+    local nameLabel = FontMgr:CreateFontString(contentFrame, "tabSubtitle", "OVERLAY")
+    nameLabel:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -12)
+    nameLabel:SetWidth(innerW)
+    nameLabel:SetJustifyH("LEFT")
+    nameLabel:SetTextColor(1, 0.92, 0.55)
+    nameLabel:SetText((L and L["CUSTOM_HEADER_NEW_DIALOG_LABEL"]) or "Section name")
+
+    local editBg = ns.UI.Factory:CreateContainer(contentFrame, innerW, 44, true)
+    editBg:SetPoint("TOPLEFT", nameLabel, "BOTTOMLEFT", 0, -8)
+    editBg:SetPoint("TOPRIGHT", nameLabel, "BOTTOMRIGHT", 0, -8)
+    local eb = ns.UI.Factory:CreateEditBox(editBg)
+    if eb.SetPoint then
+        eb:SetPoint("TOPLEFT", editBg, "TOPLEFT", 10, -8)
+        eb:SetPoint("BOTTOMRIGHT", editBg, "BOTTOMRIGHT", -10, 6)
+    end
+    eb:SetMaxLetters(32)
+    eb:SetAutoFocus(true)
+
+    local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, innerW, 40)
+    btnContainer:SetPoint("BOTTOM", contentFrame, "BOTTOM", 0, 14)
+    local okLbl = (L and L["CUSTOM_HEADER_NEW_DIALOG_CREATE"]) or "Create section"
+    local cancelLbl = CANCEL or "Cancel"
+
+    local host = CreateFrame("Frame", nil, contentFrame)
+    host:SetPoint("LEFT", contentFrame, "LEFT", 16, 0)
+    host:SetPoint("RIGHT", contentFrame, "RIGHT", -16, 0)
+    host:SetPoint("TOP", editBg, "BOTTOM", 0, -10)
+    host:SetPoint("BOTTOM", btnContainer, "TOP", 0, 12)
+
+    local picker = ns.UI_CreateCustomHeaderRosterPicker(host, innerW, WarbandNexus, profile, characters, nil)
+    if picker and picker.frame then
+        picker.frame:SetAllPoints(host)
+    end
+
+    local function trySubmit()
+        local t = eb:GetText()
+        if type(t) == "string" then
+            t = t:match("^%s*(.-)%s*$") or ""
+        else
+            t = ""
+        end
+        if t == "" or (issecretvalue and issecretvalue(t)) then
+            return
+        end
+        local addedId
+        if ns.CharacterService and ns.CharacterService.AddCustomCharacterSection then
+            addedId = ns.CharacterService:AddCustomCharacterSection(WarbandNexus, t)
+        end
+        if not addedId then
+            return
+        end
+        if picker and picker.GetSelectedKeys and ns.CharacterService and ns.CharacterService.SetCharacterCustomSection then
+            local keys = picker.GetSelectedKeys()
+            for i = 1, #keys do
+                local raw = keys[i]
+                if raw then
+                    local k = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(raw)) or raw
+                    ns.CharacterService:SetCharacterCustomSection(WarbandNexus, k, addedId)
+                end
+            end
+        end
+        if dialog.Close then dialog:Close() else dialog:Hide() end
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+    end
+
+    eb:SetScript("OnEnterPressed", function()
+        trySubmit()
+    end)
+
+    local okBtn = CreateThemedButton and CreateThemedButton(btnContainer, okLbl, 168, 34)
+    if okBtn then
+        okBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
+        okBtn:SetScript("OnClick", trySubmit)
+    end
+    local cancelBtn = CreateThemedButton and CreateThemedButton(btnContainer, cancelLbl, 150, 34)
+    if cancelBtn then
+        cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
+        cancelBtn:SetScript("OnClick", function()
+            if dialog.Close then dialog:Close() else dialog:Hide() end
+        end)
+    end
+    dialog:Show()
+    if picker and picker.Rebuild and C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if picker.Rebuild then picker.Rebuild() end
+        end)
+    end
+end
+
+--- Modal roster editor for an existing custom header ([+] same UX as new section dialog).
+function WarbandNexus:OpenCustomHeaderRosterWindow(groupId)
+    local CreateExternalWindow = ns.UI_CreateExternalWindow
+    local CreateThemedButton = ns.UI_CreateThemedButton
+    local FontMgr = ns.FontManager
+    if not groupId or not CreateExternalWindow or not ns.UI_CreateCustomHeaderRosterPicker then return end
+    local profile = self.db and self.db.profile
+    local characters = (self.GetAllCharacters and self:GetAllCharacters()) or {}
+    if not profile then return end
+    local L = ns.L
+    local gtitle = tostring(groupId)
+    local groups = profile.characterCustomGroups or {}
+    for gi = 1, #groups do
+        if groups[gi].id == groupId then
+            gtitle = groups[gi].name or gtitle
+            break
+        end
+    end
+    local dialogW = 820
+    local innerW = dialogW - 36
+    local safeName = "WnHdrRoster_" .. tostring(groupId):gsub("[^%a%d_]", "_")
+    local dialog, contentFrame = CreateExternalWindow({
+        name = safeName,
+        title = gtitle,
+        icon = "socialqueuing-icon-group",
+        iconIsAtlas = true,
+        width = dialogW,
+        height = 620,
+    })
+    if not dialog or not contentFrame then return end
+
+    local hint = FontMgr:CreateFontString(contentFrame, "body", "OVERLAY")
+    hint:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 16, -10)
+    hint:SetWidth(innerW)
+    hint:SetJustifyH("LEFT")
+    if hint.SetWordWrap then hint:SetWordWrap(true) end
+    hint:SetTextColor(0.78, 0.80, 0.84)
+    hint:SetText((L and L["CUSTOM_HEADER_ROSTER_WINDOW_HINT"]) or "First list: boxes start checked (still in this section). Uncheck to queue a removal. Second list: tick to queue adds. Nothing is saved until you click Add selected.")
+
+    local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, innerW, 40)
+    btnContainer:SetPoint("BOTTOM", contentFrame, "BOTTOM", 0, 14)
+    local addLbl = (L and L["CUSTOM_HEADER_ADD_SELECTED"]) or "Add selected"
+    local closeLbl = (L and L["CUSTOM_HEADER_ROSTER_CLOSE"]) or "Close"
+
+    local host = CreateFrame("Frame", nil, contentFrame)
+    host:SetPoint("LEFT", contentFrame, "LEFT", 16, 0)
+    host:SetPoint("RIGHT", contentFrame, "RIGHT", -16, 0)
+    host:SetPoint("TOP", hint, "BOTTOM", 0, -10)
+    host:SetPoint("BOTTOM", btnContainer, "TOP", 0, 12)
+
+    local picker = ns.UI_CreateCustomHeaderRosterPicker(host, innerW, WarbandNexus, profile, characters, groupId)
+    if picker and picker.frame then
+        picker.frame:SetAllPoints(host)
+    end
+
+    local addBtn = CreateThemedButton and CreateThemedButton(btnContainer, addLbl, 200, 34)
+    if addBtn and picker and picker.ApplyPendingAdds then
+        addBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
+        addBtn:SetScript("OnClick", function()
+            picker.ApplyPendingAdds()
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+        end)
+    end
+    local closeBtn = CreateThemedButton and CreateThemedButton(btnContainer, closeLbl, 160, 34)
+    if closeBtn then
+        closeBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
+        closeBtn:SetScript("OnClick", function()
+            if dialog.Close then dialog:Close() else dialog:Hide() end
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+        end)
+    end
+    dialog:Show()
+    if picker and picker.Rebuild and C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if picker.Rebuild then picker.Rebuild() end
+        end)
+    end
+end
+
+function WarbandNexus:ConfirmDeleteCustomCharacterHeader(groupId, groupName)
+    local CreateExternalWindow = ns.UI_CreateExternalWindow
+    local CreateThemedButton = ns.UI_CreateThemedButton
+    local FontMgr = ns.FontManager
+    if not groupId or not CreateExternalWindow then return end
+    local dialog, contentFrame = CreateExternalWindow({
+        name = "WnDeleteCustomHeaderDialog",
+        title = (ns.L and ns.L["CUSTOM_HEADER_DELETE_DIALOG_TITLE"]) or "Delete custom header?",
+        icon = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+        width = 420,
+        height = 190,
+    })
+    if not dialog or not contentFrame then return end
+    local nm = groupName or groupId
+    local warn = FontMgr:CreateFontString(contentFrame, "body", "OVERLAY")
+    warn:SetPoint("TOP", contentFrame, "TOP", 0, -20)
+    warn:SetWidth(380)
+    warn:SetJustifyH("CENTER")
+    local fmt = (ns.L and ns.L["CUSTOM_HEADER_DELETE_DIALOG_BODY"]) or "Remove header |cffffcc00%s|r and ungroup its characters?"
+    warn:SetText(string.format(fmt, nm))
+
+    local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, 360, 40)
+    btnContainer:SetPoint("BOTTOM", contentFrame, "BOTTOM", 0, 20)
+    local delBtn = CreateThemedButton and CreateThemedButton(btnContainer, (ns.L and ns.L["DELETE"]) or "Delete", 150, 36)
+    if delBtn then
+        delBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
+        delBtn:SetScript("OnClick", function()
+            if ns.CharacterService and ns.CharacterService.RemoveCustomCharacterSection then
+                ns.CharacterService:RemoveCustomCharacterSection(WarbandNexus, groupId)
+            end
+            if dialog.Close then dialog:Close() else dialog:Hide() end
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+        end)
+    end
+    local cancelBtn = CreateThemedButton and CreateThemedButton(btnContainer, (ns.L and ns.L["CANCEL"]) or "Cancel", 150, 36)
+    if cancelBtn then
+        cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
+        cancelBtn:SetScript("OnClick", function()
+            if dialog.Close then dialog:Close() else dialog:Hide() end
+        end)
+    end
+    dialog:Show()
 end

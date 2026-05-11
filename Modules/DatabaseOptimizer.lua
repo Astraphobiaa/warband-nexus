@@ -267,28 +267,20 @@ function WarbandNexus:DeleteCharacter(characterKey)
         end
     end
     
-    -- Remove from character order lists
+    -- Remove from character order lists (all buckets including custom group_* keys)
     if self.db.profile.characterOrder then
-        if self.db.profile.characterOrder.favorites then
-            local favOrder = self.db.profile.characterOrder.favorites
-            for i = 1, #favOrder do
-                local key = favOrder[i]
-                if key == characterKey then
-                    table.remove(self.db.profile.characterOrder.favorites, i)
-                    break
+        for orderKey, ordList in pairs(self.db.profile.characterOrder) do
+            if type(ordList) == "table" then
+                for i = #ordList, 1, -1 do
+                    if ordList[i] == characterKey then
+                        table.remove(ordList, i)
+                    end
                 end
             end
         end
-        if self.db.profile.characterOrder.regular then
-            local regOrder = self.db.profile.characterOrder.regular
-            for i = 1, #regOrder do
-                local key = regOrder[i]
-                if key == characterKey then
-                    table.remove(self.db.profile.characterOrder.regular, i)
-                    break
-                end
-            end
-        end
+    end
+    if self.db.profile.characterGroupAssignments then
+        self.db.profile.characterGroupAssignments[characterKey] = nil
     end
     
     -- Delete character data

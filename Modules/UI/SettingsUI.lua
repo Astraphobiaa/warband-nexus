@@ -2603,6 +2603,10 @@ local function BuildSettings(parent, containerWidth)
 
     local setPosBtn, resetBtn, testBtn
     local useAlertFrameCheck
+    local unifiedLayoutCheck
+    local lanePosButtons = {}
+    local notifPerLaneLabel
+    local RefreshNotifAnchorControlsVisibility
 
     local function SyncLegacyReminderToastFromProgressLane(db)
         if not db then return end
@@ -2627,6 +2631,34 @@ local function BuildSettings(parent, containerWidth)
         return true
     end
 
+    local function ApplyNotificationAnchorForLane(lane, anchorPoint, offsetX, offsetY)
+        local db = WarbandNexus.db.profile.notifications
+        if lane == "achievement" then
+            db.popupPoint = anchorPoint
+            db.popupX = offsetX
+            db.popupY = offsetY
+            db.useAlertFramePosition = false
+            if useAlertFrameCheck then
+                useAlertFrameCheck:SetChecked(false)
+                if useAlertFrameCheck.checkTexture then useAlertFrameCheck.checkTexture:SetShown(false) end
+            end
+        elseif lane == "criteria" then
+            db.popupPointCompact = anchorPoint
+            db.popupXCompact = offsetX
+            db.popupYCompact = offsetY
+            db.useCriteriaAlertFramePosition = false
+        elseif lane == "tryCounter" then
+            db.tryCounterToastPoint = anchorPoint
+            db.tryCounterToastX = offsetX
+            db.tryCounterToastY = offsetY
+        elseif lane == "reminder" then
+            db.reminderToastPoint = anchorPoint
+            db.reminderToastX = offsetX
+            db.reminderToastY = offsetY
+            db.reminderToastUseCriteriaLane = false
+        end
+    end
+
     local function ApplyNotificationOffsetsToDb(anchorPoint, offsetX, offsetY)
         local db = WarbandNexus.db.profile.notifications
         db.popupPoint = anchorPoint
@@ -2636,6 +2668,7 @@ local function BuildSettings(parent, containerWidth)
         db.popupXCompact = offsetX
         db.popupYCompact = offsetY
         db.useAlertFramePosition = false
+        db.unifiedToastLayout = true
         SyncLegacyReminderToastFromProgressLane(db)
         if useAlertFrameCheck then
             useAlertFrameCheck:SetChecked(false)
@@ -2770,7 +2803,12 @@ local function BuildSettings(parent, containerWidth)
             x = math.floor(x + 0.5)
             y = math.floor(y + 0.5)
             local pt = dlg.selectedAnchor or "TOP"
-            ApplyNotificationOffsetsToDb(pt, x, y)
+            local lane = WarbandNexus._notifGhostLane
+            if lane then
+                ApplyNotificationAnchorForLane(lane, pt, x, y)
+            else
+                ApplyNotificationOffsetsToDb(pt, x, y)
+            end
             holder:ClearAllPoints()
             holder:SetPoint(pt, UIParent, pt, x, y)
             return true
@@ -2854,11 +2892,7 @@ local function BuildSettings(parent, containerWidth)
         local v = self:GetChecked()
         WarbandNexus.db.profile.notifications.useAlertFramePosition = v
         if self.checkTexture then self.checkTexture:SetShown(v) end
-        if v then
-            setPosBtn:Disable() setPosBtn:SetAlpha(0.5) resetBtn:Disable() resetBtn:SetAlpha(0.5)
-        else
-            setPosBtn:Enable() setPosBtn:SetAlpha(1) resetBtn:Enable() resetBtn:SetAlpha(1)
-        end
+        if RefreshNotifAnchorControlsVisibility then RefreshNotifAnchorControlsVisibility() end
     end)
     notifGridYOffset = notifGridYOffset - math.max(22, ns.UI_TOGGLE_SIZE or 22) - GetHeaderToolbarGap()
 
@@ -2881,14 +2915,93 @@ local function BuildSettings(parent, containerWidth)
 
     local function closePositionGhosts()
         CloseNotificationCoordDialog()
+        WarbandNexus._notifGhostLane = nil
         if WarbandNexus._positionGhostHolder then WarbandNexus._positionGhostHolder:Hide() WarbandNexus._positionGhostHolder = nil end
         if WarbandNexus._positionGhost then WarbandNexus._positionGhost:Hide() WarbandNexus._positionGhost = nil end
         if WarbandNexus._positionGhostCriteria then WarbandNexus._positionGhostCriteria:Hide() WarbandNexus._positionGhostCriteria = nil end
         if WarbandNexus._positionGhostReminder then WarbandNexus._positionGhostReminder:Hide() WarbandNexus._positionGhostReminder = nil end
     end
 
+    local function BeginNotificationGhostForLane(lane)
+        if not lane then return end
+        if NotificationPositionGhostBlocked() then return end
+        local db = WarbandNexus.db.profile.notifications
+        if db.unifiedToastLayout ~= false or db.useAlertFramePosition then return end
+        if WarbandNexus._positionGhostHolder then
+            local ap, ox, oy = ComputeAnchorOffsetsFromGhost(WarbandNexus._positionGhostHolder)
+            if WarbandNexus._notifGhostLane then
+                ApplyNotificationAnchorForLane(WarbandNexus._notifGhostLane, ap, ox, oy)
+            else
+                saveGhostPositionBoth(WarbandNexus._positionGhostHolder)
+            end
+            closePositionGhosts()
+            WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
+            return
+        end
+        local pt, px, py = "TOP", 0, -100
+        if lane == "achievement" then
+            pt, px, py = db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
+        elseif lane == "criteria" then
+            pt = db.popupPointCompact or db.popupPoint or "TOP"
+            px = db.popupXCompact ~= nil and db.popupXCompact or (db.popupX or 0)
+            py = db.popupYCompact ~= nil and db.popupYCompact or (db.popupY or -100)
+        elseif lane == "tryCounter" then
+            pt = db.tryCounterToastPoint or db.popupPoint or "TOP"
+            px = db.tryCounterToastX ~= nil and db.tryCounterToastX or (db.popupX or 0)
+            py = db.tryCounterToastY ~= nil and db.tryCounterToastY or (db.popupY or -100)
+        elseif lane == "reminder" then
+            pt = db.reminderToastPoint or "TOPRIGHT"
+            px = db.reminderToastX or -42
+            py = db.reminderToastY or -172
+        end
+        local holder = ns.UI.Factory:CreateContainer(UIParent, 400, 88, true)
+        if not holder then return end
+        holder:SetFrameStrata("DIALOG")
+        holder:SetFrameLevel(2000)
+        holder:SetMovable(true)
+        holder:EnableMouse(true)
+        holder:RegisterForDrag("LeftButton")
+        holder:SetClampedToScreen(true)
+        if ApplyVisuals then ApplyVisuals(holder, {0.12, 0.45, 0.2, 0.88}, {0.35, 0.75, 0.4, 0.9}) end
+        local ghostText = FontManager:CreateFontString(holder, "body", "OVERLAY")
+        ghostText:SetPoint("CENTER")
+        local labelKey = (lane == "achievement" and "NOTIF_GHOST_LABEL_ACHIEVEMENT")
+            or (lane == "criteria" and "NOTIF_GHOST_LABEL_CRITERIA")
+            or (lane == "tryCounter" and "NOTIF_GHOST_LABEL_TRY")
+            or "NOTIF_GHOST_LABEL_REMINDER"
+        ghostText:SetText((ns.L and ns.L[labelKey]) or lane)
+        ghostText:SetTextColor(1, 1, 1, 1)
+        holder:SetPoint(pt, UIParent, pt, px, py)
+        holder:SetScript("OnDragStart", function(self)
+            if InCombatLockdown() then return end
+            self:StartMoving()
+        end)
+        holder:SetScript("OnDragStop", function(self)
+            self:StopMovingOrSizing()
+            local coordDlg = WarbandNexus._notifCoordDialog
+            if coordDlg and coordDlg:IsShown() and coordDlg._syncFromHolder then
+                coordDlg._syncFromHolder(self)
+            end
+        end)
+        holder:SetScript("OnMouseDown", function(_, button)
+            if button == "RightButton" then
+                ShowNotificationCoordDialog(holder)
+            end
+        end)
+        holder:Show()
+        WarbandNexus._notifGhostLane = lane
+        WarbandNexus._positionGhostHolder = holder
+        WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["NOTIF_DRAG_LANE_GHOST_MSG"]) or "Drag the preview, then right-click for coordinates. Click the lane button again to save.") .. "|r")
+    end
+
     setPosBtn:SetScript("OnClick", function()
         if WarbandNexus.db.profile.notifications.useAlertFramePosition then return end
+        if WarbandNexus.db.profile.notifications.unifiedToastLayout == false then
+            if WarbandNexus.Print then
+                WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["NOTIF_USE_PER_LANE_BUTTONS"]) or "Use the per-type buttons below to position each toast lane, or turn unified stack back on.") .. "|r")
+            end
+            return
+        end
         if NotificationPositionGhostBlocked() then return end
         if WarbandNexus._positionGhostHolder then
             saveGhostPositionBoth(WarbandNexus._positionGhostHolder)
@@ -2896,6 +3009,7 @@ local function BuildSettings(parent, containerWidth)
             WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
             return
         end
+        WarbandNexus._notifGhostLane = nil
         local db = WarbandNexus.db.profile.notifications
         local pt = db.popupPoint or "TOP"
         local px, py = db.popupX or 0, db.popupY or -100
@@ -2944,6 +3058,7 @@ local function BuildSettings(parent, containerWidth)
         end)
         holder:SetScript("OnMouseDown", function(self, button)
             if button == "RightButton" then
+                WarbandNexus._notifGhostLane = nil
                 ShowNotificationCoordDialog(self)
             end
         end)
@@ -2972,9 +3087,15 @@ local function BuildSettings(parent, containerWidth)
         db.popupPointCompact = "TOP"
         db.popupXCompact = 0
         db.popupYCompact = -100
+        db.tryCounterToastPoint = "TOP"
+        db.tryCounterToastX = 0
+        db.tryCounterToastY = -100
         db.useAlertFramePosition = false
+        db.unifiedToastLayout = true
         SyncLegacyReminderToastFromProgressLane(db)
         if useAlertFrameCheck then useAlertFrameCheck:SetChecked(false); if useAlertFrameCheck.checkTexture then useAlertFrameCheck.checkTexture:SetShown(false) end end
+        if unifiedLayoutCheck then unifiedLayoutCheck:SetChecked(true); if unifiedLayoutCheck.checkTexture then unifiedLayoutCheck.checkTexture:SetShown(true) end end
+        if RefreshNotifAnchorControlsVisibility then RefreshNotifAnchorControlsVisibility() end
         WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_RESET_MSG"]) or "Position reset to default.") .. "|r")
     end)
 
@@ -2997,11 +3118,102 @@ local function BuildSettings(parent, containerWidth)
     end)
     notifGridYOffset = notifGridYOffset - SETTINGS_COMPACT_BTN_H - GetHeaderToolbarGap()
 
+    notifPerLaneLabel = FontManager:CreateFontString(notifSection.content, "small", "OVERLAY")
+    notifPerLaneLabel:SetPoint("TOPLEFT", 0, notifGridYOffset)
+    notifPerLaneLabel:SetWidth(notifInnerW)
+    notifPerLaneLabel:SetJustifyH("LEFT")
+    notifPerLaneLabel:SetWordWrap(true)
+    notifPerLaneLabel:SetNonSpaceWrap(false)
+    notifPerLaneLabel:SetText((ns.L and ns.L["NOTIF_PER_LANE_HINT"]) or "Separate anchors: use each button, drag the preview, right-click for X/Y. Click the same button again to save.")
+    notifPerLaneLabel:SetTextColor(0.82, 0.82, 0.82, 1)
+    notifGridYOffset = notifGridYOffset - math.max(SETTINGS_ANCHOR_DESC_MIN_HEIGHT, notifPerLaneLabel:GetStringHeight()) - GetHeaderToolbarGap()
+
+    local laneBtnW = math.floor((notifInnerW - 3 * btnGap) / 4)
+    local laneDefs = {
+        { id = "achievement", loc = "NOTIF_POS_BTN_ACH", fallback = "Achieve." },
+        { id = "criteria", loc = "NOTIF_POS_BTN_CRITERIA", fallback = "Criteria" },
+        { id = "tryCounter", loc = "NOTIF_POS_BTN_TRY", fallback = "Try" },
+        { id = "reminder", loc = "NOTIF_POS_BTN_REMINDER", fallback = "Reminder" },
+    }
+    for li = 1, #laneDefs do
+        local ld = laneDefs[li]
+        local lb = ns.UI.Factory:CreateButton(notifSection.content)
+        lb:SetSize(laneBtnW, SETTINGS_COMPACT_BTN_H)
+        lb:SetPoint("TOPLEFT", (li - 1) * (laneBtnW + btnGap), notifGridYOffset)
+        local lt = lb:GetFontString() or FontManager:CreateFontString(lb, "small", "OVERLAY")
+        lt:SetPoint("CENTER", 0, 0)
+        lt:SetText((ns.L and ns.L[ld.loc]) or ld.fallback)
+        lt:SetTextColor(1, 1, 1, 1)
+        lb:SetFontString(lt)
+        ApplySettingsAccentChromeIdle(lb)
+        WireSettingsAccentButtonHover(lb)
+        RegisterSettingsAccentChrome(lb)
+        local laneId = ld.id
+        lb:SetScript("OnClick", function()
+            BeginNotificationGhostForLane(laneId)
+        end)
+        lanePosButtons[#lanePosButtons + 1] = lb
+    end
+    notifGridYOffset = notifGridYOffset - SETTINGS_COMPACT_BTN_H - GetHeaderToolbarGap()
+
+    unifiedLayoutCheck = CreateThemedCheckbox(notifSection.content)
+    unifiedLayoutCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
+    local unifiedLayoutLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
+    unifiedLayoutLabel:SetJustifyH("LEFT")
+    unifiedLayoutLabel:SetText((ns.L and ns.L["NOTIF_UNIFIED_TOAST_LAYOUT"]) or "Single stack anchor (all toast types share one position)")
+    unifiedLayoutLabel:SetTextColor(1, 1, 1, 1)
+    unifiedLayoutLabel:SetPoint("LEFT", unifiedLayoutCheck, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
+    unifiedLayoutCheck:SetChecked(WarbandNexus.db.profile.notifications.unifiedToastLayout ~= false)
+    if unifiedLayoutCheck.checkTexture then unifiedLayoutCheck.checkTexture:SetShown(WarbandNexus.db.profile.notifications.unifiedToastLayout ~= false) end
+    unifiedLayoutCheck:SetScript("OnClick", function(self)
+        local v = self:GetChecked()
+        WarbandNexus.db.profile.notifications.unifiedToastLayout = v
+        if self.checkTexture then self.checkTexture:SetShown(v) end
+        closePositionGhosts()
+        if RefreshNotifAnchorControlsVisibility then RefreshNotifAnchorControlsVisibility() end
+    end)
+    notifGridYOffset = notifGridYOffset - math.max(22, ns.UI_TOGGLE_SIZE or 22) - GetHeaderToolbarGap()
+
+    RefreshNotifAnchorControlsVisibility = function()
+        local db = WarbandNexus.db.profile.notifications
+        if not db then return end
+        local unified = db.unifiedToastLayout ~= false
+        local blizz = db.useAlertFramePosition
+        if setPosBtn then
+            setPosBtn:SetShown(unified)
+            if unified then
+                if blizz then setPosBtn:Disable(); setPosBtn:SetAlpha(0.5)
+                else setPosBtn:Enable(); setPosBtn:SetAlpha(1) end
+            end
+        end
+        if resetBtn then
+            resetBtn:SetShown(unified)
+            if unified then
+                if blizz then resetBtn:Disable(); resetBtn:SetAlpha(0.5)
+                else resetBtn:Enable(); resetBtn:SetAlpha(1) end
+            end
+        end
+        for i = 1, #lanePosButtons do
+            local b = lanePosButtons[i]
+            if b then
+                b:SetShown(not unified)
+                if not unified then
+                    if blizz then b:Disable(); b:SetAlpha(0.35)
+                    else b:Enable(); b:SetAlpha(1) end
+                end
+            end
+        end
+        if notifPerLaneLabel then
+            notifPerLaneLabel:SetShown(not unified)
+        end
+    end
+
     if WarbandNexus.db.profile.notifications.useAlertFramePosition then
         setPosBtn:Disable() setPosBtn:SetAlpha(0.5) resetBtn:Disable() resetBtn:SetAlpha(0.5)
     else
         setPosBtn:Enable() setPosBtn:SetAlpha(1) resetBtn:Enable() resetBtn:SetAlpha(1)
     end
+    RefreshNotifAnchorControlsVisibility()
 
     if durationLabel then
         table.insert(notifExternalDependents, { type = "label", widget = durationLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
@@ -3012,6 +3224,12 @@ local function BuildSettings(parent, containerWidth)
     table.insert(notifExternalDependents, { type = "button", widget = setPosBtn })
     table.insert(notifExternalDependents, { type = "button", widget = resetBtn })
     table.insert(notifExternalDependents, { type = "button", widget = testBtn })
+    for i = 1, #lanePosButtons do
+        table.insert(notifExternalDependents, { type = "button", widget = lanePosButtons[i] })
+    end
+    table.insert(notifExternalDependents, { type = "label", widget = notifPerLaneLabel, color = {0.82, 0.82, 0.82} })
+    table.insert(notifExternalDependents, { type = "button", widget = unifiedLayoutCheck })
+    table.insert(notifExternalDependents, { type = "label", widget = unifiedLayoutLabel, color = {1, 1, 1} })
     table.insert(notifExternalDependents, { type = "label", widget = useAlertFrameLabel, color = {1, 1, 1} })
     table.insert(notifExternalDependents, { type = "button", widget = useAlertFrameCheck })
     

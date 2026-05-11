@@ -245,12 +245,51 @@ L["CHARACTERS_EXPAND_ALL"] = "Expand all"
 L["CHARACTERS_EXPAND_ALL_TOOLTIP"] = "Expand Favorites, Characters, and Untracked sections."
 L["CHARACTERS_COLLAPSE_ALL"] = "Collapse all"
 L["CHARACTERS_COLLAPSE_ALL_TOOLTIP"] = "Collapse Favorites, Characters, and Untracked sections."
-L["CHARACTERS_SECTION_TOGGLE_EXPAND_TOOLTIP"] = "Expand Favorites, Characters, and Untracked sections."
-L["CHARACTERS_SECTION_TOGGLE_COLLAPSE_TOOLTIP"] = "Collapse Favorites, Characters, and Untracked sections."
+L["CHARACTERS_SECTION_TOGGLE_EXPAND_TOOLTIP"] = "Expand Favorites, custom sections, Characters, and inactive (not tracked)."
+L["CHARACTERS_SECTION_TOGGLE_COLLAPSE_TOOLTIP"] = "Collapse Favorites, custom sections, Characters, and inactive (not tracked)."
 L["CHARACTERS_TRACKED_FORMAT"] = "%d characters tracked"
+L["CHARACTERS_SUBTITLE"] = "A scrollable list of your characters with gold, level, gear, and key stats in one place."
+L["CUSTOM_HEADER_TITLEBAR_BTN_TOOLTIP"] = "Custom sections"
+L["CUSTOM_HEADER_TITLEBAR_BTN_TOOLTIP_BODY"] = "Create or delete custom sections. Use the star on a custom section header for gold bars (same look as Favorites); you can mark several sections. Gold sections sort above others, then by your sort mode. Order is Favorites, custom sections, Characters, then inactive. On the Character tab, use Plus on a custom section header to add several characters at once."
+L["CUSTOM_HEADER_ASSIGN_TOOLTIP_TITLE"] = "Move to custom header"
+L["CUSTOM_HEADER_ASSIGN_TOOLTIP_DESC"] = "Move this character. Use the group icon (left of Filter) for the menu, Plus on a Character tab custom header to add several at once, or this note icon."
+L["CUSTOM_HEADER_EMPTY"] = "No characters here yet. Use the Plus on this header row or the group icon in the title bar."
+L["CUSTOM_HEADER_NEW"] = "New custom header"
+L["CUSTOM_HEADER_DELETE_PICK"] = "Delete custom header..."
+L["CUSTOM_HEADER_REMOVE_ASSIGN"] = "Remove from custom header"
+L["CUSTOM_HEADER_NEW_DIALOG_TITLE"] = "New custom section"
+L["CUSTOM_HEADER_NEW_DIALOG_HINT"] = "Name (max 32). Search and tick optional. Enter in name saves."
+L["CUSTOM_HEADER_ROSTER_WINDOW_HINT"] = "First list: boxes start checked (still in this section). Uncheck to queue a removal. Second list: tick to queue adds. Nothing is saved until you click Add selected."
+L["CUSTOM_HEADER_ROSTER_CLOSE"] = "Close"
+L["CUSTOM_HEADER_NEW_DIALOG_LABEL"] = "Section name"
+L["CUSTOM_HEADER_NEW_DIALOG_CREATE"] = "Create section"
+L["CUSTOM_HEADER_DELETE_DIALOG_TITLE"] = "Delete custom header?"
+L["CUSTOM_HEADER_DELETE_DIALOG_BODY"] = "Remove header |cffffcc00%s|r and ungroup its characters?"
+L["CUSTOM_HEADER_MENU_SECTION_HEADERS"] = "Custom headers"
+L["CUSTOM_HEADER_MENU_NEW"] = "New custom section..."
+L["CUSTOM_HEADER_MENU_NONE_YET"] = "No sections yet - use New custom section above."
+L["CUSTOM_HEADER_MENU_DELETE_GROUP"] = "Delete a section"
+L["CUSTOM_HEADER_MENU_DELETE_FMT"] = "Delete: %s"
+L["CUSTOM_HEADER_GOLD_STAR_TITLE"] = "Gold section highlight"
+L["CUSTOM_HEADER_GOLD_STAR_BODY"] = "Click to give this section the same gold bar style as Favorites. You can highlight several sections. Gold sections appear above non-gold custom sections. Click the star again on this section to turn it off."
+L["CUSTOM_HEADER_MENU_IN_HEADER"] = "In this section"
+L["CUSTOM_HEADER_MENU_NO_MEMBERS"] = "No characters yet."
+L["CUSTOM_HEADER_MENU_REMOVE_FMT"] = "Remove: %s"
+L["CUSTOM_HEADER_MENU_ADD_TO_HEADER"] = "Add characters"
+L["CUSTOM_HEADER_MENU_NO_CANDIDATES"] = "No eligible characters (favorites stay in Favorites)."
+L["CUSTOM_HEADER_MENU_ADD_FMT"] = "Add: %s"
+L["CUSTOM_HEADER_ROW_ADD_TOOLTIP"] = "Edit this section"
+L["CUSTOM_HEADER_ROW_ADD_TOOLTIP_BODY"] = "Search, tick characters, then Add selected. In the roster window, tick the first column to remove from this section. Favorites stay in Favorites. Each character is in at most one custom section."
+L["CUSTOM_HEADER_PICKER_FILTER_LABEL"] = "Search"
+L["CUSTOM_HEADER_PICKER_EMPTY"] = "No matching characters."
+L["CUSTOM_HEADER_ADD_SELECTED"] = "Add selected"
+L["CUSTOM_HEADER_COL_CHARACTER"] = "Character"
+L["CUSTOM_HEADER_COL_LEVEL"] = "Level"
+L["CUSTOM_HEADER_COL_REALM"] = "Realm"
+L["CUSTOM_HEADER_REMOVE_LINK"] = "Remove"
 L["NO_FAVORITES"] = "No favorite characters yet. Click the star icon to favorite a character."
 L["ALL_FAVORITED"] = "All characters are favorited!"
-L["UNTRACKED_CHARACTERS"] = "Untracked Characters"
+L["UNTRACKED_CHARACTERS"] = "Inactive (not tracked)"
 L["ILVL_SHORT"] = "iLvl"
 L["ONLINE"] = "Online"
 L["TIME_LESS_THAN_MINUTE"] = "< 1m ago"
@@ -259,7 +298,7 @@ L["TIME_HOURS_FORMAT"] = "%dh ago"
 L["TIME_DAYS_FORMAT"] = "%dd ago"
 L["REMOVE_FROM_FAVORITES"] = "Remove from Favorites"
 L["ADD_TO_FAVORITES"] = "Add to Favorites"
-L["FAVORITES_TOOLTIP"] = "Favorite characters appear at the top of the list"
+L["FAVORITES_TOOLTIP"] = "Favorites are always the first block. Your custom sections are directly under Favorites, then Characters, then inactive (not tracked) at the bottom."
 L["CLICK_TO_TOGGLE"] = "Click to toggle"
 L["UNKNOWN_PROFESSION"] = "Unknown Profession"
 L["POINTS_SHORT"] = " pts"
@@ -740,6 +779,18 @@ L["EXTEND_DURATION"] = "Extend Duration"
 L["DRAG_POSITION_MSG"] = "Drag green = main popup, blue = progress lane (criteria & To-Do). Right-click a preview to save and close."
 L["DRAG_POSITION_STACK_MSG"] = "Drag the stacked preview (achievement above, criteria & To-Do below). Right-click for exact X/Y. Click Set Position again to save and close."
 L["DRAG_BOTH_POSITION_MSG"] = "Drag the preview, then right-click to apply one anchor to the main popup and the progress lane."
+L["NOTIF_UNIFIED_TOAST_LAYOUT"] = "Single stack anchor (all toast types share one position)"
+L["NOTIF_PER_LANE_HINT"] = "Separate anchors: pick a lane, drag the preview, right-click for exact X/Y. Click the same lane button again to save."
+L["NOTIF_POS_BTN_ACH"] = "Achieve."
+L["NOTIF_POS_BTN_CRITERIA"] = "Criteria"
+L["NOTIF_POS_BTN_TRY"] = "Try count"
+L["NOTIF_POS_BTN_REMINDER"] = "Reminder"
+L["NOTIF_DRAG_LANE_GHOST_MSG"] = "Drag the preview, then right-click for coordinates. Click the same lane button again to save."
+L["NOTIF_USE_PER_LANE_BUTTONS"] = "Use the per-type buttons below to position each toast lane, or turn unified stack back on."
+L["NOTIF_GHOST_LABEL_ACHIEVEMENT"] = "Achievement / main toast"
+L["NOTIF_GHOST_LABEL_CRITERIA"] = "Criteria / progress toast"
+L["NOTIF_GHOST_LABEL_TRY"] = "Try-count drop toast"
+L["NOTIF_GHOST_LABEL_REMINDER"] = "To-Do reminder toast"
 L["POSITION_RESET_MSG"] = "Popup position reset to default (Top Center)"
 L["POSITION_SAVED_MSG"] = "Popup position saved!"
 L["TEST_NOTIFICATION_TITLE"] = "Test Notification"
@@ -937,201 +988,41 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
+L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
+
+- Custom sections: named roster groups shared across Character, Professions, and PvE tabs; gold-star highlights; Filter - Show section; create/delete sections from the Character tab title bar. Add/remove and the header Plus control stay on the Character tab; Professions and PvE refresh when the roster changes.
+- Reminder system: To-Do reminders for zone entry (manual IDs plus catalog), instance entry, calendar toasts, Set Alert, and related Settings.
+- UI/UX: collapsible header alignment, PvE custom section spacing and layout, advanced filter polish, tab chrome aligned with Character where it helps readability.
+- Bug fixes: PvE custom group section id parsing (pve_grp keys), section row host wiring, duplicate vertical gaps between PvE sections.
+
+Since v3.0.2
+- Collections and To-Do reminder work from the prior build carry forward; this patch tightens roster-edit boundaries and PvE section layout.
+
+CurseForge: Warband Nexus]=]
+
+-- What's New / changelog body for ADDON_VERSION 3.0.2 (key CHANGELOG_V302)
+L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
+
+- Reminder system added for To-Do (zone enter with manual IDs + catalog, instance enter, calendar toasts, Set Alert dialog).
+- Collection data normalized (scan/cache pipeline + Recent Obtains cards and related UI polish).
+- Characters & Professions: custom headers — create named sections, move tracked non-favorite characters via the row folder button, filter the list by section from Filter → Show section, delete headers from Filter, shared with Professions roster.
+- Sort by realm (A–Z) on Characters, Professions, PvE roster, and Storage character lists.
+
+Since v3.0.1
+- To-Do: Planned vs Completed fixes; tracker icons and layout; accordion list animation fixes.
+- Collections: Recent sub-tab cards refresh and polish.
+- Settings: bug fixes; default font; container/footer anchors; color/position fixes; Patreon area polish; zhCN settings strings.
+
+CurseForge: Warband Nexus]=]
+
+
 -- What's New / changelog body for ADDON_VERSION 3.0.0 (key CHANGELOG_V300)
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Bundled highlights (prior patch notes through 2.7.2)
-
-Saved Instances & lockouts
-- Account-wide Saved Instances window: raid + dungeon lockouts, themed Factory scroll, collapse/expand, symmetric header columns, FontManager typography, clearer borders and resize behavior.
-- Backend: dungeon rows with difficulty pills; secret-safe raid detection; lockout freshness; collapse persistence; DataService staggered PvE capture aligned with PvECacheService.
-
-Try Counter & sources
-- ENCOUNTER_END-driven counting (next-frame schedule); clearer miss/stat paths; rare-farm off-by-one fix; encounter-specific dedup; per-corpse GUID dedup; NEW_MOUNT_ADDED / NEW_PET_ADDED backup; safer multi-event registration.
-- CollectibleSourceDB / locale rows for Sylvanas SoD Mythic chest attribution across clients.
-
-Gear, Vault & currencies
-- Quick-access menu (Vault Tracker, Saved Instances, Plans, Settings).
-- PvE Vault Status column + per-slot vault tooltips; live C_WeeklyRewards.HasAvailableRewards for ready state; alt weekly-reset promotion fixes; Status column width for localized labels.
-- Dawncrest crest farming tooltips; Shift-expand currency rows (`<bag> · <earned> / <cap>`); tier-colored upgrade tracks; subtitle hints; `/wn maxonly` (hide alts below level 80).
-- Gear paperdoll height/columns; recommendations scrollbar auto-hide; full currency names; Vault Tracker on FontManager; character order from Characters tab; enchant rank glyphs (R1–R3); Voidcore / coffer display fixes.
-
-Plans & Collections
-- Achievement Journal circular WN badge (add/remove To-Do), localized.
-- Plans Tracker mirrors To-Do: ParseMultipleSources rows, type badges, portrait-aligned info rows, tries/delete alignment, ExpandableRow layout fixes, full achievement body text without MaxLines caps.
-- Collections › Recent Obtains: full-height cards, auto-hiding scrollbars, tooltip detail (earned/obtained-by wording); 2.7.2 polish — title/subtitle, per-category reset, labeled tooltip sections, Plans metrics (`UI_PLANS_CARD_METRICS`), Weekly Progress accordion tween + scroll resync, Show Planned always visible (disabled on To-Do/Weekly with tooltip), themed checkbox accent fixes, tighter plan source icons.
-
-Locales
-- `SHOW_PLANNED_DISABLED_HERE` and `COLLECTIONS_RECENT_*` for all shipped languages; restored collections strings (koKR / ruRU / zhTW) and mojibake fixes (deDE / es / fr).
-
-Full merged notes: repository CHANGES.md / CHANGES.txt · listing on CurseForge / Wago.
+Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.0.3).
 
 CurseForge: Warband Nexus]=]
-
--- What's New / changelog body for ADDON_VERSION 2.7.0 (key CHANGELOG_V270)
-L["CHANGELOG_V270"] = [=[v2.7.0 (2026-05-05)
-
-Saved Instances — layout + readability pass
-- Reworked the view into a clean header/row structure: `Instance (Difficulty)` with character progress rows directly underneath.
-- Added per-group collapse/expand controls with larger chevrons and stable collapse state while the window is open.
-- Added fixed right-side columns in headers (character count + progress) for symmetric vertical alignment across all groups.
-- Synced row progress formatting with header progress formatting for consistent numeric alignment.
-
-Saved Instances — theme and typography parity
-- Header and character rows now use outlined borders (theme-colored) for clearer section boundaries.
-- Font rendering now uses the selected addon font through `FontManager` in the Saved Instances surface.
-- Theme refresh now re-renders Saved Instances when open, so color/font changes follow the main addon window immediately.
-
-Saved Instances — scrolling + interaction
-- Switched to the standardized Factory scrollframe + themed scrollbar column used by the main addon UI.
-- Scrollbar visibility now updates automatically based on content size.
-- Resizable window behavior was retained and integrated with content/scroll refresh.
-
-CurseForge: Warband Nexus]=]
-
--- What's New / changelog body for ADDON_VERSION 2.6.8 (key CHANGELOG_V268)
-L["CHANGELOG_V268"] = [=[v2.6.8 (2026-05-04)
-
-Try Counter — architectural overhaul
-- Counting is now event-driven by ENCOUNTER_END (next frame instead of a 5-second wait). Chests, personal-loot bags, and post-cinematic loot can be opened seconds, hours, or days later without re-counting or off-by-one.
-- Stat-backed miss path now prints "N attempts for [item]" — previously the reseed could complete silently and Sylvanas / LFR Jaina kills produced no try-counter line at all.
-- Fixed off-by-one on open-world rare farms: 4 misses followed by a drop on kill 5 now correctly says "after 5 attempts" (was "after 4").
-- Fixed encounter fallback being silently suppressed by unrelated tier-token / currency loot (Anima Vessels, etc.) inside the kill window.
-- Added definitive NEW_MOUNT_ADDED / NEW_PET_ADDED backup so post-cinematic chest grants always emit the correct obtained line, even when the primary loot-window detection misses.
-
-Sylvanas (Sanctum of Domination, Mythic)
-- All client locales now resolve the Sylvanas encounter for Vengeance's Reins try counting. Added a slot-first outcome rule for the Mythic chest so secret-GUID loot is attributed by tracked itemID rather than failing to bind to the kill.
-
-Saved Instances
-- Now lists dungeon lockouts alongside raids: 5-player Normal / Heroic / Mythic / M+ rows surface with their own difficulty pills.
-- Lockouts are filtered by reset time so expired rows no longer linger; collapse state per instance persists across sessions.
-- isRaid is treated as advisory — falls back to DifficultyID + maxPlayers when the value is wrapped or missing in Midnight 12.0 contexts.
-
-Data collection
-- Per-character lockouts capture both raid and dungeon entries (matches the cache pipeline) so the Vault button now reflects everything you're saved to.
-
-CurseForge: Warband Nexus]=]
-
--- What's New / changelog body for ADDON_VERSION 2.6.7 (key CHANGELOG_V267)
-L["CHANGELOG_V267"] = [=[v2.6.7 (2026-04-29)
-
-PvE — Great Vault tracker
-- Added Weekly Vault tracker visibility improvements for unclaimed rewards and completed vault rows.
-- Claimable Great Vault rewards now show the short "loot ready" status label consistently across PvE and Plans surfaces.
-
-UI — minimap shortcut
-- Improved quick access flow through the minimap button and /wn minimap toggle shortcut.
-
-Collections — loot alerts
-- Bag scan now checks the permanent notified cache before firing mount, pet, and toy collectible toasts.
-- Fixed repeated collectible popups caused by duplicate BAG_UPDATE-driven re-detection.
-- Already-notified collectibles now stay silent across reloads and relogs.
-
-Collections — recent list
-- Recent obtained entries are now retention-pruned (7 days) so stale rows are cleaned automatically.
-
-CurseForge: Warband Nexus]=]
-
--- What's New / changelog body for ADDON_VERSION 2.6.6b (key CHANGELOG_V266)
-L["CHANGELOG_V266"] = [=[v2.6.6b (2026-04-28)
-
-Gear tab — Storage Upgrade Recommendations
-- Recommendations now respect transferability: only BoE, Warbound, and Warbound-until-equipped items can surface from another character's bags or the Warband Bank. Soulbound items that were once BoE but have since been equipped are filtered out (they cannot be transferred).
-- Two-handed main hand suppresses off-hand suggestions: equipping a 2H staff/polearm no longer brings up low-ilvl off-hand "upgrades" against an empty slot.
-- Warband-until-Equipped (WuE) items are now correctly identified via the tooltip text — Blizzard's bindType API reports them as plain "BoE", which previously mislabelled every WuE item.
-- Cross-character cold-cache fix: WuE and BoE items in another character's bag are now resolved through Blizzard's GET_ITEM_INFO_RECEIVED warm-up so their true ilvl (e.g. Champion 3/6 = 253) is used instead of the template base ilvl.
-- Stat and level filters relaxed when previewing alts: C_Item.GetItemStats only reports the logged-in character's primary, and stale DB level snapshots can lag the live character — both checks now run only when the selected tab character is the player.
-
-Gear tab — UI
-- Storage Upgrade Recommendations card revised: subtitle clarifies "Transferable items only (BoE / Warbound)", row spacing increased, source font weight tuned for readability.
-- Compact bind labels in the recommendation list: BoE / WuE / WB instead of long phrases.
-
-Event-driven UI refresh
-- Gear tab now refreshes on bag updates (newly looted BoEs surface immediately).
-- Money, currency variants, collection events, vault events, character tracking changes, gold management edits, and bank money log updates all trigger the appropriate tab redraw.
-- GET_ITEM_INFO_RECEIVED listener: gear tab re-scans once cold-cache hyperlinks finish async resolution.
-
-Collections — loot alerts
-- Bag-scan collectible detection now skips mounts, pets, and toys already marked as notified in SavedVariables (permanent dedupe).
-- Prevents duplicate collection popups when repeated bag updates re-detected the same collectible.
-
-Single-roof version system (no more wiped data on releases)
-- Addon releases no longer invalidate any cache. Bumping the addon version preserves all character state, vault progress, mythic key history, and currency totals.
-- Game build (WoW patch) is the trigger for API-bound cache invalidation (reputation, collection) where Blizzard's API shape may have shifted.
-- Per-cache schema versions live in Constants.VERSIONS.CACHE; only the cache whose integer is bumped gets refreshed.
-- Every invalidation creates an automatic backup at db.global.cacheBackups[name] before resetting; recoverable via WarbandNexus:RestoreCacheBackup(name).
-
-Diagnostics
-- New /wn dumpitem <itemID> command: prints all API data + every persisted bag/bank/warband-bank instance of an item to chat for troubleshooting.
-
-CurseForge: Warband Nexus]=]
-
--- What's New / changelog body for ADDON_VERSION 2.6.4 (key CHANGELOG_V264)
-L["CHANGELOG_V264"] = [=[v2.6.4 (2026-04-26)
-
-- Ashes of Belo'ren and L'ura references updated.
-- Less delay when the Characters, Gear, and PvE tabs refresh their data.
-- Bug fixes and small improvements.
-
-CurseForge: Warband Nexus]=]
-
--- What's New / changelog body for ADDON_VERSION 2.6.3 (key CHANGELOG_V263)
-L["CHANGELOG_V263"] = [=[v2.6.3 (2026-04-21)
-
-PvE cache & SavedVariables
-- Character keys are normalized (GetCanonicalCharacterKey) on every PvE cache read/write so each character uses one SV bucket — migration, import, and live updates no longer split the same toon across different key spellings.
-- Mythic+ dungeon scores: avoid wiping good SavedVariables when the API returns overall 0 with no per-map data while SV still has progress; per-map merge keeps prior rows when the API snapshot is all zeros.
-- Great Vault: empty/nil C_WeeklyRewards.GetActivities() does not overwrite persisted vault data (wait for server / open Great Vault).
-- Import from legacy/migration: skip destructive mythic, vault, or lockout writes when the incoming snapshot is empty but existing cache still has rows.
-- Keystone: only clear stored key when the API reports level 0; nil map/level during API races does not wipe a cached key.
-- MYTHIC_PLUS_CURRENT_AFFIX_UPDATE: refresh affixes; prune keystones by weekly reset timestamp only (no blanket wipe of all characters' keys).
-- PLAYER_LOGOUT: persist cache without running a full PvE refresh (logout APIs often return empty/zero).
-
-Debug (Config → Debug Mode)
-- Optional chat diagnostics prefixed |cff00ccff[PvE Cache]|r: dungeon score save/skip, keystone decisions, Great Vault API empty vs saved, ImportLegacy branches, and bestRuns overall score line (parallel to dungeonScores).
-
-Collections UI
-- Search bar uses the full search row on the Recent sub-tab (Owned/Missing hidden); anchors refresh when switching sub-tabs so the field no longer leaves an empty reserved strip on the right.
-
-CurseForge: Warband Nexus]=]
-
--- Keep previous version text for /wn changelog history if ever keyed by version
-L["CHANGELOG_V262"] = [=[v2.6.2 (2026-04-21)
-
-Currency & chat
-- Fixed WN-Currency chat queue (FIFO with table.remove) so rapid lines are not dropped.
-- Dawncrest / split currencies: fewer duplicate notifications when bag quantity and totalEarned update on different ticks; short defer when useful.
-- Block internal Blizzard currency labels (Delves / System / Seasonal Affix / Events Active|Maximum, etc.) from WN-Currency; validate meta names on live API as well.
-- Login: suppress WN-Currency notifications until the first full currency scan completes (stops login CURRENCY_DISPLAY_UPDATE burst from flooding chat).
-
-Reputation
-- Removed duplicate WN-Reputation line from companion delta watcher; DB pipeline owns chat.
-- Companion XP loot: seed pre standing / renown so level-up and standing lines behave correctly.
-- Optional "Reached renown level %d" (locale WN_REPUTATION_RENOWN_LEVEL_UP); renown level-up derived when MAJOR_FACTION events do not fire.
-
-Keybind & settings UI
-- Toggle keybind cannot be ESC; legacy ESC bindings are cleared on load/save (game menu path stays reliable).
-- Settings: dedicated key capture (clear, combat-blocked); main window keyboard is suppressed while Settings is open so movement, chat, and Blizzard keybinding capture keep working.
-- Settings root keeps frame keyboard off (large panel no longer steals the global key stack).
-
-ESC & WindowManager
-- ToggleGameMenu uses hooksecurefunc only — never replace the global (avoids taint / protected-call failures such as SpellStopCasting).
-- Same ESC press no longer closes two layers (addon + game menu); aligns with CloseSpecialWindows / UISpecialFrames for the Settings panel.
-- Combat restore no longer forces keyboard back on for the Settings panel.
-
-Weekly Vault / PvE UI (ready state)
-- When Great Vault rewards are claimable (live check or cached), Weekly Vault bars on plan cards, the Plans tracker, and the PvE tab show the localized short label (VAULT_LOOT_READY_SHORT) instead of only threshold ticks.
-- PvE Dawncrest columns use Constants.DAWNCREST_UI (single source with Gear / currency).
-
-Commands & professions
-- /wn keys (party): strip link pipes from aggregated text for Midnight chat rules; use a visible separator between entries when packing lines.
-- Profession window: optional "(N)" craft-from-materials count appended to the schematic title after init.
-
-Localization & tooling
-- Locale key parity maintained (_ignored maintainer tooling).
-
-CurseForge: Warband Nexus]=]
-
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"
@@ -1565,6 +1456,7 @@ L["TOTAL_REAGENTS"] = "Total Reagents"
 
 -- Database / Migration
 L["DATABASE_UPDATED_MSG"] = "Database updated to a new version."
+L["CHANGELOG_CUSTOM_SECTIONS_V1"] = "Custom sections: multiple gold-highlighted headers, favorites-first ordering, canonical assignment in roster/Characters list, and a simpler tab subtitle."
 L["DATABASE_RELOAD_REQUIRED"] = "A one-time reload is required to apply changes."
 L["MIGRATION_RESET_COMPLETE"] = "Reset complete. All data will be rescanned automatically."
 
@@ -1772,7 +1664,14 @@ L["SORT_MODE_NAME"] = "Name (A-Z)"
 L["SORT_MODE_LEVEL"] = "Level (Highest)"
 L["SORT_MODE_ILVL"] = "Item Level (Highest)"
 L["SORT_MODE_GOLD"] = "Gold (Highest)"
-
+L["SORT_MODE_REALM"] = "Realm (A-Z)"
+L["FILTER_MENU_TOOLTIP"] = "Sort, filter by section, and delete custom character headers."
+L["FILTER_SUBMENU_SORT"] = "Sort…"
+L["FILTER_SUBMENU_VIEW"] = "Show section…"
+L["SECTION_FILTER_ALL"] = "All sections"
+L["SECTION_FILTER_FAVORITES"] = "Favorites only"
+L["SECTION_FILTER_REGULAR"] = "Characters (ungrouped) only"
+L["SECTION_FILTER_UNTRACKED"] = "Untracked only"
 -- Gold Management
 L["GOLD_MANAGER_BTN"] = "Gold Target"
 L["GOLD_MANAGEMENT_TITLE"] = "Gold Target"

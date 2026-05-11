@@ -569,6 +569,11 @@ local function SortCharacters(list, orderKey)
                 local goldB = ns.Utilities:GetCharTotalCopper(b)
                 if goldA ~= goldB then return goldA > goldB end
                 return CompareCharNameLower(a, b)
+            elseif sortMode == "realm" then
+                local ra = SafeLower(a.realm or "")
+                local rb = SafeLower(b.realm or "")
+                if ra ~= rb then return ra < rb end
+                return CompareCharNameLower(a, b)
             end
             if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
             return CompareCharNameLower(a, b)
@@ -609,17 +614,42 @@ end
 
 local function CategorizeCharacters(characters)
     local favorites, regular, untracked = {}, {}, {}
+    local profile = WarbandNexus.db and WarbandNexus.db.profile
+    if profile and ns.CharacterService and ns.CharacterService.EnsureCustomCharacterSectionsProfile then
+        ns.CharacterService:EnsureCustomCharacterSectionsProfile(profile)
+    end
+    local sortKey = (profile and profile.characterSort and profile.characterSort.key) or "default"
+    local customGroupsOrdered = (profile and ns.CharacterService and ns.CharacterService.BuildOrderedCustomCharacterGroups)
+        and ns.CharacterService:BuildOrderedCustomCharacterGroups(profile, sortKey)
+        or ((profile and profile.characterCustomGroups) or {})
+    local assignments = (profile and profile.characterGroupAssignments) or {}
+    local groupedById = {}
+    for gi = 1, #customGroupsOrdered do
+        groupedById[customGroupsOrdered[gi].id] = {}
+    end
     for chi = 1, #characters do
         local char = characters[chi]
-        -- Include ALL tracked characters, even those with no professions.
-        -- DrawProfessionLine already handles empty slots with "No Profession" text.
         local isTracked = char.isTracked ~= false
         local charKey = GetCharKey(char)
-        if not isTracked then table.insert(untracked, char)
-        elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey) then table.insert(favorites, char)
-        else table.insert(regular, char) end
+        if not isTracked then
+            table.insert(untracked, char)
+        elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey) then
+            table.insert(favorites, char)
+        else
+            local gid = nil
+            if charKey and ns.CharacterService and ns.CharacterService.GetCharacterCustomSectionId then
+                gid = ns.CharacterService:GetCharacterCustomSectionId(WarbandNexus, charKey)
+            elseif charKey then
+                gid = assignments[charKey]
+            end
+            if gid and groupedById[gid] then
+                table.insert(groupedById[gid], char)
+            else
+                table.insert(regular, char)
+            end
+        end
     end
-    return SortCharacters(favorites, "favorites"), SortCharacters(regular, "regular"), SortCharacters(untracked, "untracked")
+    return SortCharacters(favorites, "favorites"), groupedById, customGroupsOrdered, SortCharacters(regular, "regular"), SortCharacters(untracked, "untracked")
 end
 
 -- Realm display: use centralized Utilities:FormatRealmName
@@ -1010,8 +1040,12 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
 
     local characters = self:GetAllCharacters()
-    local trackedFavorites, trackedRegular, untrackedChars = CategorizeCharacters(characters)
+    local trackedFavorites, groupedById, customGroupsOrdered, trackedRegular, untrackedChars = CategorizeCharacters(characters)
     local totalProfChars = #trackedFavorites + #trackedRegular + #untrackedChars
+    for gci = 1, #customGroupsOrdered do
+        local gl = groupedById[customGroupsOrdered[gci].id]
+        if gl then totalProfChars = totalProfChars + #gl end
+    end
 
     local expBadgeWidth = 100
     local filterBtnW = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH_DEFAULT) or 80
@@ -1222,17 +1256,49 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end)
 
     local sortBtn
-    if ns.UI_CreateCharacterSortDropdown then
+    if ns.UI_CreateCharacterTabAdvancedFilterButton then
+        if ns.CharacterService and ns.CharacterService.EnsureCustomCharacterSectionsProfile then
+            ns.CharacterService:EnsureCustomCharacterSectionsProfile(self.db.profile)
+        end
         local sortOptions = {
             {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
             {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
             {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
             {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
             {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+            {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
+        }
+        if not self.db.profile.professionSort then self.db.profile.professionSort = {} end
+        if not self.db.profile.professionSectionFilter then self.db.profile.professionSectionFilter = { sectionKey = "all" } end
+        sortBtn = ns.UI_CreateCharacterTabAdvancedFilterButton(titleCard, {
+            sortOptions = sortOptions,
+            dbSortTable = self.db.profile.professionSort,
+            dbSectionFilter = self.db.profile.professionSectionFilter,
+            getCustomSections = function()
+                return self.db.profile.characterCustomGroups or {}
+            end,
+            onRefresh = function()
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+            end,
+            onDeleteSection = function(groupId, groupName)
+                WarbandNexus:ConfirmDeleteCustomCharacterHeader(groupId, groupName)
+            end,
+        })
+        if sortBtn then
+            sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -(GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8), 0)
+        end
+    elseif ns.UI_CreateCharacterSortDropdown then
+        local sortOptions = {
+            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+            {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
         }
         if not self.db.profile.professionSort then self.db.profile.professionSort = {} end
         sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function()
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
         end)
         sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -(GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8), 0)
     end
@@ -1248,7 +1314,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 if ch == nil then ch = true end
                 local unt = ui.profUntrackedExpanded
                 if unt == nil then unt = false end
-                return fav and ch and unt
+                if not (fav and ch and unt) then return false end
+                local profile = WarbandNexus.db.profile
+                local groups = profile.characterCustomGroups or {}
+                local ge = profile.characterGroupExpanded or {}
+                for gi = 1, #groups do
+                    if ge[groups[gi].id] == false then return false end
+                end
+                return true
             end,
             expandTooltip = (ns.L and ns.L["PROFESSIONS_EXPAND_ALL_TOOLTIP"]) or "Expand Favorites, Characters, and Untracked sections.",
             collapseTooltip = (ns.L and ns.L["PROFESSIONS_COLLAPSE_ALL_TOOLTIP"]) or "Collapse Favorites, Characters, and Untracked sections.",
@@ -1257,6 +1330,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 self.db.profile.ui.profFavoritesExpanded = true
                 self.db.profile.ui.profCharactersExpanded = true
                 self.db.profile.ui.profUntrackedExpanded = true
+                if not self.db.profile.characterGroupExpanded then self.db.profile.characterGroupExpanded = {} end
+                local cg = self.db.profile.characterCustomGroups or {}
+                for ei = 1, #cg do
+                    self.db.profile.characterGroupExpanded[cg[ei].id] = true
+                end
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
             end,
             onCollapseClick = function()
@@ -1264,6 +1342,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 self.db.profile.ui.profFavoritesExpanded = false
                 self.db.profile.ui.profCharactersExpanded = false
                 self.db.profile.ui.profUntrackedExpanded = false
+                if not self.db.profile.characterGroupExpanded then self.db.profile.characterGroupExpanded = {} end
+                local cg = self.db.profile.characterCustomGroups or {}
+                for ei = 1, #cg do
+                    self.db.profile.characterGroupExpanded[cg[ei].id] = false
+                end
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
             end,
         })
@@ -1414,6 +1497,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local colSortCmp = GetColumnSortCharComparator()
     if colSortCmp then
         table.sort(trackedFavorites, colSortCmp)
+        for gci = 1, #customGroupsOrdered do
+            local gl = groupedById[customGroupsOrdered[gci].id]
+            if gl then table.sort(gl, colSortCmp) end
+        end
         table.sort(trackedRegular, colSortCmp)
         table.sort(untrackedChars, colSortCmp)
     end
@@ -1455,17 +1542,32 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
 
     local function DrawSection(chars, headerLabel, sectionKey, defaultExpanded, headerAtlas, visualOpts)
-        if #chars == 0 then return end
+        if #chars == 0 and not (visualOpts and visualOpts.forceWhenEmpty) then return end
 
-        local isExpanded = self.db.profile.ui[sectionKey]
-        if isExpanded == nil then isExpanded = defaultExpanded end
+        local isExpanded
+        if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
+            local gid = visualOpts.groupId
+            if not self.db.profile.characterGroupExpanded then self.db.profile.characterGroupExpanded = {} end
+            isExpanded = self.db.profile.characterGroupExpanded[gid]
+            if isExpanded == nil then isExpanded = defaultExpanded end
+        else
+            isExpanded = self.db.profile.ui[sectionKey]
+            if isExpanded == nil then isExpanded = defaultExpanded end
+        end
 
         local sectionContent
         local headerVisualOpts = BuildAccordionVisualOpts({
             bodyGetter = function() return sectionContent end,
             persistFn = function(exp)
-                self.db.profile.ui[sectionKey] = exp
-                if exp then self.profRecentlyExpanded[sectionKey] = GetTime() end
+                if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
+                    local gid = visualOpts.groupId
+                    if not self.db.profile.characterGroupExpanded then self.db.profile.characterGroupExpanded = {} end
+                    self.db.profile.characterGroupExpanded[gid] = exp
+                    if exp then self.profRecentlyExpanded["cgrp_" .. tostring(gid)] = GetTime() end
+                else
+                    self.db.profile.ui[sectionKey] = exp
+                    if exp then self.profRecentlyExpanded[sectionKey] = GetTime() end
+                end
             end,
             onUpdate = function(drawH)
                 if not sectionContent then return end
@@ -1499,9 +1601,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
             headerVisualOpts.sectionPreset = visualOpts.sectionPreset
         end
 
-        local header, _, hdrIcon = CreateCollapsibleHeader(
+        local header, headerExpandIcon, hdrIcon, headerText = CreateCollapsibleHeader(
             parent,
-            string.format(headerLabel .. " |cff888888(%s)|r", FormatNumber(#chars)),
+            headerLabel,
             sectionKey,
             isExpanded,
             function(expanded)
@@ -1521,11 +1623,35 @@ function WarbandNexus:DrawProfessionsTab(parent)
             nil,
             headerVisualOpts
         )
+        -- Match Characters tab icon sizing exactly:
+        --   Favorites          (gold preset, NO useCharacterGroupExpand) -> 28x28
+        --   Custom roster      (useCharacterGroupExpand + groupId)        -> 24x24
+        --   Regular / Untracked (default / "danger")                      -> 24x24
+        local isCustomRosterSectionForIcon = visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId
+        local isFavoritesSectionForIcon = visualOpts and visualOpts.sectionPreset == "gold" and not isCustomRosterSectionForIcon
         if hdrIcon then
-            hdrIcon:SetSize(34, 34)
+            local sz = isFavoritesSectionForIcon and 28 or 24
+            hdrIcon:SetSize(sz, sz)
         end
         header:SetHeight(SECTION_COLLAPSE_HEADER_HEIGHT)
         AnchorSectionHeader(header)
+
+        local isCustomRosterSection = visualOpts and visualOpts.groupId
+        local profSectionCount
+        if not isCustomRosterSection then
+            -- Non-custom sections (Favorites / Characters / Untracked) keep the simple count badge.
+            local countHex = ((visualOpts and visualOpts.sectionPreset == "danger") and "|cff888888") or "|cffaaaaaa"
+            if not header._wnProfSectionCount then
+                header._wnProfSectionCount = FontManager:CreateFontString(header, "header", "OVERLAY")
+            end
+            profSectionCount = header._wnProfSectionCount
+            profSectionCount:SetJustifyH("RIGHT")
+            profSectionCount:SetText(countHex .. FormatNumber(#chars) .. "|r")
+            profSectionCount:Show()
+        elseif header._wnProfSectionCount then
+            -- Hide legacy per-tab count so the unified helper's count is the only badge shown.
+            header._wnProfSectionCount:Hide()
+        end
 
         sectionContent = AcquireSectionContentFrame(header)
         local sectionYOffset = 0
@@ -1555,40 +1681,95 @@ function WarbandNexus:DrawProfessionsTab(parent)
             sectionContent:SetHeight(0.1)
         end
 
+        if isCustomRosterSection and ns.UI_DecorateCustomHeader then
+            -- Unified Custom Header chrome (count + gold star). No [+] button in Professions tab.
+            -- Layout: [chevron] [icon] [gold-star] [title] ........ [count]
+            ns.UI_DecorateCustomHeader(header, {
+                groupId = visualOpts.groupId,
+                memberCount = #chars,
+                addon = WarbandNexus,
+                profile = self.db.profile,
+                expandIcon = headerExpandIcon,
+                iconFrame = hdrIcon,
+                headerText = headerText,
+                includeAddButton = false,
+                refreshTab = "professions",
+            })
+        elseif profSectionCount then
+            -- Non-custom sections (Favorites / Characters / Untracked): simple right-anchored count
+            -- badge. Match Characters tab pattern exactly: only count is anchored to RIGHT,-14,0;
+            -- headerText keeps its original LEFT-only anchor (no RIGHT constraint).
+            profSectionCount:ClearAllPoints()
+            profSectionCount:SetPoint("RIGHT", header, "RIGHT", -14, 0)
+        end
+
         previousSectionContent = sectionContent
         yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT + (isExpanded and sectionYOffset or 0)
         yOffset = yOffset + 4  -- breathing room between sections
     end
 
-    -- Favorites section (always visible if has entries) - gold/yellow accent like CharactersUI
-    DrawSection(
-        trackedFavorites,
-        (ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites",
-        "profFavoritesExpanded",
-        true,
-        "GM-icon-assistActive-hover",
-        { sectionPreset = "gold" }
-    )
+    local sectionFilter = "all"
+    if self.db.profile.professionSectionFilter and type(self.db.profile.professionSectionFilter.sectionKey) == "string" then
+        sectionFilter = self.db.profile.professionSectionFilter.sectionKey
+    end
+    local drawFav = (sectionFilter == "all") or (sectionFilter == "favorites")
+    local drawReg = (sectionFilter == "all") or (sectionFilter == "regular")
+    local drawUnt = (sectionFilter == "untracked") or (sectionFilter == "all" and #untrackedChars > 0)
 
-    -- Regular characters section
-    DrawSection(
-        trackedRegular,
-        (ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters",
-        "profCharactersExpanded",
-        true,
-        "GM-icon-headCount",
-        nil
-    )
+    -- Same stack as Characters tab: Favorites -> custom groups -> Characters -> inactive (untracked) last.
 
-    -- Untracked characters section
-    DrawSection(
-        untrackedChars,
-        (ns.L and ns.L["UNTRACKED_CHARACTERS"]) or "Untracked Characters",
-        "profUntrackedExpanded",
-        false,
-        "DungeonStoneCheckpointDeactivated",
-        { sectionPreset = "danger" }
-    )
+    if drawFav then
+        DrawSection(
+            trackedFavorites,
+            (ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites",
+            "profFavoritesExpanded",
+            true,
+            "GM-icon-assistActive-hover",
+            { sectionPreset = "gold" }
+        )
+    end
+
+    for pci = 1, #customGroupsOrdered do
+        local gMeta = customGroupsOrdered[pci]
+        local gid = gMeta.id
+        local gList = groupedById[gid] or {}
+        local gListKey = (ns.CharacterService and ns.CharacterService.GetCustomGroupListKey and ns.CharacterService:GetCustomGroupListKey(gid)) or ("group_" .. tostring(gid))
+        local showGrp = (sectionFilter == "all") or (sectionFilter == gListKey)
+        if showGrp then
+            local goldStyle = ns.CharacterService and ns.CharacterService.IsProfileCustomSectionHighlighted
+                and ns.CharacterService:IsProfileCustomSectionHighlighted(self.db.profile, gid)
+            DrawSection(
+                gList,
+                gMeta.name or gid,
+                "profCGrp_" .. tostring(gid),
+                true,
+                goldStyle and "GM-icon-assistActive-hover" or "GM-icon-headCount",
+                { sectionPreset = goldStyle and "gold" or "accent", useCharacterGroupExpand = true, groupId = gid }
+            )
+        end
+    end
+
+    if drawReg then
+        DrawSection(
+            trackedRegular,
+            (ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters",
+            "profCharactersExpanded",
+            true,
+            "GM-icon-headCount",
+            nil
+        )
+    end
+
+    if drawUnt then
+        DrawSection(
+            untrackedChars,
+            (ns.L and ns.L["UNTRACKED_CHARACTERS"]) or "Untracked Characters",
+            "profUntrackedExpanded",
+            false,
+            "DungeonStoneCheckpointDeactivated",
+            { sectionPreset = "danger" }
+        )
+    end
 
     return yOffset + 10
 end
@@ -1679,8 +1860,8 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     row.realmText:ClearAllPoints()
     row.realmText:SetPoint("LEFT", nameX, -7)
     row.realmText:SetWidth(nameW)
-    row.realmText:SetTextColor(1, 1, 1)
-    row.realmText:SetText(FormatRealmName(char.realm or ""))
+    row.realmText:SetTextColor(0.75, 0.75, 0.78)
+    row.realmText:SetText("|cffb0b0b8" .. FormatRealmName(char.realm or "") .. "|r")
 
     -- PROFESSION LINES
     self:DrawProfessionLine(row, char, char.professions and char.professions[1], 1, LINE1_Y, isCurrent)

@@ -7,6 +7,7 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local Utilities = ns.Utilities
 local FontManager = ns.FontManager  -- Centralized font management
+local ToastFactory = ns.NotificationToastFactory
 local DebugPrint = ns.DebugPrint or function() end
 local DebugVerbosePrint = ns.DebugVerbosePrint or DebugPrint
 local issecretvalue = issecretvalue
@@ -38,7 +39,7 @@ local function BuildChangelog()
     local key = VersionToChangelogKey(CURRENT_VERSION)
     local changelogText = key and ns.L and ns.L[key]
     if not changelogText or changelogText == "" then
-        changelogText = (ns.L and ns.L["CHANGELOG_V300"]) or FALLBACK_CHANGELOG
+        changelogText = (ns.L and ns.L["CHANGELOG_V303"]) or (ns.L and ns.L["CHANGELOG_V302"]) or (ns.L and ns.L["CHANGELOG_V300"]) or FALLBACK_CHANGELOG
     end
     if not changelogText or changelogText == "" then
         changelogText = FALLBACK_CHANGELOG
@@ -555,9 +556,12 @@ end
     ACHIEVEMENT-STYLE ALERT FRAME SYSTEM (WOW-STYLE)
 ============================================================================]]
 
+-- Max simultaneous toasts (rest queue with C_Timer debounce). Raised so mixed lanes can briefly co-exist.
+local NOTIFICATION_MAX_VISIBLE_ALERTS = 6
+
 -- Initialize AlertFrame tracking (like WoW's AlertFrame system)
 if not WarbandNexus.activeAlerts then
-    WarbandNexus.activeAlerts = {} -- Currently visible alerts (max 3)
+    WarbandNexus.activeAlerts = {} -- Currently visible alerts (capped; see NOTIFICATION_MAX_VISIBLE_ALERTS)
 end
 if not WarbandNexus.alertQueue then
     WarbandNexus.alertQueue = {} -- Waiting alerts (if >3 active)
@@ -652,28 +656,101 @@ local function GetBlizzardAlertFramePosition()
     return "TOP", offsetX, offsetY
 end
 
----Single saved anchor for achievement (full), criteria progress, compact collectibles, vault checkpoints, To-Do reminders.
----They stack vertically via GetCumulativeOffsetForNewAlert sharing the same anchorKey.
+---Match Blizzard criteria alert position when "Use CriteriaAlert position" is on (criteria lane only).
+---@return string|nil point, number|nil x, number|nil y
+local function GetBlizzardCriteriaAlertFramePosition()
+    local f = _G.CriteriaAlertFrame1
+    if not f or not f.GetPoint or f:GetNumPoints() < 1 then return nil, nil, nil end
+    local point, relativeTo, relativePoint, x, y = f:GetPoint(1)
+    if not point then return nil, nil, nil end
+    x, y = tonumber(x) or 0, tonumber(y) or -100
+    if relativeTo == UIParent then
+        return point, x, y
+    end
+    local fLeft, fTop = f:GetLeft(), f:GetTop()
+    if not fLeft or not fTop then return nil, nil, nil end
+    local w = f:GetWidth() or 300
+    local uiw = UIParent:GetWidth()
+    local uiTop = UIParent:GetTop()
+    local centerX = fLeft + (w / 2)
+    local offsetX = math.floor(centerX - (uiw / 2))
+    local offsetY = math.floor(fTop - uiTop)
+    return "TOP", offsetX, offsetY
+end
+
+---@param db table notifications profile slice
 ---@return string point, number x, number y
-local function GetUnifiedSavedAnchor()
-    local db = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+local function CriteriaAnchorFromDb(db)
     if not db then return "TOP", 0, -100 end
-    if db.useAlertFramePosition then
-        local pt, px, py = GetBlizzardAlertFramePosition()
+    if db.useCriteriaAlertFramePosition then
+        local pt, px, py = GetBlizzardCriteriaAlertFramePosition()
         if pt and px ~= nil and py ~= nil then return pt, px, py end
     end
-    return db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
+    return db.popupPointCompact or db.popupPoint or "TOP",
+        db.popupXCompact ~= nil and db.popupXCompact or (db.popupX or 0),
+        db.popupYCompact ~= nil and db.popupYCompact or (db.popupY or -100)
 end
 
----Progress lane (criteria / reminders / vault progress): same anchor as main achievement lane.
+---Resolve UIParent anchor for a toast lane. unifiedToastLayout=true uses one stack anchor for all lanes.
+---@param lane string "achievement" | "criteria" | "tryCounter" | "reminder"
 ---@return string point, number x, number y
-local function GetProgressToastAnchor()
-    return GetUnifiedSavedAnchor()
+local function ResolveToastAnchor(lane)
+    local db = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    if not db then return "TOP", 0, -100 end
+    local unified = db.unifiedToastLayout ~= false
+
+    if unified then
+        if db.useAlertFramePosition then
+            local pt, px, py = GetBlizzardAlertFramePosition()
+            if pt and px ~= nil and py ~= nil then return pt, px, py end
+        end
+        return db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
+    end
+
+    if lane == "achievement" then
+        if db.useAlertFramePosition then
+            local pt, px, py = GetBlizzardAlertFramePosition()
+            if pt and px ~= nil and py ~= nil then return pt, px, py end
+        end
+        return db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
+    elseif lane == "criteria" then
+        return CriteriaAnchorFromDb(db)
+    elseif lane == "tryCounter" then
+        return db.tryCounterToastPoint or db.popupPoint or "TOP",
+            db.tryCounterToastX ~= nil and db.tryCounterToastX or (db.popupX or 0),
+            db.tryCounterToastY ~= nil and db.tryCounterToastY or (db.popupY or -100)
+    elseif lane == "reminder" then
+        if db.reminderToastUseCriteriaLane ~= false then
+            return CriteriaAnchorFromDb(db)
+        end
+        return db.reminderToastPoint or "TOPRIGHT",
+            db.reminderToastX or -42,
+            db.reminderToastY or -172
+    end
+    return "TOP", 0, -100
 end
 
+---@param config table ShowModalNotification config
+---@return string lane
+local function InferToastLane(config)
+    if type(config.toastLane) == "string" and config.toastLane ~= "" then
+        return config.toastLane
+    end
+    if config.planReminderToast then
+        return "reminder"
+    end
+    local isCompact = config.compact and true or false
+    local hasCrit = type(config.criteriaTitle) == "string" and config.criteriaTitle ~= ""
+    if isCompact and (config.progressAnchor or hasCrit) then
+        return "criteria"
+    end
+    return "achievement"
+end
+
+---@param compact boolean|nil Legacy parameter; unused.
 ---@return string point, number x, number y
-local function GetReminderToastAnchor()
-    return GetUnifiedSavedAnchor()
+local function GetSavedPosition(compact)
+    return ResolveToastAnchor("achievement")
 end
 
 ---Outer width for progress-lane toasts (criteria, vault checkpoints, To-Do reminders): match live Blizzard CriteriaAlertFrame* when loaded.
@@ -692,13 +769,6 @@ local function GetBlizzardProgressAlertToastWidth()
         end
     end
     return 300
-end
-
----Get saved notification position from DB (compact flag ignored — one anchor stacks all types).
----@param compact boolean|nil Legacy parameter; unused.
----@return string point, number x, number y
-local function GetSavedPosition(compact)
-    return GetUnifiedSavedAnchor()
 end
 
 ---Determine growth direction based on anchor position on screen (always AUTO)
@@ -782,6 +852,9 @@ local function RepositionAlerts(instant)
             local newYOffset = by + (cumulativeOffset * -direction)
             cumulativeOffset = cumulativeOffset + GetAlertHeight(alert) + ALERT_GAP
             if not alert.isClosing then
+                -- Z-order: same strata, rising frame level for higher stack slots (newer toasts) so the latest message paints on top.
+                alert:SetFrameStrata("HIGH")
+                alert:SetFrameLevel(1000 + slotInGroup * 5)
                 if alert.isAnimating then
                     alert:SetScript("OnUpdate", nil)
                     alert.isAnimating = false
@@ -894,14 +967,14 @@ local function RemoveAlert(alert)
             -- Process queue: show ONE alert at a time with staggered entrance
             local function ProcessNextInQueue()
                 if not WarbandNexus or not WarbandNexus.activeAlerts then return end
-                if HasQueuedAlerts() and #WarbandNexus.activeAlerts < 3 then
+                if HasQueuedAlerts() and #WarbandNexus.activeAlerts < NOTIFICATION_MAX_VISIBLE_ALERTS then
                     local nextConfig = DequeueAlert()
                     
                     if WarbandNexus.ShowModalNotification then
                         WarbandNexus:ShowModalNotification(nextConfig)
                         
                         -- If more slots available, stagger next alert after entrance completes
-                        if HasQueuedAlerts() and #WarbandNexus.activeAlerts < 3 then
+                        if HasQueuedAlerts() and #WarbandNexus.activeAlerts < NOTIFICATION_MAX_VISIBLE_ALERTS then
                             C_Timer.After(0.25, ProcessNextInQueue)
                         end
                     end
@@ -917,8 +990,8 @@ end
 ---Addon-created toast frames are not secure; showing them during combat is safe (no taint).
 ---@param config table Configuration: {icon, title, message, subtitle, category, glowAtlas}
 function WarbandNexus:ShowModalNotification(config)
-    -- Queue system: max 3 alerts visible at once
-    if #self.activeAlerts >= 3 then
+    -- Queue when at capacity; dequeue on dismiss via C_Timer (no polling queue logic).
+    if #self.activeAlerts >= NOTIFICATION_MAX_VISIBLE_ALERTS then
         EnqueueAlert(config)
         return
     end
@@ -952,7 +1025,7 @@ function WarbandNexus:ShowModalNotification(config)
         and self.db.profile.notifications.popupDuration
     local autoDismissDelay = config.autoDismiss or dbDuration or 5
     
-    -- Calculate alert position (direction-aware, screen-safe).
+    -- Calculate alert position (direction-aware, screen-safe). Lanes: achievement / criteria / tryCounter / reminder.
     local isCompact = not not config.compact
     local isPlanReminderToast = config.planReminderToast == true
     local criteriaTitleStr = config.criteriaTitle
@@ -961,24 +1034,18 @@ function WarbandNexus:ShowModalNotification(config)
             or (isCompact and type(criteriaTitleStr) == "string" and criteriaTitleStr ~= "")
     )
     local useReminderSlot = isPlanReminderToast
-    local point, baseX, baseY
-    if useReminderSlot then
-        point, baseX, baseY = GetReminderToastAnchor()
-    elseif useProgressSlot then
-        point, baseX, baseY = GetProgressToastAnchor()
-    elseif isCompact then
-        point, baseX, baseY = GetSavedPosition(true)
-    else
-        point, baseX, baseY = GetSavedPosition(false)
-    end
+    local toastLane = InferToastLane(config)
+    local point, baseX, baseY = ResolveToastAnchor(toastLane)
+    local dbN = self.db and self.db.profile and self.db.profile.notifications
     local direction = GetGrowthDirection(point, baseX, baseY)
-    local anchorKey = point .. "|" .. tostring(baseX) .. "|" .. tostring(baseY)
+    -- Per-lane prefix when anchors are split so two lanes at the same pixel do not share one vertical stack slot.
+    local lanePrefix = (dbN and dbN.unifiedToastLayout == false) and (toastLane .. "|") or ""
+    local anchorKey = lanePrefix .. point .. "|" .. tostring(baseX) .. "|" .. tostring(baseY)
     local yOffset = baseY + GetCumulativeOffsetForNewAlert(anchorKey, direction)
     
     -- Compact toast: icon left, content (backdrop + ornaments + text) right.
     -- Progress lane (criteria / vault / To-Do reminders): Blizzard criteria-bar width scaling.
     if config.compact then
-        local dbN = self.db and self.db.profile and self.db.profile.notifications
         local laneUsesProgressSizing = useProgressSlot or useReminderSlot
 
         local COMPACT_HEIGHT = laneUsesProgressSizing and ALERT_HEIGHT_PROGRESS or ALERT_HEIGHT_COMPACT
@@ -993,14 +1060,13 @@ function WarbandNexus:ShowModalNotification(config)
             or 42
         local laneIconLeadingPad = laneUsesProgressSizing and ALERT_PROGRESS_ICON_LEADING_PAD or 0
         local contentFrameCompactW = popupWidthCompact - ICON_SLOT_WIDTH_COMPACT - laneIconLeadingPad
-        local compactPopup = CreateFrame("Frame", nil, UIParent)
+        local compactPopup = (ToastFactory and ToastFactory.CreateToastHost)
+            and ToastFactory:CreateToastHost(UIParent, popupWidthCompact, COMPACT_HEIGHT, { strata = "HIGH", frameLevel = 1000 })
+            or CreateFrame("Frame", nil, UIParent)
         compactPopup:SetSize(popupWidthCompact, COMPACT_HEIGHT)
-        compactPopup:SetFrameStrata("HIGH")
-        compactPopup:SetFrameLevel(1000)
-        compactPopup:SetClampedToScreen(true)
-        compactPopup:EnableMouse(true)
         compactPopup.currentYOffset = yOffset
         compactPopup.achievementID = config.achievementID
+        compactPopup._toastLane = toastLane
         compactPopup._anchorPoint = point
         compactPopup._baseX = baseX
         compactPopup._baseY = baseY
@@ -1275,12 +1341,10 @@ function WarbandNexus:ShowModalNotification(config)
     local ICON_SLOT_WIDTH = 62  -- 14 pad + 42 icon + 6 gap
     local contentFrameWidth = popupWidthFull - ICON_SLOT_WIDTH
     
-    local popup = CreateFrame("Frame", nil, UIParent)
+    local popup = (ToastFactory and ToastFactory.CreateToastHost)
+        and ToastFactory:CreateToastHost(UIParent, popupWidthFull, 88, { strata = "HIGH", frameLevel = 1000 })
+        or CreateFrame("Frame", nil, UIParent)
     popup:SetSize(popupWidthFull, 88)
-    popup:SetFrameStrata("HIGH")
-    popup:SetFrameLevel(1000)
-    popup:SetClampedToScreen(true)
-    popup:EnableMouse(true)
     popup:SetMouseClickEnabled(true)
     
     -- Layer 0: effects (rings, border glow, glows) — drawn behind the black frame
@@ -1453,6 +1517,7 @@ function WarbandNexus:ShowModalNotification(config)
     -- Track this alert (container = popup for stacking)
     popup.currentYOffset = yOffset
     popup.achievementID = config.achievementID
+    popup._toastLane = toastLane
     popup._alertHeight = ALERT_HEIGHT
     table.insert(self.activeAlerts, popup)
     popup.isEntering = true
@@ -2175,6 +2240,7 @@ function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIn
     
     self:ShowModalNotification({
         compact = true,
+        progressAnchor = true,
         criteriaTitle = criteriaTitleText,
         icon = achIcon or CATEGORY_ICONS.achievement,
         itemName = criteriaName,
@@ -2536,6 +2602,9 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     local overrides = {}
     if tryMessage then
         overrides.action = tryMessage
+    end
+    if hasTryCount then
+        overrides.toastLane = "tryCounter"
     end
     -- Attach achievement ID so click handler can open the achievement UI
     if data.type == "achievement" and data.id then

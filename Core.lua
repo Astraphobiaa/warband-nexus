@@ -227,9 +227,29 @@ local defaults = {
         
         -- Character list sorting preferences
         characterSort = {
-            key = "default",  -- "default" = online first, then level desc, name; "manual" = custom order; plus name/level/ilvl/gold
+            key = "default",  -- "default" = online first, then level desc, name; "manual" = custom order; plus name/level/ilvl/gold/realm
             ascending = true, -- reserved / future use
         },
+
+        -- User-defined character list sections (Characters + Professions tabs); assignments only apply to tracked non-favorites.
+        characterCustomGroups = {},       -- { { id = "cgh1", name = "Raid" }, ... }
+        characterGroupAssignments = {},   -- [charKey] = groupId
+        characterGroupExpanded = {},      -- [groupId] = bool expanded
+        characterSectionFilter = {       -- Which accordion sections are visible (nil sectionKey = all)
+            sectionKey = "all",           -- "all" | "favorites" | "regular" | "untracked" | "group_<id>"
+        },
+        -- Professions tab: section visibility (separate from Characters so filters do not cross tabs).
+        professionSectionFilter = {
+            sectionKey = "all",
+        },
+        -- PvE tab: section visibility (Favorites / custom groups / Characters).
+        pveSectionFilter = {
+            sectionKey = "all",
+        },
+        -- Legacy single gold-highlight id (migrated into characterFavoriteCustomGroupIds on load).
+        characterFavoriteCustomGroupId = nil,
+        -- Custom section gold bar highlights: any number of group ids may be set ([groupId] = true).
+        characterFavoriteCustomGroupIds = {},
 
         -- Profession tab: which expansion to show (strict filter; only that expansion's data)
         professionExpansionFilter = "Midnight",  -- "All", "Midnight", "Khaz Algar", "Dragon Isles", etc.
@@ -296,7 +316,13 @@ local defaults = {
             popupXCompact = nil,               -- X for progress slot (see Settings > Notifications)
             popupYCompact = nil,               -- Y for criteria position
             useAlertFramePosition = false,     -- If true, main position = Blizzard AchievementAlertFrame position
-            useCriteriaAlertFramePosition = false, -- If true, criteria position = Blizzard CriteriaAlertFrame position
+            useCriteriaAlertFramePosition = false, -- If true, criteria lane uses Blizzard CriteriaAlertFrame1 position (per-type layout)
+            -- When true (default), achievement / criteria / try-counter / reminder share one anchor (popup*). When false, each lane uses its own saved point.
+            unifiedToastLayout = true,
+            -- Try-counter celebration toasts (full-width popup with attempt subtitle); used when unifiedToastLayout is false
+            tryCounterToastPoint = "TOP",
+            tryCounterToastX = 0,
+            tryCounterToastY = -100,
             --- To-Do reminder toast lane (never uses Blizzard AchievementAlert/CriteriaAlert AddAlert hooks)
             reminderToastPoint = "TOPRIGHT",
             reminderToastX = -42,
@@ -1453,6 +1479,11 @@ function WarbandNexus:OnCombatStart()
     -- Hide position ghost if active
     if self._positionGhost and self._positionGhost:IsShown() then
         self._positionGhost:Hide()
+    end
+    if self._positionGhostHolder and self._positionGhostHolder.IsShown and self._positionGhostHolder:IsShown() then
+        self._positionGhostHolder:Hide()
+        self._positionGhostHolder = nil
+        self._notifGhostLane = nil
     end
     
     -- Hide custom tooltip (from TooltipService)

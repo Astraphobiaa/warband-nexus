@@ -2120,12 +2120,7 @@ function WarbandNexus:DrawReputationList(container, width)
 
         local totalHeight = VLM.SetupVirtualList(mf, body, nil, flatList, {
             createRowFn = function(container, it, _idx)
-                local row = AcquireReputationRow(container, it.rowWidth, ROW_HEIGHT)
-                local ok, err = pcall(PopulateReputationRow, row, it.populateEntry)
-                if not ok and IsDebugModeEnabled and IsDebugModeEnabled() then
-                    DebugPrint("|cffff0000[RepUI VLM]|r createRowFn: " .. tostring(err))
-                end
-                return row
+                return AcquireReputationRow(container, it.rowWidth, ROW_HEIGHT)
             end,
             populateRowFn = function(row, it, _idx)
                 local ok, err = pcall(PopulateReputationRow, row, it.populateEntry)

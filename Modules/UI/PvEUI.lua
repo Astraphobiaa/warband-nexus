@@ -2240,1452 +2240,9 @@ function WarbandNexus:DrawPvEVaultTrackerCardGrid(parent, startYOffset, characte
     return bottom
 end
 
---============================================================================
--- DRAW PVE PROGRESS (Great Vault, Lockouts, M+)
---============================================================================
-
-function WarbandNexus:DrawPvEProgress(parent)
-    local width = parent:GetWidth() - 20
-    -- Weekly Vault Tracker mode removed from PvE tab; standalone Easy Access window covers this.
-    local vaultTrackerMode = false
-
-    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
-    local headerParent = fixedHeader or parent
-    local headerYOffset = 8
-    
-    -- Add DB version badge (for debugging/monitoring)
-    if not parent.dbVersionBadge then
-        local dataSource = "db.global.pveProgress"
-        if self.db.global.pveCache and self.db.global.pveCache.version then
-            local cacheVersion = self.db.global.pveCache.version or "unknown"
-            dataSource = "PvECache v" .. cacheVersion
-        end
-        parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
-    end
-    
-    -- Hide empty state card (will be shown again if needed)
-    HideEmptyStateCard(parent, "pve")
-    
-    -- ===== AUTO-REFRESH CHECK (FULLY AUTOMATIC) =====
-    local charKey = ns.Utilities:GetCharacterKey()
-    local pveData = self:GetPvEData(charKey)
-    
-    -- Check multiple data completeness signals, not just keystone
-    local needsRefresh = false
-    if not pveData or not pveData.keystone then
-        needsRefresh = true
-    elseif pveData.vaultActivities then
-        -- Check if any unlocked vault slot is missing iLvl (server was slow)
-        local vaultCategories = {"raids", "mythicPlus", "world"}
-        for ci = 1, #vaultCategories do
-            local cat = vaultCategories[ci]
-            local activities = pveData.vaultActivities[cat]
-            if activities then
-                for ai = 1, #activities do
-                    local a = activities[ai]
-                    if a and a.progress and a.threshold and a.progress >= a.threshold then
-                        if not a.rewardItemLevel or a.rewardItemLevel == 0 then
-                            needsRefresh = true
-                            break
-                        end
-                    end
-                end
-            end
-            if needsRefresh then break end
-        end
-    end
-    
-    -- Trigger refresh if needed (rate-limited to avoid spam)
-    if needsRefresh and not ns.PvELoadingState.isLoading then
-        local timeSinceLastAttempt = time() - (ns.PvELoadingState.lastAttempt or 0)
-        if timeSinceLastAttempt > 10 then
-            ns.PvELoadingState.lastAttempt = time()
-            -- Poke server for fresh vault data before collecting
-            if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then
-                C_WeeklyRewards.OnUIInteract()
-            end
-            if self.UpdatePvEData then
-                self:UpdatePvEData()
-            end
-            -- Schedule a follow-up refresh after server responds (vault iLvl needs time)
-            C_Timer.After(3, function()
-                if self.UpdatePvEData then
-                    self:UpdatePvEData()
-                end
-            end)
-        end
-    end
-    
-    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for timer/sort/WVT =====
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["PVE_TITLE"]) or "PvE Progress") .. "|r"
-    local subtitleTextContent = (ns.L and ns.L["PVE_SUBTITLE"]) or "Great Vault, Raid Lockouts & Mythic+ across your Warband"
-    if vaultTrackerMode then
-        subtitleTextContent = (ns.L and ns.L["PVE_VAULT_TRACKER_SUBTITLE"]) or
-            "Unclaimed rewards and cleared vault rows"
-    end
-    -- Room for weekly reset + sort dropdown + Weekly Vault Tracker row (approximate, avoids overlap)
-    local PVE_TITLE_RIGHT_RESERVE = 520
-    local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
-        tabKey = "pve",
-        titleText = titleTextContent,
-        subtitleText = subtitleTextContent,
-        textRightInset = PVE_TITLE_RIGHT_RESERVE,
-    }))
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    
-    -- Weekly reset timer (standardized widget)
-    local CreateResetTimer = ns.UI_CreateResetTimer
-    local titleCardRightInset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
-    local resetTimer = CreateResetTimer(
-        titleCard,
-        "RIGHT",
-        -titleCardRightInset,
-        0,
-        function()
-            -- Use centralized GetWeeklyResetTime from PlansManager
-            if WarbandNexus.GetWeeklyResetTime then
-                local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
-                return resetTimestamp - GetServerTime()
-            end
-            
-            -- Fallback: Use Blizzard API
-            if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
-                return C_DateAndTime.GetSecondsUntilWeeklyReset() or 0
-            end
-            
-            return 0
-        end
-    )
-    
-    -- Sort Dropdown on the Title Card
-    local sortAnchor = resetTimer.container
-    if ns.UI_CreateCharacterSortDropdown then
-        local sortOptions = {
-            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
-            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
-            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
-            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
-            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
-        }
-        if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
-        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function()
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
-        end)
-        sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -15, 0)
-        sortAnchor = sortBtn
-    end
-
-    -- Column visibility (Vault Tracker parity: vaultButton.columns + PvE crest/shard/key toggles)
-    sortAnchor = PvE_AttachInlineColumnPicker(titleCard, sortAnchor, self)
-
-    titleCard:Show()
-    headerYOffset = headerYOffset + GetLayout().afterHeader
-    -- Title only; column headers live in columnHeaderClip (horizontal sync with scroll child)
-    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
-
-    -- ===== COLUMN HEADER ROW (inline PvE status summary) =====
-    -- All Midnight Dawncrest tiers — IDs from Constants.MIDNIGHT_S1 (same as Gear / Currency cache)
-    local PVE_DAWNCRESTS = GetPvEDawnCrestColumnDefinitions()
-    local PVE_RESTORED_KEY_FALLBACK_ID = 3089
-    ResolvePveDelveCurrencyColumns(self)
-    local PVE_SHARDS_ID = _pveDelveCurrencyCache.shardsID
-    local PVE_RESTORED_KEY_ID = _pveDelveCurrencyCache.keyID
-    local PVE_SHARDS_ICON = _pveDelveCurrencyCache.shardsIcon or "Interface\\Icons\\INV_Misc_Gem_Variety_01"
-    local PVE_RESTORED_KEY_ICON = _pveDelveCurrencyCache.keyIcon or "Interface\\Icons\\INV_Misc_Key_13"
-
-    -- Fallback for Restored Coffer Key when dynamic lookup doesn't resolve.
-    if not PVE_RESTORED_KEY_ID then
-        PVE_RESTORED_KEY_ID = PVE_RESTORED_KEY_FALLBACK_ID
-    end
-
-    local profile = self.db and self.db.profile
-    local vaultCols = EnsureVaultButtonColumnsForPvE(profile)
-    local pveExtraCols = EnsurePvEExtraVisibleColumns(profile)
-    local PVE_COLUMNS = {}
-    for i = 1, #PVE_DAWNCRESTS do
-        local crestEntry = PVE_DAWNCRESTS[i]
-        local ck = "crest_" .. tostring(crestEntry.id)
-        if pveExtraCols[ck] ~= false then
-            local crestIcon = 134400
-            local crestLabel = ""
-            local disp = GetPvECachedCurrencyDisplay(crestEntry.id)
-            if disp then
-                if disp.iconFileID then
-                    crestIcon = disp.iconFileID
-                end
-                if disp.name and disp.name ~= "" and not (issecretvalue and issecretvalue(disp.name)) then
-                    crestLabel = disp.name
-                end
-            end
-            if crestLabel == "" and crestEntry.labelKey then
-                crestLabel = GetLocalizedText(crestEntry.labelKey, "")
-            end
-            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-                key = ck,
-                label = "",
-                width = PVE_DAWNCREST_COL_W,
-                icon = crestIcon,
-                crestCurrencyId = crestEntry.id,
-                headerLabel = crestLabel,
-            }
-        end
-    end
-    if pveExtraCols.coffer_shards ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "coffer_shards",
-            label = "",
-            width = PVE_COFFER_COL_W,
-            icon = PVE_SHARDS_ICON,
-            tooltipTitle = GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
-            headerLabel = GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
-        }
-    end
-    if pveExtraCols.restored_key ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "restored_key",
-            label = "",
-            width = PVE_KEY_COL_W,
-            icon = PVE_RESTORED_KEY_ICON,
-            tooltipTitle = GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
-            headerLabel = GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
-        }
-    end
-    if vaultCols.voidcore ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "voidcore",
-            label = "",
-            width = PVE_VOIDCORE_COL_W,
-            icon = 7658128,
-            tooltipTitle = GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
-            headerLabel = GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
-        }
-    end
-    if vaultCols.manaflux == true then
-        local manafluxIcon = "Interface\\Icons\\INV_Enchant_DustArcane"
-        local mfDisp = GetPvECachedCurrencyDisplay(PVE_MANAFLUX_ID)
-        if mfDisp and mfDisp.iconFileID then
-            manafluxIcon = mfDisp.iconFileID
-        end
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "manaflux",
-            label = "",
-            width = PVE_MANAFLUX_COL_W,
-            icon = manafluxIcon,
-            tooltipTitle = GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
-            headerLabel = GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
-        }
-    end
-    if vaultCols.raids ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "slot1",
-            label = "",
-            width = PVE_VAULT_COL_W,
-            icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
-            tooltipTitle = (ns.L and ns.L["PVE_HEADER_RAIDS"]) or "Raids",
-            headerLabel = GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"),
-        }
-    end
-    if vaultCols.mythicPlus ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "slot2",
-            label = "",
-            width = PVE_VAULT_COL_W,
-            icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-            tooltipTitle = (ns.L and ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
-            headerLabel = GetLocalizedText("VAULT_DUNGEON", "Dungeon"),
-        }
-    end
-    if vaultCols.world ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "slot3",
-            label = "",
-            width = PVE_VAULT_COL_W,
-            icon = "Interface\\Icons\\INV_Misc_Map_01",
-            tooltipTitle = (ns.L and ns.L["VAULT_WORLD"]) or "World",
-            headerLabel = GetLocalizedText("VAULT_SLOT_WORLD", "World"),
-        }
-    end
-    -- Bountiful weekly — Trovehunter's Bounty item icon (live fileID when API returns it)
-    if vaultCols.bounty ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "bountiful",
-            label = "",
-            width = PVE_BOUNTIFUL_COL_W,
-            icon = GetTrovehunterBountyColumnIcon(),
-            tooltipTitle = (ns.L and ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty",
-            headerLabel = GetLocalizedText("PVE_HEADER_MAP_SHORT", "Map"),
-        }
-    end
-    -- Vault Status — same Ready/Slots Earned/Pending readout as the Vault Tracker quick window.
-    if vaultCols.status ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "vault_status",
-            label = "",
-            width = PVE_STATUS_COL_W,
-            icon = "Interface\\Icons\\Achievement_Boss_Argus",
-            tooltipTitle = (ns.L and ns.L["PVE_COL_VAULT_STATUS"]) or "Vault Status",
-            headerLabel = GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"),
-        }
-    end
-
-    local COL_SPACING = PVE_COL_SPACING
-    local COL_RIGHT_MARGIN = PVE_COL_RIGHT_MARGIN
-    local COL_ICON_SIZE = 24
-    local COL_HEADER_HEIGHT = 48
-    local visiblePveColumnKeys = {}
-    local colSigParts = {}
-    for i = 1, #PVE_COLUMNS do
-        local ck = PVE_COLUMNS[i].key
-        visiblePveColumnKeys[ck] = true
-        colSigParts[i] = ck
-    end
-    local colSig = table.concat(colSigParts, "\1")
-    local function GapBetweenColumns(leftIdx)
-        local leftCol = PVE_COLUMNS[leftIdx]
-        if not leftCol then return PVE_COL_SPACING end
-        local key = leftCol.key
-        if key == "manaflux" then return PVE_KEY_TO_VAULT_GAP end
-        if key == "voidcore" and (not visiblePveColumnKeys.manaflux) then return PVE_KEY_TO_VAULT_GAP end
-        if key == "restored_key" and (not visiblePveColumnKeys.voidcore) and (not visiblePveColumnKeys.manaflux) then
-            return PVE_KEY_TO_VAULT_GAP
-        end
-        if key == "slot1" or key == "slot2" then return PVE_VAULT_CLUSTER_GAP end
-        if key == "slot3" then return PVE_KEY_TO_VAULT_GAP end
-        return PVE_COL_SPACING
-    end
-
-    local yOffset = 8
-
-    -- Check if module is disabled - show beautiful disabled state card (before column strip / scroll width)
-    if not ns.Utilities:IsModuleEnabled("pve") then
-        WarbandNexus._pveVaultTooltipCharsSnapshot = {}
-        local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["PVE_TITLE"]) or "PvE Progress")
-        return yOffset + cardHeight
-    end
-    
-    -- Get all characters (filter tracked only for PvE display).
-    -- Also honor profile.hideLowLevelThreshold: 0 (off), 80, or 90.
-    local allCharacters = self:GetAllCharacters()
-    local characters = {}
-    local profile = self.db and self.db.profile
-    local minLevel = GetLowLevelHideThreshold(profile)
-    for i = 1, #allCharacters do
-        local char = allCharacters[i]
-        local lvl = tonumber(char.level) or 0
-        if char.isTracked ~= false and (minLevel == 0 or lvl >= minLevel) then
-            table.insert(characters, char)
-        end
-    end
-
-    local function GetRowCanonicalPvEKey(char)
-        return PvE_GetCanonicalKeyForChar(char)
-    end
-    
-    -- Canonical key must match PvECacheService writes and GetPvEData(charKey) lookups
-    local currentPlayerKey = ns.Utilities:GetCharacterKey()
-    if ns.Utilities.GetCanonicalCharacterKey then
-        currentPlayerKey = ns.Utilities:GetCanonicalCharacterKey(currentPlayerKey) or currentPlayerKey
-    end
-    
-    -- Load sorting preferences from profile (persistent across sessions)
-    if not parent.sortPrefsLoaded then
-        parent.sortKey = self.db.profile.pveSort.key
-        parent.sortAscending = self.db.profile.pveSort.ascending
-        parent.sortPrefsLoaded = true
-    end
-    
-    local sortOptions = {
-        {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
-        {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
-        {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
-        {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
-        {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
-    }
-    
-    if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
-    
-    -- ===== SORT CHARACTERS WITH FAVORITES ALWAYS ON TOP =====
-    -- Use the same sorting logic as Characters tab
-    local currentChar = nil
-    local favorites = {}
-    local regular = {}
-    
-    for i = 1, #characters do
-        local char = characters[i]
-        -- CRITICAL: Same canonical key as PvECacheService + row loop below (vault/M+ are per-key in pveCache)
-        local charKey = GetRowCanonicalPvEKey(char)
-        
-        -- Separate current character
-        if charKey == currentPlayerKey then
-            currentChar = char
-        elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey) then
-            table.insert(favorites, char)
-        else
-            table.insert(regular, char)
-        end
-    end
-    
-    -- Sort function (with custom order support, same as Characters tab)
-    local function sortCharacters(list, orderKey)
-        local sortMode = self.db.profile.pveSort and self.db.profile.pveSort.key
-        
-        if sortMode and sortMode ~= "manual" then
-            table.sort(list, function(a, b)
-                if sortMode == "name" then
-                    return CompareCharNameLower(a, b)
-                elseif sortMode == "level" then
-                    if (a.level or 0) ~= (b.level or 0) then
-                        return (a.level or 0) > (b.level or 0)
-                    else
-                        return CompareCharNameLower(a, b)
-                    end
-                elseif sortMode == "ilvl" then
-                    if (a.itemLevel or 0) ~= (b.itemLevel or 0) then
-                        return (a.itemLevel or 0) > (b.itemLevel or 0)
-                    else
-                        return CompareCharNameLower(a, b)
-                    end
-                elseif sortMode == "gold" then
-                    local goldA = ns.Utilities:GetCharTotalCopper(a)
-                    local goldB = ns.Utilities:GetCharTotalCopper(b)
-                    if goldA ~= goldB then
-                        return goldA > goldB
-                    else
-                        return CompareCharNameLower(a, b)
-                    end
-                end
-                -- Fallback
-                if (a.level or 0) ~= (b.level or 0) then
-                    return (a.level or 0) > (b.level or 0)
-                else
-                    return CompareCharNameLower(a, b)
-                end
-            end)
-            return list
-        end
-        
-        local customOrder = self.db.profile.characterOrder and self.db.profile.characterOrder[orderKey] or {}
-        
-        -- If custom order exists and has items, use it
-        if #customOrder > 0 then
-            local ordered = {}
-            local charMap = {}
-            
-            -- Create a map for quick lookup
-            for i = 1, #list do
-                local char = list[i]
-                local key = GetRowCanonicalPvEKey(char)
-                if key then charMap[key] = char end
-            end
-            
-            -- Add characters in custom order
-            for i = 1, #customOrder do
-                local charKey = customOrder[i]
-                if charMap[charKey] then
-                    table.insert(ordered, charMap[charKey])
-                    charMap[charKey] = nil  -- Remove to track remaining
-                end
-            end
-            
-            -- Add any new characters not in custom order (at the end, sorted)
-            local remaining = {}
-            for _, char in pairs(charMap) do
-                table.insert(remaining, char)
-            end
-            table.sort(remaining, function(a, b)
-                if (a.level or 0) ~= (b.level or 0) then
-                    return (a.level or 0) > (b.level or 0)
-                else
-                    return CompareCharNameLower(a, b)
-                end
-            end)
-            for i = 1, #remaining do
-                local char = remaining[i]
-                table.insert(ordered, char)
-            end
-            
-            return ordered
-        else
-            -- Default sort: level desc → name asc
-            table.sort(list, function(a, b)
-                if (a.level or 0) ~= (b.level or 0) then
-                    return (a.level or 0) > (b.level or 0)
-                else
-                    return CompareCharNameLower(a, b)
-                end
-            end)
-            return list
-        end
-    end
-    
-    -- Sort both groups with custom order
-    favorites = sortCharacters(favorites, "favorites")
-    regular = sortCharacters(regular, "regular")
-    
-    -- Merge: Current first, then favorites, then regular
-    local sortedCharacters = {}
-    if currentChar then
-        table.insert(sortedCharacters, currentChar)
-    end
-    for i = 1, #favorites do
-        local char = favorites[i]
-        table.insert(sortedCharacters, char)
-    end
-    for i = 1, #regular do
-        local char = regular[i]
-        table.insert(sortedCharacters, char)
-    end
-    characters = sortedCharacters
-    do
-        local snap = {}
-        for i = 1, #characters do
-            snap[i] = characters[i]
-        end
-        WarbandNexus._pveVaultTooltipCharsSnapshot = snap
-    end
-
-    local rosterSigParts = {}
-    local currentKeySet = {}
-    for i = 1, #characters do
-        local rk = GetRowCanonicalPvEKey(characters[i])
-        if rk then
-            rosterSigParts[#rosterSigParts + 1] = rk
-            currentKeySet[rk] = true
-        end
-    end
-    table.sort(rosterSigParts)
-    local rosterSig = tostring(#rosterSigParts) .. "\0" .. table.concat(rosterSigParts, "\1")
-    local rosterChanged = (_pveDrawPool.rosterSig ~= rosterSig)
-    PvESyncPvEPools(rosterSig, colSig, currentKeySet, visiblePveColumnKeys)
-
-    if vaultTrackerMode then
-        --- Slots meeting vault threshold (Raid / M+ / World / PvP tracks), same rules as inline grid.
-        local function CountVaultSlotsUnlocked(vaultActs)
-            if not vaultActs then return 0 end
-            local unlocked = 0
-            local function countTrack(activityList)
-                if not activityList then return end
-                for idx = 1, #activityList do
-                    local act = activityList[idx]
-                    if act and act.threshold and act.threshold > 0 and act.progress and act.progress >= act.threshold then
-                        unlocked = unlocked + 1
-                    end
-                end
-            end
-            countTrack(vaultActs.raids)
-            countTrack(vaultActs.mythicPlus)
-            countTrack(vaultActs.world)
-            countTrack(vaultActs.pvp)
-            return unlocked
-        end
-
-        local function ResolveVaultClaimable(charKey, charPveData)
-            local hasClaimable = charPveData.vaultRewards and charPveData.vaultRewards.hasAvailableRewards == true
-            if (not hasClaimable) and charKey == currentPlayerKey and self.HasUnclaimedVaultRewards then
-                local ok, liveHasRewards = pcall(self.HasUnclaimedVaultRewards, self)
-                hasClaimable = ok and liveHasRewards == true
-            end
-            return hasClaimable
-        end
-
-        --- True when PvE cache has at least one Great Vault activity row (Raid / M+ / World / PvP).
-        local function HasVaultActivitySnapshot(vaultActs)
-            if not vaultActs then return false end
-            local keys = { "raids", "mythicPlus", "world", "pvp" }
-            for ki = 1, #keys do
-                local list = vaultActs[keys[ki]]
-                if list and #list > 0 then
-                    return true
-                end
-            end
-            return false
-        end
-
-        --- WVT: only toons with vault data (cached activity rows, unlocked vault slots, or rewards to claim).
-        local function IncludeInVaultTracker(charKey, charPveData)
-            if ResolveVaultClaimable(charKey, charPveData) then
-                return true
-            end
-            local vaultActs = charPveData.vaultActivities
-            if HasVaultActivitySnapshot(vaultActs) then
-                return true
-            end
-            if CountVaultSlotsUnlocked(vaultActs) >= 1 then
-                return true
-            end
-            return false
-        end
-
-        local claimFirst = {}
-        local rest = {}
-        for i = 1, #characters do
-            local char = characters[i]
-            local charKey = GetRowCanonicalPvEKey(char)
-            if charKey then
-                local charPveData = self:GetPvEData(charKey) or {}
-                if IncludeInVaultTracker(charKey, charPveData) then
-                    if ResolveVaultClaimable(charKey, charPveData) then
-                        claimFirst[#claimFirst + 1] = char
-                    else
-                        rest[#rest + 1] = char
-                    end
-                end
-            end
-        end
-        characters = {}
-        for j = 1, #claimFirst do characters[#characters + 1] = claimFirst[j] end
-        for j = 1, #rest do characters[#characters + 1] = rest[j] end
-    end
-
-    -- ===== LOADING / ERROR / EMPTY (before column strip — vault tracker uses alternate layout) =====
-    if ns.PvELoadingState and ns.PvELoadingState.isLoading then
-        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
-        if UI_CreateLoadingStateCard then
-            local newYOffset = UI_CreateLoadingStateCard(
-                parent,
-                yOffset,
-                ns.PvELoadingState,
-                (ns.L and ns.L["LOADING_PVE"]) or "Loading PvE Data..."
-            )
-            return newYOffset + 50
-        end
-    end
-
-    if ns.PvELoadingState and ns.PvELoadingState.error and not ns.PvELoadingState.isLoading then
-        local UI_CreateErrorStateCard = ns.UI_CreateErrorStateCard
-        if UI_CreateErrorStateCard then
-            yOffset = UI_CreateErrorStateCard(parent, yOffset, ns.PvELoadingState.error)
-        end
-    end
-
-    if #characters == 0 then
-        local emptyTab = vaultTrackerMode and "pve_vault" or "pve"
-        local _, height = CreateEmptyStateCard(parent, emptyTab, yOffset)
-        return yOffset + height
-    end
-
-    if vaultTrackerMode then
-        return self:DrawPvEVaultTrackerCardGrid(parent, yOffset, characters, currentPlayerKey)
-    end
-    
-    -- ===== NAME WIDTH (measured from longest name; no compression — scroll handles overflow) =====
-    local tempMeasure = PvE_GetDrawPoolMeasureFS()
-    tempMeasure:Hide()
-    local maxNameRealmWidth = 0
-    if rosterChanged then
-        for i = 1, #characters do
-            local c = characters[i]
-            local k = GetRowCanonicalPvEKey(c)
-            if k then
-                local nameStr = c.name or "Unknown"
-                if issecretvalue and issecretvalue(nameStr) then
-                    nameStr = "Unknown"
-                end
-                local realmStr = ns.Utilities and ns.Utilities:FormatRealmName(c.realm) or c.realm or ""
-                if realmStr ~= "" and issecretvalue and issecretvalue(realmStr) then
-                    realmStr = ""
-                end
-                tempMeasure:SetText(nameStr .. "  -  " .. realmStr)
-                local w = tempMeasure:GetStringWidth() or 0
-                _pveDrawPool.nameWidths[k] = w
-                if w > maxNameRealmWidth then maxNameRealmWidth = w end
-            end
-        end
-    else
-        for i = 1, #characters do
-            local k = GetRowCanonicalPvEKey(characters[i])
-            if k then
-                local w = _pveDrawPool.nameWidths[k]
-                if w and w > maxNameRealmWidth then maxNameRealmWidth = w end
-            end
-        end
-    end
-    local nameWidth = math.max(200, math.ceil(maxNameRealmWidth) + 8)
-
-    -- Wide enough for left cluster + name + level/ilvl + inline columns → horizontal scrollbar when needed
-    local scrollFrame = parent:GetParent()
-    local viewportW = (scrollFrame and scrollFrame:GetWidth()) or 800
-    local inlineTotal = 0
-    for pci = 1, #PVE_COLUMNS do
-        inlineTotal = inlineTotal + PVE_COLUMNS[pci].width
-    end
-    for gi = 1, #PVE_COLUMNS - 1 do
-        inlineTotal = inlineTotal + GapBetweenColumns(gi)
-    end
-    inlineTotal = inlineTotal + COL_RIGHT_MARGIN
-    local minScrollW = PVE_CHAR_HEADER_H_MARGIN + PVE_ROW_LEFT_CLUSTER_W + nameWidth + PVE_ROW_MIDDLE_MAX_W + inlineTotal
-    parent:SetWidth(math.max(viewportW, minScrollW))
-
-    -- Frozen column header strip (scrolls horizontally with data — same pattern as ProfessionsUI)
-    local mainFrameRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    local columnHeaderClip = mainFrameRef and mainFrameRef.columnHeaderClip
-    local columnHeaderInner = mainFrameRef and mainFrameRef.columnHeaderInner
-    local colHeaderParent = columnHeaderInner or headerParent
-    local colHeaderOverlayH = 0
-
-    if columnHeaderClip then
-        columnHeaderClip:Show()
-        columnHeaderClip:SetHeight(COL_HEADER_HEIGHT + PVE_COLUMN_HEADER_PAD)
-        colHeaderOverlayH = COL_HEADER_HEIGHT + PVE_COLUMN_HEADER_PAD
-    end
-    if columnHeaderInner then
-        columnHeaderInner:SetWidth(parent:GetWidth())
-    end
-
-    -- ===== COLUMN HEADER ROW (icon + compact two-line labels) =====
-    local colHeaderRow = ns.UI.Factory:CreateContainer(colHeaderParent, 10, COL_HEADER_HEIGHT)
-    if columnHeaderInner then
-        colHeaderRow:SetPoint("TOPLEFT", SIDE_MARGIN, 0)
-        colHeaderRow:SetPoint("TOPRIGHT", -SIDE_MARGIN, 0)
-    else
-        colHeaderRow:SetPoint("TOPLEFT", headerParent, "TOPLEFT", SIDE_MARGIN, -headerYOffset)
-        colHeaderRow:SetPoint("TOPRIGHT", headerParent, "TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-        headerYOffset = headerYOffset + COL_HEADER_HEIGHT + 2
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
-    end
-
-    local PVE_COMPACT_HEADER_BY_KEY = {
-        coffer_shards = { text = GetLocalizedText("PVE_COMPACT_COFFER_SHARD", "Coffer Shard"), hex = "ffffff" },
-        restored_key = { text = GetLocalizedText("PVE_COMPACT_RESTORED", "Restored"), hex = "ffffff" },
-        voidcore = { text = GetLocalizedText("PVE_COMPACT_VOIDCORE", "Voidcore"), hex = "ffffff" },
-        manaflux = { text = GetLocalizedText("PVE_COMPACT_MANAFLUX", "Manaflux"), hex = "ffffff" },
-        slot1 = { text = GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"), hex = "ffffff" },
-        slot2 = { text = GetLocalizedText("VAULT_DUNGEON", "Dungeon"), hex = "ffffff" },
-        slot3 = { text = GetLocalizedText("VAULT_SLOT_WORLD", "World"), hex = "ffffff" },
-        bountiful = { text = GetLocalizedText("PVE_HEADER_MAP_SHORT", "Map"), hex = "ffffff" },
-        vault_status = { text = GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"), hex = "ffffff" },
-    }
-    local PVE_COMPACT_CREST_BY_ID = {
-        [3383] = { text = GetLocalizedText("PVE_CREST_ADV", "Adventurer"), hex = "9d9d9d" },
-        [3341] = { text = GetLocalizedText("PVE_CREST_VET", "Veteran"), hex = "1eff00" },
-        [3343] = { text = GetLocalizedText("PVE_CREST_CHAMP", "Champion"), hex = "0070dd" },
-        [3345] = { text = GetLocalizedText("PVE_CREST_HERO", "Hero"), hex = "a335ee" },
-        [3347] = { text = GetLocalizedText("PVE_CREST_MYTH", "Myth"), hex = "ff8000" },
-    }
-
-    local function BuildCompactHeaderLabel(col)
-        local rawLabel = col and (col.headerLabel or col.tooltipTitle) or ""
-        if not rawLabel or rawLabel == "" then return "", "ffffff" end
-        if issecretvalue and issecretvalue(rawLabel) then return "", "ffffff" end
-
-        local key = col and col.key or ""
-        if PVE_COMPACT_HEADER_BY_KEY[key] then
-            local entry = PVE_COMPACT_HEADER_BY_KEY[key]
-            return entry.text, entry.hex
-        elseif key:match("^crest_") then
-            local crestID = tonumber(key:match("^crest_(%d+)$"))
-            if crestID and PVE_COMPACT_CREST_BY_ID[crestID] then
-                local entry = PVE_COMPACT_CREST_BY_ID[crestID]
-                return entry.text, entry.hex
-            end
-            return GetLocalizedText("PVE_CREST_GENERIC", "Crest"), "ffffff"
-        end
-        return "", "ffffff"
-    end
-
-    local colX = -COL_RIGHT_MARGIN
-    for hci = #PVE_COLUMNS, 1, -1 do
-        local col = PVE_COLUMNS[hci]
-        colX = colX - col.width
-        local colCenterX = colX + col.width * 0.5
-
-        if col.icon or col.iconAtlas then
-            local hitFrame = CreateFrame("Frame", nil, colHeaderRow)
-            hitFrame:SetSize(COL_ICON_SIZE + 4, COL_ICON_SIZE + 4)
-            hitFrame:SetPoint("RIGHT", colHeaderRow, "RIGHT", colCenterX + COL_ICON_SIZE * 0.5 + 2, 6)
-
-            local iconTex = hitFrame:CreateTexture(nil, "ARTWORK")
-            iconTex:SetSize(COL_ICON_SIZE, COL_ICON_SIZE)
-            iconTex:SetPoint("CENTER")
-            if col.iconAtlas and iconTex.SetAtlas then
-                iconTex:SetTexture(nil)
-                pcall(function()
-                    iconTex:SetAtlas(col.iconAtlas)
-                end)
-                local okAtlas = iconTex.GetAtlas and iconTex:GetAtlas()
-                if not okAtlas and col.icon then
-                    iconTex:SetTexture(col.icon)
-                    iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                end
-            elseif col.icon then
-                iconTex:SetTexture(col.icon)
-                iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            end
-
-            local compactLabel, compactHex = BuildCompactHeaderLabel(col)
-            if compactLabel ~= "" then
-                PvEAcquireColHeaderLabel(colHeaderRow, col.key, hitFrame, compactLabel, compactHex, col.width)
-            end
-
-            if ShowTooltip then
-                hitFrame:EnableMouse(true)
-                local tooltipTitle = col.tooltipTitle
-                if not tooltipTitle then
-                    if col.crestCurrencyId then
-                        local meta = GetPvECachedCurrencyDisplay(col.crestCurrencyId)
-                        tooltipTitle = meta and meta.name
-                    end
-                    tooltipTitle = tooltipTitle or col.key or ""
-                end
-                hitFrame:SetScript("OnEnter", function(self)
-                    ShowTooltip(self, {
-                        type = "custom",
-                        icon = col.iconAtlas or col.icon,
-                        iconIsAtlas = col.iconAtlas ~= nil,
-                        title = tooltipTitle,
-                        lines = {},
-                        anchor = "ANCHOR_BOTTOM"
-                    })
-                end)
-                hitFrame:SetScript("OnLeave", function()
-                    if HideTooltip then HideTooltip() end
-                end)
-                BindForwardScrollWheel(hitFrame)
-            end
-        end
-
-        if hci > 1 then
-            colX = colX - GapBetweenColumns(hci - 1)
-        end
-    end
-
-    colHeaderRow:Show()
-
-    -- Push scroll content below frozen column header overlay (ProfessionsUI pattern)
-    yOffset = yOffset + colHeaderOverlayH
-
-    local totalLayoutHeight = yOffset
-    local PVE_CHAR_SECTION_GAP = GetLayout().afterElement or 8
-    local prevPvEDetailFrame = nil
-    local scrollFrameRef = parent:GetParent()
-
-    -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====
-    for i = 1, #characters do
-        local char = characters[i]
-        local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
-        -- CRITICAL: Match DB keys (currency + PvE cache) — prefer characters table index via _key for canonical resolution.
-        local charKey = GetRowCanonicalPvEKey(char)
-        local isFavorite = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey)
-        
-        -- Get PvE data from PvECacheService
-        local pveData = self:GetPvEData(charKey) or {}
-        
-        -- Build legacy-compatible structure for rendering (backward compatibility)
-        local pve = {
-            keystone = pveData.keystone,
-            vaultActivities = pveData.vaultActivities,
-            hasUnclaimedRewards = pveData.vaultRewards and pveData.vaultRewards.hasAvailableRewards,
-            raidLockouts = pveData.raidLockouts,
-            worldBosses = pveData.worldBosses,
-            mythicPlus = pveData.mythicPlus,
-            delves = pveData.delves,
-        }
-        
-        -- Only the current (online) character starts expanded; all others collapsed.
-        local charExpandKey = "pve-char-" .. charKey
-        local isCurrentChar = (charKey == currentPlayerKey)
-        local hasVaultReward = pve.hasUnclaimedRewards or false
-        
-        local charExpanded = IsExpanded(charExpandKey, isCurrentChar)
-
-        local charDetailContent
-        local buildPvEDetailIfNeeded
-
-        local charHeader, expandIconTex = CreateCollapsibleHeader(
-            parent,
-            "", -- Empty text, we'll add it manually
-            charExpandKey,
-            charExpanded,
-            function(isExpanded)
-                if isExpanded then
-                    if charDetailContent then
-                        charDetailContent:Show()
-                        charDetailContent:SetHeight(math.max(0.1, charDetailContent._wnAccordionFullH or 0.1))
-                    end
-                elseif charDetailContent then
-                    charDetailContent:Hide()
-                    charDetailContent:SetHeight(0.1)
-                end
-            end,
-            nil, nil, nil, true,
-            BuildAccordionVisualOpts({
-                bodyGetter = function() return charDetailContent end,
-                -- Runs before SharedWidgets reads _wnAccordionFullH for AnimateAccordion target (expand path).
-                persistFn = function(exp)
-                    expandedStates[charExpandKey] = exp
-                    if exp and charDetailContent and buildPvEDetailIfNeeded then
-                        buildPvEDetailIfNeeded()
-                    end
-                end,
-                onUpdate = function(drawH)
-                    if not charDetailContent then return end
-                    if not charDetailContent._pveAnimScrollInit then
-                        charDetailContent._pveAnimScrollInit = true
-                        charDetailContent._pveScrollH0 = parent:GetHeight()
-                        charDetailContent._pveDetailH0 = drawH
-                    end
-                    local delta = drawH - charDetailContent._pveDetailH0
-                    parent:SetHeight(math.max(1, charDetailContent._pveScrollH0 + delta))
-                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
-                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
-                        local cur = scrollFrameRef:GetVerticalScroll() or 0
-                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
-                    end
-                end,
-                onComplete = function()
-                    if charDetailContent then
-                        charDetailContent._pveAnimScrollInit = nil
-                        charDetailContent._pveScrollH0 = nil
-                        charDetailContent._pveDetailH0 = nil
-                    end
-                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
-                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
-                        local cur = scrollFrameRef:GetVerticalScroll() or 0
-                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
-                    end
-                end,
-            })
-        )
-        if prevPvEDetailFrame == nil then
-            charHeader:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -yOffset)
-            charHeader:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -yOffset)
-        else
-            charHeader:SetPoint("TOPLEFT", prevPvEDetailFrame, "BOTTOMLEFT", 0, -PVE_CHAR_SECTION_GAP)
-            charHeader:SetPoint("TOPRIGHT", prevPvEDetailFrame, "BOTTOMRIGHT", 0, -PVE_CHAR_SECTION_GAP)
-        end
-        if charHeader.SetClippingChildren then
-            charHeader:SetClippingChildren(true)
-        end
-        -- Online character: tint header backdrop with theme accent
-        if isCurrentChar and charHeader.SetBackdropColor then
-            local ac = ns.UI_COLORS and ns.UI_COLORS.accent or {0.40, 0.20, 0.58}
-            charHeader:SetBackdropColor(ac[1] * 0.22, ac[2] * 0.22, ac[3] * 0.22, 1)
-            -- Left accent bar
-            if not charHeader.onlineAccent then
-                charHeader.onlineAccent = charHeader:CreateTexture(nil, "BORDER")
-                charHeader.onlineAccent:SetWidth(3)
-                charHeader.onlineAccent:SetPoint("TOPLEFT", charHeader, "TOPLEFT", 0, 0)
-                charHeader.onlineAccent:SetPoint("BOTTOMLEFT", charHeader, "BOTTOMLEFT", 0, 0)
-            end
-            charHeader.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], 1)
-            charHeader.onlineAccent:Show()
-        end
-
-        totalLayoutHeight = totalLayoutHeight + GetLayout().headerSpacing
-
-        -- Favorite icon (view-only, left side, next to collapse button)
-        -- Match Characters/Professions tabs: 33px column, 65% visual icon (~21px)
-        local StyleFavoriteIcon = ns.UI_StyleFavoriteIcon
-        local favColSize = 28
-        local favIconSize = favColSize * 0.65
-        
-        local favFrame = CreateFrame("Frame", nil, charHeader)
-        favFrame:SetSize(favColSize, favColSize)
-        favFrame:SetPoint("LEFT", expandIconTex, "RIGHT", 4, 0)
-        
-        local favIcon = favFrame:CreateTexture(nil, "ARTWORK")
-        favIcon:SetSize(favIconSize, favIconSize)
-        favIcon:SetPoint("CENTER", 0, 0)
-        StyleFavoriteIcon(favIcon, isFavorite)
-        favFrame:Show()
-
-        -- Character name text
-        local xOffset = 0
-        local spacerWidth = 20    -- tighter spacing to reduce left-side dead space
-        local levelWidth = 56     -- "Lv XX"
-        local ilvlWidth = 72      -- "iLvl XXX"
-        
-        -- Column 1: Character Name - Realm (single line, fixed width, left aligned)
-        local charNameText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-        charNameText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
-        charNameText:SetWidth(nameWidth)
-        charNameText:SetJustifyH("LEFT")
-        local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ""
-        local dispName = char.name or "Unknown"
-        if issecretvalue and issecretvalue(dispName) then
-            dispName = "Unknown"
-        end
-        if displayRealm ~= "" and issecretvalue and issecretvalue(displayRealm) then
-            displayRealm = ""
-        end
-        charNameText:SetText(string.format("|cff%02x%02x%02x%s  -  %s|r",
-            classColor.r * 255, classColor.g * 255, classColor.b * 255,
-            dispName,
-            displayRealm))
-        xOffset = xOffset + nameWidth
-        
-        -- Column 2: Bullet separator (centered in spacer)
-        local bullet1 = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-        bullet1:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
-        bullet1:SetWidth(spacerWidth)
-        bullet1:SetJustifyH("CENTER")
-        bullet1:SetText("|cff666666•|r")
-        xOffset = xOffset + spacerWidth
-        
-        -- Column 3: Level (fixed width, CENTER aligned for visual balance)
-        local levelText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-        levelText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
-        levelText:SetWidth(levelWidth)
-        levelText:SetJustifyH("CENTER")  -- CENTER for equal spacing on both sides
-        local levelFormat = (ns.L and ns.L["LV_FORMAT"]) or "Lv %d"
-        local levelString = string.format("|cff%02x%02x%02x" .. levelFormat .. "|r", 
-            classColor.r * 255, classColor.g * 255, classColor.b * 255, 
-            char.level or 1)
-        levelText:SetText(levelString)
-        xOffset = xOffset + levelWidth
-        
-        -- Column 4: Bullet separator (only if iLvl exists, centered in spacer)
-        if char.itemLevel and char.itemLevel > 0 then
-            local bullet2 = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-            bullet2:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
-            bullet2:SetWidth(spacerWidth)
-            bullet2:SetJustifyH("CENTER")
-            bullet2:SetText("|cff666666•|r")
-            xOffset = xOffset + spacerWidth
-            
-            -- Column 5: iLvl (fixed width, left aligned)
-            local ilvlText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-            ilvlText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
-            ilvlText:SetWidth(ilvlWidth)
-            ilvlText:SetJustifyH("LEFT")
-            local ilvlFormat = (ns.L and ns.L["ILVL_FORMAT"]) or "iLvl %d"
-            ilvlText:SetText(string.format("|cffffd700" .. ilvlFormat .. "|r", char.itemLevel))
-        end
-        
-        -- ===== INLINE COLUMN DATA (right-aligned, matching column headers) =====
-        do
-            local shardData = (PVE_SHARDS_ID and WarbandNexus:GetCurrencyData(PVE_SHARDS_ID, charKey)) or nil
-            local shardQty = shardData and shardData.quantity or 0
-            local shardMax = shardData and shardData.maxQuantity or 0
-            local shardTE = shardData and shardData.totalEarned
-            local shardSM = shardData and shardData.seasonMax
-
-            local keyData = (PVE_RESTORED_KEY_ID and WarbandNexus:GetCurrencyData(PVE_RESTORED_KEY_ID, charKey)) or nil
-            local keyQty = keyData and keyData.quantity or 0
-
-            -- Vault summary from activities
-            local vaultActs = pve.vaultActivities or {}
-
-            -- Claimable Great Vault loot (not the same as "threshold progress completed" ticks below).
-            -- Prefer live API for current character, but never let transient API timing
-            -- wipe a known cached "unclaimed rewards" state.
-            local vaultLootClaimable = (pve.hasUnclaimedRewards == true)
-            if isCurrentChar and WarbandNexus.HasUnclaimedVaultRewards then
-                local ok, v = pcall(WarbandNexus.HasUnclaimedVaultRewards, WarbandNexus)
-                if ok then
-                    vaultLootClaimable = (v == true) or vaultLootClaimable
-                end
-            end
-
-            local function FormatVaultTrackSlots(activityList, slotCount, typeName)
-                return PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vaultLootClaimable, 12)
-            end
-
-            --- Format currency for inline row: always show current quantity.
-            local function FormatCurrencyStatus(qty)
-                qty = qty or 0
-                if qty > 0 then
-                    return FormatNumber(qty)
-                end
-                return "\226\128\148"
-            end
-
-            local function BuildCurrencyTooltip(currencyID, currencyName, qty, maxQty, totalEarned, seasonMax)
-                local lines = {}
-                local currentLabel = (ns.L and ns.L["CURRENT_ENTRIES_LABEL"]) or "Current:"
-                local seasonLabel = (ns.L and ns.L["SEASON"]) or "Season"
-                local weeklyLabel = (ns.L and ns.L["CURRENCY_LABEL_WEEKLY"]) or "Weekly"
-                local remainingSuffix = (ns.L and ns.L["VAULT_REMAINING_SUFFIX"]) or "remaining"
-                local cappedText = CAPPED or "Capped"
-                qty = qty or 0
-                maxQty = maxQty or 0
-                local sm = tonumber(seasonMax) or 0
-                local teN = tonumber(totalEarned)
-
-                if ns.Utilities and ns.Utilities.IsCofferKeyShardCurrency and ns.Utilities:IsCofferKeyShardCurrency(currencyID, currencyName) then
-                    local wCap = tonumber(maxQty) or 0
-                    local teForWeek = (teN ~= nil) and teN or 0
-                    table.insert(lines, { text = string.format("%s %s", currentLabel, FormatNumber(qty)), color = {1, 1, 1} })
-                    if wCap > 0 then
-                        local remWeek = math.max(wCap - teForWeek, 0)
-                        table.insert(lines, { text = string.format("%s: %s / %s", weeklyLabel, FormatNumber(teForWeek), FormatNumber(wCap)), color = {1, 1, 1} })
-                        if remWeek > 0 then
-                            table.insert(lines, { text = string.format("%s %s", FormatNumber(remWeek), remainingSuffix), color = {0.5, 1, 0.5} })
-                        else
-                            table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
-                        end
-                    end
-                    return lines
-                end
-
-                local hasSeasonProgress = sm > 0
-                if hasSeasonProgress then
-                    local teForSeason = (teN ~= nil) and teN or 0
-                    local remSeason = math.max(sm - teForSeason, 0)
-                    table.insert(lines, { text = string.format("%s %s", currentLabel, FormatNumber(qty)), color = {1, 1, 1} })
-                    table.insert(lines, { text = string.format("%s: %s / %s", seasonLabel, FormatNumber(teForSeason), FormatNumber(sm)), color = {1, 1, 1} })
-                    if remSeason > 0 then
-                        table.insert(lines, { text = string.format("%s %s", FormatNumber(remSeason), remainingSuffix), color = {0.5, 1, 0.5} })
-                    else
-                        table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
-                    end
-                    -- Crest sources: when the currency is a Dawncrest, append "Sources" block (Midnight S1 data).
-                    local Constants = ns.Constants
-                    local sources = Constants and Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.SOURCES
-                        and Constants.DAWNCREST_UI.SOURCES[currencyID] or nil
-                    if sources and #sources > 0 then
-                        table.insert(lines, { text = " ", color = {1, 1, 1} })
-                        table.insert(lines, {
-                            text = (ns.L and ns.L["CREST_SOURCES_HEADER"]) or "Sources:",
-                            color = {1, 0.82, 0},
-                        })
-                        for si = 1, #sources do
-                            table.insert(lines, { text = "\194\183 " .. sources[si], color = {0.82, 0.86, 0.95} })
-                        end
-                        if remSeason > 0 then
-                            table.insert(lines, {
-                                text = string.format("%s %s",
-                                    FormatNumber(remSeason),
-                                    (ns.L and ns.L["CREST_TO_CAP_SUFFIX"]) or "to season cap"),
-                                color = {0.55, 0.85, 0.55},
-                            })
-                        end
-                    end
-                    return lines
-                end
-
-                local cap = maxQty
-                if cap and cap > 0 then
-                    local rem = math.max(cap - qty, 0)
-                    table.insert(lines, { text = string.format("%s / %s", FormatNumber(qty), FormatNumber(cap)), color = {1, 1, 1} })
-                    if rem > 0 then
-                        table.insert(lines, { text = string.format("%s %s", FormatNumber(rem), remainingSuffix), color = {0.5, 1, 0.5} })
-                    else
-                        table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
-                    end
-                    return lines
-                end
-
-                table.insert(lines, { text = FormatNumber(qty), color = {1, 1, 1} })
-                return lines
-            end
-
-            -- Render inline values (right to left, matching column header positions)
-            local inlineX = -COL_RIGHT_MARGIN
-            local colValuesByKey = {}
-
-            -- |cff888888 parity with FormatHelpers CC_MUTED / Utilities (placeholder & EM dash)
-            local MUTED_RGB = 136 / 255
-            local DIM_COLOR = { MUTED_RGB, MUTED_RGB, MUTED_RGB }
-            local NORMAL_COLOR = {1, 1, 1}
-            local CAP_OPEN_COLOR = {0.5, 1, 0.5}
-            local CAPPED_COLOR = {1, 0.35, 0.35}
-            local EM_DASH = "\226\128\148"
-            local EM_DASH_RICH = "|cff888888" .. EM_DASH .. "|r"
-
-            local function GetCapStateColor(currencyID, currencyName, qty, maxQty, totalEarned, seasonMax)
-                if ns.Utilities and ns.Utilities.IsCofferKeyShardCurrency and ns.Utilities:IsCofferKeyShardCurrency(currencyID, currencyName) then
-                    local cap = tonumber(maxQty) or 0
-                    local teN = tonumber(totalEarned)
-                    if cap > 0 and teN ~= nil then
-                        return (teN >= cap) and CAPPED_COLOR or CAP_OPEN_COLOR
-                    end
-                    return NORMAL_COLOR
-                end
-                local sm = tonumber(seasonMax) or 0
-                if sm > 0 then
-                    local teN = tonumber(totalEarned)
-                    if teN == nil then
-                        return NORMAL_COLOR
-                    end
-                    local rem = math.max(sm - teN, 0)
-                    return (rem > 0) and CAP_OPEN_COLOR or CAPPED_COLOR
-                end
-                if maxQty and maxQty > 0 then
-                    local rem = math.max(maxQty - (qty or 0), 0)
-                    return (rem > 0) and CAP_OPEN_COLOR or CAPPED_COLOR
-                end
-                return NORMAL_COLOR
-            end
-
-            local FormatSeasonLine = ns.UI_FormatSeasonProgressCurrencyLine
-            for i = 1, #PVE_DAWNCRESTS do
-                local cd = WarbandNexus:GetCurrencyData(PVE_DAWNCRESTS[i].id, charKey)
-                local q = cd and cd.quantity or 0
-                local m = cd and cd.maxQuantity or 0
-                local te = cd and cd.totalEarned
-                local sm = cd and cd.seasonMax
-                local txt = FormatSeasonLine and FormatSeasonLine(cd) or FormatCurrencyStatus(q)
-                local tipTitle = PVE_DAWNCRESTS[i] and PVE_DAWNCRESTS[i].name or ((ns.L and ns.L["TAB_CURRENCY"]) or "Currency")
-                colValuesByKey["crest_" .. tostring(PVE_DAWNCRESTS[i].id)] = {
-                    text = txt,
-                    richText = FormatSeasonLine ~= nil,
-                    color = (not FormatSeasonLine) and ((txt == EM_DASH) and DIM_COLOR or GetCapStateColor(PVE_DAWNCRESTS[i].id, cd and cd.name, q, m, te, sm)) or nil,
-                    tooltip = BuildCurrencyTooltip(PVE_DAWNCRESTS[i].id, cd and cd.name, q, m, te, sm),
-                    tooltipTitle = tipTitle,
-                    tooltipIcon = cd and cd.icon,
-                    currencyID = PVE_DAWNCRESTS[i].id,
-                    seasonProgressData = cd,  -- enables shift-aware live binding in render loop
-                }
-            end
-
-            local shardTxt = FormatSeasonLine and FormatSeasonLine(shardData) or FormatCurrencyStatus(shardQty)
-            colValuesByKey.coffer_shards = {
-                text = shardTxt,
-                richText = FormatSeasonLine ~= nil,
-                color = (not FormatSeasonLine) and ((shardTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(PVE_SHARDS_ID, shardData and shardData.name, shardQty, shardMax, shardTE, shardSM)) or nil,
-                tooltip = BuildCurrencyTooltip(PVE_SHARDS_ID, shardData and shardData.name, shardQty, shardMax, shardTE, shardSM),
-                tooltipTitle = (ns.L and ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards",
-                tooltipIcon = shardData and shardData.icon,
-                currencyID = PVE_SHARDS_ID,
-                seasonProgressData = shardData,
-            }
-            colValuesByKey.restored_key = { text = keyQty > 0 and FormatNumber(keyQty) or EM_DASH, color = keyQty > 0 and NORMAL_COLOR or DIM_COLOR }
-            local raidTotal = vaultActs.raids and #vaultActs.raids or 3
-            local dungeonTotal = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
-            local worldTotal = vaultActs.world and #vaultActs.world or 3
-            -- Per-slot tooltip helper: shows achieved difficulty per slot (Heroic/Mythic raid, +N keys, Tier N world).
-            -- Activity `level` field: raid = difficulty ID (use GetDifficultyInfo); M+ = key level int; World = tier int.
-            local function FormatSlotDifficultyLabel(activity, category)
-                if not activity then return nil end
-                local lvl = tonumber(activity.level) or 0
-                if lvl <= 0 then return nil end
-                if category == "Raid" then
-                    if GetDifficultyInfo then
-                        local diffName = GetDifficultyInfo(lvl)
-                        if diffName and diffName ~= "" then return diffName end
-                    end
-                    return "Difficulty " .. lvl
-                elseif category == "M+" then
-                    return "+" .. lvl
-                else
-                    return "Tier " .. lvl
-                end
-            end
-
-            local function BuildVaultSlotTooltipLines(activities, category, totalSlots)
-                local lines = {}
-                local catTitle = (category == "Raid") and ((ns.L and ns.L["PVE_HEADER_RAIDS"]) or "Raids")
-                    or (category == "M+") and ((ns.L and ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons")
-                    or ((ns.L and ns.L["VAULT_WORLD"]) or "World")
-                table.insert(lines, { text = catTitle, color = {1, 0.82, 0} })
-                for i = 1, (totalSlots or 3) do
-                    local a = activities and activities[i]
-                    local prog   = a and (tonumber(a.progress) or 0) or 0
-                    local thresh = a and (tonumber(a.threshold) or 0) or 0
-                    local complete = thresh > 0 and prog >= thresh
-                    local diffLabel = complete and FormatSlotDifficultyLabel(a, category) or nil
-                    local rewardIlvl = a and (tonumber(a.rewardItemLevel) or 0) or 0
-                    if complete then
-                        local rhs = diffLabel or ""
-                        if rewardIlvl > 0 then
-                            rhs = (rhs ~= "" and (rhs .. "  ") or "")
-                                .. ((ns.L and ns.L["ILVL_FORMAT"] and string.format(ns.L["ILVL_FORMAT"], rewardIlvl)) or ("iLvl " .. rewardIlvl))
-                        end
-                        table.insert(lines, {
-                            text = GetLocalizedText("PVE_VAULT_SLOT_COMPLETE_FORMAT", "Slot %d: |cff80ff80\226\156\147|r %s"):format(i, rhs ~= "" and rhs or GetLocalizedText("PVE_VAULT_SLOT_UNLOCKED", "Unlocked")),
-                            color = {0.85, 0.9, 0.95},
-                        })
-                    elseif thresh > 0 then
-                        table.insert(lines, {
-                            text = GetLocalizedText("PVE_VAULT_SLOT_PROGRESS_FORMAT", "Slot %d: |cffff8888%d/%d|r"):format(i, prog, thresh),
-                            color = {0.65, 0.65, 0.65},
-                        })
-                    else
-                        table.insert(lines, { text = GetLocalizedText("PVE_VAULT_SLOT_EMPTY_FORMAT", "Slot %d: \226\128\148"):format(i), color = { MUTED_RGB, MUTED_RGB, MUTED_RGB } })
-                    end
-                end
-                return lines
-            end
-
-            colValuesByKey.slot1 = {
-                text = FormatVaultTrackSlots(vaultActs.raids, raidTotal, "Raid"),
-                color = {1, 1, 1},
-                tooltip = BuildVaultSlotTooltipLines(vaultActs.raids, "Raid", raidTotal),
-                tooltipTitle = (ns.L and ns.L["PVE_HEADER_RAIDS"]) or "Raids",
-            }
-            colValuesByKey.slot2 = {
-                text = FormatVaultTrackSlots(vaultActs.mythicPlus, dungeonTotal, "M+"),
-                color = {1, 1, 1},
-                tooltip = BuildVaultSlotTooltipLines(vaultActs.mythicPlus, "M+", dungeonTotal),
-                tooltipTitle = (ns.L and ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
-            }
-            colValuesByKey.slot3 = {
-                text = FormatVaultTrackSlots(vaultActs.world, worldTotal, "World"),
-                color = {1, 1, 1},
-                tooltip = BuildVaultSlotTooltipLines(vaultActs.world, "World", worldTotal),
-                tooltipTitle = (ns.L and ns.L["VAULT_WORLD"]) or "World",
-            }
-            -- Trovehunter's Bounty / bountiful weeklies: per-character snapshot from PvE cache (not live API on every row).
-            local delveChar = (pve.delves and pve.delves.character) or {}
-            local bountifulDone = delveChar.bountifulComplete
-            if bountifulDone == nil and isCurrentChar then
-                bountifulDone = WarbandNexus.IsBountifulDelveWeeklyDone and WarbandNexus:IsBountifulDelveWeeklyDone() or false
-            end
-            local bountifulTitle = (ns.L and ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty"
-            local bountifulUnknown = (bountifulDone == nil)
-            local bountifulTip = {
-                {
-                    text = bountifulUnknown and ((ns.L and ns.L["PVE_BOUNTY_NEED_LOGIN"]) or "No saved status for this character. Log in to refresh.")
-                        or (bountifulDone and ((ns.L and ns.L["VAULT_COMPLETED_ACTIVITIES"]) or "Completed")
-                            or ((ns.L and ns.L["ACHIEVEMENT_NOT_COMPLETED"]) or "Not Completed")),
-                    color = {1, 1, 1},
-                },
-            }
-            colValuesByKey.bountiful = {
-                text = bountifulUnknown and EM_DASH or (bountifulDone and VAULT_SLOT_CHECK or VAULT_SLOT_CROSS),
-                color = bountifulUnknown and DIM_COLOR or {1, 1, 1},
-                tooltip = bountifulTip,
-                tooltipTitle = bountifulTitle,
-                tooltipIcon = GetTrovehunterBountyColumnIcon(),
-            }
-            local voidcoreData = WarbandNexus:GetCurrencyData(PVE_VOIDCORE_ID, charKey)
-            -- Voidcore: cell shows owned amount only (green if under cap, red if capped); cap/progress in tooltip.
-            local vqty = (voidcoreData and tonumber(voidcoreData.quantity)) or 0
-            local vcap = (voidcoreData and (tonumber(voidcoreData.seasonMax) or tonumber(voidcoreData.maxQuantity))) or 0
-            local voidcoreTxt
-            if vcap > 0 then
-                local capped = vqty >= vcap
-                local col = capped and "|cffff5959" or "|cff80ff80"
-                voidcoreTxt = col .. FormatNumber(vqty) .. "|r"
-            elseif vqty > 0 then
-                voidcoreTxt = "|cffffffff" .. FormatNumber(vqty) .. "|r"
-            else
-                voidcoreTxt = EM_DASH_RICH
-            end
-            colValuesByKey.voidcore = {
-                text = voidcoreTxt,
-                richText = true,
-                tooltip = BuildCurrencyTooltip(PVE_VOIDCORE_ID, voidcoreData and voidcoreData.name, vqty, voidcoreData and voidcoreData.maxQuantity or 0, voidcoreData and voidcoreData.totalEarned, voidcoreData and voidcoreData.seasonMax),
-                tooltipTitle = GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
-                tooltipIcon = voidcoreData and voidcoreData.icon,
-                currencyID = PVE_VOIDCORE_ID,
-                -- seasonProgressData intentionally omitted: voidcore must NOT use shift-aware binder.
-            }
-            -- Vault Status (matches Vault Tracker quick window readout):
-            --   Ready -> "Ready to Claim" (green)
-            --   ReadySlots > 0 -> "<n> Slots Earned" (cyan)
-            --   Pending only -> "Pending..." (gold)
-            --   No progress -> em-dash dimmed
-            do
-                local vs = WarbandNexus.GetVaultStatusForChar and WarbandNexus:GetVaultStatusForChar(charKey)
-                local statusTxt
-                if not vs then
-                    statusTxt = EM_DASH_RICH
-                elseif vs.isReady then
-                    statusTxt = "|cff44ff44" .. ((ns.L and ns.L["VAULT_READY_TO_CLAIM"]) or "Ready to Claim") .. "|r"
-                elseif (vs.readySlots or 0) > 0 then
-                    statusTxt = "|cff66ddff" .. GetLocalizedText("VAULT_SLOTS_SHORT_FORMAT", "%d Slots"):format(tonumber(vs.readySlots) or 0) .. "|r"
-                else
-                    statusTxt = "|cffffd700" .. ((ns.L and ns.L["VAULT_PENDING"]) or "Pending\226\128\166") .. "|r"
-                end
-                colValuesByKey.vault_status = {
-                    text = statusTxt,
-                    richText = true,
-                }
-            end
-
-            local manafluxData = WarbandNexus:GetCurrencyData(PVE_MANAFLUX_ID, charKey)
-            local manafluxQty = (manafluxData and manafluxData.quantity) or 0
-            colValuesByKey.manaflux = {
-                text = manafluxQty > 0 and FormatNumber(manafluxQty) or EM_DASH,
-                color = manafluxQty > 0 and NORMAL_COLOR or DIM_COLOR,
-                tooltip = BuildCurrencyTooltip(PVE_MANAFLUX_ID, manafluxData and manafluxData.name, manafluxQty, manafluxData and manafluxData.maxQuantity or 0, manafluxData and manafluxData.totalEarned, manafluxData and manafluxData.seasonMax),
-                tooltipTitle = GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
-                tooltipIcon = manafluxData and manafluxData.icon,
-                currencyID = PVE_MANAFLUX_ID,
-            }
-
-            local UnbindSeason = ns.UI_UnbindSeasonProgressAmount
-            for ci = #PVE_COLUMNS, 1, -1 do
-                local col = PVE_COLUMNS[ci]
-                local val = colValuesByKey[col.key]
-                if val then
-                    local cw = col.width
-                    inlineX = inlineX - cw
-                    local cell = PvEAcquireInlineCell(charHeader, charKey, col.key)
-                    local colText = cell.fs
-                    colText:SetPoint("RIGHT", charHeader, "RIGHT", inlineX + cw, 0)
-                    colText:SetWidth(cw)
-                    colText:SetJustifyH("CENTER")
-                    colText:SetWordWrap(false)
-                    if val.seasonProgressData and ns.UI_BindSeasonProgressAmount then
-                        ns.UI_BindSeasonProgressAmount(colText, val.seasonProgressData)
-                        colText:SetTextColor(1, 1, 1)
-                    else
-                        if UnbindSeason then UnbindSeason(colText) end
-                        colText:SetText(val.text)
-                        if not val.richText and val.color then
-                            colText:SetTextColor(val.color[1], val.color[2], val.color[3])
-                        elseif val.richText then
-                            colText:SetTextColor(1, 1, 1)
-                        end
-                    end
-                    if val.tooltip and ShowTooltip then
-                        local hit = cell.hit
-                        if not hit then
-                            hit = CreateFrame("Frame", nil, charHeader)
-                            cell.hit = hit
-                            hit:EnableMouse(true)
-                            BindForwardScrollWheel(hit)
-                        end
-                        hit:SetParent(charHeader)
-                        hit:SetPoint("RIGHT", charHeader, "RIGHT", inlineX + cw, 0)
-                        hit:SetSize(cw, ROW_HEIGHT)
-                        hit:Show()
-                        hit:SetScript("OnEnter", function(self)
-                            if val.currencyID then
-                                ShowTooltip(self, {
-                                    type = "currency",
-                                    currencyID = val.currencyID,
-                                    charKey = charKey,
-                                    anchor = "ANCHOR_TOP",
-                                })
-                            else
-                                ShowTooltip(self, {
-                                    type = "custom",
-                                    icon = val.tooltipIcon or "Interface\\Icons\\INV_Misc_QuestionMark",
-                                    title = val.tooltipTitle or ((ns.L and ns.L["TAB_CURRENCY"]) or "Currency"),
-                                    lines = val.tooltip,
-                                    anchor = "ANCHOR_TOP",
-                                })
-                            end
-                        end)
-                        hit:SetScript("OnLeave", function()
-                            if HideTooltip then HideTooltip() end
-                        end)
-                        hit:SetScript("OnMouseUp", function(_, button)
-                            if button == "LeftButton" and charHeader then
-                                charHeader:Click()
-                            end
-                        end)
-                    elseif cell.hit then
-                        cell.hit:Hide()
-                        cell.hit:SetScript("OnEnter", nil)
-                        cell.hit:SetScript("OnLeave", nil)
-                        cell.hit:SetScript("OnMouseUp", nil)
-                    end
-                    if ci > 1 then
-                        inlineX = inlineX - GapBetweenColumns(ci - 1)
-                    end
-                end
-            end
-        end
-        
-        charHeader:SetAlpha(1)
-
-        charDetailContent = ns.UI.Factory:CreateContainer(parent)
-        charDetailContent:SetPoint("TOPLEFT", charHeader, "BOTTOMLEFT", 0, 0)
-        charDetailContent:SetPoint("TOPRIGHT", charHeader, "BOTTOMRIGHT", 0, 0)
-        if charDetailContent.SetClipsChildren then
-            charDetailContent:SetClipsChildren(true)
-        end
-
-        buildPvEDetailIfNeeded = function()
+--- Populates expanded PvE per-character detail (M+, keystone, vault grid).
+--- Extracted from DrawPvEProgress to avoid Lua 5.1 "more than 60 upvalues" on nested closures.
+local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailContent, charExpandKey, charKey, pve, pveData, isCurrentChar)
             if not charDetailContent or charDetailContent._wnPopulateKey == charExpandKey then
                 return
             end
@@ -4272,29 +2829,2077 @@ function WarbandNexus:DrawPvEProgress(parent)
             vaultCard:SetHeight(unifiedH)
             cardContainer:SetHeight(unifiedH)
             charDetailContent._wnAccordionFullH = unifiedH
+end
+
+--- Group id from secKey "pve_grp:<id>". Prefix is 8 chars ("pve_grp:"); using sub(10) strips the first id character and breaks lookups.
+local function PveGroupIdFromSectionSecKey(secKey)
+    if type(secKey) ~= "string" then return nil end
+    return secKey:match("^pve_grp:(.+)$")
+end
+
+--- One Favorites / custom / Characters accordion on the PvE scroll child (ProfessionsUI-style shell; rows painted separately).
+--- @param layoutTailFrame nil or frame to stack below (last character detail or previous section body)
+--- @return sectionContent frame to parent per-character PvE rows under
+local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts)
+    local chars = opts.chars
+    local headerLabel = opts.headerLabel
+    local sectionUiKey = opts.sectionUiKey -- profile.ui key when not using characterGroupExpanded
+    local defaultExpanded = opts.defaultExpanded ~= false
+    local headerAtlas = opts.headerAtlas
+    local visualOpts = opts.visualOpts
+    local layoutTailFrame = opts.layoutTailFrame
+    local totalLH = opts.totalLH
+    local scrollFrameRef = opts.scrollFrameRef
+    local yTop = opts.yTop
+    local SIDE_MARGIN0 = opts.sideMargin or SIDE_MARGIN
+
+    if not chars or #chars == 0 then return nil end
+    if not profile.ui then profile.ui = {} end
+
+    local SECTION_COLLAPSE_HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
+    local isExpanded
+    if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
+        local gid = visualOpts.groupId
+        if not profile.characterGroupExpanded then profile.characterGroupExpanded = {} end
+        isExpanded = profile.characterGroupExpanded[gid]
+        if isExpanded == nil then isExpanded = defaultExpanded end
+    else
+        isExpanded = profile.ui[sectionUiKey]
+        if isExpanded == nil then isExpanded = defaultExpanded end
+    end
+
+    local sectionContent
+    local headerVisualOpts = BuildAccordionVisualOpts({
+        bodyGetter = function() return sectionContent end,
+        persistFn = function(exp)
+            if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
+                local gid = visualOpts.groupId
+                if not profile.characterGroupExpanded then profile.characterGroupExpanded = {} end
+                profile.characterGroupExpanded[gid] = exp
+            else
+                profile.ui[sectionUiKey] = exp
+            end
+        end,
+        onUpdate = function(drawH)
+            if not sectionContent then return end
+            if not sectionContent._pveSecAnimScrollInit then
+                sectionContent._pveSecAnimScrollInit = true
+                sectionContent._pveSecScrollH0 = scrollParent:GetHeight()
+                sectionContent._pveSecDetailH0 = drawH
+            end
+            local delta = drawH - sectionContent._pveSecDetailH0
+            scrollParent:SetHeight(math.max(1, sectionContent._pveSecScrollH0 + delta))
+            if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+                local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+                local cur = scrollFrameRef:GetVerticalScroll() or 0
+                scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+            end
+        end,
+        onComplete = function()
+            if sectionContent then
+                sectionContent._pveSecAnimScrollInit = nil
+                sectionContent._pveSecScrollH0 = nil
+                sectionContent._pveSecDetailH0 = nil
+            end
+            if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+                local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+                local cur = scrollFrameRef:GetVerticalScroll() or 0
+                scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+            end
+        end,
+    }) or {}
+    if visualOpts and visualOpts.sectionPreset then
+        headerVisualOpts.sectionPreset = visualOpts.sectionPreset
+    end
+
+    local expandKey = opts.expandKey
+    if not expandKey then
+        if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
+            -- Same identity as Characters tab custom sections (SharedWidgets / roster parity).
+            expandKey = "cgrp_" .. tostring(visualOpts.groupId)
+        else
+            expandKey = sectionUiKey or "pveSection"
         end
+    end
+
+    local header, grpExpandIcon, hdrIcon, grpHeaderText = CreateCollapsibleHeader(
+        scrollParent,
+        headerLabel,
+        expandKey,
+        isExpanded,
+        function(expanded)
+            if sectionContent then
+                if expanded then
+                    sectionContent:Show()
+                    sectionContent:SetHeight(math.max(0.1, sectionContent._wnAccordionFullH or 0.1))
+                else
+                    sectionContent:Hide()
+                    sectionContent:SetHeight(0.1)
+                end
+            end
+        end,
+        headerAtlas,
+        true,
+        nil,
+        nil,
+        headerVisualOpts
+    )
+    local isCustomRosterSection = visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId
+    -- Match Characters tab icon sizing exactly:
+    --   Favorites          (gold preset, NO useCharacterGroupExpand) -> 28x28
+    --   Custom roster      (useCharacterGroupExpand + groupId)        -> 24x24
+    --   Regular Characters (no visualOpts)                            -> 24x24
+    local isFavoritesSectionForIcon = visualOpts and visualOpts.sectionPreset == "gold" and not isCustomRosterSection
+    if hdrIcon then
+        local sz = isFavoritesSectionForIcon and 28 or 24
+        hdrIcon:SetSize(sz, sz)
+    end
+    header:SetHeight(SECTION_COLLAPSE_HEADER_HEIGHT)
+    if layoutTailFrame then
+        header:SetPoint("TOPLEFT", layoutTailFrame, "BOTTOMLEFT", SIDE_MARGIN0, -8)
+        header:SetPoint("TOPRIGHT", layoutTailFrame, "BOTTOMRIGHT", -SIDE_MARGIN0, -8)
+    else
+        header:SetPoint("TOPLEFT", scrollParent, "TOPLEFT", SIDE_MARGIN0, -yTop)
+        header:SetPoint("TOPRIGHT", scrollParent, "TOPRIGHT", -SIDE_MARGIN0, -yTop)
+    end
+
+    totalLH.v = totalLH.v + SECTION_COLLAPSE_HEADER_HEIGHT
+
+    -- Custom roster sections: count + gold star (same as Professions). Roster edits only on Character tab.
+    -- Non-custom sections (Favorites / Characters): simple right-anchored count badge to match
+    -- Characters tab pattern (count:SetPoint("RIGHT", -14, 0); headerText keeps default LEFT anchor).
+    if isCustomRosterSection and ns.UI_DecorateCustomHeader then
+        ns.UI_DecorateCustomHeader(header, {
+            groupId = visualOpts.groupId,
+            memberCount = #chars,
+            addon = addon,
+            profile = profile,
+            expandIcon = grpExpandIcon,
+            iconFrame = hdrIcon,
+            headerText = grpHeaderText,
+            includeAddButton = false,
+            refreshTab = "pve",
+        })
+    else
+        local FormatNumberFn = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
+        local countHex = ((visualOpts and visualOpts.sectionPreset == "danger") and "|cff888888") or "|cffaaaaaa"
+        if not header._wnPveSectionCount then
+            header._wnPveSectionCount = FontManager:CreateFontString(header, "header", "OVERLAY")
+        end
+        local cntFs = header._wnPveSectionCount
+        cntFs:ClearAllPoints()
+        cntFs:SetPoint("RIGHT", header, "RIGHT", -14, 0)
+        cntFs:SetJustifyH("RIGHT")
+        cntFs:SetText(countHex .. FormatNumberFn(#chars) .. "|r")
+        cntFs:Show()
+    end
+
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
+        sectionContent = ns.UI.Factory:CreateContainer(scrollParent, math.max(1, scrollParent:GetWidth()), 1, false)
+    else
+        sectionContent = CreateFrame("Frame", nil, scrollParent)
+        sectionContent:SetSize(math.max(1, scrollParent:GetWidth()), 1)
+    end
+    sectionContent:ClearAllPoints()
+    sectionContent:SetPoint("TOPLEFT", header, "BOTTOMLEFT", -SIDE_MARGIN0, 0)
+    sectionContent:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", SIDE_MARGIN0, 0)
+    sectionContent:SetHeight(0.1)
+    sectionContent._wnAccordionFullH = 0
+    sectionContent._pveRunningH = 0
+
+    if isExpanded then
+        sectionContent:Show()
+        sectionContent:SetHeight(math.max(0.1, sectionContent._wnAccordionFullH or 0.1))
+    else
+        sectionContent:Hide()
+        sectionContent:SetHeight(0.1)
+    end
+
+    return sectionContent
+end
+
+--============================================================================
+-- DRAW PVE PROGRESS (Great Vault, Lockouts, M+)
+--============================================================================
+
+-- Packed chunk locals for PvE draw body (Lua 5.1 max 60 upvalues per function).
+if not ns.PvEDrawLibs then
+    ns.PvEDrawLibs = {
+        ns = ns,
+        E = E,
+        issecretvalue = issecretvalue,
+        WarbandNexus = WarbandNexus,
+        FontManager = FontManager,
+        ShowTooltip = ShowTooltip,
+        HideTooltip = HideTooltip,
+        CreateCard = CreateCard,
+        CreateCollapsibleHeader = CreateCollapsibleHeader,
+        BuildAccordionVisualOpts = BuildAccordionVisualOpts,
+        DrawEmptyState = DrawEmptyState,
+        CreateEmptyStateCard = CreateEmptyStateCard,
+        HideEmptyStateCard = HideEmptyStateCard,
+        CreateThemedButton = CreateThemedButton,
+        CreateThemedCheckbox = CreateThemedCheckbox,
+        CreateIcon = CreateIcon,
+        CreateDBVersionBadge = CreateDBVersionBadge,
+        ApplyVisuals = ApplyVisuals,
+        FormatNumber = FormatNumber,
+        COLORS = COLORS,
+        GetLayout = GetLayout,
+        ROW_HEIGHT = ROW_HEIGHT,
+        ROW_SPACING = ROW_SPACING,
+        HEADER_SPACING = HEADER_SPACING,
+        SECTION_SPACING = SECTION_SPACING,
+        BASE_INDENT = BASE_INDENT,
+        SUBROW_EXTRA_INDENT = SUBROW_EXTRA_INDENT,
+        SIDE_MARGIN = SIDE_MARGIN,
+        TOP_MARGIN = TOP_MARGIN,
+        PVE_ROW_LEFT_CLUSTER_W = PVE_ROW_LEFT_CLUSTER_W,
+        PVE_ROW_MIDDLE_MAX_W = PVE_ROW_MIDDLE_MAX_W,
+        PVE_CHAR_HEADER_H_MARGIN = PVE_CHAR_HEADER_H_MARGIN,
+        PVE_COLUMN_HEADER_PAD = PVE_COLUMN_HEADER_PAD,
+        PVE_COL_SPACING = PVE_COL_SPACING,
+        PVE_KEY_TO_VAULT_GAP = PVE_KEY_TO_VAULT_GAP,
+        PVE_VAULT_CLUSTER_GAP = PVE_VAULT_CLUSTER_GAP,
+        PVE_COL_RIGHT_MARGIN = PVE_COL_RIGHT_MARGIN,
+        PVE_DAWNCREST_COL_W = PVE_DAWNCREST_COL_W,
+        PVE_COFFER_COL_W = PVE_COFFER_COL_W,
+        PVE_KEY_COL_W = PVE_KEY_COL_W,
+        PVE_VAULT_COL_W = PVE_VAULT_COL_W,
+        PVE_BOUNTIFUL_COL_W = PVE_BOUNTIFUL_COL_W,
+        PVE_STATUS_COL_W = PVE_STATUS_COL_W,
+        PVE_VOIDCORE_COL_W = PVE_VOIDCORE_COL_W,
+        PVE_MANAFLUX_COL_W = PVE_MANAFLUX_COL_W,
+        PVE_VOIDCORE_ID = PVE_VOIDCORE_ID,
+        PVE_MANAFLUX_ID = PVE_MANAFLUX_ID,
+        VAULT_SLOT_CHECK = VAULT_SLOT_CHECK,
+        VAULT_SLOT_CROSS = VAULT_SLOT_CROSS,
+        VAULT_SLOT_UPARROW = VAULT_SLOT_UPARROW,
+        GetLocalizedText = GetLocalizedText,
+        GetLowLevelHideThreshold = GetLowLevelHideThreshold,
+        GetPvEDawnCrestColumnDefinitions = GetPvEDawnCrestColumnDefinitions,
+        _pveDelveCurrencyCache = _pveDelveCurrencyCache,
+        _pveCurrencyInfoDisplayCache = _pveCurrencyInfoDisplayCache,
+        _pveDrawPool = _pveDrawPool,
+        PvE_EnsureDrawPoolHolder = PvE_EnsureDrawPoolHolder,
+        PvESyncPvEPools = PvESyncPvEPools,
+        PvE_GetDrawPoolMeasureFS = PvE_GetDrawPoolMeasureFS,
+        PvEAcquireColHeaderLabel = PvEAcquireColHeaderLabel,
+        PvEAcquireInlineCell = PvEAcquireInlineCell,
+        GetPvECachedCurrencyDisplay = GetPvECachedCurrencyDisplay,
+        EnsureVaultButtonColumnsForPvE = EnsureVaultButtonColumnsForPvE,
+        EnsurePvEExtraVisibleColumns = EnsurePvEExtraVisibleColumns,
+        ResolvePveDelveCurrencyColumns = ResolvePveDelveCurrencyColumns,
+        GetTrovehunterBountyColumnIcon = GetTrovehunterBountyColumnIcon,
+        PvE_AttachInlineColumnPicker = PvE_AttachInlineColumnPicker,
+        PvE_GetCanonicalKeyForChar = PvE_GetCanonicalKeyForChar,
+        CompareCharNameLower = CompareCharNameLower,
+        SafeLower = SafeLower,
+        expandedStates = expandedStates,
+        IsExpanded = IsExpanded,
+        PvEUI_CreatePvETabSectionShell = PvEUI_CreatePvETabSectionShell,
+        PvEUI_PopulateExpandedCharacterDetail = PvEUI_PopulateExpandedCharacterDetail,
+        PvE_FormatVaultTrackColumn = PvE_FormatVaultTrackColumn,
+        BindForwardScrollWheel = BindForwardScrollWheel,
+    }
+end
+
+local function PvEUI_DrawPvEProgressBody(self, parent, L)
+    local width = parent:GetWidth() - 20
+    -- Weekly Vault Tracker mode removed from PvE tab; standalone Easy Access window covers this.
+    local vaultTrackerMode = false
+
+    local fixedHeader = L.WarbandNexus.UI.mainFrame and L.WarbandNexus.UI.mainFrame.fixedHeader
+    local headerParent = fixedHeader or parent
+    local headerYOffset = 8
+    
+    -- Add DB version badge (for debugging/monitoring)
+    if not parent.dbVersionBadge then
+        local dataSource = "db.global.pveProgress"
+        if self.db.global.pveCache and self.db.global.pveCache.version then
+            local cacheVersion = self.db.global.pveCache.version or "unknown"
+            dataSource = "PvECache v" .. cacheVersion
+        end
+        parent.dbVersionBadge = L.CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
+    end
+    
+    -- Hide empty state card (will be shown again if needed)
+    L.HideEmptyStateCard(parent, "pve")
+    
+    -- ===== AUTO-REFRESH CHECK (FULLY AUTOMATIC) =====
+    local charKey = L.ns.Utilities:GetCharacterKey()
+    local pveData = self:GetPvEData(charKey)
+    
+    -- Check multiple data completeness signals, not just keystone
+    local needsRefresh = false
+    if not pveData or not pveData.keystone then
+        needsRefresh = true
+    elseif pveData.vaultActivities then
+        -- Check if any unlocked vault slot is missing iLvl (server was slow)
+        local vaultCategories = {"raids", "mythicPlus", "world"}
+        for ci = 1, #vaultCategories do
+            local cat = vaultCategories[ci]
+            local activities = pveData.vaultActivities[cat]
+            if activities then
+                for ai = 1, #activities do
+                    local a = activities[ai]
+                    if a and a.progress and a.threshold and a.progress >= a.threshold then
+                        if not a.rewardItemLevel or a.rewardItemLevel == 0 then
+                            needsRefresh = true
+                            break
+                        end
+                    end
+                end
+            end
+            if needsRefresh then break end
+        end
+    end
+    
+    -- Trigger refresh if needed (rate-limited to avoid spam)
+    if needsRefresh and not L.ns.PvELoadingState.isLoading then
+        local timeSinceLastAttempt = time() - (L.ns.PvELoadingState.lastAttempt or 0)
+        if timeSinceLastAttempt > 10 then
+            L.ns.PvELoadingState.lastAttempt = time()
+            -- Poke server for fresh vault data before collecting
+            if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then
+                C_WeeklyRewards.OnUIInteract()
+            end
+            if self.UpdatePvEData then
+                self:UpdatePvEData()
+            end
+            -- Schedule a follow-up refresh after server responds (vault iLvl needs time)
+            C_Timer.After(3, function()
+                if self.UpdatePvEData then
+                    self:UpdatePvEData()
+                end
+            end)
+        end
+    end
+    
+    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for timer/sort/WVT =====
+    local r, g, b = L.COLORS.accent[1], L.COLORS.accent[2], L.COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    local titleTextContent = "|cff" .. hexColor .. ((L.ns.L and L.ns.L["PVE_TITLE"]) or "PvE Progress") .. "|r"
+    local subtitleTextContent = (L.ns.L and L.ns.L["PVE_SUBTITLE"]) or "Great Vault, Raid Lockouts & Mythic+ across your Warband"
+    if vaultTrackerMode then
+        subtitleTextContent = (L.ns.L and L.ns.L["PVE_VAULT_TRACKER_SUBTITLE"]) or
+            "Unclaimed rewards and cleared vault rows"
+    end
+    -- Room for weekly reset + sort/section filter + column picker (approximate, avoids overlap)
+    local PVE_TITLE_RIGHT_RESERVE = 620
+    local titleCard = select(1, L.ns.UI_CreateStandardTabTitleCard(headerParent, {
+        tabKey = "pve",
+        titleText = titleTextContent,
+        subtitleText = subtitleTextContent,
+        textRightInset = PVE_TITLE_RIGHT_RESERVE,
+    }))
+    titleCard:SetPoint("TOPLEFT", L.SIDE_MARGIN, -headerYOffset)
+    titleCard:SetPoint("TOPRIGHT", -L.SIDE_MARGIN, -headerYOffset)
+    
+    -- Weekly reset timer (standardized widget)
+    local CreateResetTimer = L.ns.UI_CreateResetTimer
+    local titleCardRightInset = L.GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
+    local resetTimer = CreateResetTimer(
+        titleCard,
+        "RIGHT",
+        -titleCardRightInset,
+        0,
+        function()
+            -- Use centralized GetWeeklyResetTime from PlansManager
+            if L.WarbandNexus.GetWeeklyResetTime then
+                local resetTimestamp = L.WarbandNexus:GetWeeklyResetTime()
+                return resetTimestamp - GetServerTime()
+            end
+            
+            -- Fallback: Use Blizzard API
+            if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+                return C_DateAndTime.GetSecondsUntilWeeklyReset() or 0
+            end
+            
+            return 0
+        end
+    )
+    
+    -- Sort + section filter (Characters/Professions parity) or legacy sort-only control
+    local sortAnchor = resetTimer.container
+    local sortOptions = {
+        {key = "manual", label = (L.ns.L and L.ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+        {key = "name", label = (L.ns.L and L.ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+        {key = "level", label = (L.ns.L and L.ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+        {key = "ilvl", label = (L.ns.L and L.ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+        {key = "gold", label = (L.ns.L and L.ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+        {key = "realm", label = (L.ns.L and L.ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
+    }
+    if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
+    if L.ns.UI_CreateCharacterTabAdvancedFilterButton and L.ns.CharacterService and L.ns.CharacterService.EnsureCustomCharacterSectionsProfile then
+        L.ns.CharacterService:EnsureCustomCharacterSectionsProfile(self.db.profile)
+        if not self.db.profile.pveSectionFilter then self.db.profile.pveSectionFilter = { sectionKey = "all" } end
+        local sortBtn = L.ns.UI_CreateCharacterTabAdvancedFilterButton(titleCard, {
+            sortOptions = sortOptions,
+            dbSortTable = self.db.profile.pveSort,
+            dbSectionFilter = self.db.profile.pveSectionFilter,
+            getCustomSections = function()
+                return self.db.profile.characterCustomGroups or {}
+            end,
+            onRefresh = function()
+                L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
+            end,
+            -- PvE: section filter only — roster edits (delete custom header) stay on Character tab.
+        })
+        if sortBtn then
+            sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -15, 0)
+            sortAnchor = sortBtn
+        end
+    elseif L.ns.UI_CreateCharacterSortDropdown then
+        local sortBtn = L.ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function()
+            L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
+        end)
+        sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -15, 0)
+        sortAnchor = sortBtn
+    end
+
+    -- Column visibility (Vault Tracker parity: vaultButton.columns + PvE crest/shard/key toggles)
+    sortAnchor = L.PvE_AttachInlineColumnPicker(titleCard, sortAnchor, self)
+
+    titleCard:Show()
+    headerYOffset = headerYOffset + L.GetLayout().afterHeader
+    -- Title only; column headers live in columnHeaderClip (horizontal sync with scroll child)
+    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+
+    -- ===== COLUMN HEADER ROW (inline PvE status summary) =====
+    -- All Midnight Dawncrest tiers — IDs from Constants.MIDNIGHT_S1 (same as Gear / Currency cache)
+    local PVE_DAWNCRESTS = L.GetPvEDawnCrestColumnDefinitions()
+    local PVE_RESTORED_KEY_FALLBACK_ID = 3089
+    L.ResolvePveDelveCurrencyColumns(self)
+    local PVE_SHARDS_ID = L._pveDelveCurrencyCache.shardsID
+    local PVE_RESTORED_KEY_ID = L._pveDelveCurrencyCache.keyID
+    local PVE_SHARDS_ICON = L._pveDelveCurrencyCache.shardsIcon or "Interface\\Icons\\INV_Misc_Gem_Variety_01"
+    local PVE_RESTORED_KEY_ICON = L._pveDelveCurrencyCache.keyIcon or "Interface\\Icons\\INV_Misc_Key_13"
+
+    -- Fallback for Restored Coffer Key when dynamic lookup doesn't resolve.
+    if not PVE_RESTORED_KEY_ID then
+        PVE_RESTORED_KEY_ID = PVE_RESTORED_KEY_FALLBACK_ID
+    end
+
+    local profile = self.db and self.db.profile
+    local vaultCols = L.EnsureVaultButtonColumnsForPvE(profile)
+    local pveExtraCols = L.EnsurePvEExtraVisibleColumns(profile)
+    local PVE_COLUMNS = {}
+    for i = 1, #PVE_DAWNCRESTS do
+        local crestEntry = PVE_DAWNCRESTS[i]
+        local ck = "crest_" .. tostring(crestEntry.id)
+        if pveExtraCols[ck] ~= false then
+            local crestIcon = 134400
+            local crestLabel = ""
+            local disp = L.GetPvECachedCurrencyDisplay(crestEntry.id)
+            if disp then
+                if disp.iconFileID then
+                    crestIcon = disp.iconFileID
+                end
+                if disp.name and disp.name ~= "" and not (L.issecretvalue and L.issecretvalue(disp.name)) then
+                    crestLabel = disp.name
+                end
+            end
+            if crestLabel == "" and crestEntry.labelKey then
+                crestLabel = L.GetLocalizedText(crestEntry.labelKey, "")
+            end
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = ck,
+                label = "",
+                width = L.PVE_DAWNCREST_COL_W,
+                icon = crestIcon,
+                crestCurrencyId = crestEntry.id,
+                headerLabel = crestLabel,
+            }
+        end
+    end
+    if pveExtraCols.coffer_shards ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "coffer_shards",
+            label = "",
+            width = L.PVE_COFFER_COL_W,
+            icon = PVE_SHARDS_ICON,
+            tooltipTitle = L.GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
+            headerLabel = L.GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
+        }
+    end
+    if pveExtraCols.restored_key ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "restored_key",
+            label = "",
+            width = L.PVE_KEY_COL_W,
+            icon = PVE_RESTORED_KEY_ICON,
+            tooltipTitle = L.GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
+            headerLabel = L.GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
+        }
+    end
+    if vaultCols.voidcore ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "voidcore",
+            label = "",
+            width = L.PVE_VOIDCORE_COL_W,
+            icon = 7658128,
+            tooltipTitle = L.GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
+            headerLabel = L.GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
+        }
+    end
+    if vaultCols.manaflux == true then
+        local manafluxIcon = "Interface\\Icons\\INV_Enchant_DustArcane"
+        local mfDisp = L.GetPvECachedCurrencyDisplay(L.PVE_MANAFLUX_ID)
+        if mfDisp and mfDisp.iconFileID then
+            manafluxIcon = mfDisp.iconFileID
+        end
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "manaflux",
+            label = "",
+            width = L.PVE_MANAFLUX_COL_W,
+            icon = manafluxIcon,
+            tooltipTitle = L.GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
+            headerLabel = L.GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
+        }
+    end
+    if vaultCols.raids ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "slot1",
+            label = "",
+            width = L.PVE_VAULT_COL_W,
+            icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+            tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_RAIDS"]) or "Raids",
+            headerLabel = L.GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"),
+        }
+    end
+    if vaultCols.mythicPlus ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "slot2",
+            label = "",
+            width = L.PVE_VAULT_COL_W,
+            icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
+            tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
+            headerLabel = L.GetLocalizedText("VAULT_DUNGEON", "Dungeon"),
+        }
+    end
+    if vaultCols.world ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "slot3",
+            label = "",
+            width = L.PVE_VAULT_COL_W,
+            icon = "Interface\\Icons\\INV_Misc_Map_01",
+            tooltipTitle = (L.ns.L and L.ns.L["VAULT_WORLD"]) or "World",
+            headerLabel = L.GetLocalizedText("VAULT_SLOT_WORLD", "World"),
+        }
+    end
+    -- Bountiful weekly — Trovehunter's Bounty item icon (live fileID when API returns it)
+    if vaultCols.bounty ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "bountiful",
+            label = "",
+            width = L.PVE_BOUNTIFUL_COL_W,
+            icon = L.GetTrovehunterBountyColumnIcon(),
+            tooltipTitle = (L.ns.L and L.ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty",
+            headerLabel = L.GetLocalizedText("PVE_HEADER_MAP_SHORT", "Map"),
+        }
+    end
+    -- Vault Status — same Ready/Slots Earned/Pending readout as the Vault Tracker quick window.
+    if vaultCols.status ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "vault_status",
+            label = "",
+            width = L.PVE_STATUS_COL_W,
+            icon = "Interface\\Icons\\Achievement_Boss_Argus",
+            tooltipTitle = (L.ns.L and L.ns.L["PVE_COL_VAULT_STATUS"]) or "Vault Status",
+            headerLabel = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"),
+        }
+    end
+
+    local COL_SPACING = L.PVE_COL_SPACING
+    local COL_RIGHT_MARGIN = L.PVE_COL_RIGHT_MARGIN
+    local COL_ICON_SIZE = 24
+    local COL_HEADER_HEIGHT = 48
+    local visiblePveColumnKeys = {}
+    local colSigParts = {}
+    for i = 1, #PVE_COLUMNS do
+        local ck = PVE_COLUMNS[i].key
+        visiblePveColumnKeys[ck] = true
+        colSigParts[i] = ck
+    end
+    local colSig = table.concat(colSigParts, "\1")
+    local function GapBetweenColumns(leftIdx)
+        local leftCol = PVE_COLUMNS[leftIdx]
+        if not leftCol then return L.PVE_COL_SPACING end
+        local key = leftCol.key
+        if key == "manaflux" then return L.PVE_KEY_TO_VAULT_GAP end
+        if key == "voidcore" and (not visiblePveColumnKeys.manaflux) then return L.PVE_KEY_TO_VAULT_GAP end
+        if key == "restored_key" and (not visiblePveColumnKeys.voidcore) and (not visiblePveColumnKeys.manaflux) then
+            return L.PVE_KEY_TO_VAULT_GAP
+        end
+        if key == "slot1" or key == "slot2" then return L.PVE_VAULT_CLUSTER_GAP end
+        if key == "slot3" then return L.PVE_KEY_TO_VAULT_GAP end
+        return L.PVE_COL_SPACING
+    end
+
+    local yOffset = 8
+
+    -- Check if module is disabled - show beautiful disabled state card (before column strip / scroll width)
+    if not L.ns.Utilities:IsModuleEnabled("pve") then
+        L.WarbandNexus._pveVaultTooltipCharsSnapshot = {}
+        local CreateDisabledCard = L.ns.UI_CreateDisabledModuleCard
+        local cardHeight = CreateDisabledCard(parent, yOffset, (L.ns.L and L.ns.L["PVE_TITLE"]) or "PvE Progress")
+        return yOffset + cardHeight
+    end
+    
+    -- Get all characters (filter tracked only for PvE display).
+    -- Also honor profile.hideLowLevelThreshold: 0 (off), 80, or 90.
+    local allCharacters = self:GetAllCharacters()
+    local characters = {}
+    local minLevel = L.GetLowLevelHideThreshold(profile)
+    for i = 1, #allCharacters do
+        local char = allCharacters[i]
+        local lvl = tonumber(char.level) or 0
+        if char.isTracked ~= false and (minLevel == 0 or lvl >= minLevel) then
+            table.insert(characters, char)
+        end
+    end
+
+    local function GetRowCanonicalPvEKey(char)
+        return L.PvE_GetCanonicalKeyForChar(char)
+    end
+    
+    -- Canonical key must match PvECacheService writes and GetPvEData(charKey) lookups
+    local currentPlayerKey = L.ns.Utilities:GetCharacterKey()
+    if L.ns.Utilities.GetCanonicalCharacterKey then
+        currentPlayerKey = L.ns.Utilities:GetCanonicalCharacterKey(currentPlayerKey) or currentPlayerKey
+    end
+    
+    -- Load sorting preferences from profile (persistent across sessions)
+    if not parent.sortPrefsLoaded then
+        parent.sortKey = self.db.profile.pveSort.key
+        parent.sortAscending = self.db.profile.pveSort.ascending
+        parent.sortPrefsLoaded = true
+    end
+    
+    local sortOptions = {
+        {key = "manual", label = (L.ns.L and L.ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+        {key = "name", label = (L.ns.L and L.ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+        {key = "level", label = (L.ns.L and L.ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+        {key = "ilvl", label = (L.ns.L and L.ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+        {key = "gold", label = (L.ns.L and L.ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+        {key = "realm", label = (L.ns.L and L.ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
+    }
+    
+    if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
+    if profile then
+        if not profile.pveSectionFilter then profile.pveSectionFilter = { sectionKey = "all" } end
+        if L.ns.CharacterService and L.ns.CharacterService.EnsureCustomCharacterSectionsProfile then
+            L.ns.CharacterService:EnsureCustomCharacterSectionsProfile(profile)
+        end
+    end
+
+    -- ===== SORT CHARACTERS WITH FAVORITES ALWAYS ON TOP =====
+    -- Use the same sorting logic as Characters tab
+    local currentChar = nil
+    local favorites = {}
+    local regular = {}
+    
+    for i = 1, #characters do
+        local char = characters[i]
+        -- CRITICAL: Same canonical key as PvECacheService + row loop below (vault/M+ are per-key in pveCache)
+        local charKey = GetRowCanonicalPvEKey(char)
+        
+        -- Separate current character
+        if charKey == currentPlayerKey then
+            currentChar = char
+        elseif L.ns.CharacterService and L.ns.CharacterService:IsFavoriteCharacter(self, charKey) then
+            table.insert(favorites, char)
+        else
+            table.insert(regular, char)
+        end
+    end
+    
+    -- Sort function (with custom order support, same as Characters tab)
+    local function sortCharacters(list, orderKey)
+        local sortMode = self.db.profile.pveSort and self.db.profile.pveSort.key
+        
+        if sortMode and sortMode ~= "manual" then
+            table.sort(list, function(a, b)
+                if sortMode == "name" then
+                    return L.CompareCharNameLower(a, b)
+                elseif sortMode == "level" then
+                    if (a.level or 0) ~= (b.level or 0) then
+                        return (a.level or 0) > (b.level or 0)
+                    else
+                        return L.CompareCharNameLower(a, b)
+                    end
+                elseif sortMode == "ilvl" then
+                    if (a.itemLevel or 0) ~= (b.itemLevel or 0) then
+                        return (a.itemLevel or 0) > (b.itemLevel or 0)
+                    else
+                        return L.CompareCharNameLower(a, b)
+                    end
+                elseif sortMode == "gold" then
+                    local goldA = L.ns.Utilities:GetCharTotalCopper(a)
+                    local goldB = L.ns.Utilities:GetCharTotalCopper(b)
+                    if goldA ~= goldB then
+                        return goldA > goldB
+                    else
+                        return L.CompareCharNameLower(a, b)
+                    end
+                elseif sortMode == "realm" then
+                    local ra = L.SafeLower(a.realm or "")
+                    local rb = L.SafeLower(b.realm or "")
+                    if ra ~= rb then
+                        return ra < rb
+                    else
+                        return L.CompareCharNameLower(a, b)
+                    end
+                end
+                -- Fallback
+                if (a.level or 0) ~= (b.level or 0) then
+                    return (a.level or 0) > (b.level or 0)
+                else
+                    return L.CompareCharNameLower(a, b)
+                end
+            end)
+            return list
+        end
+        
+        local customOrder = self.db.profile.characterOrder and self.db.profile.characterOrder[orderKey] or {}
+        
+        -- If custom order exists and has items, use it
+        if #customOrder > 0 then
+            local ordered = {}
+            local charMap = {}
+            
+            -- Create a map for quick lookup
+            for i = 1, #list do
+                local char = list[i]
+                local key = GetRowCanonicalPvEKey(char)
+                if key then charMap[key] = char end
+            end
+            
+            -- Add characters in custom order
+            for i = 1, #customOrder do
+                local charKey = customOrder[i]
+                if charMap[charKey] then
+                    table.insert(ordered, charMap[charKey])
+                    charMap[charKey] = nil  -- Remove to track remaining
+                end
+            end
+            
+            -- Add any new characters not in custom order (at the end, sorted)
+            local remaining = {}
+            for _, char in pairs(charMap) do
+                table.insert(remaining, char)
+            end
+            table.sort(remaining, function(a, b)
+                if (a.level or 0) ~= (b.level or 0) then
+                    return (a.level or 0) > (b.level or 0)
+                else
+                    return L.CompareCharNameLower(a, b)
+                end
+            end)
+            for i = 1, #remaining do
+                local char = remaining[i]
+                table.insert(ordered, char)
+            end
+            
+            return ordered
+        else
+            -- Default sort: level desc → name asc
+            table.sort(list, function(a, b)
+                if (a.level or 0) ~= (b.level or 0) then
+                    return (a.level or 0) > (b.level or 0)
+                else
+                    return L.CompareCharNameLower(a, b)
+                end
+            end)
+            return list
+        end
+    end
+    
+    -- Sort favorites; split non-favorites into custom sections + main list (Characters tab parity)
+    favorites = sortCharacters(favorites, "favorites")
+    local groupedById = {}
+    local regularUngrouped = {}
+    for rxi = 1, #regular do
+        local rchar = regular[rxi]
+        local rKey = GetRowCanonicalPvEKey(rchar)
+        local gsec = L.ns.CharacterService and L.ns.CharacterService.GetCharacterCustomSectionId
+            and L.ns.CharacterService:GetCharacterCustomSectionId(self, rKey) or nil
+        if gsec then
+            -- Keys must match gMeta.id / PveGroupIdFromSectionSecKey (string) — mixed number|string IDs broke groupedDisplay lookup.
+            local gk = tostring(gsec)
+            if not groupedById[gk] then groupedById[gk] = {} end
+            groupedById[gk][#groupedById[gk] + 1] = rchar
+        else
+            regularUngrouped[#regularUngrouped + 1] = rchar
+        end
+    end
+    local sortModeKey = (self.db.profile.pveSort and self.db.profile.pveSort.key) or "default"
+    local customGroupsOrdered = {}
+    if profile and L.ns.CharacterService and L.ns.CharacterService.BuildOrderedCustomCharacterGroups then
+        customGroupsOrdered = L.ns.CharacterService:BuildOrderedCustomCharacterGroups(profile, sortModeKey)
+    end
+    for oci = 1, #customGroupsOrdered do
+        local gid0 = customGroupsOrdered[oci].id
+        local gk0 = tostring(gid0)
+        local gL = groupedById[gk0]
+        if gL and #gL > 0 then
+            local lk0 = (L.ns.CharacterService and L.ns.CharacterService.GetCustomGroupListKey and L.ns.CharacterService:GetCustomGroupListKey(gid0)) or "regular"
+            groupedById[gk0] = sortCharacters(gL, lk0)
+        end
+    end
+    regularUngrouped = sortCharacters(regularUngrouped, "regular")
+
+    -- Merge: current first, then favorites, then each custom group in order, then ungrouped regular
+    local sortedCharacters = {}
+    if currentChar then
+        sortedCharacters[#sortedCharacters + 1] = currentChar
+    end
+    for fi = 1, #favorites do
+        sortedCharacters[#sortedCharacters + 1] = favorites[fi]
+    end
+    for oci = 1, #customGroupsOrdered do
+        local gid1 = customGroupsOrdered[oci].id
+        local gL2 = groupedById[tostring(gid1)]
+        if gL2 then
+            for gj = 1, #gL2 do
+                sortedCharacters[#sortedCharacters + 1] = gL2[gj]
+            end
+        end
+    end
+    for ui = 1, #regularUngrouped do
+        sortedCharacters[#sortedCharacters + 1] = regularUngrouped[ui]
+    end
+    for gidOr, listOr in pairs(groupedById) do
+        local foundOr = false
+        for ociOr = 1, #customGroupsOrdered do
+            if tostring(customGroupsOrdered[ociOr].id) == tostring(gidOr) then
+                foundOr = true
+                break
+            end
+        end
+        if not foundOr and listOr and #listOr > 0 then
+            for oj = 1, #listOr do
+                sortedCharacters[#sortedCharacters + 1] = listOr[oj]
+            end
+        end
+    end
+    characters = sortedCharacters
+    do
+        local snap = {}
+        for i = 1, #characters do
+            snap[i] = characters[i]
+        end
+        L.WarbandNexus._pveVaultTooltipCharsSnapshot = snap
+    end
+
+    local rosterSigParts = {}
+    local currentKeySet = {}
+    for i = 1, #characters do
+        local rk = GetRowCanonicalPvEKey(characters[i])
+        if rk then
+            rosterSigParts[#rosterSigParts + 1] = rk
+            currentKeySet[rk] = true
+        end
+    end
+    table.sort(rosterSigParts)
+    local rosterSig = tostring(#rosterSigParts) .. "\0" .. table.concat(rosterSigParts, "\1")
+    local rosterChanged = (L._pveDrawPool.rosterSig ~= rosterSig)
+    L.PvESyncPvEPools(rosterSig, colSig, currentKeySet, visiblePveColumnKeys)
+
+    if vaultTrackerMode then
+        --- Slots meeting vault threshold (Raid / M+ / World / PvP tracks), same rules as inline grid.
+        local function CountVaultSlotsUnlocked(vaultActs)
+            if not vaultActs then return 0 end
+            local unlocked = 0
+            local function countTrack(activityList)
+                if not activityList then return end
+                for idx = 1, #activityList do
+                    local act = activityList[idx]
+                    if act and act.threshold and act.threshold > 0 and act.progress and act.progress >= act.threshold then
+                        unlocked = unlocked + 1
+                    end
+                end
+            end
+            countTrack(vaultActs.raids)
+            countTrack(vaultActs.mythicPlus)
+            countTrack(vaultActs.world)
+            countTrack(vaultActs.pvp)
+            return unlocked
+        end
+
+        local function ResolveVaultClaimable(charKey, charPveData)
+            local hasClaimable = charPveData.vaultRewards and charPveData.vaultRewards.hasAvailableRewards == true
+            if (not hasClaimable) and charKey == currentPlayerKey and self.HasUnclaimedVaultRewards then
+                local ok, liveHasRewards = pcall(self.HasUnclaimedVaultRewards, self)
+                hasClaimable = ok and liveHasRewards == true
+            end
+            return hasClaimable
+        end
+
+        --- True when PvE cache has at least one Great Vault activity row (Raid / M+ / World / PvP).
+        local function HasVaultActivitySnapshot(vaultActs)
+            if not vaultActs then return false end
+            local keys = { "raids", "mythicPlus", "world", "pvp" }
+            for ki = 1, #keys do
+                local list = vaultActs[keys[ki]]
+                if list and #list > 0 then
+                    return true
+                end
+            end
+            return false
+        end
+
+        --- WVT: only toons with vault data (cached activity rows, unlocked vault slots, or rewards to claim).
+        local function IncludeInVaultTracker(charKey, charPveData)
+            if ResolveVaultClaimable(charKey, charPveData) then
+                return true
+            end
+            local vaultActs = charPveData.vaultActivities
+            if HasVaultActivitySnapshot(vaultActs) then
+                return true
+            end
+            if CountVaultSlotsUnlocked(vaultActs) >= 1 then
+                return true
+            end
+            return false
+        end
+
+        local claimFirst = {}
+        local rest = {}
+        for i = 1, #characters do
+            local char = characters[i]
+            local charKey = GetRowCanonicalPvEKey(char)
+            if charKey then
+                local charPveData = self:GetPvEData(charKey) or {}
+                if IncludeInVaultTracker(charKey, charPveData) then
+                    if ResolveVaultClaimable(charKey, charPveData) then
+                        claimFirst[#claimFirst + 1] = char
+                    else
+                        rest[#rest + 1] = char
+                    end
+                end
+            end
+        end
+        characters = {}
+        for j = 1, #claimFirst do characters[#characters + 1] = claimFirst[j] end
+        for j = 1, #rest do characters[#characters + 1] = rest[j] end
+    end
+
+    -- ===== LOADING / ERROR / EMPTY (before column strip — vault tracker uses alternate layout) =====
+    if L.ns.PvELoadingState and L.ns.PvELoadingState.isLoading then
+        local UI_CreateLoadingStateCard = L.ns.UI_CreateLoadingStateCard
+        if UI_CreateLoadingStateCard then
+            local newYOffset = UI_CreateLoadingStateCard(
+                parent,
+                yOffset,
+                L.ns.PvELoadingState,
+                (L.ns.L and L.ns.L["LOADING_PVE"]) or "Loading PvE Data..."
+            )
+            return newYOffset + 50
+        end
+    end
+
+    if L.ns.PvELoadingState and L.ns.PvELoadingState.error and not L.ns.PvELoadingState.isLoading then
+        local UI_CreateErrorStateCard = L.ns.UI_CreateErrorStateCard
+        if UI_CreateErrorStateCard then
+            yOffset = UI_CreateErrorStateCard(parent, yOffset, L.ns.PvELoadingState.error)
+        end
+    end
+
+    if #characters == 0 then
+        local emptyTab = vaultTrackerMode and "pve_vault" or "pve"
+        local _, height = L.CreateEmptyStateCard(parent, emptyTab, yOffset)
+        return yOffset + height
+    end
+
+    if vaultTrackerMode then
+        return self:DrawPvEVaultTrackerCardGrid(parent, yOffset, characters, currentPlayerKey)
+    end
+    
+    -- ===== NAME WIDTH (measured from longest name; no compression — scroll handles overflow) =====
+    local tempMeasure = L.PvE_GetDrawPoolMeasureFS()
+    tempMeasure:Hide()
+    local maxNameRealmWidth = 0
+    if rosterChanged then
+        for i = 1, #characters do
+            local c = characters[i]
+            local k = GetRowCanonicalPvEKey(c)
+            if k then
+                local nameStr = c.name or "Unknown"
+                if L.issecretvalue and L.issecretvalue(nameStr) then
+                    nameStr = "Unknown"
+                end
+                local realmStr = L.ns.Utilities and L.ns.Utilities:FormatRealmName(c.realm) or c.realm or ""
+                if realmStr ~= "" and L.issecretvalue and L.issecretvalue(realmStr) then
+                    realmStr = ""
+                end
+                tempMeasure:SetText(nameStr .. "  -  " .. realmStr)
+                local w = tempMeasure:GetStringWidth() or 0
+                L._pveDrawPool.nameWidths[k] = w
+                if w > maxNameRealmWidth then maxNameRealmWidth = w end
+            end
+        end
+    else
+        for i = 1, #characters do
+            local k = GetRowCanonicalPvEKey(characters[i])
+            if k then
+                local w = L._pveDrawPool.nameWidths[k]
+                if w and w > maxNameRealmWidth then maxNameRealmWidth = w end
+            end
+        end
+    end
+    local nameWidth = math.max(200, math.ceil(maxNameRealmWidth) + 8)
+
+    -- Wide enough for left cluster + name + level/ilvl + inline columns → horizontal scrollbar when needed
+    local scrollFrame = parent:GetParent()
+    local viewportW = (scrollFrame and scrollFrame:GetWidth()) or 800
+    local inlineTotal = 0
+    for pci = 1, #PVE_COLUMNS do
+        inlineTotal = inlineTotal + PVE_COLUMNS[pci].width
+    end
+    for gi = 1, #PVE_COLUMNS - 1 do
+        inlineTotal = inlineTotal + GapBetweenColumns(gi)
+    end
+    inlineTotal = inlineTotal + COL_RIGHT_MARGIN
+    local minScrollW = L.PVE_CHAR_HEADER_H_MARGIN + L.PVE_ROW_LEFT_CLUSTER_W + nameWidth + L.PVE_ROW_MIDDLE_MAX_W + inlineTotal
+    parent:SetWidth(math.max(viewportW, minScrollW))
+
+    -- Frozen column header strip (scrolls horizontally with data — same pattern as ProfessionsUI)
+    local mainFrameRef = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
+    local columnHeaderClip = mainFrameRef and mainFrameRef.columnHeaderClip
+    local columnHeaderInner = mainFrameRef and mainFrameRef.columnHeaderInner
+    local colHeaderParent = columnHeaderInner or headerParent
+    local colHeaderOverlayH = 0
+
+    if columnHeaderClip then
+        columnHeaderClip:Show()
+        columnHeaderClip:SetHeight(COL_HEADER_HEIGHT + L.PVE_COLUMN_HEADER_PAD)
+        colHeaderOverlayH = COL_HEADER_HEIGHT + L.PVE_COLUMN_HEADER_PAD
+    end
+    if columnHeaderInner then
+        columnHeaderInner:SetWidth(parent:GetWidth())
+    end
+
+    -- ===== COLUMN HEADER ROW (icon + compact two-line labels) =====
+    local colHeaderRow = L.ns.UI.Factory:CreateContainer(colHeaderParent, 10, COL_HEADER_HEIGHT)
+    if columnHeaderInner then
+        colHeaderRow:SetPoint("TOPLEFT", L.SIDE_MARGIN, 0)
+        colHeaderRow:SetPoint("TOPRIGHT", -L.SIDE_MARGIN, 0)
+    else
+        colHeaderRow:SetPoint("TOPLEFT", headerParent, "TOPLEFT", L.SIDE_MARGIN, -headerYOffset)
+        colHeaderRow:SetPoint("TOPRIGHT", headerParent, "TOPRIGHT", -L.SIDE_MARGIN, -headerYOffset)
+        headerYOffset = headerYOffset + COL_HEADER_HEIGHT + 2
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    end
+
+    local PVE_COMPACT_HEADER_BY_KEY = {
+        coffer_shards = { text = L.GetLocalizedText("PVE_COMPACT_COFFER_SHARD", "Coffer Shard"), hex = "ffffff" },
+        restored_key = { text = L.GetLocalizedText("PVE_COMPACT_RESTORED", "Restored"), hex = "ffffff" },
+        voidcore = { text = L.GetLocalizedText("PVE_COMPACT_VOIDCORE", "Voidcore"), hex = "ffffff" },
+        manaflux = { text = L.GetLocalizedText("PVE_COMPACT_MANAFLUX", "Manaflux"), hex = "ffffff" },
+        slot1 = { text = L.GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"), hex = "ffffff" },
+        slot2 = { text = L.GetLocalizedText("VAULT_DUNGEON", "Dungeon"), hex = "ffffff" },
+        slot3 = { text = L.GetLocalizedText("VAULT_SLOT_WORLD", "World"), hex = "ffffff" },
+        bountiful = { text = L.GetLocalizedText("PVE_HEADER_MAP_SHORT", "Map"), hex = "ffffff" },
+        vault_status = { text = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"), hex = "ffffff" },
+    }
+    local PVE_COMPACT_CREST_BY_ID = {
+        [3383] = { text = L.GetLocalizedText("PVE_CREST_ADV", "Adventurer"), hex = "9d9d9d" },
+        [3341] = { text = L.GetLocalizedText("PVE_CREST_VET", "Veteran"), hex = "1eff00" },
+        [3343] = { text = L.GetLocalizedText("PVE_CREST_CHAMP", "Champion"), hex = "0070dd" },
+        [3345] = { text = L.GetLocalizedText("PVE_CREST_HERO", "Hero"), hex = "a335ee" },
+        [3347] = { text = L.GetLocalizedText("PVE_CREST_MYTH", "Myth"), hex = "ff8000" },
+    }
+
+    local function BuildCompactHeaderLabel(col)
+        local rawLabel = col and (col.headerLabel or col.tooltipTitle) or ""
+        if not rawLabel or rawLabel == "" then return "", "ffffff" end
+        if L.issecretvalue and L.issecretvalue(rawLabel) then return "", "ffffff" end
+
+        local key = col and col.key or ""
+        if PVE_COMPACT_HEADER_BY_KEY[key] then
+            local entry = PVE_COMPACT_HEADER_BY_KEY[key]
+            return entry.text, entry.hex
+        elseif key:match("^crest_") then
+            local crestID = tonumber(key:match("^crest_(%d+)$"))
+            if crestID and PVE_COMPACT_CREST_BY_ID[crestID] then
+                local entry = PVE_COMPACT_CREST_BY_ID[crestID]
+                return entry.text, entry.hex
+            end
+            return L.GetLocalizedText("PVE_CREST_GENERIC", "Crest"), "ffffff"
+        end
+        return "", "ffffff"
+    end
+
+    local colX = -COL_RIGHT_MARGIN
+    for hci = #PVE_COLUMNS, 1, -1 do
+        local col = PVE_COLUMNS[hci]
+        colX = colX - col.width
+        local colCenterX = colX + col.width * 0.5
+
+        if col.icon or col.iconAtlas then
+            local hitFrame = CreateFrame("Frame", nil, colHeaderRow)
+            hitFrame:SetSize(COL_ICON_SIZE + 4, COL_ICON_SIZE + 4)
+            hitFrame:SetPoint("RIGHT", colHeaderRow, "RIGHT", colCenterX + COL_ICON_SIZE * 0.5 + 2, 6)
+
+            local iconTex = hitFrame:CreateTexture(nil, "ARTWORK")
+            iconTex:SetSize(COL_ICON_SIZE, COL_ICON_SIZE)
+            iconTex:SetPoint("CENTER")
+            if col.iconAtlas and iconTex.SetAtlas then
+                iconTex:SetTexture(nil)
+                pcall(function()
+                    iconTex:SetAtlas(col.iconAtlas)
+                end)
+                local okAtlas = iconTex.GetAtlas and iconTex:GetAtlas()
+                if not okAtlas and col.icon then
+                    iconTex:SetTexture(col.icon)
+                    iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                end
+            elseif col.icon then
+                iconTex:SetTexture(col.icon)
+                iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+
+            local compactLabel, compactHex = BuildCompactHeaderLabel(col)
+            if compactLabel ~= "" then
+                L.PvEAcquireColHeaderLabel(colHeaderRow, col.key, hitFrame, compactLabel, compactHex, col.width)
+            end
+
+            if L.ShowTooltip then
+                hitFrame:EnableMouse(true)
+                local tooltipTitle = col.tooltipTitle
+                if not tooltipTitle then
+                    if col.crestCurrencyId then
+                        local meta = L.GetPvECachedCurrencyDisplay(col.crestCurrencyId)
+                        tooltipTitle = meta and meta.name
+                    end
+                    tooltipTitle = tooltipTitle or col.key or ""
+                end
+                hitFrame:SetScript("OnEnter", function(self)
+                    L.ShowTooltip(self, {
+                        type = "custom",
+                        icon = col.iconAtlas or col.icon,
+                        iconIsAtlas = col.iconAtlas ~= nil,
+                        title = tooltipTitle,
+                        lines = {},
+                        anchor = "ANCHOR_BOTTOM"
+                    })
+                end)
+                hitFrame:SetScript("OnLeave", function()
+                    if L.HideTooltip then L.HideTooltip() end
+                end)
+                L.BindForwardScrollWheel(hitFrame)
+            end
+        end
+
+        if hci > 1 then
+            colX = colX - GapBetweenColumns(hci - 1)
+        end
+    end
+
+    colHeaderRow:Show()
+
+    -- Push scroll content below frozen column header overlay (ProfessionsUI pattern)
+    yOffset = yOffset + colHeaderOverlayH
+
+    local totalLHBox = { v = yOffset }
+    local PVE_CHAR_SECTION_GAP = L.GetLayout().afterElement or 8
+    -- Match CreateCollapsibleHeader / Characters tab row chrome — not headerSpacing (44), which over-reserves height.
+    local PVE_CHAR_ROW_HEADER_H = L.GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or L.GetLayout().headerSpacing or 36
+    local scrollFrameRef = parent:GetParent()
+
+    local sectionFilter = "all"
+    if profile and profile.pveSectionFilter and type(profile.pveSectionFilter.sectionKey) == "string" then
+        sectionFilter = profile.pveSectionFilter.sectionKey
+    end
+    local drawFav = (sectionFilter == "all") or (sectionFilter == "favorites")
+    local drawReg = (sectionFilter == "all") or (sectionFilter == "regular")
+
+    -- Characters tab parity: the online character lives inside Favorites / a custom header / Characters,
+    -- never as a separate "pinned" row (which broke layout and skipped custom-group membership).
+    local favoritesDisplay = {}
+    for fi = 1, #favorites do
+        favoritesDisplay[fi] = favorites[fi]
+    end
+    local regularDisplay = {}
+    for ri = 1, #regularUngrouped do
+        regularDisplay[ri] = regularUngrouped[ri]
+    end
+    local groupedDisplay = {}
+    for gid, lst in pairs(groupedById) do
+        local copy = {}
+        for li = 1, #lst do
+            copy[li] = lst[li]
+        end
+        groupedDisplay[tostring(gid)] = copy
+    end
+    if currentChar then
+        local ck0 = GetRowCanonicalPvEKey(currentChar)
+        if ck0 and L.ns.CharacterService then
+            local inFav = L.ns.CharacterService.IsFavoriteCharacter and L.ns.CharacterService:IsFavoriteCharacter(self, ck0)
+            local curGid = (not inFav) and L.ns.CharacterService.GetCharacterCustomSectionId
+                and L.ns.CharacterService:GetCharacterCustomSectionId(self, ck0) or nil
+            if inFav then
+                favoritesDisplay[#favoritesDisplay + 1] = currentChar
+                favoritesDisplay = sortCharacters(favoritesDisplay, "favorites")
+            elseif curGid then
+                local gkMerge = tostring(curGid)
+                local bucket = groupedDisplay[gkMerge]
+                if not bucket then
+                    bucket = {}
+                    groupedDisplay[gkMerge] = bucket
+                end
+                bucket[#bucket + 1] = currentChar
+                local lk0 = (L.ns.CharacterService.GetCustomGroupListKey and L.ns.CharacterService:GetCustomGroupListKey(curGid))
+                    or ("group_" .. gkMerge)
+                groupedDisplay[gkMerge] = sortCharacters(bucket, lk0)
+            else
+                regularDisplay[#regularDisplay + 1] = currentChar
+                regularDisplay = sortCharacters(regularDisplay, "regular")
+            end
+        end
+    end
+
+    local paintOrder = {}
+    if drawFav and #favoritesDisplay > 0 then
+        for fi2 = 1, #favoritesDisplay do
+            paintOrder[#paintOrder + 1] = { char = favoritesDisplay[fi2], secKey = "pve_fav" }
+        end
+    end
+    for oci2 = 1, #customGroupsOrdered do
+        local gMeta = customGroupsOrdered[oci2]
+        local gid2 = gMeta.id
+        local gList2 = groupedDisplay[tostring(gid2)] or {}
+        local gListKey = (L.ns.CharacterService and L.ns.CharacterService.GetCustomGroupListKey and L.ns.CharacterService:GetCustomGroupListKey(gid2)) or ("group_" .. tostring(gid2))
+        local showGrp = (sectionFilter == "all") or (sectionFilter == gListKey)
+        if showGrp and #gList2 > 0 then
+            local sk = "pve_grp:" .. tostring(gid2)
+            for gj2 = 1, #gList2 do
+                paintOrder[#paintOrder + 1] = { char = gList2[gj2], secKey = sk }
+            end
+        end
+    end
+    for gidOr2, listOr2 in pairs(groupedDisplay) do
+        local foundOr2 = false
+        for ociOr2 = 1, #customGroupsOrdered do
+            if tostring(customGroupsOrdered[ociOr2].id) == tostring(gidOr2) then
+                foundOr2 = true
+                break
+            end
+        end
+        if not foundOr2 and listOr2 and #listOr2 > 0 then
+            local gListKey2 = (L.ns.CharacterService and L.ns.CharacterService.GetCustomGroupListKey and L.ns.CharacterService:GetCustomGroupListKey(gidOr2)) or ("group_" .. tostring(gidOr2))
+            local showOr2 = (sectionFilter == "all") or (sectionFilter == gListKey2)
+            if showOr2 then
+                local sko = "pve_grp:" .. tostring(gidOr2)
+                for oj2 = 1, #listOr2 do
+                    paintOrder[#paintOrder + 1] = { char = listOr2[oj2], secKey = sko }
+                end
+            end
+        end
+    end
+    if drawReg and #regularDisplay > 0 then
+        for ri2 = 1, #regularDisplay do
+            paintOrder[#paintOrder + 1] = { char = regularDisplay[ri2], secKey = "pve_reg" }
+        end
+    end
+
+    local secBodies = {}
+    local layoutTailForShell = nil
+
+    local function finalizePveSectionContent(secKey)
+        if not secKey or not profile then return end
+        local body = secBodies[secKey]
+        if not body then return end
+        local h = body._pveRunningH or 0.1
+        body._wnAccordionFullH = h
+        if not profile.ui then profile.ui = {} end
+        local expanded = true
+        if secKey == "pve_fav" then
+            expanded = profile.ui.pveFavoritesExpanded ~= false
+        elseif secKey == "pve_reg" then
+            expanded = profile.ui.pveCharactersExpanded ~= false
+        elseif PveGroupIdFromSectionSecKey(secKey) then
+            local gidStr = tostring(PveGroupIdFromSectionSecKey(secKey))
+            if not profile.characterGroupExpanded then profile.characterGroupExpanded = {} end
+            local cg = profile.characterGroupExpanded
+            local ev = cg[gidStr]
+            if ev == nil then
+                local asNum = tonumber(gidStr)
+                if asNum then
+                    ev = cg[asNum]
+                end
+            end
+            expanded = ev ~= false
+        end
+        if expanded then
+            body:Show()
+            body:SetHeight(math.max(0.1, h))
+        else
+            body:Hide()
+            body:SetHeight(0.1)
+        end
+        layoutTailForShell = body
+    end
+
+    local prevDet = nil
+
+    -- ===== CHARACTER ROWS (Favorites / custom / Characters sections only; online toon merged above) =====
+    for i = 1, #paintOrder do
+        local ent = paintOrder[i]
+        local sk = ent.secKey
+        local nextEnt = paintOrder[i + 1]
+        local interRowGap = (nextEnt and nextEnt.secKey == sk) and PVE_CHAR_SECTION_GAP or 0
+        if i > 1 then
+            local prevEnt = paintOrder[i - 1]
+            if (sk or "") ~= (prevEnt.secKey or "") then
+                finalizePveSectionContent(prevEnt.secKey)
+                prevDet = nil
+            end
+        end
+
+        -- All PvE character rows live under the accordion section body (never directly under scrollChild).
+        local rowHost
+        if sk == "pve_fav" then
+            if not secBodies[sk] then
+                secBodies[sk] = L.PvEUI_CreatePvETabSectionShell(self, parent, profile, {
+                    chars = favoritesDisplay,
+                    headerLabel = (L.ns.L and L.ns.L["HEADER_FAVORITES"]) or "Favorites",
+                    sectionUiKey = "pveFavoritesExpanded",
+                    defaultExpanded = true,
+                    headerAtlas = "GM-icon-assistActive-hover",
+                    visualOpts = { sectionPreset = "gold" },
+                    layoutTailFrame = layoutTailForShell,
+                    totalLH = totalLHBox,
+                    scrollFrameRef = scrollFrameRef,
+                    yTop = totalLHBox.v,
+                    sideMargin = L.SIDE_MARGIN,
+                })
+            end
+            rowHost = secBodies[sk]
+        elseif sk == "pve_reg" then
+            if not secBodies[sk] then
+                secBodies[sk] = L.PvEUI_CreatePvETabSectionShell(self, parent, profile, {
+                    chars = regularDisplay,
+                    headerLabel = (L.ns.L and L.ns.L["HEADER_CHARACTERS"]) or "Characters",
+                    sectionUiKey = "pveCharactersExpanded",
+                    defaultExpanded = true,
+                    headerAtlas = "GM-icon-headCount",
+                    visualOpts = nil,
+                    layoutTailFrame = layoutTailForShell,
+                    totalLH = totalLHBox,
+                    scrollFrameRef = scrollFrameRef,
+                    yTop = totalLHBox.v,
+                    sideMargin = L.SIDE_MARGIN,
+                })
+            end
+            rowHost = secBodies[sk]
+        elseif sk and PveGroupIdFromSectionSecKey(sk) then
+            if not secBodies[sk] then
+                local gid4 = tostring(PveGroupIdFromSectionSecKey(sk))
+                local gName = gid4
+                for gi3 = 1, #customGroupsOrdered do
+                    if tostring(customGroupsOrdered[gi3].id) == gid4 then
+                        gName = customGroupsOrdered[gi3].name or gid4
+                        break
+                    end
+                end
+                local goldStyle = L.ns.CharacterService and L.ns.CharacterService.IsProfileCustomSectionHighlighted
+                    and L.ns.CharacterService:IsProfileCustomSectionHighlighted(profile, gid4)
+                secBodies[sk] = L.PvEUI_CreatePvETabSectionShell(self, parent, profile, {
+                    chars = groupedDisplay[tostring(gid4)] or {},
+                    headerLabel = gName,
+                    sectionUiKey = nil,
+                    defaultExpanded = true,
+                    headerAtlas = goldStyle and "GM-icon-assistActive-hover" or "GM-icon-headCount",
+                    visualOpts = {
+                        sectionPreset = goldStyle and "gold" or "accent",
+                        useCharacterGroupExpand = true,
+                        groupId = gid4,
+                    },
+                    layoutTailFrame = layoutTailForShell,
+                    totalLH = totalLHBox,
+                    scrollFrameRef = scrollFrameRef,
+                    yTop = totalLHBox.v,
+                    sideMargin = L.SIDE_MARGIN,
+                })
+            end
+            rowHost = secBodies[sk]
+        end
+        assert(rowHost, "PvE row missing section body (sk=" .. tostring(sk) .. ")")
+
+        local char = ent.char
+        local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
+        -- CRITICAL: Match DB keys (currency + PvE cache) — prefer characters table index via _key for canonical resolution.
+        local charKey = GetRowCanonicalPvEKey(char)
+        local isFavorite = L.ns.CharacterService and L.ns.CharacterService:IsFavoriteCharacter(self, charKey)
+        
+        -- Get PvE data from PvECacheService
+        local pveData = self:GetPvEData(charKey) or {}
+        
+        -- Build legacy-compatible structure for rendering (backward compatibility)
+        local pve = {
+            keystone = pveData.keystone,
+            vaultActivities = pveData.vaultActivities,
+            hasUnclaimedRewards = pveData.vaultRewards and pveData.vaultRewards.hasAvailableRewards,
+            raidLockouts = pveData.raidLockouts,
+            worldBosses = pveData.worldBosses,
+            mythicPlus = pveData.mythicPlus,
+            delves = pveData.delves,
+        }
+        
+        -- Only the current (online) character starts expanded; all others collapsed.
+        local charExpandKey = "pve-char-" .. charKey
+        local isCurrentChar = (charKey == currentPlayerKey)
+        local hasVaultReward = pve.hasUnclaimedRewards or false
+        
+        local charExpanded = L.IsExpanded(charExpandKey, isCurrentChar)
+
+        local charDetailContent
+        local buildPvEDetailIfNeeded
+
+        local charHeader, expandIconTex = L.CreateCollapsibleHeader(
+            rowHost,
+            "", -- Empty text, we'll add it manually
+            charExpandKey,
+            charExpanded,
+            function(isExpanded)
+                if isExpanded then
+                    if charDetailContent then
+                        charDetailContent:Show()
+                        charDetailContent:SetHeight(math.max(0.1, charDetailContent._wnAccordionFullH or 0.1))
+                    end
+                elseif charDetailContent then
+                    charDetailContent:Hide()
+                    charDetailContent:SetHeight(0.1)
+                end
+            end,
+            nil, nil, nil, true,
+            L.BuildAccordionVisualOpts({
+                bodyGetter = function() return charDetailContent end,
+                -- Runs before SharedWidgets reads _wnAccordionFullH for AnimateAccordion target (expand path).
+                persistFn = function(exp)
+                    L.expandedStates[charExpandKey] = exp
+                    if exp and charDetailContent and buildPvEDetailIfNeeded then
+                        buildPvEDetailIfNeeded()
+                    end
+                end,
+                onUpdate = function(drawH)
+                    if not charDetailContent then return end
+                    if not charDetailContent._pveAnimScrollInit then
+                        charDetailContent._pveAnimScrollInit = true
+                        charDetailContent._pveScrollH0 = parent:GetHeight()
+                        charDetailContent._pveDetailH0 = drawH
+                    end
+                    local delta = drawH - charDetailContent._pveDetailH0
+                    parent:SetHeight(math.max(1, charDetailContent._pveScrollH0 + delta))
+                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+                        local cur = scrollFrameRef:GetVerticalScroll() or 0
+                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+                    end
+                end,
+                onComplete = function()
+                    if charDetailContent then
+                        charDetailContent._pveAnimScrollInit = nil
+                        charDetailContent._pveScrollH0 = nil
+                        charDetailContent._pveDetailH0 = nil
+                    end
+                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+                        local cur = scrollFrameRef:GetVerticalScroll() or 0
+                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+                    end
+                end,
+            })
+        )
+        if prevDet == nil then
+            charHeader:SetPoint("TOPLEFT", rowHost, "TOPLEFT", 10, -4)
+            charHeader:SetPoint("TOPRIGHT", rowHost, "TOPRIGHT", -10, -4)
+        else
+            charHeader:SetPoint("TOPLEFT", prevDet, "BOTTOMLEFT", 0, -PVE_CHAR_SECTION_GAP)
+            charHeader:SetPoint("TOPRIGHT", prevDet, "BOTTOMRIGHT", 0, -PVE_CHAR_SECTION_GAP)
+        end
+        if charHeader.SetClippingChildren then
+            charHeader:SetClippingChildren(true)
+        end
+        -- Online character: tint header backdrop with theme accent
+        if isCurrentChar and charHeader.SetBackdropColor then
+            local ac = L.ns.UI_COLORS and L.ns.UI_COLORS.accent or {0.40, 0.20, 0.58}
+            charHeader:SetBackdropColor(ac[1] * 0.22, ac[2] * 0.22, ac[3] * 0.22, 1)
+            -- Left accent bar
+            if not charHeader.onlineAccent then
+                charHeader.onlineAccent = charHeader:CreateTexture(nil, "BORDER")
+                charHeader.onlineAccent:SetWidth(3)
+                charHeader.onlineAccent:SetPoint("TOPLEFT", charHeader, "TOPLEFT", 0, 0)
+                charHeader.onlineAccent:SetPoint("BOTTOMLEFT", charHeader, "BOTTOMLEFT", 0, 0)
+            end
+            charHeader.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], 1)
+            charHeader.onlineAccent:Show()
+        end
+
+        totalLHBox.v = totalLHBox.v + PVE_CHAR_ROW_HEADER_H
+
+        -- Favorite icon (view-only, left side, next to collapse button)
+        -- Match Characters/Professions tabs: 33px column, 65% visual icon (~21px)
+        local StyleFavoriteIcon = L.ns.UI_StyleFavoriteIcon
+        local favColSize = 28
+        local favIconSize = favColSize * 0.65
+        
+        local favFrame = CreateFrame("Frame", nil, charHeader)
+        favFrame:SetSize(favColSize, favColSize)
+        favFrame:SetPoint("LEFT", expandIconTex, "RIGHT", 4, 0)
+        
+        local favIcon = favFrame:CreateTexture(nil, "ARTWORK")
+        favIcon:SetSize(favIconSize, favIconSize)
+        favIcon:SetPoint("CENTER", 0, 0)
+        StyleFavoriteIcon(favIcon, isFavorite)
+        favFrame:Show()
+
+        -- Character name text
+        local xOffset = 0
+        local spacerWidth = 20    -- tighter spacing to reduce left-side dead space
+        local levelWidth = 56     -- "Lv XX"
+        local ilvlWidth = 72      -- "iLvl XXX"
+        
+        -- Column 1: Character Name - Realm (single line, fixed width, left aligned)
+        local charNameText = L.FontManager:CreateFontString(charHeader, "body", "OVERLAY")
+        charNameText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
+        charNameText:SetWidth(nameWidth)
+        charNameText:SetJustifyH("LEFT")
+        local displayRealm = L.ns.Utilities and L.ns.Utilities:FormatRealmName(char.realm) or char.realm or ""
+        local dispName = char.name or "Unknown"
+        if L.issecretvalue and L.issecretvalue(dispName) then
+            dispName = "Unknown"
+        end
+        if displayRealm ~= "" and L.issecretvalue and L.issecretvalue(displayRealm) then
+            displayRealm = ""
+        end
+        charNameText:SetText(string.format("|cff%02x%02x%02x%s  -  %s|r",
+            classColor.r * 255, classColor.g * 255, classColor.b * 255,
+            dispName,
+            displayRealm))
+        xOffset = xOffset + nameWidth
+        
+        -- Column 2: Bullet separator (centered in spacer)
+        local bullet1 = L.FontManager:CreateFontString(charHeader, "body", "OVERLAY")
+        bullet1:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
+        bullet1:SetWidth(spacerWidth)
+        bullet1:SetJustifyH("CENTER")
+        bullet1:SetText("|cff666666•|r")
+        xOffset = xOffset + spacerWidth
+        
+        -- Column 3: Level (fixed width, CENTER aligned for visual balance)
+        local levelText = L.FontManager:CreateFontString(charHeader, "body", "OVERLAY")
+        levelText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
+        levelText:SetWidth(levelWidth)
+        levelText:SetJustifyH("CENTER")  -- CENTER for equal spacing on both sides
+        local levelFormat = (L.ns.L and L.ns.L["LV_FORMAT"]) or "Lv %d"
+        local levelString = string.format("|cff%02x%02x%02x" .. levelFormat .. "|r", 
+            classColor.r * 255, classColor.g * 255, classColor.b * 255, 
+            char.level or 1)
+        levelText:SetText(levelString)
+        xOffset = xOffset + levelWidth
+        
+        -- Column 4: Bullet separator (only if iLvl exists, centered in spacer)
+        if char.itemLevel and char.itemLevel > 0 then
+            local bullet2 = L.FontManager:CreateFontString(charHeader, "body", "OVERLAY")
+            bullet2:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
+            bullet2:SetWidth(spacerWidth)
+            bullet2:SetJustifyH("CENTER")
+            bullet2:SetText("|cff666666•|r")
+            xOffset = xOffset + spacerWidth
+            
+            -- Column 5: iLvl (fixed width, left aligned)
+            local ilvlText = L.FontManager:CreateFontString(charHeader, "body", "OVERLAY")
+            ilvlText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
+            ilvlText:SetWidth(ilvlWidth)
+            ilvlText:SetJustifyH("LEFT")
+            local ilvlFormat = (L.ns.L and L.ns.L["ILVL_FORMAT"]) or "iLvl %d"
+            ilvlText:SetText(string.format("|cffffd700" .. ilvlFormat .. "|r", char.itemLevel))
+        end
+        
+        -- ===== INLINE COLUMN DATA (right-aligned, matching column headers) =====
+        do
+            local shardData = (PVE_SHARDS_ID and L.WarbandNexus:GetCurrencyData(PVE_SHARDS_ID, charKey)) or nil
+            local shardQty = shardData and shardData.quantity or 0
+            local shardMax = shardData and shardData.maxQuantity or 0
+            local shardTE = shardData and shardData.totalEarned
+            local shardSM = shardData and shardData.seasonMax
+
+            local keyData = (PVE_RESTORED_KEY_ID and L.WarbandNexus:GetCurrencyData(PVE_RESTORED_KEY_ID, charKey)) or nil
+            local keyQty = keyData and keyData.quantity or 0
+
+            -- Vault summary from activities
+            local vaultActs = pve.vaultActivities or {}
+
+            -- Claimable Great Vault loot (not the same as "threshold progress completed" ticks below).
+            -- Prefer live API for current character, but never let transient API timing
+            -- wipe a known cached "unclaimed rewards" state.
+            local vaultLootClaimable = (pve.hasUnclaimedRewards == true)
+            if isCurrentChar and L.WarbandNexus.HasUnclaimedVaultRewards then
+                local ok, v = pcall(L.WarbandNexus.HasUnclaimedVaultRewards, L.WarbandNexus)
+                if ok then
+                    vaultLootClaimable = (v == true) or vaultLootClaimable
+                end
+            end
+
+            local function FormatVaultTrackSlots(activityList, slotCount, typeName)
+                return L.PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vaultLootClaimable, 12)
+            end
+
+            --- Format currency for inline row: always show current quantity.
+            local function FormatCurrencyStatus(qty)
+                qty = qty or 0
+                if qty > 0 then
+                    return L.FormatNumber(qty)
+                end
+                return "\226\128\148"
+            end
+
+            local function BuildCurrencyTooltip(currencyID, currencyName, qty, maxQty, totalEarned, seasonMax)
+                local lines = {}
+                local currentLabel = (L.ns.L and L.ns.L["CURRENT_ENTRIES_LABEL"]) or "Current:"
+                local seasonLabel = (L.ns.L and L.ns.L["SEASON"]) or "Season"
+                local weeklyLabel = (L.ns.L and L.ns.L["CURRENCY_LABEL_WEEKLY"]) or "Weekly"
+                local remainingSuffix = (L.ns.L and L.ns.L["VAULT_REMAINING_SUFFIX"]) or "remaining"
+                local cappedText = CAPPED or "Capped"
+                qty = qty or 0
+                maxQty = maxQty or 0
+                local sm = tonumber(seasonMax) or 0
+                local teN = tonumber(totalEarned)
+
+                if L.ns.Utilities and L.ns.Utilities.IsCofferKeyShardCurrency and L.ns.Utilities:IsCofferKeyShardCurrency(currencyID, currencyName) then
+                    local wCap = tonumber(maxQty) or 0
+                    local teForWeek = (teN ~= nil) and teN or 0
+                    table.insert(lines, { text = string.format("%s %s", currentLabel, L.FormatNumber(qty)), color = {1, 1, 1} })
+                    if wCap > 0 then
+                        local remWeek = math.max(wCap - teForWeek, 0)
+                        table.insert(lines, { text = string.format("%s: %s / %s", weeklyLabel, L.FormatNumber(teForWeek), L.FormatNumber(wCap)), color = {1, 1, 1} })
+                        if remWeek > 0 then
+                            table.insert(lines, { text = string.format("%s %s", L.FormatNumber(remWeek), remainingSuffix), color = {0.5, 1, 0.5} })
+                        else
+                            table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
+                        end
+                    end
+                    return lines
+                end
+
+                local hasSeasonProgress = sm > 0
+                if hasSeasonProgress then
+                    local teForSeason = (teN ~= nil) and teN or 0
+                    local remSeason = math.max(sm - teForSeason, 0)
+                    table.insert(lines, { text = string.format("%s %s", currentLabel, L.FormatNumber(qty)), color = {1, 1, 1} })
+                    table.insert(lines, { text = string.format("%s: %s / %s", seasonLabel, L.FormatNumber(teForSeason), L.FormatNumber(sm)), color = {1, 1, 1} })
+                    if remSeason > 0 then
+                        table.insert(lines, { text = string.format("%s %s", L.FormatNumber(remSeason), remainingSuffix), color = {0.5, 1, 0.5} })
+                    else
+                        table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
+                    end
+                    -- Crest sources: when the currency is a Dawncrest, append "Sources" block (Midnight S1 data).
+                    local Constants = L.ns.Constants
+                    local sources = Constants and Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.SOURCES
+                        and Constants.DAWNCREST_UI.SOURCES[currencyID] or nil
+                    if sources and #sources > 0 then
+                        table.insert(lines, { text = " ", color = {1, 1, 1} })
+                        table.insert(lines, {
+                            text = (L.ns.L and L.ns.L["CREST_SOURCES_HEADER"]) or "Sources:",
+                            color = {1, 0.82, 0},
+                        })
+                        for si = 1, #sources do
+                            table.insert(lines, { text = "\194\183 " .. sources[si], color = {0.82, 0.86, 0.95} })
+                        end
+                        if remSeason > 0 then
+                            table.insert(lines, {
+                                text = string.format("%s %s",
+                                    L.FormatNumber(remSeason),
+                                    (L.ns.L and L.ns.L["CREST_TO_CAP_SUFFIX"]) or "to season cap"),
+                                color = {0.55, 0.85, 0.55},
+                            })
+                        end
+                    end
+                    return lines
+                end
+
+                local cap = maxQty
+                if cap and cap > 0 then
+                    local rem = math.max(cap - qty, 0)
+                    table.insert(lines, { text = string.format("%s / %s", L.FormatNumber(qty), L.FormatNumber(cap)), color = {1, 1, 1} })
+                    if rem > 0 then
+                        table.insert(lines, { text = string.format("%s %s", L.FormatNumber(rem), remainingSuffix), color = {0.5, 1, 0.5} })
+                    else
+                        table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
+                    end
+                    return lines
+                end
+
+                table.insert(lines, { text = L.FormatNumber(qty), color = {1, 1, 1} })
+                return lines
+            end
+
+            -- Render inline values (right to left, matching column header positions)
+            local inlineX = -COL_RIGHT_MARGIN
+            local colValuesByKey = {}
+
+            -- |cff888888 parity with FormatHelpers CC_MUTED / Utilities (placeholder & EM dash)
+            local MUTED_RGB = 136 / 255
+            local DIM_COLOR = { MUTED_RGB, MUTED_RGB, MUTED_RGB }
+            local NORMAL_COLOR = {1, 1, 1}
+            local CAP_OPEN_COLOR = {0.5, 1, 0.5}
+            local CAPPED_COLOR = {1, 0.35, 0.35}
+            local EM_DASH = "\226\128\148"
+            local EM_DASH_RICH = "|cff888888" .. EM_DASH .. "|r"
+
+            local function GetCapStateColor(currencyID, currencyName, qty, maxQty, totalEarned, seasonMax)
+                if L.ns.Utilities and L.ns.Utilities.IsCofferKeyShardCurrency and L.ns.Utilities:IsCofferKeyShardCurrency(currencyID, currencyName) then
+                    local cap = tonumber(maxQty) or 0
+                    local teN = tonumber(totalEarned)
+                    if cap > 0 and teN ~= nil then
+                        return (teN >= cap) and CAPPED_COLOR or CAP_OPEN_COLOR
+                    end
+                    return NORMAL_COLOR
+                end
+                local sm = tonumber(seasonMax) or 0
+                if sm > 0 then
+                    local teN = tonumber(totalEarned)
+                    if teN == nil then
+                        return NORMAL_COLOR
+                    end
+                    local rem = math.max(sm - teN, 0)
+                    return (rem > 0) and CAP_OPEN_COLOR or CAPPED_COLOR
+                end
+                if maxQty and maxQty > 0 then
+                    local rem = math.max(maxQty - (qty or 0), 0)
+                    return (rem > 0) and CAP_OPEN_COLOR or CAPPED_COLOR
+                end
+                return NORMAL_COLOR
+            end
+
+            local FormatSeasonLine = L.ns.UI_FormatSeasonProgressCurrencyLine
+            for i = 1, #PVE_DAWNCRESTS do
+                local cd = L.WarbandNexus:GetCurrencyData(PVE_DAWNCRESTS[i].id, charKey)
+                local q = cd and cd.quantity or 0
+                local m = cd and cd.maxQuantity or 0
+                local te = cd and cd.totalEarned
+                local sm = cd and cd.seasonMax
+                local txt = FormatSeasonLine and FormatSeasonLine(cd) or FormatCurrencyStatus(q)
+                local tipTitle = PVE_DAWNCRESTS[i] and PVE_DAWNCRESTS[i].name or ((L.ns.L and L.ns.L["TAB_CURRENCY"]) or "Currency")
+                colValuesByKey["crest_" .. tostring(PVE_DAWNCRESTS[i].id)] = {
+                    text = txt,
+                    richText = FormatSeasonLine ~= nil,
+                    color = (not FormatSeasonLine) and ((txt == EM_DASH) and DIM_COLOR or GetCapStateColor(PVE_DAWNCRESTS[i].id, cd and cd.name, q, m, te, sm)) or nil,
+                    tooltip = BuildCurrencyTooltip(PVE_DAWNCRESTS[i].id, cd and cd.name, q, m, te, sm),
+                    tooltipTitle = tipTitle,
+                    tooltipIcon = cd and cd.icon,
+                    currencyID = PVE_DAWNCRESTS[i].id,
+                    seasonProgressData = cd,  -- enables shift-aware live binding in render loop
+                }
+            end
+
+            local shardTxt = FormatSeasonLine and FormatSeasonLine(shardData) or FormatCurrencyStatus(shardQty)
+            colValuesByKey.coffer_shards = {
+                text = shardTxt,
+                richText = FormatSeasonLine ~= nil,
+                color = (not FormatSeasonLine) and ((shardTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(PVE_SHARDS_ID, shardData and shardData.name, shardQty, shardMax, shardTE, shardSM)) or nil,
+                tooltip = BuildCurrencyTooltip(PVE_SHARDS_ID, shardData and shardData.name, shardQty, shardMax, shardTE, shardSM),
+                tooltipTitle = (L.ns.L and L.ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards",
+                tooltipIcon = shardData and shardData.icon,
+                currencyID = PVE_SHARDS_ID,
+                seasonProgressData = shardData,
+            }
+            colValuesByKey.restored_key = { text = keyQty > 0 and L.FormatNumber(keyQty) or EM_DASH, color = keyQty > 0 and NORMAL_COLOR or DIM_COLOR }
+            local raidTotal = vaultActs.raids and #vaultActs.raids or 3
+            local dungeonTotal = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
+            local worldTotal = vaultActs.world and #vaultActs.world or 3
+            -- Per-slot tooltip helper: shows achieved difficulty per slot (Heroic/Mythic raid, +N keys, Tier N world).
+            -- Activity `level` field: raid = difficulty ID (use GetDifficultyInfo); M+ = key level int; World = tier int.
+            local function FormatSlotDifficultyLabel(activity, category)
+                if not activity then return nil end
+                local lvl = tonumber(activity.level) or 0
+                if lvl <= 0 then return nil end
+                if category == "Raid" then
+                    if GetDifficultyInfo then
+                        local diffName = GetDifficultyInfo(lvl)
+                        if diffName and diffName ~= "" then return diffName end
+                    end
+                    return "Difficulty " .. lvl
+                elseif category == "M+" then
+                    return "+" .. lvl
+                else
+                    return "Tier " .. lvl
+                end
+            end
+
+            local function BuildVaultSlotTooltipLines(activities, category, totalSlots)
+                local lines = {}
+                local catTitle = (category == "Raid") and ((L.ns.L and L.ns.L["PVE_HEADER_RAIDS"]) or "Raids")
+                    or (category == "M+") and ((L.ns.L and L.ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons")
+                    or ((L.ns.L and L.ns.L["VAULT_WORLD"]) or "World")
+                table.insert(lines, { text = catTitle, color = {1, 0.82, 0} })
+                for i = 1, (totalSlots or 3) do
+                    local a = activities and activities[i]
+                    local prog   = a and (tonumber(a.progress) or 0) or 0
+                    local thresh = a and (tonumber(a.threshold) or 0) or 0
+                    local complete = thresh > 0 and prog >= thresh
+                    local diffLabel = complete and FormatSlotDifficultyLabel(a, category) or nil
+                    local rewardIlvl = a and (tonumber(a.rewardItemLevel) or 0) or 0
+                    if complete then
+                        local rhs = diffLabel or ""
+                        if rewardIlvl > 0 then
+                            rhs = (rhs ~= "" and (rhs .. "  ") or "")
+                                .. ((L.ns.L and L.ns.L["ILVL_FORMAT"] and string.format(L.ns.L["ILVL_FORMAT"], rewardIlvl)) or ("iLvl " .. rewardIlvl))
+                        end
+                        table.insert(lines, {
+                            text = L.GetLocalizedText("PVE_VAULT_SLOT_COMPLETE_FORMAT", "Slot %d: |cff80ff80\226\156\147|r %s"):format(i, rhs ~= "" and rhs or L.GetLocalizedText("PVE_VAULT_SLOT_UNLOCKED", "Unlocked")),
+                            color = {0.85, 0.9, 0.95},
+                        })
+                    elseif thresh > 0 then
+                        table.insert(lines, {
+                            text = L.GetLocalizedText("PVE_VAULT_SLOT_PROGRESS_FORMAT", "Slot %d: |cffff8888%d/%d|r"):format(i, prog, thresh),
+                            color = {0.65, 0.65, 0.65},
+                        })
+                    else
+                        table.insert(lines, { text = L.GetLocalizedText("PVE_VAULT_SLOT_EMPTY_FORMAT", "Slot %d: \226\128\148"):format(i), color = { MUTED_RGB, MUTED_RGB, MUTED_RGB } })
+                    end
+                end
+                return lines
+            end
+
+            colValuesByKey.slot1 = {
+                text = FormatVaultTrackSlots(vaultActs.raids, raidTotal, "Raid"),
+                color = {1, 1, 1},
+                tooltip = BuildVaultSlotTooltipLines(vaultActs.raids, "Raid", raidTotal),
+                tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_RAIDS"]) or "Raids",
+            }
+            colValuesByKey.slot2 = {
+                text = FormatVaultTrackSlots(vaultActs.mythicPlus, dungeonTotal, "M+"),
+                color = {1, 1, 1},
+                tooltip = BuildVaultSlotTooltipLines(vaultActs.mythicPlus, "M+", dungeonTotal),
+                tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
+            }
+            colValuesByKey.slot3 = {
+                text = FormatVaultTrackSlots(vaultActs.world, worldTotal, "World"),
+                color = {1, 1, 1},
+                tooltip = BuildVaultSlotTooltipLines(vaultActs.world, "World", worldTotal),
+                tooltipTitle = (L.ns.L and L.ns.L["VAULT_WORLD"]) or "World",
+            }
+            -- Trovehunter's Bounty / bountiful weeklies: per-character snapshot from PvE cache (not live API on every row).
+            local delveChar = (pve.delves and pve.delves.character) or {}
+            local bountifulDone = delveChar.bountifulComplete
+            if bountifulDone == nil and isCurrentChar then
+                bountifulDone = L.WarbandNexus.IsBountifulDelveWeeklyDone and L.WarbandNexus:IsBountifulDelveWeeklyDone() or false
+            end
+            local bountifulTitle = (L.ns.L and L.ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty"
+            local bountifulUnknown = (bountifulDone == nil)
+            local bountifulTip = {
+                {
+                    text = bountifulUnknown and ((L.ns.L and L.ns.L["PVE_BOUNTY_NEED_LOGIN"]) or "No saved status for this character. Log in to refresh.")
+                        or (bountifulDone and ((L.ns.L and L.ns.L["VAULT_COMPLETED_ACTIVITIES"]) or "Completed")
+                            or ((L.ns.L and L.ns.L["ACHIEVEMENT_NOT_COMPLETED"]) or "Not Completed")),
+                    color = {1, 1, 1},
+                },
+            }
+            colValuesByKey.bountiful = {
+                text = bountifulUnknown and EM_DASH or (bountifulDone and L.VAULT_SLOT_CHECK or L.VAULT_SLOT_CROSS),
+                color = bountifulUnknown and DIM_COLOR or {1, 1, 1},
+                tooltip = bountifulTip,
+                tooltipTitle = bountifulTitle,
+                tooltipIcon = L.GetTrovehunterBountyColumnIcon(),
+            }
+            local voidcoreData = L.WarbandNexus:GetCurrencyData(L.PVE_VOIDCORE_ID, charKey)
+            -- Voidcore: cell shows owned amount only (green if under cap, red if capped); cap/progress in tooltip.
+            local vqty = (voidcoreData and tonumber(voidcoreData.quantity)) or 0
+            local vcap = (voidcoreData and (tonumber(voidcoreData.seasonMax) or tonumber(voidcoreData.maxQuantity))) or 0
+            local voidcoreTxt
+            if vcap > 0 then
+                local capped = vqty >= vcap
+                local col = capped and "|cffff5959" or "|cff80ff80"
+                voidcoreTxt = col .. L.FormatNumber(vqty) .. "|r"
+            elseif vqty > 0 then
+                voidcoreTxt = "|cffffffff" .. L.FormatNumber(vqty) .. "|r"
+            else
+                voidcoreTxt = EM_DASH_RICH
+            end
+            colValuesByKey.voidcore = {
+                text = voidcoreTxt,
+                richText = true,
+                tooltip = BuildCurrencyTooltip(L.PVE_VOIDCORE_ID, voidcoreData and voidcoreData.name, vqty, voidcoreData and voidcoreData.maxQuantity or 0, voidcoreData and voidcoreData.totalEarned, voidcoreData and voidcoreData.seasonMax),
+                tooltipTitle = L.GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
+                tooltipIcon = voidcoreData and voidcoreData.icon,
+                currencyID = L.PVE_VOIDCORE_ID,
+                -- seasonProgressData intentionally omitted: voidcore must NOT use shift-aware binder.
+            }
+            -- Vault Status (matches Vault Tracker quick window readout):
+            --   Ready -> "Ready to Claim" (green)
+            --   ReadySlots > 0 -> "<n> Slots Earned" (cyan)
+            --   Pending only -> "Pending..." (gold)
+            --   No progress -> em-dash dimmed
+            do
+                local vs = L.WarbandNexus.GetVaultStatusForChar and L.WarbandNexus:GetVaultStatusForChar(charKey)
+                local statusTxt
+                if not vs then
+                    statusTxt = EM_DASH_RICH
+                elseif vs.isReady then
+                    statusTxt = "|cff44ff44" .. ((L.ns.L and L.ns.L["VAULT_READY_TO_CLAIM"]) or "Ready to Claim") .. "|r"
+                elseif (vs.readySlots or 0) > 0 then
+                    statusTxt = "|cff66ddff" .. L.GetLocalizedText("VAULT_SLOTS_SHORT_FORMAT", "%d Slots"):format(tonumber(vs.readySlots) or 0) .. "|r"
+                else
+                    statusTxt = "|cffffd700" .. ((L.ns.L and L.ns.L["VAULT_PENDING"]) or "Pending\226\128\166") .. "|r"
+                end
+                colValuesByKey.vault_status = {
+                    text = statusTxt,
+                    richText = true,
+                }
+            end
+
+            local manafluxData = L.WarbandNexus:GetCurrencyData(L.PVE_MANAFLUX_ID, charKey)
+            local manafluxQty = (manafluxData and manafluxData.quantity) or 0
+            colValuesByKey.manaflux = {
+                text = manafluxQty > 0 and L.FormatNumber(manafluxQty) or EM_DASH,
+                color = manafluxQty > 0 and NORMAL_COLOR or DIM_COLOR,
+                tooltip = BuildCurrencyTooltip(L.PVE_MANAFLUX_ID, manafluxData and manafluxData.name, manafluxQty, manafluxData and manafluxData.maxQuantity or 0, manafluxData and manafluxData.totalEarned, manafluxData and manafluxData.seasonMax),
+                tooltipTitle = L.GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
+                tooltipIcon = manafluxData and manafluxData.icon,
+                currencyID = L.PVE_MANAFLUX_ID,
+            }
+
+            local UnbindSeason = L.ns.UI_UnbindSeasonProgressAmount
+            for ci = #PVE_COLUMNS, 1, -1 do
+                local col = PVE_COLUMNS[ci]
+                local val = colValuesByKey[col.key]
+                if val then
+                    local cw = col.width
+                    inlineX = inlineX - cw
+                    local cell = L.PvEAcquireInlineCell(charHeader, charKey, col.key)
+                    local colText = cell.fs
+                    colText:SetPoint("RIGHT", charHeader, "RIGHT", inlineX + cw, 0)
+                    colText:SetWidth(cw)
+                    colText:SetJustifyH("CENTER")
+                    colText:SetWordWrap(false)
+                    if val.seasonProgressData and L.ns.UI_BindSeasonProgressAmount then
+                        L.ns.UI_BindSeasonProgressAmount(colText, val.seasonProgressData)
+                        colText:SetTextColor(1, 1, 1)
+                    else
+                        if UnbindSeason then UnbindSeason(colText) end
+                        colText:SetText(val.text)
+                        if not val.richText and val.color then
+                            colText:SetTextColor(val.color[1], val.color[2], val.color[3])
+                        elseif val.richText then
+                            colText:SetTextColor(1, 1, 1)
+                        end
+                    end
+                    if val.tooltip and L.ShowTooltip then
+                        local hit = cell.hit
+                        if not hit then
+                            hit = CreateFrame("Frame", nil, charHeader)
+                            cell.hit = hit
+                            hit:EnableMouse(true)
+                            L.BindForwardScrollWheel(hit)
+                        end
+                        hit:SetParent(charHeader)
+                        hit:SetPoint("RIGHT", charHeader, "RIGHT", inlineX + cw, 0)
+                        hit:SetSize(cw, L.ROW_HEIGHT)
+                        hit:Show()
+                        hit:SetScript("OnEnter", function(self)
+                            if val.currencyID then
+                                L.ShowTooltip(self, {
+                                    type = "currency",
+                                    currencyID = val.currencyID,
+                                    charKey = charKey,
+                                    anchor = "ANCHOR_TOP",
+                                })
+                            else
+                                L.ShowTooltip(self, {
+                                    type = "custom",
+                                    icon = val.tooltipIcon or "Interface\\Icons\\INV_Misc_QuestionMark",
+                                    title = val.tooltipTitle or ((L.ns.L and L.ns.L["TAB_CURRENCY"]) or "Currency"),
+                                    lines = val.tooltip,
+                                    anchor = "ANCHOR_TOP",
+                                })
+                            end
+                        end)
+                        hit:SetScript("OnLeave", function()
+                            if L.HideTooltip then L.HideTooltip() end
+                        end)
+                        hit:SetScript("OnMouseUp", function(_, button)
+                            if button == "LeftButton" and charHeader then
+                                charHeader:Click()
+                            end
+                        end)
+                    elseif cell.hit then
+                        cell.hit:Hide()
+                        cell.hit:SetScript("OnEnter", nil)
+                        cell.hit:SetScript("OnLeave", nil)
+                        cell.hit:SetScript("OnMouseUp", nil)
+                    end
+                    if ci > 1 then
+                        inlineX = inlineX - GapBetweenColumns(ci - 1)
+                    end
+                end
+            end
+        end
+        
+        charHeader:SetAlpha(1)
+
+        -- Parent must be rowHost (section body or scroll child for pinned rows), not the root scroll
+        -- child alone: detail was a sibling of section bodies, so reserved _pveRunningH / layoutTail did not
+        -- match painted geometry and following section headers overlapped expanded rows (Characters tab
+        -- keeps row bodies under AcquireSectionContentFrame / section content).
+        charDetailContent = L.ns.UI.Factory:CreateContainer(rowHost)
+        charDetailContent:SetPoint("TOPLEFT", charHeader, "BOTTOMLEFT", 0, 0)
+        charDetailContent:SetPoint("TOPRIGHT", charHeader, "BOTTOMRIGHT", 0, 0)
+        if charDetailContent.SetClipsChildren then
+            charDetailContent:SetClipsChildren(true)
+        end
+
+        buildPvEDetailIfNeeded = function()
+            L.PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailContent, charExpandKey, charKey, pve, pveData, isCurrentChar)
+        end
+
 
         if charExpanded then
             buildPvEDetailIfNeeded()
             local dh = charDetailContent._wnAccordionFullH or 200
             charDetailContent:SetHeight(dh)
             charDetailContent:Show()
-            totalLayoutHeight = totalLayoutHeight + dh + GetLayout().afterElement
+            totalLHBox.v = totalLHBox.v + dh + interRowGap
         else
             charDetailContent:SetHeight(0.1)
             charDetailContent:Hide()
-            totalLayoutHeight = totalLayoutHeight + 0.1 + PVE_CHAR_SECTION_GAP
+            totalLHBox.v = totalLHBox.v + 0.1 + interRowGap
         end
 
-        prevPvEDetailFrame = charDetailContent
+        local bod = secBodies[sk]
+        if bod then
+            local inc
+            if charExpanded then
+                -- interRowGap: same-section next row only (matches SetPoint gap); not afterElement (that duplicated the anchor gap).
+                inc = PVE_CHAR_ROW_HEADER_H + (charDetailContent._wnAccordionFullH or 200) + interRowGap
+            else
+                inc = PVE_CHAR_ROW_HEADER_H + 0.1 + interRowGap
+            end
+            bod._pveRunningH = (bod._pveRunningH or 0) + inc
+        end
+
+        prevDet = charDetailContent
 
     -- Character sections flow directly one after another (like Characters tab)
     end
 
-    return totalLayoutHeight + 20
+    if #paintOrder > 0 then
+        finalizePveSectionContent(paintOrder[#paintOrder].secKey)
+    end
+
+    return totalLHBox.v + 20
 end
 
 --- Header chest icon: all tracked characters' vault column summaries (Raid / M+ / World), width-aware row cap.
+
+function WarbandNexus:DrawPvEProgress(parent)
+    return PvEUI_DrawPvEProgressBody(self, parent, ns.PvEDrawLibs)
+end
+
 function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
     if not anchorFrame or not ShowTooltip then return end
 

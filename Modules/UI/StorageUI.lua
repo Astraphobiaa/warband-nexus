@@ -241,6 +241,7 @@ function WarbandNexus:DrawStorageTab(parent)
                 {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
                 {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
                 {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+                {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
             }
             if not self.db.profile.storageSort then self.db.profile.storageSort = {} end
             local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.storageSort, function()
@@ -782,10 +783,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         local totalHeight = VLM.SetupVirtualList(mf, rowsContainer, nil, flatList, {
             createRowFn = function(container, it, _idx)
-                local row = AcquireStorageRow(container, it.populateEntry.rowWidth, ROW_HEIGHT)
-                pcall(PopulateStorageRowDirect, row, it.populateEntry.item, it.populateEntry.rowIdx,
-                    it.populateEntry.rowWidth, it.populateEntry.locText)
-                return row
+                return AcquireStorageRow(container, it.populateEntry.rowWidth, ROW_HEIGHT)
             end,
             populateRowFn = function(row, it, _idx)
                 pcall(PopulateStorageRowDirect, row, it.populateEntry.item, it.populateEntry.rowIdx,
@@ -1081,6 +1079,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     local goldA = ns.Utilities:GetCharTotalCopper(a)
                     local goldB = ns.Utilities:GetCharTotalCopper(b)
                     if goldA ~= goldB then return goldA > goldB end
+                    return CompareCharNameLower(a, b)
+                elseif sortMode == "realm" then
+                    local ra = SafeLower(a.realm or "")
+                    local rb = SafeLower(b.realm or "")
+                    if ra ~= rb then return ra < rb end
                     return CompareCharNameLower(a, b)
                 end
                 return (a.level or 0) > (b.level or 0)
