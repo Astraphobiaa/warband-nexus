@@ -358,6 +358,9 @@ local Constants = {
     -- Atlas minimap-genericevent-hornicon-small is unreliable on recent builds; use a classic horn icon texture.
     --==========================================================================
     REMINDER_ALERT_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_Horn_01",
+    -- RGB for reminder horn chrome: card glow, compact To-Do reminder toast (border, icon ring, TopBottom glow).
+    -- Tuned to match minimap-genericevent-hornicon-small / INV_Misc_Horn gold read.
+    REMINDER_HORN_UI_COLOR = { 1, 0.82, 0.22 },
 
     --==========================================================================
     -- RACE ICON ATLAS (raceFile / clientFileString -> middle segment of atlas name)

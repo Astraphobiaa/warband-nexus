@@ -991,28 +991,14 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 -- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
 
-- Custom sections: named roster groups shared across Character, Professions, and PvE tabs; gold-star highlights; Filter - Show section; create/delete sections from the Character tab title bar. Add/remove and the header Plus control stay on the Character tab; Professions and PvE refresh when the roster changes.
-- Reminder system: To-Do reminders for zone entry (manual IDs plus catalog), instance entry, calendar toasts, Set Alert, and related Settings.
-- UI/UX: collapsible header alignment, PvE custom section spacing and layout, advanced filter polish, tab chrome aligned with Character where it helps readability.
-- Bug fixes: PvE custom group section id parsing (pve_grp keys), section row host wiring, duplicate vertical gaps between PvE sections.
-
-Since v3.0.2
-- Collections and To-Do reminder work from the prior build carry forward; this patch tightens roster-edit boundaries and PvE section layout.
+Custom sections stay in sync across Character, Professions, and PvE with roster edits only on Character; reminder horn and toasts use matching gold highlights; PvE custom groups and spacing get fixes.
 
 CurseForge: Warband Nexus]=]
 
 -- What's New / changelog body for ADDON_VERSION 3.0.2 (key CHANGELOG_V302)
 L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
 
-- Reminder system added for To-Do (zone enter with manual IDs + catalog, instance enter, calendar toasts, Set Alert dialog).
-- Collection data normalized (scan/cache pipeline + Recent Obtains cards and related UI polish).
-- Characters & Professions: custom headers — create named sections, move tracked non-favorite characters via the row folder button, filter the list by section from Filter → Show section, delete headers from Filter, shared with Professions roster.
-- Sort by realm (A–Z) on Characters, Professions, PvE roster, and Storage character lists.
-
-Since v3.0.1
-- To-Do: Planned vs Completed fixes; tracker icons and layout; accordion list animation fixes.
-- Collections: Recent sub-tab cards refresh and polish.
-- Settings: bug fixes; default font; container/footer anchors; color/position fixes; Patreon area polish; zhCN settings strings.
+To-Do reminders (zone, instance, calendar, Set Alert), cleaner collection cache and Recent cards, custom roster sections with Filter controls, realm sort on lists; fixes for To-Do states, tracker layout, Recent tab polish, and settings tweaks.
 
 CurseForge: Warband Nexus]=]
 
@@ -1430,6 +1416,8 @@ L["ITEM_RESOLVED"] = "Item resolved: %s (%s)"
 L["ACHIEVEMENT"] = "Achievement"
 L["CRITERIA"] = "Criteria"
 L["CUSTOM_PLAN_COMPLETED"] = "Custom plan '%s' |cff00ff00completed|r"
+L["CUSTOM_PLAN_REPEAT_UNTIL_REMOVED"] = "Repeat until this plan is deleted"
+L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"] = "Until removed"
 L["DESCRIPTION"] = "Description"
 L["PARSE_AMOUNT"] = "Amount"
 L["PARSE_LOCATION"] = "Location"

@@ -21,6 +21,10 @@
     triggers (daily/monthly/weekly/days-before) take precedence; zone/instance are suppressed for the
     same plan for a short window after any calendar reminder activates.
 
+    Daily login uses Blizzard daily reset (HasDailyResetOccurredSince), not calendar date().
+    Weekly reset already uses HasWeeklyResetOccurredSince; a C_Timer reschedules the same calendar checks
+    at the next daily or weekly reset boundary so long sessions still see reminders without relogging.
+
     Global settings in db.global.reminderSettings (throttleLocationReminders: opt-in throttle for zone/instance)
 
     Calendar toasts (daily / monthly / weekly / days-before) from one OnLoginRemindersCheck pass: if more than
@@ -33,6 +37,18 @@ local E = ns.Constants.EVENTS
 local issecretvalue = issecretvalue
 
 local ReminderEvents = {}
+
+local function ReminderToastThemeFields()
+    local c = ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR
+    local r, g, b = 1, 0.82, 0.22
+    if type(c) == "table" and tonumber(c[1]) and tonumber(c[2]) and tonumber(c[3]) then
+        r, g, b = tonumber(c[1]), tonumber(c[2]), tonumber(c[3])
+    end
+    return {
+        titleColor = { r, g, b },
+        progressGlow = true,
+    }
+end
 
 -- ============================================================================
 -- CONSTANTS
@@ -590,6 +606,9 @@ local function SendPlanReminderToast(plan, triggerLabel, fromLocation)
         playSound = true,
         autoDismiss = 3,
     }
+    local theme = ReminderToastThemeFields()
+    toastData.titleColor = theme.titleColor
+    toastData.progressGlow = theme.progressGlow
     if not fromLocation then
         local safeMsg = triggerLabel
         if safeMsg and issecretvalue and issecretvalue(safeMsg) then
@@ -640,6 +659,9 @@ local function FlushCalendarToastBatch()
         autoDismiss = 4,
         action = body,
     }
+    local theme = ReminderToastThemeFields()
+    toastData.titleColor = theme.titleColor
+    toastData.progressGlow = theme.progressGlow
     WarbandNexus:SendMessage(E.SHOW_REMINDER_TOAST, { data = toastData })
 end
 
@@ -777,6 +799,11 @@ local function CheckDailyLoginReminders()
     local L = ns.L
     local triggerLabel = (L and L["REMINDER_DAILY_LOGIN"]) or "Daily Login"
 
+    -- Prefer Blizzard daily reset boundary (C_DateAndTime) so "daily" matches the game day, not local midnight.
+    local useBlizzardDaily = WarbandNexus.HasDailyResetOccurredSince
+        and C_DateAndTime
+        and C_DateAndTime.GetSecondsUntilDailyReset
+
     local today = date("%Y%m%d")
     local triggerKey = "daily_" .. today
 
@@ -787,8 +814,23 @@ local function CheckDailyLoginReminders()
             if plan and plan.reminder and plan.reminder.enabled and plan.reminder.onDailyLogin then
                 CleanStaleReminderKeys(plan)
                 if not plan.completed then
-                    if CanShowReminder(plan, triggerKey) then
-                        MarkReminderShown(plan, triggerKey)
+                    local shouldFire = false
+                    if useBlizzardDaily then
+                        local lastAt = tonumber(plan.reminder.lastDailyLoginReminderAt) or 0
+                        if WarbandNexus:HasDailyResetOccurredSince(lastAt) then
+                            shouldFire = true
+                        end
+                    else
+                        if CanShowReminder(plan, triggerKey) then
+                            shouldFire = true
+                        end
+                    end
+                    if shouldFire then
+                        if useBlizzardDaily then
+                            plan.reminder.lastDailyLoginReminderAt = time()
+                        else
+                            MarkReminderShown(plan, triggerKey)
+                        end
                         ActivateReminder(plan, triggerLabel)
                     end
                 end
@@ -1212,6 +1254,57 @@ end
 -- ============================================================================
 
 local zoneChangeTimer = nil
+local calendarResetReminderTimer = nil
+
+--- Seconds until the earlier of the next daily or weekly Blizzard reset (+ small skew), or nil if APIs missing.
+local function NextCalendarReminderDelay()
+    local d = C_DateAndTime and C_DateAndTime.GetSecondsUntilDailyReset and C_DateAndTime.GetSecondsUntilDailyReset()
+    local w = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and C_DateAndTime.GetSecondsUntilWeeklyReset()
+    local best = nil
+    if type(d) == "number" and d >= 0 then
+        local adj = (d < 1) and 2 or (d + 2)
+        best = adj
+    end
+    if type(w) == "number" and w >= 0 then
+        local adj = (w < 1) and 2 or (w + 2)
+        if not best or adj < best then
+            best = adj
+        end
+    end
+    if not best then
+        return nil
+    end
+    if best < 2 then
+        best = 2
+    end
+    if best > 604800 then
+        best = 604800
+    end
+    return best
+end
+
+local function CancelCalendarResetReminderTimer()
+    if calendarResetReminderTimer then
+        calendarResetReminderTimer:Cancel()
+        calendarResetReminderTimer = nil
+    end
+end
+
+local function ScheduleCalendarResetReminderTimer()
+    CancelCalendarResetReminderTimer()
+    if not (C_DateAndTime and (C_DateAndTime.GetSecondsUntilDailyReset or C_DateAndTime.GetSecondsUntilWeeklyReset)) then
+        return
+    end
+    local delay = NextCalendarReminderDelay()
+    if not delay then
+        return
+    end
+    calendarResetReminderTimer = C_Timer.NewTimer(delay, function()
+        calendarResetReminderTimer = nil
+        OnLoginRemindersCheck()
+        ScheduleCalendarResetReminderTimer()
+    end)
+end
 
 local function RunZoneOrInstanceChangedNow()
     local mapID = SafeGetRawPlayerUIMapID()
@@ -1249,6 +1342,8 @@ end
 function WarbandNexus:InitializeReminderService()
     if not self.db or not self.db.global then return end
 
+    CancelCalendarResetReminderTimer()
+
     self.db.global.reminderSettings = self.db.global.reminderSettings or {
         enabled = true,
         throttleSeconds = 300,
@@ -1280,6 +1375,8 @@ function WarbandNexus:InitializeReminderService()
     C_Timer.After(5, function()
         RunZoneOrInstanceChangedNow()
     end)
+
+    ScheduleCalendarResetReminderTimer()
 end
 
 

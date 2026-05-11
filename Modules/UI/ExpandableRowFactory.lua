@@ -389,7 +389,8 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     local ICON_LEFT = 6 + (UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE or 22) + 4
     local iconFrame
     if data.icon then
-        iconFrame = CreateIcon(headerFrame, data.icon, ICON_SIZE, data.iconIsAtlas == true, nil, true)
+        -- Show the same pixel border as Plan cards (CreateIcon noBorder=false) so To-Do rows match grid cards.
+        iconFrame = CreateIcon(headerFrame, data.icon, ICON_SIZE, data.iconIsAtlas == true, nil, false)
         iconFrame:SetPoint("LEFT", ICON_LEFT, 0)
         iconFrame:Show()  -- CRITICAL: Show the row icon!
         row.iconFrame = iconFrame

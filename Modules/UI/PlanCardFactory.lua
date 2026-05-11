@@ -23,6 +23,7 @@ local format = string.format
 
 local REMINDER_ALERT_TEX = (ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TEXTURE) or "Interface\\Icons\\INV_Misc_Horn_01"
 local REMINDER_ALERT_ATLAS = "minimap-genericevent-hornicon-small"
+local REMINDER_HORN_UI_COLOR = (ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR) or { 1, 0.82, 0.22 }
 
 local function ApplyReminderCardButtonIcon(tex)
     if not tex then return end
@@ -95,7 +96,7 @@ local function CreatePlanReminderAlertButton(card, plan)
         end)
         if okGlow then
             glowTex:SetBlendMode("ADD")
-            glowTex:SetVertexColor(0.52, 0.58, 0.88, 0.55)
+            glowTex:SetVertexColor(REMINDER_HORN_UI_COLOR[1], REMINDER_HORN_UI_COLOR[2], REMINDER_HORN_UI_COLOR[3], 0.55)
             glowTex:Show()
             alertBtn._alertFlashTex = glowTex
         else
@@ -2166,7 +2167,13 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                     card.resetTimer = resetTimer
                     
                     -- Cycle progress below timer
-                    if plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
+                    if plan.resetCycle.infiniteRepeat then
+                        local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
+                        cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
+                        cycleText:SetText(format("|cffaaaaaa%s|r", (ns.L and ns.L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"]) or "Until removed"))
+                        cycleText:SetJustifyH("RIGHT")
+                        card.cycleText = cycleText
+                    elseif plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
                         local remaining = plan.resetCycle.remainingCycles or 0
                         local total = plan.resetCycle.totalCycles
                         local elapsed = total - remaining
@@ -2191,7 +2198,13 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                     card.resetTimer = resetTimer
                     
                     -- Cycle progress below timer
-                    if plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
+                    if plan.resetCycle.infiniteRepeat then
+                        local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
+                        cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
+                        cycleText:SetText(format("|cffaaaaaa%s|r", (ns.L and ns.L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"]) or "Until removed"))
+                        cycleText:SetJustifyH("RIGHT")
+                        card.cycleText = cycleText
+                    elseif plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
                         local remaining = plan.resetCycle.remainingCycles or 0
                         local total = plan.resetCycle.totalCycles
                         local elapsed = total - remaining

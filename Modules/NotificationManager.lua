@@ -540,6 +540,7 @@ function WarbandNexus:TestNotificationStack()
     end)
     C_Timer.After(0.24, function()
         if not self.ShowModalNotification then return end
+        local hornRGB = (ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR) or { 1, 0.82, 0.22 }
         self:ShowModalNotification({
             compact = true,
             planReminderToast = true,
@@ -548,6 +549,8 @@ function WarbandNexus:TestNotificationStack()
             icon = "minimap-genericevent-hornicon-small",
             playSound = false,
             autoDismiss = 4,
+            titleColor = { hornRGB[1], hornRGB[2], hornRGB[3] },
+            progressGlow = true,
         })
     end)
 end

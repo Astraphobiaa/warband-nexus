@@ -455,13 +455,7 @@ L["BANK_NOT_OPEN_MSG"] = "La banque n'est pas ouverte"
 -- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
 
-- Sections perso : groupes partages Personnages, Metiers et PvE ; etoile doree ; filtre par section ; gestion depuis la barre de titre de l'onglet Personnages. Ajout/retrait et bouton Plus uniquement la - les autres onglets se mettent a jour.
-- Rappels : To-Do entree de zone (ID + catalogue), instance, toasts calendrier, Alerte et reglages.
-- UI/UX : alignement des en-tetes repliables, espacement PvE et sections perso, filtre avance, chrome aligne avec Personnages.
-- Corrections : analyse des IDs de groupe PvE (pve_grp), hote de ligne / corps de section, doubles ecarts verticaux entre sections PvE.
-
-Depuis v3.0.2
-- Collections et rappels To-Do du build precedent restent ; ce patch cadre l'UX roster et les sections PvE.
+Sections perso alignees Personnages, Metiers et JcE, edition sur l'onglet Personnages ; rappel corne et toasts en or assorti ; groupes JcE et espacement corriges.
 
 CurseForge: Warband Nexus]=]
 
@@ -470,15 +464,7 @@ L["CHANGELOG_CUSTOM_SECTIONS_V1"] = "Sections perso : plusieurs en-tetes surlign
 -- What's New / changelog body for ADDON_VERSION 3.0.2 (key CHANGELOG_V302)
 L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
 
-- Système de rappels pour les tâches : entrée de zone (ID manuels + catalogue), entrée d'instance, toasts du calendrier, dialogue « Définir l'alerte ».
-- Données des collections normalisées (chaîne scan/cache + cartes « Récemment obtenu » et finitions d'interface).
-- Characters & Professions: custom headers — create named sections, move tracked non-favorite characters via the row folder button, filter the list from Filter → Show section, delete headers from Filter; Professions uses the same layout.
-- Sort by realm (A–Z) on Characters, Professions, PvE roster, and Storage character lists.
-
-Depuis v3.0.1
-- Tâches : corrections Planifié / Terminé ; icônes et mise en page du suivi ; correctifs d'animation des listes en accordéon.
-- Collections : onglet Récent — actualisation et peaufinage.
-- Paramètres : correctifs ; police par défaut ; ancres conteneur/pied de page ; correctifs couleur/position ; zone Patreon ; chaînes des paramètres zhCN.
+Rappels To-Do (zone, instance, calendrier, alerte), cache collections et cartes Recentes plus propres, sections perso avec filtre, tri par royaume sur les listes; correctifs etats To-Do, disposition du suivi, onglet Recent et reglages.
 
 CurseForge: Warband Nexus]=]
 
@@ -1112,6 +1098,8 @@ L["CONFIG_RECIPE_COMPANION_DESC"] = "Afficher la fenêtre Compagnon de recettes 
 L["CRITERIA"] = "Critères"
 L["CURRENTLY_UNTRACKED"] = "Actuellement non suivis"
 L["CUSTOM_PLAN_COMPLETED"] = "Plan personnalisé « %s » |cff00ff00terminé|r"
+L["CUSTOM_PLAN_REPEAT_UNTIL_REMOVED"] = "Répéter jusqu'à la suppression de ce plan"
+L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"] = "Jusqu'à suppression"
 L["DESCRIPTION"] = "Description"
 L["FISHING"] = "Pêche"
 L["ITEM_RESOLVED"] = "Objet identifié : %s (%s)"

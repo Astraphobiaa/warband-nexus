@@ -648,13 +648,7 @@ L["WELCOME_OPEN_INTERFACE"] = "per aprire l'interfaccia."
 -- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
 
-- Sezioni personalizzate: gruppi condivisi tra Personaggi, Professioni e PvE; stella dorata; filtro per sezione; gestione dalla barra del titolo della scheda Personaggi. Aggiunta/rimozione e pulsante Piu solo li - le altre schede aggiornano i dati.
-- Promemoria: To-Do ingresso zona (ID + catalogo), istanza, toast calendario, Imposta avviso e impostazioni.
-- UI/UX: allineamento intestazioni comprimibili, spaziatura PvE e sezioni perso, filtro avanzato, cromatura allineata ai Personaggi.
-- Correzioni: parsing ID gruppo PvE (pve_grp), host riga / corpo sezione, doppi spazi verticali tra sezioni PvE.
-
-Da v3.0.2
-- Collezioni e promemoria To-Do del build precedente restano; questa patch delimita UX roster e sezioni PvE.
+Sezioni personalizzate allineate tra Personaggi, Professioni e PvE con modifiche solo su Personaggi; corno e toast in oro coerente; gruppi PvE e spaziature sistemati.
 
 CurseForge: Warband Nexus]=]
 
@@ -663,15 +657,7 @@ L["CHANGELOG_CUSTOM_SECTIONS_V1"] = "Sezioni personalizzate: piu intestazioni ev
 -- What's New / changelog body for ADDON_VERSION 3.0.2 (key CHANGELOG_V302)
 L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
 
-- Sistema di promemoria per le attività: ingresso zona (ID manuali + catalogo), ingresso istanza, notifiche calendario, finestra «Imposta avviso».
-- Dati collezioni normalizzati (pipeline scansione/cache + schede «Ottenuti di recente» e rifiniture interfaccia).
-- Characters & Professions: custom headers — create named sections, move tracked non-favorite characters via the row folder button, filter the list from Filter → Show section, delete headers from Filter; Professions uses the same layout.
-- Sort by realm (A–Z) on Characters, Professions, PvE roster, and Storage character lists.
-
-Da v3.0.1
-- Attività: correzioni Pianificato vs Completato; icone e layout tracker; correzioni animazioni liste a fisarmonica.
-- Collezioni: scheda Recenti — aggiornamento e rifiniture.
-- Impostazioni: correzioni bug; font predefinito; ancoraggi contenitore/piè di pagina; correzioni colore/posizione; area Patreon; stringhe impostazioni zhCN.
+Promemoria To-Do (zona, istanza, calendario, avviso), cache collezioni e schede Recenti piu pulite, sezioni personalizzate con filtro, ordinamento reame sulle liste; fix stati To-Do, layout tracker, scheda Recenti e regolazioni.
 
 CurseForge: Warband Nexus]=]
 
@@ -1052,6 +1038,8 @@ L["CONFIG_RECIPE_COMPANION_DESC"] = "Mostra la finestra Compagno ricette accanto
 L["CRITERIA"] = "Criteri"
 L["CURRENTLY_UNTRACKED"] = "Attualmente non tracciati"
 L["CUSTOM_PLAN_COMPLETED"] = "Piano personalizzato '%s' |cff00ff00completato|r"
+L["CUSTOM_PLAN_REPEAT_UNTIL_REMOVED"] = "Ripeti fino all'eliminazione del piano"
+L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"] = "Fino a rimozione"
 L["DESCRIPTION"] = "Descrizione"
 L["FISHING"] = "Pesca"
 L["ITEM_RESOLVED"] = "Oggetto risolto: %s (%s)"

@@ -3421,7 +3421,7 @@ function WarbandNexus:ShowCustomPlanDialog()
         icon = "Bonus-Objective-Star",  -- Use atlas for custom plans
         iconIsAtlas = true,
         width = 450,
-        height = 480,  -- Height for title + description + reset cycle + duration
+        height = 500,  -- Title + description + reset cycle + duration + infinite option
         onClose = function()
             -- Re-enable Add Custom button
             if WarbandNexus.addCustomBtn then
@@ -3608,6 +3608,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Reset cycle toggle state
     local selectedResetType = "none"
     local selectedCycleCount = 7  -- Default cycle count
+    local selectedInfiniteRepeat = false
     
     -- Toggle button factory
     local function CreateResetToggle(parent, label, value, xOffset)
@@ -3641,18 +3642,18 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Duration row (hidden by default, shown when Daily/Weekly selected)
     local durationRow = CreateFrame("Frame", nil, contentFrame)
-    durationRow:SetSize(420, 30)
+    durationRow:SetSize(420, 54)
     durationRow:SetPoint("TOPLEFT", 12, -275)
     durationRow:Hide()
     
     local durationLabel = FontManager:CreateFontString(durationRow, "body", "OVERLAY")
-    durationLabel:SetPoint("LEFT", 0, 0)
+    durationLabel:SetPoint("TOPLEFT", 0, -2)
     durationLabel:SetTextColor(0.7, 0.7, 0.7)
     
     -- Minus button
     local minusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
     minusBtn:SetSize(28, 28)
-    minusBtn:SetPoint("LEFT", 160, 0)
+    minusBtn:SetPoint("TOPLEFT", 160, -2)
     minusBtn:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
         edgeFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -3668,7 +3669,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Count display
     local countDisplay = FontManager:CreateFontString(durationRow, "title", "OVERLAY")
-    countDisplay:SetPoint("LEFT", minusBtn, "RIGHT", 12, 0)
+    countDisplay:SetPoint("TOPLEFT", minusBtn, "TOPRIGHT", 12, 0)
     countDisplay:SetTextColor(1, 1, 1)
     countDisplay:SetWidth(30)
     countDisplay:SetJustifyH("CENTER")
@@ -3676,7 +3677,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Plus button
     local plusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
     plusBtn:SetSize(28, 28)
-    plusBtn:SetPoint("LEFT", countDisplay, "RIGHT", 12, 0)
+    plusBtn:SetPoint("TOPLEFT", countDisplay, "TOPRIGHT", 12, 0)
     plusBtn:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
         edgeFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -3698,8 +3699,25 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Unit label after count
     local unitLabel = FontManager:CreateFontString(durationRow, "body", "OVERLAY")
-    unitLabel:SetPoint("LEFT", plusBtn, "RIGHT", 10, 0)
+    unitLabel:SetPoint("TOPLEFT", plusBtn, "TOPRIGHT", 10, 0)
     unitLabel:SetTextColor(0.7, 0.7, 0.7)
+
+    local foreverCb = CreateThemedCheckbox(durationRow, false)
+    if foreverCb then
+        foreverCb:SetPoint("TOPLEFT", durationRow, "TOPLEFT", 0, -34)
+    end
+    local foreverLabel = FontManager:CreateFontString(durationRow, "body", "OVERLAY")
+    if foreverCb then
+        foreverLabel:SetPoint("LEFT", foreverCb, "RIGHT", 8, 0)
+    else
+        foreverLabel:SetPoint("TOPLEFT", durationRow, "TOPLEFT", 0, -34)
+    end
+    foreverLabel:SetPoint("TOPRIGHT", durationRow, "TOPRIGHT", 0, -34)
+    foreverLabel:SetJustifyH("LEFT")
+    foreverLabel:SetTextColor(0.75, 0.75, 0.75)
+    foreverLabel:SetWordWrap(true)
+    foreverLabel:SetMaxLines(2)
+    foreverLabel:SetText((ns.L and ns.L["CUSTOM_PLAN_REPEAT_UNTIL_REMOVED"]) or "Repeat until this plan is deleted")
     
     local function UpdateUnitLabel()
         if selectedResetType == "daily" then
@@ -3734,6 +3752,39 @@ function WarbandNexus:ShowCustomPlanDialog()
     plusBtn:SetScript("OnLeave", function(self)
         self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
     end)
+
+    local function UpdateInfiniteDurationUI()
+        if foreverCb then
+            foreverCb:SetChecked(selectedInfiniteRepeat)
+            if foreverCb.innerDot then
+                foreverCb.innerDot:SetShown(selectedInfiniteRepeat)
+            end
+        end
+        if selectedInfiniteRepeat then
+            minusBtn:Disable()
+            plusBtn:Disable()
+            countDisplay:SetWidth(56)
+            countDisplay:SetText("--")
+            unitLabel:SetText("")
+        else
+            minusBtn:Enable()
+            plusBtn:Enable()
+            countDisplay:SetWidth(30)
+            UpdateDurationDisplay()
+            UpdateUnitLabel()
+        end
+    end
+
+    if foreverCb then
+        foreverCb:SetScript("OnClick", function(self)
+            local checked = self:GetChecked()
+            if self.innerDot then
+                self.innerDot:SetShown(checked)
+            end
+            selectedInfiniteRepeat = (checked == true or checked == 1)
+            UpdateInfiniteDurationUI()
+        end)
+    end
     
     -- Update button visuals based on selection
     local function UpdateResetButtons()
@@ -3752,6 +3803,7 @@ function WarbandNexus:ShowCustomPlanDialog()
         
         -- Show/hide duration row based on selection
         if selectedResetType == "none" then
+            selectedInfiniteRepeat = false
             durationRow:Hide()
         else
             -- Set default cycle counts based on type
@@ -3762,6 +3814,7 @@ function WarbandNexus:ShowCustomPlanDialog()
             end
             UpdateDurationDisplay()
             UpdateUnitLabel()
+            UpdateInfiniteDurationUI()
             durationRow:Show()
         end
     end
@@ -3806,7 +3859,8 @@ function WarbandNexus:ShowCustomPlanDialog()
         
         if title and title ~= "" then
             local cycleCount = (selectedResetType ~= "none") and selectedCycleCount or nil
-            WarbandNexus:SaveCustomPlan(title, description, selectedResetType, cycleCount)
+            local infiniteRepeat = (selectedResetType ~= "none") and selectedInfiniteRepeat or false
+            WarbandNexus:SaveCustomPlan(title, description, selectedResetType, cycleCount, infiniteRepeat)
             dialog.Close()
         end
     end)
@@ -3825,9 +3879,15 @@ end
 -- CUSTOM PLAN STORAGE
 -- ============================================================================
 
-function WarbandNexus:SaveCustomPlan(title, description, resetType, cycleCount)
+function WarbandNexus:SaveCustomPlan(title, description, resetType, cycleCount, infiniteRepeat)
     if not self.db.global.customPlans then
         self.db.global.customPlans = {}
+    end
+
+    local wantInfinite = infiniteRepeat and resetType and resetType ~= "none"
+    local finiteCount = (not wantInfinite and cycleCount) or nil
+    if not wantInfinite and (not finiteCount or finiteCount < 1) then
+        finiteCount = 1
     end
     
     local customPlan = {
@@ -3843,8 +3903,9 @@ function WarbandNexus:SaveCustomPlan(title, description, resetType, cycleCount)
             enabled = true,
             resetType = resetType,
             lastResetTime = time(),
-            totalCycles = cycleCount or 1,
-            remainingCycles = cycleCount or 1,
+            infiniteRepeat = wantInfinite or false,
+            totalCycles = wantInfinite and nil or finiteCount,
+            remainingCycles = wantInfinite and nil or finiteCount,
         } or nil,
     }
     

@@ -1535,23 +1535,32 @@ function WarbandNexus:CheckRecurringPlanResets()
             end
 
             if shouldReset then
-                -- Decrement remaining cycles
-                if rc.remainingCycles and rc.remainingCycles > 0 then
-                    rc.remainingCycles = rc.remainingCycles - 1
-                end
-
-                -- Check if all cycles are exhausted
-                if rc.remainingCycles and rc.remainingCycles <= 0 then
-                    -- Final cycle completed — disable reset, keep plan completed
-                    rc.enabled = false
-                    changed = true
-                else
-                    -- More cycles remain — reset for next cycle
+                if rc.infiniteRepeat then
+                    -- Repeat until the user deletes the plan: reopen next cycle, never exhaust.
                     plan.completed = false
-                    plan.completionNotified = false  -- Reset notification flag for next cycle
+                    plan.completionNotified = false
                     rc.lastResetTime = now
                     rc.completedAt = nil
                     changed = true
+                else
+                    -- Decrement remaining cycles
+                    if rc.remainingCycles and rc.remainingCycles > 0 then
+                        rc.remainingCycles = rc.remainingCycles - 1
+                    end
+
+                    -- Check if all cycles are exhausted
+                    if rc.remainingCycles and rc.remainingCycles <= 0 then
+                        -- Final cycle completed — disable reset, keep plan completed
+                        rc.enabled = false
+                        changed = true
+                    else
+                        -- More cycles remain — reset for next cycle
+                        plan.completed = false
+                        plan.completionNotified = false  -- Reset notification flag for next cycle
+                        rc.lastResetTime = now
+                        rc.completedAt = nil
+                        changed = true
+                    end
                 end
             end
         end

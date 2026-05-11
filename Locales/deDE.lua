@@ -753,13 +753,7 @@ L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 -- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
 
-- Benutzerdefinierte Abschnitte: geteilte Gruppen auf Charaktere, Berufe und PvE; Gold-Stern; Filter nach Abschnitt; Verwaltung in der Titelleiste des Charakter-Reiters. Hinzufugen/Entfernen und Plus am Header nur dort - andere Reiter aktualisieren die Liste nur.
-- Erinnerungen: To-Do fur Zoneneintritt (IDs + Katalog), Instanz, Kalender-Toasts, Set Alert und Einstellungen.
-- UI/UX: Ausrichtung einklappbarer Kopfzeilen, PvE-Abstande und benutzerdefinierte Abschnitte, Filter-Feinschliff, einheitliches Chrome mit Charakteren.
-- Fehlerbehebungen: Parsen von PvE-Gruppen-IDs (pve_grp), Zeilen-Host/Section-Body, doppelte vertikale Lucken zwischen PvE-Abschnitten.
-
-Seit v3.0.2
-- Sammlungen- und To-Do-Erinnerungen aus dem vorherigen Build bleiben; dieser Patch grenzt Roster-UX und PvE-Abschnitte ein.
+Benutzerdefinierte Abschnitte laufen auf Charakter-, Berufs- und PvE-Reiter synchron, Bearbeitung nur auf dem Charakter-Reiter; Korno und Toasts in passendem Goldton; PvE-Gruppen und Abstaende bereinigt.
 
 CurseForge: Warband Nexus]=]
 
@@ -768,15 +762,7 @@ L["CHANGELOG_CUSTOM_SECTIONS_V1"] = "Benutzerdefinierte Abschnitte: mehrere gold
 -- What's New / changelog body for ADDON_VERSION 3.0.2 (key CHANGELOG_V302)
 L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
 
-- Erinnerungssystem für Aufgaben: Zonenbetreten mit manuellen IDs + Katalog, Instanzbetreten, Kalender-Toasts, Dialog „Alarm setzen“.
-- Sammlungsdaten normalisiert (Scan-/Cache-Pipeline + Karten „Kürzlich erhalten“ und zugehörige UI).
-- Characters & Professions: custom headers — create named sections, move tracked non-favorite characters via the row folder button, filter the list from Filter → Show section, delete headers from Filter; Professions uses the same layout.
-- Sort by realm (A–Z) on Characters, Professions, PvE roster, and Storage character lists.
-
-Seit v3.0.1
-- Aufgaben: Korrekturen Geplant vs. Abgeschlossen; Tracker-Symbole und Layout; Akkordeon-Animationskorrekturen.
-- Sammlungen: Unterregister „Kürzlich“ — Auffrischung und Feinschliff.
-- Einstellungen: Fehlerbehebungen; Standardschrift; Anker für Container/Fußzeile; Farb-/Positionskorrekturen; Patreon-Bereich; zhCN-Einstellungstexte.
+To-Do-Erinnerungen (Zone, Instanz, Kalender, Alarm), aufgeraeumter Sammlungs-Cache und Karten "Neu", benutzerdefinierte Abschnitte mit Filter, Realm-Sortierung in Listen; Korrekturen an To-Do-Status, Tracker-Layout, Register "Neu" und Einstellungen.
 
 CurseForge: Warband Nexus]=]
 
@@ -944,6 +930,8 @@ L["ITEM_RESOLVED"] = "Gegenstand aufgelöst: %s (%s)"
 L["ACHIEVEMENT"] = "Erfolg"
 L["CRITERIA"] = "Kriterien"
 L["CUSTOM_PLAN_COMPLETED"] = "Benutzerplan '%s' |cff00ff00abgeschlossen|r"
+L["CUSTOM_PLAN_REPEAT_UNTIL_REMOVED"] = "Wiederholen, bis dieser Plan gelöscht wird"
+L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"] = "Bis zur Löschung"
 L["DESCRIPTION"] = "Beschreibung"
 L["PARSE_AMOUNT"] = "Menge"
 L["PARSE_LOCATION"] = "Standort"

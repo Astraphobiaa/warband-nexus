@@ -640,13 +640,7 @@ L["WELCOME_OPEN_INTERFACE"] = "para abrir la interfaz."
 -- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
 
-- Secciones personalizadas: grupos compartidos en Personajes, Profesiones y JcE; estrella dorada; filtro por seccion; gestion desde la barra del pestana Personajes. Alta/baja y boton Mas solo ahi - las demas pestanas refrescan datos.
-- Recordatorios: To-Do al entrar en zona (IDs + catalogo), instancia, avisos de calendario, Establecer alerta y ajustes.
-- UI/UX: alineacion de cabeceras plegables, espaciado JcE y secciones perso, filtro avanzado, cromado alineado con Personajes.
-- Correcciones: analisis de IDs de grupo JcE (pve_grp), anfitrion de fila / cuerpo de seccion, huecos verticales duplicados entre secciones JcE.
-
-Desde v3.0.2
-- Colecciones y recordatorios To-Do del build anterior siguen; este parche acota la UX del roster y las secciones JcE.
+Secciones personalizadas sincronizadas en Personajes, Profesiones y JcE con ediciones solo en Personajes; corneta y avisos en tono oro; grupos JcE y espaciado corregidos.
 
 CurseForge: Warband Nexus]=]
 
@@ -655,15 +649,7 @@ L["CHANGELOG_CUSTOM_SECTIONS_V1"] = "Secciones personalizadas: varios encabezado
 -- What's New / changelog body for ADDON_VERSION 3.0.2 (key CHANGELOG_V302)
 L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
 
-- Sistema de recordatorios para tareas: entrar a la zona (IDs manuales + catálogo), entrar a la mazmorra o banda, avisos del calendario, diálogo «Establecer alerta».
-- Datos de colecciones normalizados (flujo de escaneo/caché + tarjetas «Obtenido recientemente» y pulido de la interfaz).
-- Characters & Professions: custom headers — create named sections, move tracked non-favorite characters via the row folder button, filter the list from Filter → Show section, delete headers from Filter; Professions uses the same layout.
-- Sort by realm (A–Z) on Characters, Professions, PvE roster, and Storage character lists.
-
-Desde v3.0.1
-- Tareas: correcciones Planificado vs Completado; iconos y diseño del rastreador; arreglos de animación de listas acordeón.
-- Colecciones: pestaña Reciente — actualización y pulido.
-- Configuración: correcciones de errores; fuente predeterminada; anclajes de contenedor/pie; correcciones de color/posición; zona Patreon; cadenas de configuración zhCN.
+Recordatorios To-Do (zona, mazmorra, calendario, alerta), cache de colecciones y tarjetas Recientes mas ordenadas, secciones personalizadas con filtro, orden por reino en listas; arreglos de estados To-Do, layout del rastreador, pestana Reciente y ajustes.
 
 CurseForge: Warband Nexus]=]
 
@@ -1044,6 +1030,8 @@ L["CONFIG_RECIPE_COMPANION_DESC"] = "Mostrar la ventana Receta Companion junto a
 L["CRITERIA"] = "Criterios"
 L["CURRENTLY_UNTRACKED"] = "Actualmente no rastreados"
 L["CUSTOM_PLAN_COMPLETED"] = "Plan personal '%s' |cff00ff00completado|r"
+L["CUSTOM_PLAN_REPEAT_UNTIL_REMOVED"] = "Repetir hasta eliminar este plan"
+L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"] = "Hasta eliminarlo"
 L["DESCRIPTION"] = "Descripción"
 L["FISHING"] = "Pesca"
 L["ITEM_RESOLVED"] = "Objeto resuelto: %s (%s)"
