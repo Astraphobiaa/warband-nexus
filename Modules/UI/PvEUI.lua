@@ -73,9 +73,8 @@ local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().sideMargin or 10
 local TOP_MARGIN = GetLayout().topMargin or 8
 
--- PvE inline grid: min width for horizontal scroll + columnHeaderInner (see ProfessionsUI / UI.lua)
-local PVE_ROW_LEFT_CLUSTER_W = 12 + 20 + 4 + 28 + 6 -- expand + gap + favorite + gap to name
-local PVE_ROW_MIDDLE_MAX_W = 20 + 56 + 20 + 72     -- bullets + level + ilvl (tighter, less left dead-space)
+-- PvE inline grid: min width for horizontal scroll + columnHeaderInner (see ProfessionsUI / UI.lua).
+-- Left prefix through iLvl matches Characters row chrome (see PvE_ComputeCharacterRowPrefixToGoldPx).
 local PVE_CHAR_HEADER_H_MARGIN = 20                -- char row inset 10 + 10
 local PVE_COLUMN_HEADER_PAD = 2
 local PVE_COL_SPACING = 6                        -- uniform baseline spacing for symmetric header rhythm
@@ -931,7 +930,8 @@ function ns.ComputePvEMinScrollWidth(self)
         tempMeasure:SetParent(nil)
     end
     local nameWidth = math.max(200, math.ceil(maxNameRealmWidth) + 8)
-    if not profile then return PVE_CHAR_HEADER_H_MARGIN + PVE_ROW_LEFT_CLUSTER_W + nameWidth + PVE_ROW_MIDDLE_MAX_W + PVE_COL_RIGHT_MARGIN end
+    local prefixW = (ns.PvE_ComputeCharacterRowPrefixToGoldPx and ns.PvE_ComputeCharacterRowPrefixToGoldPx(nameWidth)) or 400
+    if not profile then return PVE_CHAR_HEADER_H_MARGIN + prefixW + PVE_COL_RIGHT_MARGIN end
     local columnSeq = BuildPvEColumnKeySequence(profile)
     local visibleKeySet = {}
     for i = 1, #columnSeq do
@@ -962,7 +962,7 @@ function ns.ComputePvEMinScrollWidth(self)
         inlineTotal = inlineTotal + PvE_GetGapAfterColumnKey(columnSeq[i], visibleKeySet)
     end
     inlineTotal = inlineTotal + PVE_COL_RIGHT_MARGIN
-    return PVE_CHAR_HEADER_H_MARGIN + PVE_ROW_LEFT_CLUSTER_W + nameWidth + PVE_ROW_MIDDLE_MAX_W + inlineTotal
+    return PVE_CHAR_HEADER_H_MARGIN + prefixW + inlineTotal
 end
 
 -- Performance: Local function references
@@ -2563,6 +2563,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             -- Affixes (Right Column)
             local col2X = col1X + topColumnWidth + columnSpacing
             local col2Y = col1Y
+            local summaryAffixBottom = col2Y + 82
             
             local affixesTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             affixesTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col2X + topColumnWidth / 2, -col2Y)
@@ -2628,6 +2629,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                         end
                     end
                 end
+                summaryAffixBottom = math.max(summaryAffixBottom, aStartY + affixSize + 22)
             else
                 local noAffixesText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -30)
@@ -2714,6 +2716,9 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 end
             end
             
+            local crestBottomY = rowTopY + rowIconSize + 28
+            local summaryNeededH = math.max(200, crestBottomY + cardPadding, summaryAffixBottom + cardPadding)
+            summaryCard:SetHeight(summaryNeededH)
             summaryCard:Show()
             
             -- === CARD 3: GREAT VAULT (30%) ===
@@ -2821,14 +2826,17 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
         
         vaultCard:Show()
 
-            -- Single shared bottom edge: vault drives painted height, but M+/summary cards still default to baseCardHeight.
+            -- Single row height: all three cards share the same bottom edge (vault/M+ often tallest).
             local vaultPaintedH = cardHeight or baseCardHeight
-            local unifiedH = math.max(mplusCard:GetHeight(), summaryCard:GetHeight(), vaultPaintedH)
-            mplusCard:SetHeight(unifiedH)
-            summaryCard:SetHeight(unifiedH)
-            vaultCard:SetHeight(unifiedH)
-            cardContainer:SetHeight(unifiedH)
-            charDetailContent._wnAccordionFullH = unifiedH
+            local mH = mplusCard:GetHeight() or baseCardHeight
+            local sH = summaryCard:GetHeight() or baseCardHeight
+            local vH = vaultCard:GetHeight() or vaultPaintedH
+            local unifiedRowH = math.max(160, mH, sH, vH)
+            mplusCard:SetHeight(unifiedRowH)
+            summaryCard:SetHeight(unifiedRowH)
+            vaultCard:SetHeight(unifiedRowH)
+            cardContainer:SetHeight(unifiedRowH)
+            charDetailContent._wnAccordionFullH = unifiedRowH
 end
 
 --- Group id from secKey "pve_grp:<id>". Prefix is 8 chars ("pve_grp:"); using sub(10) strips the first id character and breaks lookups.
@@ -2880,15 +2888,8 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
                 profile.ui[sectionUiKey] = exp
             end
         end,
-        onUpdate = function(drawH)
-            if not sectionContent then return end
-            if not sectionContent._pveSecAnimScrollInit then
-                sectionContent._pveSecAnimScrollInit = true
-                sectionContent._pveSecScrollH0 = scrollParent:GetHeight()
-                sectionContent._pveSecDetailH0 = drawH
-            end
-            local delta = drawH - sectionContent._pveSecDetailH0
-            scrollParent:SetHeight(math.max(1, sectionContent._pveSecScrollH0 + delta))
+        -- Do not resize scrollParent from section accordion tweens (same class of bug as per-character rows).
+        onUpdate = function()
             if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
                 local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
                 local cur = scrollFrameRef:GetVerticalScroll() or 0
@@ -2896,11 +2897,6 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
             end
         end,
         onComplete = function()
-            if sectionContent then
-                sectionContent._pveSecAnimScrollInit = nil
-                sectionContent._pveSecScrollH0 = nil
-                sectionContent._pveSecDetailH0 = nil
-            end
             if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
                 local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
                 local cur = scrollFrameRef:GetVerticalScroll() or 0
@@ -2956,8 +2952,8 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     end
     header:SetHeight(SECTION_COLLAPSE_HEADER_HEIGHT)
     if layoutTailFrame then
-        header:SetPoint("TOPLEFT", layoutTailFrame, "BOTTOMLEFT", SIDE_MARGIN0, -8)
-        header:SetPoint("TOPRIGHT", layoutTailFrame, "BOTTOMRIGHT", -SIDE_MARGIN0, -8)
+        header:SetPoint("TOPLEFT", layoutTailFrame, "BOTTOMLEFT", SIDE_MARGIN0, -4)
+        header:SetPoint("TOPRIGHT", layoutTailFrame, "BOTTOMRIGHT", -SIDE_MARGIN0, -4)
     else
         header:SetPoint("TOPLEFT", scrollParent, "TOPLEFT", SIDE_MARGIN0, -yTop)
         header:SetPoint("TOPRIGHT", scrollParent, "TOPRIGHT", -SIDE_MARGIN0, -yTop)
@@ -2979,6 +2975,7 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
             headerText = grpHeaderText,
             includeAddButton = false,
             refreshTab = "pve",
+            allowSectionHighlightToggle = false,
         })
     else
         local FormatNumberFn = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
@@ -3054,9 +3051,9 @@ if not ns.PvEDrawLibs then
         SUBROW_EXTRA_INDENT = SUBROW_EXTRA_INDENT,
         SIDE_MARGIN = SIDE_MARGIN,
         TOP_MARGIN = TOP_MARGIN,
-        PVE_ROW_LEFT_CLUSTER_W = PVE_ROW_LEFT_CLUSTER_W,
-        PVE_ROW_MIDDLE_MAX_W = PVE_ROW_MIDDLE_MAX_W,
         PVE_CHAR_HEADER_H_MARGIN = PVE_CHAR_HEADER_H_MARGIN,
+        PvE_ComputeCharacterRowPrefixToGoldPx = ns.PvE_ComputeCharacterRowPrefixToGoldPx,
+        PvEUI_ApplyCharacterListRowChrome = ns.PvEUI_ApplyCharacterListRowChrome,
         PVE_COLUMN_HEADER_PAD = PVE_COLUMN_HEADER_PAD,
         PVE_COL_SPACING = PVE_COL_SPACING,
         PVE_KEY_TO_VAULT_GAP = PVE_KEY_TO_VAULT_GAP,
@@ -3105,6 +3102,7 @@ if not ns.PvEDrawLibs then
 end
 
 local function PvEUI_DrawPvEProgressBody(self, parent, L)
+    parent._pvePaintedCoreH = nil
     local width = parent:GetWidth() - 20
     -- Weekly Vault Tracker mode removed from PvE tab; standalone Easy Access window covers this.
     local vaultTrackerMode = false
@@ -3862,7 +3860,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         inlineTotal = inlineTotal + GapBetweenColumns(gi)
     end
     inlineTotal = inlineTotal + COL_RIGHT_MARGIN
-    local minScrollW = L.PVE_CHAR_HEADER_H_MARGIN + L.PVE_ROW_LEFT_CLUSTER_W + nameWidth + L.PVE_ROW_MIDDLE_MAX_W + inlineTotal
+    local prefixW = (L.PvE_ComputeCharacterRowPrefixToGoldPx and L.PvE_ComputeCharacterRowPrefixToGoldPx(nameWidth)) or 400
+    local minScrollW = L.PVE_CHAR_HEADER_H_MARGIN + prefixW + inlineTotal
     parent:SetWidth(math.max(viewportW, minScrollW))
 
     -- Frozen column header strip (scrolls horizontally with data — same pattern as ProfessionsUI)
@@ -4004,9 +4003,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     yOffset = yOffset + colHeaderOverlayH
 
     local totalLHBox = { v = yOffset }
-    local PVE_CHAR_SECTION_GAP = L.GetLayout().afterElement or 8
-    -- Match CreateCollapsibleHeader / Characters tab row chrome — not headerSpacing (44), which over-reserves height.
-    local PVE_CHAR_ROW_HEADER_H = L.GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or L.GetLayout().headerSpacing or 36
+    -- Same vertical rhythm as Characters virtual rows: `betweenRows` (often 0) after each 46px row.
+    local PVE_CHAR_ROW_GAP = L.GetLayout().betweenRows or 0
+    local PVE_CHAR_ROW_HEADER_H = 46
     local scrollFrameRef = parent:GetParent()
 
     local sectionFilter = "all"
@@ -4140,6 +4139,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             body:Hide()
             body:SetHeight(0.1)
         end
+        body._pvePaintedSectionH = math.max(0.1, h)
         layoutTailForShell = body
     end
 
@@ -4150,7 +4150,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         local ent = paintOrder[i]
         local sk = ent.secKey
         local nextEnt = paintOrder[i + 1]
-        local interRowGap = (nextEnt and nextEnt.secKey == sk) and PVE_CHAR_SECTION_GAP or 0
+        local interRowGap = (nextEnt and nextEnt.secKey == sk) and PVE_CHAR_ROW_GAP or 0
         if i > 1 then
             local prevEnt = paintOrder[i - 1]
             if (sk or "") ~= (prevEnt.secKey or "") then
@@ -4259,9 +4259,67 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         local charDetailContent
         local buildPvEDetailIfNeeded
 
+        local accVisual = L.BuildAccordionVisualOpts({
+                bodyGetter = function() return charDetailContent end,
+                -- Runs before SharedWidgets reads _wnAccordionFullH for AnimateAccordion target (expand path).
+                persistFn = function(exp)
+                    L.expandedStates[charExpandKey] = exp
+                    if exp and charDetailContent and buildPvEDetailIfNeeded then
+                        buildPvEDetailIfNeeded()
+                    end
+                end,
+                -- Do not drive `scrollParent:SetHeight` from tweens (that inflated the whole tab).
+                -- Do live-adjust section body + scroll child while this row's detail height tweens so
+                -- siblings reflow and the scroll range matches content (PopulateContent only runs on full refresh).
+                onUpdate = function(drawH)
+                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+                        local cur = scrollFrameRef:GetVerticalScroll() or 0
+                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+                    end
+                    local dh = tonumber(drawH) or 0.1
+                    local baseD = charDetailContent and charDetailContent._pvePaintedDetailH
+                    local baseS = rowHost and rowHost._pvePaintedSectionH
+                    local sc = scrollFrameRef and scrollFrameRef.GetScrollChild and scrollFrameRef:GetScrollChild()
+                    if charDetailContent and rowHost and baseD and baseS and sc and sc._pvePaintedCoreH then
+                        local secH = baseS + dh - baseD
+                        rowHost._wnAccordionFullH = secH
+                        rowHost:SetHeight(math.max(0.1, secH))
+                        local pad = 8
+                        local viewportH = (scrollFrameRef.GetHeight and scrollFrameRef:GetHeight()) or 0
+                        local contentBottom = sc._pvePaintedCoreH + dh - baseD + pad
+                        sc:SetHeight(math.max(viewportH, contentBottom))
+                    end
+                end,
+                onComplete = function()
+                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+                        local cur = scrollFrameRef:GetVerticalScroll() or 0
+                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+                    end
+                    if charDetailContent then
+                        charDetailContent._pvePaintedDetailH = math.max(0.1, charDetailContent:GetHeight() or 0.1)
+                    end
+                    if rowHost then
+                        rowHost._pvePaintedSectionH = math.max(0.1, rowHost:GetHeight() or rowHost._wnAccordionFullH or 0.1)
+                    end
+                    local sc = scrollFrameRef and scrollFrameRef.GetScrollChild and scrollFrameRef:GetScrollChild()
+                    if sc and scrollFrameRef and scrollFrameRef.GetHeight then
+                        local pad = 8
+                        local viewportH = scrollFrameRef:GetHeight() or 0
+                        sc._pvePaintedCoreH = math.max(1, (sc:GetHeight() or 1) - pad)
+                    end
+                end,
+            }) or {}
+        accVisual.suppressSectionChrome = true
+        accVisual.sectionHeaderHeight = 46
+        -- Expand: run onToggle after height tween so row height is not snapped to full before AnimateAccordion
+        -- resets to startH (avoids sibling rows jumping one frame then easing).
+        accVisual.deferOnToggleUntilComplete = true
+
         local charHeader, expandIconTex = L.CreateCollapsibleHeader(
             rowHost,
-            "", -- Empty text, we'll add it manually
+            "",
             charExpandKey,
             charExpanded,
             function(isExpanded)
@@ -4276,150 +4334,32 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 end
             end,
             nil, nil, nil, true,
-            L.BuildAccordionVisualOpts({
-                bodyGetter = function() return charDetailContent end,
-                -- Runs before SharedWidgets reads _wnAccordionFullH for AnimateAccordion target (expand path).
-                persistFn = function(exp)
-                    L.expandedStates[charExpandKey] = exp
-                    if exp and charDetailContent and buildPvEDetailIfNeeded then
-                        buildPvEDetailIfNeeded()
-                    end
-                end,
-                onUpdate = function(drawH)
-                    if not charDetailContent then return end
-                    if not charDetailContent._pveAnimScrollInit then
-                        charDetailContent._pveAnimScrollInit = true
-                        charDetailContent._pveScrollH0 = parent:GetHeight()
-                        charDetailContent._pveDetailH0 = drawH
-                    end
-                    local delta = drawH - charDetailContent._pveDetailH0
-                    parent:SetHeight(math.max(1, charDetailContent._pveScrollH0 + delta))
-                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
-                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
-                        local cur = scrollFrameRef:GetVerticalScroll() or 0
-                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
-                    end
-                end,
-                onComplete = function()
-                    if charDetailContent then
-                        charDetailContent._pveAnimScrollInit = nil
-                        charDetailContent._pveScrollH0 = nil
-                        charDetailContent._pveDetailH0 = nil
-                    end
-                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
-                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
-                        local cur = scrollFrameRef:GetVerticalScroll() or 0
-                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
-                    end
-                end,
-            })
+            accVisual
         )
         if prevDet == nil then
-            charHeader:SetPoint("TOPLEFT", rowHost, "TOPLEFT", 10, -4)
-            charHeader:SetPoint("TOPRIGHT", rowHost, "TOPRIGHT", -10, -4)
+            charHeader:SetPoint("TOPLEFT", rowHost, "TOPLEFT", 10, 0)
+            charHeader:SetPoint("TOPRIGHT", rowHost, "TOPRIGHT", -10, 0)
         else
-            charHeader:SetPoint("TOPLEFT", prevDet, "BOTTOMLEFT", 0, -PVE_CHAR_SECTION_GAP)
-            charHeader:SetPoint("TOPRIGHT", prevDet, "BOTTOMRIGHT", 0, -PVE_CHAR_SECTION_GAP)
+            charHeader:SetPoint("TOPLEFT", prevDet, "BOTTOMLEFT", 0, -interRowGap)
+            charHeader:SetPoint("TOPRIGHT", prevDet, "BOTTOMRIGHT", 0, -interRowGap)
         end
         if charHeader.SetClippingChildren then
             charHeader:SetClippingChildren(true)
         end
-        -- Online character: tint header backdrop with theme accent
-        if isCurrentChar and charHeader.SetBackdropColor then
-            local ac = L.ns.UI_COLORS and L.ns.UI_COLORS.accent or {0.40, 0.20, 0.58}
-            charHeader:SetBackdropColor(ac[1] * 0.22, ac[2] * 0.22, ac[3] * 0.22, 1)
-            -- Left accent bar
-            if not charHeader.onlineAccent then
-                charHeader.onlineAccent = charHeader:CreateTexture(nil, "BORDER")
-                charHeader.onlineAccent:SetWidth(3)
-                charHeader.onlineAccent:SetPoint("TOPLEFT", charHeader, "TOPLEFT", 0, 0)
-                charHeader.onlineAccent:SetPoint("BOTTOMLEFT", charHeader, "BOTTOMLEFT", 0, 0)
-            end
-            charHeader.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], 1)
-            charHeader.onlineAccent:Show()
+
+        if L.PvEUI_ApplyCharacterListRowChrome then
+            L.PvEUI_ApplyCharacterListRowChrome(self, charHeader, char, {
+                rowIndex = i,
+                charKey = charKey,
+                isFavorite = isFavorite,
+                isCurrentChar = isCurrentChar,
+                expandIconFrame = expandIconTex,
+                nameWidth = nameWidth,
+            })
         end
 
         totalLHBox.v = totalLHBox.v + PVE_CHAR_ROW_HEADER_H
 
-        -- Favorite icon (view-only, left side, next to collapse button)
-        -- Match Characters/Professions tabs: 33px column, 65% visual icon (~21px)
-        local StyleFavoriteIcon = L.ns.UI_StyleFavoriteIcon
-        local favColSize = 28
-        local favIconSize = favColSize * 0.65
-        
-        local favFrame = CreateFrame("Frame", nil, charHeader)
-        favFrame:SetSize(favColSize, favColSize)
-        favFrame:SetPoint("LEFT", expandIconTex, "RIGHT", 4, 0)
-        
-        local favIcon = favFrame:CreateTexture(nil, "ARTWORK")
-        favIcon:SetSize(favIconSize, favIconSize)
-        favIcon:SetPoint("CENTER", 0, 0)
-        StyleFavoriteIcon(favIcon, isFavorite)
-        favFrame:Show()
-
-        -- Character name text
-        local xOffset = 0
-        local spacerWidth = 20    -- tighter spacing to reduce left-side dead space
-        local levelWidth = 56     -- "Lv XX"
-        local ilvlWidth = 72      -- "iLvl XXX"
-        
-        -- Column 1: Character Name - Realm (single line, fixed width, left aligned)
-        local charNameText = L.FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-        charNameText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
-        charNameText:SetWidth(nameWidth)
-        charNameText:SetJustifyH("LEFT")
-        local displayRealm = L.ns.Utilities and L.ns.Utilities:FormatRealmName(char.realm) or char.realm or ""
-        local dispName = char.name or "Unknown"
-        if L.issecretvalue and L.issecretvalue(dispName) then
-            dispName = "Unknown"
-        end
-        if displayRealm ~= "" and L.issecretvalue and L.issecretvalue(displayRealm) then
-            displayRealm = ""
-        end
-        charNameText:SetText(string.format("|cff%02x%02x%02x%s  -  %s|r",
-            classColor.r * 255, classColor.g * 255, classColor.b * 255,
-            dispName,
-            displayRealm))
-        xOffset = xOffset + nameWidth
-        
-        -- Column 2: Bullet separator (centered in spacer)
-        local bullet1 = L.FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-        bullet1:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
-        bullet1:SetWidth(spacerWidth)
-        bullet1:SetJustifyH("CENTER")
-        bullet1:SetText("|cff666666•|r")
-        xOffset = xOffset + spacerWidth
-        
-        -- Column 3: Level (fixed width, CENTER aligned for visual balance)
-        local levelText = L.FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-        levelText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
-        levelText:SetWidth(levelWidth)
-        levelText:SetJustifyH("CENTER")  -- CENTER for equal spacing on both sides
-        local levelFormat = (L.ns.L and L.ns.L["LV_FORMAT"]) or "Lv %d"
-        local levelString = string.format("|cff%02x%02x%02x" .. levelFormat .. "|r", 
-            classColor.r * 255, classColor.g * 255, classColor.b * 255, 
-            char.level or 1)
-        levelText:SetText(levelString)
-        xOffset = xOffset + levelWidth
-        
-        -- Column 4: Bullet separator (only if iLvl exists, centered in spacer)
-        if char.itemLevel and char.itemLevel > 0 then
-            local bullet2 = L.FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-            bullet2:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
-            bullet2:SetWidth(spacerWidth)
-            bullet2:SetJustifyH("CENTER")
-            bullet2:SetText("|cff666666•|r")
-            xOffset = xOffset + spacerWidth
-            
-            -- Column 5: iLvl (fixed width, left aligned)
-            local ilvlText = L.FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-            ilvlText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
-            ilvlText:SetWidth(ilvlWidth)
-            ilvlText:SetJustifyH("LEFT")
-            local ilvlFormat = (L.ns.L and L.ns.L["ILVL_FORMAT"]) or "iLvl %d"
-            ilvlText:SetText(string.format("|cffffd700" .. ilvlFormat .. "|r", char.itemLevel))
-        end
-        
         -- ===== INLINE COLUMN DATA (right-aligned, matching column headers) =====
         do
             local shardData = (PVE_SHARDS_ID and L.WarbandNexus:GetCurrencyData(PVE_SHARDS_ID, charKey)) or nil
@@ -4773,9 +4713,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     inlineX = inlineX - cw
                     local cell = L.PvEAcquireInlineCell(charHeader, charKey, col.key)
                     local colText = cell.fs
-                    colText:SetPoint("RIGHT", charHeader, "RIGHT", inlineX + cw, 0)
+                    colText:SetPoint("CENTER", charHeader, "RIGHT", inlineX + cw * 0.5, 0)
                     colText:SetWidth(cw)
                     colText:SetJustifyH("CENTER")
+                    if colText.SetJustifyV then colText:SetJustifyV("MIDDLE") end
                     colText:SetWordWrap(false)
                     if val.seasonProgressData and L.ns.UI_BindSeasonProgressAmount then
                         L.ns.UI_BindSeasonProgressAmount(colText, val.seasonProgressData)
@@ -4798,8 +4739,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                             L.BindForwardScrollWheel(hit)
                         end
                         hit:SetParent(charHeader)
-                        hit:SetPoint("RIGHT", charHeader, "RIGHT", inlineX + cw, 0)
-                        hit:SetSize(cw, L.ROW_HEIGHT)
+                        hit:SetPoint("CENTER", charHeader, "RIGHT", inlineX + cw * 0.5, 0)
+                        hit:SetSize(cw, math.max(L.ROW_HEIGHT or 26, charHeader:GetHeight() or 46))
                         hit:Show()
                         hit:SetScript("OnEnter", function(self)
                             if val.currencyID then
@@ -4863,10 +4804,12 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             local dh = charDetailContent._wnAccordionFullH or 200
             charDetailContent:SetHeight(dh)
             charDetailContent:Show()
+            charDetailContent._pvePaintedDetailH = dh
             totalLHBox.v = totalLHBox.v + dh + interRowGap
         else
             charDetailContent:SetHeight(0.1)
             charDetailContent:Hide()
+            charDetailContent._pvePaintedDetailH = 0.1
             totalLHBox.v = totalLHBox.v + 0.1 + interRowGap
         end
 
@@ -4880,6 +4823,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 inc = PVE_CHAR_ROW_HEADER_H + 0.1 + interRowGap
             end
             bod._pveRunningH = (bod._pveRunningH or 0) + inc
+            bod._pvePaintedSectionH = bod._pveRunningH
         end
 
         prevDet = charDetailContent
@@ -4891,7 +4835,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         finalizePveSectionContent(paintOrder[#paintOrder].secKey)
     end
 
-    return totalLHBox.v + 20
+    local coreH = totalLHBox.v + 12
+    parent._pvePaintedCoreH = coreH
+    return coreH
 end
 
 --- Header chest icon: all tracked characters' vault column summaries (Raid / M+ / World), width-aware row cap.

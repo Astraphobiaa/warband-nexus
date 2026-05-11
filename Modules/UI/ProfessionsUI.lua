@@ -1694,6 +1694,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 headerText = headerText,
                 includeAddButton = false,
                 refreshTab = "professions",
+                allowSectionHighlightToggle = false,
             })
         elseif profSectionCount then
             -- Non-custom sections (Favorites / Characters / Untracked): simple right-anchored count

@@ -2030,7 +2030,10 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     -- Create new header (no pooling for headers - they're infrequent and context-specific)
     -- Use max(1,...) so layout never gets 0/negative width when parent not yet laid out
     local parentW = (parent and parent:GetWidth()) or 0
-    local sectionH = (UI_LAYOUT and UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
+    local sectionH = (visualOpts and type(visualOpts.sectionHeaderHeight) == "number" and visualOpts.sectionHeaderHeight)
+        or (UI_LAYOUT and UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT)
+        or 36
+    local suppressSectionChrome = visualOpts and visualOpts.suppressSectionChrome == true
     local header = CreateFrame("Button", nil, parent)
     header:SetSize(math.max(1, parentW - 20 - indent), sectionH)
 
@@ -2045,13 +2048,17 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         br, bg, bb = 0.8, 0.25, 0.25
         sr, sg, sb = 0.8, 0.25, 0.25
     end
-    ApplyVisuals(header, {0.06, 0.06, 0.08, 0.95}, {br, bg, bb, ba})
+    if not suppressSectionChrome then
+        ApplyVisuals(header, {0.06, 0.06, 0.08, 0.95}, {br, bg, bb, ba})
 
-    local stripe = header:CreateTexture(nil, "ARTWORK", nil, 2)
-    stripe:SetSize(3, sectionH - 8)
-    stripe:SetPoint("LEFT", 4, 0)
-    stripe:SetColorTexture(sr, sg, sb, sa)
-    header._wnSectionStripe = stripe
+        local stripe = header:CreateTexture(nil, "ARTWORK", nil, 2)
+        stripe:SetSize(3, sectionH - 8)
+        stripe:SetPoint("LEFT", 4, 0)
+        stripe:SetColorTexture(sr, sg, sb, sa)
+        header._wnSectionStripe = stripe
+    else
+        header._wnSectionStripe = nil
+    end
     
     -- Expand/collapse: shared Button + single texture (parent header handles click)
     local iconTint = COLORS.accent
@@ -2109,6 +2116,10 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         headerText:SetTextColor(0.7, 0.7, 0.7)
     else
         headerText:SetTextColor(1, 1, 1)
+    end
+    if suppressSectionChrome then
+        headerText:SetText("")
+        headerText:Hide()
     end
     
     -- Click handler. If the caller supplied an animatedContent frame (or getter), drive the
@@ -4283,6 +4294,7 @@ end
 ---   addButtonRoster  : table   character list passed to picker (when includeAddButton)
 ---   refreshTab       : string  optional tab payload for WN_UI_MAIN_REFRESH_REQUESTED on toggle
 ---   addBtnSize       : number  optional override for + button size (default 16)
+---   allowSectionHighlightToggle : boolean (default true). When false, no gold-star control (PvE/Professions: highlight only on Character tab).
 function ns.UI_DecorateCustomHeader(headerFrame, opts)
     if not headerFrame or type(opts) ~= "table" then return end
     local groupId = opts.groupId
@@ -4359,11 +4371,19 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
         addBtn:Hide()
     end
 
-    -- Gold-star highlight toggle (left of title, after section icon).
+    local allowSectionHighlightToggle = opts.allowSectionHighlightToggle ~= false
+
+    -- Gold-star highlight toggle (left of title, after section icon). Character tab only when allowSectionHighlightToggle.
     local isHighlighted = CharacterService and CharacterService.IsProfileCustomSectionHighlighted
         and CharacterService:IsProfileCustomSectionHighlighted(profile, groupId)
     local goldStar = headerFrame._wnCustomHeaderGoldStarBtn
-    if not goldStar and ns.UI_CreateFavoriteButton then
+    if not allowSectionHighlightToggle then
+        if goldStar then
+            goldStar:Hide()
+            goldStar:SetScript("OnClick", nil)
+            goldStar:EnableMouse(false)
+        end
+    elseif not goldStar and ns.UI_CreateFavoriteButton then
         goldStar = ns.UI_CreateFavoriteButton(
             headerFrame,
             groupId,
@@ -4397,7 +4417,8 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             goldStar:SetFrameLevel((headerFrame:GetFrameLevel() or 2) + 4)
         end
     end
-    if goldStar then
+    if allowSectionHighlightToggle and goldStar then
+        goldStar:EnableMouse(true)
         goldStar.charKey = groupId
         goldStar.isFavorite = isHighlighted and true or false
         if goldStar.icon and ns.UI_StyleFavoriteIcon then
@@ -4430,7 +4451,7 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
         countFs:SetPoint("RIGHT", headerFrame, "RIGHT", -14, 0)
     end
 
-    if goldStar then
+    if allowSectionHighlightToggle and goldStar then
         goldStar:ClearAllPoints()
         local expandIcon = opts.expandIcon
         local iconFrame = opts.iconFrame
@@ -4461,7 +4482,15 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
         end
     elseif opts.headerText and countFs then
         local ht = opts.headerText
-        if opts.expandIcon then
+        -- Match CreateCollapsibleHeader: [chevron] +8 + [atlas icon] +12 + title (do not anchor title to chevron only).
+        if opts.expandIcon and opts.iconFrame then
+            opts.iconFrame:ClearAllPoints()
+            opts.iconFrame:SetPoint("LEFT", opts.expandIcon, "RIGHT", 8, 0)
+            ht:ClearAllPoints()
+            ht:SetPoint("LEFT", opts.iconFrame, "RIGHT", 12, 0)
+            ht:SetPoint("RIGHT", countFs, "LEFT", -10, 0)
+            ht:SetJustifyH("LEFT")
+        elseif opts.expandIcon then
             ht:ClearAllPoints()
             ht:SetPoint("LEFT", opts.expandIcon, "RIGHT", 12, 0)
             ht:SetPoint("RIGHT", countFs, "LEFT", -10, 0)
