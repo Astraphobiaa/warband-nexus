@@ -91,7 +91,7 @@ local function CreateExternalWindow(config)
     
     -- Apply border and background
     if ApplyVisuals then
-        ApplyVisuals(dialog, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        ApplyVisuals(dialog, COLORS.bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
     
     dialog:EnableMouse(true)
@@ -105,7 +105,7 @@ local function CreateExternalWindow(config)
     
     -- Apply header border
     if ApplyVisuals then
-        ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
+        ApplyVisuals(header, COLORS.bgCard, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
     end
     
     -- Make header draggable (scale-correct)
@@ -190,6 +190,11 @@ local function CreateExternalWindow(config)
     local contentFrame = CreateFrame("Frame", nil, dialog)
     contentFrame:SetPoint("TOPLEFT", 8, -53) -- Below header
     contentFrame:SetPoint("BOTTOMRIGHT", -8, 8)
+    -- Match shell body: content was transparent, so gaps under widgets read as gray seams.
+    local contentFill = contentFrame:CreateTexture(nil, "BACKGROUND")
+    contentFill:SetDrawLayer("BACKGROUND", -8)
+    contentFill:SetAllPoints()
+    contentFill:SetColorTexture(COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], COLORS.bg[4] or 0.98)
     
     -- Click-outside overlay (released in CloseDialog to avoid frame buildup)
     local clickOutsideFrame = CreateFrame("Frame", nil, UIParent)

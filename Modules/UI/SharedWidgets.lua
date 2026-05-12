@@ -210,17 +210,19 @@ function ns.ResolveAccentColor(fallbackAccent)
 end
 
 -- Master COLORS table (created once, updated in-place — zero allocation on refresh)
+-- Panel surfaces: keep bg / bgCard / list rows on one family so scroll canvas, cards, and
+-- rows do not read as mismatched "black vs charcoal" (Plans, Currency, etc.).
 local COLORS = {
-    bg = {0.06, 0.06, 0.08, 0.98},
-    bgLight = {0.10, 0.10, 0.12, 1},
-    bgCard = {0.08, 0.08, 0.10, 1},
+    bg = {0.04, 0.04, 0.05, 0.98},
+    bgLight = {0.052, 0.052, 0.064, 0.98},
+    bgCard = {0.04, 0.04, 0.05, 0.98},
     border = {0.20, 0.20, 0.25, 1},
     borderLight = {0.30, 0.30, 0.38, 1},
     accent = {0.40, 0.20, 0.58, 1},
     accentDark = {0.28, 0.14, 0.41, 1},
     tabActive = {0.20, 0.12, 0.30, 1},
     tabHover = {0.24, 0.14, 0.35, 1},
-    tabInactive = {0.08, 0.08, 0.10, 1},
+    tabInactive = {0.05, 0.05, 0.065, 1},
     gold = {1.00, 0.82, 0.00, 1},
     green = {0.30, 0.90, 0.30, 1},
     red = {0.95, 0.30, 0.30, 1},
@@ -332,9 +334,9 @@ local UI_SPACING = {
     --- Max width for "Bag N" / "Tab N" / localized bank strings; name column ends at `LEFT` of this.
     LIST_ROW_LOCATION_MAX_WIDTH = 120,
     
-    -- Row colors (alternating backgrounds)
-    ROW_COLOR_EVEN = {0.08, 0.08, 0.10, 1},  -- Even rows (slightly lighter)
-    ROW_COLOR_ODD = {0.06, 0.06, 0.08, 1},   -- Odd rows (slightly darker)
+    -- Row colors (match main canvas; borders/separators carry structure)
+    ROW_COLOR_EVEN = {0.04, 0.04, 0.05, 0.98},
+    ROW_COLOR_ODD = {0.04, 0.04, 0.05, 0.98},
     
     -- Backward compatibility aliases (camelCase)
     afterHeader = 75,
@@ -2555,7 +2557,7 @@ local function CreateStandardTabTitleCard(headerParent, opts)
     local textW = opts.textContainerWidth or 200
     local titleCard = CreateCard(headerParent, cardH)
     if not opts.skipApplyVisuals and ApplyVisuals and COLORS and COLORS.accent then
-        ApplyVisuals(titleCard, { 0.05, 0.05, 0.07, 0.95 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+        ApplyVisuals(titleCard, COLORS.bg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
     end
     local atlas = opts.atlasName
     if (not atlas or atlas == "") and opts.tabKey and ns.UI_GetTabIcon then
@@ -5339,7 +5341,7 @@ local function CreateExternalWindow(config)
     
     -- Apply border and background
     if ApplyVisuals then
-        ApplyVisuals(dialog, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        ApplyVisuals(dialog, COLORS.bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
     
     dialog:EnableMouse(true)
@@ -5353,7 +5355,7 @@ local function CreateExternalWindow(config)
     
     -- Apply header border
     if ApplyVisuals then
-        ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
+        ApplyVisuals(header, COLORS.bgCard, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
     end
     
     -- Make header draggable (combat-safe)
@@ -5438,6 +5440,11 @@ local function CreateExternalWindow(config)
     local contentFrame = CreateFrame("Frame", nil, dialog)
     contentFrame:SetPoint("TOPLEFT", 8, -53) -- Below header
     contentFrame:SetPoint("BOTTOMRIGHT", -8, 8)
+    -- Match shell body: content was transparent, so gaps under widgets read as gray seams.
+    local contentFill = contentFrame:CreateTexture(nil, "BACKGROUND")
+    contentFill:SetDrawLayer("BACKGROUND", -8)
+    contentFill:SetAllPoints()
+    contentFill:SetColorTexture(COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], COLORS.bg[4] or 0.98)
     
     -- Click-outside overlay (released in CloseDialog to avoid frame buildup)
     local clickOutsideFrame = CreateFrame("Frame", nil, UIParent)

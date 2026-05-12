@@ -636,7 +636,7 @@ L["MODULE_PVE_DESC"] = "Verfolge Mythisch+ Dungeons, Schlachtzugfortschritt und 
 L["MODULE_PLANS"] = "Zu erledigen"
 L["MODULE_PLANS_DESC"] = "Verfolge persönliche Ziele für Reittiere, Haustiere, Spielzeuge, Erfolge und eigene Aufgaben"
 L["MODULE_PROFESSIONS"] = "Berufe"
-L["MODULE_PROFESSIONS_DESC"] = "Verfolge Berufsskills, Konzentration, Wissen und Rezeptbegleiter-Fenster"
+L["MODULE_PROFESSIONS_DESC"] = "Berufsfertigkeiten, Werkzeuge, Konzentration, Wissen und Rezepte aller Charaktere verfolgen. Zeigt im geoeffneten Berufsfenster Reagenzienmengen des Rezeptbegleiters."
 L["PROFESSIONS_DISABLED_TITLE"] = "Berufe"
 
 L["ITEM_NUMBER_FORMAT"] = "Gegenstand #%s"
@@ -717,7 +717,7 @@ L["HEADER_INFO_TOOLTIP_HINT"] = "Funktionen und Mitwirkende — Danksagungen ste
 L["CONTRIBUTORS_TITLE"] = "Mitwirkende"
 L["THANK_YOU_MSG"] = "Vielen Dank, dass du Warband Nexus verwendest!"
 L["INFO_TAB_PROFESSIONS"] = "Berufe"
-L["PROFESSIONS_INFO_DESC"] = "Verfolge Berufsfertigkeiten, Konzentration, Wissen und Spezialisierungsbäume über alle Charaktere. Enthält Recipe Companion für Reagenzienquellen."
+L["PROFESSIONS_INFO_DESC"] = "Alle erfassten Handwerksberufe in einem sortierbaren Raster: Fertigkeitsgrad, ausgeruestete Werkzeuge, Konzentration mit Wiederaufladung, Wissenspunkte, Rezeptabdeckung und woechentlicher Wissensfortschritt. Daten aktualisieren sich, wenn du das Berufsfenster jedes Charakters oeffnest (Standard K). Solange ein Berufsfenster offen bleibt, zeigt der Rezeptbegleiter, wie viele Reagenzien du in den Taschen hast."
 
 L["AVAILABLE_COMMANDS"] = "Verfügbare Befehle:"
 L["CMD_OPEN"] = "Addon-Fenster öffnen"
@@ -749,6 +749,17 @@ L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
+
+-- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
+L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
+
+Berufe-Reiter: ueberarbeitete Modul- und Infotexte; klarere Spaltenkoepfe (Oeffnen, Sortierpfeile, Berufsleiste), breitere Oeffnen-Spalte mit beschnittenen Symbolen; Dialog zum Anlegen eines woechentlichen Tresorplans ist breiter, mit Karten-Slots, ueberfluessige Verfolgen-Zeile entfernt, untere Fuellflaeche passt zur Huelle.
+
+Plan-Karten Woechentlicher Tresor und Wochenfortschritt: Erinnerungshorn, Zuruecksetzen-Timer und Loeschen buendig ausgerichtet ohne Ueberlappung.
+
+Externe Popout-Fenster: Hintergrund des Inhaltsbereichs wie die Huelle, kein grauer Streifen unter dem Inhalt.
+
+CurseForge: Warband Nexus]=]
 
 -- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
@@ -1091,7 +1102,7 @@ L["CONFIG_MOD_PVE_DESC"] = "Große Schatzkammer, Mythisch+ und Schlachtzug-Sperr
 L["CONFIG_MOD_PLANS"] = "Zu erledigen"
 L["CONFIG_MOD_PLANS_DESC"] = "Wöchentliche Aufgabenverfolgung, Sammlungsziele und Tresorfortschritt."
 L["CONFIG_MOD_PROFESSIONS"] = "Berufe"
-L["CONFIG_MOD_PROFESSIONS_DESC"] = "Berufsfertigkeiten, Rezepte und Konzentration verfolgen."
+L["CONFIG_MOD_PROFESSIONS_DESC"] = "Berufe-Reiter: Fertigkeiten, Werkzeuge, Wissen, Rezepte, Konzentration und woechentliches Wissen ueber Charaktere."
 L["CONFIG_AUTOMATION"] = "Automatisierung"
 L["CONFIG_AUTOMATION_DESC"] = "Steuern, was automatisch passiert, wenn du deine Kriegsmeute-Bank öffnest."
 L["CONFIG_AUTO_OPTIMIZE"] = "Datenbank automatisch optimieren"
@@ -1510,6 +1521,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Spielzeit beim Login abfragen"
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Wenn aktiv, fragt das Addon /played im Hintergrund ab („Meist gespielt“ usw.); Chat-Ausgabe wird unterdrückt. Wenn aus, kein automatischer Abruf beim Login (manuelles /played funktioniert)."
 L["PROFESSIONS_WIDE_TABLE_HINT"] = "Tipp: Leiste unten oder Umschalt+Mausrad, um alle Spalten zu sehen."
+L["PROFESSIONS_LAYOUT_HINT"] = "Tip: use Columns to show weeklies, treatises, treasures, and other progress."
 
 -- Blizzard GlobalStrings (Auto-localized by WoW) [parity sync]
 L["BANK_LABEL"] = BANK or "Bank"
@@ -1645,7 +1657,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Fraktions- oder klassenbeschr�
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.0.3) `/wn changelog` verwenden.
+Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.0.4) `/wn changelog` verwenden.
 
 CurseForge: Warband Nexus]=]
 

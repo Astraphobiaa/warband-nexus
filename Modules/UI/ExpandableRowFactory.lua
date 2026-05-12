@@ -246,7 +246,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     row.onToggle = onToggle
     
     -- Alternating row color (set by caller based on index)
-    row.bgColor = {0.08, 0.08, 0.10, 1}
+    row.bgColor = COLORS.bgCard
     
     -- Header frame (FIXED HEIGHT, always visible at top) - Button for hover support
     local headerFrame = CreateFrame("Button", nil, row)

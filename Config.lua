@@ -206,7 +206,7 @@ local options = {
             order = 28,
             type = "toggle",
             name = function() return (ns.L and ns.L["CONFIG_MOD_PROFESSIONS"]) or "Professions" end,
-            desc = function() return (ns.L and ns.L["CONFIG_MOD_PROFESSIONS_DESC"]) or "Track profession skills, recipes, and concentration." end,
+            desc = function() return (ns.L and ns.L["CONFIG_MOD_PROFESSIONS_DESC"]) or "Professions tab: skills, tools, knowledge, recipes, concentration, and weekly knowledge across characters." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.professions ~= false end,
             set = CreateModuleToggleHandler("professions"),

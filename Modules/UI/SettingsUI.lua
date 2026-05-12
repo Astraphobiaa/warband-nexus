@@ -14,7 +14,7 @@ local issecretvalue = issecretvalue
 local LDBI = LibStub("LibDBIcon-1.0", true)
 
 -- Import SharedWidgets
-local COLORS = ns.UI_COLORS or {accent = {0.40, 0.20, 0.58, 1}, accentDark = {0.28, 0.14, 0.41, 1}, border = {0.20, 0.20, 0.25, 1}, bg = {0.06, 0.06, 0.08, 0.98}, bgCard = {0.08, 0.08, 0.10, 1}, textBright = {1,1,1,1}, textNormal = {0.85,0.85,0.85,1}, textDim = {0.55,0.55,0.55,1}, white = {1,1,1,1}}
+local COLORS = ns.UI_COLORS or {accent = {0.40, 0.20, 0.58, 1}, accentDark = {0.28, 0.14, 0.41, 1}, border = {0.20, 0.20, 0.25, 1}, bg = {0.04, 0.04, 0.05, 0.98}, bgCard = {0.04, 0.04, 0.05, 0.98}, textBright = {1,1,1,1}, textNormal = {0.85,0.85,0.85,1}, textDim = {0.55,0.55,0.55,1}, white = {1,1,1,1}}
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateSection = ns.UI_CreateSection
@@ -1824,7 +1824,7 @@ local function BuildSettings(parent, containerWidth)
         {
             key = "professions",
             label = (ns.L and ns.L["MODULE_PROFESSIONS"]) or "Professions",
-            tooltip = (ns.L and ns.L["MODULE_PROFESSIONS_DESC"]) or "Track profession skills, concentration, knowledge, and recipe companion window",
+            tooltip = (ns.L and ns.L["MODULE_PROFESSIONS_DESC"]) or "Track profession skills, tools, concentration, knowledge, and recipes across characters. Shows Recipe Companion reagent counts while a profession window is open.",
             get = function() return WarbandNexus.db.profile.modulesEnabled.professions ~= false end,
             set = function(value)
                 if WarbandNexus.SetProfessionModuleEnabled then

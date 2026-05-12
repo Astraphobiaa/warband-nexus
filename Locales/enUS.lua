@@ -849,7 +849,7 @@ L["MODULE_PVE_DESC"] = "Track Mythic+ dungeons, raid progress, and Weekly Vault 
 L["MODULE_PLANS"] = "To-Do"
 L["MODULE_PLANS_DESC"] = "Track personal goals for mounts, pets, toys, achievements, and custom tasks"
 L["MODULE_PROFESSIONS"] = "Professions"
-L["MODULE_PROFESSIONS_DESC"] = "Track profession skills, concentration, knowledge, and recipe companion window"
+L["MODULE_PROFESSIONS_DESC"] = "Track profession skills, tools, concentration, knowledge, and recipes across characters. Shows Recipe Companion reagent counts while a profession window is open."
 L["MODULE_GEAR"] = "Gear"
 L["MODULE_GEAR_DESC"] = "Gear management and item level tracking across characters"
 L["MODULE_COLLECTIONS"] = "Collections"
@@ -942,7 +942,7 @@ L["THANK_YOU_MSG"] = "Thank you for using Warband Nexus!"
 
 -- Information Dialog - Professions Tab
 L["INFO_TAB_PROFESSIONS"] = "Professions"
-L["PROFESSIONS_INFO_DESC"] = "Track profession skills, concentration, knowledge, and specialization trees across all characters. Includes Recipe Companion for reagent sourcing."
+L["PROFESSIONS_INFO_DESC"] = "See every tracked character's crafting professions in one sortable grid: skill level, equipped tools, concentration and recharge, knowledge points, recipe coverage, and weekly knowledge progress. Data updates when you open each character's profession panel (default K). While a profession window stays open, Recipe Companion shows how many of each reagent you carry in bags."
 
 -- Information Dialog - Gear & Collections Tabs
 L["GEAR_DESC"] = "View equipped gear, upgrade opportunities, storage recommendations (BoE/Warbound), and cross-character upgrade candidates with item level tracking."
@@ -989,6 +989,17 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
+L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
+
+Professions tab: refreshed module and info descriptions; clearer column headers (Open, sort arrows, Profession strip), wider Open column with clipped icons; Weekly Vault create-plan dialog is wider with card-style vault slots, redundant tracking row removed, and bottom fill matches the shell.
+
+Weekly Vault and Weekly Progress plan cards keep reminder horn, reset timer, and delete aligned without overlap.
+
+External popout windows: content pane background matches the shell so no gray gap shows under the content.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
 
@@ -1007,7 +1018,7 @@ CurseForge: Warband Nexus]=]
 -- What's New / changelog body for ADDON_VERSION 3.0.0 (key CHANGELOG_V300)
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.0.3).
+Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.0.4).
 
 CurseForge: Warband Nexus]=]
 
@@ -1298,6 +1309,7 @@ L["PROFESSIONS_EXPAND_ALL_TOOLTIP"] = "Expand Favorites, Characters, and Untrack
 L["PROFESSIONS_COLLAPSE_ALL_TOOLTIP"] = "Collapse Favorites, Characters, and Untracked sections."
 L["PROFESSIONS_TRACKED_FORMAT"] = "%s characters with professions"
 L["PROFESSIONS_WIDE_TABLE_HINT"] = "Tip: use the bar below or Shift+mouse wheel to see all columns."
+L["PROFESSIONS_LAYOUT_HINT"] = "Tip: use Columns to show weeklies, treatises, treasures, and other progress."
 L["NO_PROFESSIONS_DATA"] = "No profession data available yet. Open your profession window (default: K) on each character to collect data."
 L["CONCENTRATION"] = "Concentration"
 L["KNOWLEDGE"] = "Knowledge"
@@ -1604,7 +1616,7 @@ L["CONFIG_MOD_PVE_DESC"] = "Track Great Vault, Mythic+, and raid lockouts."
 L["CONFIG_MOD_PLANS"] = "To-Do"
 L["CONFIG_MOD_PLANS_DESC"] = "Weekly task tracking, collection goals, and vault progress."
 L["CONFIG_MOD_PROFESSIONS"] = "Professions"
-L["CONFIG_MOD_PROFESSIONS_DESC"] = "Track profession skills, recipes, and concentration."
+L["CONFIG_MOD_PROFESSIONS_DESC"] = "Professions tab: skills, tools, knowledge, recipes, concentration, and weekly knowledge across characters."
 L["CONFIG_AUTOMATION"] = "Automation"
 L["CONFIG_AUTOMATION_DESC"] = "Control what happens automatically when you open your Warband Bank."
 L["CONFIG_AUTO_OPTIMIZE"] = "Auto-Optimize Database"

@@ -6,6 +6,7 @@
 
 local ADDON_NAME, ns = ...
 local FontManager = ns.FontManager
+local max = math.max
 
 --- Pixels from row inner left (0) to where inline PvE cells start (Characters "gold" column, minus guild width).
 function ns.PvE_ComputeCharacterRowPrefixToGoldPx(nameW)
@@ -137,8 +138,6 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
         nameText = FontManager:CreateFontString(charHeader, "subtitle", "OVERLAY")
         charHeader._pveCharRowName = nameText
     end
-    nameText:ClearAllPoints()
-    nameText:SetPoint("TOPLEFT", anchorRight, "TOPRIGHT", 8, -7)
     nameText:SetWidth(nameColW)
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(false)
@@ -153,8 +152,6 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
         realmText = FontManager:CreateFontString(charHeader, "small", "OVERLAY")
         charHeader._pveCharRowRealm = realmText
     end
-    realmText:ClearAllPoints()
-    realmText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -2)
     realmText:SetWidth(nameColW)
     realmText:SetJustifyH("LEFT")
     realmText:SetWordWrap(false)
@@ -163,11 +160,26 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     realmText:SetText("|cffb0b0b8" .. displayRealm .. "|r")
 
+    -- Horizontal start of the name column (same as gradient / level pack).
     local nameLeft = (anchorRight:GetRight() or 0) - (charHeader:GetLeft() or 0) + 8
     if nameLeft < 40 then
         nameLeft = (ns.UI_GetColumnOffset and ns.UI_GetColumnOffset("name")) or 162
         nameLeft = nameLeft + 4
     end
+
+    -- Vertically center the two-line identity block in the row (level/iLvl stay on row midline).
+    local rowH = charHeader:GetHeight() or 46
+    local nameRealmGap = 1
+    local nh = max(nameText:GetStringHeight() or 0, 12)
+    local rh = max(realmText:GetStringHeight() or 0, 10)
+    local blockH = nh + nameRealmGap + rh
+    local topInset = max((rowH - blockH) / 2, 0)
+    nameText:ClearAllPoints()
+    realmText:ClearAllPoints()
+    nameText:SetPoint("TOPLEFT", charHeader, "TOPLEFT", nameLeft, -topInset)
+    realmText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -nameRealmGap)
+    if nameText.SetJustifyV then nameText:SetJustifyV("TOP") end
+    if realmText.SetJustifyV then realmText:SetJustifyV("TOP") end
     local swName = nameText:GetStringWidth() or 0
     local swRealm = realmText:GetStringWidth() or 0
     local nameBlockW = math.min(nameColW, math.max(swName, swRealm, 1) + 4)

@@ -538,7 +538,7 @@ L["MODULE_PVE_DESC"] = "Acompanhe masmorras Mythic+, progresso de raid e recompe
 L["MODULE_PLANS"] = "Pendência"
 L["MODULE_PLANS_DESC"] = "Acompanhe metas pessoais para montarias, animais de estimação, brinquedos, conquistas e tarefas personalizadas"
 L["MODULE_PROFESSIONS"] = "Profissões"
-L["MODULE_PROFESSIONS_DESC"] = "Acompanhe habilidades profissionais, concentração, conhecimento e janela complementar de receitas"
+L["MODULE_PROFESSIONS_DESC"] = "Acompanhe habilidades profissionais, ferramentas, concentração, conhecimento e receitas em todos os personagens. Mostra as quantidades de componentes do companheiro de receitas enquanto uma janela de profissão permanece aberta."
 L["PROFESSIONS_DISABLED_TITLE"] = "Profissões"
 L["ITEM_NUMBER_FORMAT"] = "Objeto nº %s"
 L["WN_SEARCH"] = "Pesquisa WN"
@@ -604,7 +604,7 @@ L["THANK_YOU_MSG"] = "Obrigado por usar o Warband Nexus!"
 L["INFO_TAB_PROFESSIONS"] = "Profissões"
 L["INFO_TAB_GEAR"] = "Engrenagem"
 L["INFO_TAB_COLLECTIONS"] = "Coleções"
-L["PROFESSIONS_INFO_DESC"] = "Acompanhe habilidades profissionais, concentração, conhecimento e árvores de especialização em todos os personagens. Inclui Recipe Companion para fornecimento de reagentes."
+L["PROFESSIONS_INFO_DESC"] = "Veja as profissões de criação de cada personagem acompanhado em uma grade ordenável: nível de habilidade, ferramentas equipadas, concentração e recarga, pontos de conhecimento, cobertura de receitas e progresso semanal de conhecimento. Os dados atualizam ao abrir o painel de profissão de cada personagem (K padrão). Com uma janela de profissão aberta, o companheiro de receitas indica quantos componentes de cada tipo você carrega nas bolsas."
 L["GEAR_DESC"] = "Veja equipamentos equipados, oportunidades de atualização, recomendações de armazenamento (BoE/Warbound) e candidatos a atualização entre personagens com rastreamento de nível de item."
 L["COLLECTIONS_DESC"] = "Visão geral de montarias, mascotes, brinquedos, transmogrificações e outros itens colecionáveis ​​em sua conta. Acompanhe o progresso da coleta e encontre itens perdidos."
 L["AVAILABLE_COMMANDS"] = "Comandos disponíveis:"
@@ -636,6 +636,17 @@ L["WELCOME_OPEN_INTERFACE"] = "para abrir a interface."
 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
+
+-- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
+L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
+
+Aba Profissões: textos de módulo e informação atualizados; cabeçalhos de coluna mais claros (Abrir, setas de ordenação, faixa Profissão), coluna Abrir mais larga com ícones recortados; diálogo de criação de plano do Cofre semanal mais largo, espaços em cartão, linha de rastreamento redundante removida e preenchimento inferior alinhado ao invólucro.
+
+Cartões de plano Cofre semanal e Progresso semanal: chifre de lembrete, temporizador de reinício e excluir alinhados sem sobreposição.
+
+Janelas pop-out externas: fundo do painel de conteúdo combina com o invólucro, sem faixa cinza sob o conteúdo.
+
+CurseForge: Warband Nexus]=]
 
 -- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
@@ -915,7 +926,7 @@ L["CONFIG_MOD_PVE_DESC"] = "Rastreie bloqueios de Great Vault, Mythic+ e raid."
 L["CONFIG_MOD_PLANS"] = "Pendência"
 L["CONFIG_MOD_PLANS_DESC"] = "Acompanhamento semanal de tarefas, metas de coleta e progresso do cofre."
 L["CONFIG_MOD_PROFESSIONS"] = "Profissões"
-L["CONFIG_MOD_PROFESSIONS_DESC"] = "Acompanhe habilidades profissionais, receitas e concentração."
+L["CONFIG_MOD_PROFESSIONS_DESC"] = "Aba Profissões: habilidades, ferramentas, conhecimento, receitas, concentração e conhecimento semanal em todos os personagens."
 L["CONFIG_AUTOMATION"] = "Automação"
 L["CONFIG_AUTOMATION_DESC"] = "Controle o que acontece automaticamente quando você abre seu Warband Bank."
 L["CONFIG_AUTO_OPTIMIZE"] = "Banco de dados de otimização automática"
@@ -1365,6 +1376,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Solicitar tempo de jogo no login"
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Quando ativado, o complemento solicita dados/reproduzidos em segundo plano para atualizar \"Mais reproduzidos\" e estatísticas relacionadas. A saída de chat dessa solicitação é suprimida. Quando desabilitado, nenhuma solicitação automática é feita no login (manual/played ainda funciona)."
 L["PROFESSIONS_WIDE_TABLE_HINT"] = "Dica: use a barra abaixo ou Shift+roda do mouse para ver todas as colunas."
+L["PROFESSIONS_LAYOUT_HINT"] = "Tip: use Columns to show weeklies, treatises, treasures, and other progress."
 
 -- Blizzard GlobalStrings (Auto-localized by WoW) [parity sync]
 L["BANK_LABEL"] = BANK or "Bank"
@@ -1500,7 +1512,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Facção ou classe restrita"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Grande lançamento Midnight (instâncias salvas, contador de tentativas, PvE/equipamento/planos, arquitetura de cache). Listas detalhadas de patches antigos foram removidas dos arquivos de localização; use `/wn changelog` para a compilação atual (v3.0.3).
+Grande lançamento Midnight (instâncias salvas, contador de tentativas, PvE/equipamento/planos, arquitetura de cache). Listas detalhadas de patches antigos foram removidas dos arquivos de localização; use `/wn changelog` para a compilação atual (v3.0.4).
 
 CurseForge: Warband Nexus]=]
 

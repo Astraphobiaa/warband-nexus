@@ -452,6 +452,17 @@ L["BANK_NOT_OPEN_MSG"] = "La banque n'est pas ouverte"
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
+L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
+
+Onglet Métiers : textes module et info mis à jour ; en-têtes de colonnes plus lisibles (Ouvrir, flèches de tri, bandeau Métier), colonne Ouvrir plus large avec icônes rognées ; dialogue de création de plan Coffre hebdomadaire plus large, emplacements en cartes, ligne de suivi redondante supprimée, fond inférieur aligné sur la coquille.
+
+Cartes de plan Coffre hebdo et Progrès hebdo : corne de rappel, décompte de réinitialisation et suppression alignés sans chevauchement.
+
+Fenêtres externes : fond du volet de contenu harmonisé avec la coquille pour éviter la bande grise sous le contenu.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
 
@@ -548,7 +559,7 @@ L["CONFIG_MOD_ITEMS_DESC"] = "Suivre les objets dans les sacs et banques."
 L["CONFIG_MOD_PLANS"] = "Faire"
 L["CONFIG_MOD_PLANS_DESC"] = "Suivi des tâches hebdomadaires, objectifs de collection et progression du coffre."
 L["CONFIG_MOD_PROFESSIONS"] = "Métiers"
-L["CONFIG_MOD_PROFESSIONS_DESC"] = "Suivre les compétences de métier, recettes et concentration."
+L["CONFIG_MOD_PROFESSIONS_DESC"] = "Onglet Métiers : compétences, outils, connaissances, recettes, concentration et progression hebdomadaire de connaissance sur les personnages."
 L["CONFIG_MOD_PVE"] = "JcE"
 L["CONFIG_MOD_PVE_DESC"] = "Suivre le Grand coffre, Mythique+ et verrouillages de raid."
 L["CONFIG_MOD_REPUTATIONS"] = "Réputations"
@@ -729,7 +740,7 @@ L["MODULE_MANAGEMENT_DESC"] = "Activez ou désactivez des modules de collecte de
 L["MODULE_PLANS"] = "Faire"
 L["MODULE_PLANS_DESC"] = "Suivez vos objectifs personnels pour montures, mascottes, jouets, hauts faits et tâches personnalisées"
 L["MODULE_PROFESSIONS"] = "Métiers"
-L["MODULE_PROFESSIONS_DESC"] = "Suivez les compétences professionnelles, la concentration, les connaissances et la fenêtre d'accompagnement des recettes"
+L["MODULE_PROFESSIONS_DESC"] = "Suivez les compétences de métier, les outils, la concentration, les connaissances et les recettes sur tous les personnages. Affiche les quantités de composants du compagnon de recettes tant qu'une fenêtre de métier reste ouverte."
 L["MODULE_PVE"] = "JcE"
 L["MODULE_PVE_DESC"] = "Suivez les donjons Mythic+, la progression du raid et les récompenses hebdomadaires du Vault"
 L["MODULE_REPUTATIONS"] = "Réputations"
@@ -803,7 +814,7 @@ L["POSITION_RESET_MSG"] = "Position de la fenêtre contextuelle réinitialisée 
 L["POSITION_SAVED_MSG"] = "Position du popup enregistrée !"
 L["PREPARING"] = "Préparation"
 L["PROFESSIONS_DISABLED_TITLE"] = "Métiers"
-L["PROFESSIONS_INFO_DESC"] = "Suivez les compétences de métier, concentration, connaissances et arbres de spécialisation. Inclut Recipe Companion."
+L["PROFESSIONS_INFO_DESC"] = "Tous les métiers de fabrication des personnages suivis dans un tableau triable : niveau de compétence, outils équipés, concentration et recharge, points de connaissance, couverture des recettes et progression hebdomadaire de connaissance. Les données se mettent à jour quand vous ouvrez le panneau de métier de chaque personnage (K par défaut). Tant qu'une fenêtre de métier reste ouverte, le compagnon de recettes indique combien de chaque composant vous portez en sacs."
 L["PROFESSIONS_TRACKED_FORMAT"] = "%s caractères avec des métiers"
 L["PROFILER_NOT_LOADED"] = "Module profileur non chargé."
 L["PROF_ONLY_CURRENT_CHAR"] = "Disponible uniquement pour le personnage actuel"
@@ -1433,6 +1444,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Demander le temps de jeu à la connexion"
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Si activé, demande /played en arrière-plan pour « Le plus joué » etc. ; la sortie chat est supprimée. Si désactivé, pas de demande auto à la connexion (/played manuel fonctionne)."
 L["PROFESSIONS_WIDE_TABLE_HINT"] = "Astuce : barre du bas ou Maj + molette pour voir toutes les colonnes."
+L["PROFESSIONS_LAYOUT_HINT"] = "Tip: use Columns to show weeklies, treatises, treasures, and other progress."
 
 -- Blizzard GlobalStrings (Auto-localized by WoW) [parity sync]
 L["BANK_LABEL"] = BANK or "Bank"
@@ -1568,7 +1580,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limit� par faction ou classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.0.3).
+Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.0.4).
 
 CurseForge: Warband Nexus]=]
 

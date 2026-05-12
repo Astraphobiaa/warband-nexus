@@ -259,7 +259,7 @@ function WarbandNexus:ShowInfoDialog()
     AddText((ns.L and ns.L["PVE_DESC"]) or "Track Great Vault progress with next-tier indicators, Mythic+ scores and keys, keystone affixes, dungeon history, and upgrade currency across all characters.", "body", {0.9, 0.9, 0.9}, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_PROFESSIONS"]) or "Professions", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["PROFESSIONS_INFO_DESC"]) or "Track profession skills, concentration, knowledge, and specialization trees across all characters. Includes Recipe Companion for reagent sourcing.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["PROFESSIONS_INFO_DESC"]) or "See every tracked character's crafting professions in one sortable grid: skill level, equipped tools, concentration and recharge, knowledge points, recipe coverage, and weekly knowledge progress. Data updates when you open each character's profession panel (default K). While a profession window stays open, Recipe Companion shows how many of each reagent you carry in bags.", "body", {0.9, 0.9, 0.9}, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_COLLECTIONS"]) or "Collections", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
     AddText((ns.L and ns.L["COLLECTIONS_DESC"]) or "Overview of mounts, pets, toys, transmog, and other collectibles. Track collection progress and find missing items.", "body", {0.9, 0.9, 0.9}, 10)

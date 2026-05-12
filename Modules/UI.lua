@@ -644,7 +644,8 @@ function WarbandNexus:CreateMainWindow()
     local ApplyVisuals = ns.UI_ApplyVisuals
     if ApplyVisuals then
         local COLORS = ns.UI_COLORS
-        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+        local shellBg = COLORS and COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
+        ApplyVisuals(f, shellBg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
     end
     
     -- OnSizeChanged handler - Update borders and scrollChild width
@@ -1373,9 +1374,10 @@ function WarbandNexus:CreateMainWindow()
         Mixin(content, BackdropTemplateMixin)
     end
     content:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-    if ns.UI_COLORS then
-        local c = ns.UI_COLORS.border
-        content:SetBackdropColor(0.04, 0.04, 0.05, 0.95)
+    do
+        local C = ns.UI_COLORS
+        local bc = C and C.bg or { 0.04, 0.04, 0.05, 0.98 }
+        content:SetBackdropColor(bc[1], bc[2], bc[3], bc[4] or 0.98)
     end
 
     -- Scroll layout: UI_LAYOUT; 2–3px gap between viewport and scrollbars so they don’t sit too close
@@ -1400,7 +1402,8 @@ function WarbandNexus:CreateMainWindow()
     viewportBorder:SetFrameLevel(content:GetFrameLevel() + 1)
     if ApplyVisuals and ns.UI_COLORS then
         local COLORS = ns.UI_COLORS
-        ApplyVisuals(viewportBorder, {0.04, 0.04, 0.05, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+        local bc = COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
+        ApplyVisuals(viewportBorder, bc, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     f.viewportBorder = viewportBorder
 
@@ -1431,7 +1434,11 @@ function WarbandNexus:CreateMainWindow()
 
     local columnHeaderBg = columnHeaderClip:CreateTexture(nil, "BACKGROUND")
     columnHeaderBg:SetAllPoints()
-    columnHeaderBg:SetColorTexture(0.08, 0.08, 0.10, 1)
+    do
+        local C = ns.UI_COLORS
+        local bc = (C and (C.bgCard or C.bg)) or { 0.04, 0.04, 0.05, 0.98 }
+        columnHeaderBg:SetColorTexture(bc[1], bc[2], bc[3], bc[4] or 0.98)
+    end
 
     local columnHeaderInner = CreateFrame("Frame", nil, columnHeaderClip)
     columnHeaderInner:SetPoint("TOPLEFT", 0, 0)
@@ -2191,7 +2198,11 @@ function WarbandNexus:PopulateContent()
             fill:SetFrameLevel(math.max(0, (scrollChild:GetFrameLevel() or 0) - 5))
             local tex = fill:CreateTexture(nil, "BACKGROUND", nil, -8)
             tex:SetAllPoints()
-            tex:SetColorTexture(0.055, 0.055, 0.065, 0.92)
+            do
+                local C = ns.UI_COLORS
+                local bc = C and C.bg or { 0.04, 0.04, 0.05, 0.98 }
+                tex:SetColorTexture(bc[1], bc[2], bc[3], bc[4] or 0.98)
+            end
             scrollChild._wnScrollBottomFill = fill
         end
         local slack = totalScrollH - contentBottom

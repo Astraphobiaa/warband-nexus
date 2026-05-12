@@ -869,7 +869,7 @@ function WarbandNexus:DrawPlansTab(parent)
         searchBar:SetPoint("TOPLEFT", 10, -yOffset)
         searchBar:SetPoint("TOPRIGHT", -10, -yOffset)
         if ApplyVisuals then
-            ApplyVisuals(searchBar, { 0.06, 0.06, 0.08, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
+            ApplyVisuals(searchBar, COLORS.bgLight, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
         end
 
         local searchIcon = searchBar:CreateTexture(nil, "OVERLAY")
@@ -1115,7 +1115,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     resetBar:SetPoint("TOPLEFT", 10, -yOffset)
     resetBar:SetPoint("TOPRIGHT", -10, -yOffset)
     if ApplyVisuals then
-        ApplyVisuals(resetBar, {0.06, 0.04, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7})
+        ApplyVisuals(resetBar, COLORS.bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7})
     end
 
     local resetIcon = resetBar:CreateTexture(nil, "ARTWORK")
@@ -1795,7 +1795,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- Apply accent border (My Plans cards)
             if ApplyVisuals then
                 local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
-                ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
+                ApplyVisuals(card, COLORS.bgCard, borderColor)
             end
             
             -- Create weekly vault content via factory
@@ -1825,7 +1825,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             
             if ApplyVisuals then
                 local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
-                ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
+                ApplyVisuals(card, COLORS.bgCard, borderColor)
             end
             
             PlanCardFactory:CreateDailyQuestCard(card, plan)
@@ -1954,7 +1954,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
 
             if ApplyVisuals then
                 local borderColor = { COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4 }
-                ApplyVisuals(row, {0.08, 0.08, 0.10, 1}, borderColor)
+                ApplyVisuals(row, COLORS.bgCard, borderColor)
             end
 
             -- Header right-side actions (Delete + optional Complete) sit above the headerFrame's
@@ -2919,7 +2919,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 -- Not planned: Default accent border
                 borderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
             end
-            ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
+            ApplyVisuals(card, COLORS.bgCard, borderColor)
         end
         
         -- === ICON (same footprint as To-Do expandable row: todoIconSize inside browseIconContainerSize) ===
@@ -3097,7 +3097,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             card:SetScript("OnEnter", function(self)
                 if ApplyVisuals then
                     local hoverBorder = {0.3, 1.0, 0.3, 1.0}  -- Green for clickable
-                    ApplyVisuals(self, {0.08, 0.08, 0.10, 1}, hoverBorder)
+                    ApplyVisuals(self, COLORS.bgCard, hoverBorder)
                 end
             end)
             card:SetScript("OnLeave", function(self)
@@ -3105,7 +3105,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     local defaultBorder = item.isCollected or item.isPlanned 
                         and {0.30, 0.90, 0.30, 0.8} 
                         or {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
-                    ApplyVisuals(self, {0.08, 0.08, 0.10, 1}, defaultBorder)
+                    ApplyVisuals(self, COLORS.bgCard, defaultBorder)
                 end
             end)
         elseif firstSource.vendor then
@@ -3456,9 +3456,9 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Apply border with class color
     if ApplyVisuals then
         if classColors then
-            ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {classColors.r, classColors.g, classColors.b, 1})
+            ApplyVisuals(iconContainer, COLORS.bgCard, {classColors.r, classColors.g, classColors.b, 1})
         else
-            ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
+            ApplyVisuals(iconContainer, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
         end
     end
     
@@ -3488,7 +3488,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Apply border to input
     if ApplyVisuals then
-        ApplyVisuals(titleInputBg, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+        ApplyVisuals(titleInputBg, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     
     local titleInput = ns.UI.Factory:CreateEditBox(titleInputBg)
@@ -3525,7 +3525,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Apply border to input
     if ApplyVisuals then
-        ApplyVisuals(descInputBg, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+        ApplyVisuals(descInputBg, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     
     local descInput = ns.UI.Factory:CreateEditBox(descInputBg)
@@ -3621,7 +3621,7 @@ function WarbandNexus:ShowCustomPlanDialog()
             edgeSize = 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
-        btn:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        btn:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1)
         btn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
         
         local text = FontManager:CreateFontString(btn, "body", "OVERLAY")
@@ -3795,7 +3795,7 @@ function WarbandNexus:ShowCustomPlanDialog()
                 btn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
                 btn.label:SetTextColor(1, 1, 1)
             else
-                btn:SetBackdropColor(0.08, 0.08, 0.10, 1)
+                btn:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1)
                 btn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
                 btn.label:SetTextColor(0.7, 0.7, 0.7)
             end
@@ -3983,7 +3983,10 @@ end
 
 function WarbandNexus:ShowWeeklyPlanDialog()
     local COLORS = ns.UI_COLORS
-    
+    local VAULT_DLG_W = 640
+    local VAULT_DLG_H_HAS = 280
+    local VAULT_DLG_H_NEW = 468
+
     -- Get current character info
     local currentName = SafePlayerName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
     local currentRealm = SafeRealmName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
@@ -3996,8 +3999,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         name = "WeeklyPlanDialog",
         title = (ns.L and ns.L["WEEKLY_VAULT_TRACKER"]) or "Weekly Vault Tracker",
         icon = "Interface\\Icons\\INV_Misc_Note_06",  -- Same as Daily Quest
-        width = 500,
-        height = existingPlan and 260 or 560
+        width = VAULT_DLG_W,
+        height = existingPlan and VAULT_DLG_H_HAS or VAULT_DLG_H_NEW
     })
     
     -- If dialog creation failed (duplicate), return
@@ -4022,7 +4025,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         
         local infoText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
         infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -10)
-        infoText:SetWidth(440)
+        infoText:SetWidth(VAULT_DLG_W - 48)
         infoText:SetWordWrap(true)
         infoText:SetJustifyH("CENTER")
         local descText = (ns.L and ns.L["WEEKLY_PLAN_EXISTS_DESC"] and format(ns.L["WEEKLY_PLAN_EXISTS_DESC"], currentName .. "-" .. currentRealm)) or (currentName .. "-" .. currentRealm .. " already has an active weekly vault plan. You can find it in the 'My Plans' category.")
@@ -4040,9 +4043,10 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     else
         -- Create new weekly plan form
         
-        -- Character section with icon (centered) (using Factory pattern)
-        local charFrame = ns.UI.Factory:CreateContainer(contentFrame, 300, 45)  -- Narrower, centered width
-        charFrame:SetPoint("TOP", 0, -15)  -- Perfectly centered
+        -- Same horizontal band as the three vault cards (content inset 8+8, row padding 20+20).
+        local charBarW = VAULT_DLG_W - 16 - 40
+        local charFrame = ns.UI.Factory:CreateContainer(contentFrame, charBarW, 48)
+        charFrame:SetPoint("TOP", 0, -14)
         
         -- Character race and class info
         local _, currentClass = UnitClass("player")
@@ -4058,9 +4062,9 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         -- Apply border with class color
         if ApplyVisuals then
             if classColors then
-                ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {classColors.r, classColors.g, classColors.b, 1})
+                ApplyVisuals(iconContainer, COLORS.bgCard, {classColors.r, classColors.g, classColors.b, 1})
             else
-                ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
+                ApplyVisuals(iconContainer, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
             end
         end
         
@@ -4091,96 +4095,159 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             }
         end
         
+        -- Weekly plan: which vault rows to track (toggled by clicking Mythic+ / Raids / World cards)
+        local selectedSlots = { dungeon = true, raid = true, world = true }
+        local slotColumnRefreshers = {}
+        local function RefreshWeeklyPlanSlotSelections()
+            for ri = 1, #slotColumnRefreshers do
+                slotColumnRefreshers[ri]()
+            end
+        end
+
         if progress then
-            -- Progress header (BIGGER)
             local progressHeader = FontManager:CreateFontString(contentFrame, "header", "OVERLAY", "accent")
-            progressHeader:SetPoint("TOP", 0, -85)
+            progressHeader:SetPoint("TOP", 0, -78)
             progressHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
             progressHeader:SetText((ns.L and ns.L["CURRENT_PROGRESS"]) or "Current Progress")
-            
-            -- 4-column progress display (centered) - PREMIUM DASHBOARD
-            local colWidth = 108
-            local colSpacing = 10
+
+            -- Card row: three equal columns; width from dialog shell (content not always laid out yet).
+            local contentW = math.max(120, VAULT_DLG_W - 16)
+            local rowSidePad = 20
+            local colSpacing = 16
+            local usable = contentW - 2 * rowSidePad
+            local colWidth = math.floor((usable - 2 * colSpacing) / 3)
             local totalWidth = colWidth * 3 + colSpacing * 2
+            -- Card height = icon + title + slot row + padding (no per-slot panel fills).
+            local ICON_TOP_PAD = 10
+            local ICON_SIZE = 48
+            local TITLE_UNDER_ICON = 6
+            local TITLE_BLOCK = 26
+            local BAND_TOP_GAP = 6
+            local SLOT_STAR = 24
+            local SLOT_STAR_TEXT_GAP = 6
+            local SLOT_TEXT_BLOCK = 22
+            local CARD_BOTTOM_PAD = 10
+            local slotsBandH = SLOT_STAR + SLOT_STAR_TEXT_GAP + SLOT_TEXT_BLOCK
+            local colHeight = ICON_TOP_PAD + ICON_SIZE + TITLE_UNDER_ICON + TITLE_BLOCK + BAND_TOP_GAP + slotsBandH + CARD_BOTTOM_PAD
             local startX = -(totalWidth / 2) + (colWidth / 2)
-            
-            local function CreateProgressCol(index, iconAtlas, title, current, thresholds)
+            local accentBorder = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.95 }
+            local unselectedBorder = { 0.32, 0.32, 0.36, 0.8 }
+            local disabledBorder = { 0.22, 0.22, 0.25, 0.45 }
+            local baseBg = COLORS.bgLight
+            local unselBg = COLORS.bg
+            local disabledBg = COLORS.bg
+
+            local function CreateProgressCol(index, iconAtlas, title, current, thresholds, slotKey)
                 local xPos = startX + (index - 1) * (colWidth + colSpacing)
-                
-                -- Main column card (using Factory pattern)
-                local col = ns.UI.Factory:CreateContainer(contentFrame, colWidth, 150)  -- Increased height for stars
-                col:SetPoint("TOP", xPos, -115)
-                
-                -- Dynamic border color based on progress
-                local maxThreshold = thresholds[3] or thresholds[#thresholds]
-                local completionRatio = current / maxThreshold
-                local borderColor
-                
-                if completionRatio >= 1.0 then
-                    borderColor = {0.2, 0.9, 0.2, 1}  -- Bright green (complete)
-                elseif completionRatio >= 0.5 then
-                    borderColor = {0.9, 0.8, 0.2, 1}  -- Gold (good progress)
-                elseif completionRatio > 0 then
-                    borderColor = {0.9, 0.5, 0.2, 1}  -- Orange (started)
-                else
-                    borderColor = {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6}  -- Gray (not started)
+                local maxThreshold = thresholds[#thresholds] or 0
+                local fullyComplete = maxThreshold > 0 and (current >= maxThreshold)
+                if fullyComplete then
+                    selectedSlots[slotKey] = false
                 end
-                
-                if ApplyVisuals then
-                    ApplyVisuals(col, {0.10, 0.10, 0.12, 1}, borderColor)
-                end
-                
-                -- Large icon (centered at top)
-                local iconFrame2 = CreateIcon(col, iconAtlas, 38, true, nil, true)
-                iconFrame2:SetPoint("TOP", 0, -12)
+
+                local col = ns.UI.Factory:CreateContainer(contentFrame, colWidth, colHeight)
+                col:SetPoint("TOP", xPos, -100)
+                col:SetClipsChildren(true)
+
+                -- Large category icon
+                local iconFrame2 = CreateIcon(col, iconAtlas, ICON_SIZE, true, nil, true)
+                iconFrame2:SetPoint("TOP", 0, -ICON_TOP_PAD)
                 iconFrame2:Show()
-                
-                -- Title (below icon, larger)
+
                 local titleText = FontManager:CreateFontString(col, "title", "OVERLAY")
-                titleText:SetPoint("TOP", iconFrame2, "BOTTOM", 0, -8)
-                titleText:SetTextColor(0.95, 0.95, 0.95)
+                titleText:SetWidth(colWidth - 10)
+                titleText:SetWordWrap(true)
+                if titleText.SetMaxLines then titleText:SetMaxLines(2) end
+                titleText:SetJustifyH("CENTER")
+                titleText:SetPoint("TOP", iconFrame2, "BOTTOM", 0, -TITLE_UNDER_ICON)
+                titleText:SetTextColor(0.96, 0.96, 0.96)
                 titleText:SetText(title)
-                
-                -- Reward tier indicators (stars) - Inside card, bigger, with milestone text
-                local starCount = #thresholds
-                local starSpacing = 42
-                local starSize = 24  -- Bigger stars
-                local starTotalWidth = (starCount - 1) * starSpacing
-                local starStartX = -starTotalWidth / 2
-                
-                for i = 1, starCount do
-                    -- Star container (using Factory pattern)
-                    local starContainer = ns.UI.Factory:CreateContainer(col, starSize, starSize + 20)  -- Extra height for text
-                    starContainer:SetPoint("TOP", titleText, "BOTTOM", starStartX + (i - 1) * starSpacing, -12)
-                    
-                    -- Star texture (using Factory pattern)
-                    local starFrame = ns.UI.Factory:CreateContainer(starContainer, starSize, starSize)
-                    starFrame:SetPoint("TOP", 0, 0)
-                    
-                    local starTex = starFrame:CreateTexture(nil, "ARTWORK")
-                    starTex:SetAllPoints(starFrame)
+
+                -- Three vault slots in a row: star + text only (no slot panel background).
+                local slotsBand = CreateFrame("Frame", nil, col)
+                local bandPad = 8
+                slotsBand:SetSize(colWidth - bandPad * 2, slotsBandH)
+                slotsBand:SetPoint("TOP", titleText, "BOTTOM", 0, -BAND_TOP_GAP)
+
+                local nSlots = #thresholds
+                local slotGap = 8
+                local slotW = (slotsBand:GetWidth() - (nSlots - 1) * slotGap) / nSlots
+
+                for ti = 1, nSlots do
+                    local box = CreateFrame("Frame", nil, slotsBand)
+                    box:SetSize(slotW, slotsBandH)
+                    box:SetPoint("TOPLEFT", slotsBand, "TOPLEFT", (ti - 1) * (slotW + slotGap), 0)
+
+                    local isComplete = current >= thresholds[ti]
+
+                    local starTex = box:CreateTexture(nil, "ARTWORK")
+                    starTex:SetSize(SLOT_STAR, SLOT_STAR)
+                    starTex:SetPoint("TOP", box, "TOP", 0, -2)
                     starTex:SetAtlas("PetJournal-FavoritesIcon")
-                    
-                    -- Check if this milestone is completed
-                    local isComplete = current >= thresholds[i]
-                    
                     if isComplete then
-                        starTex:SetVertexColor(1, 0.9, 0.2)  -- Bright gold (complete)
+                        starTex:SetVertexColor(1, 0.9, 0.25)
                     else
-                        starTex:SetVertexColor(0.25, 0.25, 0.25)  -- Dark gray (locked)
+                        starTex:SetVertexColor(0.32, 0.32, 0.34)
                     end
-                    
-                    -- Milestone progress text below star
-                    local milestoneText = FontManager:CreateFontString(starContainer, "body", "OVERLAY")
-                    milestoneText:SetPoint("TOP", starFrame, "BOTTOM", 0, -3)
-                    
+
+                    local milestoneText = FontManager:CreateFontString(box, "subtitle", "OVERLAY")
+                    milestoneText:SetWidth(slotW - 4)
+                    milestoneText:SetPoint("TOP", starTex, "BOTTOM", 0, -SLOT_STAR_TEXT_GAP)
+                    milestoneText:SetJustifyH("CENTER")
+                    if milestoneText.SetJustifyV then milestoneText:SetJustifyV("MIDDLE") end
                     if isComplete then
-                        milestoneText:SetTextColor(0.3, 1, 0.3)  -- Green (complete)
+                        milestoneText:SetTextColor(0.35, 1, 0.4)
                     else
-                        milestoneText:SetTextColor(0.6, 0.6, 0.6)  -- Gray
+                        milestoneText:SetTextColor(0.78, 0.78, 0.8)
                     end
-                    milestoneText:SetText(format("%s / %s", FormatNumber(math.min(current, thresholds[i])), FormatNumber(thresholds[i])))
+                    milestoneText:SetText(
+                        format("%s / %s", FormatNumber(math.min(current, thresholds[ti])), FormatNumber(thresholds[ti]))
+                    )
                 end
+
+                local clickPad = CreateFrame("Button", nil, col)
+                clickPad:SetAllPoints()
+                clickPad:SetFrameLevel((col:GetFrameLevel() or 0) + 25)
+                clickPad:RegisterForClicks("LeftButtonUp")
+                clickPad:EnableMouse(not fullyComplete)
+                local hl = clickPad:CreateTexture(nil, "HIGHLIGHT")
+                hl:SetAllPoints()
+                hl:SetColorTexture(1, 1, 1, 0.08)
+                clickPad:SetHighlightTexture(hl)
+                if fullyComplete then
+                    clickPad:Hide()
+                end
+                clickPad:SetScript("OnClick", function(_, btn)
+                    if btn ~= "LeftButton" or fullyComplete then return end
+                    selectedSlots[slotKey] = not selectedSlots[slotKey]
+                    RefreshWeeklyPlanSlotSelections()
+                end)
+
+                local function refreshThisColumn()
+                    if fullyComplete then
+                        if ApplyVisuals then
+                            ApplyVisuals(col, disabledBg, disabledBorder)
+                        end
+                        col:SetAlpha(0.42)
+                        clickPad:Hide()
+                    elseif selectedSlots[slotKey] then
+                        if ApplyVisuals then
+                            ApplyVisuals(col, baseBg, accentBorder)
+                        end
+                        col:SetAlpha(1)
+                        clickPad:Show()
+                        clickPad:EnableMouse(true)
+                    else
+                        if ApplyVisuals then
+                            ApplyVisuals(col, unselBg, unselectedBorder)
+                        end
+                        col:SetAlpha(0.58)
+                        clickPad:Show()
+                        clickPad:EnableMouse(true)
+                    end
+                end
+                table.insert(slotColumnRefreshers, refreshThisColumn)
+                refreshThisColumn()
             end
             
             -- Dungeons (column 1)
@@ -4189,7 +4256,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 "questlog-questtypeicon-heroic",
                 (ns.L and ns.L["MYTHIC_PLUS_LABEL"]) or "Mythic+",
                 progress.dungeonCount,
-                {1, 4, 8}  -- Thresholds
+                {1, 4, 8},  -- Thresholds
+                "dungeon"
             )
             
             -- Raids (column 2)
@@ -4198,7 +4266,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 "questlog-questtypeicon-raid",
                 (ns.L and ns.L["RAIDS_LABEL"]) or "Raids",
                 progress.raidBossCount,
-                {2, 4, 6}  -- Thresholds
+                {2, 4, 6},  -- Thresholds
+                "raid"
             )
             
             -- World (column 3)
@@ -4207,58 +4276,11 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 "questlog-questtypeicon-Delves",
                 (ns.L and ns.L["QUEST_CAT_WORLD"]) or "World",
                 progress.worldActivityCount,
-                {2, 4, 8}  -- Thresholds
+                {2, 4, 8},  -- Thresholds
+                "world"
             )
             
             contentY = contentY - 95
-        end
-        
-        -- === SLOT SELECTION ===
-        local slotSelectLabel = FontManager:CreateFontString(contentFrame, "header", "OVERLAY", "accent")
-        slotSelectLabel:SetPoint("TOP", 0, -295)
-        slotSelectLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-        slotSelectLabel:SetText((ns.L and ns.L["TRACK_ACTIVITIES"]) or "Track Activities")
-        
-        local selectedSlots = { dungeon = true, raid = true, world = true }
-        
-        local slotOptions = {
-            { key = "dungeon", atlas = "questlog-questtypeicon-heroic",  label = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon (M+)", color = {0.9, 0.7, 0.2} },
-            { key = "raid",    atlas = "questlog-questtypeicon-raid",    label = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",          color = {0.3, 0.8, 1.0} },
-            { key = "world",   atlas = "questlog-questtypeicon-Delves",  label = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World",          color = {0.4, 0.9, 0.4} },
-        }
-        
-        local slotCheckY = -320
-        local slotCheckSpacing = 30
-        for si = 1, #slotOptions do
-            local opt = slotOptions[si]
-            local rowFrame = CreateFrame("Frame", nil, contentFrame)
-            rowFrame:SetSize(300, 24)
-            rowFrame:SetPoint("TOP", 0, slotCheckY + (si - 1) * -slotCheckSpacing)
-            
-            local cb = CreateThemedCheckbox(rowFrame, true)
-            cb:SetPoint("LEFT", 0, 0)
-            
-            local colorBar = rowFrame:CreateTexture(nil, "ARTWORK")
-            colorBar:SetSize(3, 18)
-            colorBar:SetPoint("LEFT", cb, "RIGHT", 6, 0)
-            colorBar:SetColorTexture(opt.color[1], opt.color[2], opt.color[3], 0.9)
-            
-            local icon = rowFrame:CreateTexture(nil, "ARTWORK")
-            icon:SetSize(18, 18)
-            icon:SetPoint("LEFT", colorBar, "RIGHT", 6, 0)
-            icon:SetAtlas(opt.atlas, false)
-            
-            local lbl = FontManager:CreateFontString(rowFrame, "body", "OVERLAY")
-            lbl:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-            lbl:SetText(opt.label)
-            lbl:SetTextColor(1, 1, 1)
-            
-            local capturedKey = opt.key
-            cb:SetScript("OnClick", function(self)
-                local checked = self:GetChecked()
-                selectedSlots[capturedKey] = checked
-                if self.innerDot then self.innerDot:SetShown(checked) end
-            end)
         end
         
         -- Buttons (symmetrically centered)
@@ -4367,7 +4389,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 32, 32)
     iconContainer:SetPoint("LEFT", 10, 0)
     if ApplyVisuals and classColors then
-        ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {classColors.r, classColors.g, classColors.b, 1})
+        ApplyVisuals(iconContainer, COLORS.bgCard, {classColors.r, classColors.g, classColors.b, 1})
     end
     
     local charIconFrame = CreateIcon(iconContainer, raceAtlas, 26, true, nil, true)

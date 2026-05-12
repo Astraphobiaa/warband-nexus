@@ -325,7 +325,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 } }
     if ApplyVisuals then
         local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
-        ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
+        ApplyVisuals(card, COLORS.bgCard, borderColor)
     end
     
     -- Apply highlight effect (safe check for Factory)
@@ -3045,21 +3045,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     end
     charText:SetText(characterDisplay)
     
-    -- Reset timer (standardized widget)
-    local CreateResetTimer = ns.UI_CreateResetTimer
-    local resetTimer = CreateResetTimer(
-        card,
-        "TOPRIGHT",
-        -35,  -- 35px from right edge (space for delete button)
-        -10,  -- 10px from top
-        function()
-            local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
-            return resetTimestamp - GetServerTime()
-        end
-    )
-    card.resetTimer = resetTimer  -- Store for reference
-    
-    -- Delete button (using Factory pattern)
+    -- Header controls: right edge = delete, then reminder horn, then reset timer (no overlap).
     local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)  -- noBorder=true
     removeBtn:SetPoint("TOPRIGHT", -8, -8)
     removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
@@ -3071,8 +3057,30 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     local vaultAlertBtn = CreatePlanReminderAlertButton(card, plan)
     card.reminderAlertBtn = vaultAlertBtn
     if vaultAlertBtn then
-        vaultAlertBtn:SetPoint("TOPRIGHT", -60, -8)
+        vaultAlertBtn:SetPoint("TOPRIGHT", removeBtn, "TOPLEFT", -8, 0)
     end
+    
+    local CreateResetTimer = ns.UI_CreateResetTimer
+    local resetTimer = CreateResetTimer(
+        card,
+        "TOPRIGHT",
+        -8,
+        -10,
+        function()
+            local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
+            return resetTimestamp - GetServerTime()
+        end
+    )
+    resetTimer.container:ClearAllPoints()
+    resetTimer.container:SetPoint("TOP", removeBtn, "TOP", 0, 0)
+    if vaultAlertBtn then
+        resetTimer.container:SetPoint("RIGHT", vaultAlertBtn, "LEFT", -10, 0)
+    else
+        resetTimer.container:SetPoint("RIGHT", removeBtn, "LEFT", -10, 0)
+    end
+    card.resetTimer = resetTimer
+    
+    titleText:SetPoint("RIGHT", resetTimer.container, "LEFT", -12, 0)
     
     -- === 3 PROGRESS SLOTS ===
     local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
@@ -3349,7 +3357,6 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     end
     charText:SetText(charDisplay)
     
-    -- Delete button
     local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)
     removeBtn:SetPoint("TOPRIGHT", -8, -8)
     removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
@@ -3361,8 +3368,10 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     local dqAlertBtn = CreatePlanReminderAlertButton(card, plan)
     card.reminderAlertBtn = dqAlertBtn
     if dqAlertBtn then
-        dqAlertBtn:SetPoint("TOPRIGHT", -60, -8)
+        dqAlertBtn:SetPoint("TOPRIGHT", removeBtn, "TOPLEFT", -8, 0)
     end
+    
+    titleText:SetPoint("RIGHT", dqAlertBtn or removeBtn, "LEFT", -12, 0)
     
     -- === CATEGORY PROGRESS SLOTS ===
     local contentY = -70

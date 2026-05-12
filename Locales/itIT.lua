@@ -546,7 +546,7 @@ L["MODULE_PVE_DESC"] = "Traccia dungeon Mitica+, progresso incursioni e ricompen
 L["MODULE_PLANS"] = "Fare"
 L["MODULE_PLANS_DESC"] = "Traccia obiettivi personali per cavalcature, mascotte, giocattoli, imprese e attività personalizzate"
 L["MODULE_PROFESSIONS"] = "Professioni"
-L["MODULE_PROFESSIONS_DESC"] = "Traccia abilità professionali, concentrazione, conoscenza e finestra compagno ricette"
+L["MODULE_PROFESSIONS_DESC"] = "Traccia abilità professionali, strumenti, concentrazione, conoscenza e ricette su tutti i personaggi. Mostra le quantità di reagenti del compagno ricette finché resta aperta una finestra di professione."
 L["PROFESSIONS_DISABLED_TITLE"] = "Professioni"
 L["ITEM_NUMBER_FORMAT"] = "Oggetto #%s"
 L["WN_SEARCH"] = "Ricerca WN"
@@ -614,7 +614,7 @@ L["INFO_TAB_GEAR"] = "Equipaggiamento"
 L["INFO_TAB_COLLECTIONS"] = "Collezioni"
 L["GEAR_DESC"] = "Visualizza equipamento equipato, opportunità di miglioramento, raccomandazioni banco (BoE/Warbound) e candidati a miglioramento tra personaggi."
 L["COLLECTIONS_DESC"] = "Panoramica montature, mascotte, giocattoli, transmog e altri collezionabili. Segui il progresso e trova oggetti mancanti."
-L["PROFESSIONS_INFO_DESC"] = "Traccia abilità professionali, concentrazione, conoscenza e alberi specializzazione su tutti i personaggi. Include Recipe Companion per fonti reagenti."
+L["PROFESSIONS_INFO_DESC"] = "Tutte le professioni di creazione dei personaggi seguiti in una griglia ordinabile: livello di abilità, strumenti equipaggiati, concentrazione e ricarica, punti conoscenza, copertura ricette e avanzamento conoscenza settimanale. I dati si aggiornano aprendo il pannello professione di ogni personaggio (K predefinito). Con una finestra professione aperta, il compagno ricette indica quanti reagenti di ogni tipo porti in borsa."
 L["AVAILABLE_COMMANDS"] = "Comandi disponibili:"
 L["CMD_OPEN"] = "Apri finestra addon"
 L["CMD_PLANS"] = "Attiva/disattiva finestra To-Do"
@@ -644,6 +644,17 @@ L["WELCOME_OPEN_INTERFACE"] = "per aprire l'interfaccia."
 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
+
+-- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
+L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
+
+Scheda Professioni: testi modulo e informazioni aggiornati; intestazioni colonna più chiare (Apri, frecce di ordinamento, striscia Professione), colonna Apri più larga con icone ritagliate; dialogo creazione piano Grande Deposito più largo, slot a schede, rimossa la riga di tracciamento ridondante e riempimento inferiore allineato alla cornice.
+
+Schede piano Grande Deposito settimanale e Avanzamento settimanale: corno promemoria, timer di reimpostazione ed Elimina allineati senza sovrapposizione.
+
+Finestre pop-out esterne: sfondo del pannello contenuto allineato alla cornice, niente striscia grigia sotto il contenuto.
+
+CurseForge: Warband Nexus]=]
 
 -- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
@@ -923,7 +934,7 @@ L["CONFIG_MOD_PVE_DESC"] = "Traccia Grande Deposito, Mitica+ e blocchi incursion
 L["CONFIG_MOD_PLANS"] = "Fare"
 L["CONFIG_MOD_PLANS_DESC"] = "Tracciamento attività settimanali, obiettivi di collezione e progressi del caveau."
 L["CONFIG_MOD_PROFESSIONS"] = "Professioni"
-L["CONFIG_MOD_PROFESSIONS_DESC"] = "Traccia abilità professionali, ricette e concentrazione."
+L["CONFIG_MOD_PROFESSIONS_DESC"] = "Scheda Professioni: abilità, strumenti, conoscenza, ricette, concentrazione e conoscenza settimanale su tutti i personaggi."
 L["CONFIG_AUTOMATION"] = "Automazione"
 L["CONFIG_AUTOMATION_DESC"] = "Controlla cosa succede automaticamente quando apri la Banca Warband."
 L["CONFIG_AUTO_OPTIMIZE"] = "Ottimizza database automaticamente"
@@ -1373,6 +1384,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "Richiedi tempo di gioco al login"
 L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "Se attivo, richiede /played in background per «Più giocato» ecc.; l'output in chat è soppresso. Se disattivo, nessuna richiesta automatica al login (/played manuale ok)."
 L["PROFESSIONS_WIDE_TABLE_HINT"] = "Suggerimento: barra in basso o Maiusc + rotella per vedere tutte le colonne."
+L["PROFESSIONS_LAYOUT_HINT"] = "Tip: use Columns to show weeklies, treatises, treasures, and other progress."
 
 -- Blizzard GlobalStrings (Auto-localized by WoW) [parity sync]
 L["BANK_LABEL"] = BANK or "Bank"
@@ -1508,7 +1520,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limitato da fazione o classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.0.3).
+Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.0.4).
 
 CurseForge: Warband Nexus]=]
 
