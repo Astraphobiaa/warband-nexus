@@ -306,6 +306,8 @@ local function BuildPvESignature(pveCache, charKey)
     -- Include claimedResetTime so a claim transition (false→claimedResetTime set) fires PVE_UPDATED
     -- even when hasAvailableRewards was already false (e.g. post-reset unclaimed chest case).
     local claimedSig = tostring(rewards and rewards.claimedResetTime or 0)
+    -- Include claimedAt so a claim still refreshes when claimedResetTime is unchanged (same reset week).
+    local claimedAtSig = tostring(rewards and rewards.claimedAt or 0)
 
     local acts = gv and gv.activities and gv.activities[charKey]
     local raidN = acts and acts.raids and #acts.raids or 0
@@ -340,6 +342,7 @@ local function BuildPvESignature(pveCache, charKey)
         tostring(dungeonSum),
         rewardSig,
         claimedSig,
+        claimedAtSig,
         tostring(raidN), tostring(mPlusN), tostring(pvpN), tostring(worldN),
         tostring(lockN), tostring(wbN),
         delveSig,
