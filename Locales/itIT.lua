@@ -645,6 +645,13 @@ L["WELCOME_OPEN_INTERFACE"] = "per aprire l'interfaccia."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
+L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
+
+L'archiviazione dei personaggi preferisce chiavi GUID stabili quando il gioco lo consente, e le righe duplicate vengono unite in modo sicuro per mantenere l'elenco ordinato. All'accesso compare una breve riga in chat per confermare il caricamento senza spam. Il colore di classe nelle collezioni e protetto dai casi limite, e la finestra di conferma del tracciamento gestisce correttamente i salvataggi con chiave GUID.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
 L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
 
@@ -1521,7 +1528,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limitato da fazione o classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.0.4).
+Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.0.5).
 
 CurseForge: Warband Nexus]=]
 

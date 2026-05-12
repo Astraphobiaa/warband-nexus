@@ -645,6 +645,13 @@ L["WELCOME_OPEN_INTERFACE"] = "인터페이스를 열려면."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
+L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
+
+캐릭터 저장은 게임이 허용하는 경우 안정적인 GUID 키를 우선 사용하며, 중복 행은 안전하게 병합되어 목록이 깔끔하게 유지됩니다. 로그인 시 스팸 없이 짧은 한 줄의 채팅으로 로드 여부를 확인할 수 있습니다. 수집품의 직업 색상 표시는 예외 상황에서도 안전하게 처리되며, 추적 확인 대화 상자는 GUID 기반 저장을 올바르게 처리합니다.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
 L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
 
@@ -1521,7 +1528,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "?? ?? ?? ??"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-미드나이트 대규모 업데이트(저장된 인스턴스, 도전 횟수, PvE/장비/계획, 캐시 구조). 이전 패치 상세 목록은 로케일 파일에서 제거되었습니다. 현재 빌드(v3.0.4)는 `/wn changelog`를 사용하세요.
+미드나이트 대규모 업데이트(저장된 인스턴스, 도전 횟수, PvE/장비/계획, 캐시 구조). 이전 패치 상세 목록은 로케일 파일에서 제거되었습니다. 현재 빌드(v3.0.5)는 `/wn changelog`를 사용하세요.
 
 CurseForge: Warband Nexus]=]
 

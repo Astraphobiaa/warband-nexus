@@ -452,6 +452,13 @@ L["BANK_NOT_OPEN_MSG"] = "La banque n'est pas ouverte"
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
+L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
+
+Le stockage des personnages privilegie des identifiants GUID stables lorsque le jeu le permet, et les lignes en double sont fusionnees en toute securite pour garder une liste propre. A la connexion, une courte ligne dans le chat confirme le chargement sans spam. La couleur de classe des collections est protegee contre les cas limites, et la fenetre de confirmation du suivi gere correctement les sauvegardes basees sur le GUID.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
 L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
 
@@ -1581,7 +1588,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limit� par faction ou classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.0.4).
+Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.0.5).
 
 CurseForge: Warband Nexus]=]
 

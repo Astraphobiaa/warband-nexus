@@ -750,6 +750,13 @@ L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
+L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
+
+Die Charakterspeicherung nutzt nach Moeglichkeit stabile GUID-Schluessel, und doppelte Charakterzeilen werden sicher zusammengefuehrt, damit die Liste aufgeraeumt bleibt. Beim Login erscheint eine kurze Chatzeile als Bestaetigung ohne Spam. Bei Sammlungen ist die Klassenfaerbung abgesichert, und der Tracking-Bestaetigungsdialog funktioniert korrekt bei GUID-basierten Speicherungen.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
 L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
 
@@ -1658,7 +1665,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Fraktions- oder klassenbeschr�
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.0.4) `/wn changelog` verwenden.
+Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.0.5) `/wn changelog` verwenden.
 
 CurseForge: Warband Nexus]=]
 

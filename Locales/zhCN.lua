@@ -882,6 +882,13 @@ L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "开启时在后台请求 /playe
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
+L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
+
+角色存储在可行时优先使用稳定的 GUID 键，重复行会安全合并以保持列表整洁。登录时聊天中会显示一行简短提示确认加载且无刷屏。收藏的标签职业着色增加了防护，追踪确认对话框可正确处理基于 GUID 的存档。
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
 L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
 
@@ -1706,7 +1713,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "阵营和职业限制"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-午夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.0.4）。
+午夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.0.5）。
 
 CurseForge: Warband Nexus]=]
 

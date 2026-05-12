@@ -636,6 +636,13 @@ L["WELCOME_OPEN_INTERFACE"] = "以開啟介面。"
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
+L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
+
+角色儲存在可行時優先使用穩定的 GUID 鍵，重複列會安全合併以保持清單整齊。登入時聊天會顯示一行簡短提示確認載入且不洗版。收藏的職業配色加了防護，追蹤確認對話框可正確處理以 GUID 為鍵的存檔。
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
 L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
 
@@ -1512,7 +1519,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "????????"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-午夜（Midnight）大型版本（已儲存副本、嘗試次數計數、PvE/裝備/計畫、快取架構）。各語系檔已移除舊版逐條更新說明；請用 `/wn changelog` 檢視目前版本（v3.0.4）。
+午夜（Midnight）大型版本（已儲存副本、嘗試次數計數、PvE/裝備/計畫、快取架構）。各語系檔已移除舊版逐條更新說明；請用 `/wn changelog` 檢視目前版本（v3.0.5）。
 
 CurseForge: Warband Nexus]=]
 
