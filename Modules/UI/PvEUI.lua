@@ -2744,8 +2744,10 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
         -- CRITICAL: Create a NEW table on each render (don't reuse old data)
         local vaultActivities = {}
         
-        -- Flatten vault activities (raids, mythicPlus, pvp, world) into single array
-        if vaultActivitiesData then
+        -- Flatten vault activities (raids, mythicPlus, pvp, world) into single array.
+        -- Skip if isPostReset: data is from last week after reset — show fresh 0 progress.
+        -- hasUnclaimedRewards still shows the vault chest as ready to claim separately.
+        if vaultActivitiesData and not vaultActivitiesData.isPostReset then
             if vaultActivitiesData.raids then
                 for i = 1, #vaultActivitiesData.raids do
                     local activity = vaultActivitiesData.raids[i]
@@ -3133,7 +3135,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local needsRefresh = false
     if not pveData or not pveData.keystone then
         needsRefresh = true
-    elseif pveData.vaultActivities then
+    elseif pveData.vaultActivities and not pveData.vaultActivities.isPostReset then
         -- Check if any unlocked vault slot is missing iLvl (server was slow)
         local vaultCategories = {"raids", "mythicPlus", "world"}
         for ci = 1, #vaultCategories do
