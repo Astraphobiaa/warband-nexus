@@ -20,6 +20,12 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local WarbandNexus = ns.WarbandNexus
 local Utilities = ns.Utilities
 
+-- Session flag: true once WEEKLY_REWARDS_UPDATE has fired this session, meaning
+-- OnUIInteract() was called and the server has responded with fresh vault data.
+-- Without this, UpdateGreatVaultRewards() can write hasAvailableRewards=false on
+-- login before Blizzard's API is ready, clearing a valid unclaimed vault chest.
+local vaultDataFreshThisSession = false
+
 ---Chat-visible diagnostics when Config → Debug Mode is on (SavedVariables-safe summaries only).
 ---Uses strict IsDebugModeEnabled() so legacy truthy non-boolean profile.debugMode cannot spam chat.
 local function PvECacheUserDebug(msg, ...)
@@ -297,6 +303,9 @@ local function BuildPvESignature(pveCache, charKey)
 
     local rewards = gv and gv.rewards and gv.rewards[charKey]
     local rewardSig = rewards and rewards.hasAvailableRewards and "1" or "0"
+    -- Include claimedResetTime so a claim transition (false→claimedResetTime set) fires PVE_UPDATED
+    -- even when hasAvailableRewards was already false (e.g. post-reset unclaimed chest case).
+    local claimedSig = tostring(rewards and rewards.claimedResetTime or 0)
 
     local acts = gv and gv.activities and gv.activities[charKey]
     local raidN = acts and acts.raids and #acts.raids or 0
@@ -330,6 +339,7 @@ local function BuildPvESignature(pveCache, charKey)
         tostring(dungeonCount),
         tostring(dungeonSum),
         rewardSig,
+        claimedSig,
         tostring(raidN), tostring(mPlusN), tostring(pvpN), tostring(worldN),
         tostring(lockN), tostring(wbN),
         delveSig,
@@ -968,6 +978,11 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
         PvECacheUserDebug(
             "greatVault: preserve pre-reset completed rows key=%s incomingComplete=no",
             tostring(charKey))
+        -- Mark as post-reset so PveUI shows this week's 0 progress while vault button
+        -- still knows there's an unclaimed chest sitting from last week.
+        if previousActivities then
+            previousActivities.isPostReset = true
+        end
         return
     end
     
@@ -975,6 +990,7 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
     local weeklyResetTime = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and (GetServerTime() + C_DateAndTime.GetSecondsUntilWeeklyReset()) or 0
     
     -- Create fresh arrays only when we have real data (prevent stale duplicates)
+    -- isPostReset is cleared here since we now have real this-week data
     self.db.global.pveCache.greatVault.activities[charKey] = {
         raids = {},
         mythicPlus = {},
@@ -1160,14 +1176,39 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
     local previousResetTime = GetCurrentWeeklyResetStartTime()
     local claimedResetTime = previousRewardData and tonumber(previousRewardData.claimedResetTime) or nil
     local claimedAt = previousRewardData and tonumber(previousRewardData.claimedAt) or nil
-    if previousRewardData and previousRewardData.hasAvailableRewards == true and hasAvailable == false then
+
+    -- Determine if the vault was effectively "ready" before this update.
+    -- This covers both the normal case (hasAvailableRewards=true) and the post-reset
+    -- case where the chest was sitting unclaimed (isPostReset activities + reset crossed).
+    local activities = self.db.global.pveCache.greatVault.activities
+        and self.db.global.pveCache.greatVault.activities[charKey]
+    local wasPostResetReady = activities and activities.isPostReset
+        and previousResetTime and (tonumber(activities.weeklyResetTime) or 0) < previousResetTime
+
+    if hasAvailable == false and (
+        (previousRewardData and previousRewardData.hasAvailableRewards == true)
+        or wasPostResetReady
+    ) then
         local vaultFrameShown = WeeklyRewardsFrame and WeeklyRewardsFrame.IsShown and WeeklyRewardsFrame:IsShown()
         if vaultFrameShown or allowClaimTransition == true then
             claimedResetTime = previousResetTime
             claimedAt = time()
+            -- Clear isPostReset since the chest is now claimed
+            if activities then activities.isPostReset = nil end
         else
             hasAvailable = true
         end
+    end
+
+    -- GUARD: If HasAvailableRewards() returned false but vault data hasn't been confirmed
+    -- fresh this session (WEEKLY_REWARDS_UPDATE not yet fired), don't write false —
+    -- the API returns false on login before OnUIInteract() is called and the server
+    -- responds. Leave the existing cached value intact to preserve unclaimed vault status.
+    if not hasAvailable and not vaultDataFreshThisSession
+        and not (allowClaimTransition == true)
+        and not (WeeklyRewardsFrame and WeeklyRewardsFrame.IsShown and WeeklyRewardsFrame:IsShown()) then
+        DebugPrint("|cff9370DB[PvECache]|r UpdateGreatVaultRewards: skipping false write — vault data not fresh this session")
+        return
     end
 
     self.db.global.pveCache.greatVault.rewards[charKey] = {
@@ -2081,6 +2122,7 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Weekly Vault events
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_UPDATE triggered")
+        vaultDataFreshThisSession = true  -- Server has responded; HasAvailableRewards() is now reliable
         WarbandNexus:OnVaultDataReceived()
     end)
     
@@ -2239,6 +2281,9 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
         PvECacheUserDebug(
             "scanner: preserve pre-reset completed vault rows key=%s incomingComplete=no",
             tostring(charKey))
+        -- Mark as post-reset so PveUI shows this week's 0 progress while vault button
+        -- still knows there's an unclaimed chest sitting from last week.
+        activities.isPostReset = true
         return
     end
     

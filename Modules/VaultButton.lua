@@ -291,6 +291,8 @@ end
 local function HasAnyProgress(charKey)
     local acts = GetCharActivities(charKey)
     if not acts then return false end
+    -- isPostReset means data is from last week — treat as no this-week progress
+    if acts.isPostReset then return false end
     for _, cat in ipairs({ acts.raids, acts.mythicPlus, acts.world }) do
         if cat then
             for _, a in ipairs(cat) do
@@ -305,7 +307,8 @@ end
 
 local function GetSlotData(charKey, category)
     local acts = GetCharActivities(charKey)
-    local cat  = acts and acts[category] or {}
+    -- isPostReset means data is from last week — show empty slots for this week
+    local cat  = (acts and not acts.isPostReset) and acts[category] or {}
     local typeName = CAT_TO_TYPE[category]
     local slots = {}
     for i = 1, 3 do
