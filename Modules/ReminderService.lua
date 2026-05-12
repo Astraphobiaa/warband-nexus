@@ -1255,6 +1255,7 @@ end
 
 local zoneChangeTimer = nil
 local calendarResetReminderTimer = nil
+local OnLoginRemindersCheck
 
 --- Seconds until the earlier of the next daily or weekly Blizzard reset (+ small skew), or nil if APIs missing.
 local function NextCalendarReminderDelay()
@@ -1326,7 +1327,7 @@ local function OnZoneOrInstanceChanged()
     end)
 end
 
-local function OnLoginRemindersCheck()
+OnLoginRemindersCheck = function()
     BeginCalendarToastBatch()
     CheckDailyLoginReminders()
     CheckMonthlyLoginReminders()
