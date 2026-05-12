@@ -278,7 +278,13 @@ local function FormatCharacterName(entry)
 end
 
 local function GetCurrentCharKey()
-    return ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey() or nil
+    local raw = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+        or (ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+    if not raw then return nil end
+    if ns.Utilities.GetCanonicalCharacterKey then
+        return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+    end
+    return raw
 end
 
 local function GetCharActivities(charKey)

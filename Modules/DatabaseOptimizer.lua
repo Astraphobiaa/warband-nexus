@@ -305,6 +305,7 @@ end
     @return table - Results of cleanup
 ]]
 function WarbandNexus:OptimizeDatabase()
+    -- Stale row removal only clears `db.global.characters` entries; orphan subsidiary keys are handled elsewhere (CleanupOrphanedData).
     local results = {
         staleCharacters = 0,
         invalidItems = 0,

@@ -233,12 +233,13 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         return {}
     end
     
-    -- Build character lookup table
-    -- CRITICAL: Use GetCharacterKey() normalization (strips spaces) to match reputation DB keys
+    -- Build character lookup table (SavedVariables row key = guid or Name-Realm; matches currency/cache writes).
     local charLookup = {}
     for ci = 1, #characters do
         local char = characters[ci]
-        local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
+        local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
+            or (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(char))
+            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
         if charKey then charLookup[charKey] = char end
     end
     

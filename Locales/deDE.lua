@@ -1514,6 +1514,7 @@ L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "Chat-Tab anklicken, dann hier klicken
 L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r Versuchszähler im gewählten Chat-Tab aktiviert."
 L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r Chat-Tab konnte nicht aktualisiert werden (kein Chat oder API blockiert)."
 L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00Neuigkeiten:|r Es kann ein Popup über dem Chat erscheinen, oder tippe |cffffff00/wn changelog|r."
+L["CHARACTER_LINK_HINT_CHAT"] = "Deine gespeicherten Daten wurden behalten. Tippe bei Bedarf einmal |cffffff00/reload|r."
 L["CONFIG_SHOW_LOGIN_CHAT"] = "Login-Nachricht im Chat"
 L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "Kurze Willkommenszeile bei aktivierten Benachrichtigungen. Nutzt die System-Nachrichtengruppe und einen sichtbaren Chat-Tab (z. B. für Chattynator). Das „Was ist neu“-Fenster ist separat (Vollbild-Popup)."
 L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Spielzeit im Chat ausblenden"

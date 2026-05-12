@@ -1518,7 +1518,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
 
     -- ===== SECTION HEADERS & CHARACTER ROWS =====
-    local currentPlayerKey = ns.Utilities:GetCharacterKey()
+    local currentPlayerKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus))
+        or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
+        or ns.Utilities:GetCharacterKey()
     local rowIndex = 0
     local SECTION_COLLAPSE_HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
 

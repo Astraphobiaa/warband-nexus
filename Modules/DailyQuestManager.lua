@@ -887,7 +887,16 @@ function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes)
     local _, currentClass = UnitClass("player")
     local characterClass
     local currentKey = ns.Utilities:GetCharacterKey()
-    if ns.Utilities:GetCharacterKey(characterName, characterRealm) == currentKey then
+    local canonCurrent = currentKey
+    if currentKey and ns.Utilities.GetCanonicalCharacterKey then
+        canonCurrent = ns.Utilities:GetCanonicalCharacterKey(currentKey) or currentKey
+    end
+    local planKey = ns.Utilities:GetCharacterKey(characterName, characterRealm)
+    local canonPlan = planKey
+    if planKey and ns.Utilities.GetCanonicalCharacterKey then
+        canonPlan = ns.Utilities:GetCanonicalCharacterKey(planKey) or planKey
+    end
+    if planKey == currentKey or (canonPlan and canonCurrent and canonPlan == canonCurrent) then
         characterClass = currentClass
     end
 

@@ -128,9 +128,13 @@ function WarbandNexus:OnSkillLinesChanged()
         end
 
         -- CHARACTER_UPDATED always fires (basic character data, not profession-specific)
-        local key = ns.Utilities:GetCharacterKey()
+        local raw = ns.Utilities:GetCharacterKey()
+        local msgKey = raw
+        if raw and ns.Utilities.GetCanonicalCharacterKey then
+            msgKey = ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+        end
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
-            charKey = key,
+            charKey = msgKey,
             dataType = "professions"
         })
     end)
@@ -152,12 +156,15 @@ function WarbandNexus:OnItemLevelChanged()
             local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
             if resolved then tableKey = resolved end
         end
-        if self.db.global.characters and self.db.global.characters[tableKey] then
+        -- Mirror SaveCurrentCharacterData: row may still be under legacy Name-Realm briefly vs Resolve guid slot.
+        local chars = self.db.global.characters
+        local entry = chars and (chars[tableKey] or chars[key])
+        if entry then
             local _, avgItemLevelEquipped = GetAverageItemLevel()
             if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then return end
             
-            self.db.global.characters[tableKey].itemLevel = avgItemLevelEquipped
-            self.db.global.characters[tableKey].lastSeen = time()
+            entry.itemLevel = avgItemLevelEquipped
+            entry.lastSeen = time()
             
             -- Fire event for UI update (DB-First pattern)
             local msgKey = key

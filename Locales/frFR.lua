@@ -1437,6 +1437,7 @@ L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "Cliquez l'onglet souhaité, puis ce b
 L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r Compteur d'essais activé sur l'onglet sélectionné."
 L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r Impossible de mettre à l'onglet à jour (pas de chat ou API bloquée)."
 L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00Nouveautés :|r une fenêtre peut apparaître au-dessus du chat, ou tapez |cffffff00/wn changelog|r."
+L["CHARACTER_LINK_HINT_CHAT"] = "Vos données sauvegardées ont été conservées. Si l'affichage semble incorrect, tapez |cffffff00/reload|r une fois."
 L["CONFIG_SHOW_LOGIN_CHAT"] = "Message de connexion dans le chat"
 L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "Affiche une courte ligne de bienvenue lorsque les notifications sont activées. Utilise le groupe Système et un onglet visible (ex. Chattynator). La fenêtre Nouveautés est séparée (plein écran)."
 L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Masquer le temps de jeu dans le chat"

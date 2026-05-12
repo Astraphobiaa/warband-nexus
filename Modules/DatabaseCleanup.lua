@@ -54,40 +54,67 @@ function WarbandNexus:CleanupDatabase()
         end
     end
     
-    -- Step 2: Remove duplicate characters (keep newest by lastSeen)
+    -- Step 1b: Same GUID duplicates first (merge row payloads, remap subsidiaries, single canonical slot).
+    if self.db.global.characters and ns.MigrationService and ns.MigrationService.DeduplicateGlobalCharactersByGuid then
+        ns.MigrationService:DeduplicateGlobalCharactersByGuid(self.db)
+    end
+
+    -- Step 2: Remove duplicate characters by identity (GUID when present, else Name-Realm).
+    -- Subsidiary tables must remap before dropping a row key (currency/gear/PvE/itemStorage).
     if self.db.global.characters then
-        local seen = {}  -- [normalizedKey] = originalKey
+        local seen = {}  -- [mergeKey] = survivor table key
         local toRemove = {}
-        
+        local renames = {}
+
         local Utilities = ns.Utilities
+        local issecretvalue = issecretvalue
+        local MS = ns.MigrationService
+
         for charKey, charData in pairs(self.db.global.characters) do
-            local normalizedKey = (Utilities and Utilities.GetCharacterKey and Utilities:GetCharacterKey(charData.name, charData.realm)) or charKey
-            if seen[normalizedKey] then
-                -- Duplicate found! Keep the one with newest lastSeen
-                local existingKey = seen[normalizedKey]
+            local mergeKey
+            local g = charData.guid
+            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+                mergeKey = "\001g\001" .. g
+            elseif Utilities and Utilities.GetCharacterKey and charData.name and charData.realm then
+                mergeKey = Utilities:GetCharacterKey(charData.name, charData.realm) or charKey
+            else
+                mergeKey = charKey
+            end
+
+            if seen[mergeKey] then
+                local existingKey = seen[mergeKey]
                 local existingData = self.db.global.characters[existingKey]
-                local existingTime = existingData.lastSeen or 0
+                local existingTime = existingData and existingData.lastSeen or 0
                 local newTime = charData.lastSeen or 0
-                
+
                 if newTime > existingTime then
-                    -- Current one is newer, remove old one
+                    renames[existingKey] = charKey
                     toRemove[existingKey] = true
-                    seen[normalizedKey] = charKey
+                    seen[mergeKey] = charKey
                     cleaned.duplicates = cleaned.duplicates + 1
                 else
-                    -- Existing one is newer, remove current one
+                    renames[charKey] = existingKey
                     toRemove[charKey] = true
                     cleaned.duplicates = cleaned.duplicates + 1
                 end
             else
-                seen[normalizedKey] = charKey
+                seen[mergeKey] = charKey
             end
         end
-        
-        -- Remove duplicates
-        for key in pairs(toRemove) do
-            self.db.global.characters[key] = nil
-            DebugPrint("|cffff8000[WN Cleanup]|r Removed duplicate: " .. key)
+
+        if next(renames) and MS and MS.ApplyCharacterKeyedStorageRenames then
+            MS:ApplyCharacterKeyedStorageRenames(self.db, renames)
+        end
+
+        for loserKey in pairs(toRemove) do
+            local survivorKey = renames[loserKey]
+            local loserData = self.db.global.characters[loserKey]
+            local survivorData = survivorKey and self.db.global.characters[survivorKey]
+            if survivorData and loserData and MS and MS.MergeCharacterRowPreserveWinner then
+                MS:MergeCharacterRowPreserveWinner(survivorData, loserData)
+            end
+            self.db.global.characters[loserKey] = nil
+            DebugPrint("|cffff8000[WN Cleanup]|r Removed duplicate: " .. tostring(loserKey))
         end
     end
     

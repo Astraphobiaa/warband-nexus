@@ -224,7 +224,15 @@ local selectedCharKey = nil  -- nil = auto-select current player
 
 local function GetSelectedCharKey()
     if selectedCharKey then return selectedCharKey end
-    return ns.Utilities and ns.Utilities:GetCharacterKey()
+    local U = ns.Utilities
+    if not U then return nil end
+    local store = (ns.CharacterService and WarbandNexus and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus))
+        or (U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus))
+        or (U.GetCharacterKey and U:GetCharacterKey())
+    if store and U.GetCanonicalCharacterKey then
+        return U:GetCanonicalCharacterKey(store) or store
+    end
+    return store
 end
 
 local function GetLowLevelHideThreshold(profile)

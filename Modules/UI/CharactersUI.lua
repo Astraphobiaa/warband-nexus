@@ -80,6 +80,8 @@ local function IsCharLoggedInSession(char)
     if not rowKey then return false end
     local raw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not raw then return false end
+    local storage = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+    if storage and rowKey == storage then return true end
     if rowKey == raw then return true end
     local resolved = ResolveSessionCharactersTableKey()
     if resolved and rowKey == resolved then return true end
@@ -96,6 +98,8 @@ local function OrderKeyIsSessionChar(orderKey)
     if not orderKey then return false end
     local raw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not raw then return false end
+    local storage = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+    if storage and orderKey == storage then return true end
     if orderKey == raw then return true end
     local resolved = ResolveSessionCharactersTableKey()
     if resolved and orderKey == resolved then return true end

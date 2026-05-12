@@ -66,6 +66,18 @@ local function SafeGetMoneyCopperFromEntry(existingEntry)
     return math.floor(n)
 end
 
+--- After `characters` row moves from legacy Name-Realm index to guid-shaped key, remap subsidiary tables once.
+local function RelocateLegacyCharacterSlot(db, newKey, legacyKey)
+    if not db or not db.global or not db.global.characters then return end
+    if not newKey or not legacyKey or newKey == legacyKey then return end
+    if not db.global.characters[legacyKey] then return end
+    local MS = ns.MigrationService
+    if MS and MS.ApplyCharacterKeyedStorageRenames then
+        MS:ApplyCharacterKeyedStorageRenames(db, { [legacyKey] = newKey })
+    end
+    db.global.characters[legacyKey] = nil
+end
+
 local function GetRestedCapMultiplier(raceFile)
     return (raceFile == "Pandaren") and 3.0 or 1.5
 end
@@ -142,10 +154,7 @@ function WarbandNexus:OnTimePlayedReceived(event, totalTimePlayed, timePlayedThi
 
     charData.timePlayed = played
 
-    local msgKey = rawKey
-    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-        msgKey = ns.Utilities:GetCanonicalCharacterKey(rawKey) or rawKey
-    end
+    local msgKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)) or rawKey
     -- Fire event so UI refreshes
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
         charKey = msgKey,
@@ -384,9 +393,9 @@ function WarbandNexus:UpdateCharacterCache(dataType)
     -- Update lastSeen timestamp
     charData.lastSeen = time()
     
-    local msgKey = rawKey
+    local msgKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)) or rawKey
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-        msgKey = ns.Utilities:GetCanonicalCharacterKey(rawKey) or rawKey
+        msgKey = ns.Utilities:GetCanonicalCharacterKey(msgKey) or msgKey
     end
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
         charKey = msgKey,
@@ -894,7 +903,9 @@ function WarbandNexus:SaveMinimalCharacterData()
         return false
     end
     
-    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
+    local legacyKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
+    local key = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)
+        or legacyKey
     if not key then return false end
     local Constants = ns.Constants
 
@@ -902,7 +913,8 @@ function WarbandNexus:SaveMinimalCharacterData()
     if not self.db.global.characters then
         self.db.global.characters = {}
     end
-    local existingEntry = self.db.global.characters[key]
+    local chars = self.db.global.characters
+    local existingEntry = (chars[key] or (legacyKey and chars[legacyKey])) or nil
     
     -- Get basic character info
     local className, classFile, classID = UnitClass("player")
@@ -943,7 +955,7 @@ function WarbandNexus:SaveMinimalCharacterData()
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
 
     -- Store MINIMAL data only (untracked: strip profession/gear/PvE-style fields; do not call extra collectors)
-    self.db.global.characters[key] = {
+    chars[key] = {
         name = name,
         realm = realm,
         class = className,
@@ -984,6 +996,7 @@ function WarbandNexus:SaveMinimalCharacterData()
         heroSpecID = nil,
         heroSpecName = nil,
     }
+    RelocateLegacyCharacterSlot(self.db, key, legacyKey)
     -- Fire event for UI refresh
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
         charKey = key,
@@ -1021,7 +1034,9 @@ function WarbandNexus:SaveCurrentCharacterData()
         return false
     end
     
-    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
+    local legacyKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
+    local key = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)
+        or legacyKey
     if not key then return false end
 
     -- Get character info
@@ -1033,7 +1048,8 @@ function WarbandNexus:SaveCurrentCharacterData()
     
     -- CRITICAL: Store as single totalCopper (Lua number = 64-bit)
     -- GetMoney() may be a secret value in some contexts — use SafeGetMoneyCopperFromEntry
-    local existingSnapshot = self.db.global.characters and self.db.global.characters[key]
+    local chars = self.db.global.characters
+    local existingSnapshot = (chars[key] or (legacyKey and chars[legacyKey])) or nil
     local totalCopper = SafeGetMoneyCopperFromEntry(existingSnapshot)
 
     local faction = UnitFactionGroup("player")
@@ -1068,21 +1084,21 @@ function WarbandNexus:SaveCurrentCharacterData()
     end
     
     -- Check if new character
-    local isNew = (self.db.global.characters[key] == nil)
+    local isNew = (existingSnapshot == nil)
     
     -- Collect PvE data (Great Vault, Lockouts, M+)
     local pveData = self:CollectPvEData()
     
     -- Collect Profession data (only if new character or professions don't exist)
     local professionData = nil
-    if isNew or not self.db.global.characters[key] or not self.db.global.characters[key].professions then
+    if isNew or not existingSnapshot or not existingSnapshot.professions then
         professionData = self:CollectProfessionData()
         if professionData and next(professionData) then
             ns._professionDataReady = true
         end
     else
         -- Preserve existing profession data (will be updated by SKILL_LINES_CHANGED event if needed)
-        professionData = self.db.global.characters[key].professions
+        professionData = existingSnapshot.professions
         if professionData and next(professionData) then
             ns._professionDataReady = true
         end
@@ -1205,6 +1221,38 @@ function WarbandNexus:SaveCurrentCharacterData()
         heroSpecName         = heroSpecName,
         hasMail              = HasNewMail() and true or false,
     }
+
+    -- After a rename, a stale row may remain under the old character key with the same player GUID.
+    if ns.MigrationService and ns.MigrationService.ApplyCharacterKeyedStorageRenames then
+        local pg = self.db.global.characters[key] and self.db.global.characters[key].guid
+        if type(pg) == "string" and pg ~= "" and not (issecretvalue and issecretvalue(pg)) then
+            local renames = {}
+            for otherKey, other in pairs(self.db.global.characters) do
+                if otherKey ~= key and type(other) == "table" then
+                    local og = other.guid
+                    if type(og) == "string" and og ~= "" and not (issecretvalue and issecretvalue(og)) and og == pg then
+                        renames[otherKey] = key
+                    end
+                end
+            end
+            if next(renames) then
+                local winnerRow = self.db.global.characters[key]
+                for oldKey in pairs(renames) do
+                    local loserRow = self.db.global.characters[oldKey]
+                    if winnerRow and loserRow and ns.MigrationService.MergeCharacterRowPreserveWinner then
+                        ns.MigrationService:MergeCharacterRowPreserveWinner(winnerRow, loserRow)
+                    end
+                end
+                ns.MigrationService:ApplyCharacterKeyedStorageRenames(self.db, renames)
+                for oldKey in pairs(renames) do
+                    self.db.global.characters[oldKey] = nil
+                end
+            end
+        end
+    end
+
+    RelocateLegacyCharacterSlot(self.db, key, legacyKey)
+
     -- ========== V2: Store PvE data globally ==========
     self:UpdatePvEDataV2(key, pveData)
     
@@ -1232,8 +1280,14 @@ end
 function WarbandNexus:UpdateProfessionData()
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
     local success, err = pcall(function()
-        local key = ns.Utilities:GetCharacterKey()
-        if not self.db.global.characters or not self.db.global.characters[key] then return end
+        local key = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)
+        if not key and ns.Utilities and ns.Utilities.GetCharacterKey then
+            key = ns.Utilities:GetCharacterKey()
+        end
+        if not key and ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+            key = ns.CharacterService:ResolveCharactersTableKey(self)
+        end
+        if not key or not self.db.global.characters or not self.db.global.characters[key] then return end
 
         local newData = self:CollectProfessionData()
 
@@ -1269,7 +1323,10 @@ function WarbandNexus:UpdateMailStatus()
     end
     if self.db.global.characters and self.db.global.characters[tableKey] then
         self.db.global.characters[tableKey].hasMail = HasNewMail() and true or false
-        local msgKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(rawKey)) or rawKey
+        local msgKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)) or rawKey
+        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            msgKey = ns.Utilities:GetCanonicalCharacterKey(msgKey) or msgKey
+        end
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = msgKey, dataType = "mail" })
     end
 end
@@ -1297,9 +1354,9 @@ function WarbandNexus:UpdateCharacterGold()
         self.db.global.characters[tableKey].silver = silver
         self.db.global.characters[tableKey].copper = copper
         self.db.global.characters[tableKey].lastSeen = time()
-        local msgKey = rawKey
+        local msgKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)) or rawKey
         if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-            msgKey = ns.Utilities:GetCanonicalCharacterKey(rawKey) or rawKey
+            msgKey = ns.Utilities:GetCanonicalCharacterKey(msgKey) or msgKey
         end
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
             charKey = msgKey,
@@ -1323,8 +1380,8 @@ function WarbandNexus:GetAllCharacters()
         return characters
     end
     
-    -- CRITICAL: Deduplicate characters (keep newest by lastSeen)
-    local seen = {}  -- [normalizedKey] = {charData, originalKey}
+    -- CRITICAL: Deduplicate characters (keep newest by lastSeen). Prefer player GUID when present (post-rename duplicates).
+    local seen = {}  -- [mergeKey] = charData
     
     for key, data in pairs(self.db.global.characters) do
         if type(data) ~= "table" then
@@ -1344,19 +1401,28 @@ function WarbandNexus:GetAllCharacters()
             if name and realm and name ~= "" and realm ~= "" then
                 local normalizedKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
                 if not normalizedKey then normalizedKey = key end
-                if seen[normalizedKey] then
-                    local existingData = seen[normalizedKey]
+                -- Same player can appear under two keys after a rename; `guid` merges them (name+realm alone does not).
+                local mergeKey
+                local g = data.guid
+                if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+                    mergeKey = "\001g\001" .. g
+                else
+                    local rowStorageKey = ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(data)
+                    mergeKey = "\001n\001" .. (rowStorageKey or normalizedKey or key)
+                end
+                if seen[mergeKey] then
+                    local existingData = seen[mergeKey]
                     local existingTime = existingData.lastSeen or 0
                     local newTime = data.lastSeen or 0
                     if newTime > existingTime then
                         data._key = key
-                        seen[normalizedKey] = data
+                        seen[mergeKey] = data
                     else
                         -- Keep existing
                     end
                 else
                     data._key = key
-                    seen[normalizedKey] = data
+                    seen[mergeKey] = data
                 end
             end
         end
@@ -3527,6 +3593,7 @@ end
 
 --[[
     Clean up stale character data (90+ days old)
+    Removes only `db.global.characters` rows past threshold; does not remap subsidiaries (see CleanupOrphanedData).
     @param daysThreshold number - Days of inactivity before cleanup (default 90)
     @return number - Count of characters removed
 ]]

@@ -164,8 +164,14 @@ end
 --- Print current character's PvE data (vault, M+, lockouts) for debugging
 ---@param addon table WarbandNexus addon instance
 function DebugService:PrintPvEData(addon)
-    local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not key then return end
+    local tableKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(addon)
+    if not tableKey and ns.Utilities.GetCharacterStorageKey then
+        tableKey = ns.Utilities:GetCharacterStorageKey(addon)
+    end
+    if not tableKey then
+        tableKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    end
+    if not tableKey then return end
     local name = UnitName("player")
     if name and issecretvalue and issecretvalue(name) then name = nil end
     addon:Print("=== PvE Data for " .. (name or "?") .. " ===")
@@ -242,9 +248,9 @@ function DebugService:PrintPvEData(addon)
     addon:Print("===========================")
     
     -- Save the data
-    if addon.db.global.characters and addon.db.global.characters[key] then
-        addon.db.global.characters[key].pve = pveData
-        addon.db.global.characters[key].lastSeen = time()
+    if addon.db.global.characters and addon.db.global.characters[tableKey] then
+        addon.db.global.characters[tableKey].pve = pveData
+        addon.db.global.characters[tableKey].lastSeen = time()
         addon:Print("|cff00ff00Data saved! Open the PvE tab to view.|r")
     end
 end

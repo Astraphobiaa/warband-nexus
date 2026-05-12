@@ -252,14 +252,18 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "trackchar" or cmd == "track" then
         local subCmd = select(2, addon:GetArgs(input, 2))
         if subCmd == "enable" or subCmd == "on" then
-            local charKey = ns.Utilities:GetCharacterKey()
-            if ns.CharacterService then
+            local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(addon))
+                or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
+                or ns.Utilities:GetCharacterKey()
+            if ns.CharacterService and charKey then
                 ns.CharacterService:ConfirmCharacterTracking(addon, charKey, true)
                 addon:Print("|cff00ff00" .. ((ns.L and ns.L["TRACKING_ENABLED_MSG"]) or "Character tracking ENABLED!") .. "|r")
             end
         elseif subCmd == "disable" or subCmd == "off" then
-            local charKey = ns.Utilities:GetCharacterKey()
-            if ns.CharacterService then
+            local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(addon))
+                or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
+                or ns.Utilities:GetCharacterKey()
+            if ns.CharacterService and charKey then
                 ns.CharacterService:ConfirmCharacterTracking(addon, charKey, false)
                 addon:Print("|cffff8800" .. ((ns.L and ns.L["TRACKING_DISABLED_MSG"]) or "Character tracking DISABLED!") .. "|r")
             end
@@ -608,7 +612,9 @@ function CommandService:DumpItemReport(addon, itemID)
     p("Total persisted instances: " .. found)
 
     -- Selected character context
-    local selKey = ns.Utilities and ns.Utilities:GetCharacterKey() or nil
+    local selKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(addon))
+        or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
+        or (ns.Utilities and ns.Utilities:GetCharacterKey())
     local selData = selKey and db and db.characters and db.characters[selKey]
     if selData then
         p(string.format("Logged-in: name=%s class=%s specID=%s level=%s", tostring(selData.name), tostring(selData.classFile), tostring(selData.specID), tostring(selData.level)))

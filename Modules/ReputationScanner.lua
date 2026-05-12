@@ -24,6 +24,15 @@ local function SafeScannerRealmName()
     return r
 end
 
+local function CurrentScannerCharacterKey()
+    local raw = ns.Utilities:GetCharacterKey()
+    if not raw then return nil end
+    if ns.Utilities.GetCanonicalCharacterKey then
+        return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+    end
+    return raw
+end
+
 -- ============================================================================
 -- DEBUG HELPER
 -- ============================================================================
@@ -227,7 +236,7 @@ function ReputationScanner:FetchFaction(factionID, indexDescription)
     -- NOTE: Renown data already fetched above (before paragon check)
     
     -- Add character metadata (v2.1: Per-character storage)
-    result._characterKey = ns.Utilities:GetCharacterKey()
+    result._characterKey = CurrentScannerCharacterKey()
     result._characterName = SafeScannerPlayerName()
     result._characterRealm = SafeScannerRealmName()
     
@@ -268,7 +277,7 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
     local expansionHeaders = {}
     local scanIdx = 1
     local scanner = self
-    local charKey = ns.Utilities:GetCharacterKey()
+    local charKey = CurrentScannerCharacterKey()
     local charName = SafeScannerPlayerName()
     local charRealm = SafeScannerRealmName()
     

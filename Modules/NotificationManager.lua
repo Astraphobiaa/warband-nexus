@@ -2710,19 +2710,8 @@ function WarbandNexus:OnVaultSlotCompleted(event, data)
     local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
     local threshold = data.threshold or 0
 
-    -- Small progress toast (Progress 2/2, 4/4 + category name) when user has progress toasts enabled
-    local db = self.db and self.db.profile and self.db.profile.notifications
-    if db and db.showCriteriaProgressNotifications and threshold and threshold > 0 then
-        self:ShowModalNotification({
-            compact = true,
-            progressAnchor = true,
-            iconAtlas = cat.atlas,
-            criteriaTitle = string.format((ns.L and ns.L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", threshold, threshold),
-            itemName = cat.name,
-            playSound = false,
-            autoDismiss = 3,
-        })
-    end
+    -- Do not use showCriteriaProgressNotifications here: that path is for achievement criteria toasts.
+    -- Vault slot completion already uses the full Notify line below; a second compact toast duplicated the same milestone.
 
     self:Notify("vault", cat.name .. " - " .. data.characterName, nil, {
         iconAtlas = cat.atlas,

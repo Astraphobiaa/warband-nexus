@@ -11,6 +11,8 @@ ns.Utilities = Utilities
 
 --============================================================================
 -- CHARACTER IDENTIFICATION
+-- Canonical persisted identity for subsidiary tables: GetCharacterStorageKey / ResolveCharacterRowKey / GetCanonicalCharacterKey.
+-- Live writes: CharacterService:ResolveCharactersTableKey(addon) or GetCharacterStorageKey(addon); messages/UI legacy keys: GetCanonicalCharacterKey.
 --============================================================================
 
 --- Split a stored "Name-Realm" key using only the **first** hyphen.
@@ -21,6 +23,7 @@ ns.Utilities = Utilities
 ---@return string|nil realmPart Space-stripped realm suffix (may include hyphens, apostrophes)
 function Utilities:SplitCharacterKey(charKey)
     if not charKey or charKey == "" then return nil, nil end
+    if issecretvalue and issecretvalue(charKey) then return nil, nil end
     local name, realm = tostring(charKey):match("^([^-]+)%-(.+)$")
     if not name or not realm then return nil, nil end
     return name:gsub("%s+", ""), realm:gsub("%s+", "")
@@ -55,22 +58,89 @@ function Utilities:GetCharacterKey(name, realm)
     return key
 end
 
---- Resolve any character key to the canonical (normalized) form used everywhere in DB and services.
---- Use this when passing a key from UI or stored data into services (currency, gear, etc.).
----@param charKey string Key from db.characters or UI (may have spaces or old format)
----@return string Canonical key (GetCharacterKey(name, realm))
+--- Canonical SavedVariables key for **current session** character rows and subsidiary storage (currency, PvE, items, …).
+--- Prefer **player UnitGUID** when `SafeGuid("player")` returns a non-secret string (stable across renames).
+--- Fallback: normalized `GetCharacterKey()` when GUID is unavailable or secret (Midnight secure contexts).
+--- `addonOrNil` is reserved for callers that pass AceDB/addon; unused today (avoid coupling Utilities to AceDB).
+--- Blizzard identity: two distinct characters never share one player GUID — merges key on guid equality only;
+--- **do not** require name/realm to match for same-guid collapse (post-rename name drift is expected).
+---@param addonOrNil any|nil Reserved (e.g. WarbandNexus); ignored.
+---@return string|nil Storage key (guid string or Name-Realm)
+function Utilities:GetCharacterStorageKey(addonOrNil)
+    local _ = addonOrNil
+    local g = self:SafeGuid("player")
+    if g then return g end
+    return self:GetCharacterKey()
+end
+
+--- Offline-safe storage key for an existing **character row** (`db.global.characters[*]` value).
+--- Uses stored `guid` when present and non-secret; otherwise normalized name+realm (legacy / never-logged-in rows).
+--- When `guid` is nil or secret, name+realm is the only stable tie-break — never merge two rows on name alone if both have distinct guids.
+---@param charData table Character row
+---@return string|nil
+function Utilities:ResolveCharacterRowKey(charData)
+    if type(charData) ~= "table" then return nil end
+    local g = charData.guid
+    if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+        return g
+    end
+    return self:GetCharacterKey(charData.name, charData.realm)
+end
+
+--- Resolve any character key to the canonical **storage** key used for subsidiary tables (same rules as `ResolveCharacterRowKey`).
+--- Use when passing a key from UI or stored data into services (currency, gear, PvE cache, etc.).
+---@param charKey string Key from db.characters or UI (may be guid, Name-Realm, or spaced legacy)
+---@return string Canonical storage key
 function Utilities:GetCanonicalCharacterKey(charKey)
     if not charKey or charKey == "" then return charKey end
+    if issecretvalue and issecretvalue(charKey) then return charKey end
     local db = ns.WarbandNexus and ns.WarbandNexus.db and ns.WarbandNexus.db.global
-    local charData = db and db.characters and db.characters[charKey]
-    if type(charData) == "table" and charData.name and charData.realm then
-        return self:GetCharacterKey(charData.name, charData.realm)
+    local chars = db and db.characters
+    local charData = chars and chars[charKey]
+    if type(charData) == "table" then
+        return self:ResolveCharacterRowKey(charData)
+    end
+    -- Stale selector/prefs may hold a guid string not yet loaded as an index (or typo): resolve via row.guid.
+    if type(charKey) == "string" and charKey:sub(1, 7) == "Player-" and chars then
+        for _, row in pairs(chars) do
+            if type(row) == "table" then
+                local g = row.guid
+                if type(g) == "string" and g ~= "" and g == charKey and not (issecretvalue and issecretvalue(g)) then
+                    return self:ResolveCharacterRowKey(row)
+                end
+            end
+        end
+        return charKey
+    end
+    -- Live session: after guid migration, `Name-Realm` may not exist as a table index — map to storage key.
+    local liveStore = self:GetCharacterStorageKey()
+    if liveStore and chars and chars[liveStore] then
+        local n, r = self:SplitCharacterKey(tostring(charKey))
+        if n and r then
+            local incomingLegacy = self:GetCharacterKey(n, r)
+            local sessionLegacy = self:GetCharacterKey()
+            if incomingLegacy and sessionLegacy and incomingLegacy == sessionLegacy then
+                return liveStore
+            end
+        end
     end
 
-    -- Legacy fallback: normalize any incoming "Name - Realm" / spaced variants.
-    -- First hyphen only — realm may be "Azjol-Nerub" etc.
+    -- Offline / migrated SV: row index is guid but UI/prefs still pass Name-Realm — match saved name+realm to real storage key.
     local name, realm = self:SplitCharacterKey(tostring(charKey))
-    if name and realm then
+    if name and realm and chars then
+        local want = self:GetCharacterKey(name, realm)
+        if want then
+            for _, row in pairs(chars) do
+                if type(row) == "table" then
+                    local rn, rr = row.name, row.realm
+                    if rn and rr and not (issecretvalue and issecretvalue(rn)) and not (issecretvalue and issecretvalue(rr)) then
+                        if self:GetCharacterKey(rn, rr) == want then
+                            return self:ResolveCharacterRowKey(row)
+                        end
+                    end
+                end
+            end
+        end
         return self:GetCharacterKey(name, realm)
     end
 

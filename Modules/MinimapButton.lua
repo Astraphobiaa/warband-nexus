@@ -62,7 +62,11 @@ function WarbandNexus:InitializeMinimapButton()
     
     local FormatGold = ns.UI_FormatGold
     local TOOLTIP_CHAR_LIMIT = 10
-    local currentCharKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local curRaw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local curCanon = curRaw
+    if curRaw and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        curCanon = ns.Utilities:GetCanonicalCharacterKey(curRaw) or curRaw
+    end
     
     -- Hidden frame for Shift key polling (LibDBIcon frames don't reliably support OnUpdate)
     local shiftPollFrame = CreateFrame("Frame")
@@ -81,7 +85,11 @@ function WarbandNexus:InitializeMinimapButton()
         if addon.db.global.characters then
             for charKey, charData in pairs(addon.db.global.characters) do
                 local copper
-                if charKey == currentCharKey then
+                local ckCanon = charKey
+                if ns.Utilities.GetCanonicalCharacterKey then
+                    ckCanon = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+                end
+                if ckCanon == curCanon then
                     copper = ns.Utilities:GetLiveCharacterMoneyCopper(ns.Utilities:GetCharTotalCopper(charData))
                 else
                     copper = ns.Utilities:GetCharTotalCopper(charData)

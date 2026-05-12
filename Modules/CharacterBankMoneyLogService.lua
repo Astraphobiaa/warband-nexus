@@ -21,7 +21,12 @@ local function GetCurrentCharKey()
     if not ns.Utilities or not ns.Utilities.GetCharacterKey then
         return nil
     end
-    return ns.Utilities:GetCharacterKey()
+    local raw = ns.Utilities:GetCharacterKey()
+    if not raw then return nil end
+    if ns.Utilities.GetCanonicalCharacterKey then
+        return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+    end
+    return raw
 end
 
 local function GetWarbandMoney()

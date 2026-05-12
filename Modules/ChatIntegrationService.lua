@@ -802,6 +802,14 @@ function WarbandNexus:PrintSessionLoginChat()
         line = line .. " " .. ((L and L["WELCOME_NEW_VERSION_CHAT"]) or "|cffffff00What's New:|r popup may appear, or |cffffff00/wn changelog|r.")
     end
     ns.ChatOutput.SendAddonSystemLine(line)
+    -- One plain sentence after GUID-backed character storage: no technical terms for players.
+    local g = self.db and self.db.global
+    if g and g.charactersGuidKeyedV1 and not g._wnCharacterLinkHintShown then
+        g._wnCharacterLinkHintShown = true
+        local hint = (L and L["CHARACTER_LINK_HINT_CHAT"])
+            or "Your saved data was kept. If something looks wrong in the panel, type |cffffff00/reload|r once."
+        ns.ChatOutput.SendAddonSystemLine("|cff9966ff[Warband Nexus]|r " .. hint)
+    end
 end
 
 function WarbandNexus:InitializeChatIntegration()

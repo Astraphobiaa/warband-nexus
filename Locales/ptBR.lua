@@ -1369,6 +1369,7 @@ L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "Clique na guia de bate-papo desejada 
 L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r Contador de tentativas ativado na guia de bate-papo selecionada."
 L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r Não foi possível atualizar a guia de bate-papo (nenhum quadro de bate-papo ou API bloqueado)."
 L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00O que há de novo:|r um pop-up pode aparecer acima do bate-papo ou digite |cffffff00/wn changelog|r."
+L["CHARACTER_LINK_HINT_CHAT"] = "Seus dados salvos foram mantidos. Se algo parecer errado, digite |cffffff00/reload|r uma vez."
 L["CONFIG_SHOW_LOGIN_CHAT"] = "Mensagem de login no chat"
 L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "Imprima uma pequena linha de boas-vindas quando as notificações estiverem ativadas. Usa o grupo de mensagens do sistema e uma guia de bate-papo visível para que complementos como o Chattynator possam mostrá-lo. (A janela Novidades é separada - pop-up em tela cheia.)"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Ocultar tempo jogado no chat"

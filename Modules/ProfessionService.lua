@@ -29,6 +29,23 @@ local function IsCurrentCharacterTracked()
     return ns.CharacterService and WarbandNexus and ns.CharacterService:IsCharacterTracked(WarbandNexus)
 end
 
+--- Index in `db.global.characters` for the logged-in player (GUID when available).
+local function ResolveTrackedCharactersTableKey()
+    return ns.CharacterService and WarbandNexus and ns.CharacterService.ResolveCharactersTableKey
+        and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)
+end
+
+--- Canonical key for WN_* payloads after GUID migration (Name-Realm from APIs resolves to storage slot).
+local function CurrentSessionCanonicalCharacterKey()
+    local raw = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+        or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+    if not raw then return nil end
+    if ns.Utilities.GetCanonicalCharacterKey then
+        return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+    end
+    return raw
+end
+
 -- ============================================================================
 -- STATE
 -- ============================================================================
@@ -195,7 +212,7 @@ local function CollectConcentrationData()
         return
     end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
 
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
@@ -629,7 +646,7 @@ end
 local function CollectKnowledgeData()
     if not WarbandNexus or not WarbandNexus.db then return end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
 
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
@@ -787,7 +804,7 @@ end
 ]]
 local function CollectEquipmentDataForCurrentProfession()
     if not WarbandNexus or not WarbandNexus.db then return end
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
     if not charData then return end
@@ -833,7 +850,7 @@ end
 ]]
 local function CollectEquipmentByDetection()
     if not WarbandNexus or not WarbandNexus.db then return end
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
     if not charData then return end
@@ -1070,7 +1087,7 @@ end
 local function CollectAllExpansionProfessions(fromTradeSkillShow)
     if not WarbandNexus or not WarbandNexus.db then return end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
 
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
@@ -1477,7 +1494,7 @@ local function CollectMidnightKnowledgeProgressData()
     if not WarbandNexus or not WarbandNexus.db then return end
     if not C_TradeSkillUI or not C_TradeSkillUI.GetProfessionChildSkillLineID then return end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
     if not charData then return end
@@ -1504,7 +1521,7 @@ local function CollectRecipeSummaryData()
     if not C_TradeSkillUI then return end
     if not C_TradeSkillUI.GetAllRecipeIDs or not C_TradeSkillUI.GetRecipeInfo then return end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
 
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
@@ -1689,7 +1706,7 @@ local function CollectCooldownData()
     if not WarbandNexus or not WarbandNexus.db then return end
     if not C_TradeSkillUI then return end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
 
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
@@ -1846,7 +1863,7 @@ local function CollectCraftingOrdersData()
     if not WarbandNexus or not WarbandNexus.db then return end
     if not C_CraftingOrders then return end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
 
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
@@ -1956,7 +1973,7 @@ function WarbandNexus:OnTradeSkillShow()
     C_Timer.After(0.6, function()
         RunAllCollectors()
         if WarbandNexus and WarbandNexus.SendMessage then
-            local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+            local charKey = ResolveTrackedCharactersTableKey()
             if charKey then
                 WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
             end
@@ -1968,7 +1985,7 @@ function WarbandNexus:OnTradeSkillShow()
         if not WarbandNexus then return end
         RunAllCollectors()
         if WarbandNexus.SendMessage then
-            local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+            local charKey = ResolveTrackedCharactersTableKey()
             if charKey then
                 WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
             end
@@ -2049,7 +2066,7 @@ end
 function WarbandNexus:OnProfessionQuestProgressChanged()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
     if not charData then return end
@@ -2067,7 +2084,7 @@ function WarbandNexus:OnProfessionChanged()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
     
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
     if not charData then return end
@@ -2412,7 +2429,7 @@ function WarbandNexus:GetCraftersForRecipe(recipeID)
     end
 
     -- Sort: highest skill first; on tie, current online character first; then alphabetical
-    local currentCharKey = ns.Utilities:GetCharacterKey()
+    local currentCharKey = ResolveTrackedCharactersTableKey()
     table.sort(result, function(a, b)
         if a.skillLevel ~= b.skillLevel then
             return a.skillLevel > b.skillLevel
@@ -2617,7 +2634,7 @@ end
 ]]
 function WarbandNexus:PrintProfessionVerify()
     if not self.Print then return end
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then
         self:Print("|cffff6600[WN Prof Verify]|r No character key.")
         return
@@ -2728,7 +2745,7 @@ function WarbandNexus:CollectConcentrationOnLogin()
     if not IsCurrentCharacterTracked() then return end
     if not self.db or not self.db.global then return end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
 
     local charData = self.db.global.characters and self.db.global.characters[charKey]
@@ -2872,7 +2889,7 @@ function WarbandNexus:CollectKnowledgeOnLogin()
     if not self.db or not self.db.global then return end
     if not C_ProfSpecs or not C_Traits then return end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
 
     local charData = self.db.global.characters and self.db.global.characters[charKey]
@@ -2935,7 +2952,7 @@ local function BuildConcentrationCurrencyMap()
     local map = {}
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return map end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return map end
 
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
@@ -2974,7 +2991,7 @@ function WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
     local key = concentrationCurrencyMap[currencyID]
     if not key then return end
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
 
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
@@ -3001,7 +3018,7 @@ function WarbandNexus:OnProfessionProgressCurrencyChanged(currencyID)
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
     if not currencyID or not MIDNIGHT_CATCHUP_CURRENCY[currencyID] then return end
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
     if not charData then return end
@@ -3071,7 +3088,7 @@ function WarbandNexus:StartRechargeTimer()
         -- Guard each tick: stop sending if module was disabled mid-session
         if not ns.Utilities:IsModuleEnabled("professions") then return end
         
-        local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        local charKey = ResolveTrackedCharactersTableKey()
         if charKey then
             WarbandNexus:SendMessage(E.CONCENTRATION_UPDATED, charKey)
         end

@@ -126,6 +126,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateGoldFormat(db)
     self:MigrateRealmSuffixRepairFromCharKey(db)
     self:MigrateCharacterKeyNormalize(db)
+    self:MigrateGlobalCharactersToGuidStorageKeys(db)
     self:MigrateRestedDataReset(db)
     self:MigrateRarityMountSyncReseed(db)
     self:MigrateReminderToastAnchors(db)
@@ -234,8 +235,16 @@ function MigrationService:MigrateGenderField(db)
         return
     end
     
-    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+    local U = ns.Utilities
+    local currentKey = (U and U.GetCharacterStorageKey and U:GetCharacterStorageKey())
+        or (U and U.GetCharacterKey and U:GetCharacterKey())
     if not currentKey then return end
+    if not db.global.characters[currentKey] and U and U.GetCharacterKey then
+        local leg = U:GetCharacterKey()
+        if leg and db.global.characters[leg] then
+            currentKey = leg
+        end
+    end
     -- Fix current character's gender on every login (in case it's wrong)
     if db.global.characters[currentKey] then
         local savedGender = db.global.characters[currentKey].gender
@@ -543,60 +552,26 @@ function MigrationService:MigrateRealmSuffixRepairFromCharKey(db)
     db.global._realmSuffixRepairV1 = true
 end
 
----Normalize character keys across all character-keyed tables to canonical form
----(Utilities:GetCharacterKey(name, realm)). Handles collision: keep newest by lastSeen, merge non-conflicting fields.
-function MigrationService:MigrateCharacterKeyNormalize(db)
-    if not db.global then return end
-    if db.global.charactersKeyNormalized then return end
-    local Utilities = ns.Utilities
-    if not Utilities or not Utilities.GetCharacterKey then return end
-
-    local renames = {} -- [oldKey] = newKey (only when newKey ~= oldKey)
-    if db.global.characters then
-        for charKey, charData in pairs(db.global.characters) do
-            if type(charData) == "table" and charData.name and charData.realm then
-                local newKey = Utilities:GetCharacterKey(charData.name, charData.realm)
-                if newKey and newKey ~= charKey then
-                    renames[charKey] = newKey
-                end
-            end
-        end
-    end
-
-    if not next(renames) then
-        db.global.charactersKeyNormalized = true
+--- Remap character-keyed global/profile storage when `db.global.characters` rows move or merge.
+--- Does not modify `db.global.characters` itself (callers own row moves/deletes).
+---@param db table AceDB root (global + profile)
+---@param renames table<string,string> oldKey -> newKey
+function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
+    if not db or not db.global or type(renames) ~= "table" or not next(renames) then
         return
-    end
-
-    local chars = db.global.characters
-    for oldKey, newKey in pairs(renames) do
-        if not chars[oldKey] then
-            -- already moved or removed
-        elseif not chars[newKey] then
-            chars[newKey] = chars[oldKey]
-            chars[oldKey] = nil
-        else
-            -- Collision: keep newest by lastSeen
-            local oldData = chars[oldKey]
-            local newData = chars[newKey]
-            local oldSeen = (type(oldData.lastSeen) == "number") and oldData.lastSeen or 0
-            local newSeen = (type(newData.lastSeen) == "number") and newData.lastSeen or 0
-            if oldSeen > newSeen then
-                chars[newKey] = oldData
-            end
-            chars[oldKey] = nil
-        end
     end
 
     -- currencyData.currencies
     local cd = db.global.currencyData
     if cd and cd.currencies then
         for oldKey, newKey in pairs(renames) do
-            if cd.currencies[oldKey] and not cd.currencies[newKey] then
-                cd.currencies[newKey] = cd.currencies[oldKey]
-                cd.currencies[oldKey] = nil
-            elseif cd.currencies[oldKey] then
-                cd.currencies[oldKey] = nil
+            if oldKey ~= newKey then
+                if cd.currencies[oldKey] and not cd.currencies[newKey] then
+                    cd.currencies[newKey] = cd.currencies[oldKey]
+                    cd.currencies[oldKey] = nil
+                elseif cd.currencies[oldKey] then
+                    cd.currencies[oldKey] = nil
+                end
             end
         end
     end
@@ -604,11 +579,13 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
     -- gearData
     if db.global.gearData then
         for oldKey, newKey in pairs(renames) do
-            if db.global.gearData[oldKey] and not db.global.gearData[newKey] then
-                db.global.gearData[newKey] = db.global.gearData[oldKey]
-                db.global.gearData[oldKey] = nil
-            elseif db.global.gearData[oldKey] then
-                db.global.gearData[oldKey] = nil
+            if oldKey ~= newKey then
+                if db.global.gearData[oldKey] and not db.global.gearData[newKey] then
+                    db.global.gearData[newKey] = db.global.gearData[oldKey]
+                    db.global.gearData[oldKey] = nil
+                elseif db.global.gearData[oldKey] then
+                    db.global.gearData[oldKey] = nil
+                end
             end
         end
     end
@@ -616,11 +593,13 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
     -- pveProgress
     if db.global.pveProgress then
         for oldKey, newKey in pairs(renames) do
-            if db.global.pveProgress[oldKey] and not db.global.pveProgress[newKey] then
-                db.global.pveProgress[newKey] = db.global.pveProgress[oldKey]
-                db.global.pveProgress[oldKey] = nil
-            elseif db.global.pveProgress[oldKey] then
-                db.global.pveProgress[oldKey] = nil
+            if oldKey ~= newKey then
+                if db.global.pveProgress[oldKey] and not db.global.pveProgress[newKey] then
+                    db.global.pveProgress[newKey] = db.global.pveProgress[oldKey]
+                    db.global.pveProgress[oldKey] = nil
+                elseif db.global.pveProgress[oldKey] then
+                    db.global.pveProgress[oldKey] = nil
+                end
             end
         end
     end
@@ -628,11 +607,13 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
     -- statisticSnapshots
     if db.global.statisticSnapshots then
         for oldKey, newKey in pairs(renames) do
-            if db.global.statisticSnapshots[oldKey] and not db.global.statisticSnapshots[newKey] then
-                db.global.statisticSnapshots[newKey] = db.global.statisticSnapshots[oldKey]
-                db.global.statisticSnapshots[oldKey] = nil
-            elseif db.global.statisticSnapshots[oldKey] then
-                db.global.statisticSnapshots[oldKey] = nil
+            if oldKey ~= newKey then
+                if db.global.statisticSnapshots[oldKey] and not db.global.statisticSnapshots[newKey] then
+                    db.global.statisticSnapshots[newKey] = db.global.statisticSnapshots[oldKey]
+                    db.global.statisticSnapshots[oldKey] = nil
+                elseif db.global.statisticSnapshots[oldKey] then
+                    db.global.statisticSnapshots[oldKey] = nil
+                end
             end
         end
     end
@@ -640,11 +621,27 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
     -- personalBanks
     if db.global.personalBanks then
         for oldKey, newKey in pairs(renames) do
-            if db.global.personalBanks[oldKey] and not db.global.personalBanks[newKey] then
-                db.global.personalBanks[newKey] = db.global.personalBanks[oldKey]
-                db.global.personalBanks[oldKey] = nil
-            elseif db.global.personalBanks[oldKey] then
-                db.global.personalBanks[oldKey] = nil
+            if oldKey ~= newKey then
+                if db.global.personalBanks[oldKey] and not db.global.personalBanks[newKey] then
+                    db.global.personalBanks[newKey] = db.global.personalBanks[oldKey]
+                    db.global.personalBanks[oldKey] = nil
+                elseif db.global.personalBanks[oldKey] then
+                    db.global.personalBanks[oldKey] = nil
+                end
+            end
+        end
+    end
+
+    -- itemStorage (compressed bags/bank per character)
+    if db.global.itemStorage then
+        for oldKey, newKey in pairs(renames) do
+            if oldKey ~= newKey then
+                if db.global.itemStorage[oldKey] and not db.global.itemStorage[newKey] then
+                    db.global.itemStorage[newKey] = db.global.itemStorage[oldKey]
+                    db.global.itemStorage[oldKey] = nil
+                elseif db.global.itemStorage[oldKey] then
+                    db.global.itemStorage[oldKey] = nil
+                end
             end
         end
     end
@@ -695,8 +692,276 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
             end
         end
     end
+end
+
+--- When collapsing duplicate `db.global.characters` rows (same player GUID), copy missing payloads from `loser` into `winner`.
+--- Does not strip fields already populated on `winner` (live save/API wins); prefers richer gold when loser has higher copper.
+---@param winner table
+---@param loser table
+function MigrationService:MergeCharacterRowPreserveWinner(winner, loser)
+    if type(winner) ~= "table" or type(loser) ~= "table" then return end
+    local U = ns.Utilities
+    local function emptyTable(t)
+        return not t or type(t) ~= "table" or not next(t)
+    end
+    local wCop = U and U.GetCharTotalCopper and U:GetCharTotalCopper(winner) or 0
+    local lCop = U and U.GetCharTotalCopper and U:GetCharTotalCopper(loser) or 0
+    if lCop > wCop then
+        winner.gold = loser.gold
+        winner.silver = loser.silver
+        winner.copper = loser.copper
+    end
+    local wi = tonumber(winner.itemLevel) or 0
+    local li = tonumber(loser.itemLevel) or 0
+    if wi <= 0 and li > 0 then
+        winner.itemLevel = loser.itemLevel
+    end
+    if emptyTable(winner.professions) and not emptyTable(loser.professions) then
+        winner.professions = loser.professions
+    end
+    local nested = {
+        "concentration", "recipes", "professionExpansions", "discoveredSkillLines",
+        "knowledgeData", "professionCooldowns", "professionEquipment", "cooldownRecipeIDs",
+        "craftingOrders", "professionData", "rested", "stats",
+    }
+    for i = 1, #nested do
+        local k = nested[i]
+        local wv = winner[k]
+        if wv == nil or emptyTable(wv) then
+            local lv = loser[k]
+            if lv ~= nil then
+                winner[k] = lv
+            end
+        end
+    end
+    if winner.mythicKey == nil and loser.mythicKey ~= nil then
+        winner.mythicKey = loser.mythicKey
+    end
+    if winner.timePlayed == nil and loser.timePlayed ~= nil then
+        winner.timePlayed = loser.timePlayed
+    end
+    if winner.specID == nil and loser.specID ~= nil then
+        winner.specID = loser.specID
+        winner.specName = winner.specName or loser.specName
+        winner.specIcon = winner.specIcon or loser.specIcon
+    end
+    if winner.heroSpecID == nil and loser.heroSpecID ~= nil then
+        winner.heroSpecID = loser.heroSpecID
+        winner.heroSpecName = winner.heroSpecName or loser.heroSpecName
+    end
+end
+
+--- Merge rows that share the same player GUID (e.g. after a rename created a second key).
+--- Consolidates to **guid-shaped** `db.global.characters[guid]` (winner prefers existing guid slot, else newest lastSeen).
+--- Applies subsidiary key remaps then clears loser indices from `characters` only when necessary (handled inline).
+---@param db table AceDB root
+function MigrationService:DeduplicateGlobalCharactersByGuid(db)
+    if not db or not db.global or not db.global.characters then return end
+    local issecretvalue = issecretvalue
+    local chars = db.global.characters
+    local byGuid = {}
+
+    for charKey, charData in pairs(chars) do
+        if type(charData) == "table" then
+            local g = charData.guid
+            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+                local lst = byGuid[g]
+                if not lst then
+                    lst = {}
+                    byGuid[g] = lst
+                end
+                local seen = (type(charData.lastSeen) == "number") and charData.lastSeen or 0
+                lst[#lst + 1] = { k = charKey, seen = seen, guid = g }
+            end
+        end
+    end
+
+    local renames = {}
+    for g, lst in pairs(byGuid) do
+        if type(lst) == "table" and #lst > 0 then
+            local win = lst[1]
+            for i = 2, #lst do
+                local e = lst[i]
+                if not e then break end
+                local winAtG = (win.k == g)
+                local eAtG = (e.k == g)
+                if eAtG and not winAtG then
+                    win = e
+                elseif winAtG == eAtG then
+                    if (e.seen or 0) > (win.seen or 0) then
+                        win = e
+                    end
+                end
+            end
+            if win and win.k then
+                local winningTable = chars[win.k]
+                if type(winningTable) == "table" then
+                    for i = 1, #lst do
+                        local e = lst[i]
+                        if e and e.k and e.k ~= win.k then
+                            local loserRow = chars[e.k]
+                            if type(loserRow) == "table" then
+                                self:MergeCharacterRowPreserveWinner(winningTable, loserRow)
+                            end
+                        end
+                    end
+                    for i = 1, #lst do
+                        local e = lst[i]
+                        if e and e.k and e.k ~= g then
+                            renames[e.k] = g
+                            chars[e.k] = nil
+                        end
+                    end
+                    chars[g] = winningTable
+                end
+            end
+        end
+    end
+
+    if not next(renames) then return end
+
+    self:ApplyCharacterKeyedStorageRenames(db, renames)
+end
+
+---Normalize character keys across all character-keyed tables to canonical form
+---(Utilities:GetCharacterKey(name, realm)). Handles collision: keep newest by lastSeen, merge non-conflicting fields.
+function MigrationService:MigrateCharacterKeyNormalize(db)
+    if not db.global then return end
+    if db.global.charactersKeyNormalized then return end
+    local Utilities = ns.Utilities
+    if not Utilities or not Utilities.GetCharacterKey then return end
+
+    local renames = {} -- [oldKey] = newKey (only when newKey ~= oldKey)
+    if db.global.characters then
+        for charKey, charData in pairs(db.global.characters) do
+            if type(charData) == "table" and charData.name and charData.realm then
+                local newKey = Utilities:GetCharacterKey(charData.name, charData.realm)
+                if newKey and newKey ~= charKey then
+                    renames[charKey] = newKey
+                end
+            end
+        end
+    end
+
+    if not next(renames) then
+        db.global.charactersKeyNormalized = true
+        return
+    end
+
+    local chars = db.global.characters
+    for oldKey, newKey in pairs(renames) do
+        if not chars[oldKey] then
+            -- already moved or removed
+        elseif not chars[newKey] then
+            chars[newKey] = chars[oldKey]
+            chars[oldKey] = nil
+        else
+            -- Collision: keep newest by lastSeen; absorb missing fields from the dropped row
+            local oldData = chars[oldKey]
+            local newData = chars[newKey]
+            local oldSeen = (type(oldData.lastSeen) == "number") and oldData.lastSeen or 0
+            local newSeen = (type(newData.lastSeen) == "number") and newData.lastSeen or 0
+            if oldSeen > newSeen then
+                self:MergeCharacterRowPreserveWinner(oldData, newData)
+                chars[newKey] = oldData
+            else
+                self:MergeCharacterRowPreserveWinner(newData, oldData)
+            end
+            chars[oldKey] = nil
+        end
+    end
+
+    self:ApplyCharacterKeyedStorageRenames(db, renames)
 
     db.global.charactersKeyNormalized = true
+end
+
+--- One-time: move `db.global.characters` rows to **player GUID** keys when `charData.guid` exists (stable across renames).
+--- Subsidiary character-keyed globals/profile lists are remapped via `ApplyCharacterKeyedStorageRenames`.
+--- Rows **without** guid stay on legacy Name-Realm keys until a login save stores guid (lazy relocate in DataService).
+--- Collisions (multiple keys, same guid): keep single row at `chars[guid]` — winner prefers key == guid, else newest lastSeen.
+---@param db table AceDB root
+function MigrationService:MigrateGlobalCharactersToGuidStorageKeys(db)
+    if not db or not db.global then return end
+    if db.global.charactersGuidKeyedV1 then return end
+
+    local chars = db.global.characters
+    if type(chars) ~= "table" then
+        db.global.charactersGuidKeyedV1 = true
+        return
+    end
+
+    local issecretvalue = issecretvalue
+    local byGuid = {}
+
+    for charKey, charData in pairs(chars) do
+        if type(charData) == "table" then
+            local g = charData.guid
+            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+                local lst = byGuid[g]
+                if not lst then
+                    lst = {}
+                    byGuid[g] = lst
+                end
+                lst[#lst + 1] = {
+                    k = charKey,
+                    seen = (type(charData.lastSeen) == "number") and charData.lastSeen or 0,
+                    data = charData,
+                }
+            end
+        end
+    end
+
+    local renames = {}
+    local renamedSlots = 0
+
+    for g, lst in pairs(byGuid) do
+        if type(lst) == "table" and #lst > 0 then
+            local win = lst[1]
+            for i = 2, #lst do
+                local e = lst[i]
+                local winAtG = (win.k == g)
+                local eAtG = (e.k == g)
+                if eAtG and not winAtG then
+                    win = e
+                elseif winAtG == eAtG then
+                    if (e.seen or 0) > (win.seen or 0) then
+                        win = e
+                    end
+                end
+            end
+
+            local winningTable = win.data
+            for i = 1, #lst do
+                local e = lst[i]
+                if e and e.k and e.k ~= win.k and type(e.data) == "table" then
+                    self:MergeCharacterRowPreserveWinner(winningTable, e.data)
+                end
+            end
+            local keysInGroup = {}
+            for i = 1, #lst do
+                keysInGroup[lst[i].k] = true
+            end
+
+            for oldK in pairs(keysInGroup) do
+                if oldK ~= g then
+                    chars[oldK] = nil
+                    renames[oldK] = g
+                    renamedSlots = renamedSlots + 1
+                end
+            end
+            chars[g] = winningTable
+        end
+    end
+
+    if next(renames) then
+        self:ApplyCharacterKeyedStorageRenames(db, renames)
+    end
+
+    DebugPrint("|cff9370DB[WN Migration]|r charactersGuidKeyedV1: guid storage keys applied; subsidiary remaps="
+        .. tostring(renamedSlots))
+
+    db.global.charactersGuidKeyedV1 = true
 end
 
 return MigrationService

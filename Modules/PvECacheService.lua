@@ -1455,7 +1455,8 @@ function WarbandNexus:UpdatePvEData()
     pendingUpdate = false
     
     -- Get current character key (canonical = one pveCache bucket per character)
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+        or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
     charKey = CanonicalizePvEKey(charKey)
     if not charKey then return end
 
@@ -1976,7 +1977,7 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Re-collect vault data at T+5s to catch any iLvl that arrived after initial scan.
     C_Timer.After(5, function()
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
-        local charKey = CanonicalizePvEKey(ns.Utilities:GetCharacterKey())
+        local charKey = CanonicalizePvEKey(ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus) or ns.Utilities:GetCharacterKey())
         if charKey then
             WarbandNexus:ProcessGreatVaultActivities(charKey)
             WarbandNexus:SavePvECache()
@@ -2009,7 +2010,7 @@ function WarbandNexus:RegisterPvECacheEvents()
                 return
             end
 
-            local charKey = CanonicalizePvEKey(ns.Utilities:GetCharacterKey())
+            local charKey = CanonicalizePvEKey(ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus) or ns.Utilities:GetCharacterKey())
             if not charKey then
                 return
             end
@@ -2119,7 +2120,7 @@ end
 ---This handler only updates NON-vault data (keystone, best runs, rewards) to avoid
 ---overwriting VaultScanner's richer data (nextLevelIlvl, maxIlvl, nextKeyLevel).
 function WarbandNexus:OnVaultDataReceived()
-    local charKey = CanonicalizePvEKey(ns.Utilities:GetCharacterKey())
+    local charKey = CanonicalizePvEKey(ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus) or ns.Utilities:GetCharacterKey())
     if not charKey then return end
     local beforeSig = BuildPvESignature(self.db.global and self.db.global.pveCache, charKey)
     
@@ -2164,7 +2165,7 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     if not self.db.global.pveCache then return end
     
     -- Must match PvEUI / GetPvEData: one bucket per character after realm normalization.
-    local charKey = CanonicalizePvEKey(ns.Utilities:GetCharacterKey())
+    local charKey = CanonicalizePvEKey(ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus) or ns.Utilities:GetCharacterKey())
     if not charKey then return end
     local beforeSig = BuildPvESignature(self.db.global and self.db.global.pveCache, charKey)
     

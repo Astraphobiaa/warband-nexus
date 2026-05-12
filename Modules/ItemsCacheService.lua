@@ -38,6 +38,26 @@ local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
 local Constants = ns.Constants
 local CACHE_VERSION = Constants.ITEMS_CACHE_VERSION
+
+--- Persisted itemStorage key for the logged-in character (GUID slot when available).
+local function ResolveCurrentItemStorageKey()
+    local ck = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)
+    if not ck and ns.Utilities.GetCharacterStorageKey then
+        ck = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+    end
+    if not ck then
+        ck = ns.Utilities:GetCharacterKey()
+    end
+    return ck
+end
+
+local function CanonicalItemsMessageKey(storageKey)
+    local k = storageKey
+    if k and ns.Utilities.GetCanonicalCharacterKey then
+        return ns.Utilities:GetCanonicalCharacterKey(k) or k
+    end
+    return k
+end
 local UPDATE_THROTTLE = Constants.THROTTLE.PERSONAL_FREQUENT
 
 -- Bag ID ranges
@@ -562,7 +582,7 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
     end
     
     if not charKey then
-        charKey = ns.Utilities:GetCharacterKey()
+        charKey = ResolveCurrentItemStorageKey()
     end
     
     -- Determine if this is an inventory bag or bank bag
@@ -672,7 +692,7 @@ function WarbandNexus:ScanInventoryBags(charKey)
     end
     
     if not charKey then
-        charKey = ns.Utilities:GetCharacterKey()
+        charKey = ResolveCurrentItemStorageKey()
     end
     
     local allItems = {}
@@ -713,7 +733,7 @@ function WarbandNexus:ScanBankBags(charKey)
     end
     
     if not charKey then
-        charKey = ns.Utilities:GetCharacterKey()
+        charKey = ResolveCurrentItemStorageKey()
     end
     
     local allItems = {}
@@ -789,8 +809,8 @@ local function ThrottledBagUpdate(bagID)
                     local processed = ThrottledBagUpdate(bagID)  -- Retry
                     -- Send coalesced message for deferred retry (no caller to batch with)
                     if processed then
-                        local retryCharKey = ns.Utilities:GetCharacterKey()
-                        WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = retryCharKey})
+                        local retryKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
+                        WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = retryKey})
                     end
                 end
             end)
@@ -802,7 +822,7 @@ local function ThrottledBagUpdate(bagID)
     pendingUpdates[bagID] = nil
     
     -- Determine bag type via O(1) lookup and scan INCREMENTALLY (only changed bag)
-    local charKey = ns.Utilities:GetCharacterKey()
+    local charKey = ResolveCurrentItemStorageKey()
     local bagType = BAG_TYPE_LOOKUP[bagID]
     
     if bagType == "inventory" then
@@ -835,8 +855,8 @@ function WarbandNexus:ProcessPendingBagUpdates()
     end
     -- Batch: one message for all processed pending bags
     if anyProcessed then
-        local charKey = ns.Utilities:GetCharacterKey()
-        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = charKey})
+        local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
+        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = msgKey})
     end
 end
 
@@ -872,8 +892,8 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     
     -- Send ONE coalesced message for all processed bags (instead of per-bag)
     if anyProcessed then
-        local charKey = ns.Utilities:GetCharacterKey()
-        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = charKey})
+        local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
+        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = msgKey})
     end
 end
 
@@ -881,7 +901,7 @@ end
 ---@param charKey string
 function WarbandNexus:RunBudgetedBankOpenScan(charKey)
     if not charKey then
-        charKey = ns.Utilities:GetCharacterKey()
+        charKey = ResolveCurrentItemStorageKey()
     end
 
     local invIdx = 1
@@ -906,7 +926,7 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
         if wbIdx > #WARBAND_BAGS then
             self:SaveWarbandBankCompressed(allWb)
             bankScanInProgress = false
-            self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "all", charKey = charKey })
+            self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "all", charKey = CanonicalItemsMessageKey(charKey) })
             return
         end
         local bagID = WARBAND_BAGS[wbIdx]
@@ -991,7 +1011,7 @@ function WarbandNexus:OnBankOpened()
     isWarbandBankOpen = true
     bankScanInProgress = true  -- Suppress ThrottledBagUpdate while we do the full scan
     
-    local charKey = ns.Utilities:GetCharacterKey()
+    local charKey = ResolveCurrentItemStorageKey()
     
     -- One container per frame (replaces nested 0 + 0.05s timers; avoids large synchronous spikes)
     C_Timer.After(0, function()
@@ -1484,10 +1504,13 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
         characters = {},
     }
     
-    local currentCharKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+    local liveRaw = ResolveCurrentItemStorageKey()
+    local U = ns.Utilities
+    local liveCanon = (U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(liveRaw)) or liveRaw
     for charKey, charData in pairs(self.db.global.characters or {}) do
         local bagCount, bankCount = 0, 0
-        if charKey == currentCharKey then
+        local rowCanon = (U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(charKey)) or charKey
+        if rowCanon == liveCanon then
             -- Current character: use live Blizzard API (O(1), always accurate)
             bagCount = GetItemCount(itemID) or 0
             local totalIncBank = GetItemCount(itemID, true) or 0
@@ -1504,19 +1527,20 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
         if bagCount > 0 or bankCount > 0 then
             result.personalBankTotal = result.personalBankTotal + bankCount
             result.characters[#result.characters + 1] = {
-                charName = charKey:match("^([^-]+)"),
+                charName = (charData.name or (type(charKey) == "string" and charKey:match("^([^-]+)"))),
                 classFile = charData.classFile or charData.class,
                 bagCount = bagCount,
                 bankCount = bankCount,
                 total = bagCount + bankCount,
+                isLiveSession = (rowCanon == liveCanon),
             }
         end
     end
     
     -- Sort: current character first, then by total descending
     table.sort(result.characters, function(a, b)
-        local aIsCurrent = (a.charName == currentPlayerName)
-        local bIsCurrent = (b.charName == currentPlayerName)
+        local aIsCurrent = a.isLiveSession
+        local bIsCurrent = b.isLiveSession
         if aIsCurrent ~= bIsCurrent then return aIsCurrent end
         return a.total > b.total
     end)
@@ -1541,7 +1565,7 @@ end
 
 ---Force refresh all bags (ignore cache)
 function WarbandNexus:RefreshAllBags()
-    local charKey = ns.Utilities:GetCharacterKey()
+    local charKey = ResolveCurrentItemStorageKey()
     
     -- Clear hash cache to force scan
     bagHashCache = {}
@@ -1557,7 +1581,7 @@ function WarbandNexus:RefreshAllBags()
         self:ScanWarbandBank()
     end
     
-    self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = charKey})
+    self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = CanonicalItemsMessageKey(charKey)})
 end
 
 -- ============================================================================
@@ -1583,7 +1607,7 @@ function WarbandNexus:InitializeItemsCache()
         ns.ItemsLoadingState.currentStage = "Scanning inventory bags"
         ns.ItemsLoadingState.scanProgress = 50
         
-        local charKey = ns.Utilities:GetCharacterKey()
+        local charKey = ResolveCurrentItemStorageKey()
         self:ScanInventoryBags(charKey)
         
         -- Mark loading complete
@@ -1592,7 +1616,7 @@ function WarbandNexus:InitializeItemsCache()
         ns.ItemsLoadingState.currentStage = nil
         
         -- Notify UI that initial scan is done (fixes stuck loading state)
-        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = charKey})
+        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = CanonicalItemsMessageKey(charKey)})
     end)
 end
 

@@ -175,8 +175,10 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                 return
             end
 
-            local charKey = ns.Utilities:GetCharacterKey()
-            local charData = addon.db.global.characters and addon.db.global.characters[charKey]
+            -- Resolve row like IsCharacterTracked (GUID-keyed DB vs legacy Name-Realm index).
+            local resolvedKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+                and ns.CharacterService:ResolveCharactersTableKey(addon)
+            local charData = resolvedKey and addon.db.global.characters and addon.db.global.characters[resolvedKey]
 
             -- Only show popup if user has never completed the dialog (trackingConfirmed ~= true).
             -- NOTE: Do not use "not trackingConfirmed" alone: SaveMinimalCharacterData used to persist
@@ -192,10 +194,14 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                 if not addon.db.global.characters then
                     addon.db.global.characters = {}
                 end
-                if not addon.db.global.characters[charKey] then
-                    addon.db.global.characters[charKey] = {}
+                -- Persist under storage key (GUID when available) so stub matches migrated rows / saves.
+                local persistKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
+                    or ns.Utilities:GetCharacterKey()
+                if not persistKey or persistKey == "" then return end
+                if not addon.db.global.characters[persistKey] then
+                    addon.db.global.characters[persistKey] = {}
                 end
-                local stub = addon.db.global.characters[charKey]
+                local stub = addon.db.global.characters[persistKey]
                 if not stub.name or not stub.realm then
                     local un = UnitName("player")
                     if un and type(un) == "string" and not (issecretvalue and issecretvalue(un)) then
@@ -218,7 +224,7 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                 C_Timer.After(2, function()
                     SafeInit(function()
                         if ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
-                            ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
+                            ns.CharacterService:ShowCharacterTrackingConfirmation(addon, persistKey)
                         end
                     end, "CharacterTrackingPopup")
                 end)

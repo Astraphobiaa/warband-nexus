@@ -919,8 +919,16 @@ function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm, trackedSlo
     local _, currentClass = UnitClass("player")
     local characterClass = nil
     local currentKey = ns.Utilities:GetCharacterKey()
+    local canonCurrent = currentKey
+    if currentKey and ns.Utilities.GetCanonicalCharacterKey then
+        canonCurrent = ns.Utilities:GetCanonicalCharacterKey(currentKey) or currentKey
+    end
     local planCharKey = ns.Utilities:GetCharacterKey(characterName, characterRealm)
-    if planCharKey == currentKey then
+    local canonPlan = planCharKey
+    if planCharKey and ns.Utilities.GetCanonicalCharacterKey then
+        canonPlan = ns.Utilities:GetCanonicalCharacterKey(planCharKey) or planCharKey
+    end
+    if planCharKey == currentKey or (canonPlan and canonCurrent and canonPlan == canonCurrent) then
         characterClass = currentClass
     end
     
@@ -1155,12 +1163,28 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
         })
     end
     
-    -- Show notifications for newly completed checkpoints (individual progress gains)
+    -- Show notifications for newly completed checkpoints (individual progress gains).
+    -- When a vault *slot* completes in the same update, its milestone equals checkpoint.progress — skip the
+    -- checkpoint toast so we do not duplicate the slot notification (same title, Progress vs Progress Completed).
     if not skipNotifications then
+        local slotMilestoneKey = {}
+        for si = 1, #newlyCompletedSlots do
+            local s = newlyCompletedSlots[si]
+            if s and s.category and s.threshold then
+                slotMilestoneKey[s.category .. "\0" .. tostring(s.threshold)] = true
+            end
+        end
         for cpi = 1, #newlyCompletedCheckpoints do
             local checkpoint = newlyCompletedCheckpoints[cpi]
-            self:Debug("Checkpoint completed: " .. checkpoint.category .. " " .. checkpoint.oldProgress .. " -> " .. checkpoint.progress)
-            self:ShowWeeklyCheckpointNotification(plan.characterName, checkpoint.category, checkpoint.progress)
+            if checkpoint and checkpoint.category and checkpoint.progress then
+                local k = checkpoint.category .. "\0" .. tostring(checkpoint.progress)
+                if slotMilestoneKey[k] then
+                    self:Debug("Checkpoint skipped (slot notification covers milestone): " .. checkpoint.category .. " " .. tostring(checkpoint.progress))
+                else
+                    self:Debug("Checkpoint completed: " .. checkpoint.category .. " " .. checkpoint.oldProgress .. " -> " .. checkpoint.progress)
+                    self:ShowWeeklyCheckpointNotification(plan.characterName, checkpoint.category, checkpoint.progress)
+                end
+            end
         end
     end
     

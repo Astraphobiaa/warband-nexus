@@ -1377,6 +1377,7 @@ L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "Clicca la scheda desiderata, poi qui.
 L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r Contatore attivato sulla scheda selezionata."
 L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r Impossibile aggiornare la scheda (nessun chat o API bloccata)."
 L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00Novità:|r può apparire un popup sopra la chat, oppure digita |cffffff00/wn changelog|r."
+L["CHARACTER_LINK_HINT_CHAT"] = "I tuoi dati salvati sono stati conservati. Se qualcosa non coincide, digita |cffffff00/reload|r una volta."
 L["CONFIG_SHOW_LOGIN_CHAT"] = "Messaggio di accesso in chat"
 L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "Stampa una breve riga di benvenuto con le notifiche attive. Usa il gruppo Sistema e una scheda visibile (es. Chattynator). La finestra Novità è separata (schermo intero)."
 L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Nascondi tempo di gioco in chat"

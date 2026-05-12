@@ -176,6 +176,16 @@ local function GetDB()
     return WarbandNexus.db.global.reputationData
 end
 
+--- Subsidiary `reputationData.characters` bucket key for the online character (GUID-backed after migration).
+local function CurrentReputationSubsidiaryKey()
+    local raw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not raw then return nil end
+    if ns.Utilities.GetCanonicalCharacterKey then
+        return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+    end
+    return raw
+end
+
 -- ============================================================================
 -- SESSION-ONLY METADATA CACHE (never persisted)
 -- ============================================================================
@@ -437,7 +447,7 @@ local function ResolveFactionData(factionID)
     local db = GetDB()
     if not db then return nil end
     
-    local charKey = ns.Utilities:GetCharacterKey()
+    local charKey = CurrentReputationSubsidiaryKey()
     
     -- Current character
     local charData = (db.characters[charKey] or {})[factionID]
@@ -523,12 +533,16 @@ function ReputationCache:Initialize()
     -- Load metadata
     self.lastFullScan = db.lastScan or 0
     
-    -- Get current character key
-    local currentCharKey = ns.Utilities:GetCharacterKey()
+    -- Get current character subsidiary key (aligned with MigrationService character-key remaps).
+    local currentCharKeyRaw = ns.Utilities:GetCharacterKey()
+    local currentSubsidiaryKey = currentCharKeyRaw
+    if currentCharKeyRaw and ns.Utilities.GetCanonicalCharacterKey then
+        currentSubsidiaryKey = ns.Utilities:GetCanonicalCharacterKey(currentCharKeyRaw) or currentCharKeyRaw
+    end
     
     -- Fast presence checks (avoid full DB counting on every reload).
     local hasAnyData = next(db.accountWide) ~= nil
-    local currentCharFactions = currentCharKey and db.characters[currentCharKey] or nil
+    local currentCharFactions = currentSubsidiaryKey and db.characters[currentSubsidiaryKey] or nil
     local currentCharHasData = type(currentCharFactions) == "table" and next(currentCharFactions) ~= nil
     if not hasAnyData then
         for _, charFactions in pairs(db.characters) do
@@ -548,7 +562,7 @@ function ReputationCache:Initialize()
         scanReason = "No data in DB"
     elseif not currentCharHasData then
         needsScan = true
-        scanReason = "Current character (" .. currentCharKey .. ") has no data"
+        scanReason = "Current character (" .. tostring(currentSubsidiaryKey) .. ") has no data"
     else
         -- Check for version mismatch
         local dbVersion = db.version
@@ -1630,7 +1644,7 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
     end
     
     -- Get current character key
-    local currentCharKey = ns.Utilities:GetCharacterKey()
+    local currentCharKey = CurrentReputationSubsidiaryKey()
     
     -- Store compact (progress-only) data in SV
     local compact = CompactFactionData(normalizedData)
@@ -1687,7 +1701,7 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     end
     
     -- Get current character key
-    local currentCharKey = ns.Utilities:GetCharacterKey()
+    local currentCharKey = CurrentReputationSubsidiaryKey()
     
     -- CRITICAL: Clear ONLY current character's data (preserve other characters)
     if not db.characters[currentCharKey] then

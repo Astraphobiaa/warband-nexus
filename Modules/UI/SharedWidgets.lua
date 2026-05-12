@@ -2470,8 +2470,15 @@ end
 
 ns.UI_GetCharKey = function(char)
     if char and char._key then return char._key end
-    if not ns.Utilities or not ns.Utilities.GetCharacterKey then return nil end
-    return ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")
+    if not ns.Utilities then return nil end
+    if char and ns.Utilities.ResolveCharacterRowKey then
+        local rk = ns.Utilities:ResolveCharacterRowKey(char)
+        if rk then return rk end
+    end
+    if ns.Utilities.GetCharacterKey then
+        return ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")
+    end
+    return nil
 end
 
 -- Export size configuration
@@ -5222,7 +5229,11 @@ function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
             if charData.name:lower() == wantLower then
                 local token = ResolveClassFileTokenFromCharData(charData)
                 if token then
-                    local c = C_ClassColor and C_ClassColor.GetClassColor(token)
+                    local c
+                    if C_ClassColor and C_ClassColor.GetClassColor then
+                        local okCol, col = pcall(C_ClassColor.GetClassColor, token)
+                        if okCol then c = col end
+                    end
                     if c then
                         return format("|cff%02x%02x%02x", (c.r or 0) * 255, (c.g or 0) * 255, (c.b or 0) * 255)
                     end

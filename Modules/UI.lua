@@ -2408,6 +2408,10 @@ function WarbandNexus:UpdateStatus()
     local accent = mainFrame.trackingStatusAccent
     local chip = mainFrame.trackingChip
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local trackingDialogKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+            and ns.CharacterService:ResolveCharactersTableKey(self))
+        or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self))
+        or charKey
 
     local function BadgeOneLine(s)
         if not s or s == "" then return s end
@@ -2427,8 +2431,8 @@ function WarbandNexus:UpdateStatus()
         if badge then
             badge:SetScript("OnClick", function()
                 if InCombatLockdown() then return end
-                if charKey and ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
-                    ns.CharacterService:ShowCharacterTrackingConfirmation(WarbandNexus, charKey)
+                if trackingDialogKey and ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
+                    ns.CharacterService:ShowCharacterTrackingConfirmation(WarbandNexus, trackingDialogKey)
                 end
             end)
             badge:SetScript("OnEnter", function(b)

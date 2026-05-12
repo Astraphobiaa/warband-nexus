@@ -680,8 +680,10 @@ function WarbandNexus:OnInitialize()
                     
                     -- Check if character is tracked and confirmation is done
                     if ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-                        local charKey = ns.Utilities:GetCharacterKey()
-                        local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+                        local charKey = (ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus))
+                            or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
+                            or ns.Utilities:GetCharacterKey()
+                        local charData = charKey and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
 
                         -- Only save if trackingConfirmed (popup already handled by InitializationService)
                         if charData and charData.trackingConfirmed then
@@ -712,7 +714,9 @@ function WarbandNexus:OnInitialize()
                     -- After a schema reset + reload, the tracking popup hasn't appeared yet
                     -- at t=2s (it shows at t=2.5s). Saving here with trackingConfirmed=true
                     -- would permanently skip the popup, leaving the character untracked.
-                    local charKey = ns.Utilities:GetCharacterKey()
+                    local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus))
+                        or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
+                        or ns.Utilities:GetCharacterKey()
                     local charData = charKey and WarbandNexus.db.global.characters
                         and WarbandNexus.db.global.characters[charKey]
                     
@@ -1279,8 +1283,10 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     -- GUILD TRACKING: Check for guild changes on login (T+0s, high priority)
     -- Character may have been kicked, left guild, or joined new guild while offline
     if isInitialLogin or isReloadingUi then
-        local charKey = ns.Utilities:GetCharacterKey()
-        local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
+        local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(self))
+            or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self))
+            or ns.Utilities:GetCharacterKey()
+        local charData = charKey and self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
         
         if charData then
             local storedGuildName = charData.guildName
@@ -1564,9 +1570,11 @@ function WarbandNexus:OnPetListChanged()
         if not WarbandNexus then return end
         WarbandNexus.petListCheckPending = false
         
-        local charKey = ns.Utilities:GetCharacterKey()
+        local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus))
+            or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
+            or ns.Utilities:GetCharacterKey()
         
-        if WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey] then
+        if charKey and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey] then
             WarbandNexus.db.global.characters[charKey].lastSeen = time()
             
             -- Invalidate collection cache
@@ -1574,8 +1582,12 @@ function WarbandNexus:OnPetListChanged()
                 WarbandNexus:InvalidateCollectionCache()
             end
             
+            local msgKey = charKey
+            if ns.Utilities.GetCanonicalCharacterKey then
+                msgKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+            end
             -- Fire event for UI refresh (instead of direct call)
-            WarbandNexus:SendMessage(ns.Constants.EVENTS.COLLECTION_UPDATED, charKey)
+            WarbandNexus:SendMessage(ns.Constants.EVENTS.COLLECTION_UPDATED, msgKey)
         end
     end)
 end

@@ -3125,7 +3125,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     L.HideEmptyStateCard(parent, "pve")
     
     -- ===== AUTO-REFRESH CHECK (FULLY AUTOMATIC) =====
-    local charKey = L.ns.Utilities:GetCharacterKey()
+    local charKey = (L.ns.Utilities.GetCharacterStorageKey and L.ns.Utilities:GetCharacterStorageKey(L.WarbandNexus))
+        or L.ns.Utilities:GetCharacterKey()
     local pveData = self:GetPvEData(charKey)
     
     -- Check multiple data completeness signals, not just keystone
@@ -3463,8 +3464,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     end
     
     -- Canonical key must match PvECacheService writes and GetPvEData(charKey) lookups
-    local currentPlayerKey = L.ns.Utilities:GetCharacterKey()
-    if L.ns.Utilities.GetCanonicalCharacterKey then
+    local currentPlayerKey = (L.ns.CharacterService and L.ns.CharacterService.ResolveCharactersTableKey and L.ns.CharacterService:ResolveCharactersTableKey(L.WarbandNexus))
+        or (L.ns.Utilities.GetCharacterStorageKey and L.ns.Utilities:GetCharacterStorageKey(L.WarbandNexus))
+        or L.ns.Utilities:GetCharacterKey()
+    if L.ns.Utilities.GetCanonicalCharacterKey and currentPlayerKey then
         currentPlayerKey = L.ns.Utilities:GetCanonicalCharacterKey(currentPlayerKey) or currentPlayerKey
     end
     

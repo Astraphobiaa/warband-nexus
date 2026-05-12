@@ -148,7 +148,14 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         C_Timer.After(0.2, function()
             local addonInstance = _G.WarbandNexus or addon
             if addonInstance and addonInstance.ScanInventoryBags then
-                local cKey = ns.Utilities:GetCharacterKey()
+                local cKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+                    and ns.CharacterService:ResolveCharactersTableKey(addonInstance)
+                if not cKey and ns.Utilities.GetCharacterStorageKey then
+                    cKey = ns.Utilities:GetCharacterStorageKey(addonInstance)
+                end
+                if not cKey then
+                    cKey = ns.Utilities:GetCharacterKey()
+                end
                 addonInstance:ScanInventoryBags(cKey)
                 if ns.ItemsLoadingState then
                     ns.ItemsLoadingState.isLoading = false
@@ -297,7 +304,12 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             C_Timer.After(0.5, function()
                 if addonInstance and addonInstance.SendMessage then
                     local ev = E.CHARACTER_UPDATED
-                    addonInstance:SendMessage(ev, { charKey = ns.Utilities and ns.Utilities:GetCharacterKey() })
+                    local rawK = ns.Utilities and ns.Utilities:GetCharacterKey()
+                    local msgKey = rawK
+                    if rawK and ns.Utilities.GetCanonicalCharacterKey then
+                        msgKey = ns.Utilities:GetCanonicalCharacterKey(rawK) or rawK
+                    end
+                    addonInstance:SendMessage(ev, { charKey = msgKey })
                 end
             end)
         end)
@@ -322,17 +334,45 @@ function CharacterService:ResolveCharactersTableKey(addon)
         return nil
     end
     local chars = addon.db.global.characters
-    local rawKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local U = ns.Utilities
+    -- Canonical slot for current session (guid when available — matches NEW writes / migrated rows).
+    local storageKey = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(addon)
+    if storageKey and storageKey ~= "" and chars[storageKey] then
+        return storageKey
+    end
+    local rawKey = U and U.GetCharacterKey and U:GetCharacterKey()
     if not rawKey or rawKey == "" then
         return nil
     end
     if chars[rawKey] then
         return rawKey
     end
-    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-        local canon = ns.Utilities:GetCanonicalCharacterKey(rawKey)
+    if U and U.GetCanonicalCharacterKey then
+        local canon = U:GetCanonicalCharacterKey(rawKey)
         if canon and canon ~= "" and canon ~= rawKey and chars[canon] then
             return canon
+        end
+    end
+    -- Stale row key after a rename: same player GUID under a legacy table key.
+    if U and U.SafeGuid then
+        local pg = U:SafeGuid("player")
+        if pg and not (issecretvalue and issecretvalue(pg)) then
+            local bestKey, bestSeen = nil, -1
+            for k, v in pairs(chars) do
+                if type(v) == "table" then
+                    local g = v.guid
+                    if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) and g == pg then
+                        local seen = (type(v.lastSeen) == "number") and v.lastSeen or 0
+                        if seen > bestSeen then
+                            bestSeen = seen
+                            bestKey = k
+                        end
+                    end
+                end
+            end
+            if bestKey then
+                return bestKey
+            end
         end
     end
     return nil
@@ -418,15 +458,40 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     questionText:SetText((ns.L and ns.L["TRACK_CHARACTER_QUESTION"]) or "Do you want to track this character?")
     
     -- Character name with class color
-    local charName = charKey
-    local charRealmRaw = nil
-    if charKey and not (issecretvalue and issecretvalue(charKey)) then
-        charName = charKey:match("^([^%-]+)") or charKey
-        charRealmRaw = charKey:match("%-(.+)")
+    -- charKey may be a player GUID (storage key): prefer row / live APIs for display, not key parsing.
+    local charName, charRealmRaw = nil, nil
+    local row = addon.db.global.characters and charKey and addon.db.global.characters[charKey]
+    if type(row) == "table" then
+        local n = row.name
+        local r = row.realm
+        if type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
+            charName = n
+        end
+        if type(r) == "string" and r ~= "" and not (issecretvalue and issecretvalue(r)) then
+            charRealmRaw = r
+        end
     end
-    if not charRealmRaw and GetRealmName then
-        charRealmRaw = GetRealmName() or ""
-        if issecretvalue and charRealmRaw and issecretvalue(charRealmRaw) then charRealmRaw = "" end
+    -- Avoid parsing storage GUID as Name-Realm (WoW player GUIDs look like Player-<realmId>-...).
+    local guidLike = charKey and type(charKey) == "string" and not (issecretvalue and issecretvalue(charKey))
+        and charKey:match("^Player%-%d+%-") ~= nil
+    if not charName and charKey and not guidLike and not (issecretvalue and issecretvalue(charKey)) then
+        charName = charKey:match("^([^%-]+)") or charKey
+        charRealmRaw = charRealmRaw or charKey:match("%-(.+)")
+    end
+    if not charName then
+        local un = UnitName("player")
+        if un and type(un) == "string" and not (issecretvalue and issecretvalue(un)) then
+            charName = un
+        end
+    end
+    if not charRealmRaw or charRealmRaw == "" then
+        local norm = GetNormalizedRealmName and GetNormalizedRealmName()
+        if type(norm) == "string" and norm ~= "" and not (issecretvalue and issecretvalue(norm)) then
+            charRealmRaw = norm
+        elseif GetRealmName then
+            charRealmRaw = GetRealmName() or ""
+            if issecretvalue and charRealmRaw and issecretvalue(charRealmRaw) then charRealmRaw = "" end
+        end
     end
     charRealmRaw = charRealmRaw or ""
     local charRealm = (charRealmRaw ~= "" and ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(charRealmRaw)) or charRealmRaw

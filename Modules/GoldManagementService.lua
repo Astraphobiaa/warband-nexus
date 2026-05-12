@@ -34,7 +34,13 @@ local function PerformGoldManagement()
     if not settings or not settings.enabled then return end
 
     local dbGold = 0
-    local ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local ck = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)
+    if not ck and ns.Utilities.GetCharacterStorageKey then
+        ck = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+    end
+    if not ck then
+        ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    end
     local ch = ck and WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[ck]
     if ch and ns.Utilities and ns.Utilities.GetCharTotalCopper then
         dbGold = ns.Utilities:GetCharTotalCopper(ch)

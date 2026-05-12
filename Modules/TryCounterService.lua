@@ -171,6 +171,16 @@ local C_QuestLog = C_QuestLog
 -- issecretvalue(v) returns true if v is a secret value that cannot be operated on.
 local issecretvalue = issecretvalue  -- nil pre-12.0, function in 12.0+
 
+--- Canonical subsidiary key for db.global.statisticSnapshots[current] (matches MigrationService key moves).
+local function StatisticSnapshotStorageKey()
+    local raw = Utilities and Utilities.GetCharacterKey and Utilities:GetCharacterKey()
+    if not raw then return nil end
+    if Utilities and Utilities.GetCanonicalCharacterKey then
+        return Utilities:GetCanonicalCharacterKey(raw) or raw
+    end
+    return raw
+end
+
 -- Quest-item mounts (Stonevault/Mechagon style): populated by BuildReverseIndices; used by GetQuestStarterMountsForBrowser and GetTryCount fallback
 local questStarterMountToSourceItemID = {}
 local questStarterSourceToStatisticIds = {}  -- sourceItemID -> { statId, ... } for "statistic + local" try count
@@ -2959,7 +2969,7 @@ function Fns.ReseedStatisticsForDrops(drops, resolvedDropStatIds)
 
     Fns.RebuildMergedStatisticSeedIndex()
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = StatisticSnapshotStorageKey()
     if not charKey then return end
 
     local snapshots = WarbandNexus.db.global.statisticSnapshots
@@ -4044,7 +4054,7 @@ end
 function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadingUi)
     -- Statistics + Rarity: re-sync when character changes or UI reload (not every zone hop).
     if tryCounterReady then
-        local k = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        local k = StatisticSnapshotStorageKey()
         if k then
             if k ~= lastSyncScheduleCharKey or isReloadingUi then
                 lastSyncScheduleCharKey = k
@@ -7150,7 +7160,7 @@ function Fns.SeedFromStatistics()
     Fns.PruneStatisticSnapshotsOrphanKeys()
     Fns.RebuildMergedStatisticSeedIndex()
 
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local charKey = StatisticSnapshotStorageKey()
     if not charKey then return end
 
     local P = ns.Profiler
@@ -7726,7 +7736,7 @@ function WarbandNexus:InitializeTryCounter()
     -- Per-character Statistics seed + Rarity max overlay (PLAYER_ENTERING_WORLD also schedules on alt/reload).
     -- Delayed 10s/11s — after pre-resolve (+5s) warms mount/pet IDs.
     Fns.SchedulePerCharacterStatisticsAndRaritySync()
-    local kSched = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local kSched = StatisticSnapshotStorageKey()
     if kSched then
         lastSyncScheduleCharKey = kSched
     end

@@ -1377,6 +1377,7 @@ L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"] = "원하는 채팅 탭을 클릭한 뒤
 L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"] = "|cff9966ff[Warband Nexus]|r 선택한 채팅 탭에서 시도 횟수를 켰습니다."
 L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"] = "|cffff6600[Warband Nexus]|r 채팅 탭을 바꿀 수 없습니다(채팅 없음 또는 API 차단)."
 L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00새 소식:|r 채팅 위에 팝업이 뜰 수 있으며, |cffffff00/wn changelog|r 를 입력해도 됩니다."
+L["CHARACTER_LINK_HINT_CHAT"] = "저장된 데이터는 유지되었습니다. 패널이 이상하면 |cffffff00/reload|r 을 한 번 입력하세요."
 L["CONFIG_SHOW_LOGIN_CHAT"] = "채팅에 로그인 메시지"
 L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "알림이 켜져 있을 때 짧은 환영 한 줄을 출력합니다. 시스템 메시지 그룹과 보이는 채팅 탭을 사용합니다(Chattynator 등). 새 소식 창은 별도(전체 화면 팝업)입니다."
 L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "채팅에서 플레이 시간 숨기기"

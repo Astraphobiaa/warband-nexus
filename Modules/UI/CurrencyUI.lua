@@ -202,6 +202,9 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     local amountLine
     local usedSeasonProgressLine = false
     local curKey = currency.viewCharKey
+    if (not curKey) and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+        curKey = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+    end
     if (not curKey) and ns.Utilities and ns.Utilities.GetCharacterKey then
         curKey = ns.Utilities:GetCharacterKey()
     end
@@ -241,6 +244,9 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         
         -- Use new tooltip system
         local tipKey = currency.viewCharKey
+        if (not tipKey) and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+            tipKey = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+        end
         if (not tipKey) and ns.Utilities and ns.Utilities.GetCharacterKey then
             tipKey = ns.Utilities:GetCharacterKey()
         end
@@ -309,12 +315,13 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         end
     end
     
-    -- Build character lookup
-    -- CRITICAL: Use GetCharacterKey() normalization (strips spaces) to match currency DB keys
+    -- CRITICAL: Use actual SavedVariables row key (guid or Name-Realm) so currency DB lookups stay aligned.
     local charLookup = {}
     for ci = 1, #characters do
         local char = characters[ci]
-        local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
+        local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
+            or (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(char))
+            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
         if charKey then charLookup[charKey] = char end
     end
     
@@ -344,7 +351,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                 if matchesSearch then
                     -- ALWAYS show CURRENT character's individual quantity as the primary row value.
                     -- Tooltip shows per-character breakdown and total on hover.
-                    local currentCharKey = ns.Utilities:GetCharacterKey()
+                    local currentCharKey = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+                        or ns.Utilities:GetCharacterKey()
                     
                     -- Resolve current character's quantity from the per-char data
                     local currentCharAmount = 0
@@ -388,7 +396,9 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                         if not charLookup[displayChar] then
                             for ci = 1, #characters do
                                 local char = characters[ci]
-                                local ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
+                                local ck = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
+                                    or (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(char))
+                                    or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
                                 if ck and charLookup[ck] then
                                     displayChar = ck
                                     currentCharAmount = (currData.chars and currData.chars[ck]) or 0
@@ -569,7 +579,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
     
     -- Get current online character
-    local currentCharKey = ns.Utilities:GetCharacterKey()
+    local currentCharKey = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+        or ns.Utilities:GetCharacterKey()
     
     -- Expanded state management
     local expanded = self.db.profile.currencyExpanded or {}
@@ -629,7 +640,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     for ci = 1, #characters do
         local char = characters[ci]
-        local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm)
+        local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
+            or (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(char))
+            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
         if not charKey then
             -- Skip if canonical key unavailable (should not happen when Utilities loaded)
         else

@@ -446,8 +446,12 @@ function WarbandNexus:InitializeCurrencyCache()
     -- Load metadata
     CurrencyCache.lastFullScan = db.lastScan or 0
     
-    -- Get current character key
-    local currentCharKey = ns.Utilities:GetCharacterKey()
+    -- Get current character subsidiary key (GUID-backed after migration; canonicalizes legacy API key).
+    local currentCharKeyRaw = ns.Utilities:GetCharacterKey()
+    local currentSubsidiaryKey = currentCharKeyRaw
+    if currentCharKeyRaw and ns.Utilities.GetCanonicalCharacterKey then
+        currentSubsidiaryKey = ns.Utilities:GetCanonicalCharacterKey(currentCharKeyRaw) or currentCharKeyRaw
+    end
     
     -- Count existing data
     local charCounts = {}
@@ -459,7 +463,11 @@ function WarbandNexus:InitializeCurrencyCache()
             count = count + 1
         end
         charCounts[charKey] = count
-        if charKey == currentCharKey then
+        local canonLoop = charKey
+        if ns.Utilities.GetCanonicalCharacterKey then
+            canonLoop = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+        end
+        if canonLoop == currentSubsidiaryKey then
             currentCharCount = count
         end
     end
@@ -478,7 +486,7 @@ function WarbandNexus:InitializeCurrencyCache()
         scanReason = "No data in DB"
     elseif currentCharCount == 0 then
         needsScan = true
-        scanReason = "Current character (" .. currentCharKey .. ") has no data"
+        scanReason = "Current character (" .. tostring(currentSubsidiaryKey) .. ") has no data"
     else
         -- Check for version mismatch
         local dbVersion = db.version
