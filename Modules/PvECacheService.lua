@@ -314,6 +314,7 @@ local function BuildPvESignature(pveCache, charKey)
     local mPlusN = acts and acts.mythicPlus and #acts.mythicPlus or 0
     local pvpN = acts and acts.pvp and #acts.pvp or 0
     local worldN = acts and acts.world and #acts.world or 0
+    local postResetSig = acts and acts.isPostReset and "1" or "0"
 
     local runSig = BuildRunsSignature(mp and mp.runHistory and mp.runHistory[charKey])
     local affSig = BuildAffixSignature(pveCache)
@@ -344,6 +345,7 @@ local function BuildPvESignature(pveCache, charKey)
         claimedSig,
         claimedAtSig,
         tostring(raidN), tostring(mPlusN), tostring(pvpN), tostring(worldN),
+        postResetSig,
         tostring(lockN), tostring(wbN),
         delveSig,
         affSig,
@@ -2351,6 +2353,9 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     
     -- Update timestamp
     activities.lastUpdate = time()
+    -- The scanner has accepted current slot data, so any preserved post-reset
+    -- placeholder state must be cleared on this mutable activities table.
+    activities.isPostReset = nil
     
     -- Save to DB
     self:SavePvECache()
