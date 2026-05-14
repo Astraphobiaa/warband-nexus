@@ -3860,9 +3860,9 @@ local function TryCounterAnnounceCollectibleMountsOnInstanceEntry(WN)
     local hasTrackableOnDiff = false
     while idx <= EJ_ENCOUNTER_INDEX_CAP do
         local encName, dungeonEncID = Fns.TryCounterResolveDungeonEncounterFromEJIndex(idx, jid)
-        if encName == nil then break end
         if issecretvalue and issecretvalue(encName) then break end
-        local dexSecret = dungeonEncID and issecretvalue and issecretvalue(dungeonEncID)
+        if encName == nil then break end
+        local dexSecret = issecretvalue and issecretvalue(dungeonEncID)
         if not dexSecret and dungeonEncID then
             local npcIDs = encounterDB[dungeonEncID]
             if npcIDs then
@@ -4196,9 +4196,9 @@ function WarbandNexus:TryCounterDebugInstanceProbe()
         local hadDbBoss = false
         while idx <= EJ_ENCOUNTER_INDEX_CAP do
             local encName, dungeonEncID = Fns.TryCounterResolveDungeonEncounterFromEJIndex(idx, jid)
-            if encName == nil then break end
             if issecretvalue and issecretvalue(encName) then break end
-            local dexSecret = dungeonEncID and issecretvalue and issecretvalue(dungeonEncID)
+            if encName == nil then break end
+            local dexSecret = issecretvalue and issecretvalue(dungeonEncID)
             if not dexSecret and dungeonEncID then
                 local npcIDs = encounterDB[dungeonEncID]
                 if npcIDs then
@@ -4256,9 +4256,9 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
         local EJ_ENCOUNTER_INDEX_CAP = 500
         while idx <= EJ_ENCOUNTER_INDEX_CAP do
             local encName, dungeonEncID = Fns.TryCounterResolveDungeonEncounterFromEJIndex(idx, journalInstanceID)
-            if encName == nil then break end
             if issecretvalue and issecretvalue(encName) then break end
-            local dexSecret = dungeonEncID and issecretvalue and issecretvalue(dungeonEncID)
+            if encName == nil then break end
+            local dexSecret = issecretvalue and issecretvalue(dungeonEncID)
             if not dexSecret then
                 -- Our encounterDB is keyed by DungeonEncounterID (from ENCOUNTER_END event)
                 local npcIDs = dungeonEncID and encounterDB[dungeonEncID]
