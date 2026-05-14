@@ -29,6 +29,35 @@ local DebugPrint = ns.DebugPrint
 local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
 
+---Read per-character quantity from GetCurrenciesForUI (entry.chars may use SV row key and/or Name-Realm).
+local function GetCurrencyCharQuantityFromSnapshot(currData, charKey)
+    if not currData then return 0 end
+    if currData.isAccountWide then
+        return currData.value or 0
+    end
+    local ch = currData.chars
+    if not ch or not charKey or charKey == "" then return 0 end
+    local function read(k)
+        if not k then return nil end
+        local s = ch[k]
+        if s == nil then return nil end
+        if type(s) == "number" then return s end
+        if type(s) == "table" then return s.quantity or 0 end
+        return 0
+    end
+    local q = read(charKey)
+    if q ~= nil then return q end
+    local U = ns.Utilities
+    if U and U.GetCanonicalCharacterKey then
+        local ck = U:GetCanonicalCharacterKey(charKey)
+        if ck and ck ~= charKey then
+            q = read(ck)
+            if q ~= nil then return q end
+        end
+    end
+    return 0
+end
+
 -- ============================================================================
 -- HEADER HIERARCHY
 -- CurrencyCacheService v2.0 stores a proper tree in db.headers using the
@@ -38,14 +67,14 @@ local SearchResultsRenderer = ns.SearchResultsRenderer
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
-local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
 local FormatGold = ns.UI_FormatGold
 local FormatNumber = ns.UI_FormatNumber
 local DrawEmptyState = ns.UI_DrawEmptyState
 local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
 local AcquireCurrencyRow = ns.UI_AcquireCurrencyRow
-local ReleaseCurrencyRow = ns.UI_ReleaseCurrencyRow
+local ReleaseCurrencyRowsFromSubtree = ns.UI_ReleaseCurrencyRowsFromSubtree
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
+local UnbindSeasonProgressAmount = ns.UI_UnbindSeasonProgressAmount
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
@@ -62,8 +91,6 @@ local next = next
 
 -- Import shared UI constants
 local function GetLayout() return ns.UI_LAYOUT or {} end
-local BASE_INDENT = GetLayout().BASE_INDENT or 15
-local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
@@ -72,8 +99,21 @@ local SECTION_COLLAPSE_HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGH
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
 local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
+local BASE_INDENT = GetLayout().BASE_INDENT or 15
 local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
 local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+
+--- List row geometry: anchor chain (name ↔ badge ↔ amount) so columns never overlap (WN-UI-layout).
+local CURRENCY_LIST_ROW = {
+    TEXT_LEFT = 43,
+    COL_GAP = 6,
+    AMOUNT_RIGHT_PAD = 10,
+    AMOUNT_MIN_W = 94,
+    AMOUNT_MAX_W = 230,
+    BADGE_MAX_W = 200,
+    BADGE_MIN_W = 48,
+    NAME_MIN_FOR_BADGE = 72,
+}
 
 --============================================================================
 -- CURRENCY FORMATTING & HELPERS
@@ -147,6 +187,11 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         row.keyBadge:Hide()
     end
 
+    -- Pooled row reuse: drop stale Shift watcher before rebinding or plain SetText
+    if UnbindSeasonProgressAmount and row.amountText then
+        UnbindSeasonProgressAmount(row.amountText)
+    end
+
     local hasQuantity = (currency.quantity or 0) > 0
     
     -- Icon (support both iconFileID and icon fields)
@@ -166,9 +211,64 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     end
     
     local zeroAlpha = 0.5  -- Title and value alpha when quantity is 0
+
+    -- Anchor chain: amount (fixed width from right) -> badge (optional) -> name (fills remainder).
+    -- Avoids SetWidth-only math drifting from FontString intrinsic size / pooled anchors.
+    local L = CURRENCY_LIST_ROW
+    local rw = math.max(120, rowWidth or 0)
+    local gap = L.COL_GAP
+    local padR = L.AMOUNT_RIGHT_PAD
+    local showBadge = currency.characterName and true or false
+
+    local amountW = math.min(L.AMOUNT_MAX_W, math.max(L.AMOUNT_MIN_W, floor(rw * (showBadge and 0.26 or 0.24))))
+
+    if row.nameText.SetWordWrap then row.nameText:SetWordWrap(false) end
+    if row.nameText.SetNonSpaceWrap then row.nameText:SetNonSpaceWrap(false) end
+    if row.nameText.SetMaxLines then row.nameText:SetMaxLines(1) end
+
+    row.amountText:ClearAllPoints()
+    row.amountText:SetJustifyH("RIGHT")
+    row.amountText:SetPoint("TOPRIGHT", row, "TOPRIGHT", -padR, 0)
+    row.amountText:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -padR, 0)
+    row.amountText:SetWidth(amountW)
+
+    row.nameText:ClearAllPoints()
+    row.nameText:SetJustifyH("LEFT")
+    row.nameText:SetPoint("TOPLEFT", row, "TOPLEFT", L.TEXT_LEFT, 0)
+    row.nameText:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", L.TEXT_LEFT, 0)
+
+    if showBadge then
+        if not row.badgeText then
+            row.badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
+            row.badgeText:SetJustifyH("LEFT")
+            if row.badgeText.SetWordWrap then row.badgeText:SetWordWrap(false) end
+            if row.badgeText.SetNonSpaceWrap then row.badgeText:SetNonSpaceWrap(false) end
+            if row.badgeText.SetMaxLines then row.badgeText:SetMaxLines(1) end
+        end
+        local amountBlockStart = rw - padR - amountW
+        local spaceNameBadge = amountBlockStart - gap - L.TEXT_LEFT - gap
+        local badgeMax = spaceNameBadge - L.NAME_MIN_FOR_BADGE
+        if badgeMax < L.BADGE_MIN_W then
+            badgeMax = math.max(24, spaceNameBadge - 40)
+        else
+            badgeMax = math.min(L.BADGE_MAX_W, math.max(L.BADGE_MIN_W, badgeMax))
+        end
+        row.badgeText:ClearAllPoints()
+        row.badgeText:SetJustifyH("LEFT")
+        row.badgeText:SetPoint("TOPRIGHT", row.amountText, "TOPLEFT", -gap, 0)
+        row.badgeText:SetPoint("BOTTOMRIGHT", row.amountText, "BOTTOMLEFT", -gap, 0)
+        row.badgeText:SetWidth(badgeMax)
+        row.nameText:SetPoint("TOPRIGHT", row.badgeText, "TOPLEFT", -gap, 0)
+        row.nameText:SetPoint("BOTTOMRIGHT", row.badgeText, "BOTTOMLEFT", -gap, 0)
+    else
+        if row.badgeText then
+            row.badgeText:Hide()
+        end
+        row.nameText:SetPoint("TOPRIGHT", row.amountText, "TOPLEFT", -gap, 0)
+        row.nameText:SetPoint("BOTTOMRIGHT", row.amountText, "BOTTOMLEFT", -gap, 0)
+    end
     
     -- Name only (no character suffix)
-    row.nameText:SetWidth(rowWidth - 280)
     local displayName = currency.name or ((ns.L and ns.L["CURRENCY_UNKNOWN"]) or "Unknown Currency")
     row.nameText:SetText(displayName)
     if hasQuantity then
@@ -177,14 +277,8 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         row.nameText:SetTextColor(1, 1, 1, zeroAlpha)
     end
     
-    -- Character Badge (separate column, like ReputationUI)
-    if currency.characterName then
-        if not row.badgeText then
-            row.badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
-            row.badgeText:SetPoint("LEFT", 302, 0)  -- Same position as ReputationUI
-            row.badgeText:SetJustifyH("LEFT")
-            row.badgeText:SetWidth(280)
-        end
+    -- Character badge (Character-Specific section)
+    if showBadge then
         row.badgeText:SetText(currency.characterName)
         if hasQuantity then
             row.badgeText:SetTextColor(1, 1, 1, 1)
@@ -192,10 +286,6 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
             row.badgeText:SetTextColor(1, 1, 1, zeroAlpha)
         end
         row.badgeText:Show()
-    else
-        if row.badgeText then
-            row.badgeText:Hide()
-        end
     end
     
     -- Amount: Gear-style season/cap line when live DB+API data exists (Dawncrests, Coffer Key Shards, …)
@@ -214,7 +304,11 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
             -- Shift-aware: default = current only (cap-colored); Shift = expanded current\194\183earned/cap.
             ns.UI_BindSeasonProgressAmount(row.amountText, cd)
             usedSeasonProgressLine = true
-            amountLine = row.amountText:GetText() or ""
+            local rawAmt = row.amountText:GetText()
+            amountLine = ""
+            if rawAmt and not (issecretvalue and issecretvalue(rawAmt)) then
+                amountLine = rawAmt
+            end
         end
     end
     if not amountLine then
@@ -354,15 +448,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                     local currentCharKey = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
                         or ns.Utilities:GetCharacterKey()
                     
-                    -- Resolve current character's quantity from the per-char data
-                    local currentCharAmount = 0
-                    if currData.chars and currData.chars[currentCharKey] then
-                        local stored = currData.chars[currentCharKey]
-                        currentCharAmount = (type(stored) == "number") and stored or (type(stored) == "table" and stored.quantity or 0)
-                    elseif currData.isAccountWide and currData.value then
-                        -- Account-wide currencies have a single shared value (no per-char breakdown)
-                        currentCharAmount = currData.value
-                    end
+                    local currentCharAmount = GetCurrencyCharQuantityFromSnapshot(currData, currentCharKey)
                     
                     -- Check if ANY tracked character has this currency (for showZero filter)
                     local anyCharHasIt = false
@@ -401,7 +487,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                                     or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
                                 if ck and charLookup[ck] then
                                     displayChar = ck
-                                    currentCharAmount = (currData.chars and currData.chars[ck]) or 0
+                                    currentCharAmount = GetCurrencyCharQuantityFromSnapshot(currData, ck)
                                     break
                                 end
                             end
@@ -533,6 +619,11 @@ function WarbandNexus:DrawCurrencyList(container, width)
     -- Hide empty state container (will be shown again if needed)
     HideEmptyStateCard(container, "currency")
 
+    local mfForVirtual = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mfForVirtual and ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
+        ns.VirtualListModule.ClearVirtualScroll(mfForVirtual)
+    end
+
     -- PERFORMANCE: Release pooled frames (safe - doesn't touch emptyStateContainer)
     if ReleaseAllPooledChildren then
         ReleaseAllPooledChildren(container)
@@ -540,8 +631,15 @@ function WarbandNexus:DrawCurrencyList(container, width)
 
     -- Clean up old non-virtual children (headers, notice frames) from previous render.
     -- VLM handles its own _isVirtualRow frames; we only need to recycle stale headers.
+    -- Nested currency rows live under collapsible section bodies (not direct children of container);
+    -- release them to the pool before reparenting wrappers — matches ReputationUI / PopulateContent.
     local recycleBin = ns.UI_RecycleBin
     local oldChildren = {container:GetChildren()}
+    for i = 1, #oldChildren do
+        if ReleaseCurrencyRowsFromSubtree then
+            ReleaseCurrencyRowsFromSubtree(oldChildren[i])
+        end
+    end
     for i = 1, #oldChildren do
         local child = oldChildren[i]
         if not child._isVirtualRow then
@@ -550,7 +648,14 @@ function WarbandNexus:DrawCurrencyList(container, width)
             child:SetParent(recycleBin or UIParent)
         end
     end
-    
+    local oldRegions = {container:GetRegions()}
+    for i = 1, #oldRegions do
+        local region = oldRegions[i]
+        if region:GetObjectType() == "FontString" then
+            region:Hide()
+        end
+    end
+
     local parent = container
     local globalRowIdx = 0
 
@@ -578,9 +683,40 @@ function WarbandNexus:DrawCurrencyList(container, width)
         return height
     end
     
-    -- Get current online character
-    local currentCharKey = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
-        or ns.Utilities:GetCharacterKey()
+    -- Get current online character (aliases: roster row key vs session keys can differ)
+    local sessionCharKeys = {}
+    local function addSessionKey(k)
+        if not k or k == "" then return end
+        for j = 1, #sessionCharKeys do
+            if sessionCharKeys[j] == k then return end
+        end
+        sessionCharKeys[#sessionCharKeys + 1] = k
+    end
+    do
+        local U = ns.Utilities
+        addSessionKey(U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus))
+        local raw = U and U.GetCharacterKey and U:GetCharacterKey()
+        addSessionKey(raw)
+        if raw and U and U.GetCanonicalCharacterKey then
+            addSessionKey(U:GetCanonicalCharacterKey(raw))
+        end
+    end
+    local currentCharKey = sessionCharKeys[1]
+    local function isCharKeyCurrentSession(k)
+        if not k then return false end
+        for i = 1, #sessionCharKeys do
+            if k == sessionCharKeys[i] then return true end
+        end
+        local U = ns.Utilities
+        if U and U.GetCanonicalCharacterKey then
+            local c1 = U:GetCanonicalCharacterKey(k) or k
+            for i = 1, #sessionCharKeys do
+                local c2 = U:GetCanonicalCharacterKey(sessionCharKeys[i]) or sessionCharKeys[i]
+                if c1 == c2 then return true end
+            end
+        end
+        return false
+    end
     
     -- Expanded state management
     local expanded = self.db.profile.currencyExpanded or {}
@@ -646,18 +782,13 @@ function WarbandNexus:DrawCurrencyList(container, width)
         if not charKey then
             -- Skip if canonical key unavailable (should not happen when Utilities loaded)
         else
-            local isOnline = (charKey == currentCharKey)
+            local isOnline = isCharKeyCurrentSession(charKey)
             local matchingCurrencies = {}
             for currencyID, currData in pairs(globalCurrencies) do
                 if currencyIDsForCharScan and not currencyIDsForCharScan[currencyID] then
                     -- Already failed name search (matches AggregateCurrencies header path).
                 else
-                    local quantity = 0
-                    if currData.isAccountWide then
-                        quantity = currData.value or 0
-                    else
-                        quantity = currData.chars and currData.chars[charKey] or 0
-                    end
+                    local quantity = GetCurrencyCharQuantityFromSnapshot(currData, charKey)
                     local currency = {
                         name = currData.name,
                         quantity = quantity,
@@ -708,18 +839,21 @@ function WarbandNexus:DrawCurrencyList(container, width)
         end
     end
     
+    -- Blizzard currency header tree: same stacking contract as ReputationUI category headers
+    -- (wrap width = contentW − BASE_INDENT, horizontal chain offset = BASE_INDENT per level).
     -- ===== SHOW ALL MODE (ONLY) =====
     local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
     local Factory = ns.UI.Factory
     local COLLAPSE_H_CUR = SECTION_COLLAPSE_HEADER_HEIGHT
     local betweenRows = GetLayout().betweenRows or 0
+    local rowGap = (betweenRows > 0) and betweenRows or 2
     local topChainTail = nil
 
     local function MeasureChildrenHeight(frame)
         if not frame then return 0.1 end
         local top = frame:GetTop()
         if not top then
-            return math.max(0.1, frame._wnAccordionFullH or frame:GetHeight() or 0.1)
+            return math.max(0.1, frame._wnSectionFullH or frame:GetHeight() or 0.1)
         end
         local lowest = top
         local children = {frame:GetChildren()}
@@ -752,6 +886,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
         if Factory and Factory.UpdateHorizontalScrollBarVisibility then
             Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
         end
+        if mf._virtualScrollUpdate then
+            mf._virtualScrollUpdate()
+        end
     end
 
     local function CreateWrap(parentFrame, wrapWidth)
@@ -780,7 +917,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local function FinalizeBodyHeight(body)
         if not body then return 0.1 end
         local fullH = MeasureChildrenHeight(body)
-        body._wnAccordionFullH = fullH
+        body._wnSectionFullH = fullH
         return fullH
     end
 
@@ -790,21 +927,21 @@ function WarbandNexus:DrawCurrencyList(container, width)
         topChainTail = frame
     end
 
-    local function BuildHeaderBody(rootCtx, headerDataList, keyPrefix, defaultExpanded, bodyFrame, bodyWidth, makeDisplayData)
+    local function BuildCurrencyCategoryTree(rootCtx, headerDataList, keyPrefix, defaultExpanded, bodyFrame, contentW, makeDisplayData)
         if not bodyFrame then return end
 
-        local function ReflowAncestors(nodeCtx)
-            if not nodeCtx then return end
-            if nodeCtx.body and nodeCtx.wrap then
-                local bodyH = FinalizeBodyHeight(nodeCtx.body)
-                if nodeCtx.body:IsShown() then
-                    nodeCtx.body:SetHeight(math.max(0.1, bodyH))
-                    nodeCtx.wrap:SetHeight(COLLAPSE_H_CUR + nodeCtx.body:GetHeight())
-                else
-                    nodeCtx.wrap:SetHeight(COLLAPSE_H_CUR + 0.1)
-                end
+        --- Walk parent category bodies/wraps up to the major section so sibling headers
+        --- reflow when a nested row (e.g. Season 1) collapses (same idea as ReputationUI nested sections).
+        local function ReflowAncestors(ctx)
+            if not ctx or not ctx.body or not ctx.wrap then return end
+            local bodyH = FinalizeBodyHeight(ctx.body)
+            if ctx.body:IsShown() then
+                ctx.body:SetHeight(math.max(0.1, bodyH))
+                ctx.wrap:SetHeight(COLLAPSE_H_CUR + ctx.body:GetHeight())
+            else
+                ctx.wrap:SetHeight(COLLAPSE_H_CUR + 0.1)
             end
-            ReflowAncestors(nodeCtx.parentCtx)
+            ReflowAncestors(ctx.parentCtx)
         end
 
         local function AppendRows(targetBody, rows, rowWidth)
@@ -816,7 +953,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 local row = AcquireCurrencyRow(targetBody, rowWidth, ROW_HEIGHT)
                 if localTail then
                     row:ClearAllPoints()
-                    row:SetPoint("TOPLEFT", localTail, "BOTTOMLEFT", 0, -betweenRows)
+                    row:SetPoint("TOPLEFT", localTail, "BOTTOMLEFT", 0, -rowGap)
                 else
                     row:ClearAllPoints()
                     row:SetPoint("TOPLEFT", targetBody, "TOPLEFT", 0, 0)
@@ -829,25 +966,24 @@ function WarbandNexus:DrawCurrencyList(container, width)
             return localTail
         end
 
-        local function RenderTree(headers, renderBody, renderWidth, depth, parentCtx)
+        --- Child category wraps must chain below direct currency rows in the same body;
+        --- otherwise the first child header uses TOP anchor and overlaps rows (Hide/Show Empty).
+        local function RenderTree(headers, renderBody, contentW, chainAfter, parentCtx)
             if not headers then return end
-            local localTail = nil
+            local localTail = chainAfter
             for i = 1, #headers do
                 local headerData = headers[i]
                 local totalCount = headerData and headerData.count or 0
                 if totalCount > 0 then
-                    -- Nested rendering already introduces hierarchy via parent body;
-                    -- keep a fixed per-level indent to avoid cumulative right drift.
-                    local indent = BASE_INDENT
-                    local wrapWidth = math.max(1, renderWidth - indent)
-                    local wrap = CreateWrap(renderBody, wrapWidth)
+                    local innerW = math.max(1, contentW - BASE_INDENT)
+                    local wrap = CreateWrap(renderBody, innerW)
                     if wrap then
-                        ChainSectionFrameBelow(renderBody, wrap, localTail, indent, localTail and SECTION_SPACING or nil, localTail and nil or SECTION_SPACING)
+                        ChainSectionFrameBelow(renderBody, wrap, localTail, BASE_INDENT, localTail and SECTION_SPACING or nil, localTail and nil or SECTION_SPACING)
                         localTail = wrap
 
                         local headerKey = keyPrefix .. (headerData.name or tostring(i))
                         local expandedNow = IsExpanded(headerKey, defaultExpanded)
-                        local headerBody = CreateBody(wrap, wrapWidth)
+                        local headerBody = CreateBody(wrap, innerW)
                         local nodeCtx = { body = headerBody, wrap = wrap, parentCtx = parentCtx }
                         local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
                         local headerIcon = GetCurrencyHeaderIcon and GetCurrencyHeaderIcon(headerData.name) or nil
@@ -862,33 +998,37 @@ function WarbandNexus:DrawCurrencyList(container, width)
                             nil,
                             nil,
                             nil,
-                            BuildAccordionVisualOpts({
-                                wrapFrame = wrap,
-                                bodyGetter = function() return headerBody end,
-                                headerHeight = COLLAPSE_H_CUR,
-                                hideOnCollapse = true,
-                                persistFn = function(exp)
+                            {
+                                animatedContent = function() return headerBody end,
+                                persistToggle = function(exp)
                                     PersistExpand(headerKey, exp)
                                 end,
-                                onUpdate = function(_drawH)
-                                    ReflowAncestors(parentCtx)
+                                -- Resize wrap + reflow ancestors; SyncScrollMetrics deferred to sectionOnComplete.
+                                sectionOnUpdate = function(drawH)
+                                    wrap:SetHeight(COLLAPSE_H_CUR + math.max(0.1, drawH or 0))
+                                    ReflowAncestors(nodeCtx.parentCtx)
+                                end,
+                                sectionOnComplete = function(exp)
+                                    if not exp then
+                                        headerBody:Hide()
+                                        headerBody:SetHeight(0.1)
+                                    end
+                                    headerBody._wnSectionFullH = FinalizeBodyHeight(headerBody)
+                                    wrap:SetHeight(COLLAPSE_H_CUR + (exp and headerBody._wnSectionFullH or 0.1))
+                                    ReflowAncestors(nodeCtx.parentCtx)
                                     SyncScrollMetrics()
                                 end,
-                                onComplete = function(_exp)
-                                    ReflowAncestors(nodeCtx)
-                                    SyncScrollMetrics()
-                                end,
-                            })
+                            }
                         )
                         header:ClearAllPoints()
                         header:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, 0)
                         header:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
                         header:SetHeight(COLLAPSE_H_CUR)
 
-                        local rowTail = AppendRows(headerBody, headerData.currencies or {}, wrapWidth)
+                        local rowTail = AppendRows(headerBody, headerData.currencies or {}, innerW)
                         local childHeaders = headerData.children or {}
                         if #childHeaders > 0 then
-                            RenderTree(childHeaders, headerBody, wrapWidth, (depth or 1) + 1, nodeCtx)
+                            RenderTree(childHeaders, headerBody, innerW, rowTail, nodeCtx)
                         end
 
                         local fullH = FinalizeBodyHeight(headerBody)
@@ -906,7 +1046,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
             end
         end
 
-        RenderTree(headerDataList, bodyFrame, bodyWidth, 1, rootCtx)
+        RenderTree(headerDataList, bodyFrame, contentW, nil, rootCtx)
     end
 
     local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero, globalCurrencies)
@@ -918,7 +1058,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         local sectionWrap = CreateWrap(parent, width)
         local sectionBody = CreateBody(sectionWrap, width)
         if sectionWrap and sectionBody then
-            ChainTopFrame(sectionWrap, nil)
+            ChainTopFrame(sectionWrap, topChainTail and SECTION_SPACING or nil)
             local sectionHeader, _, warbandIcon = CreateCollapsibleHeader(
                 sectionWrap,
                 (ns.L and ns.L["CURRENCY_WARBAND_TRANSFERABLE"]) or "All Warband Transferable",
@@ -929,23 +1069,25 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 nil,
                 nil,
                 nil,
-                BuildAccordionVisualOpts({
-                    wrapFrame = sectionWrap,
-                    bodyGetter = function() return sectionBody end,
-                    headerHeight = COLLAPSE_H_CUR,
-                    hideOnCollapse = true,
-                    persistFn = function(exp)
+                {
+                    animatedContent = function() return sectionBody end,
+                    persistToggle = function(exp)
                         PersistExpand(sectionKey, exp)
                     end,
-                    onUpdate = function(_drawH)
+                    sectionOnUpdate = function(drawH)
+                        sectionWrap:SetHeight(COLLAPSE_H_CUR + math.max(0.1, drawH or 0))
                         SyncScrollMetrics()
                     end,
-                    onComplete = function(exp)
-                        sectionBody._wnAccordionFullH = FinalizeBodyHeight(sectionBody)
-                        sectionWrap:SetHeight(COLLAPSE_H_CUR + (exp and sectionBody._wnAccordionFullH or 0.1))
+                    sectionOnComplete = function(exp)
+                        if not exp then
+                            sectionBody:Hide()
+                            sectionBody:SetHeight(0.1)
+                        end
+                        sectionBody._wnSectionFullH = FinalizeBodyHeight(sectionBody)
+                        sectionWrap:SetHeight(COLLAPSE_H_CUR + (exp and sectionBody._wnSectionFullH or 0.1))
                         SyncScrollMetrics()
                     end,
-                })
+                }
             )
             sectionHeader:ClearAllPoints()
             sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
@@ -964,8 +1106,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     roots[#roots + 1] = node
                 end
             end
-            local sectionCtx = { body = sectionBody, wrap = sectionWrap, parentCtx = nil }
-            BuildHeaderBody(sectionCtx, roots, "all-warband-", true, sectionBody, width, function(curr)
+            local sectionCtx = { body = sectionBody, wrap = sectionWrap }
+            BuildCurrencyCategoryTree(sectionCtx, roots, "all-warband-", true, sectionBody, width, function(curr)
                 local displayData = {}
                 for k, v in pairs(curr.data or {}) do displayData[k] = v end
                 displayData.quantity = curr.quantity
@@ -974,7 +1116,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
             end)
 
             local sectionFullH = FinalizeBodyHeight(sectionBody)
-            sectionBody._wnAccordionFullH = sectionFullH
+            sectionBody._wnSectionFullH = sectionFullH
             if sectionExpanded then
                 sectionBody:Show()
                 sectionBody:SetHeight(math.max(0.1, sectionFullH))
@@ -994,7 +1136,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         local sectionWrap = CreateWrap(parent, width)
         local sectionBody = CreateBody(sectionWrap, width)
         if sectionWrap and sectionBody then
-            ChainTopFrame(sectionWrap, SECTION_SPACING)
+            ChainTopFrame(sectionWrap, topChainTail and SECTION_SPACING or nil)
             local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
             local sectionHeader = CreateCollapsibleHeader(
                 sectionWrap,
@@ -1006,23 +1148,25 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 true,
                 nil,
                 nil,
-                BuildAccordionVisualOpts({
-                    wrapFrame = sectionWrap,
-                    bodyGetter = function() return sectionBody end,
-                    headerHeight = COLLAPSE_H_CUR,
-                    hideOnCollapse = true,
-                    persistFn = function(exp)
+                {
+                    animatedContent = function() return sectionBody end,
+                    persistToggle = function(exp)
                         PersistExpand(sectionKey, exp)
                     end,
-                    onUpdate = function(_drawH)
+                    sectionOnUpdate = function(drawH)
+                        sectionWrap:SetHeight(COLLAPSE_H_CUR + math.max(0.1, drawH or 0))
                         SyncScrollMetrics()
                     end,
-                    onComplete = function(exp)
-                        sectionBody._wnAccordionFullH = FinalizeBodyHeight(sectionBody)
-                        sectionWrap:SetHeight(COLLAPSE_H_CUR + (exp and sectionBody._wnAccordionFullH or 0.1))
+                    sectionOnComplete = function(exp)
+                        if not exp then
+                            sectionBody:Hide()
+                            sectionBody:SetHeight(0.1)
+                        end
+                        sectionBody._wnSectionFullH = FinalizeBodyHeight(sectionBody)
+                        sectionWrap:SetHeight(COLLAPSE_H_CUR + (exp and sectionBody._wnSectionFullH or 0.1))
                         SyncScrollMetrics()
                     end,
-                })
+                }
             )
             sectionHeader:ClearAllPoints()
             sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
@@ -1036,8 +1180,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     roots[#roots + 1] = node
                 end
             end
-            local sectionCtx = { body = sectionBody, wrap = sectionWrap, parentCtx = nil }
-            BuildHeaderBody(sectionCtx, roots, "all-char-", true, sectionBody, width, function(curr)
+            local sectionCtx = { body = sectionBody, wrap = sectionWrap }
+            BuildCurrencyCategoryTree(sectionCtx, roots, "all-char-", true, sectionBody, width, function(curr)
                 local displayData = {}
                 for k, v in pairs(curr.data or {}) do displayData[k] = v end
                 local bestCharacter = curr.bestCharacter or {}
@@ -1055,7 +1199,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
             end)
 
             local sectionFullH = FinalizeBodyHeight(sectionBody)
-            sectionBody._wnAccordionFullH = sectionFullH
+            sectionBody._wnSectionFullH = sectionFullH
             if sectionExpanded then
                 sectionBody:Show()
                 sectionBody:SetHeight(math.max(0.1, sectionFullH))
@@ -1110,52 +1254,21 @@ function WarbandNexus:DrawCurrencyList(container, width)
 end
 
 --- Redraw Currency scroll results only. Skips PopulateContent — matches Items/Storage partial redraw.
-local function ApplyCurrencyResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, animate, fromResultsH, fromScrollChildH)
+local function ApplyCurrencyResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, _animate, _fromResultsH, _fromScrollChildH)
     if not mainFrame or not scrollChild or not resultsContainer then return end
     local targetResultsH = math.max(listHeight or 1, 1)
-    local oldResultsH = fromResultsH or resultsContainer:GetHeight() or targetResultsH
     local CONTENT_BOTTOM_PADDING = 8
     local targetTabBodyH = 8 + (listHeight or 0)
     local targetScrollChildH = math.max(targetTabBodyH + CONTENT_BOTTOM_PADDING, mainFrame.scroll:GetHeight())
-    local oldScrollChildH = fromScrollChildH or scrollChild:GetHeight() or targetScrollChildH
 
     local Factory = ns.UI.Factory
-    if animate and Factory and Factory.AnimateAccordion and math.abs(targetResultsH - oldResultsH) > 1 then
-        Factory:AnimateAccordion(resultsContainer, oldResultsH, targetResultsH, {
-            duration = 0.24,
-            fadeAlpha = false,
-            clipChildren = true,
-            onUpdate = function(curH)
-                local t = 0
-                if math.abs(targetResultsH - oldResultsH) > 0.001 then
-                    t = (curH - oldResultsH) / (targetResultsH - oldResultsH)
-                end
-                if t < 0 then t = 0 elseif t > 1 then t = 1 end
-                local curScrollH = oldScrollChildH + (targetScrollChildH - oldScrollChildH) * t
-                scrollChild:SetHeight(math.max(curScrollH, mainFrame.scroll:GetHeight()))
-                if Factory.UpdateScrollBarVisibility then
-                    Factory:UpdateScrollBarVisibility(mainFrame.scroll)
-                end
-            end,
-            onComplete = function()
-                scrollChild:SetHeight(targetScrollChildH)
-                if Factory.UpdateScrollBarVisibility then
-                    Factory:UpdateScrollBarVisibility(mainFrame.scroll)
-                end
-                if Factory.UpdateHorizontalScrollBarVisibility then
-                    Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
-                end
-            end,
-        })
-    else
-        resultsContainer:SetHeight(targetResultsH)
-        scrollChild:SetHeight(targetScrollChildH)
-        if Factory and Factory.UpdateScrollBarVisibility then
-            Factory:UpdateScrollBarVisibility(mainFrame.scroll)
-        end
-        if Factory and Factory.UpdateHorizontalScrollBarVisibility then
-            Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
-        end
+    resultsContainer:SetHeight(targetResultsH)
+    scrollChild:SetHeight(targetScrollChildH)
+    if Factory and Factory.UpdateScrollBarVisibility then
+        Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+    end
+    if Factory and Factory.UpdateHorizontalScrollBarVisibility then
+        Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
     end
 end
 
@@ -1168,6 +1281,10 @@ function WarbandNexus:RedrawCurrencyResultsOnly(animateHeight)
     if not rc or rc:GetParent() ~= scrollChild then return end
     local width = scrollChild:GetWidth() - 20
     if width < 1 then return end
+
+    if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
+        SearchResultsRenderer:PrepareContainer(rc)
+    end
 
     local oldResultsH = rc:GetHeight() or 1
     local oldScrollChildH = scrollChild:GetHeight() or mf.scroll:GetHeight()
@@ -1300,7 +1417,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
         showZero = not showZero
         self.db.profile.currencyShowZero = showZero
         btn.text:SetText(showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"))
-        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "currency", skipCooldown = true })
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+            tab = "currency",
+            skipCooldown = true,
+            instantPopulate = true,
+        })
     end)
 
     if moduleEnabled and ns.UI_EnsureTitleCardExpandCollapseButtons then
@@ -1314,11 +1435,19 @@ function WarbandNexus:DrawCurrencyTab(parent)
             onExpandClick = function()
                 self.db.profile.currencyExpandOverride = nil
                 self.db.profile.currencyExpanded = {}
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "currency", skipCooldown = true })
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+                    tab = "currency",
+                    skipCooldown = true,
+                    instantPopulate = true,
+                })
             end,
             onCollapseClick = function()
                 self.db.profile.currencyExpandOverride = "all_collapsed"
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "currency", skipCooldown = true })
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+                    tab = "currency",
+                    skipCooldown = true,
+                    instantPopulate = true,
+                })
             end,
         })
     elseif parent._wnExpandCollapseToggleBtn then

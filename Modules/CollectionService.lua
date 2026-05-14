@@ -14,6 +14,12 @@
     4. Incremental updates (no full rescans)
     5. Event-driven notifications
     
+    Pipeline (high level):
+    - EnsureBlizzardCollectionsLoaded: load Blizzard_Collections once (mount/pet/toy APIs).
+    - collectionStore: persisted browse metadata (mount/pet rows include collected + source fields; toys id+name in SV; collected via API when building owned/UI).
+    - collectionCache.owned: RAM-only O(1) ownership for notifications / IsCollectibleOwned (filled by BuildCollectionCache or during BuildFullCollectionData).
+    - EnsureCollectionData: version / empty-table gate then queued BuildFullCollectionData + achievement + title + illusion.
+    
     Events fired:
     - WN_COLLECTIBLE_OBTAINED: Real-time detection
     - WN_COLLECTION_SCAN_COMPLETE: Background scan finished
@@ -23,6 +29,7 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
+local tinsert = table.insert
 local Utilities = ns.Utilities
 local function CmpItemName(a, b)
     return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.name) or "") < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.name) or "")
@@ -90,11 +97,15 @@ local ensureCollectionDeferredPending = false
 local function ScheduleEnsureCollectionDataDeferred()
     if ensureCollectionDeferredPending then return end
     ensureCollectionDeferredPending = true
+    -- Two zero-delay timers: coalesce burst callers and run one tick after first scheduling
+    -- so login/UI layout is less likely to share a frame with EnsureCollectionData startup.
     C_Timer.After(0, function()
-        ensureCollectionDeferredPending = false
-        if WarbandNexus.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-            WarbandNexus:EnsureCollectionData()
-        end
+        C_Timer.After(0, function()
+            ensureCollectionDeferredPending = false
+            if WarbandNexus.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+                WarbandNexus:EnsureCollectionData()
+            end
+        end)
     end)
 end
 ns.ScheduleEnsureCollectionDataDeferred = ScheduleEnsureCollectionDataDeferred
@@ -112,6 +123,14 @@ ns.ScheduleEnsureCollectionDataDeferred = ScheduleEnsureCollectionDataDeferred
     1. DB cache is empty (first time)
     2. User manually requests refresh
     3. Real-time detection adds/removes items (incremental update)
+    
+    Startup order (InitializationService):
+    - P0: InitializeCollectionCache (load collectionStore from SV)
+    - P1: RunCollectionOwnedCacheWarmup — owned O(1) cache; quiet when store already matches CACHE_VERSION (no extra LoadingTracker row)
+    - P5: EnsureFullCollectionData — EnsureCollectionData if any category missing / version mismatch
+    
+    Persisted in db.global.collectionStore (per row): mount/pet include id, name, icon, source, collected, sourceType/sourceTypeIndex metadata; toy id+name only (collected from API when needed). Achievements/titles/illusions have their own store tables.
+    Profiler labels (when /wn profiler on): EnsureBlizzard_CollectionsLoad, BuildFullCollectionData [async], EnsureCollectionData [async], BuildCollectionCache / BuildCollectionCache_quiet [async].
 ]]
 
 -- MERKEZİ KAYNAK: Tüm collection verileri tek yapıda. Collections (full) ve Plans (uncollected) aynı kaynaktan okur.
@@ -130,6 +149,45 @@ local collectionStore = {
 -- collectionData = collectionStore alias (GetAllMountsData vb. collectionData kullanıyor)
 local collectionData = collectionStore
 
+---True when EnsureCollectionData would return immediately (SV version matches, store has all categories).
+---Includes toy-count sanity vs ToyBox (same rules as EnsureCollectionData).
+---@param self table WarbandNexus
+---@return boolean
+local function IsCollectionEnsureDataComplete(self)
+    if not self.db or not self.db.global then return false end
+    local dbStore = self.db.global.collectionStore
+    local versionOk = dbStore and dbStore.version == CACHE_VERSION
+    local hasMounts = collectionStore.mount and next(collectionStore.mount) ~= nil
+    local hasPets = collectionStore.pet and next(collectionStore.pet) ~= nil
+    local hasToys = collectionStore.toy and next(collectionStore.toy) ~= nil
+    local hasAchievements = collectionStore.achievement and next(collectionStore.achievement) ~= nil
+    local hasTitles = collectionStore.title and next(collectionStore.title) ~= nil
+    local hasIllusions = collectionStore.illusion and next(collectionStore.illusion) ~= nil
+    local needAchievementIncludeAllRescan = self.db.global and not self.db.global.wnAchievementDirectScanV2
+    if not (versionOk and hasMounts and hasPets and hasToys and hasAchievements and hasTitles and hasIllusions and not needAchievementIncludeAllRescan) then
+        return false
+    end
+    if hasToys and C_ToyBox and C_ToyBox.GetNumToys then
+        local apiTotal = C_ToyBox.GetNumToys() or 0
+        if apiTotal and apiTotal > 0 then
+            local storeCount = 0
+            for _ in pairs(collectionStore.toy) do
+                storeCount = storeCount + 1
+            end
+            if storeCount < (apiTotal * 0.5) then
+                return false
+            end
+        end
+    end
+    return true
+end
+
+--- Exposed for UI: true when persisted collectionStore matches code version and all categories are populated.
+---@return boolean
+function WarbandNexus:IsCollectionEnsureDataComplete()
+    return IsCollectionEnsureDataComplete(self)
+end
+
 -- collectionCache: deprecated; GetUncollected* artık collectionStore'dan filtreler. ScanCollection hâlâ uncollected yazıyor (geçiş).
 local collectionCache = {
     owned = { mounts = {}, pets = {}, toys = {} },
@@ -138,6 +196,47 @@ local collectionCache = {
     lastScan = 0,
     lastAchievementScan = 0,
 }
+
+---P1 warmup: when persisted collectionStore is already complete, run BuildCollectionCache without LoadingTracker (avoids duplicate "Collections" row before collection_data).
+function WarbandNexus:RunCollectionOwnedCacheWarmup()
+    if IsCollectionEnsureDataComplete(self) then
+        self:BuildCollectionCache({ quiet = true })
+    else
+        self:BuildCollectionCache()
+    end
+end
+
+---Coalesced EnsureCollectionData (slash / other callers). Does not wipe SV; use DebugForceCollectionRebuild for that.
+function WarbandNexus:RequestCollectionDataRefresh()
+    if ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading then
+        self:Print("|cffff8800[WN]|r Collection pipeline already running; skipped. |cff00ccff/wn collection status|r for stage.|r")
+        return
+    end
+    if IsCollectionEnsureDataComplete(self) then
+        self:Print("|cff888888[WN]|r Collection store already matches code version and categories; nothing to rescan. (|cff00ccff/wn debug|r + |cff00ccff/wn collection rebuild|r to force, or bump cache version in a release.)|r")
+        return
+    end
+    ScheduleEnsureCollectionDataDeferred()
+    self:Print("|cff00ccff[WN]|r Collection refresh scheduled (EnsureCollectionData next frames).|r")
+end
+
+---Debug: print collectionStore counts, SV version, and CollectionLoadingState snapshot.
+function WarbandNexus:PrintCollectionDataStatus()
+    local dbStore = self.db and self.db.global and self.db.global.collectionStore
+    local svVer = dbStore and dbStore.version or "?"
+    local nm, np, nt, na, nti, nIll = 0, 0, 0, 0, 0, 0
+    for _ in pairs(collectionStore.mount or {}) do nm = nm + 1 end
+    for _ in pairs(collectionStore.pet or {}) do np = np + 1 end
+    for _ in pairs(collectionStore.toy or {}) do nt = nt + 1 end
+    for _ in pairs(collectionStore.achievement or {}) do na = na + 1 end
+    for _ in pairs(collectionStore.title or {}) do nti = nti + 1 end
+    for _ in pairs(collectionStore.illusion or {}) do nIll = nIll + 1 end
+    local load = ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading
+    local stage = (ns.CollectionLoadingState and ns.CollectionLoadingState.currentStage) or "-"
+    self:Print(string.format(
+        "|cff00ccff[WN Collection]|r SV.version=%s loading=%s stage=%s | store m/p/t/a/ti/il=%d/%d/%d/%d/%d/%d|r",
+        tostring(svVer), tostring(load), tostring(stage), nm, np, nt, na, nti, nIll))
+end
 
 -- Forward declaration: defined later (BACKGROUND SCANNING section); used by BuildFullCollectionData.
 local COLLECTION_CONFIGS
@@ -163,6 +262,17 @@ local metadataCacheHead = 1     -- Circular buffer head index
 -- Invalidated by collection events (scan complete, collectible obtained).
 local RESULTS_CACHE_TTL = 2 -- seconds
 local uncollectedResultsCache = {}
+--- Merged achievement list for GetAllAchievementsData; cleared with uncollectedResultsCache.
+local _allAchievementsMergedCache = nil
+
+local function ClearAchievementMergedListCache()
+    _allAchievementsMergedCache = nil
+end
+
+local function WipeUncollectedResultsCacheAndMergedAchievements()
+    wipe(uncollectedResultsCache)
+    ClearAchievementMergedListCache()
+end
 
 -- ============================================================================
 -- DUPLICATE NOTIFICATION PREVENTION (BAG SCAN + COLLECTION EVENTS)
@@ -663,12 +773,311 @@ local function EnsureBlizzardCollectionsLoaded()
     if blizzardCollectionsLoaded then return end
     if InCombatLockdown() then return end
     blizzardCollectionsLoaded = true
+    local P = ns.Profiler
+    if P and P.enabled then P:Start("EnsureBlizzard_CollectionsLoad") end
     if Utilities and Utilities.SafeLoadAddOn then
         Utilities:SafeLoadAddOn("Blizzard_Collections")
     end
+    if P and P.enabled then P:Stop("EnsureBlizzard_CollectionsLoad") end
     DebugPrint("|cff00ff00[WN CollectionService]|r Ensured Blizzard_Collections is loaded for API data")
 end
 ns.EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded
+
+---Chunked pet journal prep for BuildFullCollectionData (replaces synchronous COLLECTION_CONFIGS.pet.iterator).
+---Spreads SetPetSourceChecked / GetPetInfoByIndex work across frames using FRAME_BUDGET_MS.
+---@param budgetMs number
+---@param state table|nil
+---@return table state { done, items, speciesToSource }
+local function PetJournalBuildMaterializeStep(budgetMs, state)
+    local _iv = issecretvalue
+    if not state then
+        state = {
+            done = false,
+            phase = "start",
+            items = {},
+            speciesToSource = {},
+            origSearch = "",
+            numSources = 0,
+            srcIdx = 1,
+            numPets = 0,
+            listI = 1,
+            seen = {},
+        }
+    end
+    if state.done then return state end
+
+    local function needYield(t0)
+        return (debugprofilestop() - t0) >= budgetMs
+    end
+
+    while not state.done do
+        local t0 = debugprofilestop()
+
+        if state.phase == "start" then
+            if not C_PetJournal then
+                state.items = {}
+                state.speciesToSource = {}
+                state.done = true
+                break
+            end
+            EnsureBlizzardCollectionsLoaded()
+            state.origSearch = (C_PetJournal.GetSearchFilter and C_PetJournal.GetSearchFilter()) or ""
+            if not InCombatLockdown() then
+                pcall(function()
+                    if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
+                    if C_PetJournal.SetFilterChecked then
+                        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
+                        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true)
+                    end
+                    if C_PetJournal.SetPetTypeFilter then
+                        for i = 1, C_PetJournal.GetNumPetTypes() do
+                            C_PetJournal.SetPetTypeFilter(i, true)
+                        end
+                    end
+                    if C_PetJournal.SetPetSourceChecked then
+                        for i = 1, C_PetJournal.GetNumPetSources() do
+                            C_PetJournal.SetPetSourceChecked(i, true)
+                        end
+                    end
+                end)
+            end
+            state.numSources = (C_PetJournal.GetNumPetSources and C_PetJournal.GetNumPetSources()) or 0
+            if not InCombatLockdown() and ns._petSpeciesToSourceIndex and next(ns._petSpeciesToSourceIndex) then
+                -- Reuse session source classification (BuildFullCollectionData / prior materialize); skip O(n^2) source scan.
+                state.speciesToSource = ns._petSpeciesToSourceIndex
+                state.phase = "after_sources"
+            elseif InCombatLockdown() or state.numSources <= 0 or not C_PetJournal.SetPetSourceChecked then
+                state.phase = "after_sources"
+            else
+                state.srcIdx = 1
+                state.phase = "sources"
+            end
+        elseif state.phase == "sources" then
+            while state.srcIdx <= state.numSources do
+                local srcIdx = state.srcIdx
+                pcall(function()
+                    for i = 1, state.numSources do
+                        C_PetJournal.SetPetSourceChecked(i, i == srcIdx)
+                    end
+                    local nFiltered = C_PetJournal.GetNumPets() or 0
+                    for j = 1, nFiltered do
+                        local _, sID = C_PetJournal.GetPetInfoByIndex(j)
+                        if sID and not (_iv and _iv(sID)) then
+                            if not state.speciesToSource[sID] then
+                                state.speciesToSource[sID] = srcIdx
+                            end
+                        end
+                    end
+                end)
+                state.srcIdx = state.srcIdx + 1
+                if needYield(t0) then return state end
+            end
+            if not InCombatLockdown() then
+                pcall(function()
+                    for i = 1, state.numSources do
+                        C_PetJournal.SetPetSourceChecked(i, true)
+                    end
+                end)
+            end
+            state.phase = "after_sources"
+        elseif state.phase == "after_sources" then
+            state.numPets = C_PetJournal.GetNumPets() or 0
+            if _iv and state.numPets and _iv(state.numPets) then state.numPets = 0 end
+            state.listI = 1
+            state.seen = {}
+            state.items = {}
+            state.phase = "build_list"
+            if needYield(t0) then return state end
+        elseif state.phase == "build_list" then
+            while state.listI <= state.numPets do
+                local _, speciesID = C_PetJournal.GetPetInfoByIndex(state.listI)
+                if speciesID and not (_iv and _iv(speciesID)) and not state.seen[speciesID] then
+                    state.seen[speciesID] = true
+                    state.items[#state.items + 1] = speciesID
+                end
+                state.listI = state.listI + 1
+                if needYield(t0) then return state end
+            end
+            if not InCombatLockdown() then
+                pcall(function()
+                    if state.origSearch and state.origSearch ~= "" and C_PetJournal.SetSearchFilter then
+                        C_PetJournal.SetSearchFilter(state.origSearch)
+                    end
+                end)
+            end
+            state.done = true
+            break
+        else
+            state.done = true
+            break
+        end
+
+        if needYield(t0) then return state end
+    end
+
+    return state
+end
+
+---Chunked toy box source map + item id list for BuildFullCollectionData (replaces synchronous toy.iterator prep).
+---@param budgetMs number
+---@param state table|nil
+---@param addon table WarbandNexus
+---@return table state
+local function ToyBoxBuildMaterializeStep(budgetMs, state, addon)
+    local _iv = issecretvalue
+    if not C_ToyBox then
+        state = state or {}
+        state.done = true
+        state.items = {}
+        state.toyToSource = {}
+        return state
+    end
+
+    if not state then
+        state = {
+            done = false,
+            phase = "start",
+            items = {},
+            toyToSource = {},
+            count = 0,
+            sourceIndex = 1,
+            numToys = 0,
+            toyI = 1,
+            origCollected = nil,
+            origUncollected = nil,
+            origFilterString = "",
+            origSourceFilters = {},
+        }
+    end
+    if state.done then return state end
+
+    local function needYield(t0)
+        return (debugprofilestop() - t0) >= budgetMs
+    end
+
+    while not state.done do
+        local t0 = debugprofilestop()
+
+        if state.phase == "start" then
+            EnsureBlizzardCollectionsLoaded()
+            state.origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
+            state.origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
+            state.origFilterString = (C_ToyBox.GetFilterString and C_ToyBox.GetFilterString()) or ""
+            if InCombatLockdown() then
+                state.toyToSource = {}
+                state.phase = "prep_list_filters"
+            elseif ns._toyItemIDToSourceIndex and next(ns._toyItemIDToSourceIndex) then
+                -- Reuse session itemID->source map; skip per-source ToyBox filter sweep.
+                state.toyToSource = ns._toyItemIDToSourceIndex
+                state.phase = "prep_list_filters"
+            else
+                state.count = (addon and addon.GetToySourceTypeCount and addon:GetToySourceTypeCount()) or 16
+                for i = 1, state.count do
+                    if C_ToyBox.IsSourceTypeFilterChecked then
+                        local ok, checked = pcall(C_ToyBox.IsSourceTypeFilterChecked, i)
+                        if ok and checked ~= nil then state.origSourceFilters[i] = checked end
+                    end
+                end
+                state.sourceIndex = 1
+                state.phase = "source_map"
+            end
+        elseif state.phase == "source_map" then
+            if state.sourceIndex == 1 then
+                pcall(function()
+                    C_ToyBox.SetCollectedShown(true)
+                    C_ToyBox.SetUncollectedShown(true)
+                    C_ToyBox.SetFilterString("")
+                end)
+            end
+            while state.sourceIndex <= state.count do
+                local si = state.sourceIndex
+                pcall(function()
+                    C_ToyBox.SetAllSourceTypeFilters(false)
+                    C_ToyBox.SetSourceTypeFilter(si, true)
+                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+                    local numFiltered = (C_ToyBox.GetNumFilteredToys and C_ToyBox.GetNumFilteredToys()) or 0
+                    if _iv and numFiltered and _iv(numFiltered) then numFiltered = 0 end
+                    for j = 1, numFiltered do
+                        local itemID = C_ToyBox.GetToyFromIndex(j)
+                        if itemID and itemID > 0 and not (_iv and _iv(itemID)) then
+                            if not state.toyToSource[itemID] then
+                                state.toyToSource[itemID] = si
+                            end
+                        end
+                    end
+                end)
+                state.sourceIndex = state.sourceIndex + 1
+                if needYield(t0) then return state end
+            end
+            pcall(function()
+                C_ToyBox.SetAllSourceTypeFilters(true)
+                if state.origCollected ~= nil then C_ToyBox.SetCollectedShown(state.origCollected) end
+                if state.origUncollected ~= nil then C_ToyBox.SetUncollectedShown(state.origUncollected) end
+                if state.origFilterString then C_ToyBox.SetFilterString(state.origFilterString) end
+                for i, checked in pairs(state.origSourceFilters) do
+                    if C_ToyBox.SetSourceTypeFilter then C_ToyBox.SetSourceTypeFilter(i, checked) end
+                end
+                if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+            end)
+            state.phase = "prep_list_filters"
+            if needYield(t0) then return state end
+        elseif state.phase == "prep_list_filters" then
+            if not InCombatLockdown() then
+                pcall(function()
+                    C_ToyBox.SetCollectedShown(true)
+                    C_ToyBox.SetUncollectedShown(true)
+                    C_ToyBox.SetAllSourceTypeFilters(true)
+                    C_ToyBox.SetFilterString("")
+                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+                end)
+            end
+            state.numToys = 0
+            if C_ToyBox.GetNumFilteredToys then
+                state.numToys = C_ToyBox.GetNumFilteredToys() or 0
+            end
+            if state.numToys == 0 and C_ToyBox.GetNumTotalDisplayedToys then
+                state.numToys = C_ToyBox.GetNumTotalDisplayedToys() or 0
+            end
+            if state.numToys == 0 and C_ToyBox.GetNumToys then
+                state.numToys = C_ToyBox.GetNumToys() or 0
+            end
+            if _iv and state.numToys and _iv(state.numToys) then state.numToys = 0 end
+            state.toyI = 1
+            state.items = {}
+            state.phase = "build_list"
+            if needYield(t0) then return state end
+        elseif state.phase == "build_list" then
+            while state.toyI <= state.numToys do
+                local itemID = C_ToyBox.GetToyFromIndex(state.toyI)
+                if itemID and itemID > 0 and not (_iv and _iv(itemID)) then
+                    state.items[#state.items + 1] = itemID
+                end
+                state.toyI = state.toyI + 1
+                if needYield(t0) then return state end
+            end
+            if not InCombatLockdown() then
+                pcall(function()
+                    if state.origCollected ~= nil then C_ToyBox.SetCollectedShown(state.origCollected) end
+                    if state.origUncollected ~= nil then C_ToyBox.SetUncollectedShown(state.origUncollected) end
+                    if state.origFilterString then C_ToyBox.SetFilterString(state.origFilterString) end
+                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+                end)
+            end
+            state.done = true
+            if next(state.toyToSource or {}) then
+                ns._toyGroupedFromMapValid = true
+            end
+            break
+        else
+            state.done = true
+            break
+        end
+
+        if needYield(t0) then return state end
+    end
+
+    return state
+end
 
 ---Build full collection data (all mounts, pets, toys with id, name, icon, source, description).
 ---Runs on login when DB has no data or version changed. Stores result in collectionStore and DB.
@@ -680,6 +1089,21 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
         return
     end
     self._buildingCollectionData = true
+
+    collectionCache.owned = { mounts = {}, pets = {}, toys = {} }
+
+    local Pbf = ns.Profiler
+    local profBuildState = { started = false }
+    if Pbf and Pbf.enabled then
+        Pbf:StartAsync("BuildFullCollectionData")
+        profBuildState.started = true
+    end
+    local function stopBuildProf()
+        if profBuildState.started and Pbf then
+            pcall(function() Pbf:StopAsync("BuildFullCollectionData") end)
+            profBuildState.started = false
+        end
+    end
 
     EnsureBlizzardCollectionsLoaded()
     local LT = ns.LoadingTracker
@@ -701,12 +1125,19 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
     local currentType = nil
     local config = nil
 
+    local petMatState, toyMatState = nil, nil
+
     local function nextBatch()
         if configIdx > #configs then
             self._buildingCollectionData = nil
+            stopBuildProf()
             ns.CollectionLoadingState.loadingProgress = 99
             collectionStore.lastBuilt = time()
-            self:SaveCollectionStore()
+            -- When called from EnsureCollectionData, the pipeline saves once at the end
+            -- to avoid two full db.global.collectionStore writes (large SV hitch).
+            if not onComplete then
+                self:SaveCollectionStore()
+            end
             if onComplete then
                 onComplete()
             else
@@ -728,10 +1159,35 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
             C_Timer.After(0, nextBatch)
             return
         end
-        if configIdx == 1 and itemIdx == 1 then
-            items = config.iterator()
-        elseif itemIdx == 1 then
-            items = config.iterator()
+        if itemIdx == 1 then
+            if currentType == "mount" then
+                petMatState, toyMatState = nil, nil
+                items = COLLECTION_CONFIGS.mount.iterator()
+            elseif currentType == "pet" then
+                toyMatState = nil
+                petMatState = PetJournalBuildMaterializeStep(BUDGET_MS, petMatState)
+                if not petMatState.done then
+                    C_Timer.After(0, nextBatch)
+                    return
+                end
+                items = petMatState.items
+                ns._petSpeciesToSourceIndex = petMatState.speciesToSource
+                petMatState = nil
+            elseif currentType == "toy" then
+                toyMatState = ToyBoxBuildMaterializeStep(BUDGET_MS, toyMatState, self)
+                if not toyMatState.done then
+                    C_Timer.After(0, nextBatch)
+                    return
+                end
+                items = toyMatState.items
+                ns._toyItemIDToSourceIndex = toyMatState.toyToSource
+                if ns._toyItemIDToSourceIndexCache then
+                    ns._toyItemIDToSourceIndexCache.map = toyMatState.toyToSource
+                end
+                toyMatState = nil
+            else
+                items = config.iterator()
+            end
         end
 
         local stageName = (currentType == "mount" and ((ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts"))
@@ -757,6 +1213,15 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
                         collectionData.pet[data.id] = data
                     elseif currentType == "toy" then
                         collectionData.toy[data.id] = { id = data.id, name = data.name }
+                    end
+                    if data.collected == true then
+                        if currentType == "mount" then
+                            collectionCache.owned.mounts[data.id] = true
+                        elseif currentType == "pet" then
+                            collectionCache.owned.pets[data.id] = true
+                        elseif currentType == "toy" then
+                            collectionCache.owned.toys[data.id] = true
+                        end
                     end
                 end
             end
@@ -787,8 +1252,11 @@ function WarbandNexus:EnsureCollectionData(onComplete)
         return
     end
 
-    local dbStore = self.db.global.collectionStore
-    local versionOk = dbStore and dbStore.version == CACHE_VERSION
+    if IsCollectionEnsureDataComplete(self) then
+        if onComplete then onComplete() end
+        return
+    end
+
     local hasMounts = collectionStore.mount and next(collectionStore.mount) ~= nil
     local hasPets = collectionStore.pet and next(collectionStore.pet) ~= nil
     local hasToys = collectionStore.toy and next(collectionStore.toy) ~= nil
@@ -813,11 +1281,6 @@ function WarbandNexus:EnsureCollectionData(onComplete)
                 hasToys = false
             end
         end
-    end
-
-    if versionOk and hasMounts and hasPets and hasToys and hasAchievements and hasTitles and hasIllusions and not needAchievementIncludeAllRescan then
-        if onComplete then onComplete() end
-        return
     end
 
     local LT = ns.LoadingTracker
@@ -846,6 +1309,15 @@ function WarbandNexus:EnsureCollectionData(onComplete)
         queue[#queue + 1] = "illusion"
     end
 
+    local P = ns.Profiler
+    local profEnsureState = { started = false }
+    local function stopEnsureProf()
+        if profEnsureState.started and P then
+            pcall(function() P:StopAsync("EnsureCollectionData") end)
+            profEnsureState.started = false
+        end
+    end
+
     if #queue == 0 then
         ns.CollectionLoadingState.isLoading = false
         ns.CollectionLoadingState.loadingProgress = 100
@@ -857,9 +1329,20 @@ function WarbandNexus:EnsureCollectionData(onComplete)
         return
     end
 
+    if P and P.enabled then
+        P:StartAsync("EnsureCollectionData")
+        profEnsureState.started = true
+    end
+
     local idx = 1
     local function RunNext()
+        -- Defer entire pipeline step while in combat (PetJournal / mount APIs may skip or error mid-phase).
+        if InCombatLockdown and InCombatLockdown() then
+            C_Timer.After(0, RunNext)
+            return
+        end
         if idx > #queue then
+            stopEnsureProf()
             ns.CollectionLoadingState.isLoading = false
             ns.CollectionLoadingState.loadingProgress = 100
             if LT then LT:Complete("collection_data") end
@@ -910,9 +1393,13 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     -- to prevent the UI from being permanently stuck on the loading overlay
     C_Timer.After(60, function()
         if ns.CollectionLoadingState.isLoading then
+            stopEnsureProf()
             ns.CollectionLoadingState.isLoading = false
             ns.CollectionLoadingState.loadingProgress = 100
             if LT then LT:Complete("collection_data") end
+            if WarbandNexus.SaveCollectionStore then
+                WarbandNexus:SaveCollectionStore()
+            end
             DebugPrint("|cffff4444[WN CollectionService]|r EnsureCollectionData safety timeout — force-cleared loading state")
         end
     end)
@@ -994,6 +1481,25 @@ local TOY_SOURCE_TYPE_NAMES = {
     [11] = (ns.L and ns.L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",
 }
 
+---Build grouped toy tables from session itemID->sourceIndex map (no ToyBox filter sweep).
+---@param addon WarbandNexus
+---@param itemIDToSource table
+---@return table grouped same shape as GetToysGroupedBySourceType
+local function BuildToyGroupedTablesFromMap(addon, itemIDToSource)
+    local grouped = {}
+    for itemID, srcIdx in pairs(itemIDToSource) do
+        if type(itemID) == "number" and itemID > 0 and type(srcIdx) == "number" and srcIdx > 0 then
+            local g = grouped[srcIdx]
+            if not g then
+                g = { name = addon:GetToySourceTypeName(srcIdx), itemIDs = {} }
+                grouped[srcIdx] = g
+            end
+            tinsert(g.itemIDs, itemID)
+        end
+    end
+    return grouped
+end
+
 ---Category label for Blizzard source type index. Prefer game globals/locale; else use Sources filter names (Drop, Quest, Vendor, ...).
 function WarbandNexus:GetToySourceTypeName(sourceIndex)
     if not sourceIndex or type(sourceIndex) ~= "number" or sourceIndex < 1 then return "" end
@@ -1022,6 +1528,10 @@ function WarbandNexus:GetToysGroupedBySourceType()
     if not C_ToyBox then return grouped, itemIDToSource end
     EnsureBlizzardCollectionsLoaded()
     if InCombatLockdown() then return grouped, itemIDToSource end
+    if ns._toyGroupedFromMapValid and ns._toyItemIDToSourceIndex and next(ns._toyItemIDToSourceIndex) then
+        local map = ns._toyItemIDToSourceIndex
+        return BuildToyGroupedTablesFromMap(self, map), map
+    end
     local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
     local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
     local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
@@ -1064,6 +1574,8 @@ function WarbandNexus:GetToysGroupedBySourceType()
         end
         if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
     end)
+    ns._toyItemIDToSourceIndex = itemIDToSource
+    ns._toyGroupedFromMapValid = next(itemIDToSource) ~= nil
     return grouped, itemIDToSource
 end
 
@@ -1082,6 +1594,10 @@ end
 ---@return number|nil sourceIndex (1=Drop, 2=Quest, 3=Vendor, ...) or nil if untracked
 function WarbandNexus:GetToySourceTypeIndexForItem(itemID)
     if not itemID then return nil end
+    if ns._toyGroupedFromMapValid and ns._toyItemIDToSourceIndex then
+        local fastIdx = ns._toyItemIDToSourceIndex[itemID]
+        if fastIdx ~= nil then return fastIdx end
+    end
     if not ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache = {} end
     local cache = ns._toyItemIDToSourceIndexCache
     if not cache.map then
@@ -1403,6 +1919,9 @@ end
 ---Get all achievements (complete + incomplete) for Collections UI. Uses cache from ScanAchievementsAsync.
 ---@return table[] Array of { id, name, icon, points, description, categoryID, collected }
 function WarbandNexus:GetAllAchievementsData()
+    if _allAchievementsMergedCache then
+        return _allAchievementsMergedCache
+    end
     local uncollected = self:GetUncollectedAchievements("", 999999) or {}
     local completed = self:GetCompletedAchievements("", 999999) or {}
     local seen = {}
@@ -1425,6 +1944,17 @@ function WarbandNexus:GetAllAchievementsData()
             out[#out + 1] = a
         end
     end
+    local achTotal = #out
+    local achCollected = 0
+    for j = 1, achTotal do
+        local e = out[j]
+        if e and (e.isCollected or e.collected) then
+            achCollected = achCollected + 1
+        end
+    end
+    out._wnAchCollected = achCollected
+    out._wnAchTotal = achTotal
+    _allAchievementsMergedCache = out
     return out
 end
 
@@ -1533,10 +2063,12 @@ end
 -- REAL-TIME CACHE BUILDING (Fast O(1) Lookup)
 -- ============================================================================
 
----Build or refresh owned collection cache
----Uses time-budgeted batching: each phase (mounts/pets/toys) yields to the next
----frame when the 4ms budget is exceeded, preventing single-frame spikes.
-function WarbandNexus:BuildCollectionCache()
+---Build or refresh owned collection cache (mount/pet/toy O(1) ownership for notifications and try-counter).
+---@param opts table|nil Optional `{ quiet = true }`: skip LoadingTracker "collections" (used when SV store is already warm to avoid duplicate progress rows vs EnsureCollectionData).
+---Uses time-budgeted batching: each phase yields when the 4ms budget is exceeded.
+function WarbandNexus:BuildCollectionCache(opts)
+    opts = opts or {}
+    local quiet = opts.quiet == true
     -- Re-entrant calls (e.g. IsCollectibleOwned while pets/toys phases still empty) used to
     -- wipe owned cache and stack parallel timer chains, leaving LoadingTracker "collections" stuck.
     if self._buildingCollectionCache then return end
@@ -1550,18 +2082,18 @@ function WarbandNexus:BuildCollectionCache()
     local _issecretvalue = issecretvalue
     local BUDGET_MS = 4
     local P = ns.Profiler
-    if P then P:StartAsync("BuildCollectionCache") end
+    if P then P:StartAsync(quiet and "BuildCollectionCache_quiet" or "BuildCollectionCache") end
     local LT = ns.LoadingTracker
-    if LT then LT:Register("collections", (ns.L and ns.L["LT_COLLECTIONS"]) or "Collections") end
+    if LT and not quiet then LT:Register("collections", (ns.L and ns.L["LT_COLLECTIONS"]) or "Collections") end
 
     local addonSelf = self
     self._collectionCacheSafetyTimer = C_Timer.NewTimer(60, function()
         addonSelf._collectionCacheSafetyTimer = nil
         if not addonSelf._buildingCollectionCache then return end
         addonSelf._buildingCollectionCache = nil
-        if P then pcall(function() P:StopAsync("BuildCollectionCache") end) end
+        if P then pcall(function() P:StopAsync(quiet and "BuildCollectionCache_quiet" or "BuildCollectionCache") end) end
         local lt = ns.LoadingTracker
-        if lt then lt:Complete("collections") end
+        if lt and not quiet then lt:Complete("collections") end
         DebugPrint("|cffffcc00[WN CollectionService]|r BuildCollectionCache safety timeout — released LoadingTracker (collections)")
     end)
 
@@ -1580,8 +2112,8 @@ function WarbandNexus:BuildCollectionCache()
             addonSelf._collectionCacheSafetyTimer = nil
         end
         addonSelf._buildingCollectionCache = nil
-        if P then pcall(function() P:StopAsync("BuildCollectionCache") end) end
-        if LT then LT:Complete("collections") end
+        if P then pcall(function() P:StopAsync(quiet and "BuildCollectionCache_quiet" or "BuildCollectionCache") end) end
+        if LT and not quiet then LT:Complete("collections") end
     end
 
     -- ── Phase 1: Mounts (time-budgeted) ──
@@ -2105,8 +2637,10 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     end
     
     -- Compare and find newly collected illusions
+    local newIllusionLearned = false
     for visualID, illusionInfo in pairs(currentCollected) do
         if not self._previousIllusionState[visualID] then
+            newIllusionLearned = true
             -- NEW ILLUSION COLLECTED!
             local name = illusionInfo.name
             
@@ -2143,7 +2677,11 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW ILLUSION: " .. name .. " (ID: " .. visualID .. ")")
         end
     end
-    
+
+    if newIllusionLearned and ns.InvalidateIllusionLookupCache then
+        ns.InvalidateIllusionLookupCache()
+    end
+
     -- Update previous state
     self._previousIllusionState = currentCollected
 end
@@ -2252,30 +2790,52 @@ function WarbandNexus:GetCollectionsAcquiredAt(collectibleType, id)
     return t
 end
 
+-- Invalidate API counts cache so Statistics and Collections show same numbers after any collection change.
+-- COLLECTION_UPDATED sends (message, collectionType string). COLLECTIBLE_OBTAINED passes payload table { type = ... }.
+-- Must be declared before WN_COLLECTIBLE_OBTAINED RegisterMessage below: Lua 5.1 local function scope starts after this `end`.
+local function InvalidateCollectionCountsCache(_, arg)
+    if WarbandNexus.InvalidateCollectionCountsAPICache then
+        WarbandNexus:InvalidateCollectionCountsAPICache()
+    end
+    WipeUncollectedResultsCacheAndMergedAchievements()
+    -- Toy source lazy cache (GetToySourceTypeIndexForItem) must rebuild after collection changes
+    ns._toyItemIDToSourceIndexCache = nil
+    ns._toyGroupedFromMapValid = false
+
+    local ctype = arg
+    if type(arg) == "table" then
+        ctype = arg.type
+    end
+    -- Pet journal source classification: clear on full invalidation or pet-specific updates (P1 staleness)
+    if ctype == nil or ctype == "pet" then
+        ns._petSpeciesToSourceIndex = nil
+    end
+end
+
 -- Dedicated listener key for CollectionService message handlers.
 -- AceEvent allows only ONE handler per (event, self) pair; using WarbandNexus as self
 -- would be overwritten by CollectionsUI handlers (or vice versa).
 local CSListeners = {}
 
--- When any module fires WN_COLLECTIBLE_OBTAINED (e.g. TryCounterService, bag scan), keep uncollected cache in sync
--- so completed/obtained items disappear from Browse (Mounts/Pets/Toys) and Plans lists.
-local Constants_CS = ns.Constants
-if Constants_CS and Constants_CS.EVENTS and Constants_CS.EVENTS.COLLECTIBLE_OBTAINED then
-    WarbandNexus.RegisterMessage(CSListeners, Constants_CS.EVENTS.COLLECTIBLE_OBTAINED, function(_, data)
-        if not data or not data.type or not data.id then return end
+-- Single WN_COLLECTIBLE_OBTAINED handler: two prior registrations on CSListeners overwrote each other
+-- (AceEvent table is keyed by self). Order: uncollected prune -> API/uncollected caches -> recent ring -> UI broadcast.
+if E and E.COLLECTIBLE_OBTAINED then
+    WarbandNexus.RegisterMessage(CSListeners, E.COLLECTIBLE_OBTAINED, function(_, data)
+        if not data or not data.type then return end
         local t = data.type
-        if (t == "mount" or t == "pet" or t == "toy") and data.id then
-            WarbandNexus:RemoveFromUncollected(t, data.id)
-            -- TryCounter already showed the notification; mark dedup so CollectionService's
-            -- own event handlers (OnNewMount/Pet/Toy) skip their duplicate notification
+        local id = data.id
+        if id and (t == "mount" or t == "pet" or t == "toy") then
+            WarbandNexus:RemoveFromUncollected(t, id)
             if data.fromTryCounter then
-                MarkAsNotified(t, data.id)
+                MarkAsNotified(t, id)
                 if data.name then MarkAsShownByName(data.name) end
-                MarkAsPermanentlyNotified(t, data.id)
+                MarkAsPermanentlyNotified(t, id)
             end
-            if Constants_CS.EVENTS.COLLECTION_UPDATED then
-                WarbandNexus:SendMessage(Constants_CS.EVENTS.COLLECTION_UPDATED, t)
-            end
+        end
+        InvalidateCollectionCountsCache(_, data)
+        WarbandNexus:AppendCollectionsRecentObtained(data)
+        if id and (t == "mount" or t == "pet" or t == "toy") and E.COLLECTION_UPDATED then
+            WarbandNexus:SendMessage(E.COLLECTION_UPDATED, t)
         end
     end)
 end
@@ -2288,19 +2848,90 @@ WarbandNexus:RegisterEvent("NEW_MOUNT_ADDED", "OnNewMount")
 WarbandNexus:RegisterEvent("NEW_PET_ADDED", "OnNewPet")
 WarbandNexus:RegisterEvent("NEW_TOY_ADDED", "OnNewToy")
 
--- Invalidate API counts cache so Statistics and Collections show same numbers after any collection change
-local function InvalidateCollectionCountsCache()
-    if WarbandNexus.InvalidateCollectionCountsAPICache then
-        WarbandNexus:InvalidateCollectionCountsAPICache()
-    end
-    wipe(uncollectedResultsCache)
-end
 WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTION_UPDATED, InvalidateCollectionCountsCache)
-WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTIBLE_OBTAINED, function(_, data)
-    WarbandNexus:AppendCollectionsRecentObtained(data)
-    InvalidateCollectionCountsCache()
+WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
+    WipeUncollectedResultsCacheAndMergedAchievements()
 end)
-WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function() wipe(uncollectedResultsCache) end)
+
+---Force mount/pet/toy refetch without debug mode (lighter than rebuild full). Clears those SV maps and schedules EnsureCollectionData.
+function WarbandNexus:RequestCollectionDataRefreshForce()
+    if ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading then
+        self:Print("|cffff8800[WN]|r Collection pipeline already running; skipped. |cff00ccff/wn collection status|r for stage.|r")
+        return
+    end
+    if not self.db or not self.db.global then
+        self:Print("|cffff6600[WN Collection]|r DB not ready.|r")
+        return
+    end
+    local function wipeMap(t)
+        if not t then return end
+        for k in pairs(t) do
+            t[k] = nil
+        end
+    end
+    wipeMap(collectionStore.mount)
+    wipeMap(collectionStore.pet)
+    wipeMap(collectionStore.toy)
+    local dbStore = self.db.global.collectionStore
+    if dbStore then
+        dbStore.version = "__WN_FORCE_RESYNC__"
+        wipeMap(dbStore.mount)
+        wipeMap(dbStore.pet)
+        wipeMap(dbStore.toy)
+    end
+    self:InvalidateCollectionCache(nil)
+    InvalidateCollectionCountsCache(nil, nil)
+    if ns.ScheduleEnsureCollectionDataDeferred then
+        ns.ScheduleEnsureCollectionDataDeferred()
+    elseif self.EnsureCollectionData then
+        self:EnsureCollectionData()
+    end
+    self:Print("|cff00ccff[WN]|r Collection rescan scheduled (mounts, pets, toys).|r")
+end
+
+--- DEBUG ONLY (gated by CommandService + IsDebugModeEnabled): simulate a collectionStore version bump and re-fetch mount/pet/toy for profiler runs.
+---@param full boolean|nil When true, also clears achievements/titles/illusions so the full EnsureCollectionData queue runs.
+function WarbandNexus:DebugForceCollectionRebuild(full)
+    full = full == true
+    if not self.db or not self.db.global then
+        self:Print("|cffff6600[WN Collection]|r DB not ready.|r")
+        return
+    end
+    local function wipeMap(t)
+        if not t then return end
+        for k in pairs(t) do
+            t[k] = nil
+        end
+    end
+    wipeMap(collectionStore.mount)
+    wipeMap(collectionStore.pet)
+    wipeMap(collectionStore.toy)
+    if full then
+        wipeMap(collectionStore.achievement)
+        wipeMap(collectionStore.title)
+        wipeMap(collectionStore.illusion)
+    end
+    local dbStore = self.db.global.collectionStore
+    if dbStore then
+        dbStore.version = "__WN_DEBUG_FORCE_REBUILD__"
+        wipeMap(dbStore.mount)
+        wipeMap(dbStore.pet)
+        wipeMap(dbStore.toy)
+        if full then
+            wipeMap(dbStore.achievement)
+            wipeMap(dbStore.title)
+            wipeMap(dbStore.illusion)
+        end
+    end
+    self:InvalidateCollectionCache(nil)
+    InvalidateCollectionCountsCache(nil, nil)
+    self:Print("|cff00ccff[WN Collection]|r Debug rebuild started (mount/pet/toy" ..
+        (full and " + achievements/titles/illusions" or "") ..
+        "). Use |cff00ccff/wn profiler on|r then open Collections.|r")
+    self:EnsureCollectionData(function()
+        self:Print("|cff00ff00[WN Collection]|r Debug rebuild finished.|r")
+    end)
+end
 
 ---Handle ACHIEVEMENT_EARNED event
 ---Removes completed achievement from cache and handles chained achievements
@@ -2331,51 +2962,65 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     -- Check for chained/superceding achievements (e.g., 5/5 → 0/10)
     -- GetSupercedingAchievements returns the next achievement in the chain
     if C_AchievementInfo and C_AchievementInfo.GetSupercedingAchievements then
-        local supercedingAchievements = C_AchievementInfo.GetSupercedingAchievements(achievementID)
-        if supercedingAchievements and #supercedingAchievements > 0 then
-            for i = 1, #supercedingAchievements do
-                local nextAchievementID = supercedingAchievements[i]
-                -- Get achievement info with pcall protection
-                local success, id, name, points, completed, month, day, year, description, flags, icon = pcall(GetAchievementInfo, nextAchievementID)
-                
-                if success and name and not completed then
-    DebugPrint("|cffffcc00[WN CollectionService]|r Found chained achievement: " .. name .. " (ID: " .. nextAchievementID .. ")")
+        if not (issecretvalue and achievementID and issecretvalue(achievementID)) then
+            local okSup, supercedingAchievements = pcall(C_AchievementInfo.GetSupercedingAchievements, achievementID)
+            if okSup and supercedingAchievements and type(supercedingAchievements) == "table" and #supercedingAchievements > 0 then
+                for i = 1, #supercedingAchievements do
+                    local nextAchievementID = supercedingAchievements[i]
+                    if nextAchievementID and not (issecretvalue and issecretvalue(nextAchievementID)) then
+                        -- Get achievement info with pcall protection
+                        local success, id, name, points, completed, month, day, year, description, flags, icon = pcall(GetAchievementInfo, nextAchievementID)
+                        local completedIsSecret = completed and issecretvalue and issecretvalue(completed)
+                        if success and name and not (issecretvalue and issecretvalue(name))
+                            and not completedIsSecret and completed ~= true then
+    DebugPrint("|cffffcc00[WN CollectionService]|r Found chained achievement: " .. tostring(name) .. " (ID: " .. tostring(nextAchievementID) .. ")")
                     
                     -- Get category ID
-                    local categoryID = GetAchievementCategory(nextAchievementID)
+                    local categoryID
+                    if GetAchievementCategory then
+                        local okCat, cat = pcall(GetAchievementCategory, nextAchievementID)
+                        if okCat and cat and not (issecretvalue and issecretvalue(cat)) then
+                            categoryID = cat
+                        end
+                    end
                     
                     -- Get reward info (with pcall)
                     local rewardItemID, rewardTitle
                     local rewardSuccess, item, title = pcall(GetAchievementReward, nextAchievementID)
                     if rewardSuccess then
-                        if type(item) == "number" then
+                        if type(item) == "number" and not (issecretvalue and issecretvalue(item)) then
                             rewardItemID = item
                         end
-                        if type(title) == "string" and title ~= "" then
+                        if type(title) == "string" and title ~= "" and not (issecretvalue and issecretvalue(title)) then
                             rewardTitle = title
-                        elseif type(item) == "string" and item ~= "" then
+                        elseif type(item) == "string" and item ~= "" and not (issecretvalue and issecretvalue(item)) then
                             rewardTitle = item
                         end
                     end
+                    
+                    local safeDesc = description
+                    if safeDesc and issecretvalue and issecretvalue(safeDesc) then safeDesc = nil end
                     
                     -- Add new chained achievement to cache directly (no full re-scan needed!)
                     if not collectionCache.uncollected.achievement then
                         collectionCache.uncollected.achievement = {}
                     end
                     
+                    local safePoints = points
+                    if safePoints and issecretvalue and issecretvalue(safePoints) then safePoints = nil end
                     collectionCache.uncollected.achievement[nextAchievementID] = {
                         id = nextAchievementID,
                         name = name,
-                        points = points,
-                        description = description,
-                        icon = icon,
+                        points = safePoints,
+                        description = safeDesc,
+                        icon = (icon and not (issecretvalue and issecretvalue(icon))) and icon or nil,
                         type = "achievement",
                         rewardItemID = rewardItemID,
                         rewardTitle = rewardTitle,
                         categoryID = categoryID
                     }
                     
-    DebugPrint("|cff00ff00[WN CollectionService]|r Added chained achievement to cache: " .. name)
+    DebugPrint("|cff00ff00[WN CollectionService]|r Added chained achievement to cache: " .. tostring(name))
                     
                     -- Trigger UI refresh (no cache invalidation needed!)
                     if self.SendMessage then
@@ -2383,6 +3028,8 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
                     end
                     
                     break -- Only need to process one chained achievement
+                end
+                    end
                 end
             end
         end
@@ -3511,7 +4158,52 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
     local co = coroutine.create(function()
         local startTime = debugprofilestop()
         local results = {}
-        local items = config.iterator()
+        local items = {}
+        local matBudget = FRAME_BUDGET_MS
+        if collectionType == "pet" then
+            local st = nil
+            local matSteps = 0
+            local MAX_MATERIALIZE_STEPS = 200000
+            while true do
+                matSteps = matSteps + 1
+                if matSteps > MAX_MATERIALIZE_STEPS then
+                    DebugPrint("|cffff0000[WN CollectionService]|r Pet materialize exceeded step cap; aborting scan")
+                    items = {}
+                    break
+                end
+                st = PetJournalBuildMaterializeStep(matBudget, st)
+                if st.done then
+                    items = st.items
+                    ns._petSpeciesToSourceIndex = st.speciesToSource
+                    break
+                end
+                coroutine.yield()
+            end
+        elseif collectionType == "toy" then
+            local st = nil
+            local matSteps = 0
+            local MAX_MATERIALIZE_STEPS = 200000
+            while true do
+                matSteps = matSteps + 1
+                if matSteps > MAX_MATERIALIZE_STEPS then
+                    DebugPrint("|cffff0000[WN CollectionService]|r Toy materialize exceeded step cap; aborting scan")
+                    items = {}
+                    break
+                end
+                st = ToyBoxBuildMaterializeStep(matBudget, st, self)
+                if st.done then
+                    items = st.items
+                    ns._toyItemIDToSourceIndex = st.toyToSource
+                    if ns._toyItemIDToSourceIndexCache then
+                        ns._toyItemIDToSourceIndexCache.map = st.toyToSource
+                    end
+                    break
+                end
+                coroutine.yield()
+            end
+        else
+            items = config.iterator()
+        end
         local total = #items
         local Constants = ns.Constants
 
@@ -3679,6 +4371,10 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
     local function resumeCoroutine()
         local coRef = activeCoroutines[collectionType]
         if not coRef then return end
+        if InCombatLockdown and InCombatLockdown() then
+            C_Timer.After(0, resumeCoroutine)
+            return
+        end
         if coroutine.status(coRef) == "dead" then
             activeCoroutines[collectionType] = nil
             return
@@ -4184,13 +4880,13 @@ function WarbandNexus:ClearCollectionMetadataCache()
     wipe(metadataCache)
     wipe(metadataCacheOrder)
     metadataCacheHead = 1
-    wipe(uncollectedResultsCache)
+    WipeUncollectedResultsCacheAndMergedAchievements()
     if ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache.map = nil end
 end
 
 ---Invalidate the uncollected results cache (call when collection data changes).
 function WarbandNexus:InvalidateUncollectedResultsCache()
-    wipe(uncollectedResultsCache)
+    WipeUncollectedResultsCacheAndMergedAchievements()
 end
 
 ---Get uncollected mounts (UNIFIED: collectionStore-first, scan if empty). Plans sadece uncollected gösterir.
@@ -4822,7 +5518,11 @@ function WarbandNexus:ScanAchievementsAsync()
     local function resumeCoroutine()
         local co = activeCoroutines["achievements"]
         if not co then return end
-        
+        if InCombatLockdown and InCombatLockdown() then
+            C_Timer.After(0, resumeCoroutine)
+            return
+        end
+
         local budget = FRAME_BUDGET_MS
         local startTime = debugprofilestop()
         

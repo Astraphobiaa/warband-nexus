@@ -81,20 +81,6 @@ end
 -- (e.g. Off Hand at 285 falsely marks Main Hand 282→285 as gold-only).
 local SLOT_PAIRS = { [11] = 12, [12] = 11, [13] = 14, [14] = 13, [16] = 17, [17] = 16 }
 
---- Effective watermark for a slot: max of this slot and its pair (for rings/trinkets).
---- Used only for display/consistency; gold-only affordability uses per-slot watermark (this slot's max only).
----@param watermarks table [slotID] = ilvl
----@param slotID number
----@return number
-local function GetEffectiveWatermark(watermarks, slotID)
-    if not watermarks then return 0 end
-    local a = watermarks[slotID] or 0
-    local pair = SLOT_PAIRS[slotID]
-    if not pair then return a end
-    local b = watermarks[pair] or 0
-    return (a > b) and a or b
-end
-
 -- Maps INVTYPE_ equip location -> which slot IDs that item can fill
 -- C_Item.GetItemInfoInstant returns 4th value = itemEquipLoc (string, e.g. "INVTYPE_SHOULDER")
 local EQUIP_LOC_TO_SLOTS = {

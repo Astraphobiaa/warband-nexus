@@ -23,6 +23,14 @@ end
 -- Unique AceEvent handler identity for CharactersUI
 local CharactersUIEvents = {}
 
+-- Throttle WoW Token market request (C_WowTokenPublic.UpdateMarketPrice) — avoid per-tab-draw Blizzard work.
+local _wnCharsTabLastTokenReq = 0
+local WN_CHARS_TAB_TOKEN_REQ_INTERVAL = 600
+
+-- Throttle lastSeen SavedVariables writes when reopening the Characters tab in one session.
+local _wnCharsTabLastSeenBump = {}
+local WN_CHARS_TAB_LAST_SEEN_INTERVAL = 90
+
 local DebugPrint = ns.DebugPrint
 
 -- Tooltip API
@@ -35,7 +43,7 @@ local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
 local FormatMoney = ns.UI_FormatMoney
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
-local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
+local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateFactionIcon = ns.UI_CreateFactionIcon
 local CreateRaceIcon = ns.UI_CreateRaceIcon
@@ -52,7 +60,7 @@ local FormatNumber = ns.UI_FormatNumber
 local AcquireCharacterRow = ns.UI_AcquireCharacterRow
 local ReleaseCharacterRow = ns.UI_ReleaseCharacterRow
 
---- Virtual-scroll tabs: refresh row culling after accordion tweens / layout (ReputationUI parity).
+--- Virtual-scroll tabs: refresh row culling after collapsible section layout (ReputationUI parity).
 local function CharactersVirtualScrollBump()
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     if mf and mf._virtualScrollUpdate then
@@ -187,7 +195,7 @@ local function RegisterCharacterEvents(parent)
     -- WN_CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
 end
 
---- Accordion defaults for Favorites / Characters / Untracked (nil handling matches PopulateContent).
+--- Collapsible section defaults for Favorites / Characters / Untracked (nil handling matches PopulateContent).
 local function CharactersUISectionExpandedTriplet(ui)
     ui = ui or {}
     local fav = ui.favoritesExpanded
@@ -220,9 +228,13 @@ end
 --============================================================================
 
 function WarbandNexus:DrawCharacterList(parent)
-    -- Request updated WoW Token market price (async; result used by Total Gold card)
+    -- Request updated WoW Token market price (async) — heavily throttled; not tied to tab redraw frequency.
     if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then
-        C_WowTokenPublic.UpdateMarketPrice()
+        local now = GetTime()
+        if (now - _wnCharsTabLastTokenReq) >= WN_CHARS_TAB_TOKEN_REQ_INTERVAL then
+            _wnCharsTabLastTokenReq = now
+            C_WowTokenPublic.UpdateMarketPrice()
+        end
     end
 
     local width = parent:GetWidth() - 20
@@ -258,7 +270,12 @@ function WarbandNexus:DrawCharacterList(parent)
     local currentPlayerKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     local sessionTableKey = ResolveSessionCharactersTableKey() or currentPlayerKey
     if self.db.global.characters and sessionTableKey and self.db.global.characters[sessionTableKey] then
-        self.db.global.characters[sessionTableKey].lastSeen = time()
+        local now = GetTime()
+        local last = _wnCharsTabLastSeenBump[sessionTableKey] or 0
+        if (now - last) >= WN_CHARS_TAB_LAST_SEEN_INTERVAL then
+            _wnCharsTabLastSeenBump[sessionTableKey] = now
+            self.db.global.characters[sessionTableKey].lastSeen = time()
+        end
     end
     
     local characters = self:GetAllCharacters()
@@ -1001,7 +1018,7 @@ function WarbandNexus:DrawCharacterList(parent)
         self.db.profile.ui.charactersExpanded = true
     end
     
-    -- ===== COLLAPSIBLE CHARACTER SECTIONS (accordion animated) =====
+    -- ===== COLLAPSIBLE CHARACTER SECTIONS (instant expand/collapse; no height tween) =====
     local SECTION_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     local SECTION_HEADER_GAP = 12
     local previousSectionContent = nil
@@ -1020,7 +1037,7 @@ function WarbandNexus:DrawCharacterList(parent)
         contentFrame:SetPoint("TOPLEFT", anchorHeader, "BOTTOMLEFT", -SIDE_MARGIN, 0)
         contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", SIDE_MARGIN, 0)
         contentFrame:SetHeight(0.1)
-        contentFrame._wnAccordionFullH = 0
+        contentFrame._wnSectionFullH = 0
         contentFrame._wnVirtualContentHeight = nil
         return contentFrame
     end
@@ -1038,10 +1055,11 @@ function WarbandNexus:DrawCharacterList(parent)
             local showReorder = currentSortKey == "manual"
 
             if mf and mf.scroll and contentFrame and VLM and VLM.SetupVirtualList then
+                local n = #list
                 local flatList = {}
                 local rowY = 0
-                for i = 1, #list do
-                    flatList[#flatList + 1] = {
+                for i = 1, n do
+                    flatList[i] = {
                         type = "row",
                         yOffset = rowY,
                         height = stride,
@@ -1055,7 +1073,7 @@ function WarbandNexus:DrawCharacterList(parent)
                             charList = list,
                             listKey = listKey,
                             positionInList = i,
-                            totalInList = #list,
+                            totalInList = n,
                             currentPlayerKey = currentPlayerKey,
                         },
                     }
@@ -1107,7 +1125,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     end
                 end
                 sectionYOffset = yAcc
-                contentFrame._wnAccordionFullH = sectionYOffset
+                contentFrame._wnSectionFullH = sectionYOffset
                 if sectionYOffset > 0 then
                     contentFrame:SetHeight(sectionYOffset)
                 else
@@ -1124,7 +1142,7 @@ function WarbandNexus:DrawCharacterList(parent)
             contentFrame:SetHeight(math.max(0.1, sectionYOffset))
         end
 
-        contentFrame._wnAccordionFullH = math.max(0.1, sectionYOffset)
+        contentFrame._wnSectionFullH = math.max(0.1, sectionYOffset)
         return sectionYOffset
     end
 
@@ -1153,7 +1171,7 @@ function WarbandNexus:DrawCharacterList(parent)
     if drawFavorites then
         local favoritesExpanded = self.db.profile.ui.favoritesExpanded
         local favoritesContent
-        local favoritesVisualOpts = BuildAccordionVisualOpts({
+        local favoritesVisualOpts = BuildCollapsibleSectionOpts({
             bodyGetter = function() return favoritesContent end,
             updateVisibleFn = CharactersVirtualScrollBump,
         }) or {
@@ -1170,7 +1188,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 if isExpanded then
                     if favoritesContent then
                         favoritesContent:Show()
-                        favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnAccordionFullH or 0.1))
+                        favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnSectionFullH or 0.1))
                     end
                 elseif favoritesContent then
                     favoritesContent:Hide()
@@ -1200,7 +1218,7 @@ function WarbandNexus:DrawCharacterList(parent)
         )
         if favoritesExpanded then
             favoritesContent:Show()
-            favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnAccordionFullH or 0.1))
+            favoritesContent:SetHeight(math.max(0.1, favoritesContent._wnSectionFullH or 0.1))
         else
             favoritesContent:Hide()
             favoritesContent:SetHeight(0.1)
@@ -1225,7 +1243,7 @@ function WarbandNexus:DrawCharacterList(parent)
             local grpContent
             local isFavHeader = ns.CharacterService and ns.CharacterService.IsProfileCustomSectionHighlighted
                 and ns.CharacterService:IsProfileCustomSectionHighlighted(self.db.profile, gid)
-            local grpVisualOpts = BuildAccordionVisualOpts({
+            local grpVisualOpts = BuildCollapsibleSectionOpts({
                 bodyGetter = function() return grpContent end,
                 updateVisibleFn = CharactersVirtualScrollBump,
             }) or { animatedContent = function() return grpContent end }
@@ -1242,7 +1260,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     if isExpanded then
                         if grpContent then
                             grpContent:Show()
-                            grpContent:SetHeight(math.max(0.1, grpContent._wnAccordionFullH or 0.1))
+                            grpContent:SetHeight(math.max(0.1, grpContent._wnSectionFullH or 0.1))
                         end
                     elseif grpContent then
                         grpContent:Hide()
@@ -1285,7 +1303,7 @@ function WarbandNexus:DrawCharacterList(parent)
             )
             if grpExpanded then
                 grpContent:Show()
-                grpContent:SetHeight(math.max(0.1, grpContent._wnAccordionFullH or 0.1))
+                grpContent:SetHeight(math.max(0.1, grpContent._wnSectionFullH or 0.1))
             else
                 grpContent:Hide()
                 grpContent:SetHeight(0.1)
@@ -1309,7 +1327,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 if isExpanded then
                     if charactersContent then
                         charactersContent:Show()
-                        charactersContent:SetHeight(math.max(0.1, charactersContent._wnAccordionFullH or 0.1))
+                        charactersContent:SetHeight(math.max(0.1, charactersContent._wnSectionFullH or 0.1))
                     end
                 elseif charactersContent then
                     charactersContent:Hide()
@@ -1320,7 +1338,7 @@ function WarbandNexus:DrawCharacterList(parent)
             true,
             nil,
             nil,
-            BuildAccordionVisualOpts({
+            BuildCollapsibleSectionOpts({
                 bodyGetter = function() return charactersContent end,
                 updateVisibleFn = CharactersVirtualScrollBump,
             }) or { animatedContent = function() return charactersContent end }
@@ -1342,7 +1360,7 @@ function WarbandNexus:DrawCharacterList(parent)
         )
         if charactersExpanded then
             charactersContent:Show()
-            charactersContent:SetHeight(math.max(0.1, charactersContent._wnAccordionFullH or 0.1))
+            charactersContent:SetHeight(math.max(0.1, charactersContent._wnSectionFullH or 0.1))
         else
             charactersContent:Hide()
             charactersContent:SetHeight(0.1)
@@ -1362,7 +1380,7 @@ function WarbandNexus:DrawCharacterList(parent)
 
         local untrackedExpanded = self.db.profile.ui.untrackedExpanded
         local untrackedContent
-        local untrackedVisualOpts = BuildAccordionVisualOpts({
+        local untrackedVisualOpts = BuildCollapsibleSectionOpts({
             bodyGetter = function() return untrackedContent end,
             updateVisibleFn = CharactersVirtualScrollBump,
         }) or {
@@ -1379,7 +1397,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 if isExpanded then
                     if untrackedContent then
                         untrackedContent:Show()
-                        untrackedContent:SetHeight(math.max(0.1, untrackedContent._wnAccordionFullH or 0.1))
+                        untrackedContent:SetHeight(math.max(0.1, untrackedContent._wnSectionFullH or 0.1))
                     end
                 elseif untrackedContent then
                     untrackedContent:Hide()
@@ -1409,7 +1427,7 @@ function WarbandNexus:DrawCharacterList(parent)
         )
         if untrackedExpanded then
             untrackedContent:Show()
-            untrackedContent:SetHeight(math.max(0.1, untrackedContent._wnAccordionFullH or 0.1))
+            untrackedContent:SetHeight(math.max(0.1, untrackedContent._wnSectionFullH or 0.1))
         else
             untrackedContent:Hide()
             untrackedContent:SetHeight(0.1)
@@ -2627,12 +2645,13 @@ function WarbandNexus:OpenCustomCharacterHeaderDialog()
 
     local function trySubmit()
         local t = eb:GetText()
+        if issecretvalue and issecretvalue(t) then return end
         if type(t) == "string" then
             t = t:match("^%s*(.-)%s*$") or ""
         else
             t = ""
         end
-        if t == "" or (issecretvalue and issecretvalue(t)) then
+        if t == "" then
             return
         end
         local addedId

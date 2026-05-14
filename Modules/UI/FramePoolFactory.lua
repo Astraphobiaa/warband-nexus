@@ -9,7 +9,7 @@
     - Reputation rows (ReputationUI)
     - Currency rows (CurrencyUI)
     - Item rows (ItemsUI)
-    - Storage rows (StorageUI)
+    - Storage rows (ItemsUI / DrawStorageResults)
     
     Extracted from SharedWidgets.lua (428 lines)
     Location: Lines 1089-1517
@@ -248,7 +248,7 @@ local function ReleaseReputationRow(row)
     tinsert(ReputationRowPool, row)
 end
 
---- Same pattern as ReleaseCharacterRowsFromSubtree for reputation rows nested under accordions.
+--- Same pattern as ReleaseCharacterRowsFromSubtree for reputation rows nested under collapsible sections.
 local function ReleaseReputationRowsFromSubtree(root)
     if not root then return end
     local stack = _poolSubtreeStack
@@ -381,6 +381,9 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         
         row.isPooled = true
         row.rowType = "currency"  -- Mark as CurrencyRow
+        if row.SetClipsChildren then
+            row:SetClipsChildren(true)
+        end
         
         -- Apply highlight effect (only on initial creation)
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
@@ -391,6 +394,9 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
     -- CRITICAL: Always set parent when acquiring from pool
     row:SetParent(parent)
     row:SetSize(width, rowHeight or 26)
+    if row.SetClipsChildren then
+        row:SetClipsChildren(true)
+    end
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     
@@ -406,6 +412,10 @@ end
 local function ReleaseCurrencyRow(row)
     if not row or not row.isPooled then return end
     if row._wnInFramePool then return end
+
+    if row.amountText and ns.UI_UnbindSeasonProgressAmount then
+        ns.UI_UnbindSeasonProgressAmount(row.amountText)
+    end
 
     row:Hide()
     row:ClearAllPoints()
@@ -448,6 +458,32 @@ local function ReleaseCurrencyRow(row)
 
     row._wnInFramePool = true
     tinsert(CurrencyRowPool, row)
+end
+
+--- Same pattern as ReleaseReputationRowsFromSubtree for currency rows nested under collapsible section bodies.
+local function ReleaseCurrencyRowsFromSubtree(root)
+    if not root then return end
+    local stack = _poolSubtreeStack
+    wipe(stack)
+    stack[1] = root
+    local sp = 1
+    while sp > 0 do
+        local f = stack[sp]
+        stack[sp] = nil
+        sp = sp - 1
+        if f then
+            local n = PackVariadicInto(_poolChildScratch, f:GetChildren())
+            for j = 1, n do
+                local ch = _poolChildScratch[j]
+                if ch and ch.isPooled and ch.rowType == "currency" then
+                    ReleaseCurrencyRow(ch)
+                elseif ch then
+                    sp = sp + 1
+                    stack[sp] = ch
+                end
+            end
+        end
+    end
 end
 
 --============================================================================
@@ -677,6 +713,9 @@ local function ReleaseStorageRow(row)
     end
     
     -- Phase 2.5: Clear stale state on release
+    row._wnStorageItemRef = nil
+    row._wnStorageRowIdx = nil
+    row._wnStorageLocText = nil
     if row.icon then row.icon:SetTexture(nil) end
     if row.nameText then row.nameText:SetText("") end
     if row.qtyText then row.qtyText:SetText("") end
@@ -689,6 +728,46 @@ end
 --============================================================================
 -- GENERIC POOL CLEANUP
 --============================================================================
+
+--- Single DFS: release every pooled list row under `root` (character / reputation / currency / item / storage / profession).
+--- Used for main-tab switch teardown: avoids ReleaseAllPooledChildren on scrollChild, which only visits *direct*
+--- children but still Hide+ClearAllPoints+script-nils large section shells (PvE was multi-second).
+local function ReleasePooledRowsInSubtree(root)
+    if not root then return end
+    local stack = _poolSubtreeStack
+    wipe(stack)
+    stack[1] = root
+    local sp = 1
+    while sp > 0 do
+        local f = stack[sp]
+        stack[sp] = nil
+        sp = sp - 1
+        if f and f.isPooled and f.rowType then
+            if f.rowType == "item" then
+                ReleaseItemRow(f)
+            elseif f.rowType == "storage" then
+                ReleaseStorageRow(f)
+            elseif f.rowType == "currency" then
+                ReleaseCurrencyRow(f)
+            elseif f.rowType == "character" then
+                ReleaseCharacterRow(f)
+            elseif f.rowType == "reputation" then
+                ReleaseReputationRow(f)
+            elseif f.rowType == "profession" then
+                ReleaseProfessionRow(f)
+            end
+        elseif f then
+            local n = PackVariadicInto(_poolChildScratch, f:GetChildren())
+            for j = 1, n do
+                local ch = _poolChildScratch[j]
+                if ch then
+                    sp = sp + 1
+                    stack[sp] = ch
+                end
+            end
+        end
+    end
+end
 
 ---Release all pooled children of a frame (and hide non-pooled ones)
 ---@param parent Frame Parent container to clean up
@@ -770,8 +849,10 @@ ns.UI_ReleaseReputationRow = ReleaseReputationRow
 ns.UI_ReleaseReputationRowsFromSubtree = ReleaseReputationRowsFromSubtree
 ns.UI_ReleaseProfessionRow = ReleaseProfessionRow
 ns.UI_ReleaseCurrencyRow = ReleaseCurrencyRow
+ns.UI_ReleaseCurrencyRowsFromSubtree = ReleaseCurrencyRowsFromSubtree
 ns.UI_ReleaseItemRow = ReleaseItemRow
 ns.UI_ReleaseStorageRow = ReleaseStorageRow
+ns.UI_ReleasePooledRowsInSubtree = ReleasePooledRowsInSubtree
 
 -- Export generic cleanup
 ns.UI_ReleaseAllPooledChildren = ReleaseAllPooledChildren

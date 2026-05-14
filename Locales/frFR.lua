@@ -76,6 +76,10 @@ L["HEADER_TOTAL_GOLD"] = "OR TOTAL"
 -- Items Tab
 L["ITEMS_HEADER"] = "Objets de banque"
 L["ITEMS_WARBAND_BANK"] = "Banque de bataillon"
+L["ITEMS_SUBTAB_BAGS"] = "Sacs"
+L["ITEMS_SUBTAB_BANK"] = "Banque"
+L["ITEMS_SUBTAB_WARBAND"] = "Bataillon"
+L["ITEMS_WARBAND_UPDATING"] = "Construction de la liste du bataillon..."
 L["ITEMS_EXPAND_ALL_TOOLTIP"] = "Développer tous les groupes de types d'objets pour le sous-onglet Banque actuel (personnel, bataillon, guilde ou inventaire)."
 L["ITEMS_COLLAPSE_ALL_TOOLTIP"] = "Réduire tous les groupes de types d'objets pour le sous-onglet Banque actuel."
 

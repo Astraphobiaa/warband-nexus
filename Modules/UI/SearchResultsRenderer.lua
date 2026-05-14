@@ -46,10 +46,26 @@ function SearchResultsRenderer:PrepareContainer(container)
     if ReleaseAllPooledChildren then
         ReleaseAllPooledChildren(container)
     end
-    
+
+    -- Nested list rows (currency/reputation collapsible sections) are not direct children of `container`;
+    -- return them to pools before reparenting section wrappers to recycleBin (CurrencyUI / ReputationUI parity).
+    local ReleaseCurrencyRowsFromSubtree = ns.UI_ReleaseCurrencyRowsFromSubtree
+    local ReleaseReputationRowsFromSubtree = ns.UI_ReleaseReputationRowsFromSubtree
+
     -- Clear remaining children EXCEPT emptyStateContainer / Plans achievement browse root (virtual list scroll host)
     local bin = ns.UI_RecycleBin
     local children = {container:GetChildren()}
+    for i = 1, #children do
+        local child = children[i]
+        if child ~= container.emptyStateContainer and child ~= container.plansAchBrowseRoot then
+            if ReleaseCurrencyRowsFromSubtree then
+                ReleaseCurrencyRowsFromSubtree(child)
+            end
+            if ReleaseReputationRowsFromSubtree then
+                ReleaseReputationRowsFromSubtree(child)
+            end
+        end
+    end
     for i = 1, #children do
         local child = children[i]
         if child ~= container.emptyStateContainer and child ~= container.plansAchBrowseRoot then

@@ -271,61 +271,28 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         ns.UI.Factory:ApplyHighlight(headerFrame)
     end
     
-    -- Smooth accordion animation: centralized in SharedWidgets (Factory:AnimateAccordion).
-    -- Keep per-frame onAccordionResize callback so sibling rows reflow in lockstep.
     local function AnimateRowHeight(fromDetailsH, toDetailsH, onComplete)
         local headerH = headerFrame:GetHeight()
         if not row.detailsFrame then
             row:SetHeight(headerH + math.max(0, toDetailsH))
-            if data.onAccordionResize then
-                data.onAccordionResize(row, headerH + math.max(0, toDetailsH))
+            if data.onSectionResize then
+                data.onSectionResize(row, headerH + math.max(0, toDetailsH))
             end
             if onComplete then onComplete() end
             return
         end
 
         local detailsFrame = row.detailsFrame
-        row:SetHeight(headerH + fromDetailsH)
-        if data.onAccordionResize then data.onAccordionResize(row, headerH + fromDetailsH) end
-        if ns.UI and ns.UI.Factory and ns.UI.Factory.AnimateAccordion then
-            ns.UI.Factory:AnimateAccordion(detailsFrame, fromDetailsH, toDetailsH, {
-                duration = 0.22,
-                -- fadeAlpha caused paired MouseDown/Click double-toggle symptoms on some setups; match Plans/PvE accordion.
-                fadeAlpha = false,
-                clipChildren = true,
-                onUpdate = function(currentH)
-                    local rowH = headerH + math.max(0, currentH or 0)
-                    row:SetHeight(rowH)
-                    if data.onAccordionResize then
-                        data.onAccordionResize(row, rowH)
-                    end
-                end,
-                onComplete = function()
-                    detailsFrame:SetHeight(math.max(0.1, toDetailsH))
-                    row:SetHeight(headerH + math.max(0, toDetailsH))
-                    if data.onAccordionResize then
-                        data.onAccordionResize(row, headerH + math.max(0, toDetailsH))
-                    end
-                    if onComplete then onComplete() end
-                end,
-            })
-            return
-        end
-
-        -- Fallback path when Factory isn't available yet.
         detailsFrame:SetHeight(math.max(0.1, toDetailsH))
         row:SetHeight(headerH + math.max(0, toDetailsH))
-        if data.onAccordionResize then
-            data.onAccordionResize(row, headerH + math.max(0, toDetailsH))
+        if data.onSectionResize then
+            data.onSectionResize(row, headerH + math.max(0, toDetailsH))
         end
         if onComplete then onComplete() end
     end
     row._animateRowHeight = AnimateRowHeight
 
-    -- Single in-place tween. We DO NOT trigger the parent refresh until the animation ends, so
-    -- siblings reflow smoothly via the per-frame onAccordionResize hook rather than snapping
-    -- at start. onToggle (which usually rebuilds the whole list) only fires once at the end as
-    -- the canonical "set this state" signal.
+    -- Single-step height apply: onToggle (rebuild signal) runs when the expand callback completes.
     local function ToggleExpand()
         local newExpanded = not row.isExpanded
         row.isExpanded = newExpanded
@@ -345,9 +312,6 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         local fullDetailsH = row._fullDetailsH or row.detailsFrame:GetHeight()
 
         if newExpanded then
-            row.detailsFrame:SetHeight(0.1)  -- start collapsed so the tween is visible
-            -- AnimateAccordion uses fadeAlpha=false here — it does NOT restore alpha. Never zero
-            -- out alpha in that mode or the details body stays invisible for the whole tween.
             row.detailsFrame:SetAlpha(1)
             row.detailsFrame:Show()
             AnimateRowHeight(0, fullDetailsH, function()

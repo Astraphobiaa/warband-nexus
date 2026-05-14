@@ -39,6 +39,27 @@ end
 -- Prevents overwriting other modules' handlers for the same message.
 local DataServiceEvents = {}
 
+-- Roster list cache for GetAllCharacters (dedupe + sort is O(n log n); invalidated on character messages).
+local _allCharsRosterCache = { sig = nil, list = nil }
+
+local function ComputeCharactersRosterSig(chars)
+    if not chars then return "0:0" end
+    local n, acc = 0, 0
+    for _, row in pairs(chars) do
+        if type(row) == "table" then
+            n = n + 1
+            acc = acc + (tonumber(row.lastSeen) or 0)
+            acc = acc + ((tonumber(row.level) or 0) * 1315423911)
+        end
+    end
+    return tostring(n) .. ":" .. tostring(acc)
+end
+
+local function InvalidateGetAllCharactersCache()
+    _allCharsRosterCache.sig = nil
+    _allCharsRosterCache.list = nil
+end
+
 -- Get library references
 local LibSerialize = LibStub("AceSerializer-3.0")
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
@@ -285,7 +306,10 @@ end
     - Zone location
 ]]
 
--- NO CHARACTER LIST CACHE - Always read fresh from DB (API > DB > UI pattern)
+--- Invalidate cached roster array from GetAllCharacters (character DB changed).
+function WarbandNexus:InvalidateGetAllCharactersCache()
+    InvalidateGetAllCharactersCache()
+end
 
 ---Get comprehensive character data from DB
 ---DIRECT DB READ - No sessionCache (API > DB > UI pattern)
@@ -493,6 +517,13 @@ function WarbandNexus:RegisterCharacterCacheEvents()
             WarbandNexus:InvalidateItemSummary(charKey)
         end
     end)
+
+    WarbandNexus.RegisterMessage(DataServiceEvents, E.CHARACTER_UPDATED, function()
+        InvalidateGetAllCharactersCache()
+    end)
+    WarbandNexus.RegisterMessage(DataServiceEvents, E.CHARACTER_TRACKING_CHANGED, function()
+        InvalidateGetAllCharactersCache()
+    end)
     
     -- Character cache event handlers registered (verbose logging removed)
 end
@@ -692,6 +723,11 @@ function WarbandNexus:DecompressAndLoad()
         return true
     end
     
+    local P = ns.Profiler
+    local dbLabel = P and P.SliceLabel and P:SliceLabel(P.CAT.DB, "SessionCache_DecompressAndLoad")
+    if P and P.enabled and dbLabel then
+        P:Start(dbLabel)
+    end
     local success, err = pcall(function()
         local stored = self.db.global.sessionCache
         
@@ -718,6 +754,9 @@ function WarbandNexus:DecompressAndLoad()
         
         return true
     end)
+    if P and P.enabled and dbLabel then
+        P:Stop(dbLabel)
+    end
     
     if not success then
         if self.db.profile.debugMode then
@@ -841,7 +880,7 @@ CollectRestedData = function()
     if issecretvalue and issecretvalue(currentXP) then currentXP = 0 end
     if type(currentXP) ~= "number" then currentXP = 0 end
     local maxXPApi = UnitXPMax("player")
-    if maxXPApi ~= nil and issecretvalue and issecretvalue(maxXPApi) then maxXPApi = nil end
+    if issecretvalue and issecretvalue(maxXPApi) then maxXPApi = nil end
     local maxXP = (type(maxXPApi) == "number") and maxXPApi or nil
     local _, playerRaceFile = UnitRace("player")
     local capMultiplier = GetRestedCapMultiplier(playerRaceFile)
@@ -988,7 +1027,15 @@ function WarbandNexus:SaveMinimalCharacterData()
         craftingOrders = nil,
         professionData = nil,
         rested = nil,
-        guid = (ns.Utilities and ns.Utilities.SafeGuid and ns.Utilities:SafeGuid("player")) or nil,
+        -- GUID: never call UnitGUID here (untracked / minimal row). Preserve existing SV guid only;
+        -- fresh capture happens when the user enables tracking (CharacterService:ConfirmCharacterTracking).
+        guid = (function()
+            local g = existingEntry and existingEntry.guid
+            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+                return g
+            end
+            return nil
+        end)(),
         stats = nil,
         specID = nil,
         specName = nil,
@@ -1212,7 +1259,17 @@ function WarbandNexus:SaveCurrentCharacterData()
         craftingOrders       = preserveCraftingOrders,
         professionData       = preserveProfessionData,
         rested               = restedData,
-        guid                 = (ns.Utilities and ns.Utilities.SafeGuid and ns.Utilities:SafeGuid("player")) or nil,
+        -- GUID: persist stable value; only call SafeGuid when row has no usable guid yet (post-tracking first save).
+        guid                 = (function()
+            local g = existingEntry and existingEntry.guid
+            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+                return g
+            end
+            if ns.Utilities and ns.Utilities.SafeGuid then
+                return ns.Utilities:SafeGuid("player")
+            end
+            return nil
+        end)(),
         stats                = CollectPlayerStats(),  -- For Gear tab offline Character Stats
         specID               = specID,
         specName             = specName,
@@ -1379,11 +1436,27 @@ function WarbandNexus:GetAllCharacters()
     if not self.db.global.characters then
         return characters
     end
+
+    local charsTbl = self.db.global.characters
+    local rosterSig = ComputeCharactersRosterSig(charsTbl)
+    if _allCharsRosterCache.sig == rosterSig and _allCharsRosterCache.list then
+        local cached = _allCharsRosterCache.list
+        local n = #cached
+        if n == 0 then
+            return cached
+        end
+        -- Fresh array so callers cannot mutate sort order of the cached roster (e.g. table.sort).
+        local out = {}
+        for i = 1, n do
+            out[i] = cached[i]
+        end
+        return out
+    end
     
     -- CRITICAL: Deduplicate characters (keep newest by lastSeen). Prefer player GUID when present (post-rename duplicates).
     local seen = {}  -- [mergeKey] = charData
     
-    for key, data in pairs(self.db.global.characters) do
+    for key, data in pairs(charsTbl) do
         if type(data) ~= "table" then
             -- skip
         else
@@ -1441,7 +1514,17 @@ function WarbandNexus:GetAllCharacters()
         return CmpCharName(a, b)
     end)
     
-    return characters
+    _allCharsRosterCache.sig = rosterSig
+    _allCharsRosterCache.list = characters
+    local n = #characters
+    if n == 0 then
+        return characters
+    end
+    local out = {}
+    for i = 1, n do
+        out[i] = characters[i]
+    end
+    return out
 end
 
 --- Get rested state from DB for UI rendering.
@@ -3793,8 +3876,15 @@ end
 function WarbandNexus:GetInventoryItems()
     local items = {}
     
-    -- Get CURRENT character key
-    local charKey = ns.Utilities:GetCharacterKey()
+    -- Same key as ItemsCacheService scans (GUID when available) — Name-Realm alone misses v2 itemStorage.
+    local charKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+        and ns.CharacterService:ResolveCharactersTableKey(self)
+    if not charKey and ns.Utilities.GetCharacterStorageKey then
+        charKey = ns.Utilities:GetCharacterStorageKey(self)
+    end
+    if not charKey then
+        charKey = ns.Utilities:GetCharacterKey()
+    end
     
     -- CRITICAL: Use ItemsCacheService (new unified storage)
     if not self.GetItemsData then
@@ -3832,8 +3922,14 @@ end
 function WarbandNexus:GetBankItems()
     local items = {}
     
-    -- Get CURRENT character key
-    local charKey = ns.Utilities:GetCharacterKey()
+    local charKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+        and ns.CharacterService:ResolveCharactersTableKey(self)
+    if not charKey and ns.Utilities.GetCharacterStorageKey then
+        charKey = ns.Utilities:GetCharacterStorageKey(self)
+    end
+    if not charKey then
+        charKey = ns.Utilities:GetCharacterKey()
+    end
     
     -- CRITICAL: Use ItemsCacheService (new unified storage)
     if not self.GetItemsData then
@@ -4543,7 +4639,14 @@ function WarbandNexus:GetBankStatistics()
     stats.warband.freeSlots = math.max(0, stats.warband.totalSlots - stats.warband.usedSlots)
     
     -- ===== PERSONAL STORAGE (inventory bags + personal bank from ItemsCacheService) =====
-    local charKey = ns.Utilities:GetCharacterKey()
+    local charKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+        and ns.CharacterService:ResolveCharactersTableKey(self)
+    if not charKey and ns.Utilities.GetCharacterStorageKey then
+        charKey = ns.Utilities:GetCharacterStorageKey(self)
+    end
+    if not charKey then
+        charKey = ns.Utilities:GetCharacterKey()
+    end
     local itemsData = self.GetItemsData and self:GetItemsData(charKey)
     if itemsData then
         -- Count occupied slots and item stacks from bags

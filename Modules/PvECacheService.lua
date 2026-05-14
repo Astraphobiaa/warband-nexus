@@ -19,6 +19,7 @@ local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local WarbandNexus = ns.WarbandNexus
 local Utilities = ns.Utilities
+local issecretvalue = issecretvalue
 
 -- Session flag: true once WEEKLY_REWARDS_UPDATE has fired this session, meaning
 -- OnUIInteract() was called and the server has responded with fresh vault data.
@@ -59,6 +60,7 @@ end
 --- so imports, migration, and live API paths never split the same toon across multiple keys.
 local function CanonicalizePvEKey(charKey)
     if not charKey or charKey == "" then return charKey end
+    if issecretvalue and issecretvalue(charKey) then return nil end
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
         local k = ns.Utilities:GetCanonicalCharacterKey(charKey)
         if k and k ~= "" then return k end
@@ -168,7 +170,7 @@ end
 ---@param difficultyId number|nil
 ---@return boolean|nil true = raid, false = dungeon / small-group saved instance, nil = unknown
 local function CoerceSavedInstanceIsRaid(raw, maxPlayers, difficultyId)
-    if issecretvalue and raw ~= nil and issecretvalue(raw) then
+    if issecretvalue and issecretvalue(raw) then
         raw = nil
     end
     if raw == true or raw == 1 then return true end
@@ -1042,21 +1044,30 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
                     for ei = 1, #encounters do
                         local enc = encounters[ei]
                         local encName, instanceID
-                        if EJ_GetEncounterInfo then
-                            local name, _, _, _, _, instID = EJ_GetEncounterInfo(enc.encounterID)
-                            encName = name
-                            instanceID = instID
+                        if EJ_GetEncounterInfo and enc.encounterID
+                            and not (issecretvalue and issecretvalue(enc.encounterID)) then
+                            local okEj, name, _, _, _, instID = pcall(EJ_GetEncounterInfo, enc.encounterID)
+                            if okEj then
+                                encName = name
+                                instanceID = instID
+                            end
                         end
                         local instanceName
-                        if instanceID and EJ_GetInstanceInfo then
-                            instanceName = EJ_GetInstanceInfo(instanceID)
+                        if instanceID and EJ_GetInstanceInfo
+                            and not (issecretvalue and issecretvalue(instanceID)) then
+                            local okIn, instNm = pcall(EJ_GetInstanceInfo, instanceID)
+                            if okIn and instNm and not (issecretvalue and issecretvalue(instNm)) then
+                                instanceName = instNm
+                            end
                         end
                         local diffName
-                        if enc.bestDifficulty and enc.bestDifficulty > 0 then
+                        local bestDiff = enc.bestDifficulty
+                        if bestDiff and issecretvalue and issecretvalue(bestDiff) then bestDiff = nil end
+                        if type(bestDiff) == "number" and bestDiff > 0 then
                             if DifficultyUtil and DifficultyUtil.GetDifficultyName then
-                                diffName = DifficultyUtil.GetDifficultyName(enc.bestDifficulty)
+                                diffName = DifficultyUtil.GetDifficultyName(bestDiff)
                             elseif GetDifficultyInfo then
-                                diffName = GetDifficultyInfo(enc.bestDifficulty)
+                                diffName = GetDifficultyInfo(bestDiff)
                             end
                         end
                         -- Guard secret values
@@ -1193,7 +1204,16 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
         or wasPostResetReady
     ) then
         local vaultFrameShown = WeeklyRewardsFrame and WeeklyRewardsFrame.IsShown and WeeklyRewardsFrame:IsShown()
-        if vaultFrameShown or allowClaimTransition == true then
+        -- After WEEKLY_REWARDS_UPDATE, HasAvailableRewards() is reliable. Without this branch,
+        -- UpdatePvEData() calls this with allowClaimTransition=nil and (frame closed) would
+        -- resurrect hasAvailableRewards=true right after a real claim (race with
+        -- WEEKLY_REWARDS_ITEM_CHANGED's deferred refresh).
+        local trustNoRewardsWhenVaultFresh = false
+        if vaultDataFreshThisSession and C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
+            local ok, avail = pcall(C_WeeklyRewards.HasAvailableRewards)
+            trustNoRewardsWhenVaultFresh = ok and avail == false
+        end
+        if vaultFrameShown or allowClaimTransition == true or trustNoRewardsWhenVaultFresh then
             claimedResetTime = previousResetTime
             claimedAt = time()
             -- Clear isPostReset since the chest is now claimed
@@ -1263,8 +1283,8 @@ function WarbandNexus:UpdateRaidLockouts(charKey)
         if issecretvalue and name and issecretvalue(name) then name = nil end
         if issecretvalue and difficulty and issecretvalue(difficulty) then difficulty = nil end
         if issecretvalue and difficultyName and issecretvalue(difficultyName) then difficultyName = nil end
-        if issecretvalue and locked ~= nil and issecretvalue(locked) then locked = nil end
-        if issecretvalue and extended ~= nil and issecretvalue(extended) then extended = nil end
+        if issecretvalue and issecretvalue(locked) then locked = nil end
+        if issecretvalue and issecretvalue(extended) then extended = nil end
 
         local difficultyID = SafeSavedInstanceNumber(difficulty)
         local journalInstanceID = SafeSavedInstanceNumber(_instId)
@@ -2156,8 +2176,6 @@ end
 -- ============================================================================
 -- EVENT HANDLERS (Called by registered events above)
 -- ============================================================================
-
--- REMOVED: OnMythicPlusAffixUpdate — never registered; PvECacheService handles affix updates inline.
 
 ---Handle WEEKLY_REWARDS_UPDATE event (vault data received from server)
 ---NOTE: Named OnVaultDataReceived to avoid collision with PlansManager:OnPvEUpdateCheckPlans

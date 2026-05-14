@@ -14,13 +14,7 @@
     - C_CurrencyInfo.GetCurrencyInfo() - Currency details for display (Midnight)
     - C_Item.GetItemIconByID() - Trovehunter's Bounty icon for Bountiful column header
     
-    DEPRECATED API CALLS (Moved to PvECacheService):
-    - C_MythicPlus.GetOwnedKeystoneLevel() → Use pveData.keystone.level
-    - C_MythicPlus.GetOwnedKeystoneChallengeMapID() → Use pveData.keystone.mapID
-    - C_MythicPlus.GetCurrentAffixes() → Use allPveData.currentAffixes
-    - C_WeeklyRewards.GetActivities() → Use pveData.vaultActivities
-    
-    Event Registration: WN_PVE_UPDATED (auto-refresh UI when cache updates)
+    Event-driven refresh: WN_PVE_UPDATED (see UI.lua listeners; cache writes in PvECacheService.lua).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -37,9 +31,6 @@ local function CompareCharNameLower(a, b)
     return SafeLower(a.name) < SafeLower(b.name)
 end
 
--- Unique AceEvent handler identity for PvEUI
-local PvEUIEvents = {}
-local E = ns.Constants.EVENTS
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
@@ -50,7 +41,7 @@ local HideTooltip = ns.UI_HideTooltip
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
-local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
+local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
@@ -589,7 +580,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
         end
         PvE_ColumnPickerHideTooltipLayers()
         if addon and addon.SendMessage then
-            addon:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
+            addon:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
         end
         C_Timer.After(0, function()
             local picker = WarbandNexus._wnPvEColumnPickerMenu
@@ -1515,8 +1506,7 @@ local function BuildWorldProgressLines(lines, worldTierProgress, threshold)
     end
 end
 
---- Paint the 3x3 Great Vault grid (Raid / Dungeon / World x 3 slots) on vaultCard.
---- Shared by expanded PvE summary vault card and Weekly Vault Tracker cards.
+--- Paint the 3x3 Great Vault grid (Raid / Dungeon / World x 3 slots) on vaultCard (expanded row detail).
 --- @return cardHeight, cardWidth
 function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
     local baseCardWidth = opt.baseCardWidth
@@ -2067,177 +2057,6 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
     end
 
     return cardHeight, cardWidth
-end
-
---============================================================================
--- WEEKLY VAULT TRACKER — 3-column card grid (no expand/collapse headers)
---============================================================================
-
-function WarbandNexus:DrawPvEVaultTrackerCardGrid(parent, startYOffset, characters, currentPlayerKey)
-    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    if mf and mf.columnHeaderClip then
-        mf.columnHeaderClip:Hide()
-    end
-
-    local scrollFrame = parent:GetParent()
-    local viewportW = (scrollFrame and scrollFrame:GetWidth()) or 800
-    parent:SetWidth(math.max(viewportW, 520))
-    if mf and mf.columnHeaderInner then
-        mf.columnHeaderInner:SetWidth(parent:GetWidth())
-    end
-
-    local SIDE_PAD = 8
-    local GAP = 6
-    local COLS = 3
-    local innerW = math.max(100, parent:GetWidth() - SIDE_PAD * 2)
-    local gapBetweenCards = (COLS - 1) * GAP
-    local cardW = math.floor((innerW - gapBetweenCards) / COLS)
-    -- Compact WVT: fixed row height; vault opens/closes only from grid slots (not whole card).
-    local cardH = 206
-    local HDR_ICON = 24
-    local PAD = 5
-
-    local pendingStr = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
-    local readyClaimStr = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
-
-    local layoutIdx = 0
-    for i = 1, #characters do
-        local char = characters[i]
-        local charKey = PvE_GetCanonicalKeyForChar(char)
-        if charKey then
-            layoutIdx = layoutIdx + 1
-            local col = (layoutIdx - 1) % COLS
-            local row = math.floor((layoutIdx - 1) / COLS)
-            local x = SIDE_PAD + col * (cardW + GAP)
-            local yTop = startYOffset + row * (cardH + GAP)
-
-            local pveData = self:GetPvEData(charKey) or {}
-            local vaultActs = pveData.vaultActivities or {}
-
-            local claim = pveData.vaultRewards and pveData.vaultRewards.hasAvailableRewards == true
-            local isCurrentChar = (charKey == currentPlayerKey)
-            if (not claim) and isCurrentChar and self.HasUnclaimedVaultRewards then
-                local ok, v = pcall(self.HasUnclaimedVaultRewards, self)
-                claim = ok and v == true
-            end
-
-            local classColor = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
-            local card = CreateCard(parent, cardH)
-            card:SetWidth(cardW)
-            card:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -yTop)
-
-            local ac = ns.UI_COLORS and ns.UI_COLORS.accent or { 0.40, 0.20, 0.58 }
-            if card.SetBackdropBorderColor then
-                if isCurrentChar then
-                    card:SetBackdropBorderColor(ac[1], ac[2], ac[3], 0.95)
-                else
-                    card:SetBackdropBorderColor(ac[1] * 0.85, ac[2] * 0.85, ac[3] * 0.85, 0.75)
-                end
-            end
-
-            -- Full-width header strip: identity left, vault status right (same inner width as grid below).
-            local innerW = cardW - 2 * PAD
-            local HEADER_H = 40
-            local HDR_AFTER_GAP = 3
-            local GRID_AFTER_SEP = 4
-
-            local vaultComplete = PvE_AllVaultTracksComplete(vaultActs)
-            local showStatus = claim or vaultComplete
-            local statusReserve = showStatus and 104 or 8
-
-            local headerBar = ns.UI.Factory:CreateContainer(card, innerW, HEADER_H)
-            headerBar:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, -PAD)
-
-            local vaultHeadIcon = CreateIcon(headerBar, "BonusLoot-Chest", HDR_ICON, true, nil, true)
-            vaultHeadIcon:SetPoint("CENTER", headerBar, "LEFT", HDR_ICON * 0.5, 0)
-            vaultHeadIcon:Show()
-
-            local nameColW = math.max(56, innerW - HDR_ICON - 5 - statusReserve)
-            local realmDisp = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ""
-
-            local nameFs = FontManager:CreateFontString(headerBar, FontManager:GetFontRole("pveVaultCardCharName"), "OVERLAY")
-            nameFs:SetPoint("TOPLEFT", headerBar, "TOPLEFT", HDR_ICON + 5, -4)
-            nameFs:SetWidth(nameColW)
-            nameFs:SetJustifyH("LEFT")
-            nameFs:SetWordWrap(false)
-            nameFs:SetText(string.format(
-                "|cff%02x%02x%02x%s|r",
-                classColor.r * 255,
-                classColor.g * 255,
-                classColor.b * 255,
-                char.name or "?"
-            ))
-
-            local realmFs = FontManager:CreateFontString(headerBar, FontManager:GetFontRole("pveVaultCardRealm"), "OVERLAY")
-            realmFs:SetPoint("TOPLEFT", nameFs, "BOTTOMLEFT", 0, -1)
-            realmFs:SetWidth(nameColW)
-            realmFs:SetJustifyH("LEFT")
-            realmFs:SetWordWrap(false)
-            realmFs:SetText(realmDisp ~= "" and ("|cffaaaaaa" .. realmDisp .. "|r") or " ")
-
-            local statusFs = FontManager:CreateFontString(headerBar, FontManager:GetFontRole("pveVaultCardStatus"), "OVERLAY")
-            statusFs:SetWidth(statusReserve)
-            statusFs:SetJustifyH("RIGHT")
-            statusFs:SetWordWrap(false)
-            if claim then
-                statusFs:SetTextColor(0.35, 1, 0.35)
-                statusFs:SetText(readyClaimStr)
-                statusFs:Show()
-            elseif vaultComplete then
-                statusFs:SetTextColor(1, 0.82, 0.35)
-                statusFs:SetText(pendingStr)
-                statusFs:Show()
-            else
-                statusFs:Hide()
-            end
-            statusFs:SetPoint("CENTER", headerBar, "RIGHT", -math.floor(statusReserve * 0.5), 0)
-
-            local hdrSep = card:CreateTexture(nil, "BORDER")
-            hdrSep:SetHeight(1)
-            hdrSep:SetColorTexture(ac[1] * 0.42, ac[2] * 0.42, ac[3] * 0.42, 0.5)
-            hdrSep:SetPoint("TOPLEFT", headerBar, "BOTTOMLEFT", 0, -HDR_AFTER_GAP)
-            hdrSep:SetPoint("TOPRIGHT", headerBar, "BOTTOMRIGHT", 0, -HDR_AFTER_GAP)
-
-            local vaultInnerW = innerW
-            local baseVaultGridH = 136
-            local vaultGridHost = ns.UI.Factory:CreateContainer(card, vaultInnerW, baseVaultGridH)
-            vaultGridHost:SetPoint("TOPLEFT", hdrSep, "BOTTOMLEFT", 0, -GRID_AFTER_SEP)
-
-            local vaultByType = {}
-            if vaultActs.raids then vaultByType["Raid"] = vaultActs.raids end
-            if vaultActs.mythicPlus then vaultByType["M+"] = vaultActs.mythicPlus end
-            if vaultActs.world then vaultByType["World"] = vaultActs.world end
-
-            select(1, self:PaintPvEVaultGridOnCard(vaultGridHost, {
-                baseCardWidth = vaultInnerW,
-                baseCardHeight = baseVaultGridH,
-                vaultByType = vaultByType,
-                pve = pveData,
-                vaultActivitiesData = vaultActs,
-                isCurrentChar = isCurrentChar,
-                enableVaultSlotInteraction = true,
-                applyVaultCardChrome = false,
-                compactSlotStyle = true,
-                borderPadding = 0,
-                vaultColGap = 3,
-                vaultLeftPad = 3,
-                vaultRightPad = 3,
-                minSlotBtnH = 28,
-                vaultRowVPad = 2,
-                trackIconSize = 13,
-                slotFontKey = "body",
-                rowLabelFontKey = "body",
-                slotTierYOffset = 5,
-            }))
-            -- Great Vault toggle only via slot buttons (OnClick already opens/closes WeeklyRewardsFrame).
-
-            card:Show()
-        end
-    end
-
-    local rows = layoutIdx > 0 and math.ceil(layoutIdx / COLS) or 0
-    local bottom = startYOffset + math.max(0, rows) * (cardH + GAP) + 24
-    return bottom
 end
 
 --- Populates expanded PvE per-character detail (M+, keystone, vault grid).
@@ -2838,7 +2657,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             summaryCard:SetHeight(unifiedRowH)
             vaultCard:SetHeight(unifiedRowH)
             cardContainer:SetHeight(unifiedRowH)
-            charDetailContent._wnAccordionFullH = unifiedRowH
+            charDetailContent._wnSectionFullH = unifiedRowH
 end
 
 --- Group id from secKey "pve_grp:<id>". Prefix is 8 chars ("pve_grp:"); using sub(10) strips the first id character and breaks lookups.
@@ -2847,7 +2666,7 @@ local function PveGroupIdFromSectionSecKey(secKey)
     return secKey:match("^pve_grp:(.+)$")
 end
 
---- One Favorites / custom / Characters accordion on the PvE scroll child (ProfessionsUI-style shell; rows painted separately).
+--- One Favorites / custom / Characters collapsible block on the PvE scroll child (ProfessionsUI-style shell; rows painted separately).
 --- @param layoutTailFrame nil or frame to stack below (last character detail or previous section body)
 --- @return sectionContent frame to parent per-character PvE rows under
 local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts)
@@ -2879,7 +2698,7 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     end
 
     local sectionContent
-    local headerVisualOpts = BuildAccordionVisualOpts({
+    local headerVisualOpts = BuildCollapsibleSectionOpts({
         bodyGetter = function() return sectionContent end,
         persistFn = function(exp)
             if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
@@ -2890,7 +2709,7 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
                 profile.ui[sectionUiKey] = exp
             end
         end,
-        -- Do not resize scrollParent from section accordion tweens (same class of bug as per-character rows).
+        -- Do not resize scrollParent from section height changes (same class of bug as per-character rows).
         onUpdate = function()
             if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
                 local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
@@ -2929,7 +2748,7 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
             if sectionContent then
                 if expanded then
                     sectionContent:Show()
-                    sectionContent:SetHeight(math.max(0.1, sectionContent._wnAccordionFullH or 0.1))
+                    sectionContent:SetHeight(math.max(0.1, sectionContent._wnSectionFullH or 0.1))
                 else
                     sectionContent:Hide()
                     sectionContent:SetHeight(0.1)
@@ -3003,12 +2822,12 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     sectionContent:SetPoint("TOPLEFT", header, "BOTTOMLEFT", -SIDE_MARGIN0, 0)
     sectionContent:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", SIDE_MARGIN0, 0)
     sectionContent:SetHeight(0.1)
-    sectionContent._wnAccordionFullH = 0
+    sectionContent._wnSectionFullH = 0
     sectionContent._pveRunningH = 0
 
     if isExpanded then
         sectionContent:Show()
-        sectionContent:SetHeight(math.max(0.1, sectionContent._wnAccordionFullH or 0.1))
+        sectionContent:SetHeight(math.max(0.1, sectionContent._wnSectionFullH or 0.1))
     else
         sectionContent:Hide()
         sectionContent:SetHeight(0.1)
@@ -3033,7 +2852,7 @@ if not ns.PvEDrawLibs then
         HideTooltip = HideTooltip,
         CreateCard = CreateCard,
         CreateCollapsibleHeader = CreateCollapsibleHeader,
-        BuildAccordionVisualOpts = BuildAccordionVisualOpts,
+        BuildCollapsibleSectionOpts = BuildCollapsibleSectionOpts,
         DrawEmptyState = DrawEmptyState,
         CreateEmptyStateCard = CreateEmptyStateCard,
         HideEmptyStateCard = HideEmptyStateCard,
@@ -3106,8 +2925,6 @@ end
 local function PvEUI_DrawPvEProgressBody(self, parent, L)
     parent._pvePaintedCoreH = nil
     local width = parent:GetWidth() - 20
-    -- Weekly Vault Tracker mode removed from PvE tab; standalone Easy Access window covers this.
-    local vaultTrackerMode = false
 
     local fixedHeader = L.WarbandNexus.UI.mainFrame and L.WarbandNexus.UI.mainFrame.fixedHeader
     local headerParent = fixedHeader or parent
@@ -3125,6 +2942,16 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     
     -- Hide empty state card (will be shown again if needed)
     L.HideEmptyStateCard(parent, "pve")
+    -- Prior build used _wnPveTabContentHost; discard any orphan so scrollChild teardown stays one-level.
+    local stalePveHost = parent._wnPveTabContentHost
+    if stalePveHost then
+        parent._wnPveTabContentHost = nil
+        local rb = ns.UI_RecycleBin
+        if rb and stalePveHost.SetParent then
+            stalePveHost:Hide()
+            stalePveHost:SetParent(rb)
+        end
+    end
     
     -- ===== AUTO-REFRESH CHECK (FULLY AUTOMATIC) =====
     local charKey = (L.ns.Utilities.GetCharacterStorageKey and L.ns.Utilities:GetCharacterStorageKey(L.WarbandNexus))
@@ -3161,31 +2988,32 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         local timeSinceLastAttempt = time() - (L.ns.PvELoadingState.lastAttempt or 0)
         if timeSinceLastAttempt > 10 then
             L.ns.PvELoadingState.lastAttempt = time()
-            -- Poke server for fresh vault data before collecting
-            if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then
-                C_WeeklyRewards.OnUIInteract()
-            end
-            if self.UpdatePvEData then
-                self:UpdatePvEData()
-            end
-            -- Schedule a follow-up refresh after server responds (vault iLvl needs time)
-            C_Timer.After(3, function()
-                if self.UpdatePvEData then
-                    self:UpdatePvEData()
+            -- Never run UpdatePvEData synchronously inside PopulateContent: heavy API + DB work
+            -- caused multi-second frame spikes; pool teardown on tab switch then compounded the hitch.
+            local deferAddon = self
+            C_Timer.After(0, function()
+                if not deferAddon or not deferAddon.UpdatePvEData then return end
+                local mf = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
+                if not mf or not mf:IsShown() or mf.currentTab ~= "pve" then return end
+                if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then
+                    C_WeeklyRewards.OnUIInteract()
                 end
+                deferAddon:UpdatePvEData()
+            end)
+            C_Timer.After(3, function()
+                if not deferAddon or not deferAddon.UpdatePvEData then return end
+                local mf = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
+                if not mf or not mf:IsShown() or mf.currentTab ~= "pve" then return end
+                deferAddon:UpdatePvEData()
             end)
         end
     end
     
-    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for timer/sort/WVT =====
+    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for timer/sort/columns =====
     local r, g, b = L.COLORS.accent[1], L.COLORS.accent[2], L.COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local titleTextContent = "|cff" .. hexColor .. ((L.ns.L and L.ns.L["PVE_TITLE"]) or "PvE Progress") .. "|r"
     local subtitleTextContent = (L.ns.L and L.ns.L["PVE_SUBTITLE"]) or "Great Vault, Raid Lockouts & Mythic+ across your Warband"
-    if vaultTrackerMode then
-        subtitleTextContent = (L.ns.L and L.ns.L["PVE_VAULT_TRACKER_SUBTITLE"]) or
-            "Unclaimed rewards and cleared vault rows"
-    end
     -- Room for weekly reset + sort/section filter + column picker (approximate, avoids overlap)
     local PVE_TITLE_RIGHT_RESERVE = 620
     local titleCard = select(1, L.ns.UI_CreateStandardTabTitleCard(headerParent, {
@@ -3259,7 +3087,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         sortAnchor = sortBtn
     end
 
-    -- Column visibility (Vault Tracker parity: vaultButton.columns + PvE crest/shard/key toggles)
+    -- Column visibility (vault columns + PvE crest/shard/key toggles)
     sortAnchor = L.PvE_AttachInlineColumnPicker(titleCard, sortAnchor, self)
 
     titleCard:Show()
@@ -3479,15 +3307,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         parent.sortAscending = self.db.profile.pveSort.ascending
         parent.sortPrefsLoaded = true
     end
-    
-    local sortOptions = {
-        {key = "manual", label = (L.ns.L and L.ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
-        {key = "name", label = (L.ns.L and L.ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
-        {key = "level", label = (L.ns.L and L.ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
-        {key = "ilvl", label = (L.ns.L and L.ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
-        {key = "gold", label = (L.ns.L and L.ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
-        {key = "realm", label = (L.ns.L and L.ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
-    }
     
     if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
     if profile then
@@ -3710,86 +3529,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local rosterChanged = (L._pveDrawPool.rosterSig ~= rosterSig)
     L.PvESyncPvEPools(rosterSig, colSig, currentKeySet, visiblePveColumnKeys)
 
-    if vaultTrackerMode then
-        --- Slots meeting vault threshold (Raid / M+ / World / PvP tracks), same rules as inline grid.
-        local function CountVaultSlotsUnlocked(vaultActs)
-            if not vaultActs then return 0 end
-            local unlocked = 0
-            local function countTrack(activityList)
-                if not activityList then return end
-                for idx = 1, #activityList do
-                    local act = activityList[idx]
-                    if act and act.threshold and act.threshold > 0 and act.progress and act.progress >= act.threshold then
-                        unlocked = unlocked + 1
-                    end
-                end
-            end
-            countTrack(vaultActs.raids)
-            countTrack(vaultActs.mythicPlus)
-            countTrack(vaultActs.world)
-            countTrack(vaultActs.pvp)
-            return unlocked
-        end
-
-        local function ResolveVaultClaimable(charKey, charPveData)
-            local hasClaimable = charPveData.vaultRewards and charPveData.vaultRewards.hasAvailableRewards == true
-            if (not hasClaimable) and charKey == currentPlayerKey and self.HasUnclaimedVaultRewards then
-                local ok, liveHasRewards = pcall(self.HasUnclaimedVaultRewards, self)
-                hasClaimable = ok and liveHasRewards == true
-            end
-            return hasClaimable
-        end
-
-        --- True when PvE cache has at least one Great Vault activity row (Raid / M+ / World / PvP).
-        local function HasVaultActivitySnapshot(vaultActs)
-            if not vaultActs then return false end
-            local keys = { "raids", "mythicPlus", "world", "pvp" }
-            for ki = 1, #keys do
-                local list = vaultActs[keys[ki]]
-                if list and #list > 0 then
-                    return true
-                end
-            end
-            return false
-        end
-
-        --- WVT: only toons with vault data (cached activity rows, unlocked vault slots, or rewards to claim).
-        local function IncludeInVaultTracker(charKey, charPveData)
-            if ResolveVaultClaimable(charKey, charPveData) then
-                return true
-            end
-            local vaultActs = charPveData.vaultActivities
-            if HasVaultActivitySnapshot(vaultActs) then
-                return true
-            end
-            if CountVaultSlotsUnlocked(vaultActs) >= 1 then
-                return true
-            end
-            return false
-        end
-
-        local claimFirst = {}
-        local rest = {}
-        for i = 1, #characters do
-            local char = characters[i]
-            local charKey = GetRowCanonicalPvEKey(char)
-            if charKey then
-                local charPveData = self:GetPvEData(charKey) or {}
-                if IncludeInVaultTracker(charKey, charPveData) then
-                    if ResolveVaultClaimable(charKey, charPveData) then
-                        claimFirst[#claimFirst + 1] = char
-                    else
-                        rest[#rest + 1] = char
-                    end
-                end
-            end
-        end
-        characters = {}
-        for j = 1, #claimFirst do characters[#characters + 1] = claimFirst[j] end
-        for j = 1, #rest do characters[#characters + 1] = rest[j] end
-    end
-
-    -- ===== LOADING / ERROR / EMPTY (before column strip — vault tracker uses alternate layout) =====
+    -- ===== LOADING / ERROR / EMPTY (before column strip) =====
     if L.ns.PvELoadingState and L.ns.PvELoadingState.isLoading then
         local UI_CreateLoadingStateCard = L.ns.UI_CreateLoadingStateCard
         if UI_CreateLoadingStateCard then
@@ -3811,13 +3551,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     end
 
     if #characters == 0 then
-        local emptyTab = vaultTrackerMode and "pve_vault" or "pve"
-        local _, height = L.CreateEmptyStateCard(parent, emptyTab, yOffset)
+        local _, height = L.CreateEmptyStateCard(parent, "pve", yOffset)
         return yOffset + height
-    end
-
-    if vaultTrackerMode then
-        return self:DrawPvEVaultTrackerCardGrid(parent, yOffset, characters, currentPlayerKey)
     end
     
     -- ===== NAME WIDTH (measured from longest name; no compression — scroll handles overflow) =====
@@ -4117,7 +3852,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         local body = secBodies[secKey]
         if not body then return end
         local h = body._pveRunningH or 0.1
-        body._wnAccordionFullH = h
+        body._wnSectionFullH = h
         if not profile.ui then profile.ui = {} end
         local expanded = true
         if secKey == "pve_fav" then
@@ -4164,7 +3899,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             end
         end
 
-        -- All PvE character rows live under the accordion section body (never directly under scrollChild).
+        -- All PvE character rows live under the collapsible section body (never directly under scrollChild).
         local rowHost
         if sk == "pve_fav" then
             if not secBodies[sk] then
@@ -4264,17 +3999,16 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         local charDetailContent
         local buildPvEDetailIfNeeded
 
-        local accVisual = L.BuildAccordionVisualOpts({
+        local accVisual = L.BuildCollapsibleSectionOpts({
                 bodyGetter = function() return charDetailContent end,
-                -- Runs before SharedWidgets reads _wnAccordionFullH for AnimateAccordion target (expand path).
+                -- Runs before SharedWidgets reads _wnSectionFullH for expand target height.
                 persistFn = function(exp)
                     L.expandedStates[charExpandKey] = exp
                     if exp and charDetailContent and buildPvEDetailIfNeeded then
                         buildPvEDetailIfNeeded()
                     end
                 end,
-                -- Do not drive `scrollParent:SetHeight` from tweens (that inflated the whole tab).
-                -- Do live-adjust section body + scroll child while this row's detail height tweens so
+                -- Do live-adjust section body + scroll child while detail height changes so
                 -- siblings reflow and the scroll range matches content (PopulateContent only runs on full refresh).
                 onUpdate = function(drawH)
                     if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
@@ -4288,7 +4022,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     local sc = scrollFrameRef and scrollFrameRef.GetScrollChild and scrollFrameRef:GetScrollChild()
                     if charDetailContent and rowHost and baseD and baseS and sc and sc._pvePaintedCoreH then
                         local secH = baseS + dh - baseD
-                        rowHost._wnAccordionFullH = secH
+                        rowHost._wnSectionFullH = secH
                         rowHost:SetHeight(math.max(0.1, secH))
                         local pad = 8
                         local viewportH = (scrollFrameRef.GetHeight and scrollFrameRef:GetHeight()) or 0
@@ -4306,7 +4040,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                         charDetailContent._pvePaintedDetailH = math.max(0.1, charDetailContent:GetHeight() or 0.1)
                     end
                     if rowHost then
-                        rowHost._pvePaintedSectionH = math.max(0.1, rowHost:GetHeight() or rowHost._wnAccordionFullH or 0.1)
+                        rowHost._pvePaintedSectionH = math.max(0.1, rowHost:GetHeight() or rowHost._wnSectionFullH or 0.1)
                     end
                     local sc = scrollFrameRef and scrollFrameRef.GetScrollChild and scrollFrameRef:GetScrollChild()
                     if sc and scrollFrameRef and scrollFrameRef.GetHeight then
@@ -4318,8 +4052,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             }) or {}
         accVisual.suppressSectionChrome = true
         accVisual.sectionHeaderHeight = 46
-        -- Expand: run onToggle after height tween so row height is not snapped to full before AnimateAccordion
-        -- resets to startH (avoids sibling rows jumping one frame then easing).
         accVisual.deferOnToggleUntilComplete = true
 
         local charHeader, expandIconTex = L.CreateCollapsibleHeader(
@@ -4331,7 +4063,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 if isExpanded then
                     if charDetailContent then
                         charDetailContent:Show()
-                        charDetailContent:SetHeight(math.max(0.1, charDetailContent._wnAccordionFullH or 0.1))
+                        charDetailContent:SetHeight(math.max(0.1, charDetailContent._wnSectionFullH or 0.1))
                     end
                 elseif charDetailContent then
                     charDetailContent:Hide()
@@ -4806,7 +4538,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
         if charExpanded then
             buildPvEDetailIfNeeded()
-            local dh = charDetailContent._wnAccordionFullH or 200
+            local dh = charDetailContent._wnSectionFullH or 200
             charDetailContent:SetHeight(dh)
             charDetailContent:Show()
             charDetailContent._pvePaintedDetailH = dh
@@ -4823,7 +4555,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             local inc
             if charExpanded then
                 -- interRowGap: same-section next row only (matches SetPoint gap); not afterElement (that duplicated the anchor gap).
-                inc = PVE_CHAR_ROW_HEADER_H + (charDetailContent._wnAccordionFullH or 200) + interRowGap
+                inc = PVE_CHAR_ROW_HEADER_H + (charDetailContent._wnSectionFullH or 200) + interRowGap
             else
                 inc = PVE_CHAR_ROW_HEADER_H + 0.1 + interRowGap
             end

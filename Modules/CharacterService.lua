@@ -74,6 +74,18 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     entry.isTracked = isTracked
     entry.lastSeen = time()
     entry.trackingConfirmed = true  -- User made a choice, don't ask again
+
+    -- Player GUID: capture only when user opts into tracking (avoid UnitGUID on every minimal save / tab draw).
+    if isTracked then
+        if ns.Utilities and ns.Utilities.SafeGuid then
+            local g = ns.Utilities:SafeGuid("player")
+            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+                entry.guid = g
+            end
+        end
+    else
+        entry.guid = nil
+    end
     
     -- HYBRID: Broadcast event for modules to react (event-driven component)
     addon:SendMessage(E.CHARACTER_TRACKING_CHANGED, {
@@ -98,10 +110,16 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         
         -- CRITICAL: Reset characterSaved flag (in case of DB wipe without reload)
         addon.characterSaved = false
+
+        -- Ensure combat-safety frame exists before any SafeInit (tracking dialog can confirm before init drain).
+        local InitSvc = ns.InitializationService
+        if InitSvc and InitSvc.SetupCombatSafety then
+            InitSvc:SetupCombatSafety()
+        end
+        local SafeInit = InitSvc and InitSvc.SafeInit
         
         -- STEP 1: Register event listeners + character cache (skipped during init)
         -- Wrapped in SafeInit: user may confirm tracking while in combat
-        local SafeInit = ns.InitializationService and ns.InitializationService.SafeInit
         C_Timer.After(0.05, function()
             local function doStep1()
                 local addonInstance = _G.WarbandNexus or addon
@@ -138,68 +156,86 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         
         -- STEP 2: Initial character data save (basic info)
         C_Timer.After(0.1, function()
-            local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance.SaveCharacter then
-                addonInstance:SaveCharacter()
+            local function step2()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance and addonInstance.SaveCharacter then
+                    addonInstance:SaveCharacter()
+                end
             end
+            if SafeInit then SafeInit(step2, "PostConfirm:SaveCharacterInitial") else step2() end
         end)
         
         -- STEP 3: Trigger items scan (fixes ItemsUI empty on first tracking)
         C_Timer.After(0.2, function()
-            local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance.ScanInventoryBags then
-                local cKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
-                    and ns.CharacterService:ResolveCharactersTableKey(addonInstance)
-                if not cKey and ns.Utilities.GetCharacterStorageKey then
-                    cKey = ns.Utilities:GetCharacterStorageKey(addonInstance)
-                end
-                if not cKey then
-                    cKey = ns.Utilities:GetCharacterKey()
-                end
-                addonInstance:ScanInventoryBags(cKey)
-                if ns.ItemsLoadingState then
-                    ns.ItemsLoadingState.isLoading = false
-                    ns.ItemsLoadingState.scanProgress = 100
-                    ns.ItemsLoadingState.currentStage = nil
+            local function step3()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance and addonInstance.ScanInventoryBags then
+                    local cKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+                        and ns.CharacterService:ResolveCharactersTableKey(addonInstance)
+                    if not cKey and ns.Utilities.GetCharacterStorageKey then
+                        cKey = ns.Utilities:GetCharacterStorageKey(addonInstance)
+                    end
+                    if not cKey then
+                        cKey = ns.Utilities:GetCharacterKey()
+                    end
+                    addonInstance:ScanInventoryBags(cKey)
+                    if ns.ItemsLoadingState then
+                        ns.ItemsLoadingState.isLoading = false
+                        ns.ItemsLoadingState.scanProgress = 100
+                        ns.ItemsLoadingState.currentStage = nil
+                    end
                 end
             end
+            if SafeInit then SafeInit(step3, "PostConfirm:ScanInventoryBags") else step3() end
         end)
         
         -- STEP 4: Trigger reputation scan
         C_Timer.After(1, function()
-            local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance.ScanReputations then
-                addonInstance:ScanReputations()
+            local function step4()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance and addonInstance.ScanReputations then
+                    addonInstance:ScanReputations()
+                end
+                -- LT:Complete("reputations") called by PerformFullScan when done
             end
-            -- LT:Complete("reputations") called by PerformFullScan when done
+            if SafeInit then SafeInit(step4, "PostConfirm:ScanReputations") else step4() end
         end)
         
         -- STEP 5: Trigger currency scan
         C_Timer.After(1.5, function()
-            if ns.CurrencyCache and ns.CurrencyCache.PerformFullScan then
-                ns.CurrencyCache:PerformFullScan(true)
+            local function step5()
+                if ns.CurrencyCache and ns.CurrencyCache.PerformFullScan then
+                    ns.CurrencyCache:PerformFullScan(true)
+                end
             end
+            if SafeInit then SafeInit(step5, "PostConfirm:CurrencyPerformFullScan") else step5() end
         end)
         
         -- STEP 6: Force item level update
         C_Timer.After(1.2, function()
-            local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance.UpdateCharacterCache then
-                addonInstance:UpdateCharacterCache("itemLevel")
+            local function step6()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance and addonInstance.UpdateCharacterCache then
+                    addonInstance:UpdateCharacterCache("itemLevel")
+                end
             end
+            if SafeInit then SafeInit(step6, "PostConfirm:UpdateCharacterCacheIlvl") else step6() end
         end)
         
         -- STEP 7: Re-save character data (ensures all data is fresh)
         C_Timer.After(1.8, function()
-            local addonInstance = _G.WarbandNexus or addon
-            if addonInstance then
-                addonInstance.characterSaved = false
-                if addonInstance.SaveCharacter then
-                    addonInstance:SaveCharacter()
+            local function step7()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance then
+                    addonInstance.characterSaved = false
+                    if addonInstance.SaveCharacter then
+                        addonInstance:SaveCharacter()
+                    end
                 end
+                local LT = ns.LoadingTracker
+                if LT then LT:Complete("character") end
             end
-            local LT = ns.LoadingTracker
-            if LT then LT:Complete("character") end
+            if SafeInit then SafeInit(step7, "PostConfirm:SaveCharacterFinal") else step7() end
         end)
         
         -- STEP 8: Notify UI to refresh (event-driven; UI listens for WN_CHARACTER_UPDATED)
@@ -218,76 +254,91 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         -- Core.lua timers (T+4-5s from login) may have already fired before user confirmed.
         -- These functions are safe to call multiple times (idempotent overwrites).
         C_Timer.After(3, function()
-            local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance._coreStartupPhasesPending then
-                return
-            end
-            if addonInstance then
-                if addonInstance.CollectConcentrationOnLogin then
-                    addonInstance:CollectConcentrationOnLogin()
+            local function step9()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance and addonInstance._coreStartupPhasesPending then
+                    return
                 end
-                if addonInstance.CollectEquipmentOnLogin then
-                    addonInstance:CollectEquipmentOnLogin()
+                if addonInstance then
+                    if addonInstance.CollectConcentrationOnLogin then
+                        addonInstance:CollectConcentrationOnLogin()
+                    end
+                    if addonInstance.CollectEquipmentOnLogin then
+                        addonInstance:CollectEquipmentOnLogin()
+                    end
                 end
             end
+            if SafeInit then SafeInit(step9, "PostConfirm:ProfessionsCollectLogin") else step9() end
         end)
         C_Timer.After(4, function()
-            local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance._coreStartupPhasesPending then
-                return
+            local function step9b()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance and addonInstance._coreStartupPhasesPending then
+                    return
+                end
+                if addonInstance and addonInstance.CollectExpansionProfessionsOnLogin then
+                    addonInstance:CollectExpansionProfessionsOnLogin()
+                end
+                local LT = ns.LoadingTracker
+                if LT then LT:Complete("professions") end
             end
-            if addonInstance and addonInstance.CollectExpansionProfessionsOnLogin then
-                addonInstance:CollectExpansionProfessionsOnLogin()
-            end
-            local LT = ns.LoadingTracker
-            if LT then LT:Complete("professions") end
+            if SafeInit then SafeInit(step9b, "PostConfirm:ProfessionsExpansion") else step9b() end
         end)
         
         -- STEP 10: PvE data + Knowledge collection
         C_Timer.After(4.5, function()
-            local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance._coreStartupPhasesPending then
-                return
-            end
-            if addonInstance then
-                if addonInstance.db and addonInstance.db.profile
-                    and addonInstance.db.profile.modulesEnabled
-                    and addonInstance.db.profile.modulesEnabled.pve then
-                    if addonInstance.UpdatePvEData then
-                        addonInstance:UpdatePvEData()
+            local function step10()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance and addonInstance._coreStartupPhasesPending then
+                    return
+                end
+                if addonInstance then
+                    if addonInstance.db and addonInstance.db.profile
+                        and addonInstance.db.profile.modulesEnabled
+                        and addonInstance.db.profile.modulesEnabled.pve then
+                        if addonInstance.UpdatePvEData then
+                            addonInstance:UpdatePvEData()
+                        end
+                    end
+                    if addonInstance.CollectKnowledgeOnLogin then
+                        addonInstance:CollectKnowledgeOnLogin()
                     end
                 end
-                if addonInstance.CollectKnowledgeOnLogin then
-                    addonInstance:CollectKnowledgeOnLogin()
-                end
+                local LT = ns.LoadingTracker
+                if LT then LT:Complete("pve") end
             end
-            local LT = ns.LoadingTracker
-            if LT then LT:Complete("pve") end
+            if SafeInit then SafeInit(step10, "PostConfirm:PvEAndKnowledge") else step10() end
         end)
         
         -- STEP 11: Played time + profession recharge timer
         -- These were gated on tracking in Core.lua/EventManager.lua
         C_Timer.After(2, function()
-            local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance._coreStartupPhasesPending then
-                return
+            local function step11()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance and addonInstance._coreStartupPhasesPending then
+                    return
+                end
+                if addonInstance and addonInstance.db and addonInstance.db.profile
+                    and addonInstance.db.profile.requestPlayedTimeOnLogin ~= false
+                    and addonInstance.RequestPlayedTime then
+                    addonInstance:RequestPlayedTime()
+                end
+                if addonInstance and addonInstance.StartRechargeTimer then
+                    addonInstance:StartRechargeTimer()
+                end
             end
-            if addonInstance and addonInstance.db and addonInstance.db.profile
-                and addonInstance.db.profile.requestPlayedTimeOnLogin ~= false
-                and addonInstance.RequestPlayedTime then
-                addonInstance:RequestPlayedTime()
-            end
-            if addonInstance and addonInstance.StartRechargeTimer then
-                addonInstance:StartRechargeTimer()
-            end
+            if SafeInit then SafeInit(step11, "PostConfirm:PlayedTimeRecharge") else step11() end
         end)
         
         -- STEP 12: What's New notification
         C_Timer.After(0.5, function()
-            local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance.CheckNotificationsOnLogin then
-                addonInstance:CheckNotificationsOnLogin()
+            local function step12()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance and addonInstance.CheckNotificationsOnLogin then
+                    addonInstance:CheckNotificationsOnLogin()
+                end
             end
+            if SafeInit then SafeInit(step12, "PostConfirm:WhatsNew") else step12() end
         end)
     else
         addon:Print("|cffff8800" .. ((ns.L and ns.L["TRACKING_DISABLED_CHAT"]) or "Character tracking disabled. Running in read-only mode.") .. "|r")

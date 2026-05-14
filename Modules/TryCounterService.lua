@@ -2657,6 +2657,12 @@ function Fns.ScanLootForItems(expectedDrops, cachedNumLoot, cachedSlotData)
         if cachedSlotData and cachedSlotData[i] then
             hasItem = cachedSlotData[i].hasItem
             link = cachedSlotData[i].link
+            -- Instance loot: links often resolve a frame after LOOT_OPENED; cached snapshot can be nil
+            -- while the item is visible — refresh from live API so we don't double-count misses vs ENCOUNTER_END.
+            if hasItem and (not link or type(link) ~= "string") and GetLootSlotLink then
+                link = GetLootSlotLink(i)
+                if link and issecretvalue and issecretvalue(link) then link = nil end
+            end
         else
             hasItem = LootSlotHasItem and LootSlotHasItem(i)
             link = GetLootSlotLink and GetLootSlotLink(i)
@@ -3848,18 +3854,16 @@ local function TryCounterAnnounceCollectibleMountsOnInstanceEntry(WN)
     EJ_SelectInstance(jid)
     local effDiff = Fns.ResolveEffectiveEncounterDifficultyID(true, nil)
     local idx = 1
-    -- hasAnyMount: any Try Counter mount row in this instance (TryCounterShowInstanceDrops lists these with red/green).
-    -- hasTrackableOnDiff: at least one row that counts on *current* difficulty (uncollected or repeatable) — for the short hint only.
+    local EJ_ENCOUNTER_INDEX_CAP = 500
+    -- Midnight: encName and/or dungeonEncID may be secret in some contexts — never spin forever (see issecretvalue break).
     local hasAnyMount = false
     local hasTrackableOnDiff = false
-    while true do
+    while idx <= EJ_ENCOUNTER_INDEX_CAP do
         local encName, dungeonEncID = Fns.TryCounterResolveDungeonEncounterFromEJIndex(idx, jid)
-        local isSecret = issecretvalue and encName and issecretvalue(encName)
-        if not isSecret and not encName then break end
-        if not isSecret and dungeonEncID then
-            isSecret = issecretvalue and issecretvalue(dungeonEncID)
-        end
-        if not isSecret and dungeonEncID then
+        if encName == nil then break end
+        if issecretvalue and issecretvalue(encName) then break end
+        local dexSecret = dungeonEncID and issecretvalue and issecretvalue(dungeonEncID)
+        if not dexSecret and dungeonEncID then
             local npcIDs = encounterDB[dungeonEncID]
             if npcIDs then
                 for ni = 1, #npcIDs do
@@ -3932,6 +3936,8 @@ function Fns.TryCounterResolveDungeonEncounterFromEJIndex(encIndex, journalInsta
     if okEJ and a then
         encName, _, journalEncID, _, _, _, dungeonEncID = a, b, c, d, e, f, g
     end
+    if issecretvalue and journalEncID and issecretvalue(journalEncID) then journalEncID = nil end
+    if issecretvalue and dungeonEncID and issecretvalue(dungeonEncID) then dungeonEncID = nil end
     -- Fallback only when ByIndex omitted dungeonEncounterID; pcall must use 6×_ so dex = 7th return (not journalInstanceID).
     if (not dungeonEncID or type(dungeonEncID) ~= "number" or dungeonEncID <= 0)
         and EJ_GetEncounterInfo and journalEncID and type(journalEncID) == "number" and journalEncID > 0 then
@@ -4186,15 +4192,14 @@ function WarbandNexus:TryCounterDebugInstanceProbe()
         Fns.TryCounterLootDebug(WN, "flow", hdrFmt, tostring(effLabel or "?"))
 
         local idx = 1
+        local EJ_ENCOUNTER_INDEX_CAP = 500
         local hadDbBoss = false
-        while true do
+        while idx <= EJ_ENCOUNTER_INDEX_CAP do
             local encName, dungeonEncID = Fns.TryCounterResolveDungeonEncounterFromEJIndex(idx, jid)
-            local isSecret = issecretvalue and encName and issecretvalue(encName)
-            if not isSecret and not encName then break end
-            if not isSecret and dungeonEncID then
-                isSecret = issecretvalue and issecretvalue(dungeonEncID)
-            end
-            if not isSecret and dungeonEncID then
+            if encName == nil then break end
+            if issecretvalue and issecretvalue(encName) then break end
+            local dexSecret = dungeonEncID and issecretvalue and issecretvalue(dungeonEncID)
+            if not dexSecret and dungeonEncID then
                 local npcIDs = encounterDB[dungeonEncID]
                 if npcIDs then
                     hadDbBoss = true
@@ -4248,16 +4253,13 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
     -- Iterate all encounters in this instance and cross-reference with our encounterDB
         local dropsToShow = {} -- { { bossName, drops = { {type, itemID, name}, ... } }, ... }
         local idx = 1
-        while true do
+        local EJ_ENCOUNTER_INDEX_CAP = 500
+        while idx <= EJ_ENCOUNTER_INDEX_CAP do
             local encName, dungeonEncID = Fns.TryCounterResolveDungeonEncounterFromEJIndex(idx, journalInstanceID)
-            -- Guard: issecretvalue check MUST run before `not encName` to avoid
-            -- ADDON_ACTION_FORBIDDEN when comparing a secret value with nil.
-            local isSecret = issecretvalue and encName and issecretvalue(encName)
-            if not isSecret and not encName then break end
-            if not isSecret and dungeonEncID then
-                isSecret = issecretvalue and issecretvalue(dungeonEncID)
-            end
-            if not isSecret then
+            if encName == nil then break end
+            if issecretvalue and issecretvalue(encName) then break end
+            local dexSecret = dungeonEncID and issecretvalue and issecretvalue(dungeonEncID)
+            if not dexSecret then
                 -- Our encounterDB is keyed by DungeonEncounterID (from ENCOUNTER_END event)
                 local npcIDs = dungeonEncID and encounterDB[dungeonEncID]
                 if npcIDs then
@@ -4786,6 +4788,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
         if issecretvalue(message) then return end
         if author and issecretvalue(author) then return end
     end
+    if type(message) ~= "string" then return end
 
     -- Only process self-loot
     local playerName = UnitName("player")
@@ -6064,8 +6067,15 @@ function Fns.LootSlotsHaveReadableItemLink(slotData, numLoot)
     if not numLoot or numLoot < 1 or not slotData then return false end
     for i = 1, numLoot do
         local sd = slotData[i]
-        if sd and sd.hasItem and sd.link and type(sd.link) == "string" and not (issecretvalue and issecretvalue(sd.link)) then
-            return true
+        if sd and sd.hasItem then
+            local link = sd.link
+            if (not link or type(link) ~= "string") and GetLootSlotLink then
+                link = GetLootSlotLink(i)
+                if link and issecretvalue and issecretvalue(link) then link = nil end
+            end
+            if link and type(link) == "string" and not (issecretvalue and issecretvalue(link)) then
+                return true
+            end
         end
     end
     return false
@@ -6620,8 +6630,13 @@ function WarbandNexus:ProcessNPCLoot()
     -- Stat-backed drops bypass this filter: ReseedStatisticsForDrops is idempotent (max(stat,
     -- current)) and re-running it can only catch up to a later GetStatistic value, never inflate.
     local tryCountSourceKey = Fns.BuildTryCountSourceKey(matchedEncounterID, matchedNpcID, lastMatchedObjectID, dedupGUID)
+    local encounterDedupTtl = 15
+    if tryCountSourceKey and type(tryCountSourceKey) == "string" and tryCountSourceKey:match("^encounter_")
+        and lastTryCountSourceKey == tryCountSourceKey then
+        encounterDedupTtl = ENCOUNTER_OBJECT_TTL
+    end
     if #dropsToIncrement > 0 and tryCountSourceKey
-        and lastTryCountSourceKey == tryCountSourceKey and (now - lastTryCountSourceTime) < 15 then
+        and lastTryCountSourceKey == tryCountSourceKey and (now - lastTryCountSourceTime) < encounterDedupTtl then
         local statBackedOnly = {}
         local statIds = drops and drops.statisticIds
         for i = 1, #dropsToIncrement do

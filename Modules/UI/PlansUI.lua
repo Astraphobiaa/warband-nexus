@@ -62,7 +62,7 @@ local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local CreateExpandableRow = ns.UI_CreateExpandableRow
 local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
 local CardLayoutManager = ns.UI_CardLayoutManager
-local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
+local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
 
 -- Loading state for collection scanning (per-category)
 ns.PlansLoadingState = ns.PlansLoadingState or {
@@ -108,20 +108,18 @@ local function EnsurePlansAchievementExpandCache(achievementID)
         return entry
     end
 
-    if achDesc and achDesc ~= "" then
-        if not (issecretvalue and issecretvalue(achDesc)) then
-            entry.information = "|cff99ccff" .. achDesc .. "|r"
-        end
+    if achDesc and not (issecretvalue and issecretvalue(achDesc)) and achDesc ~= "" then
+        entry.information = "|cff99ccff" .. achDesc .. "|r"
     end
 
     local ptsNum = nil
-    if pointsRaw ~= nil and not (issecretvalue and issecretvalue(pointsRaw)) then
+    if not (issecretvalue and issecretvalue(pointsRaw)) then
         ptsNum = tonumber(pointsRaw)
     end
     entry.points = ptsNum or 0
 
     local numCriteria = (GetAchievementNumCriteria and GetAchievementNumCriteria(achievementID)) or 0
-    if numCriteria ~= nil and issecretvalue and issecretvalue(numCriteria) then
+    if issecretvalue and issecretvalue(numCriteria) then
         numCriteria = 0
     end
     numCriteria = tonumber(numCriteria) or 0
@@ -132,12 +130,12 @@ local function EnsurePlansAchievementExpandCache(achievementID)
         local items = {}
         for cidx = 1, numCriteria do
             local cName, _, cDone, qty, reqQty = GetAchievementCriteriaInfo(achievementID, cidx)
-            if cName and cName ~= "" and not (issecretvalue and issecretvalue(cName)) then
+            if cName and not (issecretvalue and issecretvalue(cName)) and cName ~= "" then
                 if cDone then completed = completed + 1 end
                 local progress = ""
-                if qty and reqQty and not (issecretvalue and issecretvalue(qty)) and not (issecretvalue and issecretvalue(reqQty)) then
+                if not (issecretvalue and issecretvalue(qty)) and not (issecretvalue and issecretvalue(reqQty)) then
                     local rq = tonumber(reqQty)
-                    if rq and rq > 1 then
+                    if rq and rq > 1 and qty then
                         progress = format(" (%s / %s)", FormatNumber(qty), FormatNumber(reqQty))
                     end
                 end
@@ -914,12 +912,13 @@ function WarbandNexus:DrawPlansTab(parent)
         end)
         searchInput:SetScript("OnTextChanged", function(self, userInput)
             if not userInput then return end  -- Ignore programmatic SetText calls
-            local text = self:GetText() or ""
-            if text and issecretvalue and issecretvalue(text) then
+            local text = self:GetText()
+            if issecretvalue and issecretvalue(text) then
                 ns._plansActiveSearch = nil
                 if self.Instructions then self.Instructions:Show() end
                 return
             end
+            text = text or ""
             ns._plansActiveSearch = (text ~= "") and text or nil
             -- Show/hide placeholder
             if self.Instructions then
@@ -1170,7 +1169,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     resetBar:Show()
     yOffset = yOffset + resetBarH + 6
 
-    -- ===== PER-CHARACTER DETAIL SECTIONS (accordion: character + categories) =====
+    -- ===== PER-CHARACTER DETAIL SECTIONS (collapsible: character + categories) =====
     local Factory = ns.UI.Factory
     local SECTION_COLLAPSE_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     local sectionSpacing = (GetLayout().SECTION_SPACING) or 8
@@ -1185,7 +1184,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         parent._weeklyScrollFixTimer = nil
     end
 
-    --- Sum stacked rows (stats strip + category wraps) so inner accordion tweens update outer height.
+    --- Sum stacked rows (stats strip + category wraps) so inner section height updates outer height.
     local function ReflowWeeklyProgressCharSectionBody(body)
         if not body or not body._weeklyRowList then return end
         local list = body._weeklyRowList
@@ -1198,7 +1197,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             end
         end
         h = math.max(0.1, h + 6)
-        body._wnAccordionFullH = h
+        body._wnSectionFullH = h
         local wrap = body._weeklyParentWrap
         local hdrH = (wrap and wrap._weeklyHeaderH) or SECTION_COLLAPSE_H
         if body:IsShown() then
@@ -1227,7 +1226,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         end)
     end
 
-    local function WeeklyAccordionToggleNoop() end
+    local function WeeklySectionToggleNoop() end
 
     for pi = 1, #filteredPlans do
         local plan = filteredPlans[pi]
@@ -1274,18 +1273,17 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             charTitlePlain,
             charGroupKey,
             charExpanded,
-            WeeklyAccordionToggleNoop,
+            WeeklySectionToggleNoop,
             nil,
             true,
             0,
             true,
-            BuildAccordionVisualOpts({
+            BuildCollapsibleSectionOpts({
                 wrapFrame = charWrap,
                 bodyGetter = function() return charSectionBody end,
                 headerHeight = SECTION_COLLAPSE_H,
                 hideOnCollapse = true,
                 deferOnToggleUntilComplete = true,
-                accordionClipChildren = false,
                 persistFn = function(exp)
                     expandedGroups[charGroupKey] = exp
                 end,
@@ -1400,18 +1398,17 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                     catTitleHex,
                     groupKey,
                     isExpanded,
-                    WeeklyAccordionToggleNoop,
+                    WeeklySectionToggleNoop,
                     catAtlas,
                     true,
                     0,
                     nil,
-                    BuildAccordionVisualOpts({
+                    BuildCollapsibleSectionOpts({
                         wrapFrame = catWrap,
                         bodyGetter = function() return sectionBody end,
                         headerHeight = SECTION_HDR_H,
                         hideOnCollapse = true,
                         deferOnToggleUntilComplete = true,
-                        accordionClipChildren = false,
                         persistFn = function(exp)
                             expandedGroups[groupKey] = exp
                         end,
@@ -1584,7 +1581,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                 end
 
                 local sectionBodyH = rowY + 4
-                sectionBody._wnAccordionFullH = math.max(0.1, sectionBodyH)
+                sectionBody._wnSectionFullH = math.max(0.1, sectionBodyH)
                 if isExpanded then
                     sectionBody:Show()
                     sectionBody:SetHeight(math.max(0.1, sectionBodyH))
@@ -1615,7 +1612,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         ReflowWeeklyProgressCharSectionBody(charSectionBody)
 
         if charExpanded then
-            local fullH = charSectionBody._wnAccordionFullH or 0.1
+            local fullH = charSectionBody._wnSectionFullH or 0.1
             charSectionBody:SetHeight(math.max(0.1, fullH))
             charWrap:SetHeight(SECTION_COLLAPSE_H + charSectionBody:GetHeight())
         else
@@ -1696,9 +1693,17 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
     local showCompletedNow = ProfileBool(profile, "plansShowCompleted", false)
     local filteredPlans = {}
+    local planCompleteMemo = {}
+    local function memoIsActivePlanComplete(plan)
+        local v = planCompleteMemo[plan]
+        if v ~= nil then return v end
+        v = self:IsActivePlanComplete(plan)
+        planCompleteMemo[plan] = v
+        return v
+    end
     for i = 1, #plans do
         local plan = plans[i]
-        local isComplete = self:IsActivePlanComplete(plan)
+        local isComplete = memoIsActivePlanComplete(plan)
         local include = (showCompletedNow and isComplete) or ((not showCompletedNow) and (not isComplete))
         if include then
             filteredPlans[#filteredPlans + 1] = plan
@@ -1938,7 +1943,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 criteriaShowHeader = criteriaHeader,
                 titleRightInset = titleRightInset,
                 -- Per-frame reflow: keep the rest of the grid breathing with this row's tween.
-                onAccordionResize = function(rowFrame, currentH)
+                onSectionResize = function(rowFrame, currentH)
                     CardLayoutManager:UpdateCardHeight(rowFrame, currentH)
                 end,
                 onExpandPopulate = achievementOnExpandPopulate,
@@ -2092,7 +2097,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
 end
 
 -- ============================================================================
--- ACHIEVEMENTS BROWSE (To-Do ▸ Achievements) — Collections-parity virtual list + accordion (AchievementBrowseVirtualList).
+-- ACHIEVEMENTS BROWSE (To-Do ▸ Achievements) — Collections-parity virtual list + collapsible headers (AchievementBrowseVirtualList).
 -- ============================================================================
 
 local COLLECTED_COLOR_PLANS_ACH = "|cff33e533"
@@ -2559,7 +2564,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
 
     local scrollChildLayout = parent and parent:GetParent()
 
-    -- Same path as search refresh: repool/recycle children so achievement accordion rebuild is clean.
+    -- Same path as search refresh: repool/recycle children so achievement section rebuild is clean.
     if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer and parent then
         SearchResultsRenderer:PrepareContainer(parent)
     elseif parent and parent.GetChildren then

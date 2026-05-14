@@ -119,6 +119,23 @@ local defaults = {
         debugVerbose = false,      -- When true, show cache/scan/tooltip logs; when false, only critical debug
         debugTryCounterLoot = false,  -- Loot flow debug only (no rep/currency cache spam)
         
+        -- Profiler (dev/perf): persisted so /reload keeps measurement + optional dev HUD.
+        -- Defaults keep everything off for production installs.
+        profilerPersist = {
+            measuring = false,
+            liveOutput = false,
+            frameTracking = false,
+            devMode = false,
+            devWindowVisible = false,
+            point = "CENTER",
+            relPoint = "CENTER",
+            x = 0,
+            y = 0,
+            width = 400,
+            height = 260,
+            docked = false,
+        },
+        
         -- Module toggles (disable to stop API calls for that feature)
         modulesEnabled = {
             items = true,        -- Bank items scanning and display
@@ -218,11 +235,12 @@ local defaults = {
         -- Inventory Bag filtering (true = ignored)
         ignoredInventoryBags = {},  -- {[bagID] = true/false}
         
-        -- Storage tab expanded state
+        -- Legacy: Bank > Warband aggregate tree expand state now lives in memory only
+        -- (WarbandNexus._wnStorageTreeExpanded); defaults here are unused but kept for AceDB shape.
         storageExpanded = {
-            warband = true,  -- Warband Bank expanded by default
-            personal = false,  -- Personal collapsed by default
-            categories = {},  -- {["warband_TradeGoods"] = true, ["personal_CharName_TradeGoods"] = false}
+            warband = false,
+            personal = false,
+            categories = {},
         },
         
         -- Character list sorting preferences
@@ -235,7 +253,7 @@ local defaults = {
         characterCustomGroups = {},       -- { { id = "cgh1", name = "Raid" }, ... }
         characterGroupAssignments = {},   -- [charKey] = groupId
         characterGroupExpanded = {},      -- [groupId] = bool expanded
-        characterSectionFilter = {       -- Which accordion sections are visible (nil sectionKey = all)
+        characterSectionFilter = {       -- Which collapsible sections are visible (nil sectionKey = all)
             sectionKey = "all",           -- "all" | "favorites" | "regular" | "untracked" | "group_<id>"
         },
         -- Professions tab: section visibility (separate from Characters so filters do not cross tabs).
@@ -513,6 +531,27 @@ function WarbandNexus:OnTokenMarketPriceUpdated()
     end
 end
 
+--- Bank > Warband aggregate tree (DrawStorageResults): expand/collapse is session-only — not SavedVariables.
+--- Reset on /reload (OnInitialize), profile change, and PLAYER_LOGOUT so the next open starts fully collapsed.
+function WarbandNexus:ResetStorageTreeExpandState()
+    self._wnStorageTreeExpanded = {
+        personal = false,
+        warband = false,
+        categories = {},
+    }
+end
+
+function WarbandNexus:GetStorageTreeExpandState()
+    if not self._wnStorageTreeExpanded then
+        self:ResetStorageTreeExpandState()
+    end
+    local e = self._wnStorageTreeExpanded
+    if not e.categories then
+        e.categories = {}
+    end
+    return e
+end
+
 --[[
     Initialize the addon
     Called when the addon is first loaded
@@ -521,8 +560,13 @@ function WarbandNexus:OnInitialize()
     -- Initialize database with defaults
     self.db = LibStub("AceDB-3.0"):New("WarbandNexusDB", defaults, true)
     
-    -- CRITICAL: Export db to namespace for FontManager and other modules
+    -- CrITICAL: Export db to namespace for FontManager and other modules
     ns.db = self.db
+    
+    -- Restore profiler measurement flags before session decompress so DB path can be timed.
+    if ns.Profiler and ns.Profiler.ApplyPersistedSettings then
+        ns.Profiler:ApplyPersistedSettings(self.db.profile)
+    end
     
     -- Register database callbacks for profile changes
     self.db.RegisterCallback(self, "OnProfileChanged", "OnProfileChanged")
@@ -543,7 +587,15 @@ function WarbandNexus:OnInitialize()
     
     -- Run all database migrations via MigrationService
     if ns.MigrationService then
+        local P = ns.Profiler
+        local mLabel = P and P.SliceLabel and P:SliceLabel(P.CAT and P.CAT.DB or "DB", "MigrationService_RunMigrations")
+        if P and P.enabled and mLabel then
+            P:Start(mLabel)
+        end
         local didReset = ns.MigrationService:RunMigrations(self.db)
+        if P and P.enabled and mLabel then
+            P:Stop(mLabel)
+        end
         if didReset then
             -- Schema was reset. Block ALL further initialization and reload immediately.
             -- This prevents tracking popups, data scans, and stale cache usage.
@@ -774,6 +826,9 @@ function WarbandNexus:OnInitialize()
     
     -- Apply saved keybind (override binding)
     self:ApplyToggleKeybind()
+
+    -- Bank aggregate tree: all section headers collapsed until the user expands (session-only state).
+    self:ResetStorageTreeExpandState()
 end
 
 ---Apply (or clear) the toggle keybind from db.profile.toggleKeybind using override binding.
@@ -907,6 +962,16 @@ function WarbandNexus:OnEnable()
             dialog:Show()
         end)
         return
+    end
+    
+    -- Profiler dev HUD (optional): next frame so layout is stable after /reload.
+    if ns.Profiler and ns.Profiler.RestoreUIAfterAddonEnable then
+        C_Timer.After(0, function()
+            local a = _G.WarbandNexus
+            if a and a.db and ns.Profiler and ns.Profiler.RestoreUIAfterAddonEnable then
+                ns.Profiler:RestoreUIAfterAddonEnable()
+            end
+        end)
     end
     
     -- FontManager is now loaded via .toc (no loadfile needed - it's forbidden in WoW)
@@ -1100,6 +1165,10 @@ end
     Compress and save SessionCache to SavedVariables
 ]]
 function WarbandNexus:OnPlayerLogout()
+    self:ResetStorageTreeExpandState()
+    if ns.Profiler and ns.Profiler.SavePersistToProfile then
+        ns.Profiler:SavePersistToProfile()
+    end
     -- Save runtime-discovered NPC names to cache for next session
     if self._saveNpcNameCache then
         self._saveNpcNameCache()
@@ -1115,8 +1184,20 @@ end
     Refresh settings when profile is changed/copied/reset
 ]]
 function WarbandNexus:OnProfileChanged()
+    self:ResetStorageTreeExpandState()
+    if ns.Profiler and ns.Profiler.ApplyPersistedSettings and self.db and self.db.profile then
+        ns.Profiler:ApplyPersistedSettings(self.db.profile)
+    end
     if self.SendMessage then
         self:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+    end
+    if ns.Profiler and ns.Profiler.RestoreUIAfterAddonEnable then
+        C_Timer.After(0, function()
+            local a = _G.WarbandNexus
+            if a and a.db and ns.Profiler then
+                ns.Profiler:RestoreUIAfterAddonEnable()
+            end
+        end)
     end
 end
 
@@ -1345,12 +1426,14 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
                     if self.RequestPlayedTime then self:RequestPlayedTime() end
                 end
                 local P = ns.Profiler
-                if P then P:Start("CollectConcentration") end
+                local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectConcentration")
+                if P and P.enabled and lab then P:Start(lab) end
                 if self and self.CollectConcentrationOnLogin then self:CollectConcentrationOnLogin() end
-                if P then P:Stop("CollectConcentration") end
-                if P then P:Start("CollectEquipment") end
+                if P and P.enabled and lab then P:Stop(lab) end
+                lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectEquipment")
+                if P and P.enabled and lab then P:Start(lab) end
                 if self and self.CollectEquipmentOnLogin then self:CollectEquipmentOnLogin() end
-                if P then P:Stop("CollectEquipment") end
+                if P and P.enabled and lab then P:Stop(lab) end
             end
         end)
         
@@ -1359,11 +1442,12 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
             if tracked then
                 local P = ns.Profiler
-                if P then P:Start("CollectExpansionProfessions") end
+                local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectExpansionProfessions")
+                if P and P.enabled and lab then P:Start(lab) end
                 if self and self.CollectExpansionProfessionsOnLogin then
                     self:CollectExpansionProfessionsOnLogin()
                 end
-                if P then P:Stop("CollectExpansionProfessions") end
+                if P and P.enabled and lab then P:Stop(lab) end
             end
             local LT = ns.LoadingTracker
             if LT then LT:Complete("professions") end
@@ -1375,9 +1459,10 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             if tracked then
                 if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve then
                     local P = ns.Profiler
-                    if P then P:Start("UpdatePvEData") end
+                    local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "UpdatePvEData")
+                    if P and P.enabled and lab then P:Start(lab) end
                     if self and self.UpdatePvEData then self:UpdatePvEData() end
-                    if P then P:Stop("UpdatePvEData") end
+                    if P and P.enabled and lab then P:Stop(lab) end
                 end
             end
             local LT = ns.LoadingTracker
@@ -1389,9 +1474,10 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
             if tracked then
                 local P = ns.Profiler
-                if P then P:Start("CollectKnowledge") end
+                local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectKnowledge")
+                if P and P.enabled and lab then P:Start(lab) end
                 if self and self.CollectKnowledgeOnLogin then self:CollectKnowledgeOnLogin() end
-                if P then P:Stop("CollectKnowledge") end
+                if P and P.enabled and lab then P:Stop(lab) end
             end
             if self then
                 self._coreStartupPhasesPending = false
@@ -1628,6 +1714,11 @@ function WarbandNexus:AbortTabOperations(tabKey)
         -- Abort CurrencyCacheService operations
         if self.AbortCurrencyOperations then
             self:AbortCurrencyOperations()
+        end
+    elseif tabKey == "professions" then
+        -- Drop professions session caches (recipe maps / C_TradeSkillUI icon resolution) when leaving the tab.
+        if self.AbortProfessionsTabWork then
+            self:AbortProfessionsTabWork()
         end
     end
 end

@@ -109,6 +109,10 @@ L["NO"] = NO or "No"
 
 -- Items Tab
 L["ITEMS_HEADER"] = "Bank Items"
+L["ITEMS_SUBTAB_BAGS"] = "Bags"
+L["ITEMS_SUBTAB_BANK"] = "Bank"
+L["ITEMS_SUBTAB_WARBAND"] = "Warband"
+L["ITEMS_WARBAND_UPDATING"] = "Building Warband list..."
 L["ITEMS_WARBAND_BANK"] = "Warband Bank"
 
 -- Storage Tab
@@ -958,7 +962,7 @@ L["CMD_MINIMAP"] = "Toggle minimap button"
 L["CMD_CHANGELOG"] = "Show changelog"
 L["CMD_DEBUG"] = "Toggle debug mode"
 L["CMD_UIMAP_HERE"] = "Current uiMapID + parent chain (no debug)"
-L["CMD_PROFILER"] = "Performance profiler"
+L["CMD_PROFILER"] = "Performance profiler (on persists after /reload; dev + window for HUD)"
 L["CMD_HELP"] = "Show this list"
 
 L["PLANS_NOT_AVAILABLE"] = "Plans Tracker not available."
@@ -1061,7 +1065,7 @@ L["BANK_IS_ACTIVE"] = "Bank is Active"
 L["NO_ITEMS_MATCH"] = "No items match '%s'"
 L["NO_ITEMS_MATCH_GENERIC"] = "No items match your search"
 L["ITEMS_SCAN_HINT"] = "Items are scanned automatically. Try /reload if nothing appears."
-L["ITEMS_WARBAND_BANK_HINT"] = "Open Warband Bank to scan items (auto-scanned on first visit)"
+L["ITEMS_WARBAND_BANK_HINT"] = "Log in to characters and open banks, bags, or Warband Bank so the account-wide list can populate. Items are cached when you visit."
 
 -- Currency Transfer Steps
 

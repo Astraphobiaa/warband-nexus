@@ -45,9 +45,10 @@ end
 -- Import shared UI components from SharedWidgets
 local COLORS = ns.UI_COLORS
 local CreateCard = ns.UI_CreateCard
-local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
+local ReleasePooledRowsInSubtree = ns.UI_ReleasePooledRowsInSubtree
 local ReleaseCharacterRowsFromSubtree = ns.UI_ReleaseCharacterRowsFromSubtree
 local ReleaseReputationRowsFromSubtree = ns.UI_ReleaseReputationRowsFromSubtree
+local ReleaseCurrencyRowsFromSubtree = ns.UI_ReleaseCurrencyRowsFromSubtree
 local CreateThemedButton = ns.UI_CreateThemedButton
 local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
@@ -67,6 +68,48 @@ local function PackVariadicInto(dest, ...)
         dest[i] = select(i, ...)
     end
     return n
+end
+
+-- Post-combat UI: single PLAYER_REGEN_ENABLED + one next-tick flush. Coalesces PopulateContent defer
+-- and RefreshUI defer (previously two listeners could both call RefreshUI on the same regen edge).
+local postCombatUIFrame = nil
+local postCombatUITimer = nil
+
+local function FlushPostCombatUI()
+    if mainFrame and mainFrame:IsShown() and WarbandNexus.RefreshUI then
+        WarbandNexus:RefreshUI()
+    end
+end
+
+local function ArmPostCombatUIRefresh()
+    if not InCombatLockdown or not InCombatLockdown() then return end
+    if not postCombatUIFrame then
+        postCombatUIFrame = CreateFrame("Frame", nil, UIParent)
+        postCombatUIFrame:Hide()
+        postCombatUIFrame:SetScript("OnEvent", function(self, event)
+            if event ~= "PLAYER_REGEN_ENABLED" then return end
+            self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            self._wnPostCombatRegenArmed = nil
+            if postCombatUITimer and postCombatUITimer.Cancel then
+                postCombatUITimer:Cancel()
+                postCombatUITimer = nil
+            end
+            if C_Timer and C_Timer.NewTimer then
+                postCombatUITimer = C_Timer.NewTimer(0, function()
+                    postCombatUITimer = nil
+                    FlushPostCombatUI()
+                end)
+            elseif C_Timer and C_Timer.After then
+                C_Timer.After(0, FlushPostCombatUI)
+            else
+                FlushPostCombatUI()
+            end
+        end)
+    end
+    if not postCombatUIFrame._wnPostCombatRegenArmed then
+        postCombatUIFrame._wnPostCombatRegenArmed = true
+        postCombatUIFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    end
 end
 
 -- Layout Constants (computed dynamically)
@@ -293,7 +336,7 @@ end
 
 local mainFrame = nil
 -- REMOVED: local currentTab - now using mainFrame.currentTab (fixes tab switching bug)
-local currentItemsSubTab = "personal" -- Default to Personal Items (Bank + Inventory)
+local currentItemsSubTab = "inventory" -- Default: Bags (current character); Warband sub-tab shows account-wide tree (former Storage tab).
 local expandedGroups = {} -- Persisted expand/collapse state for item groups
 
 -- Hidden frame that collects orphaned non-pooled UI elements.
@@ -306,9 +349,23 @@ recycleBin:SetSize(1, 1)
 recycleBin:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -9999, 9999)
 ns.UI_RecycleBin = recycleBin
 
+--- Items / Warband aggregate: sync scrollChild width from scroll viewport before reading content width.
+ns.UI_EnsureMainScrollLayout = function()
+    if mainFrame then
+        UpdateScrollLayout(mainFrame)
+    end
+end
+
 -- Namespace exports for state management (used by sub-modules)
 ns.UI_GetItemsSubTab = function() return currentItemsSubTab end
 ns.UI_SetItemsSubTab = function(val)
+    if val == "storage" then
+        val = "warband"
+    end
+    -- Bank > Warband aggregate uses `storageExpandAllActive` + GetStorageTreeExpandState (not expandedGroups).
+    if val ~= "warband" and WarbandNexus then
+        WarbandNexus.storageExpandAllActive = false
+    end
     currentItemsSubTab = val
     -- No longer syncing BankFrame tabs (read-only mode)
 end
@@ -325,7 +382,7 @@ ns.UI_GetExpandAllActive = function() return WarbandNexus.itemsExpandAllActive e
 --============================================================================
 
 -- Clear all search state on main tab change
-local SEARCH_TAB_IDS = { "items", "gear", "currency", "storage", "reputation", "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement" }
+local SEARCH_TAB_IDS = { "items", "gear", "currency", "reputation", "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement" }
 
 local function ClearAllSearchBoxes()
     local SSM = ns.SearchStateManager
@@ -398,10 +455,34 @@ function WarbandNexus:ShowMainWindow()
     -- Restore last active tab (persisted in DB), default to Characters
     local lastTab = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.lastTab
     mainFrame.currentTab = lastTab or "chars"
+    -- Former main tab "storage" is merged into Items > Warband (account-wide tree).
+    if mainFrame.currentTab == "storage" then
+        mainFrame.currentTab = "items"
+        if WarbandNexus.db.profile then
+            WarbandNexus.db.profile.lastTab = "items"
+        end
+        if ns.UI_SetItemsSubTab then
+            ns.UI_SetItemsSubTab("warband")
+        end
+    end
     mainFrame.isMainTabSwitch = true  -- First open = main tab switch
 
     -- Show before PopulateContent: while hidden, scroll:GetWidth() is often 0 → blank/black To-Do (and other tabs).
     mainFrame:Show()
+    -- One-shot collectible tooltip precache after the user actually opens the UI (avoids background work on login-only sessions).
+    if not ns._wnTooltipPrecacheDone and not ns._wnTooltipPrecachePending then
+        ns._wnTooltipPrecachePending = true
+        C_Timer.After(1.5, function()
+            ns._wnTooltipPrecachePending = nil
+            if ns._wnTooltipPrecacheDone then return end
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            if not mf or not mf:IsShown() then return end
+            ns._wnTooltipPrecacheDone = true
+            if WarbandNexus.Tooltip and WarbandNexus.Tooltip.PreCacheCollectibleItems then
+                WarbandNexus.Tooltip:PreCacheCollectibleItems()
+            end
+        end)
+    end
     self:PopulateContent()
     mainFrame.isMainTabSwitch = false  -- Reset flag
     -- Ensure frame is always anchored TOPLEFT when visible so drag never "teleports"
@@ -457,7 +538,6 @@ end
 -- Tab key -> profile modulesEnabled key (tabs without entry are always shown: chars, stats)
 local TAB_TO_MODULE = {
     items = "items",
-    storage = "storage",
     pve = "pve",
     reputations = "reputations",
     currency = "currencies",
@@ -468,7 +548,7 @@ local TAB_TO_MODULE = {
 }
 
 -- Canonical tab order: single source of truth for visibility, creation, and navigation.
-local MAIN_TAB_ORDER = { "chars", "storage", "items", "gear", "currency", "reputations", "pve", "professions", "collections", "plans", "stats" }
+local MAIN_TAB_ORDER = { "chars", "items", "gear", "currency", "reputations", "pve", "professions", "collections", "plans", "stats" }
 
 local function IsTabModuleEnabled(key)
     local moduleKey = TAB_TO_MODULE[key]
@@ -1242,18 +1322,17 @@ function WarbandNexus:CreateMainWindow()
                 end
                 local scrollChild = f.scrollChild
                 if scrollChild then
-                    if ReleaseAllPooledChildren then ReleaseAllPooledChildren(scrollChild) end
                     local nc = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
                     for i = 1, nc do
                         local child = _uiChildEnumScratch[i]
-                        if not (child.isPooled and child.rowType) and not child.isPersistentRowElement and not child._wnKeepOnTabSwitch then
+                        if ReleasePooledRowsInSubtree then
+                            ReleasePooledRowsInSubtree(child)
+                        end
+                        if child.isPersistentRowElement then
+                            child:Hide()
+                        elseif not child._wnKeepOnTabSwitch then
                             child:Hide()
                             child:SetParent(recycleBin)
-                        elseif child.isPersistentRowElement then
-                            -- Persistent elements (e.g. Gear 3D DressUpModel) survive tab teardown but must be
-                            -- hidden on tab switch so they don't render over other tabs. The owning tab's
-                            -- refresh re-shows them when re-entered.
-                            child:Hide()
                         end
                     end
                     f._contentPreCleared = true
@@ -1308,7 +1387,6 @@ function WarbandNexus:CreateMainWindow()
     -- Tab labels keyed by MAIN_TAB_ORDER (single source of truth)
     local TAB_LABELS = {
         chars       = (ns.L and ns.L["TAB_CHARACTERS"]) or "Characters",
-        storage     = (ns.L and ns.L["TAB_STORAGE"]) or "Storage",
         items       = (ns.L and ns.L["TAB_ITEMS"]) or "Items",
         gear        = (ns.L and ns.L["TAB_GEAR"]) or "Gear",
         currency    = (ns.L and ns.L["TAB_CURRENCIES"]) or "Currencies",
@@ -1547,6 +1625,9 @@ function WarbandNexus:CreateMainWindow()
     -- This prevents duplicate rebuilds from WN_ITEMS_UPDATED (~0.5s) + WN_BAGS_UPDATED (~1.0s)
     -- firing for the same loot event. Does NOT affect direct PopulateContent calls (tab switch, resize).
     -- Profession events (concentration, knowledge, recipe) use skipCooldown so updates always show.
+    -- GET_ITEM_INFO_RECEIVED / metadata warm-up can storm while the client resolves many links; throttle gear repaints.
+    local GEAR_ASYNC_ITEM_REPAINT_INTERVAL = 0.55
+    local gearAsyncItemRepaintNext = 0
     
     local function SchedulePopulateContent(skipCooldown)
         if not f or not f:IsShown() then return end
@@ -1571,7 +1652,11 @@ function WarbandNexus:CreateMainWindow()
                     return  -- Recent rebuild already handled this data change
                 end
                 lastEventPopulateTime = now
+                local P = ns.Profiler
+                local mlab = P and P.enabled and P.SliceLabel and P:SliceLabel(P.CAT.MSG, "EventPopulate_debounced")
+                if mlab then P:Start(mlab) end
                 WarbandNexus:PopulateContent()
+                if mlab then P:Stop(mlab) end
             end)
             return
         end
@@ -1586,13 +1671,26 @@ function WarbandNexus:CreateMainWindow()
                 return  -- Recent rebuild already handled this data change
             end
             lastEventPopulateTime = now
+            local P = ns.Profiler
+            local mlab = P and P.enabled and P.SliceLabel and P:SliceLabel(P.CAT.MSG, "EventPopulate_debounced")
+            if mlab then P:Start(mlab) end
             WarbandNexus:PopulateContent()
+            if mlab then P:Stop(mlab) end
         end)
         if type(afterHandle) == "table" and afterHandle.Cancel then
             pendingPopulateTimer = afterHandle
         else
             pendingPopulateTimer = true
         end
+    end
+
+    --- Coalesce rapid item-cache resolution events on the Gear tab (GET_ITEM_INFO_RECEIVED / metadata).
+    local function ThrottledScheduleGearAsyncRepaint()
+        if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+        local now = GetTime()
+        if now < gearAsyncItemRepaintNext then return end
+        gearAsyncItemRepaintNext = now + GEAR_ASYNC_ITEM_REPAINT_INTERVAL
+        SchedulePopulateContent()
     end
     
     -- NOTE: All RegisterMessage calls use UIEvents as the 'self' key to avoid
@@ -1604,19 +1702,21 @@ function WarbandNexus:CreateMainWindow()
     -- rapid WN_CHARACTER_UPDATED (e.g. item level ticks at 0.3s, DataService) or models appear to "flicker".
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function()
         if not f or not f:IsShown() then return end
+        local tab = f.currentTab
+        if tab ~= "chars" and tab ~= "stats" and tab ~= "gear" then return end
         -- Characters tab: avoid skipCooldown here — ilvl/zone/gold batching fires this often and full
         -- PopulateContent every ~100ms feels like a constant refresh (virtual rows make it more noticeable).
-        if f.currentTab == "chars" then
+        if tab == "chars" then
             SchedulePopulateContent()
-        elseif f.currentTab == "stats" then
+        elseif tab == "stats" then
             SchedulePopulateContent(true)
-        elseif f.currentTab == "gear" then
+        elseif tab == "gear" then
             SchedulePopulateContent()
         end
     end)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEMS_UPDATED, function()
-        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage" or f.currentTab == "gear") then
+        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "gear") then
             SchedulePopulateContent()
         end
     end)
@@ -1683,9 +1783,10 @@ function WarbandNexus:CreateMainWindow()
     
     -- Collection scan complete (plans/collections tab): skip cooldown so scan results show immediately
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
-        if f and f:IsShown() and (f.currentTab == "plans" or f.currentTab == "collections") then
-            SchedulePopulateContent(true)
-        end
+        if not f or not f:IsShown() then return end
+        local tab = f.currentTab
+        if tab ~= "plans" and tab ~= "collections" then return end
+        SchedulePopulateContent(true)
     end)
     
     -- Profession tab: skip cooldown so concentration/knowledge/recipe updates always refresh (no stale data)
@@ -1744,7 +1845,7 @@ function WarbandNexus:CreateMainWindow()
     -- BAGS_UPDATED also feeds the gear-tab recommendation scan (cross-character bag items
     -- are candidates) so newly looted BoEs surface without a manual reopen.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.BAGS_UPDATED, function()
-        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage" or f.currentTab == "gear") then
+        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "gear") then
             SchedulePopulateContent()
         end
     end)
@@ -1774,10 +1875,10 @@ function WarbandNexus:CreateMainWindow()
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_CACHE_READY, refreshCurrency)
 
     -- Collections: obtained/scan results + achievement tracking flips need to redraw cards.
-    -- Plans tab also reads obtained state for try-counter rows.
+    -- Plans tab also reads obtained state for try-counter rows; Statistics tab shows collection counts.
     local function refreshCollection()
         if not f or not f:IsShown() then return end
-        if f.currentTab == "collections" or f.currentTab == "plans" then
+        if f.currentTab == "collections" or f.currentTab == "plans" or f.currentTab == "stats" then
             SchedulePopulateContent(true)
         elseif f.currentTab == "chars" then
             WarbandNexus:UpdateTabCountBadges("collections")
@@ -1830,7 +1931,11 @@ function WarbandNexus:CreateMainWindow()
             pendingPopulateSkipCooldown = false
             if not f or not f:IsShown() then return end
             lastEventPopulateTime = GetTime()
+            local P = ns.Profiler
+            local mlab = P and P.enabled and P.SliceLabel and P:SliceLabel(P.CAT.MSG, "UI_MAIN_REFRESH_instant")
+            if mlab then P:Start(mlab) end
             WarbandNexus:PopulateContent()
+            if mlab then P:Stop(mlab) end
             return
         end
         SchedulePopulateContent(skipCooldown)
@@ -1853,7 +1958,7 @@ function WarbandNexus:CreateMainWindow()
     -- when the warm-up completes, re-scan so previously-skipped candidates surface.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEM_METADATA_READY, function()
         if f and f:IsShown() and f.currentTab == "gear" then
-            SchedulePopulateContent()
+            ThrottledScheduleGearAsyncRepaint()
         end
     end)
 
@@ -1869,13 +1974,13 @@ function WarbandNexus:CreateMainWindow()
             if not success then return end
             if not f or not f:IsShown() then return end
             if f.currentTab == "gear" then
-                SchedulePopulateContent()
+                ThrottledScheduleGearAsyncRepaint()
             end
         end)
     end
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName)
-        if not f or not f.tabButtons then return end
+        if not f or not f:IsShown() or not f.tabButtons then return end
         -- Map module name to tab key (currencies -> currency; others same)
         local tabKey = (moduleName == "currencies") and "currency" or moduleName
         UpdateTabVisibility(f)
@@ -1885,6 +1990,9 @@ function WarbandNexus:CreateMainWindow()
                 WarbandNexus.db.profile.lastTab = "chars"
             end
             UpdateTabButtonStates(f)
+            SchedulePopulateContent()
+        elseif f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband"
+            and (moduleName == "items" or moduleName == "storage") then
             SchedulePopulateContent()
         end
     end)
@@ -2003,8 +2111,29 @@ end
 --============================================================================
 -- POPULATE CONTENT
 --============================================================================
-function WarbandNexus:PopulateContent()
+local function PopulateContentBody(self)
     if not mainFrame then return end
+
+    -- #region agent log — PopulateContent phase timings (hypotheses H1 teardown vs H2 draw vs H3 layout; requires /wn profiler on)
+    local _wnProf = ns.Profiler
+    local _wnProfOn = _wnProf and _wnProf.enabled
+    local function _wnProfSliceStart(cat, name)
+        if _wnProfOn and _wnProf.StartSlice then _wnProf:StartSlice(cat, name) end
+    end
+    local function _wnProfSliceStop(cat, name)
+        if _wnProfOn and _wnProf.StopSlice then _wnProf:StopSlice(cat, name) end
+    end
+    -- #endregion
+
+    -- Combat: avoid heavy pooled teardown + full tab rebuild while the secure state is active.
+    -- Opening the frame from scratch is already blocked in ShowMainWindow/ToggleMainWindow; this path covers
+    -- "window was open before combat" + message-driven refreshes (WN_* coalesced timers).
+    if InCombatLockdown and InCombatLockdown() and mainFrame:IsShown() then
+        ArmPostCombatUIRefresh()
+        return
+    end
+
+    local populateWallStart = GetTime()
 
     if mainFrame.SyncMainHeaderDebugReloadLayout then
         mainFrame:SyncMainHeaderDebugReloadLayout()
@@ -2018,9 +2147,11 @@ function WarbandNexus:PopulateContent()
 
     -- Clear virtual scroll callback from previous tab
     local scrollChild = mainFrame.scrollChild
+    _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_clearVLM")
     if ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
         ns.VirtualListModule.ClearVirtualScroll(mainFrame)
     end
+    _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_clearVLM")
 
     if not scrollChild then
         if pendingPerfGen then
@@ -2031,6 +2162,7 @@ function WarbandNexus:PopulateContent()
         return
     end
 
+    _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_teardownUI")
     -- Clear fixed header area and reset to minimal height
     local fixedHeader = mainFrame.fixedHeader
     if fixedHeader then
@@ -2073,22 +2205,24 @@ function WarbandNexus:PopulateContent()
     mainFrame._contentPreCleared = nil
 
     if not wasPreCleared then
-        -- Release all pooled children first (returns them to pools for reuse)
-        if ReleaseAllPooledChildren then
-            ReleaseAllPooledChildren(scrollChild)
-        end
-
-        -- Move old non-pooled tab content (headers, cards, etc.) to the recycleBin to prevent
-        -- overlap/stacking. Pooled frames are already released to their pools above — skip them.
-        -- Persistent frames (3D models, reused placeholders) are also skipped.
+        -- Release nested pooled rows (single DFS per top-level child), then detach tab chrome to recycleBin.
+        -- Avoid ReleaseAllPooledChildren(scrollChild): it Hide+ClearAllPoints every direct child (PvE section
+        -- shells are huge) and dominated tab-switch hitches.
         local nc3 = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
         for i = 1, nc3 do
             local child = _uiChildEnumScratch[i]
-            if ReleaseCharacterRowsFromSubtree then
-                ReleaseCharacterRowsFromSubtree(child)
-            end
-            if ReleaseReputationRowsFromSubtree then
-                ReleaseReputationRowsFromSubtree(child)
+            if ReleasePooledRowsInSubtree then
+                ReleasePooledRowsInSubtree(child)
+            else
+                if ReleaseCharacterRowsFromSubtree then
+                    ReleaseCharacterRowsFromSubtree(child)
+                end
+                if ReleaseReputationRowsFromSubtree then
+                    ReleaseReputationRowsFromSubtree(child)
+                end
+                if ReleaseCurrencyRowsFromSubtree then
+                    ReleaseCurrencyRowsFromSubtree(child)
+                end
             end
             if child._virtualVisibleFrames then
                 child._virtualVisibleFrames = nil
@@ -2096,12 +2230,15 @@ function WarbandNexus:PopulateContent()
             if isTabSwitch then
                 child._hasRenderedOnce = nil
             end
-            if not (child.isPooled and child.rowType) and not child.isPersistentRowElement and not child._wnKeepOnTabSwitch then
+            if child.isPersistentRowElement then
+                child:Hide()
+            elseif not child._wnKeepOnTabSwitch then
                 child:Hide()
                 child:SetParent(recycleBin)
             end
         end
     end
+    _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_teardownUI")
 
     -- Hide persistent gear frames when leaving their tab
     if mainFrame.currentTab ~= "gear" then
@@ -2133,16 +2270,19 @@ function WarbandNexus:PopulateContent()
     -- Tab renderers can skip redundant ReleaseAllPooledChildren() calls in this pass.
     scrollChild._preparedByPopulate = true
 
+    _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_drawTab")
     -- Draw based on current tab
     local height
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
     local trackedOnlyTabs = {
-        items = true, storage = true, pve = true, reputations = true,
+        items = true, pve = true, reputations = true,
         currency = true, professions = true, gear = true, collections = true,
         plans = true, stats = true,
     }
 
     local tab = mainFrame.currentTab
+    -- Dev-only: wall time for heavy inventory tabs (debug + verbose). Complements tab-switch click→populate log.
+    local drawPerfT0 = (isTracked and IsTabPerfMonitorEnabled() and (tab == "items" or tab == "gear" or tab == "professions" or tab == "collections" or tab == "plans")) and GetTime() or nil
     if not isTracked and trackedOnlyTabs[tab] then
         height = self:DrawTrackingRequiredBanner(scrollChild)
     elseif tab == "chars" then
@@ -2151,8 +2291,6 @@ function WarbandNexus:PopulateContent()
         height = self:DrawCurrencyTab(scrollChild)
     elseif tab == "items" then
         height = self:DrawItemList(scrollChild)
-    elseif tab == "storage" then
-        height = self:DrawStorageTab(scrollChild)
     elseif tab == "pve" then
         height = self:DrawPvEProgress(scrollChild)
     elseif tab == "reputations" then
@@ -2160,7 +2298,13 @@ function WarbandNexus:PopulateContent()
     elseif tab == "stats" then
         height = self:DrawStatistics(scrollChild)
     elseif tab == "professions" then
-        height = self:DrawProfessionsTab(scrollChild)
+        local P = ns.Profiler
+        if P and P.enabled and P.Wrap and P.SliceLabel then
+            local lab = P:SliceLabel(P.CAT.UI, "DrawProfessionsTab")
+            height = P:Wrap(lab, WarbandNexus.DrawProfessionsTab, WarbandNexus, scrollChild)
+        else
+            height = self:DrawProfessionsTab(scrollChild)
+        end
     elseif tab == "gear" then
         height = self:DrawGearTab(scrollChild)
     elseif tab == "collections" then
@@ -2170,8 +2314,18 @@ function WarbandNexus:PopulateContent()
     else
         height = self:DrawCharacterList(scrollChild)
     end
+    _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_drawTab")
+    if drawPerfT0 then
+        local ms = (GetTime() - drawPerfT0) * 1000
+        if WarbandNexus.Print then
+            WarbandNexus:Print(format("|cff9e9e9e[WN Perf] DrawTab %s %.1fms|r", tab, ms))
+        else
+            DebugPrint(format("[WN Perf] DrawTab %s %.1fms", tab, ms))
+        end
+    end
     scrollChild._preparedByPopulate = nil
-    
+
+    _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_postLayout")
     -- Set scrollChild height based on content + bottom padding
     local CONTENT_BOTTOM_PADDING = 8
     local contentBottom = height + CONTENT_BOTTOM_PADDING
@@ -2207,7 +2361,7 @@ function WarbandNexus:PopulateContent()
         end
         local slack = totalScrollH - contentBottom
         -- Storage / Items attach a dedicated sheet from results to scroll bottom (see UI_AnnexResultsToScrollBottom).
-        local skipGlobalFill = (tab == "storage" or tab == "items" or tab == "stats")
+        local skipGlobalFill = (tab == "items" or tab == "stats")
         if not skipGlobalFill and slack > 1 then
             fill:ClearAllPoints()
             fill:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 6, -contentBottom)
@@ -2258,8 +2412,9 @@ function WarbandNexus:PopulateContent()
     if mainFrame._virtualScrollUpdate then
         mainFrame._virtualScrollUpdate()
     end
-    
+
     self:UpdateTabCountBadges()
+    _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_postLayout")
 
     -- Dev-only: one-line main tab switch timing after deferred PopulateContent (see tab OnClick).
     if pendingPerfGen and IsTabPerfMonitorEnabled() then
@@ -2292,6 +2447,29 @@ function WarbandNexus:PopulateContent()
         mainFrame._wnPerfMainTabSwitch = nil
         mainFrame._wnPerfTabSwitchPendingLog = nil
     end
+
+    -- Dev-only: unusually long PopulateContent (true infinite loops cannot be broken from Lua; this flags pathological hangs).
+    if IsDebugModeEnabled and IsDebugModeEnabled() and DebugPrint and populateWallStart then
+        local wallMs = (GetTime() - populateWallStart) * 1000
+        if wallMs > 400 then
+            DebugPrint(format(
+                "[WN UI] PopulateContent slow: %.0fms tab=%s (combat defer does not apply mid-draw; use /wn profiler + steps to narrow)",
+                wallMs,
+                tostring(mainFrame.currentTab)
+            ))
+        end
+    end
+end
+
+function WarbandNexus:PopulateContent()
+    local P = ns.Profiler
+    if P and P.enabled then
+        local lab = P.SliceLabel and P:SliceLabel(P.CAT.UI, "PopulateContent")
+        if lab then
+            return P:Wrap(lab, PopulateContentBody, self)
+        end
+    end
+    return PopulateContentBody(self)
 end
 
 --============================================================================
@@ -2517,7 +2695,7 @@ end
 -- DrawCharacterList moved to Modules/UI/CharactersUI.lua
 -- DrawItemList moved to Modules/UI/ItemsUI.lua
 -- DrawEmptyState moved to Modules/UI/ItemsUI.lua
--- DrawStorageTab moved to Modules/UI/StorageUI.lua
+-- DrawStorageTab / DrawStorageResults / SyncStorageResultsLayoutFromTail live in this file (Items + Warband tree).
 -- DrawPvEProgress moved to Modules/UI/PvEUI.lua
 -- DrawStatistics moved to Modules/UI/StatisticsUI.lua
 
@@ -2539,18 +2717,9 @@ function WarbandNexus:RefreshUI()
         UpdateTabVisibility(mainFrame)
     end
     
-    -- Combat safety: defer frame operations to avoid taint
-    -- NOTE: Uses UIEvents as 'self' key so we don't overwrite Core.lua's
-    -- permanent PLAYER_REGEN_ENABLED → OnCombatEnd handler.
+    -- Combat safety: defer frame operations to avoid taint (shared arm with PopulateContentBody).
     if InCombatLockdown() then
-        if not self._combatRefreshPending then
-            self._combatRefreshPending = true
-            WarbandNexus.RegisterEvent(UIEvents, "PLAYER_REGEN_ENABLED", function()
-                WarbandNexus.UnregisterEvent(UIEvents, "PLAYER_REGEN_ENABLED")
-                self._combatRefreshPending = false
-                self:RefreshUI()
-            end)
-        end
+        ArmPostCombatUIRefresh()
         return
     end
     

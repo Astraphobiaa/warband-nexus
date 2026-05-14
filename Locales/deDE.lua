@@ -83,6 +83,10 @@ L["HEADER_TOTAL_GOLD"] = "GOLD GESAMT"
 -- Items Tab
 L["ITEMS_HEADER"] = "Bank-Gegenstände"
 L["ITEMS_WARBAND_BANK"] = "Kriegsmeute-Bank"
+L["ITEMS_SUBTAB_BAGS"] = "Taschen"
+L["ITEMS_SUBTAB_BANK"] = "Bank"
+L["ITEMS_SUBTAB_WARBAND"] = "Kriegsmeute"
+L["ITEMS_WARBAND_UPDATING"] = "Kriegsmeutenliste wird erstellt..."
 L["ITEMS_EXPAND_ALL_TOOLTIP"] = "Alle Gegenstandstyp-Gruppen für die aktuelle Bank-Unterregisterkarte ausklappen (persönlich, Kriegsmeute, Gildenbank oder Inventar)."
 L["ITEMS_COLLAPSE_ALL_TOOLTIP"] = "Alle Gegenstandstyp-Gruppen für die aktuelle Bank-Unterregisterkarte einklappen."
 

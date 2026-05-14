@@ -1,6 +1,5 @@
 --[[
-    Warband Nexus - Items Tab
-    Display and manage Warband and Personal bank items with interactive controls
+    Warband Nexus - Items tab + Warband aggregate storage tree (bank subtabs, hierarchical storage).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -19,6 +18,12 @@ end
 -- Unique AceEvent handler identity for ItemsUI
 local ItemsUIEvents = {}
 
+-- Storage aggregate tree (DrawStorageResults) needs StorageSectionLayout loaded first (TOC order).
+local StorageSectionLayout = ns.StorageSectionLayout
+if not StorageSectionLayout then
+    error("StorageSectionLayout missing — load Modules/UI/StorageSectionLayout.lua before ItemsUI.lua in WarbandNexus.toc")
+end
+
 -- Services
 local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
@@ -27,14 +32,12 @@ local SearchResultsRenderer = ns.SearchResultsRenderer
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
 
--- Feature Flags (Guild Bank now always enabled)
-
 -- Import shared UI components (always get fresh reference)
 local COLORS = ns.UI_COLORS
 local GetQualityHex = ns.UI_GetQualityHex
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
-local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
+local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
 local GetTypeIcon = ns.UI_GetTypeIcon
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
@@ -49,6 +52,12 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local FormatNumber = ns.UI_FormatNumber
 local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
+local GetItemTypeName = ns.UI_GetItemTypeName
+local GetItemClassID = ns.UI_GetItemClassID
+local ReleasePooledRowsInSubtree = ns.UI_ReleasePooledRowsInSubtree
+local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
+local AcquireStorageRow = ns.UI_AcquireStorageRow
+local ReleaseStorageRow = ns.UI_ReleaseStorageRow
 
 -- Import shared UI layout constants
 local function GetLayout() return ns.UI_LAYOUT or {} end
@@ -65,6 +74,7 @@ local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 -- Performance: Local function references
 local format = string.format
 local date = date
+local wipe = table.wipe
 
 -- Bank alt sekmeler: CollectionsUI CreateSubTabBar ile aynı ölçü ve davranış (ikon + hover + _active).
 local ITEMS_BANK_SUBTAB_BTN_HEIGHT = 40
@@ -97,10 +107,10 @@ end
 --- @return Frame bar with bar:SetActiveTab(key), bar.buttons
 local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accentColor)
     local tabDefs = {
-        { key = "personal", label = (ns.L and ns.L["CHARACTER_BANK"]) or "Personal Bank", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
-        { key = "warband", label = (ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank", iconAtlas = "warbands-icon", icon = "Interface\\Icons\\INV_Misc_Coin_01" },
+        { key = "inventory", label = (ns.L and ns.L["ITEMS_SUBTAB_BAGS"]) or "Bags", icon = "Interface\\Icons\\INV_Misc_Bag_07" },
+        { key = "personal", label = (ns.L and ns.L["ITEMS_SUBTAB_BANK"]) or "Bank", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
+        { key = "warband", label = (ns.L and ns.L["ITEMS_SUBTAB_WARBAND"]) or "Warband", iconAtlas = "warbands-icon", icon = "Interface\\Icons\\INV_Misc_Coin_01" },
         { key = "guild", label = (ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank", iconAtlas = "poi-workorders", icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01" },
-        { key = "inventory", label = (ns.L and ns.L["CHARACTER_INVENTORY"]) or "Inventory", icon = "Interface\\Icons\\INV_Misc_Bag_07" },
     }
 
     local bar = CreateFrame("Frame", nil, headerParent)
@@ -170,7 +180,9 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
                 return
             end
             ns.UI_SetItemsSubTab(tabInfo.key)
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
+            if not (WarbandNexus.RefreshItemsSubTabBodyOnly and WarbandNexus:RefreshItemsSubTabBodyOnly()) then
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
+            end
         end)
 
         if UpdateBorderColor then
@@ -242,6 +254,19 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
     end
 
     bar:SetActiveTab(currentKey)
+
+    function bar:RefreshGuildLock()
+        local gbtn = buttons.guild
+        if not gbtn then return end
+        if IsInGuild() then
+            gbtn:Enable()
+            gbtn:SetAlpha(1)
+        else
+            gbtn:Disable()
+            gbtn:SetAlpha(0.5)
+        end
+    end
+
     return bar
 end
 
@@ -291,17 +316,1732 @@ local function RegisterItemsEvents(parent)
     -- Async item metadata resolution (items that were "Loading..." now have real names)
     -- Keep: UI.lua does NOT handle WN_ITEM_METADATA_READY.
     WarbandNexus.RegisterMessage(ItemsUIEvents, E.ITEM_METADATA_READY, function()
-        if IsItemsTabActive() then
-            if IsDebugModeEnabled and IsDebugModeEnabled() then
-                DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
-            end
-            ScheduleDrawItemList()
+        if not IsItemsTabActive() then return end
+        -- Warband aggregate tree: embed listener redraws results only (avoid full DrawItemList + double DrawStorageResults).
+        if ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband" and ns.Utilities and ns.Utilities:IsModuleEnabled("items") then
+            return
         end
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
+        end
+        ScheduleDrawItemList()
     end)
     
     if IsDebugModeEnabled and IsDebugModeEnabled() then
         DebugPrint("|cff9370DB[ItemsUI]|r Event listeners registered: WN_ITEM_METADATA_READY")
     end
+end
+
+--============================================================================
+-- STORAGE / WARBAND AGGREGATE TREE (merged from StorageUI.lua)
+-- Saved data: unchanged (db.profile.storage*, db.global.*). Warband aggregate UI uses Items module toggle.
+-- Requires StorageSectionLayout.lua to load BEFORE this file (see WarbandNexus.toc).
+--============================================================================
+
+local function CompareCharNameLower(a, b)
+    return SafeLower(a.name) < SafeLower(b.name)
+end
+
+local ItemsStorageEmbedEvents = {}
+
+-- Reused buffers: avoid `{frame:GetChildren()}` allocations on every Storage full redraw (large trees).
+local _wnStorTopScratch = {}
+local _wnStorChildScratch = {}
+local _wnStorReflowScratch = {}
+
+local function PackChildrenInto(dest, frame)
+    wipe(dest)
+    local n = select("#", frame:GetChildren())
+    for i = 1, n do
+        dest[i] = select(i, frame:GetChildren())
+    end
+    return n
+end
+
+--- Vertical extent (px): container top to lowest shown child bottom. Matches ReflowStorageStackParentBody
+--- (same global GetTop/GetBottom space); avoids mixing container top with a single tail frame when siblings exist.
+local function MeasureStorageResultsContentExtent(container)
+    if not container then return nil end
+    local pTop = container:GetTop()
+    if not pTop then return nil end
+    local lowest = pTop
+    local nc = PackChildrenInto(_wnStorChildScratch, container)
+    for i = 1, nc do
+        local c = _wnStorChildScratch[i]
+        if c and c:IsShown() and not c._isVirtualRow and c ~= container.emptyStateContainer then
+            local cb = c:GetBottom()
+            if cb and cb < lowest then
+                lowest = cb
+            end
+        end
+    end
+    local extent = pTop - lowest
+    if extent < 1 then
+        extent = math.max(0.1, container:GetHeight() or 0.1)
+    end
+    return extent
+end
+
+--- Items results width: scrollChild often reports 0 before layout; sync scrollChild from scroll viewport first.
+local MIN_ITEMS_RESULTS_WIDTH = 280
+
+local function ResolveItemsTabScrollContentWidth(scrollChild)
+    if not scrollChild then return MIN_ITEMS_RESULTS_WIDTH end
+    if ns.UI_EnsureMainScrollLayout then
+        ns.UI_EnsureMainScrollLayout()
+    end
+    local function contentW(frame)
+        if not frame or not frame.GetWidth then return nil end
+        local raw = frame:GetWidth()
+        if not raw or raw < 2 then return nil end
+        return raw - 20
+    end
+    local w = contentW(scrollChild)
+    if w and w >= 1 then return w end
+    local scroll = scrollChild:GetParent()
+    w = contentW(scroll)
+    if w and w >= 1 then return w end
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mf and mf.scroll then
+        w = contentW(mf.scroll)
+        if w and w >= 1 then return w end
+    end
+    return MIN_ITEMS_RESULTS_WIDTH
+end
+
+--- Match RedrawItemsResultsOnly: keep scrollChild height and scrollbars aligned after Warband-only redraws.
+local function SyncItemsTabScrollChrome(mf, scrollChild, contentHeight)
+    if not mf or not scrollChild then return end
+    local CONTENT_BOTTOM_PADDING = 8
+    local tabBodyHeight = 8 + (contentHeight or 0)
+    if mf.scroll then
+        scrollChild:SetHeight(math.max(tabBodyHeight + CONTENT_BOTTOM_PADDING, mf.scroll:GetHeight() or 0))
+    end
+    if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
+    end
+    if ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
+        ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+    end
+    local sc = mf.scroll
+    if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+        local maxV = sc:GetVerticalScrollRange() or 0
+        local cur = sc:GetVerticalScroll() or 0
+        if cur > maxV then
+            sc:SetVerticalScroll(maxV)
+        end
+    end
+end
+
+--- Warband aggregate: banner while DrawStorageResults runs (heavy sync tree build).
+local function EnsureWarbandDrawIndicator(container)
+    if not container then return nil end
+    local fs = container._wnWarbandDrawingText
+    if not fs then
+        fs = FontManager:CreateFontString(container, "body", "OVERLAY")
+        fs:SetPoint("CENTER", container, "CENTER", 0, -48)
+        fs:SetWidth(math.max(220, (container.GetWidth and container:GetWidth() or 400) - 48))
+        fs:SetJustifyH("CENTER")
+        fs:SetWordWrap(true)
+        container._wnWarbandDrawingText = fs
+    end
+    if fs.SetWidth and container.GetWidth then
+        local cw = container:GetWidth()
+        if cw and cw > 48 then
+            fs:SetWidth(cw - 48)
+        end
+    end
+    local line1 = (ns.L and ns.L["ITEMS_LOADING"]) or "Loading..."
+    local line2 = (ns.L and ns.L["ITEMS_WARBAND_UPDATING"]) or "Building Warband list..."
+    fs:SetText("|cffaaaaaa" .. line1 .. "\n" .. line2 .. "|r")
+    return fs
+end
+
+--- ItemsCacheService patches cached item tables in place; refresh row text/icons without full tree teardown.
+local function TryRefreshStorageRowsMetadataInPlace(resultsContainer)
+    if not resultsContainer then return false end
+    local refs = resultsContainer._wnStorageRowRefs
+    local fn = resultsContainer._wnStorageApplyRowVisual
+    if not refs or #refs == 0 or type(fn) ~= "function" then
+        return false
+    end
+    for i = 1, #refs do
+        local row = refs[i]
+        if row and row:IsShown() then
+            local item = row._wnStorageItemRef
+            if item then
+                local rw = row:GetWidth()
+                if rw and rw >= 1 then
+                    local idx = row._wnStorageRowIdx or i
+                    local loc = row._wnStorageLocText or ""
+                    fn(row, item, idx, rw, loc)
+                end
+            end
+        end
+    end
+    return true
+end
+
+--- Used by DrawStorageResults and partial leaf reflow (Bank > Warband aggregate tree).
+local function ReflowStorageStackParentBody(stackParent, outerWrap, outerHeaderH)
+    if not stackParent then return end
+    local pTop = stackParent:GetTop()
+    if not pTop then return end
+    local lowest = pTop
+    local nc = PackChildrenInto(_wnStorReflowScratch, stackParent)
+    for i = 1, nc do
+        local c = _wnStorReflowScratch[i]
+        if c and c:IsShown() then
+            local cb = c:GetBottom()
+            if cb and cb < lowest then
+                lowest = cb
+            end
+        end
+    end
+    local extent = pTop - lowest
+    if extent < 1 then
+        extent = math.max(0.1, stackParent:GetHeight() or 0.1)
+    end
+    stackParent:SetHeight(math.max(0.1, extent))
+    if outerWrap and outerHeaderH then
+        outerWrap:SetHeight(outerHeaderH + stackParent:GetHeight())
+    end
+end
+
+local function RegisterStorageEvents(parent)
+    if parent.storageUpdateHandler then
+        return  -- Already registered
+    end
+    parent.storageUpdateHandler = true
+    
+    -- Debounced redraw when async item metadata resolves (WN_ITEM_METADATA_READY).
+    -- WN_ITEMS_UPDATED is handled by UI.lua PopulateContent only — duplicate listener caused double rebuilds.
+    local pendingDrawTimer = nil
+    local DRAW_DEBOUNCE = 0.05  -- coalesce burst metadata resolves without noticeable lag
+    
+    -- Items > Warband sub-tab: account-wide tree (same data as former Storage tab). Gated by Items module.
+    local function IsWarbandAggregateViewActive()
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if not (mf and mf:IsShown() and mf.currentTab == "items") then return false end
+        if not (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband") then return false end
+        return ns.Utilities and ns.Utilities:IsModuleEnabled("items")
+    end
+    
+    local function ScheduleStorageRefresh()
+        if not IsWarbandAggregateViewActive() then return end
+        if pendingDrawTimer then return end  -- already scheduled
+        pendingDrawTimer = C_Timer.NewTimer(DRAW_DEBOUNCE, function()
+            pendingDrawTimer = nil
+            if not IsWarbandAggregateViewActive() or not parent then return end
+            local resultsContainer = parent.resultsContainer
+            if resultsContainer and resultsContainer:GetParent() == parent and WarbandNexus.DrawStorageResults then
+                local searchText = ""
+                if SearchStateManager and SearchStateManager.GetQuery then
+                    searchText = SearchStateManager:GetQuery("items") or ""
+                end
+                local contentWidth = ResolveItemsTabScrollContentWidth(parent)
+                local contentHeight = WarbandNexus:DrawStorageResults(resultsContainer, 0, contentWidth, searchText)
+                resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
+                if ns.UI_AnnexResultsToScrollBottom then
+                    ns.UI_AnnexResultsToScrollBottom(resultsContainer, parent, SIDE_MARGIN, 8)
+                end
+                local mf2 = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                if mf2 then
+                    SyncItemsTabScrollChrome(mf2, parent, contentHeight)
+                end
+            else
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true, instantPopulate = true })
+            end
+        end)
+    end
+    
+    -- WN_ITEM_METADATA_READY: prefer in-place row text refresh (TryRefreshStorageRowsMetadataInPlace).
+    -- Full tree redraw is rate-limited when refs are missing (e.g. before first draw completes).
+    local lastMetadataRefreshDraw = 0
+    local METADATA_REFRESH_COOLDOWN = 0.45
+
+    WarbandNexus.RegisterMessage(ItemsStorageEmbedEvents, E.ITEM_METADATA_READY, function()
+        if not IsWarbandAggregateViewActive() then return end
+        local rc = parent.resultsContainer
+        if rc and TryRefreshStorageRowsMetadataInPlace(rc) then
+            return
+        end
+        local now = GetTime()
+        if now - lastMetadataRefreshDraw < METADATA_REFRESH_COOLDOWN then return end
+        lastMetadataRefreshDraw = now
+        ScheduleStorageRefresh()
+    end)
+end
+
+ns.UI_RegisterStorageEmbedListeners = RegisterStorageEvents
+
+--- Redraw Storage scroll content only (results container). Skips PopulateContent, scrollChild purge,
+--- and UI_MAIN_REFRESH_REQUESTED debounce — use after section toggles for perf.
+function WarbandNexus:RedrawStorageResultsOnly()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "items" then return end
+    if not (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband") then return end
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("items")) then return end
+    local scrollChild = mf.scrollChild
+    if not scrollChild then return end
+    local rc = scrollChild.resultsContainer
+    if not rc or rc:GetParent() ~= scrollChild then return end
+    local width = ResolveItemsTabScrollContentWidth(scrollChild)
+    local q = ""
+    if SearchStateManager and SearchStateManager.GetQuery then
+        q = SearchStateManager:GetQuery("items") or ""
+    end
+    local contentHeight = self:DrawStorageResults(rc, 0, width, q)
+    rc:SetHeight(math.max(contentHeight or 1, 1))
+    if ns.UI_AnnexResultsToScrollBottom then
+        ns.UI_AnnexResultsToScrollBottom(rc, scrollChild, SIDE_MARGIN, 8)
+    end
+    SyncItemsTabScrollChrome(mf, scrollChild, contentHeight)
+end
+
+--- After leaf type section height changes (no full DrawStorageResults), resize results container from layout tail.
+function WarbandNexus:SyncStorageResultsLayoutFromTail(resultsContainer)
+    if not resultsContainer then return end
+    local pad = GetLayout().minBottomSpacing or 0
+    local extent = MeasureStorageResultsContentExtent(resultsContainer)
+    if extent then
+        resultsContainer:SetHeight(math.max(1, extent + pad))
+    else
+        local tail = resultsContainer._wnStorageLayoutTail
+        if tail and resultsContainer.GetTop and tail.GetBottom then
+            local pTop = resultsContainer:GetTop()
+            local bot = tail:GetBottom()
+            if pTop and bot then
+                local measured = pTop - bot + pad
+                resultsContainer:SetHeight(math.max(1, measured))
+            end
+        end
+    end
+    local mf = self.UI and self.UI.mainFrame
+    if mf and mf.scroll and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
+    end
+    local sc = mf and mf.scroll
+    if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+        local maxV = sc:GetVerticalScrollRange() or 0
+        local cur = sc:GetVerticalScroll() or 0
+        if cur > maxV then
+            sc:SetVerticalScroll(maxV)
+        end
+    end
+    if mf and mf._virtualScrollUpdate then
+        mf._virtualScrollUpdate()
+    end
+    if resultsContainer and ns.UI_AnnexResultsToScrollBottom then
+        local sc = resultsContainer:GetParent()
+        if sc then
+            ns.UI_AnnexResultsToScrollBottom(resultsContainer, sc, SIDE_MARGIN, 8)
+        end
+    end
+end
+
+--- Partial update for Bank > Warband type leaf (avoid full DrawStorageResults on expand/collapse).
+function WarbandNexus:_StorageLeafItemMatchesSearch(item, storageSearchText)
+    if not storageSearchText or storageSearchText == "" then
+        return true
+    end
+    if issecretvalue and issecretvalue(storageSearchText) then
+        return true
+    end
+    local itemName = SafeLower(item.name)
+    local linkStr = item.itemLink or item.link
+    local itemLink = SafeLower(linkStr)
+    return itemName:find(storageSearchText, 1, true) or itemLink:find(storageSearchText, 1, true)
+end
+
+function WarbandNexus:_CollectPersonalTypeItems(charKey, typeName)
+    local out = {}
+    local itemsData = self:GetItemsData(charKey)
+    if not itemsData then
+        return out
+    end
+    local function pushBagList(bagList)
+        if not bagList then
+            return
+        end
+        for bi = 1, #bagList do
+            local item = bagList[bi]
+            if item and item.itemID then
+                local cid = item.classID
+                if not cid then
+                    cid = GetItemClassID(item.itemID)
+                    item.classID = cid
+                end
+                if GetItemTypeName(cid) == typeName then
+                    out[#out + 1] = item
+                end
+            end
+        end
+    end
+    pushBagList(itemsData.bags)
+    pushBagList(itemsData.bank)
+    return out
+end
+
+function WarbandNexus:_CollectWarbandTypeItems(typeName)
+    local out = {}
+    local warbandData = self:GetWarbandBankData()
+    if not warbandData or not warbandData.items then
+        return out
+    end
+    for ii = 1, #warbandData.items do
+        local item = warbandData.items[ii]
+        if item and item.itemID then
+            local cid = item.classID
+            if not cid then
+                cid = GetItemClassID(item.itemID)
+                item.classID = cid
+            end
+            if GetItemTypeName(cid) == typeName then
+                out[#out + 1] = item
+            end
+        end
+    end
+    return out
+end
+
+function WarbandNexus:_RenderStorageLeafRowsQuick(rowsContainer, rowWidth, typeItemsForRows, locTextForItem, storageSearchText, populateRow)
+    if not rowsContainer then
+        return 0
+    end
+    rowsContainer._wnVirtualContentHeight = nil
+    local searchActive = storageSearchText
+        and storageSearchText ~= ""
+        and not (issecretvalue and issecretvalue(storageSearchText))
+    local betweenRows = GetLayout().betweenRows or 0
+    local stride = ROW_HEIGHT + betweenRows
+    local y = 0
+    local rowIdx = 0
+    local pop = type(populateRow) == "function" and populateRow
+    for ti = 1, #typeItemsForRows do
+        local item = typeItemsForRows[ti]
+        if not searchActive or self:_StorageLeafItemMatchesSearch(item, storageSearchText) then
+            rowIdx = rowIdx + 1
+            local row = AcquireStorageRow(rowsContainer, rowWidth, ROW_HEIGHT)
+            if row then
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", rowsContainer, "TOPLEFT", 0, -y)
+                row:Show()
+                local loc = ""
+                if locTextForItem then
+                    loc = locTextForItem(item) or ""
+                end
+                if pop then
+                    pcall(pop, row, item, rowIdx, rowWidth, loc)
+                end
+                y = y + stride
+            end
+        end
+    end
+    if y <= 0 then
+        rowsContainer:SetHeight(0.1)
+        return 0
+    end
+    rowsContainer._wnVirtualContentHeight = y
+    rowsContainer:SetHeight(math.max(0.1, y))
+    return y
+end
+
+function WarbandNexus:_ApplyStorageTypeLeafTogglePartial(wrap)
+    local mfInv = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local rcInv = mfInv and mfInv.scrollChild and mfInv.scrollChild.resultsContainer
+    if rcInv then
+        rcInv._wnStorageApplyRowVisual = nil
+        if rcInv._wnStorageRowRefs then wipe(rcInv._wnStorageRowRefs) end
+    end
+    if not wrap or not wrap._wnStorageLeafMeta then
+        self:RedrawStorageResultsOnly()
+        return
+    end
+    local meta = wrap._wnStorageLeafMeta
+    local rows = wrap._wnRowsContainer
+    if not rows then
+        self:RedrawStorageResultsOnly()
+        return
+    end
+    local exp = self:GetStorageTreeExpandState().categories[meta.storageKey] == true
+    local TYPE_H = meta.typeHeaderH or StorageSectionLayout.GetTypeSectionHeaderHeight()
+    local q = ""
+    if SearchStateManager and SearchStateManager.GetQuery and meta.searchQueryTabKey then
+        q = SearchStateManager:GetQuery(meta.searchQueryTabKey) or ""
+    end
+    if exp then
+        local items
+        if meta.kind == "personal_type" then
+            items = self:_CollectPersonalTypeItems(meta.charKey, meta.typeName)
+        else
+            items = self:_CollectWarbandTypeItems(meta.typeName)
+        end
+        if not meta.locTextForItem or type(meta.locTextForItem) ~= "function" then
+            self:RedrawStorageResultsOnly()
+            return
+        end
+        local h = self:_RenderStorageLeafRowsQuick(rows, meta.rowWidth, items, meta.locTextForItem, q, meta.populateRow)
+        rows._wnSectionFullH = h
+        rows:Show()
+        rows:SetHeight(math.max(0.1, h))
+        wrap:SetHeight(TYPE_H + math.max(0.1, h))
+    else
+        if ReleasePooledRowsInSubtree then
+            ReleasePooledRowsInSubtree(rows)
+        end
+        rows:Hide()
+        rows:SetHeight(0.1)
+        rows._wnSectionFullH = 0
+        wrap:SetHeight(TYPE_H + 0.1)
+    end
+end
+
+--============================================================================
+-- STORAGE RESULTS RENDERING (Separated for search refresh)
+--============================================================================
+
+function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchText)
+    local storageSearchActive = storageSearchText
+        and not (issecretvalue and issecretvalue(storageSearchText))
+        and storageSearchText ~= ""
+
+    local mfEmbed = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local embedItemsWarband = mfEmbed and mfEmbed.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband"
+    local searchResultTabKey = embedItemsWarband and "items" or "storage"
+    local emptyRenderTab = embedItemsWarband and "items" or "storage"
+
+    -- Type leaf toggles: WarbandNexus:_ApplyStorageTypeLeafTogglePartial (CreateCollapsibleHeader calls
+    -- onToggle before expand height; see SharedWidgets expand branch).
+
+    local P = ns.Profiler
+    local profOn = P and P.enabled
+    local function stStart(name)
+        if profOn and P.StartSlice then P:StartSlice(P.CAT.UI, name) end
+    end
+    local function stStop(name)
+        if profOn and P.StopSlice then P:StopSlice(P.CAT.UI, name) end
+    end
+
+    stStart("Stor_teardown")
+    local mfForVirtual = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mfForVirtual and ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
+        ns.VirtualListModule.ClearVirtualScroll(mfForVirtual)
+    end
+
+    -- Clean up rows created for subheader section containers in previous render.
+    if parent._wnStorageAnimatedRows and ReleaseStorageRow then
+        for i = 1, #parent._wnStorageAnimatedRows do
+            local row = parent._wnStorageAnimatedRows[i]
+            if row and row.rowType == "storage" then
+                ReleaseStorageRow(row)
+            end
+        end
+    end
+    parent._wnStorageAnimatedRows = {}
+
+    -- Clean up old children (headers, section containers, rows) from previous render.
+    local recycleBin = ns.UI_RecycleBin
+    if ReleasePooledRowsInSubtree then
+        ReleasePooledRowsInSubtree(parent)
+    end
+    local nTop = PackChildrenInto(_wnStorTopScratch, parent)
+    for i = 1, nTop do
+        local child = _wnStorTopScratch[i]
+        if not child._isVirtualRow then
+            child:Hide()
+            child:ClearAllPoints()
+            child:SetParent(recycleBin or UIParent)
+        end
+    end
+    stStop("Stor_teardown")
+
+    parent._wnStorageApplyRowVisual = nil
+    if not parent._wnStorageRowRefs then
+        parent._wnStorageRowRefs = {}
+    else
+        wipe(parent._wnStorageRowRefs)
+    end
+
+    local loadIndicator = nil
+    local function hideDrawIndicator()
+        if loadIndicator then loadIndicator:Hide() end
+    end
+    if embedItemsWarband then
+        loadIndicator = EnsureWarbandDrawIndicator(parent)
+        if loadIndicator then loadIndicator:Show() end
+    end
+
+    local globalRowIdxAll = 0
+    --- Vertical chain tail: major headers + type wraps share one anchor stack so sibling layout
+    --- tracks section height immediately (instant layout; no tween).
+    local storageStackAnchor = nil
+
+    -- Session-only expand state (see WarbandNexus:GetStorageTreeExpandState / ResetStorageTreeExpandState in Core.lua).
+    local expanded = self:GetStorageTreeExpandState()
+
+    local function CreateStorageRowsContainer(contentParent, anchorFrame, leftOffset, rightOffset)
+        contentParent = contentParent or parent
+        local frame = ns.UI.Factory:CreateContainer(contentParent, math.max(1, contentParent:GetWidth()), 1, false)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", leftOffset or 0, 0)
+        frame:SetPoint("TOPRIGHT", anchorFrame, "BOTTOMRIGHT", rightOffset or 0, 0)
+        frame:SetHeight(0.1)
+        frame._wnSectionFullH = 0
+        return frame
+    end
+
+    local TYPE_SECTION_HEADER_H = StorageSectionLayout.GetTypeSectionHeaderHeight()
+    local MAIN_SECTION_HEADER_H = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
+
+    --- After a type (leaf) section height change, section bodies/wraps above the type row stay at initial heights.
+    --- Reflow measured stacks so character rows and items below sit below expanded content (not drawn on top).
+    --- ctx: { contentBody, sectionWrap, sectionHeaderH, stackParent?, outerSectionWrap?, outerSectionHeaderH? }
+    local function ApplyStorageLeafAncestorReflow(ctx)
+        if not ctx or not ctx.contentBody or not ctx.sectionWrap or not ctx.sectionHeaderH then return end
+        ReflowStorageStackParentBody(ctx.contentBody, ctx.sectionWrap, ctx.sectionHeaderH)
+        ctx.contentBody._wnSectionFullH = math.max(0.1, ctx.contentBody:GetHeight() or 0.1)
+        if ctx.stackParent and ctx.outerSectionWrap and ctx.outerSectionHeaderH then
+            ReflowStorageStackParentBody(ctx.stackParent, ctx.outerSectionWrap, ctx.outerSectionHeaderH)
+            ctx.stackParent._wnSectionFullH = math.max(0.1, ctx.stackParent:GetHeight() or 0.1)
+        end
+        WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+    end
+
+    --- Major section (Personal / Warband / Guild / character): wrapped header + body (instant expand/collapse).
+    --- Optional `stackReflowCtx`: { stackParent, outerWrap, outerHeaderH } for nested stacks (Personal → characters).
+    local function MajorStorageSectionOpts(wrapFrame, bodyGetter, headerH, persistFn, stackReflowCtx)
+        return BuildCollapsibleSectionOpts({
+            wrapFrame = wrapFrame,
+            bodyGetter = bodyGetter,
+            headerHeight = headerH,
+            hideOnCollapse = true,
+            persistFn = function(exp)
+                if type(exp) == "boolean" and persistFn then
+                    persistFn(exp)
+                end
+            end,
+            -- Per-frame: outer stack tracks wrap tween; defer full SyncStorageResultsLayoutFromTail to onComplete.
+            onUpdate = function(_drawH)
+                if stackReflowCtx and stackReflowCtx.stackParent then
+                    ReflowStorageStackParentBody(
+                        stackReflowCtx.stackParent,
+                        stackReflowCtx.outerWrap,
+                        stackReflowCtx.outerHeaderH
+                    )
+                end
+            end,
+            onComplete = function(exp)
+                if not exp then
+                    local b = bodyGetter()
+                    if b then
+                        b:Hide()
+                        b:SetHeight(0.1)
+                    end
+                end
+                if stackReflowCtx and stackReflowCtx.stackParent then
+                    ReflowStorageStackParentBody(
+                        stackReflowCtx.stackParent,
+                        stackReflowCtx.outerWrap,
+                        stackReflowCtx.outerHeaderH
+                    )
+                end
+                WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+            end,
+        })
+    end
+
+    --- Leaf type rows live under `rowsContainer`; instant resize without full tab redraw.
+    --- Optional `ancestorReflowCtx`: reflow char/warband/guild section + Personal outer after height changes.
+    local function LeafTypeSectionVisualOpts(wrapFrame, rowsGetter, leafKey, ancestorReflowCtx)
+        return BuildCollapsibleSectionOpts({
+            wrapFrame = wrapFrame,
+            bodyGetter = rowsGetter,
+            headerHeight = TYPE_SECTION_HEADER_H,
+            hideOnCollapse = true,
+            persistFn = function(exp)
+                if type(exp) == "boolean" then
+                    expanded.categories[leafKey] = exp
+                end
+            end,
+            onUpdate = function(_drawH)
+                if ancestorReflowCtx then
+                    ApplyStorageLeafAncestorReflow(ancestorReflowCtx)
+                end
+            end,
+            onComplete = function(exp)
+                if not exp then
+                    local rc = rowsGetter()
+                    if rc then
+                        rc:Hide()
+                        rc:SetHeight(0.1)
+                    end
+                end
+                if ancestorReflowCtx then
+                    ApplyStorageLeafAncestorReflow(ancestorReflowCtx)
+                else
+                    WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+                end
+            end,
+        })
+    end
+
+    -- Per-draw caches: class/type work repeats per slot; rows duplicate C_Item.GetItemInfo for shared itemIDs (cold chars→storage path).
+    local storageDrawClassIDByItemID = {}
+    local storageDrawTypeNameByClassID = {}
+    local storageDrawItemInfoNameByItemID = {}
+
+    local function ResolvedStorageClassID(entry)
+        if entry.classID then return entry.classID end
+        local id = entry.itemID
+        if not id then return 15 end
+        local c = storageDrawClassIDByItemID[id]
+        if not c then
+            c = GetItemClassID(id)
+            storageDrawClassIDByItemID[id] = c
+        end
+        entry.classID = c
+        return c
+    end
+
+    local function ResolvedStorageTypeName(classID)
+        local t = storageDrawTypeNameByClassID[classID]
+        if not t then
+            t = GetItemTypeName(classID)
+            storageDrawTypeNameByClassID[classID] = t
+        end
+        return t
+    end
+
+    local function PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
+        row:SetAlpha(1)
+        if row.anim then row.anim:Stop() end
+        ns.UI.Factory:ApplyRowBackground(row, rowIdx)
+
+        row.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
+        row.icon:SetTexture(item.iconFileID or 134400)
+
+        local baseName = item.name
+        if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
+            baseName = item.link:match("%[(.-)%]")
+        end
+        if not baseName and item.pending then
+            baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
+        end
+        if not baseName and item.itemID then
+            local iid = item.itemID
+            local cachedName = storageDrawItemInfoNameByItemID[iid]
+            if cachedName == nil then
+                cachedName = C_Item.GetItemInfo(iid) or false
+                storageDrawItemInfoNameByItemID[iid] = cachedName
+            end
+            if cachedName and cachedName ~= false then
+                baseName = cachedName
+            end
+        end
+        baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
+
+        local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
+        if item.pending then
+            row.nameText:SetText(format("|cff888888%s|r", displayName))
+        else
+            row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+        end
+
+        row.locationText:SetText(locText or "")
+        row.locationText:SetTextColor(1, 1, 1)
+        row.locationText:SetWordWrap(false)
+        row.locationText:SetNonSpaceWrap(false)
+
+        row:SetScript("OnEnter", function(self)
+            if not ShowTooltip then
+                if item.itemLink then
+                    ns.TooltipService:Show(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
+                end
+                return
+            end
+            ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink, anchor = "ANCHOR_LEFT" })
+        end)
+        row:SetScript("OnLeave", function()
+            if HideTooltip then HideTooltip() else ns.TooltipService:Hide() end
+        end)
+    end
+    
+    -- Search filtering helper
+    local function ItemMatchesSearch(item)
+        if not storageSearchActive then
+            return true
+        end
+        local itemName = SafeLower(item.name)
+        local linkStr = item.itemLink or item.link
+        local itemLink = SafeLower(linkStr)
+        return itemName:find(storageSearchText, 1, true) or itemLink:find(storageSearchText, 1, true)
+    end
+
+    --- Type-leaf item rows under a collapsible header (`rowsContainer`).
+    --- Always synchronous: Bags / Bank / Guild tabs use one outer VirtualListModule on the results
+    --- container; the Warband aggregate tree nests many sections under the same scroll. Nested VLM
+    --- per leaf was fragile (viewport offset vs. stacked ChainSectionFrameBelow headers).
+    local function RenderStorageLeafRows(rowsContainer, rowWidth, typeItemsForRows, locTextForItem)
+        rowsContainer._wnVirtualContentHeight = nil
+        if not rowsContainer then
+            return 0
+        end
+        local betweenRows = GetLayout().betweenRows or 0
+        local stride = ROW_HEIGHT + betweenRows
+        local y = 0
+        for ti = 1, #typeItemsForRows do
+            local item = typeItemsForRows[ti]
+            if ItemMatchesSearch(item) then
+                globalRowIdxAll = globalRowIdxAll + 1
+                local row = AcquireStorageRow(rowsContainer, rowWidth, ROW_HEIGHT)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", rowsContainer, "TOPLEFT", 0, -y)
+                row:Show()
+                pcall(PopulateStorageRowDirect, row, item, globalRowIdxAll, rowWidth, locTextForItem(item))
+                row._wnStorageItemRef = item
+                row._wnStorageRowIdx = globalRowIdxAll
+                row._wnStorageLocText = locTextForItem(item) or ""
+                table.insert(parent._wnStorageRowRefs, row)
+                y = y + stride
+            end
+        end
+        if y <= 0 then
+            rowsContainer:SetHeight(0.1)
+            return 0
+        end
+        rowsContainer._wnVirtualContentHeight = y
+        rowsContainer:SetHeight(math.max(0.1, y))
+        return y
+    end
+    
+    stStart("Stor_scan")
+    -- PRE-SCAN: If search is active, find which categories have matches
+    local categoriesWithMatches = {}
+    local hasAnyMatches = false
+    local allCharacters = self:GetAllCharacters() or {}
+    local trackedCharacters = {}
+    for i = 1, #allCharacters do
+        local char = allCharacters[i]
+        if char.isTracked ~= false then
+            trackedCharacters[#trackedCharacters + 1] = char
+        end
+    end
+
+    -- Search: personal/warband match counts from pre-scan. No-search: personal tallied with hasAnyData pass; warband from grouped data below.
+    local personalTotalMatches = 0
+    local warbandTotalMatches = 0
+    
+    if storageSearchActive then
+        -- Scan Warband Bank (NEW ItemsCacheService API)
+        local warbandData = self:GetWarbandBankData()
+        if warbandData and warbandData.items then
+            local wbItems = warbandData.items
+            for ii = 1, #wbItems do
+                local item = wbItems[ii]
+                if item.itemID and ItemMatchesSearch(item) then
+                    local classID = ResolvedStorageClassID(item)
+                    local typeName = ResolvedStorageTypeName(classID)
+                    local categoryKey = "warband_" .. typeName
+                    categoriesWithMatches[categoryKey] = true
+                    categoriesWithMatches["warband"] = true
+                    hasAnyMatches = true
+                    warbandTotalMatches = warbandTotalMatches + 1
+                end
+            end
+        end
+        
+        -- Scan Personal Items (Bank + Bags) (NEW ItemsCacheService API)
+        -- Direct DB access (DB-First pattern)
+        local characters = trackedCharacters
+        
+        for ci = 1, #characters do
+            local char = characters[ci]
+            local charKey = char._key
+            local itemsData = self:GetItemsData(charKey)
+            if itemsData then
+                -- Scan bags
+                if itemsData.bags then
+                    local bags = itemsData.bags
+                    for bi = 1, #bags do
+                        local item = bags[bi]
+                        if item.itemID and ItemMatchesSearch(item) then
+                            local classID = ResolvedStorageClassID(item)
+                            local typeName = ResolvedStorageTypeName(classID)
+                            local charCategoryKey = "personal_" .. charKey
+                            local typeKey = charCategoryKey .. "_" .. typeName
+                            categoriesWithMatches[typeKey] = true
+                            categoriesWithMatches[charCategoryKey] = true
+                            categoriesWithMatches["personal"] = true
+                            hasAnyMatches = true
+                            personalTotalMatches = personalTotalMatches + 1
+                        end
+                    end
+                end
+                
+                -- Scan bank
+                if itemsData.bank then
+                    local bankItems = itemsData.bank
+                    for bi = 1, #bankItems do
+                        local item = bankItems[bi]
+                        if item.itemID and ItemMatchesSearch(item) then
+                            local classID = ResolvedStorageClassID(item)
+                            local typeName = ResolvedStorageTypeName(classID)
+                            local charCategoryKey = "personal_" .. charKey
+                            local typeKey = charCategoryKey .. "_" .. typeName
+                            categoriesWithMatches[typeKey] = true
+                            categoriesWithMatches[charCategoryKey] = true
+                            categoriesWithMatches["personal"] = true
+                            hasAnyMatches = true
+                            personalTotalMatches = personalTotalMatches + 1
+                        end
+                    end
+                end
+            end
+        end
+        
+    end
+    
+    -- If search is active but no matches, show empty state and return
+    if storageSearchActive and not hasAnyMatches then
+        stStop("Stor_scan")
+        hideDrawIndicator()
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, storageSearchText, emptyRenderTab)
+        -- Update SearchStateManager with result count
+        SearchStateManager:UpdateResults(searchResultTabKey, 0)
+        return height
+    end
+    
+    -- Quick check for general "no data" empty state (no search). Also tally personal item rows once.
+    if not storageSearchActive then
+        local hasAnyData = false
+
+        local warbandData = self:GetWarbandBankData()
+        if warbandData and warbandData.items and #warbandData.items > 0 then
+            hasAnyData = true
+        end
+
+        for i = 1, #trackedCharacters do
+            local char = trackedCharacters[i]
+            local itemsData = self:GetItemsData(char._key)
+            if itemsData then
+                local bagN = itemsData.bags and #itemsData.bags or 0
+                local bankN = itemsData.bank and #itemsData.bank or 0
+                personalTotalMatches = personalTotalMatches + bagN + bankN
+                if bagN > 0 or bankN > 0 then
+                    hasAnyData = true
+                end
+            end
+        end
+
+        if not hasAnyData then
+            stStop("Stor_scan")
+            hideDrawIndicator()
+            local _, height = CreateEmptyStateCard(parent, "storage", yOffset)
+            SearchStateManager:UpdateResults(searchResultTabKey, 0)
+            return height
+        end
+    end
+    
+    stStop("Stor_scan")
+    
+    -- ===== PERSONAL BANKS SECTION =====
+    local characters = trackedCharacters
+    
+    -- Only render Personal Banks section if it has matching items
+    stStart("Stor_personal")
+    if personalTotalMatches > 0 then
+        -- Default collapsed; expand-all / search matches override.
+        local personalExpanded = (self.storageExpandAllActive == true) or (expanded.personal == true)
+        if storageSearchActive and categoriesWithMatches["personal"] then
+            personalExpanded = true
+        end
+        
+        local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
+
+        local personalWrap = ns.UI.Factory:CreateContainer(parent, math.max(1, width), MAIN_SECTION_HEADER_H + 0.1, false)
+        personalWrap:ClearAllPoints()
+        if personalWrap.SetClipsChildren then
+            personalWrap:SetClipsChildren(true)
+        end
+        ChainSectionFrameBelow(parent, personalWrap, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or nil, yOffset)
+
+        local personalBody
+        local personalHeader = CreateCollapsibleHeader(
+            personalWrap,
+            (ns.L and ns.L["PERSONAL_ITEMS"]) or "Personal Items",
+            "personal",
+            personalExpanded,
+            function() end,
+            GetCharacterSpecificIcon(),
+            true,
+            nil,
+            nil,
+            MajorStorageSectionOpts(personalWrap, function() return personalBody end, MAIN_SECTION_HEADER_H, function(exp)
+                expanded.personal = exp
+            end)
+        )
+        personalHeader:SetPoint("TOPLEFT", personalWrap, "TOPLEFT", 0, 0)
+        personalHeader:SetWidth(width)
+
+        personalBody = ns.UI.Factory:CreateContainer(personalWrap, math.max(1, width), 0.1, false)
+        personalBody:ClearAllPoints()
+        personalBody:SetPoint("TOPLEFT", personalHeader, "BOTTOMLEFT", 0, 0)
+        personalBody:SetPoint("TOPRIGHT", personalHeader, "BOTTOMRIGHT", 0, 0)
+
+        local personalInnerTail = nil
+        local personalInnerAccum = 0
+
+        if personalExpanded then
+        yOffset = yOffset + HEADER_SPACING
+        local hasAnyPersonalItems = false
+
+        -- Direct DB access (DB-First pattern) (tracked only)
+        local characters = {}
+        for i = 1, #trackedCharacters do
+            characters[i] = trackedCharacters[i]
+        end
+        
+        -- Sort Characters
+        local sortMode = self.db.profile.storageSort and self.db.profile.storageSort.key
+        if sortMode and sortMode ~= "manual" then
+            table.sort(characters, function(a, b)
+                if sortMode == "name" then
+                    return CompareCharNameLower(a, b)
+                elseif sortMode == "level" then
+                    if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+                    return CompareCharNameLower(a, b)
+                elseif sortMode == "ilvl" then
+                    if (a.itemLevel or 0) ~= (b.itemLevel or 0) then return (a.itemLevel or 0) > (b.itemLevel or 0) end
+                    return CompareCharNameLower(a, b)
+                elseif sortMode == "gold" then
+                    local goldA = ns.Utilities:GetCharTotalCopper(a)
+                    local goldB = ns.Utilities:GetCharTotalCopper(b)
+                    if goldA ~= goldB then return goldA > goldB end
+                    return CompareCharNameLower(a, b)
+                elseif sortMode == "realm" then
+                    local ra = SafeLower(a.realm or "")
+                    local rb = SafeLower(b.realm or "")
+                    if ra ~= rb then return ra < rb end
+                    return CompareCharNameLower(a, b)
+                end
+                return (a.level or 0) > (b.level or 0)
+            end)
+        else
+            -- Manual order or default
+            local customOrder = self.db.profile.characterOrder and self.db.profile.characterOrder.regular or {}
+            if #customOrder > 0 then
+                local ordered, charMap = {}, {}
+                for ci = 1, #characters do
+                    local c = characters[ci]
+                    local ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(c.name, c.realm)
+                    if ck then charMap[ck] = c end
+                end
+                for coi = 1, #customOrder do
+                    local ck = customOrder[coi]
+                    if charMap[ck] then table.insert(ordered, charMap[ck]); charMap[ck] = nil end
+                end
+                local remaining = {}
+                for _, c in pairs(charMap) do table.insert(remaining, c) end
+                table.sort(remaining, function(a, b)
+                    if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+                    return CompareCharNameLower(a, b)
+                end)
+                for ri = 1, #remaining do table.insert(ordered, remaining[ri]) end
+                characters = ordered
+            else
+                table.sort(characters, function(a, b)
+                    if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+                    return CompareCharNameLower(a, b)
+                end)
+            end
+        end
+        
+        for ci = 1, #characters do
+            local char = characters[ci]
+            local charKey = char._key
+            local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
+            if itemsData and (itemsData.bags or itemsData.bank) then
+                -- Extract name and realm from character data
+                local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+                local charRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+                
+                -- Apply class color
+                local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
+                local charDisplayName = format("|cff%02x%02x%02x%s  -  %s|r",
+                    classColor.r * 255, classColor.g * 255, classColor.b * 255,
+                    charName,
+                    charRealm)
+                local charCategoryKey = "personal_" .. charKey
+                
+                -- Skip character if search active and no matches
+                if storageSearchActive and not categoriesWithMatches[charCategoryKey] then
+                    -- Skip this character
+                else
+                    -- Default collapsed; expand-all / search matches override.
+                    local isCharExpanded = (self.storageExpandAllActive == true) or (expanded.categories[charCategoryKey] == true)
+                    if storageSearchActive and categoriesWithMatches[charCategoryKey] then
+                        isCharExpanded = true
+                    end
+                    
+                    -- Get character class icon
+                    local charIcon = "Interface\\Icons\\Achievement_Character_Human_Male"  -- Default
+                    if char.classFile then
+                        charIcon = "Interface\\Icons\\ClassIcon_" .. char.classFile
+                    end
+                    
+                    -- Character block: wrapped header + body (major section); types always built inside body.
+                    local charIndent = BASE_INDENT * 1  -- 15px
+                    local charWrap = ns.UI.Factory:CreateContainer(personalBody, math.max(1, width - charIndent), MAIN_SECTION_HEADER_H + 0.1, false)
+                    charWrap:ClearAllPoints()
+                    if charWrap.SetClipsChildren then
+                        charWrap:SetClipsChildren(true)
+                    end
+                    if personalInnerTail then
+                        ChainSectionFrameBelow(personalBody, charWrap, personalInnerTail, charIndent, SECTION_SPACING, nil)
+                    else
+                        ChainSectionFrameBelow(personalBody, charWrap, nil, charIndent, nil, SECTION_SPACING)
+                    end
+
+                    local charBody
+                    local charHeader, charBtn = CreateCollapsibleHeader(
+                        charWrap,
+                        (charDisplayName or charKey),
+                        charCategoryKey,
+                        isCharExpanded,
+                        function() end,
+                        charIcon,
+                        false,
+                        1,
+                        nil,
+                        MajorStorageSectionOpts(charWrap, function() return charBody end, MAIN_SECTION_HEADER_H, function(exp)
+                            expanded.categories[charCategoryKey] = exp
+                        end, {
+                            stackParent = personalBody,
+                            outerWrap = personalWrap,
+                            outerHeaderH = MAIN_SECTION_HEADER_H,
+                        })
+                    )
+                    charHeader:SetPoint("TOPLEFT", charWrap, "TOPLEFT", 0, 0)
+                    charHeader:SetWidth(charWrap:GetWidth())
+
+                    charBody = ns.UI.Factory:CreateContainer(charWrap, math.max(1, charWrap:GetWidth()), 0.1, false)
+                    charBody:ClearAllPoints()
+                    charBody:SetPoint("TOPLEFT", charHeader, "BOTTOMLEFT", 0, 0)
+                    charBody:SetPoint("TOPRIGHT", charHeader, "BOTTOMRIGHT", 0, 0)
+
+                    local charBodyAdvance = SECTION_SPACING
+                    if isCharExpanded then
+                    local stackAnchor = nil
+                    local gapBelowStack = SECTION_SPACING
+                    -- Group character's items by type (NEW: Array-based iteration)
+                    local charItems = {}
+                    
+                    -- Process bags
+                    if itemsData.bags then
+                        local bags = itemsData.bags
+                        for bi = 1, #bags do
+                            local item = bags[bi]
+                            if item.itemID then
+                                local classID = ResolvedStorageClassID(item)
+                                local typeName = ResolvedStorageTypeName(classID)
+
+                                if not charItems[typeName] then
+                                    charItems[typeName] = {}
+                                end
+                                table.insert(charItems[typeName], item)
+                            end
+                        end
+                    end
+                    
+                    -- Process bank
+                    if itemsData.bank then
+                        local bankItems = itemsData.bank
+                        for bi = 1, #bankItems do
+                            local item = bankItems[bi]
+                            if item.itemID then
+                                local classID = ResolvedStorageClassID(item)
+                                local typeName = ResolvedStorageTypeName(classID)
+
+                                if not charItems[typeName] then
+                                    charItems[typeName] = {}
+                                end
+                                table.insert(charItems[typeName], item)
+                            end
+                        end
+                    end
+                    
+                    -- Sort types alphabetically - only include types with matching items
+                    local charSortedTypes = {}
+                    for typeName in pairs(charItems) do
+                        -- Only include types that have matching items
+                        local hasMatchingItems = false
+                        if storageSearchActive then
+                            local typeItems = charItems[typeName]
+                            for ti = 1, #typeItems do
+                                local item = typeItems[ti]
+                                if ItemMatchesSearch(item) then
+                                    hasMatchingItems = true
+                                    break
+                                end
+                            end
+                        else
+                            hasMatchingItems = #charItems[typeName] > 0
+                        end
+                        
+                        if hasMatchingItems then
+                            table.insert(charSortedTypes, typeName)
+                        end
+                    end
+                    table.sort(charSortedTypes)
+-- Draw each type category for this character
+                    for sti = 1, #charSortedTypes do
+                        local typeName = charSortedTypes[sti]
+                        local typeKey = "personal_" .. charKey .. "_" .. typeName
+                        
+                        -- Skip category if search active and no matches
+                        if storageSearchActive and not categoriesWithMatches[typeKey] then
+                            -- Skip this category
+                        else
+                            -- Default collapsed; expand-all / search matches override.
+                            local isTypeExpanded = (self.storageExpandAllActive == true) or (expanded.categories[typeKey] == true)
+                            if storageSearchActive and categoriesWithMatches[typeKey] then
+                                isTypeExpanded = true
+                            end
+                            
+                            -- Count items that match search (for display)
+                            local matchCount = 0
+                            local typeItemsForCount = charItems[typeName]
+                            for ti = 1, #typeItemsForCount do
+                                local item = typeItemsForCount[ti]
+                                if ItemMatchesSearch(item) then
+                                    matchCount = matchCount + 1
+                                end
+                            end
+                            
+                            -- Calculate display count
+                            local displayCount = (storageSearchActive) and matchCount or #charItems[typeName]
+                            
+                            -- Skip header if it has no items to show
+                            if displayCount == 0 then
+                                -- Skip this empty header
+                            else
+                                -- Get icon from first item in category
+                                local typeIcon2 = nil
+                                if charItems[typeName][1] and charItems[typeName][1].classID then
+                                    typeIcon2 = GetTypeIcon(charItems[typeName][1].classID)
+                                end
+                                
+                                -- Type header + rows: synchronous leaf rows (see RenderStorageLeafRows).
+                                local typeIndent = BASE_INDENT * 2  -- 30px
+                                local typeSectionWrap = ns.UI.Factory:CreateContainer(charBody, math.max(1, charBody:GetWidth() - typeIndent), TYPE_SECTION_HEADER_H + 0.1, false)
+                                typeSectionWrap:ClearAllPoints()
+                                if typeSectionWrap.SetClipsChildren then
+                                    typeSectionWrap:SetClipsChildren(true)
+                                end
+                                if stackAnchor then
+                                    ChainSectionFrameBelow(charBody, typeSectionWrap, stackAnchor, typeIndent, gapBelowStack, nil)
+                                else
+                                    ChainSectionFrameBelow(charBody, typeSectionWrap, nil, typeIndent, nil, SECTION_SPACING)
+                                end
+                                gapBelowStack = SECTION_SPACING
+                                stackAnchor = typeSectionWrap
+
+                                local leafAncestorCtxPersonal = {
+                                    contentBody = charBody,
+                                    sectionWrap = charWrap,
+                                    sectionHeaderH = MAIN_SECTION_HEADER_H,
+                                    stackParent = personalBody,
+                                    outerSectionWrap = personalWrap,
+                                    outerSectionHeaderH = MAIN_SECTION_HEADER_H,
+                                }
+                                local function locTextForPersonalStorageItem(item)
+                                    if not item then
+                                        return ""
+                                    end
+                                    local locText = ""
+                                    if item.actualBagID then
+                                        if item.actualBagID == -1 then
+                                            locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
+                                        elseif item.actualBagID >= 0 and item.actualBagID <= 5 then
+                                            locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
+                                        else
+                                            locText = format((ns.L and ns.L["BANK_BAG_FORMAT"]) or "Bank Bag %d", item.actualBagID - 5)
+                                        end
+                                    end
+                                    return locText
+                                end
+
+                                local rowsContainer
+                                local typeHeader2, typeBtn2 = CreateCollapsibleHeader(
+                                typeSectionWrap,
+                                typeName .. " (" .. FormatNumber(displayCount) .. ")",
+                                typeKey,
+                                isTypeExpanded,
+                                function()
+                                    WarbandNexus:_ApplyStorageTypeLeafTogglePartial(typeSectionWrap)
+                                end,
+                                typeIcon2,
+                                false,  -- isAtlas = false (item icons are texture paths)
+                                0,      -- indent in wrap only; typeSectionWrap already offset under character header
+                                nil,
+                                LeafTypeSectionVisualOpts(typeSectionWrap, function() return rowsContainer end, typeKey, leafAncestorCtxPersonal)
+                            )
+                            typeHeader2:SetPoint("TOPLEFT", typeSectionWrap, "TOPLEFT", 0, 0)
+                            typeHeader2:SetWidth(typeSectionWrap:GetWidth())
+                            rowsContainer = CreateStorageRowsContainer(typeSectionWrap, typeHeader2, 0, 0)
+                            local rowWidthPersonal = width - BASE_INDENT * 2
+                            local typeItemsForRows = charItems[typeName]
+                            local rowsYOffset
+                            if isTypeExpanded then
+                                rowsYOffset = RenderStorageLeafRows(rowsContainer, rowWidthPersonal, typeItemsForRows, locTextForPersonalStorageItem)
+                            else
+                                rowsYOffset = 0
+                            end
+                            rowsContainer._wnSectionFullH = rowsYOffset
+                            if isTypeExpanded then
+                                rowsContainer:Show()
+                                rowsContainer:SetHeight(math.max(0.1, rowsYOffset))
+                            else
+                                rowsContainer:Hide()
+                                rowsContainer:SetHeight(0.1)
+                            end
+                            typeSectionWrap:SetHeight(TYPE_SECTION_HEADER_H + math.max(0.1, rowsContainer:GetHeight() or 0.1))
+                            typeSectionWrap._wnRowsContainer = rowsContainer
+                            typeSectionWrap._wnStorageLeafMeta = {
+                                storageKey = typeKey,
+                                kind = "personal_type",
+                                charKey = charKey,
+                                typeName = typeName,
+                                rowWidth = rowWidthPersonal,
+                                typeHeaderH = TYPE_SECTION_HEADER_H,
+                                locTextForItem = locTextForPersonalStorageItem,
+                                populateRow = PopulateStorageRowDirect,
+                                searchQueryTabKey = searchResultTabKey,
+                            }
+                            charBodyAdvance = charBodyAdvance + typeSectionWrap:GetHeight() + SECTION_SPACING
+                            end  -- if displayCount > 0
+                        end  -- if not skipped by search
+                    end
+                    end
+
+                    local charInnerH = math.max(0.1, charBodyAdvance - SECTION_SPACING)
+                    charBody._wnSectionFullH = charInnerH
+                    if isCharExpanded then
+                        charBody:Show()
+                        charBody:SetHeight(charInnerH)
+                    else
+                        charBody:Hide()
+                        charBody:SetHeight(0.1)
+                    end
+                    charWrap:SetHeight(MAIN_SECTION_HEADER_H + charBody:GetHeight())
+                    personalInnerAccum = personalInnerAccum + charWrap:GetHeight() + SECTION_SPACING
+                    personalInnerTail = charWrap
+
+                hasAnyPersonalItems = true
+            end  -- else (closes the else at line 449)
+        end  -- if itemsData
+        end  -- for char
+
+        personalBody._wnSectionFullH = math.max(0.1, personalInnerAccum - SECTION_SPACING)
+        personalBody:Show()
+        personalBody:SetHeight(personalBody._wnSectionFullH)
+        else
+            personalBody._wnSectionFullH = 0.1
+            personalBody:Hide()
+            personalBody:SetHeight(0.1)
+        end
+        personalWrap:SetHeight(MAIN_SECTION_HEADER_H + personalBody:GetHeight())
+        storageStackAnchor = personalWrap
+    end  -- if personalTotalMatches > 0
+    stStop("Stor_personal")
+    
+    stStart("Stor_warband")
+    -- Warband Bank: default collapsed. Skip per-item class/type grouping when collapsed + no search (large banks).
+    local warbandExpanded = (self.storageExpandAllActive == true) or (expanded.warband == true)
+    if storageSearchActive and categoriesWithMatches["warband"] then
+        warbandExpanded = true
+    end
+
+    local warbandItems = {}
+    local warbandData = self:GetWarbandBankData()
+
+    if warbandData and warbandData.items then
+        local wbItems2 = warbandData.items
+        -- Items > Warband embed: always build type index (WN-PERF: collapsed-only fast path leaves an empty body).
+        local needWarbandTypeIndex = embedItemsWarband or warbandExpanded or (storageSearchActive and categoriesWithMatches["warband"])
+        if storageSearchActive and not categoriesWithMatches["warband"] and not warbandExpanded and not embedItemsWarband then
+            -- No warband search hits and body collapsed: avoid scanning thousands of slots for grouping.
+        elseif needWarbandTypeIndex then
+            for ii = 1, #wbItems2 do
+                local item = wbItems2[ii]
+                if item.itemID then
+                    if storageSearchActive and not ItemMatchesSearch(item) then
+                        -- Index only matches when a filter is active.
+                    else
+                        local classID = ResolvedStorageClassID(item)
+                        local typeName = ResolvedStorageTypeName(classID)
+                        if not warbandItems[typeName] then
+                            warbandItems[typeName] = {}
+                        end
+                        table.insert(warbandItems[typeName], item)
+                    end
+                end
+            end
+            warbandTotalMatches = 0
+            for _tn, items in pairs(warbandItems) do
+                warbandTotalMatches = warbandTotalMatches + #items
+            end
+        else
+            -- Collapsed, no search: item count only (no GetItemClassID / type tables).
+            local nwb = 0
+            for jj = 1, #wbItems2 do
+                if wbItems2[jj] and wbItems2[jj].itemID then
+                    nwb = nwb + 1
+                end
+            end
+            warbandTotalMatches = nwb
+        end
+    end
+
+    -- Only render Warband Bank section if it has matching items
+    if warbandTotalMatches > 0 then
+        local warbandWrap = ns.UI.Factory:CreateContainer(parent, math.max(1, width), MAIN_SECTION_HEADER_H + 0.1, false)
+        warbandWrap:ClearAllPoints()
+        if warbandWrap.SetClipsChildren then
+            warbandWrap:SetClipsChildren(true)
+        end
+        ChainSectionFrameBelow(parent, warbandWrap, storageStackAnchor, 0, storageStackAnchor and SECTION_SPACING or nil, yOffset)
+
+        local warbandBody
+        local warbandHeader, expandBtn, warbandIcon = CreateCollapsibleHeader(
+            warbandWrap,
+            (ns.L and ns.L["STORAGE_WARBAND_BANK"]) or "Warband Bank",
+            "warband",
+            warbandExpanded,
+            function() end,
+            "dummy",
+            false,
+            nil,
+            nil,
+            MajorStorageSectionOpts(warbandWrap, function() return warbandBody end, MAIN_SECTION_HEADER_H, function(exp)
+                expanded.warband = exp
+            end)
+        )
+        warbandHeader:SetPoint("TOPLEFT", warbandWrap, "TOPLEFT", 0, 0)
+        warbandHeader:SetWidth(width)
+
+        warbandBody = ns.UI.Factory:CreateContainer(warbandWrap, math.max(1, width), 0.1, false)
+        warbandBody:ClearAllPoints()
+        warbandBody:SetPoint("TOPLEFT", warbandHeader, "BOTTOMLEFT", 0, 0)
+        warbandBody:SetPoint("TOPRIGHT", warbandHeader, "BOTTOMRIGHT", 0, 0)
+
+        -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
+        if warbandIcon then
+            warbandIcon:SetTexture(nil)  -- Clear dummy texture
+            warbandIcon:SetAtlas("warbands-icon")
+            warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
+        end
+
+        local warbandBodyAdvance = SECTION_SPACING
+        if warbandExpanded then
+        local stackAnchor = nil
+        local gapBelowStack = SECTION_SPACING
+        -- Sort types alphabetically
+            local sortedTypes = {}
+            for typeName in pairs(warbandItems) do
+                -- Only include types that have matching items
+                local hasMatchingItems = false
+                if storageSearchActive then
+                    local wbTypeItems = warbandItems[typeName]
+                    for wi = 1, #wbTypeItems do
+                        local item = wbTypeItems[wi]
+                        if ItemMatchesSearch(item) then
+                            hasMatchingItems = true
+                            break
+                        end
+                    end
+                else
+                    hasMatchingItems = #warbandItems[typeName] > 0
+                end
+                
+                if hasMatchingItems then
+                    table.insert(sortedTypes, typeName)
+                end
+            end
+            table.sort(sortedTypes)
+
+        -- Draw each type category
+        for sti = 1, #sortedTypes do
+            local typeName = sortedTypes[sti]
+            local categoryKey = "warband_" .. typeName
+            
+            -- Skip category if search active and no matches
+            if storageSearchActive and not categoriesWithMatches[categoryKey] then
+                -- Skip this category
+            else
+                -- Default collapsed; expand-all / search matches override.
+                local isTypeExpanded = (self.storageExpandAllActive == true) or (expanded.categories[categoryKey] == true)
+                if storageSearchActive and categoriesWithMatches[categoryKey] then
+                    isTypeExpanded = true
+                end
+                
+                -- Count items that match search (for display)
+                local matchCount = 0
+                local wbTypeItems2 = warbandItems[typeName]
+                for wi = 1, #wbTypeItems2 do
+                    local item = wbTypeItems2[wi]
+                    if ItemMatchesSearch(item) then
+                        matchCount = matchCount + 1
+                    end
+                end
+                
+                -- Calculate display count
+                local displayCount = (storageSearchActive) and matchCount or #warbandItems[typeName]
+                
+                -- Skip header if it has no items to show
+                if displayCount == 0 then
+                    -- Skip this empty header
+                else
+                    -- Get icon from first item in category
+                    local typeIcon = nil
+                    if warbandItems[typeName][1] and warbandItems[typeName][1].classID then
+                        typeIcon = GetTypeIcon(warbandItems[typeName][1].classID)
+                    end
+                    
+                    local typeIndentWB = BASE_INDENT
+                    local typeSectionWrapWB = ns.UI.Factory:CreateContainer(warbandBody, math.max(1, warbandBody:GetWidth() - typeIndentWB), TYPE_SECTION_HEADER_H + 0.1, false)
+                    typeSectionWrapWB:ClearAllPoints()
+                    if typeSectionWrapWB.SetClipsChildren then
+                        typeSectionWrapWB:SetClipsChildren(true)
+                    end
+                    if stackAnchor then
+                        ChainSectionFrameBelow(warbandBody, typeSectionWrapWB, stackAnchor, typeIndentWB, gapBelowStack, nil)
+                    else
+                        ChainSectionFrameBelow(warbandBody, typeSectionWrapWB, nil, typeIndentWB, nil, SECTION_SPACING)
+                    end
+                    gapBelowStack = SECTION_SPACING
+                    stackAnchor = typeSectionWrapWB
+
+                    local leafAncestorCtxWarband = {
+                        contentBody = warbandBody,
+                        sectionWrap = warbandWrap,
+                        sectionHeaderH = MAIN_SECTION_HEADER_H,
+                    }
+                    local function locTextForWarbandStorageItem(item)
+                        if not item then
+                            return ""
+                        end
+                        return item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
+                    end
+
+                    local rowsContainer
+                    local typeHeader, typeBtn = CreateCollapsibleHeader(
+                        typeSectionWrapWB,
+                        typeName .. " (" .. FormatNumber(displayCount) .. ")",
+                        categoryKey,
+                        isTypeExpanded,
+                        function()
+                            WarbandNexus:_ApplyStorageTypeLeafTogglePartial(typeSectionWrapWB)
+                        end,
+                        typeIcon,
+                        false,
+                        nil,
+                        nil,
+                        LeafTypeSectionVisualOpts(typeSectionWrapWB, function() return rowsContainer end, categoryKey, leafAncestorCtxWarband)
+                    )
+                    typeHeader:SetPoint("TOPLEFT", typeSectionWrapWB, "TOPLEFT", 0, 0)
+                    typeHeader:SetWidth(typeSectionWrapWB:GetWidth())
+                    rowsContainer = CreateStorageRowsContainer(typeSectionWrapWB, typeHeader, 0, 0)
+                    local rowWidthWB = width - BASE_INDENT
+                    local wbTypeItems3 = warbandItems[typeName]
+                    local rowsYOffset
+                    if isTypeExpanded then
+                        rowsYOffset = RenderStorageLeafRows(rowsContainer, rowWidthWB, wbTypeItems3, locTextForWarbandStorageItem)
+                    else
+                        rowsYOffset = 0
+                    end
+                    rowsContainer._wnSectionFullH = rowsYOffset
+                    if isTypeExpanded then
+                        rowsContainer:Show()
+                        rowsContainer:SetHeight(math.max(0.1, rowsYOffset))
+                    else
+                        rowsContainer:Hide()
+                        rowsContainer:SetHeight(0.1)
+                    end
+                    typeSectionWrapWB:SetHeight(TYPE_SECTION_HEADER_H + math.max(0.1, rowsContainer:GetHeight() or 0.1))
+                    typeSectionWrapWB._wnRowsContainer = rowsContainer
+                    typeSectionWrapWB._wnStorageLeafMeta = {
+                        storageKey = categoryKey,
+                        kind = "warband_type",
+                        typeName = typeName,
+                        rowWidth = rowWidthWB,
+                        typeHeaderH = TYPE_SECTION_HEADER_H,
+                        locTextForItem = locTextForWarbandStorageItem,
+                        populateRow = PopulateStorageRowDirect,
+                        searchQueryTabKey = searchResultTabKey,
+                    }
+                    warbandBodyAdvance = warbandBodyAdvance + typeSectionWrapWB:GetHeight() + SECTION_SPACING
+                end  -- if displayCount > 0
+            end  -- if not skipped by search
+        end
+
+        warbandBody._wnSectionFullH = math.max(0.1, warbandBodyAdvance - SECTION_SPACING)
+        warbandBody:Show()
+        warbandBody:SetHeight(warbandBody._wnSectionFullH)
+        else
+            warbandBody._wnSectionFullH = 0.1
+            warbandBody:Hide()
+            warbandBody:SetHeight(0.1)
+        end
+        warbandWrap:SetHeight(MAIN_SECTION_HEADER_H + warbandBody:GetHeight())
+        storageStackAnchor = warbandWrap
+    end  -- if warbandTotalMatches > 0
+    
+    stStop("Stor_warband")
+    if parent._wnStorageRowRefs and #parent._wnStorageRowRefs > 0 then
+        parent._wnStorageApplyRowVisual = function(row, item, rowIdx, rowWidth, locText)
+            PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
+        end
+    else
+        parent._wnStorageApplyRowVisual = nil
+    end
+    local pad = GetLayout().minBottomSpacing or 0
+    parent._wnStorageLayoutTail = storageStackAnchor
+    local extent = MeasureStorageResultsContentExtent(parent)
+    if extent then
+        hideDrawIndicator()
+        return math.max(1, extent + pad, yOffset + pad)
+    end
+    if storageStackAnchor and parent.GetTop and storageStackAnchor.GetBottom then
+        local pTop = parent:GetTop()
+        local bot = storageStackAnchor:GetBottom()
+        if pTop and bot then
+            local measured = pTop - bot + pad
+            hideDrawIndicator()
+            return math.max(1, measured, yOffset + pad)
+        end
+    end
+    hideDrawIndicator()
+    return yOffset + pad
+end -- DrawStorageResults
+
+-- Light-weight Items sub-tab switch: updates gold/stats + results only (avoids full PopulateContent / header rebuild).
+local function ApplyItemsSubTabGoldDisplay(goldDisplay, currentItemsSubTab)
+    if not goldDisplay then return end
+    local FormatMoney = ns.UI_FormatMoney
+    if currentItemsSubTab == "personal" then
+        goldDisplay:Hide()
+        return
+    end
+    goldDisplay:Show()
+    if currentItemsSubTab == "warband" then
+        local warbandGold = ns.Utilities:GetWarbandBankMoney() or 0
+        if FormatMoney then
+            goldDisplay:SetText(FormatMoney(warbandGold, 14))
+        else
+            goldDisplay:SetText(WarbandNexus:API_FormatMoney(warbandGold))
+        end
+    elseif currentItemsSubTab == "guild" then
+        if IsInGuild() then
+            local guildName = GetGuildInfo("player")
+            if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
+            local guildGold = nil
+            if guildName and WarbandNexus.db.global.guildBank and WarbandNexus.db.global.guildBank[guildName] then
+                guildGold = WarbandNexus.db.global.guildBank[guildName].cachedGold
+            end
+            if guildGold then
+                if FormatMoney then
+                    goldDisplay:SetText(FormatMoney(guildGold, 14))
+                else
+                    goldDisplay:SetText(WarbandNexus:API_FormatMoney(guildGold))
+                end
+            else
+                goldDisplay:SetText("|cff888888" .. ((ns.L and ns.L["NO_SCAN"]) or "Not scanned") .. "|r")
+            end
+        else
+            goldDisplay:SetText("|cff888888" .. ((ns.L and ns.L["NOT_IN_GUILD"]) or "Not in guild") .. "|r")
+        end
+    elseif currentItemsSubTab == "inventory" then
+        local charGold = ns.Utilities:GetLiveCharacterMoneyCopper(0)
+        if FormatMoney then
+            goldDisplay:SetText(FormatMoney(charGold, 14))
+        else
+            goldDisplay:SetText(WarbandNexus:API_FormatMoney(charGold))
+        end
+    elseif goldDisplay:IsShown() then
+        goldDisplay:SetText("")
+    end
+end
+
+local function ApplyItemsSubTabStatsText(addon, statsText, currentItemsSubTab)
+    if not statsText then return end
+    local items = {}
+    if currentItemsSubTab == "warband" then
+        items = addon:GetWarbandBankItems() or {}
+    elseif currentItemsSubTab == "guild" then
+        items = addon:GetGuildBankItems() or {}
+    elseif currentItemsSubTab == "inventory" then
+        items = addon:GetInventoryItems() or {}
+    elseif currentItemsSubTab == "personal" then
+        items = addon:GetBankItems() or {}
+    end
+    local bankStats = addon:GetBankStatistics()
+    if currentItemsSubTab == "warband" then
+        local wb = bankStats.warband or {}
+        local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
+        local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
+        local neverText = (ns.L and ns.L["NEVER"]) or "Never"
+        statsText:SetText(format("|cffa335ee" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
+            FormatNumber(#items), FormatNumber(wb.usedSlots or 0), FormatNumber(wb.totalSlots or 0),
+            (wb.lastScan or 0) > 0 and date("%H:%M", wb.lastScan) or neverText))
+    elseif currentItemsSubTab == "guild" then
+        local gb = bankStats.guild or {}
+        local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
+        local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
+        local neverText = (ns.L and ns.L["NEVER"]) or "Never"
+        statsText:SetText(format("|cff00ff00" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
+            FormatNumber(#items), FormatNumber(gb.usedSlots or 0), FormatNumber(gb.totalSlots or 0),
+            (gb.lastScan or 0) > 0 and date("%H:%M", gb.lastScan) or neverText))
+    elseif currentItemsSubTab == "inventory" then
+        local bagsData = addon.db.char.bags or { usedSlots = 0, totalSlots = 0, lastScan = 0 }
+        local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
+        local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
+        local neverText = (ns.L and ns.L["NEVER"]) or "Never"
+        statsText:SetText(format("|cff88ccff" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
+            FormatNumber(#items), FormatNumber(bagsData.usedSlots or 0), FormatNumber(bagsData.totalSlots or 0),
+            (bagsData.lastScan or 0) > 0 and date("%H:%M", bagsData.lastScan) or neverText))
+    elseif currentItemsSubTab == "personal" then
+        local pb = bankStats.personal or {}
+        local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
+        local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
+        local neverText = (ns.L and ns.L["NEVER"]) or "Never"
+        statsText:SetText(format("|cff88ff88" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
+            FormatNumber(#items), FormatNumber(pb.usedSlots or 0), FormatNumber(pb.totalSlots or 0),
+            (pb.lastScan or 0) > 0 and date("%H:%M", pb.lastScan) or neverText))
+    end
+    statsText:SetTextColor(1, 1, 1)
+end
+
+function WarbandNexus:RefreshItemsSubTabBodyOnly()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "items" then return false end
+    if not ns.Utilities:IsModuleEnabled("items") then return false end
+    local sc = mf.scrollChild
+    if not sc or not sc._itemsSubTabBar or not sc._itemsStatsText then return false end
+    local sub = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "inventory"
+    sc._itemsSubTabBar:SetActiveTab(sub)
+    if sc._itemsSubTabBar.RefreshGuildLock then
+        sc._itemsSubTabBar:RefreshGuildLock()
+    end
+    ApplyItemsSubTabGoldDisplay(sc._itemsGoldDisplay, sub)
+    ApplyItemsSubTabStatsText(self, sc._itemsStatsText, sub)
+    self:RedrawItemsResultsOnly()
+    return true
 end
 
 --============================================================================
@@ -311,10 +2051,11 @@ end
 function WarbandNexus:DrawItemList(parent)
     -- Register event listeners (only once)
     RegisterItemsEvents(parent)
+    RegisterStorageEvents(parent)
     local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
     local headerParent = fixedHeader or parent
     local yOffset = 8
-    local width = parent:GetWidth() - 20
+    local width = ResolveItemsTabScrollContentWidth(parent)
     
     -- Hide empty state container (will be shown again if needed)
     if parent.emptyStateContainer then
@@ -414,12 +2155,30 @@ function WarbandNexus:DrawItemList(parent)
     end)
 
     local hdrGapEc = GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8
+    --- Items > Warband uses DrawStorageResults + session `_wnStorageTreeExpanded`; other sub-tabs use `expandedGroups` + virtual list.
+    local function StorageTreeAnyExpandedForToolbar()
+        if not WarbandNexus.GetStorageTreeExpandState then return false end
+        local st = WarbandNexus:GetStorageTreeExpandState()
+        if not st then return false end
+        if st.personal == true or st.warband == true then return true end
+        local cats = st.categories
+        if not cats then return false end
+        for _, v in pairs(cats) do
+            if v == true then return true end
+        end
+        return false
+    end
     if ns.UI_EnsureTitleCardExpandCollapseButtons then
         ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, moneyLogsBtn, "LEFT", -hdrGapEc, 0, {
             getIsCollapseMode = function()
+                local sub = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or "personal"
+                if sub == "warband" then
+                    if WarbandNexus.storageExpandAllActive == true then return true end
+                    return StorageTreeAnyExpandedForToolbar()
+                end
                 if WarbandNexus.itemsExpandAllActive then return true end
                 local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
-                local prefix = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal") .. "_"
+                local prefix = sub .. "_"
                 for k, v in pairs(eg) do
                     if type(k) == "string" and k:sub(1, #prefix) == prefix and v ~= false then
                         return true
@@ -430,8 +2189,14 @@ function WarbandNexus:DrawItemList(parent)
             expandTooltip = (ns.L and ns.L["ITEMS_EXPAND_ALL_TOOLTIP"]) or "Expand all item type groups for this bank view.",
             collapseTooltip = (ns.L and ns.L["ITEMS_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all item type groups for this bank view.",
             onExpandClick = function()
+                local sub = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or "personal"
+                if sub == "warband" then
+                    WarbandNexus.storageExpandAllActive = true
+                    WarbandNexus:RedrawItemsResultsOnly()
+                    return
+                end
                 local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
-                local prefix = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal") .. "_"
+                local prefix = sub .. "_"
                 local rm = {}
                 for k in pairs(eg) do
                     if type(k) == "string" and k:sub(1, #prefix) == prefix then
@@ -441,17 +2206,26 @@ function WarbandNexus:DrawItemList(parent)
                 for i = 1, #rm do
                     eg[rm[i]] = nil
                 end
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
+                WarbandNexus:ApplyItemsVirtualFlatListOnly()
             end,
             onCollapseClick = function()
+                local sub = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or "personal"
+                if sub == "warband" then
+                    WarbandNexus.storageExpandAllActive = false
+                    if WarbandNexus.ResetStorageTreeExpandState then
+                        WarbandNexus:ResetStorageTreeExpandState()
+                    end
+                    WarbandNexus:RedrawItemsResultsOnly()
+                    return
+                end
                 local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
-                local prefix = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal") .. "_"
+                local prefix = sub .. "_"
                 for k in pairs(eg) do
                     if type(k) == "string" and k:sub(1, #prefix) == prefix then
                         eg[k] = false
                     end
                 end
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
+                WarbandNexus:ApplyItemsVirtualFlatListOnly()
             end,
         })
     end
@@ -559,7 +2333,14 @@ function WarbandNexus:DrawItemList(parent)
         local resultsContainer = parent.resultsContainer
         if resultsContainer then
             SearchResultsRenderer:PrepareContainer(resultsContainer)
-            local contentHeight = WarbandNexus:DrawItemsResults(resultsContainer, 0, width, ns.UI_GetItemsSubTab(), text)
+            local sub = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal"
+            local contentHeight
+            if sub == "warband" and ns.Utilities:IsModuleEnabled("items") then
+                local rw = ResolveItemsTabScrollContentWidth(parent)
+                contentHeight = WarbandNexus:DrawStorageResults(resultsContainer, 0, rw, text)
+            else
+                contentHeight = WarbandNexus:DrawItemsResults(resultsContainer, 0, width, sub, text)
+            end
             resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
             if ns.UI_AnnexResultsToScrollBottom and parent then
                 ns.UI_AnnexResultsToScrollBottom(resultsContainer, parent, SIDE_MARGIN, 8)
@@ -632,6 +2413,10 @@ function WarbandNexus:DrawItemList(parent)
             (pb.lastScan or 0) > 0 and date("%H:%M", pb.lastScan) or neverText))
     end
     statsText:SetTextColor(1, 1, 1)  -- White
+
+    parent._itemsSubTabBar = itemsBankSubTabBar
+    parent._itemsGoldDisplay = goldDisplay
+    parent._itemsStatsText = statsText
     
     yOffset = yOffset + 24 + GetLayout().afterElement
 
@@ -641,8 +2426,16 @@ function WarbandNexus:DrawItemList(parent)
     -- ===== RESULTS CONTAINER (in scroll area) =====
     local resultsContainer = CreateResultsContainer(parent, 8, SIDE_MARGIN)
     parent.resultsContainer = resultsContainer
-    
-    local contentHeight = self:DrawItemsResults(resultsContainer, 0, width, currentItemsSubTab, itemsSearchText)
+
+    local contentHeight
+    if currentItemsSubTab == "warband" and ns.Utilities:IsModuleEnabled("items") then
+        if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
+            SearchResultsRenderer:PrepareContainer(resultsContainer)
+        end
+        contentHeight = self:DrawStorageResults(resultsContainer, 0, width, itemsSearchText)
+    else
+        contentHeight = self:DrawItemsResults(resultsContainer, 0, width, currentItemsSubTab, itemsSearchText)
+    end
     resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
     if ns.UI_AnnexResultsToScrollBottom then
         ns.UI_AnnexResultsToScrollBottom(resultsContainer, parent, SIDE_MARGIN, 8)
@@ -660,8 +2453,7 @@ function WarbandNexus:RedrawItemsResultsOnly()
     if not scrollChild then return end
     local rc = scrollChild.resultsContainer
     if not rc or rc:GetParent() ~= scrollChild then return end
-    local width = scrollChild:GetWidth() - 20
-    if width < 1 then return end
+    local width = ResolveItemsTabScrollContentWidth(scrollChild)
     local q = ""
     if SearchStateManager and SearchStateManager.GetQuery then
         q = SearchStateManager:GetQuery("items") or ""
@@ -672,31 +2464,18 @@ function WarbandNexus:RedrawItemsResultsOnly()
         SearchResultsRenderer:PrepareContainer(rc)
     end
 
-    local contentHeight = self:DrawItemsResults(rc, 0, width, subTab, q)
+    local contentHeight
+    if subTab == "warband" and ns.Utilities:IsModuleEnabled("items") then
+        contentHeight = self:DrawStorageResults(rc, 0, width, q)
+    else
+        contentHeight = self:DrawItemsResults(rc, 0, width, subTab, q)
+    end
     rc:SetHeight(math.max(contentHeight or 1, 1))
     if ns.UI_AnnexResultsToScrollBottom then
         ns.UI_AnnexResultsToScrollBottom(rc, scrollChild, SIDE_MARGIN, 8)
     end
 
-    local CONTENT_BOTTOM_PADDING = 8
-    local tabBodyHeight = 8 + (contentHeight or 0)
-    scrollChild:SetHeight(math.max(tabBodyHeight + CONTENT_BOTTOM_PADDING, mf.scroll:GetHeight()))
-
-    if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
-        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
-    end
-    if ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
-        ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
-    end
-
-    local sc = mf.scroll
-    if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
-        local maxV = sc:GetVerticalScrollRange() or 0
-        local cur = sc:GetVerticalScroll() or 0
-        if cur > maxV then
-            sc:SetVerticalScroll(maxV)
-        end
-    end
+    SyncItemsTabScrollChrome(mf, scrollChild, contentHeight)
 end
 
 --- Build grouped flat list for Items virtual scroll. Returns flatList, endYOffset, itemCount, itemsSearchActive;
@@ -724,7 +2503,8 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
         for i = 1, #items do
             local item = items[i]
             local itemName = SafeLower(item.name)
-            local itemLink = SafeLower(item.itemLink)
+            local linkStr = item.itemLink or item.link
+            local itemLink = SafeLower(linkStr)
             if itemName:find(itemsSearchText, 1, true) or itemLink:find(itemsSearchText, 1, true) then
                 table.insert(filtered, item)
             end
@@ -739,7 +2519,15 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
             local keys = {}
             for i = 1, n do
                 order[i] = i
-                keys[i] = SafeLower(items[i].name)
+                local it = items[i]
+                local nm = it.name
+                if not nm and it.link and type(it.link) == "string" and not (issecretvalue and issecretvalue(it.link)) then
+                    nm = it.link:match("%[(.-)%]")
+                end
+                keys[i] = SafeLower(nm)
+                if keys[i] == "" and it.itemID then
+                    keys[i] = "id:" .. tostring(it.itemID)
+                end
             end
             table.sort(order, function(ia, ib)
                 local ka, kb = keys[ia], keys[ib]
@@ -820,7 +2608,7 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
             for itemIndex = 1, #group.items do
                 local item = group.items[itemIndex]
                 rowIdx = rowIdx + 1
-                -- Stable identity for virtual row reuse (accordion / Refresh without repopulating textures & text).
+                -- Stable identity for virtual row reuse (collapsible sections / Refresh without repopulating textures & text).
                 local rowReuseSig = (group.groupKey or "")
                     .. "\001"
                     .. tostring(item.itemID or 0)
@@ -863,13 +2651,17 @@ function WarbandNexus:ApplyItemsVirtualFlatListOnly()
     if not scrollChild then return end
     local rc = scrollChild.resultsContainer
     if not rc or rc:GetParent() ~= scrollChild then return end
-    local width = scrollChild:GetWidth() - 20
-    if width < 1 then return end
+    local width = ResolveItemsTabScrollContentWidth(scrollChild)
     local q = ""
     if SearchStateManager and SearchStateManager.GetQuery then
         q = SearchStateManager:GetQuery("items") or ""
     end
     local subTab = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or "personal"
+
+    if subTab == "warband" and ns.Utilities:IsModuleEnabled("items") then
+        self:RedrawItemsResultsOnly()
+        return
+    end
 
     local flatList = self:BuildItemsVirtualFlatList(width, subTab, q, 0)
     if not flatList then
@@ -917,6 +2709,13 @@ end
 --============================================================================
 
 function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTab, itemsSearchText)
+    if currentItemsSubTab == "warband" and ns.Utilities:IsModuleEnabled("items") then
+        if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
+            SearchResultsRenderer:PrepareContainer(parent)
+        end
+        return self:DrawStorageResults(parent, yOffset, width, itemsSearchText)
+    end
+
     local flatList, contentEndY, _itemCount, itemsSearchActive = self:BuildItemsVirtualFlatList(width, currentItemsSubTab, itemsSearchText, yOffset)
 
     if not flatList then
@@ -1017,8 +2816,11 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             end)
             row:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
             row:SetScript("OnMouseUp", function(_, button)
-                if button == "LeftButton" and IsShiftKeyDown() and item.itemLink then
-                    ChatEdit_InsertLink(item.itemLink)
+                if button == "LeftButton" and IsShiftKeyDown() then
+                    local lk = item.itemLink or item.link
+                    if lk and not (issecretvalue and issecretvalue(lk)) then
+                        ChatEdit_InsertLink(lk)
+                    end
                 end
             end)
         end
@@ -1026,7 +2828,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         local HEADER_STRIP_H = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
         local Factory = ns.UI.Factory
 
-        local totalHeight = VLM.SetupVirtualList(mainFrame, parent, 0, flatList, {
+        local totalHeight = VLM.SetupVirtualList(mainFrame, parent, nil, flatList, {
             chainCollapsibleHeaders = true,
             chainAnimatedSections = true,
             incrementalRowReuse = true,
@@ -1058,7 +2860,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     false,
                     nil,
                     nil,
-                    BuildAccordionVisualOpts({
+                    BuildCollapsibleSectionOpts({
                         wrapFrame = groupWrap,
                         bodyGetter = function() return groupShell end,
                         headerHeight = headerStripH,
@@ -1098,7 +2900,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 groupShell:ClearAllPoints()
                 groupShell:SetPoint("TOPLEFT", headerBtn, "BOTTOMLEFT", 0, 0)
                 groupShell:SetPoint("TOPRIGHT", headerBtn, "BOTTOMRIGHT", 0, 0)
-                groupShell._wnAccordionFullH = rowsBodyH
+                groupShell._wnSectionFullH = rowsBodyH
                 if d.isExpanded then
                     groupShell:Show()
                     groupShell:SetHeight(rowsBodyH)

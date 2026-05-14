@@ -1,5 +1,5 @@
 --[[
-    Shared achievement category browser: flat list + nested accordion headers + virtual rows.
+    Shared achievement category browser: flat list + nested collapsible headers + virtual rows.
     Same behavior as Collections ▸ Achievements; used by Plans ▸ To-Do browse achievement category.
 ]]
 
@@ -26,7 +26,7 @@ local SIDE_MARGIN = LAYOUT.SIDE_MARGIN or 10
 local PADDING = SIDE_MARGIN
 local ROW_HEIGHT = LAYOUT.ROW_HEIGHT or 26
 local HEADER_HEIGHT = LAYOUT.HEADER_HEIGHT or 32
--- Must match CreateCollapsibleHeader / accordion wraps (same bug class as Collections mount lists).
+-- Must match CreateCollapsibleHeader / section wraps (same bug class as Collections mount lists).
 local COLLAPSE_HEADER_HEIGHT_ACH = LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT or 36
 local BASE_INDENT = LAYOUT.BASE_INDENT or 15
 local SECTION_SPACING = LAYOUT.SECTION_SPACING or LAYOUT.betweenSections or 8
@@ -390,7 +390,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
         return math.max(0.1, bodyH)
     end
 
-    local function ReflowAchievementAccordionHeights(activeAnimKey, activeAnimBodyH)
+    local function ReflowAchievementSectionHeights(activeAnimKey, activeAnimBodyH)
         for i = 1, #achHeaderKeys do
             local key = achHeaderKeys[i]
             local meta = achHeaderMeta[key]
@@ -399,7 +399,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
             local wrap = achSectionWraps[key]
             if catID and body then
                 local fullH = ComputeAchievementContentHeight(catID, activeAnimKey, activeAnimBodyH)
-                body._wnAccordionFullH = fullH
+                body._wnSectionFullH = fullH
                 if key ~= activeAnimKey and collapsedHeaders[key] == false then
                     body:SetHeight(fullH)
                 end
@@ -445,7 +445,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
                 if isExpanded then
                     refreshVisibleInternal()
                 end
-            end, "UI-Achievement-Shield-NoPoints", true, indentLevel, nil, ns.UI_BuildAccordionVisualOpts({
+            end, "UI-Achievement-Shield-NoPoints", true, indentLevel, nil, ns.UI_BuildCollapsibleSectionOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
                 headerHeight = COLLAPSE_H_COLL,
@@ -458,7 +458,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
                     end
                 end,
                 onUpdate = function(drawH)
-                    ReflowAchievementAccordionHeights(key, drawH)
+                    ReflowAchievementSectionHeights(key, drawH)
                 end,
                 updateVisibleFn = function()
                     refreshVisibleInternal()
@@ -467,7 +467,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
                     if not exp then
                         collapsedHeaders[key] = true
                     end
-                    ReflowAchievementAccordionHeights()
+                    ReflowAchievementSectionHeights()
                     refreshVisibleInternal()
                 end,
             }))
@@ -479,7 +479,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
             sectionBody:ClearAllPoints()
             sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
             sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
-            sectionBody._wnAccordionFullH = secH
+            sectionBody._wnSectionFullH = secH
             if not it.isCollapsed then
                 sectionBody:Show()
                 sectionBody:SetHeight(math.max(0.1, secH))
@@ -495,7 +495,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
         end
     end
 
-    ReflowAchievementAccordionHeights()
+    ReflowAchievementSectionHeights()
 
     state._achFlatList = flatList
     state._achFlatListTotalHeight = totalHeight

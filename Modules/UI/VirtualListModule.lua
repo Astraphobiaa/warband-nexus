@@ -21,6 +21,59 @@ local DEFAULT_ROW_HEIGHT = 26
 
 --- Reused header-key buffer for FlatListHeaderSignature / RefreshVirtualListFlatList (avoid GC each refresh).
 local _flatListHeaderSigScratch = {}
+--- Reused offset-candidate list for UpdateVisible (avoids a small table alloc per scroll tick).
+local _vlmCandidateScratch = {}
+
+--- Pixels from scroll content top down to `listFrame` top (TOP anchor chain). Same idea as
+--- AchievementBrowseVirtualList, extended for Storage/ChainSectionFrameBelow patterns.
+--- Returns nil if the chain cannot be resolved.
+local function ListTopOffsetDownFromScrollContent(listFrame, scrollContent)
+    if not listFrame or not scrollContent then return nil end
+    local sum = 0
+    local f = listFrame
+    while f do
+        if f == scrollContent then
+            return sum
+        end
+        local p = f:GetParent()
+        if not p then return nil end
+        local delta = nil
+        local n = f.GetNumPoints and f:GetNumPoints() or 0
+        for i = 1, n do
+            local pt, rel, rp, _x, yo = f:GetPoint(i)
+            if not rel or not rp or not pt then
+                -- skip invalid point
+            elseif rel == p and (rp == "TOPLEFT" or rp == "TOP" or rp == "TOPRIGHT")
+                and (pt == "TOPLEFT" or pt == "TOP" or pt == "TOPRIGHT") then
+                delta = -(yo or 0)
+                break
+            elseif rel ~= p and rel.GetParent and rel:GetParent() == p
+                and (rp == "BOTTOMLEFT" or rp == "BOTTOM" or rp == "BOTTOMRIGHT")
+                and (pt == "TOPLEFT" or pt == "TOP" or pt == "TOPRIGHT") then
+                delta = -(yo or 0)
+                break
+            end
+        end
+        -- Second pass: any TOP→BOTTOM chain to sibling or parent (handles GetPoint order quirks).
+        if delta == nil and n > 0 then
+            for i = 1, n do
+                local pt, rel, rp, _x, yo = f:GetPoint(i)
+                if rel and rp and pt
+                    and (pt == "TOPLEFT" or pt == "TOP" or pt == "TOPRIGHT")
+                    and (rp == "BOTTOMLEFT" or rp == "BOTTOM" or rp == "BOTTOMRIGHT") then
+                    if rel == p or (rel.GetParent and rel:GetParent() == p) then
+                        delta = -(yo or 0)
+                        break
+                    end
+                end
+            end
+        end
+        if delta == nil then return nil end
+        sum = sum + delta
+        f = p
+    end
+    return nil
+end
 
 --- Pack `frame:GetChildren()` into one reused array (WoW returns variadic children).
 local _vlmOrphanChildScratch = {}
@@ -107,7 +160,7 @@ local function FindFirstVisible(flatList, target)
     return result
 end
 
---- Row frames may be parented under group shells (Bank/Items accordion); walk ancestors.
+--- Row frames may be parented under group shells (Bank/Items collapsible groups); walk ancestors.
 local function VirtualRowIsUnderContainer(rowFrame, container)
     local p = rowFrame and rowFrame:GetParent()
     while p do
@@ -334,27 +387,43 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
             viewHeight = 1000 -- Fallback to ensure rows render even if layout is pending
         end
 
-        -- Use explicit caller-provided offset when available.
-        -- Auto-detect only when caller does not provide one.
-        local offset = containerTopOffset
-        if offset == nil then
-            offset = 0
-            local scrollChild = scrollFrame.GetScrollChild and scrollFrame:GetScrollChild()
-            if scrollChild then
-                local scTop = scrollChild:GetTop()
-                local cTop = container:GetTop()
-                if scTop and cTop then
-                    offset = scTop - cTop
-                end
-            end
+        -- Map main scroll position into this container's coordinate space. Nested lists
+        -- (Items groups, Storage type rows) must not use scrollChild:GetTop()-container:GetTop()
+        -- (different parent spaces — caused invisible virtual rows).
+        local scrollChild = scrollFrame.GetScrollChild and scrollFrame:GetScrollChild()
+        if not scrollChild and mainFrame.scrollChild then
+            scrollChild = mainFrame.scrollChild
         end
 
-        local rangeMin = scrollTop - offset
-        local rangeMax = rangeMin + viewHeight
-
         local bufferPx = BUFFER_ROWS * DEFAULT_ROW_HEIGHT
-        rangeMin = rangeMin - bufferPx
-        rangeMax = rangeMax + bufferPx
+        local walkOff = nil
+        if scrollChild then
+            walkOff = ListTopOffsetDownFromScrollContent(container, scrollChild)
+        end
+        -- Try several offsets when the anchor walk returns a bogus non-nil (over-counted chain):
+        -- rangeMax can shrink so much that y > rangeMax on the first row and nothing paints.
+        wipe(_vlmCandidateScratch)
+        local candidates = _vlmCandidateScratch
+        local function pushUnique(v)
+            if v == nil then return end
+            for j = 1, #candidates do
+                if candidates[j] == v then return end
+            end
+            candidates[#candidates + 1] = v
+        end
+        pushUnique(containerTopOffset)
+        pushUnique(walkOff)
+        pushUnique(0)
+        if scrollChild then
+            local scTop = scrollChild:GetTop()
+            local cTop = container:GetTop()
+            if scTop and cTop then
+                pushUnique(scTop - cTop)
+            end
+        end
+        if #candidates == 0 then
+            candidates[1] = 0
+        end
 
         local incrementalReuse = container._vlm_incrementalRowReuse == true
         local oldVis = container._virtualVisibleFrames
@@ -406,60 +475,78 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
             return
         end
 
-        local startIdx = FindFirstVisible(fl, rangeMin)
+        local hasRowEntries = false
+        for ii = 1, #fl do
+            if fl[ii] and fl[ii].type == "row" then
+                hasRowEntries = true
+                break
+            end
+        end
 
-        for i = startIdx, #fl do
-            local it = fl[i]
-            if not it then break end
+        local function tryPaint(off)
+            local rm = scrollTop - off - bufferPx
+            local rx = scrollTop - off + viewHeight + bufferPx
+            local startIdx = FindFirstVisible(fl, rm)
+            for i = startIdx, #fl do
+                local it = fl[i]
+                if not it then break end
 
-            local y = it.yOffset or 0
-            if y > rangeMax then break end
+                local y = it.yOffset or 0
+                if y > rx then break end
 
-            if it.type == "row" then
-                local h = it.height or DEFAULT_ROW_HEIGHT
-                if y + h > rangeMin then
-                    local sig = it.rowReuseSig
-                    local frame = TakeReuseFrameForSig(sig)
+                if it.type == "row" then
+                    local h = it.height or DEFAULT_ROW_HEIGHT
+                    if y + h > rm then
+                        local sig = it.rowReuseSig
+                        local frame = TakeReuseFrameForSig(sig)
 
-                    if not frame then
-                        if rowPool and #rowPool > 0 then
-                            frame = rowPool[#rowPool]
-                            rowPool[#rowPool] = nil
-                        end
                         if not frame then
-                            local ok, result = pcall(createRowFn, container, it, i)
-                            if ok then frame = result end
-                        end
-                    end
-
-                    -- Always repaint visible data (pooled / incremental-reuse rows otherwise keep stale text).
-                    if frame and populateRowFn then
-                        pcall(populateRowFn, frame, it, i)
-                    end
-
-                    if frame then
-                        if sig then
-                            frame._vlm_rowSig = sig
-                        end
-                        frame._isVirtualRow = true
-                        local rowParent = container
-                        local pointY = y
-                        local xOff = it.xOffset or 0
-                        if container._vlm_groupShellByKey and it.groupKey then
-                            local shell = container._vlm_groupShellByKey[it.groupKey]
-                            if shell then
-                                rowParent = shell
-                                pointY = it.localY or 0
+                            if rowPool and #rowPool > 0 then
+                                frame = rowPool[#rowPool]
+                                rowPool[#rowPool] = nil
+                            end
+                            if not frame then
+                                local ok, result = pcall(createRowFn, container, it, i)
+                                if ok then frame = result end
                             end
                         end
-                        frame:SetParent(rowParent)
-                        frame:ClearAllPoints()
-                        frame:SetPoint("TOPLEFT", rowParent, "TOPLEFT", xOff, -pointY)
-                        frame:Show()
 
-                        newVis[#newVis + 1] = { frame = frame, index = i }
+                        if frame and populateRowFn then
+                            pcall(populateRowFn, frame, it, i)
+                        end
+
+                        if frame then
+                            if sig then
+                                frame._vlm_rowSig = sig
+                            end
+                            frame._isVirtualRow = true
+                            local rowParent = container
+                            local pointY = y
+                            local xOff = it.xOffset or 0
+                            if container._vlm_groupShellByKey and it.groupKey then
+                                local shell = container._vlm_groupShellByKey[it.groupKey]
+                                if shell then
+                                    rowParent = shell
+                                    pointY = it.localY or 0
+                                end
+                            end
+                            frame:SetParent(rowParent)
+                            frame:ClearAllPoints()
+                            frame:SetPoint("TOPLEFT", rowParent, "TOPLEFT", xOff, -pointY)
+                            frame:Show()
+
+                            newVis[#newVis + 1] = { frame = frame, index = i }
+                        end
                     end
                 end
+            end
+        end
+
+        for ci = 1, #candidates do
+            wipe(newVis)
+            tryPaint(candidates[ci])
+            if #newVis > 0 or not hasRowEntries then
+                break
             end
         end
 
@@ -517,7 +604,7 @@ local function RefreshVirtualListFlatList(mainFrame, container, flatList)
     if container.SetHeight then
         container:SetHeight(totalHeight)
     end
-    -- Animated section wraps resize via accordion tweens — reposition from flatList fights in-flight heights.
+    -- Animated section wraps resize during layout — reposition from flatList fights in-flight heights.
     if not container._vlm_skipChainRepositionOnRefresh then
         if not RepositionChainedHeadersFromFlatList(container, flatList) then
             return nil, true
@@ -540,4 +627,5 @@ ns.VirtualListModule = {
     SetupVirtualList = SetupVirtualList,
     RefreshVirtualListFlatList = RefreshVirtualListFlatList,
     ClearVirtualScroll = ClearVirtualScroll,
+    ListTopOffsetDownFromScrollContent = ListTopOffsetDownFromScrollContent,
 }

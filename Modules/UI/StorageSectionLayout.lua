@@ -1,7 +1,7 @@
 --[[
     Warband Nexus — Storage tab layout constants.
 
-    Type section pixel height (collapsible strip). Accordion tweens for tab lists were removed;
+    Type section pixel height (collapsible strip). Animated tab-list tweens were removed;
     expand/collapse uses immediate redraw (same pattern as other main tabs).
 ]]
 

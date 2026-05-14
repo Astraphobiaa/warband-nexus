@@ -25,6 +25,8 @@ local E = ns.Constants.EVENTS
 local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
+local issecretvalue = issecretvalue
+
 local function IsCurrentCharacterTracked()
     return ns.CharacterService and WarbandNexus and ns.CharacterService:IsCharacterTracked(WarbandNexus)
 end
@@ -41,7 +43,10 @@ local function CurrentSessionCanonicalCharacterKey()
         or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
     if not raw then return nil end
     if ns.Utilities.GetCanonicalCharacterKey then
-        return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+        local canon = ns.Utilities:GetCanonicalCharacterKey(raw)
+        if canon and canon ~= "" then return canon end
+        if issecretvalue and issecretvalue(raw) then return nil end
+        return raw
     end
     return raw
 end
@@ -932,10 +937,12 @@ local function ApplyCraftCountToSchematicFormTitle(schematicForm, recipeInfo)
             baseName = schematic.name
         end
     end
+    if issecretvalue and issecretvalue(baseName) then return end
     if not baseName or baseName == "" then return end
 
     local function stripColors(s)
         if not s then return "" end
+        if issecretvalue and issecretvalue(s) then return "" end
         return (tostring(s):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", ""))
     end
 
@@ -949,7 +956,13 @@ local function ApplyCraftCountToSchematicFormTitle(schematicForm, recipeInfo)
             local r = regions[i]
             if r and r.GetText and r.SetText then
                 local t = r:GetText()
-                if t and t ~= "" then
+                if t == nil then
+                    -- skip
+                elseif issecretvalue and issecretvalue(t) then
+                    -- skip (Midnight: never tostring/compare secret region text)
+                elseif t == "" then
+                    -- skip
+                else
                     local ts = stripColors(t)
                     if ts == baseStrip or ts == stripColors(desired) then
                         r:SetText(desired)

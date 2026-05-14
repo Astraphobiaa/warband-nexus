@@ -93,7 +93,9 @@ end
 ---@return string Canonical storage key
 function Utilities:GetCanonicalCharacterKey(charKey)
     if not charKey or charKey == "" then return charKey end
-    if issecretvalue and issecretvalue(charKey) then return charKey end
+    -- Never return a secret string: callers often do `GetCanonicalCharacterKey(k) or k` and would
+    -- reintroduce the secret for downstream strsplit / equality / table indexing (ADDON_ACTION_FORBIDDEN).
+    if issecretvalue and issecretvalue(charKey) then return nil end
     local db = ns.WarbandNexus and ns.WarbandNexus.db and ns.WarbandNexus.db.global
     local chars = db and db.characters
     local charData = chars and chars[charKey]
@@ -776,6 +778,48 @@ function Utilities:GetWowheadURL(entityType, id)
     local wowheadType = WOWHEAD_TYPE_MAP[entityType]
     if not wowheadType then return nil end
     return "https://www.wowhead.com/" .. wowheadType .. "=" .. id
+end
+
+--============================================================================
+-- SAFE CALL + CHAT ERROR (user-visible; no BugGrabber dependency)
+--============================================================================
+
+--- Run `fn(...)` inside pcall. On failure, print a red-tinted line to chat (WarbandNexus:Print when available).
+--- Use for optional diagnostics and non-critical paths; hot paths should keep local pcall without chat spam.
+---@param contextLabel string Short ASCII tag (e.g. module name) for the chat prefix
+---@param fn function
+---@return boolean ok True if pcall succeeded
+---@return any ... On success: all fn return values. On failure: the error object only (no unpack of successes).
+function Utilities:SafeCallReportChat(contextLabel, fn, ...)
+    local results = { pcall(fn, ...) }
+    local ok = table.remove(results, 1)
+    if ok then
+        return true, unpack(results)
+    end
+    local err = results[1]
+    local tag = (type(contextLabel) == "string" and contextLabel ~= "") and contextLabel or "WN"
+    local body = tostring(err)
+    local line = "|cffff6600[" .. tag .. "]|r " .. body .. "|r"
+    local addon = ns.WarbandNexus
+    if addon and addon.Print then
+        addon:Print(line)
+    else
+        print("|cffff6600[Warband Nexus]|r " .. body .. "|r")
+    end
+    return false, err
+end
+
+--- EditBox / FontRegion GetText for user-facing strings: never treat secret values as normal strings.
+--- Safe before :lower, gsub, tonumber, or concatenation (Midnight `issecretvalue`).
+---@param edit table|nil Frame with GetText()
+---@return string Plain string; "" if nil, non-string, or secret.
+function Utilities:SafePlainStringFromEdit(edit)
+    if not edit or not edit.GetText then return "" end
+    local t = edit:GetText()
+    if t == nil then return "" end
+    if issecretvalue and issecretvalue(t) then return "" end
+    if type(t) ~= "string" then return "" end
+    return t
 end
 
 --============================================================================

@@ -26,7 +26,6 @@ local issecretvalue = issecretvalue
 local COLORS              = ns.UI_COLORS
 local CreateCard          = ns.UI_CreateCard
 local ApplyVisuals        = ns.UI_ApplyVisuals
-local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local GetQualityHex       = ns.UI_GetQualityHex
 local CreateThemedButton  = ns.UI_CreateThemedButton
 local FormatGold          = ns.UI_FormatGold
@@ -1816,7 +1815,6 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
             portrait._meta:SetText(#parts > 0 and table.concat(parts, "  ·  ") or ((ns.L and ns.L["GEAR_NO_PREVIEW_HINT"]) or "Log in on this character to refresh the appearance preview."))
         end
 
-        -- iLvl pill removed — the equipped ilvl is already visible in the header.
         if portrait._pill then portrait._pill:Hide() end
 
         portrait:Show()
@@ -2562,8 +2560,6 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         end)
     end
 
-    -- Subtitle removed to declutter; scrollable rows alone communicate "transferable upgrades from Storage".
-
     local storageRows = {}
     do
         local equippedSlots = gearData and gearData.slots or {}
@@ -2603,7 +2599,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     end
 
     local storagePad = 8
-    local storageHeaderH = 32  -- Reduced (subtitle removed): just the title band.
+    local storageHeaderH = 32
     local storageBarW = 22
     local rowH = 32
     local viewportH = storagePanelH - storageHeaderH - storagePad - 10
@@ -2715,8 +2711,6 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     return yOffset - cardH - 12, cardH
 end
 
--- (Equipment Status card removed per user request)
-
 local function BuildStorageRecommendationRows(findings, gearData)
     local rows = {}
     if not findings then return rows end
@@ -2765,11 +2759,13 @@ end
 --- Color character name in storage source line; warband stays plain.
 local function ColoredStorageSourceName(classFile, name)
     if not name or name == "" then return name end
+    if issecretvalue and issecretvalue(name) then return "" end
     return "|cff" .. GetClassHex(classFile) .. name .. "|r"
 end
 
 local function FormatStorageSourceDisplay(source, sourceClassFile, viewerClassFile)
     if not source then return "" end
+    if issecretvalue and issecretvalue(source) then return "" end
     if source == "Warband Bank" then
         return source
     end
@@ -3561,7 +3557,6 @@ function WarbandNexus:DrawGearTab(parent)
     if not COLORS then COLORS = ns.UI_COLORS end
     if not CreateCard then CreateCard = ns.UI_CreateCard end
     if not ApplyVisuals then ApplyVisuals = ns.UI_ApplyVisuals end
-    if not CreateCollapsibleHeader then CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader end
     if not GetQualityHex then GetQualityHex = ns.UI_GetQualityHex end
     if not FormatGold then FormatGold = ns.UI_FormatGold end
     if not FormatNumber then FormatNumber = ns.UI_FormatNumber end
@@ -3663,6 +3658,7 @@ function WarbandNexus:DrawGearTab(parent)
         end
     end
 
+    -- Hot path for tab-switch / PopulateContent timing: cross-character bank+bag scan for upgrade candidates.
     local storageFindings = (self.FindGearStorageUpgrades and self:FindGearStorageUpgrades(canonicalKey)) or {}
     yOffset = DrawPaperDollCard(
         parent, yOffset, charData, gearData, upgradeInfo, canonicalKey, currencyAmounts,

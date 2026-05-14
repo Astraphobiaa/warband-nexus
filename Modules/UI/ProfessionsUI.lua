@@ -53,7 +53,7 @@ local CreateIcon = ns.UI_CreateIcon
 local FormatNumber = ns.UI_FormatNumber
 local GetAccentHexColor = ns.UI_GetAccentHexColor
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
-local BuildAccordionVisualOpts = ns.UI_BuildAccordionVisualOpts
+local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
 
 -- Pooling
 local AcquireProfessionRow = ns.UI_AcquireProfessionRow
@@ -64,6 +64,17 @@ local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local format = string.format
 local min = math.min
 local max = math.max
+local tinsert = table.insert
+local wipe = table.wipe
+
+-- Session caches: survive across DrawProfessionsTab / PopulateContent so repeated UI gestures
+-- (column sort, Columns toggle, expand/collapse) do not re-hit C_TradeSkillUI or rebuild recipe maps.
+-- Invalidated on profession/recipe/equipment data messages (see bottom-of-file RegisterMessage hooks).
+local profSessionIconBySkillLine = {}
+local profSessionRecipeMapByCharKey = {}
+-- Per-draw: equipment name fallback scan (pairs(eqByProf)) — at most once per char+prof per redraw.
+local profEquipResolveCache = nil
+local EQUIP_CACHE_MISS = {}
 
 -- Layout
 local function GetLayout() return ns.UI_LAYOUT or {} end
@@ -528,12 +539,18 @@ end
 -- EVENT REGISTRATION
 --============================================================================
 
+local function InvalidateProfessionsTradeSessionCaches()
+    wipe(profSessionIconBySkillLine)
+    wipe(profSessionRecipeMapByCharKey)
+end
+
 local function RegisterProfessionEvents(parent)
     if parent.professionUpdateHandler then return end
     parent.professionUpdateHandler = true
     local Constants = ns.Constants
 
     local function Refresh()
+        wipe(profSessionRecipeMapByCharKey)
         local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         if mf and mf:IsShown() and mf.currentTab == "professions" then
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
@@ -602,15 +619,15 @@ local function SortCharacters(list, orderKey)
         end
         for coi = 1, #customOrder do
             local ck = customOrder[coi]
-            if charMap[ck] then table.insert(ordered, charMap[ck]); charMap[ck] = nil end
+            if charMap[ck] then tinsert(ordered, charMap[ck]); charMap[ck] = nil end
         end
         local remaining = {}
-        for _, c in pairs(charMap) do table.insert(remaining, c) end
+        for _, c in pairs(charMap) do tinsert(remaining, c) end
         table.sort(remaining, function(a, b)
             if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
             return CompareCharNameLower(a, b)
         end)
-        for ri = 1, #remaining do table.insert(ordered, remaining[ri]) end
+        for ri = 1, #remaining do tinsert(ordered, remaining[ri]) end
         return ordered
     else
         table.sort(list, function(a, b)
@@ -641,9 +658,9 @@ local function CategorizeCharacters(characters)
         local isTracked = char.isTracked ~= false
         local charKey = GetCharKey(char)
         if not isTracked then
-            table.insert(untracked, char)
+            tinsert(untracked, char)
         elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey) then
-            table.insert(favorites, char)
+            tinsert(favorites, char)
         else
             local gid = nil
             if charKey and ns.CharacterService and ns.CharacterService.GetCharacterCustomSectionId then
@@ -652,9 +669,9 @@ local function CategorizeCharacters(characters)
                 gid = assignments[charKey]
             end
             if gid and groupedById[gid] then
-                table.insert(groupedById[gid], char)
+                tinsert(groupedById[gid], char)
             else
-                table.insert(regular, char)
+                tinsert(regular, char)
             end
         end
     end
@@ -995,8 +1012,8 @@ local function GetColumnSortCharComparator()
             return false
         end
 
-        local valA = GetCharSortValue(a, col) or -999999999
-        local valB = GetCharSortValue(b, col) or -999999999
+        local valA = (a._wnProfSortKey ~= nil) and a._wnProfSortKey or GetCharSortValue(a, col) or -999999999
+        local valB = (b._wnProfSortKey ~= nil) and b._wnProfSortKey or GetCharSortValue(b, col) or -999999999
 
         if valA ~= valB then
             if isAsc then return valA < valB else return valA > valB end
@@ -1019,10 +1036,14 @@ end
 function WarbandNexus:DrawProfessionsTab(parent)
     local width = parent:GetWidth() - 20
     cachedRowWidth = width
+    profEquipResolveCache = {}
 
     RegisterProfessionEvents(parent)
     HideEmptyStateCard(parent, "professions")
-    if ReleaseAllPooledChildren then ReleaseAllPooledChildren(parent) end
+    -- PopulateContent already released pooled rows on full-tab renders; skip duplicate walk (heavy tab switch).
+    if not parent._preparedByPopulate and ReleaseAllPooledChildren then
+        ReleaseAllPooledChildren(parent)
+    end
     if parent._wnProfNestedRows and ReleaseProfessionRow then
         for i = 1, #parent._wnProfNestedRows do
             local row = parent._wnProfNestedRows[i]
@@ -1528,8 +1549,33 @@ function WarbandNexus:DrawProfessionsTab(parent)
     if not self.db.profile.ui then self.db.profile.ui = {} end
     self.profRecentlyExpanded = self.profRecentlyExpanded or {}
 
-    -- Column sort: re-order characters within each section by the clicked column
+    -- Column sort: precompute numeric keys once per list (table.sort calls comparator O(n log n) times;
+    -- GetCharSortValue does concentration estimates + currency + cooldown scans per call).
+    local sortStateForKeys = GetColumnSortState()
+    local colForKeys = sortStateForKeys and sortStateForKeys.col
+    local function attachProfSortKeys(list)
+        if not list or not colForKeys or colForKeys == "name" then return end
+        for i = 1, #list do
+            list[i]._wnProfSortKey = GetCharSortValue(list[i], colForKeys)
+        end
+    end
+    local function clearProfSortKeys(list)
+        if not list then return end
+        for i = 1, #list do
+            list[i]._wnProfSortKey = nil
+        end
+    end
+
     local colSortCmp = GetColumnSortCharComparator()
+    if colSortCmp and colForKeys and colForKeys ~= "name" then
+        attachProfSortKeys(trackedFavorites)
+        for gci = 1, #customGroupsOrdered do
+            local gl = groupedById[customGroupsOrdered[gci].id]
+            attachProfSortKeys(gl)
+        end
+        attachProfSortKeys(trackedRegular)
+        attachProfSortKeys(untrackedChars)
+    end
     if colSortCmp then
         table.sort(trackedFavorites, colSortCmp)
         for gci = 1, #customGroupsOrdered do
@@ -1539,8 +1585,17 @@ function WarbandNexus:DrawProfessionsTab(parent)
         table.sort(trackedRegular, colSortCmp)
         table.sort(untrackedChars, colSortCmp)
     end
+    if colSortCmp and colForKeys and colForKeys ~= "name" then
+        clearProfSortKeys(trackedFavorites)
+        for gci = 1, #customGroupsOrdered do
+            local gl = groupedById[customGroupsOrdered[gci].id]
+            clearProfSortKeys(gl)
+        end
+        clearProfSortKeys(trackedRegular)
+        clearProfSortKeys(untrackedChars)
+    end
 
-    -- Grouped sections with collapsible headers (SharedWidgets accordion tween + scroll extent sync)
+    -- Grouped sections with collapsible headers (SharedWidgets instant expand + scroll extent sync)
     local previousSectionContent = nil
     local isFirstSection = true
     local sectionRows = parent._wnProfNestedRows
@@ -1558,7 +1613,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         contentFrame:SetPoint("TOPLEFT", anchorHeader, "BOTTOMLEFT", -SIDE_MARGIN, 0)
         contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", SIDE_MARGIN, 0)
         contentFrame:SetHeight(0.1)
-        contentFrame._wnAccordionFullH = 0
+        contentFrame._wnSectionFullH = 0
         return contentFrame
     end
 
@@ -1591,7 +1646,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
 
         local sectionContent
-        local headerVisualOpts = BuildAccordionVisualOpts({
+        local headerVisualOpts = BuildCollapsibleSectionOpts({
             bodyGetter = function() return sectionContent end,
             persistFn = function(exp)
                 if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
@@ -1645,7 +1700,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 if sectionContent then
                     if expanded then
                         sectionContent:Show()
-                        sectionContent:SetHeight(math.max(0.1, sectionContent._wnAccordionFullH or 0.1))
+                        sectionContent:SetHeight(math.max(0.1, sectionContent._wnSectionFullH or 0.1))
                     else
                         sectionContent:Hide()
                         sectionContent:SetHeight(0.1)
@@ -1697,7 +1752,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             if ok and nextYOffset then
                 sectionYOffset = nextYOffset
                 if rowFrame then
-                    sectionRows[#sectionRows + 1] = rowFrame
+                    tinsert(sectionRows, rowFrame)
                 end
             else
                 sectionYOffset = sectionYOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
@@ -1707,7 +1762,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             end
         end
 
-        sectionContent._wnAccordionFullH = sectionYOffset
+        sectionContent._wnSectionFullH = sectionYOffset
         if isExpanded then
             sectionContent:Show()
             sectionContent:SetHeight(math.max(0.1, sectionYOffset))
@@ -2018,6 +2073,47 @@ local function SetEquipCell(cell, eqData, slotKey)
     end
 end
 
+--- Resolve professionEquipment row for char+profName; caches pairs(eqByProf) fallback per draw.
+local function ResolveProfessionEquipmentData(charKey, profName)
+    if not charKey or not profName or profName == "" then return nil end
+    if issecretvalue and issecretvalue(profName) then return nil end
+    local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[charKey]
+    local eqByProf = charData and charData.professionEquipment
+    if not eqByProf then return nil end
+    local cache = profEquipResolveCache
+    if cache then
+        local byChar = cache[charKey]
+        if byChar then
+            local v = byChar[profName]
+            if v ~= nil then
+                if v == EQUIP_CACHE_MISS then return nil end
+                return v
+            end
+        end
+    end
+    local eqData
+    local baseName = profName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
+    eqData = eqByProf[profName] or eqByProf[baseName]
+    if not eqData then
+        local normName = baseName:gsub("%s+", ""):lower()
+        for storedName, data in pairs(eqByProf) do
+            if type(data) == "table" and storedName ~= "_legacy" and type(storedName) == "string"
+                and not (issecretvalue and issecretvalue(storedName)) then
+                local storedNorm = storedName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", ""):gsub("%s+", ""):lower()
+                if storedNorm == normName then
+                    eqData = data
+                    break
+                end
+            end
+        end
+    end
+    if cache then
+        if not cache[charKey] then cache[charKey] = {} end
+        cache[charKey][profName] = eqData or EQUIP_CACHE_MISS
+    end
+    return eqData
+end
+
 -- Profession icon column: resolve stored icon, skillLineID API, or fallback (missing DB icon / bad fileID).
 local PROF_ICON_FALLBACK = "Interface\\Icons\\INV_Misc_QuestionMark"
 
@@ -2030,18 +2126,54 @@ local function ResolveProfessionIconForDisplay(prof)
     end
     local slId = prof.skillLineID or prof.skillLine
     if type(slId) ~= "number" or slId <= 0 then return nil end
-    if not (C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID) then return nil end
+    local cached = profSessionIconBySkillLine[slId]
+    if cached ~= nil then
+        if cached == false then return nil end
+        return cached
+    end
+    if not (C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID) then
+        profSessionIconBySkillLine[slId] = false
+        return nil
+    end
     local ok, info = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, slId)
-    if not ok or type(info) ~= "table" then return nil end
+    if not ok or type(info) ~= "table" then
+        profSessionIconBySkillLine[slId] = false
+        return nil
+    end
     local keys = { "iconFileID", "texture", "iconTexture", "fileID" }
     for ki = 1, #keys do
         local v = info[keys[ki]]
         if v and not (issecretvalue and issecretvalue(v)) then
-            if type(v) == "number" and v > 0 then return v end
-            if type(v) == "string" and v ~= "" then return v end
+            if type(v) == "number" and v > 0 then
+                profSessionIconBySkillLine[slId] = v
+                return v
+            end
+            if type(v) == "string" and v ~= "" then
+                profSessionIconBySkillLine[slId] = v
+                return v
+            end
         end
     end
+    profSessionIconBySkillLine[slId] = false
     return nil
+end
+
+--- "All" expansion mode: build professionName -> recipe entry once per character per tab draw (was pairs(char.recipes) per profession line).
+local function GetRecipeDataForProfessionAllMode(char, profName)
+    if not char or not char.recipes or not profName then return nil end
+    local ck = GetCharKey(char)
+    if not ck then return nil end
+    local m = profSessionRecipeMapByCharKey[ck]
+    if not m then
+        m = {}
+        profSessionRecipeMapByCharKey[ck] = m
+        for _, entry in pairs(char.recipes) do
+            if type(entry) == "table" and entry.professionName then
+                m[entry.professionName] = entry
+            end
+        end
+    end
+    return m[profName]
 end
 
 local function SetProfessionLineIconTexture(tex, prof, isEmptySlot)
@@ -2402,12 +2534,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         -- Recipes summary: keyed by skillLineID; in All mode fallback to matching profession name.
         local recipeData = slID and char.recipes and char.recipes[slID]
         if not recipeData and GetExpansionFilter() == "All" and char.recipes then
-            for _, entry in pairs(char.recipes) do
-                if type(entry) == "table" and entry.professionName == profName then
-                    recipeData = entry
-                    break
-                end
-            end
+            recipeData = GetRecipeDataForProfessionAllMode(char, profName)
         end
         local progressData = nil
         if slID and char.professionData and char.professionData.bySkillLine and char.professionData.bySkillLine[slID] then
@@ -2538,25 +2665,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
 
         local eqData
         if charKey then
-            local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[charKey]
-            local eqByProf = charData and charData.professionEquipment
-            if eqByProf and profName and not (issecretvalue and issecretvalue(profName)) then
-                local baseName = profName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
-                eqData = eqByProf[profName] or eqByProf[baseName]
-                if not eqData then
-                    local normName = baseName:gsub("%s+", ""):lower()
-                    for storedName, data in pairs(eqByProf) do
-                        if type(data) == "table" and storedName ~= "_legacy" and type(storedName) == "string"
-                            and not (issecretvalue and issecretvalue(storedName)) then
-                            local storedNorm = storedName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", ""):gsub("%s+", ""):lower()
-                            if storedNorm == normName then
-                                eqData = data
-                                break
-                            end
-                        end
-                    end
-                end
-            end
+            eqData = ResolveProfessionEquipmentData(charKey, profName)
         end
         SetEquipCell(toolCell, eqData, "tool")
         SetEquipCell(acc1Cell, eqData, "accessory1")
@@ -2787,5 +2896,23 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         skillHit:Hide()
         cdHit:Hide()
         rechargeHit:Hide()
+    end
+end
+
+--- Tab switch (AbortTabOperations): clear session profession caches so GUID/API-heavy maps are not retained across tabs.
+function WarbandNexus:AbortProfessionsTabWork()
+    InvalidateProfessionsTradeSessionCaches()
+end
+
+-- Session profession caches: register invalidation at load so data updates clear stale API/icon maps
+-- even if DrawProfessionsTab has not run yet (e.g. professions module off).
+do
+    local Constants = ns.Constants
+    local ev = Constants and Constants.EVENTS
+    if ev then
+        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.RECIPE_DATA_UPDATED, InvalidateProfessionsTradeSessionCaches)
+        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.PROFESSION_DATA_UPDATED, InvalidateProfessionsTradeSessionCaches)
+        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.PROFESSION_EQUIPMENT_UPDATED, InvalidateProfessionsTradeSessionCaches)
+        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.CRAFTING_ORDERS_UPDATED, InvalidateProfessionsTradeSessionCaches)
     end
 end

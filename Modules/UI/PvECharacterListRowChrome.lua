@@ -7,6 +7,7 @@
 local ADDON_NAME, ns = ...
 local FontManager = ns.FontManager
 local max = math.max
+local issecretvalue = issecretvalue
 
 --- Pixels from row inner left (0) to where inline PvE cells start (Characters "gold" column, minus guild width).
 function ns.PvE_ComputeCharacterRowPrefixToGoldPx(nameW)
@@ -143,9 +144,15 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     nameText:SetWordWrap(false)
     nameText:SetNonSpaceWrap(false)
     nameText:SetMaxLines(1)
-    nameText:SetText(string.format("|cff%02x%02x%02x%s|r",
-        classColor.r * 255, classColor.g * 255, classColor.b * 255,
-        char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")))
+    do
+        local nm = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+        if issecretvalue and issecretvalue(nm) then
+            nm = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+        end
+        nameText:SetText(string.format("|cff%02x%02x%02x%s|r",
+            classColor.r * 255, classColor.g * 255, classColor.b * 255,
+            nm))
+    end
 
     local realmText = charHeader._pveCharRowRealm
     if not realmText then
@@ -158,6 +165,9 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     realmText:SetNonSpaceWrap(false)
     realmText:SetMaxLines(1)
     local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    if issecretvalue and issecretvalue(displayRealm) then
+        displayRealm = ""
+    end
     realmText:SetText("|cffb0b0b8" .. displayRealm .. "|r")
 
     -- Horizontal start of the name column (same as gradient / level pack).

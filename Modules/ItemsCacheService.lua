@@ -285,7 +285,7 @@ local function ScheduleMetadataRefresh()
     if pendingMetadataRefreshTimer then
         pendingMetadataRefreshTimer:Cancel()
     end
-    pendingMetadataRefreshTimer = C_Timer.NewTimer(0.3, function()
+    pendingMetadataRefreshTimer = C_Timer.NewTimer(0.06, function()
         pendingMetadataRefreshTimer = nil
         -- Patch cached items with resolved metadata before notifying UI
         local synced = SyncDecompressedCacheWithMetadata()
@@ -1296,7 +1296,24 @@ function WarbandNexus:GetItemsData(charKey)
     if cached then return cached end
     
     local result = { bags = {}, bank = {}, bagsLastUpdate = 0, bankLastUpdate = 0 }
-    local storage = self.db.global.itemStorage and self.db.global.itemStorage[charKey]
+    -- v2 itemStorage is keyed by ResolveCurrentItemStorageKey (GUID when available); UI may pass Name-Realm.
+    local globalIS = self.db.global.itemStorage
+    local storage = nil
+    if globalIS and charKey and charKey ~= "" then
+        storage = globalIS[charKey]
+        local function storageHasPayload(ent)
+            return ent and (ent.bags or ent.bank)
+        end
+        if not storageHasPayload(storage) and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            local alt = ns.Utilities:GetCanonicalCharacterKey(charKey)
+            if alt and alt ~= charKey then
+                local s2 = globalIS[alt]
+                if storageHasPayload(s2) then
+                    storage = s2
+                end
+            end
+        end
+    end
     local hasV2Data = storage and (storage.bags or storage.bank)
 
     if not hasV2Data then
@@ -1380,6 +1397,17 @@ function WarbandNexus:GetWarbandBankData()
     end
     HydrateItems(result.items)
     result.lastUpdate = storage.lastUpdate or 0
+
+    -- If v2 bucket exists but is empty, keep showing legacy SavedVariables (no data loss during migrations).
+    if (#result.items == 0) and self.db.global.warbandBank and type(self.db.global.warbandBank.items) == "table" then
+        local legacy = self.db.global.warbandBank.items
+        if #legacy > 0 then
+            result.items = HydrateItems(legacy)
+        end
+        if (not result.lastUpdate or result.lastUpdate == 0) and self.db.global.warbandBank.lastUpdate then
+            result.lastUpdate = self.db.global.warbandBank.lastUpdate
+        end
+    end
     
     -- Cache for session (invalidated when warband bank is re-scanned)
     decompressedWarbandCache = result

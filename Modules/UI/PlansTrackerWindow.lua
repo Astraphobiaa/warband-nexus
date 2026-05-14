@@ -570,7 +570,7 @@ end
 -- ══════════════════════════════════════════
 local RefreshTrackerContent  -- forward declare so inner functions can reference it
 
--- Track rows in vertical order so the accordion animation can reposition siblings per frame
+-- Track rows in vertical order so expand/collapse can reposition siblings per layout pass
 -- without rebuilding the list. Rebuilt fresh on each RefreshTrackerContentImmediate() call.
 local trackerRowOrder = {}
 local LIST_GAP_DEFAULT = 8
@@ -610,14 +610,22 @@ local function RefreshTrackerContentImmediate()
 
     -- Tracker: never list completed plans (only active / in-progress goals).
     local filtered = {}
+    local planDoneMemo = {}
+    local function memoIsPlanDone(plan)
+        local v = planDoneMemo[plan]
+        if v ~= nil then return v end
+        if WarbandNexus.IsActivePlanComplete then
+            v = WarbandNexus:IsActivePlanComplete(plan)
+        else
+            v = false
+        end
+        planDoneMemo[plan] = v
+        return v
+    end
     for i = 1, #plans do
         local plan = plans[i]
         if currentCategoryKey == nil or plan.type == currentCategoryKey then
-            local isDone = false
-            if WarbandNexus.IsActivePlanComplete then
-                isDone = WarbandNexus:IsActivePlanComplete(plan)
-            end
-            if not isDone then
+            if not memoIsPlanDone(plan) then
                 filtered[#filtered + 1] = plan
             end
         end
@@ -706,7 +714,7 @@ local function RefreshTrackerContentImmediate()
                     criteria = requirementsText,
                     criteriaColumns = 2,  -- Tracker uses 2 columns (compact layout)
                     titleRightInset = 70,  -- room for the Track button on the right
-                    onAccordionResize = RepositionTrackerRows,
+                    onSectionResize = RepositionTrackerRows,
                 }
                 local achHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(width)
                     or math.max(60, math.min(68, math.floor(width * 0.10)))
@@ -1050,7 +1058,7 @@ local function RefreshTrackerContentImmediate()
                     criteriaColumns = 1,
                     criteriaShowHeader = false,  -- collectibles: bare Drop/Location rows, no "Requirements:" header
                     titleRightInset = titleRightInset,
-                    onAccordionResize = RepositionTrackerRows,
+                    onSectionResize = RepositionTrackerRows,
                 }
 
                 local headerH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(width)

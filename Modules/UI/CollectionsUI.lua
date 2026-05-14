@@ -113,11 +113,25 @@ local SCROLLBAR_GAP = (ns.UI_LAYOUT and ns.UI_LAYOUT.SCROLLBAR_COLUMN_WIDTH) or 
 local SCROLLBAR_SIDE_GAP = 5  -- Equal gap between list <-> scrollbar and scrollbar <-> details
 -- Match Plans: defer sub-tab draw and heavy work by 0.05s for smooth switching.
 local COLLECTION_HEAVY_DELAY = 0.05
+--- Avoid synchronous EnsureCollectionData from tab timers when store is already warm; coalesce pipeline start otherwise.
+local function RequestCollectionFillFromUI()
+    if ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading then
+        return
+    end
+    if WarbandNexus.IsCollectionEnsureDataComplete and WarbandNexus:IsCollectionEnsureDataComplete() then
+        return
+    end
+    if ns.ScheduleEnsureCollectionDataDeferred then
+        ns.ScheduleEnsureCollectionDataDeferred()
+    elseif WarbandNexus.EnsureCollectionData then
+        WarbandNexus:EnsureCollectionData()
+    end
+end
 -- Process this many mounts/pets per frame to avoid 1s freeze (spread over multiple frames).
 local RUN_CHUNK_SIZE = 100
 -- Same row/header dimensions for all three sub-tabs (Mounts, Pets, Achievements); matches SharedWidgets/UI_SPACING
 local ROW_HEIGHT = LAYOUT.ROW_HEIGHT or 26
--- Mount/Pet/Toy category headers: must match CreateCollapsibleHeader + CollectionVirtual_FillRowScrollIndex (accordion + virtual rows).
+-- Mount/Pet/Toy category headers: must match CreateCollapsibleHeader + CollectionVirtual_FillRowScrollIndex (collapsible sections + virtual rows).
 local COLLAPSE_HEADER_HEIGHT_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
 
 -- Detail container border: SharedWidgets 4-texture border system (accent)
@@ -320,6 +334,8 @@ end
 
 local _populateMountListBusy = false
 
+--- Coalesce virtual-list visible-range refreshes after layout (scroll metrics). Two passes (0 + 50ms)
+--- were enough for header/width sync; a third pass at 120ms duplicated heavy work (mount/pet/toy lists).
 local function ScheduleCollectionsVisibleSync(subTabKey, refreshFn)
     if type(refreshFn) ~= "function" then return end
     C_Timer.After(0, function()
@@ -328,11 +344,6 @@ local function ScheduleCollectionsVisibleSync(subTabKey, refreshFn)
         end
     end)
     C_Timer.After(0.05, function()
-        if collectionsState.currentSubTab == subTabKey then
-            refreshFn()
-        end
-    end)
-    C_Timer.After(0.12, function()
         if collectionsState.currentSubTab == subTabKey then
             refreshFn()
         end
@@ -1209,13 +1220,13 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
                     CollectionVirtual_RefreshMountRowScrollIndex()
                     UpdateMountListVisibleRange()
                 end
-            end, SD.GetMountCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
+            end, SD.GetMountCategoryIcon(key), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
                 headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
                 hideOnCollapse = true,
                 applyToggleBeforeCollapseAnimate = true,
-                -- Expand: persist immediately. Collapse: defer until accordion completes — otherwise virtual
+                -- Expand: persist immediately. Collapse: defer until section height settles — otherwise virtual
                 -- scroll drops hundreds of rows on first frame while height still tweens (looks instant / broken).
                 persistFn = function(exp)
                     if exp then
@@ -1242,7 +1253,7 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
             sectionBody:ClearAllPoints()
             sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
             sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
-            sectionBody._wnAccordionFullH = secH
+            sectionBody._wnSectionFullH = secH
             if not it.isCollapsed then
                 sectionBody:Show()
                 sectionBody:SetHeight(math.max(0.1, secH))
@@ -1443,7 +1454,7 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
                     CollectionVirtual_RefreshPetRowScrollIndex()
                     UpdatePetListVisibleRange()
                 end
-            end, SD.GetPetCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
+            end, SD.GetPetCategoryIcon(key), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
                 headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
@@ -1474,7 +1485,7 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
             sectionBody:ClearAllPoints()
             sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
             sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
-            sectionBody._wnAccordionFullH = secH
+            sectionBody._wnSectionFullH = secH
             if not it.isCollapsed then
                 sectionBody:Show()
                 sectionBody:SetHeight(math.max(0.1, secH))
@@ -1674,7 +1685,7 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
                     CollectionVirtual_RefreshToyRowScrollIndex()
                     UpdateToyListVisibleRange()
                 end
-            end, SD.GetToyCategoryIcon(key), true, 0, nil, ns.UI_BuildAccordionVisualOpts({
+            end, SD.GetToyCategoryIcon(key), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
                 headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
@@ -1705,7 +1716,7 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
             sectionBody:ClearAllPoints()
             sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
             sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
-            sectionBody._wnAccordionFullH = secH
+            sectionBody._wnSectionFullH = secH
             if not it.isCollapsed then
                 sectionBody:Show()
                 sectionBody:SetHeight(math.max(0.1, secH))
@@ -3139,21 +3150,38 @@ local ACH_ACTION_GAP = 6
 -- Returns ordered array of achievement IDs from first tier to last; length >= 1 when achievement is part of a chain.
 local function BuildAchievementSeries(achievementID)
     if not achievementID or achievementID <= 0 then return {} end
+    if issecretvalue and issecretvalue(achievementID) then return {} end
     local GetPrev = GetPreviousAchievement
     local GetSuperceding = (C_AchievementInfo and C_AchievementInfo.GetSupercedingAchievements) or function() return {} end
     if not GetPrev then return { achievementID } end
     local id = achievementID
+    local guard = 0
+    local MAX_CHAIN = 250
     while true do
-        local prev = GetPrev(id)
-        if not prev or prev <= 0 then break end
+        guard = guard + 1
+        if guard > MAX_CHAIN then break end
+        local okp, prev = pcall(GetPrev, id)
+        if not okp or prev == nil then break end
+        if issecretvalue and issecretvalue(prev) then break end
+        if type(prev) ~= "number" or prev <= 0 then break end
         id = prev
     end
     local series = { id }
     local idx = 1
+    guard = 0
     while true do
-        local nextIds = GetSuperceding(series[idx])
-        if not nextIds or #nextIds == 0 then break end
-        series[idx + 1] = nextIds[1]
+        guard = guard + 1
+        if guard > MAX_CHAIN then break end
+        local cur = series[idx]
+        if cur == nil then break end
+        if issecretvalue and issecretvalue(cur) then break end
+        local okn, nextIds = pcall(GetSuperceding, cur)
+        if not okn or not nextIds or type(nextIds) ~= "table" or #nextIds == 0 then break end
+        local nxt = nextIds[1]
+        if nxt == nil then break end
+        if issecretvalue and issecretvalue(nxt) then break end
+        if type(nxt) ~= "number" or nxt <= 0 then break end
+        series[idx + 1] = nxt
         idx = idx + 1
     end
     return series
@@ -3246,13 +3274,20 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
 
     local function addAchievementRow(ach, label, currentAchievementID)
         if not ach or not ach.id then return end
+        if issecretvalue and issecretvalue(ach.id) then return end
+        if ach.name and issecretvalue and issecretvalue(ach.name) then return end
         local row = CreateFrame("Frame", nil, content, "BackdropTemplate")
         row:SetPoint("TOP", lastAnchor, lastPoint, 0, lastY)
         row:SetPoint("LEFT", content, "LEFT", CONTENT_INSET, 0)
         row:SetPoint("RIGHT", content, "RIGHT", -CONTENT_INSET, 0)
         row:SetHeight(ROW_HEIGHT)
         row:EnableMouse(true)
-        local isCurrent = (currentAchievementID and ach.id == currentAchievementID)
+        local isCurrent = false
+        if currentAchievementID and ach.id then
+            if not (issecretvalue and issecretvalue(currentAchievementID)) and not (issecretvalue and issecretvalue(ach.id)) then
+                isCurrent = (ach.id == currentAchievementID)
+            end
+        end
         if ApplyVisuals then
             if isCurrent then
                 ApplyVisuals(row, {0.1, 0.08, 0.05, 0.9}, {goldR, goldG, goldB, 0.85})
@@ -3523,10 +3558,12 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
             addSection((ns.L and ns.L["ACHIEVEMENT_SERIES"]) or "Achievement Series", function()
                 for i = 1, #seriesIds do
                     local achID = seriesIds[i]
-                    -- GetAchievementInfo: id, name, points, completed, month, day, year, description, flags, icon, ...
-                    local ok, _, aName, aPoints, aCompleted, _, _, _, aDesc, _, aIcon = pcall(GetAchievementInfo, achID)
-                    if ok and aName then
-                        addAchievementRow({ id = achID, name = aName, icon = aIcon, points = aPoints, isCollected = aCompleted, description = aDesc }, nil, achievement.id)
+                    if achID and not (issecretvalue and issecretvalue(achID)) then
+                        -- GetAchievementInfo: id, name, points, completed, month, day, year, description, flags, icon, ...
+                        local ok, _, aName, aPoints, aCompleted, _, _, _, aDesc, _, aIcon = pcall(GetAchievementInfo, achID)
+                        if ok and aName and not (issecretvalue and issecretvalue(aName)) then
+                            addAchievementRow({ id = achID, name = aName, icon = aIcon, points = aPoints, isCollected = aCompleted, description = aDesc }, nil, achievement.id)
+                        end
                     end
                 end
             end)
@@ -5072,8 +5109,8 @@ local function DrawMountsContent(contentFrame)
                 if not contentFrame or not contentFrame:IsVisible() then return end
                 local am = (WarbandNexus.GetAllMountsData and WarbandNexus:GetAllMountsData()) or {}
                 collectionsState._cachedMountsData = am
-                if #am == 0 and WarbandNexus.EnsureCollectionData then
-                    WarbandNexus:EnsureCollectionData()
+                if #am == 0 then
+                    RequestCollectionFillFromUI()
                 end
                 local apiCounts = WarbandNexus.GetCollectionCountsFromAPI and WarbandNexus:GetCollectionCountsFromAPI()
                 local collected = (apiCounts and apiCounts.mounts and apiCounts.mounts.collected) or 0
@@ -5415,7 +5452,7 @@ local function DrawPetsContent(contentFrame)
                 if #ap > 0 then
                     collectionsState._cachedPetsData = ap
                 else
-                    if WarbandNexus.EnsureCollectionData then WarbandNexus:EnsureCollectionData() end
+                    RequestCollectionFillFromUI()
                 end
                 local apiCounts = WarbandNexus.GetCollectionCountsFromAPI and WarbandNexus:GetCollectionCountsFromAPI()
                 local collected = (apiCounts and apiCounts.pets and apiCounts.pets.uniqueSpecies) or 0
@@ -5959,7 +5996,7 @@ local function DrawToysContent(contentFrame)
         C_Timer.After(COLLECTION_HEAVY_DELAY, function()
             if collectionsState._toysDrawGen ~= drawGen or collectionsState.currentSubTab ~= "toys" then return end
             if not contentFrame or not contentFrame:IsVisible() then return end
-            if WarbandNexus.EnsureCollectionData then WarbandNexus:EnsureCollectionData() end
+            RequestCollectionFillFromUI()
             local apiCounts = WarbandNexus.GetCollectionCountsFromAPI and WarbandNexus:GetCollectionCountsFromAPI()
             local collected = (apiCounts and apiCounts.toys and apiCounts.toys.collected) or 0
             local total = (apiCounts and apiCounts.toys and apiCounts.toys.total) or 0
@@ -6238,10 +6275,14 @@ local function DrawAchievementsContent(contentFrame)
         if collectionsState.achievementDetailContainer then collectionsState.achievementDetailContainer:Show() end
 
         local allAchsForProgress = WarbandNexus.GetAllAchievementsData and WarbandNexus:GetAllAchievementsData() or {}
-        local achTotal = #allAchsForProgress
-        local achCollected = 0
-        for i = 1, achTotal do
-            if allAchsForProgress[i] and (allAchsForProgress[i].isCollected or allAchsForProgress[i].completed) then achCollected = achCollected + 1 end
+        local achTotal = allAchsForProgress._wnAchTotal or #allAchsForProgress
+        local achCollected = allAchsForProgress._wnAchCollected
+        if type(achCollected) ~= "number" then
+            achCollected = 0
+            for i = 1, achTotal do
+                local e = allAchsForProgress[i]
+                if e and (e.isCollected or e.completed or e.collected) then achCollected = achCollected + 1 end
+            end
         end
         SetCollectionProgress(achCollected, achTotal)
 
@@ -6489,12 +6530,13 @@ function WarbandNexus:DrawCollectionsTab(parent)
         if (collectionsState.searchText or "") ~= "" then searchBox.Instructions:Hide() end
 
         searchBox:SetScript("OnTextChanged", function(self, userInput)
-            local text = self:GetText() or ""
-            if text and issecretvalue and issecretvalue(text) then
+            local text = self:GetText()
+            if issecretvalue and issecretvalue(text) then
                 collectionsState.searchText = ""
                 if self.Instructions then self.Instructions:Show() end
                 return
             end
+            text = text or ""
             collectionsState.searchText = text
             if self.Instructions then
                 if text ~= "" then self.Instructions:Hide() else self.Instructions:Show() end
@@ -6739,16 +6781,53 @@ function WarbandNexus:DrawCollectionsTab(parent)
             end
         end
 
+        -- Full tab redraw on every SCAN_PROGRESS is very heavy on low-end CPUs (DrawMountsContent rebuilds UI).
+        -- Always bump the lightweight progress bar; throttle full redraw + trailing coalesce.
+        local SCAN_PROGRESS_FULL_REDRAW_INTERVAL = 0.45
+        local scanProgressRedrawTimer = nil
+        local function CancelScanProgressRedrawTimer()
+            if scanProgressRedrawTimer then
+                if scanProgressRedrawTimer.Cancel then
+                    scanProgressRedrawTimer:Cancel()
+                end
+                scanProgressRedrawTimer = nil
+            end
+        end
+        local function ScheduleCoalescedScanProgressRedraw()
+            CancelScanProgressRedrawTimer()
+            scanProgressRedrawTimer = C_Timer.NewTimer(SCAN_PROGRESS_FULL_REDRAW_INTERVAL, function()
+                scanProgressRedrawTimer = nil
+                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+                if mf and mf:IsShown() and mf.currentTab == "collections" and collectionsState.contentFrame then
+                    collectionsState._lastScanProgressFullRedraw = GetTime()
+                    RedrawActiveCollectionSubTab()
+                end
+            end)
+        end
+
         local eventName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_PROGRESS) or "WN_COLLECTION_SCAN_PROGRESS"
-        WarbandNexus.RegisterMessage(CUIListeners, eventName, function()
+        WarbandNexus.RegisterMessage(CUIListeners, eventName, function(_, data)
             local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
-            if mf and mf:IsShown() and mf.currentTab == "collections" and collectionsState.contentFrame then
+            if not mf or not mf:IsShown() or mf.currentTab ~= "collections" or not collectionsState.contentFrame then
+                return
+            end
+            if data then
+                SetCollectionProgress(data.scanned, data.total)
+            end
+            local now = GetTime()
+            local last = collectionsState._lastScanProgressFullRedraw or 0
+            if (now - last) >= SCAN_PROGRESS_FULL_REDRAW_INTERVAL then
+                collectionsState._lastScanProgressFullRedraw = now
+                CancelScanProgressRedrawTimer()
                 RedrawActiveCollectionSubTab()
+            else
+                ScheduleCoalescedScanProgressRedraw()
             end
         end)
 
         local completeName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_COMPLETE) or "WN_COLLECTION_SCAN_COMPLETE"
         WarbandNexus.RegisterMessage(CUIListeners, completeName, function()
+            CancelScanProgressRedrawTimer()
             InvalidateAllCollectionCaches()
             local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
             if mf and mf:IsShown() and mf.currentTab == "collections" then

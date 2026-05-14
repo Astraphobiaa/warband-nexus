@@ -613,6 +613,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         
         row.collapseBtn:SetScript("OnClick", onSubfactionToggle)
         row:SetScript("OnClick", onSubfactionToggle)
+        row.collapseBtn:SetFrameLevel((row:GetFrameLevel() or 0) + 25)
         row.collapseBtn:Show()
     end
     
@@ -1154,6 +1155,7 @@ local function PopulateReputationRow(row, entry)
 
         row.collapseBtn:SetScript("OnClick", onSubfactionToggle)
         row:SetScript("OnClick", onSubfactionToggle)
+        row.collapseBtn:SetFrameLevel((row:GetFrameLevel() or 0) + 25)
         row.collapseBtn:Show()
     else
         if row.collapseBtn then row.collapseBtn:Hide() end
@@ -1889,7 +1891,7 @@ function WarbandNexus:DrawReputationList(container, width)
         if not frame then return 0.1 end
         local top = frame:GetTop()
         if not top then
-            return math.max(0.1, frame._wnAccordionFullH or frame:GetHeight() or 0.1)
+            return math.max(0.1, frame._wnSectionFullH or frame:GetHeight() or 0.1)
         end
         local lowest = top
         local children = {frame:GetChildren()}
@@ -1954,11 +1956,11 @@ function WarbandNexus:DrawReputationList(container, width)
         if not body then return 0.1 end
         if body._wnVirtualContentHeight then
             local fullH = body._wnVirtualContentHeight
-            body._wnAccordionFullH = fullH
+            body._wnSectionFullH = fullH
             return fullH
         end
         local fullH = MeasureChildrenHeight(body)
-        body._wnAccordionFullH = fullH
+        body._wnSectionFullH = fullH
         return fullH
     end
 
@@ -2142,6 +2144,21 @@ function WarbandNexus:DrawReputationList(container, width)
         local sectionBody = CreateBody(sectionWrap, width)
         if not (sectionWrap and sectionBody) then return end
 
+        -- CurrencyUI parity: when a nested category section opens/closes, reflow ancestor bodies/wraps
+        -- so outer section height tracks nested layout.
+        local sectionCtx = { body = sectionBody, wrap = sectionWrap, parentCtx = nil }
+        local function ReflowAncestors(ctx)
+            if not ctx or not ctx.body or not ctx.wrap then return end
+            local bodyH = FinalizeBodyHeight(ctx.body)
+            if ctx.body:IsShown() then
+                ctx.body:SetHeight(math.max(0.1, bodyH))
+                ctx.wrap:SetHeight(COLLAPSE_H_REP + ctx.body:GetHeight())
+            else
+                ctx.wrap:SetHeight(COLLAPSE_H_REP + 0.1)
+            end
+            ReflowAncestors(ctx.parentCtx)
+        end
+
         ChainTopFrame(sectionWrap, repChainTail and SECTION_SPACING or nil)
         local sectionHeader, _, sectionIcon = CreateCollapsibleHeader(
             sectionWrap,
@@ -2158,17 +2175,17 @@ function WarbandNexus:DrawReputationList(container, width)
                 persistToggle = function(exp)
                     PersistExpand(sectionKey, exp)
                 end,
-                accordionOnUpdate = function(drawH)
+                sectionOnUpdate = function(drawH)
                     sectionWrap:SetHeight(COLLAPSE_H_REP + math.max(0.1, drawH or 0))
                     SyncScrollMetrics()
                 end,
-                accordionComplete = function(exp)
+                sectionOnComplete = function(exp)
                     if not exp then
                         sectionBody:Hide()
                         sectionBody:SetHeight(0.1)
                     end
-                    sectionBody._wnAccordionFullH = FinalizeBodyHeight(sectionBody)
-                    sectionWrap:SetHeight(COLLAPSE_H_REP + (exp and sectionBody._wnAccordionFullH or 0.1))
+                    sectionBody._wnSectionFullH = FinalizeBodyHeight(sectionBody)
+                    sectionWrap:SetHeight(COLLAPSE_H_REP + (exp and sectionBody._wnSectionFullH or 0.1))
                     SyncScrollMetrics()
                 end,
             }
@@ -2198,6 +2215,7 @@ function WarbandNexus:DrawReputationList(container, width)
                         ChainSectionFrameBelow(sectionBody, headerWrap, headerTail, BASE_INDENT, headerTail and SECTION_SPACING or nil, headerTail and nil or SECTION_SPACING)
                         headerTail = headerWrap
 
+                        local nodeCtx = { body = headerBody, wrap = headerWrap, parentCtx = sectionCtx }
                         local filteredCount = isSearching and #filteredFactionList or #factionList
                         local header = CreateCollapsibleHeader(
                             headerWrap,
@@ -2214,21 +2232,18 @@ function WarbandNexus:DrawReputationList(container, width)
                                 persistToggle = function(exp)
                                     PersistExpand(headerKey, exp)
                                 end,
-                                accordionOnUpdate = function(drawH)
+                                sectionOnUpdate = function(drawH)
                                     headerWrap:SetHeight(COLLAPSE_H_REP + math.max(0.1, drawH or 0))
-                                    sectionBody:SetHeight(math.max(0.1, FinalizeBodyHeight(sectionBody)))
-                                    sectionWrap:SetHeight(COLLAPSE_H_REP + sectionBody:GetHeight())
-                                    SyncScrollMetrics()
+                                    ReflowAncestors(nodeCtx.parentCtx)
                                 end,
-                                accordionComplete = function(exp)
+                                sectionOnComplete = function(exp)
                                     if not exp then
                                         headerBody:Hide()
                                         headerBody:SetHeight(0.1)
                                     end
-                                    headerBody._wnAccordionFullH = FinalizeBodyHeight(headerBody)
-                                    headerWrap:SetHeight(COLLAPSE_H_REP + (exp and headerBody._wnAccordionFullH or 0.1))
-                                    sectionBody:SetHeight(math.max(0.1, FinalizeBodyHeight(sectionBody)))
-                                    sectionWrap:SetHeight(COLLAPSE_H_REP + sectionBody:GetHeight())
+                                    headerBody._wnSectionFullH = FinalizeBodyHeight(headerBody)
+                                    headerWrap:SetHeight(COLLAPSE_H_REP + (exp and headerBody._wnSectionFullH or 0.1))
+                                    ReflowAncestors(nodeCtx.parentCtx)
                                     SyncScrollMetrics()
                                 end,
                             }
@@ -2239,10 +2254,10 @@ function WarbandNexus:DrawReputationList(container, width)
                         header:SetHeight(COLLAPSE_H_REP)
 
                         RenderRowsIntoBody(headerBody, width - BASE_INDENT, filteredFactionList)
-                        headerBody._wnAccordionFullH = FinalizeBodyHeight(headerBody)
+                        headerBody._wnSectionFullH = FinalizeBodyHeight(headerBody)
                         if headerExpanded then
                             headerBody:Show()
-                            headerBody:SetHeight(math.max(0.1, headerBody._wnAccordionFullH))
+                            headerBody:SetHeight(math.max(0.1, headerBody._wnSectionFullH))
                             headerWrap:SetHeight(COLLAPSE_H_REP + headerBody:GetHeight())
                         else
                             headerBody:Hide()
@@ -2254,10 +2269,10 @@ function WarbandNexus:DrawReputationList(container, width)
             end
         end
 
-        sectionBody._wnAccordionFullH = FinalizeBodyHeight(sectionBody)
+        sectionBody._wnSectionFullH = FinalizeBodyHeight(sectionBody)
         if sectionExpanded then
             sectionBody:Show()
-            sectionBody:SetHeight(math.max(0.1, sectionBody._wnAccordionFullH))
+            sectionBody:SetHeight(math.max(0.1, sectionBody._wnSectionFullH))
             sectionWrap:SetHeight(COLLAPSE_H_REP + sectionBody:GetHeight())
         else
             sectionBody:Hide()
@@ -2314,52 +2329,21 @@ end
 -- REPUTATION TAB WRAPPER (Fixes focus issue)
 --============================================================================
 
-local function ApplyReputationResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, animate, fromResultsH, fromScrollChildH)
+local function ApplyReputationResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, _animate, _fromResultsH, _fromScrollChildH)
     if not mainFrame or not scrollChild or not resultsContainer then return end
     local targetResultsH = math.max(listHeight or 1, 1)
-    local oldResultsH = fromResultsH or resultsContainer:GetHeight() or targetResultsH
     local CONTENT_BOTTOM_PADDING = 8
     local targetTabBodyH = 8 + (listHeight or 0)
     local targetScrollChildH = math.max(targetTabBodyH + CONTENT_BOTTOM_PADDING, mainFrame.scroll:GetHeight())
-    local oldScrollChildH = fromScrollChildH or scrollChild:GetHeight() or targetScrollChildH
 
     local Factory = ns.UI.Factory
-    if animate and Factory and Factory.AnimateAccordion and math.abs(targetResultsH - oldResultsH) > 1 then
-        Factory:AnimateAccordion(resultsContainer, oldResultsH, targetResultsH, {
-            duration = 0.24,
-            fadeAlpha = false,
-            clipChildren = true,
-            onUpdate = function(curH)
-                local t = 0
-                if math.abs(targetResultsH - oldResultsH) > 0.001 then
-                    t = (curH - oldResultsH) / (targetResultsH - oldResultsH)
-                end
-                if t < 0 then t = 0 elseif t > 1 then t = 1 end
-                local curScrollH = oldScrollChildH + (targetScrollChildH - oldScrollChildH) * t
-                scrollChild:SetHeight(math.max(curScrollH, mainFrame.scroll:GetHeight()))
-                if Factory.UpdateScrollBarVisibility then
-                    Factory:UpdateScrollBarVisibility(mainFrame.scroll)
-                end
-            end,
-            onComplete = function()
-                scrollChild:SetHeight(targetScrollChildH)
-                if Factory.UpdateScrollBarVisibility then
-                    Factory:UpdateScrollBarVisibility(mainFrame.scroll)
-                end
-                if Factory.UpdateHorizontalScrollBarVisibility then
-                    Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
-                end
-            end,
-        })
-    else
-        resultsContainer:SetHeight(targetResultsH)
-        scrollChild:SetHeight(targetScrollChildH)
-        if Factory and Factory.UpdateScrollBarVisibility then
-            Factory:UpdateScrollBarVisibility(mainFrame.scroll)
-        end
-        if Factory and Factory.UpdateHorizontalScrollBarVisibility then
-            Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
-        end
+    resultsContainer:SetHeight(targetResultsH)
+    scrollChild:SetHeight(targetScrollChildH)
+    if Factory and Factory.UpdateScrollBarVisibility then
+        Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+    end
+    if Factory and Factory.UpdateHorizontalScrollBarVisibility then
+        Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
     end
 end
 
@@ -2490,14 +2474,29 @@ function WarbandNexus:DrawReputationTab(parent)
     
     -- Hide empty state container (will be shown again if needed)
     HideEmptyStateCard(parent, "reputation")
-    
+
+    -- Fast path: cache still loading — skip expensive scroll-child purge + full header rebuild every tick.
+    if ns.ReputationLoadingState and ns.ReputationLoadingState.isLoading then
+        local fixedHeaderEarly = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
+        local headerH = 8 + (GetLayout().afterHeader or 75)
+        if fixedHeaderEarly then
+            fixedHeaderEarly:SetHeight(headerH)
+        end
+        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+        if UI_CreateLoadingStateCard then
+            return UI_CreateLoadingStateCard(parent, 8, ns.ReputationLoadingState, (ns.L and ns.L["REP_LOADING_TITLE"]) or "Loading Reputation Data")
+        end
+        return 120
+    end
+
     -- Clear all old frames (including FontStrings)
     local children = {parent:GetChildren()}
     for _, child in pairs(children) do
         -- Keep only persistent UI elements (badge, title card, loading panel)
         if child ~= parent.dbVersionBadge 
            and child ~= parent.emptyStateContainer 
-           and child ~= parent._loadingPanel then
+           and child ~= parent._loadingPanel
+           and child ~= (WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame._wnReputationTitleCard) then
             pcall(function()
                 child:Hide()
                 child:ClearAllPoints()
@@ -2531,14 +2530,28 @@ function WarbandNexus:DrawReputationTab(parent)
     local repHdrBtnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
     local repHdrGap = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
     local repRightReserve = repHdrBtnH + repHdrGap + (GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20)
-    local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
-        tabKey = "reputation",
-        titleText = "|cff" .. hexColor .. ((ns.L and ns.L["REP_TITLE"]) or "Reputation Overview") .. "|r",
-        subtitleText = (ns.L and ns.L["REP_SUBTITLE"]) or "Track factions and renown across your warband",
-        textRightInset = repRightReserve,
-    }))
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+    local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local titleCard
+    if mfRef and mfRef._wnReputationTitleCard then
+        titleCard = mfRef._wnReputationTitleCard
+        titleCard:SetParent(headerParent)
+        titleCard:ClearAllPoints()
+        titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+        titleCard:Show()
+    else
+        titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
+            tabKey = "reputation",
+            titleText = "|cff" .. hexColor .. ((ns.L and ns.L["REP_TITLE"]) or "Reputation Overview") .. "|r",
+            subtitleText = (ns.L and ns.L["REP_SUBTITLE"]) or "Track factions and renown across your warband",
+            textRightInset = repRightReserve,
+        }))
+        titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+        if mfRef then
+            mfRef._wnReputationTitleCard = titleCard
+        end
+    end
     
     -- View Mode: Always use Filtered View (All Characters view removed)
     
@@ -2555,11 +2568,20 @@ function WarbandNexus:DrawReputationTab(parent)
             onExpandClick = function()
                 self.db.profile.reputationExpandOverride = nil
                 self.db.profile.reputationExpanded = {}
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "reputation", skipCooldown = true })
+                -- Must match mainFrame.currentTab ("reputations"); "reputation" is ignored and refresh never runs.
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+                    tab = "reputations",
+                    skipCooldown = true,
+                    instantPopulate = true,
+                })
             end,
             onCollapseClick = function()
                 self.db.profile.reputationExpandOverride = "all_collapsed"
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "reputation", skipCooldown = true })
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+                    tab = "reputations",
+                    skipCooldown = true,
+                    instantPopulate = true,
+                })
             end,
         })
     elseif parent._wnExpandCollapseToggleBtn then
@@ -2580,17 +2602,7 @@ function WarbandNexus:DrawReputationTab(parent)
         local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")
         return 8 + cardHeight
     end
-    
-    -- ===== LOADING STATE =====
-    if ns.ReputationLoadingState and ns.ReputationLoadingState.isLoading then
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
-        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
-        if UI_CreateLoadingStateCard then
-            local newYOffset = UI_CreateLoadingStateCard(parent, 8, ns.ReputationLoadingState, (ns.L and ns.L["REP_LOADING_TITLE"]) or "Loading Reputation Data")
-            return newYOffset
-        end
-    end
-    
+
     -- ===== SEARCH BOX (in fixedHeader - non-scrolling) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
     local reputationSearchText = SearchStateManager:GetQuery("reputation")

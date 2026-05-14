@@ -74,6 +74,10 @@ L["HEADER_TOTAL_GOLD"] = "总金币"
 -- Items Tab
 L["ITEMS_HEADER"] = "银行物品"
 L["ITEMS_WARBAND_BANK"] = "战团银行"
+L["ITEMS_SUBTAB_BAGS"] = "背包"
+L["ITEMS_SUBTAB_BANK"] = "银行"
+L["ITEMS_SUBTAB_WARBAND"] = "战团"
+L["ITEMS_WARBAND_UPDATING"] = "正在构建战团物品列表..."
 
 -- Storage Tab
 L["STORAGE_HEADER"] = "存储浏览器"
