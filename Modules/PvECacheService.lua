@@ -415,6 +415,7 @@ end
 local Constants = ns.Constants
 local CACHE_VERSION = Constants.PVE_CACHE_VERSION
 local UPDATE_THROTTLE = Constants.THROTTLE.SHARED_RARE
+local GreatVaultActivityHasRows
 local GreatVaultActivityHasCompletedRows
 
 ---Midnight-safe quest completion check (pcall + secret guard).
@@ -1544,14 +1545,11 @@ function WarbandNexus:UpdatePvEData()
     -- VaultScanner hasn't already provided richer data for this character.
     -- VaultScanner is the primary source (PLAYER_ENTERING_WORLD → SyncVaultDataFromScanner)
     -- but may fail on fresh installs, timing issues, or empty API responses.
-    local hasVaultData = self.db.global.pveCache
+    local vaultActivities = self.db.global.pveCache
         and self.db.global.pveCache.greatVault
         and self.db.global.pveCache.greatVault.activities
         and self.db.global.pveCache.greatVault.activities[charKey]
-        and (next(self.db.global.pveCache.greatVault.activities[charKey].raids or {})
-            or next(self.db.global.pveCache.greatVault.activities[charKey].mythicPlus or {})
-            or next(self.db.global.pveCache.greatVault.activities[charKey].world or {}))
-    if not hasVaultData then
+    if not GreatVaultActivityHasRows(vaultActivities) then
         self:UpdateGreatVaultActivities(charKey)
     end
     
@@ -1733,7 +1731,7 @@ local function LegacyMythicSnapshotHasData(mp)
     return false
 end
 
-local function GreatVaultActivityHasRows(bucket)
+GreatVaultActivityHasRows = function(bucket)
     if not bucket or type(bucket) ~= "table" then return false end
     if bucket.raids and #bucket.raids > 0 then return true end
     if bucket.mythicPlus and #bucket.mythicPlus > 0 then return true end
@@ -2038,13 +2036,21 @@ function WarbandNexus:RegisterPvECacheEvents()
     end)
     
     -- Vault warm-up: VaultScanner fires OnUIInteract at T+1s, server responds ~T+2-4s.
-    -- Re-collect vault data at T+5s to catch any iLvl that arrived after initial scan.
+    -- Use the thinner API fallback only if the scanner did not populate rows.
     C_Timer.After(5, function()
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
         local charKey = CanonicalizePvEKey(ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus) or ns.Utilities:GetCharacterKey())
         if charKey then
-            WarbandNexus:ProcessGreatVaultActivities(charKey)
-            WarbandNexus:SavePvECache()
+            local vaultActivities = WarbandNexus.db
+                and WarbandNexus.db.global
+                and WarbandNexus.db.global.pveCache
+                and WarbandNexus.db.global.pveCache.greatVault
+                and WarbandNexus.db.global.pveCache.greatVault.activities
+                and WarbandNexus.db.global.pveCache.greatVault.activities[charKey]
+            if not GreatVaultActivityHasRows(vaultActivities) then
+                WarbandNexus:ProcessGreatVaultActivities(charKey)
+                WarbandNexus:SavePvECache()
+            end
         end
     end)
     
