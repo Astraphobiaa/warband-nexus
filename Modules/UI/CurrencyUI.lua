@@ -3,8 +3,9 @@
     Display all currencies across characters with Blizzard API headers
     
     Hierarchy is built by CurrencyCacheService v2.0 via collapse/expand detection.
-    DB stores a tree: root headers → sub-headers → currencies.
+    DB stores a tree: root headers -> sub-headers -> currencies.
     UI renders the tree directly — no hardcoded expansion/season name patterns.
+    Merged per-currency rows use WarbandNexus:GetCurrenciesForUI() (same snapshot as Gear / PvE).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -29,7 +30,7 @@ local DebugPrint = ns.DebugPrint
 local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
 
----Read per-character quantity from GetCurrenciesForUI (entry.chars may use SV row key and/or Name-Realm).
+---Read per-character quantity from merged snapshot row (entry.chars may use SV row key and/or Name-Realm).
 local function GetCurrencyCharQuantityFromSnapshot(currData, charKey)
     if not currData then return 0 end
     if currData.isAccountWide then
@@ -390,25 +391,13 @@ end
 ---@param currencyHeaders table Blizzard currency headers
 ---@param searchText string Search filter
 ---@return table { warbandTransferable = {headerData}, characterSpecific = {headerData} }
-
----@param globalCurrenciesPrebuilt table|nil If provided, skips a second GetCurrenciesForUI() merge pass (same snapshot as DrawCurrencyList).
-local function AggregateCurrencies(self, characters, currencyHeaders, searchText, showZero, globalCurrenciesPrebuilt)
+local function AggregateCurrencies(self, characters, currencyHeaders, searchText, showZero)
     local result = {
         warbandTransferable = {},  -- Account-wide currencies
         characterSpecific = {},     -- Character-specific (with total across all chars)
     }
     
-    -- Get currency data from new Direct DB architecture
-    local globalCurrencies = globalCurrenciesPrebuilt
-    if not globalCurrencies then
-        if self.GetCurrenciesForUI then
-            globalCurrencies = self:GetCurrenciesForUI()
-        else
-            DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: GetCurrenciesForUI not found")
-            return result
-        end
-    end
-    
+    local globalCurrencies = self:GetCurrenciesForUI()
     -- CRITICAL: Use actual SavedVariables row key (guid or Name-Realm) so currency DB lookups stay aligned.
     local charLookup = {}
     for ci = 1, #characters do
@@ -740,14 +729,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
         self.db.profile.currencyExpanded[key] = isExpanded
     end
     
-    -- Build currency data from global storage (Direct DB architecture)
-    local globalCurrencies = {}
-    if self.GetCurrenciesForUI then
-        globalCurrencies = self:GetCurrenciesForUI()
-    else
-        DebugPrint("|cffff0000[CurrencyUI]|r ERROR: GetCurrenciesForUI not found")
-    end
-
+    -- Merged currency snapshot (CurrencyCacheService; shared with Gear / PvE).
+    local globalCurrencies = self:GetCurrenciesForUI()
     -- Get headers from Direct DB (tree built by CurrencyCacheService v2.0)
     local globalHeaders = {}
     if self.db.global.currencyData and self.db.global.currencyData.headers then
@@ -1049,7 +1032,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         RenderTree(headerDataList, bodyFrame, contentW, nil, rootCtx)
     end
 
-    local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero, globalCurrencies)
+    local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
 
     -- Section 1: Warband Transferable
     if #aggregated.warbandTransferable > 0 then

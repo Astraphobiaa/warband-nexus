@@ -7,6 +7,14 @@
     - Manage initialization timings (prevent addon load lag)
     - Handle dependencies between modules
     - Centralize all C_Timer.After() calls
+
+    Data rule (SOA): writers persist to AceDB (services); UI reads DB + messages — no duplicate API in consumers.
+
+    Load pipeline (first session hitch):
+    - Core OnInitialize: AceDB, CheckVersions, RunMigrations (same frame); SessionCache decompress is deferred
+      one tick (see Core.lua) so deflate/deserialize does not stack with migrations on ADDON_LOADED.
+    - Core OnEnable: registers events, then InitializeAllModules (this file) which spreads cache/UI work
+      across T+0.3s … T+8s (see stage comments below).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -93,12 +101,13 @@ end
 local function SafeInit(fn, label)
     if not InCombatLockdown() then
         local P = ns.Profiler
-        if P and P.enabled and label then
-            P:Start("Init:" .. label)
+        local slice = P and P.enabled and label and P.SliceLabel and P:SliceLabel(P.CAT.INIT, label)
+        if slice then
+            P:Start(slice)
         end
         local ok, err = pcall(fn)
-        if P and P.enabled and label then
-            P:Stop("Init:" .. label)
+        if slice then
+            P:Stop(slice)
         end
         if not ok then
             local msg = string.format("|cffff4444[Init ERROR]|r %s failed: %s", label or "?", tostring(err))
@@ -277,15 +286,17 @@ function InitializationService:InitializeDataServices(addon)
         end, "P0:LightweightInits")
     end)
 
-    -- P1: Heavy async — BuildCollectionCache (mounts/pets/toys, 4ms/frame batched)
+    -- P1: Owned lookup cache — RunCollectionOwnedCacheWarmup (quiet when SV store already warm; avoids duplicate LT vs collection_data).
     -- Run only when collection/plans features are enabled.
     if collectionFeaturesEnabled then
         C_Timer.After(1, function()
             SafeInit(function()
-                if addon and addon.BuildCollectionCache then
+                if addon and addon.RunCollectionOwnedCacheWarmup then
+                    addon:RunCollectionOwnedCacheWarmup()
+                elseif addon and addon.BuildCollectionCache then
                     addon:BuildCollectionCache()
                 end
-            end, "P1:BuildCollectionCache")
+            end, "P1:CollectionOwnedWarmup")
         end)
     end
 
@@ -401,14 +412,8 @@ function InitializationService:InitializeUIServices(addon)
         end, "TooltipHook")
     end)
 
-    -- T+10s: Tooltip item pre-cache (deferred to reduce /reload startup pressure)
-    C_Timer.After(10, function()
-        SafeInit(function()
-            if addon and addon.Tooltip and addon.Tooltip.PreCacheCollectibleItems then
-                addon.Tooltip:PreCacheCollectibleItems()
-            end
-        end, "TooltipItemPreCache")
-    end)
+    -- Tooltip item pre-cache: moved to first main-window show (UI.lua ShowMainWindow) so idle sessions
+    -- never pay the scan cost in the background.
 end
 
 --[[

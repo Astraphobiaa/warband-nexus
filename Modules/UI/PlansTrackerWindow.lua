@@ -154,21 +154,6 @@ local function RestorePosition(frame)
     frame:SetSize(db.width or 380, db.height or 420)
 end
 
-local function IsAchievementTracked(achievementID)
-    if WarbandNexus and WarbandNexus.IsAchievementTracked then
-        return WarbandNexus:IsAchievementTracked(achievementID)
-    end
-    return false
-end
-
-local function ToggleAchievementTrack(achievementID)
-    if not achievementID then return end
-    if WarbandNexus and WarbandNexus.ToggleAchievementTracking then
-        WarbandNexus:ToggleAchievementTracking(achievementID)
-        return
-    end
-end
-
 local function GetAchievementRequirementsText(achievementID)
     if not achievementID then return "" end
     local numCriteria = GetAchievementNumCriteria(achievementID)
@@ -713,7 +698,7 @@ local function RefreshTrackerContentImmediate()
                     information = infoText,
                     criteria = requirementsText,
                     criteriaColumns = 2,  -- Tracker uses 2 columns (compact layout)
-                    titleRightInset = 70,  -- room for the Track button on the right
+                    titleRightInset = 44,  -- symmetric track star (replaces wide text button)
                     onSectionResize = RepositionTrackerRows,
                 }
                 local achHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(width)
@@ -740,41 +725,18 @@ local function RefreshTrackerContentImmediate()
                     end
                 end
 
-                -- Track button (Factory button, right side of header)
-                -- CRITICAL: Raise frame level above headerFrame so button receives clicks
-                -- before headerFrame's OnMouseDown (which triggers ToggleExpand)
-                -- Track: Add ile aynı köşesiz stil (border/background yok)
-                local trackBtn = Factory:CreateButton(row.headerFrame, 52, 18, true)
-                trackBtn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -4, 0)
-                trackBtn:SetFrameLevel(row.headerFrame:GetFrameLevel() + 10)
-                trackBtn:SetScript("OnMouseDown", function() end)
-                trackBtn:RegisterForClicks("AnyUp")
-                local trackLabel = FontManager:CreateFontString(trackBtn, "body", "OVERLAY")
-                trackLabel:SetPoint("CENTER")
-                local tracked = IsAchievementTracked(plan.achievementID)
-                local trackedLabel = (ns.L and ns.L["TRACKED"]) or "Tracked"
-                local trackLabel2 = (ns.L and ns.L["TRACK"]) or "Track"
-                trackLabel:SetText(tracked and (PLAN_COLORS.tracked or "|cff44ff44") .. trackedLabel .. "|r" or (PLAN_COLORS.notTracked or "|cffffcc00") .. trackLabel2 .. "|r")
-                trackBtn:SetScript("OnEnter", function()
-                    if trackLabel then trackLabel:SetTextColor(0.6, 0.9, 1, 1) end
-                    GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")
-                    GameTooltip:SetText((ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)")
-                    GameTooltip:Show()
-                end)
-                trackBtn:SetScript("OnLeave", function()
-                    GameTooltip:Hide()
-                    if trackLabel then
-                        local nowTracked = IsAchievementTracked(plan.achievementID)
-                        trackLabel:SetText(nowTracked and (PLAN_COLORS.tracked or "|cff44ff44") .. trackedLabel .. "|r" or (PLAN_COLORS.notTracked or "|cffffcc00") .. trackLabel2 .. "|r")
-                    end
-                end)
-                trackBtn:SetScript("OnClick", function()
-                    ToggleAchievementTrack(plan.achievementID)
-                    local nowTracked = IsAchievementTracked(plan.achievementID)
-                    local tLabel = (ns.L and ns.L["TRACKED"]) or "Tracked"
-                    local uLabel = (ns.L and ns.L["TRACK"]) or "Track"
-                    trackLabel:SetText(nowTracked and (PLAN_COLORS.tracked or "|cff44ff44") .. tLabel .. "|r" or (PLAN_COLORS.notTracked or "|cffffcc00") .. uLabel .. "|r")
-                end)
+                -- Blizzard objectives track: symmetric star (same atlas as vault milestones / pet favorites).
+                local achPin = Factory and Factory.CreateAchievementTrackPinButton
+                    and Factory:CreateAchievementTrackPinButton(row.headerFrame, plan.achievementID, {
+                        size = 28,
+                        frameLevelOffset = 30,
+                        isDisabled = function()
+                            return WarbandNexus.IsActivePlanComplete and WarbandNexus:IsActivePlanComplete(plan) or false
+                        end,
+                    })
+                if achPin then
+                    achPin:SetPoint("RIGHT", row.headerFrame, "RIGHT", -4, 0)
+                end
 
                 -- Achievement tooltip on header hover (Frame may have no prior OnEnter/OnLeave — guard GetScript)
                 local origOnEnter, origOnLeave = nil, nil
@@ -1031,7 +993,7 @@ local function RefreshTrackerContentImmediate()
                 local showTryRow = collectibleID and Factory and Factory.CreateTryCountClickable and WarbandNexus and WarbandNexus.ShouldShowTryCountInUI
                     and WarbandNexus:ShouldShowTryCountInUI(plan.type, collectibleID)
                 local typeBadgeSz = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoTypeBadgeSize) or 24
-                local tryW = 72
+                local tryW = 88
                 local titleRightInset = 6
                 titleRightInset = titleRightInset + typeBadgeSz + 4 -- delete (rightmost)
                 if plan.type == "custom" then titleRightInset = titleRightInset + typeBadgeSz + 4 end
@@ -1134,10 +1096,15 @@ local function RefreshTrackerContentImmediate()
                 end
 
                 if showTryRow then
+                    local tryRowH = math.max(22, ACTION_SIZE)
                     local tryRow = Factory:CreateTryCountClickable(row.headerFrame, {
-                        height = ACTION_SIZE, frameLevelOffset = 15, showTooltip = true, popupOnRightClick = false,
+                        height = tryRowH,
+                        fontCategory = "body",
+                        frameLevelOffset = 15,
+                        showTooltip = true,
+                        popupOnRightClick = false,
                     })
-                    tryRow:SetSize(tryW, ACTION_SIZE)
+                    tryRow:SetSize(tryW, tryRowH)
                     tryRow:ClearAllPoints()
                     tryRow:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
                     tryRow:WnUpdateTryCount(plan.type, collectibleID, resolvedName)

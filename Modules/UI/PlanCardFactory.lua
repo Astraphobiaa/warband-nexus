@@ -22,7 +22,7 @@ local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
 local format = string.format
 
 local REMINDER_ALERT_TEX = (ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TEXTURE) or "Interface\\Icons\\INV_Misc_Horn_01"
-local REMINDER_ALERT_ATLAS = "minimap-genericevent-hornicon-small"
+local REMINDER_ALERT_ATLAS = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager"
 local REMINDER_HORN_UI_COLOR = (ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR) or { 1, 0.82, 0.22 }
 
 local function ApplyReminderCardButtonIcon(tex)
@@ -1008,14 +1008,14 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name
         local row = card.tryCountClickable
         if not row then
-            local tryOpts = { height = 18, frameLevelOffset = 5, fontCategory = "body" }
+            local tryOpts = { height = 22, frameLevelOffset = 5, fontCategory = "body" }
             if card._wnTryCountClickableOptions then
                 for k, v in pairs(card._wnTryCountClickableOptions) do
                     tryOpts[k] = v
                 end
             end
             row = Factory:CreateTryCountClickable(card, tryOpts)
-            row:SetSize(120, 18)
+            row:SetSize(130, 22)
             card.tryCountClickable = row
         end
         do

@@ -75,7 +75,7 @@ local Constants = {
     -- Increment PATCH version (third number) when cache schema changes
     
     -- All versions reset to 1.0.0 — Schema v4 full wipe gives every user a clean slate.
-    COLLECTION_CACHE_VERSION = "3.0.0",  -- API-only categorization: store sourceType (mount) & sourceTypeIndex (pet/toy); drop UnobtainableFilters keyword/blocklist
+    COLLECTION_CACHE_VERSION = "3.0.2",  -- Bump to force one-time collectionStore reload + EnsureCollectionData. Rescan without debug: /wn collection rescan (or sync force)
     REPUTATION_CACHE_VERSION = "1.5.0",  -- Reputation (parse-first architecture + non-destructive rescan safety)
     CURRENCY_CACHE_VERSION = "2.0.0",    -- Currency (lean SV + on-demand metadata cache)
     PVE_CACHE_VERSION = "1.0.0",         -- PvE (lean IDs/scores; metadata on-demand)
@@ -355,11 +355,11 @@ local Constants = {
 
     --==========================================================================
     -- PLAN REMINDERS / ALERTS (card badge, Set Alert dialog, toasts)
-    -- Atlas minimap-genericevent-hornicon-small is unreliable on recent builds; use a classic horn icon texture.
+    -- Primary: Blizzard UI atlas (SetAtlas). If SetAtlas fails, PlanCardFactory / CreateIcon fall back to texture.
     --==========================================================================
+    REMINDER_ALERT_ATLAS = "icon_cooldownmanager",
     REMINDER_ALERT_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_Horn_01",
-    -- RGB for reminder horn chrome: card glow, compact To-Do reminder toast (border, icon ring, TopBottom glow).
-    -- Tuned to match minimap-genericevent-hornicon-small / INV_Misc_Horn gold read.
+    -- RGB for reminder chrome: card glow, compact To-Do reminder toast (border, icon ring, TopBottom glow).
     REMINDER_HORN_UI_COLOR = { 1, 0.82, 0.22 },
 
     --==========================================================================

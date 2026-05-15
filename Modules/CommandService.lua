@@ -53,9 +53,13 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode (extra diagnostics)"))
         addon:Print("  |cff00ccff/wn uimap here|r — " .. ((ns.L and ns.L["CMD_UIMAP_HERE"]) or "Current uiMapID + parent chain (no debug)"))
+        addon:Print("  |cff00ccff/wn collection sync|r — Refresh if version/categories need work (no wipe)")
+        addon:Print("  |cff00ccff/wn collection sync force|r — |cff00ccff/wn collection rescan|r — remount pets/toys/mounts then rescan (no debug)")
+        addon:Print("  |cff00ccff/wn collection status|r — Collection store snapshot (counts, loading)")
+        addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
         if IsDebugModeEnabled and IsDebugModeEnabled() then
-            addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn dumpitem|r, |cff00ccff/wn uimap catalog|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r")
+            addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn dumpitem|r, |cff00ccff/wn uimap catalog|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r, |cff00ccff/wn collection rebuild|r")
         end
         return
     end
@@ -193,8 +197,67 @@ function CommandService:HandleSlashCommand(addon, input)
             end
         end
         return
-        
-        
+
+    elseif cmd == "profiler" or cmd == "profile" then
+        local P = ns.Profiler
+        if not P or not P.HandleCommand then
+            addon:Print("|cffff6600[WN]|r " .. ((ns.L and ns.L["PROFILER_NOT_LOADED"]) or "Profiler module not loaded.") .. "|r")
+            return
+        end
+        local _, subCmd, arg3 = addon:GetArgs(input, 3)
+        P:HandleCommand(addon, subCmd, arg3)
+        return
+
+    elseif cmd == "collection" or cmd == "collections" then
+        local _, sub, third = addon:GetArgs(input, 3)
+        sub = sub and sub:lower() or ""
+        if sub == "rescan" then
+            if addon.RequestCollectionDataRefreshForce then
+                addon:RequestCollectionDataRefreshForce()
+            else
+                addon:Print("|cffff6600[WN]|r CollectionService not loaded.|r")
+            end
+            return
+        elseif sub == "sync" or sub == "refresh" then
+            if third and third:lower() == "force" then
+                if addon.RequestCollectionDataRefreshForce then
+                    addon:RequestCollectionDataRefreshForce()
+                else
+                    addon:Print("|cffff6600[WN]|r CollectionService not loaded.|r")
+                end
+            elseif addon.RequestCollectionDataRefresh then
+                addon:RequestCollectionDataRefresh()
+            else
+                addon:Print("|cffff6600[WN]|r CollectionService not loaded.|r")
+            end
+            return
+        elseif sub == "status" then
+            if addon.PrintCollectionDataStatus then
+                addon:PrintCollectionDataStatus()
+            else
+                addon:Print("|cffff6600[WN]|r CollectionService not loaded.|r")
+            end
+            return
+        elseif sub == "rebuild" then
+            if not (IsDebugModeEnabled and IsDebugModeEnabled()) then
+                addon:Print("|cffff6600[WN]|r /wn collection rebuild needs |cff00ccff/wn debug|r. Use |cff00ccff/wn collection sync|r to refresh without wiping.|r")
+                return
+            end
+            local full = third and third:lower() == "full"
+            if addon.DebugForceCollectionRebuild then
+                addon:DebugForceCollectionRebuild(full)
+            else
+                addon:Print("|cffff6600[WN]|r DebugForceCollectionRebuild not available.|r")
+            end
+            return
+        else
+            addon:Print("|cff00ccff/wn collection sync|r — Run EnsureCollectionData when store is incomplete vs code version.")
+            addon:Print("|cff00ccff/wn collection sync force|r — same as |cff00ccff/wn collection rescan|r (mount/pet/toy wipe + rescan, no debug).")
+            addon:Print("|cff00ccff/wn collection status|r — Print collectionStore counts and loading state.")
+            addon:Print("|cff888888With |cff00ccff/wn debug|r:|r |cff00ccff/wn collection rebuild|r [|cff00ccfffull|r] — wipe store + full refetch (profiler friendly).")
+            return
+        end
+
     elseif cmd == "debug" then
         CommandService:HandleDebugToggle(addon)
         return

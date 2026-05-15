@@ -1917,13 +1917,17 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- Right-side actions (R→L: Delete, Alert, Complete?, Tries). Sizes match type badge (todoTypeBadgeSize).
             local typeBadgeSz = (PCM and PCM.todoTypeBadgeSize) or 24
             local ACTION_SIZE, ACTION_GAP = typeBadgeSz, 4
-            local tryW = 72
+            local tryW = 88
             local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
             local idKey = tryCountTypes[plan.type]
             local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
             local hasTry = collectibleID and ns.UI.Factory and ns.UI.Factory.CreateTryCountClickable
                 and self.ShouldShowTryCountInUI and self:ShouldShowTryCountInUI(plan.type, collectibleID)
             local titleRightInset = 6
+            if plan.type == "achievement" and plan.achievementID then
+                local trackSz = math.max(28, ACTION_SIZE)
+                titleRightInset = titleRightInset + trackSz + ACTION_GAP -- Blizzard track control (left of delete)
+            end
             titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP -- delete (rightmost)
             titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP -- alert
             if plan.type == "custom" then titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP end
@@ -1993,6 +1997,19 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 "PLAN_ACTION_DELETE", "Delete the Plan"
             )
 
+            if plan.type == "achievement" and plan.achievementID and ns.UI.Factory and ns.UI.Factory.CreateAchievementTrackPinButton then
+                local trackSz = math.max(28, ACTION_SIZE)
+                local achPin = ns.UI.Factory:CreateAchievementTrackPinButton(row.headerFrame, plan.achievementID, {
+                    size = trackSz,
+                    frameLevelOffset = 30,
+                    isDisabled = function() return memoIsActivePlanComplete(plan) end,
+                })
+                if achPin then
+                    achPin:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
+                    rightOffset = rightOffset + trackSz + ACTION_GAP
+                end
+            end
+
             if PlanCardFactory.CreateReminderAlertButton then
                 local remBtn = PlanCardFactory.CreateReminderAlertButton(row.headerFrame, plan)
                 if remBtn then
@@ -2012,10 +2029,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
 
             if hasTry then
+                local tryRowH = math.max(22, ACTION_SIZE)
                 local tryRow = ns.UI.Factory:CreateTryCountClickable(row.headerFrame, {
-                    height = ACTION_SIZE, frameLevelOffset = 15, showTooltip = true, popupOnRightClick = false,
+                    height = tryRowH,
+                    fontCategory = "body",
+                    frameLevelOffset = 15,
+                    showTooltip = true,
+                    popupOnRightClick = false,
                 })
-                tryRow:SetSize(tryW, ACTION_SIZE)
+                tryRow:SetSize(tryW, tryRowH)
                 tryRow:ClearAllPoints()
                 tryRow:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
                 tryRow:WnUpdateTryCount(plan.type, collectibleID, resolvedName)

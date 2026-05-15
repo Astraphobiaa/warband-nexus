@@ -307,6 +307,8 @@ local UI_SPACING = {
     
     -- Row dimensions
     ROW_HEIGHT = 26,           -- Standard row height
+    --- Bank/storage aggregate leaf rows (ItemsUI DrawStorageResults): taller than ROW_HEIGHT so body-font descenders are not covered by the next row's bg.
+    STORAGE_ROW_HEIGHT = 30,
     CHAR_ROW_HEIGHT = 36,      -- Character row height (+20% from 30)
     HEADER_HEIGHT = 32,        -- Legacy row strip (Collections virtual rows); collapsible sections use SECTION_COLLAPSE_HEADER_HEIGHT
     SECTION_COLLAPSE_HEADER_HEIGHT = 36, -- CreateCollapsibleHeader (compact; was 44)
@@ -340,6 +342,7 @@ local UI_SPACING = {
     afterElement = 8,
     cardGap = 8,
     rowHeight = 26,
+    storageRowHeight = 30,
     charRowHeight = 36,
     headerHeight = 32,
     rowSpacing = 26,
@@ -5527,6 +5530,78 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
     return row
 end
 
+--- Blizzard achievement objective tracking: symmetric star (PetJournal-FavoritesIcon) + vertex tint by state.
+--- Caller anchors the button from the right. Optional `opts.isDisabled` boolean or `function(): boolean` (e.g. plan complete).
+---@return Button|nil
+function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, opts)
+    opts = type(opts) == "table" and opts or {}
+    if not parent or not achievementID or not WarbandNexus then return nil end
+    local sz = tonumber(opts.size) or 28
+    local btn = self:CreateButton(parent, sz, sz, true)
+    if parent.GetFrameLevel then
+        btn:SetFrameLevel((parent:GetFrameLevel() or 0) + (tonumber(opts.frameLevelOffset) or 25))
+    end
+    btn:RegisterForClicks("LeftButtonUp")
+    local tex = btn:CreateTexture(nil, "OVERLAY")
+    tex:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
+    tex:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+    btn._wnTrackPinTex = tex
+
+    local function pinDisabled()
+        if type(opts.isDisabled) == "function" then
+            local ok, v = pcall(opts.isDisabled)
+            return ok and v == true
+        end
+        return opts.isDisabled == true
+    end
+
+    local function applyVisual(tracked, disabled)
+        tex:SetTexCoord(0, 1, 0, 1)
+        if not (tex.SetAtlas and pcall(tex.SetAtlas, tex, "PetJournal-FavoritesIcon", true)) then
+            tex:SetTexture("Interface\\Icons\\INV_Misc_GroupLooking")
+            tex:SetTexCoord(0.12, 0.88, 0.12, 0.88)
+        end
+        tex:SetDesaturated(false)
+        if disabled then
+            tex:SetVertexColor(0.34, 0.35, 0.38, 0.42)
+        elseif tracked then
+            -- On Blizzard objectives: clear green star
+            tex:SetVertexColor(0.35, 0.95, 0.55, 1)
+        else
+            -- Not tracked: gold (same family as other plan chrome)
+            tex:SetVertexColor(1, 0.86, 0.32, 1)
+        end
+    end
+
+    function btn:WnRefreshAchievementTrackPin()
+        local disabled = pinDisabled()
+        local tracked = (WarbandNexus.IsAchievementTracked and WarbandNexus:IsAchievementTracked(achievementID)) == true
+        applyVisual(tracked, disabled)
+        -- NOTE: (not disabled) and WarbandNexus.ToggleAchievementTracking is a function, never == true — must test type.
+        local canToggle = (not disabled) and type(WarbandNexus.ToggleAchievementTracking) == "function"
+        btn:EnableMouse(canToggle)
+        if canToggle then
+            btn:SetScript("OnClick", function()
+                WarbandNexus:ToggleAchievementTracking(achievementID)
+                btn:WnRefreshAchievementTrackPin()
+            end)
+        else
+            btn:SetScript("OnClick", nil)
+        end
+    end
+
+    btn:SetScript("OnEnter", function(b)
+        if pinDisabled() then return end
+        GameTooltip:SetOwner(b, "ANCHOR_TOP")
+        GameTooltip:SetText((ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    btn:WnRefreshAchievementTrackPin()
+    return btn
+end
+
 -- Collections detail header: action slot (+ try row) + Wowhead (eye always flush right) — same geometry for Mounts / Pets / Toy Box.
 ns.CollectionsDetailHeaderLayout = {
     WOWHEAD_SIZE = 18,
@@ -7172,7 +7247,7 @@ end
 ---Create standardized loading state card with animated spinner and progress bar
 ---@param parent Frame - Parent frame
 ---@param yOffset number - Y offset from top
----@param loadingState table - Loading state object with {isLoading, loadingProgress, currentStage, error}
+---@param loadingState table - Loading state object with {isLoading, loadingProgress or scanProgress, currentStage, error}
 ---@param title string - Loading title (e.g., "Loading PvE Data")
 ---@return number newYOffset - New Y offset after card
 function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
@@ -7181,7 +7256,8 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     end
     
     local SIDE_MARGIN = UI_SPACING.SIDE_MARGIN
-    local loadingCard = CreateCard(parent, 90)
+    local CARD_H = 108
+    local loadingCard = CreateCard(parent, CARD_H)
     loadingCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     loadingCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
@@ -7201,6 +7277,7 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     end)
     loadingCard:HookScript("OnHide", function()
         spinnerFrame:SetScript("OnUpdate", nil)
+        loadingCard:SetScript("OnUpdate", nil)
     end)
     
     -- Loading title
@@ -7212,20 +7289,63 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     -- Progress indicator
     local progressText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardProgress"), "OVERLAY")
     progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
+
+    local BAR_W = 200
+    if parent and parent.GetWidth then
+        local pw = parent:GetWidth() or 0
+        local w = pw - (SIDE_MARGIN * 2) - 20 - 40 - 15 - 20
+        BAR_W = math.min(280, math.max(120, w))
+    end
+    local barBg = loadingCard:CreateTexture(nil, "ARTWORK")
+    barBg:SetSize(BAR_W, 5)
+    barBg:SetPoint("TOPLEFT", progressText, "BOTTOMLEFT", 0, -6)
+    barBg:SetColorTexture(0.15, 0.15, 0.18, 1)
+    local barFill = loadingCard:CreateTexture(nil, "OVERLAY")
+    barFill:SetHeight(5)
+    barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
+    barFill:SetWidth(1)
+    local acc = COLORS and COLORS.accent or {0.2, 0.6, 1}
+    barFill:SetColorTexture(acc[1], acc[2], acc[3], 0.9)
     
-    local currentStage = loadingState.currentStage or ((ns.L and ns.L["PREPARING"]) or "Preparing")
-    local progress = loadingState.loadingProgress or 0
-    progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, math.min(100, progress)))
+    local function ReadLoadingPercent(state)
+        if not state then return 0 end
+        local lp = state.loadingProgress
+        local sp = state.scanProgress
+        local v = lp or sp or 0
+        if type(v) ~= "number" then return 0 end
+        if v ~= v then return 0 end
+        return math.min(100, math.max(0, math.floor(v + 0.5)))
+    end
+    
+    local function ApplyProgressVisual()
+        local currentStage = loadingState.currentStage or ((ns.L and ns.L["PREPARING"]) or "Preparing")
+        local progress = ReadLoadingPercent(loadingState)
+        progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, progress))
+        local bw = barBg:GetWidth()
+        if bw and bw > 0 then
+            barFill:SetWidth(math.max(1, bw * (progress / 100)))
+        end
+    end
+    ApplyProgressVisual()
     
     -- Hint text
     local hintText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardHint"), "OVERLAY")
-    hintText:SetPoint("LEFT", spinner, "RIGHT", 15, -25)
+    hintText:SetPoint("TOPLEFT", barBg, "BOTTOMLEFT", 0, -6)
+    hintText:SetPoint("RIGHT", loadingCard, "RIGHT", -16, 0)
     hintText:SetTextColor(0.6, 0.6, 0.6)
     hintText:SetText((ns.L and ns.L["PLEASE_WAIT"]) or "Please wait...")
     
+    loadingCard:SetScript("OnUpdate", function()
+        if not loadingState.isLoading then
+            loadingCard:SetScript("OnUpdate", nil)
+            return
+        end
+        ApplyProgressVisual()
+    end)
+    
     loadingCard:Show()
     
-    return yOffset + 100
+    return yOffset + CARD_H + 8
 end
 
 ---Create standardized error state card
@@ -7811,7 +7931,7 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
         local pinAtlas = onTrack and "Waypoint-MapPin-Tracked" or "Waypoint-MapPin-Untracked"
         trackTex:SetDesaturated(false)
         if not pcall(trackTex.SetAtlas, trackTex, pinAtlas, true) then
-            if not pcall(trackTex.SetAtlas, trackTex, onTrack and "Objective-Nub" or "Waypoint-MapPin-Untracked", true) then
+            if not pcall(trackTex.SetAtlas, trackTex, pinAtlas, false) then
                 trackTex:SetTexture("Interface\\Icons\\INV_Misc_Map_01")
                 trackTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             else

@@ -94,6 +94,7 @@ end
 ---@return string Text with all numbers formatted
 local function FormatTextNumbers(text)
     if not text or text == "" then return text end
+    if issecretvalue and issecretvalue(text) then return text end
     
     -- Find all numbers (4+ digits) and format them
     -- Pattern matches whole numbers not already formatted (no dots inside)

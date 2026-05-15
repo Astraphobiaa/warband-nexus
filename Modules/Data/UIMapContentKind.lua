@@ -97,6 +97,7 @@ local function ejInstanceIsRaid(journalInstanceID)
     ensureEncounterJournal()
     local ok, _, _, _, _, _, _, _, _, _, _, isRaid = pcall(EJ_GetInstanceInfo, journalInstanceID)
     if not ok then return nil end
+    if issecretvalue and issecretvalue(isRaid) then return nil end
     if type(isRaid) ~= "boolean" then return nil end
     return isRaid
 end

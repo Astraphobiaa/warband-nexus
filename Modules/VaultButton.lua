@@ -442,6 +442,8 @@ local function OpenWNTab(tabKey)
     C_Timer.After(0.05, function()
         local mf = WarbandNexus.mainFrame
         if mf and mf.tabButtons and mf.tabButtons[tabKey] and mf.tabButtons[tabKey].Click then
+            -- ShowMainWindow arms a short input grace so the open click cannot hit another tab; allow this scripted switch.
+            mf._wnBypassMainTabInputGraceOnce = true
             mf.tabButtons[tabKey]:Click()
         end
     end)

@@ -126,14 +126,12 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
         
         local text = self:GetText()
         local newSearchText = ""
-        
-        if text and text ~= "" then
+        if issecretvalue and issecretvalue(text) then
+            placeholderText:Show()
+            newSearchText = ""
+        elseif type(text) == "string" and text ~= "" then
             placeholderText:Hide()
-            if issecretvalue and issecretvalue(text) then
-                newSearchText = ""
-            else
-                newSearchText = text:lower()
-            end
+            newSearchText = text:lower()
         else
             placeholderText:Show()
             newSearchText = ""

@@ -20,7 +20,16 @@
     }
 
     Upgrade data is ilvl-based from persisted gear (no C_ItemUpgrade API); works offline.
-    Storage upgrade findings are recomputed on each tab open.
+    Storage upgrade findings are cached per (character, equipped signature, inventory epoch);
+    see FindGearStorageUpgrades, GetGearStorageFindingsIfCached (UI fast path), and ns._gearStorageInvGen bumps in ItemsCacheService / UI.lua.
+    GET_ITEM_INFO coalesced batches prefer InvalidateGearStorageFindingsCacheForCanon (gear tab) over a blind invGen bump so strict cache is not dirtied without a storage edit.
+    Post-yield redraw may use ns._gearStorageAllowEquipSigInvBypass (one frame) when invGen drifts
+    without a real bag change (see GearUI applyStorageScanUI). Find commits cache with invEpoch
+    refreshed to the current ns._gearStorageInvGen so item-info bumps during a yielded scan do not
+    force a second synchronous Find. ns._gearStorageYieldFindCanon marks an in-flight yielded scan.
+    Soft invalidate (InvalidateGearStorageFindingsCacheForCanon) bumps ns._gearStorageFindingsDirtyToken;
+    Find commit sets ns._gearStorageFindingsCleanToken so GearUI can coalesce duplicate FULLFIND in
+    the same GetTime() tick when dirty==clean, equipSig matches cache, and ns._gearStorageSameFrameFullFind matches.
 
     0-crest (gold-only) detection: C_ItemUpgrade cost APIs only return real costs when the
     Item Upgrade NPC window is open. We detect gold-only upgrades offline via persisted
@@ -32,6 +41,7 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local issecretvalue = issecretvalue
+local wipe = table.wipe
 
 local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00BFFF[GearService]|r"))
     or ns.DebugPrint
@@ -39,6 +49,26 @@ local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00BFFF[
 
 local gearScanTimer = nil
 local currencyGearScanTimer = nil
+
+-- Session-only: hyperlink -> crafted probe result (avoids C_TooltipInfo.GetHyperlink every Gear draw).
+local gearCraftedProbeCache = {}
+local gearCraftedProbeCacheSize = 0
+local GEAR_CRAFTED_PROBE_CACHE_CAP = 512
+
+local function CacheGearCraftedProbeResult(link, isCrafted)
+    if not link or link == "" then return end
+    if issecretvalue and issecretvalue(link) then return end
+    if gearCraftedProbeCache[link] == nil then
+        gearCraftedProbeCacheSize = gearCraftedProbeCacheSize + 1
+    end
+    gearCraftedProbeCache[link] = isCrafted and true or false
+    if gearCraftedProbeCacheSize > GEAR_CRAFTED_PROBE_CACHE_CAP then
+        wipe(gearCraftedProbeCache)
+        gearCraftedProbeCacheSize = 0
+        gearCraftedProbeCache[link] = isCrafted and true or false
+        gearCraftedProbeCacheSize = 1
+    end
+end
 
 -- ============================================================================
 -- SLOT DEFINITIONS
@@ -1230,19 +1260,37 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
         end
 
         -- Runtime crafted detection for old persisted data missing isCrafted flag.
-        -- Scans the stored itemLink tooltip for "Crafted" quality text.
+        -- Scans the stored itemLink tooltip for "Crafted" quality text (once per link per session + cache).
         if not slot.isCrafted and trackName ~= "Crafted" and slot.itemLink then
-            local tipOk, tipData
-            if C_TooltipInfo and C_TooltipInfo.GetHyperlink then
-                tipOk, tipData = pcall(C_TooltipInfo.GetHyperlink, slot.itemLink)
-            end
-            if tipOk and tipData and tipData.lines then
-                for li = 1, #tipData.lines do
-                    local lt = tipData.lines[li] and tipData.lines[li].leftText
-                    if lt and not (issecretvalue and issecretvalue(lt)) and lt:find("Crafted") then
-                        slot.isCrafted = true
-                        break
+            local link = slot.itemLink
+            if issecretvalue and issecretvalue(link) then
+                -- Cannot safely inspect; skip probe.
+            else
+                local cachedCrafted = gearCraftedProbeCache[link]
+                if cachedCrafted == true then
+                    slot.isCrafted = true
+                elseif cachedCrafted == false then
+                    slot.isCrafted = false
+                else
+                    local foundCrafted = false
+                    local tipOk, tipData
+                    if C_TooltipInfo and C_TooltipInfo.GetHyperlink then
+                        tipOk, tipData = pcall(C_TooltipInfo.GetHyperlink, link)
                     end
+                    if tipOk and tipData and tipData.lines then
+                        for li = 1, #tipData.lines do
+                            local lt = tipData.lines[li] and tipData.lines[li].leftText
+                            if lt and not (issecretvalue and issecretvalue(lt)) and lt:find("Crafted") then
+                                slot.isCrafted = true
+                                foundCrafted = true
+                                break
+                            end
+                        end
+                    end
+                    if not foundCrafted then
+                        slot.isCrafted = false
+                    end
+                    CacheGearCraftedProbeResult(link, foundCrafted)
                 end
             end
         end
@@ -1819,6 +1867,27 @@ local function BuildEquippedIlvlMap(charKey)
     return map
 end
 
+-- Fixed slot order for FindGearStorageUpgrades cache keys (pairs() on slots is undefined order).
+local GEAR_STORAGE_SIG_SLOTS = {1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}
+local gearStorageFindingsCache = { canonKey = nil, invEpoch = nil, equipSig = nil, findings = nil }
+
+local function BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
+    local gear = WarbandNexus:GetEquippedGear(selectedCharKey)
+    local sl = gear and gear.slots
+    local parts = {}
+    for i = 1, #GEAR_STORAGE_SIG_SLOTS do
+        local sid = GEAR_STORAGE_SIG_SLOTS[i]
+        local sd = sl and sl[sid]
+        local ilv = (equippedMap and equippedMap[sid]) or 0
+        local iid = 0
+        if sd and sd.itemID then
+            iid = tonumber(sd.itemID) or 0
+        end
+        parts[i] = tostring(ilv) .. ":" .. tostring(iid)
+    end
+    return table.concat(parts, ";")
+end
+
 --- Try to resolve the effective ilvl of an item from bag storage.
 --- Prefers link-based ilvl so the UI row matches the tooltip (same item link).
 ---@param item table Hydrated item from ItemsCacheService
@@ -1933,6 +2002,127 @@ local function ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageT
     return charName .. suffix, bindCategory
 end
 
+--- Fast path for Gear tab staged paint: returns cached findings when inventory epoch,
+--- character, and equipped signature match (same gates as FindGearStorageUpgrades).
+--- Does not run the cross-character scan.
+---@param selectedCharKey string
+---@return table|nil findings
+---@return boolean cached True when findings came from gearStorageFindingsCache
+function WarbandNexus:GetGearStorageFindingsIfCached(selectedCharKey)
+    if not selectedCharKey then return nil, false end
+    local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k)
+        return ns.Utilities:GetCanonicalCharacterKey(k)
+    end or function(k) return k end
+    local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
+    local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
+    local invEpoch = ns._gearStorageInvGen or 0
+    local equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
+    local c = gearStorageFindingsCache
+    if c.canonKey == canonKey and c.invEpoch == invEpoch and c.equipSig == equipSig and c.findings then
+        return c.findings, true
+    end
+    return nil, false
+end
+
+--- Like GetGearStorageFindingsIfCached but allows invEpoch drift only when
+--- `ns._gearStorageAllowEquipSigInvBypass` is true (GearUI arms this for one redraw tick
+--- immediately after a yielded Find completed). Otherwise invEpoch must match: ignoring
+--- inv allowed stale findings after real bag/storage bumps (ItemsCacheService).
+---@param selectedCharKey string
+---@return table|nil findings
+---@return boolean ok
+function WarbandNexus:GetGearStorageFindingsIfEquipSigMatch(selectedCharKey)
+    if not selectedCharKey then return nil, false end
+    local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k)
+        return ns.Utilities:GetCanonicalCharacterKey(k)
+    end or function(k) return k end
+    local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
+    local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
+    local equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
+    local c = gearStorageFindingsCache
+    if c.canonKey ~= canonKey or c.equipSig ~= equipSig or not c.findings then
+        return nil, false
+    end
+    local invEpoch = ns._gearStorageInvGen or 0
+    if c.invEpoch == invEpoch then
+        return c.findings, true
+    end
+    if ns._gearStorageAllowEquipSigInvBypass then
+        return c.findings, true
+    end
+    return nil, false
+end
+
+--- Client item cache warmed (GET_ITEM_INFO) for links already in SV: findings must re-run,
+--- but a global `ns._gearStorageInvGen` bump falsely invalidates strict cache vs real bag edits.
+--- When the gear tab's populate canon matches cached scan canon, drop only `invEpoch` so the
+--- next `FindGearStorageUpgrades` runs while leaving `ns._gearStorageInvGen` unchanged.
+---@param canonKey string canonical character key
+---@return boolean invalidated True when the in-memory findings cache row was cleared for this canon
+function WarbandNexus:InvalidateGearStorageFindingsCacheForCanon(canonKey)
+    if not canonKey then return false end
+    local c = gearStorageFindingsCache
+    if not c or c.canonKey ~= canonKey or not c.findings then
+        return false
+    end
+    c.invEpoch = nil
+    -- Bumped so UI can tell a new item-info / soft-invalidate cycle from a duplicate redraw in the same pump.
+    ns._gearStorageFindingsDirtyToken = (ns._gearStorageFindingsDirtyToken or 0) + 1
+    return true
+end
+
+--- When dirty==clean, equipSig matches cache, and we already ran a FULLFIND this GetTime() for this canon,
+--- skip a second synchronous Find (duplicate TryGear + applyStorageScanUI / equipSig flicker same tick).
+---@param selectedCharKey string canonical character key
+---@return table|nil findings
+function WarbandNexus:TryCoalesceGearStorageFullFind(selectedCharKey)
+    if not selectedCharKey then return nil end
+    local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k)
+        return ns.Utilities:GetCanonicalCharacterKey(k)
+    end or function(k) return k end
+    local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
+
+    local dt = ns._gearStorageFindingsDirtyToken or 0
+    local ct = ns._gearStorageFindingsCleanToken or 0
+    if dt ~= ct then return nil end
+
+    local equippedMap = BuildEquippedIlvlMap(canonKey)
+    local equipSig = BuildGearStorageScanCacheSignature(canonKey, equippedMap)
+    local c = gearStorageFindingsCache
+    if not c or c.canonKey ~= canonKey or not c.findings or c.equipSig ~= equipSig then return nil end
+
+    local tNow = GetTime()
+    local sff = ns._gearStorageSameFrameFullFind
+    if not sff or sff.canon ~= canonKey or sff.t ~= tNow then return nil end
+
+    return c.findings
+end
+
+--- Compact fingerprint of `gearStorageFindingsCache` for PopulateContent dedupe.
+--- When async scan fills findings without bumping `ns._gearStorageInvGen`, this still
+--- changes so same-tab repaints are not misclassified as gearSigEcho while stale UI remains.
+-- Reused by GetGearStorageFindingsDedupeToken (hot path via GetGearPopulateSignature); not re-entrant.
+local _gearStorageDedupeTokenBuf = {}
+
+function WarbandNexus:GetGearStorageFindingsDedupeToken()
+    local c = gearStorageFindingsCache
+    if not c or not c.findings then return "0" end
+    local buf = _gearStorageDedupeTokenBuf
+    wipe(buf)
+    local n = 0
+    for slotID = 1, 19 do
+        local list = c.findings[slotID]
+        if list and list[1] then
+            local top = list[1]
+            local iid = tonumber(top.itemID) or 0
+            local il = math.floor(tonumber(top.itemLevel) or 0)
+            buf[#buf + 1] = tostring(slotID) .. ":" .. tostring(iid) .. ":" .. tostring(il)
+            n = n + 1
+        end
+    end
+    return tostring(n) .. ";" .. table.concat(buf, ",")
+end
+
 --- Find items in storage (all chars' bags/bank + warband bank) that would
 --- upgrade any equipped slot for the selected character.
 ---@param selectedCharKey string
@@ -1945,8 +2135,17 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         DebugPrint("|cff00BFFF[StorageUpgrade]|r " .. tostring(msg))
     end
 
-
+    local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k) return ns.Utilities:GetCanonicalCharacterKey(k) end or function(k) return k end
+    local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
     local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
+    local invEpoch = ns._gearStorageInvGen or 0
+    local equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
+    do
+        local c = gearStorageFindingsCache
+        if c.canonKey == canonKey and c.invEpoch == invEpoch and c.equipSig == equipSig and c.findings then
+            return c.findings
+        end
+    end
 
     -- Build itemID lookup for paired slots (rings 11/12, trinkets 13/14) so we can
     -- suppress duplicate-equip recommendations: if the same itemID is already worn
@@ -1987,7 +2186,6 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     end
 
     local allChars = self.db and self.db.global and self.db.global.characters
-    local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k) return ns.Utilities:GetCanonicalCharacterKey(k) end or function(k) return k end
     local charData = allChars and allChars[selectedCharKey]
     if not charData and allChars then
         for k, data in pairs(allChars) do
@@ -2082,6 +2280,14 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
 
     local function EvaluateItem(item, sourceCharKey, storageType)
         if not item or not item.itemID then return end
+        -- When RunFindGearStorageUpgradesYielded drives this scan, yield so one frame never evaluates thousands of items.
+        if ns._gearStorageYieldCo then
+            ns._gearStorageYieldCounter = (ns._gearStorageYieldCounter or 0) + 1
+            if ns._gearStorageYieldCounter >= 72 then
+                ns._gearStorageYieldCounter = 0
+                coroutine.yield()
+            end
+        end
 
         local linkEarly = item.itemLink or item.link
         if IsCosmeticGearCandidate(item.itemID, linkEarly) then return end
@@ -2257,7 +2463,14 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     -- So we show e.g. "Superluminal (equipped): 220 head" when viewing Astralumina.
     local selectedNorm = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and ns.Utilities:GetCanonicalCharacterKey(selectedCharKey) or selectedCharKey
     if allChars and selectedNorm and (WarbandNexus.GetEquippedGear) then
+        local _equippedOtherYield = 0
         for otherCharKey, otherCharData in pairs(allChars) do
+            if ns._gearStorageYieldCo then
+                _equippedOtherYield = _equippedOtherYield + 1
+                if _equippedOtherYield % 4 == 0 then
+                    coroutine.yield()
+                end
+            end
             if not otherCharData.isTracked then
                 -- skip
             elseif (getCanonicalKey(otherCharKey) or otherCharKey) == selectedNorm then
@@ -2361,7 +2574,77 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         while #candidates > 5 do table.remove(candidates) end
     end
 
+    -- Recompute equipped signature at commit: yielded scans can span many frames while
+    -- GetItemInfo warms equipped ilvls; a start-of-scan equipSig would mismatch the UI's
+    -- post-scan GetGearStorageFindingsIfCached gate and force a redundant FULLFIND.
+    local equippedMapCommit = BuildEquippedIlvlMap(selectedCharKey)
+    local equipSigCommit = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMapCommit)
+    gearStorageFindingsCache.canonKey = canonKey
+    gearStorageFindingsCache.equipSig = equipSigCommit
+    gearStorageFindingsCache.findings = findings
+    -- Align cache epoch to the latest scan generation. Item-info batches and metadata
+    -- hooks can bump `ns._gearStorageInvGen` while a yielded Find runs; using only the
+    -- epoch captured at scan start forces redundant FULLFIND in RedrawGearStorageRecommendationsOnly.
+    gearStorageFindingsCache.invEpoch = ns._gearStorageInvGen or 0
+    ns._gearStorageFindingsCleanToken = ns._gearStorageFindingsDirtyToken or 0
+
     return findings
+end
+
+--- Run FindGearStorageUpgrades across multiple frames (coroutine + yields inside EvaluateItem / equipped loop).
+--- @param canonicalKey string
+--- @param paintGen number DrawGearTab generation; abort if stale.
+--- @param onDone function Called when scan finished or aborted (still on gear / same gen).
+function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, onDone)
+    if not canonicalKey or type(onDone) ~= "function" then
+        if type(onDone) == "function" then
+            onDone()
+        end
+        return
+    end
+    ns._gearStorageYieldFindCanon = canonicalKey
+    local co = coroutine.create(function()
+        if WarbandNexus.FindGearStorageUpgrades then
+            WarbandNexus:FindGearStorageUpgrades(canonicalKey)
+        end
+    end)
+    ns._gearStorageYieldCo = co
+    ns._gearStorageYieldCounter = 0
+
+    local function pump()
+        if paintGen ~= (ns._gearTabDrawGen or 0) then
+            ns._gearStorageYieldCo = nil
+            ns._gearStorageYieldFindCanon = nil
+            return
+        end
+        if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then
+            ns._gearStorageYieldCo = nil
+            ns._gearStorageYieldFindCanon = nil
+            return
+        end
+        local sliceStart = GetTime()
+        while coroutine.status(co) ~= "dead" do
+            local ok, err = coroutine.resume(co)
+            if not ok then
+                ns._gearStorageYieldCo = nil
+                ns._gearStorageYieldFindCanon = nil
+                if DebugPrint then
+                    DebugPrint("|cffff4444[GearService]|r FindGearStorageUpgrades yield error: " .. tostring(err))
+                end
+                onDone()
+                return
+            end
+            if (GetTime() - sliceStart) > 0.016 then
+                C_Timer.After(0, pump)
+                return
+            end
+        end
+        ns._gearStorageYieldCo = nil
+        ns._gearStorageYieldFindCanon = nil
+        onDone()
+    end
+
+    C_Timer.After(0, pump)
 end
 
 -- ============================================================================
@@ -2412,7 +2695,7 @@ end
 
 --- Dawncrests + Coffer Key Shards (name-resolved ID) + gold for Gear tab.
 --- Current char: live C_CurrencyInfo API (same source as Currency tab scan).
---- Offline char: DB fallback via GetCurrenciesForUI.
+--- Offline char: merged snapshot from GetCurrenciesForUI (CurrencyCacheService).
 ---@param charKey string Character key from UI (dropdown).
 ---@return table list { { currencyID, amount, name, icon }, ... }, gold last
 function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
@@ -2429,7 +2712,7 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
         upgradeIds[#upgradeIds + 1] = UPGRADE_CURRENCY_IDS[i]
     end
     do
-        local allCur = self.GetCurrenciesForUI and self:GetCurrenciesForUI() or {}
+        local allCur = self:GetCurrenciesForUI()
         for cid, entry in pairs(allCur) do
             local lowerName = entry and entry.name and string.lower(tostring(entry.name)) or ""
             if lowerName ~= "" and lowerName:find("coffer", 1, true) and lowerName:find("shard", 1, true) then
@@ -2464,8 +2747,8 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
                 end
             end
         else
-            -- OFFLINE: read from DB via GetCurrenciesForUI (aggregated per-char data)
-            local currencyData = self.GetCurrenciesForUI and self:GetCurrenciesForUI() or {}
+            -- OFFLINE: quantities from merged currency snapshot (same table as Currency tab).
+            local currencyData = self:GetCurrenciesForUI()
             local L = currencyData[currencyID]
             if L then
                 if L.name and L.name ~= "" then cName = L.name end

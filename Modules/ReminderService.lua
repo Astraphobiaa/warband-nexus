@@ -22,8 +22,9 @@
     same plan for a short window after any calendar reminder activates.
 
     Daily login uses Blizzard daily reset (HasDailyResetOccurredSince), not calendar date().
-    Weekly reset already uses HasWeeklyResetOccurredSince; a C_Timer reschedules the same calendar checks
-    at the next daily or weekly reset boundary so long sessions still see reminders without relogging.
+    Weekly reset uses HasWeeklyResetOccurredSince; unanchored lastShown/lastDailyLoginReminderAt is seeded
+    on first check so enabling a reminder does not toast until the next boundary. A C_Timer reschedules
+    calendar checks at the next daily or weekly reset boundary so long sessions still see reminders without relogging.
 
     Global settings in db.global.reminderSettings (throttleLocationReminders: opt-in throttle for zone/instance)
 
@@ -37,6 +38,8 @@ local E = ns.Constants.EVENTS
 local issecretvalue = issecretvalue
 
 local ReminderEvents = {}
+--- AceEvent identity for WN_PLANS_UPDATED (do not use WarbandNexus object; avoids handler overwrite).
+local ReminderPlansMessageSink = {}
 
 local function ReminderToastThemeFields()
     local c = ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR
@@ -93,10 +96,10 @@ local function LoginBurstMarkCalendarActivated(plan)
 end
 
 local function GetReminderToastIconTexture()
-    return "minimap-genericevent-hornicon-small"
+    return (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager"
 end
 
---- Prefer plan journal icon (fileID); fallback horn atlas for toast.
+--- Prefer plan journal icon (fileID); fallback reminder atlas for toast.
 local function GetPlanReminderToastIcon(plan)
     if plan then
         local fid = tonumber(plan.resolvedIcon) or tonumber(plan.icon)
@@ -816,8 +819,12 @@ local function CheckDailyLoginReminders()
                 if not plan.completed then
                     local shouldFire = false
                     if useBlizzardDaily then
-                        local lastAt = tonumber(plan.reminder.lastDailyLoginReminderAt) or 0
-                        if WarbandNexus:HasDailyResetOccurredSince(lastAt) then
+                        local lastAt = tonumber(plan.reminder.lastDailyLoginReminderAt)
+                        -- Unanchored (nil/0): HasDailyResetOccurredSince(0) is always true in PlansManager;
+                        -- establish baseline so the first check does not toast until the next daily boundary.
+                        if not lastAt or lastAt == 0 then
+                            plan.reminder.lastDailyLoginReminderAt = time()
+                        elseif WarbandNexus:HasDailyResetOccurredSince(lastAt) then
                             shouldFire = true
                         end
                     else
@@ -897,8 +904,12 @@ local function CheckWeeklyResetReminders()
             local plan = planList[i]
             if plan and plan.reminder and plan.reminder.enabled and plan.reminder.onWeeklyReset then
                 if not plan.completed then
-                    local lastWeeklyShown = plan.reminder.lastShown and plan.reminder.lastShown["weekly_reset"] or 0
-                    if WarbandNexus:HasWeeklyResetOccurredSince(lastWeeklyShown) then
+                    plan.reminder.lastShown = plan.reminder.lastShown or {}
+                    local lastWeeklyShown = tonumber(plan.reminder.lastShown["weekly_reset"])
+                    -- Unanchored: HasWeeklyResetOccurredSince(0) is always true; anchor to now (no toast).
+                    if not lastWeeklyShown or lastWeeklyShown == 0 then
+                        plan.reminder.lastShown["weekly_reset"] = time()
+                    elseif WarbandNexus:HasWeeklyResetOccurredSince(lastWeeklyShown) then
                         MarkReminderShown(plan, "weekly_reset")
                         ActivateReminder(plan, triggerLabel)
                     end
@@ -970,17 +981,17 @@ end
 local function SafeIsInInstance()
     local ok, a = pcall(IsInInstance)
     if not ok then return false end
-    if a ~= nil and issecretvalue and issecretvalue(a) then return false end
+    if issecretvalue and issecretvalue(a) then return false end
     return a == true
 end
 
 local function SafeGetInstanceInfo()
     local ok, name, instType, difficultyID, difficultyName, maxPlayers, dynamicDifficulty, isDynamic, instanceID, instanceGUID, flags = pcall(GetInstanceInfo)
     if not ok then return nil end
-    if name ~= nil and issecretvalue and issecretvalue(name) then
+    if issecretvalue and issecretvalue(name) then
         name = nil
     end
-    if difficultyID ~= nil and issecretvalue and issecretvalue(difficultyID) then
+    if issecretvalue and issecretvalue(difficultyID) then
         difficultyID = nil
     else
         difficultyID = tonumber(difficultyID)
@@ -1255,7 +1266,22 @@ end
 
 local zoneChangeTimer = nil
 local calendarResetReminderTimer = nil
+local reminderPlanRescheduleTimer = nil
+--- Coalesce rapid reminder config writes (Set Alert toggles, bulk UI) per WN-PERF.
+local REMINDER_PLAN_RESCHEDULE_DEBOUNCE = 0.25
 local OnLoginRemindersCheck
+
+local function RequestReminderScheduleCoalesced()
+    if reminderPlanRescheduleTimer then
+        reminderPlanRescheduleTimer:Cancel()
+        reminderPlanRescheduleTimer = nil
+    end
+    reminderPlanRescheduleTimer = C_Timer.NewTimer(REMINDER_PLAN_RESCHEDULE_DEBOUNCE, function()
+        reminderPlanRescheduleTimer = nil
+        ScheduleCalendarResetReminderTimer()
+        OnLoginRemindersCheck()
+    end)
+end
 
 --- Seconds until the earlier of the next daily or weekly Blizzard reset (+ small skew), or nil if APIs missing.
 local function NextCalendarReminderDelay()
@@ -1355,29 +1381,44 @@ function WarbandNexus:InitializeReminderService()
         rs.throttleLocationReminders = false
     end
 
-    WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED_NEW_AREA", OnZoneOrInstanceChanged)
-    WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED", OnZoneOrInstanceChanged)
-    WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED_INDOORS", OnZoneOrInstanceChanged)
-    local function OnPlayerEnteringWorldReminders()
-        if ns.ReminderZoneCatalog and ns.ReminderZoneCatalog.InvalidateZoneApiCache then
-            ns.ReminderZoneCatalog.InvalidateZoneApiCache()
+    if not self._wnReminderServiceHooked then
+        self._wnReminderServiceHooked = true
+
+        WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED_NEW_AREA", OnZoneOrInstanceChanged)
+        WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED", OnZoneOrInstanceChanged)
+        WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED_INDOORS", OnZoneOrInstanceChanged)
+        local function OnPlayerEnteringWorldReminders()
+            if ns.ReminderZoneCatalog and ns.ReminderZoneCatalog.InvalidateZoneApiCache then
+                ns.ReminderZoneCatalog.InvalidateZoneApiCache()
+            end
+            BeginReminderLoginBurst()
+            OnLoginRemindersCheck()
+            RunZoneOrInstanceChangedNow()
         end
-        BeginReminderLoginBurst()
-        OnLoginRemindersCheck()
-        RunZoneOrInstanceChangedNow()
+
+        WarbandNexus.RegisterEvent(ReminderEvents, "PLAYER_ENTERING_WORLD", OnPlayerEnteringWorldReminders)
+
+        C_Timer.After(3, function()
+            OnLoginRemindersCheck()
+        end)
+
+        C_Timer.After(5, function()
+            RunZoneOrInstanceChangedNow()
+        end)
+
+        if WarbandNexus.RegisterMessage then
+            WarbandNexus.RegisterMessage(ReminderPlansMessageSink, E.PLANS_UPDATED, function(_, payload)
+                local a = payload and payload.action
+                if a == "reminder_changed" or a == "reminder_dismissed" then
+                    RequestReminderScheduleCoalesced()
+                end
+            end)
+        end
     end
 
-    WarbandNexus.RegisterEvent(ReminderEvents, "PLAYER_ENTERING_WORLD", OnPlayerEnteringWorldReminders)
-
-    C_Timer.After(3, function()
-        OnLoginRemindersCheck()
-    end)
-
-    C_Timer.After(5, function()
-        RunZoneOrInstanceChangedNow()
-    end)
-
     ScheduleCalendarResetReminderTimer()
+    -- Service starts deferred (InitializationService); first PEW may have fired already — run one pass now.
+    OnLoginRemindersCheck()
 end
 
 

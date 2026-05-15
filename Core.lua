@@ -305,7 +305,7 @@ local defaults = {
         -- 0 = off, 80 = hide <80, 90 = hide <90. Legacy boolean is kept for backward compatibility.
         hideLowLevelThreshold = 0,
         hideLowLevelCharacters = false,
-        
+
         -- Notification settings
         notifications = {
             enabled = true,                    -- Master toggle
@@ -573,8 +573,19 @@ function WarbandNexus:OnInitialize()
     self.db.RegisterCallback(self, "OnProfileCopied", "OnProfileChanged")
     self.db.RegisterCallback(self, "OnProfileReset", "OnProfileChanged")
     
-    -- Initialize SessionCache from SavedVariables (LibDeflate + AceSerialize)
-    if self.DecompressAndLoad then
+    -- SessionCache: LibDeflate + LibSerialize can hitch ADDON_LOADED on large SavedVariables blobs.
+    -- Seed empty structure now; decompress next tick so this frame finishes with AceDB + migrations first.
+    -- No addon code reads session cache during OnInitialize/OnEnable before timers fire.
+    if self.InitializeSessionCache then
+        self:InitializeSessionCache()
+    end
+    if self.DecompressAndLoad and C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if WarbandNexus and WarbandNexus.DecompressAndLoad then
+                WarbandNexus:DecompressAndLoad()
+            end
+        end)
+    elseif self.DecompressAndLoad then
         self:DecompressAndLoad()
     end
     
@@ -638,8 +649,14 @@ function WarbandNexus:OnInitialize()
         if not self.db.global.statisticSnapshots then self.db.global.statisticSnapshots = {} end
     end
 
-    -- Collections → Recent: prune stale rows (retention: Constants.COLLECTIONS_RECENT_RETENTION_SEC)
-    if self.PruneCollectionsRecentObtained then
+    -- Collections → Recent: prune stale rows (same tick as migrations is unnecessary; defer slightly).
+    if self.PruneCollectionsRecentObtained and C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if WarbandNexus and WarbandNexus.PruneCollectionsRecentObtained then
+                WarbandNexus:PruneCollectionsRecentObtained()
+            end
+        end)
+    elseif self.PruneCollectionsRecentObtained then
         self:PruneCollectionsRecentObtained()
     end
     

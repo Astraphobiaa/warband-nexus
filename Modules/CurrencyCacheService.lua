@@ -3,6 +3,13 @@
     
     ARCHITECTURE: Direct AceDB + Synchronous FIFO Queue + On-Demand Metadata
     
+    Single merged snapshot for all UI (READ-ONLY; do not mutate entries):
+    WarbandNexus:GetCurrenciesForUI()  ->  [currencyID] = { name, icon, chars = {...}, ... }
+    Quantities come only from AceDB (writers: PerformFullScan, UpdateSingleCurrency). No C_CurrencyInfo in the merge path.
+    Metadata (name, icon, caps, split flags) is session RAM via ResolveCurrencyMetadata (one API hit per cold ID).
+    Rebuilt when InvalidateCurrenciesForUICache / WN_CURRENCY_* / character / money bumps the merge generation.
+    Consumers: Currency tab (CurrencyUI), Gear upgrade strip (GearService:GetGearUpgradeCurrenciesFromDB), PvE delve columns (PvEUI).
+    
     SV Format (minimal — only data that can't be fetched from API for offline chars):
     {
       version = "2.0.0",
@@ -23,7 +30,7 @@
     1) CURRENCY_DISPLAY_UPDATE fires → enqueue(currencyID)
     2) DrainCurrencyQueue() table.remove FIFO until empty (handles bursts + nested events)
     3) UpdateSingleCurrency: API → store quantity in DB → gain detection → fire lean event
-    4) UI calls GetCurrencyData/GetCurrenciesForUI → combines SV quantity + RAM metadata
+    4) UI calls GetCurrencyData (per-char DB) or GetCurrenciesForUI (merged read model: DB quantities + cached metadata; no live merge API).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -122,6 +129,9 @@ local CurrencyCache = {
     suppressCurrencyGainChatUntilScan = false,
     -- Init/Clear already broadcast LOADING_STARTED; skip duplicate when deferred PerformFullScan runs.
     skipNextCurrencyLoadingStartedBroadcast = false,
+    --- Merged UI read model (rebuilt from DB + metadata cache; see RebuildMergedCurrenciesUIReadModel).
+    mergedUIReadModel = nil,
+    mergedUIReadModelGen = -2,
 }
 
 -- Loading state for UI (similar to ReputationLoadingState pattern)
@@ -363,7 +373,7 @@ end
 
 ---Resolve currency metadata from WoW API (cached in session RAM, never persisted).
 ---@param currencyID number
----@return table|nil { name, icon, maxQuantity, isAccountWide, isAccountTransferable, description, quality }
+---@return table|nil { name, icon, maxQuantity, isAccountWide, isAccountTransferable, description, quality, normalizationCap, isSeasonProgressSplit, isCofferKeyShard, ... }
 local function ResolveCurrencyMetadata(currencyID)
     if not currencyID or currencyID == 0 then return nil end
     
@@ -403,7 +413,10 @@ local function ResolveCurrencyMetadata(currencyID)
         description = info.description or "",
         quality = info.quality or 1,
     }
-    
+    metadata.normalizationCap = NormalizationCapFromCurrencyInfo(currencyID, info)
+    metadata.isSeasonProgressSplit = IsSeasonProgressSplitCurrency(currencyID, info)
+    metadata.isCofferKeyShard = IsCofferKeyShardByApiInfo(info)
+
     -- Circular buffer eviction (O(1) instead of O(n) table.remove)
     if #currencyMetadataCacheOrder >= CURRENCY_METADATA_CACHE_MAX then
         local evictID = currencyMetadataCacheOrder[currencyMetadataCacheHead]
@@ -426,6 +439,7 @@ function WarbandNexus:ClearCurrencyMetadataCache()
     wipe(currencyMetadataCache)
     wipe(currencyMetadataCacheOrder)
     currencyMetadataCacheHead = 1
+    ns._currenciesForUICacheInvalidateGen = (ns._currenciesForUICacheInvalidateGen or 0) + 1
 end
 
 -- ============================================================================
@@ -453,35 +467,31 @@ function WarbandNexus:InitializeCurrencyCache()
         currentSubsidiaryKey = ns.Utilities:GetCanonicalCharacterKey(currentCharKeyRaw) or currentCharKeyRaw
     end
     
-    -- Count existing data
-    local charCounts = {}
+    -- Scan decision only: avoid summing every currency row across all alts (O(total entries)).
+    local anyCurrencyData = false
     local currentCharCount = 0
-    
     for charKey, charCurrencies in pairs(db.currencies) do
-        local count = 0
-        for _ in pairs(charCurrencies) do
-            count = count + 1
+        if type(charCurrencies) == "table" and next(charCurrencies) ~= nil then
+            anyCurrencyData = true
         end
-        charCounts[charKey] = count
         local canonLoop = charKey
         if ns.Utilities.GetCanonicalCharacterKey then
             canonLoop = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
         end
-        if canonLoop == currentSubsidiaryKey then
+        if canonLoop == currentSubsidiaryKey and type(charCurrencies) == "table" then
+            local count = 0
+            for _ in pairs(charCurrencies) do
+                count = count + 1
+            end
             currentCharCount = count
         end
-    end
-    
-    local totalCount = 0
-    for _, count in pairs(charCounts) do
-        totalCount = totalCount + count
     end
     
     -- Determine if scan is needed
     local needsScan = false
     local scanReason = ""
     
-    if totalCount == 0 then
+    if not anyCurrencyData then
         needsScan = true
         scanReason = "No data in DB"
     elseif currentCharCount == 0 then
@@ -563,6 +573,24 @@ function WarbandNexus:InitializeCurrencyCache()
         end
     end)
     
+    if not CurrencyCache.currenciesForUIListeners then
+        CurrencyCache.currenciesForUIListeners = true
+        ns._currenciesForUICacheInvalidateGen = 0
+        CurrencyCache.mergedUIReadModel = nil
+        CurrencyCache.mergedUIReadModelGen = -2
+        local function bumpCurrenciesForUIMergeCache()
+            ns._currenciesForUICacheInvalidateGen = (ns._currenciesForUICacheInvalidateGen or 0) + 1
+        end
+        if WarbandNexus.RegisterMessage then
+            WarbandNexus:RegisterMessage(E.CURRENCY_UPDATED, bumpCurrenciesForUIMergeCache)
+            WarbandNexus:RegisterMessage(E.CURRENCIES_UPDATED, bumpCurrenciesForUIMergeCache)
+            WarbandNexus:RegisterMessage(E.CURRENCY_CACHE_CLEARED, bumpCurrenciesForUIMergeCache)
+            WarbandNexus:RegisterMessage(E.CHARACTER_UPDATED, bumpCurrenciesForUIMergeCache)
+            WarbandNexus:RegisterMessage(E.CHARACTER_TRACKING_CHANGED, bumpCurrenciesForUIMergeCache)
+            WarbandNexus:RegisterMessage(E.MONEY_UPDATED, bumpCurrenciesForUIMergeCache)
+        end
+    end
+
     CurrencyCache.isInitialized = true
 end
 
@@ -1056,6 +1084,13 @@ end
 function CurrencyCache:PerformFullScan(bypassThrottle)
     DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] FullScan triggered (bypass=" .. tostring(bypassThrottle) .. ")")
     if not C_CurrencyInfo then
+        -- Avoid leaving Currency tab stuck on "Loading" (e.g. rare load order / API unavailable).
+        ns.CurrencyLoadingState.isLoading = false
+        ns.CurrencyLoadingState.loadingProgress = 0
+        ns.CurrencyLoadingState.currentStage = nil
+        if WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage(E.CURRENCY_CACHE_READY)
+        end
         return
     end
 
@@ -1109,8 +1144,13 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     if listSize == 0 then
         self.isScanning = false
         ns._fullScanInProgress = false
+        -- Clear loading so Currency tab can render SV snapshot or empty state; retry in background.
+        ns.CurrencyLoadingState.isLoading = false
+        ns.CurrencyLoadingState.loadingProgress = 0
         ns.CurrencyLoadingState.currentStage = "Waiting for API... (retrying)"
-        -- LOADING_STARTED already sent above when entering PerformFullScan
+        if WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage(E.CURRENCY_CACHE_READY)
+        end
         C_Timer.After(5, function()
             if CurrencyCache then
                 CurrencyCache:PerformFullScan(true)
@@ -1512,13 +1552,17 @@ local function ResolveCharCurrencyBucket(allCurrencies, rawCharKey, canonicalKey
     return nil
 end
 
----Get all currencies in UI format: [currencyID] = { name, icon, maxQuantity, chars = { [canonicalKey] = qty } }.
----Single source for Currency tab and Gear tab; uses canonical character key everywhere.
----@return table { [currencyID] = { name, icon, value, chars = { [canonicalKey] = quantity } } }
-function WarbandNexus:GetCurrenciesForUI()
+---Rebuild merged currency UI read model from AceDB (`db.currencies` / `db.totalEarned`) plus session metadata.
+---No C_CurrencyInfo in this path: quantities are whatever writers (PerformFullScan, UpdateSingleCurrency) last persisted.
+---Metadata comes from ResolveCurrencyMetadata (one API hit per cold ID, RAM-cached).
+local function RebuildMergedCurrenciesUIReadModel()
     local db = GetDB()
-    if not db then return {} end
-    
+    if not db then
+        CurrencyCache.mergedUIReadModel = {}
+        CurrencyCache.mergedUIReadModelGen = ns._currenciesForUICacheInvalidateGen or 0
+        return
+    end
+
     -- 1) Collect all tracked character keys (same list as UI/tooltip)
     local trackedCharacters = {}
     if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters then
@@ -1533,7 +1577,6 @@ function WarbandNexus:GetCurrenciesForUI()
             end
         end
     end
-    -- Fallback: if no tracked list, use all charKeys that have currency data
     if #trackedCharacters == 0 and db.currencies then
         for charKey in pairs(db.currencies) do
             trackedCharacters[#trackedCharacters + 1] = {
@@ -1542,8 +1585,7 @@ function WarbandNexus:GetCurrenciesForUI()
             }
         end
     end
-    
-    -- 2) Union of all currency IDs (any character has this currency)
+
     local currencyIDSet = {}
     if db.currencies then
         for _, currencies in pairs(db.currencies) do
@@ -1554,9 +1596,6 @@ function WarbandNexus:GetCurrenciesForUI()
             end
         end
     end
-
-    local currentCharKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
-    local function normKey(k) return (k and tostring(k):gsub("%s+", "")) or "" end
 
     local result = {}
     for currencyID in pairs(currencyIDSet) do
@@ -1569,12 +1608,9 @@ function WarbandNexus:GetCurrenciesForUI()
             isAccountTransferable = metadata and metadata.isAccountTransferable or false,
         }
         entry.chars = {}
-        local total, maxQty = 0, 0
+        local maxQty = 0
         local splitNormCap = nil
-        local splitInfoEarly = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
-        -- Offline SV cleanup for Dawncrest-style embedded totals — not Coffer Shards (weekly cap ≠ bag encoding).
-        if metadata and splitInfoEarly and IsSeasonProgressSplitCurrency(currencyID, splitInfoEarly)
-            and not IsCofferKeyShardByApiInfo(splitInfoEarly) then
+        if metadata and metadata.isSeasonProgressSplit and not metadata.isCofferKeyShard then
             local sm = tonumber(metadata.seasonMax) or 0
             local mw = tonumber(metadata.maxWeeklyQuantity) or 0
             splitNormCap = (sm > 0) and sm or ((mw > 0) and mw or nil)
@@ -1583,51 +1619,56 @@ function WarbandNexus:GetCurrenciesForUI()
             end
         end
 
-        -- Resolve current character quantity once per currency to avoid repeated
-        -- API reads and writes through GetCurrencyData() in the inner loop.
-        local hasLiveCurrentQty, liveCurrentQty = false, 0
-        if currentCharKey and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-            local info = splitInfoEarly or C_CurrencyInfo.GetCurrencyInfo(currencyID)
-            if info and info.name and not (issecretvalue and issecretvalue(info.name)) then
-                local rawQty = SafeCurrencyNumber(info.quantity) or 0
-                liveCurrentQty = NormalizeQuantity(rawQty, NormalizationCapFromCurrencyInfo(currencyID, info), info.useTotalEarnedForMaxQty)
-                hasLiveCurrentQty = true
-            end
-        end
-
         for i = 1, #trackedCharacters do
             local tracked = trackedCharacters[i]
             local rawKey = tracked.rawKey
             local canonicalKey = tracked.canonicalKey
             local qty = 0
-            local usedLiveQty = false
-
-            -- Current character: use one live snapshot resolved above.
-            if hasLiveCurrentQty and currentCharKey and normKey(canonicalKey) == normKey(currentCharKey) then
-                qty = liveCurrentQty
-                usedLiveQty = true
-            end
-
-            if not usedLiveQty then
-                local currencies = ResolveCharCurrencyBucket(db.currencies, rawKey, canonicalKey)
-                local stored = currencies and currencies[currencyID]
-                if type(stored) == "number" then qty = stored
-                elseif type(stored) == "table" then qty = stored.quantity or 0 end
-            end
+            local currencies = ResolveCharCurrencyBucket(db.currencies, rawKey, canonicalKey)
+            local stored = currencies and currencies[currencyID]
+            if type(stored) == "number" then qty = stored
+            elseif type(stored) == "table" then qty = stored.quantity or 0 end
 
             if splitNormCap and qty > splitNormCap then
                 qty = qty - splitNormCap
                 if qty < 0 then qty = 0 end
             end
-            entry.chars[canonicalKey or rawKey] = qty
-            total = total + qty
+            if canonicalKey and canonicalKey ~= "" then
+                entry.chars[canonicalKey] = qty
+            end
+            if rawKey and rawKey ~= "" then
+                entry.chars[rawKey] = qty
+            end
             if qty > maxQty then maxQty = qty end
         end
         if entry.isAccountWide then entry.value = maxQty else entry.value = nil end
         result[currencyID] = entry
     end
-    
-    return result
+
+    CurrencyCache.mergedUIReadModel = result
+    CurrencyCache.mergedUIReadModelGen = ns._currenciesForUICacheInvalidateGen or 0
+end
+
+---Get all currencies in UI format: [currencyID] = { name, icon, maxQuantity, chars = { [key] = qty, ... } }.
+---Per-character `chars` may list the same quantity under both SV row key (e.g. GUID) and Name-Realm so UI row keys always resolve.
+---Read-only merged view: rebuilt from AceDB when invalidated; metadata from ResolveCurrencyMetadata (session RAM).
+---@return table { [currencyID] = { name, icon, value, chars = { [key] = quantity } } }
+function WarbandNexus:GetCurrenciesForUI()
+    local db = GetDB()
+    if not db then return {} end
+
+    local gen = ns._currenciesForUICacheInvalidateGen or 0
+    if CurrencyCache.mergedUIReadModel and CurrencyCache.mergedUIReadModelGen == gen then
+        return CurrencyCache.mergedUIReadModel
+    end
+
+    RebuildMergedCurrenciesUIReadModel()
+    return CurrencyCache.mergedUIReadModel or {}
+end
+
+---Bump merge cache used by GetCurrenciesForUI (call after rare SV surgery without a WN_* message).
+function WarbandNexus:InvalidateCurrenciesForUICache()
+    ns._currenciesForUICacheInvalidateGen = (ns._currenciesForUICacheInvalidateGen or 0) + 1
 end
 
 ---Manually trigger currency scan

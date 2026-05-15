@@ -44,9 +44,11 @@ local MAX_GOLD = 9999999
 local FormatGoldDisplay = ns.UI_FormatGold
 local FormatNumberSep = ns.UI_FormatNumber
 
--- Strip dots/spaces/commas → pure digit string
+-- Strip dots/spaces/commas → pure digit string (never string ops on secret GetText)
 local function StripFormatting(str)
-    return (str or ""):gsub("[^%d]", "")
+    if str == nil or type(str) ~= "string" then return "" end
+    if issecretvalue and issecretvalue(str) then return "" end
+    return str:gsub("[^%d]", "")
 end
 
 --============================================================================
@@ -338,7 +340,8 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         if not userInput then return end
         
         local text = self:GetText()
-        if text and issecretvalue and issecretvalue(text) then return end
+        if text == nil or (issecretvalue and issecretvalue(text)) then return end
+        if type(text) ~= "string" then return end
         local cursor = self:GetCursorPosition()
         
         -- Count pure digits before cursor position
@@ -473,7 +476,8 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     -- Hook input box to update summary on save
     inputBox:SetScript("OnEditFocusLost", function(self)
         local raw = self:GetText()
-        if raw and issecretvalue and issecretvalue(raw) then return end
+        if raw == nil or (issecretvalue and issecretvalue(raw)) then return end
+        if type(raw) ~= "string" then return end
         local value = GoldStringToCopper(raw)
         local maxCopper = MAX_GOLD * 10000
         if value > maxCopper then value = maxCopper end

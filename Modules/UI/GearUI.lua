@@ -44,6 +44,28 @@ local SLOT_BY_ID         = ns.SLOT_BY_ID
 local EQUIP_LOC_TO_SLOTS = ns.EQUIP_LOC_TO_SLOTS
 
 local format = string.format
+local tinsert = table.insert
+local wipe = wipe
+
+-- Single GetChildren() vararg pack for storage rec scroll (avoid fresh {} in RedrawGearStorageRecommendationsOnly).
+local _gearRecChildScratch = {}
+local function PackGearRecChildren(recContent, ...)
+    wipe(_gearRecChildScratch)
+    local n = select("#", ...)
+    for i = 1, n do
+        _gearRecChildScratch[i] = select(i, ...)
+    end
+    return n
+end
+
+local AcquireStorageRow = ns.UI_AcquireStorageRow
+local ReleasePooledRowsInSubtree = ns.UI_ReleasePooledRowsInSubtree
+
+-- GetGearPopulateSignature: reuse string-building tables (see _gearPopulateSigDepth for reentrancy).
+local _gearSigParts = {}
+local _gearSigCurBlob = {}
+local _gearSigUpPieces = {}
+local _gearPopulateSigDepth = 0
 
 local WEAPON_ENCHANT_EQUIP_LOCS = {
     INVTYPE_WEAPON = true,
@@ -534,6 +556,79 @@ local function BuildGearTabItemTooltipContext(charData)
     return { level = lvl, specID = specID }
 end
 
+--- Release pooled storage rows under the gear recommendations scroll child, then recycle non-pooled leftovers (empty states, legacy frames).
+local function ClearGearRecScrollContent(recContent)
+    if not recContent then return end
+    if ReleasePooledRowsInSubtree then
+        ReleasePooledRowsInSubtree(recContent)
+    end
+    local bin = ns.UI_RecycleBin
+    local nKids = PackGearRecChildren(recContent, recContent:GetChildren())
+    for i = 1, nKids do
+        local ch = _gearRecChildScratch[i]
+        if ch then
+            if ch.isPooled and ch.rowType == "storage" and ch._wnInFramePool then
+                -- Idle pooled row: still parented here; do not move to recycle bin.
+            else
+                ch:Hide()
+                if bin then ch:SetParent(bin) else ch:SetParent(nil) end
+            end
+        end
+    end
+end
+
+--- Paint one gear storage-upgrade row using a pooled storage row (full-width nameText; qty/icon/location hidden).
+local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, rowData, itemTooltipContext)
+    if not line then return end
+    local parent = line:GetParent()
+    if not parent then return end
+    local innerH = math.max(1, rowH - 2)
+    line:SetSize(contentW, innerH)
+    line:ClearAllPoints()
+    line:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(index - 1) * rowH)
+    line:EnableMouse(true)
+    if ns.UI.Factory and ns.UI.Factory.ApplyRowBackground then
+        ns.UI.Factory:ApplyRowBackground(line, index)
+    end
+    if line.qtyText then line.qtyText:Hide() end
+    if line.icon then line.icon:Hide() end
+    if line.locationText then line.locationText:Hide() end
+    if line.nameText then
+        line.nameText:Show()
+        line.nameText:ClearAllPoints()
+        line.nameText:SetPoint("LEFT", line, "LEFT", 8, 0)
+        line.nameText:SetPoint("RIGHT", line, "RIGHT", -8, 0)
+        line.nameText:SetJustifyH("LEFT")
+        line.nameText:SetWordWrap(false)
+        local delta = (rowData.targetIlvl or 0) - (rowData.currentIlvl or 0)
+        local deltaTxt = (delta > 0) and ("|cff80ff80+" .. delta .. "|r") or ""
+        local src = rowData.source or ""
+        if src ~= "" then src = " |cff888888\194\183|r |cffb0b6c4" .. src .. "|r" end
+        line.nameText:SetText(format("|cffd6dae6%s|r  %d %s %d  %s%s",
+            rowData.slotName or "Slot",
+            rowData.currentIlvl or 0,
+            GEAR_ILVL_ARROW_INLINE_MARKUP,
+            rowData.targetIlvl or 0,
+            deltaTxt,
+            src))
+        line.nameText:SetTextColor(0.9, 0.92, 1)
+    end
+    line:SetScript("OnEnter", function(self)
+        if ShowTooltip then
+            ShowTooltip(self, {
+                type = "item",
+                itemID = rowData.itemID,
+                itemLink = rowData.itemLink,
+                anchor = "ANCHOR_LEFT",
+                itemTooltipContext = itemTooltipContext,
+            })
+        end
+    end)
+    line:SetScript("OnLeave", function()
+        if HideTooltip then HideTooltip() end
+    end)
+end
+
 -- Enchant quality glyph: same anchor band as missing-enchant/gem alert (arrow ±9), profession atlases from SharedWidgets.
 local GEAR_ENCHANT_QUALITY_SZ = 18
 
@@ -608,6 +703,85 @@ local function PlaceGearAuxSlotIcon(btn, tex, side, arrowAnchor, upgradeArrowPre
     end
 end
 
+--- GetItemStats + socket scan per slot is expensive when multiplied by ~16 slots on Gear first paint.
+--- Run once on the next frame (WN-PERF heavy tab first paint).
+local function GearSlotApplyDeferredEnchantGemInspect(btn)
+    if not btn then return end
+    local slotData = btn._slotDataRef
+    local slotID = btn._slotID
+    local st = btn._gearInspectSt
+    local ctx = btn._gearLayoutCtx
+    if not slotData or not slotData.itemLink or not st or not ctx then return end
+    local link = slotData.itemLink
+    if issecretvalue and issecretvalue(link) then
+        st.ready = true
+        return
+    end
+
+    st.hasEnchant = ItemLinkHasEnchantment(link)
+    local stats = GetItemStats and GetItemStats(link) or {}
+    st.isMissingGem = false
+    for k, v in pairs(stats) do
+        if type(k) == "string" and not (issecretvalue and issecretvalue(k)) and string.find(k, "EMPTY_SOCKET_") then
+            st.isMissingGem = true
+            break
+        end
+    end
+    st.isEnchantable = IsPrimaryEnchantExpected(slotID, slotData)
+    st.craftingQualityTier = GetGearSlotEnchantQualityTier(link)
+    st.ready = true
+
+    local hasEnchant = st.hasEnchant
+    local isMissingGem = st.isMissingGem
+    local isEnchantable = st.isEnchantable
+    local showWarn = isMissingGem or (isEnchantable and not hasEnchant)
+    local showEnchantQuality = hasEnchant
+    local craftingQualityTier = st.craftingQualityTier
+    local enchantDisplayTier = tonumber(craftingQualityTier) or 1
+    if enchantDisplayTier < 1 then enchantDisplayTier = 1 end
+
+    local side = ctx.side
+    local arrowAnchor = ctx.arrowAnchor
+    local upgradeArrow = ctx.upgradeArrow
+    local upArrow = upgradeArrow ~= nil
+
+    if upArrow and (showWarn or showEnchantQuality) and upgradeArrow then
+        upgradeArrow:ClearAllPoints()
+        if side == "left" then
+            upgradeArrow:SetPoint("CENTER", btn, "CENTER", -ARROW_OFFSET_FROM_SLOT_CENTER, 9)
+        elseif side == "right" then
+            upgradeArrow:SetPoint("CENTER", btn, "CENTER", ARROW_OFFSET_FROM_SLOT_CENTER, 9)
+        else
+            if arrowAnchor then
+                upgradeArrow:SetPoint("CENTER", arrowAnchor, "CENTER", 0, 9)
+            else
+                upgradeArrow:SetPoint("CENTER", btn, "CENTER", -ARROW_OFFSET_FROM_SLOT_CENTER, 9)
+            end
+        end
+    end
+
+    local auxStack = 1
+    if showWarn then
+        if not btn.warnIcon then
+            local warnIcon = btn:CreateTexture(nil, "OVERLAY", nil, 7)
+            warnIcon:SetSize(18, 18)
+            warnIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+            PlaceGearAuxSlotIcon(btn, warnIcon, side, arrowAnchor, upArrow, auxStack)
+            btn.warnIcon = warnIcon
+        end
+        auxStack = 2
+    end
+    if showEnchantQuality then
+        if not btn.enchantQualityIcon then
+            local eqTex = btn:CreateTexture(nil, "OVERLAY", nil, 7)
+            eqTex:SetSize(GEAR_ENCHANT_QUALITY_SZ, GEAR_ENCHANT_QUALITY_SZ)
+            SetupGearSlotEnchantQualityTexture(eqTex, enchantDisplayTier)
+            PlaceGearAuxSlotIcon(btn, eqTex, side, arrowAnchor, upArrow, auxStack)
+            btn.enchantQualityIcon = eqTex
+        end
+    end
+end
+
 -- ============================================================================
 -- SLOT ICON BUTTON
 -- ============================================================================
@@ -634,6 +808,23 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(SLOT_SIZE, SLOT_SIZE)
     btn:SetPoint("TOPLEFT", x, y)
+    btn._slotID = slotID
+    btn._slotDataRef = slotData
+    btn._gearInspectSt = {
+        hasEnchant = false,
+        isMissingGem = false,
+        isEnchantable = false,
+        craftingQualityTier = nil,
+        ready = false,
+    }
+    btn._needsDeferredInspect = false
+    if slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) then
+        btn._needsDeferredInspect = true
+    end
+    if parent then
+        parent._gearSlotInspectList = parent._gearSlotInspectList or {}
+        tinsert(parent._gearSlotInspectList, btn)
+    end
 
     -- Outer border frame (quality color rim)
     local borderFrame = CreateFrame("Frame", nil, btn, "BackdropTemplate")
@@ -771,69 +962,10 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
 
     -- Tooltip: item link + simplified upgrade info (custom tooltip service)
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
-    
-    -- Dynamically evaluate enchant and gem status from itemLink so it works for offline characters
-    local hasEnchant = false
-    local isMissingGem = false
-    local isEnchantable = false
-    local craftingQualityTier = nil
 
-    if slotData and slotData.itemLink then
-        local link = slotData.itemLink
-        if not (issecretvalue and issecretvalue(link)) then
-            hasEnchant = ItemLinkHasEnchantment(link)
+    -- Enchant/gem/socket scan deferred to next frame (see GearSlotApplyDeferredEnchantGemInspect).
+    btn._gearLayoutCtx = { side = side, arrowAnchor = arrowAnchor, upgradeArrow = upgradeArrow }
 
-            local stats = GetItemStats and GetItemStats(link) or {}
-            for k, v in pairs(stats) do
-                if type(k) == "string" and not (issecretvalue and issecretvalue(k)) and string.find(k, "EMPTY_SOCKET_") then
-                    isMissingGem = true
-                    break
-                end
-            end
-
-            isEnchantable = IsPrimaryEnchantExpected(slotID, slotData)
-            craftingQualityTier = GetGearSlotEnchantQualityTier(link)
-        end
-    end
-
-    local showWarn = slotData and slotData.itemLink and (isMissingGem or (isEnchantable and not hasEnchant))
-    local showEnchantQuality = slotData and slotData.itemLink and hasEnchant
-    local enchantDisplayTier = tonumber(craftingQualityTier) or 1
-    if enchantDisplayTier < 1 then enchantDisplayTier = 1 end
-
-    local upArrow = upgradeArrow ~= nil
-    if upArrow and (showWarn or showEnchantQuality) then
-        upgradeArrow:ClearAllPoints()
-        if side == "left" then
-            upgradeArrow:SetPoint("CENTER", btn, "CENTER", -ARROW_OFFSET_FROM_SLOT_CENTER, 9)
-        elseif side == "right" then
-            upgradeArrow:SetPoint("CENTER", btn, "CENTER", ARROW_OFFSET_FROM_SLOT_CENTER, 9)
-        else
-            if arrowAnchor then
-                upgradeArrow:SetPoint("CENTER", arrowAnchor, "CENTER", 0, 9)
-            else
-                upgradeArrow:SetPoint("CENTER", btn, "CENTER", -ARROW_OFFSET_FROM_SLOT_CENTER, 9)
-            end
-        end
-    end
-
-    local auxStack = 1
-    if showWarn then
-        local warnIcon = btn:CreateTexture(nil, "OVERLAY", nil, 7)
-        warnIcon:SetSize(18, 18)
-        warnIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
-        PlaceGearAuxSlotIcon(btn, warnIcon, side, arrowAnchor, upArrow, auxStack)
-        auxStack = auxStack + 1
-        btn.warnIcon = warnIcon
-    end
-    if showEnchantQuality then
-        local eqTex = btn:CreateTexture(nil, "OVERLAY", nil, 7)
-        eqTex:SetSize(GEAR_ENCHANT_QUALITY_SZ, GEAR_ENCHANT_QUALITY_SZ)
-        SetupGearSlotEnchantQualityTexture(eqTex, enchantDisplayTier)
-        PlaceGearAuxSlotIcon(btn, eqTex, side, arrowAnchor, upArrow, auxStack)
-        btn.enchantQualityIcon = eqTex
-    end
-    
     btn:SetScript("OnEnter", function(self)
         if slotData and slotData.itemLink then
             local up = upgradeInfo and upgradeInfo[slotID]
@@ -841,17 +973,23 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, isUpgradable, st
             local underTitleLines
             
             -- Missing Enchant/Gem warnings at the top of additional lines
-            if isEnchantable and not hasEnchant then
-                additionalLines[#additionalLines + 1] = {
-                    text = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:14|t |cffff3333" .. ((ns.L and ns.L["GEAR_MISSING_ENCHANT"]) or "Missing Enchant") .. "|r",
-                    color = {1, 0.2, 0.2}
-                }
-            end
-            if isMissingGem then
-                additionalLines[#additionalLines + 1] = {
-                    text = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:14|t |cffff3333" .. ((ns.L and ns.L["GEAR_MISSING_GEM"]) or "Missing Gem") .. "|r",
-                    color = {1, 0.2, 0.2}
-                }
+            local st = self._gearInspectSt
+            local hasEnc = st and st.hasEnchant
+            local missG = st and st.isMissingGem
+            local enchantExp = st and st.isEnchantable
+            if st and st.ready then
+                if enchantExp and not hasEnc then
+                    additionalLines[#additionalLines + 1] = {
+                        text = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:14|t |cffff3333" .. ((ns.L and ns.L["GEAR_MISSING_ENCHANT"]) or "Missing Enchant") .. "|r",
+                        color = {1, 0.2, 0.2}
+                    }
+                end
+                if missG then
+                    additionalLines[#additionalLines + 1] = {
+                        text = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:14|t |cffff3333" .. ((ns.L and ns.L["GEAR_MISSING_GEM"]) or "Missing Gem") .. "|r",
+                        color = {1, 0.2, 0.2}
+                    }
+                end
             end
             
             if up and up.isCrafted then
@@ -1190,8 +1328,9 @@ end
 --- Draw paperdoll: sol panel (yazı-ikon-slot) | orta (model) | sağ panel (slot-ikon-yazı) | alt panel.
 --- baseX: paperdoll bloğunun sol kenarı (kart içinde ana kolonda ortalanmış).
 --- paperOriginY: kart TOPLEFT'e göre kağıt bezi bandının üstü (dikey hizalama için).
-local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar, baseX, charKey, paperOriginY, paperdollNaturalH, paperBandH)
+local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar, baseX, charKey, paperOriginY, paperdollNaturalH, paperBandH, opts)
     baseX = baseX or CARD_PAD
+    card._gearSlotInspectList = {}
     local itemTooltipContext = BuildGearTabItemTooltipContext(charData)
     -- Sol panel: fixed width; slot sağda (yazı - ikon - slot)
     local leftX = baseX + LEFT_PANEL_W - SLOT_SIZE
@@ -1255,14 +1394,17 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         CreateSlotButton(card, slotID, GetSlotData(slotID), wx, bottomY, IsUpgradable(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar)
     end
 
-    -- Orta panel: model frame alt ucu trinket satırının altına denk gelecek şekilde uzatıldı
     local numRightRows = #rightSlots  -- 8 (Hands .. Trinket 2)
     local MODEL_H = (numRightRows - 1) * rowStep + SLOT_SIZE  -- trinket altına kadar
-    local classFile = charData and charData.classFile
-    local accent    = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.6, 0.6, 1.0 }
     local modelX    = baseX + LEFT_PANEL_W + CENTER_GAP
     local modelTopY = startY
 
+    local function runPaperdollCenterPaint()
+        local classFile = charData and charData.classFile
+        local accent    = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.6, 0.6, 1.0 }
+        if ns._gearPaperdollCenterPlaceholder then
+            ns._gearPaperdollCenterPlaceholder:Hide()
+        end
     -- scrollChild is the stable parent — portrait panel is parented here once and NEVER
     -- re-parented (same pattern as the old PlayerModel paperdoll).
     local scrollParent = card:GetParent()
@@ -1930,6 +2072,28 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
             ilvlFrame:Hide()
         end
     end
+    end
+
+    if opts and opts.deferCenter then
+        local ph = ns._gearPaperdollCenterPlaceholder
+        if not ph then
+            ph = CreateFrame("Frame", nil, card, "BackdropTemplate")
+            ph.isPersistentRowElement = true
+            ns._gearPaperdollCenterPlaceholder = ph
+        end
+        ph:SetParent(card)
+        ph:ClearAllPoints()
+        ph:SetSize(MODEL_W, MODEL_H)
+        ph:SetPoint("TOPLEFT", card, "TOPLEFT", modelX, modelTopY)
+        ph:SetBackdrop(GEAR_MODEL_PANEL_BACKDROP)
+        ph:SetBackdropColor(0.06, 0.06, 0.08, 0.92)
+        ph:SetFrameLevel((card:GetFrameLevel() or 2) + 3)
+        ph:Show()
+        card._gearPaperdollCenterDefer = runPaperdollCenterPaint
+        return
+    end
+
+    runPaperdollCenterPaint()
 end
 
 -- ── Stat helpers (live API for current char) ────────────────────────────────
@@ -1975,7 +2139,8 @@ end
 --- charKey: key from dropdown (used for currency/gold lookup).
 --- isCurrentChar: true if selected character is the logged-in one (live portrait fallback).
 --- currencies: array from GetGearUpgradeCurrenciesFromDB (passed to avoid duplicate API calls).
-local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar, currencies, storageFindings)
+---@param storageScanPending boolean When true and there are no rows yet, show a loading line instead of the empty-state copy.
+local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar, currencies, storageFindings, storageScanPending)
     local rowStep = SLOT_SIZE + SLOT_GAP
     -- Content height: section + slot columns + gap + weapon row (Main/Off Hand) + bottom pad so card border is below weapons
     local contentTop = CARD_PAD + 24
@@ -2201,500 +2366,540 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     statTitle:SetShadowOffset(1, -1)
     statTitle:SetShadowColor(0, 0, 0, 1)
 
-    local statY = -GEAR_SUBPANEL_HDR
+    local function paintGearMidColumnDeferred()
+        local statY = -GEAR_SUBPANEL_HDR
 
-    if #primaryRows > 0 or #secondaryRows > 0 then
-        for i = 1, #primaryRows do
-            local stat = primaryRows[i]
-            local row = FontManager:CreateFontString(statPanel, GFR("gearStatLabel"), "OVERLAY")
-            row:SetPoint("TOPLEFT", statPad, statY)
-            row:SetWidth(labelColW)
-            row:SetWordWrap(false)
-            row:SetJustifyH("LEFT")
-            row:SetTextColor(1, 1, 1)
-            row:SetText(stat.label)
-            row:SetShadowOffset(1, -1)
-            row:SetShadowColor(0, 0, 0, 0.8)
+        if #primaryRows > 0 or #secondaryRows > 0 then
+            for i = 1, #primaryRows do
+                local stat = primaryRows[i]
+                local row = FontManager:CreateFontString(statPanel, GFR("gearStatLabel"), "OVERLAY")
+                row:SetPoint("TOPLEFT", statPad, statY)
+                row:SetWidth(labelColW)
+                row:SetWordWrap(false)
+                row:SetJustifyH("LEFT")
+                row:SetTextColor(1, 1, 1)
+                row:SetText(stat.label)
+                row:SetShadowOffset(1, -1)
+                row:SetShadowColor(0, 0, 0, 0.8)
 
-            local mid = FontManager:CreateFontString(statPanel, GFR("gearPrimaryMid"), "OVERLAY")
-            mid:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad - valColW - GEAR_STAT_COL_GAP, statY)
-            mid:SetWidth(pctColW)
-            mid:SetJustifyH("RIGHT")
-            mid:SetText("")
-            mid:SetTextColor(1, 1, 1)
-            mid:SetShadowOffset(1, -1)
-            mid:SetShadowColor(0, 0, 0, 0.8)
+                local mid = FontManager:CreateFontString(statPanel, GFR("gearPrimaryMid"), "OVERLAY")
+                mid:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad - valColW - GEAR_STAT_COL_GAP, statY)
+                mid:SetWidth(pctColW)
+                mid:SetJustifyH("RIGHT")
+                mid:SetText("")
+                mid:SetTextColor(1, 1, 1)
+                mid:SetShadowOffset(1, -1)
+                mid:SetShadowColor(0, 0, 0, 0.8)
 
-            local val = FontManager:CreateFontString(statPanel, GFR("gearStatRating"), "OVERLAY")
-            val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY)
-            val:SetWidth(valColW)
-            val:SetJustifyH("RIGHT")
-            val:SetTextColor(1, 1, 1)
-            val:SetText(stat.value)
-            val:SetShadowOffset(1, -1)
-            val:SetShadowColor(0, 0, 0, 0.8)
+                local val = FontManager:CreateFontString(statPanel, GFR("gearStatRating"), "OVERLAY")
+                val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY)
+                val:SetWidth(valColW)
+                val:SetJustifyH("RIGHT")
+                val:SetTextColor(1, 1, 1)
+                val:SetText(stat.value)
+                val:SetShadowOffset(1, -1)
+                val:SetShadowColor(0, 0, 0, 0.8)
 
-            statY = statY - STAT_ROW_H
-        end
-
-        if hasDivider then
-            local statDiv = statPanel:CreateTexture(nil, "ARTWORK")
-            statDiv:SetPoint("TOPLEFT", statPad, statY - 2)
-            statDiv:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY - 2)
-            statDiv:SetHeight(1)
-            statDiv:SetColorTexture(accent[1] * 0.3, accent[2] * 0.3, accent[3] * 0.3, 0.6)
-            statY = statY - 10
-        end
-
-        for i = 1, #secondaryRows do
-            local stat = secondaryRows[i]
-            local row = FontManager:CreateFontString(statPanel, GFR("gearStatLabel"), "OVERLAY")
-            row:SetPoint("TOPLEFT", statPad, statY)
-            row:SetWidth(labelColW)
-            row:SetWordWrap(false)
-            row:SetJustifyH("LEFT")
-            row:SetTextColor(1, 1, 1)
-            row:SetText(stat.label)
-            row:SetShadowOffset(1, -1)
-            row:SetShadowColor(0, 0, 0, 0.8)
-
-            local pctFs = FontManager:CreateFontString(statPanel, GFR("gearStatPct"), "OVERLAY")
-            pctFs:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad - valColW - GEAR_STAT_COL_GAP, statY)
-            pctFs:SetWidth(pctColW)
-            pctFs:SetJustifyH("RIGHT")
-            pctFs:SetTextColor(1, 1, 1)
-            pctFs:SetText(stat.pctStr or "0.0%")
-            pctFs:SetShadowOffset(1, -1)
-            pctFs:SetShadowColor(0, 0, 0, 0.8)
-
-            local val = FontManager:CreateFontString(statPanel, GFR("gearStatRating"), "OVERLAY")
-            val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY)
-            val:SetWidth(valColW)
-            val:SetJustifyH("RIGHT")
-            val:SetTextColor(1, 1, 1)
-            val:SetText(stat.ratingStr or "0")
-            val:SetShadowOffset(1, -1)
-            val:SetShadowColor(0, 0, 0, 0.8)
-
-            statY = statY - STAT_ROW_H
-        end
-    else
-        local noStats = FontManager:CreateFontString(statPanel, GFR("gearEmptyStatsHint"), "OVERLAY")
-        noStats:SetPoint("TOPLEFT", statPad, statY)
-        noStats:SetWidth(statInnerW)
-        noStats:SetJustifyH("CENTER")
-        noStats:SetTextColor(0.45, 0.45, 0.45)
-        noStats:SetText((ns.L and ns.L["GEAR_STATS_CURRENT_ONLY"]) or "Stats available for\ncurrent character only")
-        noStats:SetShadowOffset(1, -1)
-        noStats:SetShadowColor(0, 0, 0, 0.8)
-    end
-
-    -- Panel header (ortalanmış)
-    local panelTitle = FontManager:CreateFontString(currencyPanel, GFR("gearPanelTitle"), "OVERLAY")
-    panelTitle:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, -8)
-    panelTitle:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, -8)
-    panelTitle:SetJustifyH("CENTER")
-    panelTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1]*255), math.floor(accent[2]*255), math.floor(accent[3]*255)) .. ((ns.L and ns.L["GEAR_UPGRADE_CURRENCIES"]) or "Upgrade Currencies") .. "|r")
-    panelTitle:SetShadowOffset(1, -1)
-    panelTitle:SetShadowColor(0, 0, 0, 1)
-
-    do
-        local titleHit = CreateFrame("Frame", nil, currencyPanel)
-        titleHit:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, -2)
-        titleHit:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, -2)
-        titleHit:SetHeight(GEAR_SUBPANEL_HDR + 4)
-        if titleHit.SetFrameLevel and currencyPanel.GetFrameLevel then
-            titleHit:SetFrameLevel((currencyPanel:GetFrameLevel() or 0) + 12)
-        end
-        titleHit:EnableMouse(true)
-        titleHit:SetScript("OnEnter", function(self)
-            if not playbookTooltipPayload then return end
-            local payload = playbookTooltipPayload
-            if ShowTooltip then
-                ShowTooltip(self, {
-                    type = "custom",
-                    title = payload.title,
-                    lines = payload.lines,
-                    anchor = "ANCHOR_RIGHT",
-                    maxWidth = 420,
-                })
-            elseif ns.TooltipService then
-                ns.TooltipService:Show(self, {
-                    type = "custom",
-                    title = payload.title,
-                    lines = payload.lines,
-                    anchor = "ANCHOR_RIGHT",
-                    maxWidth = 420,
-                })
+                statY = statY - STAT_ROW_H
             end
-        end)
-        titleHit:SetScript("OnLeave", function()
-            if HideTooltip then
-                HideTooltip()
-            elseif ns.TooltipService then
-                ns.TooltipService:Hide()
+
+            if hasDivider then
+                local statDiv = statPanel:CreateTexture(nil, "ARTWORK")
+                statDiv:SetPoint("TOPLEFT", statPad, statY - 2)
+                statDiv:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY - 2)
+                statDiv:SetHeight(1)
+                statDiv:SetColorTexture(accent[1] * 0.3, accent[2] * 0.3, accent[3] * 0.3, 0.6)
+                statY = statY - 10
             end
-        end)
-    end
 
-    -- Crest rows: icon | name (clipped) | fixed-width amount column (symmetric insets with stats panel).
-    local curY = -GEAR_SUBPANEL_HDR
-    local iconSize = 24
-    for i = 1, #crestCurrencies do
-        local cur = crestCurrencies[i]
-        -- Alternating row bg
-        local rowBg = currencyPanel:CreateTexture(nil, "BACKGROUND")
-        rowBg:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY + 1)
-        rowBg:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY + 1)
-        rowBg:SetHeight(CREST_ROW_H)
-        rowBg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.03 or 0)
+            for i = 1, #secondaryRows do
+                local stat = secondaryRows[i]
+                local row = FontManager:CreateFontString(statPanel, GFR("gearStatLabel"), "OVERLAY")
+                row:SetPoint("TOPLEFT", statPad, statY)
+                row:SetWidth(labelColW)
+                row:SetWordWrap(false)
+                row:SetJustifyH("LEFT")
+                row:SetTextColor(1, 1, 1)
+                row:SetText(stat.label)
+                row:SetShadowOffset(1, -1)
+                row:SetShadowColor(0, 0, 0, 0.8)
 
-        local ico = currencyPanel:CreateTexture(nil, "ARTWORK")
-        ico:SetSize(iconSize, iconSize)
-        ico:SetPoint("TOPLEFT", currPad, curY - (CREST_ROW_H - iconSize) / 2)
-        ico:SetTexture(cur.icon or "Interface\\Icons\\INV_Misc_Coin_01")
-        ico:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                local pctFs = FontManager:CreateFontString(statPanel, GFR("gearStatPct"), "OVERLAY")
+                pctFs:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad - valColW - GEAR_STAT_COL_GAP, statY)
+                pctFs:SetWidth(pctColW)
+                pctFs:SetJustifyH("RIGHT")
+                pctFs:SetTextColor(1, 1, 1)
+                pctFs:SetText(stat.pctStr or "0.0%")
+                pctFs:SetShadowOffset(1, -1)
+                pctFs:SetShadowColor(0, 0, 0, 0.8)
 
-        local crestHit = CreateFrame("Frame", nil, currencyPanel)
-        crestHit:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY + 1)
-        crestHit:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY + 1)
-        crestHit:SetHeight(CREST_ROW_H)
-        crestHit:EnableMouse(true)
-        crestHit:SetScript("OnEnter", function(self)
-            if ShowTooltip then
-                ShowTooltip(self, {
-                    type = "currency",
-                    currencyID = cur.currencyID,
-                    charKey = charKey,
-                    anchor = "ANCHOR_RIGHT",
-                })
-            elseif ns.TooltipService then
-                ns.TooltipService:Show(self, {
-                    type = "currency",
-                    currencyID = cur.currencyID,
-                    charKey = charKey,
-                    anchor = "ANCHOR_RIGHT",
-                })
+                local val = FontManager:CreateFontString(statPanel, GFR("gearStatRating"), "OVERLAY")
+                val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY)
+                val:SetWidth(valColW)
+                val:SetJustifyH("RIGHT")
+                val:SetTextColor(1, 1, 1)
+                val:SetText(stat.ratingStr or "0")
+                val:SetShadowOffset(1, -1)
+                val:SetShadowColor(0, 0, 0, 0.8)
+
+                statY = statY - STAT_ROW_H
             end
-        end)
-        crestHit:SetScript("OnLeave", function()
-            if HideTooltip then
-                HideTooltip()
-            elseif ns.TooltipService then
-                ns.TooltipService:Hide()
-            end
-        end)
-
-        -- Name (left aligned; reserve currAmtReserve for amount column — symmetric rows)
-        local nameText = FontManager:CreateFontString(currencyPanel, GFR("gearCurrencyLabel"), "OVERLAY")
-        nameText:SetPoint("LEFT", ico, "RIGHT", 6, 0)
-        nameText:SetPoint("RIGHT", currencyPanel, "RIGHT", -currPad - currAmtReserve, 0)
-        nameText:SetPoint("TOP", ico, "TOP", 0, 0)
-        nameText:SetPoint("BOTTOM", ico, "BOTTOM", 0, 0)
-        nameText:SetJustifyH("LEFT")
-        nameText:SetWordWrap(false)
-        nameText:SetTextColor(0.85, 0.85, 0.85)
-        -- Always use the first word (e.g. Adventurer/Veteran) to keep labels crisp without truncation.
-        local rawCrestName = cur.name or ""
-        local displayCrestName = rawCrestName
-        if rawCrestName and not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName ~= "" then
-            local firstWord = rawCrestName:match("^(%S+)")
-            firstWord = firstWord or rawCrestName
-            local tierHex = GetUpgradeTrackHex(firstWord)
-            if tierHex then
-                displayCrestName = "|cff" .. tierHex .. firstWord .. "|r"
-            else
-                displayCrestName = firstWord
-            end
-        end
-        nameText:SetText(displayCrestName)
-        nameText:SetShadowOffset(1, -1)
-        nameText:SetShadowColor(0, 0, 0, 0.8)
-
-        -- Amount / cap: GetCurrencyData (same source as PvE + Currency tab) — season earned/max or weekly qty/cap + green/red
-        local cd = WarbandNexus.GetCurrencyData and WarbandNexus:GetCurrencyData(cur.currencyID, charKey) or nil
-        if not cd then
-            local mq = (type(cur.maxQuantity) == "number" and cur.maxQuantity > 0) and cur.maxQuantity or 0
-            cd = {
-                currencyID = cur.currencyID,
-                name = cur.name,
-                quantity = cur.amount or 0,
-                maxQuantity = mq,
-                totalEarned = nil,
-                seasonMax = nil,
-            }
-        end
-        local amountText = FontManager:CreateFontString(currencyPanel, GFR("gearCurrencyAmount"), "OVERLAY")
-        amountText:SetWidth(currAmtReserve - 4)
-        amountText:SetPoint("RIGHT", currencyPanel, "RIGHT", -currPad, 0)
-        amountText:SetPoint("TOP", ico, "TOP", 0, 0)
-        amountText:SetPoint("BOTTOM", ico, "BOTTOM", 0, 0)
-        amountText:SetJustifyH("RIGHT")
-        amountText:SetShadowOffset(1, -1)
-        amountText:SetShadowColor(0, 0, 0, 0.8)
-        if ns.UI_BindSeasonProgressAmount then
-            ns.UI_BindSeasonProgressAmount(amountText, cd)
-        elseif ns.UI_FormatSeasonProgressCurrencyLine then
-            amountText:SetText(ns.UI_FormatSeasonProgressCurrencyLine(cd) or "")
+        else
+            local noStats = FontManager:CreateFontString(statPanel, GFR("gearEmptyStatsHint"), "OVERLAY")
+            noStats:SetPoint("TOPLEFT", statPad, statY)
+            noStats:SetWidth(statInnerW)
+            noStats:SetJustifyH("CENTER")
+            noStats:SetTextColor(0.45, 0.45, 0.45)
+            noStats:SetText((ns.L and ns.L["GEAR_STATS_CURRENT_ONLY"]) or "Stats available for\ncurrent character only")
+            noStats:SetShadowOffset(1, -1)
+            noStats:SetShadowColor(0, 0, 0, 0.8)
         end
 
-        curY = curY - CREST_ROW_H
-    end
+        -- Panel header (ortalanmış)
+        local panelTitle = FontManager:CreateFontString(currencyPanel, GFR("gearPanelTitle"), "OVERLAY")
+        panelTitle:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, -8)
+        panelTitle:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, -8)
+        panelTitle:SetJustifyH("CENTER")
+        panelTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1]*255), math.floor(accent[2]*255), math.floor(accent[3]*255)) .. ((ns.L and ns.L["GEAR_UPGRADE_CURRENCIES"]) or "Upgrade Currencies") .. "|r")
+        panelTitle:SetShadowOffset(1, -1)
+        panelTitle:SetShadowColor(0, 0, 0, 1)
 
-    -- Divider line
-    local divider = currencyPanel:CreateTexture(nil, "ARTWORK")
-    divider:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY - 4)
-    divider:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY - 4)
-    divider:SetHeight(1)
-    divider:SetColorTexture(accent[1] * 0.3, accent[2] * 0.3, accent[3] * 0.3, 0.6)
-
-    -- Gold row
-    if goldCurrency then
-        curY = curY - 14
-        local goldIco = currencyPanel:CreateTexture(nil, "ARTWORK")
-        goldIco:SetSize(iconSize, iconSize)
-        goldIco:SetPoint("TOPLEFT", currPad, curY)
-        goldIco:SetTexture(goldCurrency.icon or 133784)
-        goldIco:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-
-        local goldText = FontManager:CreateFontString(currencyPanel, GFR("gearGoldLabel"), "OVERLAY")
-        goldText:SetPoint("LEFT", goldIco, "RIGHT", 6, 0)
-        goldText:SetPoint("RIGHT", currencyPanel, "RIGHT", -currPad - currAmtReserve, 0)
-        goldText:SetJustifyH("LEFT")
-        goldText:SetWordWrap(false)
-        goldText:SetTextColor(1, 0.82, 0)
-        goldText:SetText((ns.L and ns.L["GOLD_LABEL"]) or "Gold")
-        goldText:SetShadowOffset(1, -1)
-        goldText:SetShadowColor(0, 0, 0, 0.8)
-
-        local goldAmt = FontManager:CreateFontString(currencyPanel, GFR("gearGoldAmount"), "OVERLAY")
-        goldAmt:SetWidth(currAmtReserve - 4)
-        goldAmt:SetPoint("RIGHT", currencyPanel, "RIGHT", -currPad, 0)
-        goldAmt:SetPoint("TOP", goldIco, "TOP", 0, 0)
-        goldAmt:SetPoint("BOTTOM", goldIco, "BOTTOM", 0, 0)
-        goldAmt:SetJustifyH("RIGHT")
-        goldAmt:SetShadowOffset(1, -1)
-        goldAmt:SetShadowColor(0, 0, 0, 0.8)
-        local copper = (goldCurrency.amount or 0) * 10000 + (goldCurrency.silver or 0) * 100 + (goldCurrency.copper or 0)
-        goldAmt:SetText("|cffffff00" .. FormatGold(copper) .. "|r")
-    end
-
-    -- Short neutral hint under gold; header hover still opens full tier playbook tooltip.
-    local shiftHint = FontManager:CreateFontString(currencyPanel, "small", "OVERLAY")
-    shiftHint:SetPoint("BOTTOMLEFT", currencyPanel, "BOTTOMLEFT", currPad, 4)
-    shiftHint:SetPoint("BOTTOMRIGHT", currencyPanel, "BOTTOMRIGHT", -currPad, 4)
-    shiftHint:SetJustifyH("RIGHT")
-    shiftHint:SetText("|cff777777" .. GetLocalizedText("SHIFT_HINT_SEASON_PROGRESS_SHORT", "Shift: Season progress") .. "|r")
-    shiftHint:SetShadowOffset(1, -1)
-    shiftHint:SetShadowColor(0, 0, 0, 0.8)
-
-    local playbookFs = FontManager:CreateFontString(currencyPanel, "small", "OVERLAY")
-    playbookFs:SetPoint("BOTTOMLEFT", shiftHint, "TOPLEFT", 0, 6)
-    playbookFs:SetPoint("BOTTOMRIGHT", shiftHint, "TOPRIGHT", 0, 6)
-    playbookFs:SetHeight(FOOTER_PLAYBOOK_H)
-    playbookFs:SetJustifyH("LEFT")
-    playbookFs:SetJustifyV("BOTTOM")
-    playbookFs:SetWordWrap(true)
-    if playbookFs.SetMaxLines then playbookFs:SetMaxLines(2) end
-    playbookFs:SetTextColor(0.58, 0.62, 0.66)
-    playbookFs:SetShadowOffset(1, -1)
-    playbookFs:SetShadowColor(0, 0, 0, 0.75)
-    playbookFs:SetText(type(currencyPanelFooterHint) == "string" and currencyPanelFooterHint ~= "" and currencyPanelFooterHint or "")
-
-    -- ── RIGHT PANEL: Item Upgrade Recommendations (scrollable, bordered) ───────
-    local storagePanel = CreateFrame("Frame", nil, card, "BackdropTemplate")
-    local storagePanelH = panelH
-    storagePanel:SetWidth(storageW)
-    storagePanel:SetHeight(storagePanelH)
-    storagePanel:SetPoint("TOPLEFT", card, "TOPLEFT", midLeft + midColW + PANEL_GAP, panelTopY)
-    storagePanel:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 },
-    })
-    storagePanel:SetBackdropColor(0.06, 0.06, 0.08, 0.86)
-    storagePanel:SetBackdropBorderColor(accent[1] * 0.36, accent[2] * 0.36, accent[3] * 0.46, 0.52)
-    local storageTitle = FontManager:CreateFontString(storagePanel, GFR("gearStorageCardTitle"), "OVERLAY")
-    storageTitle:SetPoint("TOPLEFT", 12, -8)
-    storageTitle:SetPoint("TOPRIGHT", -12, -8)
-    storageTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1] * 255), math.floor(accent[2] * 255), math.floor(accent[3] * 255))
-        .. GetLocalizedText("GEAR_ITEM_UPGRADE_RECOMMENDATIONS_TITLE", "Item Upgrade Recommendations") .. "|r")
-
-    do
-        local recHit = CreateFrame("Frame", nil, storagePanel)
-        recHit:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", 8, -6)
-        recHit:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", -8, -6)
-        recHit:SetHeight(26)
-        if recHit.SetFrameLevel and storagePanel.GetFrameLevel then
-            recHit:SetFrameLevel((storagePanel:GetFrameLevel() or 0) + 12)
+        do
+            local titleHit = CreateFrame("Frame", nil, currencyPanel)
+            titleHit:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, -2)
+            titleHit:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, -2)
+            titleHit:SetHeight(GEAR_SUBPANEL_HDR + 4)
+            if titleHit.SetFrameLevel and currencyPanel.GetFrameLevel then
+                titleHit:SetFrameLevel((currencyPanel:GetFrameLevel() or 0) + 12)
+            end
+            titleHit:EnableMouse(true)
+            titleHit:SetScript("OnEnter", function(self)
+                if not playbookTooltipPayload then return end
+                local payload = playbookTooltipPayload
+                if ShowTooltip then
+                    ShowTooltip(self, {
+                        type = "custom",
+                        title = payload.title,
+                        lines = payload.lines,
+                        anchor = "ANCHOR_RIGHT",
+                        maxWidth = 420,
+                    })
+                elseif ns.TooltipService then
+                    ns.TooltipService:Show(self, {
+                        type = "custom",
+                        title = payload.title,
+                        lines = payload.lines,
+                        anchor = "ANCHOR_RIGHT",
+                        maxWidth = 420,
+                    })
+                end
+            end)
+            titleHit:SetScript("OnLeave", function()
+                if HideTooltip then
+                    HideTooltip()
+                elseif ns.TooltipService then
+                    ns.TooltipService:Hide()
+                end
+            end)
         end
-        recHit:EnableMouse(true)
-        recHit:SetScript("OnEnter", function(self)
-            if not playbookTooltipPayload then return end
-            local payload = playbookTooltipPayload
-            if ShowTooltip then
-                ShowTooltip(self, {
-                    type = "custom",
-                    title = payload.title,
-                    lines = payload.lines,
-                    anchor = "ANCHOR_LEFT",
-                    maxWidth = 420,
-                })
-            elseif ns.TooltipService then
-                ns.TooltipService:Show(self, {
-                    type = "custom",
-                    title = payload.title,
-                    lines = payload.lines,
-                    anchor = "ANCHOR_LEFT",
-                    maxWidth = 420,
-                })
-            end
-        end)
-        recHit:SetScript("OnLeave", function()
-            if HideTooltip then
-                HideTooltip()
-            elseif ns.TooltipService then
-                ns.TooltipService:Hide()
-            end
-        end)
-    end
 
-    local storageRows = {}
-    do
-        local equippedSlots = gearData and gearData.slots or {}
-        local seenItemLink = {}
-        if storageFindings then
-            for slotID, candidates in pairs(storageFindings) do
-                local best = candidates and candidates[1]
-                if best then
-                    local current = (equippedSlots[slotID] and equippedSlots[slotID].itemLevel) or 0
-                    local target = best.itemLevel or 0
-                    if target > current then
-                        local linkKey = best.itemLink or ("id:" .. tostring(best.itemID or 0))
-                        if not seenItemLink[linkKey] then
-                            seenItemLink[linkKey] = true
-                            local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
-                            storageRows[#storageRows + 1] = {
-                                slotID = slotID,
-                                slotName = (slotDef and slotDef.label) or GetLocalizedText("GEAR_SLOT_FALLBACK_FORMAT", "Slot %d"):format(tonumber(slotID) or 0),
-                                currentIlvl = current,
-                                targetIlvl = target,
-                                itemLink = best.itemLink,
-                                itemID = best.itemID,
-                                source = best.source or "",
-                                sourceType = best.sourceType or "",
-                                sourceClassFile = best.sourceClassFile,
-                                delta = target - current,
-                            }
-                        end
-                    end
+        -- Crest rows: icon | name (clipped) | fixed-width amount column (symmetric insets with stats panel).
+        local curY = -GEAR_SUBPANEL_HDR
+        local iconSize = 24
+        for i = 1, #crestCurrencies do
+            local cur = crestCurrencies[i]
+            -- Alternating row bg
+            local rowBg = currencyPanel:CreateTexture(nil, "BACKGROUND")
+            rowBg:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY + 1)
+            rowBg:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY + 1)
+            rowBg:SetHeight(CREST_ROW_H)
+            rowBg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.03 or 0)
+
+            local ico = currencyPanel:CreateTexture(nil, "ARTWORK")
+            ico:SetSize(iconSize, iconSize)
+            ico:SetPoint("TOPLEFT", currPad, curY - (CREST_ROW_H - iconSize) / 2)
+            ico:SetTexture(cur.icon or "Interface\\Icons\\INV_Misc_Coin_01")
+            ico:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+            local crestHit = CreateFrame("Frame", nil, currencyPanel)
+            crestHit:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY + 1)
+            crestHit:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY + 1)
+            crestHit:SetHeight(CREST_ROW_H)
+            crestHit:EnableMouse(true)
+            crestHit:SetScript("OnEnter", function(self)
+                if ShowTooltip then
+                    ShowTooltip(self, {
+                        type = "currency",
+                        currencyID = cur.currencyID,
+                        charKey = charKey,
+                        anchor = "ANCHOR_RIGHT",
+                    })
+                elseif ns.TooltipService then
+                    ns.TooltipService:Show(self, {
+                        type = "currency",
+                        currencyID = cur.currencyID,
+                        charKey = charKey,
+                        anchor = "ANCHOR_RIGHT",
+                    })
+                end
+            end)
+            crestHit:SetScript("OnLeave", function()
+                if HideTooltip then
+                    HideTooltip()
+                elseif ns.TooltipService then
+                    ns.TooltipService:Hide()
+                end
+            end)
+
+            -- Name (left aligned; reserve currAmtReserve for amount column — symmetric rows)
+            local nameText = FontManager:CreateFontString(currencyPanel, GFR("gearCurrencyLabel"), "OVERLAY")
+            nameText:SetPoint("LEFT", ico, "RIGHT", 6, 0)
+            nameText:SetPoint("RIGHT", currencyPanel, "RIGHT", -currPad - currAmtReserve, 0)
+            nameText:SetPoint("TOP", ico, "TOP", 0, 0)
+            nameText:SetPoint("BOTTOM", ico, "BOTTOM", 0, 0)
+            nameText:SetJustifyH("LEFT")
+            nameText:SetWordWrap(false)
+            nameText:SetTextColor(0.85, 0.85, 0.85)
+            -- Always use the first word (e.g. Adventurer/Veteran) to keep labels crisp without truncation.
+            local rawCrestName = cur.name or ""
+            local displayCrestName = rawCrestName
+            if rawCrestName and not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName ~= "" then
+                local firstWord = rawCrestName:match("^(%S+)")
+                firstWord = firstWord or rawCrestName
+                local tierHex = GetUpgradeTrackHex(firstWord)
+                if tierHex then
+                    displayCrestName = "|cff" .. tierHex .. firstWord .. "|r"
+                else
+                    displayCrestName = firstWord
                 end
             end
+            nameText:SetText(displayCrestName)
+            nameText:SetShadowOffset(1, -1)
+            nameText:SetShadowColor(0, 0, 0, 0.8)
+
+            -- Amount / cap: GetCurrencyData (same source as PvE + Currency tab) — season earned/max or weekly qty/cap + green/red
+            local cd = WarbandNexus.GetCurrencyData and WarbandNexus:GetCurrencyData(cur.currencyID, charKey) or nil
+            if not cd then
+                local mq = (type(cur.maxQuantity) == "number" and cur.maxQuantity > 0) and cur.maxQuantity or 0
+                cd = {
+                    currencyID = cur.currencyID,
+                    name = cur.name,
+                    quantity = cur.amount or 0,
+                    maxQuantity = mq,
+                    totalEarned = nil,
+                    seasonMax = nil,
+                }
+            end
+            local amountText = FontManager:CreateFontString(currencyPanel, GFR("gearCurrencyAmount"), "OVERLAY")
+            amountText:SetWidth(currAmtReserve - 4)
+            amountText:SetPoint("RIGHT", currencyPanel, "RIGHT", -currPad, 0)
+            amountText:SetPoint("TOP", ico, "TOP", 0, 0)
+            amountText:SetPoint("BOTTOM", ico, "BOTTOM", 0, 0)
+            amountText:SetJustifyH("RIGHT")
+            amountText:SetShadowOffset(1, -1)
+            amountText:SetShadowColor(0, 0, 0, 0.8)
+            if ns.UI_BindSeasonProgressAmount then
+                ns.UI_BindSeasonProgressAmount(amountText, cd)
+            elseif ns.UI_FormatSeasonProgressCurrencyLine then
+                amountText:SetText(ns.UI_FormatSeasonProgressCurrencyLine(cd) or "")
+            end
+
+            curY = curY - CREST_ROW_H
         end
-        table.sort(storageRows, function(a, b)
-            if a.delta ~= b.delta then return a.delta > b.delta end
-            return a.slotID < b.slotID
-        end)
+
+        -- Divider line
+        local divider = currencyPanel:CreateTexture(nil, "ARTWORK")
+        divider:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY - 4)
+        divider:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY - 4)
+        divider:SetHeight(1)
+        divider:SetColorTexture(accent[1] * 0.3, accent[2] * 0.3, accent[3] * 0.3, 0.6)
+
+        -- Gold row
+        if goldCurrency then
+            curY = curY - 14
+            local goldIco = currencyPanel:CreateTexture(nil, "ARTWORK")
+            goldIco:SetSize(iconSize, iconSize)
+            goldIco:SetPoint("TOPLEFT", currPad, curY)
+            goldIco:SetTexture(goldCurrency.icon or 133784)
+            goldIco:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+            local goldText = FontManager:CreateFontString(currencyPanel, GFR("gearGoldLabel"), "OVERLAY")
+            goldText:SetPoint("LEFT", goldIco, "RIGHT", 6, 0)
+            goldText:SetPoint("RIGHT", currencyPanel, "RIGHT", -currPad - currAmtReserve, 0)
+            goldText:SetJustifyH("LEFT")
+            goldText:SetWordWrap(false)
+            goldText:SetTextColor(1, 0.82, 0)
+            goldText:SetText((ns.L and ns.L["GOLD_LABEL"]) or "Gold")
+            goldText:SetShadowOffset(1, -1)
+            goldText:SetShadowColor(0, 0, 0, 0.8)
+
+            local goldAmt = FontManager:CreateFontString(currencyPanel, GFR("gearGoldAmount"), "OVERLAY")
+            goldAmt:SetWidth(currAmtReserve - 4)
+            goldAmt:SetPoint("RIGHT", currencyPanel, "RIGHT", -currPad, 0)
+            goldAmt:SetPoint("TOP", goldIco, "TOP", 0, 0)
+            goldAmt:SetPoint("BOTTOM", goldIco, "BOTTOM", 0, 0)
+            goldAmt:SetJustifyH("RIGHT")
+            goldAmt:SetShadowOffset(1, -1)
+            goldAmt:SetShadowColor(0, 0, 0, 0.8)
+            local copper = (goldCurrency.amount or 0) * 10000 + (goldCurrency.silver or 0) * 100 + (goldCurrency.copper or 0)
+            goldAmt:SetText("|cffffff00" .. FormatGold(copper) .. "|r")
+        end
+
+        -- Short neutral hint under gold; header hover still opens full tier playbook tooltip.
+        local shiftHint = FontManager:CreateFontString(currencyPanel, "small", "OVERLAY")
+        shiftHint:SetPoint("BOTTOMLEFT", currencyPanel, "BOTTOMLEFT", currPad, 4)
+        shiftHint:SetPoint("BOTTOMRIGHT", currencyPanel, "BOTTOMRIGHT", -currPad, 4)
+        shiftHint:SetJustifyH("RIGHT")
+        shiftHint:SetText("|cff777777" .. GetLocalizedText("SHIFT_HINT_SEASON_PROGRESS_SHORT", "Shift: Season progress") .. "|r")
+        shiftHint:SetShadowOffset(1, -1)
+        shiftHint:SetShadowColor(0, 0, 0, 0.8)
+
+        local playbookFs = FontManager:CreateFontString(currencyPanel, "small", "OVERLAY")
+        playbookFs:SetPoint("BOTTOMLEFT", shiftHint, "TOPLEFT", 0, 6)
+        playbookFs:SetPoint("BOTTOMRIGHT", shiftHint, "TOPRIGHT", 0, 6)
+        playbookFs:SetHeight(FOOTER_PLAYBOOK_H)
+        playbookFs:SetJustifyH("LEFT")
+        playbookFs:SetJustifyV("BOTTOM")
+        playbookFs:SetWordWrap(true)
+        if playbookFs.SetMaxLines then playbookFs:SetMaxLines(2) end
+        playbookFs:SetTextColor(0.58, 0.62, 0.66)
+        playbookFs:SetShadowOffset(1, -1)
+        playbookFs:SetShadowColor(0, 0, 0, 0.75)
+        playbookFs:SetText(type(currencyPanelFooterHint) == "string" and currencyPanelFooterHint ~= "" and currencyPanelFooterHint or "")
     end
 
+    local recScroll, recContent, scroll, storageContentW = nil, nil, nil, nil
     local storagePad = 8
     local storageHeaderH = 32
     local storageBarW = 22
     local rowH = 32
-    local viewportH = storagePanelH - storageHeaderH - storagePad - 10
-    local recScroll, recContent
-    local scroll = ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and ns.UI.Factory:CreateScrollFrame(storagePanel, "UIPanelScrollFrameTemplate", true)
-    local sbCol
-    -- Pre-compute overflow so we can decide whether to reserve space for the scrollbar column at all.
-    local rowsOverflow = (#storageRows * rowH) > viewportH
-    if scroll then
-        if scroll.SetFrameLevel and storagePanel.GetFrameLevel then
-            scroll:SetFrameLevel(storagePanel:GetFrameLevel() + 2)
-        end
-        sbCol = ns.UI.Factory and ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory:CreateScrollBarColumn(storagePanel, storageBarW, storagePad, storagePad)
-        if sbCol and scroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
-            ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, sbCol, 0)
-        end
-        scroll:SetPoint("TOPLEFT", storagePad, -storageHeaderH)
-        -- Hide the scrollbar column entirely when no overflow, and let scroll area reclaim its width.
-        if rowsOverflow then
-            scroll:SetPoint("BOTTOMRIGHT", -storageBarW, storagePad)
-            if sbCol and sbCol.Show then sbCol:Show() end
-        else
-            scroll:SetPoint("BOTTOMRIGHT", -storagePad, storagePad)
-            if sbCol and sbCol.Hide then sbCol:Hide() end
-        end
-        local content = CreateFrame("Frame", nil, scroll)
-        recScroll = scroll
-        recContent = content
-        local contentW = rowsOverflow
-            and math.max(120, storageW - storagePad * 2 - storageBarW)
-            or  math.max(120, storageW - storagePad * 2)
-        content:SetWidth(contentW)
-        content:SetHeight(math.max(#storageRows * rowH, viewportH))
-        scroll:SetScrollChild(content)
-
-        if #storageRows == 0 then
-            local empty = FontManager:CreateFontString(content, GFR("gearStorageEmpty"), "OVERLAY")
-            empty:SetAllPoints()
-            empty:SetJustifyH("CENTER")
-            empty:SetJustifyV("MIDDLE")
-            empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY_NO_BOE_WOE", "Can't find any BoE or WoE to upgrade on item slots."))
-            empty:SetTextColor(0.55, 0.55, 0.6)
-        else
-            local itemTooltipContext = BuildGearTabItemTooltipContext(charData)
-            for i = 1, #storageRows do
-                local row = storageRows[i]
-                local line = ns.UI.Factory and ns.UI.Factory.CreateContainer and ns.UI.Factory:CreateContainer(content, contentW, rowH - 2, true)
-                if line then
-                    line:SetPoint("TOPLEFT", 0, -(i - 1) * rowH)
-                    if ns.UI.Factory and ns.UI.Factory.ApplyRowBackground then
-                        ns.UI.Factory:ApplyRowBackground(line, i)
-                    end
-                    line:EnableMouse(true)
-                    local delta = (row.targetIlvl or 0) - (row.currentIlvl or 0)
-                    local txt = FontManager:CreateFontString(line, GFR("gearStorageRow"), "OVERLAY")
-                    txt:SetPoint("LEFT", 8, 0)
-                    txt:SetPoint("RIGHT", -8, 0)
-                    txt:SetJustifyH("LEFT")
-                    txt:SetWordWrap(false)
-                    -- Compact format: slot · cur → tgt (+delta) · source. Color emphasis on delta only.
-                    local deltaTxt = (delta > 0) and ("|cff80ff80+" .. delta .. "|r") or ""
-                    local src = row.source or ""
-                    if src ~= "" then src = " |cff888888\194\183|r |cffb0b6c4" .. src .. "|r" end
-                    txt:SetText(format("|cffd6dae6%s|r  %d %s %d  %s%s",
-                        row.slotName or "Slot",
-                        row.currentIlvl or 0,
-                        GEAR_ILVL_ARROW_INLINE_MARKUP,
-                        row.targetIlvl or 0,
-                        deltaTxt,
-                        src))
-                    txt:SetTextColor(0.9, 0.92, 1)
-                    line:SetScript("OnEnter", function(self)
-                        if ShowTooltip then
-                            ShowTooltip(self, {
-                                type = "item",
-                                itemID = row.itemID,
-                                itemLink = row.itemLink,
-                                anchor = "ANCHOR_LEFT",
-                                itemTooltipContext = itemTooltipContext,
-                            })
+    -- Storage row data before the panel shell so overflow math matches the deferred row paint pass.
+    local storageRows = {}
+    do
+            local equippedSlots = gearData and gearData.slots or {}
+            local seenItemLink = {}
+            if storageFindings then
+                for slotID, candidates in pairs(storageFindings) do
+                    local best = candidates and candidates[1]
+                    if best then
+                        local current = (equippedSlots[slotID] and equippedSlots[slotID].itemLevel) or 0
+                        local target = best.itemLevel or 0
+                        if target > current then
+                            local linkKey = best.itemLink or ("id:" .. tostring(best.itemID or 0))
+                            if not seenItemLink[linkKey] then
+                                seenItemLink[linkKey] = true
+                                local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
+                                storageRows[#storageRows + 1] = {
+                                    slotID = slotID,
+                                    slotName = (slotDef and slotDef.label) or GetLocalizedText("GEAR_SLOT_FALLBACK_FORMAT", "Slot %d"):format(tonumber(slotID) or 0),
+                                    currentIlvl = current,
+                                    targetIlvl = target,
+                                    itemLink = best.itemLink,
+                                    itemID = best.itemID,
+                                    source = best.source or "",
+                                    sourceType = best.sourceType or "",
+                                    sourceClassFile = best.sourceClassFile,
+                                    delta = target - current,
+                                }
+                            end
                         end
-                    end)
-                    line:SetScript("OnLeave", function()
-                        if HideTooltip then HideTooltip() end
-                    end)
+                    end
                 end
             end
+            table.sort(storageRows, function(a, b)
+                if a.delta ~= b.delta then return a.delta > b.delta end
+                return a.slotID < b.slotID
+            end)
         end
-        if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
-            ns.UI.Factory:UpdateScrollBarVisibility(scroll)
-        end
-    end
 
-    -- Paperdoll last so slot icons / ilvl / track labels paint above the recommendations panel (same parent).
-    DrawPaperDollInCard(card, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true, paperdollBaseX, charKey, yPaperBandTop, paperdollH, paperdollH)
+        -- ── RIGHT PANEL: Item Upgrade Recommendations (scrollable, bordered) ───────
+        local storagePanel = CreateFrame("Frame", nil, card, "BackdropTemplate")
+        local storagePanelH = panelH
+        storagePanel:SetWidth(storageW)
+        storagePanel:SetHeight(storagePanelH)
+        storagePanel:SetPoint("TOPLEFT", card, "TOPLEFT", midLeft + midColW + PANEL_GAP, panelTopY)
+        storagePanel:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1,
+            insets = { left = 0, right = 0, top = 0, bottom = 0 },
+        })
+        storagePanel:SetBackdropColor(0.06, 0.06, 0.08, 0.86)
+        storagePanel:SetBackdropBorderColor(accent[1] * 0.36, accent[2] * 0.36, accent[3] * 0.46, 0.52)
+        local storageTitle = FontManager:CreateFontString(storagePanel, GFR("gearStorageCardTitle"), "OVERLAY")
+        storageTitle:SetPoint("TOPLEFT", 12, -8)
+        storageTitle:SetPoint("TOPRIGHT", -12, -8)
+        storageTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1] * 255), math.floor(accent[2] * 255), math.floor(accent[3] * 255))
+            .. GetLocalizedText("GEAR_ITEM_UPGRADE_RECOMMENDATIONS_TITLE", "Item Upgrade Recommendations") .. "|r")
+
+        do
+            local recHit = CreateFrame("Frame", nil, storagePanel)
+            recHit:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", 8, -6)
+            recHit:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", -8, -6)
+            recHit:SetHeight(26)
+            if recHit.SetFrameLevel and storagePanel.GetFrameLevel then
+                recHit:SetFrameLevel((storagePanel:GetFrameLevel() or 0) + 12)
+            end
+            recHit:EnableMouse(true)
+            recHit:SetScript("OnEnter", function(self)
+                if not playbookTooltipPayload then return end
+                local payload = playbookTooltipPayload
+                if ShowTooltip then
+                    ShowTooltip(self, {
+                        type = "custom",
+                        title = payload.title,
+                        lines = payload.lines,
+                        anchor = "ANCHOR_LEFT",
+                        maxWidth = 420,
+                    })
+                elseif ns.TooltipService then
+                    ns.TooltipService:Show(self, {
+                        type = "custom",
+                        title = payload.title,
+                        lines = payload.lines,
+                        anchor = "ANCHOR_LEFT",
+                        maxWidth = 420,
+                    })
+                end
+            end)
+            recHit:SetScript("OnLeave", function()
+                if HideTooltip then
+                    HideTooltip()
+                elseif ns.TooltipService then
+                    ns.TooltipService:Hide()
+                end
+            end)
+        end
+
+        local viewportH = storagePanelH - storageHeaderH - storagePad - 10
+        scroll = ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and ns.UI.Factory:CreateScrollFrame(storagePanel, "UIPanelScrollFrameTemplate", true)
+        local sbCol
+        -- Pre-compute overflow so we can decide whether to reserve space for the scrollbar column at all.
+        local rowsOverflow = (#storageRows * rowH) > viewportH
+        if scroll then
+            if scroll.SetFrameLevel and storagePanel.GetFrameLevel then
+                scroll:SetFrameLevel(storagePanel:GetFrameLevel() + 2)
+            end
+            sbCol = ns.UI.Factory and ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory:CreateScrollBarColumn(storagePanel, storageBarW, storagePad, storagePad)
+            if sbCol and scroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
+                ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, sbCol, 0)
+            end
+            scroll:SetPoint("TOPLEFT", storagePad, -storageHeaderH)
+            -- Hide the scrollbar column entirely when no overflow, and let scroll area reclaim its width.
+            if rowsOverflow then
+                scroll:SetPoint("BOTTOMRIGHT", -storageBarW, storagePad)
+                if sbCol and sbCol.Show then sbCol:Show() end
+            else
+                scroll:SetPoint("BOTTOMRIGHT", -storagePad, storagePad)
+                if sbCol and sbCol.Hide then sbCol:Hide() end
+            end
+            local content = CreateFrame("Frame", nil, scroll)
+            recScroll = scroll
+            recContent = content
+            local contentW = rowsOverflow
+                and math.max(120, storageW - storagePad * 2 - storageBarW)
+                or  math.max(120, storageW - storagePad * 2)
+            storageContentW = contentW
+            content:SetWidth(contentW)
+            content:SetHeight(math.max(#storageRows * rowH, viewportH))
+            scroll:SetScrollChild(content)
+
+            if #storageRows == 0 then
+                local empty = FontManager:CreateFontString(content, GFR("gearStorageEmpty"), "OVERLAY")
+                empty:SetAllPoints()
+                empty:SetJustifyH("CENTER")
+                empty:SetJustifyV("MIDDLE")
+                if storageScanPending then
+                    empty:SetText(GetLocalizedText("GEAR_STORAGE_SCANNING", "Scanning storage for upgrades..."))
+                    empty:SetTextColor(0.65, 0.68, 0.75)
+                else
+                    empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY_NO_BOE_WOE", "Can't find any BoE or WoE to upgrade on item slots."))
+                    empty:SetTextColor(0.55, 0.55, 0.6)
+                end
+            end
+            if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+                ns.UI.Factory:UpdateScrollBarVisibility(scroll)
+            end
+            local mfHost = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            if mfHost and recContent and recScroll and storagePanel then
+                mfHost._gearStorageRecHost = {
+                    drawGen = ns._gearTabDrawGen,
+                    canonKey = charKey,
+                    recContent = recContent,
+                    recScroll = recScroll,
+                    sbCol = sbCol,
+                    storagePanel = storagePanel,
+                    storageW = storageW,
+                    storagePad = storagePad,
+                    storageHeaderH = storageHeaderH,
+                    storageBarW = storageBarW,
+                    rowH = rowH,
+                }
+            end
+        end
+
+    -- Equipped paperdoll after the storage shell so slot buttons stack above the recommendations subtree on `card`.
+    DrawPaperDollInCard(card, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true, paperdollBaseX, charKey, yPaperBandTop, paperdollH, paperdollH, { deferCenter = true })
+
+    -- Staged paint: next tick mid column (stats + currencies), tick after paperdoll center (DressUpModel / portrait).
+    local gearDeferGen = ns._gearTabDrawGen
+    C_Timer.After(0, function()
+        if gearDeferGen ~= ns._gearTabDrawGen then return end
+        if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
+        if not card or not card.GetParent or not card:GetParent() then return end
+        local P = ns.Profiler
+        local function runMid()
+            paintGearMidColumnDeferred()
+        end
+        if P and P.enabled and P.Wrap and P.SliceLabel then
+            P:Wrap(P:SliceLabel(P.CAT.UI, "Gear_MidColumn_deferred"), runMid)
+        else
+            runMid()
+        end
+        -- Paperdoll center must run in this same deferred tick. A second C_Timer.After(0)
+        -- allowed _gearTabDrawGen to advance before DressUpModel paint, skipping 3D forever.
+        local centerFn = card._gearPaperdollCenterDefer
+        card._gearPaperdollCenterDefer = nil
+        if centerFn then
+            if P and P.enabled and P.Wrap and P.SliceLabel then
+                P:Wrap(P:SliceLabel(P.CAT.UI, "Gear_PaperdollCenter_deferred"), centerFn)
+            else
+                centerFn()
+            end
+        end
+    end)
+
+    if scroll and recContent and #storageRows > 0 and storageContentW then
+        local rowsDeferGen = ns._gearTabDrawGen
+        local nStorageRows = #storageRows
+        C_Timer.After(0, function()
+            if rowsDeferGen ~= ns._gearTabDrawGen then return end
+            if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
+            if not recContent or not recScroll then return end
+            local P = ns.Profiler
+            local function fillStorageRows()
+                if not AcquireStorageRow then return end
+                ClearGearRecScrollContent(recContent)
+                local itemTooltipContext = BuildGearTabItemTooltipContext(charData)
+                for i = 1, nStorageRows do
+                    local row = storageRows[i]
+                    local line = AcquireStorageRow(recContent, storageContentW, math.max(1, rowH - 2))
+                    if line then
+                        PaintGearStorageRecommendationRow(line, i, rowH, storageContentW, row, itemTooltipContext)
+                    end
+                end
+                if rowsDeferGen ~= ns._gearTabDrawGen then return end
+                if recScroll and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+                    ns.UI.Factory:UpdateScrollBarVisibility(recScroll)
+                end
+            end
+            if P and P.enabled and P.Wrap and P.SliceLabel then
+                P:Wrap(P:SliceLabel(P.CAT.UI, "Gear_StorageRows_deferred"), fillStorageRows)
+            else
+                fillStorageRows()
+            end
+        end)
+    end
 
     cardH = CARD_PAD + 24 + panelH + CARD_PAD
     if recContent then
@@ -2706,6 +2911,30 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     end
 
     card:SetHeight(cardH)
+
+    if card._gearSlotInspectList and #card._gearSlotInspectList > 0 then
+        local slotList = card._gearSlotInspectList
+        local inspectGen = ns._gearTabDrawGen
+        C_Timer.After(0, function()
+            if inspectGen ~= (ns._gearTabDrawGen or 0) then return end
+            if not (WarbandNexus.IsStillOnTab and WarbandNexus:IsStillOnTab("gear")) then return end
+            if not card or not card.GetParent or not card:GetParent() then return end
+            local P = ns.Profiler
+            local function runSlotInspect()
+                for si = 1, #slotList do
+                    local sb = slotList[si]
+                    if sb and sb._needsDeferredInspect then
+                        GearSlotApplyDeferredEnchantGemInspect(sb)
+                    end
+                end
+            end
+            if P and P.enabled and P.Wrap and P.SliceLabel then
+                P:Wrap(P:SliceLabel(P.CAT.UI, "Gear_SlotInspect_deferred"), runSlotInspect)
+            else
+                runSlotInspect()
+            end
+        end)
+    end
 
     card:Show()
     return yOffset - cardH - 12, cardH
@@ -2754,6 +2983,171 @@ local function BuildStorageRecommendationRows(findings, gearData)
         return a.slotID < b.slotID
     end)
     return rows
+end
+
+--- After deferred storage scan: repaint only the recommendations scroll (same-frame gen + canon guards).
+---@param expectedCanonKey string
+---@param expectedDrawGen number
+---@param trustEquipSigWhenInvMiss boolean|nil When true, after a strict cache miss try canon+equipSig match (invEpoch must match unless ns._gearStorageAllowEquipSigInvBypass — set only for one post-yield redraw in DrawGearTab).
+---@return boolean ok true when the scroll was repainted (caller skips full PopulateContent).
+function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, expectedDrawGen, trustEquipSigWhenInvMiss)
+    if not FontManager then
+        FontManager = ns.FontManager
+        if not FontManager then return false end
+    end
+    local mf = self.UI and self.UI.mainFrame
+    if not mf then return false end
+    if expectedDrawGen ~= (ns._gearTabDrawGen or 0) then return false end
+
+    local host = mf._gearStorageRecHost
+    if not host or host.drawGen ~= expectedDrawGen or host.canonKey ~= expectedCanonKey then return false end
+
+    -- Yielded storage scan still pumping: avoid a second synchronous FindGearStorageUpgrades here;
+    -- DrawGearTab's applyStorageScanUI runs on the same paint generation after onDone.
+    if ns._gearStorageYieldCo and ns._gearStorageYieldFindCanon == expectedCanonKey then
+        return false
+    end
+
+    local recContent = host.recContent
+    local recScroll = host.recScroll
+    local storagePanel = host.storagePanel
+    if not recContent or not recScroll or not storagePanel then return false end
+    if not recContent.GetParent or not recContent:GetParent() then return false end
+
+    local Pst = ns.Profiler
+    local stOn = Pst and Pst.enabled and Pst.StartSlice and Pst.StopSlice
+    local function stStart(nm)
+        if stOn then Pst:StartSlice(Pst.CAT.UI, nm) end
+    end
+    local function stStop(nm)
+        if stOn then Pst:StopSlice(Pst.CAT.UI, nm) end
+    end
+
+    stStart("Gear_StorageRec_resolve")
+    local findings, cachedHit
+    if self.GetGearStorageFindingsIfCached then
+        findings, cachedHit = self:GetGearStorageFindingsIfCached(expectedCanonKey)
+    end
+    if not cachedHit and trustEquipSigWhenInvMiss and self.GetGearStorageFindingsIfEquipSigMatch then
+        findings, cachedHit = self:GetGearStorageFindingsIfEquipSigMatch(expectedCanonKey)
+    end
+    if not cachedHit and self.TryCoalesceGearStorageFullFind then
+        local coalesced = self:TryCoalesceGearStorageFullFind(expectedCanonKey)
+        if coalesced then
+            findings = coalesced
+            cachedHit = true
+        end
+    end
+    if not cachedHit then
+        findings = (self.FindGearStorageUpgrades and self:FindGearStorageUpgrades(expectedCanonKey)) or {}
+        ns._gearStorageSameFrameFullFind = { canon = expectedCanonKey, t = GetTime() }
+    end
+    findings = findings or {}
+    stStop("Gear_StorageRec_resolve")
+
+    stStart("Gear_StorageRec_rows")
+    local gearData = (self.GetEquippedGear and self:GetEquippedGear(expectedCanonKey)) or {}
+    local rows = BuildStorageRecommendationRows(findings, gearData)
+    stStop("Gear_StorageRec_rows")
+
+    local db = self.db and self.db.global
+    local rawSel = selectedCharKey or GetSelectedCharKey()
+    local charData = db and (db.characters[expectedCanonKey] or (rawSel and db.characters[rawSel]))
+
+    local storagePad = host.storagePad
+    local storageHeaderH = host.storageHeaderH
+    local storageBarW = host.storageBarW
+    local storageW = host.storageW
+    local rowH = host.rowH
+    local sbCol = host.sbCol
+
+    local storagePanelH = (storagePanel.GetHeight and storagePanel:GetHeight()) or 0
+    local viewportH = math.max(storagePanelH - storageHeaderH - storagePad - 10, 1)
+    local rowsOverflow = (#rows * rowH) > viewportH
+
+    local contentW = rowsOverflow
+        and math.max(120, storageW - storagePad * 2 - storageBarW)
+        or math.max(120, storageW - storagePad * 2)
+
+    local paintTok = (self.GetGearStorageFindingsDedupeToken and self:GetGearStorageFindingsDedupeToken()) or "0"
+    paintTok = paintTok .. ":" .. tostring(#rows) .. ":" .. (rowsOverflow and "1" or "0") .. ":" .. tostring(math.floor(contentW + 0.5))
+    if host._lastGearRecPaintTok == paintTok then
+        return true
+    end
+
+    stStart("Gear_StorageRec_paint")
+    recScroll:ClearAllPoints()
+    recScroll:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
+    if rowsOverflow then
+        recScroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storageBarW, storagePad)
+        if sbCol and sbCol.Show then sbCol:Show() end
+    else
+        recScroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storagePad, storagePad)
+        if sbCol and sbCol.Hide then sbCol:Hide() end
+    end
+
+    ClearGearRecScrollContent(recContent)
+
+    recContent:SetWidth(contentW)
+    recContent:SetHeight(math.max(#rows * rowH, viewportH))
+
+    if #rows == 0 then
+        local empty = FontManager:CreateFontString(recContent, GFR("gearStorageEmpty"), "OVERLAY")
+        empty:SetAllPoints()
+        empty:SetJustifyH("CENTER")
+        empty:SetJustifyV("MIDDLE")
+        empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY_NO_BOE_WOE", "Can't find any BoE or WoE to upgrade on item slots."))
+        empty:SetTextColor(0.55, 0.55, 0.6)
+    elseif AcquireStorageRow then
+        local itemTooltipContext = BuildGearTabItemTooltipContext(charData)
+        for i = 1, #rows do
+            local r = rows[i]
+            local line = AcquireStorageRow(recContent, contentW, math.max(1, rowH - 2))
+            if line then
+                PaintGearStorageRecommendationRow(line, i, rowH, contentW, r, itemTooltipContext)
+            end
+        end
+    end
+
+    if recScroll and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(recScroll)
+    end
+    if recScroll and recScroll.SetVerticalScroll then
+        recScroll:SetVerticalScroll(0)
+    end
+
+    host._lastGearRecPaintTok = paintTok
+    stStop("Gear_StorageRec_paint")
+
+    stStart("Gear_StorageRec_sig")
+    local mfSig = self.UI and self.UI.mainFrame
+    if mfSig and self.GetGearPopulateSignatureFromDrawCaches then
+        local curForSig = (self.GetGearUpgradeCurrenciesFromDB and self:GetGearUpgradeCurrenciesFromDB(expectedCanonKey)) or {}
+        local upForSig = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(expectedCanonKey)) or {}
+        mfSig._gearPopulateContentSig = self:GetGearPopulateSignatureFromDrawCaches(gearData, curForSig, upForSig)
+    elseif mfSig and self.GetGearPopulateSignature then
+        mfSig._gearPopulateContentSig = self:GetGearPopulateSignature()
+    end
+    stStop("Gear_StorageRec_sig")
+    return true
+end
+
+--- Prefer narrow storage-row repaint (no full PopulateContent) when item cache warms on Gear.
+---@return boolean ok
+function WarbandNexus:TryGearStorageRedrawOnly()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or mf.currentTab ~= "gear" then return false end
+    if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return false end
+    local rawSel = selectedCharKey or GetSelectedCharKey()
+    if not rawSel then return false end
+    local canon = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and ns.Utilities:GetCanonicalCharacterKey(rawSel) or rawSel
+    local gen = ns._gearTabDrawGen or 0
+    if not self.RedrawGearStorageRecommendationsOnly then return false end
+    if ns._gearStorageYieldCo and ns._gearStorageYieldFindCanon == canon then
+        return true
+    end
+    -- Strict cache first; equipSig match requires invEpoch alignment unless DrawGearTab post-yield bypass is armed.
+    return self:RedrawGearStorageRecommendationsOnly(canon, gen, true) == true
 end
 
 --- Color character name in storage source line; warband stays plain.
@@ -3543,6 +3937,112 @@ local function CreateGearHeaderHideButton(parent)
 end
 
 -- ============================================================================
+-- POPULATE DEDUPE SIGNATURE (same-tab redundant PopulateContent)
+-- ============================================================================
+
+--- Stable fingerprint of everything DrawGearTab reads from DB/cache for the current selection.
+--- Used by Modules/UI.lua to skip teardown+full redraw when WN_* debounce fires with no real delta.
+---@param cachedGearData table|nil When non-nil, skips GetEquippedGear (DrawGearTab / storage redraw already fetched).
+---@param cachedCurrencies table|nil When non-nil, skips GetGearUpgradeCurrenciesFromDB.
+---@param cachedUpgradeInfo table|nil When non-nil, skips GetPersistedUpgradeInfo.
+local function ComputeGearPopulateSignatureCore(self, parts, curBlob, upPieces, cachedGearData, cachedCurrencies, cachedUpgradeInfo)
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or mf.currentTab ~= "gear" then return nil end
+    local charKey = selectedCharKey or GetSelectedCharKey()
+    if not charKey then return nil end
+    local canon = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+    local invE = tonumber(ns._gearStorageInvGen) or 0
+    local w = 0
+    if mf.scrollChild and mf.scrollChild.GetWidth then
+        w = math.floor(tonumber(mf.scrollChild:GetWidth()) or 0)
+    end
+    local hideTh = 0
+    if self.db and self.db.profile then
+        hideTh = tonumber(GetLowLevelHideThreshold(self.db.profile)) or 0
+    end
+    local gearData
+    if cachedGearData ~= nil then
+        gearData = cachedGearData
+    else
+        gearData = (self.GetEquippedGear and self:GetEquippedGear(canon)) or nil
+    end
+    local slots = gearData and gearData.slots
+    for sid = 1, 19 do
+        local s = slots and slots[sid]
+        if s then
+            parts[#parts + 1] = tostring(sid) .. ":" .. tostring(tonumber(s.itemID) or 0) .. ":"
+                .. tostring(math.floor(tonumber(s.itemLevel) or 0)) .. ":" .. tostring(tonumber(s.quality) or 0)
+        end
+    end
+    local currencies
+    if cachedCurrencies ~= nil then
+        currencies = cachedCurrencies
+    else
+        currencies = (self.GetGearUpgradeCurrenciesFromDB and self:GetGearUpgradeCurrenciesFromDB(canon)) or {}
+    end
+    for i = 1, #currencies do
+        local c = currencies[i]
+        if c and c.currencyID ~= nil then
+            local id = (type(c.currencyID) == "number") and c.currencyID or tonumber(c.currencyID)
+            local amt = (type(c.amount) == "number") and c.amount or tonumber(c.amount)
+            curBlob[#curBlob + 1] = tostring(id or 0) .. ":" .. tostring(amt or 0)
+        end
+    end
+    local up
+    if cachedUpgradeInfo ~= nil then
+        up = cachedUpgradeInfo
+    else
+        up = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(canon)) or {}
+    end
+    for slotID = 1, 19 do
+        local u = up[slotID]
+        if u and type(u) == "table" then
+            upPieces[#upPieces + 1] = tostring(slotID) .. ":" .. tostring(tonumber(u.currUpgrade) or 0) .. ":"
+                .. tostring(tonumber(u.maxUpgrade) or 0) .. ":" .. tostring(u.trackName or "")
+        end
+    end
+    local storageTok = (self.GetGearStorageFindingsDedupeToken and self:GetGearStorageFindingsDedupeToken()) or "0"
+    return canon .. "\1" .. tostring(invE) .. "\1" .. tostring(w) .. "\1" .. tostring(hideTh) .. "\1"
+        .. table.concat(parts, ";") .. "\1" .. table.concat(curBlob, ";") .. "\1" .. table.concat(upPieces, ";")
+        .. "\1" .. tostring(storageTok)
+end
+
+function WarbandNexus:GetGearPopulateSignature()
+    _gearPopulateSigDepth = _gearPopulateSigDepth + 1
+    local out
+    if _gearPopulateSigDepth > 1 then
+        out = ComputeGearPopulateSignatureCore(self, {}, {}, {}, nil, nil, nil)
+    else
+        wipe(_gearSigParts)
+        wipe(_gearSigCurBlob)
+        wipe(_gearSigUpPieces)
+        out = ComputeGearPopulateSignatureCore(self, _gearSigParts, _gearSigCurBlob, _gearSigUpPieces, nil, nil, nil)
+    end
+    _gearPopulateSigDepth = _gearPopulateSigDepth - 1
+    return out
+end
+
+--- Same string as GetGearPopulateSignature() but reuses tables already read in DrawGearTab / storage redraw (avoids a second GetEquippedGear and duplicate currency/upgrade DB reads when those tables are passed).
+---@param gearData table|nil
+---@param currencies table|nil
+---@param upgradeInfo table|nil
+---@return string|nil
+function WarbandNexus:GetGearPopulateSignatureFromDrawCaches(gearData, currencies, upgradeInfo)
+    _gearPopulateSigDepth = _gearPopulateSigDepth + 1
+    local out
+    if _gearPopulateSigDepth > 1 then
+        out = ComputeGearPopulateSignatureCore(self, {}, {}, {}, gearData, currencies, upgradeInfo)
+    else
+        wipe(_gearSigParts)
+        wipe(_gearSigCurBlob)
+        wipe(_gearSigUpPieces)
+        out = ComputeGearPopulateSignatureCore(self, _gearSigParts, _gearSigCurBlob, _gearSigUpPieces, gearData, currencies, upgradeInfo)
+    end
+    _gearPopulateSigDepth = _gearPopulateSigDepth - 1
+    return out
+end
+
+-- ============================================================================
 -- MAIN DRAW FUNCTION
 -- ============================================================================
 
@@ -3587,6 +4087,11 @@ function WarbandNexus:DrawGearTab(parent)
 
     local allChars = GetTrackedCharacters()
     if #allChars == 0 then
+        local mf0 = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if mf0 then mf0._gearPopulateContentSig = nil end
+        if WarbandNexus.UI and WarbandNexus.UI.mainFrame then
+            WarbandNexus.UI.mainFrame._gearStorageRecHost = nil
+        end
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local height = DrawEmptyState and DrawEmptyState(
             parent,
@@ -3596,7 +4101,24 @@ function WarbandNexus:DrawGearTab(parent)
         return height
     end
 
+    -- Invalidate in-flight storage deferrals when this tab redraws (char change, tab switch, PopulateContent).
+    ns._gearTabDrawGen = (ns._gearTabDrawGen or 0) + 1
+    local gearPaintGen = ns._gearTabDrawGen
+    if WarbandNexus.UI and WarbandNexus.UI.mainFrame then
+        WarbandNexus.UI.mainFrame._gearPopulateCanonKey = canonicalKey
+    end
+
+    local Pgear = ns.Profiler
+    local profSlicesOn = Pgear and Pgear.enabled and Pgear.StartSlice and Pgear.StopSlice
+    local function pGearSliceStart(n)
+        if profSlicesOn then Pgear:StartSlice(Pgear.CAT.UI, n) end
+    end
+    local function pGearSliceStop(n)
+        if profSlicesOn then Pgear:StopSlice(Pgear.CAT.UI, n) end
+    end
+
     -- ── Header Card (in fixedHeader - non-scrolling) — Characters-tab layout + room for char selector ─────
+    pGearSliceStart("Gear_headerCard")
     local r, g, b = accent[1], accent[2], accent[3]
     local hexAcc  = format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
     local titleTextContent = "|cff" .. hexAcc .. ((ns.L and ns.L["GEAR_TAB_TITLE"]) or "Gear Management") .. "|r"
@@ -3611,6 +4133,7 @@ function WarbandNexus:DrawGearTab(parent)
         titleText = titleTextContent,
         subtitleText = subtitleTextContent,
         textRightInset = gearHeaderRightReserve,
+        cardHeight = 75,
     }))
     headerCard:SetPoint("TOPLEFT",  SIDE_MARGIN, -headerYOffset)
     headerCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
@@ -3636,17 +4159,24 @@ function WarbandNexus:DrawGearTab(parent)
 
     if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
 
+    pGearSliceStop("Gear_headerCard")
+
     local yOffset = -TOP_MARGIN
 
     -- ── Data retrieval (all by canonical key) ──────────────────────────────────
+    pGearSliceStart("Gear_dataSync")
     local db        = self.db and self.db.global
     local charData  = db and (db.characters[canonicalKey] or db.characters[charKey])
     local gearData  = (self.GetEquippedGear and self:GetEquippedGear(canonicalKey)) or nil
 
     local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+
+    pGearSliceStart("Gear_data_upgradeInfo")
     local upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(canonicalKey)) or {}
+    pGearSliceStop("Gear_data_upgradeInfo")
 
     -- Fetch currencies once; reuse for both affordability map and display panel
+    pGearSliceStart("Gear_data_currencies")
     local currencies = (self.GetGearUpgradeCurrenciesFromDB and self:GetGearUpgradeCurrenciesFromDB(canonicalKey)) or {}
     local currencyAmounts = {}
     for i = 1, #currencies do
@@ -3657,12 +4187,118 @@ function WarbandNexus:DrawGearTab(parent)
             if id then currencyAmounts[id] = (amt and amt >= 0) and amt or 0 end
         end
     end
+    pGearSliceStop("Gear_data_currencies")
 
-    -- Hot path for tab-switch / PopulateContent timing: cross-character bank+bag scan for upgrade candidates.
-    local storageFindings = (self.FindGearStorageUpgrades and self:FindGearStorageUpgrades(canonicalKey)) or {}
+    -- Storage scan: on cache hit use GetGearStorageFindingsIfCached findings only (no redundant FindGearStorageUpgrades).
+    pGearSliceStart("Gear_data_storageGate")
+    local storageFindings = {}
+    local storageScanPending = false
+    local cachedHit = false
+    if self.GetGearStorageFindingsIfCached then
+        local findingsCached, hit = self:GetGearStorageFindingsIfCached(canonicalKey)
+        if hit == true then
+            cachedHit = true
+            -- Cache hit: use findings directly. Do not call FindGearStorageUpgrades again —
+            -- it only returns the same table after repeating equipSig/invEpoch work.
+            storageFindings = findingsCached or {}
+        end
+    end
+    if not cachedHit then
+        storageScanPending = true
+        ns._gearStorageDeferAwaiting = true
+        ns._gearStorageDeferAwaitCanon = canonicalKey
+        local capCanon = canonicalKey
+        C_Timer.After(0, function()
+            if gearPaintGen ~= ns._gearTabDrawGen then return end
+            if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then
+                ns._gearStorageDeferAwaiting = false
+                ns._gearStorageDeferAwaitCanon = nil
+                return
+            end
+            local selKey = selectedCharKey or GetSelectedCharKey()
+            local selCanon = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and ns.Utilities:GetCanonicalCharacterKey(selKey) or selKey
+            if selCanon ~= capCanon then
+                ns._gearStorageDeferAwaiting = false
+                ns._gearStorageDeferAwaitCanon = nil
+                return
+            end
+            ns._gearStorageDeferAwaiting = false
+            ns._gearStorageDeferAwaitCanon = nil
+
+            local P2 = ns.Profiler
+            local function applyStorageScanUI()
+                if gearPaintGen ~= ns._gearTabDrawGen then return end
+                if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
+                selKey = selectedCharKey or GetSelectedCharKey()
+                selCanon = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and ns.Utilities:GetCanonicalCharacterKey(selKey) or selKey
+                if selCanon ~= capCanon then return end
+
+                local ok
+                ns._gearStorageAllowEquipSigInvBypass = true
+                if P2 and P2.enabled and P2.Wrap and P2.SliceLabel and WarbandNexus.RedrawGearStorageRecommendationsOnly then
+                    ok = P2:Wrap(P2:SliceLabel(P2.CAT.UI, "Gear_StorageRec_refresh"), WarbandNexus.RedrawGearStorageRecommendationsOnly, WarbandNexus, capCanon, gearPaintGen, true)
+                elseif WarbandNexus.RedrawGearStorageRecommendationsOnly then
+                    ok = WarbandNexus:RedrawGearStorageRecommendationsOnly(capCanon, gearPaintGen, true)
+                end
+                ns._gearStorageAllowEquipSigInvBypass = false
+                if ok then return end
+                if P2 and P2.enabled and P2.Wrap and P2.SliceLabel then
+                    P2:Wrap(P2:SliceLabel(P2.CAT.UI, "Gear_StorageRec_fallbackPopulate"), function()
+                        WarbandNexus:PopulateContent()
+                        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                        if mf and mf.CancelPendingPopulateDebounce then
+                            mf:CancelPendingPopulateDebounce()
+                        end
+                    end)
+                else
+                    WarbandNexus:PopulateContent()
+                    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                    if mf and mf.CancelPendingPopulateDebounce then
+                        mf:CancelPendingPopulateDebounce()
+                    end
+                end
+            end
+
+            local function beginYieldedStorageFind()
+                if WarbandNexus.RunFindGearStorageUpgradesYielded then
+                    WarbandNexus:RunFindGearStorageUpgradesYielded(capCanon, gearPaintGen, function()
+                        -- One idle tick after cache fill: keep RedrawGearStorageRecommendationsOnly off the scan pump frame.
+                        C_Timer.After(0, applyStorageScanUI)
+                    end)
+                elseif WarbandNexus.FindGearStorageUpgrades then
+                    WarbandNexus:FindGearStorageUpgrades(capCanon)
+                    C_Timer.After(0, applyStorageScanUI)
+                end
+            end
+
+            local P = ns.Profiler
+            if P and P.enabled and P.Wrap and P.SliceLabel then
+                local lab = P:SliceLabel(P.CAT.UI, "Gear_FindStorageUpgrades_deferred")
+                P:Wrap(lab, beginYieldedStorageFind)
+            else
+                beginYieldedStorageFind()
+            end
+        end)
+    end
+
+    pGearSliceStop("Gear_data_storageGate")
+    pGearSliceStop("Gear_dataSync")
+
+    pGearSliceStart("Gear_paperDollDraw")
     yOffset = DrawPaperDollCard(
         parent, yOffset, charData, gearData, upgradeInfo, canonicalKey, currencyAmounts,
-        canonicalKey == currentKey, currencies, storageFindings
+        canonicalKey == currentKey, currencies, storageFindings, storageScanPending
     )
-    return math.abs(yOffset) + TOP_MARGIN
+    pGearSliceStop("Gear_paperDollDraw")
+
+    local outH = math.abs(yOffset) + TOP_MARGIN
+    local mfOut = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    pGearSliceStart("Gear_populateSig")
+    if mfOut and WarbandNexus.GetGearPopulateSignatureFromDrawCaches then
+        mfOut._gearPopulateContentSig = WarbandNexus:GetGearPopulateSignatureFromDrawCaches(gearData, currencies, upgradeInfo)
+    elseif mfOut and WarbandNexus.GetGearPopulateSignature then
+        mfOut._gearPopulateContentSig = WarbandNexus:GetGearPopulateSignature()
+    end
+    pGearSliceStop("Gear_populateSig")
+    return outH
 end

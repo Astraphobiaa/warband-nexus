@@ -706,7 +706,7 @@ end
 
 --[[
     Decompress and load session cache from SavedVariables
-    Called on ADDON_LOADED
+    Called from Core.lua OnInitialize (deferred one tick after InitializeSessionCache).
     @return boolean - Success status
 ]]
 function WarbandNexus:DecompressAndLoad()

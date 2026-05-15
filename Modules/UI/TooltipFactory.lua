@@ -19,7 +19,13 @@
 
 local ADDON_NAME, ns = ...
 local FontManager = ns.FontManager  -- Centralized font management
-local UI_SPACING = ns.UI_SPACING  -- Standardized spacing constants
+
+--- SharedWidgets sets `ns.UI_SPACING`; never capture nil at file load (TOC/embed order can defer assignment).
+local function GetTooltipUISpacing()
+    local sp = ns.UI_SPACING or ns.UI_LAYOUT
+    if sp then return sp end
+    return { SIDE_MARGIN = 10, TOP_MARGIN = 8, AFTER_ELEMENT = 8 }
+end
 
 -- ============================================================================
 -- TOOLTIP FACTORY
@@ -117,8 +123,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     local MAX_WIDTH = 450
     frame.currentHeight = 10
     frame.fixedWidth = 350
-    frame.paddingH = UI_SPACING.SIDE_MARGIN + 2
-    frame.paddingV = UI_SPACING.SIDE_MARGIN
+    local spacing = GetTooltipUISpacing()
+    frame.paddingH = spacing.SIDE_MARGIN + 2
+    frame.paddingV = spacing.SIDE_MARGIN
     frame.hasIcon = false
     
     -- ========================================================================
@@ -203,8 +210,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         -- Reset sizing (MAX_WIDTH as initial, LayoutLines will compute actual)
         self.currentHeight = 10
         self.fixedWidth = MAX_WIDTH
-        self.paddingH = UI_SPACING.SIDE_MARGIN + 2
-        self.paddingV = UI_SPACING.SIDE_MARGIN
+        local spacing = GetTooltipUISpacing()
+        self.paddingH = spacing.SIDE_MARGIN + 2
+        self.paddingV = spacing.SIDE_MARGIN
         self:SetSize(self.fixedWidth, 10)
     end
     
@@ -472,8 +480,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- INTERNAL: Layout - header (icon + title + desc) then body lines
     -- ========================================================================
     frame.LayoutLines = function(self)
-        local padding = self.paddingH or (UI_SPACING.SIDE_MARGIN + 2)
-        local paddingV = self.paddingV or UI_SPACING.SIDE_MARGIN
+        local spacing = GetTooltipUISpacing()
+        local padding = self.paddingH or (spacing.SIDE_MARGIN + 2)
+        local paddingV = self.paddingV or spacing.SIDE_MARGIN
         local lineSpacing = 2
         
         -- ── Phase 1: Measure natural content width ──

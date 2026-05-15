@@ -362,9 +362,24 @@ ns.UI_SetItemsSubTab = function(val)
     if val == "storage" then
         val = "warband"
     end
+    local previousSub = currentItemsSubTab
     -- Bank > Warband aggregate uses `storageExpandAllActive` + GetStorageTreeExpandState (not expandedGroups).
     if val ~= "warband" and WarbandNexus then
         WarbandNexus.storageExpandAllActive = false
+    end
+    -- Entering Warband from another Bank sub-tab: reset expand-all + session tree state, then open both
+    -- major section bodies (Personal Items + Warband Bank) so counts match visible rows without an extra click.
+    -- Nested char/type keys stay default-collapsed until expand-all or explicit toggle (ItemsUI.lua).
+    if val == "warband" and WarbandNexus and previousSub ~= "warband" then
+        WarbandNexus.storageExpandAllActive = false
+        if WarbandNexus.ResetStorageTreeExpandState then
+            WarbandNexus:ResetStorageTreeExpandState()
+        end
+        if WarbandNexus.GetStorageTreeExpandState then
+            local st = WarbandNexus:GetStorageTreeExpandState()
+            st.warband = true
+            st.personal = true
+        end
     end
     currentItemsSubTab = val
     -- No longer syncing BankFrame tabs (read-only mode)
@@ -418,7 +433,7 @@ function WarbandNexus:ToggleMainWindow()
     end
 end
 
--- Manual open via /wn show or minimap click -> Opens Characters tab
+-- Manual open: restores db.profile.lastTab (default Characters).
 function WarbandNexus:ShowMainWindow()
     -- TAINT PROTECTION: Prevent UI manipulation during combat
     if InCombatLockdown() then
@@ -468,6 +483,8 @@ function WarbandNexus:ShowMainWindow()
     mainFrame.isMainTabSwitch = true  -- First open = main tab switch
 
     -- Show before PopulateContent: while hidden, scroll:GetWidth() is often 0 → blank/black To-Do (and other tabs).
+    -- Same pointer action that opened the window (LDB/minimap) can release over the nav row → spurious tab click.
+    mainFrame._wnMainTabInputGraceUntil = GetTime() + 0.2
     mainFrame:Show()
     -- One-shot collectible tooltip precache after the user actually opens the UI (avoids background work on login-only sessions).
     if not ns._wnTooltipPrecacheDone and not ns._wnTooltipPrecachePending then
@@ -1241,11 +1258,29 @@ function WarbandNexus:CreateMainWindow()
         btn:SetScript("OnClick", function(self)
             -- Skip if this tab is already selected (avoid redundant refresh)
             if f.currentTab == self.key then return end
+            -- Brief post-open window: ignore nav clicks so the opening click cannot land on another tab (gear → chars).
+            if GetTime() < (f._wnMainTabInputGraceUntil or 0) then
+                if f._wnBypassMainTabInputGraceOnce then
+                    f._wnBypassMainTabInputGraceOnce = nil
+                else
+                    return
+                end
+            end
 
             -- Invalidate any in-flight tab-switch timers (rapid clicks); paired with checks inside C_Timer callbacks.
             f._tabSwitchGen = (f._tabSwitchGen or 0) + 1
             local tabSwitchGen = f._tabSwitchGen
             local targetTab = self.key
+
+            -- Drop pending event-driven populates from before this click; absorb follow-up message bursts
+            -- (~100ms debounce) that would otherwise run a redundant same-tab PopulateContent right after paint.
+            if f.AbortPendingPopulateDebounce then
+                f:AbortPendingPopulateDebounce()
+            end
+            -- Suppress redundant debounced PopulateContent on the destination tab shortly after main-tab paint
+            -- (debounce 100ms + event latency can fire after a wall-clock "until" window; use switch-relative time).
+            f._wnLastMainTabSwitchAt = GetTime()
+            f._wnLastMainTabSwitchKey = targetTab
 
             local previousTab = f.currentTab
 
@@ -1302,7 +1337,13 @@ function WarbandNexus:CreateMainWindow()
                 WarbandNexus:CloseAllPlanDialogs()
             end
             -- PERFORMANCE: Frame 1 — pool release + detach old tab content; Frame 2 — PopulateContent.
+            -- "click->pool" in tab perf logs is dominated by ReleasePooledRowsInSubtree on the previous tab's
+            -- scrollChild (Items/Reputations/etc. pooled rows), not Gear character-dropdown entry pooling.
             -- Keeps teardown and full redraw off the same frame (reduces hitch on heavy tabs).
+            -- When leaving Gear, defer pool release one extra idle tick so the first PopulateContent of the
+            -- destination tab is not stacked on the same scheduler turn as Gear's pooled subtree teardown.
+            -- Characters -> Gear: one extra idle tick before pool so the first Gear PopulateContent is not on
+            -- the same turn as the tab-switch callback that only schedules work (matches staged Gear UI paint).
             C_Timer.After(0, function()
                 if tabSwitchGen ~= f._tabSwitchGen then
                     local pStale = f._wnPerfMainTabSwitch
@@ -1320,64 +1361,135 @@ function WarbandNexus:CreateMainWindow()
                     end
                     return
                 end
-                local scrollChild = f.scrollChild
-                if scrollChild then
-                    local nc = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
-                    for i = 1, nc do
-                        local child = _uiChildEnumScratch[i]
-                        if ReleasePooledRowsInSubtree then
-                            ReleasePooledRowsInSubtree(child)
+                local function runPoolReleaseOnly()
+                    local scrollChild = f.scrollChild
+                    if scrollChild then
+                        local nc = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
+                        for i = 1, nc do
+                            local child = _uiChildEnumScratch[i]
+                            if ReleasePooledRowsInSubtree then
+                                ReleasePooledRowsInSubtree(child)
+                            end
+                            if child.isPersistentRowElement then
+                                child:Hide()
+                            elseif not child._wnKeepOnTabSwitch then
+                                child:Hide()
+                                child:SetParent(recycleBin)
+                            end
                         end
-                        if child.isPersistentRowElement then
-                            child:Hide()
-                        elseif not child._wnKeepOnTabSwitch then
-                            child:Hide()
-                            child:SetParent(recycleBin)
-                        end
-                    end
-                    f._contentPreCleared = true
-                end
-                local pAfterPool = f._wnPerfMainTabSwitch
-                if pAfterPool and pAfterPool.gen == tabSwitchGen and f.currentTab == targetTab then
-                    if IsTabPerfMonitorEnabled() then
-                        pAfterPool.msClickToPoolEnd = debugprofilestop()
-                        debugprofilestart()
-                    else
-                        f._wnPerfMainTabSwitch = nil
-                        debugprofilestop()
+                        f._contentPreCleared = true
                     end
                 end
-                C_Timer.After(0, function()
-                    if tabSwitchGen ~= f._tabSwitchGen then
-                        local pStale = f._wnPerfMainTabSwitch
-                        if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
-                            f._wnPerfMainTabSwitch = nil
-                            f._wnPerfTabSwitchPendingLog = nil
-                            debugprofilestop()
-                        end
-                        return
-                    end
-                    if f.currentTab ~= targetTab then
-                        local pStale = f._wnPerfMainTabSwitch
-                        if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
-                            f._wnPerfMainTabSwitch = nil
-                            f._wnPerfTabSwitchPendingLog = nil
-                            debugprofilestop()
-                        end
-                        return
-                    end
-                    local pBeforePop = f._wnPerfMainTabSwitch
-                    if pBeforePop and pBeforePop.gen == tabSwitchGen and pBeforePop.msClickToPoolEnd then
+
+                local function schedulePopulateAfterPoolPerf()
+                    local pAfterPool = f._wnPerfMainTabSwitch
+                    if pAfterPool and pAfterPool.gen == tabSwitchGen and f.currentTab == targetTab then
                         if IsTabPerfMonitorEnabled() then
-                            f._wnPerfTabSwitchPendingLog = tabSwitchGen
+                            pAfterPool.msClickToPoolEnd = debugprofilestop()
+                            debugprofilestart()
                         else
                             f._wnPerfMainTabSwitch = nil
                             debugprofilestop()
                         end
                     end
-                    WarbandNexus:PopulateContent()
-                    f.isMainTabSwitch = false
-                end)
+                    C_Timer.After(0, function()
+                        if tabSwitchGen ~= f._tabSwitchGen then
+                            local pStale = f._wnPerfMainTabSwitch
+                            if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
+                                f._wnPerfMainTabSwitch = nil
+                                f._wnPerfTabSwitchPendingLog = nil
+                                debugprofilestop()
+                            end
+                            return
+                        end
+                        if f.currentTab ~= targetTab then
+                            local pStale = f._wnPerfMainTabSwitch
+                            if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
+                                f._wnPerfMainTabSwitch = nil
+                                f._wnPerfTabSwitchPendingLog = nil
+                                debugprofilestop()
+                            end
+                            return
+                        end
+                        local pBeforePop = f._wnPerfMainTabSwitch
+                        if pBeforePop and pBeforePop.gen == tabSwitchGen and pBeforePop.msClickToPoolEnd then
+                            if IsTabPerfMonitorEnabled() then
+                                f._wnPerfTabSwitchPendingLog = tabSwitchGen
+                            else
+                                f._wnPerfMainTabSwitch = nil
+                                debugprofilestop()
+                            end
+                        end
+                        WarbandNexus:PopulateContent()
+                        f.isMainTabSwitch = false
+                    end)
+                end
+
+                local function runPoolReleaseAndSchedulePopulate()
+                    runPoolReleaseOnly()
+                    schedulePopulateAfterPoolPerf()
+                end
+
+                if previousTab == "gear" and targetTab ~= "gear" then
+                    C_Timer.After(0, function()
+                        if tabSwitchGen ~= f._tabSwitchGen then
+                            local pStale = f._wnPerfMainTabSwitch
+                            if pStale and pStale.gen == tabSwitchGen then
+                                f._wnPerfMainTabSwitch = nil
+                                debugprofilestop()
+                            end
+                            return
+                        end
+                        if f.currentTab ~= targetTab then
+                            local pStale = f._wnPerfMainTabSwitch
+                            if pStale and pStale.gen == tabSwitchGen then
+                                f._wnPerfMainTabSwitch = nil
+                                debugprofilestop()
+                            end
+                            return
+                        end
+                        local P = ns.Profiler
+                        if P and P.enabled and P.StartSlice and P.StopSlice then
+                            P:StartSlice(P.CAT.UI, "Pop_tabPoolLeaveGear_deferred")
+                        end
+                        runPoolReleaseOnly()
+                        if P and P.enabled and P.StartSlice and P.StopSlice then
+                            P:StopSlice(P.CAT.UI, "Pop_tabPoolLeaveGear_deferred")
+                        end
+                        schedulePopulateAfterPoolPerf()
+                    end)
+                elseif previousTab == "chars" and targetTab == "gear" then
+                    -- Extra idle tick before pool+PopulateContent: entering Gear after Characters
+                    -- avoids stacking chars subtree pool release on the same scheduler turn as the first Gear draw.
+                    C_Timer.After(0, function()
+                        if tabSwitchGen ~= f._tabSwitchGen then
+                            local pStale = f._wnPerfMainTabSwitch
+                            if pStale and pStale.gen == tabSwitchGen then
+                                f._wnPerfMainTabSwitch = nil
+                                debugprofilestop()
+                            end
+                            return
+                        end
+                        if f.currentTab ~= targetTab then
+                            local pStale = f._wnPerfMainTabSwitch
+                            if pStale and pStale.gen == tabSwitchGen then
+                                f._wnPerfMainTabSwitch = nil
+                                debugprofilestop()
+                            end
+                            return
+                        end
+                        local P = ns.Profiler
+                        if P and P.enabled and P.StartSlice and P.StopSlice then
+                            P:StartSlice(P.CAT.UI, "Pop_tabPool_charsToGear_deferred")
+                        end
+                        runPoolReleaseAndSchedulePopulate()
+                        if P and P.enabled and P.StartSlice and P.StopSlice then
+                            P:StopSlice(P.CAT.UI, "Pop_tabPool_charsToGear_deferred")
+                        end
+                    end)
+                else
+                    runPoolReleaseAndSchedulePopulate()
+                end
             end)
         end)
 
@@ -1626,9 +1738,43 @@ function WarbandNexus:CreateMainWindow()
     -- firing for the same loot event. Does NOT affect direct PopulateContent calls (tab switch, resize).
     -- Profession events (concentration, knowledge, recipe) use skipCooldown so updates always show.
     -- GET_ITEM_INFO_RECEIVED / metadata warm-up can storm while the client resolves many links; throttle gear repaints.
+    local MAIN_TAB_DEBOUNCED_QUIET = 0.45  -- Same-tab debounced populate after main-tab switch (see _wnLastMainTabSwitch*)
     local GEAR_ASYNC_ITEM_REPAINT_INTERVAL = 0.55
     local gearAsyncItemRepaintNext = 0
+    -- Blizzard can fire GET_ITEM_INFO_RECEIVED many times per frame burst; never sync-redraw per event.
+    local gearItemInfoCoalesceGen = 0
+    local gearItemInfoCoalesceTimer = nil
     
+    local function RunDebouncedPopulateTimerBody(myGen)
+        pendingPopulateTimer = nil
+        if myGen ~= populateDebounceGen then return end
+        if not f or not f:IsShown() then return end
+        if f.currentTab == "gear" and ns._gearStorageDeferAwaiting then
+            local ac = ns._gearStorageDeferAwaitCanon
+            local fc = f._gearPopulateCanonKey
+            if ac and fc and ac == fc then
+                pendingPopulateSkipCooldown = false
+                return
+            end
+        end
+        local useSkip = pendingPopulateSkipCooldown
+        pendingPopulateSkipCooldown = false
+        if f._wnLastMainTabSwitchAt and f._wnLastMainTabSwitchKey == f.currentTab
+            and (GetTime() - f._wnLastMainTabSwitchAt) < MAIN_TAB_DEBOUNCED_QUIET then
+            return
+        end
+        local now = GetTime()
+        if not useSkip and (now - lastEventPopulateTime) < POPULATE_COOLDOWN then
+            return
+        end
+        lastEventPopulateTime = now
+        local P = ns.Profiler
+        local mlab = P and P.enabled and P.SliceLabel and P:SliceLabel(P.CAT.MSG, "EventPopulate_debounced")
+        if mlab then P:Start(mlab) end
+        WarbandNexus:PopulateContent()
+        if mlab then P:Stop(mlab) end
+    end
+
     local function SchedulePopulateContent(skipCooldown)
         if not f or not f:IsShown() then return end
         if skipCooldown then
@@ -1642,40 +1788,12 @@ function WarbandNexus:CreateMainWindow()
         local myGen = populateDebounceGen
         if C_Timer and C_Timer.NewTimer then
             pendingPopulateTimer = C_Timer.NewTimer(POPULATE_DEBOUNCE, function()
-                pendingPopulateTimer = nil
-                if myGen ~= populateDebounceGen then return end
-                local useSkip = pendingPopulateSkipCooldown
-                pendingPopulateSkipCooldown = false
-                if not f or not f:IsShown() then return end
-                local now = GetTime()
-                if not useSkip and (now - lastEventPopulateTime) < POPULATE_COOLDOWN then
-                    return  -- Recent rebuild already handled this data change
-                end
-                lastEventPopulateTime = now
-                local P = ns.Profiler
-                local mlab = P and P.enabled and P.SliceLabel and P:SliceLabel(P.CAT.MSG, "EventPopulate_debounced")
-                if mlab then P:Start(mlab) end
-                WarbandNexus:PopulateContent()
-                if mlab then P:Stop(mlab) end
+                RunDebouncedPopulateTimerBody(myGen)
             end)
             return
         end
         local afterHandle = C_Timer.After(POPULATE_DEBOUNCE, function()
-            pendingPopulateTimer = nil
-            if myGen ~= populateDebounceGen then return end
-            local useSkip = pendingPopulateSkipCooldown
-            pendingPopulateSkipCooldown = false
-            if not f or not f:IsShown() then return end
-            local now = GetTime()
-            if not useSkip and (now - lastEventPopulateTime) < POPULATE_COOLDOWN then
-                return  -- Recent rebuild already handled this data change
-            end
-            lastEventPopulateTime = now
-            local P = ns.Profiler
-            local mlab = P and P.enabled and P.SliceLabel and P:SliceLabel(P.CAT.MSG, "EventPopulate_debounced")
-            if mlab then P:Start(mlab) end
-            WarbandNexus:PopulateContent()
-            if mlab then P:Stop(mlab) end
+            RunDebouncedPopulateTimerBody(myGen)
         end)
         if type(afterHandle) == "table" and afterHandle.Cancel then
             pendingPopulateTimer = afterHandle
@@ -1684,13 +1802,36 @@ function WarbandNexus:CreateMainWindow()
         end
     end
 
+    function f:CancelPendingPopulateDebounce()
+        populateDebounceGen = populateDebounceGen + 1
+        if pendingPopulateTimer and pendingPopulateTimer.Cancel then
+            pendingPopulateTimer:Cancel()
+        end
+        pendingPopulateTimer = nil
+        pendingPopulateSkipCooldown = false
+        lastEventPopulateTime = GetTime()
+    end
+
+    --- Kill only the pending debounce timer (no lastEventPopulateTime bump). Used on main-tab switch so
+    --- stale WN_* coalescers from the previous tab cannot fire after we've already invalidated gen.
+    function f:AbortPendingPopulateDebounce()
+        populateDebounceGen = populateDebounceGen + 1
+        if pendingPopulateTimer and pendingPopulateTimer.Cancel then
+            pendingPopulateTimer:Cancel()
+        end
+        pendingPopulateTimer = nil
+        pendingPopulateSkipCooldown = false
+    end
+
     --- Coalesce rapid item-cache resolution events on the Gear tab (GET_ITEM_INFO_RECEIVED / metadata).
     local function ThrottledScheduleGearAsyncRepaint()
         if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
         local now = GetTime()
         if now < gearAsyncItemRepaintNext then return end
         gearAsyncItemRepaintNext = now + GEAR_ASYNC_ITEM_REPAINT_INTERVAL
-        SchedulePopulateContent()
+        -- Bypass POPULATE_COOLDOWN: lastEventPopulateTime is often fresh from Items/Bags/Currency
+        -- on other tabs; dropping this repaint leaves storage recommendations stale until tab switch.
+        SchedulePopulateContent(true)
     end
     
     -- NOTE: All RegisterMessage calls use UIEvents as the 'self' key to avoid
@@ -1717,13 +1858,22 @@ function WarbandNexus:CreateMainWindow()
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEMS_UPDATED, function()
         if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "gear") then
-            SchedulePopulateContent()
+            -- Bank > Warband aggregate can sit on this tab while cache finishes; 800ms POPULATE_COOLDOWN
+            -- otherwise drops the follow-up populate and the list looks empty until a tab switch.
+            if f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband" then
+                SchedulePopulateContent(true)
+            elseif f.currentTab == "gear" then
+                -- Gear: cross-tab cooldown drops storage-scan repaints right after switching from Items.
+                SchedulePopulateContent(true)
+            else
+                SchedulePopulateContent()
+            end
         end
     end)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.GEAR_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "gear" then
-            SchedulePopulateContent()
+            SchedulePopulateContent(true)
         end
     end)
     
@@ -1745,7 +1895,9 @@ function WarbandNexus:CreateMainWindow()
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_UPDATED, function()
         if not f or not f:IsShown() then return end
-        if f.currentTab == "currency" or f.currentTab == "gear" then
+        if f.currentTab == "gear" then
+            SchedulePopulateContent(true)
+        elseif f.currentTab == "currency" then
             SchedulePopulateContent()
         elseif f.currentTab == "chars" then
             -- Total Gold / WoW Token card reads token price; refresh without 800ms cooldown drop.
@@ -1846,7 +1998,13 @@ function WarbandNexus:CreateMainWindow()
     -- are candidates) so newly looted BoEs surface without a manual reopen.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.BAGS_UPDATED, function()
         if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "gear") then
-            SchedulePopulateContent()
+            if f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband" then
+                SchedulePopulateContent(true)
+            elseif f.currentTab == "gear" then
+                SchedulePopulateContent(true)
+            else
+                SchedulePopulateContent()
+            end
         end
     end)
 
@@ -1861,7 +2019,9 @@ function WarbandNexus:CreateMainWindow()
     -- Currency variants: gear upgrade panel + currency tab depend on full currency state.
     local function refreshCurrency()
         if not f or not f:IsShown() then return end
-        if f.currentTab == "currency" or f.currentTab == "gear" then
+        if f.currentTab == "gear" then
+            SchedulePopulateContent(true)
+        elseif f.currentTab == "currency" then
             SchedulePopulateContent()
         elseif f.currentTab == "chars" then
             -- Token card on Characters: coalesce with standard cooldown (was skipCooldown → rapid rebuilds).
@@ -1907,6 +2067,7 @@ function WarbandNexus:CreateMainWindow()
     -- Tracking toggle changes the visible character roster on every tab that lists chars.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_TRACKING_CHANGED, function()
         if not f or not f:IsShown() then return end
+        ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
         SchedulePopulateContent(true)
     end)
 
@@ -1958,6 +2119,9 @@ function WarbandNexus:CreateMainWindow()
     -- when the warm-up completes, re-scan so previously-skipped candidates surface.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEM_METADATA_READY, function()
         if f and f:IsShown() and f.currentTab == "gear" then
+            if WarbandNexus.TryGearStorageRedrawOnly and WarbandNexus:TryGearStorageRedrawOnly() then
+                return
+            end
             ThrottledScheduleGearAsyncRepaint()
         end
     end)
@@ -1973,18 +2137,45 @@ function WarbandNexus:CreateMainWindow()
         infoFrame:SetScript("OnEvent", function(_, _, itemID, success)
             if not success then return end
             if not f or not f:IsShown() then return end
-            if f.currentTab == "gear" then
+            if f.currentTab ~= "gear" then return end
+            gearItemInfoCoalesceGen = gearItemInfoCoalesceGen + 1
+            local myGen = gearItemInfoCoalesceGen
+            if gearItemInfoCoalesceTimer and gearItemInfoCoalesceTimer.Cancel then
+                gearItemInfoCoalesceTimer:Cancel()
+                gearItemInfoCoalesceTimer = nil
+            end
+            local function runGearItemInfoBatch()
+                gearItemInfoCoalesceTimer = nil
+                if myGen ~= gearItemInfoCoalesceGen then return end
+                if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+                local gearCanon = f._gearPopulateCanonKey
+                local invInvalidated = false
+                if gearCanon and WarbandNexus.InvalidateGearStorageFindingsCacheForCanon then
+                    invInvalidated = WarbandNexus:InvalidateGearStorageFindingsCacheForCanon(gearCanon) == true
+                end
+                if not invInvalidated then
+                    ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
+                end
+                if WarbandNexus.TryGearStorageRedrawOnly and WarbandNexus:TryGearStorageRedrawOnly() then
+                    return
+                end
                 ThrottledScheduleGearAsyncRepaint()
+            end
+            if C_Timer and C_Timer.NewTimer then
+                gearItemInfoCoalesceTimer = C_Timer.NewTimer(0.08, runGearItemInfoBatch)
+            else
+                C_Timer.After(0.08, runGearItemInfoBatch)
             end
         end)
     end
 
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName, enabled)
         if not f or not f:IsShown() or not f.tabButtons then return end
         -- Map module name to tab key (currencies -> currency; others same)
         local tabKey = (moduleName == "currencies") and "currency" or moduleName
         UpdateTabVisibility(f)
-        if f.currentTab == tabKey then
+        -- Only leave the tab when the module is turned off (enabling must not bounce to Characters).
+        if enabled == false and f.currentTab == tabKey then
             f.currentTab = "chars"
             if WarbandNexus.db and WarbandNexus.db.profile then
                 WarbandNexus.db.profile.lastTab = "chars"
@@ -1993,7 +2184,7 @@ function WarbandNexus:CreateMainWindow()
             SchedulePopulateContent()
         elseif f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband"
             and (moduleName == "items" or moduleName == "storage") then
-            SchedulePopulateContent()
+            SchedulePopulateContent(true)
         end
     end)
 
@@ -2114,16 +2305,18 @@ end
 local function PopulateContentBody(self)
     if not mainFrame then return end
 
-    -- #region agent log — PopulateContent phase timings (hypotheses H1 teardown vs H2 draw vs H3 layout; requires /wn profiler on)
     local _wnProf = ns.Profiler
-    local _wnProfOn = _wnProf and _wnProf.enabled
+    if _wnProf then
+        _wnProf._populateContentTab = mainFrame.currentTab
+    end
+    local _wnProfGearBlock = _wnProf and _wnProf.gearOnlyRecording and mainFrame.currentTab ~= "gear"
+    local _wnProfOn = _wnProf and _wnProf.enabled and not _wnProfGearBlock
     local function _wnProfSliceStart(cat, name)
         if _wnProfOn and _wnProf.StartSlice then _wnProf:StartSlice(cat, name) end
     end
     local function _wnProfSliceStop(cat, name)
         if _wnProfOn and _wnProf.StopSlice then _wnProf:StopSlice(cat, name) end
     end
-    -- #endregion
 
     -- Combat: avoid heavy pooled teardown + full tab rebuild while the secure state is active.
     -- Opening the frame from scratch is already blocked in ShowMainWindow/ToggleMainWindow; this path covers
@@ -2139,14 +2332,22 @@ local function PopulateContentBody(self)
         mainFrame:SyncMainHeaderDebugReloadLayout()
     end
 
+    -- Persisted lastTab can point at a tab whose module is disabled (hidden nav button).
+    -- Clamp before tab-switch detection so highlight and scroll body stay aligned.
+    if not IsTabModuleEnabled(mainFrame.currentTab) then
+        mainFrame.currentTab = "chars"
+        local p = WarbandNexus.db and WarbandNexus.db.profile
+        if p then
+            p.lastTab = "chars"
+        end
+    end
+
     local pendingPerfGen = IsTabPerfMonitorEnabled() and mainFrame._wnPerfTabSwitchPendingLog or nil
 
-    -- Detect tab switch vs same-tab refresh
-    local isTabSwitch = (mainFrame._prevPopulatedTab ~= mainFrame.currentTab)
-    mainFrame._prevPopulatedTab = mainFrame.currentTab
-
-    -- Clear virtual scroll callback from previous tab
+    local prevPopTab = mainFrame._prevPopulatedTab
+    local isTabSwitch = (prevPopTab ~= mainFrame.currentTab)
     local scrollChild = mainFrame.scrollChild
+
     _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_clearVLM")
     if ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
         ns.VirtualListModule.ClearVirtualScroll(mainFrame)
@@ -2159,8 +2360,32 @@ local function PopulateContentBody(self)
             mainFrame._wnPerfMainTabSwitch = nil
             mainFrame._wnPerfTabSwitchPendingLog = nil
         end
+        mainFrame._prevPopulatedTab = mainFrame.currentTab
         return
     end
+
+    -- Gear same-tab echo: identical populate signature before teardown (WN-PERF heavy tab first paint).
+    if mainFrame.currentTab == "gear" and not isTabSwitch and WarbandNexus.GetGearPopulateSignature then
+        local sigNow
+        _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_gearSigCompute")
+        sigNow = WarbandNexus:GetGearPopulateSignature()
+        _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_gearSigCompute")
+        if sigNow and mainFrame._gearPopulateContentSig and sigNow == mainFrame._gearPopulateContentSig then
+            _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_gearSigSkip")
+            self:UpdateStatus()
+            scrollChild:SetWidth(ComputeScrollChildWidth(mainFrame))
+            _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_gearSigSkip")
+            if pendingPerfGen then
+                debugprofilestop()
+                mainFrame._wnPerfMainTabSwitch = nil
+                mainFrame._wnPerfTabSwitchPendingLog = nil
+            end
+            mainFrame._prevPopulatedTab = mainFrame.currentTab
+            return
+        end
+    end
+
+    mainFrame._prevPopulatedTab = mainFrame.currentTab
 
     _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_teardownUI")
     -- Clear fixed header area and reset to minimal height
@@ -2253,10 +2478,8 @@ local function PopulateContentBody(self)
     -- Update status
     self:UpdateStatus()
     
-    -- Tab bar: skip redundant UpdateTabButtonStates on main tab switch (OnClick already updated visuals)
-    if not mainFrame.isMainTabSwitch then
-        UpdateTabButtonStates(mainFrame)
-    end
+    -- Tab bar: always sync highlight with currentTab (first open via ShowMainWindow has no tab OnClick).
+    UpdateTabButtonStates(mainFrame)
     
     -- Set scrollChild width once (ComputeScrollChildWidth handles tab-specific minimums)
     scrollChild:SetWidth(ComputeScrollChildWidth(mainFrame))

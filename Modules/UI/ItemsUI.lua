@@ -66,6 +66,10 @@ local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
+--- Storage tree leaf rows only (FramePoolFactory AcquireStorageRow); body-font glyphs need > ROW_HEIGHT so descenders clear the next row background.
+local STORAGE_ROW_HEIGHT = GetLayout().STORAGE_ROW_HEIGHT or GetLayout().storageRowHeight or ROW_HEIGHT
+--- Bags / Bank / Guild virtual list rows: same stride as storage leaves (BuildItemsVirtualFlatList + VirtualListModule + AcquireItemRow).
+local ITEMS_VIRTUAL_ROW_HEIGHT = STORAGE_ROW_HEIGHT
 local ROW_SPACING = GetLayout().ROW_SPACING or 26
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
@@ -75,6 +79,8 @@ local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 local format = string.format
 local date = date
 local wipe = table.wipe
+local tinsert = table.insert
+local tremove = table.remove
 
 -- Bank alt sekmeler: CollectionsUI CreateSubTabBar ile aynı ölçü ve davranış (ikon + hover + _active).
 local ITEMS_BANK_SUBTAB_BTN_HEIGHT = 40
@@ -286,28 +292,20 @@ local function RegisterItemsEvents(parent)
     -- Debug print helper
     local DebugPrint = ns.DebugPrint
     local IsDebugModeEnabled = ns.IsDebugModeEnabled
-    
-    -- Debounced DrawItemList: coalesces rapid WN_ITEMS_UPDATED + WN_ITEM_METADATA_READY
-    -- into a single redraw (e.g., bank open fires both within milliseconds)
-    local pendingDrawTimer = nil
-    local DRAW_DEBOUNCE = 0.1  -- 100ms coalesce window
-    
+
     -- Check if Items tab is actually the active tab (parent:IsVisible() is not enough
     -- because the scroll child is shared across all tabs and always visible)
     local function IsItemsTabActive()
         local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         return mf and mf:IsShown() and mf.currentTab == "items"
     end
-    
-    local function ScheduleDrawItemList()
-        if not IsItemsTabActive() then return end
-        if pendingDrawTimer then return end  -- already scheduled
-        pendingDrawTimer = C_Timer.NewTimer(DRAW_DEBOUNCE, function()
-            pendingDrawTimer = nil
-            if IsItemsTabActive() and parent then
-                WarbandNexus:DrawItemList(parent)
-            end
-        end)
+
+    -- Sync redraw on item metadata resolve (no timer-deferred DrawItemList for now).
+    local function FlushItemsMetadataRedraw()
+        if not IsItemsTabActive() or not parent then return end
+        if WarbandNexus.RedrawItemsResultsOnly then
+            WarbandNexus:RedrawItemsResultsOnly()
+        end
     end
     
     -- WN_ITEMS_UPDATED: REMOVED — UI.lua's SchedulePopulateContent already handles
@@ -317,14 +315,21 @@ local function RegisterItemsEvents(parent)
     -- Keep: UI.lua does NOT handle WN_ITEM_METADATA_READY.
     WarbandNexus.RegisterMessage(ItemsUIEvents, E.ITEM_METADATA_READY, function()
         if not IsItemsTabActive() then return end
-        -- Warband aggregate tree: embed listener redraws results only (avoid full DrawItemList + double DrawStorageResults).
+        -- Warband aggregate tree: storage embed listener handles metadata (in-place or RedrawStorageResultsOnly).
         if ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband" and ns.Utilities and ns.Utilities:IsModuleEnabled("items") then
+            return
+        end
+        -- Virtual list (Bags / Bank / Guild): item rows reference live cache objects — repaint visible rows only.
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        local rc = mf and mf.scrollChild and mf.scrollChild.resultsContainer
+        if rc and rc._virtualUpdater then
+            rc._virtualUpdater()
             return
         end
         if IsDebugModeEnabled and IsDebugModeEnabled() then
             DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
         end
-        ScheduleDrawItemList()
+        FlushItemsMetadataRedraw()
     end)
     
     if IsDebugModeEnabled and IsDebugModeEnabled() then
@@ -368,7 +373,7 @@ local function MeasureStorageResultsContentExtent(container)
     local nc = PackChildrenInto(_wnStorChildScratch, container)
     for i = 1, nc do
         local c = _wnStorChildScratch[i]
-        if c and c:IsShown() and not c._isVirtualRow and c ~= container.emptyStateContainer then
+        if c and c:IsShown() and not c._isVirtualRow and c ~= container.emptyStateContainer and not c._wnExcludedFromStorageExtent then
             local cb = c:GetBottom()
             if cb and cb < lowest then
                 lowest = cb
@@ -514,12 +519,8 @@ local function RegisterStorageEvents(parent)
     end
     parent.storageUpdateHandler = true
     
-    -- Debounced redraw when async item metadata resolves (WN_ITEM_METADATA_READY).
-    -- WN_ITEMS_UPDATED is handled by UI.lua PopulateContent only — duplicate listener caused double rebuilds.
-    local pendingDrawTimer = nil
-    local DRAW_DEBOUNCE = 0.05  -- coalesce burst metadata resolves without noticeable lag
-    
-    -- Items > Warband sub-tab: account-wide tree (same data as former Storage tab). Gated by Items module.
+    -- WN_ITEM_METADATA_READY: sync redraw when in-place row refresh cannot run (no timer defer).
+    -- WN_ITEMS_UPDATED is handled by UI.lua PopulateContent only.
     local function IsWarbandAggregateViewActive()
         local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         if not (mf and mf:IsShown() and mf.currentTab == "items") then return false end
@@ -527,38 +528,33 @@ local function RegisterStorageEvents(parent)
         return ns.Utilities and ns.Utilities:IsModuleEnabled("items")
     end
     
-    local function ScheduleStorageRefresh()
-        if not IsWarbandAggregateViewActive() then return end
-        if pendingDrawTimer then return end  -- already scheduled
-        pendingDrawTimer = C_Timer.NewTimer(DRAW_DEBOUNCE, function()
-            pendingDrawTimer = nil
-            if not IsWarbandAggregateViewActive() or not parent then return end
-            local resultsContainer = parent.resultsContainer
-            if resultsContainer and resultsContainer:GetParent() == parent and WarbandNexus.DrawStorageResults then
-                local searchText = ""
-                if SearchStateManager and SearchStateManager.GetQuery then
-                    searchText = SearchStateManager:GetQuery("items") or ""
-                end
-                local contentWidth = ResolveItemsTabScrollContentWidth(parent)
-                local contentHeight = WarbandNexus:DrawStorageResults(resultsContainer, 0, contentWidth, searchText)
-                resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
-                if ns.UI_AnnexResultsToScrollBottom then
-                    ns.UI_AnnexResultsToScrollBottom(resultsContainer, parent, SIDE_MARGIN, 8)
-                end
-                local mf2 = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-                if mf2 then
-                    SyncItemsTabScrollChrome(mf2, parent, contentHeight)
-                end
-            else
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true, instantPopulate = true })
+    local function RunWarbandStorageEmbedRedraw()
+        if not IsWarbandAggregateViewActive() or not parent then return end
+        local resultsContainer = parent.resultsContainer
+        if resultsContainer and resultsContainer:GetParent() == parent and WarbandNexus.DrawStorageResults then
+            local searchText = ""
+            if SearchStateManager and SearchStateManager.GetQuery then
+                searchText = SearchStateManager:GetQuery("items") or ""
             end
-        end)
+            local contentWidth = ResolveItemsTabScrollContentWidth(parent)
+            local contentHeight = WarbandNexus:DrawStorageResults(resultsContainer, 0, contentWidth, searchText)
+            resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
+            if ns.UI_AnnexResultsToScrollBottom then
+                ns.UI_AnnexResultsToScrollBottom(resultsContainer, parent, SIDE_MARGIN, 8)
+            end
+            local mf2 = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            if mf2 then
+                SyncItemsTabScrollChrome(mf2, parent, contentHeight)
+            end
+        else
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true, instantPopulate = true })
+        end
     end
     
     -- WN_ITEM_METADATA_READY: prefer in-place row text refresh (TryRefreshStorageRowsMetadataInPlace).
     -- Full tree redraw is rate-limited when refs are missing (e.g. before first draw completes).
     local lastMetadataRefreshDraw = 0
-    local METADATA_REFRESH_COOLDOWN = 0.45
+    local METADATA_REFRESH_COOLDOWN = 0.12
 
     WarbandNexus.RegisterMessage(ItemsStorageEmbedEvents, E.ITEM_METADATA_READY, function()
         if not IsWarbandAggregateViewActive() then return end
@@ -569,7 +565,7 @@ local function RegisterStorageEvents(parent)
         local now = GetTime()
         if now - lastMetadataRefreshDraw < METADATA_REFRESH_COOLDOWN then return end
         lastMetadataRefreshDraw = now
-        ScheduleStorageRefresh()
+        RunWarbandStorageEmbedRedraw()
     end)
 end
 
@@ -705,7 +701,21 @@ function WarbandNexus:_CollectWarbandTypeItems(typeName)
     return out
 end
 
-function WarbandNexus:_RenderStorageLeafRowsQuick(rowsContainer, rowWidth, typeItemsForRows, locTextForItem, storageSearchText, populateRow)
+--- Remove pooled storage row pointers for one leaf's rowsContainer (partial expand/collapse).
+--- Must run before ReleasePooledRowsInSubtree so row:GetParent() still matches.
+local function PruneStorageRowRefsForRowsContainer(refs, rowsContainer)
+    if not refs or not rowsContainer then
+        return
+    end
+    for i = #refs, 1, -1 do
+        local row = refs[i]
+        if row and row:GetParent() == rowsContainer then
+            tremove(refs, i)
+        end
+    end
+end
+
+function WarbandNexus:_RenderStorageLeafRowsQuick(rowsContainer, rowWidth, typeItemsForRows, locTextForItem, storageSearchText, populateRow, resultsContainer)
     if not rowsContainer then
         return 0
     end
@@ -714,7 +724,7 @@ function WarbandNexus:_RenderStorageLeafRowsQuick(rowsContainer, rowWidth, typeI
         and storageSearchText ~= ""
         and not (issecretvalue and issecretvalue(storageSearchText))
     local betweenRows = GetLayout().betweenRows or 0
-    local stride = ROW_HEIGHT + betweenRows
+    local stride = STORAGE_ROW_HEIGHT + betweenRows
     local y = 0
     local rowIdx = 0
     local pop = type(populateRow) == "function" and populateRow
@@ -722,7 +732,7 @@ function WarbandNexus:_RenderStorageLeafRowsQuick(rowsContainer, rowWidth, typeI
         local item = typeItemsForRows[ti]
         if not searchActive or self:_StorageLeafItemMatchesSearch(item, storageSearchText) then
             rowIdx = rowIdx + 1
-            local row = AcquireStorageRow(rowsContainer, rowWidth, ROW_HEIGHT)
+            local row = AcquireStorageRow(rowsContainer, rowWidth, STORAGE_ROW_HEIGHT)
             if row then
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", rowsContainer, "TOPLEFT", 0, -y)
@@ -733,6 +743,12 @@ function WarbandNexus:_RenderStorageLeafRowsQuick(rowsContainer, rowWidth, typeI
                 end
                 if pop then
                     pcall(pop, row, item, rowIdx, rowWidth, loc)
+                end
+                row._wnStorageItemRef = item
+                row._wnStorageRowIdx = rowIdx
+                row._wnStorageLocText = loc
+                if resultsContainer and resultsContainer._wnStorageRowRefs then
+                    tinsert(resultsContainer._wnStorageRowRefs, row)
                 end
                 y = y + stride
             end
@@ -750,10 +766,6 @@ end
 function WarbandNexus:_ApplyStorageTypeLeafTogglePartial(wrap)
     local mfInv = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local rcInv = mfInv and mfInv.scrollChild and mfInv.scrollChild.resultsContainer
-    if rcInv then
-        rcInv._wnStorageApplyRowVisual = nil
-        if rcInv._wnStorageRowRefs then wipe(rcInv._wnStorageRowRefs) end
-    end
     if not wrap or not wrap._wnStorageLeafMeta then
         self:RedrawStorageResultsOnly()
         return
@@ -770,6 +782,9 @@ function WarbandNexus:_ApplyStorageTypeLeafTogglePartial(wrap)
     if SearchStateManager and SearchStateManager.GetQuery and meta.searchQueryTabKey then
         q = SearchStateManager:GetQuery(meta.searchQueryTabKey) or ""
     end
+    if rcInv and rcInv._wnStorageRowRefs then
+        PruneStorageRowRefsForRowsContainer(rcInv._wnStorageRowRefs, rows)
+    end
     if exp then
         local items
         if meta.kind == "personal_type" then
@@ -781,7 +796,7 @@ function WarbandNexus:_ApplyStorageTypeLeafTogglePartial(wrap)
             self:RedrawStorageResultsOnly()
             return
         end
-        local h = self:_RenderStorageLeafRowsQuick(rows, meta.rowWidth, items, meta.locTextForItem, q, meta.populateRow)
+        local h = self:_RenderStorageLeafRowsQuick(rows, meta.rowWidth, items, meta.locTextForItem, q, meta.populateRow, rcInv)
         rows._wnSectionFullH = h
         rows:Show()
         rows:SetHeight(math.max(0.1, h))
@@ -794,6 +809,9 @@ function WarbandNexus:_ApplyStorageTypeLeafTogglePartial(wrap)
         rows:SetHeight(0.1)
         rows._wnSectionFullH = 0
         wrap:SetHeight(TYPE_H + 0.1)
+    end
+    if rcInv then
+        WarbandNexus:SyncStorageResultsLayoutFromTail(rcInv)
     end
 end
 
@@ -848,7 +866,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     local nTop = PackChildrenInto(_wnStorTopScratch, parent)
     for i = 1, nTop do
         local child = _wnStorTopScratch[i]
-        if not child._isVirtualRow then
+        if not child._isVirtualRow and not child._wnSkipStorageTeardown then
             child:Hide()
             child:ClearAllPoints()
             child:SetParent(recycleBin or UIParent)
@@ -947,6 +965,20 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     )
                 end
                 WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+            end,
+            -- Bodies that were collapsed during this DrawStorageResults pass never ran the inner build; they keep
+            -- placeholder _wnSectionFullH (~0.1). CreateCollapsibleHeader expand uses that height and the char
+            -- onToggle is a no-op, so rows stay missing until a full tab redraw. Rebuild next frame (defer: avoid
+            -- tearing down the clicked header inside its own OnClick).
+            refreshFn = function(exp)
+                if not exp then return end
+                local b = bodyGetter()
+                local fh = b and b._wnSectionFullH
+                if fh and fh < 2 and C_Timer and C_Timer.After and WarbandNexus.RedrawStorageResultsOnly then
+                    C_Timer.After(0, function()
+                        WarbandNexus:RedrawStorageResultsOnly()
+                    end)
+                end
             end,
         })
     end
@@ -1088,13 +1120,13 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             return 0
         end
         local betweenRows = GetLayout().betweenRows or 0
-        local stride = ROW_HEIGHT + betweenRows
+        local stride = STORAGE_ROW_HEIGHT + betweenRows
         local y = 0
         for ti = 1, #typeItemsForRows do
             local item = typeItemsForRows[ti]
             if ItemMatchesSearch(item) then
                 globalRowIdxAll = globalRowIdxAll + 1
-                local row = AcquireStorageRow(rowsContainer, rowWidth, ROW_HEIGHT)
+                local row = AcquireStorageRow(rowsContainer, rowWidth, STORAGE_ROW_HEIGHT)
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", rowsContainer, "TOPLEFT", 0, -y)
                 row:Show()
@@ -1590,7 +1622,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             typeHeader2:SetPoint("TOPLEFT", typeSectionWrap, "TOPLEFT", 0, 0)
                             typeHeader2:SetWidth(typeSectionWrap:GetWidth())
                             rowsContainer = CreateStorageRowsContainer(typeSectionWrap, typeHeader2, 0, 0)
-                            local rowWidthPersonal = width - BASE_INDENT * 2
+                            -- Match typeSectionWrap width (charBody full width minus typeIndent); warband path uses the same idea.
+                            local rowWidthPersonal = math.max(1, width - charIndent - typeIndent)
                             local typeItemsForRows = charItems[typeName]
                             local rowsYOffset
                             if isTypeExpanded then
@@ -1775,7 +1808,12 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         for sti = 1, #sortedTypes do
             local typeName = sortedTypes[sti]
             local categoryKey = "warband_" .. typeName
-            
+            -- Items > Warband embed: default type groups to expanded when state is unset (nil), so rows
+            -- appear after the per-subtab reset in UI.lua; explicit false preserves user collapse.
+            if embedItemsWarband and not storageSearchActive and expanded.categories[categoryKey] == nil then
+                expanded.categories[categoryKey] = true
+            end
+
             -- Skip category if search active and no matches
             if storageSearchActive and not categoriesWithMatches[categoryKey] then
                 -- Skip this category
@@ -2625,15 +2663,15 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
                 flatList[#flatList + 1] = {
                     type = "row",
                     yOffset = yOffset,
-                    height = ROW_SPACING,
+                    height = ITEMS_VIRTUAL_ROW_HEIGHT,
                     data = item,
                     rowIdx = rowIdx,
                     groupKey = group.groupKey,
                     localY = localY,
                     rowReuseSig = rowReuseSig,
                 }
-                localY = localY + ROW_SPACING
-                yOffset = yOffset + ROW_SPACING
+                localY = localY + ITEMS_VIRTUAL_ROW_HEIGHT
+                yOffset = yOffset + ITEMS_VIRTUAL_ROW_HEIGHT
             end
         end
 
@@ -2839,7 +2877,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 local d = entry.data
                 local gKey = d.group.groupKey
                 local nItems = #d.group.items
-                local rowsBodyH = math.max(0.1, nItems * ROW_SPACING)
+                local rowsBodyH = math.max(0.1, nItems * ITEMS_VIRTUAL_ROW_HEIGHT)
 
                 local groupWrap = Factory:CreateContainer(container, math.max(1, width), HEADER_STRIP_H + 0.1, false)
                 if groupWrap.SetClipsChildren then
@@ -2915,7 +2953,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 return groupWrap
             end,
             createRowFn = function(container, entry)
-                return AcquireItemRow(container, width, ROW_HEIGHT)
+                return AcquireItemRow(container, width, ITEMS_VIRTUAL_ROW_HEIGHT)
             end,
             releaseRowFn = function(frame)
                 ReleaseItemRow(frame)

@@ -272,7 +272,8 @@ local function ResolveCurrencyIconFromText(costText)
             for ti = 1, #CURRENCY_TEST_IDS do
                 local testID = CURRENCY_TEST_IDS[ti]
                 local info = C_CurrencyInfo.GetCurrencyInfo(testID)
-                if info and info.name and info.name:lower() == lowerName and info.iconFileID then
+                if info and info.name and not (issecretvalue and issecretvalue(info.name))
+                    and info.name:lower() == lowerName and info.iconFileID then
                     local icon = MakeCurrencyIconString(info.iconFileID)
                     _currencyIconCache[cacheKey] = icon
                     return icon
@@ -295,6 +296,7 @@ end
 -- WoW format kodlarını metinden kaldır (renk, reset, newline vb.). Görünen "cFFFFD200", "r", "n" gibi artıkları önler.
 local function StripWoWFormatCodes(text)
     if not text or text == "" then return "" end
+    if issecretvalue and issecretvalue(text) then return "" end
     local s = text
     s = s:gsub("|n", "\n")
     s = s:gsub("|T.-|t", "")
@@ -311,8 +313,10 @@ end
 -- Format: Sarı "Label : " Beyaz "Value". Cost/Amount yanında currency icon.
 local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
     if not rawSource or rawSource == "" then return "" end
+    if issecretvalue and issecretvalue(rawSource) then return "" end
     rawSource = StripWoWFormatCodes(rawSource)
     if rawSource == "" then return "" end
+    local PARSE_GUARD_MAX = 100000
     local L = ns.L
     local dropKey = BATTLE_PET_SOURCE_1 or (L and L["SOURCE_TYPE_DROP"]) or "Drop"
     local vendorKey = BATTLE_PET_SOURCE_3 or (L and L["SOURCE_TYPE_VENDOR"]) or "Vendor"
@@ -347,7 +351,10 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
         if key and key ~= "" and type(key) == "string" then
             local needle = " " .. key
             local pos = 1
+            local loopN = 0
             while true do
+                loopN = loopN + 1
+                if loopN > PARSE_GUARD_MAX then break end
                 local idx = rawSource:find(needle, pos, true)
                 if not idx then break end
                 local afterKey = idx + 1 + #key
@@ -415,7 +422,10 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
             else
                 local needle = " " .. key
                 local pos = 1
+                local loopN = 0
                 while true do
+                    loopN = loopN + 1
+                    if loopN > PARSE_GUARD_MAX then break end
                     local startIdx = s:find(needle, pos, true)
                     if not startIdx then break end
                     local afterKey = startIdx + 1 + #key
@@ -432,7 +442,10 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
                 -- Satır başında olmayan "Key:" (örn. "X Location: Y")
                 pos = 1
                 local needle2 = key .. ":"
+                local loopN2 = 0
                 while true do
+                    loopN2 = loopN2 + 1
+                    if loopN2 > PARSE_GUARD_MAX then break end
                     local idx = s:find(needle2, pos, true)
                     if not idx or idx <= 1 then break end
                     local prev = s:sub(idx - 1, idx - 1)

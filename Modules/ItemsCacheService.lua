@@ -58,6 +58,12 @@ local function CanonicalItemsMessageKey(storageKey)
     end
     return k
 end
+
+--- Bump when persisted bag/bank/warband data or item metadata changes so Gear storage scan cache invalidates.
+local function BumpGearStorageScanGeneration()
+    ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
+end
+
 local UPDATE_THROTTLE = Constants.THROTTLE.PERSONAL_FREQUENT
 
 -- Bag ID ranges
@@ -88,6 +94,7 @@ end
 ns.ItemsLoadingState = {
     isLoading = false,           -- Currently scanning bags
     scanProgress = 0,            -- 0-100 progress percentage
+    loadingProgress = 0,       -- Mirror for UI_CreateLoadingStateCard (also reads loadingProgress)
     currentStage = nil,          -- Current stage (e.g., "Scanning Inventory")
 }
 
@@ -285,12 +292,13 @@ local function ScheduleMetadataRefresh()
     if pendingMetadataRefreshTimer then
         pendingMetadataRefreshTimer:Cancel()
     end
-    pendingMetadataRefreshTimer = C_Timer.NewTimer(0.06, function()
+    pendingMetadataRefreshTimer = C_Timer.NewTimer(0, function()
         pendingMetadataRefreshTimer = nil
         -- Patch cached items with resolved metadata before notifying UI
         local synced = SyncDecompressedCacheWithMetadata()
         -- Only notify UI if items were actually updated (prevents unnecessary redraws)
         if synced > 0 then
+            BumpGearStorageScanGeneration()
             WarbandNexus:SendMessage(Constants.EVENTS.ITEM_METADATA_READY)
         end
     end)
@@ -478,10 +486,13 @@ local function GenerateItemHash(bagID)
         local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
         slotCache[slot] = itemInfo  -- Cache for ScanBag (nil entries are fine)
         if itemInfo and itemInfo.hyperlink then
-            -- Hash includes: hyperlink + stack count
-            -- Does NOT include: durability, charges, cooldowns
-            n = n + 1
-            items[n] = itemInfo.hyperlink .. ":" .. (itemInfo.stackCount or 1)
+            local hl = itemInfo.hyperlink
+            if not (issecretvalue and issecretvalue(hl)) then
+                -- Hash includes: hyperlink + stack count
+                -- Does NOT include: durability, charges, cooldowns
+                n = n + 1
+                items[n] = hl .. ":" .. (itemInfo.stackCount or 1)
+            end
         end
     end
     
@@ -524,20 +535,23 @@ local function ScanBag(bagID)
         for slot = 1, numSlots do
             local itemInfo = slotCache[slot]
             if itemInfo and itemInfo.hyperlink then
-                local itemID = C_Item.GetItemInfoInstant(itemInfo.hyperlink)
-                if itemID then
-                    n = n + 1
-                    items[n] = {
-                        actualBagID = bagID,
-                        bagID = bagID,
-                        slotIndex = slot,
-                        slot = slot,
-                        itemID = itemID,
-                        itemLink = itemInfo.hyperlink,
-                        stackCount = itemInfo.stackCount or 1,
-                        quality = itemInfo.quality,
-                        isBound = itemInfo.isBound or false,
-                    }
+                local hl = itemInfo.hyperlink
+                if not (issecretvalue and issecretvalue(hl)) then
+                    local itemID = C_Item.GetItemInfoInstant(hl)
+                    if itemID then
+                        n = n + 1
+                        items[n] = {
+                            actualBagID = bagID,
+                            bagID = bagID,
+                            slotIndex = slot,
+                            slot = slot,
+                            itemID = itemID,
+                            itemLink = hl,
+                            stackCount = itemInfo.stackCount or 1,
+                            quality = itemInfo.quality,
+                            isBound = itemInfo.isBound or false,
+                        }
+                    end
                 end
             end
         end
@@ -548,20 +562,23 @@ local function ScanBag(bagID)
         for slot = 1, numSlots do
             local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
             if itemInfo and itemInfo.hyperlink then
-                local itemID = C_Item.GetItemInfoInstant(itemInfo.hyperlink)
-                if itemID then
-                    n = n + 1
-                    items[n] = {
-                        actualBagID = bagID,
-                        bagID = bagID,
-                        slotIndex = slot,
-                        slot = slot,
-                        itemID = itemID,
-                        itemLink = itemInfo.hyperlink,
-                        stackCount = itemInfo.stackCount or 1,
-                        quality = itemInfo.quality,
-                        isBound = itemInfo.isBound or false,
-                    }
+                local hl = itemInfo.hyperlink
+                if not (issecretvalue and issecretvalue(hl)) then
+                    local itemID = C_Item.GetItemInfoInstant(hl)
+                    if itemID then
+                        n = n + 1
+                        items[n] = {
+                            actualBagID = bagID,
+                            bagID = bagID,
+                            slotIndex = slot,
+                            slot = slot,
+                            itemID = itemID,
+                            itemLink = hl,
+                            stackCount = itemInfo.stackCount or 1,
+                            quality = itemInfo.quality,
+                            isBound = itemInfo.isBound or false,
+                        }
+                    end
                 end
             end
         end
@@ -1102,6 +1119,7 @@ function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
         -- Invalidate caches even on uncompressed fallback
         decompressedItemCache[charKey] = nil
         itemSummaryIndex.pending[charKey] = true
+        BumpGearStorageScanGeneration()
         return
     end
     
@@ -1115,6 +1133,7 @@ function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
     -- Invalidate decompressed cache + mark summary index pending for this character
     decompressedItemCache[charKey] = nil
     itemSummaryIndex.pending[charKey] = true
+    BumpGearStorageScanGeneration()
 end
 
 ---Save warband bank data (compressed)
@@ -1138,6 +1157,7 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
         }
         decompressedWarbandCache = nil
         itemSummaryIndex.warbandPending = true
+        BumpGearStorageScanGeneration()
         return
     end
     
@@ -1151,6 +1171,7 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
     -- Invalidate decompressed cache + mark warband summary pending
     decompressedWarbandCache = nil
     itemSummaryIndex.warbandPending = true
+    BumpGearStorageScanGeneration()
 end
 
 -- ============================================================================
@@ -1555,7 +1576,12 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
         if bagCount > 0 or bankCount > 0 then
             result.personalBankTotal = result.personalBankTotal + bankCount
             result.characters[#result.characters + 1] = {
-                charName = (charData.name or (type(charKey) == "string" and charKey:match("^([^-]+)"))),
+                charName = (function()
+                    if charData.name then return charData.name end
+                    if type(charKey) ~= "string" or charKey == "" then return nil end
+                    if issecretvalue and issecretvalue(charKey) then return nil end
+                    return charKey:match("^([^-]+)")
+                end)(),
                 classFile = charData.classFile or charData.class,
                 bagCount = bagCount,
                 bankCount = bankCount,
@@ -1627,22 +1653,31 @@ function WarbandNexus:InitializeItemsCache()
     
     -- Set loading state (initial scan in progress)
     ns.ItemsLoadingState.isLoading = true
-    ns.ItemsLoadingState.currentStage = "Preparing scan"
+    ns.ItemsLoadingState.currentStage = (ns.L and ns.L["ITEMS_LOADING_STAGE_WAIT"]) or "Waiting to start"
     ns.ItemsLoadingState.scanProgress = 0
-    
-    -- Scan inventory bags on login (bank requires manual visit)
-    C_Timer.After(2, function()
-        ns.ItemsLoadingState.currentStage = "Scanning inventory bags"
-        ns.ItemsLoadingState.scanProgress = 50
-        
+    ns.ItemsLoadingState.loadingProgress = 0
+
+    local function setItemsBootProgress(pct, stage)
+        ns.ItemsLoadingState.scanProgress = pct
+        ns.ItemsLoadingState.loadingProgress = pct
+        if stage then
+            ns.ItemsLoadingState.currentStage = stage
+        end
+    end
+
+    -- Defer one tick so login init returns quickly; avoid multi-second fake progress (first Items tab paint uses saved data).
+    C_Timer.After(0, function()
+        if not ns.ItemsLoadingState.isLoading then return end
+        setItemsBootProgress(60, (ns.L and ns.L["ITEMS_LOADING_STAGE_SCAN"]) or "Scanning inventory bags")
+
         local charKey = ResolveCurrentItemStorageKey()
         self:ScanInventoryBags(charKey)
-        
-        -- Mark loading complete
-        ns.ItemsLoadingState.isLoading = false
+
         ns.ItemsLoadingState.scanProgress = 100
+        ns.ItemsLoadingState.loadingProgress = 100
+        ns.ItemsLoadingState.isLoading = false
         ns.ItemsLoadingState.currentStage = nil
-        
+
         -- Notify UI that initial scan is done (fixes stuck loading state)
         self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = CanonicalItemsMessageKey(charKey)})
     end)

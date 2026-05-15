@@ -395,7 +395,9 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
             scrollChild = mainFrame.scrollChild
         end
 
-        local bufferPx = BUFFER_ROWS * DEFAULT_ROW_HEIGHT
+        -- Use max(storage row, default) so Items tab virtual rows (STORAGE_ROW_HEIGHT stride) keep BUFFER_ROWS cushion when culled.
+        local bufRowH = math.max(DEFAULT_ROW_HEIGHT, (ns.UI_LAYOUT and ns.UI_LAYOUT.STORAGE_ROW_HEIGHT) or 0)
+        local bufferPx = BUFFER_ROWS * bufRowH
         local walkOff = nil
         if scrollChild then
             walkOff = ListTopOffsetDownFromScrollContent(container, scrollChild)

@@ -2062,22 +2062,30 @@ function ReputationCache:PerformFullScan(bypassThrottle)
         ns.ReputationLoadingState.loadingProgress = 33
         ns.ReputationLoadingState.currentStage = string.format((ns.L and ns.L["REP_LOADING_PROCESSING"]) or "Processing %d factions...", #rawData)
         
-        -- Phase 2 (next frame): Process + normalize data
+        -- Phase 2 (time-sliced): Process + normalize data — large rosters can exceed one frame budget.
         C_Timer.After(0, function()
             local normalizedData = {}
-            for ri = 1, #rawData do
-                local raw = rawData[ri]
-                local normalized = Processor:Process(raw)
-                if normalized then
-                    normalizedData[#normalizedData + 1] = normalized
+            local ri = 1
+            local function chunkPhase2()
+                local sliceStart = GetTime()
+                while ri <= #rawData do
+                    local raw = rawData[ri]
+                    ri = ri + 1
+                    local normalized = Processor:Process(raw)
+                    if normalized then
+                        normalizedData[#normalizedData + 1] = normalized
+                    end
+                    if (GetTime() - sliceStart) > 0.018 then
+                        C_Timer.After(0, chunkPhase2)
+                        return
+                    end
                 end
-            end
-            
-            ns.ReputationLoadingState.loadingProgress = 66
-            ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_SAVING"]) or "Saving to database..."
-            
-            -- Phase 3 (next frame): Update DB
-            C_Timer.After(0, function()
+
+                ns.ReputationLoadingState.loadingProgress = 66
+                ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_SAVING"]) or "Saving to database..."
+
+                -- Phase 3 (next frame): Update DB
+                C_Timer.After(0, function()
                 -- Chat notifications come only from: parsed CHAT_MSG lines, MAJOR_FACTION_RENOWN,
                 -- or CHAT_MSG_LOOT companion XP seed — never from comparing the full faction list here.
                 self:UpdateAll(normalizedData)
@@ -2117,6 +2125,8 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                     end
                 end)
             end)
+            end
+            chunkPhase2()
         end)
     end)
 end
@@ -2321,6 +2331,27 @@ end
 -- PUBLIC API (Attached to WarbandNexus)
 -- ============================================================================
 
+-- GetAllReputations() hydrates every stored faction row; ReputationUI calls it on each tab draw.
+-- Without caching, first open / tab switch can spend several seconds rebuilding identical tables.
+local _getAllReputationsCacheKey = nil
+local _getAllReputationsCacheResult = nil
+
+---@return string
+local function GetAllReputationsCacheKey(db)
+    if not db then return "" end
+    local nMeta = 0
+    for _ in pairs(repMetadataCache) do
+        nMeta = nMeta + 1
+    end
+    return table.concat({
+        tostring(db.lastScan or 0),
+        tostring(db.version or 0),
+        tostring(ReputationCache.lastFullScan or 0),
+        tostring(ReputationCache.lastUpdate or 0),
+        tostring(nMeta),
+    }, "\031")
+end
+
 ---Get a single faction's DB data by factionID (O(1) direct access)
 ---Priority: current character > accountWide
 ---@param factionID number
@@ -2336,7 +2367,12 @@ end
 function WarbandNexus:GetAllReputations()
     local db = GetDB()
     if not db then return {} end
-    
+
+    local cacheKey = GetAllReputationsCacheKey(db)
+    if _getAllReputationsCacheKey == cacheKey and _getAllReputationsCacheResult then
+        return _getAllReputationsCacheResult
+    end
+
     local result = {}
     
     -- Build account-wide lookup (NORMALIZED to number keys)
@@ -2403,6 +2439,8 @@ function WarbandNexus:GetAllReputations()
         end
     end
     
+    _getAllReputationsCacheKey = cacheKey
+    _getAllReputationsCacheResult = result
     return result
 end
 

@@ -461,7 +461,7 @@ local CATEGORY_ICONS = {
     reputation = "Interface\\Icons\\INV_Scroll_11",
     quest = "Interface\\Icons\\INV_Misc_Map_01",
     item = "Interface\\Icons\\INV_Misc_Bag_10",
-    reminder = "Interface\\Icons\\INV_Misc_Horn_01",
+    reminder = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager",
 }
 
 -- Action text mapping (subtitle line)
@@ -546,7 +546,7 @@ function WarbandNexus:TestNotificationStack()
             planReminderToast = true,
             criteriaTitle = (L and L["REMINDER_TOAST_TITLE"]) or "To-Do reminder",
             itemName = (L and L["TEST_STACK_REMINDER"]) or "Plan reminder (test)",
-            icon = "minimap-genericevent-hornicon-small",
+            icon = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager",
             playSound = false,
             autoDismiss = 4,
             titleColor = { hornRGB[1], hornRGB[2], hornRGB[3] },
@@ -2669,6 +2669,7 @@ local VAULT_CATEGORIES = {
     dungeon = {name = (ns.L and ns.L["DUNGEON_CAT"]) or "Dungeon", atlas = "questlog-questtypeicon-heroic", thresholds = {1, 4, 8}},
     raid    = {name = (ns.L and ns.L["RAID_CAT"]) or "Raid",    atlas = "questlog-questtypeicon-raid",   thresholds = {2, 4, 6}},
     world   = {name = (ns.L and ns.L["WORLD_CAT"]) or "World",   atlas = "questlog-questtypeicon-Delves", thresholds = {2, 4, 8}},
+    specialAssignment = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Assignment", atlas = "questlog-questtypeicon-important", thresholds = {1, 2}},
 }
 
 local QUEST_CATEGORIES = {
@@ -2688,16 +2689,17 @@ function WarbandNexus:OnVaultCheckpointCompleted(event, data)
     if not data or not data.characterName or not data.category or not data.progress then return end
     
     local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
-    
-    -- Find current threshold
-    local currentThreshold = cat.thresholds[#cat.thresholds]
-    for _, t in ipairs(cat.thresholds) do
-        if data.progress <= t then currentThreshold = t; break end
-    end
+    local thresholds = cat.thresholds or {1, 4, 8}
+    local maxT = thresholds[#thresholds] or 8
+    local raw = tonumber(data.progress) or 0
+    if raw < 0 then raw = 0 end
+    -- API can exceed the final vault threshold (e.g. extra runs); never show "10/8" style vs track cap.
+    local dispCur = math.min(raw, maxT)
+    local dispCap = maxT
     
     self:Notify("vault", cat.name .. " - " .. data.characterName, nil, {
         iconAtlas = cat.atlas,
-        action = string.format((ns.L and ns.L["PROGRESS_COUNT_FORMAT"]) or "%d/%d Progress", data.progress, currentThreshold),
+        action = string.format((ns.L and ns.L["PROGRESS_COUNT_FORMAT"]) or "%d/%d Progress", dispCur, dispCap),
     })
 end
 

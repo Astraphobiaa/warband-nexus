@@ -689,6 +689,12 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.nameText:SetJustifyH("LEFT")
     end
 
+    -- Other tabs (e.g. Gear recommendations) may Hide qty/icon/location for a full-width name line.
+    if row.qtyText and row.qtyText.Show then row.qtyText:Show() end
+    if row.icon and row.icon.Show then row.icon:Show() end
+    if row.nameText and row.nameText.Show then row.nameText:Show() end
+    if row.locationText and row.locationText.Show then row.locationText:Show() end
+
     return row
 end
 

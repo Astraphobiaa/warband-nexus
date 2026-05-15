@@ -16,6 +16,66 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 -- Unique AceEvent handler identity for PlansManager
 local PlansManagerEvents = {}
 
+-- WN_PVE_UPDATED often fires several times during login while vault API hydrates; comparing
+-- stale plan.progress to fresh counts produces false checkpoint toasts. Coalesce checks and
+-- skip notifications on the first successful sync per plan per session.
+local VAULT_PLAN_CHECK_DEFER_SEC = 0.85
+
+-- GetIllusions() is huge; To-Do / tracker call CheckPlanProgress many times per redraw.
+-- Short TTL avoids O(plans * illusions) while staying fresh enough for collection learns.
+local illusionCollectedById = nil
+local illusionLookupCacheAt = 0
+local ILLUSION_LOOKUP_CACHE_TTL = 4
+
+local function InvalidateIllusionLookupCache()
+    illusionCollectedById = nil
+    illusionLookupCacheAt = 0
+end
+
+ns.InvalidateIllusionLookupCache = InvalidateIllusionLookupCache
+
+local function GetIllusionCollectedForPlanId(illusionKey)
+    if not illusionKey or illusionKey <= 0 then return false end
+    local now = GetTime()
+    if not illusionCollectedById or (now - illusionLookupCacheAt) > ILLUSION_LOOKUP_CACHE_TTL then
+        InvalidateIllusionLookupCache()
+        illusionLookupCacheAt = now
+        illusionCollectedById = {}
+        if C_TransmogCollection and C_TransmogCollection.GetIllusions then
+            local list = C_TransmogCollection.GetIllusions()
+            if list then
+                for ii = 1, #list do
+                    local info = list[ii]
+                    if info then
+                        local rawColl = info.isCollected
+                        local coll = false
+                        if not (issecretvalue and issecretvalue(rawColl)) and rawColl == true then
+                            coll = true
+                        end
+                        if info.sourceID then
+                            local sid = info.sourceID
+                            if coll then
+                                illusionCollectedById[sid] = true
+                            elseif illusionCollectedById[sid] == nil then
+                                illusionCollectedById[sid] = false
+                            end
+                        end
+                        if info.visualID then
+                            local vid = info.visualID
+                            if coll then
+                                illusionCollectedById[vid] = true
+                            elseif illusionCollectedById[vid] == nil then
+                                illusionCollectedById[vid] = false
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return illusionCollectedById[illusionKey] == true
+end
+
 -- ============================================================================
 -- PLAN TYPES
 -- ============================================================================
@@ -241,6 +301,11 @@ end
     Registers events to check for completed plans
 ]]
 function WarbandNexus:InitializePlanTracking()
+    -- /reload does not always fire PLAYER_LOGIN; reset deferred vault state whenever tracking inits.
+    if self.OnVaultPlanSessionReset then
+        self:OnVaultPlanSessionReset()
+    end
+    self:RegisterEvent("PLAYER_LOGIN", "OnVaultPlanSessionReset")
     -- Build O(1) lookup index
     self:InitializePlanCache()
     
@@ -251,9 +316,9 @@ function WarbandNexus:InitializePlanTracking()
     -- Weekly vault progress — listen to PvECacheService message (single event owner)
     -- WEEKLY_REWARDS_UPDATE / CHALLENGE_MODE_COMPLETED / UPDATE_INSTANCE_INFO: owned by PvECacheService
     -- NOTE: Uses PlansManagerEvents as 'self' key to avoid overwriting PvEUI's handler.
-    WarbandNexus.RegisterMessage(PlansManagerEvents, Constants.EVENTS.PVE_UPDATED, function(event)
-        if WarbandNexus.OnPvEUpdateCheckPlans then
-            WarbandNexus:OnPvEUpdateCheckPlans()
+    WarbandNexus.RegisterMessage(PlansManagerEvents, Constants.EVENTS.PVE_UPDATED, function()
+        if WarbandNexus._DeferVaultPlanCheckFromPvE then
+            WarbandNexus:_DeferVaultPlanCheckFromPvE()
         end
     end)
     -- ENCOUNTER_END still needed (not a PvE cache event, fires when boss is killed)
@@ -806,6 +871,11 @@ function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
         raidSlots = {},
         worldSlots = {}
     }
+    -- When Blizzard returns multiple Activities rows (e.g. M+ vs other activity buckets), the last
+    -- assignment was wrong and could show e.g. 10/8 on the dungeon bar. Prefer M+ run count API.
+    local dungeonActivitiesMax = 0
+    local raidProgressMax = 0
+    local worldProgressMax = 0
     
     -- Get activities from API
     local activities = C_WeeklyRewards.GetActivities()
@@ -821,30 +891,40 @@ function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
         local slotCompleted = activityProgress >= activityThreshold
         
         if activity.type == Enum.WeeklyRewardChestThresholdType.Activities then
-            -- Mythic+ Dungeons
-            progress.dungeonCount = activityProgress
+            dungeonActivitiesMax = math.max(dungeonActivitiesMax, activityProgress)
             table.insert(progress.dungeonSlots, {
                 threshold = activityThreshold,
                 progress = activityProgress,
                 completed = slotCompleted
             })
         elseif activity.type == Enum.WeeklyRewardChestThresholdType.Raid then
-            -- Raid bosses
-            progress.raidBossCount = activityProgress
+            raidProgressMax = math.max(raidProgressMax, activityProgress)
             table.insert(progress.raidSlots, {
                 threshold = activityThreshold,
                 progress = activityProgress,
                 completed = slotCompleted
             })
         elseif activity.type == Enum.WeeklyRewardChestThresholdType.World then
-            -- World activities
-            progress.worldActivityCount = activityProgress
+            worldProgressMax = math.max(worldProgressMax, activityProgress)
             table.insert(progress.worldSlots, {
                 threshold = activityThreshold,
                 progress = activityProgress,
                 completed = slotCompleted
             })
         end
+    end
+
+    progress.raidBossCount = raidProgressMax
+    progress.worldActivityCount = worldProgressMax
+    if C_WeeklyRewards.GetNumCompletedDungeonRuns then
+        local ok, numHeroic, numMythic, numMythicPlus = pcall(C_WeeklyRewards.GetNumCompletedDungeonRuns)
+        if ok and type(numMythicPlus) == "number" and numMythicPlus >= 0 then
+            progress.dungeonCount = numMythicPlus
+        else
+            progress.dungeonCount = dungeonActivitiesMax
+        end
+    else
+        progress.dungeonCount = dungeonActivitiesMax
     end
     
     -- Sort slots by threshold
@@ -1018,7 +1098,16 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
         self:Debug("No progress data from API")
         return
     end
-    
+
+    -- First successful vault sync this session: refresh slots/progress without checkpoint/slot toasts
+    -- (avoids 4-5 false "progress" popups when PvE cache / GetActivities stabilizes after login).
+    self._wnVaultPlanPostLoginSyncDone = self._wnVaultPlanPostLoginSyncDone or {}
+    local planId = plan.id
+    local isFirstSessionSync = planId and not self._wnVaultPlanPostLoginSyncDone[planId]
+    if not skipNotifications and isFirstSessionSync then
+        skipNotifications = true
+    end
+
     if IsDebugModeEnabled and IsDebugModeEnabled() then
         self:Debug(string.format("Current progress: M+=%d, Raid=%d, World=%d",
             currentProgress.dungeonCount, currentProgress.raidBossCount, currentProgress.worldActivityCount))
@@ -1047,6 +1136,10 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
     
     -- Update slot completions and check for newly completed slots
     self:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress)
+
+    if planId then
+        self._wnVaultPlanPostLoginSyncDone[planId] = true
+    end
 end
 
 --[[
@@ -1062,6 +1155,13 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     
     local newlyCompletedSlots = {}
     local newlyCompletedCheckpoints = {}
+
+    -- Only toast for categories the user enabled on the weekly vault card (trackedSlots).
+    local ts = plan.trackedSlots
+    local function vaultCategoryNotifies(cat)
+        if not ts then return true end
+        return ts[cat] == true
+    end
     
     -- Track old progress values for checkpoint detection
     local oldDungeonCount = oldProgress and oldProgress.dungeonCount or plan.progress.dungeonCount
@@ -1077,14 +1177,14 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
             slot.completed = plan.progress.dungeonCount >= slot.threshold
             
             -- Check if newly completed
-            if slot.completed and not wasCompleted then
+            if slot.completed and not wasCompleted and vaultCategoryNotifies("dungeon") then
                 table.insert(newlyCompletedSlots, {category = "dungeon", index = i, threshold = slot.threshold})
             end
         end
     end
     
     -- Check for newly completed dungeon checkpoints (individual progress gains)
-    if plan.progress.dungeonCount > oldDungeonCount then
+    if plan.progress.dungeonCount > oldDungeonCount and vaultCategoryNotifies("dungeon") then
         table.insert(newlyCompletedCheckpoints, {
             category = "dungeon",
             progress = plan.progress.dungeonCount,
@@ -1101,14 +1201,14 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
             slot.completed = plan.progress.raidBossCount >= slot.threshold
             
             -- Check if newly completed
-            if slot.completed and not wasCompleted then
+            if slot.completed and not wasCompleted and vaultCategoryNotifies("raid") then
                 table.insert(newlyCompletedSlots, {category = "raid", index = i, threshold = slot.threshold})
             end
         end
     end
     
     -- Check for newly completed raid checkpoints
-    if plan.progress.raidBossCount > oldRaidCount then
+    if plan.progress.raidBossCount > oldRaidCount and vaultCategoryNotifies("raid") then
         table.insert(newlyCompletedCheckpoints, {
             category = "raid",
             progress = plan.progress.raidBossCount,
@@ -1125,14 +1225,14 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
             slot.completed = plan.progress.worldActivityCount >= slot.threshold
             
             -- Check if newly completed
-            if slot.completed and not wasCompleted then
+            if slot.completed and not wasCompleted and vaultCategoryNotifies("world") then
                 table.insert(newlyCompletedSlots, {category = "world", index = i, threshold = slot.threshold})
             end
         end
     end
     
     -- Check for newly completed world checkpoints
-    if plan.progress.worldActivityCount > oldWorldCount then
+    if plan.progress.worldActivityCount > oldWorldCount and vaultCategoryNotifies("world") then
         table.insert(newlyCompletedCheckpoints, {
             category = "world",
             progress = plan.progress.worldActivityCount,
@@ -1149,13 +1249,13 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
             if not slot.manualOverride then
                 local wasCompleted = slot.completed
                 slot.completed = (plan.progress.specialAssignmentCount or 0) >= slot.threshold
-                if slot.completed and not wasCompleted then
+                if slot.completed and not wasCompleted and vaultCategoryNotifies("specialAssignment") then
                     table.insert(newlyCompletedSlots, {category = "specialAssignment", index = i, threshold = slot.threshold})
                 end
             end
         end
     end
-    if (plan.progress.specialAssignmentCount or 0) > oldSACount then
+    if (plan.progress.specialAssignmentCount or 0) > oldSACount and vaultCategoryNotifies("specialAssignment") then
         table.insert(newlyCompletedCheckpoints, {
             category = "specialAssignment",
             progress = plan.progress.specialAssignmentCount,
@@ -1218,9 +1318,14 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     local wasFullyCompleted = plan.fullyCompleted
     plan.fullyCompleted = allCompleted
     
-    -- Show completion notification if just completed
+    -- Show completion notification if just completed (only when at least one vault row is tracked)
     if not skipNotifications and plan.fullyCompleted and not wasFullyCompleted then
-        self:ShowWeeklyPlanCompletionNotification(plan.characterName)
+        local t = plan.trackedSlots
+        local anyTracked = (not t)
+            or t.dungeon == true or t.raid == true or t.world == true or t.specialAssignment == true
+        if anyTracked then
+            self:ShowWeeklyPlanCompletionNotification(plan.characterName)
+        end
     end
 end
 
@@ -1382,7 +1487,8 @@ function WarbandNexus:GetWeeklyResetTime()
     if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
         local secondsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
         if secondsUntil and secondsUntil > 0 then
-            return time() + secondsUntil
+            local now = (GetServerTime and GetServerTime()) or time()
+            return now + secondsUntil
         end
     end
     
@@ -1469,6 +1575,33 @@ function WarbandNexus:HasActiveWeeklyPlan(characterName, characterRealm)
     end
 
     return nil
+end
+
+--[[
+    Clear deferred vault-plan check timer and per-plan "first sync" flags (new login / reload).
+]]
+function WarbandNexus:OnVaultPlanSessionReset()
+    self._wnVaultPlanPostLoginSyncDone = {}
+    if self._wnVaultPlanCheckTimer then
+        self._wnVaultPlanCheckTimer:Cancel()
+        self._wnVaultPlanCheckTimer = nil
+    end
+end
+
+--[[
+    Coalesce rapid WN_PVE_UPDATED bursts (login / cache refresh) before reconciling vault plans.
+]]
+function WarbandNexus:_DeferVaultPlanCheckFromPvE()
+    if self._wnVaultPlanCheckTimer then
+        self._wnVaultPlanCheckTimer:Cancel()
+        self._wnVaultPlanCheckTimer = nil
+    end
+    self._wnVaultPlanCheckTimer = C_Timer.NewTimer(VAULT_PLAN_CHECK_DEFER_SEC, function()
+        self._wnVaultPlanCheckTimer = nil
+        if self.OnPvEUpdateCheckPlans then
+            self:OnPvEUpdateCheckPlans()
+        end
+    end)
 end
 
 --[[
@@ -1993,14 +2126,20 @@ end
 function WarbandNexus:GetActiveNonDailyIncompleteCount()
     if not self.db or not self.db.global then return 0 end
     local n = 0
+    local memo = {}
+    local function planIncomplete(plan)
+        if not plan or plan.type == "daily_quests" then return false end
+        local c = memo[plan]
+        if c ~= nil then return c end
+        c = not self:IsActivePlanComplete(plan)
+        memo[plan] = c
+        return c
+    end
     local function tally(list)
         if not list then return end
         for i = 1, #list do
-            local plan = list[i]
-            if plan and plan.type ~= "daily_quests" then
-                if not self:IsActivePlanComplete(plan) then
-                    n = n + 1
-                end
+            if planIncomplete(list[i]) then
+                n = n + 1
             end
         end
     end
@@ -2370,26 +2509,53 @@ end
 ]]
 function WarbandNexus:CheckMaterialsAcrossWarband(reagents)
     if not reagents then return {} end
-    
+
+    local tinsert = table.insert
     local results = {}
-    
-    for ri = 1, #reagents do
-        local reagent = reagents[ri]
-        local itemID = reagent.itemID
-        local needed = reagent.quantity
+
+    -- Decompress warband + each personal bank once per call (not once per reagent).
+    local wbData = nil
+    if self.db.global and self.db.global.warbandBankV2 then
+        wbData = self:DecompressWarbandBank()
+    end
+
+    local personalDecoded = {}
+    if self.db.global and self.db.global.personalBanks then
+        for charKey in pairs(self.db.global.personalBanks) do
+            personalDecoded[charKey] = self:DecompressPersonalBank(charKey)
+        end
+    end
+
+    local function addWarbandMatches(itemID, locations)
         local found = 0
-        local locations = {}
-        
-        -- Check Warband Bank (V2)
-        if self.db.global.warbandBankV2 then
-            local wbData = self:DecompressWarbandBank()
-            if wbData and wbData.items then
-                for bagID, bagData in pairs(wbData.items) do
+        if not wbData or not wbData.items then return found end
+        for bagID, bagData in pairs(wbData.items) do
+            for slotID, item in pairs(bagData) do
+                if item.itemID == itemID then
+                    found = found + (item.stackCount or 1)
+                    tinsert(locations, {
+                        type = "warband",
+                        bag = bagID,
+                        slot = slotID,
+                        count = item.stackCount or 1,
+                    })
+                end
+            end
+        end
+        return found
+    end
+
+    local function addPersonalBankMatches(itemID, locations)
+        local found = 0
+        for charKey, bankData in pairs(personalDecoded) do
+            if bankData then
+                for bagID, bagData in pairs(bankData) do
                     for slotID, item in pairs(bagData) do
                         if item.itemID == itemID then
                             found = found + (item.stackCount or 1)
-                            table.insert(locations, {
-                                type = "warband",
+                            tinsert(locations, {
+                                type = "personal",
+                                character = charKey,
                                 bag = bagID,
                                 slot = slotID,
                                 count = item.stackCount or 1,
@@ -2399,52 +2565,41 @@ function WarbandNexus:CheckMaterialsAcrossWarband(reagents)
                 end
             end
         end
-        
-        -- Check Personal Banks (V2)
-        if self.db.global.personalBanks then
-            for charKey, compressedData in pairs(self.db.global.personalBanks) do
-                local bankData = self:DecompressPersonalBank(charKey)
-                if bankData then
-                    for bagID, bagData in pairs(bankData) do
-                        for slotID, item in pairs(bagData) do
-                            if item.itemID == itemID then
-                                found = found + (item.stackCount or 1)
-                                table.insert(locations, {
-                                    type = "personal",
-                                    character = charKey,
-                                    bag = bagID,
-                                    slot = slotID,
-                                    count = item.stackCount or 1,
-                                })
-                            end
-                        end
+        return found
+    end
+
+    for ri = 1, #reagents do
+        local reagent = reagents[ri]
+        local itemID = reagent.itemID
+        local needed = reagent.quantity
+        local found = 0
+        local locations = {}
+
+        found = found + addWarbandMatches(itemID, locations)
+        found = found + addPersonalBankMatches(itemID, locations)
+
+        for bagID = 0, 4 do
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            if numSlots and numSlots > 0 then
+                for slot = 1, numSlots do
+                    local info = C_Container.GetContainerItemInfo(bagID, slot)
+                    if info and info.itemID == itemID then
+                        found = found + (info.stackCount or 1)
+                        tinsert(locations, {
+                            type = "bags",
+                            bag = bagID,
+                            slot = slot,
+                            count = info.stackCount or 1,
+                        })
                     end
                 end
             end
         end
-        
-        -- Check current bags
-        for bagID = 0, 4 do
-            local numSlots = C_Container.GetContainerNumSlots(bagID)
-            for slot = 1, numSlots do
-                local info = C_Container.GetContainerItemInfo(bagID, slot)
-                if info and info.itemID == itemID then
-                    found = found + (info.stackCount or 1)
-                    table.insert(locations, {
-                        type = "bags",
-                        bag = bagID,
-                        slot = slot,
-                        count = info.stackCount or 1,
-                    })
-                end
-            end
-        end
-        
-        -- Get item name (may return nil for uncached items; show loading text instead of raw ID)
+
         local itemName = C_Item.GetItemNameByID(itemID) or ((ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading...")
         local itemIcon = C_Item.GetItemIconByID(itemID)
-        
-        table.insert(results, {
+
+        tinsert(results, {
             itemID = itemID,
             name = itemName,
             icon = itemIcon,
@@ -2454,7 +2609,7 @@ function WarbandNexus:CheckMaterialsAcrossWarband(reagents)
             locations = locations,
         })
     end
-    
+
     return results
 end
 
@@ -2529,7 +2684,7 @@ function WarbandNexus:CheckPlanProgress(plan)
         -- Check if achievement is completed (4th return); guard secret values (Midnight)
         if plan.achievementID then
             local _, _, _, completed = GetAchievementInfo(plan.achievementID)
-            if issecretvalue and completed ~= nil and issecretvalue(completed) then
+            if issecretvalue and issecretvalue(completed) then
                 progress.collected = (plan.resolvedCollected == true) or (plan.completed == true)
             else
                 progress.collected = completed == true
@@ -2537,21 +2692,10 @@ function WarbandNexus:CheckPlanProgress(plan)
         end
         
     elseif plan.type == PLAN_TYPES.ILLUSION then
-        -- Check if illusion is collected
         if plan.illusionID and C_TransmogCollection then
-            local illusionList = C_TransmogCollection.GetIllusions()
-            if illusionList then
-                for ii = 1, #illusionList do
-                    local illusionInfo = illusionList[ii]
-                    -- Check both sourceID and illusionID for compatibility
-                    if illusionInfo.sourceID == plan.illusionID or illusionInfo.visualID == plan.illusionID then
-                        progress.collected = illusionInfo.isCollected or false
-                        break
-                    end
-                end
-            end
+            progress.collected = GetIllusionCollectedForPlanId(plan.illusionID)
         end
-        
+
     elseif plan.type == PLAN_TYPES.TITLE then
         -- Check if title is known (use old API)
         if plan.titleID then

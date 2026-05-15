@@ -7,6 +7,18 @@ ns.ReminderSetAlertDialog = ns.ReminderSetAlertDialog or {}
 
 local reminderDialog = nil
 
+--- Positive integer from edit box; never tonumber() on secret GetText() (Midnight).
+local function SafePositiveIntFromMapEdit(edit)
+    if not edit or not edit.GetText then return nil end
+    local raw = edit:GetText()
+    if raw == nil then return nil end
+    if issecretvalue and issecretvalue(raw) then return nil end
+    if raw == "" then return nil end
+    local n = tonumber(raw)
+    if not n or n <= 0 then return nil end
+    return n
+end
+
 function ns.ReminderSetAlertDialog.Show(addon, planID)
     local B = ns.ReminderServiceBridge
     if not B then return end
@@ -1102,8 +1114,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         function f:RefreshMapIdZonePreview()
             if not self.mapEdit or not self.mapIdZonePreview then return end
-            local n = tonumber(self.mapEdit:GetText())
-            if not n or n <= 0 then
+            local n = SafePositiveIntFromMapEdit(self.mapEdit)
+            if not n then
                 self.mapIdZonePreview:SetText("")
                 self.mapIdZonePreview:Hide()
                 return
@@ -1297,8 +1309,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     end
 
     local function CommitManualMapId()
-        local n = tonumber(f.mapEdit:GetText())
-        if not n or n <= 0 then return end
+        local n = SafePositiveIntFromMapEdit(f.mapEdit)
+        if not n then return end
         if NormalizeZoneReminderUIMapID then
             local canon = NormalizeZoneReminderUIMapID(n)
             if canon then n = canon end
@@ -1394,7 +1406,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             zoneUseSourceHints = zoneHintsSaved,
             zoneManualMapIDs = (function()
                 if zoneOn then
-                    local pending = tonumber(f.mapEdit:GetText())
+                    local pending = SafePositiveIntFromMapEdit(f.mapEdit)
                     if pending and pending > 0 then
                         local dup = false
                         for zi = 1, #(f._manualMapIDs or {}) do

@@ -182,6 +182,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                     if ns.ItemsLoadingState then
                         ns.ItemsLoadingState.isLoading = false
                         ns.ItemsLoadingState.scanProgress = 100
+                        ns.ItemsLoadingState.loadingProgress = 100
                         ns.ItemsLoadingState.currentStage = nil
                     end
                 end

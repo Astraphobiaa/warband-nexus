@@ -330,10 +330,7 @@ end
 local function ResolvePveDelveCurrencyColumns(addon)
     local c = _pveDelveCurrencyCache
     if c.finishedScan then return end
-    if not addon or not addon.GetCurrenciesForUI then
-        c.finishedScan = true
-        return
-    end
+    if not addon then return end
     local allCurrencies = addon:GetCurrenciesForUI()
     local anyEntry = false
     for currencyID, entry in pairs(allCurrencies) do
