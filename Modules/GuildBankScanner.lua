@@ -109,6 +109,7 @@ function WarbandNexus:ScanGuildBank()
         end
         DebugVerbosePrint("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. totalItems .. " items in " .. usedSlots .. " slots")
         LogOperation("Guild Bank Scan", "Finished", self.currentTrigger or "Manual")
+        ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
         self:SendMessage(E.ITEMS_UPDATED)
     end
 
@@ -243,7 +244,7 @@ function WarbandNexus:GetGuildBankItems(groupByCategory)
             item.tabIndex = tabIndex
             item.slotID = slotID
             item.source = "guild"
-            item.tabName = tabData.name
+            item.tabName = (tabData and tabData.name) or nil
             tinsert(items, item)
         end
     end

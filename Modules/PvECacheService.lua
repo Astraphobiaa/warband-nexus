@@ -14,8 +14,11 @@
 
 local ADDON_NAME, ns = ...
 
--- Debug print helper
-local DebugPrint = ns.DebugPrint
+-- Trace helper: same channel as ns.DebugPrint but requires debugVerbose (matches Currency/Reputation caches).
+local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter(nil, {
+    verboseOnly = true,
+    suppressWhenTryCounterLoot = true,
+})) or function() end
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local WarbandNexus = ns.WarbandNexus
 local Utilities = ns.Utilities

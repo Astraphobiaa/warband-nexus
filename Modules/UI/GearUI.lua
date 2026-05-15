@@ -46,6 +46,12 @@ local EQUIP_LOC_TO_SLOTS = ns.EQUIP_LOC_TO_SLOTS
 local format = string.format
 local tinsert = table.insert
 local wipe = wipe
+local debugprofilestop = debugprofilestop
+
+--- Minimum time the gear-tab loading veil stays visible (defer/yield can finish in one frame).
+local GEAR_CONTENT_VEIL_MIN_DISPLAY_SEC = 0.5
+--- Minimum time "Scanning storage…" stays up before swapping to rows/empty (avoids sub-500ms flicker).
+local GEAR_STORAGE_SCANNING_MIN_DISPLAY_SEC = 0.5
 
 --- Locale helper (defined before first use; GetLocalizedText is declared later in this file).
 local function GearTabL(key, fallback)
@@ -79,6 +85,10 @@ end
 ---@param gen number
 local function EnsureGearContentVeil(scrollChild, mf, gen)
     if not scrollChild or not mf then return end
+    if mf._gearVeilMinDismissTimer and mf._gearVeilMinDismissTimer.Cancel then
+        mf._gearVeilMinDismissTimer:Cancel()
+    end
+    mf._gearVeilMinDismissTimer = nil
     local host = scrollChild._gearLoadingHost
     if not host or host:GetParent() ~= scrollChild then
         if host and host.Hide then host:Hide() end
@@ -118,6 +128,7 @@ local function EnsureGearContentVeil(scrollChild, mf, gen)
     host:ClearAllPoints()
     host:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, 0)
     host._veilGen = gen
+    host._gearVeilShownAt = GetTime()
     host:Show()
     mf._gearContentVeil = host
     scrollChild:SetHeight(math.max(scrollChild:GetHeight() or 0, h))
@@ -134,6 +145,10 @@ end
 local function DismissGearContentVeil(mf, gen)
     local veil = mf and mf._gearContentVeil
     if not veil or veil._veilGen ~= gen then return end
+    if mf._gearVeilMinDismissTimer and mf._gearVeilMinDismissTimer.Cancel then
+        mf._gearVeilMinDismissTimer:Cancel()
+    end
+    mf._gearVeilMinDismissTimer = nil
     veil:SetScript("OnUpdate", nil)
     veil:Hide()
 end
@@ -144,7 +159,57 @@ local function TryDismissGearContentVeil(mf, gen)
     if not mf or gen ~= (ns._gearTabDrawGen or 0) then return end
     if ns._gearStorageDeferAwaiting or ns._gearStorageYieldCo then return end
     if (mf._gearDeferChainActive == true) then return end
+    local veil = mf._gearContentVeil
+    if not veil or veil._veilGen ~= gen then return end
+    local shownAt = veil._gearVeilShownAt
+    local now = GetTime()
+    if shownAt and (now - shownAt) < GEAR_CONTENT_VEIL_MIN_DISPLAY_SEC then
+        if mf._gearVeilMinDismissTimer and mf._gearVeilMinDismissTimer.Cancel then
+            mf._gearVeilMinDismissTimer:Cancel()
+        end
+        local delay = GEAR_CONTENT_VEIL_MIN_DISPLAY_SEC - (now - shownAt)
+        mf._gearVeilMinDismissTimer = C_Timer.NewTimer(delay, function()
+            mf._gearVeilMinDismissTimer = nil
+            TryDismissGearContentVeil(mf, gen)
+        end)
+        return
+    end
+    if mf._gearVeilMinDismissTimer and mf._gearVeilMinDismissTimer.Cancel then
+        mf._gearVeilMinDismissTimer:Cancel()
+    end
+    mf._gearVeilMinDismissTimer = nil
     DismissGearContentVeil(mf, gen)
+end
+
+--- Live selection can be nil for a frame (GUID migration, dropdown refresh). Defer must not treat that as
+--- "selection != pending" or applyStorageScanUI would skip with nil ~= capCanon and strand "Scanning…".
+---@param mf Frame|nil
+---@param pendingCapCanon string|nil
+---@return string|nil
+local function ResolveGearTabSelectionKeyForStorageScan(mf, pendingCapCanon)
+    local sel = GetSelectedCharKey and GetSelectedCharKey() or nil
+    if sel then
+        return sel
+    end
+    local U = ns.Utilities
+    local function toCanon(k)
+        if not k then return nil end
+        if U and U.GetCanonicalCharacterKey then
+            return U:GetCanonicalCharacterKey(k) or k
+        end
+        return k
+    end
+    local capC = toCanon(pendingCapCanon)
+    if mf and mf._gearPopulateCanonKey then
+        local pC = toCanon(mf._gearPopulateCanonKey)
+        if not capC or pC == capC then
+            return mf._gearPopulateCanonKey
+        end
+    end
+    if pendingCapCanon then
+        return pendingCapCanon
+    end
+    return nil
 end
 
 --- Start yielded storage scan after paperdoll defer chain (never same frame as DressUpModel / row paint).
@@ -152,6 +217,7 @@ end
 ---@param paintGen number
 local function TryStartPendingGearStorageScan(mf, paintGen)
     if not WarbandNexus:IsGearStorageRecommendationsEnabled() then
+        WarbandNexus:GearStoragePanelDebug("TryStart skip (stash rec disabled)")
         ns._gearStorageDeferAwaiting = false
         ns._gearStorageDeferAwaitCanon = nil
         if mf then
@@ -159,16 +225,18 @@ local function TryStartPendingGearStorageScan(mf, paintGen)
         end
         return
     end
-    if not mf then return end
+    if not mf then
+        WarbandNexus:GearStoragePanelDebug("TryStart abort (mainFrame nil)")
+        return
+    end
     local pending = mf._gearPendingStorageScan
     if not pending or pending.paintGen ~= paintGen then
         if paintGen ~= (ns._gearTabDrawGen or 0) then
             return
         end
         -- Duplicate C_Timer(0): first TryStart cleared `pending` while a scan is still scheduled
-        -- (sync Find + deferred applyStorageScanUI) or about to start. Never clear `_gearStorageDeferAwaiting`
-        -- here — that orphans "Scanning storage…" with no follow-up Redraw.
         if ns._gearStorageYieldCo then
+            WarbandNexus:GearStoragePanelDebug("TryStart wait (yield scan already running)")
             return
         end
         -- Same paint gen, defer still expected, but pending was consumed by another tick — re-queue once.
@@ -180,6 +248,7 @@ local function TryStartPendingGearStorageScan(mf, paintGen)
             }
             return TryStartPendingGearStorageScan(mf, paintGen)
         end
+        WarbandNexus:GearStoragePanelDebug("TryStart abort (no pending, no yield, defer/populate mismatch — possible orphan defer)")
         return
     end
     local capCanon = pending.canon
@@ -187,24 +256,32 @@ local function TryStartPendingGearStorageScan(mf, paintGen)
     WarbandNexus:GearStorageTrace("TryStart pending storage scan canon=" .. tostring(capCanon) .. " paintGen=" .. tostring(paintGen))
 
     if paintGen ~= (ns._gearTabDrawGen or 0) then
+        WarbandNexus:GearStoragePanelDebug("TryStart cancel (stale paintGen vs _gearTabDrawGen); clearing defer")
         ns._gearStorageDeferAwaiting = false
         ns._gearStorageDeferAwaitCanon = nil
         TryDismissGearContentVeil(mf, paintGen)
         return
     end
     if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then
+        WarbandNexus:GearStoragePanelDebug("TryStart cancel (not on gear tab); clearing defer")
         ns._gearStorageDeferAwaiting = false
         ns._gearStorageDeferAwaitCanon = nil
         TryDismissGearContentVeil(mf, paintGen)
         return
     end
 
-    local selKey = GetSelectedCharKey and GetSelectedCharKey() or nil
-    local selCanon = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and ns.Utilities:GetCanonicalCharacterKey(selKey) or selKey
+    local Usel = ns.Utilities
+    local function gearStorageCanonKey(k)
+        if not k then return nil end
+        return (Usel and Usel.GetCanonicalCharacterKey) and Usel:GetCanonicalCharacterKey(k) or k
+    end
+    local capCanonCmp = gearStorageCanonKey(capCanon)
+    local selKey = ResolveGearTabSelectionKeyForStorageScan(mf, capCanon)
+    local selCanon = gearStorageCanonKey(selKey)
     -- Pending canon can lag selection by a frame (dropdown → refresh). Dropping defer here used to orphan
     -- the in-scroll "Scanning storage…" line; re-queue for the current selection instead.
-    if capCanon and selCanon ~= capCanon then
-        WarbandNexus:GearStorageTrace("TryStart requeue (selection != pending cap) cap=" .. tostring(capCanon) .. " sel=" .. tostring(selCanon))
+    if capCanonCmp and selCanon and selCanon ~= capCanonCmp then
+        WarbandNexus:GearStorageTrace("TryStart requeue (selection != pending cap) cap=" .. tostring(capCanonCmp) .. " sel=" .. tostring(selCanon))
         if selCanon then
             mf._gearPendingStorageScan = {
                 canon = selCanon,
@@ -228,11 +305,11 @@ local function TryStartPendingGearStorageScan(mf, paintGen)
     local function applyStorageScanUI()
         if paintGen ~= (ns._gearTabDrawGen or 0) then return end
         if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
-        selKey = GetSelectedCharKey and GetSelectedCharKey() or nil
-        selCanon = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and ns.Utilities:GetCanonicalCharacterKey(selKey) or selKey
-        if selCanon ~= capCanon then
+        selKey = ResolveGearTabSelectionKeyForStorageScan(mf, capCanon)
+        selCanon = gearStorageCanonKey(selKey)
+        if capCanonCmp and selCanon and selCanon ~= capCanonCmp then
             -- Scan finished for a character we are no longer viewing; do not touch defer (new paint owns it).
-            WarbandNexus:GearStorageTrace("apply skip (selection changed) cap=" .. tostring(capCanon) .. " sel=" .. tostring(selCanon))
+            WarbandNexus:GearStorageTrace("apply skip (selection changed) cap=" .. tostring(capCanonCmp) .. " sel=" .. tostring(selCanon))
             return
         end
 
@@ -253,6 +330,7 @@ local function TryStartPendingGearStorageScan(mf, paintGen)
         end
         TryDismissGearContentVeil(mf, paintGen)
         WarbandNexus:GearStorageTrace("apply RedrawStorageRec ok=" .. tostring(ok) .. " canon=" .. tostring(capCanon))
+        WarbandNexus:GearStoragePanelDebug(("applyStorageScanUI Redraw ok=%s canon=%s"):format(tostring(ok), tostring(capCanon)))
         if ok then return end
         if P2 and P2.enabled and P2.Wrap and P2.SliceLabel then
             P2:Wrap(P2:SliceLabel(P2.CAT.UI, "Gear_StorageRec_fallbackPopulate"), function()
@@ -273,6 +351,7 @@ local function TryStartPendingGearStorageScan(mf, paintGen)
 
     local function beginYieldedStorageFind()
         WarbandNexus:GearStorageTrace("beginYielded canon=" .. tostring(capCanon) .. " paintGen=" .. tostring(paintGen))
+        WarbandNexus:GearStoragePanelDebug(("TryStart beginYielded canon=%s paintGen=%s"):format(tostring(capCanon), tostring(paintGen)))
         if WarbandNexus.RunFindGearStorageUpgradesYielded then
             WarbandNexus:RunFindGearStorageUpgradesYielded(capCanon, paintGen, function()
                 if WarbandNexus.OnGearStorageYieldedScanComplete then
@@ -431,6 +510,7 @@ local STATUS_OUTER_ICON = P(17)
 local STATUS_UPGRADE_ICON = P(21)
 local STATUS_UPGRADE_DRAW_MULT = 0.78
 local STATUS_UPGRADE_BG_PAD = 3
+local STATUS_UPGRADE_BORDER = 2
 local STATUS_HOST_GAP = P(4)
 local STATUS_OUTER_GAP_V = P(3)
 local STATUS_OUTER_COL_W = STATUS_OUTER_ICON
@@ -439,6 +519,8 @@ local STATUS_TEXT_WARD_W = STATUS_OUTER_COL_W
 local STATUS_ICON_INSET = 1
 -- DEBUG: show upgrade arrow on every occupied slot. Set false for release.
 local GEAR_DEBUG_ALWAYS_SHOW_UPGRADE = false
+-- When false, hide paperdoll missing-enchant / empty-socket alert triangles (upgrade chip is separate).
+local GEAR_PAPERDOLL_ENCHANT_GEM_ALERTS = false
 -- Inline ilvl separator in recommendation FontStrings (Unicode → renders as tofu); same atlas as storage row ilvl arrow.
 local GEAR_ILVL_ARROW_ATLAS = "common-dropdown-icon-play"
 local GEAR_ILVL_ARROW_INLINE_SZ = 14
@@ -473,8 +555,10 @@ local GEAR_REC_COL_MIN_W = 218
 local GEAR_MID_COL_MIN_W = 228
 local GEAR_MID_COL_PREF_W = 340
 local GEAR_PAPER_COL_W = PAPERDOLL_BLOCK_W + 8
--- Cross-character storage recommendations (FindGearStorageUpgrades) disabled: spikes on equip/bag events.
-local GEAR_STORAGE_RECOMMENDATIONS_ENABLED = false
+-- Cross-character storage recommendations: heavy scan is deferred/yielded; rows paint in batches (see WN-PERF).
+local GEAR_STORAGE_RECOMMENDATIONS_ENABLED = true
+-- Table header height under the recommendations scroll (must match row y-offset when header shown).
+local GEAR_STORAGE_REC_TABLE_HDR = 30
 local MIN_CARD_INNER_W_WITH_REC = GEAR_PAPER_COL_W + GEAR_PANEL_GAP + GEAR_MID_COL_MIN_W + GEAR_PANEL_GAP + GEAR_REC_COL_MIN_W
 local MIN_CARD_INNER_W_NO_REC = GEAR_PAPER_COL_W + GEAR_PANEL_GAP + GEAR_MID_COL_PREF_W
 
@@ -828,6 +912,34 @@ local function GetClassHex(classFile)
     return "ffffff"
 end
 
+--- Color character name in storage source line; warband stays plain.
+local function ColoredStorageSourceName(classFile, name)
+    if not name or name == "" then return name end
+    if issecretvalue and issecretvalue(name) then return "" end
+    return "|cff" .. GetClassHex(classFile) .. name .. "|r"
+end
+
+local function FormatStorageSourceDisplay(source, sourceClassFile, viewerClassFile)
+    if not source then return "" end
+    if issecretvalue and issecretvalue(source) then return "" end
+    if source == "Warband Bank" then
+        return source
+    end
+    if source == "Guild Bank" or (type(source) == "string" and source:find("^Guild Bank", 1, true)) then
+        return source
+    end
+    if source == "Your Bag" or source == "Your Bank" then
+        return ColoredStorageSourceName(viewerClassFile, source)
+    end
+    local paren = source:find(" %(")
+    if paren and paren > 1 then
+        local namePart = source:sub(1, paren - 1)
+        local rest = source:sub(paren)
+        return ColoredStorageSourceName(sourceClassFile, namePart) .. rest
+    end
+    return ColoredStorageSourceName(sourceClassFile, source)
+end
+
 --- Tooltip spec: prefer saved specID; else first spec for class (offline / stale DB still get correct primary stat).
 local function GetGearTabTooltipSpecID(charData)
     if not charData then return nil end
@@ -893,36 +1005,149 @@ local function ClearGearRecScrollContent(recContent)
     end
 end
 
---- Column header for the gear-tab storage recommendations table (symmetric columns).
-local function PaintGearStorageRecColumnHeader(parent, contentW)
-    if not parent or not FontManager then return end
-    local hdr = CreateFrame("Frame", nil, parent)
-    hdr:SetSize(contentW, 22)
-    hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-    local function colFs(text, width, justify, xOff)
-        local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
-        fs:SetPoint("LEFT", hdr, "LEFT", xOff, 0)
-        fs:SetWidth(width)
-        fs:SetJustifyH(justify or "LEFT")
-        fs:SetText(text)
-        fs:SetTextColor(0.55, 0.58, 0.65)
-        return fs
+--- Column layout: Slot | Gear (icon+name) | Recommend (ilvl delta) | Location (widest; long bank labels).
+local function GetGearStorageRecColumnLayout(contentW)
+    local pad = 8
+    local gap = 6
+    local inner = math.max(40, contentW - pad * 2)
+    -- Slot: fit "Main Hand" / localized long labels without ellipsis.
+    local slotW = math.min(108, math.max(86, math.floor(inner * 0.20 + 0.5)))
+    local recommendW = math.min(128, math.max(76, math.floor(inner * 0.20 + 0.5)))
+    local locationW = math.min(168, math.max(88, math.floor(inner * 0.28 + 0.5)))
+    local gearW = inner - slotW - recommendW - locationW - 3 * gap
+    local rw, lw = recommendW, locationW
+    local gw = gearW
+    if gw < 72 then
+        local deficit = 72 - gw
+        rw = math.max(58, rw - math.floor(deficit * 0.40))
+        lw = math.max(80, lw - math.ceil(deficit * 0.60))
+        gw = inner - slotW - rw - lw - 3 * gap
     end
-    colFs((ns.L and ns.L["GEAR_REC_COL_SLOT"]) or "Slot", 72, "LEFT", 8)
-    colFs((ns.L and ns.L["GEAR_REC_COL_ILVL"]) or "iLvl", 108, "LEFT", 88)
-    colFs((ns.L and ns.L["GEAR_REC_COL_ITEM"]) or "Item", 120, "LEFT", 200)
-    colFs((ns.L and ns.L["GEAR_REC_COL_SOURCE"]) or "Source", 100, "RIGHT", math.max(8, contentW - 108))
+    local iconSz = math.min(26, math.max(20, math.floor(24 * 0.92)))
+    local xSlot = pad
+    local xGear = xSlot + slotW + gap
+    local xRecommend = xGear + gw + gap
+    local xLocation = xRecommend + rw + gap
+    return {
+        pad = pad,
+        gap = gap,
+        iconSz = iconSz,
+        slotW = slotW,
+        gearW = gw,
+        recommendW = rw,
+        locationW = lw,
+        xSlot = xSlot,
+        xGear = xGear,
+        xRecommend = xRecommend,
+        xLocation = xLocation,
+    }
 end
 
---- Paint one storage-upgrade row (symmetric table: slot | ilvl arrow | item | source).
+local function GetGearStorageItemDisplayName(itemLink, itemID)
+    local nm
+    if itemLink and (not (issecretvalue and issecretvalue(itemLink))) and C_Item and C_Item.GetItemInfo then
+        local ok, n = pcall(function()
+            return (C_Item.GetItemInfo(itemLink))
+        end)
+        if ok and type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
+            nm = n
+        end
+    end
+    if not nm and itemID and C_Item and C_Item.GetItemInfo then
+        local ok, n = pcall(function()
+            return (C_Item.GetItemInfo(itemID))
+        end)
+        if ok and type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
+            nm = n
+        end
+    end
+    return nm
+end
+
+--- Plain item name for colored display (API name can include |c sequences in some builds).
+local function StripItemNameColorCodes(text)
+    if not text or text == "" then return "" end
+    if issecretvalue and issecretvalue(text) then return "" end
+    return tostring(text):gsub("|c%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+end
+
+--- Resolve quality for storage recommendation row.
+--- Midnight: prefer C_Item.GetItemQualityByID; optional GetItemQuality(itemLink) per https://warcraft.wiki.gg/wiki/API_C_Item.GetItemQuality (pcall if signature differs).
+local function GetStorageRecRowItemQuality(rowData)
+    if not rowData then return 1 end
+    local q = tonumber(rowData.quality)
+    if q and q >= 0 and q <= 8 then return q end
+    local link = rowData.itemLink
+    if link and type(link) == "string" and link ~= "" and not (issecretvalue and issecretvalue(link)) then
+        if C_Item and C_Item.GetItemQuality then
+            local ok, qq = pcall(C_Item.GetItemQuality, link)
+            if ok and type(qq) == "number" and qq >= 0 then return qq end
+        end
+    end
+    local id = tonumber(rowData.itemID)
+    if id and C_Item and C_Item.GetItemQualityByID then
+        local ok2, qq2 = pcall(C_Item.GetItemQualityByID, id)
+        if ok2 and type(qq2) == "number" and qq2 >= 0 then return qq2 end
+    end
+    return 1
+end
+
+--- Column header for the gear-tab storage recommendations table.
+local function PaintGearStorageRecColumnHeader(parent, contentW)
+    if not parent or not FontManager then return end
+    local lay = GetGearStorageRecColumnLayout(contentW)
+    local hdr = CreateFrame("Frame", nil, parent)
+    hdr:SetSize(contentW, GEAR_STORAGE_REC_TABLE_HDR)
+    hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    local rule = hdr:CreateTexture(nil, "ARTWORK")
+    rule:SetHeight(1)
+    rule:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", lay.pad, 2)
+    rule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -lay.pad, 2)
+    rule:SetColorTexture(0.35, 0.38, 0.44, 0.45)
+    local hdrColor = { 1, 1, 1 }
+    local function colFs(text, leftX, width, justify)
+        local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
+        fs:SetPoint("LEFT", hdr, "LEFT", leftX, 1)
+        fs:SetWidth(width)
+        fs:SetJustifyH(justify or "LEFT")
+        fs:SetWordWrap(false)
+        fs:SetText(text)
+        fs:SetTextColor(hdrColor[1], hdrColor[2], hdrColor[3])
+        return fs
+    end
+    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_SLOT", "Slot"), lay.xSlot, lay.slotW, "LEFT")
+    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_GEAR", "Gear"), lay.xGear, lay.gearW, "LEFT")
+    do
+        local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
+        fs:SetPoint("TOPLEFT", hdr, "TOPLEFT", lay.xRecommend, 1)
+        fs:SetPoint("TOPRIGHT", hdr, "TOPLEFT", lay.xRecommend + lay.recommendW, 1)
+        fs:SetJustifyH("CENTER")
+        fs:SetWordWrap(false)
+        fs:SetText(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_RECOMMEND", "Recommend"))
+        fs:SetTextColor(hdrColor[1], hdrColor[2], hdrColor[3])
+    end
+    do
+        local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
+        fs:SetPoint("TOPLEFT", hdr, "TOPLEFT", lay.xLocation, 1)
+        fs:SetPoint("TOPRIGHT", hdr, "TOPLEFT", lay.xLocation + lay.locationW, 1)
+        fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(false)
+        fs:SetText(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_LOCATION", "Location"))
+        fs:SetTextColor(hdrColor[1], hdrColor[2], hdrColor[3])
+    end
+end
+
+--- Paint one storage-upgrade row (slot | gear | recommend | location).
 local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, rowData, itemTooltipContext, viewerClassFile)
     if not line then return end
     local parent = line:GetParent()
     if not parent then return end
+    local lay = GetGearStorageRecColumnLayout(contentW)
     local innerH = math.max(1, rowH - 2)
+    -- Stack every data row below the in-content column header (not only row 1), or row 2+ overlaps row 1.
     local yOff = -(index - 1) * rowH
-    if index == 1 and parent._gearRecHasHeader then
-        yOff = yOff - 22
+    if parent._gearRecHasHeader then
+        yOff = yOff - GEAR_STORAGE_REC_TABLE_HDR
     end
     line:SetSize(contentW, innerH)
     line:ClearAllPoints()
@@ -931,9 +1156,18 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
     if ns.UI.Factory and ns.UI.Factory.ApplyRowBackground then
         ns.UI.Factory:ApplyRowBackground(line, index)
     end
+    -- Factory even/odd colors are identical in UI_SPACING; use visible zebra on this dark panel.
+    if line.bg then
+        local a = (index % 2 == 0) and 0.07 or 0.04
+        line.bg:SetColorTexture(0.10, 0.12, 0.16, a)
+    end
     if line.qtyText then line.qtyText:Hide() end
     if line.nameText then line.nameText:Hide() end
     if line.locationText then line.locationText:Hide() end
+    if line.arrowTex then line.arrowTex:Hide() end
+    if line.currIlvlText then line.currIlvlText:Hide() end
+    if line.targetIlvlText then line.targetIlvlText:Hide() end
+    if line.deltaText then line.deltaText:Hide() end
 
     local slotText = line.slotText
     if not slotText and FontManager then
@@ -942,70 +1176,39 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
     end
     if slotText then
         slotText:Show()
-        slotText:SetPoint("LEFT", line, "LEFT", 8, 0)
-        slotText:SetWidth(72)
+        slotText:SetPoint("LEFT", line, "LEFT", lay.xSlot, 0)
+        slotText:SetWidth(lay.slotW)
         slotText:SetJustifyH("LEFT")
+        slotText:SetWordWrap(false)
         slotText:SetText(rowData.slotName or "Slot")
-        slotText:SetTextColor(0.95, 0.95, 1)
+        slotText:SetTextColor(0.92, 0.93, 0.98)
     end
 
-    local currIlvlText = line.currIlvlText
-    if not currIlvlText and FontManager then
-        currIlvlText = FontManager:CreateFontString(line, GFR("gearStorageRow"), "OVERLAY")
-        line.currIlvlText = currIlvlText
+    local cur = math.floor(tonumber(rowData.currentIlvl) or 0)
+    local tgt = math.floor(tonumber(rowData.targetIlvl) or 0)
+    local delta = tgt - cur
+    local upgradeSummary = line.upgradeSummaryText
+    if not upgradeSummary and FontManager then
+        upgradeSummary = FontManager:CreateFontString(line, GFR("gearStorageRow"), "OVERLAY")
+        line.upgradeSummaryText = upgradeSummary
     end
-    if currIlvlText then
-        currIlvlText:Show()
-        currIlvlText:SetPoint("LEFT", line, "LEFT", 88, 0)
-        currIlvlText:SetWidth(36)
-        currIlvlText:SetJustifyH("RIGHT")
-        currIlvlText:SetText(tostring(rowData.currentIlvl or 0))
-        currIlvlText:SetTextColor(0.75, 0.75, 0.8)
-    end
-
-    local arrowTex = line.arrowTex
-    if not arrowTex then
-        arrowTex = line:CreateTexture(nil, "ARTWORK")
-        line.arrowTex = arrowTex
-    end
-    arrowTex:Show()
-    arrowTex:SetSize(12, 12)
-    arrowTex:SetPoint("LEFT", line, "LEFT", 128, 0)
-    if arrowTex.SetAtlas then
-        arrowTex:SetAtlas("common-dropdown-icon-play", true)
-    else
-        arrowTex:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
-        arrowTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        arrowTex:SetVertexColor(0.3, 1, 0.4)
-    end
-
-    local targetIlvlText = line.targetIlvlText
-    if not targetIlvlText and FontManager then
-        targetIlvlText = FontManager:CreateFontString(line, GFR("gearStorageRow"), "OVERLAY")
-        line.targetIlvlText = targetIlvlText
-    end
-    if targetIlvlText then
-        targetIlvlText:Show()
-        targetIlvlText:SetPoint("LEFT", arrowTex, "RIGHT", 4, 0)
-        targetIlvlText:SetWidth(36)
-        targetIlvlText:SetJustifyH("LEFT")
-        targetIlvlText:SetText(tostring(rowData.targetIlvl or 0))
-        targetIlvlText:SetTextColor(0.4, 1, 0.5)
-    end
-
-    local delta = (rowData.targetIlvl or 0) - (rowData.currentIlvl or 0)
-    local deltaText = line.deltaText
-    if not deltaText and FontManager then
-        deltaText = FontManager:CreateFontString(line, GFR("gearStorageRow"), "OVERLAY")
-        line.deltaText = deltaText
-    end
-    if deltaText then
-        deltaText:Show()
-        deltaText:SetPoint("LEFT", targetIlvlText, "RIGHT", 4, 0)
-        deltaText:SetWidth(32)
-        deltaText:SetJustifyH("LEFT")
-        deltaText:SetText(delta > 0 and ("+" .. tostring(delta)) or "")
-        deltaText:SetTextColor(0.35, 0.9, 0.45)
+    if upgradeSummary then
+        upgradeSummary:Show()
+        upgradeSummary:ClearAllPoints()
+        upgradeSummary:SetPoint("TOPLEFT", line, "TOPLEFT", lay.xRecommend, 0)
+        upgradeSummary:SetPoint("TOPRIGHT", line, "TOPLEFT", lay.xRecommend + lay.recommendW, 0)
+        upgradeSummary:SetJustifyH("CENTER")
+        upgradeSummary:SetWordWrap(false)
+        local parts = {}
+        parts[1] = "|cffb8bcc6"
+        parts[2] = tostring(cur)
+        parts[3] = "|r |cff66ee88>|r |cffc8ffd0"
+        parts[4] = tostring(tgt)
+        parts[5] = "|r"
+        if delta > 0 then
+            parts[6] = string.format(" |cff55dd77(+%d)|r", delta)
+        end
+        upgradeSummary:SetText(table.concat(parts))
     end
 
     local itemIcon = line.icon
@@ -1014,11 +1217,33 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
         line.icon = itemIcon
     end
     itemIcon:Show()
-    itemIcon:SetSize(22, 22)
-    itemIcon:SetPoint("LEFT", line, "LEFT", 200, 0)
+    itemIcon:SetSize(lay.iconSz, lay.iconSz)
+    itemIcon:SetPoint("LEFT", line, "LEFT", lay.xGear, 0)
     local icon = rowData.itemLink and GetItemIconSafe(rowData.itemLink) or GetItemIconSafe(rowData.itemID)
     itemIcon:SetTexture(icon or 134400)
     itemIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+    local itemNameFs = line.itemNameText
+    if not itemNameFs and FontManager then
+        itemNameFs = FontManager:CreateFontString(line, GFR("gearStorageRow"), "OVERLAY")
+        line.itemNameText = itemNameFs
+    end
+    if itemNameFs then
+        itemNameFs:Show()
+        itemNameFs:SetPoint("LEFT", itemIcon, "RIGHT", lay.gap, 0)
+        itemNameFs:SetPoint("RIGHT", line, "LEFT", lay.xRecommend - 2, 0)
+        itemNameFs:SetJustifyH("LEFT")
+        itemNameFs:SetWordWrap(false)
+        local dispRaw = GetGearStorageItemDisplayName(rowData.itemLink, rowData.itemID)
+        if not dispRaw or dispRaw == "" then
+            dispRaw = "#" .. tostring(rowData.itemID or 0)
+        end
+        local dispPlain = StripItemNameColorCodes(dispRaw)
+        local iq = GetStorageRecRowItemQuality(rowData)
+        local qhex = GetQualityHex and GetQualityHex(iq) or "ffffff"
+        itemNameFs:SetText(format("|cff%s%s|r", qhex, dispPlain))
+        itemNameFs:SetTextColor(1, 1, 1)
+    end
 
     local sourceText = line.sourceText
     if not sourceText and FontManager then
@@ -1026,13 +1251,15 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
         line.sourceText = sourceText
     end
     if sourceText then
-        sourceText:Show()
-        sourceText:SetPoint("RIGHT", line, "RIGHT", -8, 0)
-        sourceText:SetPoint("LEFT", itemIcon, "RIGHT", 8, 0)
-        sourceText:SetJustifyH("RIGHT")
+        sourceText:ClearAllPoints()
+        sourceText:SetPoint("TOPLEFT", line, "TOPLEFT", lay.xLocation, 0)
+        sourceText:SetPoint("TOPRIGHT", line, "TOPLEFT", lay.xLocation + lay.locationW, 0)
+        sourceText:SetJustifyH("LEFT")
+        sourceText:SetWordWrap(true)
+        if sourceText.SetMaxLines then sourceText:SetMaxLines(2) end
         local srcDisplay = FormatStorageSourceDisplay(rowData.source or "", rowData.sourceClassFile, viewerClassFile)
         sourceText:SetText(srcDisplay ~= "" and srcDisplay or (rowData.source or ""))
-        sourceText:SetTextColor(0.75, 0.78, 0.85)
+        sourceText:SetTextColor(0.72, 0.76, 0.84)
     end
 
     line:SetScript("OnEnter", function(self)
@@ -1051,7 +1278,7 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
     end)
 end
 
-local GEAR_STORAGE_ROWS_PER_FRAME = 8
+local GEAR_STORAGE_ROWS_PER_FRAME = 5
 
 ---Paint storage recommendation rows across multiple frames (never bulk N rows on one spike).
 local function PaintGearStorageRowsBatched(recContent, recScroll, rows, contentW, rowH, charData, drawGen, onComplete)
@@ -1082,7 +1309,7 @@ local function PaintGearStorageRowsBatched(recContent, recScroll, rows, contentW
         end
         idx = last + 1
         if idx <= #rows then
-            C_Timer.After(0, paintChunk)
+            C_Timer.After(0.012, paintChunk)
         else
             if recScroll and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
                 ns.UI.Factory:UpdateScrollBarVisibility(recScroll)
@@ -1090,6 +1317,7 @@ local function PaintGearStorageRowsBatched(recContent, recScroll, rows, contentW
             if recScroll and recScroll.SetVerticalScroll then
                 recScroll:SetVerticalScroll(0)
             end
+            WarbandNexus:GearStoragePanelDebug(("PaintGearStorageRowsBatched DONE rows=%d (batched paint)"):format(#rows))
             if onComplete then onComplete() end
         end
     end
@@ -1098,6 +1326,13 @@ end
 
 local function ShowGearStorageScanningInRecContent(recContent)
     if not recContent then return end
+    local mfG = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mfG then
+        if mfG._gearStorageScanningMinPaintTimer and mfG._gearStorageScanningMinPaintTimer.Cancel then
+            mfG._gearStorageScanningMinPaintTimer:Cancel()
+        end
+        mfG._gearStorageScanningMinPaintTimer = nil
+    end
     ClearGearRecScrollContent(recContent)
     if not FontManager then return end
     recContent._gearRecForceNextPaint = true
@@ -1108,6 +1343,9 @@ local function ShowGearStorageScanningInRecContent(recContent)
     scanFs:SetJustifyV("MIDDLE")
     scanFs:SetText(GearTabL("GEAR_STORAGE_SCANNING", "Scanning storage for upgrades..."))
     scanFs:SetTextColor(0.65, 0.68, 0.75)
+    if mfG then
+        mfG._gearStorageScanningShownAt = GetTime()
+    end
 end
 
 ---Yielded storage scan for UI redraw paths (never block the main thread with FindGearStorageUpgrades).
@@ -1127,6 +1365,7 @@ function WarbandNexus:ScheduleGearStorageFindingsResolve(canonKey, drawGen, onDo
     -- killing the active coroutine orphans TryStartPendingGearStorageScan's `onDone` (defer/veil never clear).
     if ns._gearStorageYieldCo and ns._gearStorageYieldFindCanon == canonKey then
         WarbandNexus:GearStorageTrace("ScheduleResolve queue (yield in flight) canon=" .. tostring(canonKey))
+        WarbandNexus:GearStoragePanelDebug(("ScheduleResolve QUEUED onDone (yield in flight) canon=%s"):format(tostring(canonKey)))
         if type(onDone) == "function" then
             local q = ns._gearStorageResolveQueuedDones
             if not q then
@@ -1138,6 +1377,8 @@ function WarbandNexus:ScheduleGearStorageFindingsResolve(canonKey, drawGen, onDo
         return
     end
     WarbandNexus:GearStorageTrace("ScheduleResolve begin canon=" .. tostring(canonKey) .. " drawGen=" .. tostring(drawGen))
+    WarbandNexus:GearStoragePanelDebug(("ScheduleResolve BEGIN canon=%s drawGen=%s yieldInFlight=%s")
+        :format(tostring(canonKey), tostring(drawGen), tostring(ns._gearStorageYieldCo ~= nil)))
     local function beginScan()
         if self.RunFindGearStorageUpgradesYielded then
             self:RunFindGearStorageUpgradesYielded(canonKey, drawGen, function()
@@ -1510,9 +1751,8 @@ local function PlaceGearOuterSideHost(btn, side, hasGem, hasEnc)
     return outer, gemCell, encCell
 end
 
---- Upgrade (optional dark backing + arrow) and/or lock: inside item icon corner away from center column.
---- Backing improves contrast on green item icons; gem/enchant stay on PlaceGearOuterSideHost.
-local function PlaceGearUpgradeLockTowardModel(btn, icon, side, upgradeArrowBg, upgradeArrow, lockIcon)
+--- Upgrade chip: optional green border (outer) + dark fill + arrow; and/or lock.
+local function PlaceGearUpgradeLockTowardModel(btn, icon, side, upgradeArrowBgBorder, upgradeArrowBg, upgradeArrow, lockIcon)
     if not icon then return end
     local baseSz = STATUS_UPGRADE_ICON - 2 * STATUS_ICON_INSET
     local uSz = math.max(10, math.floor(baseSz * STATUS_UPGRADE_DRAW_MULT + 0.5))
@@ -1520,23 +1760,30 @@ local function PlaceGearUpgradeLockTowardModel(btn, icon, side, upgradeArrowBg, 
     local yInset = -inset
     local bgPad = STATUS_UPGRADE_BG_PAD
     local bgSz = uSz + 2 * bgPad
+    local br = STATUS_UPGRADE_BORDER
+    local borderSz = bgSz + 2 * br
 
-    local function cornerBG(tex, sz)
+    local function cornerAt(tex, sz, dx, dy)
         if not tex then return end
         tex:SetSize(sz, sz)
         tex:ClearAllPoints()
         if side == "left" or side == "bottom_left" then
-            tex:SetPoint("TOPLEFT", icon, "TOPLEFT", inset - 1, yInset + 1)
+            tex:SetPoint("TOPLEFT", icon, "TOPLEFT", dx, dy)
         elseif side == "right" or side == "bottom_right" then
-            tex:SetPoint("TOPRIGHT", icon, "TOPRIGHT", -inset + 1, yInset + 1)
+            tex:SetPoint("TOPRIGHT", icon, "TOPRIGHT", -dx, dy)
         else
-            tex:SetPoint("TOP", icon, "TOP", 0, yInset + 1)
+            tex:SetPoint("TOP", icon, "TOP", 0, dy)
         end
     end
 
     if upgradeArrow then
-        if upgradeArrowBg then
-            cornerBG(upgradeArrowBg, bgSz)
+        if upgradeArrowBgBorder and upgradeArrowBg then
+            cornerAt(upgradeArrowBgBorder, borderSz, inset - br, yInset + br)
+            upgradeArrowBg:SetSize(bgSz, bgSz)
+            upgradeArrowBg:ClearAllPoints()
+            upgradeArrowBg:SetPoint("CENTER", upgradeArrowBgBorder, "CENTER", 0, 0)
+        elseif upgradeArrowBg then
+            cornerAt(upgradeArrowBg, bgSz, inset - 1, yInset + 1)
         end
         upgradeArrow:SetSize(uSz, uSz)
         upgradeArrow:ClearAllPoints()
@@ -1572,6 +1819,7 @@ local function GearSlotClearPaperdollOverlays(btn)
     if btn.missingEnchantIcon then btn.missingEnchantIcon:Hide() end
     if btn.missingGemIcon then btn.missingGemIcon:Hide() end
     if btn._gearOuterSideHost then btn._gearOuterSideHost:Hide() end
+    if btn._gearUpgradeArrowBgBorder then btn._gearUpgradeArrowBgBorder:Hide() end
     if btn._gearUpgradeArrowBg then btn._gearUpgradeArrowBg:Hide() end
     if btn.warnIcon then btn.warnIcon:Hide() end
 end
@@ -1706,6 +1954,11 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
     local enchantDisplayTier = tonumber(craftingQualityTier) or 1
     if enchantDisplayTier < 1 then enchantDisplayTier = 1 end
 
+    if GEAR_PAPERDOLL_ENCHANT_GEM_ALERTS ~= true then
+        missEnchant = false
+        isMissingGem = false
+    end
+
     local side = ctx.side
     local upgradeArrow = ctx.upgradeArrow
     local lockIcon = btn._gearLockIcon
@@ -1716,7 +1969,7 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
 
     local outer, gemHost, encHost = PlaceGearOuterSideHost(btn, side, showGemHost, showEnchantHost)
     local inner = STATUS_OUTER_ICON - 2 * STATUS_ICON_INSET
-    PlaceGearUpgradeLockTowardModel(btn, icon, side, btn._gearUpgradeArrowBg, upgradeArrow, lockIcon)
+    PlaceGearUpgradeLockTowardModel(btn, icon, side, btn._gearUpgradeArrowBgBorder, btn._gearUpgradeArrowBg, upgradeArrow, lockIcon)
 
     if showGemHost or showEnchantHost then
         outer:Show()
@@ -1774,6 +2027,7 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
 
     if GEAR_DEBUG_ALWAYS_SHOW_UPGRADE and upgradeArrow and link then
         upgradeArrow:Show()
+        if btn._gearUpgradeArrowBgBorder then btn._gearUpgradeArrowBgBorder:Show() end
         if btn._gearUpgradeArrowBg then btn._gearUpgradeArrowBg:Show() end
     end
 
@@ -1943,6 +2197,15 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
     local hasItemNow = slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink))
     local lockOnly = isNotUpgradeable and hasItemNow and not wantDebugUpgrade
     if not lockOnly and (hasUpgradePath or wantDebugUpgrade or hasItemNow) then
+        local upgradeBd = btn:CreateTexture(nil, "OVERLAY")
+        btn._gearUpgradeArrowBgBorder = upgradeBd
+        upgradeBd:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+        upgradeBd:SetVertexColor(0.1, 0.78, 0.26, 0.95)
+        if upgradeBd.SetDrawLayer then upgradeBd:SetDrawLayer("OVERLAY", 5) end
+        if upgradeBd.SetFrameLevel and btn.GetFrameLevel then
+            upgradeBd:SetFrameLevel((btn:GetFrameLevel() or 0) + 2)
+        end
+
         local upgradeBg = btn:CreateTexture(nil, "OVERLAY")
         btn._gearUpgradeArrowBg = upgradeBg
         upgradeBg:SetTexture("Interface\\BUTTONS\\WHITE8X8")
@@ -1971,9 +2234,11 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
             upgradeArrow:SetVertexColor(0.15, 1, 0.42)
         end
         if upgradeArrow.SetDrawLayer then upgradeArrow:SetDrawLayer("OVERLAY", 7) end
-        PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, upgradeBg, upgradeArrow, nil)
-        if not wantDebugUpgrade and hasUpgradePath and not canAffordNext and upgradeArrow.SetVertexColor then
-            upgradeArrow:SetVertexColor(1, 0.9, 0.35)
+        PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, upgradeBd, upgradeBg, upgradeArrow, nil)
+        if not wantDebugUpgrade and not (hasUpgradePath and canAffordNext) then
+            upgradeBd:Hide()
+            upgradeBg:Hide()
+            upgradeArrow:Hide()
         end
     elseif lockOnly then
         local lockIcon = btn:CreateTexture(nil, "OVERLAY")
@@ -1983,7 +2248,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
             lockIcon:SetFrameLevel((btn:GetFrameLevel() or 0) + 4)
         end
         if lockIcon.SetDrawLayer then lockIcon:SetDrawLayer("OVERLAY", 7) end
-        PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, nil, nil, lockIcon)
+        PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, nil, nil, nil, lockIcon)
         lockIcon:SetTexture("Interface\\Common\\LockIcon")
         lockIcon:SetVertexColor(0.45, 0.45, 0.45, 0.9)
     end
@@ -1992,7 +2257,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
 
     -- Enchant/gem/socket scan deferred to next frame (see GearSlotApplyDeferredEnchantGemInspect).
-    btn._gearLayoutCtx = { side = side, upgradeArrow = upgradeArrow, upgradeArrowBg = btn._gearUpgradeArrowBg }
+    btn._gearLayoutCtx = { side = side, upgradeArrow = upgradeArrow, upgradeArrowBg = btn._gearUpgradeArrowBg, upgradeArrowBgBorder = btn._gearUpgradeArrowBgBorder }
 
     btn:SetScript("OnEnter", function(self)
         if slotData and slotData.itemLink then
@@ -2236,12 +2501,15 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
             local hasItem = slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink))
             if not hasItem then
                 self._gearUpgradeArrow:Hide()
+                if self._gearUpgradeArrowBgBorder then self._gearUpgradeArrowBgBorder:Hide() end
                 if self._gearUpgradeArrowBg then self._gearUpgradeArrowBg:Hide() end
             else
                 local up = self._gearUpgradeInfo and self._gearUpgradeInfo[self._slotID]
                 local hasPath = GearUpgradeInfoHasPath(up)
-                if GEAR_DEBUG_ALWAYS_SHOW_UPGRADE or hasPath then
+                local showUpChip = GEAR_DEBUG_ALWAYS_SHOW_UPGRADE or (hasPath and canUpgrade == true)
+                if showUpChip then
                     self._gearUpgradeArrow:Show()
+                    if self._gearUpgradeArrowBgBorder then self._gearUpgradeArrowBgBorder:Show() end
                     if self._gearUpgradeArrowBg then self._gearUpgradeArrowBg:Show() end
                     if self._gearUpgradeArrow.SetVertexColor then
                         if GEAR_DEBUG_ALWAYS_SHOW_UPGRADE or (canUpgrade == true) then
@@ -2256,6 +2524,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
                     end
                 else
                     self._gearUpgradeArrow:Hide()
+                    if self._gearUpgradeArrowBgBorder then self._gearUpgradeArrowBgBorder:Hide() end
                     if self._gearUpgradeArrowBg then self._gearUpgradeArrowBg:Hide() end
                 end
             end
@@ -3143,6 +3412,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     local GEAR_STAT_COL_GAP = 8
     local cardH = CARD_PAD + 24 + paperdollH + CARD_PAD
 
+    -- New card on every DrawPaperDollCard: PopulateContent tears down scrollChild, so roster changes cannot reuse the old card here.
     local card = CreateCard(parent, cardH)
     card:SetPoint("TOPLEFT", SIDE_MARGIN, yOffset)
     card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SIDE_MARGIN, yOffset)
@@ -3359,9 +3629,17 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
 
     local function paintGearMidColumnDeferred()
         local statY = -GEAR_SUBPANEL_HDR
+        local zebra = 0
 
         if #primaryRows > 0 or #secondaryRows > 0 then
             for i = 1, #primaryRows do
+                zebra = zebra + 1
+                local rowBg = statPanel:CreateTexture(nil, "BACKGROUND")
+                rowBg:SetPoint("TOPLEFT", statPanel, "TOPLEFT", math.max(0, statPad - 2), statY + 1)
+                rowBg:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -math.max(0, statPad - 2), statY + 1)
+                rowBg:SetHeight(STAT_ROW_H - 1)
+                rowBg:SetColorTexture(1, 1, 1, (zebra % 2 == 0) and 0.034 or 0.016)
+
                 local stat = primaryRows[i]
                 local row = FontManager:CreateFontString(statPanel, GFR("gearStatLabel"), "OVERLAY")
                 row:SetPoint("TOPLEFT", statPad, statY)
@@ -3404,6 +3682,13 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             end
 
             for i = 1, #secondaryRows do
+                zebra = zebra + 1
+                local rowBg = statPanel:CreateTexture(nil, "BACKGROUND")
+                rowBg:SetPoint("TOPLEFT", statPanel, "TOPLEFT", math.max(0, statPad - 2), statY + 1)
+                rowBg:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -math.max(0, statPad - 2), statY + 1)
+                rowBg:SetHeight(STAT_ROW_H - 1)
+                rowBg:SetColorTexture(1, 1, 1, (zebra % 2 == 0) and 0.034 or 0.016)
+
                 local stat = secondaryRows[i]
                 local row = FontManager:CreateFontString(statPanel, GFR("gearStatLabel"), "OVERLAY")
                 row:SetPoint("TOPLEFT", statPad, statY)
@@ -3609,9 +3894,10 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
 
     local recScroll, recContent, scroll, storageContentW = nil, nil, nil, nil
     local storagePad = 8
-    local storageHeaderH = 32
+    -- Title only (no subtitle): tighter header so the recommendations table gains viewport height.
+    local storageHeaderH = 30
     local storageBarW = 22
-    local rowH = 32
+    local rowH = 34
     -- Storage row data before the panel shell so overflow math matches the deferred row paint pass.
     local storageRows = {}
     if recEnabled then
@@ -3669,14 +3955,20 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         local storageTitle = FontManager:CreateFontString(storagePanel, GFR("gearStorageCardTitle"), "OVERLAY")
         storageTitle:SetPoint("TOPLEFT", 12, -8)
         storageTitle:SetPoint("TOPRIGHT", -12, -8)
+        storageTitle:SetHeight(14)
+        storageTitle:SetJustifyH("LEFT")
+        storageTitle:SetJustifyV("TOP")
+        storageTitle:SetWordWrap(true)
+        if storageTitle.SetMaxLines then storageTitle:SetMaxLines(2) end
         storageTitle:SetText("|cff" .. format("%02x%02x%02x", math.floor(accent[1] * 255), math.floor(accent[2] * 255), math.floor(accent[3] * 255))
-            .. GetLocalizedText("GEAR_ITEM_UPGRADE_RECOMMENDATIONS_TITLE", "Item Upgrade Recommendations") .. "|r")
+            .. GetLocalizedText("GEAR_STORAGE_TITLE", "Gear Upgrade Recommendations") .. "|r")
 
         local viewportH = storagePanelH - storageHeaderH - storagePad - 10
         scroll = ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and ns.UI.Factory:CreateScrollFrame(storagePanel, "UIPanelScrollFrameTemplate", true)
         local sbCol
         -- Pre-compute overflow so we can decide whether to reserve space for the scrollbar column at all.
-        local rowsOverflow = (#storageRows * rowH) > viewportH
+        local storageHdrScroll = (#storageRows > 0) and GEAR_STORAGE_REC_TABLE_HDR or 0
+        local rowsOverflow = (#storageRows * rowH + storageHdrScroll) > viewportH
         if scroll then
             if scroll.SetFrameLevel and storagePanel.GetFrameLevel then
                 scroll:SetFrameLevel(storagePanel:GetFrameLevel() + 2)
@@ -3702,7 +3994,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                 or  math.max(120, storageW - storagePad * 2)
             storageContentW = contentW
             content:SetWidth(contentW)
-            content:SetHeight(math.max(#storageRows * rowH, viewportH))
+            content:SetHeight(math.max(#storageRows * rowH + storageHdrScroll, viewportH))
             scroll:SetScrollChild(content)
 
             if #storageRows == 0 then
@@ -3715,7 +4007,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                     empty:SetText(GetLocalizedText("GEAR_STORAGE_SCANNING", "Scanning storage for upgrades..."))
                     empty:SetTextColor(0.65, 0.68, 0.75)
                 else
-                    empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY_NO_BOE_WOE", "Can't find any BoE or WoE to upgrade on item slots."))
+                    empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY", "No transferable stash upgrade beats your equipped items for these slots."))
                     empty:SetTextColor(0.55, 0.55, 0.6)
                 end
             end
@@ -3737,6 +4029,9 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                     storageBarW = storageBarW,
                     rowH = rowH,
                 }
+                if storageScanPending then
+                    mfHost._gearStorageScanningShownAt = GetTime()
+                end
             end
         end
     end
@@ -3771,15 +4066,19 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             TryDismissGearContentVeil(mfDefer, genNow)
             if WarbandNexus:IsGearStorageRecommendationsEnabled() then
                 local scanPending = mfDefer._gearPendingStorageScan
-                if scanPending and scanPending.paintGen == genNow then
-                    scheduleGearStorageTryStartOnce(genNow)
-                elseif ns._gearStorageDeferAwaiting and ns._gearStorageDeferAwaitCanon
-                    and mfDefer._gearPopulateCanonKey == ns._gearStorageDeferAwaitCanon then
+                -- Kick yielded storage find whenever the tab asked for a scan (defer or pending),
+                -- even if `_gearPopulateCanonKey` briefly diverged from `deferAwaitCanon` (would orphan
+                -- "Scanning storage..." when TryStart returned early without starting `RunYield`).
+                local needKick = (scanPending and scanPending.paintGen == genNow)
+                    or (ns._gearStorageDeferAwaiting and ns._gearStorageDeferAwaitCanon ~= nil)
+                if needKick then
                     mfDefer._gearPendingStorageScan = {
-                        canon = ns._gearStorageDeferAwaitCanon,
+                        canon = ns._gearStorageDeferAwaitCanon or (scanPending and scanPending.canon),
                         paintGen = genNow,
                     }
                     scheduleGearStorageTryStartOnce(genNow)
+                    WarbandNexus:GearStoragePanelDebug(("finishGearDeferChain -> schedule TryStart gen=%s canon=%s"):format(
+                        tostring(genNow), tostring(mfDefer._gearPendingStorageScan and mfDefer._gearPendingStorageScan.canon)))
                 end
             else
                 ns._gearStorageDeferAwaiting = false
@@ -3900,7 +4199,8 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     cardH = CARD_PAD + 24 + panelH + CARD_PAD
     if recContent then
         local newViewportH = panelH - storageHeaderH - storagePad - 10
-        recContent:SetHeight(math.max(#storageRows * rowH, math.max(newViewportH, 40)))
+        local storageHdrScroll = (#storageRows > 0) and GEAR_STORAGE_REC_TABLE_HDR or 0
+        recContent:SetHeight(math.max(#storageRows * rowH + storageHdrScroll, math.max(newViewportH, 40)))
         if recScroll and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
             ns.UI.Factory:UpdateScrollBarVisibility(recScroll)
         end
@@ -3970,19 +4270,36 @@ end
 ---@param trustEquipSigWhenInvMiss boolean|nil When true, after a strict cache miss try canon+equipSig match (invEpoch must match unless ns._gearStorageAllowEquipSigInvBypass — set only for one post-yield redraw in DrawGearTab).
 ---@return boolean ok true when the scroll was repainted (caller skips full PopulateContent).
 function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, expectedDrawGen, trustEquipSigWhenInvMiss)
+    WarbandNexus:GearStoragePanelDebug(("Redraw ENTER want=%s gen=%s trustInvBypassPath=%s"):format(
+        tostring(expectedCanonKey), tostring(expectedDrawGen), tostring(trustEquipSigWhenInvMiss == true)))
     if not WarbandNexus:IsGearStorageRecommendationsEnabled() then
+        WarbandNexus:GearStoragePanelDebug("Redraw EXIT false (stash rec disabled)")
         return false
     end
     if not FontManager then
         FontManager = ns.FontManager
-        if not FontManager then return false end
+        if not FontManager then
+            WarbandNexus:GearStoragePanelDebug("Redraw EXIT false (no FontManager)")
+            return false
+        end
     end
     local mf = self.UI and self.UI.mainFrame
-    if not mf then return false end
-    if expectedDrawGen ~= (ns._gearTabDrawGen or 0) then return false end
+    if not mf then
+        WarbandNexus:GearStoragePanelDebug("Redraw EXIT false (no mainFrame)")
+        return false
+    end
+    if expectedDrawGen ~= (ns._gearTabDrawGen or 0) then
+        WarbandNexus:GearStoragePanelDebug(("Redraw EXIT false (stale drawGen exp=%s cur=%s)"):format(
+            tostring(expectedDrawGen), tostring(ns._gearTabDrawGen or 0)))
+        return false
+    end
 
     local host = mf._gearStorageRecHost
-    if not host or host.drawGen ~= expectedDrawGen then return false end
+    if not host or host.drawGen ~= expectedDrawGen then
+        WarbandNexus:GearStoragePanelDebug(("Redraw EXIT false (no _gearStorageRecHost or host.drawGen mismatch hostGen=%s expGen=%s)"):format(
+            tostring(host and host.drawGen), tostring(expectedDrawGen)))
+        return false
+    end
     local hostCanon = host.canonKey
     local wantCanon = expectedCanonKey
     local U = ns.Utilities
@@ -3990,16 +4307,26 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
         hostCanon = U:GetCanonicalCharacterKey(hostCanon) or hostCanon
         wantCanon = U:GetCanonicalCharacterKey(wantCanon) or wantCanon
     end
-    if hostCanon ~= wantCanon then return false end
+    if hostCanon ~= wantCanon then
+        WarbandNexus:GearStoragePanelDebug(("Redraw EXIT false (canon mismatch host=%s want=%s)"):format(tostring(hostCanon), tostring(wantCanon)))
+        return false
+    end
 
     local recContent = host.recContent
     local recScroll = host.recScroll
     local storagePanel = host.storagePanel
-    if not recContent or not recScroll or not storagePanel then return false end
-    if not recContent.GetParent or not recContent:GetParent() then return false end
+    if not recContent or not recScroll or not storagePanel then
+        WarbandNexus:GearStoragePanelDebug("Redraw EXIT false (missing recContent/recScroll/storagePanel)")
+        return false
+    end
+    if not recContent.GetParent or not recContent:GetParent() then
+        WarbandNexus:GearStoragePanelDebug("Redraw EXIT false (recContent has no parent)")
+        return false
+    end
 
     -- Yielded storage scan still pumping: keep the loading line; do not return false (avoids applyStorageScanUI Populate storm).
     if ns._gearStorageYieldCo and ns._gearStorageYieldFindCanon == expectedCanonKey then
+        WarbandNexus:GearStoragePanelDebug("Redraw -> scanning UI (yield in flight for this canon)")
         ShowGearStorageScanningInRecContent(recContent)
         return true
     end
@@ -4042,11 +4369,32 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
         -- Scan still running or queued: never block the frame with a second full FindGearStorageUpgrades.
         if ns._gearStorageDeferAwaiting or ns._gearStorageYieldCo then
             stStop("Gear_StorageRec_resolve")
+            WarbandNexus:GearStoragePanelDebug(("Redraw -> scanning UI (deferAwait=%s yieldCo=%s kickMayRun=%s)"):format(
+                tostring(ns._gearStorageDeferAwaiting == true),
+                tostring(ns._gearStorageYieldCo ~= nil),
+                tostring(ns._gearStorageDeferAwaiting and not ns._gearStorageYieldCo
+                    and ns._gearStorageDeferAwaitCanon == wantCanon)))
+            -- Defer is set but no coroutine is pumping (TryStart missed / populate-key race): kick once per draw gen.
+            if ns._gearStorageDeferAwaiting and not ns._gearStorageYieldCo
+                and ns._gearStorageDeferAwaitCanon == wantCanon and mf
+                and mf._gearStorageScanKickGen ~= expectedDrawGen then
+                mf._gearStorageScanKickGen = expectedDrawGen
+                mf._gearPendingStorageScan = mf._gearPendingStorageScan or {
+                    canon = wantCanon,
+                    paintGen = expectedDrawGen,
+                }
+                C_Timer.After(0, function()
+                    mf._gearStorageScanKickGen = nil
+                    if expectedDrawGen ~= (ns._gearTabDrawGen or 0) then return end
+                    TryStartPendingGearStorageScan(mf, expectedDrawGen)
+                end)
+            end
             ShowGearStorageScanningInRecContent(recContent)
             return true
         end
         -- Never run a full cross-character Find on the UI thread (~25-30ms per call). Schedule yielded scan.
         stStop("Gear_StorageRec_resolve")
+        WarbandNexus:GearStoragePanelDebug("Redraw -> schedule ScheduleGearStorageFindingsResolve (no cache yet, not defer-waiting)")
         ShowGearStorageScanningInRecContent(recContent)
         ns._gearStorageRecFindPending = ns._gearStorageRecFindPending or {}
         if not ns._gearStorageRecFindPending[expectedCanonKey] then
@@ -4062,17 +4410,31 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
                     TryDismissGearContentVeil(mf, expectedDrawGen)
                 end)
             end)
+        else
+            WarbandNexus:GearStoragePanelDebug(("Redraw -> ScheduleResolve already pending canon=%s"):format(tostring(expectedCanonKey)))
         end
         return true
         end
     end
     findings = findings or {}
     stStop("Gear_StorageRec_resolve")
+    do
+        local fs, fc = 0, 0
+        for _, list in pairs(findings) do
+            fs = fs + 1
+            if type(list) == "table" then
+                fc = fc + #list
+            end
+        end
+        WarbandNexus:GearStoragePanelDebug(("Redraw RESOLVED strictCached=%s findingsSlots=%d candidates=%d equipSigBypass=%s"):format(
+            tostring(cachedHit == true), fs, fc, tostring(ns._gearStorageAllowEquipSigInvBypass == true)))
+    end
 
     stStart("Gear_StorageRec_rows")
     local gearData = (self.GetEquippedGear and self:GetEquippedGear(expectedCanonKey)) or {}
     local rows = BuildStorageRecommendationRows(findings, gearData)
     stStop("Gear_StorageRec_rows")
+    WarbandNexus:GearStoragePanelDebug(("Redraw rowsBuilt=%d (BuildStorageRecommendationRows)"):format(#rows))
 
     local db = self.db and self.db.global
     local rawSel = selectedCharKey or GetSelectedCharKey()
@@ -4087,7 +4449,8 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
 
     local storagePanelH = (storagePanel.GetHeight and storagePanel:GetHeight()) or 0
     local viewportH = math.max(storagePanelH - storageHeaderH - storagePad - 10, 1)
-    local rowsOverflow = (#rows * rowH) > viewportH
+    local hdrExtra = (#rows > 0) and GEAR_STORAGE_REC_TABLE_HDR or 0
+    local rowsOverflow = (#rows * rowH + hdrExtra) > viewportH
 
     local contentW = rowsOverflow
         and math.max(120, storageW - storagePad * 2 - storageBarW)
@@ -4102,8 +4465,30 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
         recContent._gearRecForceNextPaint = nil
     end
     if host._lastGearRecPaintTok == paintTok and #rows > 0 then
+        WarbandNexus:GearStoragePanelDebug("Redraw EXIT true (dedupe: same paintTok, rows>0)")
         return true
     end
+
+    local scanShownAt = mf._gearStorageScanningShownAt
+    if scanShownAt then
+        local elapsed = GetTime() - scanShownAt
+        if elapsed < GEAR_STORAGE_SCANNING_MIN_DISPLAY_SEC then
+            if mf._gearStorageScanningMinPaintTimer and mf._gearStorageScanningMinPaintTimer.Cancel then
+                mf._gearStorageScanningMinPaintTimer:Cancel()
+            end
+            local wantK, wantG, wantT = expectedCanonKey, expectedDrawGen, trustEquipSigWhenInvMiss
+            local delay = GEAR_STORAGE_SCANNING_MIN_DISPLAY_SEC - elapsed
+            mf._gearStorageScanningMinPaintTimer = C_Timer.NewTimer(delay, function()
+                mf._gearStorageScanningMinPaintTimer = nil
+                if wantG ~= (ns._gearTabDrawGen or 0) then return end
+                if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
+                WarbandNexus:RedrawGearStorageRecommendationsOnly(wantK, wantG, wantT)
+            end)
+            WarbandNexus:GearStoragePanelDebug(("Redraw defer final paint %.3fs (min scanning display)"):format(delay))
+            return true
+        end
+    end
+    mf._gearStorageScanningShownAt = nil
 
     stStart("Gear_StorageRec_paint")
     recScroll:ClearAllPoints()
@@ -4123,7 +4508,7 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
     if #rows > 0 then
         recContent._gearRecHasHeader = true
         PaintGearStorageRecColumnHeader(recContent, contentW)
-        headerExtra = 22
+        headerExtra = GEAR_STORAGE_REC_TABLE_HDR
     else
         recContent._gearRecHasHeader = nil
     end
@@ -4135,8 +4520,9 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
         empty:SetAllPoints()
         empty:SetJustifyH("CENTER")
         empty:SetJustifyV("MIDDLE")
-        empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY_NO_BOE_WOE", "Can't find any BoE or WoE to upgrade on item slots."))
+        empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY", "No transferable stash upgrade beats your equipped items for these slots."))
         empty:SetTextColor(0.55, 0.55, 0.6)
+        WarbandNexus:GearStoragePanelDebug("Redraw painted EMPTY list (0 upgrade rows after filter)")
     elseif AcquireStorageRow then
         stStop("Gear_StorageRec_paint")
         local function onRowsPainted()
@@ -4170,6 +4556,7 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
             end
             onRowsPainted()
         end
+        WarbandNexus:GearStoragePanelDebug(("Redraw painted ROWS sync path count=%d"):format(#rows))
         return true
     end
 
@@ -4193,6 +4580,7 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
         mfSig._gearPopulateContentSig = self:GetGearPopulateSignature()
     end
     stStop("Gear_StorageRec_sig")
+    WarbandNexus:GearStoragePanelDebug(("Redraw DONE ok=true rows=%d emptyState=%s"):format(#rows, tostring(#rows == 0)))
     return true
 end
 
@@ -4284,9 +4672,10 @@ local function GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText
 
     local upShown = sb._gearUpgradeArrow and sb._gearUpgradeArrow:IsShown() == true
     local up = sb._gearUpgradeInfo and sb._gearUpgradeInfo[sb._slotID]
-    local expectUpgradeShown = GearUpgradeInfoHasPath(up)
-        or (GEAR_DEBUG_ALWAYS_SHOW_UPGRADE and slotData and slotData.itemLink and slotData.itemLink ~= ""
+    local hasPath = GearUpgradeInfoHasPath(up)
+    local expectUpgradeShown = (GEAR_DEBUG_ALWAYS_SHOW_UPGRADE and slotData and slotData.itemLink and slotData.itemLink ~= ""
             and not (issecretvalue and issecretvalue(slotData.itemLink)))
+        or (hasPath and canUpgrade == true)
     if expectUpgradeShown ~= upShown then return false end
 
     local aff = canUpgrade == true
@@ -4576,31 +4965,6 @@ function WarbandNexus:TryGearStorageRedrawOnly()
     return self:RedrawGearStorageRecommendationsOnly(canon, gen, true) == true
 end
 
---- Color character name in storage source line; warband stays plain.
-local function ColoredStorageSourceName(classFile, name)
-    if not name or name == "" then return name end
-    if issecretvalue and issecretvalue(name) then return "" end
-    return "|cff" .. GetClassHex(classFile) .. name .. "|r"
-end
-
-local function FormatStorageSourceDisplay(source, sourceClassFile, viewerClassFile)
-    if not source then return "" end
-    if issecretvalue and issecretvalue(source) then return "" end
-    if source == "Warband Bank" then
-        return source
-    end
-    if source == "Your Bag" or source == "Your Bank" then
-        return ColoredStorageSourceName(viewerClassFile, source)
-    end
-    local paren = source:find(" %(")
-    if paren and paren > 1 then
-        local namePart = source:sub(1, paren - 1)
-        local rest = source:sub(paren)
-        return ColoredStorageSourceName(sourceClassFile, namePart) .. rest
-    end
-    return ColoredStorageSourceName(sourceClassFile, source)
-end
-
 -- ============================================================================
 -- CHARACTER SELECTOR  (dropdown button)
 -- ============================================================================
@@ -4878,9 +5242,6 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             bg:SetScript("OnClick", function()
                 menu:Hide()
                 bg:Hide()
-                if WarbandNexus and WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "gear", skipCooldown = true })
-                end
             end)
             gearCharDropdownBg = bg
         end
@@ -4972,6 +5333,10 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
                 SetLabelToChar(cKey)
                 menu:Hide()
                 bg:Hide()
+                local mfInst = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                if mfInst then
+                    mfInst._gearCharUpdSuppressUntil = GetTime() + 0.45
+                end
                 if WarbandNexus and WarbandNexus.SendMessage then
                     WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, {
                         tab = "gear",
@@ -5294,6 +5659,21 @@ end
 -- MAIN DRAW FUNCTION
 -- ============================================================================
 
+--- Phase timings for first-open / roster freezes: requires WN Trace visible or debug+verbose (ns.IsTabPerfMonitorEnabled).
+local function ShouldLogGearOpenPhases()
+    local P = ns.Profiler
+    if P and P.IsUserTraceWindowShown and P:IsUserTraceWindowShown() then return true end
+    if ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled() then return true end
+    return false
+end
+
+local function AppendGearOpenTrace(msg)
+    local P = ns.Profiler
+    if P and P.AppendUserTraceLine then
+        P:AppendUserTraceLine(msg)
+    end
+end
+
 function WarbandNexus:DrawGearTab(parent)
     -- Lazy-load FontManager if needed
     if not FontManager then
@@ -5356,6 +5736,11 @@ function WarbandNexus:DrawGearTab(parent)
     if mfGear then
         mfGear._gearPendingStorageScan = nil
         mfGear._gearStorageTryStartScheduledFor = nil
+        if mfGear._gearStorageScanningMinPaintTimer and mfGear._gearStorageScanningMinPaintTimer.Cancel then
+            mfGear._gearStorageScanningMinPaintTimer:Cancel()
+        end
+        mfGear._gearStorageScanningMinPaintTimer = nil
+        mfGear._gearStorageScanningShownAt = nil
     end
     ns._gearStorageDeferAwaiting = false
     ns._gearStorageDeferAwaitCanon = nil
@@ -5367,6 +5752,27 @@ function WarbandNexus:DrawGearTab(parent)
     end
     if mfGear then
         mfGear._gearPopulateCanonKey = canonicalKey
+        local prevView = mfGear._wnGearTraceLastCanon
+        mfGear._wnGearTraceLastCanon = canonicalKey
+        if prevView and prevView ~= canonicalKey then
+            local P = ns.Profiler
+            if P and P.AppendUserTraceLine then
+                P:AppendUserTraceLine(string.format(
+                    "[GearChar] roster view %s -> %s | drawGen=%s",
+                    tostring(prevView),
+                    tostring(canonicalKey),
+                    tostring(gearPaintGen)))
+            end
+        end
+    end
+
+    local gearOpenLog = ShouldLogGearOpenPhases()
+    local gearOpenAllT0 = gearOpenLog and debugprofilestop() or nil
+    if gearOpenLog then
+        AppendGearOpenTrace(string.format(
+            "[WN Perf][GearOpen] begin gen=%s canon=%s",
+            tostring(gearPaintGen),
+            tostring(canonicalKey)))
     end
 
     local Pgear = ns.Profiler
@@ -5425,6 +5831,26 @@ function WarbandNexus:DrawGearTab(parent)
     --- Scroll-body paint (data + paperdoll). When splitPaperDollToNextTick, DB reads run now, card draw next tick.
     local function paintGearScrollBody(splitPaperDollToNextTick)
     local yOffset = -TOP_MARGIN
+    if gearOpenAllT0 then
+        AppendGearOpenTrace(string.format(
+            "[WN Perf][GearOpen] gen=%s enter scroll paint wall=%.2fms",
+            tostring(gearPaintGen),
+            debugprofilestop() - gearOpenAllT0))
+    end
+    local goT0 = gearOpenLog and debugprofilestop() or nil
+    local goMark = goT0
+    local function gearOpenStamp(phase)
+        if not goT0 then return end
+        local now = debugprofilestop()
+        AppendGearOpenTrace(string.format(
+            "[WN Perf][GearOpen] gen=%s | %s +%.2fms (body.cum %.2fms) split=%s",
+            tostring(gearPaintGen),
+            phase,
+            now - goMark,
+            now - goT0,
+            tostring(splitPaperDollToNextTick == true)))
+        goMark = now
+    end
     if mfGear and not splitPaperDollToNextTick then
         mfGear._gearDeferChainActive = false
     end
@@ -5447,9 +5873,13 @@ function WarbandNexus:DrawGearTab(parent)
         end
     end
 
+    gearOpenStamp("after_getEquipped+scanIfNeeded")
+
     pGearSliceStart("Gear_data_upgradeInfo")
     local upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(canonicalKey)) or {}
     pGearSliceStop("Gear_data_upgradeInfo")
+
+    gearOpenStamp("after_upgradeInfo")
 
     -- Fetch currencies once; reuse for both affordability map and display panel
     pGearSliceStart("Gear_data_currencies")
@@ -5464,6 +5894,8 @@ function WarbandNexus:DrawGearTab(parent)
         end
     end
     pGearSliceStop("Gear_data_currencies")
+
+    gearOpenStamp("after_currencies")
 
     -- Storage scan (optional): skipped when recommendations panel is disabled.
     pGearSliceStart("Gear_data_storageGate")
@@ -5505,24 +5937,63 @@ function WarbandNexus:DrawGearTab(parent)
     end
 
     pGearSliceStop("Gear_data_storageGate")
+    if ns.WN_GEAR_STORAGE_PANEL_DEBUG and WarbandNexus:IsGearStorageRecommendationsEnabled() then
+        local fs, fc = 0, 0
+        for _, list in pairs(storageFindings) do
+            fs = fs + 1
+            if type(list) == "table" then
+                fc = fc + #list
+            end
+        end
+        local strictHit = false
+        if self.GetGearStorageFindingsIfCached then
+            local _, hit = self:GetGearStorageFindingsIfCached(canonicalKey)
+            strictHit = (hit == true)
+        end
+        WarbandNexus:GearStoragePanelDebug(("DrawGear STASH GATE canon=%s strictCacheHit=%s scanPending=%s initialSlots=%d initialCandidates=%d paintGen=%s"):format(
+            tostring(canonicalKey), tostring(strictHit), tostring(storageScanPending), fs, fc, tostring(gearPaintGen)))
+    end
     pGearSliceStop("Gear_dataSync")
 
+    gearOpenStamp("after_dataSync+storageGate")
+
     local function finishPaperDollAndSig()
+        local tBlock = gearOpenLog and debugprofilestop() or nil
         pGearSliceStart("Gear_paperDollDraw")
+        local tCard = gearOpenLog and debugprofilestop() or nil
         yOffset = DrawPaperDollCard(
             parent, yOffset, charData, gearData, upgradeInfo, canonicalKey, currencyAmounts,
             canonicalKey == currentKey, currencies, storageFindings, storageScanPending
         )
+        if gearOpenLog and tCard then
+            AppendGearOpenTrace(string.format(
+                "[WN Perf][GearOpen] gen=%s DrawPaperDollCard %.2fms",
+                tostring(gearPaintGen),
+                debugprofilestop() - tCard))
+        end
         pGearSliceStop("Gear_paperDollDraw")
         local outH = math.abs(yOffset) + TOP_MARGIN
         local mfOut = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         pGearSliceStart("Gear_populateSig")
+        local tSig = gearOpenLog and debugprofilestop() or nil
         if mfOut and WarbandNexus.GetGearPopulateSignatureFromDrawCaches then
             mfOut._gearPopulateContentSig = WarbandNexus:GetGearPopulateSignatureFromDrawCaches(gearData, currencies, upgradeInfo)
         elseif mfOut and WarbandNexus.GetGearPopulateSignature then
             mfOut._gearPopulateContentSig = WarbandNexus:GetGearPopulateSignature()
         end
+        if gearOpenLog and tSig then
+            AppendGearOpenTrace(string.format(
+                "[WN Perf][GearOpen] gen=%s populateSig %.2fms",
+                tostring(gearPaintGen),
+                debugprofilestop() - tSig))
+        end
         pGearSliceStop("Gear_populateSig")
+        if gearOpenLog and tBlock then
+            AppendGearOpenTrace(string.format(
+                "[WN Perf][GearOpen] gen=%s finishPaperDollAndSig %.2fms",
+                tostring(gearPaintGen),
+                debugprofilestop() - tBlock))
+        end
         return outH
     end
 
@@ -5546,11 +6017,24 @@ function WarbandNexus:DrawGearTab(parent)
                 local viewportH = GearResultsViewportHeight(mfGear)
                 sc:SetHeight(math.max(outH + pad, viewportH))
             end
+            if gearOpenAllT0 then
+                AppendGearOpenTrace(string.format(
+                    "[WN Perf][GearOpen] gen=%s TOTAL splitPaperDoll wall %.2fms",
+                    tostring(gearPaintGen),
+                    debugprofilestop() - gearOpenAllT0))
+            end
         end)
         return GearResultsViewportHeight(mfGear)
     end
 
-    return finishPaperDollAndSig()
+    local outSync = finishPaperDollAndSig()
+    if gearOpenAllT0 then
+        AppendGearOpenTrace(string.format(
+            "[WN Perf][GearOpen] gen=%s TOTAL DrawGearTab wall %.2fms",
+            tostring(gearPaintGen),
+            debugprofilestop() - gearOpenAllT0))
+    end
+    return outSync
   end
 
     if deferScrollPaint and mfGear then
@@ -5566,6 +6050,12 @@ function WarbandNexus:DrawGearTab(parent)
                 return
             end
             paintGearScrollBody(true)
+            if gearOpenAllT0 then
+                AppendGearOpenTrace(string.format(
+                    "[WN Perf][GearOpen] gen=%s TOTAL deferScrollPaint wall %.2fms",
+                    tostring(gearPaintGen),
+                    debugprofilestop() - gearOpenAllT0))
+            end
         end)
         local scroll = mfGear.scroll
         local viewportH = scroll and scroll:GetHeight() or 0
@@ -5575,6 +6065,12 @@ function WarbandNexus:DrawGearTab(parent)
             if fhBot and sb and fhBot > sb then
                 viewportH = fhBot - sb
             end
+        end
+        if gearOpenAllT0 then
+            AppendGearOpenTrace(string.format(
+                "[WN Perf][GearOpen] gen=%s deferScrollPaint first return wall %.2fms (body paints next tick)",
+                tostring(gearPaintGen),
+                debugprofilestop() - gearOpenAllT0))
         end
         return math.max(viewportH, 480)
     end

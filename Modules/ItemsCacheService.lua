@@ -298,7 +298,10 @@ local function ScheduleMetadataRefresh()
         local synced = SyncDecompressedCacheWithMetadata()
         -- Only notify UI if items were actually updated (prevents unnecessary redraws)
         if synced > 0 then
-            BumpGearStorageScanGeneration()
+            -- Do NOT bump `ns._gearStorageInvGen` here: that invalidates Gear stash cache on every
+            -- metadata batch and causes repeated full FindGearStorageUpgrades for the same character
+            -- (visible as triple "Scan ... Reject/add" lines + frame spikes). Stash invalidation is
+            -- driven from UI.lua on ITEM_METADATA_READY / GET_ITEM_INFO via InvalidateGearStorageFindingsCacheForCanon.
             WarbandNexus:SendMessage(Constants.EVENTS.ITEM_METADATA_READY)
         end
     end)
@@ -398,6 +401,52 @@ local function ResolveItemMetadata(itemID)
     end
     
     return metadata
+end
+
+--[[
+    Session cold-cache hint: prime RAM metadata for equipped items only (no GearService tooltip upgrade scan).
+    PLAYER_ENTERING_WORLD (login/reload) schedules via InitializationService — ns.GEAR_SLOTS exists at runtime (GearService loads later in TOC but before timers fire).
+]]
+function WarbandNexus:PrefetchSessionEquippedItemMetadata()
+    local mods = self.db and self.db.profile and self.db.profile.modulesEnabled
+    if mods then
+        if mods.items == false and mods.gear == false and mods.storage == false then
+            return
+        end
+    end
+
+    if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+
+    local gearSlots = ns.GEAR_SLOTS
+    if not gearSlots then return end
+
+    for si = 1, #gearSlots do
+        local slotDef = gearSlots[si]
+        local slotID = slotDef and slotDef.id
+        if slotID then
+            local itemLink = GetInventoryItemLink("player", slotID)
+            if itemLink and issecretvalue and issecretvalue(itemLink) then
+                itemLink = nil
+            end
+            if itemLink then
+                local itemID = nil
+                pcall(function()
+                    if C_Item and C_Item.GetItemInfoInstant then
+                        itemID = C_Item.GetItemInfoInstant(itemLink)
+                    end
+                end)
+                if not itemID and type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)) then
+                    local idFromLink = itemLink:match("item:(%d+)")
+                    itemID = idFromLink and tonumber(idFromLink) or nil
+                end
+                if itemID and itemID ~= 0 then
+                    ResolveItemMetadata(itemID)
+                end
+            end
+        end
+    end
 end
 
 ---Hydrate a lean item (from SV) with on-demand metadata (value copy, not reference).

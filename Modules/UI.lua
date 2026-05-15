@@ -31,6 +31,8 @@ local function IsTabPerfMonitorEnabled()
     return p and ProfileFlagOn(p.debugMode) and ProfileFlagOn(p.debugVerbose)
 end
 
+ns.IsTabPerfMonitorEnabled = IsTabPerfMonitorEnabled
+
 -- Lazy-load FontManager (prevent race conditions)
 local function GetFontManager()
     if not FontManager then
@@ -1807,6 +1809,19 @@ function WarbandNexus:CreateMainWindow()
         end
         local canon = f._gearPopulateCanonKey
         if not canon or not WarbandNexus.InvalidateGearStorageFindingsCacheForCanon then return end
+        if WarbandNexus.ShouldSkipGearStorageNarrowInvalidateForRapidRescan
+            and WarbandNexus:ShouldSkipGearStorageNarrowInvalidateForRapidRescan(canon) then
+            local gen = ns._gearTabDrawGen or 0
+            if WarbandNexus.RedrawGearStorageRecommendationsOnly then
+                ns._gearStorageAllowEquipSigInvBypass = true
+                WarbandNexus:RedrawGearStorageRecommendationsOnly(canon, gen, true)
+                ns._gearStorageAllowEquipSigInvBypass = false
+            end
+            if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
+                WarbandNexus:TryRefreshAllGearEquipSlotIcons()
+            end
+            return
+        end
         WarbandNexus:InvalidateGearStorageFindingsCacheForCanon(canon)
         local gen = ns._gearTabDrawGen or 0
         if WarbandNexus.IsGearStorageScanInFlightForCanon
@@ -1991,6 +2006,9 @@ function WarbandNexus:CreateMainWindow()
             if payload and payload.dataType == "itemLevel" and payload.charKey
                 and WarbandNexus.TryRefreshGearTabItemLevelOnly
                 and WarbandNexus:TryRefreshGearTabItemLevelOnly(payload.charKey) then
+                return
+            end
+            if f._gearCharUpdSuppressUntil and GetTime() < f._gearCharUpdSuppressUntil then
                 return
             end
             SchedulePopulateContent()
@@ -2368,14 +2386,12 @@ function WarbandNexus:CreateMainWindow()
                 WarbandNexus:TryRefreshAllGearEquipSlotIcons()
             end
             if WarbandNexus.IsGearStorageRecommendationsEnabled
-                and WarbandNexus:IsGearStorageRecommendationsEnabled()
-                and WarbandNexus.TryGearStorageRedrawOnly
-                and WarbandNexus:TryGearStorageRedrawOnly() then
-                return
-            end
-            if WarbandNexus.IsGearStorageRecommendationsEnabled
                 and WarbandNexus:IsGearStorageRecommendationsEnabled() then
-                ThrottledScheduleGearAsyncRepaint()
+                -- Do not call TryGearStorageRedrawOnly first: a strict cache hit would skip the
+                -- Invalidate + narrow refresh pipeline while SV items just gained resolved ilvl data.
+                -- ItemsCacheService no longer bumps `_gearStorageInvGen` per metadata batch; this path
+                -- soft-invalidates stash findings and coalesces a single ScheduleResolve (debounced).
+                ScheduleGearTabInventoryNarrowRefresh()
             end
         end
     end)
@@ -2658,6 +2674,19 @@ local function PopulateContentBody(self)
 
     mainFrame._prevPopulatedTab = mainFrame.currentTab
 
+    -- Gear prefix timing: anchor after gear sig gate so we do not attribute Pop_clearVLM / Pop_gearSigCompute
+    -- to "before DrawGearTab". Uses debugprofilestop deltas only (no debugprofilestart — avoids resetting the
+    -- global profile clock while Profiler slices run). Same-tab roster changes typically hit full teardown here;
+    -- tab-switch path often sets _contentPreCleared and skips subtree release (lighter first paint).
+    local gearPopulatePrefixT0
+    do
+        local P = ns.Profiler
+        if mainFrame.currentTab == "gear" and P and P.AppendUserTraceLine
+            and ((P.IsUserTraceWindowShown and P:IsUserTraceWindowShown()) or IsTabPerfMonitorEnabled()) then
+            gearPopulatePrefixT0 = debugprofilestop()
+        end
+    end
+
     _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_teardownUI")
     -- Clear fixed header area and reset to minimal height
     local fixedHeader = mainFrame.fixedHeader
@@ -2802,8 +2831,22 @@ local function PopulateContentBody(self)
             height = self:DrawProfessionsTab(scrollChild)
         end
     elseif tab == "gear" then
-        mainFrame._wnGearPaintShowVeil = isTabSwitch
+        -- Full-tab loading veil removed: recommendations panel shows its own "Scanning..." state; smoother tab open.
+        mainFrame._wnGearPaintShowVeil = false
+        local P = ns.Profiler
+        if gearPopulatePrefixT0 and P and P.AppendUserTraceLine then
+            P:AppendUserTraceLine(string.format(
+                "[WN Perf][GearOpen] PopulateContent teardown+hooks before DrawGearTab %.2fms (after gearSig gate; excl. Pop_clearVLM)",
+                debugprofilestop() - gearPopulatePrefixT0))
+        end
+        local tPop = (P and ((P.IsUserTraceWindowShown and P:IsUserTraceWindowShown())
+            or (ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled()))) and debugprofilestop() or nil
         height = self:DrawGearTab(scrollChild)
+        if tPop and P and P.AppendUserTraceLine then
+            P:AppendUserTraceLine(string.format(
+                "[WN Perf][GearOpen] PopulateContent DrawGearTab call %.2fms (excludes pool/release before Pop_drawTab)",
+                debugprofilestop() - tPop))
+        end
     elseif tab == "collections" then
         height = self:DrawCollectionsTab(scrollChild)
     elseif tab == "plans" then
@@ -2812,12 +2855,19 @@ local function PopulateContentBody(self)
         height = self:DrawCharacterList(scrollChild)
     end
     _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_drawTab")
+    -- GetTime() has limited resolution: sub-ms DrawTab often logs as 0.0ms (noise). Only trace meaningful wall time.
+    local TRACE_DRAW_TAB_MIN_MS = 3
     if drawPerfT0 then
         local ms = (GetTime() - drawPerfT0) * 1000
-        if WarbandNexus.Print then
-            WarbandNexus:Print(format("|cff9e9e9e[WN Perf] DrawTab %s %.1fms|r", tab, ms))
-        else
-            DebugPrint(format("[WN Perf] DrawTab %s %.1fms", tab, ms))
+        if ms >= TRACE_DRAW_TAB_MIN_MS then
+            local P = ns.Profiler
+            if P and P.AppendUserTraceLine then
+                P:AppendUserTraceLine(format("[WN Perf] DrawTab %s %.1fms", tab, ms))
+            elseif WarbandNexus.Print then
+                WarbandNexus:Print(format("|cff9e9e9e[WN Perf] DrawTab %s %.1fms|r", tab, ms))
+            else
+                DebugPrint(format("[WN Perf] DrawTab %s %.1fms", tab, ms))
+            end
         end
     end
     scrollChild._preparedByPopulate = nil
@@ -2928,8 +2978,10 @@ local function PopulateContentBody(self)
                 msPopulate,
                 perf.msClickToPoolEnd + msPopulate
             )
-            -- Prefer addon chat pipeline (same as /wn messages); DebugPrint uses raw print and can be easy to miss.
-            if WarbandNexus.Print then
+            local P = ns.Profiler
+            if P and P.AppendUserTraceLine then
+                P:AppendUserTraceLine(msg)
+            elseif WarbandNexus.Print then
                 WarbandNexus:Print("|cff9e9e9e" .. msg .. "|r")
             else
                 DebugPrint(msg)

@@ -39,7 +39,7 @@
         /wn profiler live     - Toggle live output (print each Start/Stop)
         /wn profiler dev      - Toggle profiler dev mode (dev HUD + dock/position persistence)
         /wn profiler window   - Toggle dev summary window (requires dev mode)
-        /wn profiler trace    - Toggle WN_TRACE copy buffer (requires measuring ON)
+        /wn profiler trace    - Toggle unified trace log window (perf WN_TRACE_EVT + /wn debug lines; measuring optional)
         /wn profiler dock     - Toggle dock-left layout for dev window
         /wn profiler gearonly on|off - Record only Gear-related slices (UI/Pop_* only on Gear tab populate)
         /wn profiler events on|off [minMs] - Log slow event handlers to WN_TRACE (WN_TRACE_EVT; needs measuring ON)
@@ -229,8 +229,10 @@ local PREFIX = C_ACCENT .. "[WN Profiler]" .. C_R .. " "
 local TRACE_LOG_MAX = 2000
 local TRACE_EDIT_BODY_HEIGHT = 12000
 
-function Profiler:_AppendPerfTraceLine(plainLine)
-    if not self.enabled or not plainLine then return end
+--- Ring buffer append for the trace EditBox (plain text, no |c stripping).
+---@param plainLine string
+function Profiler:_RingTraceAppend(plainLine)
+    if not plainLine then return end
     if not self._traceLines then
         self._traceLines = {}
     end
@@ -241,6 +243,17 @@ function Profiler:_AppendPerfTraceLine(plainLine)
     if self._traceWindow and self._traceWindow:IsShown() then
         self:_ScheduleTraceEditSync()
     end
+end
+
+--- Addon debug / Gear char-flow lines (do not require profiling measuring ON).
+---@param plainLine string
+function Profiler:AppendUserTraceLine(plainLine)
+    self:_RingTraceAppend(plainLine)
+end
+
+function Profiler:_AppendPerfTraceLine(plainLine)
+    if not self.enabled or not plainLine then return end
+    self:_RingTraceAppend(plainLine)
 end
 
 function Profiler:_ScheduleTraceEditSync()
@@ -269,7 +282,8 @@ function Profiler:_SyncTraceEditBoxText()
         if #lines > 0 then
             text = table.concat(lines, "\n")
         else
-            text = "(No WN_TRACE lines yet. With measuring ON, switch tabs or open Gear; lines fill here and in chat when this window is closed.)"
+            text = "(No trace lines yet. Open with |cff00ccff/wn profiler trace|r — "
+                .. "|cff00ccff/wn debug|r lines go here (not chat). With |cff00ccff/wn profiler on|r, WN_TRACE_EVT / slice timings append too.)"
         end
         eb:SetText(text)
         local sw = scroll:GetWidth()
@@ -293,6 +307,11 @@ function Profiler:_SyncTraceEditBoxText()
     if not ok then
         print(PREFIX .. C_BAD .. "Trace UI sync failed: " .. tostring(err) .. C_R)
     end
+end
+
+--- True when the unified trace log window is visible (used for Gear-tab phase timings without /wn profiler on).
+function Profiler:IsUserTraceWindowShown()
+    return self._traceWindow ~= nil and self._traceWindow.IsShown and self._traceWindow:IsShown() == true
 end
 
 function Profiler:EnsureTraceWindow()
@@ -325,11 +344,11 @@ function Profiler:EnsureTraceWindow()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", 0, -10)
-    title:SetText("|cff9370DBWN Perf trace|r")
+    title:SetText("|cff9370DBWN Trace log|r")
 
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("TOP", 0, -30)
-    hint:SetText("|cff808080Plain |cff00ccffWN_TRACE|cff808080 lines while measuring is ON. Select all, then Ctrl+C.|r")
+    hint:SetText("|cff808080Debug lines always; open Trace before the Gear tab for [WN Perf][GearOpen] phase ms (or debug+verbose). Select all, Ctrl+C.|r")
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", -4, -4)
@@ -397,10 +416,6 @@ function Profiler:EnsureTraceWindow()
 end
 
 function Profiler:ToggleTraceWindow()
-    if not self.enabled then
-        print(PREFIX .. C_WARN .. "Enable measuring first: |cff00ccff/wn profiler on|r" .. C_R)
-        return
-    end
     self:EnsureTraceWindow()
     local w = self._traceWindow
     if not w then return end
@@ -415,7 +430,10 @@ function Profiler:ToggleTraceWindow()
                 Profiler:_SyncTraceEditBoxText()
             end
         end)
-        print(PREFIX .. C_GOOD .. "Trace log window shown (plain text)." .. C_R)
+        if not self.enabled then
+            print(PREFIX .. C_WARN .. "Profiling is OFF — only |cff00ccff/wn debug|r (and similar) lines appear until |cff00ccff/wn profiler on|r." .. C_R)
+        end
+        print(PREFIX .. C_GOOD .. "Trace log window shown." .. C_R)
     end
 end
 
@@ -545,10 +563,6 @@ function Profiler:EnsureDevWindow()
     traceBtn:SetPoint("TOPRIGHT", refreshBtn, "TOPLEFT", -6, 0)
     traceBtn:SetText("Trace log")
     traceBtn:SetScript("OnClick", function()
-        if not Profiler.enabled then
-            print(PREFIX .. C_WARN .. "Turn measuring on: |cff00ccff/wn profiler on|r" .. C_R)
-            return
-        end
         Profiler:EnsureTraceWindow()
         local tw = Profiler._traceWindow
         if not tw then return end
@@ -1240,7 +1254,7 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
         print("  " .. C_LABEL .. "/wn profiler status" .. C_R .. "    Show profiler state")
         print("  " .. C_LABEL .. "/wn profiler dev" .. C_R .. "       Toggle dev mode (HUD + layout save)")
         print("  " .. C_LABEL .. "/wn profiler window" .. C_R .. "  Toggle dev summary window")
-        print("  " .. C_LABEL .. "/wn profiler trace" .. C_R .. "   Toggle WN_TRACE copy window (needs measuring ON)")
+        print("  " .. C_LABEL .. "/wn profiler trace" .. C_R .. "   Toggle unified trace window (debug lines; perf lines when measuring ON)")
         print("  " .. C_LABEL .. "/wn profiler dock" .. C_R .. "    Toggle dock-left for dev window")
         print("  " .. C_LABEL .. "/wn profiler gearonly" .. C_R .. " on|off  Record only Gear-focused slices (reduces noise)")
         print("  " .. C_LABEL .. "/wn profiler events" .. C_R .. " on|off [minMs]  Log slow Blizzard handlers (WN_TRACE_EVT)")

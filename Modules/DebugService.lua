@@ -28,10 +28,12 @@ local IsDebugVerboseEnabled = ns.IsDebugVerboseEnabled or function() return fals
 local DEBUG_VERBOSE_PREFIXES = {
     ["[CurrencyCache]"] = true,
     ["[ReputationCache]"] = true,
+    ["[PvECache]"] = true,
     ["[WN BAG SCAN]"] = true,
     ["[Tooltip]"] = true,
     ["[Recharge Timer]"] = true,
     ["[Knowledge]"] = true,
+    ["TryCounter:"] = true,
 }
 
 --- Print debug message if debug mode is enabled in profile.
@@ -47,7 +49,13 @@ function DebugService:Debug(addon, message)
             break
         end
     end
-    addon:Print("|cff888888[DEBUG]|r " .. msg)
+    local line = "[DEBUG] " .. msg
+    local P = ns.Profiler
+    if P and P.AppendUserTraceLine then
+        P:AppendUserTraceLine(line)
+    elseif addon and addon.Print then
+        addon:Print("|cff888888" .. line .. "|r")
+    end
 end
 
 --============================================================================

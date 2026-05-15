@@ -19,7 +19,7 @@ local WarbandNexus = LibStub("AceAddon-3.0"):NewAddon(
 
 -- Store in namespace for module access
 ns.WarbandNexus = WarbandNexus
--- Dev / slash: `/run WarbandNexus:SetGearStorageTrace(true)` and other `_G.WarbandNexus` fallbacks (CharacterService, ChatIntegration, etc.).
+-- Dev / slash: `_G.WarbandNexus` fallbacks (CharacterService, ChatIntegration, etc.). Gear storage session trace: `/run WarbandNexus:SetGearStorageTrace(true)` -> `/wn profiler trace` buffer (not default chat).
 _G.WarbandNexus = WarbandNexus
 
 -- Localization
@@ -1378,6 +1378,11 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     -- Class-colored accent may need UnitClass("player") — refresh theme once world is ready (login/reload).
     if (isInitialLogin or isReloadingUi) and self.db and self.db.profile and self.db.profile.useClassColorAccent and ns.UI_RefreshColors then
         ns.UI_RefreshColors()
+    end
+
+    -- Cold-cache prefetch anchor (login/reload): equipped metadata prime + staged gear persist — see InitializationService:ScheduleColdCachePrefetchAfterWorldEnter.
+    if ns.InitializationService and ns.InitializationService.ScheduleColdCachePrefetchAfterWorldEnter then
+        ns.InitializationService:ScheduleColdCachePrefetchAfterWorldEnter(self, isInitialLogin, isReloadingUi)
     end
 
     -- GUILD TRACKING: Check for guild changes on login (T+0s, high priority)

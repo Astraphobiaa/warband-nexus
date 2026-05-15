@@ -5,6 +5,18 @@
 
 local ADDON_NAME, ns = ...
 
+local tconcat = table.concat
+
+--- Route debug text to Profiler trace buffer (not default chat).
+---@param line string
+local function EmitDebugTraceLine(line)
+    if not line or line == "" then return end
+    local P = ns.Profiler
+    if P and P.AppendUserTraceLine then
+        P:AppendUserTraceLine(line)
+    end
+end
+
 local function GetDebugProfile()
     local addon = _G.WarbandNexus
     if not addon or not addon.db or not addon.db.profile then
@@ -45,10 +57,16 @@ local function CreateDebugPrinter(prefix, options)
             if not IsDebugModeEnabled() then return end
         end
 
+        local n = select("#", ...)
+        local parts = {}
+        for i = 1, n do
+            parts[i] = tostring(select(i, ...))
+        end
+        local body = tconcat(parts, " ")
         if prefix ~= nil then
-            _G.print(prefix, ...)
+            EmitDebugTraceLine(tostring(prefix) .. " " .. body)
         else
-            _G.print(...)
+            EmitDebugTraceLine(body)
         end
     end
 end
@@ -58,14 +76,24 @@ end
 ---@param ... any Messages to print
 local function DebugPrint(...)
     if not IsDebugModeEnabled() then return end
-    _G.print(...)
+    local n = select("#", ...)
+    local parts = {}
+    for i = 1, n do
+        parts[i] = tostring(select(i, ...))
+    end
+    EmitDebugTraceLine(tconcat(parts, " "))
 end
 
 --- Print debug message (only if debugMode + debugVerbose enabled).
 ---@param ... any Messages to print
 local function DebugVerbosePrint(...)
     if not IsDebugVerboseEnabled() then return end
-    _G.print(...)
+    local n = select("#", ...)
+    local parts = {}
+    for i = 1, n do
+        parts[i] = tostring(select(i, ...))
+    end
+    EmitDebugTraceLine(tconcat(parts, " "))
 end
 
 -- Export to namespace

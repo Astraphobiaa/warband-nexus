@@ -15,6 +15,9 @@
       one tick (see Core.lua) so deflate/deserialize does not stack with migrations on ADDON_LOADED.
     - Core OnEnable: registers events, then InitializeAllModules (this file) which spreads cache/UI work
       across T+0.3s … T+8s (see stage comments below).
+    - PLAYER_ENTERING_WORLD payload (Warcraft Wiki): login, /reload, or instance zoning; Patch 8.0.1 adds
+      isInitialLogin and isReloadingUi (AceEvent: event, isInitialLogin, isReloadingUi). Cold prefetch runs only
+      when either flag is true (login/reload), not on zoning-only transitions.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -120,6 +123,58 @@ end
 
 -- Expose for Core.lua deferred inits (e.g. InitializePlanTracking, InitializeChatMessageService)
 InitializationService.SafeInit = SafeInit
+
+--- PLAYER_ENTERING_WORLD cold-cache anchor generation (login/reload). Cancels stale timer callbacks on repeat PEW.
+local coldPrefetchGeneration = 0
+
+--- Read-only token for staged cold-cache continuations (Gear warmup checks superseded PEW).
+function InitializationService:GetColdPrefetchGeneration()
+    return coldPrefetchGeneration
+end
+
+--[[
+    Deferred hints after world enter (login or /reload only — not instance zoning).
+    Uses SafeInit + bounded C_Timer.After; SOA: service-side prefetch only, SendMessage via existing metadata drain.
+
+    Ordering (login/reload):
+      1) T+3.5s: PrefetchSessionEquippedItemMetadata() — itemID metadata prime (ItemsCacheService).
+      2) T+4.0s chained: WarmGearUpgradeSnapshotForSession(coldGen) — bounded staged ScanEquippedGear work,
+         silent persist (no GEAR_UPDATED); aborts if PEW generation changes or another gear scan refreshes DB.
+
+    Extension points: staged bag hash warm, currency snapshot hints, etc.
+]]
+function InitializationService:ScheduleColdCachePrefetchAfterWorldEnter(addon, isInitialLogin, isReloadingUi)
+    if not addon then return end
+    if not isInitialLogin and not isReloadingUi then
+        return
+    end
+
+    coldPrefetchGeneration = coldPrefetchGeneration + 1
+    local gen = coldPrefetchGeneration
+
+    -- After P4 ItemsCache registration (T+3s) — metadata prime should not compete with first bag hooks.
+    local DELAY_SEC = 3.5
+
+    C_Timer.After(DELAY_SEC, function()
+        if gen ~= coldPrefetchGeneration then return end
+        SafeInit(function()
+            if gen ~= coldPrefetchGeneration then return end
+            if addon.PrefetchSessionEquippedItemMetadata then
+                addon:PrefetchSessionEquippedItemMetadata()
+            end
+            -- Second stage: staggered gear tooltip / persist prime (GearService); yields across C_Timer.After ticks.
+            C_Timer.After(0.5, function()
+                if gen ~= coldPrefetchGeneration then return end
+                SafeInit(function()
+                    if gen ~= coldPrefetchGeneration then return end
+                    if addon.WarmGearUpgradeSnapshotForSession then
+                        addon:WarmGearUpgradeSnapshotForSession(gen)
+                    end
+                end, "ColdCache:GearUpgradeWarm")
+            end)
+        end, "ColdCache:EquippedItemMetadata")
+    end)
+end
 
 --[[
     Initialize all addon modules in proper sequence

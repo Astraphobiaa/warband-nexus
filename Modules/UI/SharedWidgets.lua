@@ -6759,9 +6759,11 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         end)
     end
     
-    -- Debug log (only first call)
+    -- Debug log (only first call; verbose-only so normal debug mode stays readable)
     if not self._scrollLogged then
-        DebugPrint("|cff9370DB[WN Factory]|r CreateScrollFrame initialized with modern scroll bar")
+        if ns.DebugVerbosePrint then
+            ns.DebugVerbosePrint("|cff9370DB[WN Factory]|r CreateScrollFrame initialized with modern scroll bar")
+        end
         self._scrollLogged = true
     end
     
