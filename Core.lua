@@ -19,6 +19,8 @@ local WarbandNexus = LibStub("AceAddon-3.0"):NewAddon(
 
 -- Store in namespace for module access
 ns.WarbandNexus = WarbandNexus
+-- Dev / slash: `/run WarbandNexus:SetGearStorageTrace(true)` and other `_G.WarbandNexus` fallbacks (CharacterService, ChatIntegration, etc.).
+_G.WarbandNexus = WarbandNexus
 
 -- Localization
 -- Note: Language override is applied in OnInitialize (after DB loads)

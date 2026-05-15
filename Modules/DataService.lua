@@ -1337,12 +1337,12 @@ end
 function WarbandNexus:UpdateProfessionData()
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
     local success, err = pcall(function()
-        local key = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)
+        local key = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(self)
+        if not key and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+            key = ns.Utilities:GetCharacterStorageKey(self)
+        end
         if not key and ns.Utilities and ns.Utilities.GetCharacterKey then
             key = ns.Utilities:GetCharacterKey()
-        end
-        if not key and ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
-            key = ns.CharacterService:ResolveCharactersTableKey(self)
         end
         if not key or not self.db.global.characters or not self.db.global.characters[key] then return end
 

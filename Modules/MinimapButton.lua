@@ -62,7 +62,9 @@ function WarbandNexus:InitializeMinimapButton()
     
     local FormatGold = ns.UI_FormatGold
     local TOOLTIP_CHAR_LIMIT = 10
-    local curRaw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local curRaw = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and addon
+        and ns.CharacterService:ResolveSubsidiaryCharacterKey(addon, nil))
+        or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
     local curCanon = curRaw
     if curRaw and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
         curCanon = ns.Utilities:GetCanonicalCharacterKey(curRaw) or curRaw
@@ -265,6 +267,7 @@ function WarbandNexus:ShowMinimapMenu(anchorFrame)
                     self.db.profile.pveVaultTrackerMode = true
                     self.db.profile.lastTab = "pve"
                 end
+                ns._wnSessionLastTab = "pve"
 
                 if not self.mainFrame or not self.mainFrame:IsShown() then
                     self:ShowMainWindow()

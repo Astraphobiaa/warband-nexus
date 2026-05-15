@@ -173,6 +173,11 @@ local issecretvalue = issecretvalue  -- nil pre-12.0, function in 12.0+
 
 --- Canonical subsidiary key for db.global.statisticSnapshots[current] (matches MigrationService key moves).
 local function StatisticSnapshotStorageKey()
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey and WarbandNexus then
+        local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
+        if k then return k end
+    end
     local raw = Utilities and Utilities.GetCharacterKey and Utilities:GetCharacterKey()
     if not raw then return nil end
     if Utilities and Utilities.GetCanonicalCharacterKey then

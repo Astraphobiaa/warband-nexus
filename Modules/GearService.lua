@@ -30,6 +30,8 @@
     Soft invalidate (InvalidateGearStorageFindingsCacheForCanon) bumps ns._gearStorageFindingsDirtyToken;
     Find commit sets ns._gearStorageFindingsCleanToken so GearUI can coalesce duplicate FULLFIND in
     the same GetTime() tick when dirty==clean, equipSig matches cache, and ns._gearStorageSameFrameFullFind matches.
+    While ns._gearStorageYieldCo runs, invalidate/equip events defer to ns._gearStorageDeferInvalidateCanon /
+    ns._gearStorageDeferEquipRefreshCanon and flush via OnGearStorageYieldedScanComplete (no mid-scan dirty abort).
 
     0-crest (gold-only) detection: C_ItemUpgrade cost APIs only return real costs when the
     Item Upgrade NPC window is open. We detect gold-only upgrades offline via persisted
@@ -47,6 +49,132 @@ local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00BFFF[
     or ns.DebugPrint
     or function() end
 
+--- Session-only: `/run WarbandNexus:SetGearStorageTrace(true)` — storage cache hit/miss, yielded find lifecycle.
+--- Not persisted; default OFF to avoid chat spam.
+function WarbandNexus:SetGearStorageTrace(enabled)
+    if enabled then
+        ns.WN_GEAR_STORAGE_TRACE = true
+    else
+        ns.WN_GEAR_STORAGE_TRACE = nil
+    end
+    print("|cff88ddff[Warband Nexus]|r Gear storage trace: " .. (enabled and "ON" or "OFF"))
+end
+
+function WarbandNexus:GearStorageTrace(msg)
+    if not ns.WN_GEAR_STORAGE_TRACE then return end
+    print("|cff9fdfff[WN GearStorage]|r " .. tostring(msg))
+end
+
+--- Always visible (not gated by debugMode): coroutine / storage pipeline failures.
+---@param err any
+---@param context string|nil
+function WarbandNexus:ReportGearStorageError(err, context)
+    local ctx = (context and context ~= "") and context or "error"
+    local msg = "Gear storage " .. ctx .. ": " .. tostring(err)
+    print("|cffff4444[Warband Nexus]|r " .. msg)
+    if geterrorhandler then
+        geterrorhandler()(msg)
+    end
+    WarbandNexus:GearStorageTrace(msg)
+    if DebugPrint then
+        DebugPrint("|cffff4444[StorageUpgrade]|r " .. msg)
+    end
+end
+
+---@param canonKey string|nil
+---@return boolean
+function WarbandNexus:IsGearStorageScanInFlightForCanon(canonKey)
+    if not canonKey or not ns._gearStorageYieldCo then return false end
+    local flightCanon = ns._gearStorageYieldFindCanon
+    if not flightCanon then return true end
+    local U = ns.Utilities
+    if U and U.GetCanonicalCharacterKey then
+        canonKey = U:GetCanonicalCharacterKey(canonKey) or canonKey
+        flightCanon = U:GetCanonicalCharacterKey(flightCanon) or flightCanon
+    end
+    return flightCanon == canonKey
+end
+
+--- Equip-only: refresh cache equipSig; never invalidate mid-yielded-scan (avoids dirty mid-scan commit drop).
+---@param canonKey string|nil
+function WarbandNexus:NotifyGearStorageEquipChanged(canonKey)
+    if not canonKey then return end
+    if WarbandNexus.IsGearStorageRecommendationsEnabled
+        and not WarbandNexus:IsGearStorageRecommendationsEnabled() then
+        return
+    end
+    if self:IsGearStorageScanInFlightForCanon(canonKey) then
+        ns._gearStorageDeferEquipRefreshCanon = canonKey
+        WarbandNexus:GearStorageTrace("Equip refresh deferred (scan in flight) canon=" .. tostring(canonKey))
+        return
+    end
+    if self.RefreshGearStorageCacheEquipSigForCanon then
+        self:RefreshGearStorageCacheEquipSigForCanon(canonKey)
+    end
+end
+
+--- Bag / item-info invalidation: defer while yielded Find runs for the same character.
+---@param canonKey string|nil
+---@return string|nil "rescan" when a follow-up yielded find was scheduled; nil otherwise
+function WarbandNexus:ProcessDeferredGearStorageUpdates(canonKey)
+    if not canonKey then return nil end
+    local U = ns.Utilities
+    local function norm(k)
+        if U and U.GetCanonicalCharacterKey then
+            return U:GetCanonicalCharacterKey(k) or k
+        end
+        return k
+    end
+    local want = norm(canonKey)
+    local deferInv = ns._gearStorageDeferInvalidateCanon
+    local deferEquip = ns._gearStorageDeferEquipRefreshCanon
+    ns._gearStorageDeferInvalidateCanon = nil
+    ns._gearStorageDeferEquipRefreshCanon = nil
+    if deferInv and norm(deferInv) ~= want then
+        ns._gearStorageDeferInvalidateCanon = deferInv
+    end
+    if deferEquip and norm(deferEquip) ~= want then
+        ns._gearStorageDeferEquipRefreshCanon = deferEquip
+    end
+    if deferInv and norm(deferInv) == want then
+        self:InvalidateGearStorageFindingsCacheImmediate(want)
+        return "rescan"
+    end
+    if deferEquip and norm(deferEquip) == want then
+        if self.RefreshGearStorageCacheEquipSigForCanon then
+            self:RefreshGearStorageCacheEquipSigForCanon(want)
+        end
+        return "equip_redraw"
+    end
+    return nil
+end
+
+--- After yielded Find completes: apply deferred equip/inventory work, optionally chain one rescan.
+---@param canonKey string
+---@param paintGen number
+---@param afterFn function|nil
+function WarbandNexus:OnGearStorageYieldedScanComplete(canonKey, paintGen, afterFn)
+    local action = self:ProcessDeferredGearStorageUpdates(canonKey)
+    local function runTail()
+        if action == "equip_redraw" and self.RedrawGearStorageRecommendationsOnly then
+            if paintGen == (ns._gearTabDrawGen or 0)
+                and WarbandNexus.IsStillOnTab and WarbandNexus:IsStillOnTab("gear") then
+                ns._gearStorageAllowEquipSigInvBypass = true
+                self:RedrawGearStorageRecommendationsOnly(canonKey, paintGen, false)
+                ns._gearStorageAllowEquipSigInvBypass = false
+            end
+        end
+        if type(afterFn) == "function" then
+            afterFn()
+        end
+    end
+    if action == "rescan" and self.ScheduleGearStorageFindingsResolve then
+        self:ScheduleGearStorageFindingsResolve(canonKey, paintGen, runTail)
+    else
+        runTail()
+    end
+end
+
 local gearScanTimer = nil
 local currencyGearScanTimer = nil
 
@@ -54,6 +182,11 @@ local currencyGearScanTimer = nil
 local gearCraftedProbeCache = {}
 local gearCraftedProbeCacheSize = 0
 local GEAR_CRAFTED_PROBE_CACHE_CAP = 512
+
+-- Session-only: itemLink -> { hasStr, hasAgi, hasInt } or false (probed, no primary lines).
+local gearPrimaryStatProbeCache = {}
+local gearPrimaryStatProbeCacheSize = 0
+local GEAR_PRIMARY_STAT_PROBE_CACHE_CAP = 768
 
 local function CacheGearCraftedProbeResult(link, isCrafted)
     if not link or link == "" then return end
@@ -353,54 +486,125 @@ local function TableHasPrimaryStats(statTable)
     return hasStr, hasAgi, hasInt
 end
 
-local function SlotExpectsPrimaryStatForFilter(slotID)
-    if slotID == 13 or slotID == 14 then
-        return false
-    end
-    if slotID == 2 or slotID == 11 or slotID == 12 then
-        return false
-    end
-    if slotID == 15 then
-        return false
-    end
-    if slotID == 16 or slotID == 17 then
-        return true
-    end
-    return ARMOR_SLOT_IDS[slotID] == true
+--- Tooltip line mentions a localized primary stat (not Requires/Use meta).
+---@param lineText string
+---@param statLabel string
+---@return boolean
+local function TooltipLineMentionsPrimaryStat(lineText, statLabel)
+    if not lineText or statLabel == "" then return false end
+    if issecretvalue and issecretvalue(lineText) then return false end
+    if not lineText:find(statLabel, 1, true) then return false end
+    if lineText:find("Requires", 1, true) then return false end
+    if lineText:find("Durability", 1, true) then return false end
+    if lineText:find("Use:", 1, true) or lineText:find("Equip:", 1, true) then return false end
+    return true
 end
 
---- Match item primary stats (from GetItemStats) to expectedMainStat (from SPEC_MAIN_STAT + ResolveExpectedPrimaryStatFromCharacter).
+--- Fallback when C_Item.GetItemStats / GetItemStats has no primary keys (cold SV links).
+--- Wiki: https://warcraft.wiki.gg/wiki/API_C_TooltipInfo.GetHyperlink
+---@param itemLink string|nil
+---@param itemID number|nil
+---@return boolean hasStr
+---@return boolean hasAgi
+---@return boolean hasInt
+local function ProbeItemPrimaryStatsFromTooltip(itemLink, itemID)
+    if not C_TooltipInfo then return false, false, false end
+    local cacheKey = itemLink
+    if cacheKey and not (issecretvalue and issecretvalue(cacheKey)) then
+        local cached = gearPrimaryStatProbeCache[cacheKey]
+        if cached == false then
+            return false, false, false
+        end
+        if type(cached) == "table" then
+            return cached[1], cached[2], cached[3]
+        end
+    end
+
+    local tipData = nil
+    if itemLink and not (issecretvalue and issecretvalue(itemLink)) and C_TooltipInfo.GetHyperlink then
+        local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemLink)
+        if ok and data and data.lines then tipData = data end
+    end
+    if not tipData and itemID and C_TooltipInfo.GetItemByID then
+        local ok, data = pcall(C_TooltipInfo.GetItemByID, itemID)
+        if ok and data and data.lines then tipData = data end
+    end
+
+    local strName = SPELL_STAT1_NAME or "Strength"
+    local agiName = SPELL_STAT2_NAME or "Agility"
+    local intName = SPELL_STAT4_NAME or "Intellect"
+    local hasStr, hasAgi, hasInt = false, false, false
+
+    if tipData and tipData.lines then
+        for li = 1, #tipData.lines do
+            local lt = tipData.lines[li] and tipData.lines[li].leftText
+            if TooltipLineMentionsPrimaryStat(lt, strName) then hasStr = true end
+            if TooltipLineMentionsPrimaryStat(lt, agiName) then hasAgi = true end
+            if TooltipLineMentionsPrimaryStat(lt, intName) then hasInt = true end
+        end
+    end
+
+    if cacheKey and not (issecretvalue and issecretvalue(cacheKey)) then
+        if gearPrimaryStatProbeCache[cacheKey] == nil then
+            gearPrimaryStatProbeCacheSize = gearPrimaryStatProbeCacheSize + 1
+        end
+        if not hasStr and not hasAgi and not hasInt then
+            gearPrimaryStatProbeCache[cacheKey] = false
+        else
+            gearPrimaryStatProbeCache[cacheKey] = { hasStr, hasAgi, hasInt }
+        end
+        if gearPrimaryStatProbeCacheSize > GEAR_PRIMARY_STAT_PROBE_CACHE_CAP then
+            wipe(gearPrimaryStatProbeCache)
+            gearPrimaryStatProbeCacheSize = 0
+            if not hasStr and not hasAgi and not hasInt then
+                gearPrimaryStatProbeCache[cacheKey] = false
+                gearPrimaryStatProbeCacheSize = 1
+            else
+                gearPrimaryStatProbeCache[cacheKey] = { hasStr, hasAgi, hasInt }
+                gearPrimaryStatProbeCacheSize = 1
+            end
+        end
+    end
+
+    return hasStr, hasAgi, hasInt
+end
+
+--- C_Item.GetItemStats first; tooltip probe when stat table is missing or has no primary keys.
+---@param itemLink string|nil
+---@param itemID number|nil
+---@return boolean hasStr
+---@return boolean hasAgi
+---@return boolean hasInt
+local function ResolveItemPrimaryStatFlags(itemLink, itemID)
+    local statTable = GetItemStatTableForLink(itemLink)
+    if statTable then
+        local hasStr, hasAgi, hasInt = TableHasPrimaryStats(statTable)
+        if hasStr or hasAgi or hasInt then
+            return hasStr, hasAgi, hasInt
+        end
+    end
+    return ProbeItemPrimaryStatsFromTooltip(itemLink, itemID)
+end
+
+--- Match item primary stats to expectedMainStat for storage-upgrade filtering.
+--- Wiki: API_C_Item.GetItemStats, API_C_TooltipInfo.GetHyperlink (see WN-VERSION-wiki-browser.mdc).
 ---@param expectedMainStat string|nil "STR"|"AGI"|"INT"
----@param selectedIsLoggedInPlayer boolean|nil when false, trinket rows allow candidates if API table is client-skewed
-local function MatchGetItemStatsPrimariesToExpected(itemLink, expectedMainStat, slotID, selectedIsLoggedInPlayer)
+---@param selectedIsLoggedInPlayer boolean|nil
+---@param itemID number|nil optional for tooltip fallback
+local function MatchGetItemStatsPrimariesToExpected(itemLink, expectedMainStat, slotID, selectedIsLoggedInPlayer, itemID)
     if selectedIsLoggedInPlayer == nil then
         selectedIsLoggedInPlayer = true
     end
-    if not itemLink then return true end
-    local isTrinket = (slotID == 13 or slotID == 14)
+    if not itemLink and not itemID then return true end
 
-    -- GetItemStats / C_Item.GetItemStats often returns nil for hyperlinks restored from another
-    -- character's SavedVariables bag snapshot (not yet in this session's client cache) — even when
-    -- the selected character IS the logged-in player. Armor/weapon checks already ran in EvaluateItem.
-    local statTable = GetItemStatTableForLink(itemLink)
-    if not statTable then
-        return true
-    end
-
-    local hasStr, hasAgi, hasInt = TableHasPrimaryStats(statTable)
-
-    -- Item reports all three primaries → usable by every spec (tri-stat trinkets, etc.).
-    if hasStr and hasAgi and hasInt then
-        return true
-    end
-
-    -- C_Item.GetItemStats is *logged-in-player scoped*: for a Warbound-until-Equipped (WuE)
-    -- or other flexible-primary item, it returns only the active player's primary, not the
-    -- item's full primary set. Filtering by primary stat against an alt produces false
-    -- negatives (e.g. Karynna logged in → API returns Int → STR-spec Vhorzenn rejected).
-    -- When previewing an alt, defer to the armor/weapon class filter (already strict) and
-    -- skip the stat check entirely. The selected-as-logged-in path retains the strict check.
+    -- Offline roster: GetItemStats / tooltip can reflect the logged-in viewer, not the alt.
     if not selectedIsLoggedInPlayer then
+        return true
+    end
+
+    local hasStr, hasAgi, hasInt = ResolveItemPrimaryStatFlags(itemLink, itemID)
+
+    if hasStr and hasAgi and hasInt then
         return true
     end
 
@@ -408,13 +612,13 @@ local function MatchGetItemStatsPrimariesToExpected(itemLink, expectedMainStat, 
         return true
     end
 
+    if not expectedMainStat then
+        return true
+    end
+
     if expectedMainStat == "STR" then return hasStr end
     if expectedMainStat == "AGI" then return hasAgi end
     if expectedMainStat == "INT" then return hasInt end
-
-    if isTrinket then
-        return false
-    end
 
     return true
 end
@@ -811,6 +1015,42 @@ local function GetDB()
     return WarbandNexus.db.global.gearData
 end
 
+--- Same storage key as db.global.characters / GearUI GetSelectedCharKey (guid when available).
+---@return string|nil
+local function ResolveGearStorageKey()
+    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+        local k = ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)
+        if k and k ~= "" then return k end
+    end
+    local U = ns.Utilities
+    if U and U.GetCharacterStorageKey then
+        local k = U:GetCharacterStorageKey(WarbandNexus)
+        if k and k ~= "" then return k end
+    end
+    return U and U:GetCharacterKey()
+end
+
+--- Logged-in player's gearData bucket (canonical storage key).
+---@return string|nil
+function WarbandNexus:GetCurrentGearStorageKey()
+    return ResolveGearStorageKey()
+end
+
+--- Move pre-guid scans (Name-Realm) into the canonical bucket once.
+---@param db table gearData root
+---@param storageKey string
+local function MigrateLegacyGearDataKey(db, storageKey)
+    if not db or not storageKey then return end
+    local U = ns.Utilities
+    if not U or not U.GetCharacterKey then return end
+    local legacy = U:GetCharacterKey()
+    if not legacy or legacy == "" or legacy == storageKey or not db[legacy] then return end
+    if not db[storageKey] then
+        db[storageKey] = db[legacy]
+    end
+    db[legacy] = nil
+end
+
 -- ============================================================================
 -- ITEM LEVEL RESOLUTION
 -- ============================================================================
@@ -1040,23 +1280,29 @@ end
 
 --- Scan all equipped item slots for the current player and persist to DB.
 --- Called from SaveCurrentCharacterData and on PLAYER_EQUIPMENT_CHANGED.
-function WarbandNexus:ScanEquippedGear()
+---@param triggerSlotID number|nil PLAYER_EQUIPMENT_CHANGED slot (1-17); forwarded to UI for single-slot refresh.
+function WarbandNexus:ScanEquippedGear(triggerSlotID)
     local db = GetDB()
     if not db then return end
 
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+    local charKey = ResolveGearStorageKey()
     if not charKey then return end
+    MigrateLegacyGearDataKey(db, charKey)
 
     if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(self) then return end
 
     local slots = {}
     local existingData = db[charKey]
     local watermarks = (existingData and existingData.watermarks) or {}
+    local changedSlotIDs = {}
 
     for i = 1, #GEAR_SLOTS do
         local slotDef = GEAR_SLOTS[i]
         local slotID = slotDef.id
         local itemLink = GetInventoryItemLink("player", slotID)
+        if itemLink and (issecretvalue and issecretvalue(itemLink)) then
+            itemLink = nil
+        end
         if itemLink then
             local itemID = nil
             pcall(function()
@@ -1064,8 +1310,66 @@ function WarbandNexus:ScanEquippedGear()
                     itemID = C_Item.GetItemInfoInstant(itemLink)
                 end
             end)
+            if not itemID and type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)) then
+                local idFromLink = itemLink:match("item:(%d+)")
+                itemID = idFromLink and tonumber(idFromLink) or nil
+            end
 
-            if itemID then
+            if itemID or itemLink then
+                -- Ring/trinket/weapon swaps only change 2 slots; the rest still ran GetItemStats +
+                -- C_TooltipInfo.GetInventoryItem per slot (~15× heavy API in one frame → 200–400ms spikes).
+                -- When the hyperlink is unchanged, reuse persisted slot analysis and only refresh ilvl/quality/name.
+                local prevSlot = existingData and existingData.slots and existingData.slots[slotID]
+                local prevLinkSafe = prevSlot and prevSlot.itemLink
+                local canReuseSlot = false
+                if prevSlot and prevLinkSafe and itemLink
+                    and not (issecretvalue and issecretvalue(prevLinkSafe))
+                    and not (issecretvalue and issecretvalue(itemLink))
+                    and prevLinkSafe == itemLink
+                    and (prevSlot.upgradeTrack or prevSlot.notUpgradeable or prevSlot.isCrafted) then
+                    local idOk = (not itemID or not prevSlot.itemID or prevSlot.itemID == itemID)
+                    if idOk then
+                        canReuseSlot = true
+                    end
+                end
+
+                if canReuseSlot then
+                    local slotEntry = {}
+                    for k, v in pairs(prevSlot) do
+                        slotEntry[k] = v
+                    end
+                    local ilvl = GetEffectiveIlvl(itemLink) or slotEntry.itemLevel or 0
+                    slotEntry.itemLink = itemLink
+                    slotEntry.itemID = itemID or slotEntry.itemID
+                    slotEntry.itemLevel = ilvl
+                    slotEntry.quality = GetItemQuality(itemLink) or slotEntry.quality
+                    pcall(function()
+                        if C_Item and C_Item.GetItemInfo then
+                            local nm = C_Item.GetItemInfo(itemLink)
+                            if nm then slotEntry.name = nm end
+                        end
+                    end)
+                    slots[slotID] = slotEntry
+                    local prevWM = watermarks[slotID] or 0
+                    if ilvl > prevWM then
+                        watermarks[slotID] = ilvl
+                    end
+                    pcall(function()
+                        if C_ItemUpgrade and C_ItemUpgrade.GetHighWatermarkSlotForItem then
+                            local location = ItemLocation:CreateFromEquipmentSlot(slotID)
+                            if location and location:IsValid() then
+                                local hwSlot = C_ItemUpgrade.GetHighWatermarkSlotForItem(location)
+                                if hwSlot and C_ItemUpgrade.GetHighWatermarkForSlot then
+                                    local charHW = C_ItemUpgrade.GetHighWatermarkForSlot(hwSlot)
+                                    local apiWM = (type(charHW) == "number") and charHW or 0
+                                    if not SLOT_PAIRS[slotID] and apiWM > (watermarks[slotID] or 0) then
+                                        watermarks[slotID] = apiWM
+                                    end
+                                end
+                            end
+                        end
+                    end)
+                else
                 local equipLoc  = GetEquipLoc(itemLink)
                 local ilvl      = GetEffectiveIlvl(itemLink)
                 local quality   = GetItemQuality(itemLink)
@@ -1159,6 +1463,17 @@ function WarbandNexus:ScanEquippedGear()
                 end)
 
                 slots[slotID] = slotEntry
+                local prev = existingData and existingData.slots and existingData.slots[slotID]
+                local prevLink = prev and prev.itemLink
+                if prevLink ~= itemLink then
+                    changedSlotIDs[#changedSlotIDs + 1] = slotID
+                end
+                end
+            end
+        else
+            local prev = existingData and existingData.slots and existingData.slots[slotID]
+            if prev and prev.itemLink then
+                changedSlotIDs[#changedSlotIDs + 1] = slotID
             end
         end
     end
@@ -1176,7 +1491,30 @@ function WarbandNexus:ScanEquippedGear()
     end
 
     if Constants and Constants.EVENTS and Constants.EVENTS.GEAR_UPDATED then
-        WarbandNexus:SendMessage(Constants.EVENTS.GEAR_UPDATED, { charKey = charKey })
+        -- Expand ring/trinket/off-hand pairs so both buttons repaint on a swap (delta can list one id).
+        -- Debounced PLAYER_EQUIPMENT_CHANGED still merges `triggerSlotID` when missing from the delta.
+        local expanded = {}
+        local seen = {}
+        local function addSid(sid)
+            if not sid or type(sid) ~= "number" then return end
+            sid = math.floor(sid)
+            if sid < 1 or sid > 17 then return end
+            if seen[sid] then return end
+            seen[sid] = true
+            expanded[#expanded + 1] = sid
+            local partner = SLOT_PAIRS[sid]
+            if partner and not seen[partner] then
+                seen[partner] = true
+                expanded[#expanded + 1] = partner
+            end
+        end
+        for si = 1, #changedSlotIDs do
+            addSid(changedSlotIDs[si])
+        end
+        if triggerSlotID and type(triggerSlotID) == "number" then
+            addSid(triggerSlotID)
+        end
+        WarbandNexus:SendMessage(Constants.EVENTS.GEAR_UPDATED, { charKey = charKey, slotIDs = expanded })
     end
 end
 
@@ -1192,12 +1530,18 @@ end
 function WarbandNexus:OnGearEquipmentChanged(slotID)
     if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(self) then return end
     if slotID and (slotID < 1 or slotID > 17) then return end
+    -- Gear tab: refresh paperdoll icons from live inventory immediately; API links can lag one frame
+    -- behind this event, so GearUI also retries on next ticks. Persisted scan stays debounced below.
+    if WarbandNexus.TryRefreshGearEquipSlotsImmediate then
+        WarbandNexus:TryRefreshGearEquipSlotsImmediate(slotID)
+    end
     if gearScanTimer then
         gearScanTimer:Cancel()
     end
-    gearScanTimer = C_Timer.NewTimer(0.35, function()
+    local capSlot = slotID
+    gearScanTimer = C_Timer.NewTimer(0.12, function()
         gearScanTimer = nil
-        WarbandNexus:ScanEquippedGear()
+        WarbandNexus:ScanEquippedGear(capSlot)
     end)
 end
 
@@ -1208,7 +1552,23 @@ end
 function WarbandNexus:GetEquippedGear(charKey)
     local db = GetDB()
     if not db or not charKey then return nil end
-    return db[charKey]
+    local U = ns.Utilities
+    if U and U.GetCanonicalCharacterKey then
+        charKey = U:GetCanonicalCharacterKey(charKey) or charKey
+    end
+    MigrateLegacyGearDataKey(db, charKey)
+    if db[charKey] then return db[charKey] end
+    -- Legacy: older builds wrote under Name-Realm while UI reads guid storage key.
+    if U and U.GetCharacterKey then
+        local legacy = U:GetCharacterKey()
+        if legacy and legacy ~= charKey and db[legacy] then
+            local canonLegacy = (U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(legacy)) or legacy
+            if canonLegacy == charKey then
+                return db[legacy]
+            end
+        end
+    end
+    return nil
 end
 
 --- Gear tab 3D paperdoll: persist rotation + zoom in SavedVariables (per character, with gearData).
@@ -1415,77 +1775,6 @@ local function GetAffordableCountAndNextCrestNeed(upInfo, currencyAmounts)
     return totalAffordable, effectiveCrestNeed
 end
 
--- Dawncrest tooltip append (Gear tab): costs + Constants.DAWNCREST_UI sources for the matching tier.
--- Track name -> currency column assumes the same mapping as TRACK_NAME_TO_CURRENCY_ID / upgrade vendor tiers
--- (not re-derived from ilvl columns here — aligns with persisted Gear tab upgrade row).
-
-local function SafeTrimTrackName(name)
-    if not name or name == "" then return nil end
-    if issecretvalue and issecretvalue(name) then return nil end
-    return name:match("^%s*(.-)%s*$") or name
-end
-
-local function LocalizeUpgradeTrackNameForTooltip(name)
-    if not name or name == "" then return name end
-    if issecretvalue and issecretvalue(name) then return name end
-    local L = ns.L
-    if not L then return name end
-    local trimmed = name:match("^%s*(.-)%s*$") or name
-    local key = ({
-        Adventurer = "PVE_CREST_ADV",
-        Veteran = "PVE_CREST_VET",
-        Champion = "PVE_CREST_CHAMP",
-        Hero = "PVE_CREST_HERO",
-        Myth = "PVE_CREST_MYTH",
-        Explorer = "PVE_CREST_EXPLORER",
-        Crafted = "GEAR_TRACK_CRAFTED_FALLBACK",
-    })[trimmed]
-    if key and L[key] then return L[key] end
-    return name
-end
-
-local function CrestCurrencyDisplayName(currencyID)
-    if not currencyID or currencyID == 0 then return "Dawncrest" end
-    local dc = Constants and Constants.DAWNCREST_UI
-    local L = ns.L
-    local lk = dc and dc.PVE_LABEL_KEYS and dc.PVE_LABEL_KEYS[currencyID]
-    if lk and L and L[lk] then
-        local suffix = (L and L["GEAR_TT_DAWNCREST_WORD"]) or "Dawncrest"
-        return (L[lk] .. " " .. suffix)
-    end
-    local en = dc and dc.DISPLAY_NAMES and dc.DISPLAY_NAMES[currencyID]
-    if type(en) == "string" and en ~= "" then
-        if issecretvalue and issecretvalue(en) then return "Dawncrest" end
-        local fw = en:match("^(%S+)") or en
-        return LocalizeDawncrestTierShortName(fw) .. " Dawncrest"
-    end
-    return "Dawncrest"
-end
-
-local function BuildDawncrestSourceBulletLines(currencyID)
-    local out = {}
-    local dc = Constants and Constants.DAWNCREST_UI
-    local srcList = dc and dc.SOURCES and currencyID and dc.SOURCES[currencyID]
-    if srcList then
-        for si = 1, #srcList do
-            local bullet = srcList[si]
-            if type(bullet) == "string" and bullet ~= "" then
-                if not (issecretvalue and issecretvalue(bullet)) then
-                    out[#out + 1] = { text = "\194\183 " .. bullet, color = { 0.78, 0.82, 0.9 }, wrap = true }
-                end
-            end
-        end
-    end
-    if #out == 0 then
-        out[1] = {
-            text = (ns.L and ns.L["GEAR_DAWNCREST_PLAYBOOK_NO_SOURCES"]) or "Earn via seasonal PvE rewards matching this crest tier.",
-            color = { 0.75, 0.78, 0.85 },
-            wrap = true,
-        }
-    end
-    return out
-end
-
 local function CountCrestStepsRemaining(upInfo)
     if not upInfo or upInfo.isCrafted then return 0 end
     local curr = upInfo.currUpgrade or 0
@@ -1523,226 +1812,10 @@ local function GetEffectiveNextStepCrestCost(upInfo)
     return upInfo.crestCost or ns.UPGRADE_CREST_PER_LEVEL or 20
 end
 
-local function ResolveUpgradeInfoForTooltip(self, ctx)
-    local charKey = ctx.charKey
-    local slotID = ctx.slotID
-    local up = ctx.upgradeInfo
-
-    if not up and charKey and slotID and self.GetPersistedUpgradeInfo then
-        local all = self:GetPersistedUpgradeInfo(charKey)
-        up = all and all[slotID]
-    end
-
-    local needTipScan = false
-    if not up then
-        needTipScan = true
-    elseif not up.notUpgradeable and (not up.maxUpgrade or up.maxUpgrade == 0) then
-        needTipScan = true
-    end
-    if needTipScan and ctx.isCurrentChar and slotID then
-        local tip = ScanUpgradeFromTooltip(slotID)
-        if tip and tip.maxUpgrade and tip.maxUpgrade > 0 and tip.currUpgrade then
-            local gearData = charKey and self:GetEquippedGear(charKey)
-            local slot = gearData and gearData.slots and gearData.slots[slotID]
-            local ilvl = (slot and slot.itemLevel) or tonumber(ctx.itemLevel) or 0
-            local rawWm = (gearData and gearData.watermarks and gearData.watermarks[slotID]) or 0
-            local perSlotWm = SLOT_PAIRS[slotID] and (ilvl < rawWm and ilvl or rawWm) or rawWm
-            local tn = SafeTrimTrackName(tip.trackName)
-            local isCrafted = tip.isCrafted == true
-            local currencyID = (tn and TRACK_NAME_TO_CURRENCY_ID[tn]) or 0
-            up = {
-                canUpgrade = (tip.currUpgrade < tip.maxUpgrade),
-                notUpgradeable = false,
-                currentIlvl = ilvl,
-                currUpgrade = tip.currUpgrade,
-                maxUpgrade = tip.maxUpgrade,
-                trackName = tn or "",
-                currencyID = currencyID,
-                crestCost = ns.UPGRADE_CREST_PER_LEVEL or 20,
-                moneyCost = ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000,
-                watermarkIlvl = perSlotWm,
-                isCrafted = isCrafted,
-            }
-        end
-    end
-
-    return up
-end
-
-local function BuildFallbackDawncrestTooltipLines()
-    local L = ns.L
-    local lines = {}
-    lines[#lines + 1] = { type = "spacer", height = 6 }
-    lines[#lines + 1] = {
-        text = (L and L["GEAR_TT_UPGRADE_FALLBACK_LEAD"]) or "Upgrades use Dawncrest (amounts on the currency panel). Examples by tier:",
-        color = { 0.78, 0.82, 0.9 },
-        wrap = true,
-    }
-    local dc = Constants and Constants.DAWNCREST_UI
-    local colIds = dc and dc.COLUMN_IDS
-    if colIds then
-        for i = 1, #colIds do
-            local cid = colIds[i]
-            local src = dc.SOURCES and dc.SOURCES[cid]
-            local first = src and src[1]
-            if type(first) == "string" and first ~= "" and not (issecretvalue and issecretvalue(first)) then
-                local tierLbl = CrestCurrencyDisplayName(cid)
-                lines[#lines + 1] = {
-                    text = "\194\183 " .. tierLbl .. ": " .. first,
-                    color = { 0.72, 0.76, 0.82 },
-                    wrap = true,
-                }
-            end
-        end
-    end
-    return lines
-end
-
-local function BuildCraftedUpgradeAppendLines(up)
-    local ilvl = up.currentIlvl or 0
-    local tiers = CRAFTED_CREST_TIERS
-    if not tiers then return {} end
-    local nextTier = nil
-    for i = 1, #tiers do
-        local t = tiers[i]
-        if t.maxIlvl > ilvl then
-            nextTier = t
-            break
-        end
-    end
-    if not nextTier then return {} end
-
-    local L = ns.L
-    local cid = nextTier.crestID
-    local crestName = CrestCurrencyDisplayName(cid)
-    local lines = {}
-    lines[#lines + 1] = { type = "spacer", height = 6 }
-    lines[#lines + 1] = {
-        text = (L and L["GEAR_TT_SECTION_DAWNCREST"]) or "Dawncrest",
-        color = { 1, 0.82, 0 },
-        wrap = false,
-    }
-    lines[#lines + 1] = {
-        text = string.format(
-            (L and L["GEAR_TT_CRAFTED_NEXT_RECAST"]) or "Next recraft target: %s (item level %d), %d %s.",
-            LocalizeUpgradeTrackNameForTooltip(nextTier.name),
-            nextTier.maxIlvl,
-            nextTier.cost,
-            crestName
-        ),
-        color = { 0.78, 0.84, 0.92 },
-        wrap = true,
-    }
-    lines[#lines + 1] = { type = "spacer", height = 4 }
-    lines[#lines + 1] = {
-        text = (L and L["GEAR_TT_SECTION_SOURCES"]) or "Sources",
-        color = { 1, 0.82, 0 },
-        wrap = false,
-    }
-    local bullets = BuildDawncrestSourceBulletLines(cid)
-    for i = 1, #bullets do
-        lines[#lines + 1] = bullets[i]
-    end
-    return lines
-end
-
-local function BuildTrackUpgradeAppendLines(up)
-    local L = ns.L
-    local cid = up.currencyID or 0
-    local crestName = CrestCurrencyDisplayName(cid)
-    local nextCost = GetEffectiveNextStepCrestCost(up)
-    local totalRemain = SumRemainingCrestCosts(up)
-    local stepsNeed = CountCrestStepsRemaining(up)
-
-    local lines = {}
-    lines[#lines + 1] = { type = "spacer", height = 6 }
-    lines[#lines + 1] = {
-        text = (L and L["GEAR_TT_SECTION_DAWNCREST"]) or "Dawncrest",
-        color = { 1, 0.82, 0 },
-        wrap = false,
-    }
-    local trackDisp = LocalizeUpgradeTrackNameForTooltip(up.trackName)
-    lines[#lines + 1] = {
-        text = string.format((L and L["GEAR_TT_TRACK_RANK_FORMAT"]) or "%s %d/%d", trackDisp, up.currUpgrade or 0, up.maxUpgrade or 0),
-        color = { 0.75, 0.78, 0.85 },
-        wrap = false,
-    }
-
-    if nextCost == nil then
-        -- maxed / inconsistent
-    elseif nextCost == 0 then
-        lines[#lines + 1] = {
-            text = (L and L["GEAR_TT_NEXT_STEP_GOLD_ONLY"]) or "Next step: gold only (you already reached this item level on this slot).",
-            color = { 1, 0.85, 0.45 },
-            wrap = true,
-        }
-    else
-        lines[#lines + 1] = {
-            text = string.format((L and L["GEAR_TT_NEXT_STEP_CRESTS"]) or "Next step: %d %s.", nextCost, crestName),
-            color = { 0.78, 0.84, 0.92 },
-            wrap = true,
-        }
-    end
-
-    if totalRemain > 0 then
-        lines[#lines + 1] = {
-            text = string.format(
-                (L and L["GEAR_TT_REMAINING_TRACK_CRESTS"]) or "Remaining crest steps on track: %d (%d %s total).",
-                stepsNeed,
-                totalRemain,
-                crestName
-            ),
-            color = { 0.72, 0.76, 0.82 },
-            wrap = true,
-        }
-    end
-
-    lines[#lines + 1] = { type = "spacer", height = 4 }
-    lines[#lines + 1] = {
-        text = (L and L["GEAR_TT_SECTION_SOURCES"]) or "Sources",
-        color = { 1, 0.82, 0 },
-        wrap = false,
-    }
-    local bullets = BuildDawncrestSourceBulletLines(cid)
-    for i = 1, #bullets do
-        lines[#lines + 1] = bullets[i]
-    end
-    return lines
-end
-
---- Tooltip lines for Gear tab item hover: Dawncrest cost summary + tier sources (Constants.DAWNCREST_UI).
----@param itemLink string|nil
----@param slotContext table|nil { slotID, charKey, upgradeInfo?, itemLevel?, isCurrentChar? }
----@return table lines TooltipService line descriptors
+--- Gear tab item hover: Dawncrest + Sources blocks removed (no vendor playbook in tooltip).
+---@return table lines always empty; upgrade row stays on paperdoll only.
 function WarbandNexus:GetGearItemUpgradeTooltipAppend(itemLink, slotContext)
-    if itemLink and issecretvalue and issecretvalue(itemLink) then
-        itemLink = nil
-    end
-    local ctx = slotContext or {}
-    local up = ResolveUpgradeInfoForTooltip(self, ctx)
-
-    if not up then
-        if ctx.slotID or itemLink then
-            return BuildFallbackDawncrestTooltipLines()
-        end
-        return {}
-    end
-
-    if up.notUpgradeable then
-        return {}
-    end
-
-    if up.isCrafted then
-        return BuildCraftedUpgradeAppendLines(up)
-    end
-
-    local maxU = up.maxUpgrade or 0
-    local curU = up.currUpgrade or 0
-    if maxU <= 0 or curU >= maxU then
-        return {}
-    end
-
-    return BuildTrackUpgradeAppendLines(up)
+    return {}
 end
 
 --- Internal diagnostic: upgrade info per slot (current character). No slash — dev: /run WarbandNexus:GearUpgradeDebugReport()
@@ -1904,11 +1977,22 @@ local function ResolveStorageItemIlvl(item)
         if ok and level and type(level) == "number" and level > 0 then
             return level
         end
-        -- Link is present but cold-cache. Falling back to itemID would return the
-        -- TEMPLATE base ilvl (e.g. 233 for an upgraded 253 WuE chest), which causes
-        -- false negatives ("not an upgrade") for cross-character WuE/Warbound items.
-        -- Kick off async warm-up via GetItemInfo (already done above) and skip this
-        -- candidate — WN_ITEM_METADATA_READY / WN_ITEMS_UPDATED will re-trigger the scan.
+        -- Link present but client cache still cold: try ID-based APIs (often warm before hyperlink resolves).
+        local detFromId = 0
+        pcall(function()
+            if C_Item and C_Item.GetDetailedItemLevelInfo then
+                local v = select(1, C_Item.GetDetailedItemLevelInfo(item.itemID))
+                if type(v) == "number" and v > 0 then detFromId = v end
+            end
+        end)
+        if detFromId > 0 then return detFromId end
+        local ilvlId = GetEffectiveIlvl(item.itemID)
+        if ilvlId > 0 then return ilvlId end
+        local ok3, _, _, level3 = pcall(C_Item.GetItemInfo, item.itemID)
+        if ok3 and level3 and type(level3) == "number" and level3 > 0 then
+            return level3
+        end
+        -- Still unknown: EvaluateItem already requested load by ID; next ITEM_METADATA / items scan can fill in.
         return 0
     end
     local ilvlId = GetEffectiveIlvl(item.itemID)
@@ -2024,10 +2108,44 @@ function WarbandNexus:GetGearStorageFindingsIfCached(selectedCharKey)
     return nil, false
 end
 
---- Like GetGearStorageFindingsIfCached but allows invEpoch drift only when
---- `ns._gearStorageAllowEquipSigInvBypass` is true (GearUI arms this for one redraw tick
---- immediately after a yielded Find completed). Otherwise invEpoch must match: ignoring
---- inv allowed stale findings after real bag/storage bumps (ItemsCacheService).
+--- Findings from the last committed scan for this character (ignores invEpoch; UI post-yield paint).
+---@param selectedCharKey string
+---@return table|nil findings
+---@return boolean ok
+function WarbandNexus:GetGearStorageFindingsCommitted(selectedCharKey)
+    if not selectedCharKey then return nil, false end
+    local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k)
+        return ns.Utilities:GetCanonicalCharacterKey(k)
+    end or function(k) return k end
+    local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
+    local c = gearStorageFindingsCache
+    if c.canonKey == canonKey and c.findings then
+        return c.findings, true
+    end
+    return nil, false
+end
+
+--- Equip-only change (ring/trinket swap): bag findings unchanged — update equipSig so UI can redraw without FindGearStorageUpgrades.
+---@param selectedCharKey string
+---@return boolean ok
+function WarbandNexus:RefreshGearStorageCacheEquipSigForCanon(selectedCharKey)
+    if not selectedCharKey then return false end
+    local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k)
+        return ns.Utilities:GetCanonicalCharacterKey(k)
+    end or function(k) return k end
+    local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
+    local c = gearStorageFindingsCache
+    if c.canonKey ~= canonKey or not c.findings then
+        return false
+    end
+    local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
+    c.equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
+    return true
+end
+
+--- Like GetGearStorageFindingsIfCached but matches canon + equipSig only; invEpoch must match
+--- unless `ns._gearStorageAllowEquipSigInvBypass` is true (GearUI arms this for one redraw tick
+--- after a yielded Find) so post-scan item-info bumps do not force a second full scan.
 ---@param selectedCharKey string
 ---@return table|nil findings
 ---@return boolean ok
@@ -2058,16 +2176,30 @@ end
 --- When the gear tab's populate canon matches cached scan canon, drop only `invEpoch` so the
 --- next `FindGearStorageUpgrades` runs while leaving `ns._gearStorageInvGen` unchanged.
 ---@param canonKey string canonical character key
----@return boolean invalidated True when the in-memory findings cache row was cleared for this canon
+---@return boolean invalidated True when cache was cleared or invalidate was queued for after scan
 function WarbandNexus:InvalidateGearStorageFindingsCacheForCanon(canonKey)
+    if not canonKey then return false end
+    if self:IsGearStorageScanInFlightForCanon(canonKey) then
+        ns._gearStorageDeferInvalidateCanon = canonKey
+        WarbandNexus:GearStorageTrace("Invalidate deferred (scan in flight) canon=" .. tostring(canonKey))
+        return true
+    end
+    return self:InvalidateGearStorageFindingsCacheImmediate(canonKey)
+end
+
+--- Soft invalidate without deferral (internal; callers must not use during active yielded scan).
+---@param canonKey string
+---@return boolean
+function WarbandNexus:InvalidateGearStorageFindingsCacheImmediate(canonKey)
     if not canonKey then return false end
     local c = gearStorageFindingsCache
     if not c or c.canonKey ~= canonKey or not c.findings then
         return false
     end
     c.invEpoch = nil
-    -- Bumped so UI can tell a new item-info / soft-invalidate cycle from a duplicate redraw in the same pump.
     ns._gearStorageFindingsDirtyToken = (ns._gearStorageFindingsDirtyToken or 0) + 1
+    WarbandNexus:GearStorageTrace("Invalidate invEpoch cleared canon=" .. tostring(canonKey)
+        .. " dirtyTok=" .. tostring(ns._gearStorageFindingsDirtyToken or 0))
     return true
 end
 
@@ -2129,6 +2261,10 @@ end
 ---@return table findings { [slotID] = { {itemID, itemLink, itemLevel, quality, source, sourceType, isBound}, ... } }
 function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     local findings = {}
+    if WarbandNexus.IsGearStorageRecommendationsEnabled
+        and not WarbandNexus:IsGearStorageRecommendationsEnabled() then
+        return findings
+    end
     if not selectedCharKey then return findings end
 
     local function dbg(msg)
@@ -2143,9 +2279,18 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     do
         local c = gearStorageFindingsCache
         if c.canonKey == canonKey and c.invEpoch == invEpoch and c.equipSig == equipSig and c.findings then
+            WarbandNexus:GearStorageTrace("Find cache hit canon=" .. tostring(canonKey)
+                .. " invEpoch=" .. tostring(invEpoch))
             return c.findings
         end
     end
+
+    local P = ns.Profiler
+    local _gearFindProfOn = P and P.enabled and P.StartSlice and P.StopSlice
+    if _gearFindProfOn then P:StartSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_scan") end
+    local findingsScanDirtyStart = ns._gearStorageFindingsDirtyToken or 0
+    WarbandNexus:GearStorageTrace("Find full scan start canon=" .. tostring(canonKey)
+        .. " invEpoch=" .. tostring(invEpoch) .. " dirtyTok=" .. tostring(findingsScanDirtyStart))
 
     -- Build itemID lookup for paired slots (rings 11/12, trinkets 13/14) so we can
     -- suppress duplicate-equip recommendations: if the same itemID is already worn
@@ -2186,34 +2331,36 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     end
 
     local allChars = self.db and self.db.global and self.db.global.characters
-    local charData = allChars and allChars[selectedCharKey]
+    -- Resolve DB row by canonical key: `characters` may be keyed by GUID or Name-Realm while callers pass the other form.
+    local selCanon = getCanonicalKey(selectedCharKey) or selectedCharKey
+    local charData = allChars and (allChars[selectedCharKey] or allChars[selCanon])
     if not charData and allChars then
         for k, data in pairs(allChars) do
-            if (getCanonicalKey(k) or k) == selectedCharKey then
+            if (getCanonicalKey(k) or k) == selCanon then
                 charData = data
                 break
             end
         end
     end
 
-    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey) and ns.Utilities:GetCharacterKey() or nil
-    local selCanon = getCanonicalKey(selectedCharKey) or selectedCharKey
-    local curCanon = (currentKey and getCanonicalKey(currentKey)) or currentKey
+    local currentKey = ResolveGearStorageKey()
+    local curCanon = currentKey
     local selectedIsLoggedInPlayer = (selCanon and curCanon and selCanon == curCanon)
 
     local mainStat, mainStatSource = ResolveExpectedPrimaryStatFromCharacter(charData, selectedIsLoggedInPlayer)
 
-    dbg("=== Scan for: " .. tostring(selectedCharKey) .. " ===")
-    dbg("  classFile=" .. tostring(charData and charData.classFile) .. " specID(db)=" .. tostring(charData and charData.specID) .. " mainStat=" .. tostring(mainStat) .. " (" .. mainStatSource .. ") selectedIsLoggedIn=" .. tostring(selectedIsLoggedInPlayer))
+    dbg(string.format(
+        "=== Scan %s | class=%s spec=%s | mainStat=%s (%s) | loggedIn=%s ===",
+        tostring(selectedCharKey),
+        tostring(charData and charData.classFile),
+        tostring(charData and charData.specID),
+        tostring(mainStat),
+        tostring(mainStatSource),
+        tostring(selectedIsLoggedInPlayer)
+    ))
 
     local addedCount = 0
-
-    local function NameFromItemLink(link, fallbackId)
-        if not link or type(link) ~= "string" or (issecretvalue and issecretvalue(link)) then
-            return tostring(fallbackId)
-        end
-        return link:match("%[(.-)%]") or tostring(fallbackId)
-    end
+    local rejectCounts = { stat = 0, lvlRace = 0, boeSoul = 0, bindLabel = 0, bind = 0 }
 
     --- Class file for storage row coloring (nil = neutral: warband / unknown).
     local function ResolveSourceClassFile(ownerKey)
@@ -2265,17 +2412,14 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             if minL then candidate.requiredLevel = minL end
         end
         if (candidate.itemLevel or 0) == 0 then return end
+        -- Snapshot for UI row filter: Find can run against slightly older gearData than RedrawGearStorageRecommendationsOnly.
+        candidate.equippedIlvlAtFind = equippedMap[slotID] or 0
         for i = 1, #findings[slotID] do
             local ex = findings[slotID][i]
             if ex.itemLink == candidate.itemLink and ex.source == candidate.source then return end
         end
         findings[slotID][#findings[slotID] + 1] = candidate
         addedCount = addedCount + 1
-
-        local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
-        local slotLabel = (slotDef and slotDef.label) or tostring(slotID)
-        local itemName = NameFromItemLink(link, candidate.itemID)
-        dbg("  +++ " .. slotLabel .. ": " .. itemName .. " ilvl=" .. tostring(candidate.itemLevel) .. " from=" .. tostring(candidate.source))
     end
 
     local function EvaluateItem(item, sourceCharKey, storageType)
@@ -2283,7 +2427,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         -- When RunFindGearStorageUpgradesYielded drives this scan, yield so one frame never evaluates thousands of items.
         if ns._gearStorageYieldCo then
             ns._gearStorageYieldCounter = (ns._gearStorageYieldCounter or 0) + 1
-            if ns._gearStorageYieldCounter >= 72 then
+            if ns._gearStorageYieldCounter >= 28 then
                 ns._gearStorageYieldCounter = 0
                 coroutine.yield()
             end
@@ -2325,7 +2469,6 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         if (quality or 0) < 2 then return end
 
         local link = item.itemLink or item.link
-        local itemName = NameFromItemLink(link, item.itemID)
 
         for i = 1, #targetSlots do
             local slotID = targetSlots[i]
@@ -2341,24 +2484,24 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             else
             local isArmorOK = IsArmorCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc)
             local isWeaponOK = IsWeaponCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc, mainStat)
-            local isStatOK = MatchGetItemStatsPrimariesToExpected(link, mainStat, slotID, selectedIsLoggedInPlayer)
+            local isStatOK = MatchGetItemStatsPrimariesToExpected(link, mainStat, slotID, selectedIsLoggedInPlayer, item.itemID)
 
             if not isArmorOK then
                 -- silent
             elseif not isWeaponOK then
                 -- silent
             elseif not isStatOK then
-                dbg("  --- REJECTED(stat): " .. itemName .. " slot=" .. tostring(slotID) .. " mainStat=" .. tostring(mainStat))
+                rejectCounts.stat = rejectCounts.stat + 1
             elseif not SelectedCharacterMeetsItemRequirements(link, item.itemID) then
-                dbg("  --- REJECTED(level/race-class): " .. itemName .. " slot=" .. tostring(slotID))
+                rejectCounts.lvlRace = rejectCounts.lvlRace + 1
             else
                 local currentIlvl = equippedMap[slotID] or 0
                 if ilvl > currentIlvl then
                     local source, sourceType = ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageType)
                     if source and sourceType == "boe" and item.isBound == true then
-                        dbg("  --- REJECTED(boe+soulbound): " .. itemName .. " ilvl=" .. tostring(ilvl) .. " src=" .. tostring(sourceCharKey) .. "/" .. tostring(storageType))
+                        rejectCounts.boeSoul = rejectCounts.boeSoul + 1
                     elseif source and not IsAllowedStorageRecommendationBindLabel(sourceType) then
-                        dbg("  --- REJECTED(bind-label): " .. itemName .. " label=" .. tostring(sourceType))
+                        rejectCounts.bindLabel = rejectCounts.bindLabel + 1
                     elseif source then
                         AddCandidate(slotID, {
                             itemID     = item.itemID,
@@ -2372,8 +2515,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                             sourceClassFile = ResolveSourceClassFile(sourceCharKey),
                         })
                     else
-                        local bt = GetBindingType(item)
-                        dbg("  --- REJECTED(bind): " .. itemName .. " ilvl=" .. tostring(ilvl) .. " bindType=" .. tostring(bt) .. " isBound=" .. tostring(item.isBound) .. " src=" .. tostring(sourceCharKey) .. "/" .. tostring(storageType))
+                        rejectCounts.bind = rejectCounts.bind + 1
                     end
                 end
             end
@@ -2537,7 +2679,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                                         local sid = targetSlots[i]
                                         if not IsArmorCompatible(charData, sid, itemClassID, itemSubclassID, equipLoc) then ok = false break end
                                         if not IsWeaponCompatible(charData, sid, itemClassID, itemSubclassID, equipLoc, mainStat) then ok = false break end
-                                        if not MatchGetItemStatsPrimariesToExpected(slotData.itemLink, mainStat, sid, selectedIsLoggedInPlayer) then ok = false break end
+                                        if not MatchGetItemStatsPrimariesToExpected(slotData.itemLink, mainStat, sid, selectedIsLoggedInPlayer, slotData.itemID) then ok = false break end
                                     end
                                     if ok and SelectedCharacterMeetsItemRequirements(slotData.itemLink, slotData.itemID) then
                                         AddCandidate(slotID, {
@@ -2567,7 +2709,16 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         end
     end
 
-    dbg("  Total candidates added: " .. tostring(addedCount))
+    local rSum = rejectCounts.stat + rejectCounts.lvlRace + rejectCounts.boeSoul + rejectCounts.bindLabel + rejectCounts.bind
+    dbg(string.format(
+        "  Reject/add: stat=%d lvlRace=%d boeSoul=%d bindLbl=%d bind=%d | added=%d",
+        rejectCounts.stat,
+        rejectCounts.lvlRace,
+        rejectCounts.boeSoul,
+        rejectCounts.bindLabel,
+        rejectCounts.bind,
+        addedCount
+    ))
 
     for slotID, candidates in pairs(findings) do
         table.sort(candidates, function(a, b) return (a.itemLevel or 0) > (b.itemLevel or 0) end)
@@ -2577,6 +2728,18 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     -- Recompute equipped signature at commit: yielded scans can span many frames while
     -- GetItemInfo warms equipped ilvls; a start-of-scan equipSig would mismatch the UI's
     -- post-scan GetGearStorageFindingsIfCached gate and force a redundant FULLFIND.
+    if (ns._gearStorageFindingsDirtyToken or 0) ~= findingsScanDirtyStart then
+        dbg("  Scan results not committed: storage cache invalidated mid-scan (equip/bag change).")
+        WarbandNexus:GearStorageTrace("Find commit skipped (dirty mid-scan) canon=" .. tostring(canonKey)
+            .. " dirtyStart=" .. tostring(findingsScanDirtyStart) .. " dirtyNow=" .. tostring(ns._gearStorageFindingsDirtyToken or 0))
+        ns._gearStorageDeferInvalidateCanon = canonKey
+        if gearStorageFindingsCache.canonKey == canonKey then
+            gearStorageFindingsCache.findings = nil
+            gearStorageFindingsCache.invEpoch = nil
+        end
+        if _gearFindProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_scan") end
+        return findings
+    end
     local equippedMapCommit = BuildEquippedIlvlMap(selectedCharKey)
     local equipSigCommit = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMapCommit)
     gearStorageFindingsCache.canonKey = canonKey
@@ -2588,6 +2751,11 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     gearStorageFindingsCache.invEpoch = ns._gearStorageInvGen or 0
     ns._gearStorageFindingsCleanToken = ns._gearStorageFindingsDirtyToken or 0
 
+    if _gearFindProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_scan") end
+
+    WarbandNexus:GearStorageTrace("Find committed canon=" .. tostring(canonKey)
+        .. " candidatesAdded=" .. tostring(addedCount) .. " invEpoch=" .. tostring(gearStorageFindingsCache.invEpoch))
+
     return findings
 end
 
@@ -2596,6 +2764,13 @@ end
 --- @param paintGen number DrawGearTab generation; abort if stale.
 --- @param onDone function Called when scan finished or aborted (still on gear / same gen).
 function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, onDone)
+    if WarbandNexus.IsGearStorageRecommendationsEnabled
+        and not WarbandNexus:IsGearStorageRecommendationsEnabled() then
+        if type(onDone) == "function" then
+            onDone()
+        end
+        return
+    end
     if not canonicalKey or type(onDone) ~= "function" then
         if type(onDone) == "function" then
             onDone()
@@ -2603,6 +2778,7 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
         return
     end
     ns._gearStorageYieldFindCanon = canonicalKey
+    WarbandNexus:GearStorageTrace("RunYield start canon=" .. tostring(canonicalKey) .. " paintGen=" .. tostring(paintGen))
     local co = coroutine.create(function()
         if WarbandNexus.FindGearStorageUpgrades then
             WarbandNexus:FindGearStorageUpgrades(canonicalKey)
@@ -2611,36 +2787,89 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
     ns._gearStorageYieldCo = co
     ns._gearStorageYieldCounter = 0
 
+    local function abortYieldedFind(reason)
+        -- A newer RunFindGearStorageUpgradesYielded may have replaced `_gearStorageYieldCo`; do not
+        -- clear defer / findings state for the active scan (would orphan "Scanning storage…").
+        if ns._gearStorageYieldCo ~= co then
+            return
+        end
+        WarbandNexus:GearStorageTrace("RunYield abort: " .. tostring(reason))
+        -- `ScheduleGearStorageFindingsResolve` can append follow-up callbacks while this scan runs;
+        -- the primary `onDone` is intentionally skipped on abort, so drain the queue here.
+        local qlAbort = ns._gearStorageResolveQueuedDones
+        if qlAbort and #qlAbort > 0 then
+            ns._gearStorageResolveQueuedDones = nil
+            for ai = 1, #qlAbort do
+                local fnA = qlAbort[ai]
+                if type(fnA) == "function" then
+                    fnA()
+                end
+            end
+        end
+        local yieldCanon = ns._gearStorageYieldFindCanon
+        ns._gearStorageYieldCo = nil
+        ns._gearStorageYieldFindCanon = nil
+        -- Stale scan must not leave UI.lua PopulateContent blocked on gear tab.
+        ns._gearStorageDeferAwaiting = false
+        ns._gearStorageDeferAwaitCanon = nil
+        local mfAb = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if mfAb then
+            mfAb._gearDeferChainActive = false
+        end
+        -- RedrawGearStorageRecommendationsOnly can set this and never clear it if the coroutine aborts mid-scan.
+        if yieldCanon and ns._gearStorageRecFindPending then
+            ns._gearStorageRecFindPending[yieldCanon] = nil
+        end
+        -- Without a follow-up paint, "Scanning storage…" can stick (onDone is intentionally skipped for stale gen / tab).
+        local snapGen = paintGen
+        C_Timer.After(0, function()
+            if snapGen ~= (ns._gearTabDrawGen or 0) then return end
+            if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
+            if WarbandNexus.SendMessage and Constants and Constants.EVENTS and Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED then
+                WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "gear", skipCooldown = true })
+            elseif WarbandNexus.PopulateContent then
+                WarbandNexus:PopulateContent()
+            end
+        end)
+    end
+
     local function pump()
         if paintGen ~= (ns._gearTabDrawGen or 0) then
-            ns._gearStorageYieldCo = nil
-            ns._gearStorageYieldFindCanon = nil
+            abortYieldedFind("stale paintGen")
             return
         end
         if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then
-            ns._gearStorageYieldCo = nil
-            ns._gearStorageYieldFindCanon = nil
+            abortYieldedFind("left gear tab")
+            return
+        end
+        if ns._gearStorageYieldCo ~= co then
             return
         end
         local sliceStart = GetTime()
         while coroutine.status(co) ~= "dead" do
-            local ok, err = coroutine.resume(co)
-            if not ok then
-                ns._gearStorageYieldCo = nil
-                ns._gearStorageYieldFindCanon = nil
-                if DebugPrint then
-                    DebugPrint("|cffff4444[GearService]|r FindGearStorageUpgrades yield error: " .. tostring(err))
-                end
-                onDone()
+            if ns._gearStorageYieldCo ~= co then
                 return
             end
-            if (GetTime() - sliceStart) > 0.016 then
+            local ok, err = coroutine.resume(co)
+            if not ok then
+                if ns._gearStorageYieldCo ~= co then
+                    return
+                end
+                WarbandNexus:ReportGearStorageError(err, "yielded scan")
+                abortYieldedFind("coroutine error")
+                return
+            end
+            if (GetTime() - sliceStart) > 0.010 then
                 C_Timer.After(0, pump)
                 return
             end
         end
+        if ns._gearStorageYieldCo ~= co then
+            return
+        end
         ns._gearStorageYieldCo = nil
         ns._gearStorageYieldFindCanon = nil
+        WarbandNexus:GearStorageTrace("RunYield complete canon=" .. tostring(canonicalKey))
         onDone()
     end
 
@@ -2703,9 +2932,13 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
     if not charKey then return result end
 
     local canonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(charKey)) or charKey
-    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
-    local function norm(k) return (k and k:gsub("%s+", "")) or "" end
-    local isCurrentChar = (norm(canonicalKey) == norm(currentKey) or norm(charKey) == norm(currentKey))
+    local currentKey = ResolveGearStorageKey()
+    local isCurrentChar = (canonicalKey and currentKey and canonicalKey == currentKey)
+    local function norm(k)
+        if not k or k == "" then return "" end
+        if issecretvalue and issecretvalue(k) then return "" end
+        return (tostring(k):gsub("%s+", ""))
+    end
 
     local upgradeIds = {}
     for i = 1, #UPGRADE_CURRENCY_IDS do
@@ -2821,7 +3054,7 @@ function WarbandNexus:GetGearUpgradeCurrencies(charKey)
 end
 
 -- ============================================================================
--- GEAR UPGRADE PLAYBOOK (Dawncrest — compact summary + tooltip lines)
+-- GEAR UPGRADE PLAYBOOK (removed from Gear tab UI; GetGearUpgradePlaybookText is a no-op stub)
 -- ============================================================================
 
 local function LocalizeDawncrestTierShortName(englishFirstWord)
@@ -2840,107 +3073,11 @@ local function LocalizeDawncrestTierShortName(englishFirstWord)
     return englishFirstWord
 end
 
---- Compact Dawncrest / upgrade hint for Gear tab + structured tooltip (Sources from Constants.DAWNCREST_UI).
---- Computed in service layer (Constants + locale); UI only displays.
----@param charKey string|nil Reserved for future per-character lines; informational playbook is global.
----@return string summary Single-line (or short) summary for the currency panel.
----@return table|nil tooltipPayload fields: type, title, lines — pass to ShowTooltip as custom (UI supplies anchor).
+--- Playbook-style Dawncrest tooltip removed from Gear tab (UI no longer calls this for display).
+---@return string summary
+---@return table|nil tooltipPayload
 function WarbandNexus:GetGearUpgradePlaybookText(charKey)
-    local dc = Constants and Constants.DAWNCREST_UI
-    if not dc or not dc.COLUMN_IDS then
-        return "", nil
-    end
-
-    local crestPer = ns.UPGRADE_CREST_PER_LEVEL or 20
-    local fmtNum = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
-    local crestFmt = fmtNum(crestPer)
-    local L = ns.L
-
-    local summaryTemplate = L and L["GEAR_DAWNCREST_PLAYBOOK_SUMMARY"]
-    local summary
-    if type(summaryTemplate) == "string" and summaryTemplate ~= "" then
-        summary = string.format(summaryTemplate, crestFmt)
-    else
-        summary = string.format(
-            "Each upgrade step: %s Dawncrests + gold. Earn via delves, dungeons, Mythic+, and raids — hover header for tier sources.",
-            crestFmt
-        )
-    end
-
-    local lines = {}
-
-    local leadTemplate = L and L["GEAR_DAWNCREST_PLAYBOOK_TOOLTIP_LEAD"]
-    if type(leadTemplate) == "string" and leadTemplate ~= "" then
-        lines[#lines + 1] = { text = string.format(leadTemplate, crestFmt), color = { 0.82, 0.86, 0.95 }, wrap = true }
-    else
-        lines[#lines + 1] = {
-            text = string.format(
-                "Item upgrades spend %s Dawncrests per tier step (plus gold) at the upgrade vendor.",
-                crestFmt
-            ),
-            color = { 0.82, 0.86, 0.95 },
-            wrap = true,
-        }
-    end
-
-    local capHint = L and L["GEAR_DAWNCREST_PLAYBOOK_CAP_HINT"]
-    if type(capHint) == "string" and capHint ~= "" then
-        lines[#lines + 1] = { type = "spacer", height = 6 }
-        lines[#lines + 1] = { text = capHint, color = { 0.72, 0.76, 0.82 }, wrap = true }
-    end
-
-    lines[#lines + 1] = { type = "spacer", height = 8 }
-    lines[#lines + 1] = {
-        text = (L and L["GEAR_DAWNCREST_PLAYBOOK_BY_TIER"]) or "Sources by Dawncrest tier:",
-        color = { 1, 0.82, 0 },
-        wrap = false,
-    }
-
-    local colIds = dc.COLUMN_IDS
-    local sourcesMap = dc.SOURCES
-    local displayNames = dc.DISPLAY_NAMES
-    local labelKeys = dc.PVE_LABEL_KEYS
-
-    for i = 1, #colIds do
-        local cid = colIds[i]
-        local tierLabel
-        local lk = labelKeys and labelKeys[cid]
-        if lk and L and L[lk] then
-            tierLabel = L[lk]
-        else
-            local enName = displayNames and displayNames[cid] or ""
-            local fw = enName
-            if type(enName) == "string" and enName ~= "" then
-                fw = enName:match("^(%S+)") or enName
-            end
-            tierLabel = LocalizeDawncrestTierShortName(fw)
-        end
-
-        lines[#lines + 1] = { text = (tierLabel or "?") .. ":", color = { 1, 0.85, 0.45 }, wrap = false }
-
-        local srcList = sourcesMap and sourcesMap[cid]
-        if srcList and #srcList > 0 then
-            for si = 1, #srcList do
-                local bullet = srcList[si]
-                if type(bullet) == "string" and bullet ~= "" then
-                    lines[#lines + 1] = { text = "\194\183 " .. bullet, color = { 0.78, 0.82, 0.9 }, wrap = true }
-                end
-            end
-        else
-            lines[#lines + 1] = {
-                text = (L and L["GEAR_DAWNCREST_PLAYBOOK_NO_SOURCES"]) or "Earn via seasonal PvE rewards matching this crest tier.",
-                color = { 0.75, 0.78, 0.85 },
-                wrap = true,
-            }
-        end
-
-        if i < #colIds then
-            lines[#lines + 1] = { type = "spacer", height = 4 }
-        end
-    end
-
-    local title = (L and L["GEAR_DAWNCREST_PLAYBOOK_TITLE"]) or "Dawncrest upgrade playbook"
-    return summary, { type = "custom", title = title, lines = lines }
+    return "", nil
 end
 
 -- After currency changes (e.g. crests spent on upgrade), re-scan gear so item ilvl/tier and watermarks stay in sync.

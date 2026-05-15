@@ -12,6 +12,7 @@
 
 local ADDON_NAME, ns = ...
 local issecretvalue = issecretvalue
+local WarbandNexus = ns.WarbandNexus
 
 local function SafeScannerPlayerName()
     local n = UnitName("player")
@@ -25,6 +26,11 @@ local function SafeScannerRealmName()
 end
 
 local function CurrentScannerCharacterKey()
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey and WarbandNexus then
+        local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
+        if k then return k end
+    end
     local raw = ns.Utilities:GetCharacterKey()
     if not raw then return nil end
     if ns.Utilities.GetCanonicalCharacterKey then

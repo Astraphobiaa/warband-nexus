@@ -278,6 +278,11 @@ local function FormatCharacterName(entry)
 end
 
 local function GetCurrentCharKey()
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey and WarbandNexus then
+        local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
+        if k then return k end
+    end
     local raw = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
         or (ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
     if not raw then return nil end

@@ -53,11 +53,27 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     if not addon.db.global.characters then
         addon.db.global.characters = {}
     end
-    
-    if not addon.db.global.characters[charKey] then
-        addon.db.global.characters[charKey] = {}
+
+    local chars = addon.db.global.characters
+    local persistKey = self:GetCharactersTablePersistKey(addon, charKey) or charKey
+    if not persistKey then return end
+
+    -- Collapse legacy Name-Realm slot into GUID (or other canonical) slot without dropping fields.
+    if persistKey ~= charKey and chars[charKey] and not chars[persistKey] then
+        chars[persistKey] = chars[charKey]
+        chars[charKey] = nil
+    elseif persistKey ~= charKey and chars[charKey] and chars[persistKey] then
+        local src, dst = chars[charKey], chars[persistKey]
+        for k, v in pairs(src) do
+            if dst[k] == nil then dst[k] = v end
+        end
+        chars[charKey] = nil
     end
-    local entry = addon.db.global.characters[charKey]
+
+    if not chars[persistKey] then
+        chars[persistKey] = {}
+    end
+    local entry = chars[persistKey]
     if not entry.name or not entry.realm then
         local un = UnitName("player")
         if un and type(un) == "string" and not (issecretvalue and issecretvalue(un)) then
@@ -89,7 +105,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     
     -- HYBRID: Broadcast event for modules to react (event-driven component)
     addon:SendMessage(E.CHARACTER_TRACKING_CHANGED, {
-        charKey = charKey,
+        charKey = persistKey,
         isTracked = isTracked
     })
     
@@ -428,6 +444,59 @@ function CharacterService:ResolveCharactersTableKey(addon)
         end
     end
     return nil
+end
+
+--- Canonical key for subsidiary globals (`db.global.currencies`, etc.) — same namespace rules as `characters`.
+--- @param addon table|nil WarbandNexus
+--- @param optionalCharKey string|nil Explicit character (UI / roster); nil = logged-in player
+--- @return string|nil
+function CharacterService:ResolveSubsidiaryCharacterKey(addon, optionalCharKey)
+    if optionalCharKey and optionalCharKey ~= "" then
+        local U = ns.Utilities
+        if U and U.GetCanonicalCharacterKey then
+            return U:GetCanonicalCharacterKey(optionalCharKey) or optionalCharKey
+        end
+        return optionalCharKey
+    end
+    local r = addon and self:ResolveCharactersTableKey(addon)
+    if r then return r end
+    local U = ns.Utilities
+    if U and U.GetCharacterStorageKey then
+        local sk = addon and U:GetCharacterStorageKey(addon) or nil
+        if sk and sk ~= "" then
+            if U.GetCanonicalCharacterKey then
+                return U:GetCanonicalCharacterKey(sk) or sk
+            end
+            return sk
+        end
+    end
+    return U and U.GetCharacterKey and U:GetCharacterKey() or nil
+end
+
+--- Table index for `db.global.characters` writes (tracking dialog, etc.): existing row, else GUID bucket for current player.
+--- @param addon table WarbandNexus
+--- @param incomingUIKey string|nil Selector from UI (often Name-Realm for self)
+--- @return string|nil
+function CharacterService:GetCharactersTablePersistKey(addon, incomingUIKey)
+    local resolved = addon and self:ResolveCharactersTableKey(addon)
+    if resolved then return resolved end
+    local U = ns.Utilities
+    if not U then return incomingUIKey end
+    local legacy = U.GetCharacterKey and U:GetCharacterKey()
+    local sk = addon and U.GetCharacterStorageKey and U:GetCharacterStorageKey(addon) or nil
+    if incomingUIKey and legacy and incomingUIKey == legacy and sk and sk ~= "" then
+        if U.GetCanonicalCharacterKey then
+            return U:GetCanonicalCharacterKey(sk) or sk
+        end
+        return sk
+    end
+    if incomingUIKey and U.GetCanonicalCharacterKey then
+        return U:GetCanonicalCharacterKey(incomingUIKey) or incomingUIKey
+    end
+    if sk and sk ~= "" and U.GetCanonicalCharacterKey then
+        return U:GetCanonicalCharacterKey(sk) or sk
+    end
+    return incomingUIKey
 end
 
 ---Check if current character is tracked

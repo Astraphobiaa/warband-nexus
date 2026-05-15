@@ -128,10 +128,10 @@ function WarbandNexus:OnSkillLinesChanged()
         end
 
         -- CHARACTER_UPDATED always fires (basic character data, not profession-specific)
-        local raw = ns.Utilities:GetCharacterKey()
-        local msgKey = raw
-        if raw and ns.Utilities.GetCanonicalCharacterKey then
-            msgKey = ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+        local msgKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and ns.CharacterService:ResolveSubsidiaryCharacterKey(self, nil))
+            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+        if msgKey and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            msgKey = ns.Utilities:GetCanonicalCharacterKey(msgKey) or msgKey
         end
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
             charKey = msgKey,

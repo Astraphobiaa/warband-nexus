@@ -12,6 +12,7 @@ ns.Utilities = Utilities
 --============================================================================
 -- CHARACTER IDENTIFICATION
 -- Canonical persisted identity for subsidiary tables: GetCharacterStorageKey / ResolveCharacterRowKey / GetCanonicalCharacterKey.
+-- Logged-in `db.global.characters` index: CharacterService:ResolveCharactersTableKey(addon); writes / tracking: GetCharactersTablePersistKey; subsidiary caches: ResolveSubsidiaryCharacterKey.
 -- Live writes: CharacterService:ResolveCharactersTableKey(addon) or GetCharacterStorageKey(addon); messages/UI legacy keys: GetCanonicalCharacterKey.
 --============================================================================
 

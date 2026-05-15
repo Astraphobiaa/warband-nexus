@@ -42,11 +42,13 @@
         /wn profiler trace    - Toggle WN_TRACE copy buffer (requires measuring ON)
         /wn profiler dock     - Toggle dock-left layout for dev window
         /wn profiler gearonly on|off - Record only Gear-related slices (UI/Pop_* only on Gear tab populate)
+        /wn profiler events on|off [minMs] - Log slow event handlers to WN_TRACE (WN_TRACE_EVT; needs measuring ON)
 ============================================================================]]
 
 local ADDON_NAME, ns = ...
 local tinsert = table.insert
 local tremove = table.remove
+local issecretvalue = issecretvalue
 
 -- ============================================================================
 -- MODULE DEFINITION
@@ -73,6 +75,10 @@ local Profiler = {
     _traceLines = {},
     --- When true, Start/Stop/Wrap/_Record only labels focused on Gear diagnostics (see IsGearFocusedSliceLabel).
     gearOnlyRecording = false,
+    --- Log slow Blizzard-facing handlers to WN_TRACE (requires measuring ON); see TraceEventHandler.
+    eventTrace = false,
+    --- Minimum handler CPU time (debugprofilestop) to emit a WN_TRACE_EVT line.
+    eventTraceMinMs = 12,
     --- Last tab passed to PopulateContentBody (used with gearOnlyRecording for UI/Pop_* slices).
     _populateContentTab = nil,
 }
@@ -104,6 +110,8 @@ end
 ---@return boolean
 function Profiler:IsGearFocusedSliceLabel(label)
     if not label then return false end
+    -- Event-trace aggregates (Msg/evt_*) remain visible when gear-only noise filtering is on.
+    if string.find(label, "/evt_", 1, true) then return true end
     if string.find(label, "Gear", 1, true) then return true end
     if string.find(label, "gear", 1, true) then return true end
     if self._populateContentTab == "gear" and string.sub(label, 1, 7) == "UI/Pop_" then return true end
@@ -137,6 +145,8 @@ function Profiler:SavePersistToProfile()
     p.frameTracking = self.frameTracking and true or false
     p.devMode = self.devMode and true or false
     p.gearOnlyRecording = self.gearOnlyRecording and true or false
+    p.eventTrace = self.eventTrace and true or false
+    p.eventTraceMinMs = tonumber(self.eventTraceMinMs) or 12
     local w = self._devWindow
     if w then
         p.devWindowVisible = w:IsShown() and true or false
@@ -162,6 +172,8 @@ function Profiler:ApplyPersistedSettings(profile)
     self.frameTracking = p.frameTracking == true
     self.devMode = p.devMode == true
     self.gearOnlyRecording = p.gearOnlyRecording == true
+    self.eventTrace = p.eventTrace == true
+    self.eventTraceMinMs = tonumber(p.eventTraceMinMs) or 12
     if self.frameTracking then
         self._suppressFrameTrackingPrint = true
         self:SetFrameTracking(true)
@@ -676,6 +688,84 @@ function Profiler:StopAsync(label)
 end
 
 -- ============================================================================
+-- BLIZZARD EVENT / HANDLER TRACE (dev-only; WN_TRACE buffer)
+-- Community payload reference (verify in-game when uncertain):
+--   CURRENCY_DISPLAY_UPDATE — https://warcraft.wiki.gg/wiki/CURRENCY_DISPLAY_UPDATE
+--   UPDATE_FACTION — https://warcraft.wiki.gg/wiki/UPDATE_FACTION (no payload)
+--   MAJOR_FACTION_RENOWN_LEVEL_CHANGED — https://warcraft.wiki.gg/wiki/MAJOR_FACTION_RENOWN_LEVEL_CHANGED
+--   CHAT_MSG_COMBAT_FACTION_CHANGE — https://warcraft.wiki.gg/wiki/CHAT_MSG_COMBAT_FACTION_CHANGE (17 args; text/guid may be secret)
+-- ============================================================================
+
+--- Format WoW event payloads for logs (no raw text for possible API secrets).
+---@return string
+function Profiler:FormatEventPayload(...)
+    local n = select("#", ...)
+    local parts = {}
+    -- CHAT_MSG_* combat/chat lines carry up to 17 payload args per Warcraft Wiki (e.g. CHAT_MSG_COMBAT_FACTION_CHANGE).
+    local maxArgs = math.min(n, 18)
+    for i = 1, maxArgs do
+        local v = select(i, ...)
+        local t = type(v)
+        if t == "number" then
+            parts[#parts + 1] = tostring(v)
+        elseif t == "boolean" then
+            parts[#parts + 1] = v and "1" or "0"
+        elseif t == "string" then
+            if v == "" then
+                parts[#parts + 1] = "s0"
+            elseif issecretvalue and issecretvalue(v) then
+                parts[#parts + 1] = "<secret>"
+            else
+                parts[#parts + 1] = "s" .. tostring(#v)
+            end
+        elseif t == "nil" then
+            parts[#parts + 1] = "_"
+        else
+            parts[#parts + 1] = t
+        end
+    end
+    if n > maxArgs then
+        parts[#parts + 1] = "..."
+    end
+    return table.concat(parts, ",")
+end
+
+--- After handling a Blizzard event: if measuring+eventTrace and CPU time >= eventTraceMinMs, append WN_TRACE_EVT.
+---@param eventName string
+---@param startTime number debugprofilestop() at handler entry
+---@param ... any Event payload (varargs)
+function Profiler:TraceEventHandler(eventName, startTime, ...)
+    if not self.enabled or not self.eventTrace or not startTime then return end
+    local elapsed = debugprofilestop() - startTime
+    local minMs = tonumber(self.eventTraceMinMs) or 12
+    if elapsed < minMs then return end
+    local payload = self:FormatEventPayload(...)
+    local line = string.format("WN_TRACE_EVT %s %.2fms %s", tostring(eventName), elapsed, payload)
+    self:_AppendPerfTraceLine(line)
+    if self.liveOutput then
+        print(PREFIX .. C_WARN .. line .. C_R)
+    end
+    self:_Record(self:SliceLabel(self.CAT.MSG, "evt_" .. tostring(eventName)), elapsed)
+end
+
+--- Internal continuation (e.g. currency drain slice) — same WN_TRACE_EVT sink.
+---@param label string
+---@param startTime number
+---@param extraDetail string|nil Safe short detail (counts, queue depth)
+function Profiler:TraceInternalHandler(label, startTime, extraDetail)
+    if not self.enabled or not self.eventTrace or not startTime then return end
+    local elapsed = debugprofilestop() - startTime
+    local minMs = tonumber(self.eventTraceMinMs) or 12
+    if elapsed < minMs then return end
+    local line = string.format("WN_TRACE_EVT %s %.2fms %s", tostring(label), elapsed, tostring(extraDetail or ""))
+    self:_AppendPerfTraceLine(line)
+    if self.liveOutput then
+        print(PREFIX .. C_WARN .. line .. C_R)
+    end
+    self:_Record(self:SliceLabel(self.CAT.MSG, "evt_" .. tostring(label)), elapsed)
+end
+
+-- ============================================================================
 -- INTERNAL RECORDING
 -- ============================================================================
 
@@ -973,7 +1063,8 @@ end
 ---@param addon table WarbandNexus addon instance
 ---@param subCmd string|nil Subcommand (on/off/reset/frames/spikes/live/threshold)
 ---@param arg3 string|nil Additional argument
-function Profiler:HandleCommand(addon, subCmd, arg3)
+---@param arg4 string|nil Optional 4th token (e.g. min ms for `profiler events on 8`)
+function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
     if not subCmd or subCmd == "" then
         self:PrintSummary()
         return
@@ -1034,7 +1125,8 @@ function Profiler:HandleCommand(addon, subCmd, arg3)
         print(PREFIX .. "Measuring: " .. (self.enabled and (C_GOOD .. "YES") or (C_DIM .. "NO")) .. C_R)
         print(PREFIX .. "Live output: " .. (self.liveOutput and (C_GOOD .. "YES") or (C_DIM .. "NO")) .. C_R)
         print(PREFIX .. "Frame tracking: " .. (self.frameTracking and (C_GOOD .. "YES") or (C_DIM .. "NO")) .. C_R)
-        print(PREFIX .. "Gear-only recording: " .. (self.gearOnlyRecording and (C_GOOD .. "YES") or (C_DIM .. "NO")) .. C_R)
+        print(PREFIX .. "Event trace (WN_TRACE_EVT): " .. (self.eventTrace and (C_GOOD .. "ON") or (C_DIM .. "OFF")) .. C_R
+            .. "  minMs=" .. C_VALUE .. tostring(self.eventTraceMinMs or 12) .. C_R)
         print(PREFIX .. "Dev mode: " .. (self.devMode and (C_GOOD .. "YES") or (C_DIM .. "NO")) .. C_R)
         print(PREFIX .. "Spike threshold: " .. C_VALUE .. string.format("%.1fms", self.spikeThreshold) .. C_R)
         local entryCount = 0
@@ -1108,6 +1200,31 @@ function Profiler:HandleCommand(addon, subCmd, arg3)
             .. C_DIM .. "  UI/Pop_* slices only when Populate runs on Gear; async/deferred labels need \"Gear\" in name." .. C_R)
         self:SavePersistToProfile()
 
+    elseif subCmd == "events" or subCmd == "eventtrace" then
+        local a = (arg3 and tostring(arg3):lower()) or ""
+        if a == "on" or a == "1" or a == "true" then
+            self.eventTrace = true
+        elseif a == "off" or a == "0" or a == "false" then
+            self.eventTrace = false
+        else
+            self.eventTrace = not self.eventTrace
+        end
+        if self.eventTrace and arg4 then
+            local m = (ns.Utilities and ns.Utilities.SafeNumber and ns.Utilities:SafeNumber(arg4, nil)) or tonumber(arg4)
+            if m and m > 0 then
+                self.eventTraceMinMs = m
+            end
+        end
+        if self.eventTrace and not self.enabled then
+            self.enabled = true
+            print(PREFIX .. C_GOOD .. "Profiling auto-enabled (event trace needs measuring ON)." .. C_R)
+        end
+        local stEv = self.eventTrace and (C_GOOD .. "ON") or (C_DIM .. "OFF")
+        print(PREFIX .. "Event trace (WN_TRACE_EVT): " .. stEv .. C_R
+            .. C_DIM .. "  minMs=" .. tostring(self.eventTraceMinMs or 12)
+            .. "  |cff00ccff/wn profiler events on 8|r sets threshold to 8ms" .. C_R)
+        self:SavePersistToProfile()
+
     elseif subCmd == "help" then
         print(" ")
         print(C_HEADER .. "Warband Nexus Profiler - Commands" .. C_R)
@@ -1126,6 +1243,7 @@ function Profiler:HandleCommand(addon, subCmd, arg3)
         print("  " .. C_LABEL .. "/wn profiler trace" .. C_R .. "   Toggle WN_TRACE copy window (needs measuring ON)")
         print("  " .. C_LABEL .. "/wn profiler dock" .. C_R .. "    Toggle dock-left for dev window")
         print("  " .. C_LABEL .. "/wn profiler gearonly" .. C_R .. " on|off  Record only Gear-focused slices (reduces noise)")
+        print("  " .. C_LABEL .. "/wn profiler events" .. C_R .. " on|off [minMs]  Log slow Blizzard handlers (WN_TRACE_EVT)")
         print(" ")
     else
         print(PREFIX .. C_WARN .. "Unknown subcommand: " .. tostring(subCmd) .. C_R)

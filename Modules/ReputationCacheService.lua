@@ -178,6 +178,10 @@ end
 
 --- Subsidiary `reputationData.characters` bucket key for the online character (GUID-backed after migration).
 local function CurrentReputationSubsidiaryKey()
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey then
+        return CS:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
+    end
     local raw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not raw then return nil end
     if ns.Utilities.GetCanonicalCharacterKey then
@@ -534,11 +538,7 @@ function ReputationCache:Initialize()
     self.lastFullScan = db.lastScan or 0
     
     -- Get current character subsidiary key (aligned with MigrationService character-key remaps).
-    local currentCharKeyRaw = ns.Utilities:GetCharacterKey()
-    local currentSubsidiaryKey = currentCharKeyRaw
-    if currentCharKeyRaw and ns.Utilities.GetCanonicalCharacterKey then
-        currentSubsidiaryKey = ns.Utilities:GetCanonicalCharacterKey(currentCharKeyRaw) or currentCharKeyRaw
-    end
+    local currentSubsidiaryKey = CurrentReputationSubsidiaryKey()
     
     -- Fast presence checks (avoid full DB counting on every reload).
     local hasAnyData = next(db.accountWide) ~= nil
@@ -1405,7 +1405,10 @@ function ReputationCache:RegisterEventListeners()
     end
     
     repEventFrame:SetScript("OnEvent", function(frame, event, ...)
-        -- Guard: only process if character is tracked
+        local P = ns.Profiler
+        local t0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
+        local function inner(...)
+            -- Guard: only process if character is tracked
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return
         end
@@ -1455,20 +1458,26 @@ function ReputationCache:RegisterEventListeners()
         
         -- ────────────────────────────────────────────────────────────
         -- MAJOR_FACTION_RENOWN_LEVEL_CHANGED: Queue renown level-up
-        -- Provides (majorFactionID, newRenownLevel) — no parsing needed.
+        -- Provides (majorFactionID, newRenownLevel, oldRenownLevel) — see Warcraft Wiki MAJOR_FACTION_RENOWN_LEVEL_CHANGED.
         -- Queued for processing after DB update (same as CHAT_MSG flow).
         -- ────────────────────────────────────────────────────────────
         if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" then
-            local majorFactionID, newRenownLevel = ...
+            local majorFactionID, newRenownLevel, oldRenownLevelFromEvent = ...
             if not majorFactionID or not newRenownLevel then return end
             
             DebugPrint("|cff9370DB[ReputationCache]|r [Renown] factionID=" .. majorFactionID .. " newLevel=" .. newRenownLevel)
             
-            -- Deduplicate: check snapshot for previous level
+            -- Deduplicate: prefer Blizzard payload oldRenownLevel when present (wiki), else snapshot.
             local snapshot = ReputationCache._snapshot
             local oldRenownLevel = 0
             if snapshot and snapshot[majorFactionID] then
                 oldRenownLevel = snapshot[majorFactionID].renownLevel or 0
+            end
+            if oldRenownLevelFromEvent ~= nil and not (issecretvalue and issecretvalue(oldRenownLevelFromEvent)) then
+                local evOld = tonumber(oldRenownLevelFromEvent)
+                if evOld ~= nil then
+                    oldRenownLevel = evOld
+                end
             end
             
             if newRenownLevel <= oldRenownLevel then
@@ -1574,7 +1583,13 @@ function ReputationCache:RegisterEventListeners()
             end
             return
         end
-    end)
+    end
+    local ok, err = pcall(inner, ...)
+    if not ok then error(err, 0) end
+    if t0 and P then
+        P:TraceEventHandler(event, t0, ...)
+    end
+end)
     
     -- ============================================================
     -- FULL FLOW SIMULATION (developer / internal testing)
@@ -2411,6 +2426,18 @@ function WarbandNexus:GetAllReputations()
                     local canon = ns.Utilities:GetCharacterKey(char.name, char.realm)
                     if canon and canon ~= "" then
                         classByCharKey[canon] = cls
+                    end
+                    if ns.Utilities.ResolveCharacterRowKey then
+                        local rk = ns.Utilities:ResolveCharacterRowKey(char)
+                        if rk and rk ~= "" then
+                            classByCharKey[rk] = cls
+                            if ns.Utilities.GetCanonicalCharacterKey then
+                                local cc = ns.Utilities:GetCanonicalCharacterKey(rk)
+                                if cc and cc ~= "" then
+                                    classByCharKey[cc] = cls
+                                end
+                            end
+                        end
                     end
                 end
             end

@@ -113,6 +113,11 @@ local CurrencyCache = {
     -- Queue: FIFO for currency updates (multi-currency loot can fire many events in one frame).
     updateQueue = {},       -- { currencyID, ... } — use table.remove(1); do not leave nil holes (# is undefined with holes)
     isDraining = false,     -- While true, OnCurrencyUpdate only appends; one drain loop drains until empty
+    --- True while a C_Timer.After(0) resume for DrainCurrencyQueue is scheduled (avoids duplicate timers).
+    drainResumePending = false,
+    --- Successful UpdateSingleCurrency calls in the current drain session (may span budgeted slices).
+    _drainBcCount = 0,
+    _drainBcSingleId = nil,
 
     --- Deferred split-currency chat: invalidate stale C_Timer.After when same ID updates again same frame.
     deferGainToken = {},    -- [currencyID] = number
@@ -367,6 +372,19 @@ local function GetDB()
     return WarbandNexus.db.global.currencyData
 end
 
+--- Canonical subsidiary DB key (matches `db.global.characters` / MigrationService GUID keys).
+local function CurrencySubsidiaryKey(optionalCharKey)
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey then
+        return CS:ResolveSubsidiaryCharacterKey(WarbandNexus, optionalCharKey)
+    end
+    local k = optionalCharKey or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+    if k and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        return ns.Utilities:GetCanonicalCharacterKey(k) or k
+    end
+    return k
+end
+
 -- ============================================================================
 -- ON-DEMAND METADATA RESOLVER (Session RAM only)
 -- ============================================================================
@@ -460,12 +478,8 @@ function WarbandNexus:InitializeCurrencyCache()
     -- Load metadata
     CurrencyCache.lastFullScan = db.lastScan or 0
     
-    -- Get current character subsidiary key (GUID-backed after migration; canonicalizes legacy API key).
-    local currentCharKeyRaw = ns.Utilities:GetCharacterKey()
-    local currentSubsidiaryKey = currentCharKeyRaw
-    if currentCharKeyRaw and ns.Utilities.GetCanonicalCharacterKey then
-        currentSubsidiaryKey = ns.Utilities:GetCanonicalCharacterKey(currentCharKeyRaw) or currentCharKeyRaw
-    end
+    -- Get current character subsidiary key (GUID-backed after migration; resolves legacy API key).
+    local currentSubsidiaryKey = CurrencySubsidiaryKey(nil)
     
     -- Scan decision only: avoid summing every currency row across all alts (O(total entries)).
     local anyCurrencyData = false
@@ -740,11 +754,8 @@ local function UpdateSingleCurrency(currencyID, eventHint)
     local db = GetDB()
     if not db then return false end
     
-    local charKey = ns.Utilities:GetCharacterKey()
+    local charKey = CurrencySubsidiaryKey(nil)
     if not charKey then return false end
-    if ns.Utilities.GetCanonicalCharacterKey then
-        charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
-    end
 
     -- Initialize character entry if needed
     if not db.currencies[charKey] then
@@ -1220,12 +1231,9 @@ function CurrencyCache:UpdateAll(currencyDataArray)
         return false
     end
     
-    local currentCharKey = ns.Utilities:GetCharacterKey()
+    local currentCharKey = CurrencySubsidiaryKey(nil)
     if not currentCharKey then
         return false
-    end
-    if ns.Utilities.GetCanonicalCharacterKey then
-        currentCharKey = ns.Utilities:GetCanonicalCharacterKey(currentCharKey) or currentCharKey
     end
 
     -- CRITICAL: Clear ONLY current character's data (preserve other characters)
@@ -1281,51 +1289,97 @@ end
 -- ============================================================================
 
 -- ============================================================================
--- CURRENCY UPDATE QUEUE (Synchronous FIFO)
+-- CURRENCY UPDATE QUEUE (FIFO, time-budgeted drain)
 -- ============================================================================
 -- Multi-currency / same-currency bursts enqueue many IDs. Events may fire while we are
 -- inside UpdateSingleCurrency or PerformFullScan — those handlers only append. One drain
--- loop runs until the queue is empty (table.remove from front). Never wipe the queue
--- after a pass: that dropped updates appended while isDraining was true.
+-- session runs until the queue is empty; each frame processes up to CURRENCY_DRAIN_BUDGET_MS
+-- then resumes on the next frame (C_Timer.After(0)) so loot bursts do not monopolize one frame.
+-- Never wipe the queue after a pass: that dropped updates appended while isDraining was true.
 -- ============================================================================
 
----Drain the currency queue synchronously until empty.
+-- Max CPU per frame for synchronous currency queue drain (loot bursts enqueue many IDs).
+local CURRENCY_DRAIN_BUDGET_MS = 4.5
+
+local function registerDrainBroadcastSuccess(currencyID)
+    local c = CurrencyCache
+    c._drainBcCount = (c._drainBcCount or 0) + 1
+    if c._drainBcCount == 1 then
+        c._drainBcSingleId = currencyID
+    else
+        c._drainBcSingleId = nil
+    end
+end
+
+local function flushDrainBroadcastIfNeeded()
+    local c = CurrencyCache
+    local n = c._drainBcCount or 0
+    if n <= 0 then return end
+    if WarbandNexus.SendMessage then
+        if n == 1 and c._drainBcSingleId then
+            WarbandNexus:SendMessage(E.CURRENCY_UPDATED, c._drainBcSingleId)
+        else
+            WarbandNexus:SendMessage(E.CURRENCY_UPDATED)
+        end
+    end
+    c._drainBcCount = 0
+    c._drainBcSingleId = nil
+end
+
+local function scheduleDrainResume()
+    if CurrencyCache.drainResumePending then return end
+    CurrencyCache.drainResumePending = true
+    C_Timer.After(0, function()
+        CurrencyCache.drainResumePending = false
+        DrainCurrencyQueue()
+    end)
+end
+
+---Drain the currency queue synchronously until empty or time budget exceeded (then resume next frame).
 ---Nested DrainCurrencyQueue calls (while isDraining) return immediately; the outer loop
 ---keeps table.remove(1) until #queue == 0, including items added during processing.
 local function DrainCurrencyQueue()
     if CurrencyCache.isDraining then return end
     CurrencyCache.isDraining = true
 
-    local currencyBroadcastCount = 0
-    local singleCurrencyID = nil
+    local P = ns.Profiler
+    local sliceT0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
+    local sliceStart = debugprofilestop()
+    local processedInSlice = 0
+    local budgetExceeded = false
 
     while #CurrencyCache.updateQueue > 0 do
+        if (debugprofilestop() - sliceStart) > CURRENCY_DRAIN_BUDGET_MS then
+            budgetExceeded = true
+            break
+        end
         local entry = table.remove(CurrencyCache.updateQueue, 1)
+        processedInSlice = processedInSlice + 1
         if entry == 0 then
             CurrencyCache:PerformFullScan()
         elseif type(entry) == "table" and entry.currencyID then
             if UpdateSingleCurrency(entry.currencyID, entry) then
-                currencyBroadcastCount = currencyBroadcastCount + 1
-                singleCurrencyID = entry.currencyID
+                registerDrainBroadcastSuccess(entry.currencyID)
             end
         elseif type(entry) == "number" and entry > 0 then
             if UpdateSingleCurrency(entry) then
-                currencyBroadcastCount = currencyBroadcastCount + 1
-                singleCurrencyID = entry
+                registerDrainBroadcastSuccess(entry)
             end
         end
     end
 
-    if currencyBroadcastCount > 0 and WarbandNexus.SendMessage then
-        -- One message per drain: multi-currency bursts were N× handler churn (UI + GearService timers + EventManager).
-        if currencyBroadcastCount == 1 and singleCurrencyID then
-            WarbandNexus:SendMessage(E.CURRENCY_UPDATED, singleCurrencyID)
-        else
-            WarbandNexus:SendMessage(E.CURRENCY_UPDATED)
-        end
+    if sliceT0 and P then
+        P:TraceInternalHandler("CurrencyDrainSlice", sliceT0,
+            string.format("proc=%d rem=%d budgetHit=%s", processedInSlice, #CurrencyCache.updateQueue, budgetExceeded and "1" or "0"))
     end
 
-    CurrencyCache.isDraining = false
+    if #CurrencyCache.updateQueue > 0 then
+        CurrencyCache.isDraining = false
+        scheduleDrainResume()
+    else
+        flushDrainBroadcastIfNeeded()
+        CurrencyCache.isDraining = false
+    end
 end
 
 ---Handle CURRENCY_DISPLAY_UPDATE event (FIFO queue + synchronous drain)
@@ -1335,6 +1389,8 @@ end
 ---@param quantity number|nil Post-update quantity hint from the event
 ---@param quantityChange number|nil Delta from the event (authoritative when API is stale)
 local function OnCurrencyUpdate(currencyType, quantity, quantityChange, quantityGainSource, destroyReason)
+    local P = ns.Profiler
+    local t0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
     -- GUARD: Only process if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
         return
@@ -1351,6 +1407,9 @@ local function OnCurrencyUpdate(currencyType, quantity, quantityChange, quantity
     end
     
     DrainCurrencyQueue()
+    if t0 and P then
+        P:TraceEventHandler("CURRENCY_DISPLAY_UPDATE", t0, currencyType, quantity, quantityChange, quantityGainSource, destroyReason)
+    end
 end
 
 -- REMOVED: OnMoneyUpdate — never registered; gold tracking is owned by EventManager:OnMoneyChanged.
@@ -1372,8 +1431,10 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     if not db then return nil end
     
     -- Use current character if not specified
-    if not charKey and ns.Utilities and ns.Utilities.GetCharacterKey then
-        charKey = ns.Utilities:GetCharacterKey()
+    if not charKey then
+        charKey = CurrencySubsidiaryKey(nil)
+    else
+        charKey = CurrencySubsidiaryKey(charKey)
     end
     
     if not charKey then return nil end
@@ -1383,10 +1444,7 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     end
     
     local quantity = nil
-    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
-    if currentKey and ns.Utilities.GetCanonicalCharacterKey then
-        currentKey = ns.Utilities:GetCanonicalCharacterKey(currentKey) or currentKey
-    end
+    local currentKey = CurrencySubsidiaryKey(nil)
     local function norm(k) return (k and k:gsub("%s+", "")) or "" end
     local isCurrentChar = (currentKey and norm(charKey) == norm(currentKey))
 
@@ -1509,8 +1567,10 @@ end
 ---@param charKey string|nil Character key (defaults to current character)
 ---@return table { [currencyID] = quantity }
 function WarbandNexus:GetAllCurrencyData(charKey)
-    if not charKey and ns.Utilities and ns.Utilities.GetCharacterKey then
-        charKey = ns.Utilities:GetCharacterKey()
+    if not charKey then
+        charKey = CurrencySubsidiaryKey(nil)
+    else
+        charKey = CurrencySubsidiaryKey(charKey)
     end
     
     if not charKey then return {} end
@@ -1568,8 +1628,19 @@ local function RebuildMergedCurrenciesUIReadModel()
     if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters then
         for charKey, charData in pairs(WarbandNexus.db.global.characters) do
             if type(charData) == "table" and charData.isTracked == true then
-                local canonicalKey = (ns.Utilities and ns.Utilities.GetCharacterKey and charData.name and charData.realm)
-                    and ns.Utilities:GetCharacterKey(charData.name, charData.realm) or charKey
+                local canonicalKey = (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(charData))
+                    or charKey
+                if ns.Utilities and ns.Utilities.GetCharacterKey and charData.name and charData.realm then
+                    local nk = ns.Utilities:GetCharacterKey(charData.name, charData.realm)
+                    if nk and ns.Utilities.GetCanonicalCharacterKey then
+                        canonicalKey = ns.Utilities:GetCanonicalCharacterKey(canonicalKey)
+                            or ns.Utilities:GetCanonicalCharacterKey(nk) or nk or charKey
+                    elseif ns.Utilities.GetCanonicalCharacterKey then
+                        canonicalKey = ns.Utilities:GetCanonicalCharacterKey(canonicalKey) or charKey
+                    end
+                elseif ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+                    canonicalKey = ns.Utilities:GetCanonicalCharacterKey(canonicalKey) or charKey
+                end
                 trackedCharacters[#trackedCharacters + 1] = {
                     rawKey = charKey,
                     canonicalKey = canonicalKey,
@@ -1693,7 +1764,7 @@ function CurrencyCache:Clear(clearDB)
         local db = GetDB()
         if db then
             -- Get current character key
-            local currentCharKey = ns.Utilities:GetCharacterKey()
+            local currentCharKey = CurrencySubsidiaryKey(nil)
             
             -- IMPORTANT: Only clear CURRENT character's currency data
             if db.currencies and db.currencies[currentCharKey] then
@@ -1990,7 +2061,11 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
         if issecretvalue and currentPlayerGUID and issecretvalue(currentPlayerGUID) then
             currentPlayerGUID = nil
         end
-        local currentPlayerKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+        local currentPlayerKey = CurrencySubsidiaryKey(nil)
+        local currentPlayerCanon = currentPlayerKey
+        if currentPlayerKey and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            currentPlayerCanon = ns.Utilities:GetCanonicalCharacterKey(currentPlayerKey) or currentPlayerKey
+        end
         for charKey, charData in pairs(wDB.characters) do
             if charData.isTracked then
                 -- SKIP CURRENT LOGIN CHARACTER! Their data is always fresh locally and might not be in the API response.
@@ -2001,7 +2076,16 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
                         guidEqual = (cg == currentPlayerGUID)
                     end
                 end
-                local isCurrentPlayer = guidEqual or (charKey == currentPlayerKey)
+                local rowCanon = charKey
+                if ns.Utilities and ns.Utilities.ResolveCharacterRowKey and type(charData) == "table" then
+                    rowCanon = ns.Utilities:ResolveCharacterRowKey(charData) or charKey
+                end
+                if rowCanon and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+                    rowCanon = ns.Utilities:GetCanonicalCharacterKey(rowCanon) or rowCanon
+                end
+                local isCurrentPlayer = guidEqual
+                    or (currentPlayerKey and charKey == currentPlayerKey)
+                    or (currentPlayerCanon and rowCanon and currentPlayerCanon == rowCanon)
                 
                 if not isCurrentPlayer then
                     local newQuantity = 0

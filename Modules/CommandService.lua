@@ -204,8 +204,8 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("|cffff6600[WN]|r " .. ((ns.L and ns.L["PROFILER_NOT_LOADED"]) or "Profiler module not loaded.") .. "|r")
             return
         end
-        local _, subCmd, arg3 = addon:GetArgs(input, 3)
-        P:HandleCommand(addon, subCmd, arg3)
+        local _, subCmd, arg3, arg4 = addon:GetArgs(input, 4)
+        P:HandleCommand(addon, subCmd, arg3, arg4)
         return
 
     elseif cmd == "collection" or cmd == "collections" then

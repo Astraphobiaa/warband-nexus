@@ -424,9 +424,11 @@ function InitializationService:InitializeBackgroundServices(addon)
     -- Error Handler: Wrap critical functions (1.5s)
     -- NOTE: Must run AFTER all other modules are loaded
     C_Timer.After(1.5, function()
-        if addon and addon.InitializeErrorHandler then
-            addon:InitializeErrorHandler()
-        end
+        SafeInit(function()
+            if addon and addon.InitializeErrorHandler then
+                addon:InitializeErrorHandler()
+            end
+        end, "ErrorHandler")
     end)
     
     -- Reminder Service: Time & zone-based plan reminders (4s)
@@ -466,9 +468,11 @@ end
 ]]
 function InitializationService:InitializeMinimapButton(addon)
     C_Timer.After(1, function()
-        if addon and addon.InitializeMinimapButton then
-            addon:InitializeMinimapButton()
-        end
+        SafeInit(function()
+            if addon and addon.InitializeMinimapButton then
+                addon:InitializeMinimapButton()
+            end
+        end, "MinimapButton")
     end)
 end
 

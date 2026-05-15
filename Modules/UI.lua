@@ -411,6 +411,37 @@ local function ClearAllSearchBoxes()
     ns._gearSearchText = nil
 end
 
+---Session-only main tab (hide/show same login). Cleared on /reload.
+---@param tabKey string|nil
+local function RememberSessionMainTab(tabKey)
+    if tabKey and tabKey ~= "" then
+        ns._wnSessionLastTab = tabKey
+    end
+end
+
+---After /reload first open is always Characters; same-session reopen uses last tab.
+---@return string
+local function ResolveMainWindowOpenTab()
+    if ns._wnOpenCharsTabOnNextShow then
+        ns._wnOpenCharsTabOnNextShow = nil
+        return "chars"
+    end
+    if ns._wnSessionLastTab then
+        return ns._wnSessionLastTab
+    end
+    local p = WarbandNexus.db and WarbandNexus.db.profile
+    return (p and p.lastTab) or "chars"
+end
+
+local reloadMainTabFrame = CreateFrame("Frame")
+reloadMainTabFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+reloadMainTabFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUi)
+    if isReloadingUi then
+        ns._wnOpenCharsTabOnNextShow = true
+        ns._wnSessionLastTab = nil
+    end
+end)
+
 function WarbandNexus:ToggleMainWindow()
     if InCombatLockdown() then
         self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
@@ -426,6 +457,7 @@ function WarbandNexus:ToggleMainWindow()
         return
     end
     if mainFrame and mainFrame:IsShown() then
+        RememberSessionMainTab(mainFrame.currentTab)
         mainFrame:Hide()
         self.mainFrame = nil  -- Clear reference
     else
@@ -433,7 +465,7 @@ function WarbandNexus:ToggleMainWindow()
     end
 end
 
--- Manual open: restores db.profile.lastTab (default Characters).
+-- Open: /reload -> Characters; same session hide/show -> last tab (session), else db.profile.lastTab.
 function WarbandNexus:ShowMainWindow()
     -- TAINT PROTECTION: Prevent UI manipulation during combat
     if InCombatLockdown() then
@@ -467,9 +499,7 @@ function WarbandNexus:ShowMainWindow()
     -- Store reference for external access (FontManager, etc.)
     self.mainFrame = mainFrame
     
-    -- Restore last active tab (persisted in DB), default to Characters
-    local lastTab = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.lastTab
-    mainFrame.currentTab = lastTab or "chars"
+    mainFrame.currentTab = ResolveMainWindowOpenTab()
     -- Former main tab "storage" is merged into Items > Warband (account-wide tree).
     if mainFrame.currentTab == "storage" then
         mainFrame.currentTab = "items"
@@ -480,6 +510,7 @@ function WarbandNexus:ShowMainWindow()
             ns.UI_SetItemsSubTab("warband")
         end
     end
+    RememberSessionMainTab(mainFrame.currentTab)
     mainFrame.isMainTabSwitch = true  -- First open = main tab switch
 
     -- Show before PopulateContent: while hidden, scroll:GetWidth() is often 0 → blank/black To-Do (and other tabs).
@@ -545,7 +576,11 @@ end
 
 function WarbandNexus:HideMainWindow()
     if mainFrame then
+        RememberSessionMainTab(mainFrame.currentTab)
         mainFrame:Hide()
+        if WarbandNexus.mainFrame then
+            WarbandNexus.mainFrame = nil
+        end
     end
 end
 
@@ -1190,7 +1225,14 @@ function WarbandNexus:CreateMainWindow()
 
     -- Window Manager: register main window + ESC hierarchy + combat hide/restore
     if ns.WindowManager then
-        ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.MAIN)
+        ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.MAIN, function()
+            if WarbandNexus.HideMainWindow then
+                WarbandNexus:HideMainWindow()
+            else
+                RememberSessionMainTab(f.currentTab)
+                f:Hide()
+            end
+        end)
         ns.WindowManager:InstallESCHandler(f)
     end
     
@@ -1310,10 +1352,11 @@ function WarbandNexus:CreateMainWindow()
             -- PERFORMANCE: Update tab bar visuals immediately so user sees switch without waiting for content
             UpdateTabButtonStates(f)
 
-            -- Persist selected tab so the addon reopens where the user left off
+            -- Persist selected tab (profile + session: session drives same-login hide/show)
             if WarbandNexus.db and WarbandNexus.db.profile then
                 WarbandNexus.db.profile.lastTab = self.key
             end
+            RememberSessionMainTab(self.key)
 
             -- Clear session-only collection metadata when leaving Plans (free RAM, avoid bloat)
             if previousTab == "plans" and WarbandNexus.ClearCollectionMetadataCache then
@@ -1744,21 +1787,99 @@ function WarbandNexus:CreateMainWindow()
     -- Blizzard can fire GET_ITEM_INFO_RECEIVED many times per frame burst; never sync-redraw per event.
     local gearItemInfoCoalesceGen = 0
     local gearItemInfoCoalesceTimer = nil
+    -- Coalesce Invalidate+Resolve+Redraw from rapid GEAR_UPDATED (e.g. paired ring swaps) into one pass per window.
+    local GEAR_STORAGE_REC_REFRESH_DEBOUNCE = 0.06
+    local gearStorageRecRefreshTimer = nil
+    local gearStorageRecRefreshEquipOnly = false
+    -- Bag/item DB merges: avoid full Gear tab teardown; refresh storage recommendations + paperdoll icons only.
+    local GEAR_TAB_INV_NARROW_DEBOUNCE = 0.08
+    local gearTabInvNarrowTimer = nil
+
+    local function TryRunGearTabInventoryNarrowRefresh()
+        if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+        if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
+        if WarbandNexus.IsGearStorageRecommendationsEnabled
+            and not WarbandNexus:IsGearStorageRecommendationsEnabled() then
+            if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
+                WarbandNexus:TryRefreshAllGearEquipSlotIcons()
+            end
+            return
+        end
+        local canon = f._gearPopulateCanonKey
+        if not canon or not WarbandNexus.InvalidateGearStorageFindingsCacheForCanon then return end
+        WarbandNexus:InvalidateGearStorageFindingsCacheForCanon(canon)
+        local gen = ns._gearTabDrawGen or 0
+        if WarbandNexus.IsGearStorageScanInFlightForCanon
+            and WarbandNexus:IsGearStorageScanInFlightForCanon(canon) then
+            -- Invalidate queued for ProcessDeferredGearStorageUpdates after the in-flight scan finishes.
+        elseif WarbandNexus.ScheduleGearStorageFindingsResolve then
+            WarbandNexus:ScheduleGearStorageFindingsResolve(canon, gen, function()
+                C_Timer.After(0, function()
+                    if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+                    local c2 = f._gearPopulateCanonKey
+                    if not c2 then return end
+                    if WarbandNexus.RedrawGearStorageRecommendationsOnly then
+                        ns._gearStorageAllowEquipSigInvBypass = true
+                        local ok = WarbandNexus:RedrawGearStorageRecommendationsOnly(c2, ns._gearTabDrawGen or 0, true)
+                        ns._gearStorageAllowEquipSigInvBypass = false
+                        if not ok then
+                            SchedulePopulateContent(true)
+                        end
+                    else
+                        SchedulePopulateContent(true)
+                    end
+                end)
+            end)
+        else
+            SchedulePopulateContent(true)
+            return
+        end
+        if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
+            WarbandNexus:TryRefreshAllGearEquipSlotIcons()
+        end
+    end
+
+    local function ScheduleGearTabInventoryNarrowRefresh()
+        if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+        if gearTabInvNarrowTimer and gearTabInvNarrowTimer.Cancel then
+            gearTabInvNarrowTimer:Cancel()
+        end
+        gearTabInvNarrowTimer = nil
+        if C_Timer and C_Timer.NewTimer then
+            gearTabInvNarrowTimer = C_Timer.NewTimer(GEAR_TAB_INV_NARROW_DEBOUNCE, function()
+                gearTabInvNarrowTimer = nil
+                TryRunGearTabInventoryNarrowRefresh()
+            end)
+        else
+            TryRunGearTabInventoryNarrowRefresh()
+        end
+    end
     
     local function RunDebouncedPopulateTimerBody(myGen)
         pendingPopulateTimer = nil
         if myGen ~= populateDebounceGen then return end
         if not f or not f:IsShown() then return end
+        -- Read once up-front: gear+defer gate used to clear this before evaluating skipCooldown,
+        -- which dropped GET_ITEM_INFO_RECEIVED / ITEM_METADATA repaints for the entire storage defer window.
+        local useSkip = pendingPopulateSkipCooldown
+        pendingPopulateSkipCooldown = false
         if f.currentTab == "gear" and ns._gearStorageDeferAwaiting then
             local ac = ns._gearStorageDeferAwaitCanon
             local fc = f._gearPopulateCanonKey
             if ac and fc and ac == fc then
-                pendingPopulateSkipCooldown = false
-                return
+                local allowEquipRefresh = false
+                if WarbandNexus.GetGearPopulateSignature then
+                    local sigNow = WarbandNexus:GetGearPopulateSignature()
+                    if sigNow and f._gearPopulateContentSig and sigNow ~= f._gearPopulateContentSig then
+                        allowEquipRefresh = true
+                    end
+                end
+                -- skipCooldown: item cache warm-up must repaint (icons + storage) even while storage scan defers.
+                if not allowEquipRefresh and not useSkip then
+                    return
+                end
             end
         end
-        local useSkip = pendingPopulateSkipCooldown
-        pendingPopulateSkipCooldown = false
         if f._wnLastMainTabSwitchAt and f._wnLastMainTabSwitchKey == f.currentTab
             and (GetTime() - f._wnLastMainTabSwitchAt) < MAIN_TAB_DEBOUNCED_QUIET then
             return
@@ -1810,6 +1931,14 @@ function WarbandNexus:CreateMainWindow()
         pendingPopulateTimer = nil
         pendingPopulateSkipCooldown = false
         lastEventPopulateTime = GetTime()
+        if gearStorageRecRefreshTimer and gearStorageRecRefreshTimer.Cancel then
+            gearStorageRecRefreshTimer:Cancel()
+        end
+        gearStorageRecRefreshTimer = nil
+        if gearTabInvNarrowTimer and gearTabInvNarrowTimer.Cancel then
+            gearTabInvNarrowTimer:Cancel()
+        end
+        gearTabInvNarrowTimer = nil
     end
 
     --- Kill only the pending debounce timer (no lastEventPopulateTime bump). Used on main-tab switch so
@@ -1821,6 +1950,14 @@ function WarbandNexus:CreateMainWindow()
         end
         pendingPopulateTimer = nil
         pendingPopulateSkipCooldown = false
+        if gearStorageRecRefreshTimer and gearStorageRecRefreshTimer.Cancel then
+            gearStorageRecRefreshTimer:Cancel()
+        end
+        gearStorageRecRefreshTimer = nil
+        if gearTabInvNarrowTimer and gearTabInvNarrowTimer.Cancel then
+            gearTabInvNarrowTimer:Cancel()
+        end
+        gearTabInvNarrowTimer = nil
     end
 
     --- Coalesce rapid item-cache resolution events on the Gear tab (GET_ITEM_INFO_RECEIVED / metadata).
@@ -1829,9 +1966,8 @@ function WarbandNexus:CreateMainWindow()
         local now = GetTime()
         if now < gearAsyncItemRepaintNext then return end
         gearAsyncItemRepaintNext = now + GEAR_ASYNC_ITEM_REPAINT_INTERVAL
-        -- Bypass POPULATE_COOLDOWN: lastEventPopulateTime is often fresh from Items/Bags/Currency
-        -- on other tabs; dropping this repaint leaves storage recommendations stale until tab switch.
-        SchedulePopulateContent(true)
+        -- Narrow refresh: storage recommendations + paperdoll icons (avoid full Gear tab teardown on cache storms).
+        ScheduleGearTabInventoryNarrowRefresh()
     end
     
     -- NOTE: All RegisterMessage calls use UIEvents as the 'self' key to avoid
@@ -1841,7 +1977,7 @@ function WarbandNexus:CreateMainWindow()
     -- and this refresh would be dropped — leaving Character tab layout stale or visually broken.
     -- Gear tab rebuilds 3D paperdoll + full card — avoid skipCooldown (full populate every ~0.1s) on
     -- rapid WN_CHARACTER_UPDATED (e.g. item level ticks at 0.3s, DataService) or models appear to "flicker".
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function(_, payload)
         if not f or not f:IsShown() then return end
         local tab = f.currentTab
         if tab ~= "chars" and tab ~= "stats" and tab ~= "gear" then return end
@@ -1852,6 +1988,11 @@ function WarbandNexus:CreateMainWindow()
         elseif tab == "stats" then
             SchedulePopulateContent(true)
         elseif tab == "gear" then
+            if payload and payload.dataType == "itemLevel" and payload.charKey
+                and WarbandNexus.TryRefreshGearTabItemLevelOnly
+                and WarbandNexus:TryRefreshGearTabItemLevelOnly(payload.charKey) then
+                return
+            end
             SchedulePopulateContent()
         end
     end)
@@ -1863,16 +2004,120 @@ function WarbandNexus:CreateMainWindow()
             if f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband" then
                 SchedulePopulateContent(true)
             elseif f.currentTab == "gear" then
-                -- Gear: cross-tab cooldown drops storage-scan repaints right after switching from Items.
-                SchedulePopulateContent(true)
+                ScheduleGearTabInventoryNarrowRefresh()
             else
                 SchedulePopulateContent()
             end
         end
     end)
 
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.GEAR_UPDATED, function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.GEAR_UPDATED, function(_, payload)
         if f and f:IsShown() and f.currentTab == "gear" then
+            -- ScanEquippedGear always reports the logged-in character. If the Gear tab is showing
+            -- another roster entry (offline alt), a full PopulateContent here only bumps drawGen,
+            -- aborts in-flight storage Find, and leaves recommendations / loading veil stuck.
+            local gearCanon = f._gearPopulateCanonKey
+            if gearCanon and payload and payload.charKey then
+                local U = ns.Utilities
+                local pCanon = U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(payload.charKey) or payload.charKey
+                local gCanon = U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(gearCanon) or gearCanon
+                if pCanon and gCanon and pCanon ~= gCanon then
+                    return
+                end
+            end
+            local function runGearStorageRecRefreshNow()
+                local equipOnly = gearStorageRecRefreshEquipOnly == true
+                gearStorageRecRefreshEquipOnly = false
+                gearStorageRecRefreshTimer = nil
+                if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+                local gearCanon = f._gearPopulateCanonKey
+                if not gearCanon then return end
+                local gen = ns._gearTabDrawGen or 0
+                if equipOnly then
+                    if WarbandNexus.NotifyGearStorageEquipChanged then
+                        WarbandNexus:NotifyGearStorageEquipChanged(gearCanon)
+                    end
+                    if WarbandNexus.IsGearStorageScanInFlightForCanon
+                        and WarbandNexus:IsGearStorageScanInFlightForCanon(gearCanon) then
+                        return
+                    end
+                    if WarbandNexus.TryRedrawGearStorageRecAfterEquipChange
+                        and WarbandNexus:TryRedrawGearStorageRecAfterEquipChange(gearCanon, gen) then
+                        return
+                    end
+                end
+                if WarbandNexus.InvalidateGearStorageFindingsCacheForCanon then
+                    WarbandNexus:InvalidateGearStorageFindingsCacheForCanon(gearCanon)
+                end
+                if WarbandNexus.IsGearStorageScanInFlightForCanon
+                    and WarbandNexus:IsGearStorageScanInFlightForCanon(gearCanon) then
+                    return
+                end
+                if WarbandNexus.ScheduleGearStorageFindingsResolve then
+                    WarbandNexus:ScheduleGearStorageFindingsResolve(gearCanon, gen, function()
+                        C_Timer.After(0, function()
+                            if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+                            if WarbandNexus.RedrawGearStorageRecommendationsOnly then
+                                ns._gearStorageAllowEquipSigInvBypass = true
+                                WarbandNexus:RedrawGearStorageRecommendationsOnly(gearCanon, ns._gearTabDrawGen or 0, true)
+                                ns._gearStorageAllowEquipSigInvBypass = false
+                            end
+                        end)
+                    end)
+                elseif WarbandNexus.TryGearStorageRedrawOnly then
+                    WarbandNexus:TryGearStorageRedrawOnly()
+                end
+            end
+            local function refreshStorageRec(equipOnly)
+                gearStorageRecRefreshEquipOnly = equipOnly == true
+                if gearStorageRecRefreshTimer and gearStorageRecRefreshTimer.Cancel then
+                    gearStorageRecRefreshTimer:Cancel()
+                end
+                gearStorageRecRefreshTimer = nil
+                local h = C_Timer.NewTimer(GEAR_STORAGE_REC_REFRESH_DEBOUNCE, runGearStorageRecRefreshNow)
+                if type(h) == "table" and h.Cancel then
+                    gearStorageRecRefreshTimer = h
+                else
+                    runGearStorageRecRefreshNow()
+                end
+            end
+            local function redrawStorageRecAfterEquipOnly()
+                local gearCanon = f._gearPopulateCanonKey
+                local gen = ns._gearTabDrawGen or 0
+                if gearCanon and WarbandNexus.TryRedrawGearStorageRecAfterEquipChange then
+                    if WarbandNexus:TryRedrawGearStorageRecAfterEquipChange(gearCanon, gen) then
+                        return
+                    end
+                end
+                refreshStorageRec(true)
+            end
+            local recEnabled = WarbandNexus.IsGearStorageRecommendationsEnabled
+                and WarbandNexus:IsGearStorageRecommendationsEnabled()
+            local function trySlotRefresh(pl)
+                if WarbandNexus.TryRefreshGearEquipSlotsOnly and WarbandNexus:TryRefreshGearEquipSlotsOnly(pl) then
+                    if recEnabled then
+                        redrawStorageRecAfterEquipOnly()
+                    end
+                    return true
+                end
+                if f._gearDeferChainActive and WarbandNexus.TryRefreshGearEquipSlotsOnly then
+                    C_Timer.After(0.15, function()
+                        if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+                        if WarbandNexus:TryRefreshGearEquipSlotsOnly(pl) then
+                            if recEnabled then
+                                redrawStorageRecAfterEquipOnly()
+                            end
+                        else
+                            SchedulePopulateContent(true)
+                        end
+                    end)
+                    return true
+                end
+                return false
+            end
+            if trySlotRefresh(payload) then
+                return
+            end
             SchedulePopulateContent(true)
         end
     end)
@@ -2001,7 +2246,7 @@ function WarbandNexus:CreateMainWindow()
             if f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband" then
                 SchedulePopulateContent(true)
             elseif f.currentTab == "gear" then
-                SchedulePopulateContent(true)
+                ScheduleGearTabInventoryNarrowRefresh()
             else
                 SchedulePopulateContent()
             end
@@ -2119,10 +2364,19 @@ function WarbandNexus:CreateMainWindow()
     -- when the warm-up completes, re-scan so previously-skipped candidates surface.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEM_METADATA_READY, function()
         if f and f:IsShown() and f.currentTab == "gear" then
-            if WarbandNexus.TryGearStorageRedrawOnly and WarbandNexus:TryGearStorageRedrawOnly() then
+            if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
+                WarbandNexus:TryRefreshAllGearEquipSlotIcons()
+            end
+            if WarbandNexus.IsGearStorageRecommendationsEnabled
+                and WarbandNexus:IsGearStorageRecommendationsEnabled()
+                and WarbandNexus.TryGearStorageRedrawOnly
+                and WarbandNexus:TryGearStorageRedrawOnly() then
                 return
             end
-            ThrottledScheduleGearAsyncRepaint()
+            if WarbandNexus.IsGearStorageRecommendationsEnabled
+                and WarbandNexus:IsGearStorageRecommendationsEnabled() then
+                ThrottledScheduleGearAsyncRepaint()
+            end
         end
     end)
 
@@ -2148,18 +2402,31 @@ function WarbandNexus:CreateMainWindow()
                 gearItemInfoCoalesceTimer = nil
                 if myGen ~= gearItemInfoCoalesceGen then return end
                 if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+                local recOn = WarbandNexus.IsGearStorageRecommendationsEnabled
+                    and WarbandNexus:IsGearStorageRecommendationsEnabled()
                 local gearCanon = f._gearPopulateCanonKey
-                local invInvalidated = false
-                if gearCanon and WarbandNexus.InvalidateGearStorageFindingsCacheForCanon then
-                    invInvalidated = WarbandNexus:InvalidateGearStorageFindingsCacheForCanon(gearCanon) == true
+                if recOn then
+                    local invInvalidated = false
+                    if gearCanon and WarbandNexus.InvalidateGearStorageFindingsCacheForCanon then
+                        invInvalidated = WarbandNexus:InvalidateGearStorageFindingsCacheForCanon(gearCanon) == true
+                    end
+                    if not invInvalidated then
+                        ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
+                    end
                 end
-                if not invInvalidated then
-                    ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
+                if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
+                    WarbandNexus:TryRefreshAllGearEquipSlotIcons()
                 end
-                if WarbandNexus.TryGearStorageRedrawOnly and WarbandNexus:TryGearStorageRedrawOnly() then
+                if recOn and gearCanon and WarbandNexus.IsGearStorageScanInFlightForCanon
+                    and WarbandNexus:IsGearStorageScanInFlightForCanon(gearCanon) then
                     return
                 end
-                ThrottledScheduleGearAsyncRepaint()
+                if recOn and WarbandNexus.TryGearStorageRedrawOnly and WarbandNexus:TryGearStorageRedrawOnly() then
+                    return
+                end
+                if recOn then
+                    ThrottledScheduleGearAsyncRepaint()
+                end
             end
             if C_Timer and C_Timer.NewTimer then
                 gearItemInfoCoalesceTimer = C_Timer.NewTimer(0.08, runGearItemInfoBatch)
@@ -2256,6 +2523,10 @@ function WarbandNexus:CreateMainWindow()
         pendingPopulateTimer = nil
         pendingPopulateSkipCooldown = false
         populateDebounceGen = populateDebounceGen + 1
+        if gearStorageRecRefreshTimer and gearStorageRecRefreshTimer.Cancel then
+            gearStorageRecRefreshTimer:Cancel()
+        end
+        gearStorageRecRefreshTimer = nil
         StopCustomDrag(self)
         SaveWindowGeometry(self)
         if ns.HideGearCharacterDropdown then
@@ -2467,6 +2738,8 @@ local function PopulateContentBody(self)
 
     -- Hide persistent gear frames when leaving their tab
     if mainFrame.currentTab ~= "gear" then
+        if scrollChild._gearLoadingHost then scrollChild._gearLoadingHost:Hide() end
+        mainFrame._gearContentVeil = nil
         if ns._gearPlayerModel then ns._gearPlayerModel:Hide() end
         if ns._gearPortraitPanel then ns._gearPortraitPanel:Hide() end
         if ns._gearNoPreviewFrame then ns._gearNoPreviewFrame:Hide() end
@@ -2529,6 +2802,7 @@ local function PopulateContentBody(self)
             height = self:DrawProfessionsTab(scrollChild)
         end
     elseif tab == "gear" then
+        mainFrame._wnGearPaintShowVeil = isTabSwitch
         height = self:DrawGearTab(scrollChild)
     elseif tab == "collections" then
         height = self:DrawCollectionsTab(scrollChild)
