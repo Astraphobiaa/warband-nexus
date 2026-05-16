@@ -34,17 +34,23 @@ local CreateIcon = ns.UI_CreateIcon
 
 -- Single source for layout (matches CurrencyUI, PlansUI, SharedWidgets)
 local function GetLayout()
+    if ns.GetUILayoutTokens then return ns.GetUILayoutTokens() end
     return ns.UI_LAYOUT or ns.UI_SPACING or {}
 end
-local LAYOUT = GetLayout()
-local SIDE_MARGIN = LAYOUT.SIDE_MARGIN or 10
-local TOP_MARGIN = LAYOUT.TOP_MARGIN or 8
-local CARD_GAP = LAYOUT.CARD_GAP or 8
-local AFTER_ELEMENT = LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8
-local ROW_ICON_SIZE = LAYOUT.ROW_ICON_SIZE or 20
-local DETAIL_ICON_SIZE = LAYOUT.DETAIL_ICON_SIZE or 64  -- Detail panel icon (Pets/Mounts/Toy/Achievement)
-local STATUS_ICON_SIZE = LAYOUT.STATUS_ICON_SIZE or 16
-local SCROLL_CONTENT_TOP_PADDING = LAYOUT.SCROLL_CONTENT_TOP_PADDING or 12
+local LAYOUT, SIDE_MARGIN, TOP_MARGIN, CARD_GAP, AFTER_ELEMENT, ROW_ICON_SIZE
+local DETAIL_ICON_SIZE, STATUS_ICON_SIZE, SCROLL_CONTENT_TOP_PADDING
+local function RefreshCollectionsLayout()
+    LAYOUT = GetLayout()
+    SIDE_MARGIN = LAYOUT.SIDE_MARGIN or 10
+    TOP_MARGIN = LAYOUT.TOP_MARGIN or 8
+    CARD_GAP = LAYOUT.CARD_GAP or 8
+    AFTER_ELEMENT = LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8
+    ROW_ICON_SIZE = LAYOUT.ROW_ICON_SIZE or 20
+    DETAIL_ICON_SIZE = LAYOUT.DETAIL_ICON_SIZE or 64
+    STATUS_ICON_SIZE = LAYOUT.STATUS_ICON_SIZE or 16
+    SCROLL_CONTENT_TOP_PADDING = LAYOUT.SCROLL_CONTENT_TOP_PADDING or 12
+end
+RefreshCollectionsLayout()
 -- Symmetric layout: all panels use same inset; no magic numbers.
 local CONTENT_INSET = LAYOUT.CONTENT_INSET or LAYOUT.CARD_GAP or 8
 local CONTAINER_INSET = LAYOUT.CONTAINER_INSET or 2
@@ -6337,6 +6343,7 @@ end
 -- ============================================================================
 
 function WarbandNexus:DrawCollectionsTab(parent)
+    RefreshCollectionsLayout()
     ApplySessionCollectionsSubTab()
 
     local sideMargin = (LAYOUT.SIDE_MARGIN or 10)

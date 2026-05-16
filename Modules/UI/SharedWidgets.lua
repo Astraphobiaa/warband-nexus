@@ -12,6 +12,10 @@ local issecretvalue = issecretvalue
 
 local FontManager = ns.FontManager
 
+-- Factory namespace must exist before plan-slot icon helpers (defined mid-file).
+ns.UI = ns.UI or {}
+ns.UI.Factory = ns.UI.Factory or {}
+
 --- Semantic UI role → category (FontManager.FONT_ROLE / tek tema kaynağı)
 local function UIFontRole(roleKey)
     return FontManager:GetFontRole(roleKey)
@@ -648,9 +652,9 @@ ns.UI_QUALITY_COLORS = QUALITY_COLORS
     - Legacy code: Backward compatible via ns.UI_* exports
 ]]
 
--- Initialize Factory namespace
+-- Factory namespace (also initialized at file top for mid-file Factory methods).
 ns.UI = ns.UI or {}
-ns.UI.Factory = {}
+ns.UI.Factory = ns.UI.Factory or {}
 
 -- Runtime-accessible constants (fixes scope/load-order bugs)
 ns.UI.Layout = UI_SPACING  -- Direct reference (no copy, always current)

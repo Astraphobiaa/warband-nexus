@@ -143,6 +143,7 @@ local Constants = {
         
         -- Plans
         PLANS_UPDATED = "WN_PLANS_UPDATED",
+        ICON_THEME_CHANGED = "WN_ICON_THEME_CHANGED",
         PLAN_COMPLETED = "WN_PLAN_COMPLETED",
         QUEST_COMPLETED = "WN_QUEST_COMPLETED",
         --- Daily / weekly quest plan progress (not WN_ prefix — legacy identifier)

@@ -54,7 +54,10 @@ local FormatNumber = ns.UI_FormatNumber
 local COLORS = ns.UI_COLORS
 
 -- Import shared UI layout constants
-local function GetLayout() return ns.UI_LAYOUT or {} end
+local function GetLayout()
+    if ns.GetUILayoutTokens then return ns.GetUILayoutTokens() end
+    return ns.UI_LAYOUT or {}
+end
 local ROW_HEIGHT = GetLayout().rowHeight or 26
 local ROW_SPACING = GetLayout().rowSpacing or 28
 local HEADER_SPACING = GetLayout().headerSpacing or 44
@@ -2992,8 +2995,12 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 if not deferAddon or not deferAddon.UpdatePvEData then return end
                 local mf = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
                 if not mf or not mf:IsShown() or mf.currentTab ~= "pve" then return end
+                -- VaultScanner owns OnUIInteract at login; avoid re-poking when tab refresh runs mid-session.
                 if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then
-                    C_WeeklyRewards.OnUIInteract()
+                    local scannerReady = ns.VaultScanner and ns.VaultScanner.IsInitialized and ns.VaultScanner.IsInitialized()
+                    if not scannerReady then
+                        C_WeeklyRewards.OnUIInteract()
+                    end
                 end
                 deferAddon:UpdatePvEData()
             end)

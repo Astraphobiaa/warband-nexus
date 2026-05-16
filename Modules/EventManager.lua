@@ -362,6 +362,29 @@ function WarbandNexus:OnUIScaleChanged()
     end)
 end
 
+-- Appearance + pet journal: high churn during cold login; not needed for T+0 UI/fonts/items.
+-- Gated on profile `modulesEnabled.collections` and registered after COLLECTION_EM_DEFER_SEC
+-- (InitializeEventManager already runs at T+0.5 from InitializationService).
+local COLLECTION_EM_DEFER_SEC = 2.5
+
+function WarbandNexus:EnsureEventManagerCollectionListeners()
+    if self._wnEventMgrCollectionRegistered then return end
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("collections")) then return end
+    if not self.RegisterEvent then return end
+    self._wnEventMgrCollectionRegistered = true
+    self:RegisterEvent("TRANSMOG_COLLECTION_UPDATED", "OnCollectionChangedDebounced")
+    self:RegisterEvent("PET_JOURNAL_LIST_UPDATE", "OnPetListChangedDebounced")
+end
+
+function WarbandNexus:ClearEventManagerCollectionListeners()
+    if not self._wnEventMgrCollectionRegistered then return end
+    if self.UnregisterEvent then
+        self:UnregisterEvent("TRANSMOG_COLLECTION_UPDATED")
+        self:UnregisterEvent("PET_JOURNAL_LIST_UPDATE")
+    end
+    self._wnEventMgrCollectionRegistered = false
+end
+
 --[[
     Initialize event manager
     Called during OnEnable
@@ -382,14 +405,29 @@ function WarbandNexus:InitializeEventManager()
     -- Do NOT register here — prevents duplicate scanning
     
     -- ── Collection events (single owner: CollectionService) ──
-    -- NEW_MOUNT_ADDED, NEW_PET_ADDED, NEW_TOY_ADDED are registered at file load
-    -- in CollectionService.lua (OnNewMount, OnNewPet, OnNewToy).
+    -- NEW_MOUNT_ADDED, NEW_PET_ADDED, NEW_TOY_ADDED, ACHIEVEMENT_EARNED: registered when
+    -- `modulesEnabled.collections` is on — see CollectionService:EnsureCollectionServiceRealtimeListeners.
     -- Each handler uses incremental updates + SendMessage(COLLECTION_UPDATED) — no EventManager routing needed.
     -- Do NOT register here — AceEvent allows only one handler per event per object,
     -- and re-registering here would OVERWRITE the CollectionService handlers.
-    self:RegisterEvent("TRANSMOG_COLLECTION_UPDATED", "OnCollectionChangedDebounced")
-    self:RegisterEvent("PET_JOURNAL_LIST_UPDATE", "OnPetListChangedDebounced")
-    -- ACHIEVEMENT_EARNED: owned by CollectionService (file-level registration)
+    -- TRANSMOG + PET_JOURNAL: deferred + collections toggle — see EnsureEventManagerCollectionListeners.
+    if not self._wnEventMgrCollectionMsgHooked and self.RegisterMessage then
+        self._wnEventMgrCollectionMsgHooked = true
+        self:RegisterMessage(E.MODULE_TOGGLED, function(_, moduleName, enabled)
+            if moduleName ~= "collections" then return end
+            if enabled then
+                WarbandNexus:EnsureEventManagerCollectionListeners()
+            else
+                WarbandNexus:ClearEventManagerCollectionListeners()
+            end
+        end)
+    end
+    C_Timer.After(COLLECTION_EM_DEFER_SEC, function()
+        if WarbandNexus then
+            WarbandNexus:EnsureEventManagerCollectionListeners()
+        end
+    end)
+    -- ACHIEVEMENT_EARNED: owned by CollectionService (EnsureCollectionServiceRealtimeListeners)
     -- TOYS_UPDATED: removed — spams on every toy use/cooldown
     
     -- PvE events are now handled by PvECacheService (RegisterPvECacheEvents)

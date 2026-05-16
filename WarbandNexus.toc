@@ -88,6 +88,7 @@ Modules\GearService.lua
 
 # UI Modules (FormatHelpers before SharedWidgets — ns.UI_Format* / money helpers)
 Modules\UI\FormatHelpers.lua
+Modules\IconThemeService.lua
 Modules\UI\SharedWidgets.lua
 Modules\UI\NotificationToastFactory.lua
 Modules\NotificationManager.lua

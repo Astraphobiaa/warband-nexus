@@ -137,6 +137,10 @@ local CurrencyCache = {
     --- Merged UI read model (rebuilt from DB + metadata cache; see RebuildMergedCurrenciesUIReadModel).
     mergedUIReadModel = nil,
     mergedUIReadModelGen = -2,
+    --- Last CURRENCY_DISPLAY_UPDATE (GetTime); CHAT_MSG_CURRENCY fallback skips when recent.
+    _lastCurrencyDisplayEventAt = 0,
+    _broadScanTimer = nil,
+    _currencyDrainKickTimer = nil,
 }
 
 -- Loading state for UI (similar to ReputationLoadingState pattern)
@@ -675,19 +679,18 @@ local function DispatchCurrencyGainChat(currencyID, currencyData, gainAmount, ga
         return false
     end
     -- Player-facing currency rows: CurrencyInfo.isHeader = category rows, not spendable currency (API docs).
-    if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-        local live = C_CurrencyInfo.GetCurrencyInfo(currencyID)
-        if live and live.isHeader == true then return false end
+    local live = (C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo) and C_CurrencyInfo.GetCurrencyInfo(currencyID) or nil
+    if live then
+        if live.isHeader == true then return false end
         local chkName = currencyData.name
-        if (not chkName or chkName == "") and live and live.name and not (issecretvalue and issecretvalue(live.name)) then
+        if (not chkName or chkName == "") and live.name and not (issecretvalue and issecretvalue(live.name)) then
             chkName = live.name
         end
         if IsTrackerMetaCurrencyName(chkName or "") then return false end
-        -- Row name from live API can differ from cached currencyData (stale SV); block on either.
-        if live and live.name and not (issecretvalue and issecretvalue(live.name)) then
+        if live.name and not (issecretvalue and issecretvalue(live.name)) then
             if IsTrackerMetaCurrencyName(live.name) then return false end
         end
-        if live and IsSeasonProgressSplitCurrency(currencyID, live) then
+        if IsSeasonProgressSplitCurrency(currencyID, live) then
             local prev = lastCurrencyGainChatByID[currencyID]
             local now = GetTime()
             if prev and prev.amount == gainAmount and prev.source ~= gainSource
@@ -705,15 +708,12 @@ local function DispatchCurrencyGainChat(currencyID, currencyData, gainAmount, ga
             gainAmount = gainAmount,
             gainSource = gainSource,
         })
-        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-            local live = C_CurrencyInfo.GetCurrencyInfo(currencyID)
-            if live and IsSeasonProgressSplitCurrency(currencyID, live) then
-                lastCurrencyGainChatByID[currencyID] = {
-                    t = GetTime(),
-                    amount = gainAmount,
-                    source = gainSource,
-                }
-            end
+        if live and IsSeasonProgressSplitCurrency(currencyID, live) then
+            lastCurrencyGainChatByID[currencyID] = {
+                t = GetTime(),
+                amount = gainAmount,
+                source = gainSource,
+            }
         end
     end
     return true
@@ -1300,6 +1300,32 @@ end
 
 -- Max CPU per frame for synchronous currency queue drain (loot bursts enqueue many IDs).
 local CURRENCY_DRAIN_BUDGET_MS = 4.5
+local BROAD_CURRENCY_SCAN_DEBOUNCE_SEC = 1.25
+local CURRENCY_CHAT_FALLBACK_QUIET_SEC = 2.0
+
+local DrainCurrencyQueue
+
+local function ScheduleDebouncedBroadCurrencyScan()
+    if CurrencyCache.initScanPending then return end
+    if CurrencyCache._broadScanTimer then return end
+    CurrencyCache._broadScanTimer = C_Timer.NewTimer(BROAD_CURRENCY_SCAN_DEBOUNCE_SEC, function()
+        CurrencyCache._broadScanTimer = nil
+        if CurrencyCache and CurrencyCache.PerformFullScan then
+            CurrencyCache:PerformFullScan()
+        end
+    end)
+end
+
+---Coalesce CURRENCY_DISPLAY_UPDATE enqueues onto the next frame (loot often fires many per tick).
+local function ScheduleCurrencyDrainKick()
+    if CurrencyCache.isDraining or CurrencyCache._currencyDrainKickTimer then
+        return
+    end
+    CurrencyCache._currencyDrainKickTimer = C_Timer.NewTimer(0, function()
+        CurrencyCache._currencyDrainKickTimer = nil
+        DrainCurrencyQueue()
+    end)
+end
 
 local function registerDrainBroadcastSuccess(currencyID)
     local c = CurrencyCache
@@ -1338,7 +1364,7 @@ end
 ---Drain the currency queue synchronously until empty or time budget exceeded (then resume next frame).
 ---Nested DrainCurrencyQueue calls (while isDraining) return immediately; the outer loop
 ---keeps table.remove(1) until #queue == 0, including items added during processing.
-local function DrainCurrencyQueue()
+DrainCurrencyQueue = function()
     if CurrencyCache.isDraining then return end
     CurrencyCache.isDraining = true
 
@@ -1356,7 +1382,8 @@ local function DrainCurrencyQueue()
         local entry = table.remove(CurrencyCache.updateQueue, 1)
         processedInSlice = processedInSlice + 1
         if entry == 0 then
-            CurrencyCache:PerformFullScan()
+            -- Never PerformFullScan inside the budget loop — one call can exceed 100ms and ignores CURRENCY_DRAIN_BUDGET_MS.
+            ScheduleDebouncedBroadCurrencyScan()
         elseif type(entry) == "table" and entry.currencyID then
             if UpdateSingleCurrency(entry.currencyID, entry) then
                 registerDrainBroadcastSuccess(entry.currencyID)
@@ -1395,18 +1422,24 @@ local function OnCurrencyUpdate(currencyType, quantity, quantityChange, quantity
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
         return
     end
-    
+
+    if CurrencyCache.initScanPending then
+        return
+    end
+
+    CurrencyCache._lastCurrencyDisplayEventAt = GetTime()
+
     if currencyType and currencyType > 0 then
         table.insert(CurrencyCache.updateQueue, {
             currencyID = currencyType,
             absQuantity = SafeCurrencyNumber(quantity),
             quantityChange = SafeCurrencyNumber(quantityChange),
         })
+        ScheduleCurrencyDrainKick()
     else
-        table.insert(CurrencyCache.updateQueue, 0)
+        -- Nil/invalid type during play: debounced broad scan only (never sync PerformFullScan on loot tick).
+        ScheduleDebouncedBroadCurrencyScan()
     end
-    
-    DrainCurrencyQueue()
     if t0 and P then
         P:TraceEventHandler("CURRENCY_DISPLAY_UPDATE", t0, currencyType, quantity, quantityChange, quantityGainSource, destroyReason)
     end
@@ -1815,20 +1848,16 @@ function CurrencyCache:Clear(clearDB)
     end
 end
 
----Debounced full scan when CHAT_MSG_CURRENCY fires (invoked from ChatIntegrationService).
+---Fallback when CHAT_MSG_CURRENCY fires without a recent CURRENCY_DISPLAY_UPDATE (ChatIntegrationService).
 function CurrencyCache:OnCurrencyChatSignal()
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
         return
     end
-    if self._currencyChatScanTimer then
+    local lastDisplay = self._lastCurrencyDisplayEventAt or 0
+    if (GetTime() - lastDisplay) < CURRENCY_CHAT_FALLBACK_QUIET_SEC then
         return
     end
-    self._currencyChatScanTimer = C_Timer.NewTimer(0.5, function()
-        self._currencyChatScanTimer = nil
-        if CurrencyCache.PerformFullScan then
-            CurrencyCache:PerformFullScan()
-        end
-    end)
+    ScheduleDebouncedBroadCurrencyScan()
 end
 
 -- ============================================================================

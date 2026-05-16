@@ -14,7 +14,7 @@
     - Core OnInitialize: AceDB, CheckVersions, RunMigrations (same frame); SessionCache decompress is deferred
       one tick (see Core.lua) so deflate/deserialize does not stack with migrations on ADDON_LOADED.
     - Core OnEnable: registers events, then InitializeAllModules (this file) which spreads cache/UI work
-      across T+0.3s … T+8s (see stage comments below).
+      across T+0.3s … T+8s (see stage comments below). P0 DailyQuest + CollectionCache share the Stage1 T+0.5s tick with EventManager.
     - PLAYER_ENTERING_WORLD payload (Warcraft Wiki): login, /reload, or instance zoning; Patch 8.0.1 adds
       isInitialLogin and isReloadingUi (AceEvent: event, isInitialLogin, isReloadingUi). Cold prefetch runs only
       when either flag is true (login/reload), not on zoning-only transitions.
@@ -209,8 +209,8 @@ end
 ]]
 function InitializationService:InitializeCoreInfrastructure(addon)
     
-    -- T+0.5s: Single timer — Core event setup + tracking popup probe share one wake-up
-    -- (avoids duplicate 0.5s callbacks and redundant scheduler bookkeeping).
+    -- T+0.5s: Single timer — Core event setup + P0 data inits + tracking popup probe share one wake-up
+    -- (one C_Timer slot vs separate 0.5s from InitializeDataServices; same ordering: events before P0).
     C_Timer.After(0.5, function()
         SafeInit(function()
             if addon and addon.InitializeLootNotifications then
@@ -220,6 +220,15 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                 addon:InitializeEventManager()
             end
         end, "CoreEventSetup")
+
+        SafeInit(function()
+            if addon and addon.InitializeDailyQuestManager then
+                addon:InitializeDailyQuestManager()
+            end
+            if addon and addon.InitializeCollectionCache then
+                addon:InitializeCollectionCache()
+            end
+        end, "P0:LightweightInits")
 
         -- Character Tracking Confirmation: Check for new characters (same delay + retry)
         -- After /reload, GetNormalizedRealmName() can be empty briefly; deciding then used GetRealmName-only
@@ -317,7 +326,7 @@ function InitializationService:InitializeDataServices(addon)
     -- Heavy/async ops get dedicated slots to prevent frame spikes.
     --
     -- PRIORITY TIERS:
-    --   P0 (T+0.5s): Lightweight DB/event registration (batched, <2ms total)
+    --   P0 (T+0.5s): Merged into InitializeCoreInfrastructure (same tick as CoreEventSetup)
     --   P1 (T+1s):   Heavy async collection build (4ms/frame budget)
     --   P2 (T+2s):   Character + tracked-only caches (batched)
     --   P3 (T+3s):   Items cache + vault (tracked only)
@@ -327,19 +336,6 @@ function InitializationService:InitializeDataServices(addon)
     local modulesEnabled = addon and addon.db and addon.db.profile and addon.db.profile.modulesEnabled
     local collectionFeaturesEnabled = (not modulesEnabled) or modulesEnabled.collections ~= false or modulesEnabled.plans ~= false
     local tryCounterEnabled = (not modulesEnabled) or modulesEnabled.tryCounter ~= false
-
-    -- P0: Lightweight inits — DB loads + event registration
-    -- Combined: DailyQuestManager + CollectionCacheDB (<2ms total)
-    C_Timer.After(0.5, function()
-        SafeInit(function()
-            if addon and addon.InitializeDailyQuestManager then
-                addon:InitializeDailyQuestManager()
-            end
-            if addon and addon.InitializeCollectionCache then
-                addon:InitializeCollectionCache()
-            end
-        end, "P0:LightweightInits")
-    end)
 
     -- P1: Owned lookup cache — RunCollectionOwnedCacheWarmup (quiet when SV store already warm; avoids duplicate LT vs collection_data).
     -- Run only when collection/plans features are enabled.

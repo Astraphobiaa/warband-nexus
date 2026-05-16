@@ -326,9 +326,14 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         end
     end
     
-    -- Expand/collapse: same chevron control as section headers (single texture, fixed size)
-    local expandBtn = ns.UI_CreateCollapseExpandControl(headerFrame, isExpanded, { enableMouse = true })
-    expandBtn:SetPoint("LEFT", 6, 0)
+    local PCM = ns.UI_PLANS_CARD_METRICS or {}
+    local rowNudgeY = tonumber(PCM.rowIconNudgeY) or 0
+    local chevronSz = tonumber(data.chevronSize) or tonumber(PCM.plansChevronSize) or 18
+    local expandBtn = ns.UI_CreateCollapseExpandControl(headerFrame, isExpanded, {
+        enableMouse = true,
+        size = chevronSz,
+    })
+    expandBtn:SetPoint("LEFT", 6, rowNudgeY)
 
     expandBtn:RegisterForClicks("LeftButtonUp")
     expandBtn:SetScript("OnClick", function(_, button)
@@ -349,32 +354,34 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     -- Item Icon (after expand button). data.iconSize overrides the default for callers that
     -- want a chunkier portrait. Title and type badge anchor to this frame so they stay aligned
     -- regardless of icon size. Supports atlas icons via data.iconIsAtlas.
-    local ICON_SIZE = data.iconSize or (UI_SPACING.HEADER_ICON_SIZE + 4)
-    local ICON_LEFT = 6 + (UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE or 22) + 4
+    local ICON_SIZE = data.iconSize or (PCM.todoIconSize or (UI_SPACING.HEADER_ICON_SIZE + 4))
+    local ICON_LEFT = 6 + chevronSz + 4
     local iconFrame
     if data.icon then
         -- Show the same pixel border as Plan cards (CreateIcon noBorder=false) so To-Do rows match grid cards.
         iconFrame = CreateIcon(headerFrame, data.icon, ICON_SIZE, data.iconIsAtlas == true, nil, false)
-        iconFrame:SetPoint("LEFT", ICON_LEFT, 0)
+        iconFrame:SetPoint("LEFT", ICON_LEFT, rowNudgeY)
         iconFrame:Show()  -- CRITICAL: Show the row icon!
         row.iconFrame = iconFrame
     end
 
     -- Optional small TYPE atlas badge rendered immediately to the RIGHT of the icon
     -- (e.g. shield atlas for achievements, dragon-rostrum for mounts). Uses data.typeAtlas.
-    local TYPE_BADGE_SIZE = data.typeBadgeSize or 14
+    local TYPE_BADGE_SIZE = data.typeBadgeSize or PCM.rowTypeBadgeSize or 20
     local TYPE_BADGE_GAP = 4
     local typeBadgeFrame
     if data.typeAtlas then
         typeBadgeFrame = CreateFrame("Frame", nil, headerFrame)
         typeBadgeFrame:SetSize(TYPE_BADGE_SIZE, TYPE_BADGE_SIZE)
         if iconFrame then
-            typeBadgeFrame:SetPoint("LEFT", iconFrame, "RIGHT", TYPE_BADGE_GAP, 0)
+            typeBadgeFrame:SetPoint("LEFT", iconFrame, "RIGHT", TYPE_BADGE_GAP, rowNudgeY)
         else
-            typeBadgeFrame:SetPoint("LEFT", headerFrame, "LEFT", ICON_LEFT + ICON_SIZE + TYPE_BADGE_GAP, 0)
+            typeBadgeFrame:SetPoint("LEFT", headerFrame, "LEFT", ICON_LEFT + ICON_SIZE + TYPE_BADGE_GAP, rowNudgeY)
         end
         local typeTex = typeBadgeFrame:CreateTexture(nil, "OVERLAY")
-        typeTex:SetAllPoints()
+        local inset = tonumber(PCM.rowTypeBadgeInset) or math.max(1, math.floor(TYPE_BADGE_SIZE * 0.10 + 0.5))
+        typeTex:SetPoint("TOPLEFT", typeBadgeFrame, "TOPLEFT", inset, -inset)
+        typeTex:SetPoint("BOTTOMRIGHT", typeBadgeFrame, "BOTTOMRIGHT", -inset, inset)
         local ok = pcall(function() typeTex:SetAtlas(data.typeAtlas, false) end)
         if ok then
             typeBadgeFrame:Show()

@@ -116,45 +116,15 @@ local settingsKeybindIsListening = false
 local settingsKeybindButton = nil
 local settingsKeybindCaptureFrame = nil
 
----Same output channel as welcome message — not Lua print() (often only in System / default chat).
-local function WnDiagSettings(msg)
-    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
-    if db and db.debugMode and WarbandNexus and WarbandNexus.Print then
-        WarbandNexus:Print("|cff00ccff[WN DIAG]|r " .. tostring(msg))
-    end
-end
-
 ---WarbandNexusFrame uses InstallESCHandler (EnableKeyboard true). With Settings open on top, the main
 ---window can still own the client keyboard stack — WASD / space stop working. Disable only while Settings is shown.
 local function SuppressMainWindowKeyboardWhileSettingsOpen()
     local mf = _G.WarbandNexusFrame
     if not mf or not mf:IsShown() then return end
     if InCombatLockdown() then return end
-    -- #region agent log
-    do
-        local W = rawget(_G, "WarbandNexus")
-        local db = W and W.db and W.db.profile
-        if db and db.debugMode and W and W.Print then
-            local kb = (mf.IsKeyboardEnabled and mf:IsKeyboardEnabled()) and "true" or "false"
-            local prop = (mf.IsPropagateKeyboardInput and mf:IsPropagateKeyboardInput()) and "true" or "false"
-            W:Print("|cff00ffff[WN ESC H7]|r SuppressMainKB(before): enabled=" .. kb .. " propagate=" .. prop)
-        end
-    end
-    -- #endregion agent log
     if mf.EnableKeyboard then
         mf:EnableKeyboard(false)
     end
-    -- #region agent log
-    do
-        local W = rawget(_G, "WarbandNexus")
-        local db = W and W.db and W.db.profile
-        if db and db.debugMode and W and W.Print then
-            local kb = (mf.IsKeyboardEnabled and mf:IsKeyboardEnabled()) and "true" or "false"
-            local prop = (mf.IsPropagateKeyboardInput and mf:IsPropagateKeyboardInput()) and "true" or "false"
-            W:Print("|cff00ffff[WN ESC H7]|r SuppressMainKB(after): enabled=" .. kb .. " propagate=" .. prop)
-        end
-    end
-    -- #endregion agent log
 end
 
 local function RestoreMainWindowKeyboardAfterSettingsClose()
@@ -167,17 +137,6 @@ local function RestoreMainWindowKeyboardAfterSettingsClose()
     if mf.SetPropagateKeyboardInput then
         mf:SetPropagateKeyboardInput(true)
     end
-    -- #region agent log
-    do
-        local W = rawget(_G, "WarbandNexus")
-        local db = W and W.db and W.db.profile
-        if db and db.debugMode and W and W.Print then
-            local kb = (mf.IsKeyboardEnabled and mf:IsKeyboardEnabled()) and "true" or "false"
-            local prop = (mf.IsPropagateKeyboardInput and mf:IsPropagateKeyboardInput()) and "true" or "false"
-            W:Print("|cff00ffff[WN ESC H8]|r RestoreMainKB: enabled=" .. kb .. " propagate=" .. prop)
-        end
-    end
-    -- #endregion agent log
 end
 
 ---Chat debug (Lua 5.1): only when WarbandNexus.db.profile.debugMode is true (Config → Debug Mode).
@@ -241,15 +200,6 @@ local function EnsureSettingsCloseSpecialHook()
         if ns._wnEscJustHandled then return end
         local p = _G.WarbandNexusSettingsPanel
         if p and p:IsShown() then
-            -- #region agent log
-            do
-                local W = WarbandNexus
-                local db = W and W.db and W.db.profile
-                if db and db.debugMode and W and W.Print then
-                    W:Print("|cff00ffff[WN ESC H2]|r CloseSpecialWindows post-hook ran while Settings visible → Hide")
-                end
-            end
-            -- #endregion agent log
             SettingsEscDebug("CloseSpecialWindows post-hook → Hide()")
             p:Hide()
         end
@@ -1532,15 +1482,6 @@ local function BuildSettings(parent, containerWidth)
         if ApplyVisuals then
             ApplyVisuals(keybindBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
         end
-        -- #region agent log
-        do
-            local W = rawget(_G, "WarbandNexus")
-            local db = W and W.db and W.db.profile
-            if db and db.debugMode and W and W.Print then
-                W:Print("|cff00ffff[WN ESC H12]|r Keybind capture stopped")
-            end
-        end
-        -- #endregion agent log
     end
 
     local function StartListening()
@@ -1561,15 +1502,6 @@ local function BuildSettings(parent, containerWidth)
         if ApplyVisuals then
             ApplyVisuals(keybindBtn, {0.12, 0.08, 0.18, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
         end
-        -- #region agent log
-        do
-            local W = rawget(_G, "WarbandNexus")
-            local db = W and W.db and W.db.profile
-            if db and db.debugMode and W and W.Print then
-                W:Print("|cff00ffff[WN ESC H12]|r Keybind capture started")
-            end
-        end
-        -- #endregion agent log
     end
     settingsKeybindStopListening = StopListening
     StopListening()
@@ -3278,6 +3210,29 @@ local function BuildSettings(parent, containerWidth)
             iw, cy, { skipGapBefore = true })
         cy = cy - GetHeaderToolbarGap()
 
+        cy = CreateDropdownWidget(inner, {
+            name = (ns.L and ns.L["ICON_THEME"]) or "Icon Theme",
+            desc = (ns.L and ns.L["ICON_THEME_TOOLTIP"]) or "Classic uses Blizzard icons and top tabs. Modern uses custom PNG plan slots and a sidebar layout.",
+            stackBelowLabel = true,
+            values = {
+                classic = (ns.L and ns.L["ICON_THEME_CLASSIC"]) or "Classic",
+                modern = (ns.L and ns.L["ICON_THEME_MODERN"]) or "Modern",
+            },
+            get = function()
+                return (WarbandNexus.db.profile.iconTheme == "modern") and "modern" or "classic"
+            end,
+            set = function(_, value)
+                if ns.SetIconTheme then
+                    ns.SetIconTheme(value)
+                else
+                    WarbandNexus.db.profile.iconTheme = (value == "modern") and "modern" or "classic"
+                end
+                if WarbandNexus.Print then
+                    WarbandNexus:Print((ns.L and ns.L["ICON_THEME_APPLIED_RELOAD"]) or "Icon theme changed. Sidebar and spacing update immediately; /reload if anything looks stuck.")
+                end
+            end,
+        }, cy)
+
         local pickerH = math.max(SETTINGS_BTN_H + 6, 38)
         local colorPickerBtn = ns.UI.Factory:CreateButton(inner, math.min(280, iw), pickerH, false)
         colorPickerBtn:SetPoint("TOPLEFT", 0, cy)
@@ -4315,17 +4270,10 @@ function WarbandNexus:ShowSettings()
         return
     end
 
-    -- #region agent log
-    WnDiagSettings("ShowSettings() — look in the SAME chat tab as '(Warband Nexus) Welcome…' (not print() / System only).")
-    -- #endregion agent log
-
     EnsureSettingsCloseSpecialHook()
 
     -- Prevent duplicates: if already shown, bring to front
     if settingsFrame and settingsFrame:IsShown() then
-        -- #region agent log
-        WnDiagSettings("path A: panel already visible → Raise only (OnShow will NOT run — no OnShow log).")
-        -- #endregion agent log
         if not InCombatLockdown() and settingsFrame.EnableKeyboard then
             settingsFrame:EnableKeyboard(false)
         end
@@ -4344,9 +4292,6 @@ function WarbandNexus:ShowSettings()
     -- Reuse existing hidden frame to prevent orphaned frame leaks.
     -- Previous code created a new frame every time, leaving old hidden frames in memory.
     if settingsFrame then
-        -- #region agent log
-        WnDiagSettings("path B: Show() on existing frame → OnShow runs.")
-        -- #endregion agent log
         settingsFrame:Show()
         settingsFrame:Raise()
         return
@@ -4430,9 +4375,6 @@ function WarbandNexus:ShowSettings()
     end
 
     f:SetScript("OnShow", function(self)
-        -- #region agent log
-        WnDiagSettings("OnShow: WarbandNexusSettingsPanel (frame script; you should see path B/C above on open)")
-        -- #endregion agent log
         local ok, err = pcall(function()
             SettingsEscDebug(
                 "OnShow name=%s strata=%s level=%s",
@@ -4445,7 +4387,7 @@ function WarbandNexus:ShowSettings()
             )
         end)
         if not ok then
-            WnDiagSettings("ERROR in OnShow pcall: " .. tostring(err))
+            SettingsEscDebug("ERROR in OnShow pcall: %s", tostring(err))
         end
         if self.Raise then self:Raise() end
         C_Timer.After(0, function()
@@ -4636,9 +4578,6 @@ function WarbandNexus:ShowSettings()
         end)
     end)
     
-    -- #region agent log
-    WnDiagSettings("path C: first-time create → f:Show() next (OnShow runs).")
-    -- #endregion agent log
     f:Show()
     settingsFrame = f
 end

@@ -99,6 +99,9 @@ local function RequestDailyQuestIndexRebuild()
     end)
 end
 
+-- PEW: coalesce delayed plan rescans when several PLAYER_ENTERING_WORLD bursts arrive close together.
+local dailyQuestLoginRescanTimer = nil
+
 -- ============================================================================
 -- MIDNIGHT ZONE DATA
 -- ============================================================================
@@ -1066,9 +1069,21 @@ function WarbandNexus:InitializeDailyQuestManager()
 end
 
 function WarbandNexus:OnDailyQuestLogin()
+    local P = ns.Profiler
+    local dqLab = (P and P.enabled and P.SliceLabel) and P:SliceLabel(P.CAT.INIT, "DailyQuestPEW") or nil
+    if dqLab then P:Start(dqLab) end
+
     SyncDailyQuestPlanIndexes()
-    if not self.db or not self.db.global or not self.db.global.plans then return end
-    C_Timer.After(3, function()
+    if not self.db or not self.db.global or not self.db.global.plans then
+        if dqLab then P:Stop(dqLab) end
+        return
+    end
+    if dailyQuestLoginRescanTimer then
+        dailyQuestLoginRescanTimer:Cancel()
+        dailyQuestLoginRescanTimer = nil
+    end
+    dailyQuestLoginRescanTimer = C_Timer.NewTimer(3, function()
+        dailyQuestLoginRescanTimer = nil
         local currentKey = ns.Utilities:GetCharacterKey()
         local dailyList = GetDailyQuestPlansForCharKey(currentKey)
         if dailyList then
@@ -1077,6 +1092,7 @@ function WarbandNexus:OnDailyQuestLogin()
             end
         end
     end)
+    if dqLab then P:Stop(dqLab) end
 end
 
 function WarbandNexus:OnDailyQuestCompleted(event, questID)

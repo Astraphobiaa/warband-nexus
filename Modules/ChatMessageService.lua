@@ -141,7 +141,14 @@ local function QueueMessage(message, group)
         return
     end
     isProcessing = true
-    ProcessQueuePump()
+    -- Defer first line to next frame so currency/loot handlers finish before chat routing walks frames.
+    C_Timer.After(0, function()
+        if #messageQueue == 0 then
+            isProcessing = false
+            return
+        end
+        ProcessQueuePump()
+    end)
 end
 
 -- ============================================================================

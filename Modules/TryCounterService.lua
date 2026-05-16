@@ -5470,12 +5470,27 @@ Fns.RouteLootSession = function(self, source, isFromItem)
     local route = Fns.ClassifyLootSession(source, isFromItem)
 
     if route == "skip" then return end
-    if route == "container" then self:ProcessContainerLoot(); return end
-    if route == "fishing" then self:ProcessFishingLoot(); return end
+    if route == "container" then
+        local addon = self
+        C_Timer.After(0, function()
+            if addon and Fns.IsAutoTryCounterEnabled() then addon:ProcessContainerLoot() end
+        end)
+        return
+    end
+    if route == "fishing" then
+        local addon = self
+        C_Timer.After(0, function()
+            if addon and Fns.IsAutoTryCounterEnabled() then addon:ProcessFishingLoot() end
+        end)
+        return
+    end
     if route == "npc" then
         -- SoD Mythic: mount outcome from slot links alone (secret GUID chest / personal loot).
         if Fns.TryInstanceBossSlotOutcomeFirst(self) then return end
-        self:ProcessNPCLoot()
+        local addon = self
+        C_Timer.After(0, function()
+            if addon and Fns.IsAutoTryCounterEnabled() then addon:ProcessNPCLoot() end
+        end)
         return
     end
 end
